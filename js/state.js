@@ -3,6 +3,7 @@ import { DEFAULT_USER_SETTINGS } from './constants.js';
 
 // 전역 상태 초기화
 window.mealHistory = [];
+window.sharedPhotos = [];
 window.currentUser = null;
 window.loadedDates = [];
 window.currentDetailChart = null;
@@ -19,6 +20,9 @@ export const appState = {
     currentTab: 'timeline',
     pageDate: new Date(),
     currentPhotos: [],
+    sharedPhotos: [], // 현재 공유된 사진 목록
+    originalSharedPhotos: [], // 모달 열 때의 원본 공유 사진 목록 (삭제 추적용)
+    wantsToShare: false, // 공유를 원하는지 여부
     currentEditingId: null,
     currentEditingDate: "",
     currentEditingSlotId: "",

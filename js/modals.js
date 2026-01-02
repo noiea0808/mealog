@@ -18,6 +18,7 @@ export function openModal(date, slotId, entryId = null) {
     state.currentEditingSlotId = slotId;
     state.currentPhotos = [];
     state.sharedPhotos = []; // 이미 공유된 사진 목록
+    state.originalSharedPhotos = []; // 원본 공유 사진 목록 (삭제 추적용)
     state.wantsToShare = false; // 공유를 원하는지 여부
     
     document.getElementById('modalTitle').innerText = SLOTS.find(s => s.id === slotId).label;
@@ -62,6 +63,7 @@ export function openModal(date, slotId, entryId = null) {
         if (r) {
             state.currentPhotos = r.photos || [];
             state.sharedPhotos = r.sharedPhotos || []; // 이미 공유된 사진 목록 복원
+            state.originalSharedPhotos = r.sharedPhotos ? [...r.sharedPhotos] : []; // 원본 복사 (삭제 추적용)
             state.wantsToShare = (r.sharedPhotos && r.sharedPhotos.length > 0); // 이미 공유된 사진이 있으면 공유 상태로
             renderPhotoPreviews();
             setVal('placeInput', r.place || "");
@@ -228,7 +230,27 @@ export async function saveEntry() {
     
     document.getElementById('loadingOverlay').classList.remove('hidden');
     try {
+        // 삭제된 사진 찾기: 원래 공유되었던 사진 중 현재 currentPhotos에 없는 사진들
+        const deletedPhotos = state.originalSharedPhotos.filter(photo => 
+            !state.currentPhotos.includes(photo)
+        );
+        
+        // 삭제된 사진이 있고, 기록이 이미 존재하는 경우 피드에서 삭제
+        if (deletedPhotos.length > 0 && record.id) {
+            try {
+                console.log('삭제된 사진 피드에서 제거:', deletedPhotos, 'entryId:', record.id);
+                await dbOps.unsharePhotos(deletedPhotos, record.id);
+                // 삭제된 사진을 sharedPhotos에서도 제거 (이미 removePhoto에서 제거되었지만 확실히 하기 위해)
+                state.sharedPhotos = state.sharedPhotos.filter(p => !deletedPhotos.includes(p));
+                console.log('삭제 후 sharedPhotos:', state.sharedPhotos);
+            } catch (e) {
+                console.error("삭제된 사진 피드 제거 실패:", e);
+                // 실패해도 계속 진행
+            }
+        }
+        
         // sharedPhotos 필드 추가 (현재 공유된 사진 목록 저장)
+        // 삭제된 사진을 제거한 후의 최종 목록으로 업데이트
         record.sharedPhotos = state.sharedPhotos || [];
         
         // 공유 상태에 따라 처리

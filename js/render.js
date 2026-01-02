@@ -108,23 +108,69 @@ export function renderTimeline() {
     const container = document.getElementById('timelineContainer');
     if (!container) return;
     
+    // 오늘 날짜를 명확하게 계산 (시간대 문제 방지)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    // 로컬 날짜로 변환하여 시간대 문제 방지
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${year}-${month}-${day}`;
+    
     const targetDates = [];
     if (state.viewMode === 'list') {
-        const startIdx = window.loadedDates.length;
-        const baseDate = new Date();
-        for (let i = startIdx; i < startIdx + 5; i++) {
-            const d = new Date(baseDate);
-            d.setDate(d.getDate() - i);
-            targetDates.push(d.toISOString().split('T')[0]);
+        // 초기 로드 시 오늘 날짜를 무조건 첫 번째로 추가
+        if (window.loadedDates.length === 0) {
+            targetDates.push(todayStr);
+        } else if (!window.loadedDates.includes(todayStr)) {
+            // 오늘 날짜가 아직 로드되지 않았다면 추가
+            targetDates.push(todayStr);
         }
+        
+        // 이미 로드된 과거 날짜 수를 계산 (오늘 날짜 제외)
+        const pastLoadedDates = window.loadedDates.filter(d => d < todayStr);
+        const pastLoadedCount = pastLoadedDates.length;
+        
+        // 과거 날짜를 순차적으로 추가 (어제부터 시작)
+        for (let i = 1; i <= 5; i++) {
+            const dayOffset = pastLoadedCount + i;
+            const d = new Date(today);
+            d.setDate(d.getDate() - dayOffset);
+            // 로컬 날짜로 변환하여 시간대 문제 방지
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${day}`;
+            // 과거 날짜만 추가하고 중복 체크
+            if (dateStr < todayStr && !window.loadedDates.includes(dateStr) && !targetDates.includes(dateStr)) {
+                targetDates.push(dateStr);
+            }
+        }
+        
     } else {
-        targetDates.push(state.pageDate.toISOString().split('T')[0]);
+        // page 모드: 선택한 날짜만 표시 (로컬 날짜로 변환)
+        const pageYear = state.pageDate.getFullYear();
+        const pageMonth = String(state.pageDate.getMonth() + 1).padStart(2, '0');
+        const pageDay = String(state.pageDate.getDate()).padStart(2, '0');
+        targetDates.push(`${pageYear}-${pageMonth}-${pageDay}`);
     }
 
-    targetDates.forEach(dateStr => {
+    // 날짜를 최신순으로 정렬하여 DOM에 추가 (오늘 -> 어제 -> ...)
+    let sortedTargetDates = [...targetDates].sort((a, b) => b.localeCompare(a));
+    
+    // 오늘 날짜가 있으면 항상 맨 앞에 위치하도록 보장
+    if (state.viewMode === 'list' && sortedTargetDates.includes(todayStr)) {
+        sortedTargetDates = sortedTargetDates.filter(d => d !== todayStr);
+        sortedTargetDates.unshift(todayStr);
+    } else if (state.viewMode === 'list' && !window.loadedDates.includes(todayStr) && !sortedTargetDates.includes(todayStr)) {
+        // 오늘 날짜가 아직 추가되지 않았다면 강제로 추가
+        sortedTargetDates.unshift(todayStr);
+    }
+    
+    sortedTargetDates.forEach(dateStr => {
         if (window.loadedDates.includes(dateStr)) return;
         window.loadedDates.push(dateStr);
-        const dObj = new Date(dateStr);
+        const dObj = new Date(dateStr + 'T00:00:00');
         const dayOfWeek = dObj.getDay();
         let dayColorClass = (dayOfWeek === 0 || dayOfWeek === 6) ? "text-rose-400" : "text-slate-800";
         const section = document.createElement('div');
@@ -226,12 +272,20 @@ export function renderMiniCalendar() {
     const container = document.getElementById('miniCalendar');
     if (!container || !window.currentUser) return;
     container.innerHTML = "";
-    const activeStr = state.pageDate.toISOString().split('T')[0];
+    // 로컬 날짜로 변환하여 시간대 문제 방지
+    const pageYear = state.pageDate.getFullYear();
+    const pageMonth = String(state.pageDate.getMonth() + 1).padStart(2, '0');
+    const pageDay = String(state.pageDate.getDate()).padStart(2, '0');
+    const activeStr = `${pageYear}-${pageMonth}-${pageDay}`;
     
     for (let i = 60; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const iso = d.toISOString().split('T')[0];
+        // 로컬 날짜로 변환하여 시간대 문제 방지
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const iso = `${year}-${month}-${day}`;
         const count = window.mealHistory.filter(m => m.date === iso).length;
         let status = count >= 4 ? "dot-full" : (count > 0 ? "dot-partial" : "dot-none");
         let dayColorClass = (d.getDay() === 0 || d.getDay() === 6) ? "text-rose-400" : "text-slate-400";
@@ -253,7 +307,10 @@ export function renderMiniCalendar() {
 
 export function renderGallery() {
     const container = document.getElementById('galleryContainer');
-    if (!container || !window.sharedPhotos) return;
+    if (!container) return;
+    if (!window.sharedPhotos) {
+        window.sharedPhotos = [];
+    }
     
     if (window.sharedPhotos.length === 0) {
         container.innerHTML = `

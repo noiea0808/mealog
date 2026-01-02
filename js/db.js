@@ -72,29 +72,49 @@ export const dbOps = {
         }
     },
     async unsharePhotos(photos, entryId) {
-        if (!window.currentUser || !photos || photos.length === 0 || !entryId) return;
+        if (!window.currentUser || !photos || photos.length === 0) return;
         try {
             const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-            const q = query(
-                sharedColl,
-                where('userId', '==', window.currentUser.uid),
-                where('entryId', '==', entryId)
-            );
+            
+            // entryId가 있으면 entryId로 필터링, 없으면 userId와 photoUrl로만 필터링
+            let q;
+            if (entryId) {
+                q = query(
+                    sharedColl,
+                    where('userId', '==', window.currentUser.uid),
+                    where('entryId', '==', entryId)
+                );
+            } else {
+                // entryId가 null인 경우 userId와 photoUrl로만 필터링
+                q = query(
+                    sharedColl,
+                    where('userId', '==', window.currentUser.uid)
+                );
+            }
             
             const snapshot = await getDocs(q);
             const photosToDelete = [];
             
+            console.log('unsharePhotos 호출:', { photos, entryId, snapshotSize: snapshot.size });
+            
             snapshot.forEach((docSnap) => {
                 const data = docSnap.data();
-                // 현재 사진 목록에 없는 사진이거나, 공유 해제하려는 사진 목록에 있는 경우 삭제
+                // 공유 해제하려는 사진 목록에 있는 경우 삭제
+                // entryId가 null인 경우 entryId도 null이어야 함
                 if (photos.includes(data.photoUrl)) {
-                    photosToDelete.push(docSnap.id);
+                    if (!entryId || data.entryId === entryId) {
+                        photosToDelete.push(docSnap.id);
+                        console.log('삭제할 사진 발견:', data.photoUrl, 'docId:', docSnap.id, 'entryId:', data.entryId);
+                    }
                 }
             });
+            
+            console.log('삭제할 사진 개수:', photosToDelete.length);
             
             // 공유 해제하려는 사진들을 삭제
             for (const docId of photosToDelete) {
                 await deleteDoc(doc(db, 'artifacts', appId, 'sharedPhotos', docId));
+                console.log('피드에서 사진 삭제 완료:', docId);
             }
         } catch (e) {
             console.error("Unshare Photos Error:", e);
