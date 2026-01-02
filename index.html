@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="description" content="우리가 함께한, 맛있었던 기억 - 스마트 식사 타임라인">
+    <meta name="theme-color" content="#10b981">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="mealog">
+    <title>mealog - 스마트 식사 타임라인</title>
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%2310b981'/><text x='50%25' y='50%25' font-size='120' text-anchor='middle' dominant-baseline='central' fill='white'>🍽️</text></svg>">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="css/style.css">
+    
+    <script type="module" src="js/main.js"></script>
+    <script>
+        // PWA Service Worker 등록
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then((registration) => {
+                        console.log('Service Worker 등록 성공:', registration.scope);
+                    })
+                    .catch((error) => {
+                        console.log('Service Worker 등록 실패:', error);
+                    });
+            });
+        }
+        
+        // PWA 설치 프롬프트
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            console.log('PWA 설치 가능');
+        });
+        
+        // JavaScript 로드 실패 시 로딩 오버레이 숨기기
+        window.addEventListener('error', (e) => {
+            console.error('전체 에러:', e);
+            if (e.filename && (e.filename.includes('main.js') || e.filename.includes('.js'))) {
+                console.error('JavaScript 파일 로드 실패:', e);
+                console.error('에러 파일:', e.filename);
+                console.error('에러 메시지:', e.message);
+                
+                // 모듈 로드 에러는 조금 기다렸다가 처리
+                setTimeout(() => {
+                    const overlay = document.getElementById('loadingOverlay');
+                    if (overlay && !overlay.classList.contains('hidden')) {
+                        overlay.classList.add('hidden');
+                        const port = window.location.port || '8080';
+                        console.error('서버 URL:', window.location.href);
+                        alert('JavaScript 파일을 로드할 수 없습니다.\n\n브라우저 콘솔(F12)을 열어 정확한 오류를 확인하세요.\n\n현재 URL: ' + window.location.href);
+                    }
+                }, 1000);
+            }
+        });
+        
+        // 모듈 로드 실패 감지 (더 정확한 감지)
+        let moduleLoadCheck = false;
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                // main.js가 로드되어 renderTimeline 함수가 있는지 확인
+                if (!window.renderTimeline && !moduleLoadCheck) {
+                    moduleLoadCheck = true;
+                    const overlay = document.getElementById('loadingOverlay');
+                    if (overlay && !overlay.classList.contains('hidden')) {
+                        overlay.classList.add('hidden');
+                        const port = window.location.port || '8080';
+                        alert('JavaScript 모듈을 로드할 수 없습니다.\n파일을 직접 열지 말고 웹 서버를 통해 실행해주세요.\n\n예: http://localhost:' + port + '\n\n브라우저 콘솔(F12)을 확인하여 오류를 확인하세요.');
+                    }
+                }
+            }, 5000); // 5초로 증가
+        });
+    </script>
+</head>
+<body class="max-w-md mx-auto min-h-screen relative">
+
+    <div id="toastContainer" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 w-full max-w-md z-[400] flex flex-col items-center gap-2 pointer-events-none px-4"></div>
+
+    <div id="loadingOverlay" class="fixed inset-0 bg-white/70 z-[300] flex flex-col items-center justify-center">
+        <div class="w-8 h-8 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin"></div>
+    </div>
+
+    <!-- 1. Landing Page -->
+    <div id="landingPage">
+        <div class="mb-12 text-center">
+            <h1 class="text-5xl font-black text-white tracking-tighter mb-4">mealog</h1>
+            <p class="text-emerald-100 text-sm font-bold opacity-90 tracking-wide">우리가 함께한, 맛있었던 기억</p>
+        </div>
+        <div class="w-full max-w-xs px-8 space-y-3">
+            <button onclick="window.handleGoogleLogin()" class="w-full py-3.5 bg-white text-slate-800 rounded-2xl flex items-center justify-center shadow-lg active:scale-[0.98] transition-transform gap-2">
+                <i class="fa-brands fa-google text-lg"></i>
+                <span class="font-bold text-sm">구글로 계속하기</span>
+            </button>
+            <button onclick="window.openEmailModal()" class="w-full py-3.5 bg-emerald-700 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-[0.98] transition-transform gap-2">
+                <i class="fa-solid fa-envelope text-lg"></i>
+                <span class="font-bold text-sm">이메일로 계속하기</span>
+            </button>
+            <button onclick="window.startGuest()" class="w-full py-3 text-emerald-100/70 text-xs font-bold underline decoration-emerald-100/50 underline-offset-4">
+                로그인 없이 둘러보기 (게스트)
+            </button>
+        </div>
+    </div>
+
+    <!-- Email Auth Modal -->
+    <div id="emailAuthModal" class="hidden fixed inset-0 z-[400] bg-slate-900/50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl">
+            <div class="flex justify-between items-center mb-6">
+                <h3 id="emailAuthTitle" class="text-lg font-bold text-slate-800">이메일 로그인</h3>
+                <button onclick="window.closeEmailModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
+            </div>
+            <div class="space-y-3 mb-6">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 block mb-1 ml-1 uppercase">이메일</label>
+                    <input type="email" id="emailInput" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-emerald-500 transition-colors" placeholder="name@example.com">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 block mb-1 ml-1 uppercase">비밀번호</label>
+                    <input type="password" id="passwordInput" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-emerald-500 transition-colors" placeholder="6자리 이상">
+                </div>
+                <!-- 이메일 기억하기 체크박스 추가 -->
+                <div class="flex items-center mb-4">
+                    <input type="checkbox" id="rememberEmailCheck" class="mr-2">
+                    <label for="rememberEmailCheck" class="text-xs text-slate-500">이메일 기억하기</label>
+                </div>
+            </div>
+            <button id="emailAuthBtn" onclick="window.handleEmailAuth()" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-md active:bg-emerald-700 transition-colors mb-4">로그인</button>
+            <button id="emailAuthToggleBtn" onclick="window.toggleEmailAuthMode()" class="w-full text-xs text-slate-500">계정이 없으신가요? <span class="text-emerald-600 font-bold underline">회원가입</span></button>
+        </div>
+    </div>
+
+    <!-- Domain Error Modal -->
+    <div id="domainErrorModal" class="hidden fixed inset-0 z-[500] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl border-2 border-red-100 animate-fade">
+            <div class="flex justify-center mb-4 text-red-500 text-3xl"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <h3 class="text-lg font-bold text-slate-800 text-center mb-2">도메인 등록 필요</h3>
+            <p class="text-xs text-slate-500 text-center mb-4 leading-relaxed">
+                파이어베이스 보안 설정에<br>아래 주소를 추가해야 합니다.
+            </p>
+            <div class="bg-slate-100 p-3 rounded-xl mb-4 relative group cursor-pointer active:bg-slate-200 transition-colors" onclick="window.copyDomain()">
+                <div id="domainText" class="text-[11px] font-mono text-slate-600 break-all pr-6 select-all">주소 확인 중...</div>
+                <div class="absolute right-3 top-3 text-slate-400"><i class="fa-regular fa-copy"></i></div>
+            </div>
+            <p class="text-[10px] text-slate-400 text-center mb-4">
+                1. Firebase 콘솔 > Authentication > Settings<br>
+                2. '승인된 도메인' > '도메인 추가'<br>
+                3. 위 주소 붙여넣기
+            </p>
+            <div class="flex gap-2">
+                <button onclick="window.closeDomainModal(); window.startGuest();" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm">게스트로 진행</button>
+                <button onclick="window.closeDomainModal()" class="flex-1 py-3 bg-slate-800 text-white rounded-xl font-bold text-sm">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Main Application -->
+    <div id="mainApp" class="hidden">
+        <header class="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-sm">
+            <div class="p-5 flex justify-between items-center px-6">
+                <h1 class="text-2xl font-black text-emerald-600 tracking-tighter">mealog</h1>
+                <div class="flex items-center gap-2">
+                    <button id="searchTriggerBtn" onclick="window.toggleSearch()" class="w-8 h-8 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center active:bg-slate-100"><i class="fa-solid fa-magnifying-glass text-sm"></i></button>
+                    <button onclick="window.openSettings()" class="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100 active:bg-slate-100">
+                        <span id="headerIcon" class="text-lg">🐻</span>
+                        <span id="headerName" class="text-xs font-bold text-slate-700 truncate max-w-[80px]">게스트</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Search Container (Moved inside Header) -->
+            <div id="searchContainer" class="hidden w-full px-4 pb-3 bg-white border-t border-slate-50">
+                <div class="flex items-center gap-2 pt-3">
+                    <div class="flex-1 relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-xs"></i>
+                        <input type="text" id="searchInput" placeholder="메뉴, 장소 검색..." class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-sm outline-none focus:border-emerald-500 transition-colors" oninput="window.handleSearch(this.value)">
+                    </div>
+                    <button onclick="window.closeSearch()" class="text-xs font-bold text-slate-400 px-2 active:text-slate-600">취소</button>
+                </div>
+            </div>
+        </header>
+
+        <div id="trackerSection" class="sticky top-[73px] z-40 px-4 py-3 bg-white border-b border-slate-100 shadow-sm">
+            <div id="trackerHeader" class="flex justify-between items-center px-1 mb-2">
+                <span id="trackerTitle" class="text-sm font-black text-slate-800 tracking-tight uppercase">날짜 선택</span>
+                <div id="trackerTabs" class="flex p-1 bg-slate-100 rounded-lg space-x-1">
+                    <button onclick="window.setViewMode('list')" id="btn-view-list" class="view-tab active">전체</button>
+                    <button onclick="window.setViewMode('page')" id="btn-view-page" class="view-tab inactive">일간</button>
+                </div>
+            </div>
+            <div id="miniCalendar" class="calendar-scroll pb-2"></div>
+        </div>
+
+        <main class="p-4">
+            <div id="timelineView" class="min-h-[60vh]"><div id="timelineContainer" class="space-y-4"></div></div>
+            <div id="galleryView" class="hidden min-h-[60vh]">
+                <div id="galleryContainer" class="space-y-4"></div>
+            </div>
+            <div id="dashboardView" class="hidden space-y-6">
+                <!-- Dashboard content remains same -->
+                <div class="card p-6 bg-emerald-600 text-white relative overflow-hidden">
+                    <div class="flex flex-col mb-4 relative z-10">
+                        <h3 class="text-lg font-black tracking-tighter uppercase">INSIGHT <span id="insightRange" class="text-[10px] font-normal text-emerald-100 normal-case ml-1 tracking-tight"></span></h3>
+                        <div class="flex bg-emerald-700/40 p-1 rounded-xl mt-3 gap-1">
+                            <button id="btn-dash-7d" onclick="window.setDashboardMode('7d')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">최근 1주</button>
+                            <button id="btn-dash-month" onclick="window.setDashboardMode('month')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">월별</button>
+                            <button id="btn-dash-custom" onclick="window.setDashboardMode('custom')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">직접 설정</button>
+                        </div>
+                        <div id="customDatePicker" class="hidden mt-3 flex gap-2">
+                            <input type="date" id="customStart" onchange="window.updateCustomDates()" class="flex-1 bg-white/20 text-white text-[10px] rounded p-1 border-none outline-none">
+                            <input type="date" id="customEnd" onchange="window.updateCustomDates()" class="flex-1 bg-white/20 text-white text-[10px] rounded p-1 border-none outline-none">
+                        </div>
+                        <div id="monthPickerContainer" class="hidden mt-3">
+                             <input type="month" id="monthInput" onchange="window.updateSelectedMonth()" class="w-full bg-white/20 text-white text-sm rounded p-2 border-none outline-none">
+                        </div>
+                    </div>
+                    <p id="insightText" class="text-sm font-semibold leading-relaxed mb-4 relative z-10">데이터 분석 중...</p>
+                    <div class="sticker-badge relative z-10">
+                        <div id="stickerEmoji" class="text-2xl">🍽️</div>
+                        <div class="flex-1 ml-2">
+                            <div id="stickerTitle" class="text-sm font-black">기록 상태</div>
+                            <div id="insightStats" class="text-[10px] font-bold opacity-70">0/0회</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card p-5">
+                    <div class="flex justify-between items-center mb-4"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">식사 구분</h3><button onclick="window.openDetailModal('mealType', '식사 구분 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                    <div id="propChartContainer"></div>
+                </div>
+                <div class="card p-5">
+                    <div class="flex justify-between items-center mb-4"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">메뉴 카테고리</h3><button onclick="window.openDetailModal('category', '메뉴 카테고리 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                    <div id="categoryChartContainer"></div>
+                </div>
+                <div class="card p-5">
+                    <div class="flex justify-between items-center mb-4"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">함께한 즐거움</h3><button onclick="window.openDetailModal('withWhom', '함께한 사람 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                    <div id="mateChartContainer"></div>
+                </div>
+                <div class="card p-5">
+                    <div class="flex justify-between items-center mb-4"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">만족도</h3><button onclick="window.openDetailModal('rating', '만족도 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                    <div id="ratingChartContainer"></div>
+                </div>
+                <div class="card p-5">
+                    <div class="flex justify-between items-center mb-4"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">포만감</h3><button onclick="window.openDetailModal('satiety', '포만감 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                    <div id="satietyChartContainer"></div>
+                </div>
+            </div>
+        </main>
+
+        <nav class="bottom-nav">
+            <button id="nav-gallery" onclick="window.switchMainTab('gallery')" class="text-slate-300 flex justify-center items-center py-1"><i class="fa-solid fa-images text-xl"></i></button>
+            <button id="nav-timeline" onclick="window.switchMainTab('timeline')" class="text-emerald-600 flex justify-center items-center py-1"><i class="fa-solid fa-list-ul text-xl"></i></button>
+            <button id="nav-dashboard" onclick="window.switchMainTab('dashboard')" class="text-slate-300 flex justify-center items-center py-1"><i class="fa-solid fa-chart-pie text-xl"></i></button>
+        </nav>
+    </div>
+
+    <!-- 3. Settings Page (UI 구조 변경) -->
+    <div id="settingsPage" class="hidden fixed inset-0 z-[250] bg-white flex flex-col overflow-hidden">
+        <div class="p-6 border-b flex justify-between items-center sticky top-0 bg-white z-10">
+            <div class="flex items-center gap-3"><button onclick="window.closeSettings()"><i class="fa-solid fa-arrow-left text-xl text-slate-400"></i></button><h2 class="text-lg font-bold text-slate-800 tracking-tight">사용자 설정</h2></div>
+            <div class="flex items-center gap-2">
+                <!-- 상단에는 저장 버튼만 남김 (로그아웃 버튼 제거) -->
+                <button onclick="window.saveSettings()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md">저장</button>
+            </div>
+        </div>
+        <div class="p-6 space-y-8 overflow-y-auto pb-32">
+            
+            <!-- 계정 연동 섹션 -->
+            <div id="accountSection"></div>
+
+            <div><h3 class="text-xs font-black text-slate-400 mb-4 uppercase tracking-widest">프로필 설정</h3><div id="iconSelector" class="flex gap-3 overflow-x-auto pb-2"></div><div class="bg-slate-50 p-4 rounded-2xl space-y-3 mt-4"><label class="text-[10px] font-bold text-slate-400 block uppercase">닉네임</label><input type="text" id="settingNickname" class="w-full bg-white p-3 rounded-xl border-none outline-none font-bold text-sm"></div></div>
+            <div class="space-y-6">
+                <!-- Primary Tags Section -->
+                <div class="p-4 bg-slate-50 rounded-2xl">
+                    <h3 class="text-xs font-black text-emerald-600 mb-4 uppercase tracking-widest flex items-center gap-2"><i class="fa-solid fa-tag"></i> 기본 태그 관리</h3>
+                    <div id="tagManage-mealType" class="mb-6"></div>
+                    <div id="tagManage-category" class="mb-6"></div>
+                    <div id="tagManage-withWhom" class="mb-6"></div>
+                    <div id="tagManage-snackType"></div>
+                </div>
+                
+                <!-- Secondary Tags Section REMOVED -->
+
+                <!-- 로그아웃 버튼 영역 (여기로 복구!) -->
+                <div id="logoutBtnArea" class="hidden pt-4 border-t border-slate-100">
+                    <button onclick="window.confirmLogout()" class="w-full py-3 bg-slate-100 text-slate-500 rounded-xl text-xs font-bold">로그아웃</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Logout Confirm Modal -->
+    <div id="logoutConfirmModal" class="hidden fixed inset-0 z-[400] bg-slate-900/40 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl transform transition-all scale-100">
+            <h3 class="text-lg font-bold text-slate-800 mb-2">로그아웃 하시겠어요?</h3>
+            <p class="text-sm text-slate-500 mb-6">기록은 안전하게 저장됩니다.</p>
+            <div class="flex gap-3">
+                <button onclick="document.getElementById('logoutConfirmModal').classList.add('hidden')" class="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm">취소</button>
+                <button onclick="window.confirmLogoutAction()" class="flex-1 py-3 bg-red-50 text-red-500 rounded-xl font-bold text-sm">로그아웃</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Entry Modal -->
+    <div id="entryModal" class="hidden fixed inset-0 bg-slate-900/60 z-[300] flex items-end">
+        <div class="w-full bg-white rounded-t-[2.5rem] flex flex-col max-h-[92vh]">
+            <div class="p-6 border-b flex justify-between items-center">
+                <h2 id="modalTitle" class="text-lg font-bold text-slate-800 tracking-tight">기록하기</h2>
+                <button onclick="window.closeModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
+            </div>
+            <div id="modalScrollArea" class="p-6 space-y-6 overflow-y-auto pb-10">
+                <div id="mainMealFields">
+                    <div class="mb-6 p-4 bg-orange-50/50 rounded-2xl border border-orange-100">
+                        <span class="text-sm font-extrabold text-slate-600 mb-2 block uppercase tracking-tight">식사 구분</span>
+                        <div id="typeChips" class="flex flex-wrap gap-2 mb-3"></div>
+                        <input id="placeInput" type="text" placeholder="식당명이나 장소 (예: 스타벅스)" class="w-full p-4 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
+                        <div id="restaurantSuggestions" class="flex gap-2 mt-2 overflow-x-auto pb-2 whitespace-nowrap"></div>
+                    </div>
+                    
+                    <div id="optionalFields" class="space-y-6">
+                        <div class="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100">
+                            <span class="text-sm font-extrabold text-slate-600 mb-2 block uppercase">메뉴 정보</span>
+                            <div id="categoryChips" class="flex flex-wrap gap-2 mb-2"></div>
+                            <input id="menuDetailInput" type="text" placeholder="드신 메뉴 명 (예: 아이스 아메리카노)" class="w-full p-4 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
+                            <div id="menuSuggestions" class="flex gap-2 mt-2 overflow-x-auto pb-2 whitespace-nowrap"></div>
+                        </div>
+                        
+                        <div class="p-4 bg-blue-50/50 rounded-2xl border border-blue-100">
+                            <span class="text-sm font-extrabold text-slate-600 mb-2 block uppercase">함께한 사람</span>
+                            <div id="withChips" class="flex flex-wrap gap-2 mb-2"></div>
+                            <input id="withWhomInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full p-4 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
+                            <div id="peopleSuggestions" class="flex gap-2 mt-2 overflow-x-auto pb-2 whitespace-nowrap"></div>
+                        </div>
+
+                        <div>
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-sm font-extrabold text-slate-600 block uppercase">음식 사진</span>
+                                <span id="photoCount" class="text-[10px] text-slate-400 font-bold">0/5</span>
+                            </div>
+                            <div class="flex gap-2 overflow-x-auto pb-2">
+                                <button id="imageBtn" onclick="document.getElementById('imageInput').click()" class="flex-shrink-0 w-20 h-20 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors">
+                                    <i class="fa-solid fa-camera text-xl"></i>
+                                </button>
+                                <div id="photoPreviewContainer" class="flex gap-2"></div>
+                            </div>
+                            <input type="file" id="imageInput" class="hidden" accept="image/*" multiple onchange="window.handleMultipleImages(event)">
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="snackFields" class="hidden">
+                    <div class="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100 mb-6">
+                        <span class="text-sm font-extrabold text-slate-600 mb-2 block uppercase">간식 정보</span>
+                        <div id="snackTypeChips" class="flex flex-wrap gap-2 mb-2"></div>
+                        <input id="snackDetailInput" type="text" placeholder="무엇을 드셨나요?" class="w-full p-4 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
+                        <div id="snackSuggestions" class="flex gap-2 mt-2 overflow-x-auto pb-2 whitespace-nowrap"></div>
+                    </div>
+                    <div class="mb-6">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm font-extrabold text-slate-600 block uppercase">간식 사진</span>
+                            <span id="snackPhotoCount" class="text-[10px] text-slate-400 font-bold">0/5</span>
+                        </div>
+                        <div class="flex gap-2 overflow-x-auto pb-2">
+                            <button id="snackImageBtn" onclick="document.getElementById('snackImageInput').click()" class="flex-shrink-0 w-20 h-20 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors">
+                                <i class="fa-solid fa-camera text-xl"></i>
+                            </button>
+                            <div id="snackPhotoPreviewContainer" class="flex gap-2"></div>
+                        </div>
+                        <input type="file" id="snackImageInput" class="hidden" accept="image/*" multiple onchange="window.handleMultipleImages(event)">
+                    </div>
+                </div>
+
+                <div id="reviewSection" class="pt-4 border-t border-slate-50 space-y-5">
+                    <div>
+                        <span class="text-sm font-extrabold text-slate-600 mb-2 block uppercase">만족도</span>
+                        <div id="starContainer" class="flex gap-2 mb-3">
+                            <button onclick="window.setRating(1)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
+                            <button onclick="window.setRating(2)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
+                            <button onclick="window.setRating(3)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
+                            <button onclick="window.setRating(4)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
+                            <button onclick="window.setRating(5)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
+                        </div>
+                    </div>
+                    
+                    <div id="satietySection">
+                        <span class="text-sm font-extrabold text-slate-600 mb-2 block uppercase">포만감</span>
+                        <div id="satietyContainer" class="flex justify-between items-center w-full px-2"></div>
+                    </div>
+
+                    <div>
+                        <span class="text-sm font-extrabold text-slate-600 mb-2 block uppercase">종합 소감</span>
+                        <input id="generalCommentInput" type="text" placeholder="오늘 식사는 어떠셨나요?" class="w-full p-4 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all">
+                    </div>
+                </div>
+            </div>
+            <div class="p-6 border-t flex gap-2">
+                <button id="btnDelete" onclick="window.deleteEntry()" class="hidden w-14 h-14 bg-red-50 text-red-400 rounded-xl flex items-center justify-center active:bg-red-100 transition-colors"><i class="fa-solid fa-trash-can"></i></button>
+                <div class="flex-1 flex items-center gap-2">
+                    <button onclick="window.saveEntry()" id="btnSave" class="flex-1 py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all">기록 완료</button>
+                    <button id="sharePhotoIndicator" onclick="window.toggleSharePhoto()" class="hidden flex items-center justify-center w-14 h-14 rounded-xl border-2 active:scale-95 transition-all">
+                        <i class="fa-solid fa-newspaper text-lg"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail Analysis Modal -->
+    <div id="detailModal" class="hidden fixed inset-0 bg-slate-900/60 z-[350] flex items-end">
+        <div class="w-full bg-white rounded-t-[2rem] p-6 max-h-[80vh] overflow-y-auto">
+            <div class="flex justify-between mb-4"><h2 id="detailModalTitle" class="font-bold">상세 통계</h2><button onclick="window.closeDetailModal()"><i class="fa-solid fa-xmark"></i></button></div>
+            <div id="detailContent"></div>
+        </div>
+    </div>
+
+</body>
+</html>
