@@ -60,6 +60,11 @@ export function renderPhotoPreviews() {
     const countEl = document.getElementById(countId);
     const buttonEl = document.getElementById(buttonId);
     
+    // currentPhotos가 배열인지 확인하고, 배열이 아니면 배열로 변환
+    if (!Array.isArray(appState.currentPhotos)) {
+        appState.currentPhotos = appState.currentPhotos ? [appState.currentPhotos] : [];
+    }
+    
     const maxPhotos = 5;
     const currentCount = appState.currentPhotos.length;
     
@@ -155,7 +160,7 @@ export function renderTimeline() {
         targetDates.push(`${pageYear}-${pageMonth}-${pageDay}`);
     }
 
-    // 날짜를 최신순으로 정렬하여 DOM에 추가 (오늘 -> 어제 -> ...)
+    // 날짜를 최신순으로 정렬하여 DOM에 추가 (최신 -> 과거)
     let sortedTargetDates = [...targetDates].sort((a, b) => b.localeCompare(a));
     
     // 오늘 날짜가 있으면 항상 맨 앞에 위치하도록 보장
@@ -163,29 +168,33 @@ export function renderTimeline() {
         sortedTargetDates = sortedTargetDates.filter(d => d !== todayStr);
         sortedTargetDates.unshift(todayStr);
     } else if (state.viewMode === 'list' && !window.loadedDates.includes(todayStr) && !sortedTargetDates.includes(todayStr)) {
-        // 오늘 날짜가 아직 추가되지 않았다면 강제로 추가
+        // 오늘 날짜가 아직 추가되지 않았다면 강제로 맨 앞에 추가
         sortedTargetDates.unshift(todayStr);
     }
     
     sortedTargetDates.forEach(dateStr => {
+        // 이미 로드된 날짜이거나 DOM에 이미 존재하는 경우 건너뛰기
         if (window.loadedDates.includes(dateStr)) return;
+        const existingSection = document.getElementById(`date-${dateStr}`);
+        if (existingSection) return;
+        
         window.loadedDates.push(dateStr);
         const dObj = new Date(dateStr + 'T00:00:00');
         const dayOfWeek = dObj.getDay();
         let dayColorClass = (dayOfWeek === 0 || dayOfWeek === 6) ? "text-rose-400" : "text-slate-800";
         const section = document.createElement('div');
         section.id = `date-${dateStr}`;
-        section.className = "animate-fade px-1 pb-1";
-        let html = `<h3 class="date-section-header text-sm font-black ${dayColorClass}">${dObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</h3>`;
+        section.className = "animate-fade pb-0.5";
+        let html = `<h3 class="date-section-header text-sm font-black ${dayColorClass} mb-1 px-4">${dObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</h3>`;
 
         SLOTS.forEach(slot => {
             const records = window.mealHistory.filter(m => m.date === dateStr && m.slotId === slot.id);
             if (slot.type === 'main') {
                 const r = records[0];
                 const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
-                let containerClass = r ? specificStyle.border : 'border-slate-100 opacity-80';
+                let containerClass = r ? 'border-slate-200' : 'border-slate-200 opacity-80';
                 let titleClass = r ? 'text-slate-800' : 'text-slate-300';
-                let iconBoxClass = `bg-slate-100 ${specificStyle.border} ${specificStyle.iconText}`;
+                let iconBoxClass = `bg-slate-100 border-slate-200 ${specificStyle.iconText}`;
                 let title = '기록하기';
                 let tagsHtml = '';
                 if (r) {
@@ -218,8 +227,11 @@ export function renderTimeline() {
                         <span class="text-3xl font-bold text-slate-400 mb-1">+</span>
                         <span class="text-[10px] text-slate-400 leading-tight">입력해주세요</span>
                     </div>`;
-                } else if (r.photos && r.photos[0]) {
+                } else if (r.photos && Array.isArray(r.photos) && r.photos[0]) {
                     iconHtml = `<img src="${r.photos[0]}" class="w-full h-full object-cover">`;
+                } else if (r.photos && !Array.isArray(r.photos)) {
+                    // photos가 배열이 아닌 경우 (문자열 등) 처리
+                    iconHtml = `<img src="${r.photos}" class="w-full h-full object-cover">`;
                 } else if (r.mealType === 'Skip') {
                     iconHtml = `<i class="fa-solid fa-ban text-2xl"></i>`;
                 } else if (r.mealType === '???') {
@@ -227,15 +239,16 @@ export function renderTimeline() {
                 } else {
                     iconHtml = `<i class="fa-solid fa-utensils text-2xl"></i>`;
                 }
-                html += `<div onclick="window.openModal('${dateStr}', '${slot.id}', ${r ? `'${r.id}'` : null})" class="card p-2 mb-3 border ${containerClass} cursor-pointer active:scale-[0.98] transition-all">
-                    <div class="flex gap-6">
-                        <div class="w-[140px] h-[140px] ${iconBoxClass} rounded-2xl flex-shrink-0 flex items-center justify-center overflow-hidden border">
+                html += `<div onclick="window.openModal('${dateStr}', '${slot.id}', ${r ? `'${r.id}'` : null})" class="card mb-1.5 border ${containerClass} cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+                    <div class="flex">
+                        <div class="w-[140px] h-[140px] ${iconBoxClass} flex-shrink-0 flex items-center justify-center overflow-hidden border-r">
                             ${iconHtml}
                         </div>
-                        <div class="flex-1 min-w-0 flex flex-col justify-center">
+                        <div class="flex-1 min-w-0 flex flex-col justify-center p-4">
                             <div class="flex justify-between items-center mb-0.5">
                                 <span class="text-xs font-black uppercase ${specificStyle.iconText}">${slot.label}</span>
                                 ${r ? `<div class="flex items-center gap-2">
+                                    ${r.sharedPhotos && Array.isArray(r.sharedPhotos) && r.sharedPhotos.length > 0 ? `<span class="text-xs text-emerald-600" title="게시됨"><i class="fa-solid fa-share"></i></span>` : ''}
                                     <span class="text-xs text-yellow-500"><i class="fa-solid fa-star mr-0.5"></i>${r.rating || '-'}</span>
                                     <span class="text-[9px] text-slate-300">${r.time}</span>
                                 </div>` : ''}
@@ -247,13 +260,14 @@ export function renderTimeline() {
                     </div>
                 </div>`;
             } else {
-                html += `<div class="snack-row mb-3 px-2 flex items-center">
+                html += `<div class="snack-row mb-1.5 px-2 flex items-center">
                     <span class="text-xs font-black text-slate-400 uppercase mr-3 w-16">${slot.label}</span>
                     <div class="flex-1 flex flex-wrap gap-2 items-center">
                         ${records.length > 0 ? records.map(r => 
                             `<div onclick="window.openModal('${dateStr}', '${slot.id}', '${r.id}')" class="snack-tag cursor-pointer active:bg-slate-50">
                                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-2"></span>
                                 ${r.menuDetail || r.snackType || '간식'} 
+                                ${r.sharedPhotos && Array.isArray(r.sharedPhotos) && r.sharedPhotos.length > 0 ? `<i class="fa-solid fa-share text-emerald-600 text-[8px] ml-1" title="게시됨"></i>` : ''}
                                 ${r.rating ? `<i class="fa-solid fa-star text-yellow-400 text-[8px] ml-1"></i>${r.rating}` : ''}
                             </div>`
                         ).join('') : `<span class="text-xs text-slate-300 italic">기록없음</span>`}
@@ -265,6 +279,23 @@ export function renderTimeline() {
         section.innerHTML = html;
         container.appendChild(section);
     });
+    
+    // 최근 날짜(오늘)로 스크롤 (초기 로드 시에만)
+    if (state.viewMode === 'list' && sortedTargetDates.length > 0 && !window.hasScrolledToToday) {
+        const todaySection = document.getElementById(`date-${todayStr}`);
+        if (todaySection) {
+            setTimeout(() => {
+                const trackerSection = document.getElementById('trackerSection');
+                const trackerHeight = trackerSection ? trackerSection.offsetHeight : 0;
+                const headerHeight = 73;
+                const totalOffset = headerHeight + trackerHeight;
+                const elementTop = todaySection.getBoundingClientRect().top + window.pageYOffset;
+                const offsetPosition = elementTop - totalOffset - 16;
+                window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'smooth' });
+                window.hasScrolledToToday = true;
+            }, 300);
+        }
+    }
 }
 
 export function renderMiniCalendar() {
@@ -320,6 +351,10 @@ export function renderGallery() {
                 <p class="text-xs text-slate-300 mt-2">타임라인에서 사진을 공유해보세요!</p>
             </div>
         `;
+        // 빈 갤러리일 때도 맨 위로 스크롤
+        setTimeout(() => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }, 100);
         return;
     }
     
@@ -403,8 +438,8 @@ export function renderGallery() {
         `).join('');
         
         return `
-            <div class="mb-4 bg-white border border-slate-100">
-                <div class="px-4 py-3 flex items-center gap-2">
+            <div class="mb-4 bg-white border-b border-slate-200">
+                <div class="px-6 py-3 flex items-center gap-2">
                     <div class="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center text-lg flex-shrink-0">
                         ${photo.userIcon || '🐻'}
                     </div>
@@ -424,7 +459,7 @@ export function renderGallery() {
                         </div>
                     ` : ''}
                 </div>
-                ${caption ? `<div class="px-4 py-2 text-sm font-bold text-slate-800">${caption}</div>` : ''}
+                ${caption ? `<div class="px-6 py-2 text-sm font-bold text-slate-800">${caption}</div>` : ''}
             </div>
         `;
     }).join('');
@@ -459,6 +494,9 @@ export function renderGallery() {
                 updateCounter();
             }
         });
+        
+        // 갤러리 렌더링 완료 후 항상 맨 위로 스크롤
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 100);
 }
 

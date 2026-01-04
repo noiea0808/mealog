@@ -10,7 +10,7 @@ import {
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, confirmLogout, confirmLogoutAction,
     copyDomain, closeDomainModal
 } from './auth.js';
-import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed } from './render.js';
+import { renderTimeline, renderMiniCalendar, renderGallery } from './render.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, openDetailModal, closeDetailModal } from './analytics.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
@@ -84,6 +84,10 @@ window.switchMainTab = (tab) => {
         updateDashboard();
     } else if (tab === 'gallery') {
         renderGallery();
+        // 갤러리 탭으로 전환 시 맨 위로 스크롤
+        setTimeout(() => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }, 100);
     } else {
         // 타임라인 탭으로 전환 시 오늘 날짜로 초기화
         if (appState.viewMode === 'list') {
@@ -92,12 +96,11 @@ window.switchMainTab = (tab) => {
             appState.pageDate = today;
         }
         window.loadedDates = [];
+        window.hasScrolledToToday = false; // 스크롤 플래그 리셋
         const c = document.getElementById('timelineContainer');
         if (c) c.innerHTML = "";
         renderTimeline();
         renderMiniCalendar();
-        // 타임라인 탭에서 피드도 함께 렌더링
-        renderFeed();
     }
 };
 
@@ -112,6 +115,7 @@ window.setViewMode = (m) => {
         appState.pageDate = today;
     }
     window.loadedDates = [];
+    window.hasScrolledToToday = false; // 스크롤 플래그 리셋
     const c = document.getElementById('timelineContainer');
     if (c) c.innerHTML = "";
     renderTimeline();
@@ -230,14 +234,11 @@ initAuth((user) => {
                     appState.pageDate = today;
                 }
                 window.loadedDates = [];
+                window.hasScrolledToToday = false; // 스크롤 플래그 리셋
                 const container = document.getElementById('timelineContainer');
                 if (container) container.innerHTML = "";
                 renderTimeline();
                 renderMiniCalendar();
-                // 피드도 업데이트
-                if (appState.currentTab === 'timeline') {
-                    renderFeed();
-                }
             },
             settingsUnsubscribe: appState.settingsUnsubscribe,
             dataUnsubscribe: appState.dataUnsubscribe
@@ -253,8 +254,6 @@ initAuth((user) => {
             window.sharedPhotos = sharedPhotos;
             if (appState.currentTab === 'gallery') {
                 renderGallery();
-            } else if (appState.currentTab === 'timeline') {
-                renderFeed();
             }
         });
         
@@ -277,11 +276,16 @@ initAuth((user) => {
 });
 
 // 스크롤 이벤트 리스너
+let scrollTimeout;
 window.addEventListener('scroll', () => { 
     const state = appState;
     if (state.viewMode === 'list' && window.currentUser && 
         (window.innerHeight + window.scrollY) >= document.body.offsetHeight - 400) {
-        renderTimeline();
+        // 디바운싱: 연속 호출 방지
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(() => {
+            renderTimeline();
+        }, 100);
     }
 });
 

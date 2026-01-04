@@ -54,17 +54,23 @@ export function renderProportionChart(containerId, data, key) {
             html += `<div class="prop-segment" style="width: ${pct}%; background: ${bg}; color: ${textColor}">${pct}%</div>`;
         }
     });
-    html += `</div><div class="grid grid-cols-2 gap-2 mt-4">`;
+    html += `</div>`;
+    
+    // 각 세그먼트 바로 아래에 항목 이름만 표시 (같은 너비로)
+    html += `<div class="flex mt-1" style="width: 100%;">`;
     sorted.forEach(([name, count], idx) => {
-        const bg = (key === 'rating' || key === 'satiety') ? getBg(name) : getBg(name, idx);
         let label = name;
         if (key === 'rating') label = `${name}점`;
-        html += `<div class="flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full" style="background: ${bg}"></span>
-            <span class="text-[10px] text-slate-500 font-bold">${label} (${count})</span>
-        </div>`;
+        const pct = (count / total * 100).toFixed(0);
+        if (pct > 5) {
+            html += `<div class="flex items-center justify-center" style="width: ${pct}%;">
+                <span class="text-[10px] text-slate-500 font-bold text-center">${label}</span>
+            </div>`;
+        }
     });
-    container.innerHTML = html + `</div>`;
+    html += `</div>`;
+    
+    container.innerHTML = html;
 }
 
 export function getDashboardData() {
@@ -200,7 +206,6 @@ export async function updateDashboard() {
 export function openDetailModal(key, title) {
     document.getElementById('detailModalTitle').innerText = title;
     const container = document.getElementById('detailContent');
-    container.innerHTML = '<div class="w-full h-64"><canvas id="detailChart"></canvas></div>';
     
     const { filteredData } = getDashboardData();
     const slots = ['morning', 'lunch', 'dinner'];
@@ -249,24 +254,52 @@ export function openDetailModal(key, title) {
         };
     });
     
-    if (window.currentDetailChart) window.currentDetailChart.destroy();
-    const ctx = document.getElementById('detailChart').getContext('2d');
-    window.currentDetailChart = new Chart(ctx, {
-        type: 'bar',
-        data: { labels: slotLabels, datasets: datasets },
-        options: {
-            indexAxis: 'y',
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                x: { stacked: true, grid: { display: false } },
-                y: { stacked: true, beginAtZero: true, grid: { color: '#f1f5f9' } }
-            },
-            plugins: {
-                legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } }
-            }
+    // 차트 아래에 항목 표시할 HTML 준비
+    let legendHtml = `<div class="flex flex-wrap gap-2 mt-1 justify-center">`;
+    uniqueValues.forEach((val, idx) => {
+        let bg;
+        if (key === 'rating') {
+            const r = parseInt(val);
+            bg = (r >= 1 && r <= 5) ? RATING_GRADIENT[r - 1] : '#cbd5e1';
+        } else if (key === 'satiety') {
+            const item = SATIETY_DATA.find(d => d.label === val);
+            bg = item ? item.chartColor : '#cbd5e1';
+        } else {
+            const colorMap = generateColorMap(filteredData, key, VIBRANT_COLORS);
+            bg = colorMap[val] || VIBRANT_COLORS[idx % VIBRANT_COLORS.length];
         }
+        const label = key === 'rating' ? `${val}점` : val;
+        legendHtml += `<div class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full" style="background: ${bg}"></span>
+            <span class="text-[10px] text-slate-500 font-bold">${label}</span>
+        </div>`;
     });
+    legendHtml += `</div>`;
+    
+    // HTML에 차트와 범례 추가
+    container.innerHTML = '<div class="w-full h-64"><canvas id="detailChart"></canvas></div>' + legendHtml;
+    
+    // 차트 생성
+    if (window.currentDetailChart) window.currentDetailChart.destroy();
+    const ctx = document.getElementById('detailChart');
+    if (ctx) {
+        window.currentDetailChart = new Chart(ctx.getContext('2d'), {
+            type: 'bar',
+            data: { labels: slotLabels, datasets: datasets },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { stacked: true, grid: { display: false } },
+                    y: { stacked: true, beginAtZero: true, grid: { color: '#f1f5f9' } }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+    }
     
     document.getElementById('detailModal').classList.remove('hidden');
 }

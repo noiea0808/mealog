@@ -198,20 +198,14 @@
             <div id="miniCalendar" class="calendar-scroll pb-2"></div>
         </div>
 
-        <main class="p-4">
-            <div id="timelineView" class="min-h-[60vh]">
-                <div id="timelineContainer" class="space-y-4"></div>
-                <div id="feedContainer" class="mt-8 space-y-4">
-                    <h3 class="text-sm font-black text-slate-800 mb-4 px-1">피드</h3>
-                    <div id="feedContent" class="space-y-4"></div>
-                </div>
-            </div>
+        <main>
+            <div id="timelineView" class="min-h-[60vh]"><div id="timelineContainer" class="space-y-4"></div></div>
             <div id="galleryView" class="hidden min-h-[60vh]">
                 <div id="galleryContainer" class="space-y-4"></div>
             </div>
-            <div id="dashboardView" class="hidden space-y-6">
+            <div id="dashboardView" class="hidden space-y-3 p-4">
                 <!-- Dashboard content remains same -->
-                <div class="card p-6 bg-emerald-600 text-white relative overflow-hidden">
+                <div class="card py-3 px-6 bg-emerald-600 text-white relative overflow-hidden">
                     <div class="flex flex-col mb-4 relative z-10">
                         <h3 class="text-lg font-black tracking-tighter uppercase">INSIGHT <span id="insightRange" class="text-[10px] font-normal text-emerald-100 normal-case ml-1 tracking-tight"></span></h3>
                         <div class="flex bg-emerald-700/40 p-1 rounded-xl mt-3 gap-1">
@@ -236,24 +230,24 @@
                         </div>
                     </div>
                 </div>
-                <div class="card p-5">
-                    <div class="flex justify-between items-center mb-4"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">식사 구분</h3><button onclick="window.openDetailModal('mealType', '식사 구분 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                <div class="card py-2.5 px-5">
+                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">식사 구분</h3><button onclick="window.openDetailModal('mealType', '식사 구분 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                     <div id="propChartContainer"></div>
                 </div>
-                <div class="card p-5">
-                    <div class="flex justify-between items-center mb-4"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">메뉴 카테고리</h3><button onclick="window.openDetailModal('category', '메뉴 카테고리 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                <div class="card py-2.5 px-5">
+                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">메뉴 카테고리</h3><button onclick="window.openDetailModal('category', '메뉴 카테고리 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                     <div id="categoryChartContainer"></div>
                 </div>
-                <div class="card p-5">
-                    <div class="flex justify-between items-center mb-4"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">함께한 즐거움</h3><button onclick="window.openDetailModal('withWhom', '함께한 사람 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                <div class="card py-2.5 px-5">
+                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">함께한 즐거움</h3><button onclick="window.openDetailModal('withWhom', '함께한 사람 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                     <div id="mateChartContainer"></div>
                 </div>
-                <div class="card p-5">
-                    <div class="flex justify-between items-center mb-4"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">만족도</h3><button onclick="window.openDetailModal('rating', '만족도 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                <div class="card py-2.5 px-5">
+                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">만족도</h3><button onclick="window.openDetailModal('rating', '만족도 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                     <div id="ratingChartContainer"></div>
                 </div>
-                <div class="card p-5">
-                    <div class="flex justify-between items-center mb-4"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">포만감</h3><button onclick="window.openDetailModal('satiety', '포만감 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                <div class="card py-2.5 px-5">
+                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">포만감</h3><button onclick="window.openDetailModal('satiety', '포만감 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                     <div id="satietyChartContainer"></div>
                 </div>
             </div>
@@ -410,7 +404,7 @@
                 <div class="flex-1 flex items-center gap-2">
                     <button onclick="window.saveEntry()" id="btnSave" class="flex-1 py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all">기록 완료</button>
                     <button id="sharePhotoIndicator" onclick="window.toggleSharePhoto()" class="hidden flex items-center justify-center w-14 h-14 rounded-xl border-2 active:scale-95 transition-all">
-                        <i class="fa-solid fa-newspaper text-lg"></i>
+                        <i class="fa-solid fa-share text-lg"></i>
                     </button>
                 </div>
             </div>

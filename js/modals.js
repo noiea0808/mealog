@@ -58,13 +58,26 @@ export function openModal(date, slotId, entryId = null) {
     document.getElementById('btnDelete')?.classList.add('hidden');
     document.getElementById('satietySection').classList.toggle('hidden', isS);
     
+    // 필드 표시/숨김 처리를 먼저 수행 (renderPhotoPreviews가 올바른 컨테이너를 찾을 수 있도록)
+    document.getElementById('mainMealFields').classList.toggle('hidden', isS);
+    document.getElementById('snackFields').classList.toggle('hidden', !isS);
+    
+    // 버튼 텍스트 설정 (수정 모드인 경우 "수정 완료", 새로 등록인 경우 "기록 완료")
+    const btnSave = document.getElementById('btnSave');
+    if (btnSave) {
+        btnSave.innerText = entryId ? '수정 완료' : '기록 완료';
+    }
+    
     if (entryId) {
         const r = window.mealHistory.find(m => m.id === entryId);
         if (r) {
-            state.currentPhotos = r.photos || [];
-            state.sharedPhotos = r.sharedPhotos || []; // 이미 공유된 사진 목록 복원
-            state.originalSharedPhotos = r.sharedPhotos ? [...r.sharedPhotos] : []; // 원본 복사 (삭제 추적용)
-            state.wantsToShare = (r.sharedPhotos && r.sharedPhotos.length > 0); // 이미 공유된 사진이 있으면 공유 상태로
+            // photos가 배열인지 확인하고, 배열이 아니면 배열로 변환
+            state.currentPhotos = Array.isArray(r.photos) ? r.photos : (r.photos ? [r.photos] : []);
+            // sharedPhotos도 배열인지 확인
+            state.sharedPhotos = Array.isArray(r.sharedPhotos) ? r.sharedPhotos : (r.sharedPhotos ? [r.sharedPhotos] : []);
+            state.originalSharedPhotos = Array.isArray(r.sharedPhotos) ? [...r.sharedPhotos] : (r.sharedPhotos ? [r.sharedPhotos] : []); // 원본 복사 (삭제 추적용)
+            state.wantsToShare = (state.sharedPhotos && state.sharedPhotos.length > 0); // 이미 공유된 사진이 있으면 공유 상태로
+            // 필드 표시/숨김 처리 후에 renderPhotoPreviews 호출
             renderPhotoPreviews();
             setVal('placeInput', r.place || "");
             setVal('menuDetailInput', r.menuDetail || "");
@@ -104,10 +117,6 @@ export function openModal(date, slotId, entryId = null) {
             document.getElementById('btnDelete')?.classList.remove('hidden');
         }
     }
-    
-    // 필드 표시/숨김 처리
-    document.getElementById('mainMealFields').classList.toggle('hidden', isS);
-    document.getElementById('snackFields').classList.toggle('hidden', !isS);
     
     // 간식 모드일 때 초기 추천 태그 표시
     if (isS) {

@@ -164,9 +164,27 @@ body {
     z-index: 20; 
     background: rgba(248, 250, 252, 0.95); 
     backdrop-filter: blur(8px); 
-    padding: 12px 4px; 
+    padding: 12px 16px; 
     margin-bottom: 8px; 
     scroll-margin-top: 185px; 
+}
+#timelineContainer .card {
+    border-radius: 0 !important;
+}
+#galleryContainer {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    width: 100% !important;
+}
+#galleryContainer > div {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
 }
 .photo-remove-btn { 
     position: absolute; 
