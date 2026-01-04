@@ -10,7 +10,7 @@ import {
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, confirmLogout, confirmLogoutAction,
     copyDomain, closeDomainModal
 } from './auth.js';
-import { renderTimeline, renderMiniCalendar, renderGallery } from './render.js';
+import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed } from './render.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, openDetailModal, closeDetailModal } from './analytics.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
@@ -96,6 +96,8 @@ window.switchMainTab = (tab) => {
         if (c) c.innerHTML = "";
         renderTimeline();
         renderMiniCalendar();
+        // 타임라인 탭에서 피드도 함께 렌더링
+        renderFeed();
     }
 };
 
@@ -232,6 +234,10 @@ initAuth((user) => {
                 if (container) container.innerHTML = "";
                 renderTimeline();
                 renderMiniCalendar();
+                // 피드도 업데이트
+                if (appState.currentTab === 'timeline') {
+                    renderFeed();
+                }
             },
             settingsUnsubscribe: appState.settingsUnsubscribe,
             dataUnsubscribe: appState.dataUnsubscribe
@@ -247,6 +253,8 @@ initAuth((user) => {
             window.sharedPhotos = sharedPhotos;
             if (appState.currentTab === 'gallery') {
                 renderGallery();
+            } else if (appState.currentTab === 'timeline') {
+                renderFeed();
             }
         });
         

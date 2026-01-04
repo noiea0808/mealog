@@ -462,6 +462,162 @@ export function renderGallery() {
     }, 100);
 }
 
+export function renderFeed() {
+    const container = document.getElementById('feedContent');
+    if (!container) return;
+    if (!window.sharedPhotos) {
+        window.sharedPhotos = [];
+    }
+    
+    if (window.sharedPhotos.length === 0) {
+        container.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-12 text-center">
+                <i class="fa-solid fa-images text-4xl text-slate-200 mb-3"></i>
+                <p class="text-xs font-bold text-slate-400">공유된 사진이 없습니다</p>
+                <p class="text-[10px] text-slate-300 mt-1">타임라인에서 사진을 공유해보세요!</p>
+            </div>
+        `;
+        return;
+    }
+    
+    // 중복 제거: 같은 photoUrl과 entryId 조합은 하나만 표시
+    const seen = new Set();
+    const uniquePhotos = window.sharedPhotos.filter(photo => {
+        const key = `${photo.photoUrl}_${photo.entryId || 'no-entry'}_${photo.userId}`;
+        if (seen.has(key)) {
+            return false;
+        }
+        seen.add(key);
+        return true;
+    });
+    
+    // entryId와 userId로 그룹화 (같은 기록의 사진들을 묶음)
+    const groupedPhotos = {};
+    uniquePhotos.forEach(photo => {
+        const groupKey = `${photo.entryId || 'no-entry'}_${photo.userId}_${photo.date || ''}_${photo.slotId || ''}`;
+        if (!groupedPhotos[groupKey]) {
+            groupedPhotos[groupKey] = [];
+        }
+        groupedPhotos[groupKey].push(photo);
+    });
+    
+    // 그룹을 시간순으로 정렬
+    const sortedGroups = Object.values(groupedPhotos).sort((a, b) => {
+        const timeA = new Date(a[0].timestamp).getTime();
+        const timeB = new Date(b[0].timestamp).getTime();
+        return timeB - timeA; // 최신순
+    });
+    
+    container.innerHTML = sortedGroups.map((photoGroup, groupIdx) => {
+        const photo = photoGroup[0]; // 첫 번째 사진의 정보 사용
+        const photoCount = photoGroup.length;
+        
+        // 일자 정보
+        const photoDate = photo.date ? new Date(photo.date + 'T00:00:00') : new Date(photo.timestamp);
+        const dateStr = photoDate.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+        
+        // 끼니 구분 정보
+        let mealLabel = '';
+        if (photo.slotId) {
+            const slot = SLOTS.find(s => s.id === photo.slotId);
+            mealLabel = slot ? slot.label : '';
+        }
+        
+        // 간식인지 확인 (slotId로 간식 타입 확인)
+        const isSnack = photo.slotId && SLOTS.find(s => s.id === photo.slotId)?.type === 'snack';
+        
+        let caption = '';
+        if (isSnack) {
+            // 간식인 경우: snackType과 menuDetail 조합
+            if (photo.snackType && photo.menuDetail) {
+                caption = `${photo.snackType} | ${photo.menuDetail}`;
+            } else if (photo.snackType) {
+                caption = photo.snackType;
+            } else if (photo.menuDetail) {
+                caption = photo.menuDetail;
+            } else if (photo.place) {
+                caption = photo.place;
+            }
+        } else {
+            // 일반 식사인 경우: 기존 로직
+            if (photo.place && photo.menuDetail) {
+                caption = `${photo.place} | ${photo.menuDetail}`;
+            } else if (photo.place) {
+                caption = photo.place;
+            } else if (photo.menuDetail) {
+                caption = photo.menuDetail;
+            } else if (photo.mealType) {
+                caption = photo.mealType;
+            }
+        }
+        
+        // 사진들 HTML 생성 (인스타그램 스타일 - 좌우 여백 없이)
+        const photosHtml = photoGroup.map((p, idx) => `
+            <div class="flex-shrink-0 w-full">
+                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" class="w-full h-auto object-cover" style="aspect-ratio: 1; object-fit: cover;" loading="${idx === 0 ? 'eager' : 'lazy'}">
+            </div>
+        `).join('');
+        
+        return `
+            <div class="mb-4 bg-white border border-slate-100 rounded-2xl overflow-hidden">
+                <div class="px-4 py-3 flex items-center gap-2">
+                    <div class="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center text-lg flex-shrink-0">
+                        ${photo.userIcon || '🐻'}
+                    </div>
+                    <div class="flex-1 min-w-0 flex items-center gap-2">
+                        <div class="text-sm font-bold text-slate-800 truncate">${photo.userNickname || '익명'}</div>
+                        <div class="text-xs text-slate-400">${dateStr}</div>
+                        ${mealLabel ? `<div class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full whitespace-nowrap">${mealLabel}</div>` : ''}
+                    </div>
+                </div>
+                <div class="relative overflow-hidden bg-slate-100">
+                    <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide" style="scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;">
+                        ${photosHtml}
+                    </div>
+                    ${photoCount > 1 ? `
+                        <div class="absolute bottom-3 right-3 bg-black/60 text-white text-xs font-bold px-2.5 py-1 rounded-full backdrop-blur-sm">
+                            <span class="photo-counter-current">1</span>/${photoCount}
+                        </div>
+                    ` : ''}
+                </div>
+                ${caption ? `<div class="px-4 py-2 text-sm font-bold text-slate-800">${caption}</div>` : ''}
+            </div>
+        `;
+    }).join('');
+    
+    // 사진 카운터 업데이트를 위한 이벤트 리스너 추가
+    setTimeout(() => {
+        const scrollContainers = container.querySelectorAll('.flex.overflow-x-auto');
+        scrollContainers.forEach((scrollContainer, idx) => {
+            const counter = scrollContainer.parentElement.querySelector('.photo-counter-current');
+            if (counter && sortedGroups[idx].length > 1) {
+                const photos = scrollContainer.querySelectorAll('div');
+                const updateCounter = () => {
+                    const containerWidth = scrollContainer.clientWidth;
+                    const scrollLeft = scrollContainer.scrollLeft;
+                    // 각 사진의 위치를 확인하여 현재 보이는 사진 인덱스 계산
+                    let currentIndex = 1;
+                    photos.forEach((photo, photoIdx) => {
+                        const photoLeft = photo.offsetLeft;
+                        const photoRight = photoLeft + photo.offsetWidth;
+                        const viewportLeft = scrollLeft;
+                        const viewportRight = scrollLeft + containerWidth;
+                        // 사진의 중앙이 뷰포트 안에 있으면 현재 사진
+                        const photoCenter = photoLeft + photo.offsetWidth / 2;
+                        if (photoCenter >= viewportLeft && photoCenter <= viewportRight) {
+                            currentIndex = photoIdx + 1;
+                        }
+                    });
+                    counter.textContent = currentIndex;
+                };
+                scrollContainer.addEventListener('scroll', updateCounter);
+                // 초기 카운터 설정
+                updateCounter();
+            }
+        });
+    }, 100);
+}
+
 export function renderTagManager(key, isSub = false, tempSettings) {
     const containerId = isSub ? `tagManage-sub-${key}` : `tagManage-${key}`;
     const container = document.getElementById(containerId);
