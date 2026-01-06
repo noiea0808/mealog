@@ -3,7 +3,7 @@ console.log('main.js 로드 시작...');
 
 import { appState, getState } from './state.js';
 import { auth } from './firebase.js';
-import { dbOps, setupListeners, setupSharedPhotosListener } from './db.js';
+import { dbOps, setupListeners, setupSharedPhotosListener, loadMoreMeals } from './db.js';
 import { switchScreen, showToast, updateHeaderUI } from './ui.js';
 import { 
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
@@ -223,6 +223,34 @@ window.handleSearch = (k) => {
         ).join('');
 };
 
+// 더보기 함수 (타임라인용)
+window.loadMoreMealsTimeline = async () => {
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    
+    try {
+        const count = await loadMoreMeals(1); // 1개월 더 로드
+        if (count > 0) {
+            window.loadedDates = [];
+            const container = document.getElementById('timelineContainer');
+            if (container) container.innerHTML = "";
+            renderTimeline();
+            renderMiniCalendar();
+            showToast(`${count}개의 기록을 불러왔습니다.`, 'success');
+        } else {
+            showToast("더 이상 불러올 기록이 없습니다.", 'info');
+            // 더보기 버튼 제거
+            const loadMoreBtn = document.getElementById('loadMoreMealsBtn');
+            if (loadMoreBtn) loadMoreBtn.remove();
+        }
+    } catch (e) {
+        console.error("더보기 로드 실패:", e);
+        showToast("기록을 불러오는 중 오류가 발생했습니다.", 'error');
+    } finally {
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+    }
+};
+
 // 인증 상태 변경 리스너
 initAuth((user) => {
     if (user) { 
@@ -292,7 +320,7 @@ window.addEventListener('scroll', () => {
     }
 });
 
-// 키보드 이벤트 리스너 (주별/월별 모드에서 좌우 방향키로 이동)
+// 키보드 이벤트 리스너 (주간/월간 모드에서 좌우 방향키로 이동)
 window.addEventListener('keydown', (e) => {
     // input, textarea, select 등이 포커스되어 있으면 키보드 이벤트 무시
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
@@ -301,7 +329,7 @@ window.addEventListener('keydown', (e) => {
     
     const state = appState;
     
-    // 대시보드 탭이 활성화되어 있고 주별/월별 모드일 때만 동작
+    // 대시보드 탭이 활성화되어 있고 주간/월간 모드일 때만 동작
     if (state.currentTab === 'dashboard') {
         if (state.dashboardMode === 'week') {
             if (e.key === 'ArrowLeft') {

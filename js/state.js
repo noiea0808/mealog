@@ -9,6 +9,7 @@ window.loadedDates = [];
 window.currentDetailChart = null;
 window.emailAuthMode = 'login';
 window.userSettings = { ...DEFAULT_USER_SETTINGS };
+window.loadedMealsDateRange = null; // 로드된 데이터의 날짜 범위 { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD' }
 
 // 앱 상태
 export const appState = {

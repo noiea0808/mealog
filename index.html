@@ -227,8 +227,8 @@
                         <h3 class="text-lg font-black tracking-tighter uppercase">INSIGHT</h3>
                         <div class="flex bg-emerald-700/40 p-1 rounded-xl mt-3 gap-1">
                             <button id="btn-dash-7d" onclick="window.setDashboardMode('7d')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">최근 1주</button>
-                            <button id="btn-dash-week" onclick="window.setDashboardMode('week')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">주별</button>
-                            <button id="btn-dash-month" onclick="window.setDashboardMode('month')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">월별</button>
+                            <button id="btn-dash-week" onclick="window.setDashboardMode('week')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">주간</button>
+                            <button id="btn-dash-month" onclick="window.setDashboardMode('month')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">월간</button>
                             <button id="btn-dash-year" onclick="window.setDashboardMode('year')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">연간</button>
                             <button id="btn-dash-custom" onclick="window.setDashboardMode('custom')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">직접 설정</button>
                         </div>
@@ -293,7 +293,10 @@
                     <div class="space-y-3">
                         <div class="card py-2 px-4">
                             <div class="flex justify-between items-center mb-2">
-                                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">Best 식사/간식</h3>
+                                <div class="flex items-center gap-2">
+                                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">Best 식사/간식</h3>
+                                    <span id="bestPeriodLabel" class="text-xs text-slate-300"></span>
+                                </div>
                             </div>
                             <div id="bestMealsContainer" class="space-y-2"></div>
                         </div>
@@ -361,14 +364,7 @@
 
             <div><h3 class="text-xs font-black text-slate-400 mb-4 uppercase tracking-widest">프로필 설정</h3><div id="iconSelector" class="flex gap-3 overflow-x-auto pb-2"></div><div class="bg-slate-50 p-4 rounded-2xl space-y-3 mt-4"><label class="text-[10px] font-bold text-slate-400 block uppercase">닉네임</label><input type="text" id="settingNickname" class="w-full bg-white p-3 rounded-xl border-none outline-none font-bold text-sm"></div></div>
             <div class="space-y-6">
-                <!-- Primary Tags Section -->
-                <div class="p-4 bg-slate-50 rounded-2xl">
-                    <h3 class="text-xs font-black text-emerald-600 mb-4 uppercase tracking-widest flex items-center gap-2"><i class="fa-solid fa-tag"></i> 기본 태그 관리</h3>
-                    <div id="tagManage-mealType" class="mb-6"></div>
-                    <div id="tagManage-category" class="mb-6"></div>
-                    <div id="tagManage-withWhom" class="mb-6"></div>
-                    <div id="tagManage-snackType"></div>
-                </div>
+                <!-- Primary Tags Section REMOVED -->
                 
                 <!-- Secondary Tags Section REMOVED -->
 
@@ -399,88 +395,88 @@
                 <h2 id="modalTitle" class="text-lg font-bold text-slate-800 tracking-tight">기록하기</h2>
                 <button onclick="window.closeModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
             </div>
-            <div id="modalScrollArea" class="p-6 space-y-6 overflow-y-auto pb-10">
+            <div id="modalScrollArea" class="p-4 space-y-2 overflow-y-auto pb-10">
                 <div id="mainMealFields">
-                    <div class="mb-6 p-4 bg-orange-50/50 rounded-2xl border border-orange-100">
-                        <span class="text-sm font-extrabold text-slate-600 mb-2 block uppercase tracking-tight">식사 구분</span>
-                        <div id="typeChips" class="flex flex-wrap gap-2 mb-3"></div>
-                        <input id="placeInput" type="text" placeholder="식당명이나 장소 (예: 스타벅스)" class="w-full p-4 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
-                        <div id="restaurantSuggestions" class="flex gap-2 mt-2 overflow-x-auto pb-2 whitespace-nowrap"></div>
+                    <div class="mb-2">
+                        <div class="flex items-center justify-between mb-1.5">
+                            <span class="text-sm font-extrabold text-slate-600 block uppercase">음식 사진</span>
+                            <span id="photoCount" class="text-[10px] text-slate-400 font-bold">0/5</span>
+                        </div>
+                        <div class="flex gap-2 overflow-x-auto pb-1">
+                            <button id="imageBtn" onclick="document.getElementById('imageInput').click()" class="flex-shrink-0 w-20 h-20 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors">
+                                <i class="fa-solid fa-camera text-xl"></i>
+                            </button>
+                            <div id="photoPreviewContainer" class="flex gap-2"></div>
+                        </div>
+                        <input type="file" id="imageInput" class="hidden" accept="image/*" multiple onchange="window.handleMultipleImages(event)">
                     </div>
                     
-                    <div id="optionalFields" class="space-y-6">
-                        <div class="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100">
-                            <span class="text-sm font-extrabold text-slate-600 mb-2 block uppercase">메뉴 정보</span>
-                            <div id="categoryChips" class="flex flex-wrap gap-2 mb-2"></div>
-                            <input id="menuDetailInput" type="text" placeholder="드신 메뉴 명 (예: 아이스 아메리카노)" class="w-full p-4 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
-                            <div id="menuSuggestions" class="flex gap-2 mt-2 overflow-x-auto pb-2 whitespace-nowrap"></div>
+                    <div class="p-3 bg-orange-50/50 rounded-2xl border border-orange-100 mb-2">
+                        <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">식사 구분</span>
+                        <div id="typeChips" class="flex flex-wrap gap-2 mb-1.5"></div>
+                        <input id="placeInput" type="text" placeholder="식당명이나 장소 (예: 스타벅스)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
+                        <div id="restaurantSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
+                    </div>
+                    
+                    <div id="optionalFields" class="space-y-2">
+                        <div class="p-3 bg-emerald-50/50 rounded-2xl border border-emerald-100">
+                            <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">메뉴 정보</span>
+                            <div id="categoryChips" class="flex flex-wrap gap-2 mb-1.5"></div>
+                            <input id="menuDetailInput" type="text" placeholder="드신 메뉴 명 (예: 아이스 아메리카노)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
+                            <div id="menuSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
                         </div>
                         
-                        <div class="p-4 bg-blue-50/50 rounded-2xl border border-blue-100">
-                            <span class="text-sm font-extrabold text-slate-600 mb-2 block uppercase">함께한 사람</span>
-                            <div id="withChips" class="flex flex-wrap gap-2 mb-2"></div>
-                            <input id="withWhomInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full p-4 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
-                            <div id="peopleSuggestions" class="flex gap-2 mt-2 overflow-x-auto pb-2 whitespace-nowrap"></div>
+                        <div class="p-3 bg-blue-50/50 rounded-2xl border border-blue-100">
+                            <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">함께한 사람</span>
+                            <div id="withChips" class="flex flex-wrap gap-2 mb-1.5"></div>
+                            <input id="withWhomInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
+                            <div id="peopleSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
                         </div>
+                    </div>
 
-                        <div>
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="text-sm font-extrabold text-slate-600 block uppercase">음식 사진</span>
-                                <span id="photoCount" class="text-[10px] text-slate-400 font-bold">0/5</span>
+                    <div id="reviewSection" class="pt-2 border-t border-slate-50 space-y-2">
+                        <div id="ratingSection">
+                            <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">만족도</span>
+                            <div id="starContainer" class="flex gap-2 mb-2">
+                                <button onclick="window.setRating(1)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
+                                <button onclick="window.setRating(2)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
+                                <button onclick="window.setRating(3)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
+                                <button onclick="window.setRating(4)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
+                                <button onclick="window.setRating(5)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
                             </div>
-                            <div class="flex gap-2 overflow-x-auto pb-2">
-                                <button id="imageBtn" onclick="document.getElementById('imageInput').click()" class="flex-shrink-0 w-20 h-20 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors">
-                                    <i class="fa-solid fa-camera text-xl"></i>
-                                </button>
-                                <div id="photoPreviewContainer" class="flex gap-2"></div>
-                            </div>
-                            <input type="file" id="imageInput" class="hidden" accept="image/*" multiple onchange="window.handleMultipleImages(event)">
                         </div>
+                        
+                        <div id="satietySection">
+                            <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">포만감</span>
+                            <div id="satietyContainer" class="flex justify-between items-center w-full px-2"></div>
+                        </div>
+                    </div>
+
+                    <div class="mb-2">
+                        <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">종합 소감</span>
+                        <input id="generalCommentInput" type="text" placeholder="오늘 식사는 어떠셨나요?" class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all">
                     </div>
                 </div>
                 
                 <div id="snackFields" class="hidden">
-                    <div class="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100 mb-6">
-                        <span class="text-sm font-extrabold text-slate-600 mb-2 block uppercase">간식 정보</span>
-                        <div id="snackTypeChips" class="flex flex-wrap gap-2 mb-2"></div>
-                        <input id="snackDetailInput" type="text" placeholder="무엇을 드셨나요?" class="w-full p-4 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
-                        <div id="snackSuggestions" class="flex gap-2 mt-2 overflow-x-auto pb-2 whitespace-nowrap"></div>
+                    <div class="p-3 bg-emerald-50/50 rounded-2xl border border-emerald-100 mb-2">
+                        <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">간식 정보</span>
+                        <div id="snackTypeChips" class="flex flex-wrap gap-2 mb-1.5"></div>
+                        <input id="snackDetailInput" type="text" placeholder="무엇을 드셨나요?" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
+                        <div id="snackSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
                     </div>
-                    <div class="mb-6">
-                        <div class="flex items-center justify-between mb-2">
+                    <div class="mb-2">
+                        <div class="flex items-center justify-between mb-1.5">
                             <span class="text-sm font-extrabold text-slate-600 block uppercase">간식 사진</span>
                             <span id="snackPhotoCount" class="text-[10px] text-slate-400 font-bold">0/5</span>
                         </div>
-                        <div class="flex gap-2 overflow-x-auto pb-2">
+                        <div class="flex gap-2 overflow-x-auto pb-1">
                             <button id="snackImageBtn" onclick="document.getElementById('snackImageInput').click()" class="flex-shrink-0 w-20 h-20 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors">
                                 <i class="fa-solid fa-camera text-xl"></i>
                             </button>
                             <div id="snackPhotoPreviewContainer" class="flex gap-2"></div>
                         </div>
                         <input type="file" id="snackImageInput" class="hidden" accept="image/*" multiple onchange="window.handleMultipleImages(event)">
-                    </div>
-                </div>
-
-                <div id="reviewSection" class="pt-4 border-t border-slate-50 space-y-5">
-                    <div>
-                        <span class="text-sm font-extrabold text-slate-600 mb-2 block uppercase">만족도</span>
-                        <div id="starContainer" class="flex gap-2 mb-3">
-                            <button onclick="window.setRating(1)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
-                            <button onclick="window.setRating(2)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
-                            <button onclick="window.setRating(3)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
-                            <button onclick="window.setRating(4)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
-                            <button onclick="window.setRating(5)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
-                        </div>
-                    </div>
-                    
-                    <div id="satietySection">
-                        <span class="text-sm font-extrabold text-slate-600 mb-2 block uppercase">포만감</span>
-                        <div id="satietyContainer" class="flex justify-between items-center w-full px-2"></div>
-                    </div>
-
-                    <div>
-                        <span class="text-sm font-extrabold text-slate-600 mb-2 block uppercase">종합 소감</span>
-                        <input id="generalCommentInput" type="text" placeholder="오늘 식사는 어떠셨나요?" class="w-full p-4 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all">
                     </div>
                 </div>
             </div>

@@ -32,7 +32,7 @@ export const SATIETY_DATA = [
 export const DEFAULT_USER_SETTINGS = {
     profile: { icon: '🐻', nickname: '게스트' },
     tags: {
-        mealType: ['Skip', '???', '집밥', '외식', '회사밥', '간단히', '술자리'],
+        mealType: ['Skip', '집밥', '외식', '회사밥', '간단히', '술자리'],
         withWhom: ['혼자', '가족', '친구', '회사사람'],
         category: ['한식', '양식', '일식', '중식', '분식', '카페'],
         snackType: ['커피', '음료', '과일', '빵/과자']

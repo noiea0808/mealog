@@ -2,6 +2,7 @@
 import { SLOTS, VIBRANT_COLORS, RATING_GRADIENT, SATIETY_DATA } from './constants.js';
 import { appState } from './state.js';
 import { generateColorMap } from './utils.js';
+import { loadMealsForDateRange } from './db.js';
 
 export function renderProportionChart(containerId, data, key) {
     const container = document.getElementById(containerId);
@@ -242,6 +243,47 @@ export async function updateDashboard() {
     const state = appState;
     if (!window.currentUser) return;
     
+    // 연간/과거 월간 모드일 때만 추가 데이터 로드
+    try {
+        if (state.dashboardMode === 'year') {
+            const year = state.selectedYearForYear || new Date().getFullYear();
+            const yearStart = `${year}-01-01`;
+            const yearEnd = `${year}-12-31`;
+            await loadMealsForDateRange(yearStart, yearEnd);
+        } else if (state.dashboardMode === 'month') {
+            const [y, m] = state.selectedMonth.split('-').map(Number);
+            const selectedDate = new Date(y, m - 1, 1);
+            const oneMonthAgo = new Date();
+            oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+            oneMonthAgo.setDate(1);
+            
+            // 선택한 월이 1개월 이전이면 추가 로드
+            if (selectedDate < oneMonthAgo) {
+                const monthStart = `${y}-${String(m).padStart(2, '0')}-01`;
+                const monthEnd = new Date(y, m, 0).toISOString().split('T')[0];
+                await loadMealsForDateRange(monthStart, monthEnd);
+            }
+        } else if (state.dashboardMode === 'custom') {
+            const startStr = state.customStartDate.toISOString().split('T')[0];
+            const endStr = state.customEndDate.toISOString().split('T')[0];
+            await loadMealsForDateRange(startStr, endStr);
+        } else if (state.dashboardMode === 'week') {
+            // 주간 모드: 선택한 주의 데이터 확인
+            const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
+            const startStr = start.toISOString().split('T')[0];
+            const endStr = end.toISOString().split('T')[0];
+            const oneMonthAgo = new Date();
+            oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+            
+            if (start < oneMonthAgo) {
+                await loadMealsForDateRange(startStr, endStr);
+            }
+        }
+    } catch (e) {
+        console.error("대시보드 데이터 로드 실패:", e);
+        // 에러가 발생해도 기존 데이터로 계속 진행
+    }
+    
     // 분석 타입 UI 업데이트
     updateAnalysisTypeUI();
     
@@ -324,7 +366,7 @@ export async function updateDashboard() {
     const totalRec = Math.max(0, targetDays * 3);
     const recCount = filteredData.filter(m => {
         const slot = SLOTS.find(s => s.id === m.slotId && s.type === 'main');
-        return slot && m.mealType !== '???';
+        return slot && m.mealType !== 'Skip';
     }).length;
     const mealPercent = totalRec > 0 ? Math.round((recCount / totalRec) * 100) : 0;
     
@@ -693,81 +735,297 @@ export function navigatePeriod(direction) {
     }
 }
 
+// 주간 베스트 가져오기 (만족도 4~5점, 최대 5개)
+function getWeekBestMeals(year, month, week) {
+    const { start, end } = getWeekRange(year, month, week);
+    const startStr = start.toISOString().split('T')[0];
+    const endStr = end.toISOString().split('T')[0];
+    
+    const weekData = window.mealHistory.filter(m => {
+        return m.date >= startStr && m.date <= endStr;
+    });
+    
+    const highRatingMeals = weekData.filter(m => {
+        return m.rating && parseInt(m.rating) >= 4;
+    });
+    
+    // 만족도 내림차순, 날짜 내림차순으로 정렬하고 최대 5개만
+    const sorted = [...highRatingMeals].sort((a, b) => {
+        if (parseInt(b.rating) !== parseInt(a.rating)) {
+            return parseInt(b.rating) - parseInt(a.rating);
+        }
+        return b.date.localeCompare(a.date);
+    });
+    
+    return sorted.slice(0, 5);
+}
+
+// 월간 베스트 가져오기 (각 주간 베스트에서 선정된 것들만)
+function getMonthBestMeals(year, month) {
+    const totalWeeks = getWeeksInMonth(year, month);
+    const allBestMeals = [];
+    const mealMap = new Map(); // 중복 제거용 (같은 음식은 한 번만)
+    
+    // 해당 월의 시작일과 종료일 계산
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0);
+    const monthStartStr = monthStart.toISOString().split('T')[0];
+    const monthEndStr = monthEnd.toISOString().split('T')[0];
+    
+    for (let week = 1; week <= totalWeeks; week++) {
+        // 각 주간의 베스트 가져오기 (사용자가 설정한 순서 포함)
+        const weekKey = `week_${year}_${month}_${week}`;
+        const savedWeekOrder = (window.userSettings && window.userSettings.bestMeals ? window.userSettings.bestMeals[weekKey] : null) || [];
+        const weekBest = getWeekBestMeals(year, month, week);
+        
+        // 저장된 순서가 있으면 그 순서대로, 없으면 만족도 순으로
+        const orderedWeekBest = [...weekBest].sort((a, b) => {
+            if (savedWeekOrder.length > 0) {
+                const aIdx = savedWeekOrder.indexOf(a.id);
+                const bIdx = savedWeekOrder.indexOf(b.id);
+                if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+                if (aIdx !== -1) return -1;
+                if (bIdx !== -1) return 1;
+            }
+            // 순서가 없으면 만족도 내림차순
+            if (parseInt(b.rating) !== parseInt(a.rating)) {
+                return parseInt(b.rating) - parseInt(a.rating);
+            }
+            return b.date.localeCompare(a.date);
+        });
+        
+        // 주간 베스트만 추가 (해당 월에 속한 날짜만)
+        orderedWeekBest.forEach(meal => {
+            if (meal.date >= monthStartStr && meal.date <= monthEndStr) {
+                const key = `${meal.menuDetail || meal.snackType || ''}_${meal.date}_${meal.slotId}`;
+                if (!mealMap.has(key)) {
+                    mealMap.set(key, meal);
+                    allBestMeals.push(meal);
+                }
+            }
+        });
+    }
+    
+    return allBestMeals;
+}
+
+// 연간 베스트 가져오기 (각 월간 베스트에서 선정된 것들만)
+function getYearBestMeals(year) {
+    const allBestMeals = [];
+    const mealMap = new Map(); // 중복 제거용
+    
+    for (let month = 1; month <= 12; month++) {
+        // 각 월간의 베스트 가져오기 (사용자가 설정한 순서 포함)
+        const monthStr = month < 10 ? `0${month}` : `${month}`;
+        const monthKey = `${year}-${monthStr}`;
+        const savedMonthOrder = (window.userSettings && window.userSettings.bestMeals ? window.userSettings.bestMeals[`month_${monthKey}`] : null) || [];
+        const monthBest = getMonthBestMeals(year, month);
+        
+        // 저장된 순서가 있으면 그 순서대로, 없으면 만족도 순으로
+        const orderedMonthBest = [...monthBest].sort((a, b) => {
+            if (savedMonthOrder.length > 0) {
+                const aIdx = savedMonthOrder.indexOf(a.id);
+                const bIdx = savedMonthOrder.indexOf(b.id);
+                if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+                if (aIdx !== -1) return -1;
+                if (bIdx !== -1) return 1;
+            }
+            // 순서가 없으면 만족도 내림차순
+            if (parseInt(b.rating) !== parseInt(a.rating)) {
+                return parseInt(b.rating) - parseInt(a.rating);
+            }
+            return b.date.localeCompare(a.date);
+        });
+        
+        // 월간 베스트만 추가
+        orderedMonthBest.forEach(meal => {
+            const key = `${meal.menuDetail || meal.snackType || ''}_${meal.date}_${meal.slotId}`;
+            if (!mealMap.has(key)) {
+                mealMap.set(key, meal);
+                allBestMeals.push(meal);
+            }
+        });
+    }
+    
+    return allBestMeals;
+}
+
 // Best 탭 데이터 렌더링 함수
 export function renderBestMeals() {
     const container = document.getElementById('bestMealsContainer');
     if (!container) return;
     
-    const { filteredData } = getDashboardData();
     const state = appState;
+    let meals = [];
+    let periodLabel = '';
+    let periodKey = '';
     
-    const highRatingMeals = filteredData.filter(m => {
-        return m.rating && parseInt(m.rating) >= 4;
-    });
+    // periodLabel 업데이트
+    const periodLabelEl = document.getElementById('bestPeriodLabel');
     
-    const periodKey = getBestPeriodKey();
-    const savedOrder = (window.userSettings?.bestMeals || {})[periodKey] || [];
-    
-    const sortedMeals = [...highRatingMeals].sort((a, b) => {
-        const aIndex = savedOrder.indexOf(a.id);
-        const bIndex = savedOrder.indexOf(b.id);
+    if (state.dashboardMode === '7d') {
+        // 최근1주 → 주간 베스트 표시
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonth = today.getMonth() + 1;
+        const currentWeek = getCurrentWeekInMonth(currentYear, currentMonth);
         
-        if (aIndex !== -1 && bIndex !== -1) {
-            return aIndex - bIndex;
-        } else if (aIndex !== -1) {
-            return -1;
-        } else if (bIndex !== -1) {
-            return 1;
-        } else {
-            if (parseInt(b.rating) !== parseInt(a.rating)) {
-                return parseInt(b.rating) - parseInt(a.rating);
-            }
-            return b.date.localeCompare(a.date);
-        }
-    });
+        meals = getWeekBestMeals(currentYear, currentMonth, currentWeek);
+        periodKey = `week_${currentYear}_${currentMonth}_${currentWeek}`;
+        periodLabel = '주간';
+    } else if (state.dashboardMode === 'week') {
+        // 주간 모드: 해당 기간의 만족도 4~5개 리스트
+        meals = getWeekBestMeals(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
+        periodKey = `week_${state.selectedYear}_${state.selectedMonthForWeek}_${state.selectedWeek}`;
+        periodLabel = '';
+    } else if (state.dashboardMode === 'month') {
+        // 월간 모드: 각 주간에서 1~5위
+        const [y, m] = state.selectedMonth.split('-').map(Number);
+        meals = getMonthBestMeals(y, m);
+        periodKey = `month_${state.selectedMonth}`;
+        periodLabel = '';
+    } else if (state.dashboardMode === 'year') {
+        // 연간 모드: 각 월별 1~5위
+        meals = getYearBestMeals(state.selectedYearForYear);
+        periodKey = `year_${state.selectedYearForYear}`;
+        periodLabel = '';
+    } else if (state.dashboardMode === 'custom') {
+        // 직접설정 → 연간 베스트 표시
+        const year = state.customStartDate.getFullYear();
+        meals = getYearBestMeals(year);
+        periodKey = `year_${year}_custom`;
+        periodLabel = '연간';
+    }
     
-    if (sortedMeals.length === 0) {
-        container.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">만족도 4점 이상인 기록이 없습니다.</div>';
+    // periodLabel 표시
+    if (periodLabelEl) {
+        periodLabelEl.textContent = periodLabel;
+    }
+    
+    // 월간/연간 모드에서는 만족도 5점 음식만 필터링
+    const isMonthOrYearMode = state.dashboardMode === 'month' || state.dashboardMode === 'year' || state.dashboardMode === 'custom';
+    const filteredMeals = isMonthOrYearMode 
+        ? meals.filter(m => m && m.rating && parseInt(m.rating) === 5)
+        : meals.filter(m => m && m.rating);
+    
+    if (filteredMeals.length === 0) {
+        const message = isMonthOrYearMode 
+            ? '만족도 5점인 기록이 없습니다.'
+            : '만족도 4점 이상인 기록이 없습니다.';
+        container.innerHTML = `<div class="text-center py-8 text-slate-400 text-sm">${message}</div>`;
         return;
     }
     
-    container.innerHTML = sortedMeals.map((meal, index) => {
+    // 저장된 순서 적용
+    const savedOrder = (window.userSettings && window.userSettings.bestMeals ? window.userSettings.bestMeals[periodKey] : null) || [];
+    
+    const sortedMeals = [...filteredMeals].sort((a, b) => {
+        const aRating = a.rating ? parseInt(a.rating) : 0;
+        const bRating = b.rating ? parseInt(b.rating) : 0;
+        const aIndex = savedOrder.indexOf(a.id);
+        const bIndex = savedOrder.indexOf(b.id);
+        
+        // 주간 모드에서는 만족도가 높은 것이 기본적으로 위에 오도록
+        const isWeekMode = state.dashboardMode === '7d' || state.dashboardMode === 'week';
+        
+        if (isWeekMode) {
+            // 만족도가 다르면 만족도 우선 (5점이 4점보다 위에)
+            if (aRating !== bRating) {
+                return bRating - aRating;
+            }
+            // 만족도가 같고 둘 다 저장된 순서에 있으면 저장된 순서대로
+            if (aIndex !== -1 && bIndex !== -1) {
+                return aIndex - bIndex;
+            }
+            // 만족도가 같고 하나만 저장된 순서에 있으면 저장된 것이 위에
+            if (aIndex !== -1) return -1;
+            if (bIndex !== -1) return 1;
+            // 만족도가 같고 둘 다 저장된 순서에 없으면 날짜 순
+            if (a.date && b.date) {
+                return b.date.localeCompare(a.date);
+            }
+            return 0;
+        } else {
+            // 월간/연간 모드는 기존 로직 유지 (저장된 순서 우선)
+            if (aIndex !== -1 && bIndex !== -1) {
+                return aIndex - bIndex;
+            } else if (aIndex !== -1) {
+                return -1;
+            } else if (bIndex !== -1) {
+                return 1;
+            } else {
+                if (bRating !== aRating) {
+                    return bRating - aRating;
+                }
+                if (a.date && b.date) {
+                    return b.date.localeCompare(a.date);
+                }
+                return 0;
+            }
+        }
+    });
+    
+    const displayMeals = sortedMeals;
+    
+    container.innerHTML = displayMeals.filter(m => m && m.id).map((meal, index) => {
+        if (!meal) return '';
         const slot = SLOTS.find(s => s.id === meal.slotId);
         const slotLabel = slot ? slot.label : '알 수 없음';
         const isSnack = slot && slot.type === 'snack';
         const displayTitle = isSnack ? (meal.menuDetail || meal.snackType || '간식') : (meal.menuDetail || meal.mealType || '식사');
-        const photoUrl = meal.photos && meal.photos.length > 0 ? meal.photos[0] : null;
-        const date = new Date(meal.date + 'T00:00:00');
+        const photoUrl = meal.photos && Array.isArray(meal.photos) && meal.photos.length > 0 ? meal.photos[0] : null;
+        const date = meal.date ? new Date(meal.date + 'T00:00:00') : new Date();
         const dateStr = `${date.getMonth() + 1}.${date.getDate()}(${getDayName(date)})`;
+        const rating = meal.rating ? parseInt(meal.rating) : 0;
+        const rank = index + 1;
+        
+        // 1~3위 색상 구분 (현대적이고 눈에 띄는 색상)
+        let rankBgClass = 'bg-emerald-100';
+        let rankTextClass = 'text-emerald-700';
+        if (rank === 1) {
+            // 1위: 강렬한 보라색
+            rankBgClass = 'bg-purple-500';
+            rankTextClass = 'text-white';
+        } else if (rank === 2) {
+            // 2위: 밝은 파란색
+            rankBgClass = 'bg-blue-400';
+            rankTextClass = 'text-white';
+        } else if (rank === 3) {
+            // 3위: 따뜻한 주황색
+            rankBgClass = 'bg-orange-500';
+            rankTextClass = 'text-white';
+        }
         
         return `
-            <div class="best-meal-item bg-white rounded-lg border border-slate-200 p-2 flex items-center gap-3 cursor-move active:scale-[0.98] transition-all" 
+            <div class="best-meal-item bg-white rounded-lg border border-slate-200 p-2 flex items-start gap-3 cursor-move active:scale-[0.98] transition-all" 
                  data-meal-id="${meal.id}" 
+                 data-rating="${rating}"
                  draggable="true">
-                <div class="flex-shrink-0 w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-bold">
-                    ${index + 1}
-                </div>
                 ${photoUrl ? `
-                    <div class="flex-shrink-0 w-[140px] h-[140px] rounded-lg overflow-hidden bg-slate-100">
+                    <div class="flex-shrink-0 w-[140px] h-[140px] rounded-lg overflow-hidden bg-slate-100 relative">
+                        <div class="absolute top-1 left-1 w-6 h-6 rounded-full ${rankBgClass} ${rankTextClass} flex items-center justify-center text-xs font-bold z-10">
+                            ${rank}
+                        </div>
                         <img src="${photoUrl}" alt="${displayTitle}" class="w-full h-full object-cover">
                     </div>
                 ` : `
-                    <div class="flex-shrink-0 w-[140px] h-[140px] rounded-lg bg-slate-100 flex items-center justify-center">
+                    <div class="flex-shrink-0 w-[140px] h-[140px] rounded-lg bg-slate-100 flex items-center justify-center relative">
+                        <div class="absolute top-1 left-1 w-6 h-6 rounded-full ${rankBgClass} ${rankTextClass} flex items-center justify-center text-xs font-bold z-10">
+                            ${rank}
+                        </div>
                         <i class="fa-solid fa-utensils text-slate-300 text-4xl"></i>
                     </div>
                 `}
                 <div class="flex-1 min-w-0">
+                    <div class="text-xs text-slate-400 mb-1">${dateStr}</div>
                     <div class="flex items-center gap-2 mb-1">
                         <span class="text-base font-bold text-slate-600">${displayTitle}</span>
                         <span class="text-xs text-slate-400">${slotLabel}</span>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <span class="text-xs text-slate-400">${dateStr}</span>
-                        <div class="flex items-center gap-0.5">
-                            ${Array.from({ length: parseInt(meal.rating) }).map(() => 
-                                '<i class="fa-solid fa-star text-yellow-400 text-xs"></i>'
-                            ).join('')}
-                        </div>
+                    <div class="flex items-center gap-0.5">
+                        ${Array.from({ length: rating }).map(() => 
+                            '<i class="fa-solid fa-star text-yellow-400 text-xs"></i>'
+                        ).join('')}
                     </div>
                 </div>
                 <div class="flex-shrink-0 text-slate-300">
@@ -777,15 +1035,19 @@ export function renderBestMeals() {
         `;
     }).join('');
     
-    setupDragAndDrop();
+    // 월간/연간 모드에서는 만족도 5점 음식만 순서 조정 가능
+    setupDragAndDrop(isMonthOrYearMode && displayMeals.length > 0);
 }
 
 function getBestPeriodKey() {
     const state = appState;
     if (state.dashboardMode === '7d') {
-        const startDate = state.recentWeekStartDate || new Date();
-        startDate.setDate(startDate.getDate() - 6);
-        return `7d_${startDate.toISOString().split('T')[0]}`;
+        // 최근1주 = 주별 키 반환
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonth = today.getMonth() + 1;
+        const currentWeek = getCurrentWeekInMonth(currentYear, currentMonth);
+        return `week_${currentYear}_${currentMonth}_${currentWeek}`;
     } else if (state.dashboardMode === 'week') {
         return `week_${state.selectedYear}_${state.selectedMonthForWeek}_${state.selectedWeek}`;
     } else if (state.dashboardMode === 'month') {
@@ -793,12 +1055,14 @@ function getBestPeriodKey() {
     } else if (state.dashboardMode === 'year') {
         return `year_${state.selectedYearForYear}`;
     } else if (state.dashboardMode === 'custom') {
-        return `custom_${state.customStartDate.toISOString().split('T')[0]}_${state.customEndDate.toISOString().split('T')[0]}`;
+        // 직접설정 = 연간 키 반환
+        const year = state.customStartDate.getFullYear();
+        return `year_${year}_custom`;
     }
     return 'default';
 }
 
-function setupDragAndDrop() {
+function setupDragAndDrop(enableRatingConstraint = false) {
     const container = document.getElementById('bestMealsContainer');
     if (!container) return;
     
@@ -814,7 +1078,7 @@ function setupDragAndDrop() {
         item.addEventListener('dragend', (e) => {
             item.classList.remove('opacity-50');
             container.querySelectorAll('.best-meal-item').forEach(el => {
-                el.classList.remove('border-emerald-400', 'bg-emerald-50');
+                el.classList.remove('border-emerald-400', 'bg-emerald-50', 'border-red-400', 'bg-red-50');
             });
         });
         
@@ -823,29 +1087,35 @@ function setupDragAndDrop() {
             e.dataTransfer.dropEffect = 'move';
             
             if (!draggedElement) return;
+            
+            // 만족도 제약 체크 (월간/연간 모드에서는 모든 음식이 5점이므로 제약 없음, 그냥 순서만 조정)
+            // 제약 로직은 제거 (모두 5점이므로)
+            
             item.classList.add('border-emerald-400', 'bg-emerald-50');
         });
         
         item.addEventListener('dragleave', (e) => {
-            item.classList.remove('border-emerald-400', 'bg-emerald-50');
+            item.classList.remove('border-emerald-400', 'bg-emerald-50', 'border-red-400', 'bg-red-50');
         });
         
         item.addEventListener('drop', (e) => {
             e.preventDefault();
-            item.classList.remove('border-emerald-400', 'bg-emerald-50');
+            item.classList.remove('border-emerald-400', 'bg-emerald-50', 'border-red-400', 'bg-red-50');
             
-            if (draggedElement && draggedElement !== item) {
-                const container = item.parentElement;
-                const afterElement = getDragAfterElement(container, e.clientY);
-                
-                if (afterElement == null) {
-                    container.appendChild(draggedElement);
-                } else {
-                    container.insertBefore(draggedElement, afterElement);
-                }
-                
-                updateBestOrder();
+            if (!draggedElement || draggedElement === item) return;
+            
+            const container = item.parentElement;
+            const afterElement = getDragAfterElement(container, e.clientY);
+            
+            // 월간/연간 모드에서는 모든 음식이 5점이므로 제약 없음, 순서만 조정
+            
+            if (afterElement == null) {
+                container.appendChild(draggedElement);
+            } else {
+                container.insertBefore(draggedElement, afterElement);
             }
+            
+            updateBestOrder();
         });
     });
 }
@@ -869,6 +1139,11 @@ async function updateBestOrder() {
     const container = document.getElementById('bestMealsContainer');
     if (!container) return;
     
+    if (!window.userSettings) {
+        console.warn('userSettings가 아직 초기화되지 않았습니다.');
+        return;
+    }
+    
     const items = container.querySelectorAll('.best-meal-item');
     const order = Array.from(items).map(item => item.getAttribute('data-meal-id'));
     
@@ -879,15 +1154,35 @@ async function updateBestOrder() {
     }
     window.userSettings.bestMeals[periodKey] = order;
     
+    // 순위 번호 업데이트 (동그라미 내부)
     items.forEach((item, index) => {
-        const numberEl = item.querySelector('.w-8.h-8');
-        if (numberEl) {
-            numberEl.textContent = index + 1;
+        const newRank = index + 1;
+        // 순위 동그라미 찾기 (w-6 h-6)
+        const rankCircle = item.querySelector('.w-6.h-6.rounded-full');
+        if (rankCircle) {
+            rankCircle.textContent = newRank;
+            
+            // 1~3위 색상 업데이트 (보라색, 파란색, 주황색)
+            rankCircle.className = 'absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold z-10';
+            if (newRank === 1) {
+                // 1위: 강렬한 보라색
+                rankCircle.classList.add('bg-purple-500', 'text-white');
+            } else if (newRank === 2) {
+                // 2위: 밝은 파란색
+                rankCircle.classList.add('bg-blue-400', 'text-white');
+            } else if (newRank === 3) {
+                // 3위: 따뜻한 주황색
+                rankCircle.classList.add('bg-orange-500', 'text-white');
+            } else {
+                rankCircle.classList.add('bg-emerald-100', 'text-emerald-700');
+            }
         }
     });
     
     try {
-        await window.dbOps.saveSettings(window.userSettings);
+        if (window.dbOps && window.dbOps.saveSettings) {
+            await window.dbOps.saveSettings(window.userSettings);
+        }
     } catch (e) {
         console.error('Best 순서 저장 실패:', e);
     }

@@ -6,6 +6,14 @@ export function renderEntryChips() {
     const tags = window.userSettings.tags;
     const subTags = window.userSettings.subTags;
     
+    // "???" 항목 제거 (기존 사용자 설정 정리)
+    if (tags && tags.mealType) {
+        const index = tags.mealType.indexOf('???');
+        if (index > -1) {
+            tags.mealType.splice(index, 1);
+        }
+    }
+    
     const renderPrimary = (id, list, inputId, subTagKey, subContainerId) => {
         const el = document.getElementById(id);
         if (el) el.innerHTML = list.map(t => 
@@ -199,15 +207,13 @@ export function renderTimeline() {
                 let tagsHtml = '';
                 if (r) {
                     if (r.mealType === 'Skip') {
-                        title = '건너뜀';
-                    } else if (r.mealType === '???') {
-                        title = '기억이 안 남';
+                        title = 'Skip';
                     } else {
                         const p = r.place || '';
                         const m = r.menuDetail || r.category || '';
                         title = (p && m) ? `${p} | ${m}` : (p || m || r.mealType);
                         const tags = [];
-                        if (r.mealType && r.mealType !== 'Skip' && r.mealType !== '???') tags.push(r.mealType);
+                        if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
                         if (r.withWhomDetail) tags.push(r.withWhomDetail);
                         else if (r.withWhom && r.withWhom !== '혼자') tags.push(r.withWhom);
                         if (r.satiety) {
@@ -234,8 +240,6 @@ export function renderTimeline() {
                     iconHtml = `<img src="${r.photos}" class="w-full h-full object-cover">`;
                 } else if (r.mealType === 'Skip') {
                     iconHtml = `<i class="fa-solid fa-ban text-2xl"></i>`;
-                } else if (r.mealType === '???') {
-                    iconHtml = `<i class="fa-solid fa-circle-question text-2xl"></i>`;
                 } else {
                     iconHtml = `<i class="fa-solid fa-utensils text-2xl"></i>`;
                 }
@@ -294,6 +298,38 @@ export function renderTimeline() {
                 window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'smooth' });
                 window.hasScrolledToToday = true;
             }, 300);
+        }
+    }
+    
+    // 더보기 버튼 추가 (list 모드일 때만)
+    if (state.viewMode === 'list' && window.loadedMealsDateRange) {
+        // 가장 오래된 날짜 확인
+        const oldestDate = window.mealHistory.length > 0 
+            ? window.mealHistory[window.mealHistory.length - 1]?.date 
+            : null;
+        
+        // 로드된 범위의 시작 날짜보다 오래된 데이터가 있으면 더보기 버튼 표시
+        if (oldestDate && oldestDate >= window.loadedMealsDateRange.start) {
+            // 더보기 버튼이 이미 있으면 제거
+            const existingBtn = document.getElementById('loadMoreMealsBtn');
+            if (existingBtn) existingBtn.remove();
+            
+            const loadMoreBtn = document.createElement('div');
+            loadMoreBtn.id = 'loadMoreMealsBtn';
+            loadMoreBtn.className = 'flex justify-center py-6';
+            loadMoreBtn.innerHTML = `
+                <button onclick="window.loadMoreMealsTimeline()" 
+                        class="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold 
+                               active:bg-slate-300 transition-colors flex items-center gap-2">
+                    <i class="fa-solid fa-chevron-down"></i>
+                    <span>더 오래된 기록 보기</span>
+                </button>
+            `;
+            container.appendChild(loadMoreBtn);
+        } else {
+            // 더 이상 로드할 데이터가 없으면 버튼 제거
+            const existingBtn = document.getElementById('loadMoreMealsBtn');
+            if (existingBtn) existingBtn.remove();
         }
     }
 }
@@ -662,7 +698,10 @@ export function renderTagManager(key, isSub = false, tempSettings) {
     if (!container || !tempSettings) return;
     
     const tags = isSub ? (tempSettings.subTags[key] || []) : tempSettings.tags[key];
-    const protectedTags = isSub ? [] : ['Skip', '???', '혼자', '미분류'];
+    const protectedTags = isSub ? [] : ['Skip', '혼자', '미분류'];
+    const nonEditableMainTags = ['mealType', 'category']; // 메인 태그 중 편집 불가능한 태그
+    const isNonEditable = !isSub && nonEditableMainTags.includes(key);
+    
     let labelText = "";
     if (!isSub) {
         if (key === 'mealType') labelText = '식사 구분 (대분류)';
@@ -672,24 +711,29 @@ export function renderTagManager(key, isSub = false, tempSettings) {
     }
     
     let html = `<div class="text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-tighter">${labelText}</div>
-        <div class="flex flex-wrap gap-2 mb-2">
+        <div class="flex flex-wrap gap-2 ${isNonEditable ? 'mb-0' : 'mb-2'}">
             ${tags.map((tag, idx) => {
                 const text = typeof tag === 'string' ? tag : tag.text;
                 const parentInfo = (isSub && tag.parent) ? `<span class="text-[9px] text-slate-400 ml-1 font-normal">(${tag.parent})</span>` : '';
                 return `<div class="tag-manage-item">
                     <span class="text-[11px] font-bold text-slate-600">${text}</span>${parentInfo}
-                    ${!protectedTags.includes(text) ? 
+                    ${!isNonEditable && !protectedTags.includes(text) ? 
                         `<div onclick="window.removeTag('${key}', ${idx}, ${isSub})" class="tag-delete-btn">
                             <i class="fa-solid fa-xmark text-[10px]"></i>
                         </div>` : ''
                     }
                 </div>`;
             }).join('')}
-        </div>
-        <div class="flex gap-2">
+        </div>`;
+    
+    // 메인 태그(mealType, category)는 편집 기능 제거
+    if (!isNonEditable) {
+        html += `<div class="flex gap-2">
             <input type="text" id="newTag-${isSub ? 'sub-' : ''}${key}" class="flex-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-emerald-500" placeholder="태그 추가">
             <button onclick="window.addTag('${key}', ${isSub})" class="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-lg text-xs font-bold border border-emerald-100">추가</button>
         </div>`;
+    }
+    
     container.innerHTML = html;
 }
 

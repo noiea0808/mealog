@@ -8,237 +8,327 @@ import { showToast } from './ui.js';
 import { renderTimeline, renderMiniCalendar } from './render.js';
 import { getDashboardData } from './analytics.js';
 
+// 설정 저장 디바운싱을 위한 타이머
+let settingsSaveTimeout = null;
+
 export function openModal(date, slotId, entryId = null) {
-    const state = appState;
-    if (!window.currentUser) return;
-    
-    document.querySelectorAll('.chip, .sub-chip').forEach(el => el.classList.remove('active'));
-    state.currentEditingId = entryId;
-    state.currentEditingDate = date;
-    state.currentEditingSlotId = slotId;
-    state.currentPhotos = [];
-    state.sharedPhotos = []; // 이미 공유된 사진 목록
-    state.originalSharedPhotos = []; // 원본 공유 사진 목록 (삭제 추적용)
-    state.wantsToShare = false; // 공유를 원하는지 여부
-    
-    document.getElementById('modalTitle').innerText = SLOTS.find(s => s.id === slotId).label;
-    renderEntryChips();
-    
-    // 공유 인디케이터 숨기기
-    const shareIndicator = document.getElementById('sharePhotoIndicator');
-    if (shareIndicator) shareIndicator.classList.add('hidden');
-    
-    ['placeInput', 'menuDetailInput', 'withWhomInput', 'snackDetailInput', 'generalCommentInput'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.value = '';
-    });
-    
-    const mainPhotoContainer = document.getElementById('photoPreviewContainer');
-    const snackPhotoContainer = document.getElementById('snackPhotoPreviewContainer');
-    if (mainPhotoContainer) mainPhotoContainer.innerHTML = "";
-    if (snackPhotoContainer) snackPhotoContainer.innerHTML = "";
-    
-    window.setRating(3);
-    window.setSatiety(3);
-    
-    const scrollArea = document.getElementById('modalScrollArea');
-    if (scrollArea) scrollArea.scrollTop = 0;
-    
+    try {
+        const state = appState;
+        if (!window.currentUser) return;
+        if (!date || !slotId) {
+            console.error('openModal: 필수 파라미터가 없습니다.', { date, slotId });
+            return;
+        }
+        
+        document.querySelectorAll('.chip, .sub-chip').forEach(el => el.classList.remove('active'));
+        state.currentEditingId = entryId;
+        state.currentEditingDate = date;
+        state.currentEditingSlotId = slotId;
+        state.currentPhotos = [];
+        state.sharedPhotos = []; // 이미 공유된 사진 목록
+        state.originalSharedPhotos = []; // 원본 공유 사진 목록 (삭제 추적용)
+        state.wantsToShare = false; // 공유를 원하는지 여부
+        
+        const modalTitle = document.getElementById('modalTitle');
+        if (modalTitle) {
+            const slot = SLOTS.find(s => s.id === slotId);
+            if (slot) {
+                modalTitle.innerText = slot.label;
+            }
+        }
+        renderEntryChips();
+        
+        // 공유 인디케이터 숨기기
+        const shareIndicator = document.getElementById('sharePhotoIndicator');
+        if (shareIndicator) shareIndicator.classList.add('hidden');
+        
+        ['placeInput', 'menuDetailInput', 'withWhomInput', 'snackDetailInput', 'generalCommentInput'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        
+        const mainPhotoContainer = document.getElementById('photoPreviewContainer');
+        const snackPhotoContainer = document.getElementById('snackPhotoPreviewContainer');
+        if (mainPhotoContainer) mainPhotoContainer.innerHTML = "";
+        if (snackPhotoContainer) snackPhotoContainer.innerHTML = "";
+        
+        window.setRating(3);
+        window.setSatiety(3);
+        
+        const scrollArea = document.getElementById('modalScrollArea');
+        if (scrollArea) scrollArea.scrollTop = 0;
+        
         ['restaurantSuggestions', 'menuSuggestions', 'peopleSuggestions', 'snackSuggestions'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.classList.add('no-scrollbar');
-            el.classList.remove('scrollbar-hide');
+            const el = document.getElementById(id);
+            if (el) {
+                el.classList.add('no-scrollbar');
+                el.classList.remove('scrollbar-hide');
+            }
+        });
+        
+        const slot = SLOTS.find(s => s.id === slotId);
+        if (!slot) {
+            console.error('슬롯을 찾을 수 없습니다:', slotId);
+            return;
         }
-    });
-    
-    const isS = SLOTS.find(s => s.id === slotId).type === 'snack';
-    document.getElementById('optionalFields')?.classList.toggle('hidden', isS);
-    document.getElementById('reviewSection')?.classList.remove('hidden');
-    document.getElementById('btnDelete')?.classList.add('hidden');
-    document.getElementById('satietySection').classList.toggle('hidden', isS);
-    
-    // 필드 표시/숨김 처리를 먼저 수행 (renderPhotoPreviews가 올바른 컨테이너를 찾을 수 있도록)
-    document.getElementById('mainMealFields').classList.toggle('hidden', isS);
-    document.getElementById('snackFields').classList.toggle('hidden', !isS);
-    
-    // 버튼 텍스트 설정 (수정 모드인 경우 "수정 완료", 새로 등록인 경우 "기록 완료")
-    const btnSave = document.getElementById('btnSave');
-    if (btnSave) {
-        btnSave.innerText = entryId ? '수정 완료' : '기록 완료';
-    }
-    
-    if (entryId) {
-        const r = window.mealHistory.find(m => m.id === entryId);
-        if (r) {
-            // photos가 배열인지 확인하고, 배열이 아니면 배열로 변환
-            state.currentPhotos = Array.isArray(r.photos) ? r.photos : (r.photos ? [r.photos] : []);
-            // sharedPhotos도 배열인지 확인
-            state.sharedPhotos = Array.isArray(r.sharedPhotos) ? r.sharedPhotos : (r.sharedPhotos ? [r.sharedPhotos] : []);
-            state.originalSharedPhotos = Array.isArray(r.sharedPhotos) ? [...r.sharedPhotos] : (r.sharedPhotos ? [r.sharedPhotos] : []); // 원본 복사 (삭제 추적용)
-            state.wantsToShare = (state.sharedPhotos && state.sharedPhotos.length > 0); // 이미 공유된 사진이 있으면 공유 상태로
-            // 필드 표시/숨김 처리 후에 renderPhotoPreviews 호출
-            renderPhotoPreviews();
-            setVal('placeInput', r.place || "");
-            setVal('menuDetailInput', r.menuDetail || "");
-            setVal('withWhomInput', r.withWhomDetail || "");
-            setVal('snackDetailInput', r.menuDetail || "");
-            setVal('generalCommentInput', r.comment || "");
-            
-            if (r.rating) window.setRating(r.rating);
-            if (r.satiety) window.setSatiety(r.satiety);
-            
-            // 공유 인디케이터 표시
-            updateShareIndicator();
-            
-            // 태그 활성화 처리
-            ['typeChips', 'restaurantSuggestions', 'withChips', 'peopleSuggestions', 'categoryChips', 'menuSuggestions', 'snackTypeChips', 'snackSuggestions'].forEach(id => {
-                const c = document.getElementById(id);
-                if (c) {
-                    c.querySelectorAll('button').forEach(ch => {
-                        const checkValues = [r.mealType, r.category, r.withWhom, r.snackType, r.place, r.menuDetail, r.withWhomDetail];
-                        if (checkValues.includes(ch.innerText)) {
-                            ch.classList.add('active');
-                        }
-                    });
+        const isS = slot.type === 'snack';
+        document.getElementById('optionalFields')?.classList.toggle('hidden', isS);
+        document.getElementById('reviewSection')?.classList.remove('hidden');
+        document.getElementById('btnDelete')?.classList.add('hidden');
+        const satietySection = document.getElementById('satietySection');
+        if (satietySection) {
+            satietySection.classList.toggle('hidden', isS);
+        }
+        
+        // 필드 표시/숨김 처리를 먼저 수행 (renderPhotoPreviews가 올바른 컨테이너를 찾을 수 있도록)
+        document.getElementById('mainMealFields')?.classList.toggle('hidden', isS);
+        document.getElementById('snackFields')?.classList.toggle('hidden', !isS);
+        
+        // 필드 활성화 상태 초기화 (Skip이 아닌 경우 활성화)
+        if (!isS) {
+            toggleFieldsForSkip(false);
+        }
+        
+        // 버튼 텍스트 설정 (수정 모드인 경우 "수정 완료", 새로 등록인 경우 "기록 완료")
+        const btnSave = document.getElementById('btnSave');
+        if (btnSave) {
+            btnSave.innerText = entryId ? '수정 완료' : '기록 완료';
+        }
+        
+        if (entryId) {
+            const r = window.mealHistory.find(m => m.id === entryId);
+            if (r) {
+                // photos가 배열인지 확인하고, 배열이 아니면 배열로 변환
+                state.currentPhotos = Array.isArray(r.photos) ? r.photos : (r.photos ? [r.photos] : []);
+                // sharedPhotos도 배열인지 확인
+                state.sharedPhotos = Array.isArray(r.sharedPhotos) ? r.sharedPhotos : (r.sharedPhotos ? [r.sharedPhotos] : []);
+                state.originalSharedPhotos = Array.isArray(r.sharedPhotos) ? [...r.sharedPhotos] : (r.sharedPhotos ? [r.sharedPhotos] : []); // 원본 복사 (삭제 추적용)
+                state.wantsToShare = (state.sharedPhotos && state.sharedPhotos.length > 0); // 이미 공유된 사진이 있으면 공유 상태로
+                // 필드 표시/숨김 처리 후에 renderPhotoPreviews 호출
+                renderPhotoPreviews();
+                setVal('placeInput', r.place || "");
+                setVal('menuDetailInput', r.menuDetail || "");
+                setVal('withWhomInput', r.withWhomDetail || "");
+                setVal('snackDetailInput', r.menuDetail || "");
+                setVal('generalCommentInput', r.comment || "");
+                
+                if (r.rating) window.setRating(r.rating);
+                if (r.satiety) window.setSatiety(r.satiety);
+                
+                // 공유 인디케이터 표시
+                updateShareIndicator();
+                
+                // 태그 활성화 처리
+                ['typeChips', 'restaurantSuggestions', 'withChips', 'peopleSuggestions', 'categoryChips', 'menuSuggestions', 'snackTypeChips', 'snackSuggestions'].forEach(id => {
+                    const c = document.getElementById(id);
+                    if (c) {
+                        c.querySelectorAll('button').forEach(ch => {
+                            const checkValues = [r.mealType, r.category, r.withWhom, r.snackType, r.place, r.menuDetail, r.withWhomDetail];
+                            if (checkValues.includes(ch.innerText)) {
+                                ch.classList.add('active');
+                            }
+                        });
+                    }
+                });
+                
+                // Skip 선택 시 필드 숨기기 처리
+                if (r.mealType === 'Skip' || r.mealType === '건너뜀') {
+                    setTimeout(() => {
+                        toggleFieldsForSkip(true);
+                    }, 100);
                 }
-            });
-            
-            // 간식 타입 선택 시 추천 태그 업데이트
-            if (isS && r.snackType) {
-                const subTags = window.userSettings.subTags.snack || [];
-                window.renderSecondary('snackSuggestions', subTags, 'snackDetailInput', r.snackType, 'snack');
+                
+                // 간식 타입 선택 시 추천 태그 업데이트
+                if (isS && r.snackType) {
+                    const subTags = window.userSettings.subTags.snack || [];
+                    window.renderSecondary('snackSuggestions', subTags, 'snackDetailInput', r.snackType, 'snack');
+                }
+                
+                document.getElementById('btnDelete')?.classList.remove('hidden');
             }
-            
-            if (r.mealType === 'Skip' || r.mealType === '???') {
-                document.getElementById('optionalFields')?.classList.add('hidden');
-                document.getElementById('reviewSection')?.classList.add('hidden');
-            }
-            document.getElementById('btnDelete')?.classList.remove('hidden');
-        }
-    }
-    
-    // 간식 모드일 때 초기 추천 태그 표시
-    if (isS) {
-        // 필드가 보이는 상태로 만든 후 추천 태그 표시
-        const snackFields = document.getElementById('snackFields');
-        if (snackFields) snackFields.classList.remove('hidden');
-        
-        const subTags = window.userSettings.subTags.snack || [];
-        const snackType = document.querySelector('#snackTypeChips button.active')?.innerText;
-        window.renderSecondary('snackSuggestions', subTags, 'snackDetailInput', snackType || null, 'snack');
-    }
-    
-    // 입력 필드에 이벤트 리스너 추가 (간식 입력 시 추천 태그 업데이트)
-    // 이벤트 리스너는 한 번만 추가하도록 개선
-    const snackDetailInput = document.getElementById('snackDetailInput');
-    if (snackDetailInput) {
-        // 기존 핸들러 제거 (없어도 에러 안남)
-        if (snackDetailInput._snackInputHandler) {
-            snackDetailInput.removeEventListener('input', snackDetailInput._snackInputHandler);
         }
         
-        // 새 핸들러 생성 및 저장
-        const updateSnackSuggestions = () => {
+        // 간식 모드일 때 초기 추천 태그 표시
+        if (isS) {
+            // 필드가 보이는 상태로 만든 후 추천 태그 표시
+            const snackFields = document.getElementById('snackFields');
+            if (snackFields) snackFields.classList.remove('hidden');
+            
             const subTags = window.userSettings.subTags.snack || [];
             const snackType = document.querySelector('#snackTypeChips button.active')?.innerText;
             window.renderSecondary('snackSuggestions', subTags, 'snackDetailInput', snackType || null, 'snack');
-        };
+        }
         
-        snackDetailInput._snackInputHandler = updateSnackSuggestions;
-        snackDetailInput.addEventListener('input', updateSnackSuggestions);
+        // 입력 필드에 이벤트 리스너 추가 (간식 입력 시 추천 태그 업데이트)
+        // 이벤트 리스너는 한 번만 추가하도록 개선
+        const snackDetailInput = document.getElementById('snackDetailInput');
+        if (snackDetailInput) {
+            // 기존 핸들러 제거 (없어도 에러 안남)
+            if (snackDetailInput._snackInputHandler) {
+                snackDetailInput.removeEventListener('input', snackDetailInput._snackInputHandler);
+            }
+            
+            // 새 핸들러 생성 및 저장
+            const updateSnackSuggestions = () => {
+                const subTags = window.userSettings.subTags.snack || [];
+                const snackType = document.querySelector('#snackTypeChips button.active')?.innerText;
+                window.renderSecondary('snackSuggestions', subTags, 'snackDetailInput', snackType || null, 'snack');
+            };
+            
+            snackDetailInput._snackInputHandler = updateSnackSuggestions;
+            snackDetailInput.addEventListener('input', updateSnackSuggestions);
+        }
+        
+        const entryModal = document.getElementById('entryModal');
+        if (entryModal) {
+            entryModal.classList.remove('hidden');
+        } else {
+            console.error('entryModal 요소를 찾을 수 없습니다.');
+        }
+    } catch (error) {
+        console.error('openModal 오류:', error);
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
     }
-    
-    document.getElementById('entryModal').classList.remove('hidden');
 }
 
 export function closeModal() {
-    document.getElementById('entryModal').classList.add('hidden');
+    const entryModal = document.getElementById('entryModal');
+    if (entryModal) {
+        entryModal.classList.add('hidden');
+    }
+    // 모달을 닫을 때 로딩 오버레이도 숨김
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) {
+        loadingOverlay.classList.add('hidden');
+    }
+    // 상태 초기화
+    const state = appState;
+    if (state) {
+        state.currentEditingId = null;
+        state.currentPhotos = [];
+        state.sharedPhotos = [];
+        state.originalSharedPhotos = [];
+        state.wantsToShare = false;
+    }
 }
 
 export async function saveEntry() {
-    const state = appState;
-    const getT = (id) => document.getElementById(id)?.querySelector('.chip.active')?.innerText || '';
-    const isS = SLOTS.find(s => s.id === state.currentEditingSlotId).type === 'snack';
-    const mealType = getT('typeChips');
-    const isSk = mealType === 'Skip' || mealType === '???';
-    const placeInputVal = document.getElementById('placeInput')?.value || '';
-    const menuInputVal = document.getElementById('menuDetailInput')?.value || '';
-    const withInputVal = document.getElementById('withWhomInput')?.value || '';
+    // 로딩 오버레이 참조를 함수 시작 부분에서 가져옴
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const entryModal = document.getElementById('entryModal');
     
-    // 간식 입력값 가져오기 (hidden 상태여도 값을 가져올 수 있음)
-    const snackDetailInput = document.getElementById('snackDetailInput');
-    const snackInputVal = snackDetailInput ? snackDetailInput.value.trim() : '';
-    
-    // 디버깅: 간식 입력값 확인
-    if (isS) {
-        console.log('간식 저장 시도:', {
-            isS,
-            snackInputVal,
-            snackDetailInput: snackDetailInput ? 'found' : 'not found',
-            snackInputElementValue: snackDetailInput?.value,
-            snackFieldsVisible: !document.getElementById('snackFields')?.classList.contains('hidden')
-        });
-    }
-    
-    const newSettings = JSON.parse(JSON.stringify(window.userSettings));
-    if (!newSettings.subTags) newSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
-    
-    // subTags의 각 배열이 정의되어 있는지 확인
-    if (!newSettings.subTags.place) newSettings.subTags.place = [];
-    if (!newSettings.subTags.menu) newSettings.subTags.menu = [];
-    if (!newSettings.subTags.people) newSettings.subTags.people = [];
-    if (!newSettings.subTags.snack) newSettings.subTags.snack = [];
-    
-    let tagsChanged = false;
-    if (placeInputVal && !newSettings.subTags.place.find(t => (t.text || t) === placeInputVal)) {
-        newSettings.subTags.place.push({ text: placeInputVal, parent: mealType });
-        tagsChanged = true;
-    }
-    if (menuInputVal && !newSettings.subTags.menu.find(t => (t.text || t) === menuInputVal)) {
-        newSettings.subTags.menu.push({ text: menuInputVal, parent: getT('categoryChips') });
-        tagsChanged = true;
-    }
-    if (withInputVal && !newSettings.subTags.people.find(t => (t.text || t) === withInputVal)) {
-        newSettings.subTags.people.push({ text: withInputVal, parent: getT('withChips') });
-        tagsChanged = true;
-    }
-    if (isS && snackInputVal && !newSettings.subTags.snack.find(t => (t.text || t) === snackInputVal)) {
-        newSettings.subTags.snack.push({ text: snackInputVal, parent: getT('snackTypeChips') });
-        tagsChanged = true;
-    }
-    
-    if (tagsChanged) {
-        window.userSettings = newSettings;
-        await dbOps.saveSettings(window.userSettings);
-    }
-    
-    const record = {
-        id: state.currentEditingId,
-        date: state.currentEditingDate,
-        slotId: state.currentEditingSlotId,
-        mealType,
-        withWhom: getT('withChips'),
-        withWhomDetail: isSk ? '' : withInputVal,
-        category: getT('categoryChips'),
-        placeType: '',
-        snackType: getT('snackTypeChips'),
-        photos: state.currentPhotos,
-        menuDetail: isSk ? '' : (isS ? snackInputVal : menuInputVal),
-        place: isSk ? '' : placeInputVal,
-        comment: isSk ? '' : (document.getElementById('generalCommentInput')?.value || ''),
-        rating: (isSk) ? null : state.currentRating,
-        satiety: (isSk || isS) ? null : state.currentSatiety,
-        time: new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' })
-    };
-    
-    // 디버깅: 저장될 record 확인
-    if (isS) {
-        console.log('저장될 간식 record:', record);
-    }
-    
-    document.getElementById('loadingOverlay').classList.remove('hidden');
     try {
+        const state = appState;
+        
+        // 필수 상태 확인
+        if (!state.currentEditingSlotId || !state.currentEditingDate) {
+            console.error('저장 실패: 필수 정보가 없습니다.', { 
+                slotId: state.currentEditingSlotId, 
+                date: state.currentEditingDate 
+            });
+            showToast("저장할 정보가 없습니다.", 'error');
+            if (loadingOverlay) loadingOverlay.classList.add('hidden');
+            return;
+        }
+        
+        const getT = (id) => document.getElementById(id)?.querySelector('.chip.active')?.innerText || '';
+        const slot = SLOTS.find(s => s.id === state.currentEditingSlotId);
+        if (!slot) {
+            console.error('저장 실패: 슬롯을 찾을 수 없습니다.', state.currentEditingSlotId);
+            showToast("저장할 정보가 없습니다.", 'error');
+            if (loadingOverlay) loadingOverlay.classList.add('hidden');
+            return;
+        }
+        const isS = slot.type === 'snack';
+        const mealType = getT('typeChips');
+        const isSk = mealType === 'Skip' || mealType === '건너뜀';
+        const placeInputVal = document.getElementById('placeInput')?.value || '';
+        const menuInputVal = document.getElementById('menuDetailInput')?.value || '';
+        const withInputVal = document.getElementById('withWhomInput')?.value || '';
+        
+        // 간식 입력값 가져오기 (hidden 상태여도 값을 가져올 수 있음)
+        const snackDetailInput = document.getElementById('snackDetailInput');
+        const snackInputVal = snackDetailInput ? snackDetailInput.value.trim() : '';
+        
+        // 디버깅: 간식 입력값 확인
+        if (isS) {
+            console.log('간식 저장 시도:', {
+                isS,
+                snackInputVal,
+                snackDetailInput: snackDetailInput ? 'found' : 'not found',
+                snackInputElementValue: snackDetailInput?.value,
+                snackFieldsVisible: !document.getElementById('snackFields')?.classList.contains('hidden')
+            });
+        }
+        
+        const newSettings = JSON.parse(JSON.stringify(window.userSettings));
+        if (!newSettings.subTags) newSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
+        
+        // subTags의 각 배열이 정의되어 있는지 확인
+        if (!newSettings.subTags.place) newSettings.subTags.place = [];
+        if (!newSettings.subTags.menu) newSettings.subTags.menu = [];
+        if (!newSettings.subTags.people) newSettings.subTags.people = [];
+        if (!newSettings.subTags.snack) newSettings.subTags.snack = [];
+        
+        let tagsChanged = false;
+        if (placeInputVal && !newSettings.subTags.place.find(t => (t.text || t) === placeInputVal)) {
+            newSettings.subTags.place.push({ text: placeInputVal, parent: mealType });
+            tagsChanged = true;
+        }
+        if (menuInputVal && !newSettings.subTags.menu.find(t => (t.text || t) === menuInputVal)) {
+            newSettings.subTags.menu.push({ text: menuInputVal, parent: getT('categoryChips') });
+            tagsChanged = true;
+        }
+        if (withInputVal && !newSettings.subTags.people.find(t => (t.text || t) === withInputVal)) {
+            newSettings.subTags.people.push({ text: withInputVal, parent: getT('withChips') });
+            tagsChanged = true;
+        }
+        if (isS && snackInputVal && !newSettings.subTags.snack.find(t => (t.text || t) === snackInputVal)) {
+            newSettings.subTags.snack.push({ text: snackInputVal, parent: getT('snackTypeChips') });
+            tagsChanged = true;
+        }
+        
+        if (tagsChanged) {
+            window.userSettings = newSettings;
+            // 디바운싱: 1초 내 여러 태그 변경을 묶어서 한 번만 저장
+            clearTimeout(settingsSaveTimeout);
+            settingsSaveTimeout = setTimeout(async () => {
+                try {
+                    await dbOps.saveSettings(window.userSettings);
+                    console.log('디바운싱된 설정 저장 완료');
+                } catch (e) {
+                    console.error('설정 저장 실패:', e);
+                    // dbOps.saveSettings에서 이미 에러 토스트를 표시하므로 여기서는 로그만
+                }
+            }, 1000);
+        }
+        
+        const record = {
+            id: state.currentEditingId,
+            date: state.currentEditingDate,
+            slotId: state.currentEditingSlotId,
+            mealType,
+            withWhom: getT('withChips'),
+            withWhomDetail: isSk ? '' : withInputVal,
+            category: getT('categoryChips'),
+            placeType: '',
+            snackType: getT('snackTypeChips'),
+            photos: state.currentPhotos,
+            menuDetail: isSk ? '' : (isS ? snackInputVal : menuInputVal),
+            place: isSk ? '' : placeInputVal,
+            comment: isSk ? '' : (document.getElementById('generalCommentInput')?.value || ''),
+            rating: (isSk) ? null : state.currentRating,
+            satiety: (isSk || isS) ? null : state.currentSatiety,
+            time: new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' })
+        };
+        
+        // 디버깅: 저장될 record 확인
+        if (isS) {
+            console.log('저장될 간식 record:', record);
+        }
+        
+        if (loadingOverlay) loadingOverlay.classList.remove('hidden');
         // 삭제된 사진 찾기: 원래 공유되었던 사진 중 현재 currentPhotos에 없는 사진들
         const deletedPhotos = state.originalSharedPhotos.filter(photo => 
             !state.currentPhotos.includes(photo)
@@ -289,63 +379,189 @@ export async function saveEntry() {
                 record.sharedPhotos = [];
             } catch (e) {
                 console.error("사진 공유 해제 실패:", e);
+                // dbOps.unsharePhotos에서 이미 에러 토스트를 표시함
                 // 공유 해제 실패해도 기록 저장은 성공했으므로 계속 진행
             }
         }
         
-        await dbOps.save(record);
-        window.closeModal();
+        console.log('저장 시작:', record);
         
-        // 저장된 항목의 날짜로 이동 (스크롤 없이 렌더링만)
-        const wasScrolling = window.isScrolling;
-        window.isScrolling = true; // jumpToDate의 자동 스크롤 방지
-        window.jumpToDate(state.currentEditingDate);
+        // 모달과 로딩 오버레이를 먼저 닫기 (저장 전에 닫아서 사용자 경험 개선)
+        if (entryModal) {
+            entryModal.classList.add('hidden');
+            console.log('모달 닫기 완료');
+        }
         
-        // 타임라인 상단으로 스크롤하여 새로 추가된 항목이 트래커 아래에 보이도록
-        setTimeout(() => {
-            // 트래커 섹션과 헤더 높이 계산
-            const trackerSection = document.getElementById('trackerSection');
-            const trackerHeight = trackerSection ? trackerSection.offsetHeight : 0;
-            const headerHeight = 73; // 헤더 높이 (top-[73px])
-            const totalOffset = headerHeight + trackerHeight;
-            
-            // 날짜 섹션이 렌더링된 후 해당 섹션으로 스크롤 (트래커 높이만큼 오프셋)
-            setTimeout(() => {
-                const dateSection = document.getElementById(`date-${state.currentEditingDate}`);
-                if (dateSection) {
-                    // 섹션의 위치를 계산하여 트래커 아래에 보이도록 스크롤
-                    const elementTop = dateSection.getBoundingClientRect().top + window.pageYOffset;
-                    const offsetPosition = elementTop - totalOffset - 16; // 16px 여유 공간
-                    window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'smooth' });
-                    window.isScrolling = wasScrolling; // 원래 상태 복원
-                } else {
-                    // 섹션이 아직 렌더링되지 않았으면 다시 시도
-                    setTimeout(() => {
-                        const dateSection2 = document.getElementById(`date-${state.currentEditingDate}`);
-                        if (dateSection2) {
-                            const elementTop = dateSection2.getBoundingClientRect().top + window.pageYOffset;
-                            const offsetPosition = elementTop - totalOffset - 16;
-                            window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'smooth' });
-                        }
-                        window.isScrolling = wasScrolling; // 원래 상태 복원
-                    }, 200);
-                }
-            }, 400);
-        }, 200);
-    } catch (e) {
-        showToast("저장 실패", 'error');
-    } finally {
-        document.getElementById('loadingOverlay').classList.add('hidden');
+        // 로딩 오버레이 숨김 (모달 닫기 직후)
+        if (loadingOverlay) {
+            loadingOverlay.classList.add('hidden');
+            console.log('로딩 오버레이 숨김');
+        }
+        
+        // 상태 초기화 (모달 닫기 직후)
         state.currentEditingId = null;
         state.currentPhotos = [];
+        state.sharedPhotos = [];
+        state.originalSharedPhotos = [];
+        state.wantsToShare = false;
+        
+        // 저장 실행 (모달과 로딩 오버레이가 이미 닫힌 상태에서)
+        try {
+            await dbOps.save(record);
+            console.log('저장 완료');
+        } catch (saveError) {
+            console.error('dbOps.save 오류:', saveError);
+            // dbOps.save()에서 이미 에러 토스트를 표시하므로 여기서는 추가 처리 불필요
+            // 로딩 오버레이는 이미 숨겨졌으므로 추가 처리 불필요
+            return; // 저장 실패 시 여기서 종료
+        }
+        
+        // 저장된 항목의 날짜로 이동 (비동기로 처리, 모달 닫기와 독립적으로)
+        setTimeout(() => {
+            try {
+                const wasScrolling = window.isScrolling;
+                if (window.isScrolling !== undefined) {
+                    window.isScrolling = true; // jumpToDate의 자동 스크롤 방지
+                }
+                if (window.jumpToDate) {
+                    window.jumpToDate(state.currentEditingDate);
+                }
+                
+                // 타임라인 상단으로 스크롤하여 새로 추가된 항목이 트래커 아래에 보이도록
+                setTimeout(() => {
+                    try {
+                        // 트래커 섹션과 헤더 높이 계산
+                        const trackerSection = document.getElementById('trackerSection');
+                        const trackerHeight = trackerSection ? trackerSection.offsetHeight : 0;
+                        const headerHeight = 73; // 헤더 높이 (top-[73px])
+                        const totalOffset = headerHeight + trackerHeight;
+                        
+                        // 날짜 섹션이 렌더링된 후 해당 섹션으로 스크롤 (트래커 높이만큼 오프셋)
+                        setTimeout(() => {
+                            try {
+                                const dateSection = document.getElementById(`date-${state.currentEditingDate}`);
+                                if (dateSection) {
+                                    // 섹션의 위치를 계산하여 트래커 아래에 보이도록 스크롤
+                                    const elementTop = dateSection.getBoundingClientRect().top + window.pageYOffset;
+                                    const offsetPosition = elementTop - totalOffset - 16; // 16px 여유 공간
+                                    window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'smooth' });
+                                    if (window.isScrolling !== undefined) {
+                                        window.isScrolling = wasScrolling; // 원래 상태 복원
+                                    }
+                                } else {
+                                    // 섹션이 아직 렌더링되지 않았으면 다시 시도
+                                    setTimeout(() => {
+                                        try {
+                                            const dateSection2 = document.getElementById(`date-${state.currentEditingDate}`);
+                                            if (dateSection2) {
+                                                const elementTop = dateSection2.getBoundingClientRect().top + window.pageYOffset;
+                                                const offsetPosition = elementTop - totalOffset - 16;
+                                                window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'smooth' });
+                                            }
+                                            if (window.isScrolling !== undefined) {
+                                                window.isScrolling = wasScrolling; // 원래 상태 복원
+                                            }
+                                        } catch (scrollError) {
+                                            console.error('스크롤 오류:', scrollError);
+                                        }
+                                    }, 200);
+                                }
+                            } catch (scrollError) {
+                                console.error('스크롤 오류:', scrollError);
+                            }
+                        }, 400);
+                    } catch (scrollError) {
+                        console.error('스크롤 오류:', scrollError);
+                    }
+                }, 200);
+            } catch (scrollError) {
+                console.error('날짜 이동 오류:', scrollError);
+            }
+        }, 100);
+    } catch (e) {
+        console.error('saveEntry 오류:', e);
+        console.error('오류 스택:', e.stack);
+        showToast("저장 실패", 'error');
+        // 오류 발생 시에도 로딩 오버레이 숨김
+        if (loadingOverlay) {
+            loadingOverlay.classList.add('hidden');
+            console.log('오류 발생 후 로딩 오버레이 숨김');
+        }
+        // 오류 발생 시에도 모달 닫기
+        const entryModal = document.getElementById('entryModal');
+        if (entryModal) {
+            entryModal.classList.add('hidden');
+            console.log('오류 발생 후 모달 닫기');
+        }
+        const state = appState;
+        state.currentEditingId = null;
+        state.currentPhotos = [];
+    } finally {
+        // finally 블록에서도 한 번 더 확인
+        if (loadingOverlay && !loadingOverlay.classList.contains('hidden')) {
+            loadingOverlay.classList.add('hidden');
+            console.log('finally 블록에서 로딩 오버레이 숨김');
+        }
+        // finally 블록에서도 모달이 열려있으면 닫기
+        const entryModal = document.getElementById('entryModal');
+        if (entryModal && !entryModal.classList.contains('hidden')) {
+            entryModal.classList.add('hidden');
+            console.log('finally 블록에서 모달 닫기');
+        }
     }
 }
 
 export async function deleteEntry() {
     const state = appState;
-    if (state.currentEditingId) {
-        await dbOps.delete(state.currentEditingId);
-        window.closeModal();
+    if (!state.currentEditingId) {
+        showToast("삭제할 항목이 없습니다.", 'error');
+        return;
+    }
+    
+    // 삭제 확인 다이얼로그
+    if (!confirm("정말 이 기록을 삭제하시겠습니까?")) {
+        return;
+    }
+    
+    // 삭제할 ID를 미리 저장 (모달 닫기 전에)
+    const entryIdToDelete = state.currentEditingId;
+    
+    // 로그인 상태 확인
+    console.log('삭제 시도:', { entryIdToDelete, currentUser: window.currentUser });
+    if (!window.currentUser) {
+        showToast("로그인이 필요합니다.", 'error');
+        return;
+    }
+    
+    // 모달을 먼저 닫기 (사용자 경험 개선)
+    window.closeModal();
+    
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    
+    try {
+        console.log('dbOps.delete 호출 전:', { entryIdToDelete, currentUser: window.currentUser });
+        await dbOps.delete(entryIdToDelete);
+        // 삭제 성공 - Firestore 리스너가 자동으로 타임라인을 업데이트함
+        showToast("기록이 삭제되었습니다.", 'success');
+        console.log('삭제 완료');
+    } catch (error) {
+        console.error('삭제 오류:', error);
+        let errorMessage = "삭제 실패: ";
+        if (error.code === 'permission-denied') {
+            errorMessage += "권한이 없습니다.";
+        } else if (error.code === 'unavailable') {
+            errorMessage += "네트워크 연결을 확인해주세요.";
+        } else if (error.message && error.message.includes('로그인이 필요')) {
+            errorMessage = "로그인이 필요합니다.";
+        } else if (error.message) {
+            errorMessage += error.message;
+        } else {
+            errorMessage += "알 수 없는 오류가 발생했습니다.";
+        }
+        showToast(errorMessage, 'error');
+    } finally {
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
     }
 }
 
@@ -384,21 +600,20 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
         }
         btn.classList.remove('active');
         selectedValue = null;
-        if (container.id === 'typeChips' && (value === 'Skip' || value === '???')) {
-            document.getElementById('optionalFields')?.classList.remove('hidden');
-            document.getElementById('reviewSection')?.classList.remove('hidden');
-        }
     } else {
         btn.classList.add('active');
         if (inputId !== 'null') {
             const input = document.getElementById(inputId);
             if (input) input.value = value;
         }
-        if (container.id === 'typeChips') {
-            const isSkip = value === 'Skip' || value === '???';
-            document.getElementById('optionalFields')?.classList.toggle('hidden', isSkip);
-            document.getElementById('reviewSection')?.classList.toggle('hidden', isSkip);
-        }
+    }
+    
+    // Skip 선택 시 필드 숨기기 처리 (typeChips에서만)
+    // typeChips는 subTagKey가 'place'이고 inputId가 'null'인 경우
+    if (isPrimary && inputId === 'null' && subTagKey === 'place') {
+        const isSkip = (selectedValue === 'Skip' || selectedValue === '건너뜀');
+        console.log('Skip 선택 감지:', { isSkip, selectedValue, value, isActive, subTagKey });
+        toggleFieldsForSkip(isSkip);
     }
     
     if (isPrimary && subTagKey && subContainerId) {
@@ -406,6 +621,36 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
         window.renderSecondary(subContainerId, subTags, 
             document.getElementById(subContainerId).getAttribute('data-input-id') || getInputIdFromContainer(subContainerId), 
             selectedValue, subTagKey);
+    }
+}
+
+function toggleFieldsForSkip(isSkip) {
+    console.log('toggleFieldsForSkip 호출:', isSkip);
+    
+    // 메뉴정보 섹션 (optionalFields) - 완전히 숨기기
+    const optionalFields = document.getElementById('optionalFields');
+    console.log('optionalFields 요소:', optionalFields);
+    if (optionalFields) {
+        if (isSkip) {
+            optionalFields.classList.add('hidden');
+            console.log('optionalFields 숨김 처리');
+        } else {
+            optionalFields.classList.remove('hidden');
+            console.log('optionalFields 표시 처리');
+        }
+    }
+    
+    // 만족도 섹션 (ratingSection) - 완전히 숨기기
+    const ratingSection = document.getElementById('ratingSection');
+    console.log('ratingSection 요소:', ratingSection);
+    if (ratingSection) {
+        if (isSkip) {
+            ratingSection.classList.add('hidden');
+            console.log('ratingSection 숨김 처리');
+        } else {
+            ratingSection.classList.remove('hidden');
+            console.log('ratingSection 표시 처리');
+        }
     }
 }
 
@@ -519,7 +764,7 @@ export function openSettings() {
     }
     
     document.getElementById('settingNickname').value = state.tempSettings.profile.nickname;
-    ['mealType', 'withWhom', 'category', 'snackType'].forEach(k => renderTagManager(k, false, state.tempSettings));
+    // 태그 편집 기능 제거됨
     
     const accountSection = document.getElementById('accountSection');
     if (accountSection) {
@@ -557,10 +802,16 @@ export function closeSettings() {
 
 export async function saveSettings() {
     const state = appState;
-    state.tempSettings.profile.nickname = document.getElementById('settingNickname').value;
-    await dbOps.saveSettings(state.tempSettings);
-    window.closeSettings();
-    showToast("설정이 저장되었습니다.", 'success');
+    try {
+        state.tempSettings.profile.nickname = document.getElementById('settingNickname').value;
+        await dbOps.saveSettings(state.tempSettings);
+        window.closeSettings();
+        showToast("설정이 저장되었습니다.", 'success');
+    } catch (e) {
+        console.error('설정 저장 실패:', e);
+        // dbOps.saveSettings에서 이미 에러 토스트를 표시하므로 여기서는 추가 처리 불필요
+        // 모달은 닫지 않고 사용자가 다시 시도할 수 있도록 함
+    }
 }
 
 export function selectIcon(i) {
