@@ -43,21 +43,16 @@ export const dbOps = {
         }
     },
     async delete(id) {
-        console.log('dbOps.delete 호출:', { id, currentUser: window.currentUser });
         if (!window.currentUser) {
             const error = new Error("로그인이 필요합니다.");
-            console.error('삭제 실패: 로그인 필요', { id, currentUser: window.currentUser });
             throw error;
         }
         if (!id) {
             const error = new Error("삭제할 항목이 없습니다.");
-            console.error('삭제 실패: ID 없음', { id, currentUser: window.currentUser });
             throw error;
         }
         try {
-            console.log('Firestore 삭제 시도:', { id, uid: window.currentUser.uid });
             await deleteDoc(doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals', id));
-            console.log('Firestore 삭제 성공:', { id });
             // 성공 토스트는 호출자에서 표시
         } catch (e) {
             console.error("Delete Error:", e);
@@ -231,6 +226,35 @@ export function setupListeners(userId, callbacks) {
                         console.error('설정 정리 저장 실패:', e);
                     });
                 }
+            }
+            // 간식 항목 마이그레이션: 새로운 항목으로 업데이트
+            const newSnackTypes = ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타'];
+            const oldSnackTypes = ['커피', '음료', '과일', '빵/과자'];
+            
+            // tags가 없으면 생성
+            if (!window.userSettings.tags) {
+                window.userSettings.tags = {};
+            }
+            
+            const currentSnackTypes = window.userSettings.tags.snackType || [];
+            
+            // 새로운 항목과 정확히 일치하는지 확인
+            const isExactMatch = currentSnackTypes.length === newSnackTypes.length &&
+                currentSnackTypes.every((tag, idx) => tag === newSnackTypes[idx]);
+            
+            if (!isExactMatch) {
+                // 정확히 일치하지 않으면 무조건 업데이트
+                console.log('간식 항목 마이그레이션: 새로운 항목으로 업데이트', {
+                    before: currentSnackTypes,
+                    after: newSnackTypes
+                });
+                window.userSettings.tags.snackType = [...newSnackTypes];
+                // 변경사항 저장
+                dbOps.saveSettings(window.userSettings).then(() => {
+                    console.log('간식 항목 마이그레이션 저장 완료');
+                }).catch(e => {
+                    console.error('간식 항목 마이그레이션 저장 실패:', e);
+                });
             }
         }
         if (onSettingsUpdate) onSettingsUpdate();

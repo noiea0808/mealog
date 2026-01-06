@@ -8,19 +8,64 @@ export function renderProportionChart(containerId, data, key) {
     const container = document.getElementById(containerId);
     if (!container) return;
     
+    // 사용자 설정 태그 목록 가져오기
+    const userTags = window.userSettings?.tags || {};
+    let allowedTags = null;
+    
+    // 태그 필터링이 필요한 키인지 확인
+    if (key === 'mealType' && userTags.mealType) {
+        allowedTags = new Set(userTags.mealType);
+    } else if (key === 'category' && userTags.category) {
+        allowedTags = new Set(userTags.category);
+    } else if (key === 'withWhom' && userTags.withWhom) {
+        allowedTags = new Set(userTags.withWhom);
+    } else if (key === 'snackType' && userTags.snackType) {
+        allowedTags = new Set(userTags.snackType);
+    }
+    // rating과 satiety는 숫자 값이므로 태그 필터링 불필요
+    
     const counts = {};
     data.forEach(m => {
-        let val = m[key] || '미지정';
+        let val = m[key] || '미입력';
+        
+        // 태그 필터링: 사용자가 설정한 태그만 표시
+        if (allowedTags && val !== '미입력') {
+            if (!allowedTags.has(val)) {
+                // 설정된 태그에 없으면 "미입력"으로 처리
+                val = '미입력';
+            }
+        }
+        
         counts[val] = (counts[val] || 0) + 1;
     });
     
     const total = data.length;
-    if (total === 0) {
+    if (total === 0 || Object.keys(counts).length === 0) {
         container.innerHTML = '<div class="text-center py-4 text-slate-400 text-xs">데이터가 없습니다.</div>';
         return;
     }
     
-    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    // 사용자가 설정한 태그 순서대로 정렬 (데이터가 있는 것만, 미입력은 항상 마지막)
+    let sorted;
+    if (allowedTags) {
+        const tagOrder = Array.from(allowedTags);
+        const tagEntries = tagOrder
+            .filter(tag => counts[tag] > 0)
+            .map(tag => [tag, counts[tag]])
+            .sort((a, b) => b[1] - a[1]); // 개수 내림차순
+        
+        // 미입력 항목이 있으면 마지막에 추가
+        if (counts['미입력'] > 0) {
+            tagEntries.push(['미입력', counts['미입력']]);
+        }
+        
+        sorted = tagEntries;
+    } else {
+        const entries = Object.entries(counts);
+        const nonEmptyEntries = entries.filter(([name]) => name !== '미입력').sort((a, b) => b[1] - a[1]);
+        const emptyEntry = entries.find(([name]) => name === '미입력');
+        sorted = emptyEntry ? [...nonEmptyEntries, emptyEntry] : nonEmptyEntries;
+    }
     
     const colorMap = generateColorMap(data, key, VIBRANT_COLORS);
     
@@ -36,14 +81,16 @@ export function renderProportionChart(containerId, data, key) {
         let bg = colorMap[name] || '#94a3b8';
         let textColor = '#ffffff';
         
-        if (key === 'rating') {
+        // 미입력 항목은 연회색으로 표시
+        if (name === '미입력') {
+            bg = '#e2e8f0'; // 연회색
+            textColor = '#64748b'; // 진한 회색 텍스트
+        } else if (key === 'rating') {
             const ratingNum = parseInt(name);
             if (!isNaN(ratingNum)) {
                 bg = RATING_GRADIENT[ratingNum - 1] || RATING_GRADIENT[0];
             }
-        }
-        
-        if (key === 'satiety') {
+        } else if (key === 'satiety') {
             const satietyNum = parseInt(name);
             if (!isNaN(satietyNum)) {
                 const satietyData = SATIETY_DATA.find(d => d.val === satietyNum);
@@ -54,8 +101,8 @@ export function renderProportionChart(containerId, data, key) {
         }
         
         if (pct < 5 || (key === 'rating' && parseInt(name) <= 2)) textColor = '#475569';
-        if (pct > 5) {
-            html += `<div class="prop-segment" style="width: ${pct}%; background: ${bg}; color: ${textColor}">${pct}%</div>`;
+        if (pct > 0) {
+            html += `<div class="prop-segment" style="width: ${pct}%; background: ${bg}; color: ${textColor}">${pct >= 5 ? `${pct}%` : ''}</div>`;
             segments.push({
                 name,
                 count,
@@ -73,7 +120,7 @@ export function renderProportionChart(containerId, data, key) {
     let lastLabelEnd = -1;
     segments.forEach(({ name, count, startPercent, widthPercent }) => {
         // 라벨 표시 텍스트 생성
-        let displayName = name;
+        let displayName = name === '미입력' ? '미입력' : name;
         if (key === 'rating') {
             const ratingNum = parseInt(name);
             if (!isNaN(ratingNum)) {
@@ -402,6 +449,22 @@ export function openDetailModal(key, title) {
     
     const { filteredData } = getDashboardData();
     
+    // 사용자 설정 태그 목록 가져오기
+    const userTags = window.userSettings?.tags || {};
+    let allowedTags = null;
+    
+    // 태그 필터링이 필요한 키인지 확인
+    if (key === 'mealType' && userTags.mealType) {
+        allowedTags = new Set(userTags.mealType);
+    } else if (key === 'category' && userTags.category) {
+        allowedTags = new Set(userTags.category);
+    } else if (key === 'withWhom' && userTags.withWhom) {
+        allowedTags = new Set(userTags.withWhom);
+    } else if (key === 'snackType' && userTags.snackType) {
+        allowedTags = new Set(userTags.snackType);
+    }
+    // rating과 satiety는 숫자 값이므로 태그 필터링 불필요
+    
     let slots, slotLabels;
     if (key === 'snackType') {
         slots = ['pre_morning', 'snack1', 'snack2', 'night'];
@@ -415,18 +478,18 @@ export function openDetailModal(key, title) {
         if (key === 'satiety') {
             const satietyNum = parseInt(m.satiety);
             if (!isNaN(satietyNum)) {
-                return SATIETY_DATA.find(d => d.val === satietyNum)?.label || '미지정';
+                return SATIETY_DATA.find(d => d.val === satietyNum)?.label || '미입력';
             }
-            return '미지정';
+            return '미입력';
         }
         if (key === 'rating') {
             const ratingNum = parseInt(m.rating);
             if (!isNaN(ratingNum)) {
                 return `${ratingNum}점`;
             }
-            return '미지정';
+            return '미입력';
         }
-        return m[key] || '미지정';
+        return m[key] || '미입력';
     };
     
     const colorMap = generateColorMap(filteredData.filter(m => slots.includes(m.slotId)), key, VIBRANT_COLORS);
@@ -449,16 +512,47 @@ export function openDetailModal(key, title) {
         // 해당 슬롯의 값별 카운트
         const counts = {};
         slotData.forEach(m => {
-            const val = getValue(m);
+            let val = getValue(m);
+            
+            // 태그 필터링: 사용자가 설정한 태그만 표시
+            if (allowedTags && val !== '미입력') {
+                if (!allowedTags.has(val)) {
+                    // 설정된 태그에 없으면 "미입력"으로 처리
+                    val = '미입력';
+                }
+            }
+            
             counts[val] = (counts[val] || 0) + 1;
         });
         
         const total = slotData.length;
-        const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
         
-        // 만족도나 포만감의 경우 정렬
+        // 사용자가 설정한 태그 순서대로 정렬 (데이터가 있는 것만, 미입력은 항상 마지막)
+        let sorted;
+        if (allowedTags) {
+            const tagOrder = Array.from(allowedTags);
+            const tagEntries = tagOrder
+                .filter(tag => counts[tag] > 0)
+                .map(tag => [tag, counts[tag]])
+                .sort((a, b) => b[1] - a[1]); // 개수 내림차순
+            
+            // 미입력 항목이 있으면 마지막에 추가
+            if (counts['미입력'] > 0) {
+                tagEntries.push(['미입력', counts['미입력']]);
+            }
+            
+            sorted = tagEntries;
+        } else {
+            const entries = Object.entries(counts);
+            const nonEmptyEntries = entries.filter(([name]) => name !== '미입력').sort((a, b) => b[1] - a[1]);
+            const emptyEntry = entries.find(([name]) => name === '미입력');
+            sorted = emptyEntry ? [...nonEmptyEntries, emptyEntry] : nonEmptyEntries;
+        }
+        
+        // 만족도나 포만감의 경우 정렬 (미입력은 항상 마지막)
         if (key === 'rating') {
-            sorted.sort((a, b) => {
+            const emptyEntry = sorted.find(([name]) => name === '미입력');
+            const nonEmptyEntries = sorted.filter(([name]) => name !== '미입력').sort((a, b) => {
                 const aNum = parseInt(a[0].replace('점', ''));
                 const bNum = parseInt(b[0].replace('점', ''));
                 if (!isNaN(aNum) && !isNaN(bNum)) {
@@ -466,8 +560,10 @@ export function openDetailModal(key, title) {
                 }
                 return 0;
             });
+            sorted = emptyEntry ? [...nonEmptyEntries, emptyEntry] : nonEmptyEntries;
         } else if (key === 'satiety') {
-            sorted.sort((a, b) => {
+            const emptyEntry = sorted.find(([name]) => name === '미입력');
+            const nonEmptyEntries = sorted.filter(([name]) => name !== '미입력').sort((a, b) => {
                 const aData = SATIETY_DATA.find(d => d.label === a[0]);
                 const bData = SATIETY_DATA.find(d => d.label === b[0]);
                 if (aData && bData) {
@@ -475,6 +571,7 @@ export function openDetailModal(key, title) {
                 }
                 return 0;
             });
+            sorted = emptyEntry ? [...nonEmptyEntries, emptyEntry] : nonEmptyEntries;
         }
         
         html += `<div class="mb-4">
@@ -490,14 +587,16 @@ export function openDetailModal(key, title) {
             let bg = colorMap[name] || '#94a3b8';
             let textColor = '#ffffff';
             
-            if (key === 'rating') {
+            // 미입력 항목은 연회색으로 표시
+            if (name === '미입력') {
+                bg = '#e2e8f0'; // 연회색
+                textColor = '#64748b'; // 진한 회색 텍스트
+            } else if (key === 'rating') {
                 const ratingNum = parseInt(name.replace('점', ''));
                 if (!isNaN(ratingNum)) {
                     bg = RATING_GRADIENT[ratingNum - 1] || RATING_GRADIENT[0];
                 }
-            }
-            
-            if (key === 'satiety') {
+            } else if (key === 'satiety') {
                 const satietyData = SATIETY_DATA.find(d => d.label === name);
                 if (satietyData) {
                     bg = satietyData.chartColor;
@@ -528,10 +627,13 @@ export function openDetailModal(key, title) {
             // 세그먼트 중간 위치 계산
             const centerPercent = startPercent + widthPercent / 2;
             
+            // 라벨 표시 텍스트 생성 (미입력은 그대로 표시)
+            const displayName = name === '미입력' ? '미입력' : name;
+            
             // 겹침 체크: 최소 8% 간격 유지
             if (centerPercent - lastLabelEnd >= 8 || lastLabelEnd < 0) {
                 html += `<div class="absolute text-xs whitespace-nowrap" style="left: ${centerPercent}%; transform: translateX(-50%);">
-                    <span class="text-slate-600">${name}</span>
+                    <span class="text-slate-600">${displayName}</span>
                     <span class="text-slate-400">(${count})</span>
                 </div>`;
                 // 라벨의 예상 너비를 고려하여 lastLabelEnd 업데이트 (대략 10%로 간주)

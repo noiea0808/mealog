@@ -453,18 +453,12 @@
                     </div>
 
                     <div class="mb-2">
-                        <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">종합 소감</span>
+                        <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">Comment</span>
                         <input id="generalCommentInput" type="text" placeholder="오늘 식사는 어떠셨나요?" class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all">
                     </div>
                 </div>
                 
                 <div id="snackFields" class="hidden">
-                    <div class="p-3 bg-emerald-50/50 rounded-2xl border border-emerald-100 mb-2">
-                        <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">간식 정보</span>
-                        <div id="snackTypeChips" class="flex flex-wrap gap-2 mb-1.5"></div>
-                        <input id="snackDetailInput" type="text" placeholder="무엇을 드셨나요?" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
-                        <div id="snackSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
-                    </div>
                     <div class="mb-2">
                         <div class="flex items-center justify-between mb-1.5">
                             <span class="text-sm font-extrabold text-slate-600 block uppercase">간식 사진</span>
@@ -477,6 +471,16 @@
                             <div id="snackPhotoPreviewContainer" class="flex gap-2"></div>
                         </div>
                         <input type="file" id="snackImageInput" class="hidden" accept="image/*" multiple onchange="window.handleMultipleImages(event)">
+                    </div>
+                    <div class="p-3 bg-emerald-50/50 rounded-2xl border border-emerald-100 mb-2">
+                        <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">간식 정보</span>
+                        <div id="snackTypeChips" class="flex flex-wrap gap-2 mb-1.5"></div>
+                        <input id="snackDetailInput" type="text" placeholder="무엇을 드셨나요?" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
+                        <div id="snackSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
+                    </div>
+                    <div class="mb-2">
+                        <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">Comment</span>
+                        <input id="snackCommentInput" type="text" placeholder="오늘 간식은 어떠셨나요?" class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all">
                     </div>
                 </div>
             </div>

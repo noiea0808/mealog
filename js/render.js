@@ -3,11 +3,17 @@ import { SLOTS, SLOT_STYLES, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS } fro
 import { appState } from './state.js';
 
 export function renderEntryChips() {
-    const tags = window.userSettings.tags;
-    const subTags = window.userSettings.subTags;
+    const tags = window.userSettings?.tags;
+    const subTags = window.userSettings?.subTags;
+    
+    // 설정이 없으면 기본값 사용
+    if (!tags) {
+        console.warn('userSettings.tags가 없습니다. 기본값을 사용합니다.');
+        return;
+    }
     
     // "???" 항목 제거 (기존 사용자 설정 정리)
-    if (tags && tags.mealType) {
+    if (tags.mealType) {
         const index = tags.mealType.indexOf('???');
         if (index > -1) {
             tags.mealType.splice(index, 1);
@@ -16,7 +22,11 @@ export function renderEntryChips() {
     
     const renderPrimary = (id, list, inputId, subTagKey, subContainerId) => {
         const el = document.getElementById(id);
-        if (el) el.innerHTML = list.map(t => 
+        if (!el || !list || list.length === 0) {
+            if (el) el.innerHTML = '';
+            return;
+        }
+        el.innerHTML = list.map(t => 
             `<button onclick="window.selectTag('${inputId}', '${t}', this, true, '${subTagKey}', '${subContainerId}')" class="chip">${t}</button>`
         ).join('');
     };
@@ -24,9 +34,9 @@ export function renderEntryChips() {
     window.renderSecondary = (id, list, inputId, parentFilter = null, subTagKey = null) => {
         const el = document.getElementById(id);
         if (!el) return;
-        let filteredList = list;
+        let filteredList = list || [];
         if (parentFilter) {
-            filteredList = list.filter(item => {
+            filteredList = filteredList.filter(item => {
                 const parent = typeof item === 'string' ? null : item.parent;
                 return !parent || parent === parentFilter;
             });
@@ -49,13 +59,16 @@ export function renderEntryChips() {
     };
     
     renderPrimary('typeChips', tags.mealType, 'null', 'place', 'restaurantSuggestions');
-    window.renderSecondary('restaurantSuggestions', subTags.place || [], 'placeInput', null, 'place');
+    window.renderSecondary('restaurantSuggestions', subTags?.place || [], 'placeInput', null, 'place');
     renderPrimary('categoryChips', tags.category, 'null', 'menu', 'menuSuggestions');
-    window.renderSecondary('menuSuggestions', subTags.menu || [], 'menuDetailInput', null, 'menu');
+    window.renderSecondary('menuSuggestions', subTags?.menu || [], 'menuDetailInput', null, 'menu');
     renderPrimary('withChips', tags.withWhom, 'withWhomInput', 'people', 'peopleSuggestions');
-    window.renderSecondary('peopleSuggestions', subTags.people || [], 'withWhomInput', null, 'people');
-    renderPrimary('snackTypeChips', tags.snackType, 'null', 'snack', 'snackSuggestions');
-    window.renderSecondary('snackSuggestions', subTags.snack || [], 'snackDetailInput', null, 'snack');
+    window.renderSecondary('peopleSuggestions', subTags?.people || [], 'withWhomInput', null, 'people');
+    
+    // 간식 타입 칩 렌더링 (설정이 없으면 기본값 사용)
+    const snackTypes = tags.snackType || ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타'];
+    renderPrimary('snackTypeChips', snackTypes, 'null', 'snack', 'snackSuggestions');
+    window.renderSecondary('snackSuggestions', subTags?.snack || [], 'snackDetailInput', null, 'snack');
 }
 
 export function renderPhotoPreviews() {

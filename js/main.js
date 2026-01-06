@@ -10,7 +10,7 @@ import {
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, confirmLogout, confirmLogoutAction,
     copyDomain, closeDomainModal
 } from './auth.js';
-import { renderTimeline, renderMiniCalendar, renderGallery } from './render.js';
+import { renderTimeline, renderMiniCalendar, renderGallery, renderEntryChips } from './render.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType } from './analytics.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
@@ -256,7 +256,14 @@ initAuth((user) => {
     if (user) { 
         window.currentUser = user; 
         const { settingsUnsubscribe, dataUnsubscribe } = setupListeners(user.uid, {
-            onSettingsUpdate: updateHeaderUI,
+            onSettingsUpdate: () => {
+                updateHeaderUI();
+                // 설정이 업데이트되면 간식 타입 칩도 다시 렌더링 (모달이 열려있지 않을 때만)
+                const entryModal = document.getElementById('entryModal');
+                if (!entryModal || entryModal.classList.contains('hidden')) {
+                    renderEntryChips();
+                }
+            },
             onDataUpdate: () => {
                 // 오늘 날짜로 초기화
                 if (appState.viewMode === 'list') {

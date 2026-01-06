@@ -35,7 +35,7 @@ export const DEFAULT_USER_SETTINGS = {
         mealType: ['Skip', '집밥', '외식', '회사밥', '간단히', '술자리'],
         withWhom: ['혼자', '가족', '친구', '회사사람'],
         category: ['한식', '양식', '일식', '중식', '분식', '카페'],
-        snackType: ['커피', '음료', '과일', '빵/과자']
+        snackType: ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타']
     },
     subTags: {
         place: [{ text: '우리집', parent: '집밥' }, { text: '회사 식당', parent: '회사밥' }, { text: '스타벅스', parent: '간단히' }],

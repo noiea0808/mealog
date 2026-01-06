@@ -20,7 +20,6 @@ export function openModal(date, slotId, entryId = null) {
             return;
         }
         
-        document.querySelectorAll('.chip, .sub-chip').forEach(el => el.classList.remove('active'));
         state.currentEditingId = entryId;
         state.currentEditingDate = date;
         state.currentEditingSlotId = slotId;
@@ -36,13 +35,21 @@ export function openModal(date, slotId, entryId = null) {
                 modalTitle.innerText = slot.label;
             }
         }
-        renderEntryChips();
+        
+        // entryId가 있으면 저장된 태그 정보를 미리 저장
+        let savedRecord = null;
+        if (entryId) {
+            savedRecord = window.mealHistory.find(m => m.id === entryId);
+        }
+        
+        // 모든 칩의 active 클래스 제거 (renderEntryChips 전에)
+        document.querySelectorAll('.chip, .sub-chip').forEach(el => el.classList.remove('active'));
         
         // 공유 인디케이터 숨기기
         const shareIndicator = document.getElementById('sharePhotoIndicator');
         if (shareIndicator) shareIndicator.classList.add('hidden');
         
-        ['placeInput', 'menuDetailInput', 'withWhomInput', 'snackDetailInput', 'generalCommentInput'].forEach(id => {
+        ['placeInput', 'menuDetailInput', 'withWhomInput', 'snackDetailInput', 'generalCommentInput', 'snackCommentInput'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
@@ -95,8 +102,11 @@ export function openModal(date, slotId, entryId = null) {
             btnSave.innerText = entryId ? '수정 완료' : '기록 완료';
         }
         
-        if (entryId) {
-            const r = window.mealHistory.find(m => m.id === entryId);
+        // 칩 렌더링 (필드 표시/숨김 처리 후)
+        renderEntryChips();
+        
+        if (entryId && savedRecord) {
+            const r = savedRecord;
             if (r) {
                 // photos가 배열인지 확인하고, 배열이 아니면 배열로 변환
                 state.currentPhotos = Array.isArray(r.photos) ? r.photos : (r.photos ? [r.photos] : []);
@@ -111,6 +121,7 @@ export function openModal(date, slotId, entryId = null) {
                 setVal('withWhomInput', r.withWhomDetail || "");
                 setVal('snackDetailInput', r.menuDetail || "");
                 setVal('generalCommentInput', r.comment || "");
+                setVal('snackCommentInput', r.comment || "");
                 
                 if (r.rating) window.setRating(r.rating);
                 if (r.satiety) window.setSatiety(r.satiety);
@@ -118,18 +129,119 @@ export function openModal(date, slotId, entryId = null) {
                 // 공유 인디케이터 표시
                 updateShareIndicator();
                 
-                // 태그 활성화 처리
-                ['typeChips', 'restaurantSuggestions', 'withChips', 'peopleSuggestions', 'categoryChips', 'menuSuggestions', 'snackTypeChips', 'snackSuggestions'].forEach(id => {
-                    const c = document.getElementById(id);
-                    if (c) {
-                        c.querySelectorAll('button').forEach(ch => {
-                            const checkValues = [r.mealType, r.category, r.withWhom, r.snackType, r.place, r.menuDetail, r.withWhomDetail];
-                            if (checkValues.includes(ch.innerText)) {
-                                ch.classList.add('active');
-                            }
-                        });
+                // 태그 활성화 처리 함수
+                const activateTags = () => {
+                    // 식사 구분 (mealType)
+                    if (r.mealType) {
+                        const typeChips = document.getElementById('typeChips');
+                        if (typeChips) {
+                            typeChips.querySelectorAll('button.chip').forEach(ch => {
+                                if (ch.innerText.trim() === r.mealType.trim()) {
+                                    ch.classList.add('active');
+                                }
+                            });
+                        }
                     }
-                });
+                    
+                    // 메뉴 카테고리 (category)
+                    if (r.category) {
+                        const categoryChips = document.getElementById('categoryChips');
+                        if (categoryChips) {
+                            categoryChips.querySelectorAll('button.chip').forEach(ch => {
+                                if (ch.innerText.trim() === r.category.trim()) {
+                                    ch.classList.add('active');
+                                }
+                            });
+                        }
+                    }
+                    
+                    // 함께한 사람 (withWhom)
+                    if (r.withWhom) {
+                        const withChips = document.getElementById('withChips');
+                        if (withChips) {
+                            withChips.querySelectorAll('button.chip').forEach(ch => {
+                                if (ch.innerText.trim() === r.withWhom.trim()) {
+                                    ch.classList.add('active');
+                                }
+                            });
+                        }
+                    }
+                    
+                    // 간식 타입 (snackType)
+                    if (r.snackType) {
+                        const snackTypeChips = document.getElementById('snackTypeChips');
+                        if (snackTypeChips) {
+                            snackTypeChips.querySelectorAll('button.chip').forEach(ch => {
+                                if (ch.innerText.trim() === r.snackType.trim()) {
+                                    ch.classList.add('active');
+                                }
+                            });
+                        }
+                    }
+                    
+                    // 장소 (place) - sub-chip
+                    if (r.place) {
+                        const restaurantSuggestions = document.getElementById('restaurantSuggestions');
+                        if (restaurantSuggestions) {
+                            restaurantSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
+                                if (ch.innerText.trim() === r.place.trim()) {
+                                    ch.classList.add('active');
+                                }
+                            });
+                        }
+                    }
+                    
+                    // 메뉴 상세 (menuDetail) - sub-chip
+                    if (r.menuDetail) {
+                        const menuSuggestions = document.getElementById('menuSuggestions');
+                        if (menuSuggestions) {
+                            menuSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
+                                if (ch.innerText.trim() === r.menuDetail.trim()) {
+                                    ch.classList.add('active');
+                                }
+                            });
+                        }
+                    }
+                    
+                    // 함께한 사람 상세 (withWhomDetail) - sub-chip
+                    if (r.withWhomDetail) {
+                        const peopleSuggestions = document.getElementById('peopleSuggestions');
+                        if (peopleSuggestions) {
+                            peopleSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
+                                if (ch.innerText.trim() === r.withWhomDetail.trim()) {
+                                    ch.classList.add('active');
+                                }
+                            });
+                        }
+                    }
+                };
+                
+                // DOM 렌더링 완료 후 태그 활성화 (여러 번 시도)
+                const tryActivateTags = (attempts = 0) => {
+                    if (attempts > 20) {
+                        console.warn('태그 활성화 실패: 최대 시도 횟수 초과');
+                        return;
+                    }
+                    
+                    requestAnimationFrame(() => {
+                        const typeChips = document.getElementById('typeChips');
+                        const hasChips = typeChips && typeChips.querySelectorAll('button.chip').length > 0;
+                        
+                        if (hasChips || attempts > 10) {
+                            activateTags();
+                            // sub-chip은 나중에 렌더링될 수 있으므로 여러 번 재시도
+                            setTimeout(() => {
+                                activateTags();
+                                setTimeout(() => activateTags(), 100);
+                            }, 100);
+                        } else {
+                            setTimeout(() => tryActivateTags(attempts + 1), 50);
+                        }
+                    });
+                };
+                
+                // 즉시 한 번 시도하고, 그 다음 재시도
+                setTimeout(() => tryActivateTags(), 50);
                 
                 // Skip 선택 시 필드 숨기기 처리
                 if (r.mealType === 'Skip' || r.mealType === '건너뜀') {
@@ -317,7 +429,7 @@ export async function saveEntry() {
             photos: state.currentPhotos,
             menuDetail: isSk ? '' : (isS ? snackInputVal : menuInputVal),
             place: isSk ? '' : placeInputVal,
-            comment: isSk ? '' : (document.getElementById('generalCommentInput')?.value || ''),
+            comment: isSk ? '' : (isS ? (document.getElementById('snackCommentInput')?.value || '') : (document.getElementById('generalCommentInput')?.value || '')),
             rating: (isSk) ? null : state.currentRating,
             satiety: (isSk || isS) ? null : state.currentSatiety,
             time: new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' })
@@ -527,7 +639,6 @@ export async function deleteEntry() {
     const entryIdToDelete = state.currentEditingId;
     
     // 로그인 상태 확인
-    console.log('삭제 시도:', { entryIdToDelete, currentUser: window.currentUser });
     if (!window.currentUser) {
         showToast("로그인이 필요합니다.", 'error');
         return;
@@ -540,11 +651,9 @@ export async function deleteEntry() {
     if (loadingOverlay) loadingOverlay.classList.remove('hidden');
     
     try {
-        console.log('dbOps.delete 호출 전:', { entryIdToDelete, currentUser: window.currentUser });
         await dbOps.delete(entryIdToDelete);
         // 삭제 성공 - Firestore 리스너가 자동으로 타임라인을 업데이트함
         showToast("기록이 삭제되었습니다.", 'success');
-        console.log('삭제 완료');
     } catch (error) {
         console.error('삭제 오류:', error);
         let errorMessage = "삭제 실패: ";
@@ -612,7 +721,6 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
     // typeChips는 subTagKey가 'place'이고 inputId가 'null'인 경우
     if (isPrimary && inputId === 'null' && subTagKey === 'place') {
         const isSkip = (selectedValue === 'Skip' || selectedValue === '건너뜀');
-        console.log('Skip 선택 감지:', { isSkip, selectedValue, value, isActive, subTagKey });
         toggleFieldsForSkip(isSkip);
     }
     
@@ -625,31 +733,23 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
 }
 
 function toggleFieldsForSkip(isSkip) {
-    console.log('toggleFieldsForSkip 호출:', isSkip);
-    
     // 메뉴정보 섹션 (optionalFields) - 완전히 숨기기
     const optionalFields = document.getElementById('optionalFields');
-    console.log('optionalFields 요소:', optionalFields);
     if (optionalFields) {
         if (isSkip) {
             optionalFields.classList.add('hidden');
-            console.log('optionalFields 숨김 처리');
         } else {
             optionalFields.classList.remove('hidden');
-            console.log('optionalFields 표시 처리');
         }
     }
     
     // 만족도 섹션 (ratingSection) - 완전히 숨기기
     const ratingSection = document.getElementById('ratingSection');
-    console.log('ratingSection 요소:', ratingSection);
     if (ratingSection) {
         if (isSkip) {
             ratingSection.classList.add('hidden');
-            console.log('ratingSection 숨김 처리');
         } else {
             ratingSection.classList.remove('hidden');
-            console.log('ratingSection 표시 처리');
         }
     }
 }
