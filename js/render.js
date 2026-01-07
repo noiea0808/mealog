@@ -41,20 +41,78 @@ export function renderEntryChips() {
                 return !parent || parent === parentFilter;
             });
         }
+        
+        // 메인 태그가 선택되지 않았을 때는 나만의 태그를 표시하지 않음
         const currentInputVal = document.getElementById(inputId)?.value || '';
-        if (filteredList.length === 0) {
+        
+        if (!parentFilter) {
+            // 메인 태그가 선택되지 않았을 때는 아무것도 표시하지 않음
+            el.innerHTML = '';
+            return;
+        }
+        
+        // 메인 태그가 선택되었을 때만 나만의 태그 표시
+        const mainTagKeyMap = {
+            'place': 'mealType',
+            'menu': 'category',
+            'people': 'withWhom',
+            'snack': 'snackType'
+        };
+        const mainTagKey = mainTagKeyMap[subTagKey];
+        const favoriteSubTags = window.userSettings?.favoriteSubTags?.[mainTagKey] || {};
+        const myTags = favoriteSubTags[parentFilter] || [];
+        
+        // 나만의 태그와 최근 태그 분리
+        const myTagsSet = new Set(myTags);
+        const myTagsList = [];
+        const recentTagsList = [];
+        
+        filteredList.forEach(item => {
+            const text = typeof item === 'string' ? item : item.text;
+            if (myTagsSet.has(text)) {
+                myTagsList.push(item);
+            } else {
+                recentTagsList.push(item);
+            }
+        });
+        
+        // 나만의 태그를 인덱스 순서대로 정렬
+        myTagsList.sort((a, b) => {
+            const textA = typeof a === 'string' ? a : a.text;
+            const textB = typeof b === 'string' ? b : b.text;
+            const indexA = myTags.indexOf(textA);
+            const indexB = myTags.indexOf(textB);
+            return indexA - indexB;
+        });
+        
+        // 나만의 태그 + 최근 태그 순서로 합치기
+        const sortedList = [...myTagsList, ...recentTagsList];
+        
+        if (sortedList.length === 0 && myTags.length === 0) {
             el.innerHTML = `<span class="text-[10px] text-slate-300 py-1 px-2">추천 태그 없음</span>`;
         } else {
-            el.innerHTML = filteredList.map(t => {
+            let html = '';
+            
+            // 나만의 태그와 최근 태그 모두 표시
+            html += sortedList.map(t => {
                 const text = typeof t === 'string' ? t : t.text;
                 const isActive = currentInputVal === text ? 'active' : '';
+                const isMyTag = myTagsSet.has(text);
+                // 나만의 태그는 삭제 불가, 최근 태그는 삭제 가능
+                const canDelete = !isMyTag;
+                // 최근 태그도 나만의 태그와 동일한 크기로
+                const tagClass = isMyTag 
+                    ? 'bg-emerald-100 border border-emerald-400 text-emerald-700 font-bold text-xs' 
+                    : 'border border-slate-400 text-slate-600 font-bold text-xs';
                 return `<span class="sub-chip-wrapper relative inline-block mr-1 mb-1 group">
-                    <button onclick="window.selectTag('${inputId}', '${text}', this, false, '${subTagKey}', '${id}')" class="sub-chip ${isActive} pr-7">${text}</button>
-                    <button onclick="event.stopPropagation(); window.deleteSubTag('${subTagKey}', '${text}', '${id}', '${inputId}', '${parentFilter}')" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-300 hover:text-red-500 w-4 h-4 flex items-center justify-center rounded-full active:bg-slate-200 transition-colors">
+                    <button onclick="window.selectTag('${inputId}', '${text}', this, false, '${subTagKey}', '${id}')" class="sub-chip ${isActive} ${tagClass} ${canDelete ? 'pr-7' : ''}">${text}${isMyTag ? ' <i class="fa-solid fa-star text-[9px] text-emerald-600"></i>' : ''}</button>
+                    ${canDelete ? `<button onclick="event.stopPropagation(); window.deleteSubTag('${subTagKey}', '${text}', '${id}', '${inputId}', '${parentFilter}')" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-300 hover:text-red-500 w-4 h-4 flex items-center justify-center rounded-full active:bg-slate-200 transition-colors">
                         <i class="fa-solid fa-xmark"></i>
-                    </button>
+                    </button>` : ''}
                 </span>`;
             }).join('');
+            
+            el.innerHTML = html;
         }
     };
     
@@ -205,8 +263,8 @@ export function renderTimeline() {
         let dayColorClass = (dayOfWeek === 0 || dayOfWeek === 6) ? "text-rose-400" : "text-slate-800";
         const section = document.createElement('div');
         section.id = `date-${dateStr}`;
-        section.className = "animate-fade pb-0.5";
-        let html = `<h3 class="date-section-header text-sm font-black ${dayColorClass} mb-1 px-4">${dObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</h3>`;
+        section.className = "animate-fade";
+        let html = `<h3 class="date-section-header text-sm font-black ${dayColorClass} mb-1.5 px-4">${dObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</h3>`;
 
         SLOTS.forEach(slot => {
             const records = window.mealHistory.filter(m => m.date === dateStr && m.slotId === slot.id);
@@ -235,7 +293,7 @@ export function renderTimeline() {
                         }
                         if (tags.length > 0) {
                             tagsHtml = `<div class="mt-2 flex flex-wrap gap-1">${tags.map(t => 
-                                `<span class="text-[10px] text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">#${t}</span>`
+                                `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded">#${t}</span>`
                             ).join('')}</div>`;
                         }
                     }
@@ -267,7 +325,6 @@ export function renderTimeline() {
                                 ${r ? `<div class="flex items-center gap-2">
                                     ${r.sharedPhotos && Array.isArray(r.sharedPhotos) && r.sharedPhotos.length > 0 ? `<span class="text-xs text-emerald-600" title="게시됨"><i class="fa-solid fa-share"></i></span>` : ''}
                                     <span class="text-xs text-yellow-500"><i class="fa-solid fa-star mr-0.5"></i>${r.rating || '-'}</span>
-                                    <span class="text-[9px] text-slate-300">${r.time}</span>
                                 </div>` : ''}
                             </div>
                             <h4 class="text-base font-bold truncate ${titleClass}">${title}</h4>
@@ -277,8 +334,8 @@ export function renderTimeline() {
                     </div>
                 </div>`;
             } else {
-                html += `<div class="snack-row mb-1.5 px-2 flex items-center">
-                    <span class="text-xs font-black text-slate-400 uppercase mr-3 w-16">${slot.label}</span>
+                html += `<div class="snack-row mb-1.5 flex items-center">
+                    <span class="text-xs font-black text-slate-400 uppercase mr-3 flex-shrink-0 px-4">${slot.label}</span>
                     <div class="flex-1 flex flex-wrap gap-2 items-center">
                         ${records.length > 0 ? records.map(r => 
                             `<div onclick="window.openModal('${dateStr}', '${slot.id}', '${r.id}')" class="snack-tag cursor-pointer active:bg-slate-50">
@@ -287,7 +344,7 @@ export function renderTimeline() {
                                 ${r.sharedPhotos && Array.isArray(r.sharedPhotos) && r.sharedPhotos.length > 0 ? `<i class="fa-solid fa-share text-emerald-600 text-[8px] ml-1" title="게시됨"></i>` : ''}
                                 ${r.rating ? `<i class="fa-solid fa-star text-yellow-400 text-[8px] ml-1"></i>${r.rating}` : ''}
                             </div>`
-                        ).join('') : `<span class="text-xs text-slate-300 italic">기록없음</span>`}
+                        ).join('') : `<span class="text-xs text-slate-400 italic">기록없음</span>`}
                         <button onclick="window.openModal('${dateStr}', '${slot.id}')" class="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-100 transition-colors">+ 추가</button>
                     </div>
                 </div>`;

@@ -80,7 +80,14 @@ export function openModal(date, slotId, entryId = null) {
         }
         const isS = slot.type === 'snack';
         document.getElementById('optionalFields')?.classList.toggle('hidden', isS);
-        document.getElementById('reviewSection')?.classList.remove('hidden');
+        const reviewSection = document.getElementById('reviewSection');
+        const snackReviewSection = document.getElementById('snackReviewSection');
+        if (reviewSection) {
+            reviewSection.classList.toggle('hidden', isS);
+        }
+        if (snackReviewSection) {
+            snackReviewSection.classList.toggle('hidden', !isS);
+        }
         document.getElementById('btnDelete')?.classList.add('hidden');
         const satietySection = document.getElementById('satietySection');
         if (satietySection) {
@@ -676,9 +683,19 @@ export async function deleteEntry() {
 
 export function setRating(s) {
     appState.currentRating = s;
-    const sts = document.getElementById('starContainer').children;
-    for (let i = 0; i < 5; i++) {
-        sts[i].className = i < s ? 'star-btn text-2xl text-yellow-400' : 'star-btn text-2xl text-slate-200';
+    const starContainer = document.getElementById('starContainer');
+    if (starContainer) {
+        const sts = starContainer.children;
+        for (let i = 0; i < 5; i++) {
+            sts[i].className = i < s ? 'star-btn text-2xl text-yellow-400' : 'star-btn text-2xl text-slate-200';
+        }
+    }
+    const snackStarContainer = document.getElementById('snackStarContainer');
+    if (snackStarContainer) {
+        const sts = snackStarContainer.children;
+        for (let i = 0; i < 5; i++) {
+            sts[i].className = i < s ? 'star-btn text-2xl text-yellow-400' : 'star-btn text-2xl text-slate-200';
+        }
     }
 }
 
@@ -864,7 +881,19 @@ export function openSettings() {
     }
     
     document.getElementById('settingNickname').value = state.tempSettings.profile.nickname;
-    // 태그 편집 기능 제거됨
+    
+    // 자주 사용하는 태그 초기화 (없으면 빈 객체로)
+    if (!state.tempSettings.favoriteSubTags) {
+        state.tempSettings.favoriteSubTags = {
+            mealType: {},
+            category: {},
+            withWhom: {},
+            snackType: {}
+        };
+    }
+    
+    // 자주 사용하는 태그 편집 UI 렌더링
+    renderFavoriteTagsEditor();
     
     const accountSection = document.getElementById('accountSection');
     if (accountSection) {
@@ -944,6 +973,156 @@ export function removeTag(k, idx, isSub) {
         state.tempSettings.tags[k].splice(idx, 1);
     }
     renderTagManager(k, isSub, state.tempSettings);
+}
+
+function renderFavoriteTagsEditor() {
+    const state = appState;
+    const container = document.getElementById('favoriteTagsSection');
+    if (!container) return;
+    
+    // 현재 선택된 메인 태그 추적
+    if (!state.selectedFavoriteMainTag) {
+        state.selectedFavoriteMainTag = {};
+    }
+    
+    const tagConfigs = {
+        mealType: { label: '식사 구분', subTagKey: 'place', mainTags: state.tempSettings.tags?.mealType || [] },
+        category: { label: '메뉴 카테고리', subTagKey: 'menu', mainTags: state.tempSettings.tags?.category || [] },
+        withWhom: { label: '함께한 사람', subTagKey: 'people', mainTags: state.tempSettings.tags?.withWhom || [] },
+        snackType: { label: '간식 유형', subTagKey: 'snack', mainTags: state.tempSettings.tags?.snackType || [] }
+    };
+    
+    let html = '';
+    Object.entries(tagConfigs).forEach(([mainTagKey, config]) => {
+        const favoritesByMainTag = state.tempSettings.favoriteSubTags[mainTagKey] || {};
+        const selectedMainTag = state.selectedFavoriteMainTag[mainTagKey] || null;
+        const selectedFavorites = selectedMainTag ? (favoritesByMainTag[selectedMainTag] || []) : [];
+        
+        html += `<div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-6">
+            <div class="text-xs font-bold text-slate-600 mb-3 uppercase">${config.label}</div>
+            <div id="favoriteMainTags-${mainTagKey}" class="flex flex-wrap gap-2 mb-3">
+                ${config.mainTags.map(mainTag => {
+                    const isSelected = selectedMainTag === mainTag;
+                    const favorites = favoritesByMainTag[mainTag] || [];
+                    return `<button onclick="window.selectFavoriteMainTag('${mainTagKey}', '${mainTag.replace(/'/g, "\\'")}')" 
+                        class="chip ${isSelected ? 'active' : ''}">
+                        <span class="font-bold">${mainTag}</span> <span class="text-[10px] opacity-70">(${favorites.length}/5)</span>
+                    </button>`;
+                }).join('')}
+            </div>
+            <div class="flex gap-2 mb-3">
+                <input type="text" id="newFavoriteTag-${mainTagKey}-${selectedMainTag || 'none'}" class="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-emerald-500" placeholder="태그 입력" onkeypress="if(event.key==='Enter' && window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${mainTagKey}']) window.addFavoriteTag('${mainTagKey}', window.selectedFavoriteMainTag['${mainTagKey}'])">
+                <button onclick="if(window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${mainTagKey}']) window.addFavoriteTag('${mainTagKey}', window.selectedFavoriteMainTag['${mainTagKey}'])" class="bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold ${selectedMainTag ? '' : 'opacity-50 cursor-not-allowed'}" ${selectedMainTag ? '' : 'disabled'}>추가</button>
+            </div>
+            ${selectedMainTag ? `
+                ${selectedFavorites.length >= 5 ? '<div class="text-[10px] text-slate-500 mb-3">최대 5개까지 입력 가능합니다</div>' : ''}
+                <div class="mt-3">
+                    <div class="text-[10px] text-slate-400 mb-2">나만의 태그 (최대 5개)</div>
+                    <div class="flex flex-wrap gap-2" id="favoriteTags-${mainTagKey}-${selectedMainTag}">
+                        ${selectedFavorites.map((text, idx) => `
+                            <div class="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold">
+                                <span>${text}</span>
+                                <button onclick="window.removeFavoriteTag('${mainTagKey}', '${selectedMainTag.replace(/'/g, "\\'")}', ${idx})" class="ml-1 hover:bg-emerald-700 rounded-full w-4 h-4 flex items-center justify-center transition-colors">
+                                    <i class="fa-solid fa-xmark text-[8px]"></i>
+                                </button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : '<div class="text-[10px] text-slate-400 mt-3">메인 태그를 선택하세요</div>'}
+        </div>`;
+    });
+    
+    container.innerHTML = html;
+}
+
+export function selectFavoriteMainTag(mainTagKey, mainTag) {
+    const state = appState;
+    if (!state.selectedFavoriteMainTag) {
+        state.selectedFavoriteMainTag = {};
+    }
+    
+    // 같은 태그를 다시 클릭하면 선택 해제, 다른 태그를 클릭하면 선택 변경
+    if (state.selectedFavoriteMainTag[mainTagKey] === mainTag) {
+        state.selectedFavoriteMainTag[mainTagKey] = null;
+    } else {
+        state.selectedFavoriteMainTag[mainTagKey] = mainTag;
+    }
+    
+    // 전역 변수로도 저장 (입력창에서 접근 가능하도록)
+    if (!window.selectedFavoriteMainTag) {
+        window.selectedFavoriteMainTag = {};
+    }
+    window.selectedFavoriteMainTag[mainTagKey] = state.selectedFavoriteMainTag[mainTagKey];
+    
+    renderFavoriteTagsEditor();
+}
+
+export function addFavoriteTag(mainTagKey, mainTag) {
+    const state = appState;
+    if (!state.tempSettings.favoriteSubTags) {
+        state.tempSettings.favoriteSubTags = {
+            mealType: {},
+            category: {},
+            withWhom: {},
+            snackType: {}
+        };
+    }
+    
+    if (!state.tempSettings.favoriteSubTags[mainTagKey]) {
+        state.tempSettings.favoriteSubTags[mainTagKey] = {};
+    }
+    
+    // 메인 태그가 선택되지 않았으면 입력 불가
+    if (!mainTag || mainTag === 'none') {
+        showToast("메인 태그를 먼저 선택해주세요.", 'info');
+        return;
+    }
+    
+    const input = document.getElementById(`newFavoriteTag-${mainTagKey}-${mainTag}`);
+    if (!input) return;
+    
+    const text = input.value.trim();
+    if (!text) {
+        showToast("태그를 입력해주세요.", 'info');
+        return;
+    }
+    
+    if (!state.tempSettings.favoriteSubTags[mainTagKey][mainTag]) {
+        state.tempSettings.favoriteSubTags[mainTagKey][mainTag] = [];
+    }
+    
+    const favorites = state.tempSettings.favoriteSubTags[mainTagKey][mainTag];
+    
+    if (favorites.includes(text)) {
+        showToast("이미 추가된 태그입니다.", 'info');
+        input.value = '';
+        return;
+    }
+    
+    if (favorites.length >= 5) {
+        showToast("나만의 태그는 최대 5개까지 입력할 수 있습니다.", 'info');
+        return;
+    }
+    
+    favorites.push(text);
+    input.value = '';
+    renderFavoriteTagsEditor();
+}
+
+export function removeFavoriteTag(mainTagKey, mainTag, index) {
+    const state = appState;
+    if (!state.tempSettings.favoriteSubTags || !state.tempSettings.favoriteSubTags[mainTagKey]) return;
+    
+    if (!state.tempSettings.favoriteSubTags[mainTagKey][mainTag]) {
+        state.tempSettings.favoriteSubTags[mainTagKey][mainTag] = [];
+    }
+    
+    const favorites = state.tempSettings.favoriteSubTags[mainTagKey][mainTag];
+    if (index >= 0 && index < favorites.length) {
+        favorites.splice(index, 1);
+        renderFavoriteTagsEditor();
+    }
 }
 
 export async function deleteSubTag(key, text, containerId, inputId, parentFilter) {

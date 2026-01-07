@@ -15,7 +15,7 @@ import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMon
 import { 
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
     handleMultipleImages, removePhoto, updateShareIndicator, toggleSharePhoto,
-    openSettings, closeSettings, saveSettings, selectIcon, addTag, removeTag, deleteSubTag
+    openSettings, closeSettings, saveSettings, selectIcon, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag
 } from './modals.js';
 import { DEFAULT_SUB_TAGS } from './constants.js';
 
@@ -54,6 +54,9 @@ window.selectIcon = selectIcon;
 window.addTag = addTag;
 window.removeTag = removeTag;
 window.deleteSubTag = deleteSubTag;
+window.addFavoriteTag = addFavoriteTag;
+window.removeFavoriteTag = removeFavoriteTag;
+window.selectFavoriteMainTag = selectFavoriteMainTag;
 window.setDashboardMode = setDashboardMode;
 window.updateCustomDates = updateCustomDates;
 window.updateSelectedMonth = updateSelectedMonth;

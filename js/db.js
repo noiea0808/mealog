@@ -216,6 +216,14 @@ export function setupListeners(userId, callbacks) {
             if (!window.userSettings.subTags) {
                 window.userSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
             }
+            if (!window.userSettings.favoriteSubTags) {
+                window.userSettings.favoriteSubTags = {
+                    mealType: {},
+                    category: {},
+                    withWhom: {},
+                    snackType: {}
+                };
+            }
             // "???" 항목 제거 (기존 사용자 설정 정리)
             if (window.userSettings.tags && window.userSettings.tags.mealType) {
                 const index = window.userSettings.tags.mealType.indexOf('???');
@@ -254,6 +262,64 @@ export function setupListeners(userId, callbacks) {
                     console.log('간식 항목 마이그레이션 저장 완료');
                 }).catch(e => {
                     console.error('간식 항목 마이그레이션 저장 실패:', e);
+                });
+            }
+            
+            // 함께한 사람 태그 마이그레이션: 새로운 항목으로 업데이트
+            const newWithWhomTags = ['혼자', '가족', '연인', '친구', '직장동료', '학교친구', '모임', '기타'];
+            const currentWithWhomTags = window.userSettings.tags.withWhom || [];
+            
+            // 새로운 항목과 정확히 일치하는지 확인
+            const isWithWhomExactMatch = currentWithWhomTags.length === newWithWhomTags.length &&
+                currentWithWhomTags.every((tag, idx) => tag === newWithWhomTags[idx]);
+            
+            if (!isWithWhomExactMatch) {
+                // 기존 '회사사람'을 '직장동료'로 변환
+                let updatedTags = [...currentWithWhomTags];
+                const hasOldTag = updatedTags.includes('회사사람');
+                
+                if (hasOldTag) {
+                    const oldIndex = updatedTags.indexOf('회사사람');
+                    updatedTags[oldIndex] = '직장동료';
+                }
+                
+                // 새로운 태그가 없으면 추가
+                newWithWhomTags.forEach(newTag => {
+                    if (!updatedTags.includes(newTag)) {
+                        updatedTags.push(newTag);
+                    }
+                });
+                
+                // 순서 정렬 (newWithWhomTags 순서대로)
+                updatedTags = newWithWhomTags.filter(tag => updatedTags.includes(tag));
+                
+                console.log('함께한 사람 태그 마이그레이션: 새로운 항목으로 업데이트', {
+                    before: currentWithWhomTags,
+                    after: updatedTags
+                });
+                window.userSettings.tags.withWhom = updatedTags;
+                
+                // 서브 태그도 업데이트: '회사사람' parent를 '직장동료'로 변경
+                if (window.userSettings.subTags && window.userSettings.subTags.people) {
+                    let hasSubTagUpdate = false;
+                    window.userSettings.subTags.people = window.userSettings.subTags.people.map(subTag => {
+                        if (subTag.parent === '회사사람') {
+                            hasSubTagUpdate = true;
+                            return { ...subTag, parent: '직장동료' };
+                        }
+                        return subTag;
+                    });
+                    
+                    if (hasSubTagUpdate) {
+                        console.log('함께한 사람 서브 태그 마이그레이션: 회사사람 -> 직장동료');
+                    }
+                }
+                
+                // 변경사항 저장
+                dbOps.saveSettings(window.userSettings).then(() => {
+                    console.log('함께한 사람 태그 마이그레이션 저장 완료');
+                }).catch(e => {
+                    console.error('함께한 사람 태그 마이그레이션 저장 실패:', e);
                 });
             }
         }

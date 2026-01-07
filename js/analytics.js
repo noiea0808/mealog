@@ -1,5 +1,5 @@
 // 통계 및 차트 관련 함수들
-import { SLOTS, VIBRANT_COLORS, RATING_GRADIENT, SATIETY_DATA } from './constants.js';
+import { SLOTS, SLOT_STYLES, VIBRANT_COLORS, RATING_GRADIENT, SATIETY_DATA } from './constants.js';
 import { appState } from './state.js';
 import { generateColorMap } from './utils.js';
 import { loadMealsForDateRange } from './db.js';
@@ -41,7 +41,7 @@ export function renderProportionChart(containerId, data, key) {
     
     const total = data.length;
     if (total === 0 || Object.keys(counts).length === 0) {
-        container.innerHTML = '<div class="text-center py-4 text-slate-400 text-xs">데이터가 없습니다.</div>';
+        container.innerHTML = '<div class="text-center py-4 px-5 text-slate-400 text-xs">데이터가 없습니다.</div>';
         return;
     }
     
@@ -116,7 +116,7 @@ export function renderProportionChart(containerId, data, key) {
     html += '</div>';
     
     // 차트 아래 라벨 추가 (각 세그먼트 중간에 배치, 겹침 처리)
-    html += '<div class="relative h-5 mt-1">';
+    html += '<div class="relative h-5 mt-1 mb-0">';
     let lastLabelEnd = -1;
     segments.forEach(({ name, count, startPercent, widthPercent }) => {
         // 라벨 표시 텍스트 생성
@@ -338,28 +338,91 @@ export async function updateDashboard() {
     
     const periodNavigator = document.getElementById('periodNavigator');
     const periodDisplay = document.getElementById('periodDisplay');
+    const periodDisplay7d = document.getElementById('periodDisplay7d');
     
-    if (periodNavigator) {
-        if (state.dashboardMode === 'week' || state.dashboardMode === 'month' || state.dashboardMode === 'year' || state.dashboardMode === '7d') {
-            periodNavigator.classList.remove('hidden');
-            if (periodDisplay) {
-                if (state.dashboardMode === 'week') {
-                    const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
-                    const startStr = formatDateWithDay(start);
-                    const endStr = formatDateWithDay(end);
-                    periodDisplay.innerHTML = `${state.selectedYear}년 ${state.selectedMonthForWeek}월 ${state.selectedWeek}주 <span class="text-xs opacity-75">(${startStr}~${endStr})</span>`;
-                } else if (state.dashboardMode === 'month') {
-                    const [y, m] = state.selectedMonth.split('-');
-                    periodDisplay.innerText = `${y}년 ${parseInt(m)}월`;
-                } else if (state.dashboardMode === 'year') {
-                    const year = state.selectedYearForYear || new Date().getFullYear();
-                    periodDisplay.innerText = `${year}년`;
-                } else if (state.dashboardMode === '7d') {
-                    periodDisplay.innerText = dateRangeText;
-                }
-            }
-        } else {
+    // 최근1주 모드일 때는 별도 표시 (네비게이션 버튼 없음, 기간 표시)
+    if (state.dashboardMode === '7d') {
+        if (periodDisplay7d) {
+            const startDate = state.recentWeekStartDate || (() => {
+                const d = new Date();
+                d.setDate(d.getDate() - 6);
+                d.setHours(0, 0, 0, 0);
+                return d;
+            })();
+            const endDate = new Date();
+            endDate.setHours(23, 59, 59, 999);
+            const startStr = formatDateWithDay(startDate);
+            const endStr = formatDateWithDay(endDate);
+            periodDisplay7d.innerHTML = `<div class="text-sm font-bold text-white text-center">${startStr} ~ ${endStr}</div>`;
+            periodDisplay7d.classList.remove('hidden');
+        }
+        const periodDisplay7dDays = document.getElementById('periodDisplay7dDays');
+        if (periodDisplay7dDays) {
+            periodDisplay7dDays.classList.add('hidden');
+        }
+        if (periodNavigator) {
             periodNavigator.classList.add('hidden');
+        }
+        const customDatePicker = document.getElementById('customDatePicker');
+        if (customDatePicker) {
+            customDatePicker.classList.add('hidden');
+        }
+    } else if (state.dashboardMode === 'custom') {
+        // 직접 설정 모드일 때는 날짜 선택 UI 표시
+        const customDatePicker = document.getElementById('customDatePicker');
+        if (customDatePicker) {
+            customDatePicker.classList.remove('hidden');
+            const startInput = document.getElementById('customStart');
+            const endInput = document.getElementById('customEnd');
+            if (startInput && endInput) {
+                const startDate = state.customStartDate || new Date();
+                const endDate = state.customEndDate || new Date();
+                startInput.value = startDate.toISOString().split('T')[0];
+                endInput.value = endDate.toISOString().split('T')[0];
+            }
+        }
+        if (periodDisplay7d) {
+            periodDisplay7d.classList.add('hidden');
+        }
+        const periodDisplay7dDays = document.getElementById('periodDisplay7dDays');
+        if (periodDisplay7dDays) {
+            periodDisplay7dDays.classList.add('hidden');
+        }
+        if (periodNavigator) {
+            periodNavigator.classList.add('hidden');
+        }
+    } else {
+        if (periodDisplay7d) {
+            periodDisplay7d.classList.add('hidden');
+        }
+        const periodDisplay7dDays = document.getElementById('periodDisplay7dDays');
+        if (periodDisplay7dDays) {
+            periodDisplay7dDays.classList.add('hidden');
+        }
+        const customDatePicker = document.getElementById('customDatePicker');
+        if (customDatePicker) {
+            customDatePicker.classList.add('hidden');
+        }
+        if (periodNavigator) {
+            if (state.dashboardMode === 'week' || state.dashboardMode === 'month' || state.dashboardMode === 'year') {
+                periodNavigator.classList.remove('hidden');
+                if (periodDisplay) {
+                    if (state.dashboardMode === 'week') {
+                        const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
+                        const startStr = formatDateWithDay(start);
+                        const endStr = formatDateWithDay(end);
+                        periodDisplay.innerHTML = `${state.selectedYear}년 ${state.selectedMonthForWeek}월 ${state.selectedWeek}주 <span class="text-xs opacity-75">(${startStr}~${endStr})</span>`;
+                    } else if (state.dashboardMode === 'month') {
+                        const [y, m] = state.selectedMonth.split('-');
+                        periodDisplay.innerText = `${y}년 ${parseInt(m)}월`;
+                    } else if (state.dashboardMode === 'year') {
+                        const year = state.selectedYearForYear || new Date().getFullYear();
+                        periodDisplay.innerText = `${year}년`;
+                    }
+                }
+            } else {
+                periodNavigator.classList.add('hidden');
+            }
         }
     }
     
@@ -368,9 +431,9 @@ export async function updateDashboard() {
         const btn = document.getElementById(`btn-dash-${mode}`);
         if (btn) {
             if (state.dashboardMode === mode) {
-                btn.className = "flex-1 py-1 text-[10px] font-bold bg-emerald-600 text-white rounded-lg transition-colors";
+                btn.className = "flex-1 py-1 text-xs font-bold bg-emerald-600 text-white rounded-lg transition-colors";
             } else {
-                btn.className = "flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors";
+                btn.className = "flex-1 py-1 text-xs font-bold text-emerald-100 transition-colors";
             }
         }
     });
@@ -395,6 +458,7 @@ export async function updateDashboard() {
     
     // 간식 분석 차트
     renderProportionChart('snackTypeChartContainer', snacksOnly.filter(m => m.snackType), 'snackType');
+    renderProportionChart('snackRatingChartContainer', snacksOnly.filter(m => m.rating), 'rating');
     
     let targetDays = days;
     if (state.dashboardMode === 'month') {
@@ -463,10 +527,10 @@ export function openDetailModal(key, title) {
     } else if (key === 'snackType' && userTags.snackType) {
         allowedTags = new Set(userTags.snackType);
     }
-    // rating과 satiety는 숫자 값이므로 태그 필터링 불필요
+    // rating, snackRating, satiety는 숫자 값이므로 태그 필터링 불필요
     
     let slots, slotLabels;
-    if (key === 'snackType') {
+    if (key === 'snackType' || key === 'snackRating') {
         slots = ['pre_morning', 'snack1', 'snack2', 'night'];
         slotLabels = ['아침 전', '오전', '오후', '야식'];
     } else {
@@ -482,7 +546,7 @@ export function openDetailModal(key, title) {
             }
             return '미입력';
         }
-        if (key === 'rating') {
+        if (key === 'rating' || key === 'snackRating') {
             const ratingNum = parseInt(m.rating);
             if (!isNaN(ratingNum)) {
                 return `${ratingNum}점`;
@@ -591,7 +655,7 @@ export function openDetailModal(key, title) {
             if (name === '미입력') {
                 bg = '#e2e8f0'; // 연회색
                 textColor = '#64748b'; // 진한 회색 텍스트
-            } else if (key === 'rating') {
+            } else if (key === 'rating' || key === 'snackRating') {
                 const ratingNum = parseInt(name.replace('점', ''));
                 if (!isNaN(ratingNum)) {
                     bg = RATING_GRADIENT[ratingNum - 1] || RATING_GRADIENT[0];
@@ -704,8 +768,8 @@ function updateAnalysisTypeUI() {
     const mainSection = document.getElementById('mainAnalysisSection');
     const snackSection = document.getElementById('snackAnalysisSection');
     
-    const activeBtnClass = "flex-1 py-1.5 text-xs font-bold bg-white text-emerald-700 rounded-lg shadow-sm transition-all";
-    const inactiveBtnClass = "flex-1 py-1.5 text-xs font-bold text-emerald-600 hover:bg-emerald-100/50 rounded-lg transition-colors";
+    const activeBtnClass = "flex-1 py-2.5 text-sm font-semibold transition-all relative text-emerald-600 border-b-2 border-emerald-600";
+    const inactiveBtnClass = "flex-1 py-2.5 text-sm font-semibold transition-all relative text-slate-400 hover:text-slate-600 border-b-2 border-transparent";
     
     if (bestBtn && mainBtn && snackBtn) {
         bestBtn.className = state.analysisType === 'best' ? activeBtnClass : inactiveBtnClass;
@@ -725,8 +789,8 @@ function updateAnalysisTypeUI() {
 }
 
 export function updateCustomDates() {
-    const startInput = document.getElementById('customStartDate');
-    const endInput = document.getElementById('customEndDate');
+    const startInput = document.getElementById('customStart');
+    const endInput = document.getElementById('customEnd');
     if (startInput && endInput) {
         appState.customStartDate = new Date(startInput.value);
         appState.customEndDate = new Date(endInput.value);
@@ -837,7 +901,7 @@ export function navigatePeriod(direction) {
     }
 }
 
-// 주간 베스트 가져오기 (만족도 4~5점, 최대 5개)
+// 주간 베스트 가져오기 (만족도 4~5점, 전부 표시)
 function getWeekBestMeals(year, month, week) {
     const { start, end } = getWeekRange(year, month, week);
     const startStr = start.toISOString().split('T')[0];
@@ -851,7 +915,7 @@ function getWeekBestMeals(year, month, week) {
         return m.rating && parseInt(m.rating) >= 4;
     });
     
-    // 만족도 내림차순, 날짜 내림차순으로 정렬하고 최대 5개만
+    // 만족도 내림차순, 날짜 내림차순으로 정렬 (모든 항목 반환)
     const sorted = [...highRatingMeals].sort((a, b) => {
         if (parseInt(b.rating) !== parseInt(a.rating)) {
             return parseInt(b.rating) - parseInt(a.rating);
@@ -859,7 +923,7 @@ function getWeekBestMeals(year, month, week) {
         return b.date.localeCompare(a.date);
     });
     
-    return sorted.slice(0, 5);
+    return sorted;
 }
 
 // 월간 베스트 가져오기 (각 주간 베스트에서 선정된 것들만)
@@ -1081,57 +1145,105 @@ export function renderBestMeals() {
         const rating = meal.rating ? parseInt(meal.rating) : 0;
         const rank = index + 1;
         
-        // 1~3위 색상 구분 (현대적이고 눈에 띄는 색상)
+        // 1~3위는 금은동 색상, 4위 이상은 기본 색상
+        let rankDisplay = rank.toString();
         let rankBgClass = 'bg-emerald-100';
         let rankTextClass = 'text-emerald-700';
         if (rank === 1) {
-            // 1위: 강렬한 보라색
-            rankBgClass = 'bg-purple-500';
+            // 1위: 금색
+            rankBgClass = 'bg-yellow-500';
             rankTextClass = 'text-white';
         } else if (rank === 2) {
-            // 2위: 밝은 파란색
-            rankBgClass = 'bg-blue-400';
+            // 2위: 은색
+            rankBgClass = 'bg-gray-400';
             rankTextClass = 'text-white';
         } else if (rank === 3) {
-            // 3위: 따뜻한 주황색
-            rankBgClass = 'bg-orange-500';
+            // 3위: 동색
+            rankBgClass = 'bg-amber-600';
             rankTextClass = 'text-white';
+        } else {
+            // 4위 이상: 기본 색상
+            rankBgClass = 'bg-emerald-100';
+            rankTextClass = 'text-emerald-700';
         }
         
+        // 타임라인과 동일한 정보 구성
+        const place = meal.place || '';
+        const menuDetail = meal.menuDetail || '';
+        const title = (place && menuDetail) ? `${place} | ${menuDetail}` : (place || menuDetail || displayTitle);
+        
+        // 태그 정보 수집
+        const tags = [];
+        if (meal.mealType && meal.mealType !== 'Skip') tags.push(meal.mealType);
+        if (meal.withWhomDetail) tags.push(meal.withWhomDetail);
+        else if (meal.withWhom && meal.withWhom !== '혼자') tags.push(meal.withWhom);
+        if (meal.satiety) {
+            const sData = SATIETY_DATA.find(d => d.val === meal.satiety);
+            if (sData) tags.push(sData.label);
+        }
+        
+        // 날짜 포맷 (타임라인과 동일하게)
+        const dateObj = meal.date ? new Date(meal.date + 'T00:00:00') : new Date();
+        const formattedDate = dateObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+        
+        // 슬롯 스타일 가져오기
+        const specificStyle = SLOT_STYLES[meal.slotId] || SLOT_STYLES['default'];
+        const iconBoxClass = `bg-slate-100 border-slate-200 ${specificStyle.iconText}`;
+        
+        // 아이콘 HTML 생성
+        let iconHtml = '';
+        if (photoUrl) {
+            iconHtml = `<img src="${photoUrl}" class="w-full h-full object-cover">`;
+        } else if (meal.mealType === 'Skip') {
+            iconHtml = `<i class="fa-solid fa-ban text-2xl"></i>`;
+        } else {
+            iconHtml = `<i class="fa-solid fa-utensils text-2xl"></i>`;
+        }
+        
+        // 태그 HTML 생성
+        let tagsHtml = '';
+        if (tags.length > 0) {
+            tagsHtml = `<div class="mt-1 flex flex-wrap gap-1 pr-2">${tags.map(t => 
+                `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded">#${t}</span>`
+            ).join('')}</div>`;
+        }
+        
+        // 안전한 문자열 이스케이프
+        const safeDate = (meal.date || '').replace(/'/g, "\\'");
+        const safeSlotId = (meal.slotId || '').replace(/'/g, "\\'");
+        const safeMealId = (meal.id || '').replace(/'/g, "\\'");
+        
         return `
-            <div class="best-meal-item bg-white rounded-lg border border-slate-200 p-2 flex items-start gap-3 cursor-move active:scale-[0.98] transition-all" 
-                 data-meal-id="${meal.id}" 
+            <div class="best-meal-item card mb-0 border-t border-b border-slate-200 cursor-move active:scale-[0.98] transition-all !rounded-lg bg-white" 
+                 data-meal-id="${safeMealId}" 
                  data-rating="${rating}"
-                 draggable="true">
-                ${photoUrl ? `
-                    <div class="flex-shrink-0 w-[140px] h-[140px] rounded-lg overflow-hidden bg-slate-100 relative">
+                 data-date="${safeDate}"
+                 data-slot-id="${safeSlotId}"
+                 draggable="true"
+                 style="height: 140px;">
+                <div class="flex relative h-full">
+                    <div class="w-[140px] h-full ${iconBoxClass} flex-shrink-0 flex items-center justify-center overflow-hidden border-r relative">
                         <div class="absolute top-1 left-1 w-6 h-6 rounded-full ${rankBgClass} ${rankTextClass} flex items-center justify-center text-xs font-bold z-10">
-                            ${rank}
+                            ${rankDisplay}
                         </div>
-                        <img src="${photoUrl}" alt="${displayTitle}" class="w-full h-full object-cover">
+                        ${iconHtml}
                     </div>
-                ` : `
-                    <div class="flex-shrink-0 w-[140px] h-[140px] rounded-lg bg-slate-100 flex items-center justify-center relative">
-                        <div class="absolute top-1 left-1 w-6 h-6 rounded-full ${rankBgClass} ${rankTextClass} flex items-center justify-center text-xs font-bold z-10">
-                            ${rank}
+                    <div class="flex-1 min-w-0 flex flex-col justify-center p-4 pr-12 relative">
+                        <div class="absolute top-2 right-2 flex items-center gap-2 z-10">
+                            ${meal.sharedPhotos && Array.isArray(meal.sharedPhotos) && meal.sharedPhotos.length > 0 ? `<span class="text-xs text-emerald-600" title="게시됨"><i class="fa-solid fa-share"></i></span>` : ''}
+                            <span class="text-xs text-yellow-500"><i class="fa-solid fa-star mr-0.5"></i>${rating || '-'}</span>
                         </div>
-                        <i class="fa-solid fa-utensils text-slate-300 text-4xl"></i>
+                        <div class="flex items-center gap-2 mb-1.5 pr-16">
+                            <span class="text-xs font-black uppercase ${specificStyle.iconText}">${slotLabel}</span>
+                            <span class="text-xs text-slate-400">${formattedDate}</span>
+                        </div>
+                        <h4 class="text-base font-bold truncate text-slate-800 mb-1 pr-2">${title}</h4>
+                        ${meal.comment ? `<p class="text-xs text-slate-400 mb-1.5 line-clamp-1 pr-2">"${meal.comment}"</p>` : ''}
+                        ${tagsHtml}
                     </div>
-                `}
-                <div class="flex-1 min-w-0">
-                    <div class="text-xs text-slate-400 mb-1">${dateStr}</div>
-                    <div class="flex items-center gap-2 mb-1">
-                        <span class="text-base font-bold text-slate-600">${displayTitle}</span>
-                        <span class="text-xs text-slate-400">${slotLabel}</span>
+                    <div class="absolute top-1/2 right-2 -translate-y-1/2 text-slate-300">
+                        <i class="fa-solid fa-grip-vertical text-sm"></i>
                     </div>
-                    <div class="flex items-center gap-0.5">
-                        ${Array.from({ length: rating }).map(() => 
-                            '<i class="fa-solid fa-star text-yellow-400 text-xs"></i>'
-                        ).join('')}
-                    </div>
-                </div>
-                <div class="flex-shrink-0 text-slate-300">
-                    <i class="fa-solid fa-grip-vertical text-sm"></i>
                 </div>
             </div>
         `;
@@ -1169,16 +1281,31 @@ function setupDragAndDrop(enableRatingConstraint = false) {
     if (!container) return;
     
     let draggedElement = null;
+    let isDragging = false;
     
     container.querySelectorAll('.best-meal-item').forEach(item => {
+        // 클릭 이벤트 추가 (드래그 중이 아닐 때만)
+        item.addEventListener('click', (e) => {
+            if (!isDragging) {
+                const date = item.getAttribute('data-date');
+                const slotId = item.getAttribute('data-slot-id');
+                const mealId = item.getAttribute('data-meal-id');
+                if (date && slotId && mealId) {
+                    window.openModal(date, slotId, mealId);
+                }
+            }
+        });
+        
         item.addEventListener('dragstart', (e) => {
             draggedElement = item;
+            isDragging = true;
             item.classList.add('opacity-50');
             e.dataTransfer.effectAllowed = 'move';
         });
         
         item.addEventListener('dragend', (e) => {
             item.classList.remove('opacity-50');
+            isDragging = false;
             container.querySelectorAll('.best-meal-item').forEach(el => {
                 el.classList.remove('border-emerald-400', 'bg-emerald-50', 'border-red-400', 'bg-red-50');
             });
@@ -1259,24 +1386,28 @@ async function updateBestOrder() {
     // 순위 번호 업데이트 (동그라미 내부)
     items.forEach((item, index) => {
         const newRank = index + 1;
-        // 순위 동그라미 찾기 (w-6 h-6)
-        const rankCircle = item.querySelector('.w-6.h-6.rounded-full');
+        // 순위 동그라미 찾기 (absolute top-1 left-1을 가진 요소)
+        const rankCircle = Array.from(item.querySelectorAll('*')).find(el => 
+            el.classList.contains('absolute') && 
+            el.classList.contains('top-1') && 
+            el.classList.contains('left-1') &&
+            el.classList.contains('rounded-full')
+        );
         if (rankCircle) {
+            // 1~3위는 금은동 색상, 4위 이상은 기본 색상
             rankCircle.textContent = newRank;
-            
-            // 1~3위 색상 업데이트 (보라색, 파란색, 주황색)
-            rankCircle.className = 'absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold z-10';
             if (newRank === 1) {
-                // 1위: 강렬한 보라색
-                rankCircle.classList.add('bg-purple-500', 'text-white');
+                // 1위: 금색
+                rankCircle.className = 'absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold z-10 bg-yellow-500 text-white';
             } else if (newRank === 2) {
-                // 2위: 밝은 파란색
-                rankCircle.classList.add('bg-blue-400', 'text-white');
+                // 2위: 은색
+                rankCircle.className = 'absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold z-10 bg-gray-400 text-white';
             } else if (newRank === 3) {
-                // 3위: 따뜻한 주황색
-                rankCircle.classList.add('bg-orange-500', 'text-white');
+                // 3위: 동색
+                rankCircle.className = 'absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold z-10 bg-amber-600 text-white';
             } else {
-                rankCircle.classList.add('bg-emerald-100', 'text-emerald-700');
+                // 4위 이상: 기본 색상
+                rankCircle.className = 'absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold z-10 bg-emerald-100 text-emerald-700';
             }
         }
     });

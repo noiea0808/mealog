@@ -69,10 +69,11 @@ body {
 .chip { 
     padding: 8px 14px; 
     border-radius: 12px; 
-    font-size: 11px; 
-    font-weight: 600; 
+    font-size: 12px; 
+    font-weight: 700; 
+    background: white;
     border: 1px solid #e2e8f0; 
-    color: #64748b; 
+    color: #475569; 
     cursor: pointer; 
     transition: all 0.2s; 
     margin-right: 4px; 
@@ -93,14 +94,25 @@ body {
     font-weight: 600; 
     background: #f1f5f9; 
     color: #94a3b8; 
+    border: 1px solid #cbd5e1;
     margin-right: 4px; 
     margin-bottom: 4px; 
     cursor: pointer; 
     transition: all 0.2s; 
 }
 .sub-chip.active { 
-    background: #cbd5e1; 
-    color: #475569; 
+    background: #6366f1; 
+    color: white; 
+    border-color: #6366f1;
+}
+/* 나만의 태그가 active일 때 스타일 */
+.sub-chip.bg-emerald-100.active {
+    background: #10b981 !important;
+    color: white !important;
+    border-color: #10b981 !important;
+}
+.sub-chip.bg-emerald-100.active .fa-star {
+    color: white !important;
 }
 .snack-tag { 
     display: inline-flex; 
