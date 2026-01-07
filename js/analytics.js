@@ -3,6 +3,7 @@ import { SLOTS, SLOT_STYLES, VIBRANT_COLORS, RATING_GRADIENT, SATIETY_DATA } fro
 import { appState } from './state.js';
 import { generateColorMap } from './utils.js';
 import { loadMealsForDateRange } from './db.js';
+import { showToast } from './ui.js';
 
 export function renderProportionChart(containerId, data, key) {
     const container = document.getElementById(containerId);
@@ -62,9 +63,35 @@ export function renderProportionChart(containerId, data, key) {
         sorted = tagEntries;
     } else {
         const entries = Object.entries(counts);
-        const nonEmptyEntries = entries.filter(([name]) => name !== '미입력').sort((a, b) => b[1] - a[1]);
         const emptyEntry = entries.find(([name]) => name === '미입력');
-        sorted = emptyEntry ? [...nonEmptyEntries, emptyEntry] : nonEmptyEntries;
+        const nonEmptyEntries = entries.filter(([name]) => name !== '미입력');
+        
+        // 만족도나 포만감의 경우 값 순서대로 정렬 (높은 수준이 오른쪽)
+        if (key === 'rating') {
+            const ratingEntries = nonEmptyEntries.sort((a, b) => {
+                const aNum = parseInt(a[0]);
+                const bNum = parseInt(b[0]);
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    return aNum - bNum; // 오름차순 (1점부터 5점까지)
+                }
+                return 0;
+            });
+            sorted = emptyEntry ? [...ratingEntries, emptyEntry] : ratingEntries;
+        } else if (key === 'satiety') {
+            const satietyEntries = nonEmptyEntries.sort((a, b) => {
+                const aNum = parseInt(a[0]);
+                const bNum = parseInt(b[0]);
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    return aNum - bNum; // 오름차순 (1부터 5까지)
+                }
+                return 0;
+            });
+            sorted = emptyEntry ? [...satietyEntries, emptyEntry] : satietyEntries;
+        } else {
+            // 다른 경우는 개수 내림차순으로 정렬
+            const sortedEntries = nonEmptyEntries.sort((a, b) => b[1] - a[1]);
+            sorted = emptyEntry ? [...sortedEntries, emptyEntry] : sortedEntries;
+        }
     }
     
     const colorMap = generateColorMap(data, key, VIBRANT_COLORS);
@@ -1016,6 +1043,29 @@ function getYearBestMeals(year) {
     return allBestMeals;
 }
 
+// 주간/월간이 끝났는지 확인하는 함수
+function isPeriodEnded() {
+    const state = appState;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    if (state.dashboardMode === 'week') {
+        // 주간 모드: 선택한 주의 마지막 날(토요일)이 지났는지 확인
+        const { end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
+        const weekEnd = new Date(end);
+        weekEnd.setHours(23, 59, 59, 999);
+        return today > weekEnd;
+    } else if (state.dashboardMode === 'month') {
+        // 월간 모드: 선택한 월의 마지막 날이 지났는지 확인
+        const [y, m] = state.selectedMonth.split('-').map(Number);
+        const monthEnd = new Date(y, m, 0); // 해당 월의 마지막 날
+        monthEnd.setHours(23, 59, 59, 999);
+        return today > monthEnd;
+    }
+    
+    return false;
+}
+
 // Best 탭 데이터 렌더링 함수
 export function renderBestMeals() {
     const container = document.getElementById('bestMealsContainer');
@@ -1066,6 +1116,23 @@ export function renderBestMeals() {
     // periodLabel 표시
     if (periodLabelEl) {
         periodLabelEl.textContent = periodLabel;
+    }
+    
+    // 공유 버튼 표시 여부 확인
+    const shareBtn = document.getElementById('shareBestBtn');
+    if (shareBtn) {
+        const periodEnded = isPeriodEnded();
+        const hasTop3Meals = () => {
+            // 1~3위 메뉴가 있는지 확인 (필터링 전 meals 사용)
+            const top3 = meals.filter(m => m && m.rating).slice(0, 3);
+            return top3.length >= 1; // 최소 1개 이상이면 공유 가능
+        };
+        
+        if (periodEnded && hasTop3Meals()) {
+            shareBtn.classList.remove('hidden');
+        } else {
+            shareBtn.classList.add('hidden');
+        }
     }
     
     // 월간/연간 모드에서는 만족도 5점 음식만 필터링
@@ -1418,5 +1485,202 @@ async function updateBestOrder() {
         }
     } catch (e) {
         console.error('Best 순서 저장 실패:', e);
+    }
+}
+
+// 베스트 공유 모달 열기
+export async function openShareBestModal() {
+    const modal = document.getElementById('bestShareModal');
+    const preview = document.getElementById('bestSharePreview');
+    if (!modal || !preview) return;
+    
+    const state = appState;
+    let meals = [];
+    let periodType = ''; // '주간' or '월간'
+    let periodText = '';
+    
+    // 현재 기간의 베스트 메뉴 가져오기
+    if (state.dashboardMode === 'week') {
+        meals = getWeekBestMeals(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
+        periodType = '주간';
+        const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
+        periodText = `${state.selectedYear}년 ${state.selectedMonthForWeek}월 ${state.selectedWeek}주`;
+    } else if (state.dashboardMode === 'month') {
+        const [y, m] = state.selectedMonth.split('-').map(Number);
+        meals = getMonthBestMeals(y, m);
+        periodType = '월간';
+        periodText = `${y}년 ${m}월`;
+    } else {
+        showToast('주간 또는 월간 모드에서만 공유할 수 있습니다.', 'error');
+        return;
+    }
+    
+    // 1~3위만 필터링
+    const top3Meals = meals.filter(m => m && m.rating).slice(0, 3);
+    
+    if (top3Meals.length === 0) {
+        showToast('공유할 베스트 메뉴가 없습니다.', 'error');
+        return;
+    }
+    
+    // 사용자 닉네임 가져오기
+    const userNickname = window.userSettings?.profile?.nickname || '익명';
+    
+    // 스크린샷용 HTML 생성
+    const screenshotHtml = `
+        <div id="bestScreenshotContainer" style="background: white; padding: 24px; max-width: 400px; margin: 0 auto;">
+            <div style="text-align: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 2px solid #10b981;">
+                <h2 style="font-size: 20px; font-weight: 800; color: #1e293b; margin: 0; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    <span style="font-size: 22px;">🏆</span>
+                    <span>
+                        ${userNickname}의 ${periodType} Best
+                        ${periodText ? `<span style="font-size: 12px; color: #64748b; font-weight: 700; margin-left: 6px;">${periodText}</span>` : ''}
+                    </span>
+                </h2>
+            </div>
+            ${top3Meals.map((meal, index) => {
+                const slot = SLOTS.find(s => s.id === meal.slotId);
+                const slotLabel = slot ? slot.label : '알 수 없음';
+                const isSnack = slot && slot.type === 'snack';
+                const displayTitle = isSnack ? (meal.menuDetail || meal.snackType || '간식') : (meal.menuDetail || meal.mealType || '식사');
+                const photoUrl = meal.photos && Array.isArray(meal.photos) && meal.photos.length > 0 ? meal.photos[0] : null;
+                const date = meal.date ? new Date(meal.date + 'T00:00:00') : new Date();
+                const dateStr = `${date.getMonth() + 1}.${date.getDate()}(${getDayName(date)})`;
+                const rating = meal.rating ? parseInt(meal.rating) : 0;
+                const place = meal.place || '';
+                const menuDetail = meal.menuDetail || '';
+                const title = (place && menuDetail) ? `${place} | ${menuDetail}` : (place || menuDetail || displayTitle);
+                
+                // 순위 색상
+                let rankBg = '#10b981';
+                let rankText = '#ffffff';
+                if (index === 0) {
+                    rankBg = '#eab308'; // 금색
+                } else if (index === 1) {
+                    rankBg = '#9ca3af'; // 은색
+                } else if (index === 2) {
+                    rankBg = '#d97706'; // 동색
+                }
+                
+                return `
+                    <div style="display: flex; margin-bottom: 16px; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background: white;">
+                        <div style="width: 120px; height: 120px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0;">
+                            ${photoUrl ? `<img src="${photoUrl}" style="width: 100%; height: 100%; object-fit: cover;">` : `<div style="font-size: 24px;">🍽️</div>`}
+                            <div style="position: absolute; top: 8px; left: 8px; width: 24px; height: 24px; border-radius: 50%; background: ${rankBg}; color: ${rankText}; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; line-height: 1;">
+                                ${index + 1}
+                            </div>
+                        </div>
+                        <div style="flex: 1; padding: 12px; display: flex; flex-direction: column; justify-content: center;">
+                            <div style="font-size: 10px; color: #64748b; margin-bottom: 4px;">${slotLabel} · ${dateStr}</div>
+                            <div style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">${title}</div>
+                            <div style="font-size: 12px; color: #fbbf24; display: flex; align-items: center; gap: 4px;">
+                                ⭐ ${rating}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+    
+    // 미리보기 영역에 HTML 표시
+    preview.innerHTML = screenshotHtml;
+    
+    // 모달 열기
+    modal.classList.remove('hidden');
+    
+    // Comment 초기화
+    const commentInput = document.getElementById('bestShareComment');
+    if (commentInput) {
+        commentInput.value = '';
+    }
+}
+
+// 베스트 공유 모달 닫기
+export function closeShareBestModal() {
+    const modal = document.getElementById('bestShareModal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
+// 베스트를 피드에 공유하기
+export async function shareBestToFeed() {
+    const preview = document.getElementById('bestScreenshotContainer');
+    const commentInput = document.getElementById('bestShareComment');
+    const submitBtn = document.getElementById('bestShareSubmitBtn');
+    
+    if (!preview || !commentInput) return;
+    
+    const comment = commentInput.value.trim();
+    
+    // 로딩 상태
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '공유 중...';
+    }
+    
+    try {
+        // 스크린샷 생성
+        const canvas = await html2canvas(preview, {
+            backgroundColor: '#ffffff',
+            scale: 2,
+            logging: false,
+            useCORS: true
+        });
+        
+        // Canvas를 Blob으로 변환
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png', 0.95));
+        
+        // Firebase Storage에 업로드 (또는 base64로 저장)
+        // 여기서는 간단하게 base64로 저장하겠습니다
+        const base64Image = canvas.toDataURL('image/png');
+        
+        // 베스트 공유 데이터 생성
+        const state = appState;
+        let periodType = '';
+        let periodText = '';
+        
+        if (state.dashboardMode === 'week') {
+            periodType = '주간';
+            const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
+            periodText = `${state.selectedYear}년 ${state.selectedMonthForWeek}월 ${state.selectedWeek}주`;
+        } else if (state.dashboardMode === 'month') {
+            periodType = '월간';
+            const [y, m] = state.selectedMonth.split('-').map(Number);
+            periodText = `${y}년 ${m}월`;
+        }
+        
+        const userProfile = window.userSettings?.profile || {};
+        const bestShareData = {
+            photoUrl: base64Image,
+            userId: window.currentUser.uid,
+            userNickname: userProfile.nickname || '익명',
+            userIcon: userProfile.icon || '🐻',
+            type: 'best',
+            periodType: periodType,
+            periodText: periodText,
+            comment: comment,
+            timestamp: new Date().toISOString(),
+            entryId: null // 베스트 공유는 entryId가 없음
+        };
+        
+        // Firestore에 저장
+        const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+        const { db, appId } = await import('./firebase.js');
+        const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+        await addDoc(sharedColl, bestShareData);
+        
+        showToast('베스트가 피드에 공유되었습니다!', 'success');
+        closeShareBestModal();
+        
+    } catch (e) {
+        console.error('베스트 공유 실패:', e);
+        showToast('베스트 공유 중 오류가 발생했습니다.', 'error');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = '공유하기';
+        }
     }
 }

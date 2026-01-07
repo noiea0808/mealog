@@ -5,7 +5,7 @@ import { showToast } from './ui.js';
 import { DEFAULT_SUB_TAGS } from './constants.js';
 
 export const dbOps = {
-    async save(record) {
+    async save(record, silent = false) {
         if (!window.currentUser) {
             const error = new Error("로그인이 필요합니다.");
             showToast("저장 실패: 로그인이 필요합니다.", 'error');
@@ -18,10 +18,14 @@ export const dbOps = {
             const coll = collection(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals');
             if (docId) {
                 await setDoc(doc(coll, docId), dataToSave);
-                showToast("기록이 수정되었습니다.", 'success');
+                if (!silent) {
+                    showToast("기록이 수정되었습니다.", 'success');
+                }
             } else {
                 await addDoc(coll, dataToSave);
-                showToast("식사가 기록되었습니다.", 'success');
+                if (!silent) {
+                    showToast("식사가 기록되었습니다.", 'success');
+                }
             }
         } catch (e) {
             console.error("Save Error:", e);
@@ -135,40 +139,91 @@ export const dbOps = {
             throw e;
         }
     },
-    async unsharePhotos(photos, entryId) {
+    async unsharePhotos(photos, entryId, isBestShare = false) {
         if (!window.currentUser || !photos || photos.length === 0) return;
         try {
             const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
             
-            // entryId가 있으면 entryId로 필터링, 없으면 userId와 photoUrl로만 필터링
-            let q;
-            if (entryId) {
-                q = query(
-                    sharedColl,
-                    where('userId', '==', window.currentUser.uid),
-                    where('entryId', '==', entryId)
-                );
-            } else {
-                // entryId가 null인 경우 userId와 photoUrl로만 필터링
-                q = query(
-                    sharedColl,
-                    where('userId', '==', window.currentUser.uid)
-                );
-            }
+            // 모든 공유 사진 가져오기 (userId로 필터링)
+            const q = query(
+                sharedColl,
+                where('userId', '==', window.currentUser.uid)
+            );
             
             const snapshot = await getDocs(q);
             const photosToDelete = [];
             
-            console.log('unsharePhotos 호출:', { photos, entryId, snapshotSize: snapshot.size });
+            console.log('unsharePhotos 호출:', { photos, entryId, isBestShare, snapshotSize: snapshot.size });
+            
+            // 디버깅: 모든 사진 URL과 entryId 확인
+            const allPhotoUrls = [];
+            snapshot.forEach((docSnap) => {
+                const data = docSnap.data();
+                allPhotoUrls.push({
+                    photoUrl: data.photoUrl,
+                    entryId: data.entryId,
+                    type: data.type,
+                    docId: docSnap.id
+                });
+            });
+            console.log('현재 공유된 모든 사진:', allPhotoUrls);
+            console.log('삭제하려는 사진 URL:', photos);
             
             snapshot.forEach((docSnap) => {
                 const data = docSnap.data();
                 // 공유 해제하려는 사진 목록에 있는 경우 삭제
-                // entryId가 null인 경우 entryId도 null이어야 함
-                if (photos.includes(data.photoUrl)) {
-                    if (!entryId || data.entryId === entryId) {
-                        photosToDelete.push(docSnap.id);
-                        console.log('삭제할 사진 발견:', data.photoUrl, 'docId:', docSnap.id, 'entryId:', data.entryId);
+                // photoUrl이 정확히 일치하거나, URL의 파일명 부분이 일치하는지 확인
+                const photoUrlMatch = photos.some(photoUrl => {
+                    // 정확히 일치하는 경우
+                    if (photoUrl === data.photoUrl) return true;
+                    // URL에서 파일명 부분만 추출하여 비교 (쿼리 파라미터 제거)
+                    const photoUrlBase = photoUrl.split('?')[0];
+                    const dataUrlBase = data.photoUrl.split('?')[0];
+                    if (photoUrlBase === dataUrlBase) return true;
+                    // 파일명만 추출하여 비교
+                    const photoFileName = photoUrlBase.split('/').pop();
+                    const dataFileName = dataUrlBase.split('/').pop();
+                    return photoFileName === dataFileName && photoFileName !== '';
+                });
+                
+                console.log('사진 URL 매칭 확인:', {
+                    찾는URL: photos,
+                    현재URL: data.photoUrl,
+                    매칭: photoUrlMatch,
+                    entryId: data.entryId,
+                    찾는entryId: entryId,
+                    type: data.type,
+                    isBestShare: isBestShare
+                });
+                
+                if (photoUrlMatch) {
+                    // 베스트 공유인 경우 type='best'인 항목만 삭제
+                    if (isBestShare) {
+                        if (data.type === 'best') {
+                            photosToDelete.push(docSnap.id);
+                            console.log('삭제할 베스트 공유 사진 발견:', data.photoUrl, 'docId:', docSnap.id);
+                        } else {
+                            console.log('베스트 공유가 아님, 건너뜀:', data.type);
+                        }
+                    } else {
+                        // 일반 공유인 경우 entryId가 일치하거나 둘 다 null인 경우 삭제
+                        if (entryId) {
+                            // entryId가 있으면 정확히 일치하는 것만 삭제
+                            if (data.entryId === entryId) {
+                                photosToDelete.push(docSnap.id);
+                                console.log('삭제할 사진 발견:', data.photoUrl, 'docId:', docSnap.id, 'entryId:', data.entryId);
+                            } else {
+                                console.log('entryId 불일치:', { 찾는entryId: entryId, 현재entryId: data.entryId });
+                            }
+                        } else {
+                            // entryId가 없으면 entryId가 null이거나 없는 항목 삭제
+                            if (!data.entryId || data.entryId === null) {
+                                photosToDelete.push(docSnap.id);
+                                console.log('삭제할 사진 발견 (entryId 없음):', data.photoUrl, 'docId:', docSnap.id);
+                            } else {
+                                console.log('entryId가 있음, 건너뜀:', data.entryId);
+                            }
+                        }
                     }
                 }
             });

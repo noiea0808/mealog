@@ -10,8 +10,8 @@ import {
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, confirmLogout, confirmLogoutAction,
     copyDomain, closeDomainModal
 } from './auth.js';
-import { renderTimeline, renderMiniCalendar, renderGallery, renderEntryChips } from './render.js';
-import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType } from './analytics.js';
+import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment } from './render.js';
+import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed } from './analytics.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
     handleMultipleImages, removePhoto, updateShareIndicator, toggleSharePhoto,
@@ -65,6 +65,14 @@ window.navigatePeriod = navigatePeriod;
 window.openDetailModal = openDetailModal;
 window.closeDetailModal = closeDetailModal;
 window.setAnalysisType = setAnalysisType;
+window.openShareBestModal = openShareBestModal;
+window.closeShareBestModal = closeShareBestModal;
+window.shareBestToFeed = shareBestToFeed;
+window.toggleComment = toggleComment;
+window.toggleFeedComment = toggleFeedComment;
+
+// 피드 관련 함수들은 아래에서 정의되지만, 여기서도 확인
+// (함수들이 정의되기 전에 renderFeed가 호출될 수 있으므로)
 
 // 탭 및 뷰 모드 전환
 window.switchMainTab = (tab) => {
@@ -296,6 +304,11 @@ initAuth((user) => {
             if (appState.currentTab === 'gallery') {
                 renderGallery();
             }
+            // 피드 탭이 있으면 renderFeed도 호출
+            const feedContent = document.getElementById('feedContent');
+            if (feedContent && !feedContent.classList.contains('hidden')) {
+                renderFeed();
+            }
         });
         
         // 초기 로드 시 오늘 날짜로 설정
@@ -390,6 +403,258 @@ window.onload = () => {
                 window.jumpToDate(`${year}-${month}-${day}`); 
             } 
         }, { passive: true });
+    }
+};
+
+// 피드 옵션 관련 함수
+window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '', photoSlotId = '') => {
+    // 옵션 메뉴 표시
+    const existingMenu = document.getElementById('feedOptionsMenu');
+    if (existingMenu) {
+        existingMenu.remove();
+    }
+    
+    const menu = document.createElement('div');
+    menu.id = 'feedOptionsMenu';
+    menu.className = 'fixed inset-0 z-[450]';
+    
+    // entryId가 있는지 확인 (빈 문자열, null, 'null', 'undefined' 문자열 모두 체크)
+    // 베스트 공유가 아닌 경우에는 entryId가 없어도 수정 가능 (Comment가 있는 경우 등)
+    const hasEntryId = entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined';
+    
+    // 피드에서는 항상 게시 취소로 표시 (기록 삭제가 아닌 공유 취소)
+    const deleteButtonText = '게시 취소';
+    const deleteButtonIcon = 'fa-share';
+    
+    // 배경 클릭 시 닫기
+    const bg = document.createElement('div');
+    bg.className = 'fixed inset-0 bg-black/40';
+    bg.onclick = () => menu.remove();
+    
+    // 메뉴 컨테이너
+    const menuContainer = document.createElement('div');
+    menuContainer.className = 'fixed bottom-0 left-0 right-0 w-full bg-white rounded-t-3xl p-4 pb-8 animate-fade-up z-[451]';
+    
+    // 핸들바
+    const handlebar = document.createElement('div');
+    handlebar.className = 'w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4';
+    
+    // 버튼 컨테이너
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'space-y-2';
+    
+    // 수정하기 버튼 (베스트 공유가 아닌 경우에만 표시)
+    // entryId가 있으면 수정 가능, entryId가 없어도 Comment 등 정보가 있으면 수정 가능
+    // 베스트 공유는 별도 처리가 필요하므로 수정 옵션에서 제외
+    if (!isBestShare) {
+        const editBtn = document.createElement('button');
+        editBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        editBtn.type = 'button';
+        editBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            menu.remove();
+            setTimeout(() => {
+                // entryId가 있으면 editFeedPost 호출, 없으면 날짜와 slotId로 모달 열기
+                if (entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined') {
+                    window.editFeedPost(entryId);
+                } else if (photoDate && photoSlotId) {
+                    // entryId가 없어도 날짜와 slotId가 있으면 모달 열기 (새로 등록하는 것처럼 열기)
+                    window.openModal(photoDate, photoSlotId, null);
+                } else {
+                    showToast("수정할 기록을 찾을 수 없습니다.", 'error');
+                }
+            }, 100);
+        });
+        editBtn.innerHTML = `
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-pencil text-emerald-600 text-lg"></i>
+                <span class="font-bold text-slate-800">수정하기</span>
+            </div>
+        `;
+        buttonContainer.appendChild(editBtn);
+    }
+    
+    // 삭제하기/게시 취소 버튼
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+    deleteBtn.type = 'button';
+    deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menu.remove();
+        setTimeout(() => {
+            window.deleteFeedPost(entryId || '', photoUrls || '', isBestShare);
+        }, 100);
+    });
+    deleteBtn.innerHTML = `
+        <div class="flex items-center gap-3">
+            <i class="fa-solid ${deleteButtonIcon} text-red-500 text-lg"></i>
+            <span class="font-bold text-red-500">${deleteButtonText}</span>
+        </div>
+    `;
+    buttonContainer.appendChild(deleteBtn);
+    
+    // 취소 버튼
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+    cancelBtn.type = 'button';
+    cancelBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menu.remove();
+    });
+    cancelBtn.innerHTML = `
+        <div class="flex items-center gap-3">
+            <i class="fa-solid fa-xmark text-slate-400 text-lg"></i>
+            <span class="font-bold text-slate-400">취소</span>
+        </div>
+    `;
+    buttonContainer.appendChild(cancelBtn);
+    
+    // 메뉴 컨테이너 클릭 시 이벤트 전파 방지
+    menuContainer.addEventListener('click', (e) => {
+        e.stopPropagation();
+    });
+    
+    menuContainer.appendChild(handlebar);
+    menuContainer.appendChild(buttonContainer);
+    menu.appendChild(bg);
+    menu.appendChild(menuContainer);
+    document.body.appendChild(menu);
+};
+
+window.editFeedPost = (entryId) => {
+    if (!entryId || entryId === '' || entryId === 'null') {
+        showToast("이 게시물은 수정할 수 없습니다.", 'error');
+        return;
+    }
+    
+    if (!window.mealHistory) {
+        showToast("기록 정보를 불러올 수 없습니다.", 'error');
+        return;
+    }
+    
+    const record = window.mealHistory.find(m => m.id === entryId);
+    if (!record) {
+        showToast("기록을 찾을 수 없습니다.", 'error');
+        return;
+    }
+    
+    // 해당 기록의 모달 열기
+    openModal(record.date, record.slotId, entryId);
+};
+
+window.deleteFeedPost = async (entryId, photoUrls, isBestShare = false) => {
+    // 피드에서는 항상 게시 취소
+    if (!confirm("정말 게시를 취소하시겠습니까?")) {
+        return;
+    }
+    
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    
+    try {
+        // 공유된 사진 삭제
+        const photoUrlArray = photoUrls && photoUrls !== '' ? photoUrls.split(',') : [];
+        if (photoUrlArray.length > 0) {
+            const validEntryId = (entryId && entryId !== '' && entryId !== 'null') ? entryId : null;
+            await dbOps.unsharePhotos(photoUrlArray, validEntryId, isBestShare);
+            
+            // window.sharedPhotos에서 삭제된 사진들 즉시 제거
+            if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+                window.sharedPhotos = window.sharedPhotos.filter(photo => {
+                    // 베스트 공유인 경우 type='best'이고 photoUrl이 일치하는 것만 제거
+                    if (isBestShare) {
+                        return !(photo.type === 'best' && photoUrlArray.includes(photo.photoUrl));
+                    } else {
+                        // 일반 공유인 경우 entryId가 일치하고 photoUrl이 일치하는 것만 제거
+                        if (validEntryId) {
+                            return !(photo.entryId === validEntryId && photoUrlArray.includes(photo.photoUrl));
+                        } else {
+                            return !(!photo.entryId && photoUrlArray.includes(photo.photoUrl));
+                        }
+                    }
+                });
+            }
+        }
+        
+        // 게시 취소 시 mealHistory의 sharedPhotos 필드 업데이트 (기록은 삭제하지 않음)
+        if (entryId && entryId !== '' && entryId !== 'null' && window.mealHistory) {
+            const record = window.mealHistory.find(m => m.id === entryId);
+            if (record) {
+                // sharedPhotos 필드에서 해당 사진들 제거 (유연한 URL 매칭)
+                if (record.sharedPhotos && Array.isArray(record.sharedPhotos)) {
+                    record.sharedPhotos = record.sharedPhotos.filter(url => {
+                        // 정확히 일치하는 경우 제외
+                        if (photoUrlArray.includes(url)) return false;
+                        // URL의 파일명 부분만 비교 (쿼리 파라미터 제거)
+                        const urlBase = url.split('?')[0];
+                        const urlFileName = urlBase.split('/').pop();
+                        return !photoUrlArray.some(photoUrl => {
+                            const photoUrlBase = photoUrl.split('?')[0];
+                            const photoUrlFileName = photoUrlBase.split('/').pop();
+                            return urlFileName === photoUrlFileName && urlFileName !== '';
+                        });
+                    });
+                    // sharedPhotos가 비어있으면 빈 배열로 설정
+                    if (record.sharedPhotos.length === 0) {
+                        record.sharedPhotos = [];
+                    }
+                    // 데이터베이스에 업데이트 (토스트 표시하지 않음 - 게시 취소 토스트만 표시)
+                    try {
+                        await dbOps.save(record, true); // silent = true
+                    } catch (e) {
+                        console.error("sharedPhotos 필드 업데이트 실패:", e);
+                    }
+                }
+            }
+        }
+        
+        // 게시 취소 성공 토스트 표시 (한 번만)
+        // sharedPhotos 리스너가 업데이트를 트리거할 수 있으므로 여기서만 토스트 표시
+        if (!window._feedPostDeleteInProgress) {
+            window._feedPostDeleteInProgress = true;
+            showToast("게시가 취소되었습니다.", 'success');
+            setTimeout(() => {
+                window._feedPostDeleteInProgress = false;
+            }, 1000);
+        }
+        
+        // 타임라인과 갤러리 즉시 다시 렌더링
+        if (appState.currentTab === 'timeline') {
+            // 타임라인을 완전히 다시 렌더링하기 위해 loadedDates 초기화 및 컨테이너 비우기
+            const timelineContainer = document.getElementById('timelineContainer');
+            if (timelineContainer) {
+                timelineContainer.innerHTML = '';
+            }
+            window.loadedDates = [];
+            renderTimeline();
+            renderMiniCalendar();
+        }
+        // 갤러리(피드) 항상 렌더링하여 피드 업데이트
+        renderGallery();
+        
+        // 피드 탭이 있으면 renderFeed도 호출
+        const feedContent = document.getElementById('feedContent');
+        if (feedContent && !feedContent.classList.contains('hidden')) {
+            renderFeed();
+        }
+        
+        // 대시보드가 열려있으면 업데이트
+        if (appState.currentTab === 'dashboard') {
+            updateDashboard();
+        }
+        
+        // sharedPhotos 리스너가 업데이트될 때까지 대기 후 한 번 더 렌더링 (확실하게)
+        setTimeout(() => {
+            renderGallery();
+            if (feedContent && !feedContent.classList.contains('hidden')) {
+                renderFeed();
+            }
+        }, 800);
+    } catch (e) {
+        console.error("게시 취소 실패:", e);
+        showToast("게시 취소 중 오류가 발생했습니다.", 'error');
+    } finally {
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
     }
 };
 

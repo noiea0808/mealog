@@ -292,5 +292,13 @@ body {
 .scrollbar-hide::-webkit-scrollbar {
     display: none;
 }
+/* Comment 줄바꿈 및 제한 스타일 */
+.line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
 
 

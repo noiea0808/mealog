@@ -5,7 +5,7 @@ import { setVal, compressImage, getInputIdFromContainer } from './utils.js';
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from './render.js';
 import { dbOps } from './db.js';
 import { showToast } from './ui.js';
-import { renderTimeline, renderMiniCalendar } from './render.js';
+import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed } from './render.js';
 import { getDashboardData } from './analytics.js';
 
 // 설정 저장 디바운싱을 위한 타이머
@@ -123,6 +123,8 @@ export function openModal(date, slotId, entryId = null) {
                 state.wantsToShare = (state.sharedPhotos && state.sharedPhotos.length > 0); // 이미 공유된 사진이 있으면 공유 상태로
                 // 필드 표시/숨김 처리 후에 renderPhotoPreviews 호출
                 renderPhotoPreviews();
+                // 공유 인디케이터 업데이트
+                updateShareIndicator();
                 setVal('placeInput', r.place || "");
                 setVal('menuDetailInput', r.menuDetail || "");
                 setVal('withWhomInput', r.withWhomDetail || "");
@@ -517,6 +519,10 @@ export async function saveEntry() {
             console.log('로딩 오버레이 숨김');
         }
         
+        // 현재 탭과 편집 날짜를 미리 저장 (상태 초기화 전에)
+        const currentTab = state.currentTab;
+        const editingDate = state.currentEditingDate;
+        
         // 상태 초기화 (모달 닫기 직후)
         state.currentEditingId = null;
         state.currentPhotos = [];
@@ -535,66 +541,100 @@ export async function saveEntry() {
             return; // 저장 실패 시 여기서 종료
         }
         
-        // 저장된 항목의 날짜로 이동 (비동기로 처리, 모달 닫기와 독립적으로)
+        // 탭에 따라 적절한 뷰 업데이트 (데이터가 Firestore 리스너를 통해 업데이트되므로 약간의 지연 후 렌더링)
         setTimeout(() => {
-            try {
-                const wasScrolling = window.isScrolling;
-                if (window.isScrolling !== undefined) {
-                    window.isScrolling = true; // jumpToDate의 자동 스크롤 방지
-                }
-                if (window.jumpToDate) {
-                    window.jumpToDate(state.currentEditingDate);
-                }
-                
-                // 타임라인 상단으로 스크롤하여 새로 추가된 항목이 트래커 아래에 보이도록
-                setTimeout(() => {
-                    try {
-                        // 트래커 섹션과 헤더 높이 계산
-                        const trackerSection = document.getElementById('trackerSection');
-                        const trackerHeight = trackerSection ? trackerSection.offsetHeight : 0;
-                        const headerHeight = 73; // 헤더 높이 (top-[73px])
-                        const totalOffset = headerHeight + trackerHeight;
-                        
-                        // 날짜 섹션이 렌더링된 후 해당 섹션으로 스크롤 (트래커 높이만큼 오프셋)
-                        setTimeout(() => {
-                            try {
-                                const dateSection = document.getElementById(`date-${state.currentEditingDate}`);
-                                if (dateSection) {
-                                    // 섹션의 위치를 계산하여 트래커 아래에 보이도록 스크롤
-                                    const elementTop = dateSection.getBoundingClientRect().top + window.pageYOffset;
-                                    const offsetPosition = elementTop - totalOffset - 16; // 16px 여유 공간
-                                    window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'smooth' });
-                                    if (window.isScrolling !== undefined) {
-                                        window.isScrolling = wasScrolling; // 원래 상태 복원
-                                    }
-                                } else {
-                                    // 섹션이 아직 렌더링되지 않았으면 다시 시도
-                                    setTimeout(() => {
-                                        try {
-                                            const dateSection2 = document.getElementById(`date-${state.currentEditingDate}`);
-                                            if (dateSection2) {
-                                                const elementTop = dateSection2.getBoundingClientRect().top + window.pageYOffset;
-                                                const offsetPosition = elementTop - totalOffset - 16;
-                                                window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'smooth' });
-                                            }
-                                            if (window.isScrolling !== undefined) {
-                                                window.isScrolling = wasScrolling; // 원래 상태 복원
-                                            }
-                                        } catch (scrollError) {
-                                            console.error('스크롤 오류:', scrollError);
-                                        }
-                                    }, 200);
-                                }
-                            } catch (scrollError) {
-                                console.error('스크롤 오류:', scrollError);
-                            }
-                        }, 400);
-                    } catch (scrollError) {
-                        console.error('스크롤 오류:', scrollError);
+            if (currentTab === 'timeline' && editingDate) {
+                // 타임라인 탭: 저장된 항목의 날짜로 이동
+                try {
+                    const wasScrolling = window.isScrolling;
+                    if (window.isScrolling !== undefined) {
+                        window.isScrolling = true; // jumpToDate의 자동 스크롤 방지
                     }
-                }, 200);
-            } catch (scrollError) {
-                console.error('날짜 이동 오류:', scrollError);
+                    if (window.jumpToDate) {
+                        window.jumpToDate(editingDate);
+                    }
+                    
+                    // 타임라인 상단으로 스크롤하여 새로 추가된 항목이 트래커 아래에 보이도록
+                    setTimeout(() => {
+                        try {
+                            // 트래커 섹션과 헤더 높이 계산
+                            const trackerSection = document.getElementById('trackerSection');
+                            const trackerHeight = trackerSection ? trackerSection.offsetHeight : 0;
+                            const headerHeight = 73; // 헤더 높이 (top-[73px])
+                            const totalOffset = headerHeight + trackerHeight;
+                            
+                            // 날짜 섹션이 렌더링된 후 해당 섹션으로 스크롤 (트래커 높이만큼 오프셋)
+                            setTimeout(() => {
+                                try {
+                                    const dateSection = document.getElementById(`date-${editingDate}`);
+                                    if (dateSection) {
+                                        // 섹션의 위치를 계산하여 트래커 아래에 보이도록 스크롤
+                                        const elementTop = dateSection.getBoundingClientRect().top + window.pageYOffset;
+                                        const offsetPosition = elementTop - totalOffset - 16; // 16px 여유 공간
+                                        window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'smooth' });
+                                        if (window.isScrolling !== undefined) {
+                                            window.isScrolling = wasScrolling; // 원래 상태 복원
+                                        }
+                                    } else {
+                                        // 섹션이 아직 렌더링되지 않았으면 다시 시도
+                                        setTimeout(() => {
+                                            try {
+                                                const dateSection2 = document.getElementById(`date-${editingDate}`);
+                                                if (dateSection2) {
+                                                    const elementTop = dateSection2.getBoundingClientRect().top + window.pageYOffset;
+                                                    const offsetPosition = elementTop - totalOffset - 16;
+                                                    window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'smooth' });
+                                                }
+                                                if (window.isScrolling !== undefined) {
+                                                    window.isScrolling = wasScrolling; // 원래 상태 복원
+                                                }
+                                            } catch (scrollError) {
+                                                console.error('스크롤 오류:', scrollError);
+                                            }
+                                        }, 200);
+                                    }
+                                } catch (scrollError) {
+                                    console.error('스크롤 오류:', scrollError);
+                                }
+                            }, 400);
+                        } catch (scrollError) {
+                            console.error('스크롤 오류:', scrollError);
+                        }
+                    }, 200);
+                } catch (scrollError) {
+                    console.error('날짜 이동 오류:', scrollError);
+                }
+            } else if (currentTab === 'gallery') {
+                // 갤러리 탭: 갤러리 다시 렌더링 (데이터가 업데이트되었으므로)
+                try {
+                    renderGallery();
+                    // 피드도 함께 렌더링 (피드가 갤러리 안에 있을 수 있음)
+                    const feedContent = document.getElementById('feedContent');
+                    if (feedContent) {
+                        renderFeed();
+                    }
+                } catch (e) {
+                    console.error('갤러리/피드 렌더링 오류:', e);
+                }
+            } else {
+                // 피드가 별도 탭이거나 갤러리와 함께 표시되는 경우
+                const feedContent = document.getElementById('feedContent');
+                if (feedContent) {
+                    try {
+                        renderFeed();
+                    } catch (e) {
+                        console.error('피드 렌더링 오류:', e);
+                    }
+                }
+                // 갤러리도 함께 확인
+                const galleryView = document.getElementById('galleryView');
+                if (galleryView && !galleryView.classList.contains('hidden')) {
+                    try {
+                        renderGallery();
+                    } catch (e) {
+                        console.error('갤러리 렌더링 오류:', e);
+                    }
+                }
             }
         }, 100);
     } catch (e) {
