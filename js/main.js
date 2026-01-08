@@ -553,23 +553,37 @@ window.deleteFeedPost = async (entryId, photoUrls, isBestShare = false) => {
     
     try {
         // 공유된 사진 삭제
-        const photoUrlArray = photoUrls && photoUrls !== '' ? photoUrls.split(',') : [];
+        const photoUrlArray = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(url => url.trim()).filter(url => url) : [];
         if (photoUrlArray.length > 0) {
-            const validEntryId = (entryId && entryId !== '' && entryId !== 'null') ? entryId : null;
+            const validEntryId = (entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined') ? entryId : null;
+            
+            // photoUrl 정규화 (쿼리 파라미터 제거하여 비교)
+            const normalizeUrl = (url) => (url || '').split('?')[0];
+            const normalizedPhotoUrls = photoUrlArray.map(normalizeUrl);
+            
             await dbOps.unsharePhotos(photoUrlArray, validEntryId, isBestShare);
             
-            // window.sharedPhotos에서 삭제된 사진들 즉시 제거
+            // window.sharedPhotos에서 삭제된 사진들 즉시 제거 (URL 정규화하여 비교)
             if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
                 window.sharedPhotos = window.sharedPhotos.filter(photo => {
-                    // 베스트 공유인 경우 type='best'이고 photoUrl이 일치하는 것만 제거
+                    const photoUrlNormalized = normalizeUrl(photo.photoUrl);
+                    const isMatched = normalizedPhotoUrls.some(normalizedUrl => 
+                        normalizedUrl === photoUrlNormalized || photo.photoUrl === normalizedUrl
+                    );
+                    
+                    if (!isMatched) return true;
+                    
+                    // 베스트 공유인 경우 type='best'인 것만 제거
                     if (isBestShare) {
-                        return !(photo.type === 'best' && photoUrlArray.includes(photo.photoUrl));
+                        return !(photo.type === 'best');
                     } else {
-                        // 일반 공유인 경우 entryId가 일치하고 photoUrl이 일치하는 것만 제거
+                        // 일반 공유인 경우: entryId 조건 확인
                         if (validEntryId) {
-                            return !(photo.entryId === validEntryId && photoUrlArray.includes(photo.photoUrl));
+                            // entryId가 제공된 경우: entryId가 일치하거나 photo의 entryId가 없으면 제거
+                            return !(photo.entryId === validEntryId || !photo.entryId || photo.entryId === null);
                         } else {
-                            return !(!photo.entryId && photoUrlArray.includes(photo.photoUrl));
+                            // entryId가 없으면 photoUrl만 일치하면 제거
+                            return false;
                         }
                     }
                 });

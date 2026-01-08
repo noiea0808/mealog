@@ -451,17 +451,25 @@ export async function saveEntry() {
         
         if (loadingOverlay) loadingOverlay.classList.remove('hidden');
         // 삭제된 사진 찾기: 원래 공유되었던 사진 중 현재 currentPhotos에 없는 사진들
-        const deletedPhotos = state.originalSharedPhotos.filter(photo => 
-            !state.currentPhotos.includes(photo)
-        );
+        // URL 비교 시 쿼리 파라미터 무시
+        const normalizeUrl = (url) => (url || '').split('?')[0];
+        const deletedPhotos = state.originalSharedPhotos.filter(originalPhoto => {
+            const normalizedOriginal = normalizeUrl(originalPhoto);
+            return !state.currentPhotos.some(currentPhoto => 
+                normalizeUrl(currentPhoto) === normalizedOriginal
+            );
+        });
         
         // 삭제된 사진이 있고, 기록이 이미 존재하는 경우 피드에서 삭제
         if (deletedPhotos.length > 0 && record.id) {
             try {
                 console.log('삭제된 사진 피드에서 제거:', deletedPhotos, 'entryId:', record.id);
                 await dbOps.unsharePhotos(deletedPhotos, record.id);
-                // 삭제된 사진을 sharedPhotos에서도 제거 (이미 removePhoto에서 제거되었지만 확실히 하기 위해)
-                state.sharedPhotos = state.sharedPhotos.filter(p => !deletedPhotos.includes(p));
+                // 삭제된 사진을 sharedPhotos에서도 제거 (URL 정규화하여 비교)
+                state.sharedPhotos = state.sharedPhotos.filter(p => {
+                    const normalizedP = normalizeUrl(p);
+                    return !deletedPhotos.some(dp => normalizeUrl(dp) === normalizedP);
+                });
                 console.log('삭제 후 sharedPhotos:', state.sharedPhotos);
             } catch (e) {
                 console.error("삭제된 사진 피드 제거 실패:", e);
@@ -475,21 +483,35 @@ export async function saveEntry() {
         
         // 공유 상태에 따라 처리
         if (state.wantsToShare && state.currentPhotos.length > 0) {
-            // 공유를 원하는 경우: 새로 공유할 사진 찾기
-            const newPhotosToShare = state.currentPhotos.filter(photo => 
-                !state.sharedPhotos.includes(photo)
-            );
+            // 공유를 원하는 경우: 새로 공유할 사진 찾기 (URL 정규화하여 비교)
+            const newPhotosToShare = state.currentPhotos.filter(photo => {
+                const normalizedPhoto = normalizeUrl(photo);
+                return !state.sharedPhotos.some(sharedPhoto => 
+                    normalizeUrl(sharedPhoto) === normalizedPhoto
+                );
+            });
             
             if (newPhotosToShare.length > 0) {
                 try {
                     await dbOps.sharePhotos(newPhotosToShare, record);
-                    // 공유된 사진 목록 업데이트
+                    // 공유 성공: 공유된 사진 목록 업데이트
                     state.sharedPhotos = [...state.sharedPhotos, ...newPhotosToShare];
                     record.sharedPhotos = state.sharedPhotos;
+                    console.log('사진 공유 성공:', {
+                        새로공유: newPhotosToShare.length,
+                        전체공유: state.sharedPhotos.length,
+                        recordSharedPhotos: record.sharedPhotos.length
+                    });
                 } catch (e) {
                     console.error("사진 공유 실패:", e);
-                    // 사진 공유 실패해도 기록 저장은 성공했으므로 계속 진행
+                    // 사진 공유 실패 시에도 에러 토스트는 표시하지 않음 (이미 db.js나 다른 곳에서 표시했을 수 있음)
+                    // 현재 상태는 유지하고 계속 진행
+                    // (이미 state.currentPhotos에는 사진이 있으므로 다음에 다시 시도 가능)
+                    record.sharedPhotos = state.sharedPhotos || [];
                 }
+            } else {
+                // 이미 모두 공유된 경우: 현재 공유 상태 유지
+                record.sharedPhotos = state.sharedPhotos || [];
             }
         } else if (!state.wantsToShare && state.sharedPhotos.length > 0 && record.id) {
             // 공유 해제한 경우: 피드에서 해당 사진들 삭제
@@ -500,9 +522,14 @@ export async function saveEntry() {
                 record.sharedPhotos = [];
             } catch (e) {
                 console.error("사진 공유 해제 실패:", e);
+                // 공유 해제 실패 시 현재 상태 유지
+                record.sharedPhotos = state.sharedPhotos || [];
                 // dbOps.unsharePhotos에서 이미 에러 토스트를 표시함
                 // 공유 해제 실패해도 기록 저장은 성공했으므로 계속 진행
             }
+        } else {
+            // 공유를 원하지 않는 경우: 현재 공유 상태 유지
+            record.sharedPhotos = state.sharedPhotos || [];
         }
         
         console.log('저장 시작:', record);
@@ -813,7 +840,7 @@ function toggleFieldsForSkip(isSkip) {
 
 export function handleMultipleImages(e) {
     const state = appState;
-    const maxPhotos = 5;
+    const maxPhotos = 10;
     const currentCount = state.currentPhotos.length;
     const remainingSlots = maxPhotos - currentCount;
     

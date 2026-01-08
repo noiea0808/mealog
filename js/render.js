@@ -152,18 +152,31 @@ export function renderPhotoPreviews() {
         appState.currentPhotos = appState.currentPhotos ? [appState.currentPhotos] : [];
     }
     
-    const maxPhotos = 5;
+    const maxPhotos = 10;
     const currentCount = appState.currentPhotos.length;
     
     if (container) {
         container.innerHTML = appState.currentPhotos.map((src, idx) => 
-            `<div class="relative w-20 h-20 rounded-xl overflow-hidden bg-slate-100 flex-shrink-0">
+            `<div class="relative w-28 h-28 rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 photo-preview-item" draggable="true" data-index="${idx}">
                 <img src="${src}" class="w-full h-full object-cover">
                 <button onclick="window.removePhoto(${idx})" class="photo-remove-btn">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
+                <div class="absolute bottom-1 left-1 w-5 h-5 bg-black/60 text-white text-[10px] font-bold rounded-full flex items-center justify-center">${idx + 1}</div>
+                <div class="absolute top-1 left-1 w-5 h-5 bg-black/40 text-white rounded-full flex items-center justify-center cursor-move">
+                    <i class="fa-solid fa-grip-vertical text-[8px]"></i>
+                </div>
             </div>`
         ).join('');
+        
+        // 드래그 앤 드롭 이벤트 리스너 추가
+        const photoItems = container.querySelectorAll('.photo-preview-item');
+        photoItems.forEach(item => {
+            item.addEventListener('dragstart', handleDragStart);
+            item.addEventListener('dragover', handleDragOver);
+            item.addEventListener('drop', handleDrop);
+            item.addEventListener('dragend', handleDragEnd);
+        });
     }
     
     // 사진 개수 표시
@@ -184,7 +197,7 @@ export function renderPhotoPreviews() {
             buttonEl.disabled = true;
             buttonEl.classList.add('opacity-50', 'cursor-not-allowed');
             buttonEl.classList.remove('active:bg-slate-100');
-            buttonEl.title = '사진은 최대 5개까지 추가할 수 있습니다';
+            buttonEl.title = '사진은 최대 10개까지 추가할 수 있습니다';
         } else {
             buttonEl.disabled = false;
             buttonEl.classList.remove('opacity-50', 'cursor-not-allowed');
@@ -192,6 +205,89 @@ export function renderPhotoPreviews() {
             buttonEl.title = '';
         }
     }
+}
+
+// 드래그 앤 드롭 핸들러
+let draggedIndex = null;
+let draggedElement = null;
+let dropIndex = null;
+
+function handleDragStart(e) {
+    draggedIndex = parseInt(e.currentTarget.dataset.index);
+    draggedElement = e.currentTarget;
+    dropIndex = draggedIndex;
+    e.currentTarget.classList.add('opacity-50');
+    e.dataTransfer.effectAllowed = 'move';
+}
+
+function handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    
+    const target = e.currentTarget.closest('.photo-preview-item');
+    if (!target || target === draggedElement) return;
+    
+    const targetIndex = parseInt(target.dataset.index);
+    if (draggedIndex === null || draggedIndex === targetIndex) return;
+    
+    dropIndex = targetIndex;
+    const container = target.parentElement;
+    
+    // 시각적 피드백: DOM 위치 변경
+    if (draggedIndex < targetIndex) {
+        container.insertBefore(draggedElement, target.nextSibling);
+    } else {
+        container.insertBefore(draggedElement, target);
+    }
+    
+    // 모든 아이템의 인덱스와 번호 업데이트 (시각적)
+    const allItems = Array.from(container.querySelectorAll('.photo-preview-item'));
+    allItems.forEach((item, idx) => {
+        item.dataset.index = idx;
+        const numberBadge = item.querySelector('.absolute.bottom-1');
+        if (numberBadge) {
+            numberBadge.textContent = idx + 1;
+        }
+    });
+}
+
+function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+function handleDragEnd(e) {
+    e.currentTarget.classList.remove('opacity-50');
+    
+    // 드래그가 실제로 끝났을 때 순서 업데이트
+    if (draggedIndex !== null && dropIndex !== null && draggedIndex !== dropIndex) {
+        const container = draggedElement.parentElement;
+        const allItems = Array.from(container.querySelectorAll('.photo-preview-item'));
+        
+        // appState.currentPhotos 순서 업데이트
+        const reorderedPhotos = [...appState.currentPhotos];
+        const [movedPhoto] = reorderedPhotos.splice(draggedIndex, 1);
+        reorderedPhotos.splice(dropIndex, 0, movedPhoto);
+        appState.currentPhotos = reorderedPhotos;
+        
+        // 모든 아이템의 인덱스와 버튼 업데이트
+        allItems.forEach((item, idx) => {
+            item.dataset.index = idx;
+            const numberBadge = item.querySelector('.absolute.bottom-1');
+            if (numberBadge) {
+                numberBadge.textContent = idx + 1;
+            }
+            // removePhoto 버튼의 인덱스도 업데이트
+            const removeBtn = item.querySelector('.photo-remove-btn');
+            if (removeBtn) {
+                removeBtn.setAttribute('onclick', `window.removePhoto(${idx})`);
+            }
+        });
+    }
+    
+    draggedIndex = null;
+    draggedElement = null;
+    dropIndex = null;
 }
 
 export function renderTimeline() {
@@ -491,6 +587,48 @@ export function renderGallery() {
             groupedPhotos[groupKey] = [];
         }
         groupedPhotos[groupKey].push(photo);
+    });
+    
+    // 각 그룹 내 사진들을 mealHistory의 photos 배열 순서에 맞게 정렬
+    const normalizeUrlGallery = (url) => (url || '').split('?')[0];
+    Object.keys(groupedPhotos).forEach(groupKey => {
+        const photoGroup = groupedPhotos[groupKey];
+        const entryId = photoGroup[0]?.entryId;
+        
+        if (entryId && window.mealHistory) {
+            try {
+                const mealRecord = window.mealHistory.find(m => m.id === entryId);
+                if (mealRecord && Array.isArray(mealRecord.photos) && mealRecord.photos.length > 0) {
+                    // mealHistory의 photos 배열 순서대로 정렬
+                    const photosOrder = mealRecord.photos.map(normalizeUrlGallery);
+                    
+                    photoGroup.sort((a, b) => {
+                        const aUrl = normalizeUrlGallery(a.photoUrl);
+                        const bUrl = normalizeUrlGallery(b.photoUrl);
+                        const aIndex = photosOrder.indexOf(aUrl);
+                        const bIndex = photosOrder.indexOf(bUrl);
+                        
+                        // 순서가 있으면 순서대로, 없으면 timestamp 순으로
+                        if (aIndex !== -1 && bIndex !== -1) {
+                            return aIndex - bIndex;
+                        } else if (aIndex !== -1) {
+                            return -1;
+                        } else if (bIndex !== -1) {
+                            return 1;
+                        } else {
+                            return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+                        }
+                    });
+                }
+            } catch (e) {
+                console.warn('사진 순서 정렬 중 오류 (무시하고 계속 진행):', e);
+            }
+        } else {
+            // entryId가 없으면 timestamp 순으로 정렬
+            photoGroup.sort((a, b) => {
+                return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+            });
+        }
     });
     
     // 그룹을 시간순으로 정렬
@@ -820,6 +958,48 @@ export function renderFeed() {
             groupedPhotos[groupKey] = [];
         }
         groupedPhotos[groupKey].push(photo);
+    });
+    
+    // 각 그룹 내 사진들을 mealHistory의 photos 배열 순서에 맞게 정렬
+    const normalizeUrlFeed = (url) => (url || '').split('?')[0];
+    Object.keys(groupedPhotos).forEach(groupKey => {
+        const photoGroup = groupedPhotos[groupKey];
+        const entryId = photoGroup[0]?.entryId;
+        
+        if (entryId && window.mealHistory) {
+            try {
+                const mealRecord = window.mealHistory.find(m => m.id === entryId);
+                if (mealRecord && Array.isArray(mealRecord.photos) && mealRecord.photos.length > 0) {
+                    // mealHistory의 photos 배열 순서대로 정렬
+                    const photosOrder = mealRecord.photos.map(normalizeUrlFeed);
+                    
+                    photoGroup.sort((a, b) => {
+                        const aUrl = normalizeUrlFeed(a.photoUrl);
+                        const bUrl = normalizeUrlFeed(b.photoUrl);
+                        const aIndex = photosOrder.indexOf(aUrl);
+                        const bIndex = photosOrder.indexOf(bUrl);
+                        
+                        // 순서가 있으면 순서대로, 없으면 timestamp 순으로
+                        if (aIndex !== -1 && bIndex !== -1) {
+                            return aIndex - bIndex;
+                        } else if (aIndex !== -1) {
+                            return -1;
+                        } else if (bIndex !== -1) {
+                            return 1;
+                        } else {
+                            return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+                        }
+                    });
+                }
+            } catch (e) {
+                console.warn('사진 순서 정렬 중 오류 (무시하고 계속 진행):', e);
+            }
+        } else {
+            // entryId가 없으면 timestamp 순으로 정렬
+            photoGroup.sort((a, b) => {
+                return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+            });
+        }
     });
     
     // 그룹을 시간순으로 정렬

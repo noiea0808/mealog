@@ -93,7 +93,60 @@ export const dbOps = {
         if (!window.currentUser || !photos || photos.length === 0) return;
         try {
             const userProfile = window.userSettings.profile || {};
-            const sharedPhotos = photos.map((photoUrl, idx) => ({
+            
+            // 중복 체크: 같은 entryId와 photoUrl 조합이 이미 있는지 확인
+            const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+            
+            // entryId가 null인 경우 쿼리 방식 변경 (Firestore에서 null 비교는 인덱스 필요)
+            let allExistingDocs = [];
+            if (mealData.id) {
+                // entryId가 있는 경우: entryId로 필터링
+                const existingQuery = query(
+                    sharedColl,
+                    where('userId', '==', window.currentUser.uid),
+                    where('entryId', '==', mealData.id)
+                );
+                const existingSnapshot = await getDocs(existingQuery);
+                allExistingDocs = existingSnapshot.docs;
+            } else {
+                // entryId가 null인 경우: userId로만 필터링 후 메모리에서 entryId null인 것만 필터링
+                try {
+                    const existingQuery = query(
+                        sharedColl,
+                        where('userId', '==', window.currentUser.uid)
+                    );
+                    const allUserPhotos = await getDocs(existingQuery);
+                    // entryId가 null이거나 없는 항목만 필터링
+                    allExistingDocs = allUserPhotos.docs.filter(doc => {
+                        const data = doc.data();
+                        return !data.entryId || data.entryId === null;
+                    });
+                } catch (e) {
+                    console.warn('entryId null인 사진 중복 체크 중 오류 (무시하고 계속 진행):', e);
+                    allExistingDocs = [];
+                }
+            }
+            
+            const existingPhotoUrls = new Set();
+            allExistingDocs.forEach((docSnap) => {
+                const data = docSnap.data();
+                // URL에서 쿼리 파라미터 제거하여 비교
+                const urlBase = (data.photoUrl || '').split('?')[0];
+                existingPhotoUrls.add(urlBase);
+            });
+            
+            // 중복이 아닌 사진만 필터링
+            const newPhotos = photos.filter(photoUrl => {
+                const urlBase = (photoUrl || '').split('?')[0];
+                return !existingPhotoUrls.has(urlBase);
+            });
+            
+            if (newPhotos.length === 0) {
+                console.log('중복 체크: 모든 사진이 이미 공유되어 있습니다.');
+                return;
+            }
+            
+            const sharedPhotos = newPhotos.map((photoUrl, idx) => ({
                 photoUrl,
                 userId: window.currentUser.uid,
                 userNickname: userProfile.nickname || '익명',
@@ -109,8 +162,6 @@ export const dbOps = {
                 entryId: mealData.id || null
             }));
             
-            const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-            
             // 배치 쓰기 사용: 여러 사진을 한 번에 쓰기 (1번으로 카운트)
             // Firestore 배치는 최대 500개 작업을 한 번에 처리 가능
             const batch = writeBatch(db);
@@ -120,22 +171,11 @@ export const dbOps = {
             });
             await batch.commit();
             
-            console.log(`배치 쓰기로 ${sharedPhotos.length}개 사진 공유 완료`);
+            console.log(`배치 쓰기로 ${sharedPhotos.length}개 사진 공유 완료 (중복 ${photos.length - newPhotos.length}개 제외)`);
         } catch (e) {
             console.error("Share Photos Error:", e);
-            let errorMessage = "사진 공유 실패: ";
-            if (e.code === 'permission-denied') {
-                errorMessage += "권한이 없습니다.";
-            } else if (e.code === 'unavailable') {
-                errorMessage += "네트워크 연결을 확인해주세요.";
-            } else if (e.message && e.message.includes('Quota exceeded')) {
-                errorMessage = "Firebase 할당량이 초과되었습니다.";
-            } else if (e.message) {
-                errorMessage += e.message;
-            } else {
-                errorMessage += "알 수 없는 오류가 발생했습니다.";
-            }
-            showToast(errorMessage, 'error');
+            // 에러 토스트는 호출자에서 표시하도록 하고, 여기서는 throw만 함
+            // (중복 토스트 방지)
             throw e;
         }
     },
@@ -206,23 +246,34 @@ export const dbOps = {
                             console.log('베스트 공유가 아님, 건너뜀:', data.type);
                         }
                     } else {
-                        // 일반 공유인 경우 entryId가 일치하거나 둘 다 null인 경우 삭제
+                        // 일반 공유인 경우: photoUrl이 일치하면 삭제
+                        // entryId가 제공된 경우에는 entryId도 일치해야 하지만, 
+                        // entryId가 없거나 null인 경우에도 photoUrl만 일치하면 삭제
+                        let shouldDelete = false;
+                        
                         if (entryId) {
-                            // entryId가 있으면 정확히 일치하는 것만 삭제
-                            if (data.entryId === entryId) {
-                                photosToDelete.push(docSnap.id);
-                                console.log('삭제할 사진 발견:', data.photoUrl, 'docId:', docSnap.id, 'entryId:', data.entryId);
-                            } else {
-                                console.log('entryId 불일치:', { 찾는entryId: entryId, 현재entryId: data.entryId });
+                            // entryId가 제공된 경우: entryId가 일치하거나 현재 사진의 entryId가 null/없으면 삭제
+                            if (data.entryId === entryId || !data.entryId || data.entryId === null) {
+                                shouldDelete = true;
                             }
                         } else {
-                            // entryId가 없으면 entryId가 null이거나 없는 항목 삭제
-                            if (!data.entryId || data.entryId === null) {
-                                photosToDelete.push(docSnap.id);
-                                console.log('삭제할 사진 발견 (entryId 없음):', data.photoUrl, 'docId:', docSnap.id);
-                            } else {
-                                console.log('entryId가 있음, 건너뜀:', data.entryId);
-                            }
+                            // entryId가 제공되지 않은 경우: photoUrl만 일치하면 삭제 (entryId 유무와 관계없이)
+                            shouldDelete = true;
+                        }
+                        
+                        if (shouldDelete) {
+                            photosToDelete.push(docSnap.id);
+                            console.log('삭제할 사진 발견:', {
+                                photoUrl: data.photoUrl,
+                                docId: docSnap.id,
+                                entryId: data.entryId,
+                                찾는entryId: entryId
+                            });
+                        } else {
+                            console.log('삭제 조건 불일치:', { 
+                                찾는entryId: entryId, 
+                                현재entryId: data.entryId 
+                            });
                         }
                     }
                 }
