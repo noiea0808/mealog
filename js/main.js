@@ -8,9 +8,9 @@ import { switchScreen, showToast, updateHeaderUI } from './ui.js';
 import { 
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, confirmLogout, confirmLogoutAction,
-    copyDomain, closeDomainModal
+    copyDomain, closeDomainModal, switchToLogin
 } from './auth.js';
-import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment } from './render.js';
+import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard } from './render.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed } from './analytics.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
@@ -36,6 +36,7 @@ window.toggleEmailAuthMode = toggleEmailAuthMode;
 window.handleEmailAuth = handleEmailAuth;
 window.confirmLogout = confirmLogout;
 window.confirmLogoutAction = confirmLogoutAction;
+window.switchToLogin = switchToLogin;
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.saveEntry = saveEntry;
@@ -70,6 +71,93 @@ window.closeShareBestModal = closeShareBestModal;
 window.shareBestToFeed = shareBestToFeed;
 window.toggleComment = toggleComment;
 window.toggleFeedComment = toggleFeedComment;
+
+// 일간보기 공유 함수
+window.shareDailySummary = async (dateStr) => {
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    
+    try {
+        // 컴팩트 카드 생성
+        const shareCard = createDailyShareCard(dateStr);
+        
+        // html2canvas로 캡쳐
+        const canvas = await html2canvas(shareCard, {
+            backgroundColor: '#ffffff',
+            scale: 2,
+            logging: false,
+            useCORS: true,
+            width: 400,
+            height: shareCard.scrollHeight
+        });
+        
+        // Canvas를 base64로 변환
+        const base64Image = canvas.toDataURL('image/png');
+        
+        // Firebase Storage에 업로드
+        const { uploadBase64ToStorage } = await import('./utils.js');
+        const photoUrl = await uploadBase64ToStorage(base64Image, window.currentUser.uid, `daily_${dateStr}`);
+        
+        // 공유 데이터 생성
+        const userProfile = window.userSettings?.profile || {};
+        const dailyShareData = {
+            photoUrl: photoUrl,
+            userId: window.currentUser.uid,
+            userNickname: userProfile.nickname || '익명',
+            userIcon: userProfile.icon || '🐻',
+            type: 'daily',
+            date: dateStr,
+            timestamp: new Date().toISOString(),
+            entryId: null
+        };
+        
+        // Firestore에 저장
+        const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+        const { db, appId } = await import('./firebase.js');
+        const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+        await addDoc(sharedColl, dailyShareData);
+        
+        // 컨테이너 제거
+        shareCard.remove();
+        
+        showToast('하루 기록이 피드에 공유되었습니다!', 'success');
+        
+        // 갤러리 새로고침
+        if (appState.currentTab === 'gallery') {
+            renderGallery();
+        }
+        
+    } catch (e) {
+        console.error('일간보기 공유 실패:', e);
+        showToast('공유 중 오류가 발생했습니다.', 'error');
+        
+        // 컨테이너 제거
+        const shareCard = document.getElementById('dailyShareCardContainer');
+        if (shareCard) shareCard.remove();
+    } finally {
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+    }
+};
+
+// 일간보기 하루 전체 Comment 저장 함수
+window.saveDailyComment = async (date) => {
+    const input = document.getElementById('dailyCommentInput');
+    if (!input) return;
+    
+    const comment = input.value || '';
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    
+    try {
+        await dbOps.saveDailyComment(date, comment);
+        showToast("하루 전체 Comment가 저장되었습니다.", 'success');
+    } catch (e) {
+        console.error("Daily Comment Save Error:", e);
+        showToast("저장 중 오류가 발생했습니다.", 'error');
+    } finally {
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+    }
+};
 
 // 피드 관련 함수들은 아래에서 정의되지만, 여기서도 확인
 // (함수들이 정의되기 전에 renderFeed가 호출될 수 있으므로)

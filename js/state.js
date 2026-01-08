@@ -20,7 +20,8 @@ export const appState = {
     viewMode: 'list',
     currentTab: 'timeline',
     pageDate: new Date(),
-    currentPhotos: [],
+    currentPhotos: [], // 미리보기용 base64 URL 또는 Storage URL
+    currentPhotoFiles: [], // 실제 파일 객체 (Storage 업로드용)
     sharedPhotos: [], // 현재 공유된 사진 목록
     originalSharedPhotos: [], // 모달 열 때의 원본 공유 사진 목록 (삭제 추적용)
     wantsToShare: false, // 공유를 원하는지 여부

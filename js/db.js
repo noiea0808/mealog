@@ -3,6 +3,7 @@ import { db, appId } from './firebase.js';
 import { doc, setDoc, collection, addDoc, deleteDoc, onSnapshot, query, orderBy, limit, where, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { showToast } from './ui.js';
 import { DEFAULT_SUB_TAGS } from './constants.js';
+import { uploadBase64ToStorage } from './utils.js';
 
 export const dbOps = {
     async save(record, silent = false) {
@@ -89,6 +90,40 @@ export const dbOps = {
             throw e;
         }
     },
+
+    async saveDailyComment(date, comment) {
+        if (!window.currentUser) {
+            showToast("저장 실패: 로그인이 필요합니다.", 'error');
+            return;
+        }
+        try {
+            // 사용자 설정에 dailyComments 필드가 없으면 초기화
+            if (!window.userSettings.dailyComments) {
+                window.userSettings.dailyComments = {};
+            }
+            
+            // 날짜별 Comment 저장
+            if (comment && comment.trim()) {
+                window.userSettings.dailyComments[date] = comment.trim();
+            } else {
+                // 빈 Comment는 삭제
+                delete window.userSettings.dailyComments[date];
+            }
+            
+            // 설정 저장
+            await dbOps.saveSettings(window.userSettings);
+        } catch (e) {
+            console.error("Daily Comment Save Error:", e);
+            throw e;
+        }
+    },
+    getDailyComment(date) {
+        if (!window.userSettings || !window.userSettings.dailyComments) {
+            return '';
+        }
+        return window.userSettings.dailyComments[date] || '';
+    },
+    
     async sharePhotos(photos, mealData) {
         if (!window.currentUser || !photos || photos.length === 0) return;
         try {
@@ -646,3 +681,99 @@ export async function loadMealsForDateRange(startDate, endDate) {
     }
 }
 
+// base64 이미지를 Firebase Storage로 마이그레이션
+export async function migrateBase64ImagesToStorage() {
+    if (!window.currentUser) {
+        showToast("마이그레이션 실패: 로그인이 필요합니다.", 'error');
+        throw new Error("로그인이 필요합니다.");
+    }
+    
+    try {
+        showToast("마이그레이션을 시작합니다...", 'info');
+        
+        const userId = window.currentUser.uid;
+        const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
+        
+        // 모든 meal 기록 가져오기
+        const snapshot = await getDocs(mealsColl);
+        const meals = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        
+        console.log(`총 ${meals.length}개의 기록을 확인합니다.`);
+        
+        let migratedCount = 0;
+        let skippedCount = 0;
+        let errorCount = 0;
+        
+        // 각 기록을 순회하며 base64 이미지 찾기
+        for (let i = 0; i < meals.length; i++) {
+            const meal = meals[i];
+            const mealId = meal.id;
+            
+            if (!meal.photos || !Array.isArray(meal.photos) || meal.photos.length === 0) {
+                skippedCount++;
+                continue;
+            }
+            
+            // base64 이미지가 있는지 확인
+            const base64Photos = meal.photos.filter(photo => 
+                typeof photo === 'string' && photo.startsWith('data:image')
+            );
+            
+            if (base64Photos.length === 0) {
+                skippedCount++;
+                continue;
+            }
+            
+            console.log(`[${i + 1}/${meals.length}] 기록 ${mealId}의 ${base64Photos.length}개 base64 이미지 마이그레이션 중...`);
+            
+            try {
+                // base64 이미지를 Storage에 업로드
+                const uploadPromises = base64Photos.map(base64Photo => 
+                    uploadBase64ToStorage(base64Photo, userId, mealId)
+                );
+                
+                const uploadedUrls = await Promise.all(uploadPromises);
+                
+                // 기존 URL 이미지와 새로 업로드한 URL 합치기
+                const existingUrls = meal.photos.filter(photo => 
+                    typeof photo === 'string' && (photo.startsWith('http://') || photo.startsWith('https://'))
+                );
+                
+                const newPhotos = [...existingUrls, ...uploadedUrls];
+                
+                // Firestore 업데이트
+                const mealRef = doc(mealsColl, mealId);
+                await setDoc(mealRef, { ...meal, photos: newPhotos }, { merge: true });
+                
+                migratedCount++;
+                console.log(`✓ 기록 ${mealId} 마이그레이션 완료`);
+                
+                // 진행 상황 표시 (10개마다)
+                if ((i + 1) % 10 === 0) {
+                    showToast(`마이그레이션 진행 중... ${i + 1}/${meals.length}`, 'info');
+                }
+                
+            } catch (error) {
+                console.error(`기록 ${mealId} 마이그레이션 실패:`, error);
+                errorCount++;
+                // 개별 실패는 건너뛰고 계속 진행
+            }
+        }
+        
+        const message = `마이그레이션 완료! 성공: ${migratedCount}개, 건너뜀: ${skippedCount}개, 실패: ${errorCount}개`;
+        console.log(message);
+        showToast(message, 'success');
+        
+        return {
+            total: meals.length,
+            migrated: migratedCount,
+            skipped: skippedCount,
+            errors: errorCount
+        };
+        
+    } catch (error) {
+        console.error("마이그레이션 오류:", error);
+        showToast("마이그레이션 실패: " + error.message, 'error');
+        throw error;
+    }
+}

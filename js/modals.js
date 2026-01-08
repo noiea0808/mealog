@@ -15,6 +15,7 @@ export function openModal(date, slotId, entryId = null) {
     try {
         const state = appState;
         if (!window.currentUser) return;
+        
         if (!date || !slotId) {
             console.error('openModal: 필수 파라미터가 없습니다.', { date, slotId });
             return;
@@ -103,10 +104,20 @@ export function openModal(date, slotId, entryId = null) {
             toggleFieldsForSkip(false);
         }
         
-        // 버튼 텍스트 설정 (수정 모드인 경우 "수정 완료", 새로 등록인 경우 "기록 완료")
+        // 버튼 상태 설정 (게스트 모드 체크 포함)
         const btnSave = document.getElementById('btnSave');
         if (btnSave) {
-            btnSave.innerText = entryId ? '수정 완료' : '기록 완료';
+            if (window.currentUser && window.currentUser.isAnonymous) {
+                // 게스트 모드: 버튼 비활성화
+                btnSave.disabled = true;
+                btnSave.className = 'flex-1 py-4 bg-slate-300 text-slate-500 rounded-xl font-bold shadow-lg transition-all cursor-not-allowed';
+                btnSave.innerText = '로그인 후 사용할 수 있어요';
+            } else {
+                // 일반 모드: 버튼 활성화 및 텍스트 설정
+                btnSave.disabled = false;
+                btnSave.className = 'flex-1 py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all';
+                btnSave.innerText = entryId ? '수정 완료' : '기록 완료';
+            }
         }
         
         // 칩 렌더링 (필드 표시/숨김 처리 후)
@@ -341,6 +352,13 @@ export async function saveEntry() {
     
     try {
         const state = appState;
+        
+        // 게스트 모드에서는 저장 불가
+        if (window.currentUser && window.currentUser.isAnonymous) {
+            showToast("게스트 모드에서는 기록할 수 없습니다. 로그인 후 이용해주세요.", "error");
+            if (loadingOverlay) loadingOverlay.classList.add('hidden');
+            return;
+        }
         
         // 필수 상태 확인
         if (!state.currentEditingSlotId || !state.currentEditingDate) {
@@ -966,14 +984,19 @@ export function openSettings() {
     if (accountSection) {
         let accountHtml = '';
         if (window.currentUser.isAnonymous) {
-            accountHtml = `<div class="bg-indigo-50 p-4 rounded-2xl border border-indigo-100 mb-6 flex items-center gap-3">
-                <div class="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-500">
-                    <i class="fa-solid fa-user-secret"></i>
+            accountHtml = `<div class="bg-indigo-50 p-4 rounded-2xl border border-indigo-100 mb-6">
+                <div class="flex items-center gap-3 mb-3">
+                    <div class="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-500">
+                        <i class="fa-solid fa-user-secret"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs font-bold text-indigo-600">게스트 모드</div>
+                        <div class="text-[10px] text-indigo-400">앱 삭제 시 데이터가 사라집니다.</div>
+                    </div>
                 </div>
-                <div>
-                    <div class="text-xs font-bold text-indigo-600">게스트 모드</div>
-                    <div class="text-[10px] text-indigo-400">앱 삭제 시 데이터가 사라집니다.</div>
-                </div>
+                <button id="switchToLoginBtn" class="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold active:bg-indigo-700 transition-colors">
+                    <i class="fa-solid fa-right-to-bracket mr-1"></i>로그인하기
+                </button>
             </div>`;
             document.getElementById('logoutBtnArea').classList.add('hidden');
         } else {
@@ -987,6 +1010,31 @@ export function openSettings() {
             document.getElementById('logoutBtnArea').classList.remove('hidden');
         }
         accountSection.innerHTML = accountHtml;
+        
+        // 게스트 모드일 때 로그인하기 버튼에 이벤트 리스너 추가
+        if (window.currentUser && window.currentUser.isAnonymous) {
+            // 약간의 지연을 두고 버튼을 찾아서 이벤트 리스너 추가 (innerHTML 후 DOM 업데이트 대기)
+            setTimeout(() => {
+                const switchToLoginBtn = document.getElementById('switchToLoginBtn');
+                if (switchToLoginBtn) {
+                    switchToLoginBtn.addEventListener('click', async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        try {
+                            if (window.switchToLogin) {
+                                await window.switchToLogin();
+                            } else {
+                                console.error('switchToLogin 함수를 찾을 수 없습니다.');
+                                showToast("로그인 기능을 사용할 수 없습니다.", "error");
+                            }
+                        } catch (error) {
+                            console.error('로그인하기 버튼 클릭 오류:', error);
+                            showToast("로그인 페이지로 이동하는 중 오류가 발생했습니다.", "error");
+                        }
+                    });
+                }
+            }, 100);
+        }
     }
     
     document.getElementById('settingsPage').classList.remove('hidden');

@@ -368,7 +368,16 @@ export function renderTimeline() {
         const section = document.createElement('div');
         section.id = `date-${dateStr}`;
         section.className = "animate-fade";
-        let html = `<h3 class="date-section-header text-sm font-black ${dayColorClass} mb-1.5 px-4">${dObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</h3>`;
+        // 일간보기 모드일 때만 공유 버튼 추가
+        const shareButton = state.viewMode === 'page' 
+            ? `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs text-emerald-600 font-bold px-3 py-1.5 active:text-emerald-700 transition-colors ml-2">
+                <i class="fa-solid fa-share text-[10px] mr-1"></i>공유
+            </button>`
+            : '';
+        let html = `<div class="date-section-header text-sm font-black ${dayColorClass} mb-1.5 px-4 flex items-center justify-between">
+            <h3>${dObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</h3>
+            ${shareButton}
+        </div>`;
 
         SLOTS.forEach(slot => {
             const records = window.mealHistory.filter(m => m.date === dateStr && m.slotId === slot.id);
@@ -457,6 +466,55 @@ export function renderTimeline() {
         section.innerHTML = html;
         container.appendChild(section);
     });
+    
+    // 일간보기 모드일 때 하루 전체 Comment 입력 영역 추가
+    if (state.viewMode === 'page' && sortedTargetDates.length > 0) {
+        const currentDateStr = sortedTargetDates[0]; // 일간보기는 하나의 날짜만 표시
+        const existingCommentSection = document.getElementById('dailyCommentSection');
+        if (existingCommentSection) {
+            existingCommentSection.remove();
+        }
+        
+        const commentSection = document.createElement('div');
+        commentSection.id = 'dailyCommentSection';
+        commentSection.className = 'card mb-1.5 border border-slate-200 !rounded-none';
+        
+        // getDailyComment 함수가 있으면 사용, 없으면 빈 문자열
+        let currentComment = '';
+        try {
+            if (window.dbOps && typeof window.dbOps.getDailyComment === 'function') {
+                currentComment = window.dbOps.getDailyComment(currentDateStr) || '';
+            } else if (window.userSettings && window.userSettings.dailyComments) {
+                currentComment = window.userSettings.dailyComments[currentDateStr] || '';
+            }
+        } catch (e) {
+            console.warn('getDailyComment 호출 실패:', e);
+            currentComment = '';
+        }
+        
+        commentSection.innerHTML = `
+            <div class="p-4">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-sm font-extrabold text-slate-600 block uppercase">하루 소감</span>
+                    <button onclick="window.saveDailyComment('${currentDateStr}')" 
+                        class="text-xs text-emerald-600 font-bold px-3 py-1.5 active:text-emerald-700 transition-colors">
+                        저장
+                    </button>
+                </div>
+                <textarea id="dailyCommentInput" placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해보세요." 
+                    class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all resize-none min-h-[100px]" 
+                    rows="4">${escapeHtml(currentComment)}</textarea>
+            </div>
+        `;
+        
+        container.appendChild(commentSection);
+    } else {
+        // 일간보기가 아닐 때는 Comment 영역 제거
+        const existingCommentSection = document.getElementById('dailyCommentSection');
+        if (existingCommentSection) {
+            existingCommentSection.remove();
+        }
+    }
     
     // 최근 날짜(오늘)로 스크롤 (초기 로드 시에만)
     if (state.viewMode === 'list' && sortedTargetDates.length > 0 && !window.hasScrolledToToday) {
@@ -674,6 +732,9 @@ export function renderGallery() {
         // 베스트 공유인지 확인
         const isBestShare = photo.type === 'best';
         
+        // 일간보기 공유인지 확인
+        const isDailyShare = photo.type === 'daily';
+        
         // 간식인지 확인 (slotId로 간식 타입 확인)
         const isSnack = photo.slotId && SLOTS.find(s => s.id === photo.slotId)?.type === 'snack';
         
@@ -713,6 +774,12 @@ export function renderGallery() {
             if (photo.comment) {
                 caption = caption ? `${caption} - ${photo.comment}` : photo.comment;
             }
+        } else if (isDailyShare) {
+            // 일간보기 공유인 경우: 날짜 표시
+            if (photo.date) {
+                const dateObj = new Date(photo.date + 'T00:00:00');
+                caption = dateObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+            }
         } else if (isSnack) {
             // 간식인 경우: snackType과 menuDetail 조합
             if (photo.snackType && photo.menuDetail) {
@@ -738,12 +805,13 @@ export function renderGallery() {
         }
         
         // 사진들 HTML 생성 (인스타그램 스타일 - 좌우 여백 없이, 구분감 있게)
-        // 베스트 공유는 aspect-ratio를 유지하지 않고 원본 비율 사용
+        // 베스트 공유와 일간보기 공유는 aspect-ratio를 유지하지 않고 원본 비율 사용
         const photosHtml = photoGroup.map((p, idx) => {
             const isBest = p.type === 'best';
+            const isDaily = p.type === 'daily';
             return `
             <div class="flex-shrink-0 w-full snap-start">
-                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" class="w-full h-auto object-cover" ${isBest ? '' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
+                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" class="w-full h-auto object-cover" ${(isBest || isDaily) ? '' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
             </div>
         `;
         }).join('');
@@ -1028,6 +1096,9 @@ export function renderFeed() {
         // 베스트 공유인지 확인 (먼저 확인)
         const isBestShare = photo.type === 'best';
         
+        // 일간보기 공유인지 확인
+        const isDailyShare = photo.type === 'daily';
+        
         // 본인 게시물인지 확인
         const isMyPost = window.currentUser && photo.userId === window.currentUser.uid;
         
@@ -1086,6 +1157,12 @@ export function renderFeed() {
             if (photo.comment) {
                 caption = caption ? `${caption} - ${photo.comment}` : photo.comment;
             }
+        } else if (isDailyShare) {
+            // 일간보기 공유인 경우: 날짜 표시
+            if (photo.date) {
+                const dateObj = new Date(photo.date + 'T00:00:00');
+                caption = dateObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+            }
         } else if (isSnack) {
             // 간식인 경우: snackType과 menuDetail 조합
             if (photo.snackType && photo.menuDetail) {
@@ -1111,12 +1188,13 @@ export function renderFeed() {
         }
         
         // 사진들 HTML 생성 (인스타그램 스타일 - 좌우 여백 없이, 구분감 있게)
-        // 베스트 공유는 aspect-ratio를 유지하지 않고 원본 비율 사용
+        // 베스트 공유와 일간보기 공유는 aspect-ratio를 유지하지 않고 원본 비율 사용
         const photosHtml = photoGroup.map((p, idx) => {
             const isBest = p.type === 'best';
+            const isDaily = p.type === 'daily';
             return `
             <div class="flex-shrink-0 w-full snap-start">
-                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" class="w-full h-auto object-cover" ${isBest ? '' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
+                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" class="w-full h-auto object-cover" ${(isBest || isDaily) ? '' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
             </div>
         `;
         }).join('');
@@ -1440,6 +1518,120 @@ export function renderTagManager(key, isSub = false, tempSettings) {
     }
     
     container.innerHTML = html;
+}
+
+// 일간보기 공유용 컴팩트 카드 생성
+export function createDailyShareCard(dateStr) {
+    const dObj = new Date(dateStr + 'T00:00:00');
+    const dayOfWeek = dObj.getDay();
+    let dayColorClass = (dayOfWeek === 0 || dayOfWeek === 6) ? "text-rose-400" : "text-slate-800";
+    const dateLabel = dObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+    
+    // 기존 컨테이너 제거
+    const existing = document.getElementById('dailyShareCardContainer');
+    if (existing) existing.remove();
+    
+    // 공유용 컨테이너 생성 (화면 밖에 숨김)
+    const container = document.createElement('div');
+    container.id = 'dailyShareCardContainer';
+    container.style.position = 'fixed';
+    container.style.left = '-9999px';
+    container.style.top = '0';
+    container.style.width = '400px';
+    container.style.backgroundColor = '#ffffff';
+    container.style.padding = '24px';
+    container.style.fontFamily = 'Pretendard, sans-serif';
+    
+    let html = `
+        <div style="max-width: 400px; margin: 0 auto;">
+            <!-- 날짜 헤더 -->
+            <div style="display: flex; justify-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #e2e8f0;">
+                <h3 style="font-size: 16px; font-weight: 900; color: ${dayOfWeek === 0 || dayOfWeek === 6 ? '#fb7185' : '#1e293b'}; margin: 0;">${dateLabel}</h3>
+            </div>
+    `;
+    
+    // 식사 카드들 (컴팩트 버전)
+    SLOTS.forEach(slot => {
+        if (slot.type === 'main') {
+            const records = window.mealHistory.filter(m => m.date === dateStr && m.slotId === slot.id);
+            const r = records[0];
+            const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
+            
+            if (r) {
+                const p = r.place || '';
+                const m = r.menuDetail || r.category || '';
+                const title = (p && m) ? `${p} | ${m}` : (p || m || r.mealType || '');
+                
+                let photoHtml = '';
+                if (r.photos && Array.isArray(r.photos) && r.photos[0]) {
+                    photoHtml = `<img src="${r.photos[0]}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px;" />`;
+                } else if (r.photos && !Array.isArray(r.photos)) {
+                    photoHtml = `<img src="${r.photos}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px;" />`;
+                } else {
+                    photoHtml = `<div style="width: 60px; height: 60px; background: #f1f5f9; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 24px;">
+                        🍽️
+                    </div>`;
+                }
+                
+                html += `
+                    <div style="display: flex; gap: 12px; margin-bottom: 12px; padding: 12px; background: #f8fafc; border-radius: 12px;">
+                        ${photoHtml}
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="display: flex; justify-between; align-items: center; margin-bottom: 4px;">
+                                <span style="font-size: 10px; font-weight: 900; color: ${specificStyle.iconText.includes('emerald') ? '#10b981' : specificStyle.iconText.includes('orange') ? '#f97316' : specificStyle.iconText.includes('blue') ? '#3b82f6' : '#64748b'}; text-transform: uppercase;">${slot.label}</span>
+                                ${r.rating ? `<span style="font-size: 11px; color: #f59e0b; font-weight: 700;">★ ${r.rating}</span>` : ''}
+                            </div>
+                            <div style="font-size: 13px; font-weight: 700; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(title)}</div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+    });
+    
+    // 간식 요약
+    const snackRecords = window.mealHistory.filter(m => m.date === dateStr && SLOTS.find(s => s.id === m.slotId)?.type === 'snack');
+    if (snackRecords.length > 0) {
+        const snackList = snackRecords.map(r => r.menuDetail || r.snackType || '간식').join(', ');
+        html += `
+            <div style="margin-bottom: 12px; padding: 12px; background: #f0fdf4; border-radius: 12px; border-left: 3px solid #10b981;">
+                <div style="font-size: 10px; font-weight: 900; color: #059669; text-transform: uppercase; margin-bottom: 4px;">간식</div>
+                <div style="font-size: 12px; font-weight: 600; color: #1e293b;">${escapeHtml(snackList)}</div>
+            </div>
+        `;
+    }
+    
+    // 하루 소감
+    let dailyComment = '';
+    try {
+        if (window.dbOps && typeof window.dbOps.getDailyComment === 'function') {
+            dailyComment = window.dbOps.getDailyComment(dateStr) || '';
+        } else if (window.userSettings && window.userSettings.dailyComments) {
+            dailyComment = window.userSettings.dailyComments[dateStr] || '';
+        }
+    } catch (e) {
+        console.warn('getDailyComment 호출 실패:', e);
+    }
+    
+    if (dailyComment) {
+        // 3줄로 제한
+        const commentLines = dailyComment.split('\n').slice(0, 3).join('\n');
+        html += `
+            <div style="margin-bottom: 12px; padding: 12px; background: #f8fafc; border-radius: 12px; border-left: 3px solid #10b981;">
+                <div style="font-size: 10px; font-weight: 900; color: #64748b; text-transform: uppercase; margin-bottom: 6px;">하루 소감</div>
+                <div style="font-size: 12px; font-weight: 500; color: #475569; line-height: 1.5; white-space: pre-wrap; max-height: 60px; overflow: hidden;">${escapeHtml(commentLines)}</div>
+            </div>
+        `;
+    }
+    
+    html += `
+        </div>
+    `;
+    
+    container.innerHTML = html;
+    document.body.appendChild(container);
+    
+    return container;
 }
 
 
