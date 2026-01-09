@@ -265,14 +265,17 @@
                     <!-- 캐릭터와 말풍선 영역 -->
                     <div class="flex gap-3 mt-3 relative z-10">
                         <!-- 캐릭터 선택 창 -->
-                        <div class="relative flex-shrink-0">
-                            <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="w-16 h-20 bg-white/20 rounded-2xl border-2 border-white/30 flex flex-col items-center justify-center active:bg-white/30 transition-colors">
+                        <div class="relative flex-shrink-0 flex flex-col gap-2">
+                            <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="w-[77px] h-20 bg-white/20 rounded-2xl border-2 border-white/30 flex flex-col items-center justify-center active:bg-white/30 transition-colors">
                                 <div id="insightCharacterIcon" class="text-2xl font-black text-white">M</div>
+                            </button>
+                            <button id="generateCommentBtn" onclick="window.generateInsightComment()" class="w-[77px] py-1 bg-yellow-400 rounded-xl font-bold text-[10px] shadow-md active:bg-yellow-500 transition-colors" style="color: #3E2723;">
+                                COMMENT
                             </button>
                         </div>
                         <!-- 말풍선 -->
                         <div class="flex-1 relative">
-                            <div id="insightBubble" class="bg-white/90 rounded-lg border-2 border-white py-3 px-3 overflow-hidden relative" style="height: calc(1.6rem * 5 + 1.5rem);">
+                            <div id="insightBubble" class="bg-yellow-50/90 border-2 border-white py-3 px-3 overflow-hidden relative" style="height: calc(1.6rem * 5 + 1.5rem); border-radius: 0.5rem 1.25rem 1.25rem 0.5rem;">
                                 <div id="insightTextPages" class="space-y-0">
                                     <!-- 페이지별 텍스트가 여기에 표시됨 -->
                                 </div>
@@ -281,8 +284,6 @@
                                     <!-- 페이지 점들이 여기에 표시됨 -->
                                 </div>
                             </div>
-                            <!-- 말풍선 꼬리 -->
-                            <div class="absolute left-[-8px] top-4 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-r-[8px] border-r-white/90"></div>
                         </div>
                     </div>
                     <div class="sticker-badge relative z-10">
@@ -560,7 +561,7 @@
 
     <!-- Character Select Popup (Center Modal) -->
     <div id="characterSelectPopup" class="hidden fixed inset-0 bg-slate-900/60 z-[9999] flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 w-full max-w-[270px]">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 w-full max-w-[320px]">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-lg font-bold text-slate-800 tracking-tight">캐릭터 선택</h2>
                 <button onclick="window.closeCharacterSelectModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
