@@ -67,7 +67,7 @@ export function renderProportionChart(containerId, data, key) {
         const nonEmptyEntries = entries.filter(([name]) => name !== '미입력');
         
         // 만족도나 포만감의 경우 값 순서대로 정렬 (높은 수준이 오른쪽)
-        if (key === 'rating') {
+        if (key === 'rating' || key === 'snackRating') {
             const ratingEntries = nonEmptyEntries.sort((a, b) => {
                 const aNum = parseInt(a[0]);
                 const bNum = parseInt(b[0]);
@@ -112,7 +112,7 @@ export function renderProportionChart(containerId, data, key) {
         if (name === '미입력') {
             bg = '#e2e8f0'; // 연회색
             textColor = '#64748b'; // 진한 회색 텍스트
-        } else if (key === 'rating') {
+        } else if (key === 'rating' || key === 'snackRating') {
             const ratingNum = parseInt(name);
             if (!isNaN(ratingNum)) {
                 bg = RATING_GRADIENT[ratingNum - 1] || RATING_GRADIENT[0];
@@ -127,7 +127,7 @@ export function renderProportionChart(containerId, data, key) {
             }
         }
         
-        if (pct < 5 || (key === 'rating' && parseInt(name) <= 2)) textColor = '#475569';
+        if (pct < 5 || ((key === 'rating' || key === 'snackRating') && parseInt(name) <= 2)) textColor = '#475569';
         if (pct > 0) {
             html += `<div class="prop-segment" style="width: ${pct}%; background: ${bg}; color: ${textColor}">${pct >= 5 ? `${pct}%` : ''}</div>`;
             segments.push({
@@ -148,7 +148,7 @@ export function renderProportionChart(containerId, data, key) {
     segments.forEach(({ name, count, startPercent, widthPercent }) => {
         // 라벨 표시 텍스트 생성
         let displayName = name === '미입력' ? '미입력' : name;
-        if (key === 'rating') {
+        if (key === 'rating' || key === 'snackRating') {
             const ratingNum = parseInt(name);
             if (!isNaN(ratingNum)) {
                 displayName = `${ratingNum}점`;
@@ -641,7 +641,7 @@ export function openDetailModal(key, title) {
         }
         
         // 만족도나 포만감의 경우 정렬 (미입력은 항상 마지막)
-        if (key === 'rating') {
+        if (key === 'rating' || key === 'snackRating') {
             const emptyEntry = sorted.find(([name]) => name === '미입력');
             const nonEmptyEntries = sorted.filter(([name]) => name !== '미입력').sort((a, b) => {
                 const aNum = parseInt(a[0].replace('점', ''));
@@ -694,7 +694,7 @@ export function openDetailModal(key, title) {
                 }
             }
             
-            if (pct < 5 || (key === 'rating' && parseInt(name) <= 2)) textColor = '#475569';
+            if (pct < 5 || ((key === 'rating' || key === 'snackRating') && parseInt(name) <= 2)) textColor = '#475569';
             if (pct > 0) {
                 html += `<div class="prop-segment relative" style="width: ${pct}%; background: ${bg}; color: ${textColor}">
                     ${pct >= 8 ? `<span class="text-[10px] font-bold">${pct}%</span>` : ''}
@@ -1118,7 +1118,7 @@ export function renderBestMeals() {
         periodLabelEl.textContent = periodLabel;
     }
     
-    // 공유 버튼 표시 여부 확인
+    // 공유 버튼 표시 여부 및 상태 확인
     const shareBtn = document.getElementById('shareBestBtn');
     if (shareBtn) {
         const periodEnded = isPeriodEnded();
@@ -1130,6 +1130,40 @@ export function renderBestMeals() {
         
         if (periodEnded && hasTop3Meals()) {
             shareBtn.classList.remove('hidden');
+            
+            // 공유 상태 확인 및 버튼 텍스트 업데이트
+            const state = appState;
+            let periodType = '';
+            let periodText = '';
+            
+            if (state.dashboardMode === 'week') {
+                periodType = '주간';
+                periodText = `${state.selectedYear}년 ${state.selectedMonthForWeek}월 ${state.selectedWeek}주`;
+            } else if (state.dashboardMode === 'month') {
+                periodType = '월간';
+                const [y, m] = state.selectedMonth.split('-').map(Number);
+                periodText = `${y}년 ${m}월`;
+            }
+            
+            // window.sharedPhotos에서 해당 기간의 베스트 공유 찾기
+            const bestShare = window.sharedPhotos && Array.isArray(window.sharedPhotos)
+                ? window.sharedPhotos.find(photo => 
+                    photo.type === 'best' && 
+                    photo.periodType === periodType && 
+                    photo.periodText === periodText
+                )
+                : null;
+            
+            const isShared = !!bestShare;
+            
+            // 버튼 텍스트 및 스타일 업데이트 (베스트는 초록색 배경)
+            if (isShared) {
+                shareBtn.innerHTML = `<i class="fa-solid fa-share text-[10px] mr-1"></i>공유됨`;
+                shareBtn.className = 'text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 bg-emerald-600 text-white rounded-lg';
+            } else {
+                shareBtn.innerHTML = `<i class="fa-solid fa-share text-[10px] mr-1"></i>공유하기`;
+                shareBtn.className = 'text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 text-emerald-600 rounded-lg';
+            }
         } else {
             shareBtn.classList.add('hidden');
         }
@@ -1515,10 +1549,14 @@ export async function openShareBestModal() {
         return;
     }
     
+    // 공유 상태 확인
+    const existingShare = await checkBestShareStatus(periodType, periodText);
+    const isShared = !!existingShare;
+    
     // 1~3위만 필터링
     const top3Meals = meals.filter(m => m && m.rating).slice(0, 3);
     
-    if (top3Meals.length === 0) {
+    if (top3Meals.length === 0 && !isShared) {
         showToast('공유할 베스트 메뉴가 없습니다.', 'error');
         return;
     }
@@ -1589,10 +1627,26 @@ export async function openShareBestModal() {
     // 모달 열기
     modal.classList.remove('hidden');
     
-    // Comment 초기화
+    // Comment 초기화 또는 기존 코멘트 표시
     const commentInput = document.getElementById('bestShareComment');
     if (commentInput) {
-        commentInput.value = '';
+        if (isShared && existingShare.comment) {
+            commentInput.value = existingShare.comment;
+        } else {
+            commentInput.value = '';
+        }
+    }
+    
+    // 공유 버튼 텍스트 업데이트
+    const submitBtn = document.getElementById('bestShareSubmitBtn');
+    if (submitBtn) {
+        if (isShared) {
+            submitBtn.textContent = '공유 취소';
+            submitBtn.className = 'w-full py-4 bg-red-600 text-white rounded-xl font-bold active:bg-red-700 shadow-lg transition-all';
+        } else {
+            submitBtn.textContent = '공유하기';
+            submitBtn.className = 'w-full py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all';
+        }
     }
 }
 
@@ -1604,7 +1658,21 @@ export function closeShareBestModal() {
     }
 }
 
-// 베스트를 피드에 공유하기
+// 베스트 공유 상태 확인
+async function checkBestShareStatus(periodType, periodText) {
+    if (!window.currentUser || !window.sharedPhotos) return null;
+    
+    // window.sharedPhotos에서 해당 기간의 베스트 공유 찾기
+    const bestShare = window.sharedPhotos.find(photo => 
+        photo.type === 'best' && 
+        photo.periodType === periodType && 
+        photo.periodText === periodText
+    );
+    
+    return bestShare || null;
+}
+
+// 베스트를 피드에 공유하기 (토글 방식)
 export async function shareBestToFeed() {
     const preview = document.getElementById('bestScreenshotContainer');
     const commentInput = document.getElementById('bestShareComment');
@@ -1614,6 +1682,56 @@ export async function shareBestToFeed() {
     
     const comment = commentInput.value.trim();
     
+    // 베스트 공유 데이터 생성
+    const state = appState;
+    let periodType = '';
+    let periodText = '';
+    
+    if (state.dashboardMode === 'week') {
+        periodType = '주간';
+        const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
+        periodText = `${state.selectedYear}년 ${state.selectedMonthForWeek}월 ${state.selectedWeek}주`;
+    } else if (state.dashboardMode === 'month') {
+        periodType = '월간';
+        const [y, m] = state.selectedMonth.split('-').map(Number);
+        periodText = `${y}년 ${m}월`;
+    }
+    
+    // 공유 상태 확인
+    const existingShare = await checkBestShareStatus(periodType, periodText);
+    
+    if (existingShare) {
+        // 이미 공유된 경우: 공유 취소
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = '취소 중...';
+        }
+        
+        try {
+            await dbOps.unsharePhotos([existingShare.photoUrl], null, true);
+            showToast('공유가 취소되었습니다.', 'success');
+            closeShareBestModal();
+            
+            // 베스트 목록 새로고침
+            renderBestMeals();
+            
+            // 갤러리 새로고침
+            if (appState.currentTab === 'gallery') {
+                renderGallery();
+            }
+        } catch (e) {
+            console.error('베스트 공유 취소 실패:', e);
+            showToast('공유 취소 중 오류가 발생했습니다.', 'error');
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '공유하기';
+            }
+        }
+        return;
+    }
+    
+    // 공유되지 않은 경우: 공유하기
     // 로딩 상태
     if (submitBtn) {
         submitBtn.disabled = true;
@@ -1635,21 +1753,6 @@ export async function shareBestToFeed() {
         // Firebase Storage에 업로드 (또는 base64로 저장)
         // 여기서는 간단하게 base64로 저장하겠습니다
         const base64Image = canvas.toDataURL('image/png');
-        
-        // 베스트 공유 데이터 생성
-        const state = appState;
-        let periodType = '';
-        let periodText = '';
-        
-        if (state.dashboardMode === 'week') {
-            periodType = '주간';
-            const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
-            periodText = `${state.selectedYear}년 ${state.selectedMonthForWeek}월 ${state.selectedWeek}주`;
-        } else if (state.dashboardMode === 'month') {
-            periodType = '월간';
-            const [y, m] = state.selectedMonth.split('-').map(Number);
-            periodText = `${y}년 ${m}월`;
-        }
         
         const userProfile = window.userSettings?.profile || {};
         const bestShareData = {
@@ -1673,6 +1776,14 @@ export async function shareBestToFeed() {
         
         showToast('베스트가 피드에 공유되었습니다!', 'success');
         closeShareBestModal();
+        
+        // 베스트 목록 새로고침
+        renderBestMeals();
+        
+        // 갤러리 새로고침
+        if (appState.currentTab === 'gallery') {
+            renderGallery();
+        }
         
     } catch (e) {
         console.error('베스트 공유 실패:', e);

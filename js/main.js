@@ -72,12 +72,86 @@ window.shareBestToFeed = shareBestToFeed;
 window.toggleComment = toggleComment;
 window.toggleFeedComment = toggleFeedComment;
 
-// 일간보기 공유 함수
+// 일간보기 공유 상태 확인
+async function checkDailyShareStatus(dateStr) {
+    if (!window.currentUser || !window.sharedPhotos) return null;
+    
+    // window.sharedPhotos에서 해당 날짜의 일간보기 공유 찾기
+    const dailyShare = window.sharedPhotos.find(photo => 
+        photo.type === 'daily' && photo.date === dateStr
+    );
+    
+    return dailyShare || null;
+}
+
+// 일간보기 공유 버튼 업데이트 함수
+function updateDailyShareButton(dateStr) {
+    // 해당 날짜 섹션 찾기
+    const dateSection = document.getElementById(`date-${dateStr}`);
+    if (!dateSection) return;
+    
+    // 날짜 헤더 찾기
+    const dateHeader = dateSection.querySelector('.date-section-header');
+    if (!dateHeader) return;
+    
+    // 공유 상태 확인
+    const dailyShare = window.sharedPhotos && Array.isArray(window.sharedPhotos) 
+        ? window.sharedPhotos.find(photo => photo.type === 'daily' && photo.date === dateStr)
+        : null;
+    const isShared = !!dailyShare;
+    
+    // 기존 공유 버튼 찾기
+    const existingButton = dateHeader.querySelector('button[onclick*="shareDailySummary"]');
+    
+    if (existingButton) {
+        // 기존 버튼 업데이트
+        existingButton.innerHTML = `<i class="fa-solid fa-share text-[10px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}`;
+        existingButton.className = `text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-emerald-600 text-white' : 'text-emerald-600'}`;
+    } else {
+        // 버튼이 없으면 새로 추가 (일간보기 모드일 때만)
+        if (appState.viewMode === 'page') {
+            const shareButton = document.createElement('button');
+            shareButton.onclick = () => window.shareDailySummary(dateStr);
+            shareButton.className = `text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-emerald-600 text-white' : 'text-emerald-600'}`;
+            shareButton.innerHTML = `<i class="fa-solid fa-share text-[10px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}`;
+            dateHeader.appendChild(shareButton);
+        }
+    }
+}
+
+// 일간보기 공유 함수 (토글 방식)
 window.shareDailySummary = async (dateStr) => {
     const loadingOverlay = document.getElementById('loadingOverlay');
     if (loadingOverlay) loadingOverlay.classList.remove('hidden');
     
     try {
+        // 공유 상태 확인
+        const existingShare = await checkDailyShareStatus(dateStr);
+        
+        if (existingShare) {
+            // 이미 공유된 경우: 공유 취소
+            await dbOps.unsharePhotos([existingShare.photoUrl], null, false);
+            
+            // window.sharedPhotos에서 즉시 제거
+            if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+                window.sharedPhotos = window.sharedPhotos.filter(photo => 
+                    !(photo.type === 'daily' && photo.date === dateStr)
+                );
+            }
+            
+            showToast('공유가 취소되었습니다.', 'success');
+            
+            // 해당 날짜 섹션의 공유 버튼만 업데이트
+            updateDailyShareButton(dateStr);
+            
+            // 갤러리 새로고침
+            if (appState.currentTab === 'gallery') {
+                renderGallery();
+            }
+            return;
+        }
+        
+        // 공유되지 않은 경우: 공유하기
         // 컴팩트 카드 생성
         const shareCard = createDailyShareCard(dateStr);
         
@@ -117,10 +191,19 @@ window.shareDailySummary = async (dateStr) => {
         const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
         await addDoc(sharedColl, dailyShareData);
         
+        // window.sharedPhotos에 즉시 추가
+        if (!window.sharedPhotos || !Array.isArray(window.sharedPhotos)) {
+            window.sharedPhotos = [];
+        }
+        window.sharedPhotos.push(dailyShareData);
+        
         // 컨테이너 제거
         shareCard.remove();
         
         showToast('하루 기록이 피드에 공유되었습니다!', 'success');
+        
+        // 해당 날짜 섹션의 공유 버튼만 업데이트
+        updateDailyShareButton(dateStr);
         
         // 갤러리 새로고침
         if (appState.currentTab === 'gallery') {
@@ -740,9 +823,12 @@ window.deleteFeedPost = async (entryId, photoUrls, isBestShare = false) => {
             renderFeed();
         }
         
-        // 대시보드가 열려있으면 업데이트
+        // 대시보드가 열려있으면 업데이트 (베스트 탭 포함)
         if (appState.currentTab === 'dashboard') {
             updateDashboard();
+            // 베스트 목록도 새로고침하여 공유 상태 업데이트
+            const { renderBestMeals } = await import('./analytics.js');
+            renderBestMeals();
         }
         
         // sharedPhotos 리스너가 업데이트될 때까지 대기 후 한 번 더 렌더링 (확실하게)

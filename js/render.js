@@ -369,11 +369,18 @@ export function renderTimeline() {
         section.id = `date-${dateStr}`;
         section.className = "animate-fade";
         // 일간보기 모드일 때만 공유 버튼 추가
-        const shareButton = state.viewMode === 'page' 
-            ? `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs text-emerald-600 font-bold px-3 py-1.5 active:text-emerald-700 transition-colors ml-2">
-                <i class="fa-solid fa-share text-[10px] mr-1"></i>공유
-            </button>`
-            : '';
+        let shareButton = '';
+        if (state.viewMode === 'page') {
+            // 공유 상태 확인
+            const dailyShare = window.sharedPhotos && Array.isArray(window.sharedPhotos) 
+                ? window.sharedPhotos.find(photo => photo.type === 'daily' && photo.date === dateStr)
+                : null;
+            const isShared = !!dailyShare;
+            
+            shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-emerald-600 text-white' : 'text-emerald-600'}">
+                <i class="fa-solid fa-share text-[10px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
+            </button>`;
+        }
         let html = `<div class="date-section-header text-sm font-black ${dayColorClass} mb-1.5 px-4 flex items-center justify-between">
             <h3>${dObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</h3>
             ${shareButton}
