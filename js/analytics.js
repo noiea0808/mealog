@@ -1298,7 +1298,7 @@ export function renderBestMeals() {
                     <div class="flex-1 min-w-0 flex flex-col justify-center p-4 pr-12 relative">
                         <div class="absolute top-2 right-2 flex items-center gap-2 z-10">
                             ${meal.sharedPhotos && Array.isArray(meal.sharedPhotos) && meal.sharedPhotos.length > 0 ? `<span class="text-xs text-emerald-600" title="게시됨"><i class="fa-solid fa-share"></i></span>` : ''}
-                            <span class="text-xs text-yellow-500"><i class="fa-solid fa-star mr-0.5"></i>${rating || '-'}</span>
+                            <span class="text-xs font-bold text-yellow-600 bg-yellow-50 px-1.5 py-0.5 rounded-md flex items-center gap-0.5"><i class="fa-solid fa-star text-[10px]"></i><span class="text-[11px] font-black">${rating || '-'}</span></span>
                         </div>
                         <div class="flex items-center gap-2 mb-1.5 pr-16">
                             <span class="text-xs font-black uppercase ${specificStyle.iconText}">${slotLabel}</span>
@@ -1574,7 +1574,7 @@ export async function openShareBestModal() {
                             <div style="font-size: 10px; color: #64748b; margin-bottom: 4px;">${slotLabel} · ${dateStr}</div>
                             <div style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">${title}</div>
                             <div style="font-size: 12px; color: #fbbf24; display: flex; align-items: center; gap: 4px;">
-                                ⭐ ${rating}
+                                <span style="font-size: 13px; color: #d97706; font-weight: 900; background: #fef3c7; padding: 4px 8px; border-radius: 6px; display: inline-flex; align-items: center; gap: 3px;">⭐ <span style="font-weight: 900;">${rating}</span></span>
                             </div>
                         </div>
                     </div>

@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="mealog">
-    <title>우리가 함께한, 맛있었던 기억</title>
+    <title>MEALOG-함께한, 맛있었던 기억</title>
     
     <!-- PWA Manifest -->
     <link rel="manifest" href="manifest.json">
@@ -17,7 +17,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <link rel="stylesheet" href="css/style.css">
     
     <script type="module" src="js/main.js"></script>
@@ -183,9 +182,7 @@
     <div id="mainApp" class="hidden">
         <header class="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-sm">
             <div class="p-5 flex justify-between items-center px-6">
-                <div class="flex items-center gap-3">
-                    <h1 class="text-2xl font-black text-emerald-600 tracking-tighter">mealog</h1>
-                </div>
+                <h1 class="text-2xl font-black text-emerald-600 tracking-tighter">mealog</h1>
                 <div class="flex items-center gap-2">
                     <button id="searchTriggerBtn" onclick="window.toggleSearch()" class="w-8 h-8 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center active:bg-slate-100"><i class="fa-solid fa-magnifying-glass text-sm"></i></button>
                     <button onclick="window.openSettings()" class="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100 active:bg-slate-100">
@@ -223,17 +220,17 @@
             <div id="galleryView" class="hidden min-h-[60vh]">
                 <div id="galleryContainer" class="space-y-4"></div>
             </div>
-            <div id="dashboardView" class="hidden space-y-0">
+            <div id="dashboardView" class="hidden space-y-3 p-4">
                 <!-- Dashboard content remains same -->
-                <div class="card py-3 px-6 bg-emerald-600 text-white relative overflow-hidden !rounded-none mb-1.5">
+                <div class="card py-3 px-6 bg-emerald-600 text-white relative overflow-hidden">
                     <div class="flex flex-col mb-4 relative z-10">
-                        <h3 class="text-lg font-black tracking-tighter uppercase flex items-center gap-2">✨ INSIGHT</h3>
+                        <h3 class="text-lg font-black tracking-tighter uppercase">INSIGHT</h3>
                         <div class="flex bg-emerald-700/40 p-1 rounded-xl mt-3 gap-1">
-                            <button id="btn-dash-7d" onclick="window.setDashboardMode('7d')" class="flex-1 py-1 text-xs font-bold text-emerald-100 transition-colors">최근 1주</button>
-                            <button id="btn-dash-week" onclick="window.setDashboardMode('week')" class="flex-1 py-1 text-xs font-bold text-emerald-100 transition-colors">주간</button>
-                            <button id="btn-dash-month" onclick="window.setDashboardMode('month')" class="flex-1 py-1 text-xs font-bold text-emerald-100 transition-colors">월간</button>
-                            <button id="btn-dash-year" onclick="window.setDashboardMode('year')" class="flex-1 py-1 text-xs font-bold text-emerald-100 transition-colors">연간</button>
-                            <button id="btn-dash-custom" onclick="window.setDashboardMode('custom')" class="flex-1 py-1 text-xs font-bold text-emerald-100 transition-colors">직접 설정</button>
+                            <button id="btn-dash-7d" onclick="window.setDashboardMode('7d')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">최근 1주</button>
+                            <button id="btn-dash-week" onclick="window.setDashboardMode('week')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">주간</button>
+                            <button id="btn-dash-month" onclick="window.setDashboardMode('month')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">월간</button>
+                            <button id="btn-dash-year" onclick="window.setDashboardMode('year')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">연간</button>
+                            <button id="btn-dash-custom" onclick="window.setDashboardMode('custom')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">직접 설정</button>
                         </div>
                         <div id="periodNavigator" class="hidden mt-3 flex items-center justify-center gap-3">
                             <button id="periodPrevBtn" onclick="window.navigatePeriod(-1)" class="w-8 h-8 rounded-full bg-white/20 text-white flex items-center justify-center active:bg-white/30 transition-colors">
@@ -244,11 +241,9 @@
                                 <i class="fa-solid fa-chevron-right text-sm"></i>
                             </button>
                         </div>
-                        <div id="periodDisplay7d" class="hidden mt-3"></div>
-                        <div id="periodDisplay7dDays" class="hidden mt-2 flex flex-wrap gap-1.5 justify-center"></div>
                         <div id="customDatePicker" class="hidden mt-3 flex gap-2">
-                            <input type="date" id="customStart" onchange="window.updateCustomDates()" class="flex-1 bg-white/20 text-white text-xs rounded p-1 border-none outline-none">
-                            <input type="date" id="customEnd" onchange="window.updateCustomDates()" class="flex-1 bg-white/20 text-white text-xs rounded p-1 border-none outline-none">
+                            <input type="date" id="customStart" onchange="window.updateCustomDates()" class="flex-1 bg-white/20 text-white text-[10px] rounded p-1 border-none outline-none">
+                            <input type="date" id="customEnd" onchange="window.updateCustomDates()" class="flex-1 bg-white/20 text-white text-[10px] rounded p-1 border-none outline-none">
                         </div>
                         <div id="weekPickerContainer" class="hidden mt-3 flex gap-2">
                             <input type="month" id="weekMonthInput" onchange="window.updateSelectedWeek()" class="flex-1 bg-white/20 text-white text-[10px] rounded p-1 border-none outline-none">
@@ -285,82 +280,61 @@
                 </div>
                 
                 <!-- 분석 타입 선택 스위치 -->
-                <div class="card !rounded-none mb-1.5">
-                    <div class="px-5 py-2.5">
-                        <div class="flex border-b border-slate-200">
-                            <button id="btn-analysis-best" onclick="window.setAnalysisType('best')" class="flex-1 py-2.5 text-sm font-semibold transition-all relative">
-                                <span class="relative">Best</span>
-                            </button>
-                            <button id="btn-analysis-main" onclick="window.setAnalysisType('main')" class="flex-1 py-2.5 text-sm font-semibold transition-all relative">
-                                <span class="relative">식사</span>
-                            </button>
-                            <button id="btn-analysis-snack" onclick="window.setAnalysisType('snack')" class="flex-1 py-2.5 text-sm font-semibold transition-all relative">
-                                <span class="relative">간식</span>
-                            </button>
-                        </div>
+                <div class="card py-2.5 px-5 mt-3">
+                    <div class="flex bg-emerald-50 p-1 rounded-xl gap-1">
+                        <button id="btn-analysis-best" onclick="window.setAnalysisType('best')" class="flex-1 py-1.5 text-xs font-bold bg-white text-emerald-700 rounded-lg shadow-sm transition-all">Best</button>
+                        <button id="btn-analysis-main" onclick="window.setAnalysisType('main')" class="flex-1 py-1.5 text-xs font-bold text-emerald-600 hover:bg-emerald-100/50 rounded-lg transition-colors">식사</button>
+                        <button id="btn-analysis-snack" onclick="window.setAnalysisType('snack')" class="flex-1 py-1.5 text-xs font-bold text-emerald-600 hover:bg-emerald-100/50 rounded-lg transition-colors">간식</button>
                     </div>
                 </div>
                 
                 <!-- Best 분석 섹션 -->
-                <div id="bestAnalysisSection" class="mt-0">
-                    <div class="space-y-0">
-                        <div class="card !rounded-none mb-1.5">
-                            <div class="flex justify-between items-center py-2 px-4 pb-2">
+                <div id="bestAnalysisSection" class="mt-4">
+                    <div class="space-y-3">
+                        <div class="card py-2 px-4">
+                            <div class="flex justify-between items-center mb-2">
                                 <div class="flex items-center gap-2">
                                     <h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">Best 식사/간식</h3>
                                     <span id="bestPeriodLabel" class="text-xs text-slate-300"></span>
                                 </div>
-                                <button id="shareBestBtn" onclick="window.openShareBestModal()" class="hidden text-xs text-emerald-600 font-bold px-3 py-1 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors">
-                                    <i class="fa-solid fa-share text-[10px] mr-1"></i>공유
-                                </button>
                             </div>
-                            <div id="bestMealsContainer" class="space-y-1.5 bg-slate-100" style="padding: 10px 0;"></div>
+                            <div id="bestMealsContainer" class="space-y-2"></div>
                         </div>
                     </div>
                 </div>
                 
                 <!-- 식사 분석 섹션 -->
-                <div id="mainAnalysisSection" class="mt-0 hidden">
-                    <div class="space-y-0">
-                        <div class="card !rounded-none mb-1.5">
-                            <div class="flex justify-between items-center py-2.5 px-5 pb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">식사 구분</h3><button onclick="window.openDetailModal('mealType', '식사 구분 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
-                            <div id="propChartContainer" class="px-5 pb-3"></div>
+                <div id="mainAnalysisSection" class="mt-4 hidden">
+                    <div class="space-y-3">
+                        <div class="card py-2.5 px-5">
+                            <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">식사 구분</h3><button onclick="window.openDetailModal('mealType', '식사 구분 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                            <div id="propChartContainer"></div>
                         </div>
-                        <div class="card !rounded-none mb-1.5">
-                            <div class="flex justify-between items-center py-2.5 px-5 pb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">메뉴 카테고리</h3><button onclick="window.openDetailModal('category', '메뉴 카테고리 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
-                            <div id="categoryChartContainer" class="px-5 pb-3"></div>
-                        </div>
-                        <div class="card !rounded-none mb-1.5">
-                            <div class="flex justify-between items-center py-2.5 px-5 pb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">함께한 즐거움</h3><button onclick="window.openDetailModal('withWhom', '함께한 사람 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
-                            <div id="mateChartContainer" class="px-5 pb-3"></div>
-                        </div>
-                        <div class="card !rounded-none mb-1.5">
-                            <div class="flex justify-between items-center py-2.5 px-5 pb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">만족도</h3><button onclick="window.openDetailModal('rating', '만족도 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
-                            <div id="ratingChartContainer" class="px-5 pb-3"></div>
-                        </div>
-                        <div class="card !rounded-none mb-1.5">
-                            <div class="flex justify-between items-center py-2.5 px-5 pb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">포만감</h3><button onclick="window.openDetailModal('satiety', '포만감 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
-                            <div id="satietyChartContainer" class="px-5 pb-3"></div>
-                        </div>
+                <div class="card py-2.5 px-5">
+                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">메뉴 카테고리</h3><button onclick="window.openDetailModal('category', '메뉴 카테고리 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                    <div id="categoryChartContainer"></div>
+                </div>
+                <div class="card py-2.5 px-5">
+                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">함께한 즐거움</h3><button onclick="window.openDetailModal('withWhom', '함께한 사람 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                    <div id="mateChartContainer"></div>
+                </div>
+                <div class="card py-2.5 px-5">
+                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">만족도</h3><button onclick="window.openDetailModal('rating', '만족도 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                    <div id="ratingChartContainer"></div>
+                </div>
+                <div class="card py-2.5 px-5">
+                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">포만감</h3><button onclick="window.openDetailModal('satiety', '포만감 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                    <div id="satietyChartContainer"></div>
+                </div>
                     </div>
                 </div>
                 
                 <!-- 간식 분석 섹션 -->
-                <div id="snackAnalysisSection" class="mt-0 hidden">
-                    <div class="space-y-0">
-                        <div class="card !rounded-none mb-1.5">
-                            <div class="flex justify-between items-center py-2.5 px-5 pb-2">
-                                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">간식 유형</h3>
-                                <button onclick="window.openDetailModal('snackType', '간식 유형 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button>
-                            </div>
-                            <div id="snackTypeChartContainer" class="px-5 pb-3"></div>
-                        </div>
-                        <div class="card !rounded-none mb-1.5">
-                            <div class="flex justify-between items-center py-2.5 px-5 pb-2">
-                                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">만족도</h3>
-                                <button onclick="window.openDetailModal('snackRating', '간식 만족도 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button>
-                            </div>
-                            <div id="snackRatingChartContainer" class="px-5 pb-3"></div>
+                <div id="snackAnalysisSection" class="mt-4 hidden">
+                    <div class="space-y-3">
+                        <div class="card py-2.5 px-5">
+                            <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">간식 유형</h3><button onclick="window.openDetailModal('snackType', '간식 유형 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                            <div id="snackTypeChartContainer"></div>
                         </div>
                     </div>
                 </div>
@@ -390,11 +364,9 @@
 
             <div><h3 class="text-xs font-black text-slate-400 mb-4 uppercase tracking-widest">프로필 설정</h3><div id="iconSelector" class="flex gap-3 overflow-x-auto pb-2"></div><div class="bg-slate-50 p-4 rounded-2xl space-y-3 mt-4"><label class="text-[10px] font-bold text-slate-400 block uppercase">닉네임</label><input type="text" id="settingNickname" class="w-full bg-white p-3 rounded-xl border-none outline-none font-bold text-sm"></div></div>
             <div class="space-y-6">
-                <!-- 자주 사용하는 태그 편집 섹션 -->
-                <div>
-                    <h3 class="text-xs font-black text-slate-400 mb-4 uppercase tracking-widest">자주 사용하는 태그</h3>
-                    <div id="favoriteTagsSection" class="space-y-4"></div>
-                </div>
+                <!-- Primary Tags Section REMOVED -->
+                
+                <!-- Secondary Tags Section REMOVED -->
 
                 <!-- 로그아웃 버튼 영역 (여기로 복구!) -->
                 <div id="logoutBtnArea" class="hidden pt-4 border-t border-slate-100">
@@ -428,7 +400,7 @@
                     <div class="mb-2">
                         <div class="flex items-center justify-between mb-1.5">
                             <span class="text-sm font-extrabold text-slate-600 block uppercase">음식 사진</span>
-                            <span id="photoCount" class="text-[10px] text-slate-400 font-bold">0/10</span>
+                            <span id="photoCount" class="text-[10px] text-slate-400 font-bold">0/5</span>
                         </div>
                         <div class="flex gap-2 overflow-x-auto pb-1">
                             <button id="imageBtn" onclick="document.getElementById('imageInput').click()" class="flex-shrink-0 w-20 h-20 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors">
@@ -482,7 +454,7 @@
 
                     <div class="mb-2">
                         <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">Comment</span>
-                        <textarea id="generalCommentInput" placeholder="오늘 식사는 어떠셨나요?" class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all resize-none min-h-[80px]" rows="3"></textarea>
+                        <input id="generalCommentInput" type="text" placeholder="오늘 식사는 어떠셨나요?" class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all">
                     </div>
                 </div>
                 
@@ -490,7 +462,7 @@
                     <div class="mb-2">
                         <div class="flex items-center justify-between mb-1.5">
                             <span class="text-sm font-extrabold text-slate-600 block uppercase">간식 사진</span>
-                            <span id="snackPhotoCount" class="text-[10px] text-slate-400 font-bold">0/10</span>
+                            <span id="snackPhotoCount" class="text-[10px] text-slate-400 font-bold">0/5</span>
                         </div>
                         <div class="flex gap-2 overflow-x-auto pb-1">
                             <button id="snackImageBtn" onclick="document.getElementById('snackImageInput').click()" class="flex-shrink-0 w-20 h-20 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors">
@@ -506,23 +478,9 @@
                         <input id="snackDetailInput" type="text" placeholder="무엇을 드셨나요?" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
                         <div id="snackSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
                     </div>
-                    
-                    <div id="snackReviewSection" class="pt-2 border-t border-slate-50 space-y-2 mb-2">
-                        <div id="snackRatingSection">
-                            <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">만족도</span>
-                            <div id="snackStarContainer" class="flex gap-2 mb-2">
-                                <button onclick="window.setRating(1)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
-                                <button onclick="window.setRating(2)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
-                                <button onclick="window.setRating(3)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
-                                <button onclick="window.setRating(4)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
-                                <button onclick="window.setRating(5)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
-                            </div>
-                        </div>
-                    </div>
-                    
                     <div class="mb-2">
                         <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">Comment</span>
-                        <textarea id="snackCommentInput" placeholder="오늘 간식은 어떠셨나요?" class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all resize-none min-h-[80px]" rows="3"></textarea>
+                        <input id="snackCommentInput" type="text" placeholder="오늘 간식은 어떠셨나요?" class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all">
                     </div>
                 </div>
             </div>
@@ -543,29 +501,6 @@
         <div class="w-full bg-white rounded-t-[2rem] p-6 max-h-[80vh] overflow-y-auto">
             <div class="flex justify-between mb-4"><h2 id="detailModalTitle" class="font-bold">상세 통계</h2><button onclick="window.closeDetailModal()"><i class="fa-solid fa-xmark"></i></button></div>
             <div id="detailContent"></div>
-        </div>
-    </div>
-
-    <!-- Best Share Modal -->
-    <div id="bestShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[350] flex items-end">
-        <div class="w-full bg-white rounded-t-[2rem] flex flex-col max-h-[92vh]">
-            <div class="p-6 border-b flex justify-between items-center">
-                <h2 class="text-lg font-bold text-slate-800 tracking-tight">베스트 공유</h2>
-                <button onclick="window.closeShareBestModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
-            </div>
-            <div class="p-6 space-y-4 overflow-y-auto pb-10">
-                <div id="bestSharePreview" class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                    <!-- 스크린샷 미리보기 영역 -->
-                </div>
-                <div>
-                    <label class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">Comment</label>
-                    <textarea id="bestShareComment" placeholder="이번 주간(월간) 베스트에 대한 코멘트를 입력해주세요" class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all resize-none min-h-[80px]" rows="3"></textarea>
-                </div>
-            </div>
-            <div class="p-6 border-t flex gap-2">
-                <button onclick="window.closeShareBestModal()" class="flex-1 py-4 bg-slate-100 text-slate-600 rounded-xl font-bold active:bg-slate-200 transition-colors">취소</button>
-                <button onclick="window.shareBestToFeed()" id="bestShareSubmitBtn" class="flex-1 py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all">공유하기</button>
-            </div>
         </div>
     </div>
 

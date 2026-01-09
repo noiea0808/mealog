@@ -437,7 +437,7 @@ export function renderTimeline() {
                                 <span class="text-xs font-black uppercase ${specificStyle.iconText}">${slot.label}</span>
                                 ${r ? `<div class="flex items-center gap-2">
                                     ${r.sharedPhotos && Array.isArray(r.sharedPhotos) && r.sharedPhotos.length > 0 ? `<span class="text-xs text-emerald-600" title="게시됨"><i class="fa-solid fa-share"></i></span>` : ''}
-                                    <span class="text-xs text-yellow-500"><i class="fa-solid fa-star mr-0.5"></i>${r.rating || '-'}</span>
+                                    <span class="text-xs font-bold text-yellow-600 bg-yellow-50 px-1.5 py-0.5 rounded-md flex items-center gap-0.5"><i class="fa-solid fa-star text-[10px]"></i><span class="text-[11px] font-black">${r.rating || '-'}</span></span>
                                 </div>` : ''}
                             </div>
                             <h4 class="text-base font-bold truncate ${titleClass}">${title}</h4>
@@ -455,7 +455,7 @@ export function renderTimeline() {
                                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-2"></span>
                                 ${r.menuDetail || r.snackType || '간식'} 
                                 ${r.sharedPhotos && Array.isArray(r.sharedPhotos) && r.sharedPhotos.length > 0 ? `<i class="fa-solid fa-share text-emerald-600 text-[8px] ml-1" title="게시됨"></i>` : ''}
-                                ${r.rating ? `<i class="fa-solid fa-star text-yellow-400 text-[8px] ml-1"></i>${r.rating}` : ''}
+                                ${r.rating ? `<span class="text-[10px] font-black text-yellow-600 bg-yellow-50 px-1 py-0.5 rounded ml-1.5 flex items-center gap-0.5"><i class="fa-solid fa-star text-[9px]"></i>${r.rating}</span>` : ''}
                             </div>`
                         ).join('') : `<span class="text-xs text-slate-400 italic">기록없음</span>`}
                         <button onclick="window.openModal('${dateStr}', '${slot.id}')" class="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-100 transition-colors">+ 추가</button>
@@ -1579,7 +1579,7 @@ export function createDailyShareCard(dateStr) {
                         <div style="flex: 1; min-width: 0;">
                             <div style="display: flex; justify-between; align-items: center; margin-bottom: 4px;">
                                 <span style="font-size: 10px; font-weight: 900; color: ${specificStyle.iconText.includes('emerald') ? '#10b981' : specificStyle.iconText.includes('orange') ? '#f97316' : specificStyle.iconText.includes('blue') ? '#3b82f6' : '#64748b'}; text-transform: uppercase;">${slot.label}</span>
-                                ${r.rating ? `<span style="font-size: 11px; color: #f59e0b; font-weight: 700;">★ ${r.rating}</span>` : ''}
+                                ${r.rating ? `<span style="font-size: 12px; color: #d97706; font-weight: 900; background: #fef3c7; padding: 3px 6px; border-radius: 6px; display: inline-flex; align-items: center; gap: 2px;">★ <span style="font-weight: 900;">${r.rating}</span></span>` : ''}
                             </div>
                             <div style="font-size: 13px; font-weight: 700; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(title)}</div>
                         </div>
