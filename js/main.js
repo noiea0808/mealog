@@ -11,7 +11,7 @@ import {
     copyDomain, closeDomainModal, switchToLogin
 } from './auth.js';
 import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard } from './render.js';
-import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed } from './analytics.js';
+import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, showInsightPage } from './analytics.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
     handleMultipleImages, removePhoto, updateShareIndicator, toggleSharePhoto,
@@ -69,6 +69,10 @@ window.setAnalysisType = setAnalysisType;
 window.openShareBestModal = openShareBestModal;
 window.closeShareBestModal = closeShareBestModal;
 window.shareBestToFeed = shareBestToFeed;
+window.openCharacterSelectModal = openCharacterSelectModal;
+window.closeCharacterSelectModal = closeCharacterSelectModal;
+window.selectInsightCharacter = selectInsightCharacter;
+window.showInsightPage = showInsightPage;
 window.toggleComment = toggleComment;
 window.toggleFeedComment = toggleFeedComment;
 

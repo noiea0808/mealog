@@ -262,7 +262,29 @@
                              <input type="month" id="monthInput" onchange="window.updateSelectedMonth()" class="w-full bg-white/20 text-white text-sm rounded p-2 border-none outline-none">
                         </div>
                     </div>
-                    <p id="insightText" class="text-sm font-semibold leading-relaxed mb-4 relative z-10">데이터 분석 중...</p>
+                    <!-- 캐릭터와 말풍선 영역 -->
+                    <div class="flex gap-3 mt-3 relative z-10">
+                        <!-- 캐릭터 선택 창 -->
+                        <div class="relative flex-shrink-0">
+                            <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="w-16 h-20 bg-white/20 rounded-2xl border-2 border-white/30 flex flex-col items-center justify-center active:bg-white/30 transition-colors">
+                                <div id="insightCharacterIcon" class="text-2xl font-black text-white">M</div>
+                            </button>
+                        </div>
+                        <!-- 말풍선 -->
+                        <div class="flex-1 relative">
+                            <div id="insightBubble" class="bg-white/90 rounded-lg border-2 border-white py-3 px-3 overflow-hidden relative" style="height: calc(1.6rem * 5 + 1.5rem);">
+                                <div id="insightTextPages" class="space-y-0">
+                                    <!-- 페이지별 텍스트가 여기에 표시됨 -->
+                                </div>
+                                <!-- 페이지 인디케이터 -->
+                                <div id="insightPageIndicator" class="hidden absolute bottom-3 right-4 flex gap-1">
+                                    <!-- 페이지 점들이 여기에 표시됨 -->
+                                </div>
+                            </div>
+                            <!-- 말풍선 꼬리 -->
+                            <div class="absolute left-[-8px] top-4 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-r-[8px] border-r-white/90"></div>
+                        </div>
+                    </div>
                     <div class="sticker-badge relative z-10">
                         <div id="stickerEmoji" class="text-2xl">🍽️</div>
                         <div class="flex-1 ml-2 flex items-center justify-between">
@@ -518,6 +540,49 @@
         <div class="w-full bg-white rounded-t-[2rem] p-6 max-h-[80vh] overflow-y-auto">
             <div class="flex justify-between mb-4"><h2 id="detailModalTitle" class="font-bold">상세 통계</h2><button onclick="window.closeDetailModal()"><i class="fa-solid fa-xmark"></i></button></div>
             <div id="detailContent"></div>
+        </div>
+    </div>
+
+    <!-- Character Select Modal -->
+    <div id="characterSelectModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-end">
+        <div class="w-full bg-white rounded-t-[2rem] flex flex-col max-h-[60vh]">
+            <div class="p-6 border-b flex justify-between items-center">
+                <h2 class="text-lg font-bold text-slate-800 tracking-tight">캐릭터 선택</h2>
+                <button onclick="window.closeCharacterSelectModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto">
+                <div id="characterList" class="grid grid-cols-3 gap-4">
+                    <!-- 캐릭터 목록이 여기에 동적으로 추가됨 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Character Select Popup (Center Modal) -->
+    <div id="characterSelectPopup" class="hidden fixed inset-0 bg-slate-900/60 z-[9999] flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 w-full max-w-[270px]">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-slate-800 tracking-tight">캐릭터 선택</h2>
+                <button onclick="window.closeCharacterSelectModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <div class="flex flex-col gap-3">
+                <div class="character-popup-item active flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-colors hover:bg-slate-50" data-character-id="mealog" onclick="window.selectInsightCharacter('mealog')">
+                    <div class="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700 font-black text-lg flex-shrink-0">M</div>
+                    <div class="flex-1">
+                        <div class="text-sm font-bold text-slate-800">MEALOG</div>
+                        <div class="text-xs text-slate-500 mt-0.5">친근한 친구</div>
+                    </div>
+                </div>
+                <div class="character-popup-item flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-colors hover:bg-slate-50" data-character-id="trainer" onclick="window.selectInsightCharacter('trainer')">
+                    <div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-3xl flex-shrink-0">💪</div>
+                    <div class="flex-1">
+                        <div class="text-sm font-bold text-slate-800">엄격한 트레이너</div>
+                        <div class="text-xs text-slate-500 mt-0.5">건강 전문가</div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 

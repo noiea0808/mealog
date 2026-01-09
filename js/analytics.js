@@ -308,9 +308,223 @@ export function getDashboardData() {
     return { filteredData, dateRangeText: label, days: daysDiff };
 }
 
-async function getGeminiComment(filteredData) {
-    if (filteredData.length === 0) return "오늘도 맛있는 기록 되세요!";
-    return "멋진 식사 기록이 쌓이고 있어요! ✨";
+// 캐릭터 정의
+const INSIGHT_CHARACTERS = [
+    { id: 'mealog', name: 'MEALOG', icon: 'M', persona: '친근하고 따뜻한 식사 친구' },
+    { id: 'trainer', name: '엄격한 트레이너', icon: '💪', persona: '건강과 웰빙을 중시하는 트레이너' }
+];
+
+// 현재 선택된 캐릭터 (기본값: MEALOG)
+let currentCharacter = 'mealog';
+
+// 텍스트를 5줄 단위로 나누는 함수 (더 정확한 줄 단위 분할)
+function splitTextIntoPages(text, maxLines = 5) {
+    if (!text) return [''];
+    
+    // 줄바꿈을 기준으로 분할
+    const originalLines = text.split('\n');
+    const allLines = [];
+    
+    // 각 줄을 최대 45자로 나누기 (말풍선 너비 고려)
+    originalLines.forEach(line => {
+        if (line.length <= 45) {
+            allLines.push(line);
+        } else {
+            // 긴 줄을 단어 단위로 나누기
+            const words = line.split(' ');
+            let currentLine = '';
+            
+            words.forEach(word => {
+                if (!currentLine) {
+                    currentLine = word;
+                } else if ((currentLine + ' ' + word).length <= 45) {
+                    currentLine += ' ' + word;
+                } else {
+                    if (currentLine) allLines.push(currentLine);
+                    currentLine = word;
+                }
+            });
+            
+            if (currentLine) allLines.push(currentLine);
+        }
+    });
+    
+    // 5줄씩 묶어서 페이지 만들기
+    const pages = [];
+    for (let i = 0; i < allLines.length; i += maxLines) {
+        const pageLines = allLines.slice(i, i + maxLines);
+        pages.push(pageLines.join('\n'));
+    }
+    
+    return pages.length > 0 ? pages : [text];
+}
+
+// 말풍선에 텍스트 표시 (페이지네이션)
+function displayInsightText(text, characterName = '') {
+    const container = document.getElementById('insightTextPages');
+    const indicator = document.getElementById('insightPageIndicator');
+    
+    if (!container) return;
+    
+    const pages = splitTextIntoPages(text, 5);
+    
+    // 캐릭터명을 각 페이지 상단에 추가
+    const characterHeader = characterName ? `<div class="insight-character-name text-xs font-bold text-emerald-700 mb-1">[ ${characterName} ]</div>` : '';
+    
+    container.innerHTML = pages.map((page, index) => 
+        `<div class="insight-text-page ${index === 0 ? 'active' : ''}" data-page="${index}">${characterHeader}<div class="insight-text-content">${page}</div></div>`
+    ).join('');
+    
+    // 페이지 인디케이터 표시 (페이지가 2개 이상일 때만)
+    if (pages.length > 1 && indicator) {
+        indicator.classList.remove('hidden');
+        indicator.innerHTML = pages.map((_, index) => 
+            `<div class="insight-page-dot ${index === 0 ? 'active' : ''}" onclick="window.showInsightPage(${index})"></div>`
+        ).join('');
+    } else if (indicator) {
+        indicator.classList.add('hidden');
+    }
+    
+    // 첫 페이지로 초기화
+    window.currentInsightPage = 0;
+}
+
+// 인사이트 페이지 전환
+export function showInsightPage(pageIndex) {
+    const pages = document.querySelectorAll('.insight-text-page');
+    const dots = document.querySelectorAll('.insight-page-dot');
+    
+    if (pages.length === 0) return;
+    
+    pages.forEach((page, index) => {
+        page.classList.toggle('active', index === pageIndex);
+    });
+    
+    dots.forEach((dot, index) => {
+        dot.classList.toggle('active', index === pageIndex);
+    });
+    
+    window.currentInsightPage = pageIndex;
+}
+
+// 말풍선 클릭 시 다음 페이지로 (초기화)
+export function setupInsightBubbleClick() {
+    const bubble = document.getElementById('insightBubble');
+    if (!bubble) return;
+    
+    // 기존 이벤트 리스너 제거 후 새로 추가
+    bubble.removeEventListener('click', handleInsightBubbleClick);
+    bubble.addEventListener('click', handleInsightBubbleClick);
+}
+
+function handleInsightBubbleClick() {
+    const pages = document.querySelectorAll('.insight-text-page');
+    if (pages.length <= 1) return;
+    
+    const currentPage = window.currentInsightPage || 0;
+    const nextPage = (currentPage + 1) % pages.length;
+    showInsightPage(nextPage);
+}
+
+// 캐릭터 선택 팝업 열기/토글
+export function openCharacterSelectModal() {
+    const popup = document.getElementById('characterSelectPopup');
+    
+    if (!popup) return;
+    
+    // 이미 열려있으면 닫기
+    if (!popup.classList.contains('hidden')) {
+        closeCharacterSelectModal();
+        return;
+    }
+    
+    // 화면 가운데에 표시 (CSS로 처리되므로 위치 설정 불필요)
+    popup.classList.remove('hidden');
+    
+    // 외부 클릭 시 닫기
+    setTimeout(() => {
+        document.addEventListener('click', handleOutsideClick, true);
+    }, 100);
+}
+
+// 외부 클릭 핸들러
+function handleOutsideClick(e) {
+    const popup = document.getElementById('characterSelectPopup');
+    const popupContent = popup?.querySelector('.bg-white');
+    
+    // 팝업 내부가 아닌 배경 클릭 시에만 닫기
+    if (popup && popupContent && !popupContent.contains(e.target)) {
+        closeCharacterSelectModal();
+        document.removeEventListener('click', handleOutsideClick, true);
+    }
+}
+
+// 캐릭터 선택 팝업 닫기
+export function closeCharacterSelectModal() {
+    const popup = document.getElementById('characterSelectPopup');
+    if (popup) {
+        popup.classList.add('hidden');
+    }
+    document.removeEventListener('click', handleOutsideClick, true);
+}
+
+// 캐릭터 선택
+export function selectInsightCharacter(characterId) {
+    const character = INSIGHT_CHARACTERS.find(c => c.id === characterId);
+    if (!character) return;
+    
+    currentCharacter = characterId;
+    
+    // 캐릭터 아이콘 업데이트
+    const iconEl = document.getElementById('insightCharacterIcon');
+    if (iconEl) {
+        if (character.id === 'mealog') {
+            iconEl.textContent = 'M';
+            iconEl.className = 'text-2xl font-black text-white';
+        } else {
+            iconEl.textContent = character.icon;
+            iconEl.className = 'text-3xl';
+        }
+    }
+    
+    // 캐릭터 목록 UI 업데이트
+    const items = document.querySelectorAll('.character-popup-item');
+    items.forEach(item => {
+        const charId = item.getAttribute('data-character-id');
+        if (charId === characterId) {
+            item.classList.add('active');
+        } else {
+            item.classList.remove('active');
+        }
+    });
+    
+    // 팝업 닫기
+    closeCharacterSelectModal();
+    
+    // 선택된 캐릭터로 인사이트 다시 생성 (나중에 AI 연결 시)
+    const { filteredData } = getDashboardData();
+    updateInsightComment(filteredData);
+}
+
+// 캐릭터에 맞는 인사이트 코멘트 업데이트
+export async function updateInsightComment(filteredData) {
+    const comment = await getGeminiComment(filteredData, currentCharacter);
+    const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
+    const characterName = character ? character.name : '';
+    displayInsightText(comment || "멋진 식사 기록이 쌓이고 있어요! ✨", characterName);
+}
+
+async function getGeminiComment(filteredData, characterId = currentCharacter) {
+    if (filteredData.length === 0) {
+        const character = INSIGHT_CHARACTERS.find(c => c.id === characterId);
+        return character ? `${character.icon} 오늘도 맛있는 기록 되세요!` : "오늘도 맛있는 기록 되세요!";
+    }
+    
+    // 기본 메시지 (나중에 AI 연결 시 캐릭터별 페르소나 적용)
+    const character = INSIGHT_CHARACTERS.find(c => c.id === characterId);
+    const prefix = character ? `${character.icon} ` : '';
+    
+    return prefix + "멋진 식사 기록이 쌓이고 있어요! ✨\n\n이번 기간 동안 다양한 맛을 경험하셨네요. 건강하고 행복한 식사가 계속되기를 바랍니다!";
 }
 
 export async function updateDashboard() {
@@ -517,11 +731,25 @@ export async function updateDashboard() {
     const snackRecordCountEl = document.getElementById('snackRecordCount');
     if (snackRecordCountEl) snackRecordCountEl.textContent = snackCount;
     
-    // 인사이트 코멘트
-    const insightTextEl = document.getElementById('insightText');
-    if (insightTextEl) {
-        const comment = await getGeminiComment(filteredData);
-        insightTextEl.innerText = comment || "멋진 식사 기록이 쌓이고 있어요! ✨";
+    // 인사이트 코멘트 (말풍선에 표시)
+    await updateInsightComment(filteredData);
+    
+    // 말풍선 클릭 이벤트 설정
+    setupInsightBubbleClick();
+    
+    // 초기 캐릭터 아이콘 설정
+    const characterIconEl = document.getElementById('insightCharacterIcon');
+    if (characterIconEl) {
+        const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
+        if (character) {
+            if (character.id === 'mealog') {
+                characterIconEl.textContent = 'M';
+                characterIconEl.className = 'text-2xl font-black text-white';
+            } else {
+                characterIconEl.textContent = character.icon;
+                characterIconEl.className = 'text-3xl';
+            }
+        }
     }
 }
 
