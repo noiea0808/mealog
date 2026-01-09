@@ -234,17 +234,23 @@
                             <button id="btn-dash-custom" onclick="window.setDashboardMode('custom')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">직접 설정</button>
                         </div>
                         <div id="periodNavigator" class="hidden mt-3 flex items-center justify-center gap-3">
-                            <button id="periodPrevBtn" onclick="window.navigatePeriod(-1)" class="w-8 h-8 rounded-full bg-white/20 text-white flex items-center justify-center active:bg-white/30 transition-colors">
+                            <button id="periodPrevBtn" onclick="window.navigatePeriod(-1)" class="w-7 h-7 rounded-full bg-white/20 text-white flex items-center justify-center active:bg-white/30 transition-colors">
                                 <i class="fa-solid fa-chevron-left text-sm"></i>
                             </button>
                             <div id="periodDisplay" class="flex-1 text-center text-sm font-bold text-white"></div>
-                            <button id="periodNextBtn" onclick="window.navigatePeriod(1)" class="w-8 h-8 rounded-full bg-white/20 text-white flex items-center justify-center active:bg-white/30 transition-colors">
+                            <button id="periodNextBtn" onclick="window.navigatePeriod(1)" class="w-7 h-7 rounded-full bg-white/20 text-white flex items-center justify-center active:bg-white/30 transition-colors">
                                 <i class="fa-solid fa-chevron-right text-sm"></i>
                             </button>
                         </div>
-                        <div id="customDatePicker" class="hidden mt-3 flex gap-2">
-                            <input type="date" id="customStart" onchange="window.updateCustomDates()" class="flex-1 bg-white/20 text-white text-[10px] rounded p-1 border-none outline-none">
-                            <input type="date" id="customEnd" onchange="window.updateCustomDates()" class="flex-1 bg-white/20 text-white text-[10px] rounded p-1 border-none outline-none">
+                        <div id="customDatePicker" class="hidden mt-3 flex gap-2 items-center">
+                            <div class="flex gap-1 items-center">
+                                <label class="text-xs font-bold text-white/80 whitespace-nowrap">시작</label>
+                                <input type="date" id="customStart" onchange="window.updateCustomDates()" class="bg-white/20 text-white text-sm rounded px-2 py-1 border-none outline-none">
+                            </div>
+                            <div class="flex gap-1 items-center">
+                                <label class="text-xs font-bold text-white/80 whitespace-nowrap">종료</label>
+                                <input type="date" id="customEnd" onchange="window.updateCustomDates()" class="bg-white/20 text-white text-sm rounded px-2 py-1 border-none outline-none">
+                            </div>
                         </div>
                         <div id="weekPickerContainer" class="hidden mt-3 flex gap-2">
                             <input type="month" id="weekMonthInput" onchange="window.updateSelectedWeek()" class="flex-1 bg-white/20 text-white text-[10px] rounded p-1 border-none outline-none">

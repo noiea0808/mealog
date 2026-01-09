@@ -300,5 +300,20 @@ body {
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
+/* 기간 표시 높이 통일 */
+#periodDisplay {
+    min-height: 1.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+/* 직접 설정 모드 캘린더 높이 통일 */
+#customDatePicker input {
+    min-height: 1.4rem;
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+    display: flex;
+    align-items: center;
+}
 
 

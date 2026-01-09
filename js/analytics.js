@@ -365,30 +365,30 @@ export async function updateDashboard() {
     
     const periodNavigator = document.getElementById('periodNavigator');
     const periodDisplay = document.getElementById('periodDisplay');
-    const periodDisplay7d = document.getElementById('periodDisplay7d');
     
-    // 최근1주 모드일 때는 별도 표시 (네비게이션 버튼 없음, 기간 표시)
+    // 최근1주 모드일 때도 다른 기간처럼 날짜 표시 (화살표 버튼은 숨김)
     if (state.dashboardMode === '7d') {
-        if (periodDisplay7d) {
-            const startDate = state.recentWeekStartDate || (() => {
-                const d = new Date();
-                d.setDate(d.getDate() - 6);
-                d.setHours(0, 0, 0, 0);
-                return d;
-            })();
-            const endDate = new Date();
-            endDate.setHours(23, 59, 59, 999);
-            const startStr = formatDateWithDay(startDate);
-            const endStr = formatDateWithDay(endDate);
-            periodDisplay7d.innerHTML = `<div class="text-sm font-bold text-white text-center">${startStr} ~ ${endStr}</div>`;
-            periodDisplay7d.classList.remove('hidden');
-        }
-        const periodDisplay7dDays = document.getElementById('periodDisplay7dDays');
-        if (periodDisplay7dDays) {
-            periodDisplay7dDays.classList.add('hidden');
-        }
+        const startDate = state.recentWeekStartDate || (() => {
+            const d = new Date();
+            d.setDate(d.getDate() - 6);
+            d.setHours(0, 0, 0, 0);
+            return d;
+        })();
+        const endDate = new Date();
+        endDate.setHours(23, 59, 59, 999);
+        const startStr = formatDateWithDay(startDate);
+        const endStr = formatDateWithDay(endDate);
+        
         if (periodNavigator) {
-            periodNavigator.classList.add('hidden');
+            periodNavigator.classList.remove('hidden');
+            if (periodDisplay) {
+                periodDisplay.innerHTML = `${startStr} ~ ${endStr}`;
+            }
+            // 화살표 버튼 숨기기
+            const periodPrevBtn = document.getElementById('periodPrevBtn');
+            const periodNextBtn = document.getElementById('periodNextBtn');
+            if (periodPrevBtn) periodPrevBtn.classList.add('hidden');
+            if (periodNextBtn) periodNextBtn.classList.add('hidden');
         }
         const customDatePicker = document.getElementById('customDatePicker');
         if (customDatePicker) {
@@ -408,24 +408,10 @@ export async function updateDashboard() {
                 endInput.value = endDate.toISOString().split('T')[0];
             }
         }
-        if (periodDisplay7d) {
-            periodDisplay7d.classList.add('hidden');
-        }
-        const periodDisplay7dDays = document.getElementById('periodDisplay7dDays');
-        if (periodDisplay7dDays) {
-            periodDisplay7dDays.classList.add('hidden');
-        }
         if (periodNavigator) {
             periodNavigator.classList.add('hidden');
         }
     } else {
-        if (periodDisplay7d) {
-            periodDisplay7d.classList.add('hidden');
-        }
-        const periodDisplay7dDays = document.getElementById('periodDisplay7dDays');
-        if (periodDisplay7dDays) {
-            periodDisplay7dDays.classList.add('hidden');
-        }
         const customDatePicker = document.getElementById('customDatePicker');
         if (customDatePicker) {
             customDatePicker.classList.add('hidden');
@@ -433,6 +419,11 @@ export async function updateDashboard() {
         if (periodNavigator) {
             if (state.dashboardMode === 'week' || state.dashboardMode === 'month' || state.dashboardMode === 'year') {
                 periodNavigator.classList.remove('hidden');
+                // 화살표 버튼 표시 (다른 모드에서는 사용)
+                const periodPrevBtn = document.getElementById('periodPrevBtn');
+                const periodNextBtn = document.getElementById('periodNextBtn');
+                if (periodPrevBtn) periodPrevBtn.classList.remove('hidden');
+                if (periodNextBtn) periodNextBtn.classList.remove('hidden');
                 if (periodDisplay) {
                     if (state.dashboardMode === 'week') {
                         const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
