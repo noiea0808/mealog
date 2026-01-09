@@ -1306,7 +1306,7 @@ export function renderBestMeals() {
         const safeMealId = (meal.id || '').replace(/'/g, "\\'");
         
         return `
-            <div class="best-meal-item card mb-0 border-t border-b border-slate-200 cursor-move active:scale-[0.98] transition-all !rounded-lg bg-white" 
+            <div class="best-meal-item card mb-0 border-t border-b border-slate-200 cursor-move active:scale-[0.98] transition-all bg-white" 
                  data-meal-id="${safeMealId}" 
                  data-rating="${rating}"
                  data-date="${safeDate}"

@@ -315,5 +315,27 @@ body {
     display: flex;
     align-items: center;
 }
+/* 분석창 카드 좌우 꽉 차게 */
+#dashboardView .card {
+    border-radius: 0;
+}
+/* 식사/간식 분석 섹션 카드들 같은 박스처럼 보이게 */
+#mainAnalysisSection .card,
+#snackAnalysisSection .card {
+    border-top: 1px solid #f1f5f9;
+    margin-top: 0;
+    margin-bottom: 0;
+}
+#mainAnalysisSection .card:first-child,
+#snackAnalysisSection .card:first-child {
+    border-top: none;
+}
+/* 베스트 식사/간식 카드 좌우 꽉 차게 */
+#bestMealsContainer .best-meal-item {
+    border-radius: 0 !important;
+    margin-left: -1rem !important;
+    margin-right: -1rem !important;
+    width: calc(100% + 2rem) !important;
+}
 
 
