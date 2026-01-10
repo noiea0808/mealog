@@ -48,15 +48,59 @@ jobs:
           fi
           echo "✅ js/config.js 파일 생성 확인됨"
           ls -la js/config.js
+          echo ""
+          echo "📄 config.js 내용 (API 키 마스킹):"
+          cat js/config.js | sed 's/AIzaSy[^'"'"']*/AIzaSy***/'
+        shell: bash
+
+      - name: Verify required files
+        run: |
+          echo "📋 필수 파일 확인:"
+          files=("index.html" "manifest.json" "sw.js" "js/config.js" "js/config.default.js")
+          missing_files=()
+          for file in "${files[@]}"; do
+            if [ -f "$file" ]; then
+              echo "✅ $file 존재"
+            else
+              echo "❌ $file 없음!"
+              missing_files+=("$file")
+            fi
+          done
+          if [ ${#missing_files[@]} -gt 0 ]; then
+            echo "❌ 누락된 파일이 있습니다: ${missing_files[*]}"
+            exit 1
+          fi
         shell: bash
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
+      - name: List files before upload
+        run: |
+          echo "📁 배포할 파일 목록:"
+          ls -la
+          echo ""
+          echo "📁 js 디렉토리:"
+          ls -la js/ | grep -E "(config|\.js)"
+          echo ""
+          echo "📄 config.js 내용 확인 (API 키 마스킹):"
+          if [ -f js/config.js ]; then
+            cat js/config.js | sed 's/AIzaSy[^'"'"']*/AIzaSy***/'
+            echo ""
+            echo "✅ config.js 파일 크기:"
+            wc -c js/config.js
+          else
+            echo "❌ js/config.js 파일이 없습니다!"
+            exit 1
+          fi
+        shell: bash
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
+          # .gitignore에 있는 파일도 포함하도록 설정
+          # config.js는 workflow에서 생성되므로 포함됨
 
       - name: Deploy to GitHub Pages
         id: deployment

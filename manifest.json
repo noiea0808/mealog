@@ -1,0 +1,17 @@
+{
+  "name": "MEALOG",
+  "short_name": "MEALOG",
+  "description": "우리가 함께한, 맛있었던 기억 - 스마트 식사 타임라인",
+  "start_url": "/mealog/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#10b981",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%2310b981'/><text x='50%25' y='50%25' font-size='120' text-anchor='middle' dominant-baseline='central' fill='white'>🍽️</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ]
+}
