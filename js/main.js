@@ -15,7 +15,7 @@ import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMon
 import { 
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
     handleMultipleImages, removePhoto, updateShareIndicator, toggleSharePhoto,
-    openSettings, closeSettings, saveSettings, selectIcon, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
+    openSettings, closeSettings, saveSettings, saveProfileSettings, selectIcon, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
     openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace
 } from './modals.js';
 import { DEFAULT_SUB_TAGS } from './constants.js';
@@ -53,6 +53,7 @@ window.toggleSharePhoto = toggleSharePhoto;
 window.openSettings = openSettings;
 window.closeSettings = closeSettings;
 window.saveSettings = saveSettings;
+window.saveProfileSettings = saveProfileSettings;
 window.selectIcon = selectIcon;
 window.addTag = addTag;
 window.removeTag = removeTag;
@@ -426,6 +427,9 @@ initAuth(async (user) => {
         }
         
         switchScreen(true);
+        
+        // 초기 탭을 타임라인으로 설정
+        switchMainTab('timeline');
     } else {
         switchScreen(false);
         if (appState.sharedPhotosUnsubscribe) {

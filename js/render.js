@@ -93,6 +93,9 @@ export function renderEntryChips() {
             return indexA - indexB;
         });
         
+        // 최근 태그는 역순으로 정렬 (최근 사용한 태그가 왼쪽에 오도록)
+        recentTagsList.reverse();
+        
         // 나만의 태그 + 최근 태그 순서로 합치기
         const sortedList = [...myTagsList, ...recentTagsList];
         
@@ -394,15 +397,25 @@ export function renderTimeline() {
                 let containerClass = r ? 'border-slate-200' : 'border-slate-200 opacity-80';
                 let titleClass = r ? 'text-slate-800' : 'text-slate-300';
                 let iconBoxClass = `bg-slate-100 border-slate-200 ${specificStyle.iconText}`;
-                let title = '기록하기';
+                const safeSlotLabel = escapeHtml(slot.label);
+                let titleLine1 = '';
+                let titleLine2 = '';
                 let tagsHtml = '';
                 if (r) {
                     if (r.mealType === 'Skip') {
-                        title = 'Skip';
+                        titleLine1 = 'Skip';
                     } else {
                         const p = r.place || '';
                         const m = r.menuDetail || r.category || '';
-                        title = (p && m) ? `${p} | ${m}` : (p || m || r.mealType);
+                        // 첫 번째 줄: "아침 @ 장소" 형식 (아침/점심/저녁 텍스트 색상 적용, @부터 회색)
+                        const safePlace = escapeHtml(p);
+                        if (p) {
+                            titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span> <span class="text-xs font-bold text-slate-400">@ ${safePlace}</span>`;
+                        } else {
+                            titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span>`;
+                        }
+                        // 두 번째 줄: 메뉴
+                        titleLine2 = escapeHtml(m || '');
                         const tags = [];
                         if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
                         if (r.withWhomDetail) tags.push(r.withWhomDetail);
@@ -412,11 +425,15 @@ export function renderTimeline() {
                             if (sData) tags.push(sData.label);
                         }
                         if (tags.length > 0) {
-                            tagsHtml = `<div class="mt-2 flex flex-wrap gap-1">${tags.map(t => 
+                            tagsHtml = `<div class="mt-1 flex flex-wrap gap-1">${tags.map(t => 
                                 `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded">#${t}</span>`
                             ).join('')}</div>`;
                         }
                     }
+                } else {
+                    // 기록되지 않은 카드에도 끼니 표시
+                    titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span>`;
+                    titleLine2 = '<span class="text-xs text-slate-400">기록하기</span>';
                 }
                 let iconHtml = '';
                 if (!r) {
@@ -440,15 +457,17 @@ export function renderTimeline() {
                             ${iconHtml}
                         </div>
                         <div class="flex-1 min-w-0 flex flex-col justify-center p-4">
-                            <div class="flex justify-between items-center mb-0.5">
-                                <span class="text-xs font-black uppercase ${specificStyle.iconText}">${slot.label}</span>
-                                ${r ? `<div class="flex items-center gap-2">
+                            <div class="flex justify-between items-start mb-1">
+                                <div class="flex-1">
+                                    <h4 class="leading-tight mb-0">${titleLine1}</h4>
+                                    ${titleLine2 ? (r ? `<p class="text-sm text-slate-600 font-bold mt-0.5 mb-0">${titleLine2}</p>` : `<p class="mt-0.5 mb-0">${titleLine2}</p>`) : ''}
+                                </div>
+                                ${r ? `<div class="flex items-center gap-2 flex-shrink-0 ml-2">
                                     ${r.sharedPhotos && Array.isArray(r.sharedPhotos) && r.sharedPhotos.length > 0 ? `<span class="text-xs text-emerald-600" title="게시됨"><i class="fa-solid fa-share"></i></span>` : ''}
                                     <span class="text-xs font-bold text-yellow-600 bg-yellow-50 px-1.5 py-0.5 rounded-md flex items-center gap-0.5"><i class="fa-solid fa-star text-[10px]"></i><span class="text-[11px] font-black">${r.rating || '-'}</span></span>
                                 </div>` : ''}
                             </div>
-                            <h4 class="text-base font-bold truncate ${titleClass}">${title}</h4>
-                            ${r && r.comment ? `<p class="text-xs text-slate-400 mt-1 line-clamp-1">"${r.comment}"</p>` : ''}
+                            ${r && r.comment ? `<p class="text-xs text-slate-400 mt-1 mb-0 line-clamp-2 whitespace-pre-line">"${escapeHtml(r.comment).replace(/\n/g, '<br>')}"</p>` : ''}
                             ${tagsHtml}
                         </div>
                     </div>
@@ -799,9 +818,9 @@ export function renderGallery() {
                 caption = photo.place;
             }
         } else {
-            // 일반 식사인 경우: 기존 로직
+            // 일반 식사인 경우: "메뉴 @ 장소" 형식
             if (photo.place && photo.menuDetail) {
-                caption = `${photo.place} | ${photo.menuDetail}`;
+                caption = `${photo.menuDetail} @ ${photo.place}`;
             } else if (photo.place) {
                 caption = photo.place;
             } else if (photo.menuDetail) {
@@ -1182,9 +1201,9 @@ export function renderFeed() {
                 caption = photo.place;
             }
         } else {
-            // 일반 식사인 경우: 기존 로직
+            // 일반 식사인 경우: "메뉴 @ 장소" 형식
             if (photo.place && photo.menuDetail) {
-                caption = `${photo.place} | ${photo.menuDetail}`;
+                caption = `${photo.menuDetail} @ ${photo.place}`;
             } else if (photo.place) {
                 caption = photo.place;
             } else if (photo.menuDetail) {

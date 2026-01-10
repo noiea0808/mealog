@@ -1070,18 +1070,21 @@ export function closeSettings() {
     document.getElementById('settingsPage').classList.add('hidden');
 }
 
-export async function saveSettings() {
+export async function saveProfileSettings() {
     const state = appState;
     try {
         state.tempSettings.profile.nickname = document.getElementById('settingNickname').value;
         await dbOps.saveSettings(state.tempSettings);
-        window.closeSettings();
-        showToast("설정이 저장되었습니다.", 'success');
+        showToast("프로필이 저장되었습니다.", 'success');
     } catch (e) {
-        console.error('설정 저장 실패:', e);
+        console.error('프로필 저장 실패:', e);
         // dbOps.saveSettings에서 이미 에러 토스트를 표시하므로 여기서는 추가 처리 불필요
-        // 모달은 닫지 않고 사용자가 다시 시도할 수 있도록 함
     }
+}
+
+// 레거시 함수 (호환성 유지)
+export async function saveSettings() {
+    await saveProfileSettings();
 }
 
 export function selectIcon(i) {
@@ -1199,7 +1202,7 @@ export function selectFavoriteMainTag(mainTagKey, mainTag) {
     renderFavoriteTagsEditor();
 }
 
-export function addFavoriteTag(mainTagKey, mainTag) {
+export async function addFavoriteTag(mainTagKey, mainTag) {
     const state = appState;
     if (!state.tempSettings.favoriteSubTags) {
         state.tempSettings.favoriteSubTags = {
@@ -1249,9 +1252,18 @@ export function addFavoriteTag(mainTagKey, mainTag) {
     favorites.push(text);
     input.value = '';
     renderFavoriteTagsEditor();
+    
+    // 즉시 저장
+    try {
+        await dbOps.saveSettings(state.tempSettings);
+        showToast("태그가 저장되었습니다.", 'success');
+    } catch (e) {
+        console.error('태그 저장 실패:', e);
+        // dbOps.saveSettings에서 이미 에러 토스트를 표시하므로 여기서는 추가 처리 불필요
+    }
 }
 
-export function removeFavoriteTag(mainTagKey, mainTag, index) {
+export async function removeFavoriteTag(mainTagKey, mainTag, index) {
     const state = appState;
     if (!state.tempSettings.favoriteSubTags || !state.tempSettings.favoriteSubTags[mainTagKey]) return;
     
@@ -1263,6 +1275,15 @@ export function removeFavoriteTag(mainTagKey, mainTag, index) {
     if (index >= 0 && index < favorites.length) {
         favorites.splice(index, 1);
         renderFavoriteTagsEditor();
+        
+        // 즉시 저장
+        try {
+            await dbOps.saveSettings(state.tempSettings);
+            showToast("태그가 삭제되었습니다.", 'success');
+        } catch (e) {
+            console.error('태그 삭제 저장 실패:', e);
+            // dbOps.saveSettings에서 이미 에러 토스트를 표시하므로 여기서는 추가 처리 불필요
+        }
     }
 }
 
@@ -1342,7 +1363,6 @@ export function openKakaoPlaceSearch() {
         
         if (attempts >= maxAttempts) {
             clearInterval(waitForKakao);
-            showToast("카카오 지도 API가 로드되지 않았습니다. 페이지를 새로고침해주세요.", 'error');
             console.error('카카오 API 로드 실패: kakao 객체가 정의되지 않았습니다.');
             
             // 안전하게 상태 확인
@@ -1368,19 +1388,6 @@ export function openKakaoPlaceSearch() {
             console.error('4. 앱 키 > JavaScript 키 확인: 42dce12f04991c35775f3ce1081a3c76');
             console.error('5. 브라우저 콘솔 > Network 탭에서 dapi.kakao.com 요청 상태 확인');
             console.error('6. Network 탭에서 dapi.kakao.com 요청이 403 또는 401 에러인지 확인');
-            
-            // Network 탭에서 확인할 수 있도록 안내
-            const networkCheck = document.createElement('div');
-            networkCheck.className = 'fixed bottom-4 left-4 bg-red-50 border border-red-200 rounded-lg p-4 text-sm max-w-xs z-[500]';
-            networkCheck.innerHTML = `
-                <div class="font-bold text-red-800 mb-2">카카오 지도 API 로드 실패</div>
-                <div class="text-red-600 text-xs mb-2">F12 > Network 탭에서 dapi.kakao.com 요청을 확인하세요.</div>
-                <div class="text-red-600 text-xs mb-2">403 에러: 도메인 미등록 또는 키 불일치</div>
-                <div class="text-red-600 text-xs mb-2">401 에러: 잘못된 키</div>
-                <button onclick="this.parentElement.remove()" class="text-xs text-red-600 underline">닫기</button>
-            `;
-            document.body.appendChild(networkCheck);
-            setTimeout(() => networkCheck.remove(), 15000);
         }
     }, 100);
 }
