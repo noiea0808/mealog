@@ -3,7 +3,7 @@
     --safe-bottom: env(safe-area-inset-bottom, 0px); 
 }
 body { 
-    font-family: 'Pretendard', sans-serif; 
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif; 
     background-color: #f8fafc; 
     color: #1e293b; 
     overflow-x: hidden; 
@@ -69,10 +69,11 @@ body {
 .chip { 
     padding: 8px 14px; 
     border-radius: 12px; 
-    font-size: 11px; 
-    font-weight: 600; 
+    font-size: 12px; 
+    font-weight: 700; 
+    background: white;
     border: 1px solid #e2e8f0; 
-    color: #64748b; 
+    color: #475569; 
     cursor: pointer; 
     transition: all 0.2s; 
     margin-right: 4px; 
@@ -93,14 +94,25 @@ body {
     font-weight: 600; 
     background: #f1f5f9; 
     color: #94a3b8; 
+    border: 1px solid #cbd5e1;
     margin-right: 4px; 
     margin-bottom: 4px; 
     cursor: pointer; 
     transition: all 0.2s; 
 }
 .sub-chip.active { 
-    background: #cbd5e1; 
-    color: #475569; 
+    background: #6366f1; 
+    color: white; 
+    border-color: #6366f1;
+}
+/* 나만의 태그가 active일 때 스타일 */
+.sub-chip.bg-emerald-100.active {
+    background: #10b981 !important;
+    color: white !important;
+    border-color: #10b981 !important;
+}
+.sub-chip.bg-emerald-100.active .fa-star {
+    color: white !important;
 }
 .snack-tag { 
     display: inline-flex; 
@@ -280,4 +292,111 @@ body {
 .scrollbar-hide::-webkit-scrollbar {
     display: none;
 }
+/* Comment 줄바꿈 및 제한 스타일 */
+.line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+/* 기간 표시 높이 통일 */
+#periodDisplay {
+    min-height: 1.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+/* 직접 설정 모드 캘린더 높이 통일 */
+#customDatePicker input {
+    min-height: 1.4rem;
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+    display: flex;
+    align-items: center;
+}
+/* 분석창 카드 좌우 꽉 차게 */
+#dashboardView .card {
+    border-radius: 0;
+}
+/* 식사/간식 분석 섹션 카드들 같은 박스처럼 보이게 */
+#mainAnalysisSection .card,
+#snackAnalysisSection .card {
+    border-top: 1px solid #f1f5f9;
+    margin-top: 0;
+    margin-bottom: 0;
+}
+#mainAnalysisSection .card:first-child,
+#snackAnalysisSection .card:first-child {
+    border-top: none;
+}
+/* 베스트 식사/간식 카드 좌우 꽉 차게 */
+#bestMealsContainer .best-meal-item {
+    border-radius: 0 !important;
+    margin-left: -1rem !important;
+    margin-right: -1rem !important;
+    width: calc(100% + 2rem) !important;
+}
+/* 인사이트 말풍선 스타일 */
+#insightBubble {
+    line-height: 1.6;
+    font-size: 0.875rem;
+    color: #1e293b;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    font-weight: 400;
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+.insight-character-name {
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 0.125rem;
+    margin-bottom: 0.25rem;
+}
+.insight-text-content {
+    line-height: 1.6;
+    font-weight: 400;
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+#insightTextPages {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+.insight-text-page {
+    height: calc(1.6rem * 5);
+    overflow: hidden;
+    display: none;
+    line-height: 1.6;
+}
+.insight-text-page.active {
+    display: block;
+}
+.insight-page-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #cbd5e1;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.insight-page-dot.active {
+    background: #10b981;
+    width: 8px;
+    height: 8px;
+}
+/* 캐릭터 선택 창 */
+#insightCharacterBtn {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+/* 캐릭터 선택 팝업 */
+.character-popup-item.active {
+    background: #ecfdf5 !important;
+    border: 1px solid #10b981;
+}
+.character-popup-item.active .text-slate-800 {
+    color: #10b981;
+    font-weight: 800;
+}
+
 

@@ -136,6 +136,25 @@ export function closeDomainModal() {
     document.getElementById('domainErrorModal').classList.add('hidden');
 }
 
+export async function switchToLogin() {
+    // 게스트 모드에서 로그인 페이지로 전환
+    try {
+        // 설정 페이지 닫기
+        const settingsPage = document.getElementById('settingsPage');
+        if (settingsPage) {
+            settingsPage.classList.add('hidden');
+        }
+        
+        // 게스트 모드 로그아웃
+        await signOut(auth);
+        // 로그아웃 후 자동으로 랜딩 페이지로 이동 (인증 상태 변경 리스너가 처리)
+        showToast("로그인 페이지로 이동합니다.", "info");
+    } catch (error) {
+        console.error('로그아웃 실패:', error);
+        showToast("로그아웃 중 오류가 발생했습니다.", "error");
+    }
+}
+
 export function initAuth(onAuthStateChangedCallback) {
     onAuthStateChanged(auth, onAuthStateChangedCallback);
 }

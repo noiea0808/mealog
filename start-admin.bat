@@ -1,14 +1,14 @@
 @echo off
 chcp 65001 >nul 2>&1
 cd /d "%~dp0"
-title MEALOG 웹 서버
+title MEALOG 관리자 페이지
 
 echo.
 echo ========================================
-echo   MEALOG 웹 서버 시작
+echo   MEALOG 관리자 페이지 시작
 echo ========================================
 echo.
-echo 웹 서버를 시작합니다...
+echo 웹 서버를 시작하고 관리자 페이지를 엽니다...
 echo.
 
 REM PowerShell로 서버 실행 (백그라운드)
@@ -18,21 +18,13 @@ REM 서버 시작 대기 (2초)
 timeout /t 2 /nobreak >nul
 
 echo.
-echo 서버가 시작되었습니다!
-echo.
-echo 다음 주소로 접속하세요:
-echo   - 일반 앱: http://localhost:8000/index.html
-echo   - 관리자: http://localhost:8000/admin.html
-echo.
-echo 브라우저를 자동으로 열까요? (Y/N)
-set /p openBrowser=
+echo 관리자 페이지를 엽니다...
+start http://localhost:8000/admin.html
 
-if /i "%openBrowser%"=="Y" (
-    echo.
-    echo 브라우저를 엽니다...
-    start http://localhost:8000/index.html
-)
-
+echo.
+echo 서버가 실행 중입니다.
+echo 일반 앱: http://localhost:8000/index.html
+echo 관리자: http://localhost:8000/admin.html
 echo.
 echo 서버를 종료하려면 PowerShell 창을 닫으세요.
 echo.
