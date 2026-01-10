@@ -1,9 +1,7 @@
 // 인사이트 코멘트 관련 함수들
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
-
-// Gemini API 설정
-const GEMINI_API_KEY = 'AIzaSyDT_awa47kigQ3VPrPcQmUy8nLSSpZJkpw';
+import { GEMINI_API_KEY } from '../config.js';
 // 지원 가능한 모델 목록 (우선순위 순) - 실제 존재하는 모델 우선 사용
 const GEMINI_MODELS = [
     'gemini-1.5-flash-latest',
