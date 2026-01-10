@@ -264,7 +264,7 @@ export async function updateDashboard() {
     if (snackRecordCountEl) snackRecordCountEl.textContent = snackCount;
     
     // 인사이트 코멘트 (말풍선에 표시)
-    await updateInsightComment(filteredData);
+    await updateInsightComment(filteredData, dateRangeText);
     
     // 말풍선 클릭 이벤트 설정
     setupInsightBubbleClick();

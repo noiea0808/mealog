@@ -1777,6 +1777,259 @@ export function renderTagManager(key, isSub = false, tempSettings) {
 }
 
 // 일간보기 공유용 컴팩트 카드 생성
+// 게시판 렌더링 함수
+export function renderBoard(category = 'all', sortBy = 'latest') {
+    const container = document.getElementById('boardContainer');
+    if (!container) return;
+    
+    container.innerHTML = `
+        <div class="flex justify-center items-center py-12">
+            <div class="text-center">
+                <i class="fa-solid fa-spinner fa-spin text-4xl text-slate-300 mb-3"></i>
+                <p class="text-sm text-slate-400">게시글을 불러오는 중...</p>
+            </div>
+        </div>
+    `;
+    
+    // 게시글 목록 비동기 로드
+    if (window.boardOperations) {
+        window.boardOperations.getPosts(category, sortBy, 50).then(posts => {
+            if (posts.length === 0) {
+                container.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-12 text-center">
+                        <i class="fa-solid fa-comments text-4xl text-slate-200 mb-3"></i>
+                        <p class="text-sm font-bold text-slate-400">게시글이 없습니다</p>
+                        <p class="text-xs text-slate-300 mt-2">첫 번째 게시글을 작성해보세요!</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = posts.map(post => {
+                const postDate = new Date(post.timestamp);
+                const dateStr = postDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+                const timeStr = postDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                
+                const categoryLabels = {
+                    'general': '일반',
+                    'question': '질문',
+                    'info': '정보',
+                    'restaurant': '맛집'
+                };
+                
+                const categoryColors = {
+                    'general': 'bg-slate-100 text-slate-700',
+                    'question': 'bg-blue-100 text-blue-700',
+                    'info': 'bg-emerald-100 text-emerald-700',
+                    'restaurant': 'bg-orange-100 text-orange-700'
+                };
+                
+                const score = (post.likes || 0) - (post.dislikes || 0);
+                
+                return `
+                    <div onclick="window.openBoardDetail('${post.id}')" class="card p-4 border border-slate-200 cursor-pointer active:scale-[0.98] transition-all hover:border-emerald-300">
+                        <div class="flex items-start justify-between mb-2">
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${categoryColors[post.category] || categoryColors.general} whitespace-nowrap">${categoryLabels[post.category] || '일반'}</span>
+                                    <h3 class="text-sm font-bold text-slate-800 truncate flex-1">${escapeHtml(post.title)}</h3>
+                                </div>
+                                <p class="text-xs text-slate-500 line-clamp-2 mb-2">${escapeHtml(post.content)}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between text-[10px] text-slate-400">
+                            <div class="flex items-center gap-3">
+                                <span class="font-bold">${post.anonymousId || '익명'}</span>
+                                <span>${dateStr} ${timeStr}</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="flex items-center gap-1">
+                                    <i class="fa-solid fa-thumbs-up text-[9px]"></i>
+                                    <span>${post.likes || 0}</span>
+                                </span>
+                                <span class="flex items-center gap-1">
+                                    <i class="fa-solid fa-comment text-[9px]"></i>
+                                    <span>${post.comments || 0}</span>
+                                </span>
+                                <span class="flex items-center gap-1">
+                                    <i class="fa-solid fa-eye text-[9px]"></i>
+                                    <span>${post.views || 0}</span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }).catch(error => {
+            console.error("게시판 로드 오류:", error);
+            container.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-12 text-center">
+                    <i class="fa-solid fa-exclamation-triangle text-4xl text-red-300 mb-3"></i>
+                    <p class="text-sm font-bold text-red-400">게시글을 불러올 수 없습니다</p>
+                    <p class="text-xs text-slate-300 mt-2">잠시 후 다시 시도해주세요</p>
+                </div>
+            `;
+        });
+    }
+}
+
+// 게시판 상세 렌더링
+export async function renderBoardDetail(postId) {
+    const container = document.getElementById('boardDetailContent');
+    if (!container || !window.boardOperations) return;
+    
+    container.innerHTML = `
+        <div class="flex justify-center items-center py-12">
+            <div class="text-center">
+                <i class="fa-solid fa-spinner fa-spin text-4xl text-slate-300 mb-3"></i>
+                <p class="text-sm text-slate-400">게시글을 불러오는 중...</p>
+            </div>
+        </div>
+    `;
+    
+    try {
+        const post = await window.boardOperations.getPost(postId);
+        if (!post) {
+            container.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-12 text-center">
+                    <i class="fa-solid fa-exclamation-triangle text-4xl text-red-300 mb-3"></i>
+                    <p class="text-sm font-bold text-red-400">게시글을 찾을 수 없습니다</p>
+                </div>
+            `;
+            return;
+        }
+        
+        const postDate = new Date(post.timestamp);
+        const dateStr = postDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
+        const timeStr = postDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+        
+        const categoryLabels = {
+            'general': '일반',
+            'question': '질문',
+            'info': '정보',
+            'restaurant': '맛집'
+        };
+        
+        const categoryColors = {
+            'general': 'bg-slate-100 text-slate-700',
+            'question': 'bg-blue-100 text-blue-700',
+            'info': 'bg-emerald-100 text-emerald-700',
+            'restaurant': 'bg-orange-100 text-orange-700'
+        };
+        
+        // 사용자의 반응 확인과 댓글 목록을 병렬로 가져오기
+        const [userReaction, comments] = await Promise.all([
+            window.currentUser ? window.boardOperations.getUserReaction(postId, window.currentUser.uid) : Promise.resolve(null),
+            window.boardOperations.getComments(postId)
+        ]);
+        
+        const isAuthor = window.currentUser && post.authorId === window.currentUser.uid;
+        
+        container.innerHTML = `
+            <div class="space-y-4">
+                <!-- 게시글 헤더 -->
+                <div class="border-b border-slate-200 pb-4">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${categoryColors[post.category] || categoryColors.general}">${categoryLabels[post.category] || '일반'}</span>
+                        ${isAuthor ? '<span class="text-[10px] text-emerald-600 font-bold">내 글</span>' : ''}
+                    </div>
+                    <h2 class="text-lg font-black text-slate-800 mb-3">${escapeHtml(post.title)}</h2>
+                    <div class="flex items-center justify-between text-xs text-slate-500">
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold">${post.anonymousId || '익명'}</span>
+                            <span>${dateStr} ${timeStr}</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span><i class="fa-solid fa-eye text-[10px] mr-1"></i>${post.views || 0}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 게시글 내용 -->
+                <div class="prose prose-sm max-w-none">
+                    <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(post.content).replace(/\n/g, '<br>')}</div>
+                </div>
+                
+                <!-- 추천/비추천 버튼 -->
+                <div class="flex items-center gap-4 pt-4 border-t border-slate-200">
+                    <button onclick="window.toggleBoardLike('${postId}', true)" class="flex items-center gap-2 px-4 py-2 ${userReaction === 'like' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'} rounded-lg text-sm font-bold active:scale-95 transition-all" ${!window.currentUser ? 'disabled' : ''}>
+                        <i class="fa-solid fa-thumbs-up"></i>
+                        <span>추천</span>
+                        <span class="text-xs">${post.likes || 0}</span>
+                    </button>
+                    <button onclick="window.toggleBoardLike('${postId}', false)" class="flex items-center gap-2 px-4 py-2 ${userReaction === 'dislike' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'} rounded-lg text-sm font-bold active:scale-95 transition-all" ${!window.currentUser ? 'disabled' : ''}>
+                        <i class="fa-solid fa-thumbs-down"></i>
+                        <span>비추천</span>
+                        <span class="text-xs">${post.dislikes || 0}</span>
+                    </button>
+                    ${isAuthor ? `
+                        <button onclick="window.deleteBoardPost('${postId}')" class="ml-auto px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-bold active:scale-95 transition-all">
+                            <i class="fa-solid fa-trash text-xs mr-1"></i>삭제
+                        </button>
+                    ` : ''}
+                </div>
+                
+                <!-- 댓글 섹션 -->
+                <div class="pt-4 border-t border-slate-200">
+                    <h3 class="text-sm font-black text-slate-800 mb-4">댓글 <span id="boardCommentsCount" class="text-emerald-600">${comments.length}</span></h3>
+                    <div id="boardCommentsList" class="space-y-3 mb-4">
+                        ${comments.length > 0 ? comments.map(comment => {
+                            const commentDate = new Date(comment.timestamp);
+                            const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+                            const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                            const isCommentAuthor = window.currentUser && comment.authorId === window.currentUser.uid;
+                            
+                            return `
+                                <div class="p-3 bg-slate-50 rounded-xl" data-comment-id="${comment.id}">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-xs font-bold text-slate-700">${comment.anonymousId || '익명'}</span>
+                                            <span class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</span>
+                                        </div>
+                                        ${isCommentAuthor ? `
+                                            <button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="text-[10px] text-red-500 font-bold active:opacity-70">
+                                                삭제
+                                            </button>
+                                        ` : ''}
+                                    </div>
+                                    <p class="text-sm text-slate-700 whitespace-pre-wrap">${escapeHtml(comment.content)}</p>
+                                </div>
+                            `;
+                        }).join('') : '<p class="text-sm text-slate-400 text-center py-4">댓글이 없습니다. 첫 번째 댓글을 작성해보세요!</p>'}
+                    </div>
+                    
+                    <!-- 댓글 입력 -->
+                    <div class="flex gap-2">
+                        <input type="text" id="boardCommentInput" placeholder="${window.currentUser ? '댓글을 입력하세요 (Enter로 등록)' : '로그인 후 댓글을 작성할 수 있습니다'}" 
+                               class="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 transition-colors"
+                               ${!window.currentUser ? 'disabled' : ''}
+                               onkeypress="if(event.key === 'Enter' && window.currentUser && !event.shiftKey) { event.preventDefault(); window.addBoardComment('${postId}'); }">
+                        <button onclick="window.addBoardComment('${postId}')" 
+                                class="px-4 py-3 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed"
+                                ${!window.currentUser ? 'disabled' : ''}>
+                            <i class="fa-solid fa-paper-plane text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // 제목 업데이트
+        const titleEl = document.getElementById('boardDetailViewTitle');
+        if (titleEl) {
+            titleEl.textContent = escapeHtml(post.title);
+        }
+    } catch (error) {
+        console.error("게시글 상세 로드 오류:", error);
+        container.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-12 text-center">
+                <i class="fa-solid fa-exclamation-triangle text-4xl text-red-300 mb-3"></i>
+                <p class="text-sm font-bold text-red-400">게시글을 불러올 수 없습니다</p>
+            </div>
+        `;
+    }
+}
+
 export function createDailyShareCard(dateStr) {
     const dObj = new Date(dateStr + 'T00:00:00');
     const dayOfWeek = dObj.getDay();

@@ -368,9 +368,28 @@ body {
     overflow: hidden;
     display: none;
     line-height: 1.6;
+    word-wrap: break-word;
+    word-break: keep-all;
+    white-space: pre-wrap;
 }
 .insight-text-page.active {
     display: block;
+    animation: fadeIn 0.3s ease-in;
+}
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+/* 페이지 카운터 스타일 */
+#insightPageCounter {
+    z-index: 10;
+    user-select: none;
+    pointer-events: none;
+    backdrop-filter: blur(4px);
 }
 .insight-page-dot {
     width: 6px;
@@ -490,6 +509,24 @@ body {
 
 .post-view-comments-btn:active {
     color: #475569;
+}
+
+/* 게시판 스타일 */
+.board-category-btn.active {
+    background-color: #10b981 !important;
+    color: white !important;
+}
+
+#board-sort-latest.active,
+#board-sort-popular.active {
+    background-color: #10b981 !important;
+    color: white !important;
+    border-color: #10b981 !important;
+}
+
+#boardContainer .card:hover {
+    border-color: #10b981;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
 }
 
 
