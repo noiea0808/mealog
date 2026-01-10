@@ -399,4 +399,97 @@ body {
     font-weight: 800;
 }
 
+/* 인스타그램 스타일 포스트 */
+.instagram-post {
+    transition: transform 0.2s;
+}
+
+.instagram-post:active {
+    transform: scale(0.98);
+}
+
+/* 좋아요, 북마크 버튼 애니메이션 */
+.post-like-btn,
+.post-bookmark-btn {
+    transition: transform 0.15s ease;
+}
+
+.post-like-btn:active,
+.post-bookmark-btn:active {
+    transform: scale(0.9);
+}
+
+.post-like-icon.fa-solid {
+    animation: heartBeat 0.5s ease;
+}
+
+@keyframes heartBeat {
+    0% {
+        transform: scale(1);
+    }
+    25% {
+        transform: scale(1.2);
+    }
+    50% {
+        transform: scale(1);
+    }
+    75% {
+        transform: scale(1.1);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* 댓글 입력 스타일 */
+.post-comment-input:focus {
+    outline: none;
+}
+
+.post-comment-input::placeholder {
+    color: #cbd5e1;
+}
+
+.post-comment-submit-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* 댓글 목록 스타일 */
+.post-comments-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.post-comments-list::-webkit-scrollbar {
+    width: 4px;
+}
+
+.post-comments-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.post-comments-list::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 2px;
+}
+
+.post-comments-list::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* 댓글 더보기 버튼 */
+.post-view-comments-btn {
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.post-view-comments-btn:hover {
+    color: #64748b;
+}
+
+.post-view-comments-btn:active {
+    color: #475569;
+}
+
 

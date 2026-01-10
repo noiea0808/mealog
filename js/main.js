@@ -3,7 +3,7 @@ console.log('main.js 로드 시작...');
 
 import { appState, getState } from './state.js';
 import { auth } from './firebase.js';
-import { dbOps, setupListeners, setupSharedPhotosListener, loadMoreMeals } from './db.js';
+import { dbOps, setupListeners, setupSharedPhotosListener, loadMoreMeals, postInteractions } from './db.js';
 import { switchScreen, showToast, updateHeaderUI } from './ui.js';
 import { 
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
@@ -22,6 +22,7 @@ import { DEFAULT_SUB_TAGS } from './constants.js';
 
 // 전역 객체에 함수들 할당 (HTML에서 접근 가능하도록)
 window.dbOps = dbOps;
+window.postInteractions = postInteractions;
 window.removeDuplicateMeals = () => dbOps.removeDuplicateMeals();
 window.showToast = showToast;
 window.renderTimeline = renderTimeline;
@@ -81,6 +82,326 @@ window.toggleFeedComment = toggleFeedComment;
 window.openKakaoPlaceSearch = openKakaoPlaceSearch;
 window.searchKakaoPlaces = searchKakaoPlaces;
 window.selectKakaoPlace = selectKakaoPlace;
+
+// 로그인 요청 함수
+window.requestLogin = () => {
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast("로그인이 필요합니다. 로그인해주세요.", 'info');
+        // 설정 페이지를 열어서 로그인 유도
+        setTimeout(() => {
+            window.openSettings();
+        }, 500);
+    }
+};
+
+// 좋아요 토글 함수
+window.toggleLike = async (postId) => {
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast("로그인이 필요합니다.", 'error');
+        window.requestLogin();
+        return;
+    }
+    
+    try {
+        const result = await postInteractions.toggleLike(postId, window.currentUser.uid);
+        const likeBtn = document.querySelector(`.post-like-btn[data-post-id="${postId}"]`);
+        const likeIcon = likeBtn?.querySelector('.post-like-icon');
+        const likeCountEl = document.querySelector(`.post-like-count[data-post-id="${postId}"]`);
+        
+        if (likeBtn && likeIcon) {
+            if (result.liked) {
+                likeIcon.classList.remove('fa-regular', 'fa-heart');
+                likeIcon.classList.add('fa-solid', 'fa-heart', 'text-red-500');
+            } else {
+                likeIcon.classList.remove('fa-solid', 'fa-heart', 'text-red-500');
+                likeIcon.classList.add('fa-regular', 'fa-heart');
+            }
+        }
+        
+        // 실제 좋아요 수 다시 가져오기
+        if (likeCountEl) {
+            const likes = await postInteractions.getLikes(postId);
+            const likeCount = likes.length || 0;
+            likeCountEl.textContent = likeCount > 0 ? likeCount : '';
+        }
+    } catch (e) {
+        console.error("좋아요 토글 실패:", e);
+        showToast("좋아요 처리 중 오류가 발생했습니다.", 'error');
+    }
+};
+
+// 북마크 토글 함수
+window.toggleBookmark = async (postId) => {
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast("로그인이 필요합니다.", 'error');
+        window.requestLogin();
+        return;
+    }
+    
+    try {
+        const result = await postInteractions.toggleBookmark(postId, window.currentUser.uid);
+        const bookmarkBtn = document.querySelector(`.post-bookmark-btn[data-post-id="${postId}"]`);
+        const bookmarkIcon = bookmarkBtn?.querySelector('.post-bookmark-icon');
+        
+        if (bookmarkBtn && bookmarkIcon) {
+            if (result.bookmarked) {
+                bookmarkIcon.classList.remove('fa-regular', 'fa-bookmark');
+                bookmarkIcon.classList.add('fa-solid', 'fa-bookmark', 'text-slate-800');
+                showToast("북마크에 추가되었습니다.", 'success');
+            } else {
+                bookmarkIcon.classList.remove('fa-solid', 'fa-bookmark', 'text-slate-800');
+                bookmarkIcon.classList.add('fa-regular', 'fa-bookmark');
+                showToast("북마크에서 제거되었습니다.", 'info');
+            }
+        }
+    } catch (e) {
+        console.error("북마크 토글 실패:", e);
+        showToast("북마크 처리 중 오류가 발생했습니다.", 'error');
+    }
+};
+
+// 댓글 추가 함수
+window.addCommentToPost = async (postId) => {
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast("로그인이 필요합니다.", 'error');
+        window.requestLogin();
+        return;
+    }
+    
+    const inputEl = document.getElementById(`comment-input-${postId}`);
+    if (!inputEl) return;
+    
+    const commentText = inputEl.value.trim();
+    if (!commentText) return;
+    
+    const submitBtn = document.querySelector(`.post-comment-submit-btn[data-post-id="${postId}"]`);
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '게시 중...';
+    }
+    
+    try {
+        console.log('댓글 추가 시도:', { postId, userId: window.currentUser.uid, commentText });
+        
+        if (!postId || postId === 'undefined' || postId === 'null') {
+            showToast("잘못된 포스트 ID입니다.", 'error');
+            return;
+        }
+        
+        const userProfile = window.userSettings?.profile || {};
+        const newComment = await postInteractions.addComment(postId, window.currentUser.uid, commentText, userProfile);
+        
+        if (!newComment) {
+            showToast("댓글 추가에 실패했습니다.", 'error');
+            return;
+        }
+        
+        console.log('댓글 추가 성공:', newComment);
+        
+        // 입력 필드 초기화
+        inputEl.value = '';
+        
+        // 약간의 지연 후 댓글 목록 다시 로드 (Firestore 인덱싱 반영 시간)
+        setTimeout(async () => {
+            // 댓글 개수 업데이트
+            const commentCountEl = document.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
+            if (commentCountEl) {
+                const comments = await postInteractions.getComments(postId);
+                commentCountEl.textContent = comments.length > 0 ? comments.length : '';
+                console.log('댓글 수 업데이트:', comments.length);
+            }
+            
+            // 댓글 목록에 추가
+            const commentsListEl = document.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
+            if (commentsListEl) {
+                const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
+                
+                // 모든 댓글 다시 로드
+                const comments = await postInteractions.getComments(postId);
+                console.log('댓글 목록 가져오기:', comments);
+                
+                if (comments.length > 0) {
+                    commentsListEl.classList.add('bg-slate-50');
+                    const displayComments = comments.slice(0, 2);
+                    const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
+                    commentsListEl.innerHTML = displayComments.map(c => `
+                        <div class="mb-1 text-sm">
+                            <span class="font-bold text-slate-800">${c.userNickname || '익명'}</span>
+                            <span class="text-slate-800">${escapeHtml(c.comment)}</span>
+                            ${isLoggedIn && c.userId === window.currentUser?.uid ? `<button onclick="window.deleteCommentFromPost('${c.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
+                        </div>
+                    `).join('');
+                    
+                    if (comments.length > 2) {
+                        if (viewCommentsBtn) {
+                            viewCommentsBtn.textContent = `댓글 ${comments.length}개 모두 보기`;
+                            viewCommentsBtn.classList.remove('hidden');
+                        }
+                    } else {
+                        if (viewCommentsBtn) {
+                            viewCommentsBtn.classList.add('hidden');
+                        }
+                    }
+                } else {
+                    commentsListEl.innerHTML = '';
+                    commentsListEl.classList.remove('bg-slate-50');
+                    if (viewCommentsBtn) {
+                        viewCommentsBtn.classList.add('hidden');
+                    }
+                }
+            }
+        }, 500);
+        
+        showToast("댓글이 추가되었습니다.", 'success');
+    } catch (e) {
+        console.error("댓글 추가 실패:", e);
+        showToast("댓글 추가 중 오류가 발생했습니다: " + (e.message || e), 'error');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = '게시';
+        }
+    }
+};
+
+// 댓글 삭제 함수
+window.deleteCommentFromPost = async (commentId, postId) => {
+    if (!window.currentUser || window.currentUser.isAnonymous || !commentId || !postId) {
+        if (!window.currentUser || window.currentUser.isAnonymous) {
+            showToast("로그인이 필요합니다.", 'error');
+            window.requestLogin();
+        }
+        return;
+    }
+    
+    if (!confirm("댓글을 삭제하시겠습니까?")) return;
+    
+    try {
+        const success = await postInteractions.deleteComment(commentId, window.currentUser.uid);
+        if (success) {
+            // 댓글 다시 로드
+            const comments = await postInteractions.getComments(postId);
+            const commentsListEl = document.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
+            const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
+            
+            // 댓글 개수 업데이트
+            const commentCountEl = document.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
+            if (commentCountEl) {
+                commentCountEl.textContent = comments.length > 0 ? comments.length : '';
+            }
+            
+            if (commentsListEl) {
+                if (comments.length === 0) {
+                    commentsListEl.innerHTML = '';
+                    commentsListEl.classList.remove('bg-slate-50');
+                    if (viewCommentsBtn) viewCommentsBtn.classList.add('hidden');
+                } else {
+                    commentsListEl.classList.add('bg-slate-50');
+                    const displayComments = comments.slice(0, 2);
+                    const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
+                    commentsListEl.innerHTML = displayComments.map(c => `
+                        <div class="mb-1 text-sm">
+                            <span class="font-bold text-slate-800">${c.userNickname || '익명'}</span>
+                            <span class="text-slate-800">${escapeHtml(c.comment)}</span>
+                            ${isLoggedIn && c.userId === window.currentUser?.uid ? `<button onclick="window.deleteCommentFromPost('${c.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
+                        </div>
+                    `).join('');
+                    
+                    if (comments.length > 2) {
+                        if (viewCommentsBtn) {
+                            viewCommentsBtn.textContent = `댓글 ${comments.length}개 모두 보기`;
+                            viewCommentsBtn.classList.remove('hidden');
+                        }
+                    } else {
+                        if (viewCommentsBtn) viewCommentsBtn.classList.add('hidden');
+                    }
+                }
+            }
+            showToast("댓글이 삭제되었습니다.", 'success');
+        } else {
+            showToast("댓글을 삭제할 수 없습니다.", 'error');
+        }
+    } catch (e) {
+        console.error("댓글 삭제 실패:", e);
+        showToast("댓글 삭제 중 오류가 발생했습니다.", 'error');
+    }
+};
+
+// 댓글 모두 보기 함수
+window.showAllComments = async (postId) => {
+    try {
+        const comments = await postInteractions.getComments(postId);
+        const commentsListEl = document.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
+        const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
+        
+        if (commentsListEl) {
+            if (comments.length > 0) {
+                commentsListEl.classList.add('bg-slate-50');
+                const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
+                commentsListEl.innerHTML = comments.map(c => `
+                    <div class="mb-1 text-sm">
+                        <span class="font-bold text-slate-800">${c.userNickname || '익명'}</span>
+                        <span class="text-slate-800">${escapeHtml(c.comment)}</span>
+                        ${isLoggedIn && c.userId === window.currentUser?.uid ? `<button onclick="window.deleteCommentFromPost('${c.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
+                    </div>
+                `).join('');
+            } else {
+                commentsListEl.innerHTML = '';
+                commentsListEl.classList.remove('bg-slate-50');
+            }
+            
+            if (viewCommentsBtn) {
+                viewCommentsBtn.classList.add('hidden');
+            }
+        }
+    } catch (e) {
+        console.error("댓글 로드 실패:", e);
+        showToast("댓글을 불러오는 중 오류가 발생했습니다.", 'error');
+    }
+};
+
+// 댓글 입력 필드 토글 (더블클릭으로 댓글 입력창 포커스)
+window.toggleCommentInput = (postId) => {
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        window.requestLogin();
+        return;
+    }
+    const inputEl = document.getElementById(`comment-input-${postId}`);
+    if (inputEl) {
+        inputEl.focus();
+    }
+};
+
+// 포스트 캡션 토글 (더 보기/접기)
+window.togglePostCaption = (idx) => {
+    const collapsedEl = document.getElementById(`post-caption-collapsed-${idx}`);
+    const expandedEl = document.getElementById(`post-caption-expanded-${idx}`);
+    const toggleBtn = document.getElementById(`post-caption-toggle-${idx}`);
+    const collapseBtn = document.getElementById(`post-caption-collapse-${idx}`);
+    
+    if (collapsedEl && expandedEl && toggleBtn && collapseBtn) {
+        const isCollapsed = !collapsedEl.classList.contains('hidden');
+        if (isCollapsed) {
+            collapsedEl.classList.add('hidden');
+            expandedEl.classList.remove('hidden');
+            toggleBtn.classList.add('hidden');
+            collapseBtn.classList.remove('hidden');
+        } else {
+            collapsedEl.classList.remove('hidden');
+            expandedEl.classList.add('hidden');
+            toggleBtn.classList.remove('hidden');
+            collapseBtn.classList.add('hidden');
+        }
+    }
+};
+
+// HTML 이스케이프 헬퍼 함수 (전역으로 사용)
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 
 // 일간보기 공유 함수
 window.shareDailySummary = async (dateStr) => {

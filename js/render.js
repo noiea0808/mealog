@@ -630,6 +630,174 @@ export function renderMiniCalendar() {
     }, 100);
 }
 
+// 좋아요/북마크/댓글 데이터 로드 함수
+async function loadPostInteractions(container, sortedGroups) {
+    if (!window.postInteractions) {
+        console.log('loadPostInteractions: postInteractions 없음');
+        return;
+    }
+    
+    // 모든 포스트에 대한 데이터를 병렬로 로드
+    const postPromises = [];
+    const posts = container.querySelectorAll('.instagram-post');
+    const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
+    
+    if (posts.length === 0) {
+        console.log('loadPostInteractions: 포스트 없음');
+        return;
+    }
+    
+    posts.forEach((postEl) => {
+        const postId = postEl.getAttribute('data-post-id');
+        if (!postId) {
+            console.warn('loadPostInteractions: postId 없음', postEl);
+            return;
+        }
+        
+        // 로그인한 사용자는 좋아요/북마크 상태도 확인, 비로그인 사용자는 좋아요 수와 댓글만 가져오기
+        const promiseArray = [
+            window.postInteractions.getLikes(postId).catch(e => {
+                console.error(`좋아요 목록 가져오기 실패 (postId: ${postId}):`, e);
+                return [];
+            }),
+            window.postInteractions.getComments(postId).catch(e => {
+                console.error(`댓글 목록 가져오기 실패 (postId: ${postId}):`, e);
+                return [];
+            })
+        ];
+        
+        // 로그인한 사용자만 좋아요/북마크 상태 확인
+        if (isLoggedIn) {
+            promiseArray.unshift(
+                window.postInteractions.isLiked(postId, window.currentUser.uid).catch(e => {
+                    console.error(`좋아요 상태 확인 실패 (postId: ${postId}):`, e);
+                    return false;
+                }),
+                window.postInteractions.isBookmarked(postId, window.currentUser.uid).catch(e => {
+                    console.error(`북마크 상태 확인 실패 (postId: ${postId}):`, e);
+                    return false;
+                })
+            );
+        }
+        
+        const promise = Promise.all(promiseArray).then((results) => {
+            let isLiked = false;
+            let isBookmarked = false;
+            let likes = [];
+            let comments = [];
+            
+            if (isLoggedIn) {
+                [isLiked, isBookmarked, likes, comments] = results;
+            } else {
+                [likes, comments] = results;
+            }
+            console.log(`포스트 ${postId} 데이터 로드 완료:`, { 
+                isLoggedIn,
+                isLiked, 
+                isBookmarked, 
+                likesCount: likes?.length || 0, 
+                commentsCount: comments?.length || 0,
+                likes: likes,
+                comments: comments
+            });
+            
+            // 로그인한 사용자만 좋아요/북마크 버튼 상태 업데이트
+            if (isLoggedIn) {
+                // 좋아요 버튼 업데이트
+                const likeBtn = postEl.querySelector(`.post-like-btn[data-post-id="${postId}"]`);
+                const likeIcon = likeBtn?.querySelector('.post-like-icon');
+                if (likeBtn && likeIcon) {
+                    if (isLiked) {
+                        likeIcon.classList.remove('fa-regular', 'fa-heart');
+                        likeIcon.classList.add('fa-solid', 'fa-heart', 'text-red-500');
+                    } else {
+                        likeIcon.classList.remove('fa-solid', 'fa-heart', 'text-red-500');
+                        likeIcon.classList.add('fa-regular', 'fa-heart');
+                    }
+                }
+                
+                // 북마크 버튼 업데이트
+                const bookmarkBtn = postEl.querySelector(`.post-bookmark-btn[data-post-id="${postId}"]`);
+                const bookmarkIcon = bookmarkBtn?.querySelector('.post-bookmark-icon');
+                if (bookmarkBtn && bookmarkIcon) {
+                    if (isBookmarked) {
+                        bookmarkIcon.classList.remove('fa-regular', 'fa-bookmark');
+                        bookmarkIcon.classList.add('fa-solid', 'fa-bookmark', 'text-slate-800');
+                    } else {
+                        bookmarkIcon.classList.remove('fa-solid', 'fa-bookmark', 'text-slate-800');
+                        bookmarkIcon.classList.add('fa-regular', 'fa-bookmark');
+                    }
+                }
+            }
+            
+            // 좋아요 수 업데이트
+            const likeCountEl = postEl.querySelector(`.post-like-count[data-post-id="${postId}"]`);
+            if (likeCountEl) {
+                const likeCount = likes && Array.isArray(likes) ? likes.length : 0;
+                likeCountEl.textContent = likeCount > 0 ? likeCount : '';
+                console.log(`좋아요 수 업데이트 (postId: ${postId}):`, likeCount);
+            } else {
+                console.warn(`좋아요 수 요소 없음 (postId: ${postId})`);
+            }
+            
+            // 댓글 수 업데이트
+            const commentCountEl = postEl.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
+            if (commentCountEl) {
+                const commentCount = comments && Array.isArray(comments) ? comments.length : 0;
+                commentCountEl.textContent = commentCount > 0 ? commentCount : '';
+                console.log(`댓글 수 업데이트 (postId: ${postId}):`, commentCount);
+            } else {
+                console.warn(`댓글 수 요소 없음 (postId: ${postId})`);
+            }
+            
+            // 댓글 표시 (최대 2개)
+            const commentsListEl = postEl.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
+            if (commentsListEl) {
+                if (comments.length > 0) {
+                    // 댓글이 있으면 배경색 추가
+                    commentsListEl.classList.add('bg-slate-50');
+                    const displayComments = comments.slice(0, 2);
+                    commentsListEl.innerHTML = displayComments.map(c => `
+                        <div class="mb-1 text-sm">
+                            <span class="font-bold text-slate-800">${c.userNickname || '익명'}</span>
+                            <span class="text-slate-800">${escapeHtml(c.comment)}</span>
+                            ${isLoggedIn && c.userId === window.currentUser?.uid ? `<button onclick="window.deleteCommentFromPost('${c.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
+                        </div>
+                    `).join('');
+                    
+                    // 댓글이 2개보다 많으면 "댓글 모두 보기" 버튼 표시
+                    if (comments.length > 2) {
+                        const viewCommentsBtn = postEl.querySelector(`#view-comments-${postId}`);
+                        if (viewCommentsBtn) {
+                            viewCommentsBtn.classList.remove('hidden');
+                            viewCommentsBtn.textContent = `댓글 ${comments.length}개 모두 보기`;
+                        }
+                    } else {
+                        const viewCommentsBtn = postEl.querySelector(`#view-comments-${postId}`);
+                        if (viewCommentsBtn) {
+                            viewCommentsBtn.classList.add('hidden');
+                        }
+                    }
+                } else {
+                    commentsListEl.innerHTML = '';
+                    commentsListEl.classList.remove('bg-slate-50');
+                    const viewCommentsBtn = postEl.querySelector(`#view-comments-${postId}`);
+                    if (viewCommentsBtn) {
+                        viewCommentsBtn.classList.add('hidden');
+                    }
+                }
+            }
+        }).catch(err => {
+            console.error(`포스트 ${postId}의 좋아요/북마크/댓글 로드 실패:`, err);
+        });
+        
+        postPromises.push(promise);
+    });
+    
+    // 모든 포스트의 데이터 로드 완료 대기
+    await Promise.allSettled(postPromises);
+}
+
 export function renderGallery() {
     const container = document.getElementById('galleryContainer');
     if (!container) return;
@@ -842,8 +1010,25 @@ export function renderGallery() {
         `;
         }).join('');
         
+        // 포스트 ID 생성 (그룹의 고유 키 기반 - 안정적인 ID 생성)
+        // 같은 그룹은 항상 같은 포스트 ID를 가져야 하므로, 그룹의 첫 번째 사진 ID를 사용하거나 groupKey 기반 해시 생성
+        const groupKey = `${photo.entryId || 'no-entry'}_${photo.userId || 'unknown'}_${photo.date || ''}_${photo.slotId || ''}`;
+        // 그룹의 첫 번째 사진 ID를 우선 사용
+        let postId = photoGroup[0]?.id || photo.id || null;
+        if (!postId || postId === 'undefined' || postId === 'null') {
+            // groupKey를 기반으로 간단한 해시 생성하여 포스트 ID 생성 (같은 그룹은 항상 같은 ID)
+            let hash = 0;
+            const keyForHash = `${groupKey}_${photo.timestamp || Date.now()}`;
+            for (let i = 0; i < keyForHash.length; i++) {
+                const char = keyForHash.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash; // Convert to 32bit integer
+            }
+            postId = `post_${Math.abs(hash)}_${photo.userId || 'unknown'}`;
+        }
+        
         return `
-            <div class="mb-4 bg-white border-b border-slate-200">
+            <div class="mb-4 bg-white border-b border-slate-200 instagram-post" data-post-id="${postId}" data-group-key="${groupKey}">
                 <div class="px-6 py-3 flex items-center gap-2 relative">
                     <div class="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center text-lg flex-shrink-0">
                         ${photo.userIcon || '🐻'}
@@ -871,24 +1056,68 @@ export function renderGallery() {
                         </div>
                     ` : ''}
                 </div>
-                ${caption ? `<div class="px-6 py-2 text-sm font-bold text-slate-800">${caption}</div>` : ''}
-                ${comment ? (() => {
-                    // comment의 줄바꿈 개수 확인
-                    const lineBreaks = (comment.match(/\n/g) || []).length;
-                    // 대략적인 텍스트 길이로도 확인 (한 줄에 약 30자 정도로 가정)
-                    const estimatedLines = Math.ceil(comment.length / 30);
-                    const shouldShowToggle = lineBreaks >= 2 || estimatedLines > 2;
-                    const toggleBtnClass = shouldShowToggle ? '' : 'hidden';
-                    
-                    return `
-                    <div class="px-6 pb-3 text-sm text-slate-600 relative">
-                        <div id="comment-collapsed-${groupIdx}" class="comment-text whitespace-pre-line line-clamp-2 pr-16">${escapeHtml(comment).replace(/\n/g, '<br>')}</div>
-                        <div id="comment-expanded-${groupIdx}" class="comment-text whitespace-pre-line hidden pr-16">${escapeHtml(comment).replace(/\n/g, '<br>')}</div>
-                        <button onclick="window.toggleComment(${groupIdx})" id="comment-toggle-${groupIdx}" class="absolute right-6 text-xs text-blue-600 font-bold hover:text-blue-700 active:text-blue-800 transition-colors comment-toggle-btn px-2 py-0.5 rounded bg-slate-100/80 backdrop-blur-sm ${toggleBtnClass}" style="bottom: 3px;">더 보기</button>
-                        <button onclick="window.toggleComment(${groupIdx})" id="comment-collapse-${groupIdx}" class="absolute right-6 text-xs text-blue-600 font-bold hover:text-blue-700 active:text-blue-800 transition-colors comment-toggle-btn px-2 py-0.5 rounded bg-slate-100/80 backdrop-blur-sm hidden" style="bottom: 3px;">접기</button>
+                <div class="px-6 py-3">
+                    <!-- 좋아요, 북마크 버튼 -->
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-4">
+                            <button onclick="window.toggleLike('${postId}')" class="post-like-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
+                                <i class="fa-regular fa-heart text-2xl text-slate-800 post-like-icon"></i>
+                                <span class="post-like-count text-sm font-bold text-slate-800" data-post-id="${postId}">0</span>
+                            </button>
+                            <button onclick="window.toggleCommentInput('${postId}')" class="post-comment-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
+                                <i class="fa-regular fa-comment text-2xl text-slate-800"></i>
+                                <span class="post-comment-count text-sm font-bold text-slate-800" data-post-id="${postId}"></span>
+                            </button>
+                        </div>
+                        <button onclick="window.toggleBookmark('${postId}')" class="post-bookmark-btn active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
+                            <i class="fa-regular fa-bookmark text-2xl text-slate-800 post-bookmark-icon"></i>
+                        </button>
                     </div>
-                `;
-                })() : ''}
+                    <!-- 캡션 -->
+                    ${caption ? `<div class="mb-2 text-sm text-slate-800">${escapeHtml(caption)}</div>` : ''}
+                    <!-- 기존 코멘트 (원글) -->
+                    ${comment ? (() => {
+                        // comment의 줄바꿈 개수 확인
+                        const lineBreaks = (comment.match(/\n/g) || []).length;
+                        // 대략적인 텍스트 길이로도 확인 (한 줄에 약 30자 정도로 가정)
+                        const estimatedLines = Math.ceil(comment.length / 30);
+                        const shouldShowToggle = lineBreaks >= 2 || estimatedLines > 2;
+                        const toggleBtnClass = shouldShowToggle ? '' : 'hidden';
+                        
+                        return `
+                        <div class="mb-2 text-sm text-slate-800 relative">
+                            <div id="post-caption-collapsed-${groupIdx}" class="whitespace-pre-line line-clamp-2 pr-16">${escapeHtml(comment).replace(/\n/g, '<br>')}</div>
+                            <div id="post-caption-expanded-${groupIdx}" class="whitespace-pre-line hidden pr-16">${escapeHtml(comment).replace(/\n/g, '<br>')}</div>
+                            <button onclick="window.togglePostCaption(${groupIdx})" id="post-caption-toggle-${groupIdx}" class="absolute right-0 text-xs text-slate-400 font-bold hover:text-slate-600 active:text-slate-800 transition-colors ${toggleBtnClass}" style="bottom: 0;">더 보기</button>
+                            <button onclick="window.togglePostCaption(${groupIdx})" id="post-caption-collapse-${groupIdx}" class="absolute right-0 text-xs text-slate-400 font-bold hover:text-slate-600 active:text-slate-800 transition-colors hidden" style="bottom: 0;">접기</button>
+                        </div>
+                    `;
+                    })() : ''}
+                    <!-- 댓글 목록 -->
+                    <div class="post-comments-list mb-2 rounded-lg px-3 py-2" data-post-id="${postId}" id="comments-list-${postId}">
+                        <!-- 댓글들이 동적으로 추가됨 -->
+                    </div>
+                    <!-- 댓글 더보기 -->
+                    <button onclick="window.showAllComments('${postId}')" class="text-xs text-slate-400 font-bold mb-2 post-view-comments-btn hidden" data-post-id="${postId}" id="view-comments-${postId}">
+                        댓글 모두 보기
+                    </button>
+                    <!-- 댓글 입력 -->
+                    <div class="border-t border-slate-100 pt-2 mt-2">
+                        <div class="flex items-center gap-2">
+                            <input type="text" 
+                                   placeholder="댓글 달기..." 
+                                   class="post-comment-input flex-1 text-sm outline-none border-none bg-transparent text-slate-800 placeholder-slate-400" 
+                                   data-post-id="${postId}"
+                                   id="comment-input-${postId}"
+                                   data-requires-login="true"
+                                   onkeypress="if(event.key === 'Enter') window.addCommentToPost('${postId}')"
+                                   onclick="if (!window.currentUser || window.currentUser.isAnonymous) { window.requestLogin(); this.blur(); return false; }">
+                            <button onclick="window.addCommentToPost('${postId}')" class="text-emerald-600 font-bold text-sm active:text-emerald-700 disabled:text-slate-300 disabled:cursor-not-allowed post-comment-submit-btn" data-post-id="${postId}" data-requires-login="true">
+                                게시
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
     }).join('');
@@ -960,13 +1189,42 @@ export function renderGallery() {
             }
         });
         
+        // 버튼 상태 업데이트 (로그인 여부에 따라)
+        setTimeout(() => {
+            const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
+            container.querySelectorAll('[data-requires-login="true"]').forEach(btn => {
+                if (!isLoggedIn) {
+                    btn.classList.add('opacity-50', 'cursor-not-allowed');
+                    btn.title = '로그인이 필요합니다';
+                    if (btn.tagName === 'INPUT') {
+                        btn.disabled = true;
+                        btn.placeholder = '로그인 후 댓글을 달아보세요';
+                    }
+                } else {
+                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    btn.title = '';
+                    if (btn.tagName === 'INPUT') {
+                        btn.disabled = false;
+                        btn.placeholder = '댓글 달기...';
+                    }
+                }
+            });
+        }, 100);
+        
+        // 좋아요/북마크 상태 및 댓글 로드 (모든 사용자가 좋아요 수와 댓글 볼 수 있음)
+        if (window.postInteractions) {
+            loadPostInteractions(container, sortedGroups).catch(err => {
+                console.error("포스트 상호작용 데이터 로드 실패:", err);
+            });
+        }
+        
         // Comment "더 보기" 버튼 표시 여부 확인 및 위치 조정 (DOM 렌더링 후)
         setTimeout(() => {
             sortedGroups.forEach((photoGroup, idx) => {
-                const collapsedEl = document.getElementById(`comment-collapsed-${idx}`);
-                const expandedEl = document.getElementById(`comment-expanded-${idx}`);
-                const toggleBtn = document.getElementById(`comment-toggle-${idx}`);
-                const collapseBtn = document.getElementById(`comment-collapse-${idx}`);
+                const collapsedEl = document.getElementById(`post-caption-collapsed-${idx}`);
+                const expandedEl = document.getElementById(`post-caption-expanded-${idx}`);
+                const toggleBtn = document.getElementById(`post-caption-toggle-${idx}`);
+                const collapseBtn = document.getElementById(`post-caption-collapse-${idx}`);
                 
                 if (collapsedEl && toggleBtn) {
                     // 실제 렌더링된 높이 측정
@@ -977,34 +1235,6 @@ export function renderGallery() {
                     // 실제 높이가 두 줄을 넘으면 "더 보기" 버튼 표시
                     if (collapsedHeight > maxHeight + 2 && toggleBtn.classList.contains('hidden')) {
                         toggleBtn.classList.remove('hidden');
-                    }
-                    
-                    // 버튼 위치 조정: 텍스트의 마지막 줄과 같은 높이로
-                    if (!toggleBtn.classList.contains('hidden')) {
-                        const computedStyle = getComputedStyle(collapsedEl);
-                        const textLineHeight = parseFloat(computedStyle.lineHeight) || 20;
-                        const textPaddingBottom = parseFloat(computedStyle.paddingBottom) || 0;
-                        // 마지막 줄의 baseline 위치 계산
-                        const lastLineBottom = textLineHeight * 2; // line-clamp-2이므로 2줄
-                        // 버튼 높이를 고려하여 위치 조정
-                        const btnHeight = toggleBtn.offsetHeight || 16;
-                        const offset = (textLineHeight - btnHeight) / 2; // 수직 중앙 정렬
-                        const bottomPosition = (lastLineBottom - btnHeight - offset);
-                        toggleBtn.style.bottom = `${Math.max(0, bottomPosition)}px`;
-                    }
-                    
-                    // 접기 버튼 위치도 동일하게 조정 (확장된 텍스트가 보일 때)
-                    if (expandedEl && collapseBtn && !expandedEl.classList.contains('hidden')) {
-                        const expandedStyle = getComputedStyle(expandedEl);
-                        const expandedLineHeight = parseFloat(expandedStyle.lineHeight) || 20;
-                        const expandedHeight = expandedEl.scrollHeight;
-                        const btnHeight = collapseBtn.offsetHeight || 16;
-                        // 확장된 텍스트의 마지막 줄 위치
-                        const lastLineNumber = Math.ceil(expandedHeight / expandedLineHeight);
-                        const lastLineBottom = expandedLineHeight * lastLineNumber;
-                        const offset = (expandedLineHeight - btnHeight) / 2;
-                        const bottomPosition = (lastLineBottom - btnHeight - offset);
-                        collapseBtn.style.bottom = `${Math.max(0, bottomPosition)}px`;
                     }
                 }
             });
