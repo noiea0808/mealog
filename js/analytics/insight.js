@@ -1,7 +1,43 @@
 // 인사이트 코멘트 관련 함수들
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
-import { GEMINI_API_KEY } from '../config.js';
+import { GEMINI_API_KEY as DEFAULT_API_KEY } from '../config.default.js';
+
+// API 키 설정 (항상 기본값으로 시작)
+// config.js가 있으면 나중에 업데이트됨
+let GEMINI_API_KEY = DEFAULT_API_KEY;
+
+// 전역 변수 확인 (최우선, HTML에서 주입된 경우)
+if (typeof window !== 'undefined' && window.GEMINI_API_KEY) {
+    GEMINI_API_KEY = window.GEMINI_API_KEY;
+    console.log('✅ 전역 변수에서 API 키 로드');
+}
+
+// config.js에서 API 키를 가져오는 함수 (비동기, 필요할 때 호출)
+// 즉시 실행하여 백그라운드에서 로드
+(async function loadConfigApiKey() {
+    try {
+        const configModule = await import('../config.js');
+        if (configModule && configModule.GEMINI_API_KEY && 
+            configModule.GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY_HERE' &&
+            !window.GEMINI_API_KEY) { // 전역 변수가 없을 때만 사용
+            GEMINI_API_KEY = configModule.GEMINI_API_KEY;
+            console.log('✅ config.js에서 API 키 로드 성공');
+        }
+    } catch (error) {
+        // config.js가 없으면 기본값 사용 (정상, 로컬 개발 환경에서)
+        console.debug('config.js 없음, 기본값 사용');
+    }
+})();
+
+// getGeminiApiUrl 함수가 사용하는 API 키 가져오기 (최신 값 반환)
+function getApiKey() {
+    // 전역 변수 확인 (최우선)
+    if (typeof window !== 'undefined' && window.GEMINI_API_KEY) {
+        return window.GEMINI_API_KEY;
+    }
+    return GEMINI_API_KEY;
+}
 // 지원 가능한 모델 목록 (우선순위 순) - 실제 존재하는 모델 우선 사용
 const GEMINI_MODELS = [
     'gemini-1.5-flash-latest',
@@ -15,7 +51,8 @@ const GEMINI_MODELS = [
 
 // API URL 생성 함수 (여러 버전 시도)
 function getGeminiApiUrl(model, version = 'v1beta') {
-    return `https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+    const apiKey = getApiKey();
+    return `https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent?key=${apiKey}`;
 }
 
 // 캐릭터 정의
@@ -416,7 +453,8 @@ async function listAvailableModels() {
     }
     
     try {
-        const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`;
+        const apiKey = getApiKey();
+        const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
         console.log('ListModels API 호출 중...', listUrl);
         const response = await fetch(listUrl);
         

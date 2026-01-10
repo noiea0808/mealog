@@ -81,14 +81,48 @@ git push origin main
 
 2. **GitHub Pages가 활성화되었는지 확인**
    - Settings > Pages에서 설정 확인
+   - Source를 "GitHub Actions"로 설정 (v4 deploy-pages 액션 사용 시)
 
 3. **Workflow 로그 확인**
    - Actions 탭에서 실패한 workflow 클릭
    - 로그에서 오류 메시지 확인
+   - "Verify config.js exists" 단계에서 파일 생성 확인
+
+### 배포된 페이지에서 JavaScript 오류가 발생하는 경우:
+
+#### 1. 브라우저 콘솔에서 오류 확인
+- F12 > Console 탭 열기
+- 빨간색 오류 메시지 확인
+- 특히 "Failed to load module" 또는 "Cannot find module" 오류 확인
+
+#### 2. config.js 파일 존재 확인
+- F12 > Network 탭 열기
+- 페이지 새로고침 (F5)
+- `config.js` 파일 요청 확인
+- Status Code가 404이면 파일이 배포되지 않은 것
+
+#### 3. 모듈 import 경로 문제
+만약 "Failed to resolve module specifier" 오류가 발생하면:
+- GitHub Pages의 서브디렉토리 배포 시 상대 경로 문제일 수 있음
+- `index.html`에서 `<base>` 태그 확인 필요
+
+#### 4. API 키 로드 확인
+브라우저 콘솔에서 다음 확인:
+```javascript
+// config.default.js에서 로드 확인
+// config.js에서 로드 확인
+// 전역 변수 확인
+console.log(window.GEMINI_API_KEY);
+```
 
 ### API 키가 작동하지 않는 경우:
 1. Google Cloud Console에서 API 키 제한 설정 확인
    - HTTP 리퍼러에 GitHub Pages 도메인 추가: `https://*.github.io/*`
+   - 로컬 개발용: `http://localhost:8000/*`
    
 2. 배포된 사이트에서 브라우저 콘솔 확인
    - F12 > Console에서 API 오류 메시지 확인
+   - Network 탭에서 Gemini API 요청 확인
+   - 404 오류: 모델 이름 문제
+   - 403 오류: API 키 제한 문제
+   - 401 오류: API 키 잘못됨

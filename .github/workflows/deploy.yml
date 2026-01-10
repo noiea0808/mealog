@@ -32,6 +32,22 @@ jobs:
           echo "// 이 파일은 GitHub Actions에서 자동으로 생성됩니다." >> js/config.js
           echo "// API 키는 GitHub Secrets에서 가져옵니다." >> js/config.js
           echo "export const GEMINI_API_KEY = '${{ secrets.GEMINI_API_KEY }}';" >> js/config.js
+          echo "생성된 config.js 파일 확인:" >> $GITHUB_STEP_SUMMARY
+          cat js/config.js | sed 's/AIzaSy[^'"'"']*/AIzaSy***/' >> $GITHUB_STEP_SUMMARY
+        shell: bash
+
+      - name: Verify config.js exists
+        run: |
+          if [ ! -f js/config.js ]; then
+            echo "❌ js/config.js 파일이 생성되지 않았습니다!"
+            exit 1
+          fi
+          if [ ! -s js/config.js ]; then
+            echo "❌ js/config.js 파일이 비어있습니다!"
+            exit 1
+          fi
+          echo "✅ js/config.js 파일 생성 확인됨"
+          ls -la js/config.js
         shell: bash
 
       - name: Setup Pages
