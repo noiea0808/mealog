@@ -56,11 +56,27 @@
 
 ## 배포 시 주의사항
 
-### GitHub Pages 배포 시
+### GitHub Pages 배포 시 (GitHub Secrets 사용)
 
-1. `js/config.js` 파일은 `.gitignore`에 추가되어 있으므로 Git에 커밋되지 않습니다.
-2. **하지만** GitHub Pages는 정적 파일만 제공하므로, 배포 시 `js/config.js` 파일을 수동으로 추가해야 합니다.
-3. 또는 GitHub Secrets를 사용하여 CI/CD 파이프라인에서 자동으로 생성
+✅ **현재 설정**: GitHub Actions를 사용하여 GitHub Secrets에서 API 키를 읽어 자동으로 `js/config.js` 파일을 생성합니다.
+
+**설정 방법**: `GITHUB_DEPLOY_SETUP.md` 파일 참고
+
+1. GitHub Secrets에 `GEMINI_API_KEY` 추가
+2. `main` 브랜치에 push하면 자동으로 배포
+3. GitHub Actions에서 Secrets를 읽어 `js/config.js` 자동 생성
+4. GitHub Pages로 자동 배포
+
+**장점**:
+- API 키가 Git 저장소에 커밋되지 않음
+- GitHub Secrets에서 안전하게 관리
+- 자동 배포로 편리함
+
+### 기존 수동 배포 방식 (비권장)
+
+만약 GitHub Actions를 사용하지 않는다면:
+1. `js/config.js` 파일을 `.gitignore`에서 제외하고 커밋 (보안 위험)
+2. 또는 배포 전에 수동으로 `js/config.js` 추가
 
 ### 로컬 개발 시
 

@@ -1,0 +1,47 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch: # 수동 실행도 가능
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create config.js from Secrets
+        run: |
+          echo "// Gemini API 설정" > js/config.js
+          echo "// 이 파일은 GitHub Actions에서 자동으로 생성됩니다." >> js/config.js
+          echo "// API 키는 GitHub Secrets에서 가져옵니다." >> js/config.js
+          echo "export const GEMINI_API_KEY = '${{ secrets.GEMINI_API_KEY }}';" >> js/config.js
+        shell: bash
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
