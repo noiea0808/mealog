@@ -137,7 +137,16 @@ export function openModal(date, slotId, entryId = null) {
                 // sharedPhotos도 배열인지 확인
                 state.sharedPhotos = Array.isArray(r.sharedPhotos) ? r.sharedPhotos : (r.sharedPhotos ? [r.sharedPhotos] : []);
                 state.originalSharedPhotos = Array.isArray(r.sharedPhotos) ? [...r.sharedPhotos] : (r.sharedPhotos ? [r.sharedPhotos] : []); // 원본 복사 (삭제 추적용)
-                state.wantsToShare = (state.sharedPhotos && state.sharedPhotos.length > 0); // 이미 공유된 사진이 있으면 공유 상태로
+                
+                // 공유 금지 체크
+                const isShareBanned = r.shareBanned === true;
+                if (isShareBanned) {
+                    // 공유 금지된 경우 공유 상태를 false로 설정
+                    state.wantsToShare = false;
+                } else {
+                    state.wantsToShare = (state.sharedPhotos && state.sharedPhotos.length > 0); // 이미 공유된 사진이 있으면 공유 상태로
+                }
+                
                 // 필드 표시/숨김 처리 후에 renderPhotoPreviews 호출
                 renderPhotoPreviews();
                 // 공유 인디케이터 업데이트
@@ -459,6 +468,10 @@ export async function saveEntry() {
             }, 1000);
         }
         
+        // 기존 기록에서 shareBanned 필드 가져오기 (수정 시 유지)
+        const existingRecord = state.currentEditingId ? window.mealHistory.find(m => m.id === state.currentEditingId) : null;
+        const shareBanned = existingRecord?.shareBanned === true;
+        
         const record = {
             id: state.currentEditingId,
             date: state.currentEditingDate,
@@ -477,6 +490,11 @@ export async function saveEntry() {
             satiety: (isSk || isS) ? null : state.currentSatiety,
             time: new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' })
         };
+        
+        // shareBanned 필드 추가 (기존 값 유지)
+        if (shareBanned) {
+            record.shareBanned = true;
+        }
         
         // 디버깅: 저장될 record 확인
         if (isS) {
@@ -515,8 +533,16 @@ export async function saveEntry() {
         // 삭제된 사진을 제거한 후의 최종 목록으로 업데이트
         record.sharedPhotos = state.sharedPhotos || [];
         
+        // 공유 금지 체크
+        const isShareBanned = record.id ? (window.mealHistory.find(m => m.id === record.id)?.shareBanned === true) : false;
+        if (isShareBanned && state.wantsToShare) {
+            showToast("이 게시물은 공유가 금지되어 있습니다.", 'error');
+            state.wantsToShare = false;
+            record.sharedPhotos = [];
+        }
+        
         // 공유 상태에 따라 처리
-        if (state.wantsToShare && state.currentPhotos.length > 0) {
+        if (state.wantsToShare && state.currentPhotos.length > 0 && !isShareBanned) {
             // 공유를 원하는 경우: 새로 공유할 사진 찾기 (URL 정규화하여 비교)
             const newPhotosToShare = state.currentPhotos.filter(photo => {
                 const normalizedPhoto = normalizeUrl(photo);
@@ -935,18 +961,29 @@ export function updateShareIndicator() {
     const shareIndicator = document.getElementById('sharePhotoIndicator');
     if (!shareIndicator) return;
     
+    // 공유 금지 체크
+    const isShareBanned = state.currentEditingId ? (window.mealHistory.find(m => m.id === state.currentEditingId)?.shareBanned === true) : false;
+    
     // 사진이 있으면 항상 인디케이터 표시 (공유 가능 상태)
     if (state.currentPhotos.length > 0) {
-        // 공유된 사진이 있거나 공유를 원하는 경우 활성화 스타일
-        if (state.sharedPhotos.length > 0 || state.wantsToShare) {
+        if (isShareBanned) {
+            // 공유 금지된 경우: 비활성화 스타일로 표시
             shareIndicator.classList.remove('hidden');
-            shareIndicator.classList.add('bg-emerald-100', 'border-emerald-300');
-            shareIndicator.classList.remove('bg-slate-50', 'border-slate-200');
+            shareIndicator.classList.add('bg-red-50', 'border-red-300', 'text-red-400', 'cursor-not-allowed');
+            shareIndicator.classList.remove('bg-emerald-100', 'border-emerald-300', 'bg-slate-50', 'border-slate-200', 'text-emerald-600', 'text-slate-400');
+            shareIndicator.title = '공유가 금지된 게시물입니다';
+        } else if (state.sharedPhotos.length > 0 || state.wantsToShare) {
+            // 공유된 사진이 있거나 공유를 원하는 경우 활성화 스타일
+            shareIndicator.classList.remove('hidden');
+            shareIndicator.classList.add('bg-emerald-100', 'border-emerald-300', 'text-emerald-600');
+            shareIndicator.classList.remove('bg-slate-50', 'border-slate-200', 'bg-red-50', 'border-red-300', 'text-slate-400', 'text-red-400', 'cursor-not-allowed');
+            shareIndicator.title = '';
         } else {
             // 사진은 있지만 아직 공유하지 않은 경우도 표시 (비활성화 스타일)
             shareIndicator.classList.remove('hidden');
-            shareIndicator.classList.add('bg-slate-50', 'border-slate-200');
-            shareIndicator.classList.remove('bg-emerald-100', 'border-emerald-300');
+            shareIndicator.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-400');
+            shareIndicator.classList.remove('bg-emerald-100', 'border-emerald-300', 'bg-red-50', 'border-red-300', 'text-emerald-600', 'text-red-400', 'cursor-not-allowed');
+            shareIndicator.title = '';
         }
     } else {
         shareIndicator.classList.add('hidden');
@@ -1380,14 +1417,48 @@ export function openKakaoPlaceSearch() {
                 statusInfo.error = 'kakao 객체 접근 불가';
             }
             
+            console.error('═══════════════════════════════════════');
             console.error('현재 상태:', statusInfo);
-            console.error('카카오 디벨로퍼스에서 다음을 확인하세요:');
-            console.error('1. JavaScript 키를 사용하고 있는지 확인 (REST API 키 아님)');
-            console.error('2. 플랫폼 > Web 플랫폼 등록 확인');
-            console.error('3. 등록된 도메인에 현재 도메인이 포함되어 있는지 확인 (localhost 포함)');
-            console.error('4. 앱 키 > JavaScript 키 확인: 42dce12f04991c35775f3ce1081a3c76');
-            console.error('5. 브라우저 콘솔 > Network 탭에서 dapi.kakao.com 요청 상태 확인');
-            console.error('6. Network 탭에서 dapi.kakao.com 요청이 403 또는 401 에러인지 확인');
+            console.error('현재 URL:', window.location.href);
+            console.error('현재 호스트명:', window.location.hostname);
+            console.error('═══════════════════════════════════════');
+            console.error('');
+            console.error('💡 카카오 디벨로퍼스에서 다음을 확인하세요:');
+            console.error('');
+            console.error('1️⃣ JavaScript 키 확인 (중요!)');
+            console.error('   - 앱 설정 > 앱 키 > JavaScript 키 사용');
+            console.error('   - 현재 사용 중인 키: 42dce12f04991c35775f3ce1081a3c76');
+            console.error('   - ⚠️ REST API 키가 아닌 JavaScript 키여야 함!');
+            console.error('');
+            console.error('2️⃣ 플랫폼 등록 확인');
+            console.error('   - 앱 설정 > 플랫폼 > Web 플랫폼 추가');
+            console.error('   - 사이트 도메인에 현재 도메인 등록 필요');
+            console.error('');
+            console.error('3️⃣ 도메인 등록 확인');
+            console.error('   - Web 플랫폼 > 사이트 도메인에 추가:');
+            console.error('     * ' + window.location.hostname);
+            console.error('     * ' + window.location.host);
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                console.error('     * localhost');
+                console.error('     * 127.0.0.1');
+            }
+            console.error('');
+            console.error('4️⃣ 카카오맵 사용 설정 확인');
+            console.error('   - 앱 설정 > 제품 설정 > 카카오맵 > 사용 설정 ON');
+            console.error('   - 링크: https://developers.kakao.com/console/app/1366360/product/kakao-map');
+            console.error('');
+            console.error('5️⃣ 브라우저 네트워크 확인');
+            console.error('   - F12 > Network 탭 > "dapi.kakao.com" 검색');
+            console.error('   - 요청의 Status Code 확인 (403, 401 등)');
+            console.error('   - Response 탭에서 에러 메시지 확인');
+            console.error('');
+            console.error('🔗 빠른 링크:');
+            console.error('   - 앱 설정: https://developers.kakao.com/console/app/1366360');
+            console.error('   - 플랫폼 설정: https://developers.kakao.com/console/app/1366360/platform');
+            console.error('   - 카카오맵 설정: https://developers.kakao.com/console/app/1366360/product/kakao-map');
+            console.error('═══════════════════════════════════════');
+            
+            showToast("카카오 지도 API를 불러올 수 없습니다. 브라우저 콘솔(F12)을 확인해주세요.", 'error');
         }
     }, 100);
 }

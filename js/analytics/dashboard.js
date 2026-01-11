@@ -263,7 +263,7 @@ export async function updateDashboard() {
     const snackRecordCountEl = document.getElementById('snackRecordCount');
     if (snackRecordCountEl) snackRecordCountEl.textContent = snackCount;
     
-    // 인사이트 코멘트 (말풍선에 표시)
+    // 인사이트 코멘트 - MEALOG 캐릭터는 사용 안내 표시 (AI 호출 안 함)
     await updateInsightComment(filteredData, dateRangeText);
     
     // 말풍선 클릭 이벤트 설정
@@ -273,17 +273,25 @@ export async function updateDashboard() {
     const characterIconEl = document.getElementById('insightCharacterIcon');
     if (characterIconEl) {
         const currentCharacter = getCurrentCharacter();
-        const characters = getInsightCharacters();
-        const character = characters.find(c => c.id === currentCharacter);
-        if (character) {
-            if (character.id === 'mealog') {
-                characterIconEl.textContent = 'M';
-                characterIconEl.className = 'text-2xl font-black text-white';
-            } else {
-                characterIconEl.textContent = character.icon;
-                characterIconEl.className = 'text-3xl';
+        (async () => {
+            const characters = await getInsightCharacters();
+            const character = characters.find(c => c.id === currentCharacter);
+            if (character) {
+                if (character.image) {
+                    // 이미지가 있으면 이미지 표시
+                    characterIconEl.innerHTML = `<img src="${character.image}" alt="${character.name}" class="w-full h-full object-contain">`;
+                    characterIconEl.className = 'w-full h-full flex items-center justify-center';
+                } else if (character.id === 'mealog') {
+                    // MEALOG는 텍스트 아이콘
+                    characterIconEl.textContent = 'M';
+                    characterIconEl.className = 'text-2xl font-black text-white';
+                } else {
+                    // 기본 이모지 아이콘
+                    characterIconEl.textContent = character.icon;
+                    characterIconEl.className = 'text-3xl';
+                }
             }
-        }
+        })();
     }
 }
 

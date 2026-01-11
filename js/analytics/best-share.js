@@ -6,6 +6,14 @@ import { dbOps } from '../db.js';
 import { getWeekRange, getCurrentWeekInMonth, getWeeksInMonth, getDayName } from './date-utils.js';
 import { renderGallery } from '../render.js';
 
+// HTML 이스케이프 함수 (XSS 방지)
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // 주간 베스트 가져오기 (만족도 4~5점, 전부 표시)
 function getWeekBestMeals(year, month, week) {
     const { start, end } = getWeekRange(year, month, week);
@@ -372,7 +380,8 @@ export function renderBestMeals() {
         // 타임라인과 동일한 정보 구성
         const place = meal.place || '';
         const menuDetail = meal.menuDetail || '';
-        const title = (place && menuDetail) ? `${place} | ${menuDetail}` : (place || menuDetail || displayTitle);
+        const safePlace = escapeHtml(place);
+        const safeMenuDetail = escapeHtml(menuDetail || displayTitle);
         
         // 태그 정보 수집
         const tags = [];
@@ -391,6 +400,7 @@ export function renderBestMeals() {
         // 슬롯 스타일 가져오기
         const specificStyle = SLOT_STYLES[meal.slotId] || SLOT_STYLES['default'];
         const iconBoxClass = `bg-slate-100 border-slate-200 ${specificStyle.iconText}`;
+        const safeSlotLabel = escapeHtml(slotLabel);
         
         // 아이콘 HTML 생성
         let iconHtml = '';
@@ -416,31 +426,33 @@ export function renderBestMeals() {
         const safeMealId = (meal.id || '').replace(/'/g, "\\'");
         
         return `
-            <div class="best-meal-item card mb-0 border-t border-b border-slate-200 cursor-move active:scale-[0.98] transition-all bg-white" 
+            <div class="best-meal-item card mb-0 border-t border-b border-slate-200 cursor-move active:scale-[0.98] transition-all bg-white min-h-[140px]" 
                  data-meal-id="${safeMealId}" 
                  data-rating="${rating}"
                  data-date="${safeDate}"
                  data-slot-id="${safeSlotId}"
-                 draggable="true"
-                 style="height: 140px;">
-                <div class="flex relative h-full">
-                    <div class="w-[140px] h-full ${iconBoxClass} flex-shrink-0 flex items-center justify-center overflow-hidden border-r relative">
+                 draggable="true">
+                <div class="flex relative">
+                    <div class="w-[140px] min-h-[140px] ${iconBoxClass} flex-shrink-0 flex items-center justify-center overflow-hidden border-r relative">
                         <div class="absolute top-1 left-1 w-6 h-6 rounded-full ${rankBgClass} ${rankTextClass} flex items-center justify-center text-xs font-bold z-10">
                             ${rankDisplay}
                         </div>
                         ${iconHtml}
                     </div>
-                    <div class="flex-1 min-w-0 flex flex-col justify-center p-4 pr-12 relative">
+                    <div class="flex-1 min-w-0 flex flex-col p-4 pr-12 relative">
                         <div class="absolute top-2 right-2 flex items-center gap-2 z-10">
                             ${meal.sharedPhotos && Array.isArray(meal.sharedPhotos) && meal.sharedPhotos.length > 0 ? `<span class="text-xs text-emerald-600" title="게시됨"><i class="fa-solid fa-share"></i></span>` : ''}
                             <span class="text-xs font-bold text-yellow-600 bg-yellow-50 px-1.5 py-0.5 rounded-md flex items-center gap-0.5"><i class="fa-solid fa-star text-[10px]"></i><span class="text-[11px] font-black">${rating || '-'}</span></span>
                         </div>
-                        <div class="flex items-center gap-2 mb-1.5 pr-16">
-                            <span class="text-xs font-black uppercase ${specificStyle.iconText}">${slotLabel}</span>
+                        <div class="mb-1 pr-16">
                             <span class="text-xs text-slate-400">${formattedDate}</span>
                         </div>
-                        <h4 class="text-base font-bold truncate text-slate-800 mb-1 pr-2">${title}</h4>
-                        ${meal.comment ? `<p class="text-xs text-slate-400 mb-1.5 line-clamp-1 pr-2">"${meal.comment}"</p>` : ''}
+                        <div class="flex items-center gap-2 mb-1.5 pr-16">
+                            <span class="text-xs font-black uppercase ${specificStyle.iconText}">${safeSlotLabel}</span>
+                            ${place ? `<span class="text-xs font-bold text-slate-400">@ ${safePlace}</span>` : ''}
+                        </div>
+                        <h4 class="text-base font-bold truncate text-slate-800 mb-1 pr-2">${safeMenuDetail}</h4>
+                        ${meal.comment ? `<p class="text-xs text-slate-400 mb-1.5 line-clamp-1 pr-2">"${escapeHtml(meal.comment)}"</p>` : ''}
                         ${tagsHtml}
                     </div>
                     <div class="absolute top-1/2 right-2 -translate-y-1/2 text-slate-300">

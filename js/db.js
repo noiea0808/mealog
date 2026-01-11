@@ -126,6 +126,13 @@ export const dbOps = {
     
     async sharePhotos(photos, mealData) {
         if (!window.currentUser || !photos || photos.length === 0) return;
+        
+        // 공유 금지 체크
+        if (mealData && mealData.shareBanned === true) {
+            showToast("이 게시물은 공유가 금지되어 있습니다.", 'error');
+            throw new Error("공유 금지된 게시물입니다.");
+        }
+        
         try {
             const userProfile = window.userSettings.profile || {};
             
@@ -177,7 +184,6 @@ export const dbOps = {
             });
             
             if (newPhotos.length === 0) {
-                console.log('중복 체크: 모든 사진이 이미 공유되어 있습니다.');
                 return;
             }
             
@@ -205,8 +211,6 @@ export const dbOps = {
                 batch.set(docRef, sharedPhoto);
             });
             await batch.commit();
-            
-            console.log(`배치 쓰기로 ${sharedPhotos.length}개 사진 공유 완료 (중복 ${photos.length - newPhotos.length}개 제외)`);
         } catch (e) {
             console.error("Share Photos Error:", e);
             // 에러 토스트는 호출자에서 표시하도록 하고, 여기서는 throw만 함
@@ -228,22 +232,6 @@ export const dbOps = {
             const snapshot = await getDocs(q);
             const photosToDelete = [];
             
-            console.log('unsharePhotos 호출:', { photos, entryId, isBestShare, snapshotSize: snapshot.size });
-            
-            // 디버깅: 모든 사진 URL과 entryId 확인
-            const allPhotoUrls = [];
-            snapshot.forEach((docSnap) => {
-                const data = docSnap.data();
-                allPhotoUrls.push({
-                    photoUrl: data.photoUrl,
-                    entryId: data.entryId,
-                    type: data.type,
-                    docId: docSnap.id
-                });
-            });
-            console.log('현재 공유된 모든 사진:', allPhotoUrls);
-            console.log('삭제하려는 사진 URL:', photos);
-            
             snapshot.forEach((docSnap) => {
                 const data = docSnap.data();
                 // 공유 해제하려는 사진 목록에 있는 경우 삭제
@@ -261,24 +249,11 @@ export const dbOps = {
                     return photoFileName === dataFileName && photoFileName !== '';
                 });
                 
-                console.log('사진 URL 매칭 확인:', {
-                    찾는URL: photos,
-                    현재URL: data.photoUrl,
-                    매칭: photoUrlMatch,
-                    entryId: data.entryId,
-                    찾는entryId: entryId,
-                    type: data.type,
-                    isBestShare: isBestShare
-                });
-                
                 if (photoUrlMatch) {
                     // 베스트 공유인 경우 type='best'인 항목만 삭제
                     if (isBestShare) {
                         if (data.type === 'best') {
                             photosToDelete.push(docSnap.id);
-                            console.log('삭제할 베스트 공유 사진 발견:', data.photoUrl, 'docId:', docSnap.id);
-                        } else {
-                            console.log('베스트 공유가 아님, 건너뜀:', data.type);
                         }
                     } else {
                         // 일반 공유인 경우: photoUrl이 일치하면 삭제
@@ -298,23 +273,10 @@ export const dbOps = {
                         
                         if (shouldDelete) {
                             photosToDelete.push(docSnap.id);
-                            console.log('삭제할 사진 발견:', {
-                                photoUrl: data.photoUrl,
-                                docId: docSnap.id,
-                                entryId: data.entryId,
-                                찾는entryId: entryId
-                            });
-                        } else {
-                            console.log('삭제 조건 불일치:', { 
-                                찾는entryId: entryId, 
-                                현재entryId: data.entryId 
-                            });
                         }
                     }
                 }
             });
-            
-            console.log('삭제할 사진 개수:', photosToDelete.length);
             
             // 배치 삭제 사용: 여러 사진을 한 번에 삭제 (1번으로 카운트)
             if (photosToDelete.length > 0) {
@@ -324,7 +286,6 @@ export const dbOps = {
                     batch.delete(docRef);
                 });
                 await batch.commit();
-                console.log(`배치 삭제로 ${photosToDelete.length}개 사진 공유 해제 완료`);
             }
         } catch (e) {
             console.error("Unshare Photos Error:", e);
@@ -393,15 +354,9 @@ export function setupListeners(userId, callbacks) {
             
             if (!isExactMatch) {
                 // 정확히 일치하지 않으면 무조건 업데이트
-                console.log('간식 항목 마이그레이션: 새로운 항목으로 업데이트', {
-                    before: currentSnackTypes,
-                    after: newSnackTypes
-                });
                 window.userSettings.tags.snackType = [...newSnackTypes];
                 // 변경사항 저장
-                dbOps.saveSettings(window.userSettings).then(() => {
-                    console.log('간식 항목 마이그레이션 저장 완료');
-                }).catch(e => {
+                dbOps.saveSettings(window.userSettings).catch(e => {
                     console.error('간식 항목 마이그레이션 저장 실패:', e);
                 });
             }
@@ -434,10 +389,6 @@ export function setupListeners(userId, callbacks) {
                 // 순서 정렬 (newWithWhomTags 순서대로)
                 updatedTags = newWithWhomTags.filter(tag => updatedTags.includes(tag));
                 
-                console.log('함께한 사람 태그 마이그레이션: 새로운 항목으로 업데이트', {
-                    before: currentWithWhomTags,
-                    after: updatedTags
-                });
                 window.userSettings.tags.withWhom = updatedTags;
                 
                 // 서브 태그도 업데이트: '회사사람' parent를 '직장동료'로 변경
@@ -450,16 +401,10 @@ export function setupListeners(userId, callbacks) {
                         }
                         return subTag;
                     });
-                    
-                    if (hasSubTagUpdate) {
-                        console.log('함께한 사람 서브 태그 마이그레이션: 회사사람 -> 직장동료');
-                    }
                 }
                 
                 // 변경사항 저장
-                dbOps.saveSettings(window.userSettings).then(() => {
-                    console.log('함께한 사람 태그 마이그레이션 저장 완료');
-                }).catch(e => {
+                dbOps.saveSettings(window.userSettings).catch(e => {
                     console.error('함께한 사람 태그 마이그레이션 저장 실패:', e);
                 });
             }
@@ -491,7 +436,6 @@ export function setupListeners(userId, callbacks) {
                 .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
             window.loadedMealsDateRange = { start: cutoffDateStr, end: todayStr };
             isInitialLoad = false;
-            console.log(`초기 로드: 최근 1개월 데이터 ${snap.docs.length}개 로드 완료`);
         } else {
             // 이후 변경사항: 변경된 문서만 처리
             const changes = snap.docChanges();
@@ -516,7 +460,6 @@ export function setupListeners(userId, callbacks) {
             
             if (hasChanges) {
                 window.mealHistory.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-                console.log(`변경사항 반영: ${changes.length}개 문서 업데이트`);
             }
         }
         
@@ -784,8 +727,6 @@ export async function loadMoreMeals(monthsToLoad = 1) {
         newStartDate.setMonth(newStartDate.getMonth() - monthsToLoad);
         const newStartStr = newStartDate.toISOString().split('T')[0];
         
-        console.log(`더보기: ${newStartStr} ~ ${currentStart} 기간 데이터 로드 시작`);
-        
         const q = query(
             collection(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals'),
             where('date', '>=', newStartStr),
@@ -806,10 +747,6 @@ export async function loadMoreMeals(monthsToLoad = 1) {
             
             // 로드된 범위 업데이트
             window.loadedMealsDateRange.start = newStartStr;
-            
-            console.log(`더보기 완료: ${newMeals.length}개 기록 추가`);
-        } else {
-            console.log("더보기: 추가할 기록이 없습니다.");
         }
         
         return newMeals.length;
@@ -843,12 +780,9 @@ export async function loadMealsForDateRange(startDate, endDate) {
             
             // 요청한 범위가 이미 로드된 범위에 포함되는지 확인
             if (requestedStart >= loadedStart && requestedEnd <= loadedEnd) {
-                console.log("요청한 날짜 범위는 이미 로드되어 있습니다.");
                 return 0;
             }
         }
-        
-        console.log(`날짜 범위 로드: ${startStr} ~ ${endStr}`);
         
         const q = query(
             collection(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals'),
@@ -880,10 +814,6 @@ export async function loadMealsForDateRange(startDate, endDate) {
                 window.loadedMealsDateRange.start = newStart < currentStart ? startStr : window.loadedMealsDateRange.start;
                 window.loadedMealsDateRange.end = newEnd > currentEnd ? endStr : window.loadedMealsDateRange.end;
             }
-            
-            console.log(`날짜 범위 로드 완료: ${newMeals.length}개 기록 추가`);
-        } else {
-            console.log("날짜 범위 로드: 추가할 기록이 없습니다.");
         }
         
         return newMeals.length;
@@ -939,8 +869,6 @@ export async function migrateBase64ImagesToStorage() {
                 continue;
             }
             
-            console.log(`[${i + 1}/${meals.length}] 기록 ${mealId}의 ${base64Photos.length}개 base64 이미지 마이그레이션 중...`);
-            
             try {
                 // base64 이미지를 Storage에 업로드
                 const uploadPromises = base64Photos.map(base64Photo => 
@@ -961,7 +889,6 @@ export async function migrateBase64ImagesToStorage() {
                 await setDoc(mealRef, { ...meal, photos: newPhotos }, { merge: true });
                 
                 migratedCount++;
-                console.log(`✓ 기록 ${mealId} 마이그레이션 완료`);
                 
                 // 진행 상황 표시 (10개마다)
                 if ((i + 1) % 10 === 0) {
@@ -976,7 +903,6 @@ export async function migrateBase64ImagesToStorage() {
         }
         
         const message = `마이그레이션 완료! 성공: ${migratedCount}개, 건너뜀: ${skippedCount}개, 실패: ${errorCount}개`;
-        console.log(message);
         showToast(message, 'success');
         
         return {
@@ -1001,16 +927,33 @@ export const boardOperations = {
             throw new Error("로그인이 필요합니다.");
         }
         try {
-            // 익명 ID 생성 (사용자별 고정)
-            const anonymousId = await this.getAnonymousId(window.currentUser.uid);
+            // 사용자 닉네임 가져오기
+            let authorNickname = '익명';
+            try {
+                if (window.userSettings && window.userSettings.profile && window.userSettings.profile.nickname) {
+                    authorNickname = window.userSettings.profile.nickname;
+                } else {
+                    // userSettings가 없으면 Firestore에서 직접 가져오기
+                    const userSettingsDoc = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'config', 'settings');
+                    const userSettingsSnap = await getDoc(userSettingsDoc);
+                    if (userSettingsSnap.exists()) {
+                        const settingsData = userSettingsSnap.data();
+                        if (settingsData.profile && settingsData.profile.nickname) {
+                            authorNickname = settingsData.profile.nickname;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn("닉네임 가져오기 실패, 기본값 사용:", e);
+            }
             
             const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
             const newPost = {
                 title: postData.title,
                 content: postData.content,
-                category: postData.category || 'general',
+                category: postData.category || 'serious',
                 authorId: window.currentUser.uid,
-                anonymousId: anonymousId,
+                authorNickname: authorNickname,
                 likes: 0,
                 dislikes: 0,
                 views: 0,
@@ -1096,6 +1039,39 @@ export const boardOperations = {
             return posts;
         } catch (e) {
             console.error("Get Posts Error:", e);
+            // 인덱스가 없을 경우 fallback: 전체 가져와서 클라이언트 측에서 필터링
+            if (e.code === 'failed-precondition' || e.message?.includes('index')) {
+                console.warn("Firestore 인덱스가 없어 fallback 모드로 작동합니다. 전체 게시글을 가져와 필터링합니다.");
+                try {
+                    const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
+                    const fallbackQuery = query(postsColl, orderBy('timestamp', 'desc'), limit(limitCount * 2)); // 더 많이 가져와서 필터링
+                    const snapshot = await getDocs(fallbackQuery);
+                    let allPosts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                    
+                    // 카테고리 필터링
+                    if (category !== 'all') {
+                        allPosts = allPosts.filter(post => post.category === category);
+                    }
+                    
+                    // limit 적용
+                    allPosts = allPosts.slice(0, limitCount);
+                    
+                    // 인기순 정렬
+                    if (sortBy === 'popular') {
+                        allPosts.sort((a, b) => {
+                            const scoreA = (a.likes || 0) - (a.dislikes || 0);
+                            const scoreB = (b.likes || 0) - (b.dislikes || 0);
+                            if (scoreB !== scoreA) return scoreB - scoreA;
+                            return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+                        });
+                    }
+                    
+                    return allPosts;
+                } catch (fallbackError) {
+                    console.error("Fallback Get Posts Error:", fallbackError);
+                    return [];
+                }
+            }
             return [];
         }
     },
@@ -1128,6 +1104,40 @@ export const boardOperations = {
                 return { id: postSnap.id, ...postSnap.data() };
             }
             return null;
+        }
+    },
+    
+    // 게시글 수정
+    async updatePost(postId, postData) {
+        if (!window.currentUser) {
+            throw new Error("로그인이 필요합니다.");
+        }
+        try {
+            const postDoc = doc(db, 'artifacts', appId, 'boardPosts', postId);
+            const postSnap = await getDoc(postDoc);
+            
+            if (!postSnap.exists()) {
+                throw new Error("게시글을 찾을 수 없습니다.");
+            }
+            
+            const existingPost = postSnap.data();
+            if (existingPost.authorId !== window.currentUser.uid) {
+                throw new Error("본인의 게시글만 수정할 수 있습니다.");
+            }
+            
+            await setDoc(postDoc, {
+                title: postData.title,
+                content: postData.content,
+                category: postData.category || existingPost.category,
+                updatedAt: new Date().toISOString()
+            }, { merge: true });
+            
+            showToast("게시글이 수정되었습니다.", 'success');
+            return true;
+        } catch (e) {
+            console.error("Update Post Error:", e);
+            showToast("게시글 수정에 실패했습니다.", 'error');
+            throw e;
         }
     },
     
@@ -1285,13 +1295,32 @@ export const boardOperations = {
             throw new Error("로그인이 필요합니다.");
         }
         try {
-            const anonymousId = await this.getAnonymousId(window.currentUser.uid);
+            // 사용자 닉네임 가져오기
+            let authorNickname = '익명';
+            try {
+                if (window.userSettings && window.userSettings.profile && window.userSettings.profile.nickname) {
+                    authorNickname = window.userSettings.profile.nickname;
+                } else {
+                    // userSettings가 없으면 Firestore에서 직접 가져오기
+                    const userSettingsDoc = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'config', 'settings');
+                    const userSettingsSnap = await getDoc(userSettingsDoc);
+                    if (userSettingsSnap.exists()) {
+                        const settingsData = userSettingsSnap.data();
+                        if (settingsData.profile && settingsData.profile.nickname) {
+                            authorNickname = settingsData.profile.nickname;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn("댓글 작성자 닉네임 가져오기 실패, 기본값 사용:", e);
+            }
+            
             const commentsColl = collection(db, 'artifacts', appId, 'boardComments');
             const newComment = {
                 postId: postId,
                 content: content,
                 authorId: window.currentUser.uid,
-                anonymousId: anonymousId,
+                authorNickname: authorNickname,
                 timestamp: new Date().toISOString()
             };
             await addDoc(commentsColl, newComment);

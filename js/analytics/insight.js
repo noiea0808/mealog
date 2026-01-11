@@ -2,6 +2,16 @@
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { GEMINI_API_KEY as DEFAULT_API_KEY } from '../config.default.js';
+import { db, appId } from '../firebase.js';
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+// escapeHtml 함수 (필요한 경우)
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 
 // API 키 설정 (항상 기본값으로 시작)
 // config.js가 있으면 나중에 업데이트됨
@@ -55,12 +65,13 @@ function getGeminiApiUrl(model, version = 'v1beta') {
     return `https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent?key=${apiKey}`;
 }
 
-// 캐릭터 정의
-const INSIGHT_CHARACTERS = [
+// 기본 캐릭터 정의
+const DEFAULT_CHARACTERS = [
     { 
         id: 'mealog', 
         name: 'MEALOG', 
         icon: 'M', 
+        image: null, // MEALOG는 텍스트 아이콘 사용
         persona: '친근하고 따뜻한 식사 친구',
         systemPrompt: '당신은 MEALOG입니다. 사용자의 식사 기록을 친근하고 따뜻하면서도 재미있게 분석합니다. 유머러스하고 밝은 성격으로, 식사 패턴에서 발견한 재미있는 점들을 즐겁게 공유합니다. 진부한 격려보다는 캐주얼하고 친근한 말투로, 마치 친한 친구처럼 편하게 소통합니다. 식사의 즐거움과 소중함을 당신만의 개성 있는 방식으로 전달하세요.'
     },
@@ -68,10 +79,69 @@ const INSIGHT_CHARACTERS = [
         id: 'trainer', 
         name: '엄격한 트레이너', 
         icon: '💪', 
+        image: 'persona/trainer.png', // 트레이너 캐릭터 이미지
         persona: '건강과 웰빙을 중시하는 트레이너',
         systemPrompt: '당신은 건강과 웰빙을 중시하는 트레이너입니다. 엄격하지만 따뜻한 톤으로, 식사 패턴을 날카롭게 분석하고 건강한 식습관을 위한 명확한 조언을 제공합니다. 격려와 함께 건설적인 피드백을 주며, 때로는 유머를 섞어 지루하지 않게 전달합니다. 전문적이지만 딱딱하지 않고, 사용자가 행동 변화를 일으킬 수 있도록 동기부여하는 당신만의 스타일을 유지하세요.'
     }
 ];
+
+// 동적으로 업데이트되는 캐릭터 목록
+let INSIGHT_CHARACTERS = [...DEFAULT_CHARACTERS];
+
+// Firebase에서 캐릭터 목록 가져오기
+async function loadCharactersFromFirebase() {
+    try {
+        const charactersDocRef = doc(db, 'artifacts', appId, 'persona', 'characters');
+        const charactersDoc = await getDoc(charactersDocRef);
+        
+        if (charactersDoc.exists()) {
+            const charactersData = charactersDoc.data();
+            const loadedCharacters = [...DEFAULT_CHARACTERS];
+            
+            // Firebase에서 추가된 캐릭터들 추가 (기본 캐릭터와 중복되지 않는 것만)
+            Object.entries(charactersData).forEach(([id, charData]) => {
+                if (!DEFAULT_CHARACTERS.find(c => c.id === id)) {
+                    // 각 캐릭터의 개별 설정 문서에서 persona와 systemPrompt 가져오기
+                    loadedCharacters.push({
+                        id,
+                        name: charData.name || id,
+                        icon: charData.icon || '👤',
+                        image: charData.image || null,
+                        persona: '', // 나중에 개별 문서에서 가져올 예정
+                        systemPrompt: '' // 나중에 개별 문서에서 가져올 예정
+                    });
+                }
+            });
+            
+            // 각 캐릭터의 개별 설정 문서에서 persona와 systemPrompt 가져오기
+            for (const char of loadedCharacters) {
+                if (char.id !== 'mealog') { // MEALOG는 기본값 사용
+                    try {
+                        const personaDocRef = doc(db, 'artifacts', appId, 'persona', char.id);
+                        const personaDoc = await getDoc(personaDocRef);
+                        if (personaDoc.exists()) {
+                            const personaData = personaDoc.data();
+                            if (personaData.persona) char.persona = personaData.persona;
+                            if (personaData.systemPrompt) char.systemPrompt = personaData.systemPrompt;
+                        }
+                    } catch (e) {
+                        console.error(`캐릭터 ${char.id} 설정 가져오기 실패:`, e);
+                    }
+                }
+            }
+            
+            INSIGHT_CHARACTERS = loadedCharacters;
+            return loadedCharacters;
+        }
+        
+        INSIGHT_CHARACTERS = [...DEFAULT_CHARACTERS];
+        return DEFAULT_CHARACTERS;
+    } catch (e) {
+        console.error('캐릭터 목록 가져오기 실패:', e);
+        INSIGHT_CHARACTERS = [...DEFAULT_CHARACTERS];
+        return DEFAULT_CHARACTERS;
+    }
+}
 
 // 현재 선택된 캐릭터 (기본값: MEALOG)
 let currentCharacter = 'mealog';
@@ -255,8 +325,52 @@ function handleInsightBubbleClick() {
     }
 }
 
+// 캐릭터 선택 팝업 렌더링
+async function renderCharacterSelectPopup() {
+    const popup = document.getElementById('characterSelectPopup');
+    if (!popup) return;
+    
+    // Firebase에서 최신 캐릭터 목록 가져오기
+    await loadCharactersFromFirebase();
+    
+    const popupContent = popup.querySelector('.bg-white');
+    if (!popupContent) return;
+    
+    const charactersList = popupContent.querySelector('.flex.flex-col.gap-3');
+    if (!charactersList) return;
+    
+    // 캐릭터 목록 렌더링
+    charactersList.innerHTML = INSIGHT_CHARACTERS.map(char => {
+        const isActive = char.id === currentCharacter;
+        let iconHtml = '';
+        
+        if (char.image) {
+            // 이미지 아이콘
+            iconHtml = `<div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                <img src="${escapeHtml(char.image)}" alt="${escapeHtml(char.name)}" class="w-full h-full object-contain">
+            </div>`;
+        } else if (char.id === 'mealog') {
+            // MEALOG 텍스트 아이콘
+            iconHtml = `<div class="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700 font-black text-lg flex-shrink-0">M</div>`;
+        } else {
+            // 이모지 아이콘
+            iconHtml = `<div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-2xl flex-shrink-0">${escapeHtml(char.icon)}</div>`;
+        }
+        
+        return `
+            <div class="character-popup-item ${isActive ? 'active' : ''} flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-colors hover:bg-slate-50" data-character-id="${char.id}" onclick="window.selectInsightCharacter('${char.id}')">
+                ${iconHtml}
+                <div class="flex-1">
+                    <div class="text-sm font-bold text-slate-800">${escapeHtml(char.name)}</div>
+                    <div class="text-xs text-slate-500 mt-0.5">${escapeHtml(char.persona || '')}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
 // 캐릭터 선택 팝업 열기/토글
-export function openCharacterSelectModal() {
+export async function openCharacterSelectModal() {
     const popup = document.getElementById('characterSelectPopup');
     
     if (!popup) return;
@@ -266,6 +380,9 @@ export function openCharacterSelectModal() {
         closeCharacterSelectModal();
         return;
     }
+    
+    // 캐릭터 목록 렌더링
+    await renderCharacterSelectPopup();
     
     // 화면 가운데에 표시 (CSS로 처리되므로 위치 설정 불필요)
     popup.classList.remove('hidden');
@@ -307,10 +424,16 @@ export function selectInsightCharacter(characterId) {
     // 캐릭터 아이콘 업데이트
     const iconEl = document.getElementById('insightCharacterIcon');
     if (iconEl) {
-        if (character.id === 'mealog') {
+        if (character.image) {
+            // 이미지가 있으면 이미지 표시
+            iconEl.innerHTML = `<img src="${character.image}" alt="${character.name}" class="w-full h-full object-contain">`;
+            iconEl.className = 'w-full h-full flex items-center justify-center';
+        } else if (character.id === 'mealog') {
+            // MEALOG는 텍스트 아이콘
             iconEl.textContent = 'M';
             iconEl.className = 'text-2xl font-black text-white';
         } else {
+            // 기본 이모지 아이콘
             iconEl.textContent = character.icon;
             iconEl.className = 'text-3xl';
         }
@@ -330,22 +453,141 @@ export function selectInsightCharacter(characterId) {
     // 팝업 닫기
     closeCharacterSelectModal();
     
-    // 선택된 캐릭터로 인사이트 다시 생성
+    // 선택된 캐릭터로 인사이트 업데이트 (AI 호출 안 함, 기본 메시지만 표시)
     if (window.getDashboardData) {
         const { filteredData, dateRangeText } = window.getDashboardData();
         updateInsightComment(filteredData, dateRangeText);
     }
 }
 
-// 캐릭터에 맞는 인사이트 코멘트 업데이트
-export async function updateInsightComment(filteredData, dateRangeText = '') {
-    const comment = await getGeminiComment(filteredData, currentCharacter, dateRangeText);
-    const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
-    const characterName = character ? character.name : '';
-    displayInsightText(comment || "멋진 식사 기록이 쌓이고 있어요! ✨", characterName);
+// AI 캐릭터 기본 코멘트 가져오기 (Firebase에서 가져오기)
+async function getCharacterDefaultComment(characterId) {
+    try {
+        const personaDocRef = doc(db, 'artifacts', appId, 'persona', characterId);
+        const personaDoc = await getDoc(personaDocRef);
+        
+        if (personaDoc.exists()) {
+            const data = personaDoc.data();
+            const defaultComments = data.defaultComments || [];
+            
+            // 비어있지 않은 코멘트만 필터링
+            const validComments = defaultComments.filter(c => c && c.trim().length > 0);
+            
+            if (validComments.length > 0) {
+                // 랜덤으로 하나 선택
+                const randomIndex = Math.floor(Math.random() * validComments.length);
+                return validComments[randomIndex];
+            }
+        }
+        
+        // 기본값 (Firebase에 저장된 값이 없거나 비어있는 경우)
+        const character = INSIGHT_CHARACTERS.find(c => c.id === characterId);
+        const characterName = character ? character.name : '';
+        return `${characterName ? character.icon + ' ' : ''}COMMENT 버튼을 눌러서 ${characterName ? characterName + '의 ' : ''}분석을 받아보세요!`;
+    } catch (e) {
+        console.error('캐릭터 기본 코멘트 가져오기 실패:', e);
+        // 기본값 반환
+        const character = INSIGHT_CHARACTERS.find(c => c.id === characterId);
+        const characterName = character ? character.name : '';
+        return `${characterName ? character.icon + ' ' : ''}COMMENT 버튼을 눌러서 ${characterName ? characterName + '의 ' : ''}분석을 받아보세요!`;
+    }
 }
 
-// 코멘트 생성 버튼 클릭 시
+// MEALOG 캐릭터 사용 안내 텍스트 (Firebase에서 가져오기)
+async function getMealogComment() {
+    try {
+        const personaDocRef = doc(db, 'artifacts', appId, 'persona', 'mealog');
+        const personaDoc = await getDoc(personaDocRef);
+        
+        if (personaDoc.exists()) {
+            const data = personaDoc.data();
+            const comments = data.comments || [];
+            
+            // 비어있지 않은 코멘트만 필터링
+            const validComments = comments.filter(c => c && c.trim().length > 0);
+            
+            if (validComments.length > 0) {
+                // 랜덤으로 하나 선택
+                const randomIndex = Math.floor(Math.random() * validComments.length);
+                return validComments[randomIndex];
+            }
+        }
+        
+        // 기본값 (Firebase에 저장된 값이 없거나 비어있는 경우)
+        return `안녕하세요! MEALOG 사용 방법을
+안내해드릴게요.
+
+📌 캐릭터 선택
+왼쪽 캐릭터 아이콘을 클릭하면
+다양한 캐릭터를 선택할 수 있어요.
+각 캐릭터는 서로 다른 스타일로
+식사 기록을 분석해줘요.
+
+💬 COMMENT 버튼
+노란색 COMMENT 버튼을 누르면
+선택한 캐릭터가 AI로 당신의
+식사 기록을 분석해서
+특별한 코멘트를 만들어줘요!
+
+🏆 베스트 공유
+Best 분석 탭에서 "공유하기"
+버튼을 누르면 이번 주/월의
+베스트 식사를 피드에
+공유할 수 있어요.
+
+📊 식사/간식 분석
+Best, 식사, 간식 탭을 눌러서
+다양한 방식으로 기록을
+확인해보세요.`;
+    } catch (e) {
+        console.error('MEALOG 코멘트 가져오기 실패:', e);
+        // 기본값 반환
+        return `안녕하세요! MEALOG 사용 방법을
+안내해드릴게요.
+
+📌 캐릭터 선택
+왼쪽 캐릭터 아이콘을 클릭하면
+다양한 캐릭터를 선택할 수 있어요.
+각 캐릭터는 서로 다른 스타일로
+식사 기록을 분석해줘요.
+
+💬 COMMENT 버튼
+노란색 COMMENT 버튼을 누르면
+선택한 캐릭터가 AI로 당신의
+식사 기록을 분석해서
+특별한 코멘트를 만들어줘요!
+
+🏆 베스트 공유
+Best 분석 탭에서 "공유하기"
+버튼을 누르면 이번 주/월의
+베스트 식사를 피드에
+공유할 수 있어요.
+
+📊 식사/간식 분석
+Best, 식사, 간식 탭을 눌러서
+다양한 방식으로 기록을
+확인해보세요.`;
+    }
+}
+
+// 캐릭터에 맞는 인사이트 코멘트 업데이트
+export async function updateInsightComment(filteredData, dateRangeText = '') {
+    const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
+    const characterName = character ? character.name : '';
+    
+    // MEALOG 캐릭터일 때는 사용 안내 텍스트 표시 (AI 호출 안 함)
+    if (currentCharacter === 'mealog') {
+        const commentText = await getMealogComment();
+        displayInsightText(commentText, characterName);
+        return;
+    }
+    
+    // 다른 캐릭터일 때는 기본 코멘트 표시 (Firebase에서 가져오기)
+    const defaultComment = await getCharacterDefaultComment(currentCharacter);
+    displayInsightText(defaultComment, characterName);
+}
+
+// 코멘트 생성 버튼 클릭 시 (COMMENT 버튼 클릭 시에만 AI 호출)
 export async function generateInsightComment() {
     if (!window.getDashboardData) {
         console.error('getDashboardData 함수를 찾을 수 없습니다.');
@@ -353,6 +595,16 @@ export async function generateInsightComment() {
     }
     
     const { filteredData, dateRangeText } = window.getDashboardData();
+    
+    // MEALOG 캐릭터일 때는 사용 안내만 표시 (AI 호출 안 함)
+    if (currentCharacter === 'mealog') {
+        const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
+        const characterName = character ? character.name : '';
+        const commentText = await getMealogComment();
+        displayInsightText(commentText, characterName);
+        showToast('MEALOG는 사용 안내를 제공합니다. 다른 캐릭터를 선택하면 AI 분석을 받을 수 있어요!', 'info');
+        return;
+    }
     
     // 버튼 비활성화 및 로딩 상태
     const btn = document.getElementById('generateCommentBtn');
@@ -364,7 +616,10 @@ export async function generateInsightComment() {
     
     try {
         // AI 코멘트 생성 및 업데이트
-        await updateInsightComment(filteredData, dateRangeText);
+        const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
+        const characterName = character ? character.name : '';
+        const comment = await getGeminiComment(filteredData, currentCharacter, dateRangeText);
+        displayInsightText(comment || "멋진 식사 기록이 쌓이고 있어요! ✨", characterName);
         
         // 팝업이 열려있으면 닫기
         closeCharacterSelectModal();
@@ -718,7 +973,8 @@ export function getCurrentCharacter() {
     return currentCharacter;
 }
 
-// INSIGHT_CHARACTERS 반환
-export function getInsightCharacters() {
+// INSIGHT_CHARACTERS 반환 (최신 목록 가져오기)
+export async function getInsightCharacters() {
+    await loadCharactersFromFirebase();
     return INSIGHT_CHARACTERS;
 }

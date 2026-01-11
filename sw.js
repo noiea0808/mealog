@@ -42,15 +42,23 @@ self.addEventListener('activate', (event) => {
 
 // Fetch event - 네트워크 우선, 실패 시 캐시 사용
 self.addEventListener('fetch', (event) => {
+  // GET 요청만 처리 (POST, PUT, DELETE 등은 캐시하지 않음)
+  if (event.request.method !== 'GET') {
+    return;
+  }
+  
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // 네트워크 응답이 성공하면 캐시에 저장하고 반환
+        // 네트워크 응답이 성공하면 캐시에 저장하고 반환 (GET 요청만 캐시)
         if (response && response.status === 200) {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME)
             .then((cache) => {
               cache.put(event.request, responseToCache);
+            })
+            .catch((err) => {
+              console.error('Service Worker: 캐시 저장 실패', err);
             });
         }
         return response;

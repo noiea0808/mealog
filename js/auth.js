@@ -2,6 +2,7 @@
 import { auth } from './firebase.js';
 import { GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { showToast } from './ui.js';
+import { DEFAULT_USER_SETTINGS } from './constants.js';
 
 export async function handleGoogleLogin() {
     const provider = new GoogleAuthProvider();
@@ -159,3 +160,146 @@ export function initAuth(onAuthStateChangedCallback) {
     onAuthStateChanged(auth, onAuthStateChangedCallback);
 }
 
+
+// 약관 동의 모달 표시
+export function showTermsModal() {
+    const modal = document.getElementById('termsModal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        const termsCheck = document.getElementById('termsAgreement');
+        const privacyCheck = document.getElementById('privacyAgreement');
+        if (termsCheck) termsCheck.checked = false;
+        if (privacyCheck) privacyCheck.checked = false;
+        updateTermsAgreeButton();
+    }
+}
+
+// 약관 동의 모달 닫기
+export function closeTermsModal() {
+    const modal = document.getElementById('termsModal');
+    if (modal) modal.classList.add('hidden');
+}
+
+// 약관 동의 취소 (로그아웃)
+export async function cancelTermsAgreement() {
+    await signOut(auth);
+    window.location.reload();
+}
+
+// 약관 상세 보기 토글
+export function showTermsDetail(type) {
+    const contentId = type === 'terms' ? 'termsContent' : 'privacyContent';
+    const content = document.getElementById(contentId);
+    if (content) content.classList.toggle('hidden');
+}
+
+// 약관 동의 버튼 상태 업데이트
+export function updateTermsAgreeButton() {
+    const termsChecked = document.getElementById('termsAgreement')?.checked || false;
+    const privacyChecked = document.getElementById('privacyAgreement')?.checked || false;
+    const agreeBtn = document.getElementById('termsAgreeBtn');
+    if (agreeBtn) {
+        if (termsChecked && privacyChecked) {
+            agreeBtn.disabled = false;
+            agreeBtn.className = 'flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-md active:bg-emerald-700 transition-colors';
+        } else {
+            agreeBtn.disabled = true;
+            agreeBtn.className = 'flex-1 py-3 bg-slate-300 text-white rounded-xl font-bold text-sm';
+        }
+    }
+}
+
+// 약관 동의 확인
+export async function confirmTermsAgreement() {
+    const termsChecked = document.getElementById('termsAgreement')?.checked || false;
+    const privacyChecked = document.getElementById('privacyAgreement')?.checked || false;
+    if (!termsChecked || !privacyChecked) {
+        showToast("모든 약관에 동의해주세요.", "error");
+        return;
+    }
+    try {
+        if (!window.userSettings) window.userSettings = { ...DEFAULT_USER_SETTINGS };
+        window.userSettings.termsAgreed = true;
+        window.userSettings.termsAgreedAt = new Date().toISOString();
+        const { dbOps } = await import('./db.js');
+        await dbOps.saveSettings(window.userSettings);
+        closeTermsModal();
+        await showProfileSetupModal();
+    } catch (e) {
+        console.error("약관 동의 저장 실패:", e);
+        showToast("약관 동의 저장에 실패했습니다.", "error");
+    }
+}
+
+// 프로필 설정 모달 표시
+export async function showProfileSetupModal() {
+    const modal = document.getElementById('profileSetupModal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        await renderSetupIconSelector();
+        const nicknameInput = document.getElementById('setupNickname');
+        if (nicknameInput) nicknameInput.value = '';
+        window.selectedSetupIcon = '🐻';
+    }
+}
+
+// 프로필 설정 모달 닫기
+export function closeProfileSetupModal() {
+    const modal = document.getElementById('profileSetupModal');
+    if (modal) modal.classList.add('hidden');
+}
+
+// 아이콘 선택 영역 렌더링
+async function renderSetupIconSelector() {
+    const container = document.getElementById('setupIconSelector');
+    if (!container) return;
+    const { DEFAULT_ICONS } = await import('./constants.js');
+    container.innerHTML = DEFAULT_ICONS.map(icon => `
+        <button onclick="window.selectSetupIcon('${icon}')" class="icon-option-setup w-12 h-12 rounded-xl border-2 border-slate-200 flex items-center justify-center text-2xl ${icon === '🐻' ? 'selected border-emerald-500 bg-emerald-50' : ''}" data-icon="${icon}">
+            ${icon}
+        </button>
+    `).join('');
+}
+
+// 프로필 설정 아이콘 선택
+export function selectSetupIcon(icon) {
+    window.selectedSetupIcon = icon;
+    document.querySelectorAll('.icon-option-setup').forEach(el => {
+        if (el.dataset.icon === icon) {
+            el.classList.add('selected', 'border-emerald-500', 'bg-emerald-50');
+            el.classList.remove('border-slate-200');
+        } else {
+            el.classList.remove('selected', 'border-emerald-500', 'bg-emerald-50');
+            el.classList.add('border-slate-200');
+        }
+    });
+}
+
+// 프로필 설정 확인
+export async function confirmProfileSetup() {
+    const nicknameInput = document.getElementById('setupNickname');
+    const nickname = nicknameInput?.value.trim() || '';
+    if (!nickname) {
+        showToast("닉네임을 입력해주세요.", "error");
+        return;
+    }
+    if (nickname.length > 20) {
+        showToast("닉네임은 20자 이하로 입력해주세요.", "error");
+        return;
+    }
+    try {
+        if (!window.userSettings) window.userSettings = { ...DEFAULT_USER_SETTINGS };
+        window.userSettings.profile.nickname = nickname;
+        window.userSettings.profile.icon = window.selectedSetupIcon || '🐻';
+        const { dbOps } = await import('./db.js');
+        await dbOps.saveSettings(window.userSettings);
+        const { updateHeaderUI } = await import('./ui.js');
+        updateHeaderUI();
+        closeProfileSetupModal();
+        const { showOnboardingModal } = await import('./onboarding.js');
+        showOnboardingModal();
+    } catch (e) {
+        console.error("프로필 설정 저장 실패:", e);
+        showToast("프로필 설정 저장에 실패했습니다.", "error");
+    }
+}

@@ -467,7 +467,7 @@ export function renderTimeline() {
                                     <span class="text-xs font-bold text-yellow-600 bg-yellow-50 px-1.5 py-0.5 rounded-md flex items-center gap-0.5"><i class="fa-solid fa-star text-[10px]"></i><span class="text-[11px] font-black">${r.rating || '-'}</span></span>
                                 </div>` : ''}
                             </div>
-                            ${r && r.comment ? `<p class="text-xs text-slate-400 mt-1 mb-0 line-clamp-2 whitespace-pre-line">"${escapeHtml(r.comment).replace(/\n/g, '<br>')}"</p>` : ''}
+                            ${r && r.comment ? `<p class="text-xs text-slate-400 mt-1 mb-0 line-clamp-1 whitespace-pre-line">"${escapeHtml(r.comment).replace(/\n/g, '<br>')}"</p>` : ''}
                             ${tagsHtml}
                         </div>
                     </div>
@@ -1028,7 +1028,7 @@ export function renderGallery() {
         }
         
         return `
-            <div class="mb-4 bg-white border-b border-slate-200 instagram-post" data-post-id="${postId}" data-group-key="${groupKey}">
+            <div class="mb-2 bg-white border-b border-slate-200 instagram-post" data-post-id="${postId}" data-group-key="${groupKey}">
                 <div class="px-6 py-3 flex items-center gap-2 relative">
                     <div class="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center text-lg flex-shrink-0">
                         ${photo.userIcon || '🐻'}
@@ -1358,6 +1358,9 @@ export function renderFeed() {
         // 본인 게시물인지 확인
         const isMyPost = window.currentUser && photo.userId === window.currentUser.uid;
         
+        // 공유 금지 상태 확인 (그룹 내 사진 중 하나라도 금지된 것이 있으면 금지 상태로 표시)
+        const isBanned = photoGroup.some(p => p.banned === true);
+        
         // 일자 정보
         const photoDate = photo.date ? new Date(photo.date + 'T00:00:00') : new Date(photo.timestamp);
         const dateStr = photoDate.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
@@ -1448,15 +1451,23 @@ export function renderFeed() {
         const photosHtml = photoGroup.map((p, idx) => {
             const isBest = p.type === 'best';
             const isDaily = p.type === 'daily';
+            const photoBanned = p.banned === true;
             return `
-            <div class="flex-shrink-0 w-full snap-start">
-                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" class="w-full h-auto object-cover" ${(isBest || isDaily) ? '' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
+            <div class="flex-shrink-0 w-full snap-start relative">
+                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" class="w-full h-auto object-cover ${photoBanned ? 'opacity-50' : ''}" ${(isBest || isDaily) ? '' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
+                ${photoBanned ? `
+                    <div class="absolute inset-0 bg-orange-500/20 flex items-center justify-center">
+                        <div class="bg-orange-600 text-white px-3 py-1.5 rounded-lg">
+                            <i class="fa-solid fa-ban mr-1"></i>공유 금지
+                        </div>
+                    </div>
+                ` : ''}
             </div>
         `;
         }).join('');
         
         return `
-            <div class="mb-4 bg-white border border-slate-100 rounded-2xl overflow-hidden">
+            <div class="mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden">
                 <div class="px-4 py-3 flex items-center gap-2 relative">
                     <div class="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center text-lg flex-shrink-0">
                         ${photo.userIcon || '🐻'}
@@ -1465,6 +1476,7 @@ export function renderFeed() {
                         <div class="text-sm font-bold text-slate-800 truncate">${photo.userNickname || '익명'}</div>
                         <div class="text-xs text-slate-400">${dateStr}</div>
                         ${mealLabel ? `<div class="text-[10px] font-bold ${mealLabelStyle || 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-full whitespace-nowrap">${mealLabel}</div>` : ''}
+                        ${isBanned ? `<div class="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full whitespace-nowrap"><i class="fa-solid fa-ban mr-1"></i>공유 금지</div>` : ''}
                     </div>
                     ${isMyPost ? `
                         <div class="relative">
@@ -1777,10 +1789,106 @@ export function renderTagManager(key, isSub = false, tempSettings) {
 }
 
 // 일간보기 공유용 컴팩트 카드 생성
+// 공지 목록 가져오기
+async function getNotices() {
+    try {
+        const { collection, getDocs, query, orderBy, where } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+        const { db, appId } = await import('./firebase.js');
+        const noticesColl = collection(db, 'artifacts', appId, 'notices');
+        const q = query(noticesColl, orderBy('timestamp', 'desc'));
+        const snapshot = await getDocs(q);
+        
+        return snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+    } catch (e) {
+        console.error("Get notices error:", e);
+        return [];
+    }
+}
+
+// 공지 렌더링
+async function renderNotices() {
+    const noticesContainer = document.getElementById('noticesContainer');
+    if (!noticesContainer) return;
+    
+    try {
+        const notices = await getNotices();
+        const activeNotices = notices.filter(n => n && !n.deleted); // 삭제되지 않은 공지만 표시
+        
+        if (activeNotices.length === 0) {
+            noticesContainer.innerHTML = '';
+            noticesContainer.classList.add('hidden');
+            return;
+        }
+        
+        // 상단 고정 공지와 일반 공지 분리
+        const pinnedNotices = activeNotices.filter(n => n.isPinned);
+        const normalNotices = activeNotices.filter(n => !n.isPinned);
+        const sortedNotices = [...pinnedNotices, ...normalNotices];
+        
+        const noticeTypeLabels = {
+            'important': '중요',
+            'notice': '알림',
+            'light': '가벼운'
+        };
+        
+        const noticeTypeColors = {
+            'important': 'bg-red-100 text-red-700',
+            'notice': 'bg-blue-100 text-blue-700',
+            'light': 'bg-slate-100 text-slate-700'
+        };
+        
+        noticesContainer.innerHTML = sortedNotices.map((notice, index) => {
+            const date = notice.timestamp ? new Date(notice.timestamp) : new Date();
+            const dateStr = date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+            const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+            const bgClass = notice.isPinned ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200';
+            const iconClass = notice.isPinned ? 'text-red-600' : 'text-emerald-600';
+            const noticeContent = notice.content || '';
+            const escapedContent = escapeHtml(noticeContent).replace(/\n/g, ' ');
+            const noticeType = notice.noticeType || 'notice';
+            const typeLabel = noticeTypeLabels[noticeType] || '알림';
+            const typeColor = noticeTypeColors[noticeType] || noticeTypeColors.notice;
+            
+            return `
+                <div class="p-4 ${bgClass} border-2 rounded-xl mb-3">
+                    <div class="flex items-start justify-between mb-2">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 mb-1">
+                                ${notice.isPinned ? `<i class="fa-solid fa-thumbtack ${iconClass} text-xs"></i>` : ''}
+                                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${typeColor} whitespace-nowrap">${typeLabel}</span>
+                                <h3 class="text-sm font-bold text-slate-800 truncate flex-1">${escapeHtml(notice.title || '제목 없음')}</h3>
+                            </div>
+                            <p class="text-xs text-slate-500 line-clamp-2 mb-2">${escapedContent}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between text-[10px] text-slate-400">
+                        <div class="flex items-center gap-3">
+                            <span>관리자</span>
+                            <span>${dateStr} ${timeStr}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        noticesContainer.classList.remove('hidden');
+    } catch (e) {
+        console.error("공지 렌더링 오류:", e);
+        noticesContainer.innerHTML = '';
+        noticesContainer.classList.add('hidden');
+    }
+}
+
 // 게시판 렌더링 함수
-export function renderBoard(category = 'all', sortBy = 'latest') {
+export function renderBoard(category = 'all') {
     const container = document.getElementById('boardContainer');
     if (!container) return;
+    
+    // 공지 먼저 렌더링
+    renderNotices();
     
     container.innerHTML = `
         <div class="flex justify-center items-center py-12">
@@ -1793,7 +1901,7 @@ export function renderBoard(category = 'all', sortBy = 'latest') {
     
     // 게시글 목록 비동기 로드
     if (window.boardOperations) {
-        window.boardOperations.getPosts(category, sortBy, 50).then(posts => {
+        window.boardOperations.getPosts(category, 'latest', 10).then(posts => {
             if (posts.length === 0) {
                 container.innerHTML = `
                     <div class="flex flex-col items-center justify-center py-12 text-center">
@@ -1811,50 +1919,56 @@ export function renderBoard(category = 'all', sortBy = 'latest') {
                 const timeStr = postDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
                 
                 const categoryLabels = {
-                    'general': '일반',
-                    'question': '질문',
-                    'info': '정보',
-                    'restaurant': '맛집'
+                    'serious': '무거운',
+                    'chat': '가벼운',
+                    'food': '먹는',
+                    'admin': '치프에게'
                 };
                 
                 const categoryColors = {
-                    'general': 'bg-slate-100 text-slate-700',
-                    'question': 'bg-blue-100 text-blue-700',
-                    'info': 'bg-emerald-100 text-emerald-700',
-                    'restaurant': 'bg-orange-100 text-orange-700'
+                    'serious': 'bg-slate-100 text-slate-700',
+                    'chat': 'bg-blue-100 text-blue-700',
+                    'food': 'bg-emerald-100 text-emerald-700',
+                    'admin': 'bg-orange-100 text-orange-700'
                 };
                 
-                const score = (post.likes || 0) - (post.dislikes || 0);
+                // "치프에게" 카테고리 특별 처리: 작성자 이외에는 제목/내용 미리보기 숨김
+                const isAuthor = window.currentUser && post.authorId === window.currentUser.uid;
+                const isAdminCategory = post.category === 'admin';
+                const shouldHideContent = isAdminCategory && !isAuthor;
                 
                 return `
-                    <div onclick="window.openBoardDetail('${post.id}')" class="card p-4 border border-slate-200 cursor-pointer active:scale-[0.98] transition-all hover:border-emerald-300">
-                        <div class="flex items-start justify-between mb-2">
+                    <div onclick="window.openBoardDetail('${post.id}')" class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all hover:border-emerald-300 mb-2">
+                        <div class="flex items-start gap-3 mb-3">
                             <div class="flex-1 min-w-0">
-                                <div class="flex items-center gap-2 mb-1">
-                                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${categoryColors[post.category] || categoryColors.general} whitespace-nowrap">${categoryLabels[post.category] || '일반'}</span>
-                                    <h3 class="text-sm font-bold text-slate-800 truncate flex-1">${escapeHtml(post.title)}</h3>
+                                <div class="flex items-center gap-2 mb-2">
+                                    <span class="text-[10px] font-bold px-2.5 py-1 rounded-lg ${categoryColors[post.category] || categoryColors.serious} whitespace-nowrap">${categoryLabels[post.category] || '무거운'}</span>
+                                    ${shouldHideContent ? '<h3 class="text-base font-bold text-slate-400 truncate flex-1 leading-tight">비공개 게시물</h3>' : `<h3 class="text-base font-bold text-slate-800 truncate flex-1 leading-tight">${escapeHtml(post.title)}</h3>`}
                                 </div>
-                                <p class="text-xs text-slate-500 line-clamp-2 mb-2">${escapeHtml(post.content)}</p>
+                                ${shouldHideContent ? '<p class="text-sm text-slate-400 line-clamp-2 mb-3 leading-relaxed">이 게시물은 작성자만 볼 수 있습니다.</p>' : `<p class="text-sm text-slate-600 line-clamp-2 mb-3 leading-relaxed">${escapeHtml(post.content)}</p>`}
                             </div>
                         </div>
-                        <div class="flex items-center justify-between text-[10px] text-slate-400">
-                            <div class="flex items-center gap-3">
-                                <span class="font-bold">${post.anonymousId || '익명'}</span>
-                                <span>${dateStr} ${timeStr}</span>
+                        <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+                            <div class="flex items-center gap-4">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center text-xs font-bold text-emerald-700">${(post.authorNickname || '익명').charAt(0)}</div>
+                                    <span class="text-xs font-bold text-slate-700">${escapeHtml(post.authorNickname || '익명')}</span>
+                                </div>
+                                <span class="text-xs text-slate-400">${dateStr} ${timeStr}</span>
                             </div>
-                            <div class="flex items-center gap-3">
-                                <span class="flex items-center gap-1">
-                                    <i class="fa-solid fa-thumbs-up text-[9px]"></i>
-                                    <span>${post.likes || 0}</span>
-                                </span>
-                                <span class="flex items-center gap-1">
-                                    <i class="fa-solid fa-comment text-[9px]"></i>
-                                    <span>${post.comments || 0}</span>
-                                </span>
-                                <span class="flex items-center gap-1">
-                                    <i class="fa-solid fa-eye text-[9px]"></i>
-                                    <span>${post.views || 0}</span>
-                                </span>
+                            <div class="flex items-center gap-4">
+                                <div class="flex items-center gap-1.5 text-slate-500">
+                                    <i class="fa-solid fa-thumbs-up text-xs"></i>
+                                    <span class="text-xs font-bold">${post.likes || 0}</span>
+                                </div>
+                                <div class="flex items-center gap-1.5 text-slate-500">
+                                    <i class="fa-solid fa-comment text-xs"></i>
+                                    <span class="text-xs font-bold">${post.comments || 0}</span>
+                                </div>
+                                <div class="flex items-center gap-1.5 text-slate-500">
+                                    <i class="fa-solid fa-eye text-xs"></i>
+                                    <span class="text-xs font-bold">${post.views || 0}</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1904,18 +2018,32 @@ export async function renderBoardDetail(postId) {
         const timeStr = postDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
         
         const categoryLabels = {
-            'general': '일반',
-            'question': '질문',
-            'info': '정보',
-            'restaurant': '맛집'
+            'serious': '무거운',
+            'chat': '가벼운',
+            'food': '먹는',
+            'admin': '치프에게'
         };
         
         const categoryColors = {
-            'general': 'bg-slate-100 text-slate-700',
-            'question': 'bg-blue-100 text-blue-700',
-            'info': 'bg-emerald-100 text-emerald-700',
-            'restaurant': 'bg-orange-100 text-orange-700'
+            'serious': 'bg-slate-100 text-slate-700',
+            'chat': 'bg-blue-100 text-blue-700',
+            'food': 'bg-emerald-100 text-emerald-700',
+            'admin': 'bg-orange-100 text-orange-700'
         };
+        
+        // "치프에게" 카테고리 특별 처리: 작성자 이외에는 접근 불가
+        const isAuthor = window.currentUser && post.authorId === window.currentUser.uid;
+        const isAdminCategory = post.category === 'admin';
+        
+        if (isAdminCategory && !isAuthor) {
+            container.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-12 text-center">
+                    <i class="fa-solid fa-lock text-4xl text-slate-300 mb-3"></i>
+                    <p class="text-sm font-bold text-slate-400">이 게시물은 작성자만 볼 수 있습니다</p>
+                </div>
+            `;
+            return;
+        }
         
         // 사용자의 반응 확인과 댓글 목록을 병렬로 가져오기
         const [userReaction, comments] = await Promise.all([
@@ -1923,31 +2051,35 @@ export async function renderBoardDetail(postId) {
             window.boardOperations.getComments(postId)
         ]);
         
-        const isAuthor = window.currentUser && post.authorId === window.currentUser.uid;
-        
         container.innerHTML = `
             <div class="space-y-4">
                 <!-- 게시글 헤더 -->
                 <div class="border-b border-slate-200 pb-4">
                     <div class="flex items-center gap-2 mb-2">
-                        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${categoryColors[post.category] || categoryColors.general}">${categoryLabels[post.category] || '일반'}</span>
+                        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${categoryColors[post.category] || categoryColors.serious}">${categoryLabels[post.category] || '무거운'}</span>
                         ${isAuthor ? '<span class="text-[10px] text-emerald-600 font-bold">내 글</span>' : ''}
                     </div>
-                    <h2 class="text-lg font-black text-slate-800 mb-3">${escapeHtml(post.title)}</h2>
-                    <div class="flex items-center justify-between text-xs text-slate-500">
-                        <div class="flex items-center gap-2">
-                            <span class="font-bold">${post.anonymousId || '익명'}</span>
-                            <span>${dateStr} ${timeStr}</span>
-                        </div>
+                    <h2 class="text-xl font-black text-slate-800 mb-4">${escapeHtml(post.title)}</h2>
+                    <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
-                            <span><i class="fa-solid fa-eye text-[10px] mr-1"></i>${post.views || 0}</span>
+                            <div class="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center text-sm font-bold text-emerald-700">${(post.authorNickname || '익명').charAt(0)}</div>
+                            <div>
+                                <div class="text-sm font-bold text-slate-800">${escapeHtml(post.authorNickname || '익명')}</div>
+                                <div class="text-xs text-slate-400">${dateStr} ${timeStr}</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-4 text-xs text-slate-400">
+                            <span class="flex items-center gap-1">
+                                <i class="fa-solid fa-eye"></i>
+                                <span>${post.views || 0}</span>
+                            </span>
                         </div>
                     </div>
                 </div>
                 
                 <!-- 게시글 내용 -->
-                <div class="prose prose-sm max-w-none">
-                    <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(post.content).replace(/\n/g, '<br>')}</div>
+                <div class="bg-white rounded-2xl p-6 mb-4 border border-slate-200">
+                    <div class="text-base text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(post.content).replace(/\n/g, '<br>')}</div>
                 </div>
                 
                 <!-- 추천/비추천 버튼 -->
@@ -1963,9 +2095,14 @@ export async function renderBoardDetail(postId) {
                         <span class="text-xs">${post.dislikes || 0}</span>
                     </button>
                     ${isAuthor ? `
-                        <button onclick="window.deleteBoardPost('${postId}')" class="ml-auto px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-bold active:scale-95 transition-all">
-                            <i class="fa-solid fa-trash text-xs mr-1"></i>삭제
-                        </button>
+                        <div class="ml-auto flex gap-2">
+                            <button onclick="window.editBoardPost('${postId}')" class="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-lg text-sm font-bold active:scale-95 transition-all">
+                                <i class="fa-solid fa-pencil text-xs mr-1"></i>수정
+                            </button>
+                            <button onclick="window.deleteBoardPost('${postId}')" class="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-bold active:scale-95 transition-all">
+                                <i class="fa-solid fa-trash text-xs mr-1"></i>삭제
+                            </button>
+                        </div>
                     ` : ''}
                 </div>
                 
@@ -1979,20 +2116,26 @@ export async function renderBoardDetail(postId) {
                             const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
                             const isCommentAuthor = window.currentUser && comment.authorId === window.currentUser.uid;
                             
+                            // 댓글 작성자 닉네임 (저장된 닉네임 사용)
+                            const commentAuthorNickname = comment.authorNickname || comment.anonymousId || '익명';
+                            
                             return `
-                                <div class="p-3 bg-slate-50 rounded-xl" data-comment-id="${comment.id}">
+                                <div class="bg-white border border-slate-200 rounded-xl p-4 mb-3" data-comment-id="${comment.id}">
                                     <div class="flex items-center justify-between mb-2">
                                         <div class="flex items-center gap-2">
-                                            <span class="text-xs font-bold text-slate-700">${comment.anonymousId || '익명'}</span>
-                                            <span class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</span>
+                                            <div class="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold text-slate-600">${commentAuthorNickname.charAt(0)}</div>
+                                            <div>
+                                                <div class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</div>
+                                                <div class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</div>
+                                            </div>
                                         </div>
                                         ${isCommentAuthor ? `
-                                            <button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="text-[10px] text-red-500 font-bold active:opacity-70">
+                                            <button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="text-xs text-red-500 font-bold px-2 py-1 rounded-lg hover:bg-red-50 active:opacity-70 transition-colors">
                                                 삭제
                                             </button>
                                         ` : ''}
                                     </div>
-                                    <p class="text-sm text-slate-700 whitespace-pre-wrap">${escapeHtml(comment.content)}</p>
+                                    <p class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed pl-8">${escapeHtml(comment.content)}</p>
                                 </div>
                             `;
                         }).join('') : '<p class="text-sm text-slate-400 text-center py-4">댓글이 없습니다. 첫 번째 댓글을 작성해보세요!</p>'}

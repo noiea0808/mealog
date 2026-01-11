@@ -48,7 +48,12 @@ export const DEFAULT_USER_SETTINGS = {
         category: {}, // { '한식': ['김치찌개', '된장찌개', ...], '양식': [...], ... }
         withWhom: {}, // { '가족': ['엄마', '아빠', ...], '친구': [...], ... }
         snackType: {} // { '커피': ['아메리카노', '라떼', ...], '베이커리': [...], ... }
-    }
+    },
+    // 약관 동의 및 첫 로그인 관련
+    termsAgreed: false,
+    termsAgreedAt: null,
+    isFirstLogin: true,
+    onboardingCompleted: false
 };
 
 export const DEFAULT_SUB_TAGS = {
