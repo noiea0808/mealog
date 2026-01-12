@@ -990,10 +990,13 @@ export function openSettings() {
         };
     }
     
-    // 자주 사용하는 태그 편집 UI 렌더링
-    renderFavoriteTagsEditor();
-    
-    const accountSection = document.getElementById('accountSection');
+        // 자주 사용하는 태그 편집 UI 렌더링
+        renderFavoriteTagsEditor();
+        
+        // 버전 정보 로드 및 표시
+        loadVersionInfo();
+        
+        const accountSection = document.getElementById('accountSection');
     if (accountSection) {
         let accountHtml = '';
         if (window.currentUser.isAnonymous) {
@@ -1051,6 +1054,50 @@ export function openSettings() {
     }
     
     document.getElementById('settingsPage').classList.remove('hidden');
+}
+
+// 버전 정보 로드 함수
+async function loadVersionInfo() {
+    try {
+        const response = await fetch('/version.json?t=' + Date.now());
+        if (response.ok) {
+            const data = await response.json();
+            const versionNumberEl = document.getElementById('versionNumber');
+            const buildDateEl = document.getElementById('buildDate');
+            
+            if (versionNumberEl && data.version) {
+                versionNumberEl.textContent = data.version;
+            }
+            
+            if (buildDateEl && data.buildDate) {
+                const buildDate = new Date(data.buildDate);
+                const now = new Date();
+                const diffTime = now - buildDate;
+                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                
+                let dateText = '';
+                if (diffDays === 0) {
+                    dateText = '오늘';
+                } else if (diffDays === 1) {
+                    dateText = '어제';
+                } else if (diffDays < 7) {
+                    dateText = `${diffDays}일 전`;
+                } else {
+                    dateText = buildDate.toLocaleDateString('ko-KR', { 
+                        year: 'numeric', 
+                        month: 'short', 
+                        day: 'numeric' 
+                    });
+                }
+                
+                buildDateEl.textContent = dateText;
+                buildDateEl.title = buildDate.toLocaleString('ko-KR');
+            }
+        }
+    } catch (e) {
+        console.debug('버전 정보 로드 실패 (무시):', e);
+        // 버전 정보는 선택적이므로 실패해도 계속 진행
+    }
 }
 
 export function closeSettings() {
