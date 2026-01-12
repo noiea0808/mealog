@@ -9,7 +9,7 @@ import {
     copyDomain, closeDomainModal, switchToLogin, showTermsModal, cancelTermsAgreement, confirmTermsAgreement,
     showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup
 } from './auth.js';
-import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail } from './render.js';
+import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail } from './render/index.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment } from './analytics.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
@@ -19,6 +19,7 @@ import {
 } from './modals.js';
 import { DEFAULT_SUB_TAGS } from './constants.js';
 import { onboardingPrev, onboardingNext, onboardingSkip } from './onboarding.js';
+import { normalizeUrl } from './utils.js';
 
 // 전역 객체에 함수들 할당 (HTML에서 접근 가능하도록)
 window.dbOps = dbOps;
@@ -783,6 +784,10 @@ initAuth(async (user) => {
         }
         appState.sharedPhotosUnsubscribe = setupSharedPhotosListener((sharedPhotos) => {
             window.sharedPhotos = sharedPhotos;
+            // 타임라인, 갤러리 모두 업데이트 (같은 데이터 소스를 사용하므로)
+            if (appState.currentTab === 'timeline') {
+                renderTimeline();
+            }
             if (appState.currentTab === 'gallery') {
                 renderGallery();
             }
@@ -1100,8 +1105,7 @@ window.deleteFeedPost = async (entryId, photoUrls, isBestShare = false) => {
         if (photoUrlArray.length > 0) {
             const validEntryId = (entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined') ? entryId : null;
             
-            // photoUrl 정규화 (쿼리 파라미터 제거하여 비교)
-            const normalizeUrl = (url) => (url || '').split('?')[0];
+            // photoUrl 정규화 (쿼리 파라미터 제거하여 비교) - utils.js의 normalizeUrl 사용
             const normalizedPhotoUrls = photoUrlArray.map(normalizeUrl);
             
             await dbOps.unsharePhotos(photoUrlArray, validEntryId, isBestShare);

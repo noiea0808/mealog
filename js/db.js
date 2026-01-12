@@ -22,11 +22,13 @@ export const dbOps = {
                 if (!silent) {
                     showToast("기록이 수정되었습니다.", 'success');
                 }
+                return docId; // 기존 ID 반환
             } else {
-                await addDoc(coll, dataToSave);
+                const docRef = await addDoc(coll, dataToSave);
                 if (!silent) {
                     showToast("식사가 기록되었습니다.", 'success');
                 }
+                return docRef.id; // 새로 생성된 ID 반환
             }
         } catch (e) {
             console.error("Save Error:", e);
@@ -124,8 +126,8 @@ export const dbOps = {
         return window.userSettings.dailyComments[date] || '';
     },
     
-    async sharePhotos(photos, mealData) {
-        if (!window.currentUser || !photos || photos.length === 0) return;
+    async sharePhotos(photosToShare, mealData) {
+        if (!window.currentUser) return;
         
         // 공유 금지 체크
         if (mealData && mealData.shareBanned === true) {
@@ -133,84 +135,91 @@ export const dbOps = {
             throw new Error("공유 금지된 게시물입니다.");
         }
         
+        // photosToShare가 빈 배열이면 공유 해제 (기존 문서만 삭제)
+        // photosToShare가 있으면 공유 설정 (기존 문서 삭제 + 새 문서 추가)
+        
         try {
             const userProfile = window.userSettings.profile || {};
-            
-            // 중복 체크: 같은 entryId와 photoUrl 조합이 이미 있는지 확인
             const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+            const batch = writeBatch(db);
             
-            // entryId가 null인 경우 쿼리 방식 변경 (Firestore에서 null 비교는 인덱스 필요)
-            let allExistingDocs = [];
+            // entryId가 있는 경우: 같은 entryId의 기존 문서를 모두 삭제
             if (mealData.id) {
-                // entryId가 있는 경우: entryId로 필터링
-                const existingQuery = query(
-                    sharedColl,
-                    where('userId', '==', window.currentUser.uid),
-                    where('entryId', '==', mealData.id)
-                );
-                const existingSnapshot = await getDocs(existingQuery);
-                allExistingDocs = existingSnapshot.docs;
+                try {
+                    const existingQuery = query(
+                        sharedColl,
+                        where('userId', '==', window.currentUser.uid),
+                        where('entryId', '==', mealData.id)
+                    );
+                    const existingSnapshot = await getDocs(existingQuery);
+                    existingSnapshot.docs.forEach(docSnap => {
+                        batch.delete(docSnap.ref);
+                    });
+                    if (existingSnapshot.docs.length > 0) {
+                        console.log(`기존 ${existingSnapshot.docs.length}개 문서 삭제 (entryId: ${mealData.id})`);
+                    }
+                } catch (e) {
+                    console.warn('기존 문서 삭제 중 오류 (무시하고 계속 진행):', e);
+                }
             } else {
-                // entryId가 null인 경우: userId로만 필터링 후 메모리에서 entryId null인 것만 필터링
+                // entryId가 null인 경우: userId로만 필터링 후 메모리에서 entryId null인 것만 삭제
                 try {
                     const existingQuery = query(
                         sharedColl,
                         where('userId', '==', window.currentUser.uid)
                     );
                     const allUserPhotos = await getDocs(existingQuery);
-                    // entryId가 null이거나 없는 항목만 필터링
-                    allExistingDocs = allUserPhotos.docs.filter(doc => {
-                        const data = doc.data();
+                    const docsToDelete = allUserPhotos.docs.filter(docSnap => {
+                        const data = docSnap.data();
                         return !data.entryId || data.entryId === null;
                     });
+                    docsToDelete.forEach(docSnap => {
+                        batch.delete(docSnap.ref);
+                    });
+                    if (docsToDelete.length > 0) {
+                        console.log(`기존 ${docsToDelete.length}개 문서 삭제 (entryId: null)`);
+                    }
                 } catch (e) {
-                    console.warn('entryId null인 사진 중복 체크 중 오류 (무시하고 계속 진행):', e);
-                    allExistingDocs = [];
+                    console.warn('entryId null인 기존 문서 삭제 중 오류 (무시하고 계속 진행):', e);
                 }
             }
             
-            const existingPhotoUrls = new Set();
-            allExistingDocs.forEach((docSnap) => {
-                const data = docSnap.data();
-                // URL에서 쿼리 파라미터 제거하여 비교
-                const urlBase = (data.photoUrl || '').split('?')[0];
-                existingPhotoUrls.add(urlBase);
-            });
-            
-            // 중복이 아닌 사진만 필터링
-            const newPhotos = photos.filter(photoUrl => {
-                const urlBase = (photoUrl || '').split('?')[0];
-                return !existingPhotoUrls.has(urlBase);
-            });
-            
-            if (newPhotos.length === 0) {
-                return;
+            // 새로운 사진들을 추가 (photosToShare가 빈 배열이면 추가 안 함 = 공유 해제)
+            if (photosToShare && photosToShare.length > 0) {
+                photosToShare.forEach(photoUrl => {
+                    const docRef = doc(sharedColl);
+                    batch.set(docRef, {
+                        photoUrl,
+                        userId: window.currentUser.uid,
+                        userNickname: userProfile.nickname || '익명',
+                        userIcon: userProfile.icon || '🐻',
+                        mealType: mealData.mealType || '',
+                        place: mealData.place || '',
+                        menuDetail: mealData.menuDetail || '',
+                        snackType: mealData.snackType || '',
+                        date: mealData.date || '',
+                        slotId: mealData.slotId || '',
+                        time: mealData.time || new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+                        timestamp: new Date().toISOString(),
+                        entryId: mealData.id || null
+                    });
+                });
             }
             
-            const sharedPhotos = newPhotos.map((photoUrl, idx) => ({
-                photoUrl,
-                userId: window.currentUser.uid,
-                userNickname: userProfile.nickname || '익명',
-                userIcon: userProfile.icon || '🐻',
-                mealType: mealData.mealType || '',
-                place: mealData.place || '',
-                menuDetail: mealData.menuDetail || '',
-                snackType: mealData.snackType || '',
-                date: mealData.date || '',
-                slotId: mealData.slotId || '',
-                time: mealData.time || new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }),
-                timestamp: new Date().toISOString(),
-                entryId: mealData.id || null
-            }));
-            
-            // 배치 쓰기 사용: 여러 사진을 한 번에 쓰기 (1번으로 카운트)
-            // Firestore 배치는 최대 500개 작업을 한 번에 처리 가능
-            const batch = writeBatch(db);
-            sharedPhotos.forEach(sharedPhoto => {
-                const docRef = doc(sharedColl);
-                batch.set(docRef, sharedPhoto);
-            });
             await batch.commit();
+            
+            // record.sharedPhotos 필드 업데이트 (mealData.id가 있는 경우에만)
+            if (mealData.id) {
+                try {
+                    const mealDoc = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals', mealData.id);
+                    await setDoc(mealDoc, { sharedPhotos: photosToShare || [] }, { merge: true });
+                } catch (e) {
+                    console.warn('record.sharedPhotos 필드 업데이트 실패 (무시하고 계속 진행):', e);
+                }
+            }
+            
+            const action = photosToShare && photosToShare.length > 0 ? '공유' : '공유 해제';
+            console.log(`${action} 완료 (entryId: ${mealData.id || 'null'}, 사진 수: ${photosToShare?.length || 0})`);
         } catch (e) {
             console.error("Share Photos Error:", e);
             // 에러 토스트는 호출자에서 표시하도록 하고, 여기서는 throw만 함

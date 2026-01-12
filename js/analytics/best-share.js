@@ -4,7 +4,7 @@ import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { dbOps } from '../db.js';
 import { getWeekRange, getCurrentWeekInMonth, getWeeksInMonth, getDayName } from './date-utils.js';
-import { renderGallery } from '../render.js';
+import { renderGallery } from '../render/index.js';
 
 // HTML 이스케이프 함수 (XSS 방지)
 function escapeHtml(text) {

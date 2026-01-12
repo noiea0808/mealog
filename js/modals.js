@@ -1,11 +1,11 @@
 // 모달 및 입력 처리 관련 함수들
 import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS } from './constants.js';
 import { appState } from './state.js';
-import { setVal, compressImage, getInputIdFromContainer } from './utils.js';
-import { renderEntryChips, renderPhotoPreviews, renderTagManager } from './render.js';
+import { setVal, compressImage, getInputIdFromContainer, normalizeUrl } from './utils.js';
+import { renderEntryChips, renderPhotoPreviews, renderTagManager } from './render/index.js';
 import { dbOps } from './db.js';
 import { showToast } from './ui.js';
-import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed } from './render.js';
+import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed } from './render/index.js';
 import { getDashboardData } from './analytics.js';
 
 // 설정 저장 디바운싱을 위한 타이머
@@ -502,95 +502,20 @@ export async function saveEntry() {
         }
         
         if (loadingOverlay) loadingOverlay.classList.remove('hidden');
-        // 삭제된 사진 찾기: 원래 공유되었던 사진 중 현재 currentPhotos에 없는 사진들
-        // URL 비교 시 쿼리 파라미터 무시
-        const normalizeUrl = (url) => (url || '').split('?')[0];
-        const deletedPhotos = state.originalSharedPhotos.filter(originalPhoto => {
-            const normalizedOriginal = normalizeUrl(originalPhoto);
-            return !state.currentPhotos.some(currentPhoto => 
-                normalizeUrl(currentPhoto) === normalizedOriginal
-            );
-        });
-        
-        // 삭제된 사진이 있고, 기록이 이미 존재하는 경우 피드에서 삭제
-        if (deletedPhotos.length > 0 && record.id) {
-            try {
-                console.log('삭제된 사진 피드에서 제거:', deletedPhotos, 'entryId:', record.id);
-                await dbOps.unsharePhotos(deletedPhotos, record.id);
-                // 삭제된 사진을 sharedPhotos에서도 제거 (URL 정규화하여 비교)
-                state.sharedPhotos = state.sharedPhotos.filter(p => {
-                    const normalizedP = normalizeUrl(p);
-                    return !deletedPhotos.some(dp => normalizeUrl(dp) === normalizedP);
-                });
-                console.log('삭제 후 sharedPhotos:', state.sharedPhotos);
-            } catch (e) {
-                console.error("삭제된 사진 피드 제거 실패:", e);
-                // 실패해도 계속 진행
-            }
-        }
-        
-        // sharedPhotos 필드 추가 (현재 공유된 사진 목록 저장)
-        // 삭제된 사진을 제거한 후의 최종 목록으로 업데이트
-        record.sharedPhotos = state.sharedPhotos || [];
         
         // 공유 금지 체크
         const isShareBanned = record.id ? (window.mealHistory.find(m => m.id === record.id)?.shareBanned === true) : false;
-        if (isShareBanned && state.wantsToShare) {
-            showToast("이 게시물은 공유가 금지되어 있습니다.", 'error');
-            state.wantsToShare = false;
-            record.sharedPhotos = [];
-        }
         
-        // 공유 상태에 따라 처리
-        if (state.wantsToShare && state.currentPhotos.length > 0 && !isShareBanned) {
-            // 공유를 원하는 경우: 새로 공유할 사진 찾기 (URL 정규화하여 비교)
-            const newPhotosToShare = state.currentPhotos.filter(photo => {
-                const normalizedPhoto = normalizeUrl(photo);
-                return !state.sharedPhotos.some(sharedPhoto => 
-                    normalizeUrl(sharedPhoto) === normalizedPhoto
-                );
-            });
-            
-            if (newPhotosToShare.length > 0) {
-                try {
-                    await dbOps.sharePhotos(newPhotosToShare, record);
-                    // 공유 성공: 공유된 사진 목록 업데이트
-                    state.sharedPhotos = [...state.sharedPhotos, ...newPhotosToShare];
-                    record.sharedPhotos = state.sharedPhotos;
-                    console.log('사진 공유 성공:', {
-                        새로공유: newPhotosToShare.length,
-                        전체공유: state.sharedPhotos.length,
-                        recordSharedPhotos: record.sharedPhotos.length
-                    });
-                } catch (e) {
-                    console.error("사진 공유 실패:", e);
-                    // 사진 공유 실패 시에도 에러 토스트는 표시하지 않음 (이미 db.js나 다른 곳에서 표시했을 수 있음)
-                    // 현재 상태는 유지하고 계속 진행
-                    // (이미 state.currentPhotos에는 사진이 있으므로 다음에 다시 시도 가능)
-                    record.sharedPhotos = state.sharedPhotos || [];
-                }
-            } else {
-                // 이미 모두 공유된 경우: 현재 공유 상태 유지
-                record.sharedPhotos = state.sharedPhotos || [];
-            }
-        } else if (!state.wantsToShare && state.sharedPhotos.length > 0 && record.id) {
-            // 공유 해제한 경우: 피드에서 해당 사진들 삭제
-            try {
-                await dbOps.unsharePhotos(state.sharedPhotos, record.id);
-                // 공유된 사진 목록 초기화
-                state.sharedPhotos = [];
-                record.sharedPhotos = [];
-            } catch (e) {
-                console.error("사진 공유 해제 실패:", e);
-                // 공유 해제 실패 시 현재 상태 유지
-                record.sharedPhotos = state.sharedPhotos || [];
-                // dbOps.unsharePhotos에서 이미 에러 토스트를 표시함
-                // 공유 해제 실패해도 기록 저장은 성공했으므로 계속 진행
-            }
-        } else {
-            // 공유를 원하지 않는 경우: 현재 공유 상태 유지
-            record.sharedPhotos = state.sharedPhotos || [];
-        }
+        // 공유할 사진 목록 결정 (단순화: wantsToShare와 currentPhotos만 사용)
+        const photosToShare = (!isShareBanned && state.wantsToShare && state.currentPhotos.length > 0)
+            ? [...state.currentPhotos]  // 공유 활성화: 현재 사진 전체
+            : [];                        // 공유 비활성화 또는 금지: 빈 배열
+        
+        // record에 sharedPhotos 필드 추가
+        record.sharedPhotos = photosToShare;
+        
+        // 공유 관련 정보를 미리 저장 (상태 초기화 전에)
+        const currentPhotos = [...state.currentPhotos];
         
         console.log('저장 시작:', record);
         
@@ -618,9 +543,31 @@ export async function saveEntry() {
         state.wantsToShare = false;
         
         // 저장 실행 (모달과 로딩 오버레이가 이미 닫힌 상태에서)
+        // 새 레코드인 경우 ID를 먼저 확보해야 공유 시 entryId를 올바르게 설정할 수 있음
         try {
-            await dbOps.save(record);
+            const savedId = await dbOps.save(record);
+            // 새 레코드인 경우 생성된 ID를 record에 설정
+            if (!record.id && savedId) {
+                record.id = savedId;
+                console.log('새 레코드 ID 확보:', savedId);
+            }
             console.log('저장 완료');
+            
+            // 공유 처리 (ID 확보 후 실행)
+            // sharePhotos 함수가 기존 문서 삭제 + 새 문서 추가 + record.sharedPhotos 필드 업데이트를 모두 처리
+            if (record.id) {
+                try {
+                    await dbOps.sharePhotos(photosToShare, record);
+                    console.log('공유 처리 완료:', {
+                        공유사진수: photosToShare.length,
+                        recordId: record.id
+                    });
+                } catch (e) {
+                    console.error("공유 처리 실패:", e);
+                    showToast("사진 공유 처리 중 오류가 발생했습니다.", 'error');
+                    // 공유 실패 시에도 기록은 이미 저장되었으므로 계속 진행
+                }
+            }
         } catch (saveError) {
             console.error('dbOps.save 오류:', saveError);
             // dbOps.save()에서 이미 에러 토스트를 표시하므로 여기서는 추가 처리 불필요
@@ -948,10 +895,6 @@ export function removePhoto(idx) {
     const state = appState;
     const removedPhoto = state.currentPhotos[idx];
     state.currentPhotos.splice(idx, 1);
-    // 공유된 사진 목록에서도 제거
-    if (state.sharedPhotos && state.sharedPhotos.includes(removedPhoto)) {
-        state.sharedPhotos = state.sharedPhotos.filter(p => p !== removedPhoto);
-    }
     renderPhotoPreviews();
     updateShareIndicator();
 }
@@ -972,8 +915,8 @@ export function updateShareIndicator() {
             shareIndicator.classList.add('bg-red-50', 'border-red-300', 'text-red-400', 'cursor-not-allowed');
             shareIndicator.classList.remove('bg-emerald-100', 'border-emerald-300', 'bg-slate-50', 'border-slate-200', 'text-emerald-600', 'text-slate-400');
             shareIndicator.title = '공유가 금지된 게시물입니다';
-        } else if (state.sharedPhotos.length > 0 || state.wantsToShare) {
-            // 공유된 사진이 있거나 공유를 원하는 경우 활성화 스타일
+        } else if (state.wantsToShare) {
+            // 공유를 원하는 경우 활성화 스타일
             shareIndicator.classList.remove('hidden');
             shareIndicator.classList.add('bg-emerald-100', 'border-emerald-300', 'text-emerald-600');
             shareIndicator.classList.remove('bg-slate-50', 'border-slate-200', 'bg-red-50', 'border-red-300', 'text-slate-400', 'text-red-400', 'cursor-not-allowed');
@@ -997,6 +940,13 @@ export function toggleSharePhoto() {
     
     if (state.currentPhotos.length === 0) {
         showToast("공유할 사진이 없습니다.", 'error');
+        return;
+    }
+    
+    // 공유 금지 체크
+    const isShareBanned = state.currentEditingId ? (window.mealHistory.find(m => m.id === state.currentEditingId)?.shareBanned === true) : false;
+    if (isShareBanned) {
+        showToast("공유가 금지된 게시물입니다.", 'error');
         return;
     }
     

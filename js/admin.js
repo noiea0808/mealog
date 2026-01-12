@@ -1023,7 +1023,9 @@ window.refreshUsers = function() {
     renderUsers();
 }
 
-// 공지 렌더링 (기본 구현)
+// 공지 렌더링
+let currentEditingNoticeId = null;
+
 async function renderNotices() {
     const container = document.getElementById('noticesContainer');
     if (!container) return;
@@ -1041,15 +1043,23 @@ async function renderNotices() {
             const notice = doc.data();
             const date = notice.timestamp ? new Date(notice.timestamp).toLocaleDateString('ko-KR') : '-';
             return `
-                <div class="border border-slate-200 rounded-xl p-4">
+                <div class="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow">
                     <div class="flex items-start justify-between">
                         <div class="flex-1">
                             <div class="flex items-center gap-2 mb-2">
                                 <h3 class="font-bold text-slate-800">${escapeHtml(notice.title || '')}</h3>
                                 ${notice.isPinned ? '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">고정</span>' : ''}
                             </div>
-                            <p class="text-sm text-slate-600">${escapeHtml(notice.content || '')}</p>
+                            <p class="text-sm text-slate-600 whitespace-pre-wrap">${escapeHtml(notice.content || '')}</p>
                             <div class="text-xs text-slate-400 mt-2">${date}</div>
+                        </div>
+                        <div class="flex gap-2 ml-4">
+                            <button onclick="window.editNotice('${doc.id}')" class="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors">
+                                <i class="fa-solid fa-pencil mr-1"></i>수정
+                            </button>
+                            <button onclick="window.deleteNotice('${doc.id}')" class="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 transition-colors">
+                                <i class="fa-solid fa-trash mr-1"></i>삭제
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1060,6 +1070,143 @@ async function renderNotices() {
         container.innerHTML = '<div class="text-center py-8 text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>공지를 불러오는 중 오류가 발생했습니다.</p></div>';
     }
 }
+
+// 공지 작성 모달 열기
+window.openNoticeWriteModal = function(noticeId = null) {
+    currentEditingNoticeId = noticeId;
+    const modal = document.getElementById('noticeModal');
+    const titleEl = document.getElementById('noticeModalTitle');
+    const submitBtn = document.getElementById('noticeSubmitBtn');
+    const titleInput = document.getElementById('noticeTitle');
+    const contentInput = document.getElementById('noticeContent');
+    const typeSelect = document.getElementById('noticeType');
+    const pinnedCheckbox = document.getElementById('noticeIsPinned');
+    
+    if (!modal) return;
+    
+    // 초기화
+    if (titleInput) titleInput.value = '';
+    if (contentInput) contentInput.value = '';
+    if (typeSelect) typeSelect.value = 'important';
+    if (pinnedCheckbox) pinnedCheckbox.checked = false;
+    
+    // 수정 모드인 경우
+    if (noticeId) {
+        if (titleEl) titleEl.textContent = '공지 수정';
+        if (submitBtn) submitBtn.textContent = '수정';
+        
+        // 공지 데이터 로드
+        const noticeDoc = doc(db, 'artifacts', appId, 'notices', noticeId);
+        getDoc(noticeDoc).then(snap => {
+            if (snap.exists()) {
+                const noticeData = snap.data();
+                if (titleInput) titleInput.value = noticeData.title || '';
+                if (contentInput) contentInput.value = noticeData.content || '';
+                if (typeSelect) typeSelect.value = noticeData.type || 'important';
+                if (pinnedCheckbox) pinnedCheckbox.checked = noticeData.isPinned === true;
+            }
+        }).catch(e => {
+            console.error("공지 로드 실패:", e);
+            alert("공지를 불러오는 중 오류가 발생했습니다.");
+        });
+    } else {
+        if (titleEl) titleEl.textContent = '공지 작성';
+        if (submitBtn) submitBtn.textContent = '등록';
+    }
+    
+    modal.classList.remove('hidden');
+};
+
+// 공지 작성 모달 닫기
+window.closeNoticeModal = function() {
+    const modal = document.getElementById('noticeModal');
+    if (modal) modal.classList.add('hidden');
+    currentEditingNoticeId = null;
+};
+
+// 공지 제출 (작성/수정)
+window.submitNotice = async function() {
+    const titleInput = document.getElementById('noticeTitle');
+    const contentInput = document.getElementById('noticeContent');
+    const typeSelect = document.getElementById('noticeType');
+    const pinnedCheckbox = document.getElementById('noticeIsPinned');
+    const submitBtn = document.getElementById('noticeSubmitBtn');
+    
+    if (!titleInput || !contentInput) return;
+    
+    const title = titleInput.value.trim();
+    const content = contentInput.value.trim();
+    const type = typeSelect ? typeSelect.value : 'important';
+    const isPinned = pinnedCheckbox ? pinnedCheckbox.checked : false;
+    
+    if (!title) {
+        alert('제목을 입력해주세요.');
+        return;
+    }
+    
+    if (!content) {
+        alert('내용을 입력해주세요.');
+        return;
+    }
+    
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>처리 중...';
+    }
+    
+    try {
+        const noticeData = {
+            title: title,
+            content: content,
+            type: type,
+            isPinned: isPinned,
+            timestamp: new Date().toISOString()
+        };
+        
+        if (currentEditingNoticeId) {
+            // 수정
+            const noticeDoc = doc(db, 'artifacts', appId, 'notices', currentEditingNoticeId);
+            await setDoc(noticeDoc, noticeData, { merge: true });
+            alert('공지가 수정되었습니다.');
+        } else {
+            // 작성
+            const noticesColl = collection(db, 'artifacts', appId, 'notices');
+            await addDoc(noticesColl, noticeData);
+            alert('공지가 등록되었습니다.');
+        }
+        
+        window.closeNoticeModal();
+        await renderNotices();
+    } catch (e) {
+        console.error("공지 저장 실패:", e);
+        alert("공지 저장 중 오류가 발생했습니다: " + e.message);
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = currentEditingNoticeId ? '수정' : '등록';
+        }
+    }
+};
+
+// 공지 수정
+window.editNotice = function(noticeId) {
+    window.openNoticeWriteModal(noticeId);
+};
+
+// 공지 삭제
+window.deleteNotice = async function(noticeId) {
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    
+    try {
+        const noticeDoc = doc(db, 'artifacts', appId, 'notices', noticeId);
+        await deleteDoc(noticeDoc);
+        alert('공지가 삭제되었습니다.');
+        await renderNotices();
+    } catch (e) {
+        console.error("공지 삭제 실패:", e);
+        alert("공지 삭제 중 오류가 발생했습니다: " + e.message);
+    }
+};
 
 // 게시판 게시물 렌더링 (기본 구현)
 let currentAdminBoardCategory = 'all';
@@ -1228,6 +1375,40 @@ async function renderFeedManagement() {
             console.warn('⚠️ sharedPhotos 컬렉션 조회 실패:', e);
         }
         
+        // 데이터 불일치 항목 자동 동기화
+        const mismatchedMeals = allMeals.filter(meal => {
+            const hasLocalSharedPhotos = meal.sharedPhotos && Array.isArray(meal.sharedPhotos) && meal.sharedPhotos.length > 0;
+            const isShared = sharedPhotosMap.has(meal.id);
+            return hasLocalSharedPhotos && !isShared;
+        });
+        
+        if (mismatchedMeals.length > 0) {
+            console.log(`🔄 ${mismatchedMeals.length}개의 데이터 불일치 항목 발견, 자동 동기화 시작...`);
+            try {
+                // 병렬로 자동 동기화 실행 (최대 성능을 위해)
+                const syncPromises = mismatchedMeals.map(meal => 
+                    autoSyncSharedPhotos(meal.id, meal.userId).catch(e => {
+                        console.error(`자동 동기화 실패 (${meal.id}):`, e);
+                        return false;
+                    })
+                );
+                
+                const results = await Promise.all(syncPromises);
+                const successCount = results.filter(r => r === true).length;
+                console.log(`✅ 자동 동기화 완료: ${successCount}/${mismatchedMeals.length}개 성공`);
+                
+                // 동기화 완료 후 화면 새로고침
+                if (successCount > 0) {
+                    console.log('🔄 동기화 완료, 화면 새로고침 중...');
+                    await renderFeedManagement();
+                    return;
+                }
+            } catch (e) {
+                console.error('⚠️ 자동 동기화 중 오류 발생:', e);
+                // 오류가 발생해도 계속 진행
+            }
+        }
+        
         // 필터 적용
         console.log('🔍 필터 적용:', feedFilters);
         let filteredMeals = allMeals.filter(meal => {
@@ -1251,8 +1432,32 @@ async function renderFeedManagement() {
         
         console.log(`✅ 필터 적용 후: ${filteredMeals.length}개의 게시물`);
         
-        // 날짜순 정렬 (최신순)
+        // 최신 업로드 순 정렬 (date + time 조합 사용)
         filteredMeals.sort((a, b) => {
+            // date + time을 조합하여 타임스탬프 계산
+            const getSortTime = (meal) => {
+                if (meal.date) {
+                    const dateStr = meal.date;
+                    const timeStr = meal.time || '23:59'; // time이 없으면 하루의 마지막 시간으로
+                    try {
+                        return new Date(`${dateStr}T${timeStr}:00`).getTime();
+                    } catch (e) {
+                        // 날짜 파싱 실패 시 date만 사용
+                        return new Date(dateStr).getTime();
+                    }
+                }
+                return 0;
+            };
+            
+            const timeA = getSortTime(a);
+            const timeB = getSortTime(b);
+            
+            // 타임스탬프로 정렬 (최신순: 큰 값이 먼저)
+            if (timeB !== timeA) {
+                return timeB - timeA;
+            }
+            
+            // 타임스탬프가 같으면 date 문자열로 정렬
             const dateA = a.date || '';
             const dateB = b.date || '';
             return dateB.localeCompare(dateA);
@@ -1466,29 +1671,66 @@ window.bulkUnsharePosts = async function() {
     
     if (!confirm(`${checkedBoxes.length}개의 게시물 공유를 취소하시겠습니까?`)) return;
     
-    const batch = writeBatch(db);
-    let count = 0;
-    
-    for (const checkbox of checkedBoxes) {
-        const mealId = checkbox.dataset.mealId;
-        const userId = checkbox.dataset.userId;
-        
-        try {
-            const mealDoc = doc(db, 'artifacts', appId, 'users', userId, 'meals', mealId);
-            await batch.update(mealDoc, { sharedPhotos: [] });
-            count++;
-        } catch (e) {
-            console.error(`게시물 ${mealId} 공유 취소 실패:`, e);
-        }
-    }
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
     
     try {
+        const batch = writeBatch(db);
+        let count = 0;
+        let sharedPhotosDeleteCount = 0;
+        
+        for (const checkbox of checkedBoxes) {
+            const mealId = checkbox.dataset.mealId;
+            const userId = checkbox.dataset.userId;
+            
+            if (!mealId || !userId) continue;
+            
+            try {
+                // meal 문서 가져오기
+                const mealDocRef = doc(db, 'artifacts', appId, 'users', userId, 'meals', mealId);
+                const mealSnap = await getDoc(mealDocRef);
+                
+                if (mealSnap.exists()) {
+                    // meal 문서의 sharedPhotos 필드 빈 배열로 업데이트
+                    batch.update(mealDocRef, { sharedPhotos: [] });
+                    count++;
+                    
+                    // sharedPhotos 컬렉션에서 해당 entryId의 모든 문서 삭제
+                    try {
+                        const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+                        const sharedQuery = query(
+                            sharedColl,
+                            where('userId', '==', userId),
+                            where('entryId', '==', mealId)
+                        );
+                        const sharedSnapshot = await getDocs(sharedQuery);
+                        
+                        sharedSnapshot.forEach(docSnap => {
+                            const sharedDocRef = doc(db, 'artifacts', appId, 'sharedPhotos', docSnap.id);
+                            batch.delete(sharedDocRef);
+                            sharedPhotosDeleteCount++;
+                        });
+                    } catch (e) {
+                        console.error(`게시물 ${mealId}의 sharedPhotos 삭제 실패:`, e);
+                        // 에러가 발생해도 계속 진행
+                    }
+                }
+            } catch (e) {
+                console.error(`게시물 ${mealId} 공유 취소 실패:`, e);
+                // 에러가 발생해도 계속 진행
+            }
+        }
+        
+        // 배치 커밋 (meal 문서 업데이트 + sharedPhotos 컬렉션 삭제 모두 포함)
         await batch.commit();
-        alert(`${count}개의 게시물 공유가 취소되었습니다.`);
-        renderFeedManagement();
+        
+        alert(`${count}개의 게시물 공유가 취소되었습니다. (${sharedPhotosDeleteCount}개의 공유 사진 삭제)`);
+        await renderFeedManagement();
     } catch (e) {
         console.error("일괄 공유 취소 실패:", e);
-        alert("일괄 공유 취소 중 오류가 발생했습니다.");
+        alert("일괄 공유 취소 중 오류가 발생했습니다: " + e.message);
+    } finally {
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
     }
 }
 
@@ -1500,35 +1742,157 @@ window.bulkBanPosts = async function() {
         return;
     }
     
-    if (!confirm(`${checkedBoxes.length}개의 게시물을 공유 금지하시겠습니까?`)) return;
+    if (!confirm(`${checkedBoxes.length}개의 게시물을 공유 금지하시겠습니까? 공유된 게시물은 공유 컬렉션에서도 삭제됩니다.`)) return;
     
-    const batch = writeBatch(db);
-    let count = 0;
-    
-    for (const checkbox of checkedBoxes) {
-        const mealId = checkbox.dataset.mealId;
-        const userId = checkbox.dataset.userId;
-        
-        try {
-            const mealDoc = doc(db, 'artifacts', appId, 'users', userId, 'meals', mealId);
-            await batch.update(mealDoc, { shareBanned: true });
-            count++;
-        } catch (e) {
-            console.error(`게시물 ${mealId} 공유 금지 실패:`, e);
-        }
-    }
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
     
     try {
+        const batch = writeBatch(db);
+        let count = 0;
+        let sharedPhotosDeleteCount = 0;
+        
+        for (const checkbox of checkedBoxes) {
+            const mealId = checkbox.dataset.mealId;
+            const userId = checkbox.dataset.userId;
+            
+            if (!mealId || !userId) continue;
+            
+            try {
+                // meal 문서 가져오기
+                const mealDocRef = doc(db, 'artifacts', appId, 'users', userId, 'meals', mealId);
+                const mealSnap = await getDoc(mealDocRef);
+                
+                if (mealSnap.exists()) {
+                    // meal 문서에 shareBanned: true 설정 및 sharedPhotos 필드 빈 배열로 업데이트
+                    batch.update(mealDocRef, { shareBanned: true, sharedPhotos: [] });
+                    count++;
+                    
+                    // sharedPhotos 컬렉션에서 해당 entryId의 모든 문서 삭제
+                    try {
+                        const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+                        const sharedQuery = query(
+                            sharedColl,
+                            where('userId', '==', userId),
+                            where('entryId', '==', mealId)
+                        );
+                        const sharedSnapshot = await getDocs(sharedQuery);
+                        
+                        sharedSnapshot.forEach(docSnap => {
+                            const sharedDocRef = doc(db, 'artifacts', appId, 'sharedPhotos', docSnap.id);
+                            batch.delete(sharedDocRef);
+                            sharedPhotosDeleteCount++;
+                        });
+                    } catch (e) {
+                        console.error(`게시물 ${mealId}의 sharedPhotos 삭제 실패:`, e);
+                        // 에러가 발생해도 계속 진행
+                    }
+                }
+            } catch (e) {
+                console.error(`게시물 ${mealId} 공유 금지 실패:`, e);
+                // 에러가 발생해도 계속 진행
+            }
+        }
+        
+        // 배치 커밋 (meal 문서 업데이트 + sharedPhotos 컬렉션 삭제 모두 포함)
         await batch.commit();
-        alert(`${count}개의 게시물이 공유 금지되었습니다.`);
+        
+        alert(`${count}개의 게시물이 공유 금지되었습니다. (공유 컬렉션에서 ${sharedPhotosDeleteCount}개 삭제)`);
         renderFeedManagement();
     } catch (e) {
         console.error("일괄 공유 금지 실패:", e);
         alert("일괄 공유 금지 중 오류가 발생했습니다.");
+    } finally {
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
     }
 }
 
 // 공유 사진 동기화 (meal.sharedPhotos 배열을 sharedPhotos 컬렉션에 추가)
+// 자동 동기화 함수 (confirm/alert 없이 조용히 처리)
+async function autoSyncSharedPhotos(mealId, userId) {
+    try {
+        // meal 문서 가져오기
+        const mealDoc = doc(db, 'artifacts', appId, 'users', userId, 'meals', mealId);
+        const mealSnap = await getDoc(mealDoc);
+        
+        if (!mealSnap.exists()) {
+            console.warn(`자동 동기화: 게시물을 찾을 수 없습니다 (${mealId})`);
+            return;
+        }
+        
+        const mealData = mealSnap.data();
+        const sharedPhotos = mealData.sharedPhotos;
+        
+        if (!sharedPhotos || !Array.isArray(sharedPhotos) || sharedPhotos.length === 0) {
+            return;
+        }
+        
+        // 사용자 정보 가져오기
+        let userNickname = '익명';
+        let userIcon = '🐻';
+        try {
+            const settingsDoc = doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings');
+            const settingsSnap = await getDoc(settingsDoc);
+            if (settingsSnap.exists()) {
+                const settings = settingsSnap.data();
+                userNickname = settings.profile?.nickname || '익명';
+                userIcon = settings.profile?.icon || '🐻';
+            }
+        } catch (e) {
+            console.warn('사용자 정보 조회 실패:', e);
+        }
+        
+        // sharedPhotos 컬렉션에 같은 entryId의 기존 문서 모두 삭제 후 새로 추가 (중복 방지)
+        const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+        const batch = writeBatch(db);
+        
+        // 같은 entryId의 기존 문서 모두 삭제
+        try {
+            const existingQuery = query(
+                sharedColl,
+                where('userId', '==', userId),
+                where('entryId', '==', mealId)
+            );
+            const existingSnapshot = await getDocs(existingQuery);
+            existingSnapshot.docs.forEach(docSnap => {
+                batch.delete(docSnap.ref);
+            });
+            if (existingSnapshot.docs.length > 0) {
+                console.log(`자동 동기화: 기존 ${existingSnapshot.docs.length}개 문서 삭제 (entryId: ${mealId})`);
+            }
+        } catch (e) {
+            console.warn('기존 문서 삭제 중 오류 (무시하고 계속 진행):', e);
+        }
+        
+        // 새로운 사진들을 추가
+        sharedPhotos.forEach(photoUrl => {
+            const docRef = doc(sharedColl);
+            batch.set(docRef, {
+                photoUrl,
+                userId: userId,
+                userNickname: userNickname,
+                userIcon: userIcon,
+                mealType: mealData.mealType || '',
+                place: mealData.place || '',
+                menuDetail: mealData.menuDetail || '',
+                snackType: mealData.snackType || '',
+                date: mealData.date || '',
+                slotId: mealData.slotId || '',
+                time: mealData.time || new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+                timestamp: new Date().toISOString(),
+                entryId: mealId
+            });
+        });
+        
+        await batch.commit();
+        console.log(`✅ 자동 동기화 완료: ${mealId} (${newPhotos.length}개 사진 추가)`);
+        return true;
+    } catch (e) {
+        console.error(`자동 동기화 오류 (${mealId}):`, e);
+        return false;
+    }
+}
+
 window.syncSharedPhotos = async function(mealId, userId) {
     if (!confirm('이 게시물의 공유 상태를 동기화하시겠습니까?')) return;
     
@@ -1618,6 +1982,101 @@ window.syncSharedPhotos = async function(mealId, userId) {
     } catch (e) {
         console.error("공유 사진 동기화 실패:", e);
         alert("동기화 중 오류가 발생했습니다: " + e.message);
+    }
+};
+
+// 특정 게시물의 중복 문서 확인 및 정리
+window.checkAndCleanDuplicates = async function(mealId) {
+    try {
+        // 모든 사용자에서 해당 entryId를 찾기
+        const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+        const sharedQuery = query(
+            sharedColl,
+            where('entryId', '==', mealId)
+        );
+        const sharedSnapshot = await getDocs(sharedQuery);
+        
+        if (sharedSnapshot.empty) {
+            alert(`게시물 ${mealId}에 대한 공유 문서를 찾을 수 없습니다.`);
+            return;
+        }
+        
+        const docs = sharedSnapshot.docs;
+        console.log(`📋 게시물 ${mealId}: 총 ${docs.length}개의 문서 발견`);
+        
+        // photoUrl 기반으로 중복 확인
+        const urlMap = new Map(); // urlBase -> [docIds]
+        docs.forEach(docSnap => {
+            const data = docSnap.data();
+            const urlBase = (data.photoUrl || '').split('?')[0];
+            if (!urlMap.has(urlBase)) {
+                urlMap.set(urlBase, []);
+            }
+            urlMap.get(urlBase).push({
+                docId: docSnap.id,
+                timestamp: data.timestamp || '',
+                photoUrl: data.photoUrl || ''
+            });
+        });
+        
+        // 중복 발견
+        const duplicates = [];
+        urlMap.forEach((docInfos, urlBase) => {
+            if (docInfos.length > 1) {
+                // 같은 photoUrl이 여러 개인 경우
+                duplicates.push({
+                    urlBase,
+                    count: docInfos.length,
+                    docs: docInfos
+                });
+            }
+        });
+        
+        if (duplicates.length === 0) {
+            alert(`게시물 ${mealId}: 중복 문서가 없습니다. (총 ${docs.length}개 문서)`);
+            return;
+        }
+        
+        // 중복 정보 표시
+        let message = `게시물 ${mealId}에서 중복 문서를 발견했습니다:\n\n`;
+        duplicates.forEach((dup, idx) => {
+            message += `${idx + 1}. 같은 사진이 ${dup.count}개 문서에 존재\n`;
+        });
+        message += `\n총 ${duplicates.length}개의 중복 사진\n`;
+        message += `중복 문서를 정리하시겠습니까? (가장 오래된 문서만 남기고 나머지 삭제)`;
+        
+        if (!confirm(message)) return;
+        
+        // 중복 문서 정리: 각 photoUrl에 대해 가장 오래된 문서만 남기고 나머지 삭제
+        const batch = writeBatch(db);
+        let deleteCount = 0;
+        
+        duplicates.forEach(dup => {
+            // timestamp 기준으로 정렬 (오래된 것 먼저)
+            const sorted = dup.docs.sort((a, b) => {
+                const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+                const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+                return timeA - timeB;
+            });
+            
+            // 첫 번째(가장 오래된) 문서는 유지하고, 나머지는 삭제
+            for (let i = 1; i < sorted.length; i++) {
+                const docRef = doc(sharedColl, sorted[i].docId);
+                batch.delete(docRef);
+                deleteCount++;
+            }
+        });
+        
+        if (deleteCount > 0) {
+            await batch.commit();
+            alert(`중복 문서 ${deleteCount}개가 삭제되었습니다.`);
+            renderFeedManagement();
+        } else {
+            alert('삭제할 문서가 없습니다.');
+        }
+    } catch (e) {
+        console.error("중복 문서 확인/정리 실패:", e);
+        alert("중복 문서 확인/정리 중 오류가 발생했습니다: " + e.message);
     }
 };
 

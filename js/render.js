@@ -1,14 +1,10 @@
 // 렌더링 관련 함수들
 import { SLOTS, SLOT_STYLES, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS } from './constants.js';
 import { appState } from './state.js';
+import { escapeHtml } from './render/utils.js';
+import { normalizeUrl } from './utils.js';
 
-// HTML 이스케이프 함수 (XSS 방지)
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
+// renderTimeline과 renderMiniCalendar는 render/timeline.js로 이동됨
 
 export function renderEntryChips() {
     const tags = window.userSettings?.tags;
@@ -293,6 +289,15 @@ function handleDragEnd(e) {
     dropIndex = null;
 }
 
+// entryId가 실제로 공유되었는지 확인하는 헬퍼 함수
+function isEntryShared(entryId) {
+    if (!entryId || !window.sharedPhotos || !Array.isArray(window.sharedPhotos)) {
+        return false;
+    }
+    // window.sharedPhotos에서 해당 entryId를 가진 항목이 있는지 확인
+    return window.sharedPhotos.some(photo => photo.entryId === entryId);
+}
+
 export function renderTimeline() {
     const state = appState;
     if (!window.currentUser || state.currentTab !== 'timeline') return;
@@ -463,7 +468,7 @@ export function renderTimeline() {
                                     ${titleLine2 ? (r ? `<p class="text-sm text-slate-600 font-bold mt-0.5 mb-0">${titleLine2}</p>` : `<p class="mt-0.5 mb-0">${titleLine2}</p>`) : ''}
                                 </div>
                                 ${r ? `<div class="flex items-center gap-2 flex-shrink-0 ml-2">
-                                    ${r.sharedPhotos && Array.isArray(r.sharedPhotos) && r.sharedPhotos.length > 0 ? `<span class="text-xs text-emerald-600" title="게시됨"><i class="fa-solid fa-share"></i></span>` : ''}
+                                    ${isEntryShared(r.id) ? `<span class="text-xs text-emerald-600" title="게시됨"><i class="fa-solid fa-share"></i></span>` : ''}
                                     <span class="text-xs font-bold text-yellow-600 bg-yellow-50 px-1.5 py-0.5 rounded-md flex items-center gap-0.5"><i class="fa-solid fa-star text-[10px]"></i><span class="text-[11px] font-black">${r.rating || '-'}</span></span>
                                 </div>` : ''}
                             </div>
@@ -480,7 +485,7 @@ export function renderTimeline() {
                             `<div onclick="window.openModal('${dateStr}', '${slot.id}', '${r.id}')" class="snack-tag cursor-pointer active:bg-slate-50">
                                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-2"></span>
                                 ${r.menuDetail || r.snackType || '간식'} 
-                                ${r.sharedPhotos && Array.isArray(r.sharedPhotos) && r.sharedPhotos.length > 0 ? `<i class="fa-solid fa-share text-emerald-600 text-[8px] ml-1" title="게시됨"></i>` : ''}
+                                ${isEntryShared(r.id) ? `<i class="fa-solid fa-share text-emerald-600 text-[8px] ml-1" title="게시됨"></i>` : ''}
                                 ${r.rating ? `<span class="text-[10px] font-black text-yellow-600 bg-yellow-50 px-1 py-0.5 rounded ml-1.5 flex items-center gap-0.5"><i class="fa-solid fa-star text-[9px]"></i>${r.rating}</span>` : ''}
                             </div>`
                         ).join('') : `<span class="text-xs text-slate-400 italic">기록없음</span>`}
@@ -832,9 +837,12 @@ export function renderGallery() {
     });
     
     // entryId와 userId로 그룹화 (같은 기록의 사진들을 묶음)
+    // 중요: 하나의 게시물(entryId)은 앨범에 한 번만 표시되어야 하므로, entryId와 userId만 사용
     const groupedPhotos = {};
     uniquePhotos.forEach(photo => {
-        const groupKey = `${photo.entryId || 'no-entry'}_${photo.userId}_${photo.date || ''}_${photo.slotId || ''}`;
+        // entryId가 있는 경우: entryId_userId로 그룹화 (date, slotId는 그룹 키에서 제외)
+        // entryId가 없는 경우: no-entry_userId로 그룹화
+        const groupKey = `${photo.entryId || 'no-entry'}_${photo.userId}`;
         if (!groupedPhotos[groupKey]) {
             groupedPhotos[groupKey] = [];
         }
@@ -842,7 +850,6 @@ export function renderGallery() {
     });
     
     // 각 그룹 내 사진들을 mealHistory의 photos 배열 순서에 맞게 정렬
-    const normalizeUrlGallery = (url) => (url || '').split('?')[0];
     Object.keys(groupedPhotos).forEach(groupKey => {
         const photoGroup = groupedPhotos[groupKey];
         const entryId = photoGroup[0]?.entryId;
@@ -852,11 +859,11 @@ export function renderGallery() {
                 const mealRecord = window.mealHistory.find(m => m.id === entryId);
                 if (mealRecord && Array.isArray(mealRecord.photos) && mealRecord.photos.length > 0) {
                     // mealHistory의 photos 배열 순서대로 정렬
-                    const photosOrder = mealRecord.photos.map(normalizeUrlGallery);
+                    const photosOrder = mealRecord.photos.map(normalizeUrl);
                     
                     photoGroup.sort((a, b) => {
-                        const aUrl = normalizeUrlGallery(a.photoUrl);
-                        const bUrl = normalizeUrlGallery(b.photoUrl);
+                        const aUrl = normalizeUrl(a.photoUrl);
+                        const bUrl = normalizeUrl(b.photoUrl);
                         const aIndex = photosOrder.indexOf(aUrl);
                         const bIndex = photosOrder.indexOf(bUrl);
                         
@@ -1012,7 +1019,8 @@ export function renderGallery() {
         
         // 포스트 ID 생성 (그룹의 고유 키 기반 - 안정적인 ID 생성)
         // 같은 그룹은 항상 같은 포스트 ID를 가져야 하므로, 그룹의 첫 번째 사진 ID를 사용하거나 groupKey 기반 해시 생성
-        const groupKey = `${photo.entryId || 'no-entry'}_${photo.userId || 'unknown'}_${photo.date || ''}_${photo.slotId || ''}`;
+        // 중요: 그룹 키와 일치해야 하므로 entryId_userId만 사용
+        const groupKey = `${photo.entryId || 'no-entry'}_${photo.userId || 'unknown'}`;
         // 그룹의 첫 번째 사진 ID를 우선 사용
         let postId = photoGroup[0]?.id || photo.id || null;
         if (!postId || postId === 'undefined' || postId === 'null') {
@@ -1275,9 +1283,12 @@ export function renderFeed() {
     });
     
     // entryId와 userId로 그룹화 (같은 기록의 사진들을 묶음)
+    // 중요: 하나의 게시물(entryId)은 앨범에 한 번만 표시되어야 하므로, entryId와 userId만 사용
     const groupedPhotos = {};
     uniquePhotos.forEach(photo => {
-        const groupKey = `${photo.entryId || 'no-entry'}_${photo.userId}_${photo.date || ''}_${photo.slotId || ''}`;
+        // entryId가 있는 경우: entryId_userId로 그룹화 (date, slotId는 그룹 키에서 제외)
+        // entryId가 없는 경우: no-entry_userId로 그룹화
+        const groupKey = `${photo.entryId || 'no-entry'}_${photo.userId}`;
         if (!groupedPhotos[groupKey]) {
             groupedPhotos[groupKey] = [];
         }
@@ -1285,7 +1296,6 @@ export function renderFeed() {
     });
     
     // 각 그룹 내 사진들을 mealHistory의 photos 배열 순서에 맞게 정렬
-    const normalizeUrlFeed = (url) => (url || '').split('?')[0];
     Object.keys(groupedPhotos).forEach(groupKey => {
         const photoGroup = groupedPhotos[groupKey];
         const entryId = photoGroup[0]?.entryId;
@@ -1295,11 +1305,11 @@ export function renderFeed() {
                 const mealRecord = window.mealHistory.find(m => m.id === entryId);
                 if (mealRecord && Array.isArray(mealRecord.photos) && mealRecord.photos.length > 0) {
                     // mealHistory의 photos 배열 순서대로 정렬
-                    const photosOrder = mealRecord.photos.map(normalizeUrlFeed);
+                    const photosOrder = mealRecord.photos.map(normalizeUrl);
                     
                     photoGroup.sort((a, b) => {
-                        const aUrl = normalizeUrlFeed(a.photoUrl);
-                        const bUrl = normalizeUrlFeed(b.photoUrl);
+                        const aUrl = normalizeUrl(a.photoUrl);
+                        const bUrl = normalizeUrl(b.photoUrl);
                         const aIndex = photosOrder.indexOf(aUrl);
                         const bIndex = photosOrder.indexOf(bUrl);
                         

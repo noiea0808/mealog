@@ -7,6 +7,12 @@ export function setVal(id, value) {
     if (el) el.value = value;
 }
 
+// URL 정규화 함수 (쿼리 파라미터 제거) - 중복 제거
+export function normalizeUrl(url) {
+    if (!url || typeof url !== 'string') return '';
+    return url.split('?')[0];
+}
+
 export function getInputIdFromContainer(containerId) {
     const container = document.getElementById(containerId);
     if (!container) return null;
