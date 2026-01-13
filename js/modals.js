@@ -1023,6 +1023,48 @@ export function openSettings() {
         ).join('');
     }
     
+    // 프로필 타입 초기화
+    const profileType = state.tempSettings.profile.photoUrl ? 'photo' : 'emoji';
+    window.settingsProfileType = profileType;
+    
+    // 프로필 타입 버튼 초기화
+    const emojiBtn = document.getElementById('profileTypeEmoji');
+    const photoBtn = document.getElementById('profileTypePhoto');
+    const emojiSection = document.getElementById('emojiSection');
+    const photoSection = document.getElementById('photoSection');
+    
+    if (profileType === 'emoji') {
+        if (emojiBtn) {
+            emojiBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
+        }
+        if (photoBtn) {
+            photoBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
+        }
+        if (emojiSection) emojiSection.classList.remove('hidden');
+        if (photoSection) photoSection.classList.add('hidden');
+    } else {
+        if (emojiBtn) {
+            emojiBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
+        }
+        if (photoBtn) {
+            photoBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
+        }
+        if (emojiSection) emojiSection.classList.add('hidden');
+        if (photoSection) photoSection.classList.remove('hidden');
+    }
+    
+    // 사진 미리보기 설정
+    const photoPreview = document.getElementById('photoPreview');
+    if (photoPreview && state.tempSettings.profile.photoUrl) {
+        photoPreview.style.backgroundImage = `url(${state.tempSettings.profile.photoUrl})`;
+        photoPreview.style.backgroundSize = 'cover';
+        photoPreview.style.backgroundPosition = 'center';
+        photoPreview.innerHTML = '';
+    } else if (photoPreview) {
+        photoPreview.innerHTML = '<i class="fa-solid fa-camera text-slate-400 text-xl"></i>';
+        photoPreview.style.backgroundImage = '';
+    }
+    
     document.getElementById('settingNickname').value = state.tempSettings.profile.nickname;
     
     // 자주 사용하는 태그 초기화 (없으면 빈 객체로)
@@ -1200,15 +1242,116 @@ export function switchSettingsTab(tab) {
     }
 }
 
+// 설정 페이지 프로필 타입 설정
+export function setSettingsProfileType(type) {
+    window.settingsProfileType = type;
+    
+    const emojiBtn = document.getElementById('profileTypeEmoji');
+    const photoBtn = document.getElementById('profileTypePhoto');
+    const emojiSection = document.getElementById('emojiSection');
+    const photoSection = document.getElementById('photoSection');
+    
+    if (type === 'emoji') {
+        if (emojiBtn) {
+            emojiBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
+        }
+        if (photoBtn) {
+            photoBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
+        }
+        if (emojiSection) emojiSection.classList.remove('hidden');
+        if (photoSection) photoSection.classList.add('hidden');
+    } else {
+        if (emojiBtn) {
+            emojiBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
+        }
+        if (photoBtn) {
+            photoBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
+        }
+        if (emojiSection) emojiSection.classList.add('hidden');
+        if (photoSection) photoSection.classList.remove('hidden');
+    }
+}
+
+// 설정 페이지 사진 업로드 처리
+export async function handlePhotoUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    if (!file.type.startsWith('image/')) {
+        showToast("이미지 파일만 업로드할 수 있습니다.", "error");
+        return;
+    }
+    
+    try {
+        // 이미지 압축 및 미리보기
+        const { compressImageToBlob } = await import('./utils.js');
+        const compressedBlob = await compressImageToBlob(file);
+        const photoUrl = URL.createObjectURL(compressedBlob);
+        
+        window.settingsPhotoUrl = photoUrl;
+        window.settingsPhotoFile = compressedBlob;
+        
+        // 사진을 선택하면 자동으로 프로필 타입을 'photo'로 변경
+        if (window.settingsProfileType !== 'photo') {
+            setSettingsProfileType('photo');
+        }
+        
+        // 미리보기 업데이트
+        const photoPreview = document.getElementById('photoPreview');
+        if (photoPreview) {
+            photoPreview.style.backgroundImage = `url(${photoUrl})`;
+            photoPreview.style.backgroundSize = 'cover';
+            photoPreview.style.backgroundPosition = 'center';
+            photoPreview.innerHTML = '';
+        }
+    } catch (e) {
+        console.error("사진 업로드 처리 실패:", e);
+        showToast("사진 업로드 중 오류가 발생했습니다.", "error");
+    }
+}
+
 export async function saveProfileSettings() {
     const state = appState;
     try {
         state.tempSettings.profile.nickname = document.getElementById('settingNickname').value;
+        
+        // 프로필 타입에 따라 icon 또는 photoUrl 저장
+        // 사진 파일이 있으면 무조건 사진으로 저장
+        if (window.settingsPhotoFile) {
+            // 사진을 Firebase Storage에 업로드 (기존 Storage 규칙에 맞는 경로 사용)
+            const { storage } = await import('./firebase.js');
+            const { ref, uploadBytes, getDownloadURL } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js");
+            const timestamp = Date.now();
+            const fileName = `photo_${timestamp}.jpg`;
+            const photoRef = ref(storage, `users/${window.currentUser.uid}/profile/${fileName}`);
+            
+            await uploadBytes(photoRef, window.settingsPhotoFile);
+            const photoUrl = await getDownloadURL(photoRef);
+            
+            state.tempSettings.profile.photoUrl = photoUrl;
+            state.tempSettings.profile.icon = null; // 이모지 제거
+            
+            // 업로드 후 변수 초기화
+            window.settingsPhotoFile = null;
+            window.settingsPhotoUrl = null;
+        } else if (window.settingsProfileType === 'photo' && state.tempSettings.profile.photoUrl) {
+            // 사진 파일은 없지만 기존에 사진이 있는 경우 유지
+            // icon은 null로 유지
+            state.tempSettings.profile.icon = null;
+        } else {
+            // 이모지 선택 시 icon만 저장
+            state.tempSettings.profile.icon = state.tempSettings.profile.icon || '🐻';
+            state.tempSettings.profile.photoUrl = null; // 사진 URL 제거
+        }
+        
         await dbOps.saveSettings(state.tempSettings);
-        showToast("프로필이 저장되었습니다.", 'success');
+        showToast("설정이 저장되었습니다.", 'success');
+        
+        // 헤더 업데이트
+        updateHeaderUI();
     } catch (e) {
         console.error('프로필 저장 실패:', e);
-        // dbOps.saveSettings에서 이미 에러 토스트를 표시하므로 여기서는 추가 처리 불필요
+        showToast("설정 저장 중 오류가 발생했습니다: " + (e.message || e), 'error');
     }
 }
 

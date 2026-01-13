@@ -1556,8 +1556,10 @@ async function renderFeedManagement() {
         
         console.log(`📊 총 ${allMeals.length}개의 게시물 발견`);
         
-        // sharedPhotos 컬렉션에서 실제 공유된 게시물 확인
+        // sharedPhotos 컬렉션에서 실제 공유된 게시물 확인 및 베스트 공유, 일간보기 공유 게시물 추가
         const sharedPhotosMap = new Map(); // entryId -> true (실제로 sharedPhotos 컬렉션에 존재하는지)
+        const bestShares = []; // 베스트 공유 게시물 목록
+        const dailyShares = []; // 일간보기 공유 게시물 목록
         try {
             const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
             const sharedSnapshot = await getDocs(sharedColl);
@@ -1566,11 +1568,48 @@ async function renderFeedManagement() {
                 if (data.entryId) {
                     sharedPhotosMap.set(data.entryId, true);
                 }
+                // 베스트 공유 게시물 추가
+                if (data.type === 'best') {
+                    bestShares.push({
+                        id: doc.id,
+                        userId: data.userId || '',
+                        type: 'best',
+                        periodType: data.periodType || '',
+                        periodText: data.periodText || '',
+                        comment: data.comment || '',
+                        photoUrl: data.photoUrl || '',
+                        timestamp: data.timestamp || '',
+                        userNickname: data.userNickname || '익명',
+                        userIcon: data.userIcon || '🐻',
+                        isBestShare: true // 베스트 공유 표시
+                    });
+                }
+                // 일간보기 공유 게시물 추가
+                if (data.type === 'daily') {
+                    dailyShares.push({
+                        id: doc.id,
+                        userId: data.userId || '',
+                        type: 'daily',
+                        date: data.date || '',
+                        comment: data.comment || '',
+                        photoUrl: data.photoUrl || '',
+                        timestamp: data.timestamp || '',
+                        userNickname: data.userNickname || '익명',
+                        userIcon: data.userIcon || '🐻',
+                        isDailyShare: true // 일간보기 공유 표시
+                    });
+                }
             });
             console.log(`📸 sharedPhotos 컬렉션에서 ${sharedPhotosMap.size}개의 entryId 발견`);
+            console.log(`🏆 베스트 공유 게시물: ${bestShares.length}개 발견`);
+            console.log(`📅 일간보기 공유 게시물: ${dailyShares.length}개 발견`);
         } catch (e) {
             console.warn('⚠️ sharedPhotos 컬렉션 조회 실패:', e);
         }
+        
+        // 베스트 공유 및 일간보기 공유 게시물을 allMeals에 추가
+        allMeals = [...allMeals, ...bestShares, ...dailyShares];
+        console.log(`📊 베스트 공유 및 일간보기 공유 포함 총 ${allMeals.length}개의 게시물`);
         
         // 데이터 불일치 항목 자동 동기화
         const mismatchedMeals = allMeals.filter(meal => {
@@ -1609,6 +1648,35 @@ async function renderFeedManagement() {
         // 필터 적용
         console.log('🔍 필터 적용:', feedFilters);
         let filteredMeals = allMeals.filter(meal => {
+            // 베스트 공유 게시물은 항상 공유된 상태
+            if (meal.isBestShare) {
+                // 공유 여부 필터: 베스트 공유는 항상 공유됨
+                if (feedFilters.shared === 'no') return false;
+                
+                // 사진 여부 필터: 베스트 공유는 항상 이미지가 있음
+                if (feedFilters.hasPhotos === 'no') return false;
+                
+                // 금지 여부 필터: 베스트 공유는 금지 기능 없음
+                if (feedFilters.banned === 'yes') return false;
+                
+                return true;
+            }
+            
+            // 일간보기 공유 게시물은 항상 공유된 상태
+            if (meal.isDailyShare) {
+                // 공유 여부 필터: 일간보기 공유는 항상 공유됨
+                if (feedFilters.shared === 'no') return false;
+                
+                // 사진 여부 필터: 일간보기 공유는 항상 이미지가 있음
+                if (feedFilters.hasPhotos === 'no') return false;
+                
+                // 금지 여부 필터: 일간보기 공유는 금지 기능 없음
+                if (feedFilters.banned === 'yes') return false;
+                
+                return true;
+            }
+            
+            // 일반 게시물 필터링
             // 공유 여부 필터: sharedPhotos 컬렉션에 실제로 존재하는지 확인
             const isActuallyShared = sharedPhotosMap.has(meal.id);
             if (feedFilters.shared === 'yes' && !isActuallyShared) return false;
@@ -1629,10 +1697,11 @@ async function renderFeedManagement() {
         
         console.log(`✅ 필터 적용 후: ${filteredMeals.length}개의 게시물`);
         
-        // 최신 업로드 순 정렬 (date + time 조합 사용)
+        // 최신 업로드 순 정렬 (모든 게시물을 등록된 날짜순으로 정렬)
         filteredMeals.sort((a, b) => {
-            // date + time을 조합하여 타임스탬프 계산
+            // 모든 게시물을 동일한 기준으로 정렬: date + time 또는 timestamp에서 date 추출
             const getSortTime = (meal) => {
+                // date 필드가 있으면 date + time 사용
                 if (meal.date) {
                     const dateStr = meal.date;
                     const timeStr = meal.time || '23:59'; // time이 없으면 하루의 마지막 시간으로
@@ -1643,6 +1712,20 @@ async function renderFeedManagement() {
                         return new Date(dateStr).getTime();
                     }
                 }
+                
+                // date 필드가 없으면 timestamp에서 date 추출
+                if (meal.timestamp) {
+                    try {
+                        const timestampDate = new Date(meal.timestamp);
+                        // timestamp의 날짜 부분만 사용 (시간은 00:00:00으로)
+                        const dateOnly = new Date(timestampDate.getFullYear(), timestampDate.getMonth(), timestampDate.getDate());
+                        return dateOnly.getTime();
+                    } catch (e) {
+                        // timestamp 파싱 실패 시 timestamp 그대로 사용
+                        return new Date(meal.timestamp).getTime();
+                    }
+                }
+                
                 return 0;
             };
             
@@ -1654,7 +1737,14 @@ async function renderFeedManagement() {
                 return timeB - timeA;
             }
             
-            // 타임스탬프가 같으면 date 문자열로 정렬
+            // 타임스탬프가 같으면 timestamp로 세부 정렬
+            const timestampA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+            const timestampB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+            if (timestampB !== timestampA) {
+                return timestampB - timestampA;
+            }
+            
+            // 모두 같으면 date 문자열로 정렬
             const dateA = a.date || '';
             const dateB = b.date || '';
             return dateB.localeCompare(dateA);
@@ -1670,18 +1760,27 @@ async function renderFeedManagement() {
         const userInfoMap = new Map();
         for (const meal of paginatedMeals) {
             if (!userInfoMap.has(meal.userId)) {
-                try {
-                    const settingsDoc = doc(db, 'artifacts', appId, 'users', meal.userId, 'config', 'settings');
-                    const settingsSnap = await getDoc(settingsDoc);
-                    if (settingsSnap.exists()) {
-                        const settings = settingsSnap.data();
-                        userInfoMap.set(meal.userId, {
-                            nickname: settings.profile?.nickname || '익명',
-                            icon: settings.profile?.icon || '🐻'
-                        });
+                // 베스트 공유 및 일간보기 공유 게시물은 이미 사용자 정보가 있음
+                if (meal.isBestShare || meal.isDailyShare) {
+                    userInfoMap.set(meal.userId, {
+                        nickname: meal.userNickname || '익명',
+                        icon: meal.userIcon || '🐻'
+                    });
+                } else {
+                    // 일반 게시물은 설정에서 가져오기
+                    try {
+                        const settingsDoc = doc(db, 'artifacts', appId, 'users', meal.userId, 'config', 'settings');
+                        const settingsSnap = await getDoc(settingsDoc);
+                        if (settingsSnap.exists()) {
+                            const settings = settingsSnap.data();
+                            userInfoMap.set(meal.userId, {
+                                nickname: settings.profile?.nickname || '익명',
+                                icon: settings.profile?.icon || '🐻'
+                            });
+                        }
+                    } catch (e) {
+                        console.warn(`사용자 ${meal.userId} 정보 조회 실패:`, e);
                     }
-                } catch (e) {
-                    console.warn(`사용자 ${meal.userId} 정보 조회 실패:`, e);
                 }
             }
         }
@@ -1692,6 +1791,118 @@ async function renderFeedManagement() {
         }
         
         container.innerHTML = paginatedMeals.map(meal => {
+            // 베스트 공유 게시물인 경우
+            if (meal.isBestShare) {
+                const userInfo = { nickname: meal.userNickname || '익명', icon: meal.userIcon || '🐻' };
+                let dateTimeStr = '-';
+                if (meal.timestamp) {
+                    try {
+                        const dateObj = new Date(meal.timestamp);
+                        dateTimeStr = dateObj.toLocaleString('ko-KR', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                    } catch (e) {
+                        dateTimeStr = meal.timestamp;
+                    }
+                }
+                
+                return `
+                    <div class="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow bg-emerald-50/30">
+                        <div class="flex gap-4">
+                            <div class="flex-shrink-0 flex items-start pt-1">
+                                <input type="checkbox" class="feed-item-checkbox" data-meal-id="${meal.id}" data-user-id="${meal.userId}" data-is-best="true">
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-xs text-slate-500 font-bold mb-2">${dateTimeStr}</div>
+                                <div class="flex items-start justify-between mb-2">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <span class="text-lg">${userInfo.icon}</span>
+                                        <span class="font-bold text-slate-800">${userInfo.nickname}</span>
+                                        <span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">🏆 베스트 공유</span>
+                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">${meal.periodType || ''} ${meal.periodText || ''}</span>
+                                        <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">공유됨</span>
+                                    </div>
+                                </div>
+                                ${meal.photoUrl ? `
+                                    <div class="mb-2">
+                                        <img src="${meal.photoUrl}" alt="베스트 공유 이미지" class="max-w-full h-auto rounded-xl border border-slate-200" style="max-height: 300px;">
+                                    </div>
+                                ` : ''}
+                                ${meal.comment ? `<div class="mt-2 text-sm text-slate-700 bg-slate-50 p-2 rounded">${escapeHtml(meal.comment)}</div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // 일간보기 공유 게시물인 경우
+            if (meal.isDailyShare) {
+                const userInfo = { nickname: meal.userNickname || '익명', icon: meal.userIcon || '🐻' };
+                let dateTimeStr = '-';
+                if (meal.timestamp) {
+                    try {
+                        const dateObj = new Date(meal.timestamp);
+                        dateTimeStr = dateObj.toLocaleString('ko-KR', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                    } catch (e) {
+                        dateTimeStr = meal.timestamp;
+                    }
+                }
+                
+                // 날짜 표시
+                let dateDisplay = meal.date || '-';
+                if (meal.date) {
+                    try {
+                        const dateObj = new Date(meal.date + 'T00:00:00');
+                        dateDisplay = dateObj.toLocaleDateString('ko-KR', { 
+                            month: 'long', 
+                            day: 'numeric', 
+                            weekday: 'short' 
+                        });
+                    } catch (e) {
+                        dateDisplay = meal.date;
+                    }
+                }
+                
+                return `
+                    <div class="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow bg-blue-50/30">
+                        <div class="flex gap-4">
+                            <div class="flex-shrink-0 flex items-start pt-1">
+                                <input type="checkbox" class="feed-item-checkbox" data-meal-id="${meal.id}" data-user-id="${meal.userId}" data-is-daily="true">
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-xs text-slate-500 font-bold mb-2">${dateTimeStr}</div>
+                                <div class="flex items-start justify-between mb-2">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <span class="text-lg">${userInfo.icon}</span>
+                                        <span class="font-bold text-slate-800">${userInfo.nickname}</span>
+                                        <span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded">📅 일간보기 공유</span>
+                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">${dateDisplay}</span>
+                                        <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">공유됨</span>
+                                    </div>
+                                </div>
+                                ${meal.photoUrl ? `
+                                    <div class="mb-2">
+                                        <img src="${meal.photoUrl}" alt="일간보기 공유 이미지" class="max-w-full h-auto rounded-xl border border-slate-200" style="max-height: 300px;">
+                                    </div>
+                                ` : ''}
+                                ${meal.comment ? `<div class="mt-2 text-sm text-slate-700 bg-slate-50 p-2 rounded whitespace-pre-line">${escapeHtml(meal.comment)}</div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // 일반 게시물
             const userInfo = userInfoMap.get(meal.userId) || { nickname: '익명', icon: '🐻' };
             const date = meal.date || '-';
             const time = meal.time || '';
@@ -1879,10 +2090,41 @@ window.bulkUnsharePosts = async function() {
         for (const checkbox of checkedBoxes) {
             const mealId = checkbox.dataset.mealId;
             const userId = checkbox.dataset.userId;
+            const isBest = checkbox.dataset.isBest === 'true';
+            const isDaily = checkbox.dataset.isDaily === 'true';
             
             if (!mealId || !userId) continue;
             
             try {
+                // 베스트 공유 게시물인 경우
+                if (isBest) {
+                    // sharedPhotos 컬렉션에서 해당 문서 직접 삭제
+                    try {
+                        const sharedDocRef = doc(db, 'artifacts', appId, 'sharedPhotos', mealId);
+                        batch.delete(sharedDocRef);
+                        sharedPhotosDeleteCount++;
+                        count++;
+                    } catch (e) {
+                        console.error(`베스트 공유 게시물 ${mealId} 삭제 실패:`, e);
+                    }
+                    continue;
+                }
+                
+                // 일간보기 공유 게시물인 경우
+                if (isDaily) {
+                    // sharedPhotos 컬렉션에서 해당 문서 직접 삭제
+                    try {
+                        const sharedDocRef = doc(db, 'artifacts', appId, 'sharedPhotos', mealId);
+                        batch.delete(sharedDocRef);
+                        sharedPhotosDeleteCount++;
+                        count++;
+                    } catch (e) {
+                        console.error(`일간보기 공유 게시물 ${mealId} 삭제 실패:`, e);
+                    }
+                    continue;
+                }
+                
+                // 일반 게시물 처리
                 // meal 문서 가져오기
                 const mealDocRef = doc(db, 'artifacts', appId, 'users', userId, 'meals', mealId);
                 const mealSnap = await getDoc(mealDocRef);
@@ -1952,10 +2194,26 @@ window.bulkBanPosts = async function() {
         for (const checkbox of checkedBoxes) {
             const mealId = checkbox.dataset.mealId;
             const userId = checkbox.dataset.userId;
+            const isBest = checkbox.dataset.isBest === 'true';
+            const isDaily = checkbox.dataset.isDaily === 'true';
             
             if (!mealId || !userId) continue;
             
             try {
+                // 베스트 공유 또는 일간보기 공유는 sharedPhotos 컬렉션에서만 삭제
+                if (isBest || isDaily) {
+                    try {
+                        const sharedDocRef = doc(db, 'artifacts', appId, 'sharedPhotos', mealId);
+                        batch.delete(sharedDocRef);
+                        sharedPhotosDeleteCount++;
+                        count++;
+                    } catch (e) {
+                        console.error(`${isBest ? '베스트' : '일간보기'} 공유 게시물 ${mealId} 삭제 실패:`, e);
+                    }
+                    continue;
+                }
+                
+                // 일반 게시물 처리
                 // meal 문서 가져오기
                 const mealDocRef = doc(db, 'artifacts', appId, 'users', userId, 'meals', mealId);
                 const mealSnap = await getDoc(mealDocRef);

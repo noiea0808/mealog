@@ -146,30 +146,38 @@ async function loadCharactersFromFirebase() {
 // 현재 선택된 캐릭터 (기본값: MEALOG)
 let currentCharacter = 'mealog';
 
+// MEALOG 코멘트 순차 선택을 위한 인덱스
+let mealogCommentIndex = 0;
+
 // 텍스트를 5줄 단위로 나누는 함수 (페이지 제한 없음)
-// 원본 줄바꿈을 그대로 유지하고, 자동 줄바꿈은 하지 않음
-function splitTextIntoPages(text, maxLines = 5, maxPages = Infinity) {
+// 원본 줄바꿈을 그대로 유지 (줄바꿈이 없는 텍스트는 그대로 유지)
+function splitTextIntoPages(text, maxLines = 5) {
     if (!text) return [''];
     
     // 줄바꿈만 정규화 (원본 텍스트의 줄바꿈과 공백은 그대로 유지)
     text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     
-    // 원본 줄바꿈을 기준으로 분할 (자동 줄바꿈 없이)
+    // 원본 줄바꿈을 기준으로 분할 (줄바꿈이 없으면 한 줄로 처리)
     const originalLines = text.split('\n');
     
-    // 5줄씩 묶어서 페이지 만들기 (페이지 제한 없음)
-    const linesToUse = maxPages === Infinity ? originalLines : originalLines.slice(0, maxPages * maxLines);
+    // 빈 텍스트인 경우
+    if (originalLines.length === 0) return [''];
     
     const pages = [];
-    for (let i = 0; i < linesToUse.length; i += maxLines) {
-        const pageLines = linesToUse.slice(i, i + maxLines);
+    // 5줄씩 묶어서 페이지 만들기 (모든 줄 포함, 페이지 제한 없음)
+    for (let i = 0; i < originalLines.length; i += maxLines) {
+        const pageLines = originalLines.slice(i, i + maxLines);
         const pageText = pageLines.join('\n');
-        // 빈 페이지가 아닌 경우 추가 (모든 줄이 공백이어도 추가)
+        // 빈 페이지도 추가 (모든 줄이 공백이어도 추가)
         pages.push(pageText);
     }
     
-    // 페이지가 없으면 원본 텍스트 반환
-    return pages.length > 0 ? pages : [text];
+    // 마지막에 남은 줄이 있는지 확인 (이미 위에서 처리되지만 안전장치)
+    if (pages.length === 0) {
+        pages.push(text);
+    }
+    
+    return pages;
 }
 
 // 말풍선에 텍스트 표시 (페이지네이션, 페이지 제한 없음)
@@ -179,21 +187,44 @@ function displayInsightText(text, characterName = '') {
     const indicator = document.getElementById('insightPageIndicator');
     const bubble = document.getElementById('insightBubble');
     
-    if (!container) return;
+    if (!container) {
+        console.error('insightTextPages 컨테이너를 찾을 수 없습니다.');
+        return;
+    }
     
     // 텍스트를 페이지로 분할 (페이지 제한 없음)
     const pages = splitTextIntoPages(text, 5);
+    
+    // 디버깅: 페이지 분할 결과 확인
+    const totalLines = text.split('\n').length;
+    const totalCharsInPages = pages.reduce((sum, p) => sum + p.length, 0);
+    console.log('텍스트 페이지 분할 결과:', {
+        전체_텍스트_길이: text.length,
+        전체_줄_수: totalLines,
+        생성된_페이지_수: pages.length,
+        각_페이지_줄_수: pages.map(p => p.split('\n').length),
+        각_페이지_문자_수: pages.map(p => p.length),
+        페이지에_포함된_총_문자_수: totalCharsInPages,
+        텍스트_손실_여부: text.length !== totalCharsInPages ? '⚠️ 손실 있음' : '✅ 정상'
+    });
     
     // 캐릭터명은 첫 페이지에만 표시
     const characterHeader = characterName && pages.length > 0 
         ? `<div class="insight-character-name text-xs font-bold text-emerald-700 mb-1">[ ${characterName} ]</div>` 
         : '';
     
-    container.innerHTML = pages.map((page, index) => {
+    // 기존 내용을 먼저 지우고 새로 추가 (강제 업데이트)
+    container.innerHTML = '';
+    
+    pages.forEach((page, index) => {
         // 줄바꿈을 <br>로 변환하고 HTML 이스케이프
         const escapedPage = escapeHtml(page).replace(/\n/g, '<br>');
-        return `<div class="insight-text-page ${index === 0 ? 'active' : ''}" data-page="${index}">${index === 0 ? characterHeader : ''}<div class="insight-text-content">${escapedPage}</div></div>`;
-    }).join('');
+        const pageDiv = document.createElement('div');
+        pageDiv.className = `insight-text-page ${index === 0 ? 'active' : ''}`;
+        pageDiv.setAttribute('data-page', index);
+        pageDiv.innerHTML = `${index === 0 ? characterHeader : ''}<div class="insight-text-content">${escapedPage}</div>`;
+        container.appendChild(pageDiv);
+    });
     
     // 페이지 카운터 표시 (우상단) - 항상 표시 (1페이지여도)
     if (pageCounter) {
@@ -445,6 +476,7 @@ async function getCharacterDefaultComment(characterId) {
 }
 
 // MEALOG 캐릭터 사용 안내 텍스트 (Firebase에서 가져오기)
+// 메시지별로 순차적으로 반환 (메시지1 > 2 > 3...)
 async function getMealogComment() {
     try {
         const personaDocRef = doc(db, 'artifacts', appId, 'persona', 'mealog');
@@ -458,9 +490,10 @@ async function getMealogComment() {
             const validComments = comments.filter(c => c && c.trim().length > 0);
             
             if (validComments.length > 0) {
-                // 랜덤으로 하나 선택
-                const randomIndex = Math.floor(Math.random() * validComments.length);
-                return validComments[randomIndex];
+                // 순차적으로 선택 (메시지1 > 2 > 3... 순서대로)
+                const selectedComment = validComments[mealogCommentIndex % validComments.length];
+                mealogCommentIndex = (mealogCommentIndex + 1) % validComments.length;
+                return selectedComment;
             }
         }
         
@@ -553,7 +586,6 @@ export async function generateInsightComment() {
         const characterName = character ? character.name : '';
         const commentText = await getMealogComment();
         displayInsightText(commentText, characterName);
-        showToast('MEALOG는 사용 안내를 제공합니다. 다른 캐릭터를 선택하면 AI 분석을 받을 수 있어요!', 'info');
         return;
     }
     

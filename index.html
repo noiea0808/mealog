@@ -354,10 +354,35 @@
             <p class="text-xs text-slate-500 text-center mb-6">서비스를 이용하기 위해 프로필을 설정해주세요.</p>
             
             <div class="space-y-4 mb-6">
-                <!-- 아이콘 선택 -->
+                <!-- 프로필 타입 선택 -->
                 <div>
-                    <label class="text-sm font-bold text-slate-600 block mb-2">아이콘 선택</label>
-                    <div id="setupIconSelector" class="flex gap-3 overflow-x-auto pb-2"></div>
+                    <label class="text-sm font-bold text-slate-600 block mb-2">프로필 설정</label>
+                    <div class="flex gap-2 mb-4">
+                        <button id="setupProfileTypeEmoji" onclick="window.setProfileType('emoji')" class="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors">
+                            이모지
+                        </button>
+                        <button id="setupProfileTypePhoto" onclick="window.setProfileType('photo')" class="flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors">
+                            사진 직접 등록
+                        </button>
+                    </div>
+                    
+                    <!-- 이모지 선택 영역 -->
+                    <div id="setupEmojiSection">
+                        <div id="setupIconSelector" class="flex gap-3 overflow-x-auto pb-2"></div>
+                    </div>
+                    
+                    <!-- 사진 직접 등록 영역 -->
+                    <div id="setupPhotoSection" class="hidden">
+                        <div class="flex flex-col items-center gap-3">
+                            <div id="setupPhotoPreview" class="w-20 h-20 rounded-full bg-slate-100 border-2 border-slate-200 overflow-hidden flex items-center justify-center">
+                                <i class="fa-solid fa-camera text-slate-400 text-xl"></i>
+                            </div>
+                            <button onclick="document.getElementById('setupPhotoInput').click()" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors">
+                                사진 선택
+                            </button>
+                            <input type="file" id="setupPhotoInput" class="hidden" accept="image/*" onchange="window.handleSetupPhotoUpload(event)">
+                        </div>
+                    </div>
                 </div>
                 
                 <!-- 닉네임 입력 -->
@@ -406,9 +431,9 @@
                 <h1 class="text-2xl font-black text-emerald-600 tracking-tighter">mealog</h1>
                 <div class="flex items-center gap-2">
                     <button id="searchTriggerBtn" onclick="window.toggleSearch()" class="w-8 h-8 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center active:bg-slate-100"><i class="fa-solid fa-magnifying-glass text-sm"></i></button>
-                    <button onclick="window.openSettings()" class="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100 active:bg-slate-100">
-                        <span id="headerIcon" class="text-lg">🐻</span>
-                        <span id="headerName" class="text-xs font-bold text-slate-700 truncate max-w-[80px]">게스트</span>
+                    <button onclick="window.openSettings()" class="flex items-center gap-2 bg-slate-50 px-2.5 py-1.5 rounded-full border border-slate-100 active:bg-slate-100 max-w-[140px]">
+                        <span id="headerIcon" class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 flex-shrink-0 overflow-hidden"></span>
+                        <span id="headerName" class="text-xs font-bold text-slate-700 truncate">게스트</span>
                     </button>
                 </div>
             </div>
@@ -563,7 +588,7 @@
                             </button>
                         </div>
                         <!-- 말풍선 -->
-                        <div class="flex-1 relative">
+                        <div class="flex-1 relative min-w-0">
                             <div id="insightBubble" class="bg-yellow-50/90 border-2 border-white py-3 px-3 overflow-hidden relative" style="height: calc(1.6rem * 5 + 2rem); border-radius: 0.5rem 1.25rem 1.25rem 0.5rem;">
                                 <!-- 페이지 카운터 (우상단) -->
                                 <div id="insightPageCounter" class="hidden absolute top-2 right-3 text-[10px] font-bold text-slate-500 bg-white/60 px-1.5 py-0.5 rounded">
@@ -698,14 +723,42 @@
                 <div id="accountSection"></div>
 
                 <div>
-                    <h3 class="text-xs font-black text-slate-400 mb-4 uppercase tracking-widest">프로필 설정</h3>
-                    <div id="iconSelector" class="flex gap-3 overflow-x-auto pb-2"></div>
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest">프로필 설정</h3>
+                        <button onclick="window.saveProfileSettings()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-md whitespace-nowrap active:bg-emerald-700 transition-colors">저장</button>
+                    </div>
+                    
+                    <!-- 프로필 타입 선택 -->
+                    <div class="flex gap-2 mb-4">
+                        <button id="profileTypeEmoji" onclick="window.setSettingsProfileType('emoji')" class="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors">
+                            이모지
+                        </button>
+                        <button id="profileTypePhoto" onclick="window.setSettingsProfileType('photo')" class="flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors">
+                            사진 직접 등록
+                        </button>
+                    </div>
+                    
+                    <!-- 이모지 선택 영역 -->
+                    <div id="emojiSection">
+                        <div id="iconSelector" class="flex gap-3 overflow-x-auto pb-2"></div>
+                    </div>
+                    
+                    <!-- 사진 직접 등록 영역 -->
+                    <div id="photoSection" class="hidden">
+                        <div class="flex flex-col items-center gap-3 mb-4">
+                            <div id="photoPreview" class="w-20 h-20 rounded-full bg-slate-100 border-2 border-slate-200 overflow-hidden flex items-center justify-center">
+                                <i class="fa-solid fa-camera text-slate-400 text-xl"></i>
+                            </div>
+                            <button onclick="document.getElementById('photoInput').click()" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors">
+                                사진 선택
+                            </button>
+                            <input type="file" id="photoInput" class="hidden" accept="image/*" onchange="window.handlePhotoUpload(event)">
+                        </div>
+                    </div>
+                    
                     <div class="bg-slate-50 p-4 rounded-2xl space-y-3 mt-4">
                         <label class="text-[10px] font-bold text-slate-400 block uppercase">닉네임</label>
-                        <div class="flex items-center gap-2">
-                            <input type="text" id="settingNickname" class="flex-1 bg-white p-3 rounded-xl border-none outline-none font-bold text-sm">
-                            <button onclick="window.saveProfileSettings()" class="px-6 py-3 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-md whitespace-nowrap active:bg-emerald-700 transition-colors">저장</button>
-                        </div>
+                        <input type="text" id="settingNickname" class="w-full bg-white p-3 rounded-xl border-none outline-none font-bold text-sm">
                     </div>
                 </div>
                 

@@ -78,9 +78,35 @@ export function renderTimeline() {
     }
     
     sortedTargetDates.forEach(dateStr => {
+        // 일간보기 모드에서는 기존 섹션이 있어도 공유 버튼만 업데이트
+        const existingSection = document.getElementById(`date-${dateStr}`);
+        if (existingSection && state.viewMode === 'page') {
+            // 공유 버튼만 업데이트
+            const headerEl = existingSection.querySelector('.date-section-header');
+            if (headerEl) {
+                const dailyShare = window.sharedPhotos && Array.isArray(window.sharedPhotos) 
+                    ? window.sharedPhotos.find(photo => 
+                        photo.type === 'daily' && 
+                        photo.date === dateStr && 
+                        photo.userId === window.currentUser?.uid
+                    )
+                    : null;
+                const isShared = !!dailyShare;
+                
+                const shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-emerald-600 text-white' : 'text-emerald-600'}">
+                    <i class="fa-solid fa-share text-[10px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
+                </button>`;
+                
+                const h3El = headerEl.querySelector('h3');
+                if (h3El) {
+                    headerEl.innerHTML = h3El.outerHTML + shareButton;
+                }
+            }
+            return;
+        }
+        
         // 이미 로드된 날짜이거나 DOM에 이미 존재하는 경우 건너뛰기
         if (window.loadedDates.includes(dateStr)) return;
-        const existingSection = document.getElementById(`date-${dateStr}`);
         if (existingSection) return;
         
         window.loadedDates.push(dateStr);
@@ -93,9 +119,13 @@ export function renderTimeline() {
         // 일간보기 모드일 때만 공유 버튼 추가
         let shareButton = '';
         if (state.viewMode === 'page') {
-            // 공유 상태 확인
+            // 공유 상태 확인 (본인 것만 확인)
             const dailyShare = window.sharedPhotos && Array.isArray(window.sharedPhotos) 
-                ? window.sharedPhotos.find(photo => photo.type === 'daily' && photo.date === dateStr)
+                ? window.sharedPhotos.find(photo => 
+                    photo.type === 'daily' && 
+                    photo.date === dateStr && 
+                    photo.userId === window.currentUser?.uid
+                )
                 : null;
             const isShared = !!dailyShare;
             

@@ -7,14 +7,15 @@ import {
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, confirmLogout, confirmLogoutAction,
     copyDomain, closeDomainModal, switchToLogin, showTermsModal, cancelTermsAgreement, confirmTermsAgreement,
-    showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup
+    showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup, setProfileType, handleSetupPhotoUpload
 } from './auth.js';
-import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail } from './render/index.js';
+import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, escapeHtml } from './render/index.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment } from './analytics.js';
+import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
     handleMultipleImages, removePhoto, updateShareIndicator, toggleSharePhoto,
-    openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
+    openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, setSettingsProfileType, handlePhotoUpload, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
     openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace
 } from './modals.js';
 import { DEFAULT_SUB_TAGS } from './constants.js';
@@ -48,6 +49,8 @@ window.showTermsDetail = showTermsDetail;
 window.updateTermsAgreeButton = updateTermsAgreeButton;
 window.selectSetupIcon = selectSetupIcon;
 window.confirmProfileSetup = confirmProfileSetup;
+window.setProfileType = setProfileType;
+window.handleSetupPhotoUpload = handleSetupPhotoUpload;
 window.onboardingPrev = onboardingPrev;
 window.onboardingNext = onboardingNext;
 window.onboardingSkip = onboardingSkip;
@@ -68,6 +71,8 @@ window.switchSettingsTab = switchSettingsTab;
 window.saveSettings = saveSettings;
 window.saveProfileSettings = saveProfileSettings;
 window.selectIcon = selectIcon;
+window.setSettingsProfileType = setSettingsProfileType;
+window.handlePhotoUpload = handlePhotoUpload;
 window.addTag = addTag;
 window.removeTag = removeTag;
 window.deleteSubTag = deleteSubTag;
@@ -89,6 +94,7 @@ window.setAnalysisType = setAnalysisType;
 window.openShareBestModal = openShareBestModal;
 window.closeShareBestModal = closeShareBestModal;
 window.shareBestToFeed = shareBestToFeed;
+window.editBestShare = openEditBestShareModal;
 window.toggleComment = toggleComment;
 window.toggleFeedComment = toggleFeedComment;
 window.openKakaoPlaceSearch = openKakaoPlaceSearch;
@@ -404,13 +410,7 @@ window.togglePostCaption = (idx) => {
     }
 };
 
-// HTML 이스케이프 헬퍼 함수 (전역으로 사용)
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
+// escapeHtml은 render/index.js에서 import됨
 
 // 일간보기 공유 함수
 window.shareDailySummary = async (dateStr) => {
@@ -418,16 +418,47 @@ window.shareDailySummary = async (dateStr) => {
     if (loadingOverlay) loadingOverlay.classList.remove('hidden');
     
     try {
+        // 이미 공유된 경우 공유 해제
+        const existingShare = window.sharedPhotos && Array.isArray(window.sharedPhotos) 
+            ? window.sharedPhotos.find(photo => photo.type === 'daily' && photo.date === dateStr && photo.userId === window.currentUser.uid)
+            : null;
+        
+        if (existingShare) {
+            // 공유 해제 (일간보기 공유이므로 isDailyShare=true)
+            await dbOps.unsharePhotos([existingShare.photoUrl], null, false, true);
+            
+            // window.sharedPhotos에서 즉시 제거하여 UI 즉시 반영
+            if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+                window.sharedPhotos = window.sharedPhotos.filter(p => 
+                    !(p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid)
+                );
+            }
+            
+            showToast('공유가 해제되었습니다.', 'success');
+            
+            // 타임라인 즉시 새로고침
+            if (appState.currentTab === 'timeline') {
+                renderTimeline();
+            }
+            
+            // 갤러리 즉시 새로고침
+            if (appState.currentTab === 'gallery') {
+                renderGallery();
+            }
+            
+            return;
+        }
+        
         // 컴팩트 카드 생성
         const shareCard = createDailyShareCard(dateStr);
         
-        // html2canvas로 캡쳐
+        // html2canvas로 캡쳐 (모바일 기준 375px)
         const canvas = await html2canvas(shareCard, {
             backgroundColor: '#ffffff',
             scale: 2,
             logging: false,
             useCORS: true,
-            width: 400,
+            width: 375,
             height: shareCard.scrollHeight
         });
         
@@ -440,29 +471,68 @@ window.shareDailySummary = async (dateStr) => {
         
         // 공유 데이터 생성
         const userProfile = window.userSettings?.profile || {};
+        
+        // 일간보기 코멘트 가져오기
+        let dailyComment = '';
+        try {
+            if (window.dbOps && typeof window.dbOps.getDailyComment === 'function') {
+                dailyComment = window.dbOps.getDailyComment(dateStr) || '';
+            } else if (window.userSettings && window.userSettings.dailyComments) {
+                dailyComment = window.userSettings.dailyComments[dateStr] || '';
+            }
+        } catch (e) {
+            console.warn('getDailyComment 호출 실패:', e);
+        }
+        
         const dailyShareData = {
             photoUrl: photoUrl,
             userId: window.currentUser.uid,
             userNickname: userProfile.nickname || '익명',
             userIcon: userProfile.icon || '🐻',
+            userPhotoUrl: userProfile.photoUrl || null,
             type: 'daily',
             date: dateStr,
             timestamp: new Date().toISOString(),
-            entryId: null
+            entryId: null,
+            comment: dailyComment // 일간보기 코멘트 포함
         };
         
         // Firestore에 저장
         const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
         const { db, appId } = await import('./firebase.js');
         const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-        await addDoc(sharedColl, dailyShareData);
+        const docRef = await addDoc(sharedColl, dailyShareData);
+        
+        console.log('일간보기 공유 저장 완료:', { docId: docRef.id, dateStr, dailyShareData });
+        
+        // window.sharedPhotos에 즉시 추가하여 UI 즉시 반영
+        if (!window.sharedPhotos) {
+            window.sharedPhotos = [];
+        }
+        // 기존 일간보기 공유 제거 (같은 날짜의 기존 공유가 있다면)
+        window.sharedPhotos = window.sharedPhotos.filter(p => 
+            !(p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid)
+        );
+        // 새 공유 추가
+        window.sharedPhotos.push({ id: docRef.id, ...dailyShareData });
+        // timestamp 순으로 정렬 (최신순)
+        window.sharedPhotos.sort((a, b) => {
+            const timeA = new Date(a.timestamp || 0).getTime();
+            const timeB = new Date(b.timestamp || 0).getTime();
+            return timeB - timeA;
+        });
         
         // 컨테이너 제거
         shareCard.remove();
         
         showToast('하루 기록이 피드에 공유되었습니다!', 'success');
         
-        // 갤러리 새로고침
+        // 타임라인 즉시 새로고침 (버튼 상태 업데이트)
+        if (appState.currentTab === 'timeline') {
+            renderTimeline();
+        }
+        
+        // 갤러리 즉시 새로고침
         if (appState.currentTab === 'gallery') {
             renderGallery();
         }
@@ -491,6 +561,121 @@ window.saveDailyComment = async (date) => {
     try {
         await dbOps.saveDailyComment(date, comment);
         showToast("하루 전체 Comment가 저장되었습니다.", 'success');
+        
+        // 타임라인과 앨범 새로고침
+        if (appState.currentTab === 'timeline') {
+            renderTimeline();
+        }
+        if (appState.currentTab === 'gallery') {
+            renderGallery();
+        }
+    } catch (e) {
+        console.error("Daily Comment Save Error:", e);
+        showToast("저장 중 오류가 발생했습니다.", 'error');
+    } finally {
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+    }
+};
+
+// 일간보기 코멘트 수정 모달 열기
+window.openDailyCommentModal = (dateStr) => {
+    // 기존 모달 제거
+    const existingModal = document.getElementById('dailyCommentModal');
+    if (existingModal) existingModal.remove();
+    
+    // 날짜 포맷팅
+    const dateObj = new Date(dateStr + 'T00:00:00');
+    const year = dateObj.getFullYear();
+    const month = dateObj.getMonth() + 1;
+    const day = dateObj.getDate();
+    const dateLabel = `${year}년 ${month}월 ${day}일`;
+    
+    // 현재 코멘트 가져오기
+    let currentComment = '';
+    try {
+        if (window.dbOps && typeof window.dbOps.getDailyComment === 'function') {
+            currentComment = window.dbOps.getDailyComment(dateStr) || '';
+        } else if (window.userSettings && window.userSettings.dailyComments) {
+            currentComment = window.userSettings.dailyComments[dateStr] || '';
+        }
+    } catch (e) {
+        console.warn('getDailyComment 호출 실패:', e);
+    }
+    
+    // 모달 생성
+    const modal = document.createElement('div');
+    modal.id = 'dailyCommentModal';
+    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/50';
+    
+    modal.innerHTML = `
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-black text-slate-800">하루 소감 수정</h3>
+                <button onclick="window.closeDailyCommentModal()" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <textarea id="dailyCommentModalInput" 
+                placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해보세요." 
+                class="w-full p-4 bg-slate-50 rounded-xl text-sm border border-slate-200 focus:border-emerald-500 transition-all resize-none min-h-[150px]" 
+                rows="6">${escapeHtml(currentComment)}</textarea>
+            <div class="flex gap-3 mt-6">
+                <button onclick="window.closeDailyCommentModal()" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm">
+                    취소
+                </button>
+                <button onclick="window.saveDailyCommentFromModal('${dateStr}')" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700">
+                    저장
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // 배경 클릭 시 닫기
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            window.closeDailyCommentModal();
+        }
+    });
+    
+    // 포커스
+    setTimeout(() => {
+        const input = document.getElementById('dailyCommentModalInput');
+        if (input) input.focus();
+    }, 100);
+};
+
+// 일간보기 코멘트 모달 닫기
+window.closeDailyCommentModal = () => {
+    const modal = document.getElementById('dailyCommentModal');
+    if (modal) modal.remove();
+};
+
+// 모달에서 일간보기 코멘트 저장
+window.saveDailyCommentFromModal = async (dateStr) => {
+    const input = document.getElementById('dailyCommentModalInput');
+    if (!input) return;
+    
+    const comment = input.value || '';
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    
+    try {
+        await dbOps.saveDailyComment(dateStr, comment);
+        showToast("하루 소감이 저장되었습니다.", 'success');
+        window.closeDailyCommentModal();
+        
+        // 타임라인과 앨범 새로고침
+        if (appState.currentTab === 'timeline') {
+            renderTimeline();
+        }
+        if (appState.currentTab === 'gallery') {
+            renderGallery();
+        }
+        if (appState.currentTab === 'feed') {
+            renderFeed();
+        }
     } catch (e) {
         console.error("Daily Comment Save Error:", e);
         showToast("저장 중 오류가 발생했습니다.", 'error');
@@ -1001,7 +1186,7 @@ window.onload = () => {
 };
 
 // 피드 옵션 관련 함수
-window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '', photoSlotId = '') => {
+window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '', photoSlotId = '', isDailyShare = false) => {
     // 옵션 메뉴 표시
     const existingMenu = document.getElementById('feedOptionsMenu');
     if (existingMenu) {
@@ -1037,18 +1222,31 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
     const buttonContainer = document.createElement('div');
     buttonContainer.className = 'space-y-2';
     
-    // 수정하기 버튼 (베스트 공유가 아닌 경우에만 표시)
-    // entryId가 있으면 수정 가능, entryId가 없어도 Comment 등 정보가 있으면 수정 가능
-    // 베스트 공유는 별도 처리가 필요하므로 수정 옵션에서 제외
-    if (!isBestShare) {
-        const editBtn = document.createElement('button');
-        editBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
-        editBtn.type = 'button';
-        editBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            menu.remove();
-            setTimeout(() => {
-                // entryId가 있으면 editFeedPost 호출, 없으면 날짜와 slotId로 모달 열기
+    // 수정하기 버튼
+    const editBtn = document.createElement('button');
+    editBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+    editBtn.type = 'button';
+    editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menu.remove();
+        setTimeout(() => {
+            if (isBestShare) {
+                // 베스트 공유 수정
+                const photoUrlArray = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(url => url.trim()).filter(url => url) : [];
+                if (photoUrlArray.length > 0) {
+                    window.editBestShare(photoUrlArray[0]);
+                } else {
+                    showToast("수정할 베스트 공유를 찾을 수 없습니다.", 'error');
+                }
+            } else if (isDailyShare) {
+                // 일간보기 공유 수정: 코멘트 수정 모달 열기
+                if (photoDate) {
+                    window.openDailyCommentModal(photoDate);
+                } else {
+                    showToast("수정할 일간보기 공유를 찾을 수 없습니다.", 'error');
+                }
+            } else {
+                // 일반 공유 수정
                 if (entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined') {
                     window.editFeedPost(entryId);
                 } else if (photoDate && photoSlotId) {
@@ -1057,16 +1255,16 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
                 } else {
                     showToast("수정할 기록을 찾을 수 없습니다.", 'error');
                 }
-            }, 100);
-        });
-        editBtn.innerHTML = `
-            <div class="flex items-center gap-3">
-                <i class="fa-solid fa-pencil text-emerald-600 text-lg"></i>
-                <span class="font-bold text-slate-800">수정하기</span>
-            </div>
-        `;
-        buttonContainer.appendChild(editBtn);
-    }
+            }
+        }, 100);
+    });
+    editBtn.innerHTML = `
+        <div class="flex items-center gap-3">
+            <i class="fa-solid fa-pencil text-emerald-600 text-lg"></i>
+            <span class="font-bold text-slate-800">수정하기</span>
+        </div>
+    `;
+    buttonContainer.appendChild(editBtn);
     
     // 삭제하기/게시 취소 버튼
     const deleteBtn = document.createElement('button');

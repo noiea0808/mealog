@@ -193,6 +193,7 @@ export const dbOps = {
                         userId: window.currentUser.uid,
                         userNickname: userProfile.nickname || '익명',
                         userIcon: userProfile.icon || '🐻',
+                        userPhotoUrl: userProfile.photoUrl || null,
                         mealType: mealData.mealType || '',
                         place: mealData.place || '',
                         menuDetail: mealData.menuDetail || '',
@@ -227,7 +228,7 @@ export const dbOps = {
             throw e;
         }
     },
-    async unsharePhotos(photos, entryId, isBestShare = false) {
+    async unsharePhotos(photos, entryId, isBestShare = false, isDailyShare = false) {
         if (!window.currentUser || !photos || photos.length === 0) return;
         try {
             const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
@@ -262,6 +263,11 @@ export const dbOps = {
                     // 베스트 공유인 경우 type='best'인 항목만 삭제
                     if (isBestShare) {
                         if (data.type === 'best') {
+                            photosToDelete.push(docSnap.id);
+                        }
+                    } else if (isDailyShare) {
+                        // 일간보기 공유인 경우: type='daily'이고 photoUrl이 일치하면 삭제
+                        if (data.type === 'daily') {
                             photosToDelete.push(docSnap.id);
                         }
                     } else {

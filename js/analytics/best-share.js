@@ -670,13 +670,13 @@ export async function openShareBestModal() {
     
     // 스크린샷용 HTML 생성
     const screenshotHtml = `
-        <div id="bestScreenshotContainer" style="background: white; padding: 24px; max-width: 400px; margin: 0 auto;">
-            <div style="text-align: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 2px solid #10b981;">
-                <h2 style="font-size: 20px; font-weight: 800; color: #1e293b; margin: 0; display: flex; align-items: center; justify-content: center; gap: 8px;">
-                    <span style="font-size: 22px;">🏆</span>
-                    <span>
+        <div id="bestScreenshotContainer" style="background: white; padding: 16px; max-width: 420px; margin: 0 auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+            <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); margin: -16px -16px 20px -16px; padding: 14px 16px; border-radius: 0; display: flex; align-items: center; justify-content: center; min-height: 50px;">
+                <h2 style="font-size: 18px; font-weight: 800; color: #ffffff; margin: 0; padding: 0; display: flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; overflow: visible; line-height: 1.2; vertical-align: middle;">
+                    <span style="font-size: 20px; line-height: 1; display: inline-flex; align-items: center; vertical-align: middle;">🏆</span>
+                    <span style="flex-shrink: 0; line-height: 1.2; display: inline-flex; align-items: center; vertical-align: middle;">
                         ${userNickname}의 ${periodType} Best
-                        ${periodText ? `<span style="font-size: 12px; color: #64748b; font-weight: 700; margin-left: 6px;">${periodText}</span>` : ''}
+                        ${periodText ? `<span style="font-size: 12px; color: rgba(255,255,255,0.9); font-weight: 700; margin-left: 6px;">${periodText}</span>` : ''}
                     </span>
                 </h2>
             </div>
@@ -687,11 +687,17 @@ export async function openShareBestModal() {
                 const displayTitle = isSnack ? (meal.menuDetail || meal.snackType || '간식') : (meal.menuDetail || meal.mealType || '식사');
                 const photoUrl = meal.photos && Array.isArray(meal.photos) && meal.photos.length > 0 ? meal.photos[0] : null;
                 const date = meal.date ? new Date(meal.date + 'T00:00:00') : new Date();
-                const dateStr = `${date.getMonth() + 1}.${date.getDate()}(${getDayName(date)})`;
+                const formattedDate = date.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
                 const rating = meal.rating ? parseInt(meal.rating) : 0;
                 const place = meal.place || '';
                 const menuDetail = meal.menuDetail || '';
-                const title = (place && menuDetail) ? `${place} | ${menuDetail}` : (place || menuDetail || displayTitle);
+                const comment = meal.comment || '';
+                
+                // 슬롯 스타일 가져오기
+                const specificStyle = SLOT_STYLES[meal.slotId] || SLOT_STYLES['default'];
+                const slotColor = specificStyle.iconText === 'text-orange-500' ? '#f97316' : 
+                                 specificStyle.iconText === 'text-emerald-600' ? '#059669' : 
+                                 specificStyle.iconText === 'text-indigo-600' ? '#4f46e5' : '#64748b';
                 
                 // 순위 색상
                 let rankBg = '#10b981';
@@ -704,19 +710,38 @@ export async function openShareBestModal() {
                     rankBg = '#d97706'; // 동색
                 }
                 
+                // 안전한 문자열 이스케이프
+                const safePlace = escapeHtml(place);
+                const safeMenuDetail = escapeHtml(menuDetail || displayTitle);
+                const safeComment = escapeHtml(comment);
+                const safeSlotLabel = escapeHtml(slotLabel);
+                
                 return `
-                    <div style="display: flex; margin-bottom: 16px; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background: white;">
-                        <div style="width: 120px; height: 120px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0;">
-                            ${photoUrl ? `<img src="${photoUrl}" style="width: 100%; height: 100%; object-fit: cover;">` : `<div style="font-size: 24px;">🍽️</div>`}
-                            <div style="position: absolute; top: 8px; left: 8px; width: 24px; height: 24px; border-radius: 50%; background: ${rankBg}; color: ${rankText}; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; line-height: 1;">
-                                ${index + 1}
+                    <div style="display: flex; margin-bottom: 7px; border: 1px solid #e2e8f0; border-radius: 16px; overflow: visible; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-height: 130px;">
+                        <div style="width: 130px; min-height: 130px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0;">
+                            ${photoUrl ? `<img src="${photoUrl}" style="width: 100%; height: 100%; min-height: 130px; object-fit: cover;">` : `<div style="font-size: 28px;">🍽️</div>`}
+                            <div style="position: absolute; top: 10px; left: 10px; width: 28px; height: 28px; border-radius: 50%; background: ${rankBg}; color: ${rankText}; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; line-height: 1; box-shadow: 0 2px 4px rgba(0,0,0,0.15); padding: 0; margin: 0;">
+                                <span style="display: inline-block; line-height: 1; vertical-align: middle; margin: 0; padding: 0;">${index + 1}</span>
                             </div>
                         </div>
-                        <div style="flex: 1; padding: 12px; display: flex; flex-direction: column; justify-content: center;">
-                            <div style="font-size: 10px; color: #64748b; margin-bottom: 4px;">${slotLabel} · ${dateStr}</div>
-                            <div style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">${title}</div>
-                            <div style="font-size: 12px; color: #fbbf24; display: flex; align-items: center; gap: 4px;">
-                                <span style="font-size: 13px; color: #d97706; font-weight: 900; background: #fef3c7; padding: 4px 8px; border-radius: 6px; display: inline-flex; align-items: center; gap: 3px;">⭐ <span style="font-weight: 900;">${rating}</span></span>
+                        <div style="flex: 1; padding: 10px 12px 12px 12px; display: flex; flex-direction: column; justify-content: flex-start; min-width: 0; min-height: 130px;">
+                            <div style="font-size: 11px; color: #64748b; margin-bottom: 6px; line-height: 1.4;">
+                                <span style="font-weight: 700; color: ${slotColor};">${safeSlotLabel}</span>
+                                ${place ? ` <span style="color: #94a3b8; font-weight: 700;">@ ${safePlace}</span>` : ''}
+                                <span style="color: #cbd5e1; margin: 0 4px;">·</span>
+                                <span style="color: #94a3b8;">${formattedDate}</span>
+                            </div>
+                            <div style="font-size: 15px; font-weight: 700; color: #1e293b; margin-bottom: 6px; line-height: 1.3; word-break: break-word;">
+                                ${safeMenuDetail}
+                            </div>
+                            ${comment ? `<div style="font-size: 11px; color: #94a3b8; margin-bottom: 8px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic; padding-bottom: 2px;">
+                                "${safeComment}"
+                            </div>` : ''}
+                            <div style="display: flex; align-items: center; justify-content: flex-start; gap: 4px; margin-top: auto; padding-top: 4px;">
+                                <span style="font-size: 12px; color: #d97706; font-weight: 900; background: #fef3c7; padding: 4px 10px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 24px;">
+                                    <span style="font-size: 13px; line-height: 1; display: inline-flex; align-items: center;">⭐</span>
+                                    <span style="font-weight: 900; line-height: 1; display: inline-flex; align-items: center;">${rating}</span>
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -744,6 +769,10 @@ export async function openShareBestModal() {
     // 공유 버튼 텍스트 업데이트
     const submitBtn = document.getElementById('bestShareSubmitBtn');
     if (submitBtn) {
+        // 수정 모드 속성 제거
+        submitBtn.removeAttribute('data-edit-mode');
+        submitBtn.removeAttribute('data-photo-url');
+        
         if (isShared) {
             submitBtn.textContent = '공유 취소';
             submitBtn.className = 'w-full py-4 bg-red-600 text-white rounded-xl font-bold active:bg-red-700 shadow-lg transition-all';
@@ -762,15 +791,156 @@ export function closeShareBestModal() {
     }
 }
 
+// 베스트 공유 수정 모달 열기 (photoUrl로 찾기)
+export async function openEditBestShareModal(photoUrl) {
+    if (!photoUrl || !window.sharedPhotos) {
+        showToast('베스트 공유를 찾을 수 없습니다.', 'error');
+        return;
+    }
+    
+    // window.sharedPhotos에서 해당 photoUrl의 베스트 공유 찾기
+    const bestShare = window.sharedPhotos.find(photo => 
+        photo.type === 'best' && 
+        (photo.photoUrl === photoUrl || photo.photoUrl?.includes(photoUrl) || photoUrl?.includes(photo.photoUrl))
+    );
+    
+    if (!bestShare) {
+        showToast('베스트 공유를 찾을 수 없습니다.', 'error');
+        return;
+    }
+    
+    const modal = document.getElementById('bestShareModal');
+    const preview = document.getElementById('bestSharePreview');
+    if (!modal || !preview) return;
+    
+    // 베스트 공유 데이터에서 기간 정보 가져오기
+    const periodType = bestShare.periodType || '';
+    const periodText = bestShare.periodText || '';
+    
+    // 기간 정보로 dashboardMode 설정 (필요한 경우)
+    // 하지만 이미 공유된 것이므로 기간 정보만 표시하면 됨
+    
+    // 사용자 닉네임 가져오기
+    const userNickname = bestShare.userNickname || window.userSettings?.profile?.nickname || '익명';
+    
+    // 공유 모드와 동일한 형식으로 미리보기 표시 (기존 이미지 사용)
+    const existingImageHtml = bestShare.photoUrl ? `
+        <div id="bestScreenshotContainer" style="background: white; padding: 16px; max-width: 420px; margin: 0 auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+            <div style="text-align: center;">
+                <img src="${bestShare.photoUrl}" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" alt="베스트 공유 이미지">
+            </div>
+        </div>
+    ` : '<div style="text-align: center; padding: 40px; color: #94a3b8;">이미지를 불러올 수 없습니다.</div>';
+    
+    preview.innerHTML = existingImageHtml;
+    
+    // 모달 열기
+    modal.classList.remove('hidden');
+    
+    // Comment 초기화 또는 기존 코멘트 표시
+    const commentInput = document.getElementById('bestShareComment');
+    if (commentInput) {
+        commentInput.value = bestShare.comment || '';
+    }
+    
+    // 공유 버튼 텍스트 업데이트 (수정 모드)
+    const submitBtn = document.getElementById('bestShareSubmitBtn');
+    if (submitBtn) {
+        submitBtn.textContent = '수정 완료';
+        submitBtn.className = 'w-full py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all';
+        // 수정 모드임을 표시하기 위한 데이터 속성 추가
+        submitBtn.setAttribute('data-edit-mode', 'true');
+        submitBtn.setAttribute('data-photo-url', photoUrl);
+    }
+}
+
 // 베스트를 피드에 공유하기 (토글 방식)
 export async function shareBestToFeed() {
     const preview = document.getElementById('bestScreenshotContainer');
     const commentInput = document.getElementById('bestShareComment');
     const submitBtn = document.getElementById('bestShareSubmitBtn');
     
-    if (!preview || !commentInput) return;
+    if (!commentInput) return;
     
     const comment = commentInput.value.trim();
+    
+    // 수정 모드 확인
+    const isEditMode = submitBtn && submitBtn.getAttribute('data-edit-mode') === 'true';
+    const editPhotoUrl = isEditMode ? submitBtn.getAttribute('data-photo-url') : null;
+    
+    if (isEditMode && editPhotoUrl) {
+        // 수정 모드: 코멘트만 업데이트
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = '수정 중...';
+        }
+        
+        try {
+            // Firestore에서 해당 베스트 공유 문서 찾아서 업데이트
+            const { collection, query, where, getDocs, updateDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+            const { db: firestoreDb, appId } = await import('../firebase.js');
+            const sharedColl = collection(firestoreDb, 'artifacts', appId, 'sharedPhotos');
+            
+            // photoUrl로 문서 찾기 (유연한 매칭)
+            const q = query(sharedColl, where('userId', '==', window.currentUser.uid), where('type', '==', 'best'));
+            const querySnapshot = await getDocs(q);
+            
+            let foundDoc = null;
+            querySnapshot.forEach((docSnapshot) => {
+                const data = docSnapshot.data();
+                if (data.photoUrl === editPhotoUrl || 
+                    data.photoUrl?.includes(editPhotoUrl) || 
+                    editPhotoUrl?.includes(data.photoUrl)) {
+                    foundDoc = docSnapshot;
+                }
+            });
+            
+            if (foundDoc) {
+                // 코멘트만 업데이트
+                await updateDoc(doc(sharedColl, foundDoc.id), {
+                    comment: comment
+                });
+                
+                // window.sharedPhotos도 업데이트
+                if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+                    const shareIndex = window.sharedPhotos.findIndex(photo => 
+                        photo.type === 'best' && 
+                        (photo.photoUrl === editPhotoUrl || 
+                         photo.photoUrl?.includes(editPhotoUrl) || 
+                         editPhotoUrl?.includes(photo.photoUrl))
+                    );
+                    if (shareIndex !== -1) {
+                        window.sharedPhotos[shareIndex].comment = comment;
+                    }
+                }
+                
+                showToast('코멘트가 수정되었습니다.', 'success');
+                closeShareBestModal();
+                
+                // 갤러리/피드 새로고침
+                if (appState.currentTab === 'gallery') {
+                    renderGallery();
+                } else if (appState.currentTab === 'feed') {
+                    const { renderFeed } = await import('../render/index.js');
+                    renderFeed();
+                }
+            } else {
+                showToast('베스트 공유를 찾을 수 없습니다.', 'error');
+            }
+        } catch (e) {
+            console.error('베스트 공유 수정 실패:', e);
+            showToast('코멘트 수정 중 오류가 발생했습니다.', 'error');
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '수정 완료';
+            }
+        }
+        return;
+    }
+    
+    // 일반 공유 모드
+    if (!preview) return;
     
     // 베스트 공유 데이터 생성
     const state = appState;
@@ -836,12 +1006,17 @@ export async function shareBestToFeed() {
             throw new Error('html2canvas를 찾을 수 없습니다. HTML에 html2canvas 라이브러리가 로드되었는지 확인하세요.');
         }
         
+        // 스크린샷 생성 시 bestScreenshotContainer를 직접 찾아서 사용
+        const screenshotContainer = preview.querySelector('#bestScreenshotContainer');
+        const targetElement = screenshotContainer || preview;
+        
         // 스크린샷 생성
-        const canvas = await html2canvasFunc(preview, {
+        const canvas = await html2canvasFunc(targetElement, {
             backgroundColor: '#ffffff',
             scale: 2,
             logging: false,
-            useCORS: true
+            useCORS: true,
+            allowTaint: true
         });
         
         // Canvas를 Blob으로 변환
@@ -857,6 +1032,7 @@ export async function shareBestToFeed() {
             userId: window.currentUser.uid,
             userNickname: userProfile.nickname || '익명',
             userIcon: userProfile.icon || '🐻',
+            userPhotoUrl: userProfile.photoUrl || null,
             type: 'best',
             periodType: periodType,
             periodText: periodText,

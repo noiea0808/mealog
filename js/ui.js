@@ -104,7 +104,29 @@ export function updateHeaderUI() {
     const p = window.userSettings.profile;
     const iconEl = document.getElementById('headerIcon');
     const nameEl = document.getElementById('headerName');
-    if (iconEl) iconEl.innerText = p.icon || '🐻';
+    
+    if (iconEl) {
+        // 모든 스타일 초기화
+        iconEl.style.backgroundImage = '';
+        iconEl.style.backgroundSize = '';
+        iconEl.style.backgroundPosition = '';
+        iconEl.style.borderRadius = '';
+        iconEl.style.width = '';
+        iconEl.style.height = '';
+        iconEl.style.objectFit = '';
+        iconEl.innerHTML = '';
+        
+        if (p.photoUrl) {
+            // 사진이 있으면 원형으로 표시
+            iconEl.style.backgroundImage = `url(${p.photoUrl})`;
+            iconEl.style.backgroundSize = 'cover';
+            iconEl.style.backgroundPosition = 'center';
+            iconEl.style.borderRadius = '50%';
+        } else {
+            // 이모지 표시
+            iconEl.innerText = p.icon || '🐻';
+        }
+    }
     if (nameEl) nameEl.innerText = p.nickname || '게스트';
 }
 
