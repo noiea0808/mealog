@@ -48,6 +48,9 @@ export function renderEntryChips() {
         
         // 메인 태그가 선택되지 않았을 때는 나만의 태그를 표시하지 않음
         const currentInputVal = document.getElementById(inputId)?.value || '';
+        // 함께한 사람 상세 태그는 다중 선택 가능하므로 배열로 처리
+        const isMultiSelect = id === 'peopleSuggestions';
+        const currentValues = isMultiSelect ? currentInputVal.split(',').map(v => v.trim()).filter(v => v) : [currentInputVal];
         
         if (!parentFilter) {
             // 메인 태그가 선택되지 않았을 때는 아무것도 표시하지 않음
@@ -103,7 +106,7 @@ export function renderEntryChips() {
             // 나만의 태그와 최근 태그 모두 표시
             html += sortedList.map(t => {
                 const text = typeof t === 'string' ? t : t.text;
-                const isActive = currentInputVal === text ? 'active' : '';
+                const isActive = isMultiSelect ? (currentValues.includes(text) ? 'active' : '') : (currentInputVal === text ? 'active' : '');
                 const isMyTag = myTagsSet.has(text);
                 // 나만의 태그는 삭제 불가, 최근 태그는 삭제 가능
                 const canDelete = !isMyTag;
@@ -127,7 +130,7 @@ export function renderEntryChips() {
     window.renderSecondary('restaurantSuggestions', subTags?.place || [], 'placeInput', null, 'place');
     renderPrimary('categoryChips', tags.category, 'null', 'menu', 'menuSuggestions');
     window.renderSecondary('menuSuggestions', subTags?.menu || [], 'menuDetailInput', null, 'menu');
-    renderPrimary('withChips', tags.withWhom, 'withWhomInput', 'people', 'peopleSuggestions');
+    renderPrimary('withChips', tags.withWhom, 'null', 'people', 'peopleSuggestions');
     window.renderSecondary('peopleSuggestions', subTags?.people || [], 'withWhomInput', null, 'people');
     
     // 간식 타입 칩 렌더링 (설정이 없으면 기본값 사용)
@@ -993,15 +996,15 @@ export function renderGallery() {
                 caption = photo.place;
             }
         } else {
-            // 일반 식사인 경우: "메뉴 @ 장소" 형식
+            // 일반 식사인 경우: "메뉴 @ 장소" 형식 (메뉴와 장소를 굵게 표시)
             if (photo.place && photo.menuDetail) {
-                caption = `${photo.menuDetail} @ ${photo.place}`;
+                caption = `<span class="font-bold">${escapeHtml(photo.menuDetail)}</span> @ <span class="font-bold">${escapeHtml(photo.place)}</span>`;
             } else if (photo.place) {
-                caption = photo.place;
+                caption = `<span class="font-bold">${escapeHtml(photo.place)}</span>`;
             } else if (photo.menuDetail) {
-                caption = photo.menuDetail;
+                caption = `<span class="font-bold">${escapeHtml(photo.menuDetail)}</span>`;
             } else if (photo.mealType) {
-                caption = photo.mealType;
+                caption = escapeHtml(photo.mealType);
             }
         }
         
@@ -1082,7 +1085,7 @@ export function renderGallery() {
                         </button>
                     </div>
                     <!-- 캡션 -->
-                    ${caption ? `<div class="mb-2 text-sm text-slate-800">${escapeHtml(caption)}</div>` : ''}
+                    ${caption ? `<div class="mb-2 text-sm text-slate-800">${caption}</div>` : ''}
                     <!-- 기존 코멘트 (원글) -->
                     ${comment ? (() => {
                         // comment의 줄바꿈 개수 확인
@@ -1765,7 +1768,7 @@ export function renderTagManager(key, isSub = false, tempSettings) {
     
     let labelText = "";
     if (!isSub) {
-        if (key === 'mealType') labelText = '식사 구분 (대분류)';
+        if (key === 'mealType') labelText = '식사 방식 (대분류)';
         else if (key === 'withWhom') labelText = '함께한 사람 (대분류)';
         else if (key === 'category') labelText = '메뉴 정보 (대분류)';
         else if (key === 'snackType') labelText = '간식 구분 (대분류)';

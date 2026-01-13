@@ -321,6 +321,8 @@ export function setupListeners(userId, callbacks) {
     
     // Settings 리스너
     if (oldSettingsUnsubscribe) oldSettingsUnsubscribe();
+    let migrationInProgress = false; // 마이그레이션 중복 실행 방지
+    
     const settingsUnsubscribe = onSnapshot(doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings'), (snap) => {
         if (snap.exists()) {
             window.userSettings = snap.data();
@@ -335,90 +337,165 @@ export function setupListeners(userId, callbacks) {
                     snackType: {}
                 };
             }
-            // "???" 항목 제거 (기존 사용자 설정 정리)
-            if (window.userSettings.tags && window.userSettings.tags.mealType) {
-                const index = window.userSettings.tags.mealType.indexOf('???');
-                if (index > -1) {
-                    window.userSettings.tags.mealType.splice(index, 1);
-                    // 변경사항 저장
-                    dbOps.saveSettings(window.userSettings).catch(e => {
-                        console.error('설정 정리 저장 실패:', e);
-                    });
-                }
-            }
-            // 간식 항목 마이그레이션: 새로운 항목으로 업데이트
-            const newSnackTypes = ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타'];
-            const oldSnackTypes = ['커피', '음료', '과일', '빵/과자'];
             
-            // tags가 없으면 생성
-            if (!window.userSettings.tags) {
-                window.userSettings.tags = {};
-            }
-            
-            const currentSnackTypes = window.userSettings.tags.snackType || [];
-            
-            // 새로운 항목과 정확히 일치하는지 확인
-            const isExactMatch = currentSnackTypes.length === newSnackTypes.length &&
-                currentSnackTypes.every((tag, idx) => tag === newSnackTypes[idx]);
-            
-            if (!isExactMatch) {
-                // 정확히 일치하지 않으면 무조건 업데이트
-                window.userSettings.tags.snackType = [...newSnackTypes];
-                // 변경사항 저장
-                dbOps.saveSettings(window.userSettings).catch(e => {
-                    console.error('간식 항목 마이그레이션 저장 실패:', e);
-                });
-            }
-            
-            // 함께한 사람 태그 마이그레이션: 새로운 항목으로 업데이트
-            const newWithWhomTags = ['혼자', '가족', '연인', '친구', '직장동료', '학교친구', '모임', '기타'];
-            const currentWithWhomTags = window.userSettings.tags.withWhom || [];
-            
-            // 새로운 항목과 정확히 일치하는지 확인
-            const isWithWhomExactMatch = currentWithWhomTags.length === newWithWhomTags.length &&
-                currentWithWhomTags.every((tag, idx) => tag === newWithWhomTags[idx]);
-            
-            if (!isWithWhomExactMatch) {
-                // 기존 '회사사람'을 '직장동료'로 변환
-                let updatedTags = [...currentWithWhomTags];
-                const hasOldTag = updatedTags.includes('회사사람');
+            // 마이그레이션 로직을 비동기로 처리하여 초기 로딩 지연 최소화
+            if (!migrationInProgress) {
+                migrationInProgress = true;
+                // 즉시 콜백 호출하여 UI 업데이트 지연 방지
+                if (onSettingsUpdate) onSettingsUpdate();
                 
-                if (hasOldTag) {
-                    const oldIndex = updatedTags.indexOf('회사사람');
-                    updatedTags[oldIndex] = '직장동료';
-                }
-                
-                // 새로운 태그가 없으면 추가
-                newWithWhomTags.forEach(newTag => {
-                    if (!updatedTags.includes(newTag)) {
-                        updatedTags.push(newTag);
-                    }
-                });
-                
-                // 순서 정렬 (newWithWhomTags 순서대로)
-                updatedTags = newWithWhomTags.filter(tag => updatedTags.includes(tag));
-                
-                window.userSettings.tags.withWhom = updatedTags;
-                
-                // 서브 태그도 업데이트: '회사사람' parent를 '직장동료'로 변경
-                if (window.userSettings.subTags && window.userSettings.subTags.people) {
-                    let hasSubTagUpdate = false;
-                    window.userSettings.subTags.people = window.userSettings.subTags.people.map(subTag => {
-                        if (subTag.parent === '회사사람') {
-                            hasSubTagUpdate = true;
-                            return { ...subTag, parent: '직장동료' };
+                // 마이그레이션은 백그라운드에서 처리
+                Promise.resolve().then(async () => {
+                    let needsSave = false;
+                    const settingsToSave = { ...window.userSettings };
+                    
+                    // "???" 항목 제거 (기존 사용자 설정 정리)
+                    if (settingsToSave.tags && settingsToSave.tags.mealType) {
+                        const index = settingsToSave.tags.mealType.indexOf('???');
+                        if (index > -1) {
+                            settingsToSave.tags.mealType.splice(index, 1);
+                            needsSave = true;
                         }
-                        return subTag;
+                    }
+                    
+                    // 식사 방식 태그 마이그레이션: 새로운 순서로 정리
+                    const newMealTypes = ['집밥', '외식', '회식/술자리', '배달/포장', '구내식당', '기타', '건너뜀'];
+                    const currentMealTypes = settingsToSave.tags?.mealType || [];
+                    
+                    let updatedMealTypes = [...currentMealTypes];
+                    
+                    // 기존 태그를 새로운 태그로 매핑
+                    const tagMapping = {
+                        'Skip': '건너뜀',
+                        '건너뜀': '건너뜀',
+                        '배달': '배달/포장',
+                        '회사밥': '구내식당',
+                        '술자리': '회식/술자리'
+                    };
+                    
+                    // 기존 태그를 새로운 태그로 변환
+                    updatedMealTypes = updatedMealTypes.map(tag => tagMapping[tag] || tag);
+                    
+                    // '배달'이 있으면 '배달/포장'으로 변경
+                    const hasOldDelivery = updatedMealTypes.includes('배달');
+                    if (hasOldDelivery) {
+                        const oldIndex = updatedMealTypes.indexOf('배달');
+                        updatedMealTypes[oldIndex] = '배달/포장';
+                        needsSave = true;
+                    }
+                    
+                    // 새로운 태그가 없으면 추가
+                    newMealTypes.forEach(newTag => {
+                        if (!updatedMealTypes.includes(newTag)) {
+                            updatedMealTypes.push(newTag);
+                            needsSave = true;
+                        }
                     });
-                }
-                
-                // 변경사항 저장
-                dbOps.saveSettings(window.userSettings).catch(e => {
-                    console.error('함께한 사람 태그 마이그레이션 저장 실패:', e);
+                    
+                    // 순서 정렬 (newMealTypes 순서대로)
+                    updatedMealTypes = newMealTypes.filter(tag => updatedMealTypes.includes(tag));
+                    if (updatedMealTypes.length > 0) {
+                        if (!settingsToSave.tags) settingsToSave.tags = {};
+                        settingsToSave.tags.mealType = updatedMealTypes;
+                    }
+                    
+                    // subTags의 place에서도 parent 변경
+                    if (settingsToSave.subTags && settingsToSave.subTags.place) {
+                        settingsToSave.subTags.place.forEach(item => {
+                            if (item.parent === '배달') {
+                                item.parent = '배달/포장';
+                                needsSave = true;
+                            } else if (item.parent === '회사밥') {
+                                item.parent = '구내식당';
+                                needsSave = true;
+                            }
+                        });
+                    }
+                    
+                    // 간식 항목 마이그레이션: 새로운 항목으로 업데이트
+                    const newSnackTypes = ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타'];
+                    
+                    // tags가 없으면 생성
+                    if (!settingsToSave.tags) {
+                        settingsToSave.tags = {};
+                    }
+                    
+                    const currentSnackTypes = settingsToSave.tags.snackType || [];
+                    
+                    // 새로운 항목과 정확히 일치하는지 확인
+                    const isExactMatch = currentSnackTypes.length === newSnackTypes.length &&
+                        currentSnackTypes.every((tag, idx) => tag === newSnackTypes[idx]);
+                    
+                    if (!isExactMatch) {
+                        // 정확히 일치하지 않으면 무조건 업데이트
+                        settingsToSave.tags.snackType = [...newSnackTypes];
+                        needsSave = true;
+                    }
+                    
+                    // 함께한 사람 태그 마이그레이션: 새로운 항목으로 업데이트
+                    const newWithWhomTags = ['혼자', '가족', '연인', '친구', '직장동료', '학교친구', '모임', '기타'];
+                    const currentWithWhomTags = settingsToSave.tags.withWhom || [];
+                    
+                    // 새로운 항목과 정확히 일치하는지 확인
+                    const isWithWhomExactMatch = currentWithWhomTags.length === newWithWhomTags.length &&
+                        currentWithWhomTags.every((tag, idx) => tag === newWithWhomTags[idx]);
+                    
+                    if (!isWithWhomExactMatch) {
+                        // 기존 '회사사람'을 '직장동료'로 변환
+                        let updatedTags = [...currentWithWhomTags];
+                        const hasOldTag = updatedTags.includes('회사사람');
+                        
+                        if (hasOldTag) {
+                            const oldIndex = updatedTags.indexOf('회사사람');
+                            updatedTags[oldIndex] = '직장동료';
+                        }
+                        
+                        // 새로운 태그가 없으면 추가
+                        newWithWhomTags.forEach(newTag => {
+                            if (!updatedTags.includes(newTag)) {
+                                updatedTags.push(newTag);
+                            }
+                        });
+                        
+                        // 순서 정렬 (newWithWhomTags 순서대로)
+                        updatedTags = newWithWhomTags.filter(tag => updatedTags.includes(tag));
+                        
+                        settingsToSave.tags.withWhom = updatedTags;
+                        
+                        // 서브 태그도 업데이트: '회사사람' parent를 '직장동료'로 변경
+                        if (settingsToSave.subTags && settingsToSave.subTags.people) {
+                            settingsToSave.subTags.people = settingsToSave.subTags.people.map(subTag => {
+                                if (subTag.parent === '회사사람') {
+                                    return { ...subTag, parent: '직장동료' };
+                                }
+                                return subTag;
+                            });
+                        }
+                        
+                        needsSave = true;
+                    }
+                    
+                    // 변경사항이 있으면 저장 (비동기, 에러는 무시)
+                    if (needsSave) {
+                        window.userSettings = settingsToSave;
+                        dbOps.saveSettings(settingsToSave).catch(e => {
+                            console.error('설정 마이그레이션 저장 실패:', e);
+                        });
+                    }
+                    
+                    migrationInProgress = false;
+                }).catch(e => {
+                    console.error('마이그레이션 처리 중 오류:', e);
+                    migrationInProgress = false;
                 });
+            } else {
+                // 마이그레이션 진행 중이면 콜백만 호출
+                if (onSettingsUpdate) onSettingsUpdate();
             }
+        } else {
+            // 설정이 없으면 콜백 호출 (기본값 사용)
+            if (onSettingsUpdate) onSettingsUpdate();
         }
-        if (onSettingsUpdate) onSettingsUpdate();
     });
     
     // Meals 리스너 - 최근 1개월만 초기 로드

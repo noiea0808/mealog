@@ -226,10 +226,20 @@ body {
     flex-shrink: 0; 
     transition: all 0.2s; 
 }
-.icon-option.selected { 
-    border-color: #10b981; 
-    background: #ecfdf5; 
-    transform: scale(1.1); 
+.icon-option.selected {
+    border-color: #10b981;
+    background: #ecfdf5;
+    transform: scale(1.1);
+}
+.settings-tab {
+    transition: all 0.2s;
+}
+.settings-tab.active {
+    background-color: #10b981;
+    color: white;
+}
+.settings-tab-content {
+    min-height: 100%;
 }
 .tag-manage-item { 
     display: inline-flex; 
@@ -357,7 +367,9 @@ body {
     line-height: 1.6;
     font-weight: 400;
     font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    padding-bottom: 0.25rem; /* 마지막 줄이 잘리지 않도록 여유 공간 추가 */
+    padding-bottom: 0.5rem; /* 마지막 줄이 잘리지 않도록 여유 공간 추가 */
+    word-wrap: break-word;
+    word-break: keep-all;
 }
 #insightTextPages {
     display: flex;
@@ -365,13 +377,12 @@ body {
     gap: 0;
 }
 .insight-text-page {
-    height: calc(1.6rem * 5);
+    height: calc(1.6rem * 5 + 0.5rem); /* 마지막 줄 여유 공간 추가 */
     overflow: hidden;
     display: none;
     line-height: 1.6;
     word-wrap: break-word;
     word-break: keep-all;
-    white-space: pre-wrap;
 }
 .insight-text-page.active {
     display: block;

@@ -223,20 +223,94 @@
 
             <!-- 페르소나 탭 -->
             <div id="admin-tab-content-persona" class="admin-tab-content hidden">
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
-                    <div class="p-6 border-b border-slate-100">
-                        <div class="flex justify-between items-center">
-                            <h2 class="text-lg font-black text-slate-800">페르소나 관리</h2>
-                            <button onclick="window.refreshPersona()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
-                            </button>
+                <div class="flex gap-6 items-start">
+                    <!-- 왼쪽 사이드바 -->
+                    <div class="w-64 flex-shrink-0">
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sticky top-24">
+                            <div class="space-y-2">
+                                <button onclick="window.switchPersonaSidebar('mealog')" id="persona-sidebar-mealog" class="w-full px-4 py-3 text-left text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-robot mr-2"></i>MEALOG
+                                </button>
+                                <button onclick="window.switchPersonaSidebar('characters')" id="persona-sidebar-characters" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-user-astronaut mr-2"></i>AI 캐릭터
+                                </button>
+                            </div>
                         </div>
                     </div>
-                    <div class="p-6">
-                        <div id="personaContainer" class="space-y-6">
-                            <div class="text-center py-8 text-slate-400">
-                                <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
-                                <p>로딩 중...</p>
+                    
+                    <!-- 오른쪽 메인 콘텐츠 영역 -->
+                    <div class="flex-1 min-w-0">
+                        <!-- MEALOG 관리 -->
+                        <div id="persona-main-mealog" class="persona-main-section">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div class="flex justify-between items-center">
+                                        <h2 class="text-lg font-black text-slate-800">MEALOG 안내 메시지 관리</h2>
+                                        <div class="flex gap-2">
+                                            <button onclick="window.saveMealogComments()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                                <i class="fa-solid fa-save mr-2"></i>저장
+                                            </button>
+                                            <button onclick="window.refreshPersona()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div id="mealogCommentsContainer" class="space-y-4">
+                                        <div class="text-center py-8 text-slate-400">
+                                            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                                            <p>로딩 중...</p>
+                                        </div>
+                                    </div>
+                                    <button onclick="window.addMealogComment()" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
+                                        <i class="fa-solid fa-plus mr-2"></i>메시지 추가
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- AI 캐릭터 관리 -->
+                        <div id="persona-main-characters" class="persona-main-section hidden">
+                            <div class="space-y-6">
+                                <!-- 캐릭터 목록 (가로) -->
+                                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+                                    <div class="flex justify-between items-center mb-4">
+                                        <h3 class="text-sm font-black text-slate-800">캐릭터 목록</h3>
+                                        <button onclick="window.addNewCharacter()" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors">
+                                            <i class="fa-solid fa-plus mr-1"></i>추가
+                                        </button>
+                                    </div>
+                                    <div id="personaCharactersList" class="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                                        <div class="text-center py-4 text-slate-400 flex-shrink-0">
+                                            <i class="fa-solid fa-spinner fa-spin text-xl mb-2"></i>
+                                            <p class="text-xs">로딩 중...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 캐릭터 편집 폼 -->
+                                <div id="personaCharacterEditor" class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                    <div class="p-6 border-b border-slate-100">
+                                        <div class="flex justify-between items-center">
+                                            <h2 class="text-lg font-black text-slate-800">캐릭터 편집</h2>
+                                            <div class="flex gap-2">
+                                                <button onclick="window.saveCharacter()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                                    <i class="fa-solid fa-save mr-2"></i>저장
+                                                </button>
+                                                <button onclick="window.refreshPersona()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                    <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="personaCharacterEditorContent" class="p-6">
+                                        <div class="text-center py-12 text-slate-400">
+                                            <i class="fa-solid fa-hand-pointer text-3xl mb-3"></i>
+                                            <p class="text-sm font-bold">위에서 캐릭터를 선택하세요</p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -332,6 +406,143 @@
                     </div>
                 </div>
             </div>
+
+            <!-- 콘텐츠 관리 탭 -->
+            <div id="admin-tab-content-content" class="admin-tab-content hidden">
+                <div class="flex gap-6 items-start">
+                    <!-- 왼쪽 사이드바 -->
+                    <div class="w-64 flex-shrink-0">
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sticky top-24">
+                            <div class="space-y-2">
+                                <button onclick="window.switchContentSidebar('terms')" id="content-sidebar-terms" class="w-full px-4 py-3 text-left text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-file-contract mr-2"></i>약관
+                                </button>
+                                <button onclick="window.switchContentSidebar('tags')" id="content-sidebar-tags" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-tags mr-2"></i>태그관리
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 오른쪽 메인 콘텐츠 영역 -->
+                    <div class="flex-1 min-w-0">
+                        <!-- 약관 관리 -->
+                        <div id="content-main-terms" class="content-main-section">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div class="flex justify-between items-center">
+                                        <h2 class="text-lg font-black text-slate-800">약관 관리</h2>
+                                        <button onclick="window.saveTerms()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                            <i class="fa-solid fa-save mr-2"></i>저장
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="p-6 space-y-6">
+                                    <!-- 이용약관 -->
+                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
+                                            <i class="fa-solid fa-file-contract text-emerald-600"></i>
+                                            이용약관
+                                        </h3>
+                                        <div id="termsContentEditor" class="space-y-4">
+                                            <!-- 약관 항목들이 동적으로 추가됩니다 -->
+                                        </div>
+                                        <button onclick="window.addTermsItem('terms')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
+                                            <i class="fa-solid fa-plus mr-2"></i>항목 추가
+                                        </button>
+                                    </div>
+                                    
+                                    <!-- 개인정보 처리방침 -->
+                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
+                                            <i class="fa-solid fa-shield-halved text-blue-600"></i>
+                                            개인정보 처리방침
+                                        </h3>
+                                        <div id="privacyContentEditor" class="space-y-4">
+                                            <!-- 약관 항목들이 동적으로 추가됩니다 -->
+                                        </div>
+                                        <button onclick="window.addTermsItem('privacy')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
+                                            <i class="fa-solid fa-plus mr-2"></i>항목 추가
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 태그 관리 -->
+                        <div id="content-main-tags" class="content-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div class="flex justify-between items-center">
+                                        <h2 class="text-lg font-black text-slate-800">태그 관리</h2>
+                                        <button onclick="window.saveTags()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                            <i class="fa-solid fa-save mr-2"></i>저장
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="p-6 space-y-6">
+                                    <!-- 식사 유형 (mealType) -->
+                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
+                                            <i class="fa-solid fa-utensils text-emerald-600"></i>
+                                            식사 유형 (mealType)
+                                        </h3>
+                                        <div id="tags-mealType" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                            <!-- 태그들이 동적으로 추가됩니다 -->
+                                        </div>
+                                        <button onclick="window.addTagItem('mealType')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
+                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
+                                        </button>
+                                    </div>
+                                    
+                                    <!-- 함께한 사람 (withWhom) -->
+                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
+                                            <i class="fa-solid fa-users text-blue-600"></i>
+                                            함께한 사람 (withWhom)
+                                        </h3>
+                                        <div id="tags-withWhom" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                            <!-- 태그들이 동적으로 추가됩니다 -->
+                                        </div>
+                                        <button onclick="window.addTagItem('withWhom')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
+                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
+                                        </button>
+                                    </div>
+                                    
+                                    <!-- 음식 카테고리 (category) -->
+                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
+                                            <i class="fa-solid fa-bowl-food text-orange-600"></i>
+                                            음식 카테고리 (category)
+                                        </h3>
+                                        <div id="tags-category" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                            <!-- 태그들이 동적으로 추가됩니다 -->
+                                        </div>
+                                        <button onclick="window.addTagItem('category')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
+                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
+                                        </button>
+                                    </div>
+                                    
+                                    <!-- 간식 유형 (snackType) -->
+                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
+                                            <i class="fa-solid fa-cookie text-purple-600"></i>
+                                            간식 유형 (snackType)
+                                        </h3>
+                                        <div id="tags-snackType" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                            <!-- 태그들이 동적으로 추가됩니다 -->
+                                        </div>
+                                        <button onclick="window.addTagItem('snackType')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
+                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -367,69 +578,6 @@
             <div class="flex gap-3 mt-6">
                 <button onclick="window.closeNoticeModal()" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm">취소</button>
                 <button id="noticeSubmitBtn" onclick="window.submitNotice()" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700">등록</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 콘텐츠 관리 탭 -->
-    <div id="admin-tab-content-content" class="admin-tab-content hidden">
-        <div class="flex gap-6 items-start">
-            <!-- 왼쪽 사이드바 -->
-            <div class="w-64 flex-shrink-0">
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sticky top-24">
-                    <div class="space-y-2">
-                        <button onclick="window.switchContentSidebar('terms')" id="content-sidebar-terms" class="w-full px-4 py-3 text-left text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl transition-colors">
-                            <i class="fa-solid fa-file-contract mr-2"></i>약관
-                        </button>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- 오른쪽 메인 콘텐츠 영역 -->
-            <div class="flex-1 min-w-0">
-                <!-- 약관 관리 -->
-                <div id="content-main-terms" class="content-main-section">
-                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
-                        <div class="p-6 border-b border-slate-100">
-                            <div class="flex justify-between items-center">
-                                <h2 class="text-lg font-black text-slate-800">약관 관리</h2>
-                                <button onclick="window.saveTerms()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
-                                    <i class="fa-solid fa-save mr-2"></i>저장
-                                </button>
-                            </div>
-                        </div>
-                        <div class="p-6 space-y-6">
-                            <!-- 이용약관 -->
-                            <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
-                                    <i class="fa-solid fa-file-contract text-emerald-600"></i>
-                                    이용약관
-                                </h3>
-                                <div id="termsContentEditor" class="space-y-4">
-                                    <!-- 약관 항목들이 동적으로 추가됩니다 -->
-                                </div>
-                                <button onclick="window.addTermsItem('terms')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                                    <i class="fa-solid fa-plus mr-2"></i>항목 추가
-                                </button>
-                            </div>
-                            
-                            <!-- 개인정보 처리방침 -->
-                            <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
-                                    <i class="fa-solid fa-shield-halved text-blue-600"></i>
-                                    개인정보 처리방침
-                                </h3>
-                                <div id="privacyContentEditor" class="space-y-4">
-                                    <!-- 약관 항목들이 동적으로 추가됩니다 -->
-                                </div>
-                                <button onclick="window.addTermsItem('privacy')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                                    <i class="fa-solid fa-plus mr-2"></i>항목 추가
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
             </div>
         </div>
     </div>

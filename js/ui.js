@@ -24,12 +24,80 @@ export function switchScreen(isLoggedIn) {
         landing.style.display = 'none';
         main.style.display = 'block';
         main.classList.remove('hidden');
+        // 메인 화면 표시 시 버전 정보 로드
+        loadHeaderVersion();
     } else {
         landing.style.display = 'flex';
         main.style.display = 'none';
         main.classList.add('hidden');
     }
     if (overlay) overlay.classList.add('hidden');
+}
+
+// 개발용: 최종 수정 시간 표시 함수
+async function loadHeaderVersion() {
+    try {
+        const versionEl = document.getElementById('devVersionInfo');
+        if (!versionEl) {
+            console.warn('devVersionInfo 요소를 찾을 수 없습니다.');
+            return;
+        }
+        
+        // index.html 파일의 최종 수정 시간 가져오기
+        const response = await fetch('/index.html?t=' + Date.now());
+        if (response.ok) {
+            // Last-Modified 헤더에서 파일의 최근 수정 시간 가져오기
+            const lastModified = response.headers.get('Last-Modified');
+            if (lastModified) {
+                const modifiedDate = new Date(lastModified);
+                const dateText = modifiedDate.toLocaleString('ko-KR', { 
+                    year: 'numeric',
+                    month: '2-digit', 
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                versionEl.textContent = dateText;
+            } else {
+                // Last-Modified 헤더가 없으면 현재 시간 표시
+                const now = new Date();
+                const dateText = now.toLocaleString('ko-KR', { 
+                    year: 'numeric',
+                    month: '2-digit', 
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                versionEl.textContent = dateText;
+            }
+        } else {
+            // 응답 실패 시 현재 시간 표시
+            const now = new Date();
+            const dateText = now.toLocaleString('ko-KR', { 
+                year: 'numeric',
+                month: '2-digit', 
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            versionEl.textContent = dateText;
+        }
+    } catch (e) {
+        console.debug('개발용 버전 정보 로드 실패:', e);
+        // 에러 발생 시에도 현재 시간 표시
+        const versionEl = document.getElementById('devVersionInfo');
+        if (versionEl) {
+            const now = new Date();
+            const dateText = now.toLocaleString('ko-KR', { 
+                year: 'numeric',
+                month: '2-digit', 
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            versionEl.textContent = dateText;
+        }
+    }
 }
 
 export function updateHeaderUI() {

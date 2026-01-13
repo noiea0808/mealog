@@ -2,6 +2,7 @@
 import { auth, db, appId } from './firebase.js';
 import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { collection, getDocs, query, orderBy, limit, doc, deleteDoc, getDoc, setDoc, where, writeBatch, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { uploadImageToStorage } from './utils.js';
 
 let currentDeletePhotoId = null;
 
@@ -620,6 +621,8 @@ window.switchContentSidebar = function(section) {
     // 섹션별 데이터 로드
     if (section === 'terms') {
         loadTermsContent();
+    } else if (section === 'tags') {
+        loadTagsContent();
     }
 };
 
@@ -766,6 +769,155 @@ window.saveTerms = async function() {
     } catch (e) {
         console.error('약관 저장 실패:', e);
         alert('약관 저장 중 오류가 발생했습니다: ' + e.message);
+    }
+};
+
+// 태그 콘텐츠 로드
+async function loadTagsContent() {
+    try {
+        // Firestore에서 태그 데이터 가져오기
+        const tagsDoc = doc(db, 'artifacts', appId, 'content', 'defaultTags');
+        const tagsSnap = await getDoc(tagsDoc);
+        
+        // 기본값 (constants.js의 DEFAULT_USER_SETTINGS에서 가져옴)
+        let tagsData = {
+            mealType: ['집밥', '외식', '회식/술자리', '배달/포장', '구내식당', '기타', '건너뜀'],
+            withWhom: ['혼자', '가족', '연인', '친구', '직장동료', '학교친구', '모임', '기타'],
+            category: ['한식', '양식', '일식', '중식', '분식', '카페'],
+            snackType: ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타']
+        };
+        
+        if (tagsSnap.exists()) {
+            const data = tagsSnap.data();
+            if (data.mealType) tagsData.mealType = data.mealType;
+            if (data.withWhom) tagsData.withWhom = data.withWhom;
+            if (data.category) tagsData.category = data.category;
+            if (data.snackType) tagsData.snackType = data.snackType;
+        }
+        
+        // 태그 렌더링
+        renderTags('mealType', tagsData.mealType);
+        renderTags('withWhom', tagsData.withWhom);
+        renderTags('category', tagsData.category);
+        renderTags('snackType', tagsData.snackType);
+        
+    } catch (e) {
+        console.error('태그 콘텐츠 로드 실패:', e);
+        // 기본값으로 렌더링
+        const defaultTags = {
+            mealType: ['집밥', '외식', '회식/술자리', '배달/포장', '구내식당', '기타', '건너뜀'],
+            withWhom: ['혼자', '가족', '연인', '친구', '직장동료', '학교친구', '모임', '기타'],
+            category: ['한식', '양식', '일식', '중식', '분식', '카페'],
+            snackType: ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타']
+        };
+        renderTags('mealType', defaultTags.mealType);
+        renderTags('withWhom', defaultTags.withWhom);
+        renderTags('category', defaultTags.category);
+        renderTags('snackType', defaultTags.snackType);
+    }
+}
+
+// 태그 렌더링
+function renderTags(type, tags) {
+    const container = document.getElementById(`tags-${type}`);
+    if (!container) return;
+    
+    // 컨테이너에 반응형 그리드 레이아웃 클래스 추가
+    container.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2';
+    
+    container.innerHTML = tags.map((tag, index) => `
+        <div class="flex items-center gap-2 bg-white rounded-lg p-3 border border-slate-200 min-w-0" data-index="${index}">
+            <input type="text" value="${escapeHtml(tag || '')}" 
+                   onchange="window.updateTagItem('${type}', ${index}, this.value)"
+                   class="flex-1 min-w-0 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-800 outline-none focus:border-emerald-500"
+                   placeholder="태그 이름">
+            <button onclick="window.removeTagItem('${type}', ${index})" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors flex-shrink-0">
+                <i class="fa-solid fa-trash"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+// 태그 항목 추가
+window.addTagItem = function(type) {
+    const container = document.getElementById(`tags-${type}`);
+    if (!container) return;
+    
+    const tags = getCurrentTags(type);
+    tags.push('');
+    
+    renderTags(type, tags);
+};
+
+// 태그 항목 제거
+window.removeTagItem = function(type, index) {
+    const tags = getCurrentTags(type);
+    if (tags.length <= 1) {
+        alert('최소 한 개의 태그가 필요합니다.');
+        return;
+    }
+    
+    tags.splice(index, 1);
+    renderTags(type, tags);
+};
+
+// 태그 항목 업데이트
+window.updateTagItem = function(type, index, value) {
+    const tags = getCurrentTags(type);
+    if (tags[index] !== undefined) {
+        tags[index] = value.trim();
+    }
+};
+
+// 현재 태그 목록 가져오기
+function getCurrentTags(type) {
+    const container = document.getElementById(`tags-${type}`);
+    if (!container) return [];
+    
+    const tags = [];
+    container.querySelectorAll('[data-index]').forEach(itemEl => {
+        const index = parseInt(itemEl.getAttribute('data-index'));
+        const input = itemEl.querySelector('input[type="text"]');
+        
+        if (input) {
+            tags[index] = input.value.trim();
+        }
+    });
+    
+    // 빈 값 제거 및 정렬
+    return tags.filter(tag => tag.length > 0);
+}
+
+// 태그 저장
+window.saveTags = async function() {
+    try {
+        const mealType = getCurrentTags('mealType');
+        const withWhom = getCurrentTags('withWhom');
+        const category = getCurrentTags('category');
+        const snackType = getCurrentTags('snackType');
+        
+        // 빈 태그가 있는지 확인
+        if (mealType.length === 0 || withWhom.length === 0 || category.length === 0 || snackType.length === 0) {
+            alert('각 카테고리마다 최소 한 개의 태그가 필요합니다.');
+            return;
+        }
+        
+        const tagsData = {
+            mealType: mealType,
+            withWhom: withWhom,
+            category: category,
+            snackType: snackType,
+            updatedAt: new Date().toISOString()
+        };
+        
+        const tagsDoc = doc(db, 'artifacts', appId, 'content', 'defaultTags');
+        await setDoc(tagsDoc, tagsData, { merge: true });
+        
+        alert('태그가 저장되었습니다.');
+        console.log('태그 저장 완료:', tagsData);
+    } catch (e) {
+        console.error('태그 저장 실패:', e);
+        alert('태그 저장 중 오류가 발생했습니다: ' + e.message);
     }
 };
 
@@ -2116,98 +2268,835 @@ window.bulkUnbanPosts = async function() {
     }
 }
 
-// 페르소나 설정 렌더링
-async function renderPersonaSettings() {
-    const container = document.getElementById('personaContainer');
+// 페르소나 사이드바 전환
+window.switchPersonaSidebar = function(section) {
+    // 모든 사이드바 버튼 비활성화
+    document.querySelectorAll('[id^="persona-sidebar-"]').forEach(btn => {
+        btn.classList.remove('text-emerald-600', 'bg-emerald-50');
+        btn.classList.add('text-slate-500', 'hover:bg-slate-50');
+    });
+    
+    // 모든 메인 섹션 숨기기
+    document.querySelectorAll('.persona-main-section').forEach(section => {
+        section.classList.add('hidden');
+    });
+    
+    // 선택한 사이드바 버튼 활성화
+    const activeSidebarBtn = document.getElementById(`persona-sidebar-${section}`);
+    const activeMainSection = document.getElementById(`persona-main-${section}`);
+    
+    if (activeSidebarBtn) {
+        activeSidebarBtn.classList.add('text-emerald-600', 'bg-emerald-50');
+        activeSidebarBtn.classList.remove('text-slate-500', 'hover:bg-slate-50');
+    }
+    
+    if (activeMainSection) {
+        activeMainSection.classList.remove('hidden');
+    }
+    
+    // 섹션별 데이터 로드
+    if (section === 'mealog') {
+        loadMealogComments();
+    } else if (section === 'characters') {
+        renderPersonaCharacters();
+    }
+};
+
+// MEALOG 코멘트 로드
+async function loadMealogComments() {
+    const container = document.getElementById('mealogCommentsContainer');
     if (!container) return;
     
     container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
     
     try {
-        const personaDoc = doc(db, 'artifacts', appId, 'persona', 'settings');
-        const personaSnap = await getDoc(personaDoc);
+        const mealogDocRef = doc(db, 'artifacts', appId, 'persona', 'mealog');
+        const mealogSnap = await getDoc(mealogDocRef);
         
-        if (!personaSnap.exists()) {
-            container.innerHTML = `
-                <div class="bg-white rounded-xl p-6 border border-slate-200">
-                    <h3 class="text-lg font-bold text-slate-800 mb-4">페르소나 설정</h3>
-                    <p class="text-slate-600 mb-4">페르소나 설정이 없습니다. Firebase 콘솔에서 설정을 추가해주세요.</p>
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-bold text-slate-700 mb-2">트레이너 이미지</label>
-                            <div class="flex gap-4">
-                                <div class="text-center">
-                                    <img src="persona/trainer.png" alt="트레이너" class="w-32 h-32 object-cover rounded-xl border border-slate-200 mb-2" onerror="this.src='persona/trainer_1.png'">
-                                    <p class="text-xs text-slate-600">trainer.png</p>
-                                </div>
-                                <div class="text-center">
-                                    <img src="persona/trainer_1.png" alt="트레이너 1" class="w-32 h-32 object-cover rounded-xl border border-slate-200 mb-2">
-                                    <p class="text-xs text-slate-600">trainer_1.png</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
+        let comments = [];
+        if (mealogSnap.exists()) {
+            const data = mealogSnap.data();
+            comments = data.comments || [];
+        }
+        
+        // 기본값이 없으면 기본 메시지 추가
+        if (comments.length === 0) {
+            comments = [`안녕하세요! MEALOG 사용 방법을
+안내해드릴게요.
+
+📌 캐릭터 선택
+왼쪽 캐릭터 아이콘을 클릭하면
+다양한 캐릭터를 선택할 수 있어요.
+각 캐릭터는 서로 다른 스타일로
+식사 기록을 분석해줘요.
+
+💬 COMMENT 버튼
+노란색 COMMENT 버튼을 누르면
+선택한 캐릭터가 AI로 당신의
+식사 기록을 분석해서
+특별한 코멘트를 만들어줘요!
+
+🏆 베스트 공유
+Best 분석 탭에서 "공유하기"
+버튼을 누르면 이번 주/월의
+베스트 식사를 피드에
+공유할 수 있어요.
+
+📊 식사/간식 분석
+Best, 식사, 간식 탭을 눌러서
+다양한 방식으로 기록을
+확인해보세요.`];
+        }
+        
+        renderMealogComments(comments);
+    } catch (e) {
+        console.error('MEALOG 코멘트 로드 실패:', e);
+        container.innerHTML = '<div class="text-center py-8 text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>MEALOG 코멘트를 불러오는 중 오류가 발생했습니다: ' + e.message + '</p></div>';
+    }
+}
+
+// MEALOG 코멘트 렌더링
+function renderMealogComments(comments) {
+    const container = document.getElementById('mealogCommentsContainer');
+    if (!container) return;
+    
+    container.innerHTML = comments.map((comment, index) => `
+        <div class="bg-slate-50 rounded-xl p-4 border border-slate-200" data-index="${index}">
+            <div class="flex items-start justify-between mb-3">
+                <span class="text-xs font-bold text-slate-500">메시지 ${index + 1}</span>
+                <button onclick="window.removeMealogComment(${index})" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            </div>
+            <textarea onchange="window.updateMealogComment(${index}, this.value)"
+                      class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[200px]"
+                      placeholder="MEALOG 안내 메시지를 입력하세요">${escapeHtml(comment || '')}</textarea>
+        </div>
+    `).join('');
+}
+
+// MEALOG 코멘트 추가
+window.addMealogComment = function() {
+    const comments = getCurrentMealogComments();
+    comments.push('');
+    renderMealogComments(comments);
+};
+
+// MEALOG 코멘트 제거
+window.removeMealogComment = function(index) {
+    const comments = getCurrentMealogComments();
+    if (comments.length <= 1) {
+        alert('최소 한 개의 메시지가 필요합니다.');
+        return;
+    }
+    
+    comments.splice(index, 1);
+    renderMealogComments(comments);
+};
+
+// MEALOG 코멘트 업데이트
+window.updateMealogComment = function(index, value) {
+    const comments = getCurrentMealogComments();
+    if (comments[index] !== undefined) {
+        comments[index] = value;
+    }
+};
+
+// 현재 MEALOG 코멘트 목록 가져오기
+function getCurrentMealogComments() {
+    const container = document.getElementById('mealogCommentsContainer');
+    if (!container) return [];
+    
+    const comments = [];
+    container.querySelectorAll('[data-index]').forEach(itemEl => {
+        const index = parseInt(itemEl.getAttribute('data-index'));
+        const textarea = itemEl.querySelector('textarea');
+        
+        if (textarea) {
+            comments[index] = textarea.value;
+        }
+    });
+    
+    return comments;
+}
+
+// MEALOG 코멘트 저장
+window.saveMealogComments = async function() {
+    try {
+        const comments = getCurrentMealogComments();
+        
+        // 빈 코멘트 제거
+        const validComments = comments.filter(c => c && c.trim().length > 0);
+        
+        if (validComments.length === 0) {
+            alert('최소 한 개의 메시지가 필요합니다.');
             return;
         }
         
-        const personaData = personaSnap.data();
+        const mealogData = {
+            comments: validComments,
+            updatedAt: new Date().toISOString()
+        };
         
-        container.innerHTML = `
-            <div class="bg-white rounded-xl p-6 border border-slate-200">
-                <h3 class="text-lg font-bold text-slate-800 mb-4">페르소나 설정</h3>
-                <div class="space-y-6">
-                    <div>
-                        <label class="block text-sm font-bold text-slate-700 mb-2">트레이너 이미지</label>
-                        <div class="flex gap-4 flex-wrap">
-                            ${personaData.trainerImages && Array.isArray(personaData.trainerImages) ? personaData.trainerImages.map((img, idx) => `
-                                <div class="text-center">
-                                    <img src="${img.url || img}" alt="트레이너 ${idx + 1}" class="w-32 h-32 object-cover rounded-xl border border-slate-200 mb-2" onerror="this.style.display='none'">
-                                    <p class="text-xs text-slate-600">${img.name || `이미지 ${idx + 1}`}</p>
-                                </div>
-                            `).join('') : `
-                                <div class="text-center">
-                                    <img src="persona/trainer.png" alt="트레이너" class="w-32 h-32 object-cover rounded-xl border border-slate-200 mb-2" onerror="this.src='persona/trainer_1.png'">
-                                    <p class="text-xs text-slate-600">trainer.png</p>
-                                </div>
-                                <div class="text-center">
-                                    <img src="persona/trainer_1.png" alt="트레이너 1" class="w-32 h-32 object-cover rounded-xl border border-slate-200 mb-2">
-                                    <p class="text-xs text-slate-600">trainer_1.png</p>
-                                </div>
-                            `}
-                        </div>
-                    </div>
-                    ${personaData.characters && Array.isArray(personaData.characters) ? `
-                        <div>
-                            <label class="block text-sm font-bold text-slate-700 mb-2">캐릭터 목록</label>
-                            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                ${personaData.characters.map((char, idx) => `
-                                    <div class="border border-slate-200 rounded-xl p-4 text-center">
-                                        ${char.imageUrl ? `<img src="${char.imageUrl}" alt="${char.name || ''}" class="w-20 h-20 object-cover rounded-xl mx-auto mb-2" onerror="this.style.display='none'">` : ''}
-                                        <h4 class="font-bold text-slate-800">${escapeHtml(char.name || '')}</h4>
-                                        ${char.description ? `<p class="text-xs text-slate-600 mt-1">${escapeHtml(char.description)}</p>` : ''}
-                                    </div>
-                                `).join('')}
+        const mealogDocRef = doc(db, 'artifacts', appId, 'persona', 'mealog');
+        await setDoc(mealogDocRef, mealogData, { merge: true });
+        
+        alert('MEALOG 메시지가 저장되었습니다.');
+        console.log('MEALOG 메시지 저장 완료:', mealogData);
+    } catch (e) {
+        console.error('MEALOG 메시지 저장 실패:', e);
+        alert('MEALOG 메시지 저장 중 오류가 발생했습니다: ' + e.message);
+    }
+};
+
+// 기본 캐릭터 정의 (insight.js와 동일)
+const DEFAULT_CHARACTERS = [
+    { 
+        id: 'trainer', 
+        name: '엄격한 트레이너', 
+        icon: '💪', 
+        image: 'persona/trainer.png',
+        persona: '건강과 웰빙을 중시하는 트레이너',
+        systemPrompt: '당신은 건강과 웰빙을 중시하는 트레이너입니다. 엄격하지만 따뜻한 톤으로, 식사 패턴을 날카롭게 분석하고 건강한 식습관을 위한 명확한 조언을 제공합니다. 격려와 함께 건설적인 피드백을 주며, 때로는 유머를 섞어 지루하지 않게 전달합니다. 전문적이지만 딱딱하지 않고, 사용자가 행동 변화를 일으킬 수 있도록 동기부여하는 당신만의 스타일을 유지하세요.'
+    }
+];
+
+// 현재 선택된 캐릭터 ID
+let currentEditingCharacterId = null;
+
+// 페르소나 캐릭터 렌더링
+async function renderPersonaCharacters() {
+    const listContainer = document.getElementById('personaCharactersList');
+    if (!listContainer) return;
+    
+    listContainer.innerHTML = '<div class="text-center py-4 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-xl mb-2"></i><p class="text-xs">로딩 중...</p></div>';
+    
+    try {
+        // 기본 캐릭터 + Firebase 캐릭터 로드
+        const charactersDocRef = doc(db, 'artifacts', appId, 'persona', 'characters');
+        const charactersSnap = await getDoc(charactersDocRef);
+        
+        let allCharacters = [...DEFAULT_CHARACTERS];
+        
+        if (charactersSnap.exists()) {
+            const data = charactersSnap.data();
+            // Firebase에서 추가된 캐릭터들 추가 (기본 캐릭터와 중복되지 않는 것만)
+            Object.entries(data).forEach(([id, charData]) => {
+                if (!DEFAULT_CHARACTERS.find(c => c.id === id)) {
+                    allCharacters.push({
+                        id,
+                        name: charData.name || id,
+                        icon: charData.icon || '👤',
+                        image: charData.image || null,
+                        persona: charData.persona || '',
+                        systemPrompt: ''
+                    });
+                }
+            });
+        }
+        
+        // 각 캐릭터의 개별 설정 문서에서 상세 정보 가져오기
+        for (const char of allCharacters) {
+            try {
+                const personaDocRef = doc(db, 'artifacts', appId, 'persona', char.id);
+                const personaDoc = await getDoc(personaDocRef);
+                if (personaDoc.exists()) {
+                    const personaData = personaDoc.data();
+                    if (personaData.persona) char.persona = personaData.persona;
+                    if (personaData.systemPrompt) char.systemPrompt = personaData.systemPrompt;
+                    if (personaData.defaultComments) char.defaultComments = personaData.defaultComments;
+                    if (personaData.image) char.image = personaData.image;
+                    if (personaData.name) char.name = personaData.name;
+                }
+            } catch (e) {
+                console.error(`캐릭터 ${char.id} 설정 가져오기 실패:`, e);
+            }
+        }
+        
+        // '공통' 캐릭터를 맨 앞에 추가
+        const commonCharacter = {
+            id: 'common',
+            name: '공통',
+            icon: '🌐',
+            image: null,
+            persona: '모든 캐릭터에 공통으로 적용되는 페르소나',
+            systemPrompt: ''
+        };
+        
+        // 공통 페르소나 로드
+        try {
+            const commonDocRef = doc(db, 'artifacts', appId, 'persona', 'common');
+            const commonDoc = await getDoc(commonDocRef);
+            if (commonDoc.exists()) {
+                const commonData = commonDoc.data();
+                if (commonData.systemPrompt) commonCharacter.systemPrompt = commonData.systemPrompt;
+            }
+        } catch (e) {
+            console.error('공통 페르소나 로드 실패:', e);
+        }
+        
+        // 공통 + 다른 캐릭터들
+        const allCharactersWithCommon = [commonCharacter, ...allCharacters];
+        
+        // 캐릭터 목록 렌더링 (가로)
+        listContainer.innerHTML = allCharactersWithCommon.map(char => {
+            const isSelected = char.id === currentEditingCharacterId;
+            const isCommon = char.id === 'common';
+            return `
+                <div class="flex-shrink-0 w-32">
+                    <button onclick="window.selectCharacterForEdit('${char.id}')" 
+                            class="w-full text-center px-3 py-3 rounded-xl transition-colors ${isSelected ? 'bg-emerald-50 border-2 border-emerald-500' : 'bg-slate-50 border border-slate-200 hover:bg-slate-100'}">
+                        <div class="flex flex-col items-center gap-2">
+                            ${char.image ? `
+                                <img src="${escapeHtml(char.image)}" alt="${escapeHtml(char.name || '')}" class="w-12 h-12 object-cover rounded-lg" onerror="this.style.display='none'">
+                            ` : ''}
+                            ${!char.image && char.icon ? `
+                                <div class="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center text-2xl">${escapeHtml(char.icon)}</div>
+                            ` : ''}
+                            <div class="w-full">
+                                <div class="text-xs font-bold text-slate-800">${escapeHtml(char.name || char.id || '')}</div>
                             </div>
                         </div>
-                    ` : ''}
-                    ${personaData.settings ? `
-                        <div>
-                            <label class="block text-sm font-bold text-slate-700 mb-2">설정</label>
-                            <pre class="bg-slate-50 p-4 rounded-lg text-xs text-slate-700 overflow-auto">${JSON.stringify(personaData.settings, null, 2)}</pre>
-                        </div>
+                    </button>
+                    ${!isCommon ? `
+                        <button onclick="window.deleteCharacter('${char.id}')" 
+                                class="w-full mt-2 px-2 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-bold hover:bg-red-200 transition-colors">
+                            <i class="fa-solid fa-trash mr-1"></i>삭제
+                        </button>
                     ` : ''}
                 </div>
+            `;
+        }).join('');
+        
+        // 첫 번째 캐릭터(공통)를 기본으로 선택
+        if (!currentEditingCharacterId) {
+            selectCharacterForEdit('common');
+        }
+    } catch (e) {
+        console.error("페르소나 캐릭터 렌더링 실패:", e);
+        listContainer.innerHTML = '<div class="text-center py-4 text-red-400"><i class="fa-solid fa-exclamation-triangle text-xl mb-2"></i><p class="text-xs">캐릭터를 불러오는 중 오류가 발생했습니다.</p></div>';
+    }
+}
+
+// 캐릭터 선택 (편집용)
+window.selectCharacterForEdit = async function(characterId) {
+    currentEditingCharacterId = characterId;
+    
+    // 목록 UI 업데이트
+    document.querySelectorAll('#personaCharactersList button').forEach(btn => {
+        btn.classList.remove('bg-emerald-50', 'border-emerald-500', 'border-2');
+        btn.classList.add('bg-slate-50', 'border-slate-200', 'border');
+    });
+    
+    const selectedBtn = document.querySelector(`#personaCharactersList button[onclick*="'${characterId}'"]`);
+    if (selectedBtn) {
+        selectedBtn.classList.remove('bg-slate-50', 'border-slate-200', 'border');
+        selectedBtn.classList.add('bg-emerald-50', 'border-emerald-500', 'border-2');
+    }
+    
+    // 편집 폼 로드
+    await loadCharacterEditor(characterId);
+};
+
+// 캐릭터 편집 폼 로드
+async function loadCharacterEditor(characterId) {
+    const editorContent = document.getElementById('personaCharacterEditorContent');
+    if (!editorContent) return;
+    
+    editorContent.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
+    
+    try {
+        // 공통 캐릭터인지 확인
+        if (characterId === 'common') {
+            let commonData = {
+                id: 'common',
+                name: '공통',
+                icon: '🌐',
+                image: null,
+                persona: '모든 캐릭터에 공통으로 적용되는 페르소나',
+                systemPrompt: ''
+            };
+            
+            // Firebase에서 공통 페르소나 가져오기
+            const commonDocRef = doc(db, 'artifacts', appId, 'persona', 'common');
+            const commonDoc = await getDoc(commonDocRef);
+            if (commonDoc.exists()) {
+                const data = commonDoc.data();
+                commonData.systemPrompt = data.systemPrompt || '';
+            }
+            
+            // 공통 페르소나 편집 폼 렌더링
+            renderCommonPersonaForm(commonData);
+            return;
+        }
+        
+        // 기본 캐릭터인지 확인
+        const defaultChar = DEFAULT_CHARACTERS.find(c => c.id === characterId);
+        let characterData = defaultChar ? { ...defaultChar } : { id: characterId, name: '', icon: '👤', image: '', persona: '', systemPrompt: '', defaultComments: [] };
+        
+        // Firebase에서 개별 설정 가져오기
+        const personaDocRef = doc(db, 'artifacts', appId, 'persona', characterId);
+        const personaDoc = await getDoc(personaDocRef);
+        if (personaDoc.exists()) {
+            const data = personaDoc.data();
+            characterData = { ...characterData, ...data };
+        }
+        
+        // Firebase에서 characters 목록에서도 가져오기 (이름, 아이콘, 이미지)
+        const charactersDocRef = doc(db, 'artifacts', appId, 'persona', 'characters');
+        const charactersSnap = await getDoc(charactersDocRef);
+        if (charactersSnap.exists()) {
+            const data = charactersSnap.data();
+            if (data[characterId]) {
+                characterData.name = data[characterId].name || characterData.name;
+                characterData.icon = data[characterId].icon || characterData.icon;
+                characterData.image = data[characterId].image || characterData.image;
+            }
+        }
+        
+        // 기본 멘트가 없으면 빈 배열로 초기화
+        if (!characterData.defaultComments || !Array.isArray(characterData.defaultComments)) {
+            characterData.defaultComments = [];
+        }
+        
+        // 편집 폼 렌더링
+        renderCharacterEditorForm(characterData);
+    } catch (e) {
+        console.error('캐릭터 편집 폼 로드 실패:', e);
+        editorContent.innerHTML = '<div class="text-center py-8 text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>캐릭터 정보를 불러오는 중 오류가 발생했습니다.</p></div>';
+    }
+}
+
+// 공통 페르소나 편집 폼 렌더링
+function renderCommonPersonaForm(commonData) {
+    const editorContent = document.getElementById('personaCharacterEditorContent');
+    if (!editorContent) return;
+    
+    editorContent.innerHTML = `
+        <div class="space-y-6">
+            <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <div class="flex items-start gap-3">
+                    <i class="fa-solid fa-info-circle text-blue-600 text-xl mt-0.5"></i>
+                    <div>
+                        <h3 class="text-sm font-bold text-blue-800 mb-1">공통 페르소나</h3>
+                        <p class="text-xs text-blue-700">이 페르소나는 모든 AI 캐릭터의 분석에 공통으로 적용됩니다. 각 캐릭터의 고유한 페르소나와 함께 사용됩니다.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 공통 페르소나 (구글 AI 스튜디오용) -->
+            <div>
+                <label class="block text-sm font-bold text-slate-700 mb-2">
+                    <i class="fa-solid fa-robot mr-2"></i>공통 페르소나 (구글 AI 스튜디오에 발송할 프롬프트)
+                </label>
+                <textarea id="commonSystemPrompt" 
+                          class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[200px]"
+                          placeholder="모든 캐릭터에 공통으로 적용될 페르소나를 입력하세요. 예: '항상 친근하고 따뜻한 톤으로 대화하며, 사용자의 식사 기록을 긍정적으로 분석합니다.'">${escapeHtml(commonData.systemPrompt || '')}</textarea>
+            </div>
+        </div>
+    `;
+}
+
+// 캐릭터 편집 폼 렌더링
+function renderCharacterEditorForm(characterData) {
+    const editorContent = document.getElementById('personaCharacterEditorContent');
+    if (!editorContent) return;
+    
+    editorContent.innerHTML = `
+        <div class="space-y-6">
+            <!-- 이미지 업로드 -->
+            <div>
+                <label class="block text-sm font-bold text-slate-700 mb-2">
+                    <i class="fa-solid fa-image mr-2"></i>캐릭터 이미지
+                </label>
+                <div class="space-y-3">
+                    <input type="file" id="characterImageFile" accept="image/*" 
+                           onchange="window.handleCharacterImageUpload(event)"
+                           class="hidden">
+                    <button type="button" onclick="document.getElementById('characterImageFile').click()" 
+                            class="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-upload"></i>
+                        <span>이미지 선택</span>
+                    </button>
+                    <input type="text" id="characterImage" value="${escapeHtml(characterData.image || '')}" 
+                           placeholder="또는 이미지 URL 직접 입력"
+                           onchange="window.updateCharacterImageFromUrl(this.value)"
+                           class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500">
+                    <div id="characterImagePreview" class="mt-2">
+                        ${characterData.image ? `
+                            <div class="relative inline-block">
+                                <img src="${escapeHtml(characterData.image)}" alt="미리보기" class="w-32 h-32 object-cover rounded-xl border border-slate-200" onerror="this.style.display='none'">
+                                <button type="button" onclick="window.removeCharacterImage()" 
+                                        class="absolute top-1 right-1 px-2 py-1 bg-red-500 text-white rounded text-xs font-bold hover:bg-red-600">
+                                    <i class="fa-solid fa-times"></i>
+                                </button>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 캐릭터 이름 -->
+            <div>
+                <label class="block text-sm font-bold text-slate-700 mb-2">
+                    <i class="fa-solid fa-tag mr-2"></i>캐릭터 이름
+                </label>
+                <input type="text" id="characterName" value="${escapeHtml(characterData.name || '')}" 
+                       placeholder="예: 엄격한 트레이너"
+                       class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500">
+            </div>
+            
+            <!-- 기본 멘트 -->
+            <div>
+                <label class="block text-sm font-bold text-slate-700 mb-2">
+                    <i class="fa-solid fa-comment mr-2"></i>기본 멘트 (COMMENT 버튼 클릭 시 표시)
+                </label>
+                <p class="text-xs text-slate-500 mb-2">여러 개의 멘트를 입력하면 랜덤으로 표시됩니다.</p>
+                <div id="characterDefaultCommentsContainer" class="space-y-3">
+                    ${characterData.defaultComments && characterData.defaultComments.length > 0 ? characterData.defaultComments.map((comment, index) => `
+                        <div class="flex gap-2 items-start" data-comment-index="${index}">
+                            <textarea onchange="window.updateCharacterDefaultComment(${index}, this.value)"
+                                      class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px]"
+                                      placeholder="기본 멘트를 입력하세요">${escapeHtml(comment || '')}</textarea>
+                            <button onclick="window.removeCharacterDefaultComment(${index})" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors flex-shrink-0">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    `).join('') : ''}
+                </div>
+                <button onclick="window.addCharacterDefaultComment()" class="mt-2 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
+                    <i class="fa-solid fa-plus mr-2"></i>멘트 추가
+                </button>
+            </div>
+            
+            <!-- 페르소나 (구글 AI 스튜디오용) -->
+            <div>
+                <label class="block text-sm font-bold text-slate-700 mb-2">
+                    <i class="fa-solid fa-robot mr-2"></i>페르소나 (구글 AI 스튜디오에 발송할 프롬프트)
+                </label>
+                <textarea id="characterSystemPrompt" 
+                          class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[200px]"
+                          placeholder="캐릭터의 성격, 말투, 분석 스타일 등을 정의하는 프롬프트를 입력하세요">${escapeHtml(characterData.systemPrompt || '')}</textarea>
+            </div>
+        </div>
+    `;
+}
+
+// 기본 멘트 추가
+window.addCharacterDefaultComment = function() {
+    const container = document.getElementById('characterDefaultCommentsContainer');
+    if (!container) return;
+    
+    const index = container.children.length;
+    const newCommentDiv = document.createElement('div');
+    newCommentDiv.className = 'flex gap-2 items-start';
+    newCommentDiv.setAttribute('data-comment-index', index);
+    newCommentDiv.innerHTML = `
+        <textarea onchange="window.updateCharacterDefaultComment(${index}, this.value)"
+                  class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px]"
+                  placeholder="기본 멘트를 입력하세요"></textarea>
+        <button onclick="window.removeCharacterDefaultComment(${index})" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors flex-shrink-0">
+            <i class="fa-solid fa-trash"></i>
+        </button>
+    `;
+    container.appendChild(newCommentDiv);
+};
+
+// 기본 멘트 제거
+window.removeCharacterDefaultComment = function(index) {
+    const container = document.getElementById('characterDefaultCommentsContainer');
+    if (!container) return;
+    
+    const commentDiv = container.querySelector(`[data-comment-index="${index}"]`);
+    if (commentDiv) {
+        commentDiv.remove();
+        // 인덱스 재정렬
+        Array.from(container.children).forEach((child, idx) => {
+            child.setAttribute('data-comment-index', idx);
+            const textarea = child.querySelector('textarea');
+            const button = child.querySelector('button');
+            if (textarea) {
+                textarea.setAttribute('onchange', `window.updateCharacterDefaultComment(${idx}, this.value)`);
+            }
+            if (button) {
+                button.setAttribute('onclick', `window.removeCharacterDefaultComment(${idx})`);
+            }
+        });
+    }
+};
+
+// 기본 멘트 업데이트
+window.updateCharacterDefaultComment = function(index, value) {
+    // 실시간 업데이트는 렌더링 시 자동으로 반영됨
+};
+
+// 캐릭터 이미지 업로드 핸들러
+window.handleCharacterImageUpload = async function(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    // 파일 타입 확인
+    if (!file.type.startsWith('image/')) {
+        alert('이미지 파일만 업로드할 수 있습니다.');
+        return;
+    }
+    
+    // 파일 크기 확인 (10MB 제한)
+    if (file.size > 10 * 1024 * 1024) {
+        alert('파일 크기는 10MB 이하여야 합니다.');
+        return;
+    }
+    
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    
+    try {
+        // 현재 사용자 ID 가져오기 (관리자)
+        const user = auth.currentUser;
+        if (!user) {
+            alert('로그인이 필요합니다.');
+            return;
+        }
+        
+        // Firebase Storage에 업로드
+        const imageUrl = await uploadImageToStorage(file, user.uid, `persona/${currentEditingCharacterId || 'temp'}`);
+        
+        // 이미지 URL 필드에 설정
+        const imageInput = document.getElementById('characterImage');
+        if (imageInput) {
+            imageInput.value = imageUrl;
+        }
+        
+        // 미리보기 업데이트
+        updateCharacterImagePreview(imageUrl);
+        
+        // 파일 입력 초기화
+        event.target.value = '';
+        
+    } catch (e) {
+        console.error('이미지 업로드 실패:', e);
+        alert('이미지 업로드 중 오류가 발생했습니다: ' + e.message);
+    } finally {
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+    }
+};
+
+// 캐릭터 이미지 미리보기 업데이트
+function updateCharacterImagePreview(imageUrl) {
+    const previewContainer = document.getElementById('characterImagePreview');
+    if (!previewContainer) return;
+    
+    if (imageUrl) {
+        previewContainer.innerHTML = `
+            <div class="relative inline-block">
+                <img src="${escapeHtml(imageUrl)}" alt="미리보기" class="w-32 h-32 object-cover rounded-xl border border-slate-200" onerror="this.style.display='none'">
+                <button type="button" onclick="window.removeCharacterImage()" 
+                        class="absolute top-1 right-1 px-2 py-1 bg-red-500 text-white rounded text-xs font-bold hover:bg-red-600">
+                    <i class="fa-solid fa-times"></i>
+                </button>
             </div>
         `;
-    } catch (e) {
-        console.error("페르소나 설정 렌더링 실패:", e);
-        container.innerHTML = '<div class="text-center py-8 text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>페르소나를 불러오는 중 오류가 발생했습니다: ' + e.message + '</p></div>';
+    } else {
+        previewContainer.innerHTML = '';
     }
+}
+
+// 캐릭터 이미지 제거
+window.removeCharacterImage = function() {
+    const imageInput = document.getElementById('characterImage');
+    if (imageInput) {
+        imageInput.value = '';
+    }
+    updateCharacterImagePreview('');
+};
+
+// URL 입력으로 이미지 미리보기 업데이트
+window.updateCharacterImageFromUrl = function(imageUrl) {
+    updateCharacterImagePreview(imageUrl || '');
+};
+
+// 새 캐릭터 추가
+window.addNewCharacter = function() {
+    const newId = 'character_' + Date.now();
+    currentEditingCharacterId = newId;
+    
+    // 목록에 새 캐릭터 추가 (임시)
+    const listContainer = document.getElementById('personaCharactersList');
+    if (listContainer) {
+        const newCharDiv = document.createElement('div');
+        newCharDiv.className = 'flex-shrink-0 w-32';
+        newCharDiv.innerHTML = `
+            <button onclick="window.selectCharacterForEdit('${newId}')" 
+                    class="w-full text-center px-3 py-3 rounded-xl transition-colors bg-emerald-50 border-2 border-emerald-500">
+                <div class="flex flex-col items-center gap-2">
+                    <div class="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center text-2xl">👤</div>
+                    <div class="w-full">
+                        <div class="text-xs font-bold text-slate-800">새 캐릭터</div>
+                    </div>
+                </div>
+            </button>
+            <button onclick="window.deleteCharacter('${newId}')" 
+                    class="w-full mt-2 px-2 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-bold hover:bg-red-200 transition-colors">
+                <i class="fa-solid fa-trash mr-1"></i>삭제
+            </button>
+        `;
+        listContainer.appendChild(newCharDiv);
+    }
+    
+    // 편집 폼 로드
+    loadCharacterEditor(newId);
+};
+
+// 캐릭터 삭제
+window.deleteCharacter = async function(characterId) {
+    // 공통 캐릭터는 삭제 불가
+    if (characterId === 'common') {
+        alert('공통 페르소나는 삭제할 수 없습니다.');
+        return;
+    }
+    
+    if (!confirm('정말 이 캐릭터를 삭제하시겠습니까?')) return;
+    
+    try {
+        // characters 목록에서 삭제
+        const charactersDocRef = doc(db, 'artifacts', appId, 'persona', 'characters');
+        const charactersSnap = await getDoc(charactersDocRef);
+        if (charactersSnap.exists()) {
+            const data = charactersSnap.data();
+            delete data[characterId];
+            await setDoc(charactersDocRef, data, { merge: true });
+        }
+        
+        // 개별 설정 문서 삭제
+        const personaDocRef = doc(db, 'artifacts', appId, 'persona', characterId);
+        await deleteDoc(personaDocRef);
+        
+        // 현재 선택된 캐릭터가 삭제된 경우 첫 번째 캐릭터 선택
+        if (currentEditingCharacterId === characterId) {
+            currentEditingCharacterId = null;
+        }
+        
+        // 목록 새로고침
+        await renderPersonaCharacters();
+        
+        alert('캐릭터가 삭제되었습니다.');
+    } catch (e) {
+        console.error('캐릭터 삭제 실패:', e);
+        alert('캐릭터 삭제 중 오류가 발생했습니다: ' + e.message);
+    }
+};
+
+// 캐릭터 저장
+window.saveCharacter = async function() {
+    if (!currentEditingCharacterId) {
+        alert('저장할 캐릭터를 선택해주세요.');
+        return;
+    }
+    
+    try {
+        // 공통 페르소나 저장
+        if (currentEditingCharacterId === 'common') {
+            const commonSystemPromptInput = document.getElementById('commonSystemPrompt');
+            if (!commonSystemPromptInput) {
+                alert('폼을 불러오는 중입니다. 잠시 후 다시 시도해주세요.');
+                return;
+            }
+            
+            const systemPrompt = commonSystemPromptInput.value.trim();
+            
+            const commonDocRef = doc(db, 'artifacts', appId, 'persona', 'common');
+            await setDoc(commonDocRef, {
+                systemPrompt: systemPrompt,
+                updatedAt: new Date().toISOString()
+            }, { merge: true });
+            
+            alert('공통 페르소나가 저장되었습니다.');
+            
+            // 목록 새로고침
+            await renderPersonaCharacters();
+            return;
+        }
+        
+        const imageInput = document.getElementById('characterImage');
+        const nameInput = document.getElementById('characterName');
+        const systemPromptInput = document.getElementById('characterSystemPrompt');
+        const commentsContainer = document.getElementById('characterDefaultCommentsContainer');
+        
+        if (!imageInput || !nameInput || !systemPromptInput) {
+            alert('폼을 불러오는 중입니다. 잠시 후 다시 시도해주세요.');
+            return;
+        }
+        
+        const image = imageInput.value.trim();
+        const name = nameInput.value.trim();
+        const systemPrompt = systemPromptInput.value.trim();
+        
+        if (!name) {
+            alert('캐릭터 이름을 입력해주세요.');
+            return;
+        }
+        
+        // 기본 멘트 수집
+        const defaultComments = [];
+        if (commentsContainer) {
+            commentsContainer.querySelectorAll('textarea').forEach(textarea => {
+                const value = textarea.value.trim();
+                if (value) {
+                    defaultComments.push(value);
+                }
+            });
+        }
+        
+        // characters 목록에 저장 (기본 캐릭터가 아닌 경우만)
+        const isDefaultCharacter = DEFAULT_CHARACTERS.find(c => c.id === currentEditingCharacterId);
+        if (!isDefaultCharacter) {
+            const charactersDocRef = doc(db, 'artifacts', appId, 'persona', 'characters');
+            const charactersSnap = await getDoc(charactersDocRef);
+            const charactersData = charactersSnap.exists() ? charactersSnap.data() : {};
+            
+            charactersData[currentEditingCharacterId] = {
+                name: name,
+                icon: '👤', // 기본값
+                image: image || null
+            };
+            
+            await setDoc(charactersDocRef, charactersData, { merge: true });
+        }
+        
+        // 개별 설정 문서에 저장
+        const personaDocRef = doc(db, 'artifacts', appId, 'persona', currentEditingCharacterId);
+        await setDoc(personaDocRef, {
+            persona: name, // 간단한 설명으로 이름 사용
+            systemPrompt: systemPrompt,
+            defaultComments: defaultComments,
+            image: image || null,
+            name: name,
+            updatedAt: new Date().toISOString()
+        }, { merge: true });
+        
+        alert('캐릭터가 저장되었습니다.');
+        
+        // 목록 새로고침
+        await renderPersonaCharacters();
+    } catch (e) {
+        console.error('캐릭터 저장 실패:', e);
+        alert('캐릭터 저장 중 오류가 발생했습니다: ' + e.message);
+    }
+};
+
+// 페르소나 설정 렌더링 (초기화)
+async function renderPersonaSettings() {
+    // 기본으로 MEALOG 메뉴 표시
+    switchPersonaSidebar('mealog');
 }
 
 // 페르소나 새로고침
 window.refreshPersona = function() {
-    renderPersonaSettings();
+    const activeSection = document.querySelector('.persona-main-section:not(.hidden)');
+    if (activeSection) {
+        const sectionId = activeSection.id.replace('persona-main-', '');
+        switchPersonaSidebar(sectionId);
+    } else {
+        switchPersonaSidebar('mealog');
+    }
 }

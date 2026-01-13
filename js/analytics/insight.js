@@ -146,79 +146,33 @@ async function loadCharactersFromFirebase() {
 // 현재 선택된 캐릭터 (기본값: MEALOG)
 let currentCharacter = 'mealog';
 
-// 텍스트를 5줄 단위로 나누는 함수 (최대 3페이지 제한)
-function splitTextIntoPages(text, maxLines = 5, maxPages = 3) {
+// 텍스트를 5줄 단위로 나누는 함수 (페이지 제한 없음)
+// 원본 줄바꿈을 그대로 유지하고, 자동 줄바꿈은 하지 않음
+function splitTextIntoPages(text, maxLines = 5, maxPages = Infinity) {
     if (!text) return [''];
     
-    // 텍스트 정리 (연속된 공백 제거, 줄바꿈 정규화)
+    // 줄바꿈만 정규화 (원본 텍스트의 줄바꿈과 공백은 그대로 유지)
     text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    text = text.replace(/\n{3,}/g, '\n\n'); // 3개 이상 연속 줄바꿈은 2개로
-    text = text.trim();
     
-    // 줄바꿈을 기준으로 분할 (빈 줄도 유지)
+    // 원본 줄바꿈을 기준으로 분할 (자동 줄바꿈 없이)
     const originalLines = text.split('\n');
-    const allLines = [];
-    const maxCharsPerLine = 42; // 말풍선 너비 고려하여 약간 여유
     
-    // 각 줄을 최대 문자 수로 나누기 (한국어 텍스트 고려)
-    originalLines.forEach(line => {
-        line = line.trim();
-        
-        if (line === '') {
-            // 빈 줄은 그대로 유지
-            allLines.push('');
-        } else if (line.length <= maxCharsPerLine) {
-            allLines.push(line);
-        } else {
-            // 긴 줄을 여러 줄로 나누기 (한국어 고려)
-            let remaining = line;
-            while (remaining.length > 0) {
-                if (remaining.length <= maxCharsPerLine) {
-                    allLines.push(remaining);
-                    break;
-                }
-                
-                // 최대 길이까지 자르되, 단어나 문장 중간에서 자르지 않도록
-                let cutPos = maxCharsPerLine;
-                
-                // 문장 부호 앞에서 자르기 (., !, ?)
-                const sentenceEnd = remaining.substring(0, maxCharsPerLine).lastIndexOf(/[.!?]/);
-                if (sentenceEnd > maxCharsPerLine * 0.7) {
-                    cutPos = sentenceEnd + 1;
-                } else {
-                    // 공백이나 쉼표 앞에서 자르기
-                    const spacePos = remaining.substring(0, maxCharsPerLine).lastIndexOf(' ');
-                    const commaPos = remaining.substring(0, maxCharsPerLine).lastIndexOf(',');
-                    const maxPos = Math.max(spacePos, commaPos);
-                    if (maxPos > maxCharsPerLine * 0.6) {
-                        cutPos = maxPos + 1;
-                    }
-                }
-                
-                allLines.push(remaining.substring(0, cutPos).trim());
-                remaining = remaining.substring(cutPos).trim();
-            }
-        }
-    });
-    
-    // 5줄씩 묶어서 페이지 만들기 (최대 3페이지)
-    const maxTotalLines = maxPages * maxLines;
-    const linesToUse = allLines.slice(0, maxTotalLines);
+    // 5줄씩 묶어서 페이지 만들기 (페이지 제한 없음)
+    const linesToUse = maxPages === Infinity ? originalLines : originalLines.slice(0, maxPages * maxLines);
     
     const pages = [];
     for (let i = 0; i < linesToUse.length; i += maxLines) {
         const pageLines = linesToUse.slice(i, i + maxLines);
-        const pageText = pageLines.join('\n').trim();
-        if (pageText) {
-            pages.push(pageText);
-        }
+        const pageText = pageLines.join('\n');
+        // 빈 페이지가 아닌 경우 추가 (모든 줄이 공백이어도 추가)
+        pages.push(pageText);
     }
     
-    // 페이지가 없으면 최소한 1페이지는 반환
-    return pages.length > 0 ? pages : [text.substring(0, maxTotalLines * maxCharsPerLine)];
+    // 페이지가 없으면 원본 텍스트 반환
+    return pages.length > 0 ? pages : [text];
 }
 
-// 말풍선에 텍스트 표시 (페이지네이션, 최대 3페이지)
+// 말풍선에 텍스트 표시 (페이지네이션, 페이지 제한 없음)
 function displayInsightText(text, characterName = '') {
     const container = document.getElementById('insightTextPages');
     const pageCounter = document.getElementById('insightPageCounter');
@@ -227,17 +181,19 @@ function displayInsightText(text, characterName = '') {
     
     if (!container) return;
     
-    // 텍스트를 최대 3페이지로 분할
-    const pages = splitTextIntoPages(text, 5, 3);
+    // 텍스트를 페이지로 분할 (페이지 제한 없음)
+    const pages = splitTextIntoPages(text, 5);
     
     // 캐릭터명은 첫 페이지에만 표시
     const characterHeader = characterName && pages.length > 0 
         ? `<div class="insight-character-name text-xs font-bold text-emerald-700 mb-1">[ ${characterName} ]</div>` 
         : '';
     
-    container.innerHTML = pages.map((page, index) => 
-        `<div class="insight-text-page ${index === 0 ? 'active' : ''}" data-page="${index}">${index === 0 ? characterHeader : ''}<div class="insight-text-content">${page}</div></div>`
-    ).join('');
+    container.innerHTML = pages.map((page, index) => {
+        // 줄바꿈을 <br>로 변환하고 HTML 이스케이프
+        const escapedPage = escapeHtml(page).replace(/\n/g, '<br>');
+        return `<div class="insight-text-page ${index === 0 ? 'active' : ''}" data-page="${index}">${index === 0 ? characterHeader : ''}<div class="insight-text-content">${escapedPage}</div></div>`;
+    }).join('');
     
     // 페이지 카운터 표시 (우상단) - 항상 표시 (1페이지여도)
     if (pageCounter) {
@@ -246,13 +202,8 @@ function displayInsightText(text, characterName = '') {
         window.totalInsightPages = pages.length;
     }
     
-    // 페이지 인디케이터 표시 (페이지가 2개 이상일 때만)
-    if (pages.length > 1 && indicator) {
-        indicator.classList.remove('hidden');
-        indicator.innerHTML = pages.map((_, index) => 
-            `<div class="insight-page-dot ${index === 0 ? 'active' : ''}" onclick="window.showInsightPage(${index})"></div>`
-        ).join('');
-    } else if (indicator) {
+    // 페이지 인디케이터 숨기기 (제거 요청)
+    if (indicator) {
         indicator.classList.add('hidden');
     }
     
@@ -641,7 +592,7 @@ function analyzeMealData(filteredData, dateRangeText) {
         return null;
     }
     
-    // 식사 구분 분석
+    // 식사 방식 분석
     const mealTypeCount = {};
     filteredData.forEach(meal => {
         if (meal.mealType && meal.mealType !== 'Skip') {
@@ -769,7 +720,7 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
 
 식사 데이터 분석:
 - 총 ${analysis.totalMeals}회 기록
-- 식사구분: ${analysis.mealTypes || '없음'}
+- 식사방식: ${analysis.mealTypes || '없음'}
 - 주요 메뉴: ${menuSummary}
 - 함께한 사람: ${analysis.companions || '대부분 혼자'}
 ${analysis.avgRating ? `- 만족도 평균: ${analysis.avgRating}/5` : ''}

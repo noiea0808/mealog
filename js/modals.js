@@ -166,7 +166,7 @@ export function openModal(date, slotId, entryId = null) {
                 
                 // 태그 활성화 처리 함수
                 const activateTags = () => {
-                    // 식사 구분 (mealType)
+                    // 식사 방식 (mealType)
                     if (r.mealType) {
                         const typeChips = document.getElementById('typeChips');
                         if (typeChips) {
@@ -238,15 +238,25 @@ export function openModal(date, slotId, entryId = null) {
                         }
                     }
                     
-                    // 함께한 사람 상세 (withWhomDetail) - sub-chip
+                    // 함께한 사람 상세 (withWhomDetail) - sub-chip (다중 선택 가능)
                     if (r.withWhomDetail) {
                         const peopleSuggestions = document.getElementById('peopleSuggestions');
-                        if (peopleSuggestions) {
+                        const withWhomInput = document.getElementById('withWhomInput');
+                        if (peopleSuggestions && withWhomInput) {
+                            // 쉼표로 구분된 여러 값 처리
+                            const detailValues = r.withWhomDetail.split(',').map(v => v.trim()).filter(v => v);
+                            const activeValues = [];
                             peopleSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
-                                if (ch.innerText.trim() === r.withWhomDetail.trim()) {
+                                const chipText = ch.innerText.trim();
+                                if (detailValues.includes(chipText)) {
                                     ch.classList.add('active');
+                                    activeValues.push(chipText);
                                 }
                             });
+                            // input에 선택된 값들 저장
+                            if (activeValues.length > 0) {
+                                withWhomInput.value = activeValues.join(', ');
+                            }
                         }
                     }
                 };
@@ -285,8 +295,8 @@ export function openModal(date, slotId, entryId = null) {
                     }, 100);
                 }
                 
-                // 외식 또는 술자리 선택 시 카카오 검색 버튼 표시
-                if (r.mealType === '외식' || r.mealType === '술자리') {
+                // 외식 또는 회식/술자리 선택 시 카카오 검색 버튼 표시
+                if (r.mealType === '외식' || r.mealType === '회식/술자리') {
                     setTimeout(() => {
                         const kakaoSearchBtn = document.getElementById('kakaoSearchBtn');
                         if (kakaoSearchBtn) {
@@ -444,9 +454,15 @@ export async function saveEntry() {
             newSettings.subTags.menu.push({ text: menuInputVal, parent: getT('categoryChips') });
             tagsChanged = true;
         }
-        if (withInputVal && !newSettings.subTags.people.find(t => (t.text || t) === withInputVal)) {
-            newSettings.subTags.people.push({ text: withInputVal, parent: getT('withChips') });
-            tagsChanged = true;
+        // 함께한 사람 상세 태그는 다중 선택 가능 (쉼표로 구분)
+        if (withInputVal) {
+            const withValues = withInputVal.split(',').map(v => v.trim()).filter(v => v);
+            withValues.forEach(val => {
+                if (!newSettings.subTags.people.find(t => (t.text || t) === val)) {
+                    newSettings.subTags.people.push({ text: val, parent: getT('withChips') });
+                    tagsChanged = true;
+                }
+            });
         }
         if (isS && snackInputVal && !newSettings.subTags.snack.find(t => (t.text || t) === snackInputVal)) {
             newSettings.subTags.snack.push({ text: snackInputVal, parent: getT('snackTypeChips') });
@@ -790,21 +806,49 @@ export function setSatiety(s) {
 export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subContainerId = null) {
     const container = btn.parentElement.closest('.sub-chip-wrapper') ? btn.parentElement.parentElement : btn.parentElement;
     const isActive = btn.classList.contains('active');
-    container.querySelectorAll(isPrimary ? '.chip' : '.sub-chip').forEach(c => c.classList.remove('active'));
+    
+    // 함께한 사람 상세 태그(peopleSuggestions)는 다중 선택 가능
+    const isMultiSelect = !isPrimary && subContainerId === 'peopleSuggestions';
+    
+    if (!isMultiSelect) {
+        // 단일 선택: 다른 태그 선택 해제
+        container.querySelectorAll(isPrimary ? '.chip' : '.sub-chip').forEach(c => c.classList.remove('active'));
+    }
+    
     let selectedValue = value;
     
     if (isActive) {
+        btn.classList.remove('active');
         if (inputId !== 'null') {
             const input = document.getElementById(inputId);
-            if (input) input.value = '';
+            if (input) {
+                if (isMultiSelect) {
+                    // 다중 선택: 현재 값에서 제거
+                    const currentValues = input.value.split(',').map(v => v.trim()).filter(v => v);
+                    const newValues = currentValues.filter(v => v !== value);
+                    input.value = newValues.join(', ');
+                } else {
+                    input.value = '';
+                }
+            }
         }
-        btn.classList.remove('active');
         selectedValue = null;
     } else {
         btn.classList.add('active');
         if (inputId !== 'null') {
             const input = document.getElementById(inputId);
-            if (input) input.value = value;
+            if (input) {
+                if (isMultiSelect) {
+                    // 다중 선택: 현재 값에 추가
+                    const currentValues = input.value.split(',').map(v => v.trim()).filter(v => v);
+                    if (!currentValues.includes(value)) {
+                        currentValues.push(value);
+                    }
+                    input.value = currentValues.join(', ');
+                } else {
+                    input.value = value;
+                }
+            }
         }
     }
     
@@ -814,10 +858,10 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
         const isSkip = (selectedValue === 'Skip' || selectedValue === '건너뜀');
         toggleFieldsForSkip(isSkip);
         
-        // 외식 또는 술자리 선택 시 카카오 검색 버튼 표시
+        // 외식 또는 회식/술자리 선택 시 카카오 검색 버튼 표시
         const kakaoSearchBtn = document.getElementById('kakaoSearchBtn');
         if (kakaoSearchBtn) {
-            if (selectedValue === '외식' || selectedValue === '술자리') {
+            if (selectedValue === '외식' || selectedValue === '회식/술자리') {
                 kakaoSearchBtn.classList.remove('hidden');
             } else {
                 kakaoSearchBtn.classList.add('hidden');
@@ -827,9 +871,10 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
     
     if (isPrimary && subTagKey && subContainerId) {
         const subTags = window.userSettings.subTags[subTagKey] || [];
-        window.renderSecondary(subContainerId, subTags, 
-            document.getElementById(subContainerId).getAttribute('data-input-id') || getInputIdFromContainer(subContainerId), 
-            selectedValue, subTagKey);
+        // 함께한 사람의 경우 inputId를 'withWhomInput'으로 설정 (메인 태그 선택 시 자동 입력 방지)
+        const inputIdForSecondary = (subTagKey === 'people') ? 'withWhomInput' : 
+            (document.getElementById(subContainerId).getAttribute('data-input-id') || getInputIdFromContainer(subContainerId));
+        window.renderSecondary(subContainerId, subTags, inputIdForSecondary, selectedValue, subTagKey);
     }
 }
 
@@ -996,6 +1041,9 @@ export function openSettings() {
         // 버전 정보 로드 및 표시
         loadVersionInfo();
         
+        // 기본 탭을 프로필로 설정
+        switchSettingsTab('profile');
+        
         const accountSection = document.getElementById('accountSection');
     if (accountSection) {
         let accountHtml = '';
@@ -1069,29 +1117,43 @@ async function loadVersionInfo() {
                 versionNumberEl.textContent = data.version;
             }
             
-            if (buildDateEl && data.buildDate) {
-                const buildDate = new Date(data.buildDate);
-                const now = new Date();
-                const diffTime = now - buildDate;
-                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                
-                let dateText = '';
-                if (diffDays === 0) {
-                    dateText = '오늘';
-                } else if (diffDays === 1) {
-                    dateText = '어제';
-                } else if (diffDays < 7) {
-                    dateText = `${diffDays}일 전`;
-                } else {
-                    dateText = buildDate.toLocaleDateString('ko-KR', { 
-                        year: 'numeric', 
-                        month: 'short', 
-                        day: 'numeric' 
-                    });
+            // index.html 파일의 최종 수정 시간 가져오기
+            try {
+                const htmlResponse = await fetch('/index.html?t=' + Date.now());
+                if (htmlResponse.ok) {
+                    const lastModified = htmlResponse.headers.get('Last-Modified');
+                    if (lastModified) {
+                        const modifiedDate = new Date(lastModified);
+                        const dateText = modifiedDate.toLocaleString('ko-KR', { 
+                            year: 'numeric',
+                            month: '2-digit', 
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                        
+                        if (buildDateEl) {
+                            buildDateEl.textContent = dateText;
+                            buildDateEl.title = modifiedDate.toLocaleString('ko-KR');
+                        }
+                    }
                 }
-                
-                buildDateEl.textContent = dateText;
-                buildDateEl.title = buildDate.toLocaleString('ko-KR');
+            } catch (e) {
+                console.debug('최종 수정 시간 로드 실패 (무시):', e);
+                // Last-Modified 헤더가 없으면 buildDate 사용 (fallback)
+                if (buildDateEl && data.buildDate) {
+                    const buildDate = new Date(data.buildDate);
+                    const dateText = buildDate.toLocaleString('ko-KR', { 
+                        year: 'numeric',
+                        month: '2-digit', 
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                    
+                    buildDateEl.textContent = dateText;
+                    buildDateEl.title = buildDate.toLocaleString('ko-KR');
+                }
             }
         }
     } catch (e) {
@@ -1102,6 +1164,40 @@ async function loadVersionInfo() {
 
 export function closeSettings() {
     document.getElementById('settingsPage').classList.add('hidden');
+}
+
+// 설정 페이지 탭 전환 함수
+export function switchSettingsTab(tab) {
+    const profileTab = document.getElementById('settingsTabProfile');
+    const tagsTab = document.getElementById('settingsTabTags');
+    const profileContent = document.getElementById('settingsTabContentProfile');
+    const tagsContent = document.getElementById('settingsTabContentTags');
+    
+    if (tab === 'profile') {
+        // 프로필 탭 활성화
+        if (profileTab) {
+            profileTab.classList.add('active', 'bg-emerald-600', 'text-white');
+            profileTab.classList.remove('bg-slate-100', 'text-slate-600');
+        }
+        if (tagsTab) {
+            tagsTab.classList.remove('active', 'bg-emerald-600', 'text-white');
+            tagsTab.classList.add('bg-slate-100', 'text-slate-600');
+        }
+        if (profileContent) profileContent.classList.remove('hidden');
+        if (tagsContent) tagsContent.classList.add('hidden');
+    } else if (tab === 'tags') {
+        // 태그 관리 탭 활성화
+        if (tagsTab) {
+            tagsTab.classList.add('active', 'bg-emerald-600', 'text-white');
+            tagsTab.classList.remove('bg-slate-100', 'text-slate-600');
+        }
+        if (profileTab) {
+            profileTab.classList.remove('active', 'bg-emerald-600', 'text-white');
+            profileTab.classList.add('bg-slate-100', 'text-slate-600');
+        }
+        if (tagsContent) tagsContent.classList.remove('hidden');
+        if (profileContent) profileContent.classList.add('hidden');
+    }
 }
 
 export async function saveProfileSettings() {
@@ -1164,7 +1260,7 @@ function renderFavoriteTagsEditor() {
     }
     
     const tagConfigs = {
-        mealType: { label: '식사 구분', subTagKey: 'place', mainTags: state.tempSettings.tags?.mealType || [] },
+        mealType: { label: '식사 방식', subTagKey: 'place', mainTags: state.tempSettings.tags?.mealType || [] },
         category: { label: '메뉴 카테고리', subTagKey: 'menu', mainTags: state.tempSettings.tags?.category || [] },
         withWhom: { label: '함께한 사람', subTagKey: 'people', mainTags: state.tempSettings.tags?.withWhom || [] },
         snackType: { label: '간식 유형', subTagKey: 'snack', mainTags: state.tempSettings.tags?.snackType || [] }

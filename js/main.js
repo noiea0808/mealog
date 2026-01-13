@@ -14,7 +14,7 @@ import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMon
 import { 
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
     handleMultipleImages, removePhoto, updateShareIndicator, toggleSharePhoto,
-    openSettings, closeSettings, saveSettings, saveProfileSettings, selectIcon, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
+    openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
     openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace
 } from './modals.js';
 import { DEFAULT_SUB_TAGS } from './constants.js';
@@ -64,6 +64,7 @@ window.updateShareIndicator = updateShareIndicator;
 window.toggleSharePhoto = toggleSharePhoto;
 window.openSettings = openSettings;
 window.closeSettings = closeSettings;
+window.switchSettingsTab = switchSettingsTab;
 window.saveSettings = saveSettings;
 window.saveProfileSettings = saveProfileSettings;
 window.selectIcon = selectIcon;
@@ -742,9 +743,14 @@ initAuth(async (user) => {
         
         // 게스트가 아니면 첫 로그인 체크를 onSettingsUpdate에서만 수행
         let shouldCheckFirstLogin = !user.isAnonymous;
+        let settingsLoaded = false;
+        let initialSettingsUpdateDone = false;
         
         const { settingsUnsubscribe, dataUnsubscribe } = setupListeners(user.uid, {
             onSettingsUpdate: () => {
+                const wasFirstLoad = !settingsLoaded;
+                settingsLoaded = true;
+                
                 updateHeaderUI();
                 // 설정이 업데이트되면 간식 타입 칩도 다시 렌더링 (모달이 열려있지 않을 때만)
                 const entryModal = document.getElementById('entryModal');
@@ -756,6 +762,24 @@ initAuth(async (user) => {
                 if (shouldCheckFirstLogin && window.userSettings && window.userSettings.profile && currentCheckingUserId === user.uid && !window._firstLoginChecked) {
                     window._firstLoginChecked = true;
                     checkFirstLoginFlow(user);
+                }
+                
+                // 첫 설정 로드 완료 시 메인 화면 표시 (약관/프로필 모달이 없으면)
+                if (wasFirstLoad && !initialSettingsUpdateDone && shouldCheckFirstLogin) {
+                    initialSettingsUpdateDone = true;
+                    // 약관/프로필이 이미 설정되어 있으면 바로 메인 화면 표시
+                    if (window.userSettings && window.userSettings.termsAgreed && 
+                        window.userSettings.profile && window.userSettings.profile.nickname) {
+                        // checkFirstLoginFlow에서 처리하도록, 여기서는 로딩 오버레이만 숨김
+                        // (checkFirstLoginFlow가 호출되지 않을 경우를 대비)
+                        setTimeout(() => {
+                            if (!window._firstLoginChecked) {
+                                switchScreen(true);
+                                switchMainTab('timeline');
+                                document.getElementById('loadingOverlay')?.classList.add('hidden');
+                            }
+                        }, 100);
+                    }
                 }
             },
             onDataUpdate: () => {
@@ -810,8 +834,30 @@ initAuth(async (user) => {
             switchScreen(true);
             switchMainTab('timeline');
             document.getElementById('loadingOverlay')?.classList.add('hidden');
+        } else {
+            // 게스트가 아닌 경우: 설정 로드를 기다리지 않고 먼저 화면 표시 시도
+            // (설정이 없거나 약관/프로필 미설정 시 모달이 표시될 것)
+            // 짧은 타임아웃 후 화면 표시 (설정 로드 완료를 기다리지 않음)
+            setTimeout(() => {
+                if (!initialSettingsUpdateDone && shouldCheckFirstLogin) {
+                    // 아직 설정이 로드되지 않았지만 화면은 표시
+                    // checkFirstLoginFlow에서 모달 표시 또는 화면 표시를 처리
+                    if (window.userSettings && window.userSettings.termsAgreed && 
+                        window.userSettings.profile && window.userSettings.profile.nickname) {
+                        // 설정이 이미 있으면 바로 표시
+                        switchScreen(true);
+                        switchMainTab('timeline');
+                        document.getElementById('loadingOverlay')?.classList.add('hidden');
+                    } else if (window.userSettings) {
+                        // 설정이 있지만 약관/프로필 미설정
+                        // checkFirstLoginFlow가 처리할 것임
+                    } else {
+                        // 설정이 아직 로드되지 않음 - 로딩 오버레이는 계속 표시
+                        // 설정 로드 후 onSettingsUpdate에서 처리
+                    }
+                }
+            }, 300); // 300ms 후에 설정 로드 상태 확인
         }
-        // 게스트가 아닌 경우 설정이 로드될 때까지 대기 (onSettingsUpdate에서 체크)
     } else {
         // 로그아웃 상태
         switchScreen(false);
