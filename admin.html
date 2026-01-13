@@ -89,14 +89,8 @@
                     <button onclick="window.switchAdminTab('users')" id="admin-tab-users" class="admin-tab flex-1 px-6 py-3 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
                         <i class="fa-solid fa-users mr-2"></i>사용자
                     </button>
-                    <button onclick="window.switchAdminTab('feed')" id="admin-tab-feed" class="admin-tab flex-1 px-6 py-3 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
-                        <i class="fa-solid fa-images mr-2"></i>피드 관리
-                    </button>
-                    <button onclick="window.switchAdminTab('board')" id="admin-tab-board" class="admin-tab flex-1 px-6 py-3 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
-                        <i class="fa-solid fa-comments mr-2"></i>게시판 관리
-                    </button>
-                    <button onclick="window.switchAdminTab('persona')" id="admin-tab-persona" class="admin-tab flex-1 px-6 py-3 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
-                        <i class="fa-solid fa-user-astronaut mr-2"></i>페르소나
+                    <button onclick="window.switchAdminTab('monitoring')" id="admin-tab-monitoring" class="admin-tab flex-1 px-6 py-3 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
+                        <i class="fa-solid fa-chart-line mr-2"></i>모니터링
                     </button>
                     <button onclick="window.switchAdminTab('content')" id="admin-tab-content" class="admin-tab flex-1 px-6 py-3 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
                         <i class="fa-solid fa-file-lines mr-2"></i>콘텐츠 관리
@@ -168,71 +162,21 @@
                 </div>
             </div>
 
-            <!-- 피드 관리 탭 -->
-            <div id="admin-tab-content-feed" class="admin-tab-content hidden">
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
-                    <div class="p-6 border-b border-slate-100">
-                        <div class="flex justify-between items-center mb-4">
-                            <h2 class="text-lg font-black text-slate-800">피드 관리</h2>
-                            <div class="flex gap-2">
-                                <button onclick="window.refreshFeedManagement()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                    <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
-                                </button>
-                            </div>
-                        </div>
-                        <!-- 필터 (토글) -->
-                        <div class="flex gap-4 mb-4 items-center">
-                            <div class="flex items-center gap-2">
-                                <label class="text-sm font-bold text-slate-700">공유여부:</label>
-                                <button onclick="window.toggleFeedFilter('shared')" id="feed-filter-shared-toggle" class="feed-filter-toggle px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors">전체</button>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <label class="text-sm font-bold text-slate-700">사진여부:</label>
-                                <button onclick="window.toggleFeedFilter('hasPhotos')" id="feed-filter-hasPhotos-toggle" class="feed-filter-toggle px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors">전체</button>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <label class="text-sm font-bold text-slate-700">금지여부:</label>
-                                <button onclick="window.toggleFeedFilter('banned')" id="feed-filter-banned-toggle" class="feed-filter-toggle px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors">전체</button>
-                            </div>
-                        </div>
-                        <!-- 관리 기능 버튼 -->
-                        <div class="flex gap-2 mb-4 justify-end">
-                            <button onclick="window.bulkUnsharePosts()" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                <i class="fa-solid fa-share-slash mr-2"></i>공유 취소
-                            </button>
-                            <button onclick="window.bulkBanPosts()" class="px-4 py-2 bg-orange-100 text-orange-600 rounded-xl text-sm font-bold hover:bg-orange-200 transition-colors">
-                                <i class="fa-solid fa-ban mr-2"></i>공유 금지
-                            </button>
-                            <button onclick="window.bulkUnbanPosts()" class="px-4 py-2 bg-emerald-100 text-emerald-600 rounded-xl text-sm font-bold hover:bg-emerald-200 transition-colors">
-                                <i class="fa-solid fa-check mr-2"></i>금지 해제
-                            </button>
-                        </div>
-                    </div>
-                    <div class="p-6">
-                        <div id="feedManagementContainer" class="space-y-4">
-                            <div class="text-center py-8 text-slate-400">
-                                <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
-                                <p>로딩 중...</p>
-                            </div>
-                        </div>
-                        <!-- 페이지네이션 -->
-                        <div id="feedPagination" class="mt-6 flex justify-center items-center gap-2"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 페르소나 탭 -->
-            <div id="admin-tab-content-persona" class="admin-tab-content hidden">
+            <!-- 모니터링 탭 -->
+            <div id="admin-tab-content-monitoring" class="admin-tab-content hidden">
                 <div class="flex gap-6 items-start">
                     <!-- 왼쪽 사이드바 -->
                     <div class="w-64 flex-shrink-0">
                         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sticky top-24">
                             <div class="space-y-2">
-                                <button onclick="window.switchPersonaSidebar('mealog')" id="persona-sidebar-mealog" class="w-full px-4 py-3 text-left text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl transition-colors">
-                                    <i class="fa-solid fa-robot mr-2"></i>MEALOG
+                                <button onclick="window.switchMonitoringSidebar('feed')" id="monitoring-sidebar-feed" class="w-full px-4 py-3 text-left text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-images mr-2"></i>피드 관리
                                 </button>
-                                <button onclick="window.switchPersonaSidebar('characters')" id="persona-sidebar-characters" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
-                                    <i class="fa-solid fa-user-astronaut mr-2"></i>AI 캐릭터
+                                <button onclick="window.switchMonitoringSidebar('board')" id="monitoring-sidebar-board" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-comments mr-2"></i>게시판 관리
+                                </button>
+                                <button onclick="window.switchMonitoringSidebar('notice')" id="monitoring-sidebar-notice" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-bullhorn mr-2"></i>공지 관리
                                 </button>
                             </div>
                         </div>
@@ -240,128 +184,107 @@
                     
                     <!-- 오른쪽 메인 콘텐츠 영역 -->
                     <div class="flex-1 min-w-0">
-                        <!-- MEALOG 관리 -->
-                        <div id="persona-main-mealog" class="persona-main-section">
+                        <!-- 피드 관리 -->
+                        <div id="monitoring-main-feed" class="monitoring-main-section">
                             <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
                                 <div class="p-6 border-b border-slate-100">
-                                    <div class="flex justify-between items-center">
-                                        <h2 class="text-lg font-black text-slate-800">MEALOG 안내 메시지 관리</h2>
+                                    <div class="flex justify-between items-center mb-4">
+                                        <h2 class="text-lg font-black text-slate-800">피드 관리</h2>
                                         <div class="flex gap-2">
-                                            <button onclick="window.saveMealogComments()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
-                                                <i class="fa-solid fa-save mr-2"></i>저장
-                                            </button>
-                                            <button onclick="window.refreshPersona()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                            <button onclick="window.refreshFeedManagement()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
                                                 <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <!-- 필터 및 관리 기능 버튼 -->
+                                    <div class="flex gap-4 mb-4 items-center flex-wrap">
+                                        <div class="flex items-center gap-2">
+                                            <label class="text-sm font-bold text-slate-700">공유:</label>
+                                            <button onclick="window.toggleFeedFilter('shared')" id="feed-filter-shared-toggle" class="feed-filter-toggle px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors">전체</button>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <label class="text-sm font-bold text-slate-700">사진:</label>
+                                            <button onclick="window.toggleFeedFilter('hasPhotos')" id="feed-filter-hasPhotos-toggle" class="feed-filter-toggle px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors">전체</button>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <label class="text-sm font-bold text-slate-700">금지:</label>
+                                            <button onclick="window.toggleFeedFilter('banned')" id="feed-filter-banned-toggle" class="feed-filter-toggle px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors">전체</button>
+                                        </div>
+                                        <div class="flex gap-2 items-center ml-auto">
+                                            <button onclick="window.bulkUnsharePosts()" class="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">
+                                                <i class="fa-solid fa-share-slash mr-1"></i>공유 취소
+                                            </button>
+                                            <button onclick="window.bulkBanPosts()" class="px-3 py-2 bg-orange-100 text-orange-600 rounded-lg text-xs font-bold hover:bg-orange-200 transition-colors">
+                                                <i class="fa-solid fa-ban mr-1"></i>공유 금지
+                                            </button>
+                                            <button onclick="window.bulkUnbanPosts()" class="px-3 py-2 bg-emerald-100 text-emerald-600 rounded-lg text-xs font-bold hover:bg-emerald-200 transition-colors">
+                                                <i class="fa-solid fa-check mr-1"></i>금지 해제
                                             </button>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="p-6">
-                                    <div id="mealogCommentsContainer" class="space-y-4">
+                                    <div id="feedManagementContainer" class="space-y-4">
                                         <div class="text-center py-8 text-slate-400">
                                             <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
                                             <p>로딩 중...</p>
                                         </div>
                                     </div>
-                                    <button onclick="window.addMealogComment()" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                                        <i class="fa-solid fa-plus mr-2"></i>메시지 추가
-                                    </button>
+                                    <!-- 페이지네이션 -->
+                                    <div id="feedPagination" class="mt-6 flex justify-center items-center gap-2"></div>
                                 </div>
                             </div>
                         </div>
                         
-                        <!-- AI 캐릭터 관리 -->
-                        <div id="persona-main-characters" class="persona-main-section hidden">
-                            <div class="space-y-6">
-                                <!-- 캐릭터 목록 (가로) -->
-                                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+                        <!-- 게시판 관리 -->
+                        <div id="monitoring-main-board" class="monitoring-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
                                     <div class="flex justify-between items-center mb-4">
-                                        <h3 class="text-sm font-black text-slate-800">캐릭터 목록</h3>
-                                        <button onclick="window.addNewCharacter()" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors">
-                                            <i class="fa-solid fa-plus mr-1"></i>추가
+                                        <h2 class="text-lg font-black text-slate-800">게시판 관리</h2>
+                                        <button onclick="window.refreshBoardPosts()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                            <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
                                         </button>
                                     </div>
-                                    <div id="personaCharactersList" class="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                                        <div class="text-center py-4 text-slate-400 flex-shrink-0">
-                                            <i class="fa-solid fa-spinner fa-spin text-xl mb-2"></i>
-                                            <p class="text-xs">로딩 중...</p>
-                                        </div>
+                                    <!-- 카테고리 필터 -->
+                                    <div class="flex gap-2 overflow-x-auto scrollbar-hide">
+                                        <button onclick="window.setAdminBoardCategory('all')" id="admin-board-category-all" class="admin-board-category-btn active px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold whitespace-nowrap">전체</button>
+                                        <button onclick="window.setAdminBoardCategory('serious')" id="admin-board-category-serious" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">무거운</button>
+                                        <button onclick="window.setAdminBoardCategory('chat')" id="admin-board-category-chat" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">가벼운</button>
+                                        <button onclick="window.setAdminBoardCategory('food')" id="admin-board-category-food" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">먹는</button>
+                                        <button onclick="window.setAdminBoardCategory('admin')" id="admin-board-category-admin" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">치프에게</button>
                                     </div>
                                 </div>
-                                
-                                <!-- 캐릭터 편집 폼 -->
-                                <div id="personaCharacterEditor" class="bg-white rounded-2xl shadow-sm border border-slate-100">
-                                    <div class="p-6 border-b border-slate-100">
-                                        <div class="flex justify-between items-center">
-                                            <h2 class="text-lg font-black text-slate-800">캐릭터 편집</h2>
-                                            <div class="flex gap-2">
-                                                <button onclick="window.saveCharacter()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
-                                                    <i class="fa-solid fa-save mr-2"></i>저장
-                                                </button>
-                                                <button onclick="window.refreshPersona()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                                    <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div id="personaCharacterEditorContent" class="p-6">
-                                        <div class="text-center py-12 text-slate-400">
-                                            <i class="fa-solid fa-hand-pointer text-3xl mb-3"></i>
-                                            <p class="text-sm font-bold">위에서 캐릭터를 선택하세요</p>
+                                <div class="p-6">
+                                    <div id="boardPostsContainer" class="space-y-4">
+                                        <div class="text-center py-8 text-slate-400">
+                                            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                                            <p>로딩 중...</p>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 게시판 관리 탭 -->
-            <div id="admin-tab-content-board" class="admin-tab-content hidden">
-                <!-- 공지 관리 -->
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 mb-6">
-                    <div class="p-6 border-b border-slate-100">
-                        <div class="flex justify-between items-center">
-                            <h2 class="text-lg font-black text-slate-800">공지 관리</h2>
-                            <button onclick="window.openNoticeWriteModal()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
-                                <i class="fa-solid fa-plus mr-2"></i>공지 작성
-                            </button>
-                        </div>
-                    </div>
-                    <div class="p-6">
-                        <div id="noticesContainer" class="space-y-4">
-                            <div class="text-center py-8 text-slate-400">
-                                <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
-                                <p>로딩 중...</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 게시판 관리 -->
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
-                    <div class="p-6 border-b border-slate-100">
-                        <div class="flex justify-between items-center mb-4">
-                            <h2 class="text-lg font-black text-slate-800">게시판 관리</h2>
-                            <button onclick="window.refreshBoardPosts()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
-                            </button>
-                        </div>
-                        <!-- 카테고리 필터 -->
-                        <div class="flex gap-2 overflow-x-auto scrollbar-hide">
-                            <button onclick="window.setAdminBoardCategory('all')" id="admin-board-category-all" class="admin-board-category-btn active px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold whitespace-nowrap">전체</button>
-                            <button onclick="window.setAdminBoardCategory('serious')" id="admin-board-category-serious" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">무거운</button>
-                            <button onclick="window.setAdminBoardCategory('chat')" id="admin-board-category-chat" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">가벼운</button>
-                            <button onclick="window.setAdminBoardCategory('food')" id="admin-board-category-food" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">먹는</button>
-                            <button onclick="window.setAdminBoardCategory('admin')" id="admin-board-category-admin" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">치프에게</button>
-                        </div>
-                    </div>
-                    <div class="p-6">
-                        <div id="boardPostsContainer" class="space-y-4">
-                            <div class="text-center py-8 text-slate-400">
-                                <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
-                                <p>로딩 중...</p>
+                        
+                        <!-- 공지 관리 -->
+                        <div id="monitoring-main-notice" class="monitoring-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div class="flex justify-between items-center">
+                                        <h2 class="text-lg font-black text-slate-800">공지 관리</h2>
+                                        <button onclick="window.openNoticeWriteModal()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                            <i class="fa-solid fa-plus mr-2"></i>공지 작성
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div id="noticesContainer" class="space-y-4">
+                                        <div class="text-center py-8 text-slate-400">
+                                            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                                            <p>로딩 중...</p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -414,7 +337,13 @@
                     <div class="w-64 flex-shrink-0">
                         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sticky top-24">
                             <div class="space-y-2">
-                                <button onclick="window.switchContentSidebar('terms')" id="content-sidebar-terms" class="w-full px-4 py-3 text-left text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl transition-colors">
+                                <button onclick="window.switchContentSidebar('mealog')" id="content-sidebar-mealog" class="w-full px-4 py-3 text-left text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-robot mr-2"></i>MEALOG
+                                </button>
+                                <button onclick="window.switchContentSidebar('characters')" id="content-sidebar-characters" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-user-astronaut mr-2"></i>AI 캐릭터
+                                </button>
+                                <button onclick="window.switchContentSidebar('terms')" id="content-sidebar-terms" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
                                     <i class="fa-solid fa-file-contract mr-2"></i>약관
                                 </button>
                                 <button onclick="window.switchContentSidebar('tags')" id="content-sidebar-tags" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
@@ -426,8 +355,82 @@
                     
                     <!-- 오른쪽 메인 콘텐츠 영역 -->
                     <div class="flex-1 min-w-0">
+                        <!-- MEALOG 관리 -->
+                        <div id="content-main-mealog" class="content-main-section">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div class="flex justify-between items-center">
+                                        <h2 class="text-lg font-black text-slate-800">MEALOG 안내 메시지 관리</h2>
+                                        <div class="flex gap-2">
+                                            <button onclick="window.saveMealogComments()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                                <i class="fa-solid fa-save mr-2"></i>저장
+                                            </button>
+                                            <button onclick="window.refreshPersona()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div id="mealogCommentsContainer" class="space-y-4">
+                                        <div class="text-center py-8 text-slate-400">
+                                            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                                            <p>로딩 중...</p>
+                                        </div>
+                                    </div>
+                                    <button onclick="window.addMealogComment()" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
+                                        <i class="fa-solid fa-plus mr-2"></i>메시지 추가
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- AI 캐릭터 관리 -->
+                        <div id="content-main-characters" class="content-main-section hidden">
+                            <div class="space-y-6">
+                                <!-- 캐릭터 목록 (가로) -->
+                                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+                                    <div class="flex justify-between items-center mb-4">
+                                        <h3 class="text-sm font-black text-slate-800">캐릭터 목록</h3>
+                                        <button onclick="window.addNewCharacter()" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors">
+                                            <i class="fa-solid fa-plus mr-1"></i>추가
+                                        </button>
+                                    </div>
+                                    <div id="personaCharactersList" class="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                                        <div class="text-center py-4 text-slate-400 flex-shrink-0">
+                                            <i class="fa-solid fa-spinner fa-spin text-xl mb-2"></i>
+                                            <p class="text-xs">로딩 중...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 캐릭터 편집 폼 -->
+                                <div id="personaCharacterEditor" class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                    <div class="p-6 border-b border-slate-100">
+                                        <div class="flex justify-between items-center">
+                                            <h2 class="text-lg font-black text-slate-800">캐릭터 편집</h2>
+                                            <div class="flex gap-2">
+                                                <button onclick="window.saveCharacter()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                                    <i class="fa-solid fa-save mr-2"></i>저장
+                                                </button>
+                                                <button onclick="window.refreshPersona()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                    <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="personaCharacterEditorContent" class="p-6">
+                                        <div class="text-center py-12 text-slate-400">
+                                            <i class="fa-solid fa-hand-pointer text-3xl mb-3"></i>
+                                            <p class="text-sm font-bold">위에서 캐릭터를 선택하세요</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <!-- 약관 관리 -->
-                        <div id="content-main-terms" class="content-main-section">
+                        <div id="content-main-terms" class="content-main-section hidden">
                             <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
                                 <div class="p-6 border-b border-slate-100">
                                     <div class="flex justify-between items-center">

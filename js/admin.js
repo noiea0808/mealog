@@ -445,18 +445,16 @@ window.switchAdminTab = function(tab) {
     // 탭별 데이터 새로고침
     if (tab === 'dashboard') {
         updateStatistics();
-    } else if (tab === 'feed') {
+    } else if (tab === 'monitoring') {
+        switchMonitoringSidebar('feed'); // 기본으로 피드 관리 표시
         renderFeedManagement();
-    } else if (tab === 'board') {
-        renderNotices();
-        renderBoardPosts(currentAdminBoardCategory);
     } else if (tab === 'persona') {
-        renderPersonaSettings();
+        // 페르소나 탭은 더 이상 사용하지 않음
     } else if (tab === 'users') {
         renderUsers();
     } else if (tab === 'content') {
-        switchContentSidebar('terms'); // 기본으로 약관 관리 표시
-        loadTermsContent();
+        switchContentSidebar('mealog'); // 기본으로 MEALOG 표시
+        loadMealogComments();
     }
 }
 
@@ -590,6 +588,42 @@ window.addEventListener('DOMContentLoaded', () => {
     }, 5000);
 });
 
+// 모니터링 사이드바 전환
+window.switchMonitoringSidebar = function(section) {
+    // 모든 사이드바 버튼 비활성화
+    document.querySelectorAll('[id^="monitoring-sidebar-"]').forEach(btn => {
+        btn.classList.remove('text-emerald-600', 'bg-emerald-50');
+        btn.classList.add('text-slate-500', 'hover:bg-slate-50');
+    });
+    
+    // 모든 메인 섹션 숨기기
+    document.querySelectorAll('.monitoring-main-section').forEach(sec => {
+        sec.classList.add('hidden');
+    });
+    
+    // 선택한 사이드바 버튼 활성화
+    const activeSidebarBtn = document.getElementById(`monitoring-sidebar-${section}`);
+    const activeMainSection = document.getElementById(`monitoring-main-${section}`);
+    
+    if (activeSidebarBtn) {
+        activeSidebarBtn.classList.add('text-emerald-600', 'bg-emerald-50');
+        activeSidebarBtn.classList.remove('text-slate-500', 'hover:bg-slate-50');
+    }
+    
+    if (activeMainSection) {
+        activeMainSection.classList.remove('hidden');
+    }
+    
+    // 섹션별 데이터 로드
+    if (section === 'feed') {
+        renderFeedManagement();
+    } else if (section === 'board') {
+        renderBoardPosts(currentAdminBoardCategory);
+    } else if (section === 'notice') {
+        renderNotices();
+    }
+};
+
 // 콘텐츠 관리 관련 함수들
 
 // 사이드바 전환
@@ -601,8 +635,8 @@ window.switchContentSidebar = function(section) {
     });
     
     // 모든 메인 섹션 숨기기
-    document.querySelectorAll('.content-main-section').forEach(section => {
-        section.classList.add('hidden');
+    document.querySelectorAll('.content-main-section').forEach(sec => {
+        sec.classList.add('hidden');
     });
     
     // 선택한 사이드바 버튼 활성화
@@ -616,6 +650,17 @@ window.switchContentSidebar = function(section) {
     
     if (activeMainSection) {
         activeMainSection.classList.remove('hidden');
+    }
+    
+    // 섹션별 데이터 로드
+    if (section === 'mealog') {
+        loadMealogComments();
+    } else if (section === 'characters') {
+        renderPersonaCharacters();
+    } else if (section === 'terms') {
+        loadTermsContent();
+    } else if (section === 'tags') {
+        loadTagsContent();
     }
     
     // 섹션별 데이터 로드
@@ -2269,37 +2314,14 @@ window.bulkUnbanPosts = async function() {
 }
 
 // 페르소나 사이드바 전환
+// switchPersonaSidebar는 더 이상 사용하지 않음 (콘텐츠 관리로 이동)
+// 기존 호출을 switchContentSidebar로 변경
 window.switchPersonaSidebar = function(section) {
-    // 모든 사이드바 버튼 비활성화
-    document.querySelectorAll('[id^="persona-sidebar-"]').forEach(btn => {
-        btn.classList.remove('text-emerald-600', 'bg-emerald-50');
-        btn.classList.add('text-slate-500', 'hover:bg-slate-50');
-    });
-    
-    // 모든 메인 섹션 숨기기
-    document.querySelectorAll('.persona-main-section').forEach(section => {
-        section.classList.add('hidden');
-    });
-    
-    // 선택한 사이드바 버튼 활성화
-    const activeSidebarBtn = document.getElementById(`persona-sidebar-${section}`);
-    const activeMainSection = document.getElementById(`persona-main-${section}`);
-    
-    if (activeSidebarBtn) {
-        activeSidebarBtn.classList.add('text-emerald-600', 'bg-emerald-50');
-        activeSidebarBtn.classList.remove('text-slate-500', 'hover:bg-slate-50');
-    }
-    
-    if (activeMainSection) {
-        activeMainSection.classList.remove('hidden');
-    }
-    
-    // 섹션별 데이터 로드
-    if (section === 'mealog') {
-        loadMealogComments();
-    } else if (section === 'characters') {
-        renderPersonaCharacters();
-    }
+    // 콘텐츠 관리 탭으로 리다이렉트
+    window.switchAdminTab('content');
+    setTimeout(() => {
+        window.switchContentSidebar(section);
+    }, 100);
 };
 
 // MEALOG 코멘트 로드
@@ -3086,17 +3108,23 @@ window.saveCharacter = async function() {
 
 // 페르소나 설정 렌더링 (초기화)
 async function renderPersonaSettings() {
-    // 기본으로 MEALOG 메뉴 표시
-    switchPersonaSidebar('mealog');
+    // 페르소나 설정은 더 이상 사용하지 않음
+    // 콘텐츠 관리 탭으로 리다이렉트
+    window.switchAdminTab('content');
+    setTimeout(() => {
+        window.switchContentSidebar('mealog');
+    }, 100);
 }
 
-// 페르소나 새로고침
+// 페르소나 새로고침 (콘텐츠 관리로 이동)
 window.refreshPersona = function() {
-    const activeSection = document.querySelector('.persona-main-section:not(.hidden)');
+    const activeSection = document.querySelector('.content-main-section:not(.hidden)');
     if (activeSection) {
-        const sectionId = activeSection.id.replace('persona-main-', '');
-        switchPersonaSidebar(sectionId);
+        const sectionId = activeSection.id.replace('content-main-', '');
+        if (sectionId === 'mealog' || sectionId === 'characters') {
+            switchContentSidebar(sectionId);
+        }
     } else {
-        switchPersonaSidebar('mealog');
+        switchContentSidebar('mealog');
     }
 }
