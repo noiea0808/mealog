@@ -1,6 +1,9 @@
 // ADMIN 관리자 페이지 관련 함수들
-import { auth, db, appId } from './firebase.js';
-import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { app, db, appId } from './firebase.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+// 관리자 화면 전용 Auth 인스턴스 생성 (사용자 화면과 분리하여 인증 상태 공유 방지)
+const adminAuth = getAuth(app, 'admin');
 import { collection, getDocs, query, orderBy, limit, doc, deleteDoc, getDoc, setDoc, where, writeBatch, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { uploadImageToStorage } from './utils.js';
 
@@ -363,7 +366,7 @@ window.handleAdminLogin = async function() {
     errorDiv.classList.add('hidden');
     
     try {
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        const userCredential = await signInWithEmailAndPassword(adminAuth, email, password);
         const userId = userCredential.user.uid;
         
         console.log('🔐 로그인 성공:', {
@@ -375,7 +378,7 @@ window.handleAdminLogin = async function() {
         const isAdmin = await checkAdminStatus(userId);
         
         if (!isAdmin) {
-            await signOut(auth);
+            await signOut(adminAuth);
             errorDiv.textContent = "관리자 권한이 없습니다. 브라우저 콘솔(F12)을 확인하세요.";
             errorDiv.classList.remove('hidden');
             document.getElementById('loadingOverlay').classList.add('hidden');
@@ -466,7 +469,7 @@ window.switchAdminTab = function(tab) {
 // 관리자 로그아웃
 window.handleAdminLogout = async function() {
     try {
-        await signOut(auth);
+        await signOut(adminAuth);
         document.getElementById('adminPage').classList.add('hidden');
         document.getElementById('loginPage').classList.remove('hidden');
         document.getElementById('adminEmail').value = '';
@@ -526,7 +529,7 @@ window.confirmDeletePhoto = async function() {
 };
 
 // 인증 상태 변경 리스너
-onAuthStateChanged(auth, async (user) => {
+onAuthStateChanged(adminAuth, async (user) => {
     const loadingOverlay = document.getElementById('loadingOverlay');
     const loginPage = document.getElementById('loginPage');
     const adminPage = document.getElementById('adminPage');
@@ -545,7 +548,7 @@ onAuthStateChanged(auth, async (user) => {
                 if (loginPage) loginPage.classList.remove('hidden');
                 // 이미 로그인되어 있으면 로그아웃
                 try {
-                    await signOut(auth);
+                    await signOut(adminAuth);
                 } catch (e) {
                     console.error("로그아웃 실패:", e);
                 }
@@ -1067,6 +1070,21 @@ async function getUsers() {
                 if (sharedInfo.icon) icon = sharedInfo.icon;
             }
 
+            // users/{userId} 문서에서 가입일과 마지막 로그인 날짜 가져오기
+            let createdAt = null;
+            let lastLoginAt = null;
+            try {
+                const userDocRef = doc(db, 'artifacts', appId, 'users', userId);
+                const userDocSnap = await getDoc(userDocRef);
+                if (userDocSnap.exists()) {
+                    const userData = userDocSnap.data();
+                    createdAt = userData.createdAt || null;
+                    lastLoginAt = userData.lastLoginAt || null;
+                }
+            } catch (e) {
+                console.warn(`사용자 ${userId}의 기본 정보를 가져오는 중 오류:`, e);
+            }
+
             try {
                 // settings 문서에서 직접 가져오기 (실제 Firestore 구조)
                 const settingsDoc = doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings');
@@ -1138,7 +1156,9 @@ async function getUsers() {
                 termsAgreedAt,
                 timelineCount,
                 albumShareCount,
-                talkCount
+                talkCount,
+                createdAt,
+                lastLoginAt
             });
         }
 
@@ -1167,7 +1187,7 @@ async function renderUsers() {
         return;
     }
     
-    container.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
+        container.innerHTML = '<tr><td colspan="10" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
     
     try {
         console.log('renderUsers 시작');
@@ -1176,7 +1196,7 @@ async function renderUsers() {
         
         if (users.length === 0) {
             console.log('사용자가 없습니다.');
-            container.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
+            container.innerHTML = '<tr><td colspan="10" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
             return;
         }
         
@@ -1188,6 +1208,12 @@ async function renderUsers() {
             
             const termsAgreedDate = user.termsAgreedAt ? 
                 new Date(user.termsAgreedAt).toLocaleDateString('ko-KR') : '-';
+            
+            const createdAtDate = user.createdAt ? 
+                new Date(user.createdAt).toLocaleDateString('ko-KR') : '-';
+            
+            const lastLoginDate = user.lastLoginAt ? 
+                new Date(user.lastLoginAt).toLocaleDateString('ko-KR') : '-';
             
             let loginMethodBadge = 'bg-slate-100 text-slate-700';
             if (user.loginMethod === '구글') {
@@ -1225,12 +1251,25 @@ async function renderUsers() {
                     <td class="px-4 py-3">
                         <span class="font-bold text-slate-800">${user.talkCount || 0}</span>
                     </td>
+                    <td class="px-4 py-3">
+                        <button onclick="navigator.clipboard.writeText('${user.userId}').then(() => alert('사용자 ID가 복사되었습니다.')).catch(() => alert('복사 실패'))" 
+                                class="text-xs text-slate-600 hover:text-slate-800 font-mono cursor-pointer hover:underline" 
+                                title="클릭하여 복사">
+                            ${user.userId.substring(0, 8)}...
+                        </button>
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="text-sm text-slate-600">${createdAtDate}</span>
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="text-sm text-slate-600">${lastLoginDate}</span>
+                    </td>
                 </tr>
             `;
         }).join('');
     } catch (e) {
         console.error("사용자 목록 렌더링 실패:", e);
-        container.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p></td></tr>';
+        container.innerHTML = '<tr><td colspan="10" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p></td></tr>';
     }
 }
 
@@ -3151,7 +3190,7 @@ window.handleCharacterImageUpload = async function(event) {
     
     try {
         // 현재 사용자 ID 가져오기 (관리자)
-        const user = auth.currentUser;
+        const user = adminAuth.currentUser;
         if (!user) {
             alert('로그인이 필요합니다.');
             return;
