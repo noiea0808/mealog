@@ -5,13 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="description" content="우리가 함께한, 맛있었던 기억 - 스마트 식사 타임라인">
     <meta name="theme-color" content="#10b981">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="mealog">
     <title>MEALOG-함께한, 맛있었던 기억</title>
     
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%2310b981'/><text x='50%25' y='50%25' font-size='120' text-anchor='middle' dominant-baseline='central' fill='white'>🍽️</text></svg>" type="image/svg+xml">
+    <link rel="shortcut icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%2310b981'/><text x='50%25' y='50%25' font-size='120' text-anchor='middle' dominant-baseline='central' fill='white'>🍽️</text></svg>" type="image/svg+xml">
+    
     <!-- PWA Manifest -->
-    <link rel="manifest" href="manifest.json">
+    <!-- manifest.json 파일이 없으면 주석 처리 -->
+    <!-- <link rel="manifest" href="./manifest.json"> -->
     <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%2310b981'/><text x='50%25' y='50%25' font-size='120' text-anchor='middle' dominant-baseline='central' fill='white'>🍽️</text></svg>">
     
     <script src="https://cdn.tailwindcss.com"></script>
@@ -20,8 +26,200 @@
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <link rel="stylesheet" href="css/style.css">
     
-    <script type="module" src="js/main.js"></script>
+    <!-- 카카오 지도 SDK 동적 로드 -->
     <script>
+        (function() {
+            console.log('🗺️ 카카오 지도 SDK 로드 시작...');
+            console.log('현재 URL:', window.location.href);
+            console.log('현재 프로토콜:', window.location.protocol);
+            console.log('현재 호스트:', window.location.host);
+            console.log('현재 호스트명:', window.location.hostname);
+            console.log('');
+            console.log('📍 카카오 디벨로퍼스에 등록해야 할 도메인:');
+            console.log('   1. ' + window.location.protocol + '//' + window.location.host);
+            console.log('   2. ' + window.location.protocol + '//' + window.location.hostname + ':' + window.location.port);
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                console.log('   3. http://localhost');
+                console.log('   4. http://127.0.0.1');
+                if (window.location.port) {
+                    console.log('   5. http://localhost:' + window.location.port);
+                    console.log('   6. http://127.0.0.1:' + window.location.port);
+                }
+            }
+            console.log('');
+            
+            const script = document.createElement('script');
+            script.type = 'text/javascript';
+            // Mealog JavaScript 키: 42dce12f04991c35775f3ce1081a3c76
+            // 중요: JavaScript SDK는 반드시 JavaScript 키를 사용해야 함 (REST API 키 아님)
+            const appkey = '42dce12f04991c35775f3ce1081a3c76';
+            
+            // localhost는 HTTP 사용 (HTTPS는 인증서 문제로 실패할 수 있음)
+            // 실제 배포 환경에서는 HTTPS 사용 권장
+            const protocol = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http:' : 'https:';
+            const scriptUrl = protocol + '//dapi.kakao.com/v2/maps/sdk.js?appkey=' + appkey + '&libraries=services';
+            script.src = scriptUrl;
+            script.async = true;
+            script.crossOrigin = 'anonymous';
+            
+            script.onload = function() {
+                // 약간의 지연 후 kakao 객체 확인
+                setTimeout(function() {
+                    try {
+                        if (typeof kakao !== 'undefined' && kakao && kakao.maps && kakao.maps.services) {
+                            window.kakaoSDKLoaded = true;
+                            console.log('kakao.maps.services:', typeof kakao.maps.services);
+                            console.log('kakao.maps.services.Places:', typeof kakao.maps.services.Places);
+                            if (typeof window.onKakaoSDKLoaded === 'function') {
+                                window.onKakaoSDKLoaded();
+                            }
+                        } else {
+                            console.error('❌ 스크립트는 로드되었지만 kakao 객체가 완전하지 않습니다.');
+                            console.error('kakao:', typeof kakao);
+                            console.error('kakao?.maps:', typeof kakao?.maps);
+                            console.error('이는 보통 다음과 같은 경우에 발생합니다:');
+                            console.error('1. 잘못된 JavaScript 키 사용');
+                            console.error('2. 카카오 디벨로퍼스에서 플랫폼 미등록');
+                            console.error('3. 도메인 미등록');
+                            console.error('4. 카카오맵 사용 설정 OFF');
+                            window.kakaoSDKLoaded = false;
+                        }
+                    } catch (e) {
+                        console.error('❌ kakao 객체 확인 중 에러:', e);
+                        window.kakaoSDKLoaded = false;
+                    }
+                }, 200);
+            };
+            
+            script.onerror = function(e) {
+                window.kakaoSDKLoaded = false;
+                console.error('❌❌❌ 카카오 지도 SDK 스크립트 로드 실패');
+                console.error('═══════════════════════════════════════');
+                console.error('사용된 JavaScript 키:', appkey);
+                console.error('요청 URL:', script.src);
+                console.error('현재 도메인:', window.location.href);
+                console.error('현재 호스트명:', window.location.hostname);
+                console.error('═══════════════════════════════════════');
+                console.error('');
+                console.error('🔍 디버깅 방법:');
+                console.error('1. F12 > Network 탭 열기');
+                console.error('2. 페이지 새로고침 (Ctrl+F5 또는 Cmd+Shift+R)');
+                console.error('3. "dapi.kakao.com" 또는 "sdk.js" 검색');
+                console.error('4. 해당 요청 클릭 > Headers 탭에서 Status Code 확인');
+                console.error('5. Response 탭에서 에러 메시지 확인');
+                console.error('');
+                console.error('💡 카카오 디벨로퍼스에서 확인할 사항:');
+                console.error('1. ✅ JavaScript 키 사용 확인 (REST API 키 아님!)');
+                console.error('   - 앱 설정 > 앱 키 > JavaScript 키: ' + appkey);
+                console.error('2. ✅ 플랫폼 등록 확인');
+                console.error('   - 앱 설정 > 플랫폼 > Web 플랫폼 등록');
+                console.error('3. ✅ 도메인 등록 확인');
+                console.error('   - Web 플랫폼 > 사이트 도메인에 다음 추가:');
+                console.error('     * ' + window.location.hostname);
+                console.error('     * ' + window.location.host);
+                console.error('     * localhost (로컬 개발 시)');
+                console.error('     * 127.0.0.1 (로컬 개발 시)');
+                console.error('4. ✅ 카카오맵 사용 설정 확인');
+                console.error('   - 앱 설정 > 제품 설정 > 카카오맵 > 사용 설정 ON');
+                console.error('');
+                console.error('📋 일반적인 에러 코드:');
+                console.error('- 403 Forbidden: 도메인 미등록 또는 플랫폼 미등록');
+                console.error('- 401 Unauthorized: 잘못된 키 (JavaScript 키가 아닐 수 있음)');
+                console.error('- CORS 에러: 도메인 설정 문제');
+                console.error('- 네트워크 에러: 인터넷 연결 문제 또는 방화벽');
+                console.error('');
+                console.error('🔗 확인 링크:');
+                console.error('- 앱 설정: https://developers.kakao.com/console/app/1366360');
+                console.error('- 플랫폼 설정: https://developers.kakao.com/console/app/1366360/platform');
+                console.error('- 카카오맵 설정: https://developers.kakao.com/console/app/1366360/product/kakao-map');
+                console.error('═══════════════════════════════════════');
+                console.error('');
+                console.error('🚨 중요: Network 탭에서 실제 요청 상태를 확인하세요!');
+            };
+            
+            console.log('📝 스크립트 태그 추가 중:', script.src);
+            document.head.appendChild(script);
+            console.log('✅ 스크립트 태그 추가 완료');
+        })();
+    </script>
+    
+    <script>
+        // 디버깅: 페이지 로드 시작
+        console.log('📄 index.html 스크립트 시작');
+        console.log('현재 URL:', window.location.href);
+        console.log('프로토콜:', window.location.protocol);
+        console.log('호스트:', window.location.host);
+        
+        // 모듈 로드 완료 플래그
+        window.moduleLoaded = false;
+        window.moduleLoadError = null;
+        
+        // 안전한 함수 호출 래퍼
+        window.safeCall = function(fnName, ...args) {
+            if (typeof window[fnName] === 'function') {
+                try {
+                    return window[fnName](...args);
+                } catch (e) {
+                    console.error(`함수 ${fnName} 호출 중 오류:`, e);
+                    console.error('스택 트레이스:', e.stack);
+                    return null;
+                }
+            } else {
+                console.warn(`함수 ${fnName}가 아직 로드되지 않았습니다. 모듈 로드를 기다리는 중...`);
+                // 모듈이 로드될 때까지 대기 후 재시도
+                if (!window.moduleLoaded && !window.moduleLoadError) {
+                    setTimeout(() => {
+                        if (typeof window[fnName] === 'function') {
+                            try {
+                                window[fnName](...args);
+                            } catch (e) {
+                                console.error(`함수 ${fnName} 재시도 중 오류:`, e);
+                            }
+                        } else {
+                            console.error(`함수 ${fnName}를 찾을 수 없습니다.`);
+                        }
+                    }, 500);
+                }
+                return null;
+            }
+        };
+        
+        // 모듈 로드 완료 감지
+        const checkModuleLoaded = setInterval(() => {
+            if (window.renderTimeline && typeof window.renderTimeline === 'function') {
+                window.moduleLoaded = true;
+                clearInterval(checkModuleLoaded);
+                console.log('✅ JavaScript 모듈 로드 완료');
+                // 로딩 오버레이 숨기기
+                const overlay = document.getElementById('loadingOverlay');
+                if (overlay && !overlay.classList.contains('hidden')) {
+                    overlay.classList.add('hidden');
+                }
+            } else if (window.moduleLoadError) {
+                // 이미 오류가 발생한 경우 체크 중단
+                clearInterval(checkModuleLoaded);
+            }
+        }, 100);
+        
+        // 최대 10초 후 타임아웃
+        setTimeout(() => {
+            clearInterval(checkModuleLoaded);
+            if (!window.moduleLoaded && !window.moduleLoadError) {
+                console.error('⚠️ JavaScript 모듈 로드 타임아웃');
+                const overlay = document.getElementById('loadingOverlay');
+                if (overlay && !overlay.classList.contains('hidden')) {
+                    overlay.classList.add('hidden');
+                    const port = window.location.port || '8080';
+                    alert('JavaScript 모듈을 로드할 수 없습니다.\n\n가능한 원인:\n1. 웹 서버를 통해 실행하지 않음 (파일 직접 열기)\n2. 네트워크 연결 문제\n3. JavaScript 파일 경로 오류\n\n브라우저 콘솔(F12)을 열어 정확한 오류를 확인하세요.\n\n현재 URL: ' + window.location.href);
+                }
+            }
+        }, 10000);
+    </script>
+    
+    <script type="module" src="js/main.js" onerror="console.error('❌ main.js 스크립트 태그 로드 실패'); window.moduleLoadError = {message: '스크립트 태그 로드 실패'};"></script>
+    
+    <script>
+        
         // PWA Service Worker 등록
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
@@ -60,48 +258,82 @@
             console.log('PWA 설치 가능');
         });
         
-        // JavaScript 로드 실패 시 로딩 오버레이 숨기기
+        // 전역 에러 핸들러 (모든 JavaScript 오류 캐치)
         window.addEventListener('error', (e) => {
-            console.error('전체 에러:', e);
-            if (e.filename && (e.filename.includes('main.js') || e.filename.includes('.js'))) {
-                console.error('JavaScript 파일 로드 실패:', e);
-                console.error('에러 파일:', e.filename);
+            // favicon.ico 같은 리소스 로드 실패는 무시
+            if (e.target && (e.target.tagName === 'LINK' || e.target.tagName === 'IMG' || e.target.tagName === 'SCRIPT')) {
+                const src = e.target.src || e.target.href || '';
+                if (src.includes('favicon.ico') || src.includes('manifest.json')) {
+                    // favicon이나 manifest 로드 실패는 무시 (이미 처리됨)
+                    return;
+                }
+            }
+            
+            // 실제 JavaScript 오류만 로깅
+            if (e.error || (e.filename && e.filename.endsWith('.js'))) {
+                console.error('=== JavaScript 오류 발생 ===');
                 console.error('에러 메시지:', e.message);
+                console.error('에러 파일:', e.filename);
+                console.error('에러 라인:', e.lineno);
+                console.error('에러 컬럼:', e.colno);
+                console.error('에러 객체:', e.error);
+                if (e.error && e.error.stack) {
+                    console.error('스택 트레이스:', e.error.stack);
+                }
+                console.error('==========================');
                 
-                // 모듈 로드 에러는 조금 기다렸다가 처리
+                // 모듈 로드 오류인 경우
+                if (e.filename && (e.filename.includes('main.js') || e.filename.includes('.js') || e.filename.includes('module'))) {
+                    window.moduleLoadError = {
+                        message: e.message,
+                        filename: e.filename,
+                        lineno: e.lineno,
+                        colno: e.colno,
+                        error: e.error
+                    };
+                    
+                    // 로딩 오버레이 숨기기
                 setTimeout(() => {
                     const overlay = document.getElementById('loadingOverlay');
                     if (overlay && !overlay.classList.contains('hidden')) {
                         overlay.classList.add('hidden');
-                        const port = window.location.port || '8080';
-                        console.error('서버 URL:', window.location.href);
-                        alert('JavaScript 파일을 로드할 수 없습니다.\n\n브라우저 콘솔(F12)을 열어 정확한 오류를 확인하세요.\n\n현재 URL: ' + window.location.href);
                     }
                 }, 1000);
             }
-        });
+        }, true); // capture phase에서도 캐치
         
-        // 모듈 로드 실패 감지 (더 정확한 감지)
-        let moduleLoadCheck = false;
-        window.addEventListener('load', () => {
-            setTimeout(() => {
-                // main.js가 로드되어 renderTimeline 함수가 있는지 확인
-                if (!window.renderTimeline && !moduleLoadCheck) {
-                    moduleLoadCheck = true;
-                    const overlay = document.getElementById('loadingOverlay');
-                    if (overlay && !overlay.classList.contains('hidden')) {
-                        overlay.classList.add('hidden');
-                        const port = window.location.port || '8080';
-                        alert('JavaScript 모듈을 로드할 수 없습니다.\n파일을 직접 열지 말고 웹 서버를 통해 실행해주세요.\n\n예: http://localhost:' + port + '\n\n브라우저 콘솔(F12)을 확인하여 오류를 확인하세요.');
-                    }
-                }
-            }, 5000); // 5초로 증가
+        // Promise rejection 핸들러 (모듈 import 실패 등)
+        window.addEventListener('unhandledrejection', (e) => {
+            console.error('=== Promise Rejection 발생 ===');
+            console.error('이유:', e.reason);
+            if (e.reason && e.reason.message) {
+                console.error('에러 메시지:', e.reason.message);
+            }
+            if (e.reason && e.reason.stack) {
+                console.error('스택 트레이스:', e.reason.stack);
+            }
+            console.error('============================');
+            
+            // 모듈 로드 관련 오류인 경우
+            if (e.reason && (
+                e.reason.message && (
+                    e.reason.message.includes('Failed to fetch') ||
+                    e.reason.message.includes('Loading module') ||
+                    e.reason.message.includes('main.js') ||
+                    e.reason.message.includes('import')
+                )
+            )) {
+                window.moduleLoadError = e.reason;
+            }
         });
     </script>
 </head>
 <body class="max-w-md mx-auto min-h-screen relative">
 
-    <div id="toastContainer" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 w-full max-w-md z-[400] flex flex-col items-center gap-2 pointer-events-none px-4"></div>
+    <div id="toastContainer" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 w-full max-w-md z-[600] flex flex-col items-center gap-2 pointer-events-none px-4"></div>
+
+    <!-- 개발용: 최종 수정 시간 표시 (좌상단) -->
+    <div id="devVersionInfo" class="fixed top-2 left-2 z-[9999] text-[13.5px] text-slate-600 font-bold pointer-events-none bg-white/80 px-2 py-0.5 rounded backdrop-blur-sm border border-slate-200"></div>
 
     <div id="loadingOverlay" class="fixed inset-0 bg-white/70 z-[300] flex flex-col items-center justify-center">
         <div class="w-8 h-8 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin"></div>
@@ -114,15 +346,15 @@
             <p class="text-emerald-100 text-sm font-bold opacity-90 tracking-wide">우리가 함께한, 맛있었던 기억</p>
         </div>
         <div class="w-full max-w-xs px-8 space-y-3">
-            <button onclick="window.handleGoogleLogin()" class="w-full py-3.5 bg-white text-slate-800 rounded-2xl flex items-center justify-center shadow-lg active:scale-[0.98] transition-transform gap-2">
+            <button id="googleLoginBtn" class="w-full py-3.5 bg-white text-slate-800 rounded-2xl flex items-center justify-center shadow-lg active:scale-[0.98] transition-transform gap-2">
                 <i class="fa-brands fa-google text-lg"></i>
                 <span class="font-bold text-sm">구글로 계속하기</span>
             </button>
-            <button onclick="window.openEmailModal()" class="w-full py-3.5 bg-emerald-700 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-[0.98] transition-transform gap-2">
+            <button id="emailLoginBtn" class="w-full py-3.5 bg-emerald-700 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-[0.98] transition-transform gap-2">
                 <i class="fa-solid fa-envelope text-lg"></i>
                 <span class="font-bold text-sm">이메일로 계속하기</span>
             </button>
-            <button onclick="window.startGuest()" class="w-full py-3 text-emerald-100/70 text-xs font-bold underline decoration-emerald-100/50 underline-offset-4">
+            <button id="guestLoginBtn" class="w-full py-3 text-emerald-100/70 text-xs font-bold underline decoration-emerald-100/50 underline-offset-4">
                 로그인 없이 둘러보기 (게스트)
             </button>
         </div>
@@ -133,7 +365,7 @@
         <div class="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl">
             <div class="flex justify-between items-center mb-6">
                 <h3 id="emailAuthTitle" class="text-lg font-bold text-slate-800">이메일 로그인</h3>
-                <button onclick="window.closeEmailModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
+                <button id="emailAuthCloseBtn"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
             </div>
             <div class="space-y-3 mb-6">
                 <div>
@@ -150,8 +382,8 @@
                     <label for="rememberEmailCheck" class="text-xs text-slate-500">이메일 기억하기</label>
                 </div>
             </div>
-            <button id="emailAuthBtn" onclick="window.handleEmailAuth()" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-md active:bg-emerald-700 transition-colors mb-4">로그인</button>
-            <button id="emailAuthToggleBtn" onclick="window.toggleEmailAuthMode()" class="w-full text-xs text-slate-500">계정이 없으신가요? <span class="text-emerald-600 font-bold underline">회원가입</span></button>
+            <button id="emailAuthBtn" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-md active:bg-emerald-700 transition-colors mb-4">로그인</button>
+            <button id="emailAuthToggleBtn" class="w-full text-xs text-slate-500">계정이 없으신가요? <span class="text-emerald-600 font-bold underline">회원가입</span></button>
         </div>
     </div>
 
@@ -163,7 +395,7 @@
             <p class="text-xs text-slate-500 text-center mb-4 leading-relaxed">
                 파이어베이스 보안 설정에<br>아래 주소를 추가해야 합니다.
             </p>
-            <div class="bg-slate-100 p-3 rounded-xl mb-4 relative group cursor-pointer active:bg-slate-200 transition-colors" onclick="window.copyDomain()">
+            <div id="domainCopyBtn" class="bg-slate-100 p-3 rounded-xl mb-4 relative group cursor-pointer active:bg-slate-200 transition-colors">
                 <div id="domainText" class="text-[11px] font-mono text-slate-600 break-all pr-6 select-all">주소 확인 중...</div>
                 <div class="absolute right-3 top-3 text-slate-400"><i class="fa-regular fa-copy"></i></div>
             </div>
@@ -173,8 +405,102 @@
                 3. 위 주소 붙여넣기
             </p>
             <div class="flex gap-2">
-                <button onclick="window.closeDomainModal(); window.startGuest();" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm">게스트로 진행</button>
-                <button onclick="window.closeDomainModal()" class="flex-1 py-3 bg-slate-800 text-white rounded-xl font-bold text-sm">확인</button>
+                <button id="domainModalGuestBtn" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm">게스트로 진행</button>
+                <button id="domainModalCloseBtn" class="flex-1 py-3 bg-slate-800 text-white rounded-xl font-bold text-sm">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Terms Agreement Modal -->
+    <div id="termsModal" class="hidden fixed inset-0 z-[500] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 class="text-lg font-bold text-slate-800 text-center mb-4">약관 동의</h3>
+            <p class="text-xs text-slate-500 text-center mb-6">서비스 이용을 위해 아래 약관에 동의해주세요.</p>
+            
+            <div class="space-y-4 mb-6">
+                <!-- 이용약관 -->
+                <div class="bg-slate-50 rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="termsAgreement" onchange="window.safeCall('updateTermsAgreeButton')" class="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500">
+                            <span class="text-sm font-bold text-slate-800">이용약관 동의 (필수)</span>
+                        </label>
+                        <button id="termsDetailBtn" class="text-xs text-emerald-600 font-bold">보기</button>
+                    </div>
+                    <div id="termsContent" class="hidden text-xs text-slate-600 leading-relaxed max-h-32 overflow-y-auto mt-2 pl-6">
+                        <p>제1조 (목적)<br>본 약관은 MEALOG(이하 "회사")가 제공하는 식사 기록 서비스의 이용과 관련하여 회사와 이용자 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.</p>
+                        <p class="mt-2">제2조 (정의)<br>1. "서비스"란 회사가 제공하는 식사 기록 및 관리 서비스를 의미합니다.<br>2. "이용자"란 본 약관에 동의하고 회사가 제공하는 서비스를 이용하는 자를 의미합니다.</p>
+                        <p class="mt-2">제3조 (서비스의 제공)<br>회사는 다음과 같은 서비스를 제공합니다: 식사 기록, 통계 분석, 사진 공유 등</p>
+                        <p class="mt-2">제4조 (이용자의 의무)<br>이용자는 서비스를 이용함에 있어 관련 법령을 준수해야 합니다.</p>
+                    </div>
+                </div>
+                
+                <!-- 개인정보 처리방침 -->
+                <div class="bg-slate-50 rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="privacyAgreement" onchange="window.safeCall('updateTermsAgreeButton')" class="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500">
+                            <span class="text-sm font-bold text-slate-800">개인정보 처리방침 동의 (필수)</span>
+                        </label>
+                        <button id="privacyDetailBtn" class="text-xs text-emerald-600 font-bold">보기</button>
+                    </div>
+                    <div id="privacyContent" class="hidden text-xs text-slate-600 leading-relaxed max-h-32 overflow-y-auto mt-2 pl-6">
+                        <p>제1조 (개인정보의 수집 및 이용 목적)<br>회사는 다음의 목적을 위하여 개인정보를 처리합니다:<br>1. 서비스 제공 및 계약의 이행<br>2. 회원 관리 및 본인 확인<br>3. 서비스 개선 및 신규 서비스 개발</p>
+                        <p class="mt-2">제2조 (수집하는 개인정보의 항목)<br>회사는 다음과 같은 개인정보를 수집합니다:<br>1. 필수항목: 이메일, 닉네임, 프로필 아이콘<br>2. 선택항목: 위치 정보 (카카오 지도 이용 시)</p>
+                        <p class="mt-2">제3조 (개인정보의 보유 및 이용기간)<br>회원 탈퇴 시까지 보유하며, 탈퇴 후 즉시 파기합니다.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex gap-2">
+                <button id="termsCancelBtn" class="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm">취소</button>
+                <button id="termsAgreeBtn" class="flex-1 py-3 bg-slate-300 text-white rounded-xl font-bold text-sm" disabled>동의하고 시작하기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Profile Setup Modal (First Login) -->
+    <div id="profileSetupModal" class="hidden fixed inset-0 z-[500] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl">
+            <h3 class="text-lg font-bold text-slate-800 text-center mb-2">프로필 설정</h3>
+            <p class="text-xs text-slate-500 text-center mb-6">서비스를 이용하기 위해 닉네임을 입력해주세요.</p>
+            
+            <div class="space-y-4 mb-6">
+                <!-- 닉네임 입력 -->
+                <div>
+                    <label class="text-sm font-bold text-slate-600 block mb-2">닉네임</label>
+                    <input type="text" id="setupNickname" placeholder="닉네임을 입력하세요" maxlength="20" class="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 text-sm outline-none focus:border-emerald-500 transition-colors">
+                    <p class="text-[10px] text-slate-400 mt-1">한글, 영문, 숫자 조합 최대 20자</p>
+                </div>
+            </div>
+            
+            <button id="profileSetupBtn" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-md active:bg-emerald-700 transition-colors">시작하기</button>
+        </div>
+    </div>
+
+    <!-- Onboarding Modal -->
+    <div id="onboardingModal" class="hidden fixed inset-0 z-[500] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl">
+            <div class="text-center mb-6">
+                <div class="text-4xl mb-4">🍽️</div>
+                <h3 class="text-lg font-bold text-slate-800 mb-2">MEALOG에 오신 것을 환영합니다!</h3>
+                <p class="text-xs text-slate-500">간단하게 서비스 이용 방법을 안내해드릴게요.</p>
+            </div>
+            
+            <div id="onboardingContent" class="space-y-4 mb-6 min-h-[200px]">
+                <!-- 온보딩 슬라이드가 여기에 동적으로 표시됩니다 -->
+            </div>
+            
+            <div class="flex items-center justify-center gap-2 mb-4">
+                <div id="onboardingIndicators" class="flex gap-1.5">
+                    <!-- 인디케이터가 여기에 동적으로 추가됩니다 -->
+                </div>
+            </div>
+            
+            <div class="flex gap-2">
+                <button id="onboardingPrevBtn" class="hidden flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm">이전</button>
+                <button id="onboardingNextBtn" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm">다음</button>
+                <button id="onboardingSkipBtn" class="hidden flex-1 py-3 bg-slate-100 text-slate-500 rounded-xl font-bold text-sm">건너뛰기</button>
             </div>
         </div>
     </div>
@@ -182,13 +508,13 @@
     <!-- 2. Main Application -->
     <div id="mainApp" class="hidden">
         <header class="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-sm">
-            <div class="p-5 flex justify-between items-center px-6">
+            <div class="p-3.5 flex justify-between items-center px-6">
                 <h1 class="text-2xl font-black text-emerald-600 tracking-tighter">mealog</h1>
                 <div class="flex items-center gap-2">
-                    <button id="searchTriggerBtn" onclick="window.toggleSearch()" class="w-8 h-8 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center active:bg-slate-100"><i class="fa-solid fa-magnifying-glass text-sm"></i></button>
-                    <button onclick="window.openSettings()" class="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100 active:bg-slate-100">
-                        <span id="headerIcon" class="text-lg">🐻</span>
-                        <span id="headerName" class="text-xs font-bold text-slate-700 truncate max-w-[80px]">게스트</span>
+                    <button id="searchTriggerBtn" class="w-8 h-8 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center active:bg-slate-100"><i class="fa-solid fa-magnifying-glass text-sm"></i></button>
+                    <button id="headerSettingsBtn" class="flex items-center gap-2 bg-slate-50 px-2.5 py-1.5 rounded-full border border-slate-100 active:bg-slate-100 max-w-[140px]">
+                        <span id="headerIcon" class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 flex-shrink-0 overflow-hidden"></span>
+                        <span id="headerName" class="text-xs font-bold text-slate-700 truncate">게스트</span>
                     </button>
                 </div>
             </div>
@@ -198,19 +524,19 @@
                 <div class="flex items-center gap-2 pt-3">
                     <div class="flex-1 relative">
                         <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-xs"></i>
-                        <input type="text" id="searchInput" placeholder="메뉴, 장소 검색..." class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-sm outline-none focus:border-emerald-500 transition-colors" oninput="window.handleSearch(this.value)">
+                        <input type="text" id="searchInput" placeholder="메뉴, 장소 검색..." class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-sm outline-none focus:border-emerald-500 transition-colors" oninput="window.safeCall('handleSearch', this.value)">
                     </div>
-                    <button onclick="window.closeSearch()" class="text-xs font-bold text-slate-400 px-2 active:text-slate-600">취소</button>
+                    <button id="closeSearchBtn" class="text-xs font-bold text-slate-400 px-2 active:text-slate-600">취소</button>
                 </div>
             </div>
         </header>
 
-        <div id="trackerSection" class="sticky top-[73px] z-40 px-4 py-3 bg-white border-b border-slate-100 shadow-sm">
+        <div id="trackerSection" class="sticky top-[58px] z-40 px-4 py-3 bg-white border-b border-slate-100 shadow-sm">
             <div id="trackerHeader" class="flex justify-between items-center px-1 mb-2">
                 <span id="trackerTitle" class="text-sm font-black text-slate-800 tracking-tight uppercase">날짜 선택</span>
                 <div id="trackerTabs" class="flex p-1 bg-slate-100 rounded-lg space-x-1">
-                    <button onclick="window.setViewMode('list')" id="btn-view-list" class="view-tab active">전체</button>
-                    <button onclick="window.setViewMode('page')" id="btn-view-page" class="view-tab inactive">일간</button>
+                    <button id="btn-view-list" class="view-tab active">전체</button>
+                    <button id="btn-view-page" class="view-tab inactive">일간</button>
                 </div>
             </div>
             <div id="miniCalendar" class="calendar-scroll pb-2"></div>
@@ -219,7 +545,76 @@
         <main>
             <div id="timelineView" class="min-h-[60vh]"><div id="timelineContainer" class="space-y-4"></div></div>
             <div id="galleryView" class="hidden min-h-[60vh]">
-                <div id="galleryContainer" class="space-y-4"></div>
+                <div id="galleryContainer" class="space-y-2 bg-slate-100"></div>
+            </div>
+            <!-- 게시판 목록 뷰 -->
+            <div id="boardListView" class="hidden space-y-3 px-4 py-3">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-black text-slate-800 tracking-tight">MEAL TALK</h2>
+                    <button id="boardWriteBtn" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors flex items-center gap-2">
+                        <i class="fa-solid fa-pen text-xs"></i>
+                        <span>글쓰기</span>
+                    </button>
+                </div>
+                <div class="flex gap-2 mb-4 overflow-x-auto scrollbar-hide">
+                    <button id="board-category-all" class="board-category-btn active px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold whitespace-nowrap">전체</button>
+                    <button id="board-category-serious" class="board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">무거운</button>
+                    <button id="board-category-chat" class="board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">가벼운</button>
+                    <button id="board-category-food" class="board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">먹는</button>
+                    <button id="board-category-admin" class="board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">치프에게</button>
+                </div>
+                <div id="noticesContainer" class="mb-4 space-y-3">
+                    <!-- 공지가 여기에 동적으로 추가됨 -->
+                </div>
+                <div id="boardContainer" class="space-y-1.5 bg-slate-100">
+                    <!-- 게시글 목록이 여기에 동적으로 추가됨 -->
+                </div>
+            </div>
+            
+            <!-- 게시판 상세 뷰 -->
+            <div id="boardDetailView" class="hidden space-y-3 px-4 py-3">
+                <div class="flex items-center gap-3 mb-4">
+                    <button onclick="window.backToBoardList()" class="w-8 h-8 flex items-center justify-center text-slate-400 active:bg-slate-100 rounded-full transition-colors">
+                        <i class="fa-solid fa-arrow-left text-lg"></i>
+                    </button>
+                    <h2 class="text-lg font-black text-slate-800 tracking-tight flex-1 truncate" id="boardDetailViewTitle">게시글</h2>
+                </div>
+                <div id="boardDetailContent" class="space-y-3">
+                    <!-- 게시글 상세 내용이 여기에 동적으로 추가됨 -->
+                </div>
+            </div>
+            
+            <!-- 게시판 작성 뷰 -->
+            <div id="boardWriteView" class="hidden space-y-3 px-4 py-3">
+                <div class="flex items-center gap-3 mb-4">
+                    <button onclick="window.backToBoardList()" class="w-8 h-8 flex items-center justify-center text-slate-400 active:bg-slate-100 rounded-full transition-colors">
+                        <i class="fa-solid fa-arrow-left text-lg"></i>
+                    </button>
+                    <h2 class="text-lg font-black text-slate-800 tracking-tight">글쓰기</h2>
+                </div>
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-sm font-bold text-slate-600 block mb-2">카테고리</label>
+                        <select id="boardWriteCategory" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 transition-colors">
+                            <option value="serious">무거운</option>
+                            <option value="chat">가벼운</option>
+                            <option value="food">먹는</option>
+                            <option value="admin">치프에게</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-sm font-bold text-slate-600 block mb-2">제목</label>
+                        <input type="text" id="boardWriteTitle" placeholder="제목을 입력하세요" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 transition-colors">
+                    </div>
+                    <div>
+                        <label class="text-sm font-bold text-slate-600 block mb-2">내용</label>
+                        <textarea id="boardWriteContent" placeholder="내용을 입력하세요" rows="15" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 transition-colors resize-none"></textarea>
+                    </div>
+                    <div class="flex gap-2 pt-4 border-t">
+                        <button onclick="window.backToBoardList()" class="flex-1 py-4 bg-slate-100 text-slate-600 rounded-xl font-bold active:bg-slate-200 transition-colors">취소</button>
+                        <button onclick="window.submitBoardPost()" class="flex-1 py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all">등록</button>
+                    </div>
+                </div>
             </div>
             <div id="dashboardView" class="hidden space-y-3 px-0 py-3">
                 <!-- Dashboard content remains same -->
@@ -227,11 +622,11 @@
                     <div class="flex flex-col mb-4 relative z-10">
                         <h3 class="text-lg font-black tracking-tighter uppercase flex items-center gap-2"><span>✨</span>INSIGHT</h3>
                         <div class="flex bg-emerald-700/40 p-1 rounded-xl mt-3 gap-1">
-                            <button id="btn-dash-7d" onclick="window.setDashboardMode('7d')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">최근 1주</button>
-                            <button id="btn-dash-week" onclick="window.setDashboardMode('week')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">주간</button>
-                            <button id="btn-dash-month" onclick="window.setDashboardMode('month')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">월간</button>
-                            <button id="btn-dash-year" onclick="window.setDashboardMode('year')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">연간</button>
-                            <button id="btn-dash-custom" onclick="window.setDashboardMode('custom')" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">직접 설정</button>
+                            <button id="btn-dash-7d" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">최근 1주</button>
+                            <button id="btn-dash-week" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">주간</button>
+                            <button id="btn-dash-month" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">월간</button>
+                            <button id="btn-dash-year" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">연간</button>
+                            <button id="btn-dash-custom" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">직접 설정</button>
                         </div>
                         <div id="periodNavigator" class="hidden mt-3 flex items-center justify-center gap-3">
                             <button id="periodPrevBtn" onclick="window.navigatePeriod(-1)" class="w-7 h-7 rounded-full bg-white/20 text-white flex items-center justify-center active:bg-white/30 transition-colors">
@@ -245,37 +640,41 @@
                         <div id="customDatePicker" class="hidden mt-3 flex gap-2 items-center justify-between">
                             <div class="flex gap-1 items-center">
                                 <label class="text-xs font-bold text-white/80 whitespace-nowrap">시작</label>
-                                <input type="date" id="customStart" onchange="window.updateCustomDates()" class="bg-white/20 text-white text-sm rounded px-2 py-1 border-none outline-none">
+                                <input type="date" id="customStart" onchange="window.safeCall('updateCustomDates')" class="bg-white/20 text-white text-sm rounded px-2 py-1 border-none outline-none">
                             </div>
                             <div class="flex gap-1 items-center ml-auto">
                                 <label class="text-xs font-bold text-white/80 whitespace-nowrap">종료</label>
-                                <input type="date" id="customEnd" onchange="window.updateCustomDates()" class="bg-white/20 text-white text-sm rounded px-2 py-1 border-none outline-none">
+                                <input type="date" id="customEnd" onchange="window.safeCall('updateCustomDates')" class="bg-white/20 text-white text-sm rounded px-2 py-1 border-none outline-none">
                             </div>
                         </div>
                         <div id="weekPickerContainer" class="hidden mt-3 flex gap-2">
-                            <input type="month" id="weekMonthInput" onchange="window.updateSelectedWeek()" class="flex-1 bg-white/20 text-white text-[10px] rounded p-1 border-none outline-none">
-                            <select id="weekSelect" onchange="window.updateSelectedWeek()" class="flex-1 bg-white/20 text-white text-[10px] rounded p-1 border-none outline-none">
+                            <input type="month" id="weekMonthInput" onchange="window.safeCall('updateSelectedWeek')" class="flex-1 bg-white/20 text-white text-[10px] rounded p-1 border-none outline-none">
+                            <select id="weekSelect" onchange="window.safeCall('updateSelectedWeek')" class="flex-1 bg-white/20 text-white text-[10px] rounded p-1 border-none outline-none">
                                 <option value="1">1주</option>
                             </select>
                         </div>
                         <div id="monthPickerContainer" class="hidden mt-3">
-                             <input type="month" id="monthInput" onchange="window.updateSelectedMonth()" class="w-full bg-white/20 text-white text-sm rounded p-2 border-none outline-none">
+                             <input type="month" id="monthInput" onchange="window.safeCall('updateSelectedMonth')" class="w-full bg-white/20 text-white text-sm rounded p-2 border-none outline-none">
                         </div>
                     </div>
                     <!-- 캐릭터와 말풍선 영역 -->
-                    <div class="flex gap-3 mt-3 relative z-10">
+                    <div class="flex gap-3 mt-3 relative z-10 items-end">
                         <!-- 캐릭터 선택 창 -->
-                        <div class="relative flex-shrink-0 flex flex-col gap-2">
-                            <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="w-[77px] h-20 bg-white/20 rounded-2xl border-2 border-white/30 flex flex-col items-center justify-center active:bg-white/30 transition-colors">
-                                <div id="insightCharacterIcon" class="text-2xl font-black text-white">M</div>
+                        <div class="relative flex-shrink-0 flex flex-col gap-2" style="height: calc(1.6rem * 5 + 1.5rem);">
+                            <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="w-[75px] flex-1 bg-white/20 rounded-2xl border-2 border-white/30 flex flex-col items-center justify-center transition-colors overflow-hidden">
+                                <div id="insightCharacterIcon" class="w-full h-full flex items-center justify-center text-2xl font-black text-white">M</div>
                             </button>
-                            <button id="generateCommentBtn" onclick="window.generateInsightComment()" class="w-[77px] py-1 bg-yellow-400 rounded-xl font-bold text-[10px] shadow-md active:bg-yellow-500 transition-colors" style="color: #3E2723;">
+                            <button id="generateCommentBtn" onclick="window.generateInsightComment()" class="w-[75px] bg-yellow-400 rounded-xl font-bold text-[10px] shadow-md active:bg-yellow-500 transition-colors py-1" style="color: #3E2723;">
                                 COMMENT
                             </button>
                         </div>
                         <!-- 말풍선 -->
-                        <div class="flex-1 relative">
-                            <div id="insightBubble" class="bg-yellow-50/90 border-2 border-white py-3 px-3 overflow-hidden relative" style="height: calc(1.6rem * 5 + 1.5rem); border-radius: 0.5rem 1.25rem 1.25rem 0.5rem;">
+                        <div class="flex-1 relative min-w-0">
+                            <div id="insightBubble" class="bg-yellow-50/90 border-2 border-white py-3 px-3 overflow-hidden relative" style="height: calc(1.6rem * 5 + 2rem); border-radius: 0.5rem 1.25rem 1.25rem 0.5rem;">
+                                <!-- 페이지 카운터 (우상단) -->
+                                <div id="insightPageCounter" class="hidden absolute top-2 right-3 text-[10px] font-bold text-slate-500 bg-white/60 px-1.5 py-0.5 rounded">
+                                    1/1
+                                </div>
                                 <div id="insightTextPages" class="space-y-0">
                                     <!-- 페이지별 텍스트가 여기에 표시됨 -->
                                 </div>
@@ -312,9 +711,9 @@
                 <!-- 분석 타입 선택 스위치 -->
                 <div class="card py-1.5 px-4 mt-3">
                     <div class="flex p-0.5 rounded-xl gap-1">
-                        <button id="btn-analysis-best" onclick="window.setAnalysisType('best')" class="flex-1 py-1 text-xs font-bold bg-white text-emerald-700 rounded-lg shadow-sm transition-all">Best</button>
-                        <button id="btn-analysis-main" onclick="window.setAnalysisType('main')" class="flex-1 py-1 text-xs font-bold text-emerald-600 hover:bg-emerald-100/50 rounded-lg transition-colors">식사</button>
-                        <button id="btn-analysis-snack" onclick="window.setAnalysisType('snack')" class="flex-1 py-1 text-xs font-bold text-emerald-600 hover:bg-emerald-100/50 rounded-lg transition-colors">간식</button>
+                        <button id="btn-analysis-best" class="flex-1 py-1 text-xs font-bold bg-white text-emerald-700 rounded-lg shadow-sm transition-all">Best</button>
+                        <button id="btn-analysis-main" class="flex-1 py-1 text-xs font-bold text-emerald-600 hover:bg-emerald-100/50 rounded-lg transition-colors">식사</button>
+                        <button id="btn-analysis-snack" class="flex-1 py-1 text-xs font-bold text-emerald-600 hover:bg-emerald-100/50 rounded-lg transition-colors">간식</button>
                     </div>
                 </div>
                 
@@ -340,7 +739,7 @@
                 <div id="mainAnalysisSection" class="mt-2 hidden">
                     <div class="space-y-0">
                         <div class="card py-2.5 px-4">
-                            <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">식사 구분</h3><button onclick="window.openDetailModal('mealType', '식사 구분 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                            <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">식사 방식</h3><button onclick="window.openDetailModal('mealType', '식사 방식 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                             <div id="propChartContainer"></div>
                         </div>
                 <div class="card py-2.5 px-4">
@@ -379,38 +778,93 @@
         </main>
 
         <nav class="bottom-nav">
-            <button id="nav-gallery" onclick="window.switchMainTab('gallery')" class="text-slate-300 flex justify-center items-center py-1"><i class="fa-solid fa-images text-xl"></i></button>
-            <button id="nav-timeline" onclick="window.switchMainTab('timeline')" class="text-emerald-600 flex justify-center items-center py-1"><i class="fa-solid fa-list-ul text-xl"></i></button>
-            <button id="nav-dashboard" onclick="window.switchMainTab('dashboard')" class="text-slate-300 flex justify-center items-center py-1"><i class="fa-solid fa-chart-pie text-xl"></i></button>
+            <button id="nav-dashboard" class="text-slate-300 flex justify-center items-center py-1"><i class="fa-solid fa-chart-pie text-xl"></i></button>
+            <button id="nav-timeline" class="text-emerald-600 flex justify-center items-center py-1"><i class="fa-solid fa-list-ul text-xl"></i></button>
+            <button id="nav-gallery" class="text-slate-300 flex justify-center items-center py-1"><i class="fa-solid fa-images text-xl"></i></button>
+            <button id="nav-board" class="text-slate-300 flex justify-center items-center py-1"><i class="fa-solid fa-comments text-xl"></i></button>
         </nav>
     </div>
 
     <!-- 3. Settings Page (UI 구조 변경) -->
     <div id="settingsPage" class="hidden fixed inset-0 z-[250] bg-white flex flex-col overflow-hidden">
-        <div class="p-6 border-b flex justify-between items-center sticky top-0 bg-white z-10">
-            <div class="flex items-center gap-3"><button onclick="window.closeSettings()"><i class="fa-solid fa-arrow-left text-xl text-slate-400"></i></button><h2 class="text-lg font-bold text-slate-800 tracking-tight">사용자 설정</h2></div>
-            <div class="flex items-center gap-2">
-                <!-- 상단에는 저장 버튼만 남김 (로그아웃 버튼 제거) -->
-                <button onclick="window.saveSettings()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md">저장</button>
+        <div class="border-b sticky top-0 bg-white z-10">
+            <div class="p-6 pb-3 flex justify-between items-center">
+                <div class="flex items-center gap-3"><button id="settingsCloseBtn"><i class="fa-solid fa-arrow-left text-xl text-slate-400"></i></button><h2 class="text-lg font-bold text-slate-800 tracking-tight">사용자 설정</h2></div>
+            </div>
+            <!-- 탭 버튼 -->
+            <div class="flex px-6 pb-3 gap-2">
+                <button id="settingsTabProfile" class="settings-tab active flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold">프로필</button>
+                <button id="settingsTabTags" class="settings-tab flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold">태그 관리</button>
             </div>
         </div>
-        <div class="p-6 space-y-8 overflow-y-auto pb-32">
-            
-            <!-- 계정 연동 섹션 -->
-            <div id="accountSection"></div>
+        <div class="flex-1 overflow-y-auto">
+            <!-- 프로필 탭 -->
+            <div id="settingsTabContentProfile" class="settings-tab-content p-6 space-y-8 pb-32">
+                <!-- 계정 연동 섹션 -->
+                <div id="accountSection"></div>
 
-            <div><h3 class="text-xs font-black text-slate-400 mb-4 uppercase tracking-widest">프로필 설정</h3><div id="iconSelector" class="flex gap-3 overflow-x-auto pb-2"></div><div class="bg-slate-50 p-4 rounded-2xl space-y-3 mt-4"><label class="text-[10px] font-bold text-slate-400 block uppercase">닉네임</label><input type="text" id="settingNickname" class="w-full bg-white p-3 rounded-xl border-none outline-none font-bold text-sm"></div></div>
-            
-            <!-- 메인 태그 관리 섹션 -->
-            <div>
-                <h3 class="text-xs font-black text-slate-400 mb-4 uppercase tracking-widest">나만의 태그 관리</h3>
-                <div id="favoriteTagsSection"></div>
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest">프로필 설정</h3>
+                        <button id="saveProfileSettingsBtn" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-md whitespace-nowrap active:bg-emerald-700 transition-colors">저장</button>
+                    </div>
+                    
+                    <!-- 프로필 타입 선택 -->
+                    <div class="flex gap-2 mb-4">
+                        <button id="profileTypeEmoji" class="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors">
+                            이모지
+                        </button>
+                        <button id="profileTypePhoto" class="flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors">
+                            사진 직접 등록
+                        </button>
+                    </div>
+                    
+                    <!-- 이모지 선택 영역 -->
+                    <div id="emojiSection">
+                        <div id="iconSelector" class="flex gap-3 overflow-x-auto pb-2"></div>
+                    </div>
+                    
+                    <!-- 사진 직접 등록 영역 -->
+                    <div id="photoSection" class="hidden">
+                        <div class="flex flex-col items-center gap-3 mb-4">
+                            <div id="photoPreview" class="w-20 h-20 rounded-full bg-slate-100 border-2 border-slate-200 overflow-hidden flex items-center justify-center">
+                                <i class="fa-solid fa-camera text-slate-400 text-xl"></i>
+                            </div>
+                            <button onclick="document.getElementById('photoInput').click()" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors">
+                                사진 선택
+                            </button>
+                            <input type="file" id="photoInput" class="hidden" accept="image/*" onchange="window.safeCall('handlePhotoUpload', event)">
+                        </div>
+                    </div>
+                    
+                    <div class="bg-slate-50 p-4 rounded-2xl space-y-3 mt-4">
+                        <label class="text-[10px] font-bold text-slate-400 block uppercase">닉네임</label>
+                        <input type="text" id="settingNickname" class="w-full bg-white p-3 rounded-xl border-none outline-none font-bold text-sm">
+                    </div>
+                </div>
+                
+                <div class="space-y-6">
+                    <!-- 로그아웃 버튼 영역 -->
+                    <div id="logoutBtnArea" class="hidden pt-4 border-t border-slate-100 space-y-2">
+                        <button onclick="window.confirmLogout()" class="w-full py-3 bg-slate-100 text-slate-500 rounded-xl text-xs font-bold">로그아웃</button>
+                        <button onclick="window.confirmDeleteAccount()" class="w-full py-2 text-slate-400 text-[10px] underline">계정 탈퇴</button>
+                    </div>
+                    
+                    <!-- 버전 정보 영역 -->
+                    <div class="pt-4 border-t border-slate-100">
+                        <div id="versionInfo" class="text-center text-[10px] text-slate-400 space-y-1">
+                            <div>버전 <span id="versionNumber">-</span></div>
+                            <div>배포 <span id="buildDate">-</span></div>
+                        </div>
+                    </div>
+                </div>
             </div>
             
-            <div class="space-y-6">
-                <!-- 로그아웃 버튼 영역 -->
-                <div id="logoutBtnArea" class="hidden pt-4 border-t border-slate-100">
-                    <button onclick="window.confirmLogout()" class="w-full py-3 bg-slate-100 text-slate-500 rounded-xl text-xs font-bold">로그아웃</button>
+            <!-- 태그 관리 탭 -->
+            <div id="settingsTabContentTags" class="settings-tab-content hidden p-6 space-y-8 pb-32">
+                <div>
+                    <h3 class="text-xs font-black text-slate-400 mb-4 uppercase tracking-widest">나만의 태그 관리</h3>
+                    <div id="favoriteTagsSection"></div>
                 </div>
             </div>
         </div>
@@ -422,8 +876,20 @@
             <h3 class="text-lg font-bold text-slate-800 mb-2">로그아웃 하시겠어요?</h3>
             <p class="text-sm text-slate-500 mb-6">기록은 안전하게 저장됩니다.</p>
             <div class="flex gap-3">
-                <button onclick="document.getElementById('logoutConfirmModal').classList.add('hidden')" class="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm">취소</button>
-                <button onclick="window.confirmLogoutAction()" class="flex-1 py-3 bg-red-50 text-red-500 rounded-xl font-bold text-sm">로그아웃</button>
+                <button id="logoutConfirmCancelBtn" class="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm">취소</button>
+                <button id="logoutConfirmActionBtn" class="flex-1 py-3 bg-red-50 text-red-500 rounded-xl font-bold text-sm">로그아웃</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Account Confirm Modal -->
+    <div id="deleteAccountConfirmModal" class="hidden fixed inset-0 z-[400] bg-slate-900/40 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl transform transition-all scale-100">
+            <h3 class="text-lg font-bold text-slate-800 mb-2">계정을 탈퇴하시겠어요?</h3>
+            <p class="text-sm text-slate-500 mb-4">탈퇴 시 모든 기록과 데이터가 영구적으로 삭제되며 복구할 수 없습니다.</p>
+            <div class="flex gap-3">
+                <button id="deleteAccountConfirmCancelBtn" class="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm">취소</button>
+                <button id="deleteAccountConfirmActionBtn" class="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold text-sm">탈퇴하기</button>
             </div>
         </div>
     </div>
@@ -448,13 +914,18 @@
                             </button>
                             <div id="photoPreviewContainer" class="flex gap-2"></div>
                         </div>
-                        <input type="file" id="imageInput" class="hidden" accept="image/*" multiple onchange="window.handleMultipleImages(event)">
+                        <input type="file" id="imageInput" class="hidden" accept="image/*" multiple onchange="window.safeCall('handleMultipleImages', event)">
                     </div>
                     
                     <div class="p-3 bg-orange-50/50 rounded-2xl border border-orange-100 mb-2">
-                        <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">식사 구분</span>
+                        <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">식사 방식</span>
                         <div id="typeChips" class="flex flex-wrap gap-2 mb-1.5"></div>
-                        <input id="placeInput" type="text" placeholder="식당명이나 장소 (예: 스타벅스)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
+                        <div class="relative">
+                            <input id="placeInput" type="text" placeholder="식당명이나 장소 (예: 스타벅스)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all pr-10">
+                            <button id="kakaoSearchBtn" onclick="window.openKakaoPlaceSearch()" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-emerald-600 transition-colors">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                            </button>
+                        </div>
                         <div id="restaurantSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
                     </div>
                     
@@ -494,7 +965,7 @@
 
                     <div class="mb-2">
                         <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">Comment</span>
-                        <input id="generalCommentInput" type="text" placeholder="오늘 식사는 어떠셨나요?" class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all">
+                        <textarea id="generalCommentInput" placeholder="오늘 식사는 어떠셨나요?" rows="4" class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all resize-y min-h-[60px]"></textarea>
                     </div>
                 </div>
                 
@@ -510,7 +981,7 @@
                             </button>
                             <div id="snackPhotoPreviewContainer" class="flex gap-2"></div>
                         </div>
-                        <input type="file" id="snackImageInput" class="hidden" accept="image/*" multiple onchange="window.handleMultipleImages(event)">
+                        <input type="file" id="snackImageInput" class="hidden" accept="image/*" multiple onchange="window.safeCall('handleMultipleImages', event)">
                     </div>
                     <div class="p-3 bg-emerald-50/50 rounded-2xl border border-emerald-100 mb-2">
                         <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">간식 정보</span>
@@ -518,9 +989,21 @@
                         <input id="snackDetailInput" type="text" placeholder="무엇을 드셨나요?" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
                         <div id="snackSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
                     </div>
+                    <div id="snackReviewSection" class="pt-2 border-t border-slate-50 space-y-2 mb-2">
+                        <div id="snackRatingSection">
+                            <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">만족도</span>
+                            <div id="snackStarContainer" class="flex gap-2 mb-2">
+                                <button onclick="window.setRating(1)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
+                                <button onclick="window.setRating(2)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
+                                <button onclick="window.setRating(3)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
+                                <button onclick="window.setRating(4)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
+                                <button onclick="window.setRating(5)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
+                            </div>
+                        </div>
+                    </div>
                     <div class="mb-2">
                         <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">Comment</span>
-                        <input id="snackCommentInput" type="text" placeholder="오늘 간식은 어떠셨나요?" class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all">
+                        <textarea id="snackCommentInput" placeholder="오늘 간식은 어떠셨나요?" rows="4" class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all resize-y min-h-[60px]"></textarea>
                     </div>
                 </div>
             </div>
@@ -577,7 +1060,9 @@
                     </div>
                 </div>
                 <div class="character-popup-item flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-colors hover:bg-slate-50" data-character-id="trainer" onclick="window.selectInsightCharacter('trainer')">
-                    <div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-3xl flex-shrink-0">💪</div>
+                    <div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                        <img src="persona/trainer.png" alt="엄격한 트레이너" class="w-full h-full object-contain">
+                    </div>
                     <div class="flex-1">
                         <div class="text-sm font-bold text-slate-800">엄격한 트레이너</div>
                         <div class="text-xs text-slate-500 mt-0.5">건강 전문가</div>

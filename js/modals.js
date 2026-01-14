@@ -1,11 +1,11 @@
 // 모달 및 입력 처리 관련 함수들
 import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS } from './constants.js';
 import { appState } from './state.js';
-import { setVal, compressImage, getInputIdFromContainer } from './utils.js';
-import { renderEntryChips, renderPhotoPreviews, renderTagManager } from './render.js';
+import { setVal, compressImage, getInputIdFromContainer, normalizeUrl } from './utils.js';
+import { renderEntryChips, renderPhotoPreviews, renderTagManager } from './render/index.js';
 import { dbOps } from './db.js';
 import { showToast } from './ui.js';
-import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed } from './render.js';
+import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed } from './render/index.js';
 import { getDashboardData } from './analytics.js';
 
 // 설정 저장 디바운싱을 위한 타이머
@@ -54,6 +54,12 @@ export function openModal(date, slotId, entryId = null) {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
+        
+        // 카카오 검색 버튼 초기화 (숨김)
+        const kakaoSearchBtn = document.getElementById('kakaoSearchBtn');
+        if (kakaoSearchBtn) {
+            kakaoSearchBtn.classList.add('hidden');
+        }
         
         const mainPhotoContainer = document.getElementById('photoPreviewContainer');
         const snackPhotoContainer = document.getElementById('snackPhotoPreviewContainer');
@@ -131,7 +137,16 @@ export function openModal(date, slotId, entryId = null) {
                 // sharedPhotos도 배열인지 확인
                 state.sharedPhotos = Array.isArray(r.sharedPhotos) ? r.sharedPhotos : (r.sharedPhotos ? [r.sharedPhotos] : []);
                 state.originalSharedPhotos = Array.isArray(r.sharedPhotos) ? [...r.sharedPhotos] : (r.sharedPhotos ? [r.sharedPhotos] : []); // 원본 복사 (삭제 추적용)
-                state.wantsToShare = (state.sharedPhotos && state.sharedPhotos.length > 0); // 이미 공유된 사진이 있으면 공유 상태로
+                
+                // 공유 금지 체크
+                const isShareBanned = r.shareBanned === true;
+                if (isShareBanned) {
+                    // 공유 금지된 경우 공유 상태를 false로 설정
+                    state.wantsToShare = false;
+                } else {
+                    state.wantsToShare = (state.sharedPhotos && state.sharedPhotos.length > 0); // 이미 공유된 사진이 있으면 공유 상태로
+                }
+                
                 // 필드 표시/숨김 처리 후에 renderPhotoPreviews 호출
                 renderPhotoPreviews();
                 // 공유 인디케이터 업데이트
@@ -151,7 +166,7 @@ export function openModal(date, slotId, entryId = null) {
                 
                 // 태그 활성화 처리 함수
                 const activateTags = () => {
-                    // 식사 구분 (mealType)
+                    // 식사 방식 (mealType)
                     if (r.mealType) {
                         const typeChips = document.getElementById('typeChips');
                         if (typeChips) {
@@ -223,15 +238,25 @@ export function openModal(date, slotId, entryId = null) {
                         }
                     }
                     
-                    // 함께한 사람 상세 (withWhomDetail) - sub-chip
+                    // 함께한 사람 상세 (withWhomDetail) - sub-chip (다중 선택 가능)
                     if (r.withWhomDetail) {
                         const peopleSuggestions = document.getElementById('peopleSuggestions');
-                        if (peopleSuggestions) {
+                        const withWhomInput = document.getElementById('withWhomInput');
+                        if (peopleSuggestions && withWhomInput) {
+                            // 쉼표로 구분된 여러 값 처리
+                            const detailValues = r.withWhomDetail.split(',').map(v => v.trim()).filter(v => v);
+                            const activeValues = [];
                             peopleSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
-                                if (ch.innerText.trim() === r.withWhomDetail.trim()) {
+                                const chipText = ch.innerText.trim();
+                                if (detailValues.includes(chipText)) {
                                     ch.classList.add('active');
+                                    activeValues.push(chipText);
                                 }
                             });
+                            // input에 선택된 값들 저장
+                            if (activeValues.length > 0) {
+                                withWhomInput.value = activeValues.join(', ');
+                            }
                         }
                     }
                 };
@@ -268,6 +293,16 @@ export function openModal(date, slotId, entryId = null) {
                     setTimeout(() => {
                         toggleFieldsForSkip(true);
                     }, 100);
+                }
+                
+                // 외식 또는 회식/술자리 선택 시 카카오 검색 버튼 표시
+                if (r.mealType === '외식' || r.mealType === '회식/술자리') {
+                    setTimeout(() => {
+                        const kakaoSearchBtn = document.getElementById('kakaoSearchBtn');
+                        if (kakaoSearchBtn) {
+                            kakaoSearchBtn.classList.remove('hidden');
+                        }
+                    }, 200);
                 }
                 
                 // 간식 타입 선택 시 추천 태그 업데이트
@@ -419,9 +454,15 @@ export async function saveEntry() {
             newSettings.subTags.menu.push({ text: menuInputVal, parent: getT('categoryChips') });
             tagsChanged = true;
         }
-        if (withInputVal && !newSettings.subTags.people.find(t => (t.text || t) === withInputVal)) {
-            newSettings.subTags.people.push({ text: withInputVal, parent: getT('withChips') });
-            tagsChanged = true;
+        // 함께한 사람 상세 태그는 다중 선택 가능 (쉼표로 구분)
+        if (withInputVal) {
+            const withValues = withInputVal.split(',').map(v => v.trim()).filter(v => v);
+            withValues.forEach(val => {
+                if (!newSettings.subTags.people.find(t => (t.text || t) === val)) {
+                    newSettings.subTags.people.push({ text: val, parent: getT('withChips') });
+                    tagsChanged = true;
+                }
+            });
         }
         if (isS && snackInputVal && !newSettings.subTags.snack.find(t => (t.text || t) === snackInputVal)) {
             newSettings.subTags.snack.push({ text: snackInputVal, parent: getT('snackTypeChips') });
@@ -443,6 +484,10 @@ export async function saveEntry() {
             }, 1000);
         }
         
+        // 기존 기록에서 shareBanned 필드 가져오기 (수정 시 유지)
+        const existingRecord = state.currentEditingId ? window.mealHistory.find(m => m.id === state.currentEditingId) : null;
+        const shareBanned = existingRecord?.shareBanned === true;
+        
         const record = {
             id: state.currentEditingId,
             date: state.currentEditingDate,
@@ -462,93 +507,31 @@ export async function saveEntry() {
             time: new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' })
         };
         
+        // shareBanned 필드 추가 (기존 값 유지)
+        if (shareBanned) {
+            record.shareBanned = true;
+        }
+        
         // 디버깅: 저장될 record 확인
         if (isS) {
             console.log('저장될 간식 record:', record);
         }
         
         if (loadingOverlay) loadingOverlay.classList.remove('hidden');
-        // 삭제된 사진 찾기: 원래 공유되었던 사진 중 현재 currentPhotos에 없는 사진들
-        // URL 비교 시 쿼리 파라미터 무시
-        const normalizeUrl = (url) => (url || '').split('?')[0];
-        const deletedPhotos = state.originalSharedPhotos.filter(originalPhoto => {
-            const normalizedOriginal = normalizeUrl(originalPhoto);
-            return !state.currentPhotos.some(currentPhoto => 
-                normalizeUrl(currentPhoto) === normalizedOriginal
-            );
-        });
         
-        // 삭제된 사진이 있고, 기록이 이미 존재하는 경우 피드에서 삭제
-        if (deletedPhotos.length > 0 && record.id) {
-            try {
-                console.log('삭제된 사진 피드에서 제거:', deletedPhotos, 'entryId:', record.id);
-                await dbOps.unsharePhotos(deletedPhotos, record.id);
-                // 삭제된 사진을 sharedPhotos에서도 제거 (URL 정규화하여 비교)
-                state.sharedPhotos = state.sharedPhotos.filter(p => {
-                    const normalizedP = normalizeUrl(p);
-                    return !deletedPhotos.some(dp => normalizeUrl(dp) === normalizedP);
-                });
-                console.log('삭제 후 sharedPhotos:', state.sharedPhotos);
-            } catch (e) {
-                console.error("삭제된 사진 피드 제거 실패:", e);
-                // 실패해도 계속 진행
-            }
-        }
+        // 공유 금지 체크
+        const isShareBanned = record.id ? (window.mealHistory.find(m => m.id === record.id)?.shareBanned === true) : false;
         
-        // sharedPhotos 필드 추가 (현재 공유된 사진 목록 저장)
-        // 삭제된 사진을 제거한 후의 최종 목록으로 업데이트
-        record.sharedPhotos = state.sharedPhotos || [];
+        // 공유할 사진 목록 결정 (단순화: wantsToShare와 currentPhotos만 사용)
+        const photosToShare = (!isShareBanned && state.wantsToShare && state.currentPhotos.length > 0)
+            ? [...state.currentPhotos]  // 공유 활성화: 현재 사진 전체
+            : [];                        // 공유 비활성화 또는 금지: 빈 배열
         
-        // 공유 상태에 따라 처리
-        if (state.wantsToShare && state.currentPhotos.length > 0) {
-            // 공유를 원하는 경우: 새로 공유할 사진 찾기 (URL 정규화하여 비교)
-            const newPhotosToShare = state.currentPhotos.filter(photo => {
-                const normalizedPhoto = normalizeUrl(photo);
-                return !state.sharedPhotos.some(sharedPhoto => 
-                    normalizeUrl(sharedPhoto) === normalizedPhoto
-                );
-            });
-            
-            if (newPhotosToShare.length > 0) {
-                try {
-                    await dbOps.sharePhotos(newPhotosToShare, record);
-                    // 공유 성공: 공유된 사진 목록 업데이트
-                    state.sharedPhotos = [...state.sharedPhotos, ...newPhotosToShare];
-                    record.sharedPhotos = state.sharedPhotos;
-                    console.log('사진 공유 성공:', {
-                        새로공유: newPhotosToShare.length,
-                        전체공유: state.sharedPhotos.length,
-                        recordSharedPhotos: record.sharedPhotos.length
-                    });
-                } catch (e) {
-                    console.error("사진 공유 실패:", e);
-                    // 사진 공유 실패 시에도 에러 토스트는 표시하지 않음 (이미 db.js나 다른 곳에서 표시했을 수 있음)
-                    // 현재 상태는 유지하고 계속 진행
-                    // (이미 state.currentPhotos에는 사진이 있으므로 다음에 다시 시도 가능)
-                    record.sharedPhotos = state.sharedPhotos || [];
-                }
-            } else {
-                // 이미 모두 공유된 경우: 현재 공유 상태 유지
-                record.sharedPhotos = state.sharedPhotos || [];
-            }
-        } else if (!state.wantsToShare && state.sharedPhotos.length > 0 && record.id) {
-            // 공유 해제한 경우: 피드에서 해당 사진들 삭제
-            try {
-                await dbOps.unsharePhotos(state.sharedPhotos, record.id);
-                // 공유된 사진 목록 초기화
-                state.sharedPhotos = [];
-                record.sharedPhotos = [];
-            } catch (e) {
-                console.error("사진 공유 해제 실패:", e);
-                // 공유 해제 실패 시 현재 상태 유지
-                record.sharedPhotos = state.sharedPhotos || [];
-                // dbOps.unsharePhotos에서 이미 에러 토스트를 표시함
-                // 공유 해제 실패해도 기록 저장은 성공했으므로 계속 진행
-            }
-        } else {
-            // 공유를 원하지 않는 경우: 현재 공유 상태 유지
-            record.sharedPhotos = state.sharedPhotos || [];
-        }
+        // record에 sharedPhotos 필드 추가
+        record.sharedPhotos = photosToShare;
+        
+        // 공유 관련 정보를 미리 저장 (상태 초기화 전에)
+        const currentPhotos = [...state.currentPhotos];
         
         console.log('저장 시작:', record);
         
@@ -576,9 +559,31 @@ export async function saveEntry() {
         state.wantsToShare = false;
         
         // 저장 실행 (모달과 로딩 오버레이가 이미 닫힌 상태에서)
+        // 새 레코드인 경우 ID를 먼저 확보해야 공유 시 entryId를 올바르게 설정할 수 있음
         try {
-            await dbOps.save(record);
+            const savedId = await dbOps.save(record);
+            // 새 레코드인 경우 생성된 ID를 record에 설정
+            if (!record.id && savedId) {
+                record.id = savedId;
+                console.log('새 레코드 ID 확보:', savedId);
+            }
             console.log('저장 완료');
+            
+            // 공유 처리 (ID 확보 후 실행)
+            // sharePhotos 함수가 기존 문서 삭제 + 새 문서 추가 + record.sharedPhotos 필드 업데이트를 모두 처리
+            if (record.id) {
+                try {
+                    await dbOps.sharePhotos(photosToShare, record);
+                    console.log('공유 처리 완료:', {
+                        공유사진수: photosToShare.length,
+                        recordId: record.id
+                    });
+                } catch (e) {
+                    console.error("공유 처리 실패:", e);
+                    showToast("사진 공유 처리 중 오류가 발생했습니다.", 'error');
+                    // 공유 실패 시에도 기록은 이미 저장되었으므로 계속 진행
+                }
+            }
         } catch (saveError) {
             console.error('dbOps.save 오류:', saveError);
             // dbOps.save()에서 이미 에러 토스트를 표시하므로 여기서는 추가 처리 불필요
@@ -801,21 +806,49 @@ export function setSatiety(s) {
 export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subContainerId = null) {
     const container = btn.parentElement.closest('.sub-chip-wrapper') ? btn.parentElement.parentElement : btn.parentElement;
     const isActive = btn.classList.contains('active');
-    container.querySelectorAll(isPrimary ? '.chip' : '.sub-chip').forEach(c => c.classList.remove('active'));
+    
+    // 함께한 사람 상세 태그(peopleSuggestions)는 다중 선택 가능
+    const isMultiSelect = !isPrimary && subContainerId === 'peopleSuggestions';
+    
+    if (!isMultiSelect) {
+        // 단일 선택: 다른 태그 선택 해제
+        container.querySelectorAll(isPrimary ? '.chip' : '.sub-chip').forEach(c => c.classList.remove('active'));
+    }
+    
     let selectedValue = value;
     
     if (isActive) {
+        btn.classList.remove('active');
         if (inputId !== 'null') {
             const input = document.getElementById(inputId);
-            if (input) input.value = '';
+            if (input) {
+                if (isMultiSelect) {
+                    // 다중 선택: 현재 값에서 제거
+                    const currentValues = input.value.split(',').map(v => v.trim()).filter(v => v);
+                    const newValues = currentValues.filter(v => v !== value);
+                    input.value = newValues.join(', ');
+                } else {
+                    input.value = '';
+                }
+            }
         }
-        btn.classList.remove('active');
         selectedValue = null;
     } else {
         btn.classList.add('active');
         if (inputId !== 'null') {
             const input = document.getElementById(inputId);
-            if (input) input.value = value;
+            if (input) {
+                if (isMultiSelect) {
+                    // 다중 선택: 현재 값에 추가
+                    const currentValues = input.value.split(',').map(v => v.trim()).filter(v => v);
+                    if (!currentValues.includes(value)) {
+                        currentValues.push(value);
+                    }
+                    input.value = currentValues.join(', ');
+                } else {
+                    input.value = value;
+                }
+            }
         }
     }
     
@@ -824,13 +857,24 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
     if (isPrimary && inputId === 'null' && subTagKey === 'place') {
         const isSkip = (selectedValue === 'Skip' || selectedValue === '건너뜀');
         toggleFieldsForSkip(isSkip);
+        
+        // 외식 또는 회식/술자리 선택 시 카카오 검색 버튼 표시
+        const kakaoSearchBtn = document.getElementById('kakaoSearchBtn');
+        if (kakaoSearchBtn) {
+            if (selectedValue === '외식' || selectedValue === '회식/술자리') {
+                kakaoSearchBtn.classList.remove('hidden');
+            } else {
+                kakaoSearchBtn.classList.add('hidden');
+            }
+        }
     }
     
     if (isPrimary && subTagKey && subContainerId) {
         const subTags = window.userSettings.subTags[subTagKey] || [];
-        window.renderSecondary(subContainerId, subTags, 
-            document.getElementById(subContainerId).getAttribute('data-input-id') || getInputIdFromContainer(subContainerId), 
-            selectedValue, subTagKey);
+        // 함께한 사람의 경우 inputId를 'withWhomInput'으로 설정 (메인 태그 선택 시 자동 입력 방지)
+        const inputIdForSecondary = (subTagKey === 'people') ? 'withWhomInput' : 
+            (document.getElementById(subContainerId).getAttribute('data-input-id') || getInputIdFromContainer(subContainerId));
+        window.renderSecondary(subContainerId, subTags, inputIdForSecondary, selectedValue, subTagKey);
     }
 }
 
@@ -896,10 +940,6 @@ export function removePhoto(idx) {
     const state = appState;
     const removedPhoto = state.currentPhotos[idx];
     state.currentPhotos.splice(idx, 1);
-    // 공유된 사진 목록에서도 제거
-    if (state.sharedPhotos && state.sharedPhotos.includes(removedPhoto)) {
-        state.sharedPhotos = state.sharedPhotos.filter(p => p !== removedPhoto);
-    }
     renderPhotoPreviews();
     updateShareIndicator();
 }
@@ -909,18 +949,29 @@ export function updateShareIndicator() {
     const shareIndicator = document.getElementById('sharePhotoIndicator');
     if (!shareIndicator) return;
     
+    // 공유 금지 체크
+    const isShareBanned = state.currentEditingId ? (window.mealHistory.find(m => m.id === state.currentEditingId)?.shareBanned === true) : false;
+    
     // 사진이 있으면 항상 인디케이터 표시 (공유 가능 상태)
     if (state.currentPhotos.length > 0) {
-        // 공유된 사진이 있거나 공유를 원하는 경우 활성화 스타일
-        if (state.sharedPhotos.length > 0 || state.wantsToShare) {
+        if (isShareBanned) {
+            // 공유 금지된 경우: 비활성화 스타일로 표시
             shareIndicator.classList.remove('hidden');
-            shareIndicator.classList.add('bg-emerald-100', 'border-emerald-300');
-            shareIndicator.classList.remove('bg-slate-50', 'border-slate-200');
+            shareIndicator.classList.add('bg-red-50', 'border-red-300', 'text-red-400', 'cursor-not-allowed');
+            shareIndicator.classList.remove('bg-emerald-100', 'border-emerald-300', 'bg-slate-50', 'border-slate-200', 'text-emerald-600', 'text-slate-400');
+            shareIndicator.title = '공유가 금지된 게시물입니다';
+        } else if (state.wantsToShare) {
+            // 공유를 원하는 경우 활성화 스타일
+            shareIndicator.classList.remove('hidden');
+            shareIndicator.classList.add('bg-emerald-100', 'border-emerald-300', 'text-emerald-600');
+            shareIndicator.classList.remove('bg-slate-50', 'border-slate-200', 'bg-red-50', 'border-red-300', 'text-slate-400', 'text-red-400', 'cursor-not-allowed');
+            shareIndicator.title = '';
         } else {
             // 사진은 있지만 아직 공유하지 않은 경우도 표시 (비활성화 스타일)
             shareIndicator.classList.remove('hidden');
-            shareIndicator.classList.add('bg-slate-50', 'border-slate-200');
-            shareIndicator.classList.remove('bg-emerald-100', 'border-emerald-300');
+            shareIndicator.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-400');
+            shareIndicator.classList.remove('bg-emerald-100', 'border-emerald-300', 'bg-red-50', 'border-red-300', 'text-emerald-600', 'text-red-400', 'cursor-not-allowed');
+            shareIndicator.title = '';
         }
     } else {
         shareIndicator.classList.add('hidden');
@@ -934,6 +985,13 @@ export function toggleSharePhoto() {
     
     if (state.currentPhotos.length === 0) {
         showToast("공유할 사진이 없습니다.", 'error');
+        return;
+    }
+    
+    // 공유 금지 체크
+    const isShareBanned = state.currentEditingId ? (window.mealHistory.find(m => m.id === state.currentEditingId)?.shareBanned === true) : false;
+    if (isShareBanned) {
+        showToast("공유가 금지된 게시물입니다.", 'error');
         return;
     }
     
@@ -965,6 +1023,48 @@ export function openSettings() {
         ).join('');
     }
     
+    // 프로필 타입 초기화
+    const profileType = state.tempSettings.profile.photoUrl ? 'photo' : 'emoji';
+    window.settingsProfileType = profileType;
+    
+    // 프로필 타입 버튼 초기화
+    const emojiBtn = document.getElementById('profileTypeEmoji');
+    const photoBtn = document.getElementById('profileTypePhoto');
+    const emojiSection = document.getElementById('emojiSection');
+    const photoSection = document.getElementById('photoSection');
+    
+    if (profileType === 'emoji') {
+        if (emojiBtn) {
+            emojiBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
+        }
+        if (photoBtn) {
+            photoBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
+        }
+        if (emojiSection) emojiSection.classList.remove('hidden');
+        if (photoSection) photoSection.classList.add('hidden');
+    } else {
+        if (emojiBtn) {
+            emojiBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
+        }
+        if (photoBtn) {
+            photoBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
+        }
+        if (emojiSection) emojiSection.classList.add('hidden');
+        if (photoSection) photoSection.classList.remove('hidden');
+    }
+    
+    // 사진 미리보기 설정
+    const photoPreview = document.getElementById('photoPreview');
+    if (photoPreview && state.tempSettings.profile.photoUrl) {
+        photoPreview.style.backgroundImage = `url(${state.tempSettings.profile.photoUrl})`;
+        photoPreview.style.backgroundSize = 'cover';
+        photoPreview.style.backgroundPosition = 'center';
+        photoPreview.innerHTML = '';
+    } else if (photoPreview) {
+        photoPreview.innerHTML = '<i class="fa-solid fa-camera text-slate-400 text-xl"></i>';
+        photoPreview.style.backgroundImage = '';
+    }
+    
     document.getElementById('settingNickname').value = state.tempSettings.profile.nickname;
     
     // 자주 사용하는 태그 초기화 (없으면 빈 객체로)
@@ -977,10 +1077,16 @@ export function openSettings() {
         };
     }
     
-    // 자주 사용하는 태그 편집 UI 렌더링
-    renderFavoriteTagsEditor();
-    
-    const accountSection = document.getElementById('accountSection');
+        // 자주 사용하는 태그 편집 UI 렌더링
+        renderFavoriteTagsEditor();
+        
+        // 버전 정보 로드 및 표시
+        loadVersionInfo();
+        
+        // 기본 탭을 프로필로 설정
+        switchSettingsTab('profile');
+        
+        const accountSection = document.getElementById('accountSection');
     if (accountSection) {
         let accountHtml = '';
         if (window.currentUser.isAnonymous) {
@@ -1040,22 +1146,218 @@ export function openSettings() {
     document.getElementById('settingsPage').classList.remove('hidden');
 }
 
+// 버전 정보 로드 함수
+async function loadVersionInfo() {
+    try {
+        const response = await fetch('/version.json?t=' + Date.now());
+        if (response.ok) {
+            const data = await response.json();
+            const versionNumberEl = document.getElementById('versionNumber');
+            const buildDateEl = document.getElementById('buildDate');
+            
+            if (versionNumberEl && data.version) {
+                versionNumberEl.textContent = data.version;
+            }
+            
+            // index.html 파일의 최종 수정 시간 가져오기
+            try {
+                const htmlResponse = await fetch('/index.html?t=' + Date.now());
+                if (htmlResponse.ok) {
+                    const lastModified = htmlResponse.headers.get('Last-Modified');
+                    if (lastModified) {
+                        const modifiedDate = new Date(lastModified);
+                        const dateText = modifiedDate.toLocaleString('ko-KR', { 
+                            year: 'numeric',
+                            month: '2-digit', 
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                        
+                        if (buildDateEl) {
+                            buildDateEl.textContent = dateText;
+                            buildDateEl.title = modifiedDate.toLocaleString('ko-KR');
+                        }
+                    }
+                }
+            } catch (e) {
+                console.debug('최종 수정 시간 로드 실패 (무시):', e);
+                // Last-Modified 헤더가 없으면 buildDate 사용 (fallback)
+                if (buildDateEl && data.buildDate) {
+                    const buildDate = new Date(data.buildDate);
+                    const dateText = buildDate.toLocaleString('ko-KR', { 
+                        year: 'numeric',
+                        month: '2-digit', 
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                    
+                    buildDateEl.textContent = dateText;
+                    buildDateEl.title = buildDate.toLocaleString('ko-KR');
+                }
+            }
+        }
+    } catch (e) {
+        console.debug('버전 정보 로드 실패 (무시):', e);
+        // 버전 정보는 선택적이므로 실패해도 계속 진행
+    }
+}
+
 export function closeSettings() {
     document.getElementById('settingsPage').classList.add('hidden');
 }
 
-export async function saveSettings() {
+// 설정 페이지 탭 전환 함수
+export function switchSettingsTab(tab) {
+    const profileTab = document.getElementById('settingsTabProfile');
+    const tagsTab = document.getElementById('settingsTabTags');
+    const profileContent = document.getElementById('settingsTabContentProfile');
+    const tagsContent = document.getElementById('settingsTabContentTags');
+    
+    if (tab === 'profile') {
+        // 프로필 탭 활성화
+        if (profileTab) {
+            profileTab.classList.add('active', 'bg-emerald-600', 'text-white');
+            profileTab.classList.remove('bg-slate-100', 'text-slate-600');
+        }
+        if (tagsTab) {
+            tagsTab.classList.remove('active', 'bg-emerald-600', 'text-white');
+            tagsTab.classList.add('bg-slate-100', 'text-slate-600');
+        }
+        if (profileContent) profileContent.classList.remove('hidden');
+        if (tagsContent) tagsContent.classList.add('hidden');
+    } else if (tab === 'tags') {
+        // 태그 관리 탭 활성화
+        if (tagsTab) {
+            tagsTab.classList.add('active', 'bg-emerald-600', 'text-white');
+            tagsTab.classList.remove('bg-slate-100', 'text-slate-600');
+        }
+        if (profileTab) {
+            profileTab.classList.remove('active', 'bg-emerald-600', 'text-white');
+            profileTab.classList.add('bg-slate-100', 'text-slate-600');
+        }
+        if (tagsContent) tagsContent.classList.remove('hidden');
+        if (profileContent) profileContent.classList.add('hidden');
+    }
+}
+
+// 설정 페이지 프로필 타입 설정
+export function setSettingsProfileType(type) {
+    window.settingsProfileType = type;
+    
+    const emojiBtn = document.getElementById('profileTypeEmoji');
+    const photoBtn = document.getElementById('profileTypePhoto');
+    const emojiSection = document.getElementById('emojiSection');
+    const photoSection = document.getElementById('photoSection');
+    
+    if (type === 'emoji') {
+        if (emojiBtn) {
+            emojiBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
+        }
+        if (photoBtn) {
+            photoBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
+        }
+        if (emojiSection) emojiSection.classList.remove('hidden');
+        if (photoSection) photoSection.classList.add('hidden');
+    } else {
+        if (emojiBtn) {
+            emojiBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
+        }
+        if (photoBtn) {
+            photoBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
+        }
+        if (emojiSection) emojiSection.classList.add('hidden');
+        if (photoSection) photoSection.classList.remove('hidden');
+    }
+}
+
+// 설정 페이지 사진 업로드 처리
+export async function handlePhotoUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    if (!file.type.startsWith('image/')) {
+        showToast("이미지 파일만 업로드할 수 있습니다.", "error");
+        return;
+    }
+    
+    try {
+        // 이미지 압축 및 미리보기
+        const { compressImageToBlob } = await import('./utils.js');
+        const compressedBlob = await compressImageToBlob(file);
+        const photoUrl = URL.createObjectURL(compressedBlob);
+        
+        window.settingsPhotoUrl = photoUrl;
+        window.settingsPhotoFile = compressedBlob;
+        
+        // 사진을 선택하면 자동으로 프로필 타입을 'photo'로 변경
+        if (window.settingsProfileType !== 'photo') {
+            setSettingsProfileType('photo');
+        }
+        
+        // 미리보기 업데이트
+        const photoPreview = document.getElementById('photoPreview');
+        if (photoPreview) {
+            photoPreview.style.backgroundImage = `url(${photoUrl})`;
+            photoPreview.style.backgroundSize = 'cover';
+            photoPreview.style.backgroundPosition = 'center';
+            photoPreview.innerHTML = '';
+        }
+    } catch (e) {
+        console.error("사진 업로드 처리 실패:", e);
+        showToast("사진 업로드 중 오류가 발생했습니다.", "error");
+    }
+}
+
+export async function saveProfileSettings() {
     const state = appState;
     try {
         state.tempSettings.profile.nickname = document.getElementById('settingNickname').value;
+        
+        // 프로필 타입에 따라 icon 또는 photoUrl 저장
+        // 사진 파일이 있으면 무조건 사진으로 저장
+        if (window.settingsPhotoFile) {
+            // 사진을 Firebase Storage에 업로드 (기존 Storage 규칙에 맞는 경로 사용)
+            const { storage } = await import('./firebase.js');
+            const { ref, uploadBytes, getDownloadURL } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js");
+            const timestamp = Date.now();
+            const fileName = `photo_${timestamp}.jpg`;
+            const photoRef = ref(storage, `users/${window.currentUser.uid}/profile/${fileName}`);
+            
+            await uploadBytes(photoRef, window.settingsPhotoFile);
+            const photoUrl = await getDownloadURL(photoRef);
+            
+            state.tempSettings.profile.photoUrl = photoUrl;
+            state.tempSettings.profile.icon = null; // 이모지 제거
+            
+            // 업로드 후 변수 초기화
+            window.settingsPhotoFile = null;
+            window.settingsPhotoUrl = null;
+        } else if (window.settingsProfileType === 'photo' && state.tempSettings.profile.photoUrl) {
+            // 사진 파일은 없지만 기존에 사진이 있는 경우 유지
+            // icon은 null로 유지
+            state.tempSettings.profile.icon = null;
+        } else {
+            // 이모지 선택 시 icon만 저장
+            state.tempSettings.profile.icon = state.tempSettings.profile.icon || '🐻';
+            state.tempSettings.profile.photoUrl = null; // 사진 URL 제거
+        }
+        
         await dbOps.saveSettings(state.tempSettings);
-        window.closeSettings();
         showToast("설정이 저장되었습니다.", 'success');
+        
+        // 헤더 업데이트
+        updateHeaderUI();
     } catch (e) {
-        console.error('설정 저장 실패:', e);
-        // dbOps.saveSettings에서 이미 에러 토스트를 표시하므로 여기서는 추가 처리 불필요
-        // 모달은 닫지 않고 사용자가 다시 시도할 수 있도록 함
+        console.error('프로필 저장 실패:', e);
+        showToast("설정 저장 중 오류가 발생했습니다: " + (e.message || e), 'error');
     }
+}
+
+// 레거시 함수 (호환성 유지)
+export async function saveSettings() {
+    await saveProfileSettings();
 }
 
 export function selectIcon(i) {
@@ -1101,7 +1403,7 @@ function renderFavoriteTagsEditor() {
     }
     
     const tagConfigs = {
-        mealType: { label: '식사 구분', subTagKey: 'place', mainTags: state.tempSettings.tags?.mealType || [] },
+        mealType: { label: '식사 방식', subTagKey: 'place', mainTags: state.tempSettings.tags?.mealType || [] },
         category: { label: '메뉴 카테고리', subTagKey: 'menu', mainTags: state.tempSettings.tags?.category || [] },
         withWhom: { label: '함께한 사람', subTagKey: 'people', mainTags: state.tempSettings.tags?.withWhom || [] },
         snackType: { label: '간식 유형', subTagKey: 'snack', mainTags: state.tempSettings.tags?.snackType || [] }
@@ -1173,7 +1475,7 @@ export function selectFavoriteMainTag(mainTagKey, mainTag) {
     renderFavoriteTagsEditor();
 }
 
-export function addFavoriteTag(mainTagKey, mainTag) {
+export async function addFavoriteTag(mainTagKey, mainTag) {
     const state = appState;
     if (!state.tempSettings.favoriteSubTags) {
         state.tempSettings.favoriteSubTags = {
@@ -1223,9 +1525,18 @@ export function addFavoriteTag(mainTagKey, mainTag) {
     favorites.push(text);
     input.value = '';
     renderFavoriteTagsEditor();
+    
+    // 즉시 저장
+    try {
+        await dbOps.saveSettings(state.tempSettings);
+        showToast("태그가 저장되었습니다.", 'success');
+    } catch (e) {
+        console.error('태그 저장 실패:', e);
+        // dbOps.saveSettings에서 이미 에러 토스트를 표시하므로 여기서는 추가 처리 불필요
+    }
 }
 
-export function removeFavoriteTag(mainTagKey, mainTag, index) {
+export async function removeFavoriteTag(mainTagKey, mainTag, index) {
     const state = appState;
     if (!state.tempSettings.favoriteSubTags || !state.tempSettings.favoriteSubTags[mainTagKey]) return;
     
@@ -1237,6 +1548,15 @@ export function removeFavoriteTag(mainTagKey, mainTag, index) {
     if (index >= 0 && index < favorites.length) {
         favorites.splice(index, 1);
         renderFavoriteTagsEditor();
+        
+        // 즉시 저장
+        try {
+            await dbOps.saveSettings(state.tempSettings);
+            showToast("태그가 삭제되었습니다.", 'success');
+        } catch (e) {
+            console.error('태그 삭제 저장 실패:', e);
+            // dbOps.saveSettings에서 이미 에러 토스트를 표시하므로 여기서는 추가 처리 불필요
+        }
     }
 }
 
@@ -1260,6 +1580,254 @@ export async function deleteSubTag(key, text, containerId, inputId, parentFilter
             }
         }
     }
+}
+
+// 카카오 장소 검색 함수
+export function openKakaoPlaceSearch() {
+    console.log('카카오 장소 검색 함수 호출');
+    console.log('현재 상태:', {
+        kakao: typeof kakao,
+        windowKakaoSDKLoaded: window.kakaoSDKLoaded,
+        location: window.location.href
+    });
+    
+    // 카카오 API 로드 확인 및 대기
+    const checkKakaoAPI = () => {
+        try {
+            const isReady = typeof kakao !== 'undefined' && 
+                           kakao.maps && 
+                           kakao.maps.services &&
+                           typeof kakao.maps.services.Places !== 'undefined';
+            if (isReady) {
+                console.log('✅ 카카오 API 준비 완료');
+            }
+            return isReady;
+        } catch (e) {
+            console.log('카카오 API 체크 중 에러:', e);
+            return false;
+        }
+    };
+    
+    // 즉시 확인
+    if (checkKakaoAPI()) {
+        createKakaoSearchModal();
+        return;
+    }
+    
+    // 로딩 표시
+    showToast("카카오 지도 API를 불러오는 중...", 'info');
+    
+    // 아직 로드되지 않았으면 대기 (최대 5초)
+    let attempts = 0;
+    const maxAttempts = 50; // 5초 (100ms * 50)
+    
+    const waitForKakao = setInterval(() => {
+        attempts++;
+        
+        try {
+            if (checkKakaoAPI()) {
+                clearInterval(waitForKakao);
+                createKakaoSearchModal();
+                return;
+            }
+        } catch (e) {
+            // kakao가 정의되지 않았을 때 에러 무시
+        }
+        
+        if (attempts >= maxAttempts) {
+            clearInterval(waitForKakao);
+            console.error('카카오 API 로드 실패: kakao 객체가 정의되지 않았습니다.');
+            
+            // 안전하게 상태 확인
+            let statusInfo = {
+                windowKakaoSDKLoaded: window.kakaoSDKLoaded,
+                kakaoDefined: typeof kakao !== 'undefined'
+            };
+            
+            try {
+                if (typeof kakao !== 'undefined') {
+                    statusInfo.maps = typeof kakao.maps;
+                    statusInfo.services = typeof kakao.maps?.services;
+                }
+            } catch (e) {
+                statusInfo.error = 'kakao 객체 접근 불가';
+            }
+            
+            console.error('═══════════════════════════════════════');
+            console.error('현재 상태:', statusInfo);
+            console.error('현재 URL:', window.location.href);
+            console.error('현재 호스트명:', window.location.hostname);
+            console.error('═══════════════════════════════════════');
+            console.error('');
+            console.error('💡 카카오 디벨로퍼스에서 다음을 확인하세요:');
+            console.error('');
+            console.error('1️⃣ JavaScript 키 확인 (중요!)');
+            console.error('   - 앱 설정 > 앱 키 > JavaScript 키 사용');
+            console.error('   - 현재 사용 중인 키: 42dce12f04991c35775f3ce1081a3c76');
+            console.error('   - ⚠️ REST API 키가 아닌 JavaScript 키여야 함!');
+            console.error('');
+            console.error('2️⃣ 플랫폼 등록 확인');
+            console.error('   - 앱 설정 > 플랫폼 > Web 플랫폼 추가');
+            console.error('   - 사이트 도메인에 현재 도메인 등록 필요');
+            console.error('');
+            console.error('3️⃣ 도메인 등록 확인');
+            console.error('   - Web 플랫폼 > 사이트 도메인에 추가:');
+            console.error('     * ' + window.location.hostname);
+            console.error('     * ' + window.location.host);
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                console.error('     * localhost');
+                console.error('     * 127.0.0.1');
+            }
+            console.error('');
+            console.error('4️⃣ 카카오맵 사용 설정 확인');
+            console.error('   - 앱 설정 > 제품 설정 > 카카오맵 > 사용 설정 ON');
+            console.error('   - 링크: https://developers.kakao.com/console/app/1366360/product/kakao-map');
+            console.error('');
+            console.error('5️⃣ 브라우저 네트워크 확인');
+            console.error('   - F12 > Network 탭 > "dapi.kakao.com" 검색');
+            console.error('   - 요청의 Status Code 확인 (403, 401 등)');
+            console.error('   - Response 탭에서 에러 메시지 확인');
+            console.error('');
+            console.error('🔗 빠른 링크:');
+            console.error('   - 앱 설정: https://developers.kakao.com/console/app/1366360');
+            console.error('   - 플랫폼 설정: https://developers.kakao.com/console/app/1366360/platform');
+            console.error('   - 카카오맵 설정: https://developers.kakao.com/console/app/1366360/product/kakao-map');
+            console.error('═══════════════════════════════════════');
+            
+            showToast("카카오 지도 API를 불러올 수 없습니다. 브라우저 콘솔(F12)을 확인해주세요.", 'error');
+        }
+    }, 100);
+}
+
+// 카카오 검색 모달 생성 함수
+function createKakaoSearchModal() {
+    
+    const placeInput = document.getElementById('placeInput');
+    if (!placeInput) return;
+    
+    // 기존 모달이 있으면 제거
+    const existingModal = document.getElementById('kakaoPlaceSearchModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // 모달 생성
+    const modal = document.createElement('div');
+    modal.id = 'kakaoPlaceSearchModal';
+    modal.className = 'fixed inset-0 bg-slate-900/60 z-[400] flex items-end';
+    modal.innerHTML = `
+        <div class="w-full bg-white rounded-t-[2.5rem] flex flex-col max-h-[80vh]">
+            <div class="p-6 border-b flex justify-between items-center">
+                <h2 class="text-lg font-bold text-slate-800 tracking-tight">음식점 검색</h2>
+                <button onclick="document.getElementById('kakaoPlaceSearchModal').remove()">
+                    <i class="fa-solid fa-xmark text-xl text-slate-400"></i>
+                </button>
+            </div>
+            <div class="p-4">
+                <div class="relative mb-4">
+                    <input type="text" id="kakaoSearchInput" placeholder="음식점 이름을 입력하세요" 
+                        class="w-full p-3 bg-slate-50 rounded-xl outline-none text-sm border border-transparent focus:border-emerald-500 transition-all pr-10">
+                    <button onclick="window.searchKakaoPlaces()" class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                    </button>
+                </div>
+                <div id="kakaoSearchResults" class="space-y-2 max-h-[50vh] overflow-y-auto"></div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // 검색 입력창에 엔터 키 이벤트 추가
+    const searchInput = document.getElementById('kakaoSearchInput');
+    if (searchInput) {
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                window.searchKakaoPlaces();
+            }
+        });
+        searchInput.focus();
+    }
+}
+
+// 카카오 장소 검색 실행
+export function searchKakaoPlaces() {
+    const searchInput = document.getElementById('kakaoSearchInput');
+    const resultsContainer = document.getElementById('kakaoSearchResults');
+    
+    if (!searchInput || !resultsContainer) return;
+    
+    const keyword = searchInput.value.trim();
+    if (!keyword) {
+        showToast("검색어를 입력해주세요.", 'info');
+        return;
+    }
+    
+    if (typeof kakao === 'undefined' || !kakao.maps || !kakao.maps.services) {
+        showToast("카카오 지도 API를 불러올 수 없습니다. 브라우저 콘솔을 확인해주세요.", 'error');
+        console.error('카카오 API 로드 실패');
+        return;
+    }
+    
+    // 로딩 표시
+    resultsContainer.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">검색 중...</div>';
+    
+    // 장소 검색 객체 생성
+    const ps = new kakao.maps.services.Places();
+    
+    // 키워드로 장소 검색
+    ps.keywordSearch(keyword, (data, status) => {
+        if (status === kakao.maps.services.Status.OK) {
+            // 음식점만 필터링 (카테고리 코드: FD6 - 음식점)
+            const restaurants = data.filter(place => {
+                const category = place.category_name || '';
+                return category.includes('음식점') || category.includes('식당') || category.includes('카페') || 
+                       category.includes('레스토랑') || category.includes('맛집');
+            });
+            
+            if (restaurants.length === 0) {
+                resultsContainer.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">검색 결과가 없습니다.</div>';
+                return;
+            }
+            
+            // 결과 표시
+            resultsContainer.innerHTML = restaurants.slice(0, 10).map(place => {
+                const placeName = place.place_name || '';
+                const address = place.address_name || '';
+                const roadAddress = place.road_address_name || '';
+                return `
+                    <button onclick="window.selectKakaoPlace('${placeName.replace(/'/g, "\\'")}', '${(roadAddress || address).replace(/'/g, "\\'")}')" 
+                        class="w-full p-4 bg-white border border-slate-200 rounded-xl text-left hover:bg-slate-50 active:bg-slate-100 transition-colors">
+                        <div class="font-bold text-slate-800 mb-1">${placeName}</div>
+                        <div class="text-xs text-slate-500">${roadAddress || address}</div>
+                    </button>
+                `;
+            }).join('');
+        } else if (status === kakao.maps.services.Status.ZERO_RESULT) {
+            resultsContainer.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">검색 결과가 없습니다.</div>';
+        } else {
+            resultsContainer.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">검색 중 오류가 발생했습니다.</div>';
+            console.error('카카오 장소 검색 오류:', status);
+        }
+    }, {
+        category_group_code: 'FD6' // 음식점 카테고리
+    });
+}
+
+// 카카오 장소 선택
+export function selectKakaoPlace(placeName, address) {
+    const placeInput = document.getElementById('placeInput');
+    if (placeInput) {
+        placeInput.value = placeName;
+    }
+    
+    // 모달 닫기
+    const modal = document.getElementById('kakaoPlaceSearchModal');
+    if (modal) {
+        modal.remove();
+    }
+    
+    showToast("장소가 선택되었습니다.", 'success');
 }
 
 

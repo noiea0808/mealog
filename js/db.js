@@ -1,6 +1,6 @@
 // 데이터베이스 작업
 import { db, appId } from './firebase.js';
-import { doc, setDoc, collection, addDoc, deleteDoc, onSnapshot, query, orderBy, limit, where, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, collection, addDoc, deleteDoc, onSnapshot, query, orderBy, limit, where, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { showToast } from './ui.js';
 import { DEFAULT_SUB_TAGS } from './constants.js';
 import { uploadBase64ToStorage } from './utils.js';
@@ -17,19 +17,28 @@ export const dbOps = {
             const docId = dataToSave.id;
             delete dataToSave.id;
             const coll = collection(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals');
+            console.log('식사 기록 저장 시도:', { userId: window.currentUser.uid, docId, dataToSave });
             if (docId) {
                 await setDoc(doc(coll, docId), dataToSave);
                 if (!silent) {
                     showToast("기록이 수정되었습니다.", 'success');
                 }
+                return docId; // 기존 ID 반환
             } else {
-                await addDoc(coll, dataToSave);
+                const docRef = await addDoc(coll, dataToSave);
+                console.log('식사 기록 저장 성공:', docRef.id);
                 if (!silent) {
                     showToast("식사가 기록되었습니다.", 'success');
                 }
+                return docRef.id; // 새로 생성된 ID 반환
             }
         } catch (e) {
             console.error("Save Error:", e);
+            console.error("저장 실패 상세:", { 
+                userId: window.currentUser?.uid, 
+                errorCode: e.code, 
+                errorMessage: e.message 
+            });
             // 에러 메시지 생성
             let errorMessage = "저장 실패: ";
             if (e.code === 'permission-denied') {
@@ -71,9 +80,69 @@ export const dbOps = {
             return;
         }
         try {
-            await setDoc(doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'config', 'settings'), newSettings, { merge: true });
+            // 기존 설정을 먼저 읽어서 profile 정보 보존
+            let existingSettings = {};
+            try {
+                const existingDoc = await getDoc(doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'config', 'settings'));
+                if (existingDoc.exists()) {
+                    existingSettings = existingDoc.data();
+                }
+            } catch (e) {
+                console.warn('기존 설정 읽기 실패 (무시하고 계속):', e);
+            }
+            
+            // 새 설정과 기존 설정을 병합 (profile 정보 보존)
+            const settingsToSave = { ...existingSettings, ...newSettings };
+            
+            // Phase 1-3: 프로필 보존 로직 단순화
+            // 기존 닉네임이 '게스트'가 아니면 항상 보존
+            if (existingSettings.profile?.nickname && existingSettings.profile.nickname !== '게스트') {
+                // 기존 닉네임이 있으면 보존 (새 설정의 다른 필드는 병합)
+                settingsToSave.profile = {
+                    ...existingSettings.profile,
+                    ...(newSettings.profile || {}),
+                    nickname: existingSettings.profile.nickname // 닉네임은 항상 기존 것 유지
+                };
+                console.log('✅ 기존 profile 정보 보존 (닉네임 유지):', settingsToSave.profile.nickname);
+            } else if (newSettings.profile) {
+                // 기존 프로필이 없거나 '게스트'면 새 설정 사용
+                settingsToSave.profile = { ...(existingSettings.profile || {}), ...newSettings.profile };
+            }
+            
+            // 중요: providerId와 email은 처음 로그인 시에만 설정되는 고정 항목입니다.
+            // saveSettings에서는 기존 값만 보존하고, 절대 업데이트하지 않습니다.
+            // providerId와 email은 약관 동의 또는 프로필 설정 시에만 설정됩니다.
+            
+            // 기존 설정에서 providerId와 email 보존 (새 설정에 포함되어 있지 않으면 기존 값 유지)
+            if (existingSettings.providerId && !newSettings.providerId) {
+                settingsToSave.providerId = existingSettings.providerId;
+            }
+            if (existingSettings.email && !newSettings.email) {
+                settingsToSave.email = existingSettings.email;
+            }
+            
+            const settingsPath = `artifacts/${appId}/users/${window.currentUser.uid}/config/settings`;
+            console.log('💾 설정 저장 시도:', { 
+                userId: window.currentUser.uid, 
+                path: settingsPath,
+                providerId: settingsToSave.providerId,
+                email: settingsToSave.email,
+                nickname: settingsToSave.profile?.nickname,
+                hasProfile: !!settingsToSave.profile
+            });
+            await setDoc(doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'config', 'settings'), settingsToSave, { merge: true });
+            console.log('✅ 설정 저장 성공:', {
+                providerId: settingsToSave.providerId,
+                email: settingsToSave.email,
+                nickname: settingsToSave.profile?.nickname
+            });
         } catch (e) {
             console.error("Settings Save Error:", e);
+            console.error("설정 저장 실패 상세:", { 
+                userId: window.currentUser?.uid, 
+                errorCode: e.code, 
+                errorMessage: e.message 
+            });
             let errorMessage = "설정 저장 실패: ";
             if (e.code === 'permission-denied') {
                 errorMessage += "권한이 없습니다.";
@@ -124,89 +193,101 @@ export const dbOps = {
         return window.userSettings.dailyComments[date] || '';
     },
     
-    async sharePhotos(photos, mealData) {
-        if (!window.currentUser || !photos || photos.length === 0) return;
+    async sharePhotos(photosToShare, mealData) {
+        if (!window.currentUser) return;
+        
+        // 공유 금지 체크
+        if (mealData && mealData.shareBanned === true) {
+            showToast("이 게시물은 공유가 금지되어 있습니다.", 'error');
+            throw new Error("공유 금지된 게시물입니다.");
+        }
+        
+        // photosToShare가 빈 배열이면 공유 해제 (기존 문서만 삭제)
+        // photosToShare가 있으면 공유 설정 (기존 문서 삭제 + 새 문서 추가)
+        
         try {
             const userProfile = window.userSettings.profile || {};
-            
-            // 중복 체크: 같은 entryId와 photoUrl 조합이 이미 있는지 확인
             const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+            const batch = writeBatch(db);
             
-            // entryId가 null인 경우 쿼리 방식 변경 (Firestore에서 null 비교는 인덱스 필요)
-            let allExistingDocs = [];
+            // entryId가 있는 경우: 같은 entryId의 기존 문서를 모두 삭제
             if (mealData.id) {
-                // entryId가 있는 경우: entryId로 필터링
-                const existingQuery = query(
-                    sharedColl,
-                    where('userId', '==', window.currentUser.uid),
-                    where('entryId', '==', mealData.id)
-                );
-                const existingSnapshot = await getDocs(existingQuery);
-                allExistingDocs = existingSnapshot.docs;
+                try {
+                    const existingQuery = query(
+                        sharedColl,
+                        where('userId', '==', window.currentUser.uid),
+                        where('entryId', '==', mealData.id)
+                    );
+                    const existingSnapshot = await getDocs(existingQuery);
+                    existingSnapshot.docs.forEach(docSnap => {
+                        batch.delete(docSnap.ref);
+                    });
+                    if (existingSnapshot.docs.length > 0) {
+                        console.log(`기존 ${existingSnapshot.docs.length}개 문서 삭제 (entryId: ${mealData.id})`);
+                    }
+                } catch (e) {
+                    console.warn('기존 문서 삭제 중 오류 (무시하고 계속 진행):', e);
+                }
             } else {
-                // entryId가 null인 경우: userId로만 필터링 후 메모리에서 entryId null인 것만 필터링
+                // entryId가 null인 경우: userId로만 필터링 후 메모리에서 entryId null인 것만 삭제
                 try {
                     const existingQuery = query(
                         sharedColl,
                         where('userId', '==', window.currentUser.uid)
                     );
                     const allUserPhotos = await getDocs(existingQuery);
-                    // entryId가 null이거나 없는 항목만 필터링
-                    allExistingDocs = allUserPhotos.docs.filter(doc => {
-                        const data = doc.data();
+                    const docsToDelete = allUserPhotos.docs.filter(docSnap => {
+                        const data = docSnap.data();
                         return !data.entryId || data.entryId === null;
                     });
+                    docsToDelete.forEach(docSnap => {
+                        batch.delete(docSnap.ref);
+                    });
+                    if (docsToDelete.length > 0) {
+                        console.log(`기존 ${docsToDelete.length}개 문서 삭제 (entryId: null)`);
+                    }
                 } catch (e) {
-                    console.warn('entryId null인 사진 중복 체크 중 오류 (무시하고 계속 진행):', e);
-                    allExistingDocs = [];
+                    console.warn('entryId null인 기존 문서 삭제 중 오류 (무시하고 계속 진행):', e);
                 }
             }
             
-            const existingPhotoUrls = new Set();
-            allExistingDocs.forEach((docSnap) => {
-                const data = docSnap.data();
-                // URL에서 쿼리 파라미터 제거하여 비교
-                const urlBase = (data.photoUrl || '').split('?')[0];
-                existingPhotoUrls.add(urlBase);
-            });
-            
-            // 중복이 아닌 사진만 필터링
-            const newPhotos = photos.filter(photoUrl => {
-                const urlBase = (photoUrl || '').split('?')[0];
-                return !existingPhotoUrls.has(urlBase);
-            });
-            
-            if (newPhotos.length === 0) {
-                console.log('중복 체크: 모든 사진이 이미 공유되어 있습니다.');
-                return;
+            // 새로운 사진들을 추가 (photosToShare가 빈 배열이면 추가 안 함 = 공유 해제)
+            if (photosToShare && photosToShare.length > 0) {
+                photosToShare.forEach(photoUrl => {
+                    const docRef = doc(sharedColl);
+                    batch.set(docRef, {
+                        photoUrl,
+                        userId: window.currentUser.uid,
+                        userNickname: userProfile.nickname || '익명',
+                        userIcon: userProfile.icon || '🐻',
+                        userPhotoUrl: userProfile.photoUrl || null,
+                        mealType: mealData.mealType || '',
+                        place: mealData.place || '',
+                        menuDetail: mealData.menuDetail || '',
+                        snackType: mealData.snackType || '',
+                        date: mealData.date || '',
+                        slotId: mealData.slotId || '',
+                        time: mealData.time || new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+                        timestamp: new Date().toISOString(),
+                        entryId: mealData.id || null
+                    });
+                });
             }
             
-            const sharedPhotos = newPhotos.map((photoUrl, idx) => ({
-                photoUrl,
-                userId: window.currentUser.uid,
-                userNickname: userProfile.nickname || '익명',
-                userIcon: userProfile.icon || '🐻',
-                mealType: mealData.mealType || '',
-                place: mealData.place || '',
-                menuDetail: mealData.menuDetail || '',
-                snackType: mealData.snackType || '',
-                date: mealData.date || '',
-                slotId: mealData.slotId || '',
-                time: mealData.time || new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }),
-                timestamp: new Date().toISOString(),
-                entryId: mealData.id || null
-            }));
-            
-            // 배치 쓰기 사용: 여러 사진을 한 번에 쓰기 (1번으로 카운트)
-            // Firestore 배치는 최대 500개 작업을 한 번에 처리 가능
-            const batch = writeBatch(db);
-            sharedPhotos.forEach(sharedPhoto => {
-                const docRef = doc(sharedColl);
-                batch.set(docRef, sharedPhoto);
-            });
             await batch.commit();
             
-            console.log(`배치 쓰기로 ${sharedPhotos.length}개 사진 공유 완료 (중복 ${photos.length - newPhotos.length}개 제외)`);
+            // record.sharedPhotos 필드 업데이트 (mealData.id가 있는 경우에만)
+            if (mealData.id) {
+                try {
+                    const mealDoc = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals', mealData.id);
+                    await setDoc(mealDoc, { sharedPhotos: photosToShare || [] }, { merge: true });
+                } catch (e) {
+                    console.warn('record.sharedPhotos 필드 업데이트 실패 (무시하고 계속 진행):', e);
+                }
+            }
+            
+            const action = photosToShare && photosToShare.length > 0 ? '공유' : '공유 해제';
+            console.log(`${action} 완료 (entryId: ${mealData.id || 'null'}, 사진 수: ${photosToShare?.length || 0})`);
         } catch (e) {
             console.error("Share Photos Error:", e);
             // 에러 토스트는 호출자에서 표시하도록 하고, 여기서는 throw만 함
@@ -214,7 +295,7 @@ export const dbOps = {
             throw e;
         }
     },
-    async unsharePhotos(photos, entryId, isBestShare = false) {
+    async unsharePhotos(photos, entryId, isBestShare = false, isDailyShare = false) {
         if (!window.currentUser || !photos || photos.length === 0) return;
         try {
             const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
@@ -227,22 +308,6 @@ export const dbOps = {
             
             const snapshot = await getDocs(q);
             const photosToDelete = [];
-            
-            console.log('unsharePhotos 호출:', { photos, entryId, isBestShare, snapshotSize: snapshot.size });
-            
-            // 디버깅: 모든 사진 URL과 entryId 확인
-            const allPhotoUrls = [];
-            snapshot.forEach((docSnap) => {
-                const data = docSnap.data();
-                allPhotoUrls.push({
-                    photoUrl: data.photoUrl,
-                    entryId: data.entryId,
-                    type: data.type,
-                    docId: docSnap.id
-                });
-            });
-            console.log('현재 공유된 모든 사진:', allPhotoUrls);
-            console.log('삭제하려는 사진 URL:', photos);
             
             snapshot.forEach((docSnap) => {
                 const data = docSnap.data();
@@ -261,24 +326,16 @@ export const dbOps = {
                     return photoFileName === dataFileName && photoFileName !== '';
                 });
                 
-                console.log('사진 URL 매칭 확인:', {
-                    찾는URL: photos,
-                    현재URL: data.photoUrl,
-                    매칭: photoUrlMatch,
-                    entryId: data.entryId,
-                    찾는entryId: entryId,
-                    type: data.type,
-                    isBestShare: isBestShare
-                });
-                
                 if (photoUrlMatch) {
                     // 베스트 공유인 경우 type='best'인 항목만 삭제
                     if (isBestShare) {
                         if (data.type === 'best') {
                             photosToDelete.push(docSnap.id);
-                            console.log('삭제할 베스트 공유 사진 발견:', data.photoUrl, 'docId:', docSnap.id);
-                        } else {
-                            console.log('베스트 공유가 아님, 건너뜀:', data.type);
+                        }
+                    } else if (isDailyShare) {
+                        // 일간보기 공유인 경우: type='daily'이고 photoUrl이 일치하면 삭제
+                        if (data.type === 'daily') {
+                            photosToDelete.push(docSnap.id);
                         }
                     } else {
                         // 일반 공유인 경우: photoUrl이 일치하면 삭제
@@ -298,23 +355,10 @@ export const dbOps = {
                         
                         if (shouldDelete) {
                             photosToDelete.push(docSnap.id);
-                            console.log('삭제할 사진 발견:', {
-                                photoUrl: data.photoUrl,
-                                docId: docSnap.id,
-                                entryId: data.entryId,
-                                찾는entryId: entryId
-                            });
-                        } else {
-                            console.log('삭제 조건 불일치:', { 
-                                찾는entryId: entryId, 
-                                현재entryId: data.entryId 
-                            });
                         }
                     }
                 }
             });
-            
-            console.log('삭제할 사진 개수:', photosToDelete.length);
             
             // 배치 삭제 사용: 여러 사진을 한 번에 삭제 (1번으로 카운트)
             if (photosToDelete.length > 0) {
@@ -324,7 +368,6 @@ export const dbOps = {
                     batch.delete(docRef);
                 });
                 await batch.commit();
-                console.log(`배치 삭제로 ${photosToDelete.length}개 사진 공유 해제 완료`);
             }
         } catch (e) {
             console.error("Unshare Photos Error:", e);
@@ -343,6 +386,64 @@ export const dbOps = {
             showToast(errorMessage, 'error');
             throw e;
         }
+    },
+    
+    // 사용자 데이터 삭제 (탈퇴용)
+    async deleteAllUserData() {
+        if (!window.currentUser || window.currentUser.isAnonymous) {
+            throw new Error("로그인이 필요합니다.");
+        }
+        
+        const userId = window.currentUser.uid;
+        try {
+            // 1. 모든 meals 삭제
+            const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
+            const mealsSnapshot = await getDocs(mealsColl);
+            const mealsBatch = writeBatch(db);
+            mealsSnapshot.docs.forEach(docSnap => {
+                mealsBatch.delete(docSnap.ref);
+            });
+            if (mealsSnapshot.docs.length > 0) {
+                await mealsBatch.commit();
+            }
+            
+            // 2. settings 삭제
+            const settingsRef = doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings');
+            await deleteDoc(settingsRef);
+            
+            // 3. 공유된 사진 삭제
+            const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+            const sharedQuery = query(sharedColl, where('userId', '==', userId));
+            const sharedSnapshot = await getDocs(sharedQuery);
+            const sharedBatch = writeBatch(db);
+            sharedSnapshot.docs.forEach(docSnap => {
+                sharedBatch.delete(docSnap.ref);
+            });
+            if (sharedSnapshot.docs.length > 0) {
+                await sharedBatch.commit();
+            }
+            
+            // 4. 프로필 사진 삭제 (Storage)
+            if (window.userSettings?.profile?.photoUrl) {
+                try {
+                    const { storage } = await import('./firebase.js');
+                    const { ref, deleteObject } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js");
+                    // photoUrl에서 경로 추출
+                    const photoUrl = window.userSettings.profile.photoUrl;
+                    const urlMatch = photoUrl.match(/users%2F([^%]+)%2Fprofile%2F(.+)/);
+                    if (urlMatch) {
+                        const photoPath = `users/${userId}/profile/${urlMatch[2]}`;
+                        const photoRef = ref(storage, photoPath);
+                        await deleteObject(photoRef);
+                    }
+                } catch (storageError) {
+                    console.warn('프로필 사진 삭제 중 오류 (무시하고 계속 진행):', storageError);
+                }
+            }
+        } catch (e) {
+            console.error("Delete All User Data Error:", e);
+            throw e;
+        }
     }
 };
 
@@ -351,9 +452,32 @@ export function setupListeners(userId, callbacks) {
     
     // Settings 리스너
     if (oldSettingsUnsubscribe) oldSettingsUnsubscribe();
-    const settingsUnsubscribe = onSnapshot(doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings'), (snap) => {
+    let migrationInProgress = false; // 마이그레이션 중복 실행 방지
+    
+    const settingsUnsubscribe = onSnapshot(doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings'), async (snap) => {
+        // users/{userId} 문서가 없으면 생성 (관리자 페이지에서 사용자 목록을 보기 위해)
+        try {
+            const userDocRef = doc(db, 'artifacts', appId, 'users', userId);
+            const userDocSnap = await getDoc(userDocRef);
+            if (!userDocSnap.exists()) {
+                // 최소한의 사용자 문서 생성 (타임스탬프만)
+                await setDoc(userDocRef, {
+                    createdAt: new Date().toISOString(),
+                    lastLoginAt: new Date().toISOString()
+                }, { merge: true });
+                console.log('✅ users/{userId} 문서 생성 완료:', userId);
+            }
+        } catch (e) {
+            console.warn('users/{userId} 문서 생성 실패:', e);
+        }
+        
         if (snap.exists()) {
             window.userSettings = snap.data();
+            console.log('📥 설정 로드 완료:', {
+                hasProfile: !!(window.userSettings.profile && window.userSettings.profile.nickname),
+                nickname: window.userSettings.profile?.nickname,
+                termsAgreed: window.userSettings.termsAgreed
+            });
             if (!window.userSettings.subTags) {
                 window.userSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
             }
@@ -365,106 +489,293 @@ export function setupListeners(userId, callbacks) {
                     snackType: {}
                 };
             }
-            // "???" 항목 제거 (기존 사용자 설정 정리)
-            if (window.userSettings.tags && window.userSettings.tags.mealType) {
-                const index = window.userSettings.tags.mealType.indexOf('???');
-                if (index > -1) {
-                    window.userSettings.tags.mealType.splice(index, 1);
-                    // 변경사항 저장
-                    dbOps.saveSettings(window.userSettings).catch(e => {
-                        console.error('설정 정리 저장 실패:', e);
-                    });
-                }
-            }
-            // 간식 항목 마이그레이션: 새로운 항목으로 업데이트
-            const newSnackTypes = ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타'];
-            const oldSnackTypes = ['커피', '음료', '과일', '빵/과자'];
             
-            // tags가 없으면 생성
-            if (!window.userSettings.tags) {
-                window.userSettings.tags = {};
-            }
-            
-            const currentSnackTypes = window.userSettings.tags.snackType || [];
-            
-            // 새로운 항목과 정확히 일치하는지 확인
-            const isExactMatch = currentSnackTypes.length === newSnackTypes.length &&
-                currentSnackTypes.every((tag, idx) => tag === newSnackTypes[idx]);
-            
-            if (!isExactMatch) {
-                // 정확히 일치하지 않으면 무조건 업데이트
-                console.log('간식 항목 마이그레이션: 새로운 항목으로 업데이트', {
-                    before: currentSnackTypes,
-                    after: newSnackTypes
-                });
-                window.userSettings.tags.snackType = [...newSnackTypes];
-                // 변경사항 저장
-                dbOps.saveSettings(window.userSettings).then(() => {
-                    console.log('간식 항목 마이그레이션 저장 완료');
-                }).catch(e => {
-                    console.error('간식 항목 마이그레이션 저장 실패:', e);
-                });
-            }
-            
-            // 함께한 사람 태그 마이그레이션: 새로운 항목으로 업데이트
-            const newWithWhomTags = ['혼자', '가족', '연인', '친구', '직장동료', '학교친구', '모임', '기타'];
-            const currentWithWhomTags = window.userSettings.tags.withWhom || [];
-            
-            // 새로운 항목과 정확히 일치하는지 확인
-            const isWithWhomExactMatch = currentWithWhomTags.length === newWithWhomTags.length &&
-                currentWithWhomTags.every((tag, idx) => tag === newWithWhomTags[idx]);
-            
-            if (!isWithWhomExactMatch) {
-                // 기존 '회사사람'을 '직장동료'로 변환
-                let updatedTags = [...currentWithWhomTags];
-                const hasOldTag = updatedTags.includes('회사사람');
+            // 마이그레이션 로직을 비동기로 처리하여 초기 로딩 지연 최소화
+            if (!migrationInProgress) {
+                migrationInProgress = true;
+                // 즉시 콜백 호출하여 UI 업데이트 지연 방지
+                console.log('📞 onSettingsUpdate 콜백 호출');
+                if (onSettingsUpdate) onSettingsUpdate();
                 
-                if (hasOldTag) {
-                    const oldIndex = updatedTags.indexOf('회사사람');
-                    updatedTags[oldIndex] = '직장동료';
-                }
-                
-                // 새로운 태그가 없으면 추가
-                newWithWhomTags.forEach(newTag => {
-                    if (!updatedTags.includes(newTag)) {
-                        updatedTags.push(newTag);
-                    }
-                });
-                
-                // 순서 정렬 (newWithWhomTags 순서대로)
-                updatedTags = newWithWhomTags.filter(tag => updatedTags.includes(tag));
-                
-                console.log('함께한 사람 태그 마이그레이션: 새로운 항목으로 업데이트', {
-                    before: currentWithWhomTags,
-                    after: updatedTags
-                });
-                window.userSettings.tags.withWhom = updatedTags;
-                
-                // 서브 태그도 업데이트: '회사사람' parent를 '직장동료'로 변경
-                if (window.userSettings.subTags && window.userSettings.subTags.people) {
-                    let hasSubTagUpdate = false;
-                    window.userSettings.subTags.people = window.userSettings.subTags.people.map(subTag => {
-                        if (subTag.parent === '회사사람') {
-                            hasSubTagUpdate = true;
-                            return { ...subTag, parent: '직장동료' };
+                // 마이그레이션은 백그라운드에서 처리
+                Promise.resolve().then(async () => {
+                    let needsSave = false;
+                    // 깊은 복사로 기존 설정 보존
+                    const settingsToSave = JSON.parse(JSON.stringify(window.userSettings));
+                    
+                    // profile 정보 보존 확인 (닉네임이 없거나 '게스트'인 경우 기존 설정 확인)
+                    if (!settingsToSave.profile || !settingsToSave.profile.nickname || settingsToSave.profile.nickname === '게스트') {
+                        // 현재 로드된 설정이 이미 Firestore에서 가져온 것이므로, 추가 확인 불필요
+                        // 단, profile이 완전히 없으면 기본값 설정
+                        if (!settingsToSave.profile) {
+                            settingsToSave.profile = { icon: '🐻', nickname: '게스트' };
                         }
-                        return subTag;
+                    }
+                    
+                    // providerId와 email 업데이트 (없을 때만 추가, 이미 있으면 유지)
+                    // 주의: providerId는 로그인 방법이므로 변경되면 안 됨 (덮어쓰지 않음)
+                    try {
+                        const { auth } = await import('./firebase.js');
+                        const currentUser = auth.currentUser;
+                        if (currentUser && !currentUser.isAnonymous) {
+                            // providerId 업데이트 (없을 때만 추가, 기존 값은 보존)
+                            if (currentUser.providerData && currentUser.providerData.length > 0) {
+                                const currentProviderId = currentUser.providerData[0].providerId;
+                                if (!settingsToSave.providerId) {
+                                    // providerId가 없을 때만 설정
+                                    settingsToSave.providerId = currentProviderId;
+                                    needsSave = true;
+                                    console.log('✅ 마이그레이션: providerId 초기 설정:', currentProviderId);
+                                } else if (settingsToSave.providerId !== currentProviderId) {
+                                    // providerId가 다르면 경고만 (덮어쓰지 않음)
+                                    console.warn(`⚠️ providerId 불일치 감지: 저장된 값(${settingsToSave.providerId}) vs 현재(${currentProviderId}). 기존 값 유지합니다.`);
+                                }
+                            }
+                            // email 업데이트 (없을 때만 추가, 또는 같은 providerId일 때만 업데이트)
+                            if (currentUser.email) {
+                                const currentProviderId = currentUser.providerData?.[0]?.providerId;
+                                if (!settingsToSave.email) {
+                                    // 기존 이메일이 없으면 설정
+                                    settingsToSave.email = currentUser.email;
+                                    needsSave = true;
+                                    console.log('✅ 마이그레이션: email 초기 설정:', currentUser.email);
+                                } else if (settingsToSave.providerId === currentProviderId && settingsToSave.email !== currentUser.email) {
+                                    // 같은 providerId인데 이메일이 다르면 업데이트
+                                    settingsToSave.email = currentUser.email;
+                                    needsSave = true;
+                                    console.log('✅ 마이그레이션: email 업데이트:', currentUser.email);
+                                } else if (settingsToSave.providerId !== currentProviderId) {
+                                    // providerId가 다르면 경고만
+                                    console.warn(`⚠️ providerId 불일치로 인한 email 불일치: 저장된(${settingsToSave.email}) vs 현재(${currentUser.email}). 기존 값 유지합니다.`);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('사용자 정보 가져오기 실패:', e);
+                    }
+                    
+                    // "???" 항목 제거 (기존 사용자 설정 정리)
+                    if (settingsToSave.tags && settingsToSave.tags.mealType) {
+                        const index = settingsToSave.tags.mealType.indexOf('???');
+                        if (index > -1) {
+                            settingsToSave.tags.mealType.splice(index, 1);
+                            needsSave = true;
+                        }
+                    }
+                    
+                    // 식사 방식 태그 마이그레이션: 새로운 순서로 정리
+                    const newMealTypes = ['집밥', '외식', '회식/술자리', '배달/포장', '구내식당', '기타', '건너뜀'];
+                    const currentMealTypes = settingsToSave.tags?.mealType || [];
+                    
+                    let updatedMealTypes = [...currentMealTypes];
+                    
+                    // 기존 태그를 새로운 태그로 매핑
+                    const tagMapping = {
+                        'Skip': '건너뜀',
+                        '건너뜀': '건너뜀',
+                        '배달': '배달/포장',
+                        '회사밥': '구내식당',
+                        '술자리': '회식/술자리'
+                    };
+                    
+                    // 기존 태그를 새로운 태그로 변환
+                    updatedMealTypes = updatedMealTypes.map(tag => tagMapping[tag] || tag);
+                    
+                    // '배달'이 있으면 '배달/포장'으로 변경
+                    const hasOldDelivery = updatedMealTypes.includes('배달');
+                    if (hasOldDelivery) {
+                        const oldIndex = updatedMealTypes.indexOf('배달');
+                        updatedMealTypes[oldIndex] = '배달/포장';
+                        needsSave = true;
+                    }
+                    
+                    // 새로운 태그가 없으면 추가
+                    newMealTypes.forEach(newTag => {
+                        if (!updatedMealTypes.includes(newTag)) {
+                            updatedMealTypes.push(newTag);
+                            needsSave = true;
+                        }
                     });
                     
-                    if (hasSubTagUpdate) {
-                        console.log('함께한 사람 서브 태그 마이그레이션: 회사사람 -> 직장동료');
+                    // 순서 정렬 (newMealTypes 순서대로)
+                    updatedMealTypes = newMealTypes.filter(tag => updatedMealTypes.includes(tag));
+                    if (updatedMealTypes.length > 0) {
+                        if (!settingsToSave.tags) settingsToSave.tags = {};
+                        settingsToSave.tags.mealType = updatedMealTypes;
                     }
+                    
+                    // subTags의 place에서도 parent 변경
+                    if (settingsToSave.subTags && settingsToSave.subTags.place) {
+                        settingsToSave.subTags.place.forEach(item => {
+                            if (item.parent === '배달') {
+                                item.parent = '배달/포장';
+                                needsSave = true;
+                            } else if (item.parent === '회사밥') {
+                                item.parent = '구내식당';
+                                needsSave = true;
+                            }
+                        });
+                    }
+                    
+                    // 간식 항목 마이그레이션: 새로운 항목으로 업데이트
+                    const newSnackTypes = ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타'];
+                    
+                    // tags가 없으면 생성
+                    if (!settingsToSave.tags) {
+                        settingsToSave.tags = {};
+                    }
+                    
+                    const currentSnackTypes = settingsToSave.tags.snackType || [];
+                    
+                    // 새로운 항목과 정확히 일치하는지 확인
+                    const isExactMatch = currentSnackTypes.length === newSnackTypes.length &&
+                        currentSnackTypes.every((tag, idx) => tag === newSnackTypes[idx]);
+                    
+                    if (!isExactMatch) {
+                        // 정확히 일치하지 않으면 무조건 업데이트
+                        settingsToSave.tags.snackType = [...newSnackTypes];
+                        needsSave = true;
+                    }
+                    
+                    // 함께한 사람 태그 마이그레이션: 새로운 항목으로 업데이트
+                    const newWithWhomTags = ['혼자', '가족', '연인', '친구', '직장동료', '학교친구', '모임', '기타'];
+                    const currentWithWhomTags = settingsToSave.tags.withWhom || [];
+                    
+                    // 새로운 항목과 정확히 일치하는지 확인
+                    const isWithWhomExactMatch = currentWithWhomTags.length === newWithWhomTags.length &&
+                        currentWithWhomTags.every((tag, idx) => tag === newWithWhomTags[idx]);
+                    
+                    if (!isWithWhomExactMatch) {
+                        // 기존 '회사사람'을 '직장동료'로 변환
+                        let updatedTags = [...currentWithWhomTags];
+                        const hasOldTag = updatedTags.includes('회사사람');
+                        
+                        if (hasOldTag) {
+                            const oldIndex = updatedTags.indexOf('회사사람');
+                            updatedTags[oldIndex] = '직장동료';
+                        }
+                        
+                        // 새로운 태그가 없으면 추가
+                        newWithWhomTags.forEach(newTag => {
+                            if (!updatedTags.includes(newTag)) {
+                                updatedTags.push(newTag);
+                            }
+                        });
+                        
+                        // 순서 정렬 (newWithWhomTags 순서대로)
+                        updatedTags = newWithWhomTags.filter(tag => updatedTags.includes(tag));
+                        
+                        settingsToSave.tags.withWhom = updatedTags;
+                        
+                        // 서브 태그도 업데이트: '회사사람' parent를 '직장동료'로 변경
+                        if (settingsToSave.subTags && settingsToSave.subTags.people) {
+                            settingsToSave.subTags.people = settingsToSave.subTags.people.map(subTag => {
+                                if (subTag.parent === '회사사람') {
+                                    return { ...subTag, parent: '직장동료' };
+                                }
+                                return subTag;
+                            });
+                        }
+                        
+                        needsSave = true;
+                    }
+                    
+                    // 변경사항이 있으면 저장 (비동기, 에러는 무시)
+                    if (needsSave) {
+                        window.userSettings = settingsToSave;
+                        dbOps.saveSettings(settingsToSave).catch(e => {
+                            console.error('설정 마이그레이션 저장 실패:', e);
+                        });
+                    }
+                    
+                    migrationInProgress = false;
+                }).catch(e => {
+                    console.error('마이그레이션 처리 중 오류:', e);
+                    migrationInProgress = false;
+                });
+            } else {
+                // 마이그레이션 진행 중이면 콜백만 호출
+                if (onSettingsUpdate) onSettingsUpdate();
+            }
+        } else {
+            // 설정이 없으면 기본값 사용 (providerId와 email 포함)
+            console.log('📥 설정이 없음. 기본값 로드 시작...');
+            import('./constants.js').then(async ({ DEFAULT_USER_SETTINGS }) => {
+                window.userSettings = JSON.parse(JSON.stringify(DEFAULT_USER_SETTINGS));
+                
+                // 기존 사용자인지 확인 (meals 데이터가 있으면 기존 사용자)
+                let isExistingUser = false;
+                try {
+                    const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
+                    const mealsSnapshot = await getDocs(query(mealsColl, limit(1)));
+                    isExistingUser = !mealsSnapshot.empty;
+                    console.log('기존 사용자 여부 확인:', { userId, isExistingUser, hasMeals: !mealsSnapshot.empty });
+                } catch (e) {
+                    console.warn('기존 사용자 확인 실패:', e);
                 }
                 
-                // 변경사항 저장
-                dbOps.saveSettings(window.userSettings).then(() => {
-                    console.log('함께한 사람 태그 마이그레이션 저장 완료');
-                }).catch(e => {
-                    console.error('함께한 사람 태그 마이그레이션 저장 실패:', e);
-                });
+                // 기존 사용자라면 약관 동의를 true로 설정
+                if (isExistingUser) {
+                    window.userSettings.termsAgreed = true;
+                    window.userSettings.termsAgreedAt = new Date().toISOString();
+                    console.log('✅ 기존 사용자로 확인되어 약관 동의 자동 설정');
+                }
+                
+                // 중요: providerId와 email은 약관 동의나 프로필 설정 시에만 설정됩니다.
+                // 설정 로드 시에는 설정하지 않습니다. (고정 항목이므로)
+                
+                console.log('✅ 기본 설정 로드 완료. onSettingsUpdate 호출');
+                if (onSettingsUpdate) onSettingsUpdate();
+            }).catch(e => {
+                console.error('기본 설정 로드 실패:', e);
+                // 에러 발생 시에도 콜백 호출 (빈 설정으로라도)
+                if (onSettingsUpdate) onSettingsUpdate();
+            });
+        }
+    }, async (error) => {
+        console.error("Settings Listener Error:", error);
+        console.error("에러 상세:", {
+            code: error.code,
+            message: error.message,
+            userId: userId
+        });
+        
+        // 권한 오류인 경우 기존 사용자인지 확인하여 약관 동의 자동 설정
+        if (error.code === 'permission-denied') {
+            console.warn('⚠️ 설정 읽기 권한 오류. 기존 사용자인지 확인합니다...');
+            try {
+                const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
+                const mealsSnapshot = await getDocs(query(mealsColl, limit(1)));
+                const isExistingUser = !mealsSnapshot.empty;
+                
+                if (isExistingUser) {
+                    console.log('✅ 기존 사용자로 확인. 약관 동의 자동 설정 시도...');
+                    // 기본값에 약관 동의 설정
+                    import('./constants.js').then(async ({ DEFAULT_USER_SETTINGS }) => {
+                        window.userSettings = JSON.parse(JSON.stringify(DEFAULT_USER_SETTINGS));
+                        window.userSettings.termsAgreed = true;
+                        window.userSettings.termsAgreedAt = new Date().toISOString();
+                        
+                        // 중요: providerId와 email은 약관 동의나 프로필 설정 시에만 설정됩니다.
+                        // 권한 오류 시 자동 설정에서는 설정하지 않습니다.
+                        
+                        if (onSettingsUpdate) onSettingsUpdate();
+                    });
+                    return;
+                }
+            } catch (e) {
+                console.warn('기존 사용자 확인 실패:', e);
             }
         }
-        if (onSettingsUpdate) onSettingsUpdate();
+        
+        // 에러 발생 시 기본값 사용
+        import('./constants.js').then(({ DEFAULT_USER_SETTINGS }) => {
+            window.userSettings = JSON.parse(JSON.stringify(DEFAULT_USER_SETTINGS));
+            if (onSettingsUpdate) onSettingsUpdate();
+        }).catch(e => {
+            console.error('기본 설정 로드 실패:', e);
+            if (onSettingsUpdate) onSettingsUpdate();
+        });
     });
     
     // Meals 리스너 - 최근 1개월만 초기 로드
@@ -491,7 +802,6 @@ export function setupListeners(userId, callbacks) {
                 .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
             window.loadedMealsDateRange = { start: cutoffDateStr, end: todayStr };
             isInitialLoad = false;
-            console.log(`초기 로드: 최근 1개월 데이터 ${snap.docs.length}개 로드 완료`);
         } else {
             // 이후 변경사항: 변경된 문서만 처리
             const changes = snap.docChanges();
@@ -516,7 +826,6 @@ export function setupListeners(userId, callbacks) {
             
             if (hasChanges) {
                 window.mealHistory.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-                console.log(`변경사항 반영: ${changes.length}개 문서 업데이트`);
             }
         }
         
@@ -550,6 +859,221 @@ export function setupSharedPhotosListener(callback) {
     return unsubscribe;
 }
 
+// 좋아요, 댓글, 북마크 관련 함수들
+export const postInteractions = {
+    // 좋아요 추가/제거
+    async toggleLike(postId, userId) {
+        if (!window.currentUser || window.currentUser.isAnonymous || !postId) {
+            throw new Error("로그인이 필요합니다.");
+        }
+        try {
+            const likesColl = collection(db, 'artifacts', appId, 'postLikes');
+            const q = query(
+                likesColl,
+                where('postId', '==', postId),
+                where('userId', '==', userId)
+            );
+            const snapshot = await getDocs(q);
+            
+            if (snapshot.empty) {
+                // 좋아요 추가
+                await addDoc(likesColl, {
+                    postId,
+                    userId,
+                    timestamp: new Date().toISOString()
+                });
+                return { liked: true };
+            } else {
+                // 좋아요 제거
+                const docId = snapshot.docs[0].id;
+                await deleteDoc(doc(db, 'artifacts', appId, 'postLikes', docId));
+                return { liked: false };
+            }
+        } catch (e) {
+            console.error("Toggle Like Error:", e);
+            throw e;
+        }
+    },
+    
+    // 좋아요 목록 가져오기 (특정 포스트)
+    async getLikes(postId) {
+        if (!postId) return [];
+        try {
+            const likesColl = collection(db, 'artifacts', appId, 'postLikes');
+            // orderBy 없이 먼저 시도 (인덱스 불필요)
+            const q = query(
+                likesColl,
+                where('postId', '==', postId)
+            );
+            const snapshot = await getDocs(q);
+            const likes = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            // 클라이언트 측에서 정렬 (최신순)
+            likes.sort((a, b) => {
+                const timeA = new Date(a.timestamp || 0).getTime();
+                const timeB = new Date(b.timestamp || 0).getTime();
+                return timeB - timeA;
+            });
+            return likes;
+        } catch (e) {
+            console.error("Get Likes Error:", e);
+            // 에러 발생 시 빈 배열 반환
+            return [];
+        }
+    },
+    
+    // 사용자가 좋아요 했는지 확인
+    async isLiked(postId, userId) {
+        if (!postId || !userId) return false;
+        try {
+            const likesColl = collection(db, 'artifacts', appId, 'postLikes');
+            const q = query(
+                likesColl,
+                where('postId', '==', postId),
+                where('userId', '==', userId)
+            );
+            const snapshot = await getDocs(q);
+            return !snapshot.empty;
+        } catch (e) {
+            console.error("Is Liked Error:", e);
+            return false;
+        }
+    },
+    
+    // 북마크 추가/제거
+    async toggleBookmark(postId, userId) {
+        if (!window.currentUser || window.currentUser.isAnonymous || !postId) {
+            throw new Error("로그인이 필요합니다.");
+        }
+        try {
+            const bookmarksColl = collection(db, 'artifacts', appId, 'postBookmarks');
+            const q = query(
+                bookmarksColl,
+                where('postId', '==', postId),
+                where('userId', '==', userId)
+            );
+            const snapshot = await getDocs(q);
+            
+            if (snapshot.empty) {
+                // 북마크 추가
+                await addDoc(bookmarksColl, {
+                    postId,
+                    userId,
+                    timestamp: new Date().toISOString()
+                });
+                return { bookmarked: true };
+            } else {
+                // 북마크 제거
+                const docId = snapshot.docs[0].id;
+                await deleteDoc(doc(db, 'artifacts', appId, 'postBookmarks', docId));
+                return { bookmarked: false };
+            }
+        } catch (e) {
+            console.error("Toggle Bookmark Error:", e);
+            throw e;
+        }
+    },
+    
+    // 사용자가 북마크 했는지 확인
+    async isBookmarked(postId, userId) {
+        if (!postId || !userId) return false;
+        try {
+            const bookmarksColl = collection(db, 'artifacts', appId, 'postBookmarks');
+            const q = query(
+                bookmarksColl,
+                where('postId', '==', postId),
+                where('userId', '==', userId)
+            );
+            const snapshot = await getDocs(q);
+            return !snapshot.empty;
+        } catch (e) {
+            console.error("Is Bookmarked Error:", e);
+            return false;
+        }
+    },
+    
+    // 댓글 추가
+    async addComment(postId, userId, commentText, userProfile) {
+        if (!window.currentUser || window.currentUser.isAnonymous || !postId || !commentText?.trim()) {
+            throw new Error("로그인이 필요합니다.");
+        }
+        try {
+            const commentsColl = collection(db, 'artifacts', appId, 'postComments');
+            const commentData = {
+                postId,
+                userId,
+                userNickname: userProfile?.nickname || '익명',
+                userIcon: userProfile?.icon || '🐻',
+                comment: commentText.trim(),
+                timestamp: new Date().toISOString()
+            };
+            const docRef = await addDoc(commentsColl, commentData);
+            return { id: docRef.id, ...commentData };
+        } catch (e) {
+            console.error("Add Comment Error:", e);
+            throw e;
+        }
+    },
+    
+    // 댓글 목록 가져오기
+    async getComments(postId) {
+        if (!postId) return [];
+        try {
+            const commentsColl = collection(db, 'artifacts', appId, 'postComments');
+            // orderBy 없이 먼저 시도 (인덱스 불필요)
+            const q = query(
+                commentsColl,
+                where('postId', '==', postId)
+            );
+            const snapshot = await getDocs(q);
+            const comments = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            // 클라이언트 측에서 정렬 (오래된순)
+            comments.sort((a, b) => {
+                const timeA = new Date(a.timestamp || 0).getTime();
+                const timeB = new Date(b.timestamp || 0).getTime();
+                return timeA - timeB;
+            });
+            return comments;
+        } catch (e) {
+            console.error("Get Comments Error:", e);
+            // 에러 발생 시 빈 배열 반환
+            return [];
+        }
+    },
+    
+    // 댓글 삭제
+    async deleteComment(commentId, userId) {
+        if (!window.currentUser || window.currentUser.isAnonymous || !commentId) {
+            throw new Error("로그인이 필요합니다.");
+        }
+        try {
+            // 본인 댓글인지 확인
+            const commentRef = doc(db, 'artifacts', appId, 'postComments', commentId);
+            const commentSnap = await getDocs(query(
+                collection(db, 'artifacts', appId, 'postComments'),
+                where('userId', '==', userId)
+            ));
+            
+            // 해당 commentId를 가진 댓글이 있는지 확인
+            const targetComment = commentSnap.docs.find(d => d.id === commentId);
+            if (targetComment) {
+                await deleteDoc(commentRef);
+                return true;
+            }
+            return false;
+        } catch (e) {
+            console.error("Delete Comment Error:", e);
+            // 직접 삭제 시도 (권한 체크는 Firestore 규칙에서 처리)
+            try {
+                await deleteDoc(doc(db, 'artifacts', appId, 'postComments', commentId));
+                return true;
+            } catch (deleteError) {
+                console.error("직접 삭제 실패:", deleteError);
+                throw e;
+            }
+        }
+    }
+};
+
 // 더보기 함수: 추가 기간의 데이터 로드
 export async function loadMoreMeals(monthsToLoad = 1) {
     if (!window.currentUser) {
@@ -568,8 +1092,6 @@ export async function loadMoreMeals(monthsToLoad = 1) {
         const newStartDate = new Date(currentStart);
         newStartDate.setMonth(newStartDate.getMonth() - monthsToLoad);
         const newStartStr = newStartDate.toISOString().split('T')[0];
-        
-        console.log(`더보기: ${newStartStr} ~ ${currentStart} 기간 데이터 로드 시작`);
         
         const q = query(
             collection(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals'),
@@ -591,10 +1113,6 @@ export async function loadMoreMeals(monthsToLoad = 1) {
             
             // 로드된 범위 업데이트
             window.loadedMealsDateRange.start = newStartStr;
-            
-            console.log(`더보기 완료: ${newMeals.length}개 기록 추가`);
-        } else {
-            console.log("더보기: 추가할 기록이 없습니다.");
         }
         
         return newMeals.length;
@@ -628,12 +1146,9 @@ export async function loadMealsForDateRange(startDate, endDate) {
             
             // 요청한 범위가 이미 로드된 범위에 포함되는지 확인
             if (requestedStart >= loadedStart && requestedEnd <= loadedEnd) {
-                console.log("요청한 날짜 범위는 이미 로드되어 있습니다.");
                 return 0;
             }
         }
-        
-        console.log(`날짜 범위 로드: ${startStr} ~ ${endStr}`);
         
         const q = query(
             collection(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals'),
@@ -665,10 +1180,6 @@ export async function loadMealsForDateRange(startDate, endDate) {
                 window.loadedMealsDateRange.start = newStart < currentStart ? startStr : window.loadedMealsDateRange.start;
                 window.loadedMealsDateRange.end = newEnd > currentEnd ? endStr : window.loadedMealsDateRange.end;
             }
-            
-            console.log(`날짜 범위 로드 완료: ${newMeals.length}개 기록 추가`);
-        } else {
-            console.log("날짜 범위 로드: 추가할 기록이 없습니다.");
         }
         
         return newMeals.length;
@@ -724,8 +1235,6 @@ export async function migrateBase64ImagesToStorage() {
                 continue;
             }
             
-            console.log(`[${i + 1}/${meals.length}] 기록 ${mealId}의 ${base64Photos.length}개 base64 이미지 마이그레이션 중...`);
-            
             try {
                 // base64 이미지를 Storage에 업로드
                 const uploadPromises = base64Photos.map(base64Photo => 
@@ -746,7 +1255,6 @@ export async function migrateBase64ImagesToStorage() {
                 await setDoc(mealRef, { ...meal, photos: newPhotos }, { merge: true });
                 
                 migratedCount++;
-                console.log(`✓ 기록 ${mealId} 마이그레이션 완료`);
                 
                 // 진행 상황 표시 (10개마다)
                 if ((i + 1) % 10 === 0) {
@@ -761,7 +1269,6 @@ export async function migrateBase64ImagesToStorage() {
         }
         
         const message = `마이그레이션 완료! 성공: ${migratedCount}개, 건너뜀: ${skippedCount}개, 실패: ${errorCount}개`;
-        console.log(message);
         showToast(message, 'success');
         
         return {
@@ -777,3 +1284,479 @@ export async function migrateBase64ImagesToStorage() {
         throw error;
     }
 }
+
+// 게시판 관련 함수들
+export const boardOperations = {
+    // 게시글 작성
+    async createPost(postData) {
+        if (!window.currentUser) {
+            throw new Error("로그인이 필요합니다.");
+        }
+        try {
+            // 사용자 닉네임 가져오기
+            let authorNickname = '익명';
+            try {
+                if (window.userSettings && window.userSettings.profile && window.userSettings.profile.nickname) {
+                    authorNickname = window.userSettings.profile.nickname;
+                } else {
+                    // userSettings가 없으면 Firestore에서 직접 가져오기
+                    const userSettingsDoc = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'config', 'settings');
+                    const userSettingsSnap = await getDoc(userSettingsDoc);
+                    if (userSettingsSnap.exists()) {
+                        const settingsData = userSettingsSnap.data();
+                        if (settingsData.profile && settingsData.profile.nickname) {
+                            authorNickname = settingsData.profile.nickname;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn("닉네임 가져오기 실패, 기본값 사용:", e);
+            }
+            
+            const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
+            const newPost = {
+                title: postData.title,
+                content: postData.content,
+                category: postData.category || 'serious',
+                authorId: window.currentUser.uid,
+                authorNickname: authorNickname,
+                likes: 0,
+                dislikes: 0,
+                views: 0,
+                comments: 0,
+                timestamp: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            const docRef = await addDoc(postsColl, newPost);
+            showToast("게시글이 등록되었습니다.", 'success');
+            return { id: docRef.id, ...newPost };
+        } catch (e) {
+            console.error("Create Post Error:", e);
+            showToast("게시글 등록에 실패했습니다.", 'error');
+            throw e;
+        }
+    },
+    
+    // 익명 ID 가져오기 또는 생성 (사용자별 고정)
+    async getAnonymousId(userId) {
+        try {
+            const userDoc = doc(db, 'artifacts', appId, 'boardUsers', userId);
+            const userSnap = await getDoc(userDoc);
+            
+            // 사용자가 이미 익명 ID를 가지고 있는지 확인
+            if (userSnap.exists()) {
+                const userData = userSnap.data();
+                if (userData && userData.anonymousId) {
+                    return userData.anonymousId;
+                }
+            }
+            
+            // 새로운 익명 ID 생성
+            const randomNum = Math.floor(Math.random() * 9999) + 1;
+            const anonymousId = `익명${randomNum.toString().padStart(4, '0')}`;
+            
+            // 사용자 문서에 익명 ID 저장
+            await setDoc(userDoc, {
+                userId: userId,
+                anonymousId: anonymousId,
+                createdAt: new Date().toISOString()
+            }, { merge: true });
+            
+            return anonymousId;
+        } catch (e) {
+            console.error("Get Anonymous ID Error:", e);
+            // 에러 발생 시 임시 익명 ID 반환
+            const randomNum = Math.floor(Math.random() * 9999) + 1;
+            return `익명${randomNum.toString().padStart(4, '0')}`;
+        }
+    },
+    
+    // 게시글 목록 가져오기
+    async getPosts(category = 'all', sortBy = 'latest', limitCount = 50) {
+        try {
+            const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
+            let q;
+            
+            if (category === 'all') {
+                q = query(postsColl, orderBy('timestamp', 'desc'), limit(limitCount));
+            } else {
+                q = query(
+                    postsColl,
+                    where('category', '==', category),
+                    orderBy('timestamp', 'desc'),
+                    limit(limitCount)
+                );
+            }
+            
+            const snapshot = await getDocs(q);
+            let posts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            
+            // 인기순 정렬 (좋아요 - 비추천 수 기준)
+            if (sortBy === 'popular') {
+                posts.sort((a, b) => {
+                    const scoreA = (a.likes || 0) - (a.dislikes || 0);
+                    const scoreB = (b.likes || 0) - (b.dislikes || 0);
+                    if (scoreB !== scoreA) return scoreB - scoreA;
+                    // 점수가 같으면 최신순
+                    return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+                });
+            }
+            
+            return posts;
+        } catch (e) {
+            console.error("Get Posts Error:", e);
+            // 인덱스가 없을 경우 fallback: 전체 가져와서 클라이언트 측에서 필터링
+            if (e.code === 'failed-precondition' || e.message?.includes('index')) {
+                console.warn("Firestore 인덱스가 없어 fallback 모드로 작동합니다. 전체 게시글을 가져와 필터링합니다.");
+                try {
+                    const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
+                    const fallbackQuery = query(postsColl, orderBy('timestamp', 'desc'), limit(limitCount * 2)); // 더 많이 가져와서 필터링
+                    const snapshot = await getDocs(fallbackQuery);
+                    let allPosts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                    
+                    // 카테고리 필터링
+                    if (category !== 'all') {
+                        allPosts = allPosts.filter(post => post.category === category);
+                    }
+                    
+                    // limit 적용
+                    allPosts = allPosts.slice(0, limitCount);
+                    
+                    // 인기순 정렬
+                    if (sortBy === 'popular') {
+                        allPosts.sort((a, b) => {
+                            const scoreA = (a.likes || 0) - (a.dislikes || 0);
+                            const scoreB = (b.likes || 0) - (b.dislikes || 0);
+                            if (scoreB !== scoreA) return scoreB - scoreA;
+                            return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+                        });
+                    }
+                    
+                    return allPosts;
+                } catch (fallbackError) {
+                    console.error("Fallback Get Posts Error:", fallbackError);
+                    return [];
+                }
+            }
+            return [];
+        }
+    },
+    
+    // 게시글 상세 가져오기
+    async getPost(postId) {
+        try {
+            const postDoc = doc(db, 'artifacts', appId, 'boardPosts', postId);
+            const postSnap = await getDoc(postDoc);
+            
+            if (!postSnap.exists()) {
+                return null;
+            }
+            
+            const postData = { id: postSnap.id, ...postSnap.data() };
+            const newViews = (postData.views || 0) + 1;
+            
+            // 조회수 증가
+            await setDoc(postDoc, {
+                views: newViews
+            }, { merge: true });
+            
+            return { ...postData, views: newViews };
+        } catch (e) {
+            console.error("Get Post Error:", e);
+            // 조회수 업데이트 실패해도 게시글은 반환
+            const postDoc = doc(db, 'artifacts', appId, 'boardPosts', postId);
+            const postSnap = await getDoc(postDoc);
+            if (postSnap.exists()) {
+                return { id: postSnap.id, ...postSnap.data() };
+            }
+            return null;
+        }
+    },
+    
+    // 게시글 수정
+    async updatePost(postId, postData) {
+        if (!window.currentUser) {
+            throw new Error("로그인이 필요합니다.");
+        }
+        try {
+            const postDoc = doc(db, 'artifacts', appId, 'boardPosts', postId);
+            const postSnap = await getDoc(postDoc);
+            
+            if (!postSnap.exists()) {
+                throw new Error("게시글을 찾을 수 없습니다.");
+            }
+            
+            const existingPost = postSnap.data();
+            if (existingPost.authorId !== window.currentUser.uid) {
+                throw new Error("본인의 게시글만 수정할 수 있습니다.");
+            }
+            
+            await setDoc(postDoc, {
+                title: postData.title,
+                content: postData.content,
+                category: postData.category || existingPost.category,
+                updatedAt: new Date().toISOString()
+            }, { merge: true });
+            
+            showToast("게시글이 수정되었습니다.", 'success');
+            return true;
+        } catch (e) {
+            console.error("Update Post Error:", e);
+            showToast("게시글 수정에 실패했습니다.", 'error');
+            throw e;
+        }
+    },
+    
+    // 게시글 삭제
+    async deletePost(postId) {
+        if (!window.currentUser) {
+            throw new Error("로그인이 필요합니다.");
+        }
+        try {
+            const postDoc = doc(db, 'artifacts', appId, 'boardPosts', postId);
+            const postSnap = await getDoc(postDoc);
+            
+            if (!postSnap.exists()) {
+                throw new Error("게시글을 찾을 수 없습니다.");
+            }
+            
+            const postData = postSnap.data();
+            if (postData.authorId !== window.currentUser.uid) {
+                throw new Error("본인의 게시글만 삭제할 수 있습니다.");
+            }
+            
+            await deleteDoc(postDoc);
+            showToast("게시글이 삭제되었습니다.", 'success');
+            return true;
+        } catch (e) {
+            console.error("Delete Post Error:", e);
+            showToast("게시글 삭제에 실패했습니다.", 'error');
+            throw e;
+        }
+    },
+    
+    // 게시글 좋아요/비추천
+    async toggleLike(postId, isLike = true) {
+        if (!window.currentUser) {
+            throw new Error("로그인이 필요합니다.");
+        }
+        try {
+            const interactionsColl = collection(db, 'artifacts', appId, 'boardInteractions');
+            const q = query(
+                interactionsColl,
+                where('postId', '==', postId),
+                where('userId', '==', window.currentUser.uid)
+            );
+            const snapshot = await getDocs(q);
+            
+            const postDoc = doc(db, 'artifacts', appId, 'boardPosts', postId);
+            const postSnap = await getDoc(postDoc);
+            const postData = postSnap.exists() ? postSnap.data() : null;
+            
+            if (snapshot.empty) {
+                // 새로 좋아요/비추천 추가
+                await addDoc(interactionsColl, {
+                    postId: postId,
+                    userId: window.currentUser.uid,
+                    isLike: isLike,
+                    timestamp: new Date().toISOString()
+                });
+                
+                // 게시글의 좋아요/비추천 수 업데이트
+                if (isLike) {
+                    await setDoc(postDoc, {
+                        likes: (postData?.likes || 0) + 1
+                    }, { merge: true });
+                } else {
+                    await setDoc(postDoc, {
+                        dislikes: (postData?.dislikes || 0) + 1
+                    }, { merge: true });
+                }
+            } else {
+                const existingInteraction = snapshot.docs[0];
+                const existingData = existingInteraction.data();
+                
+                if (existingData.isLike === isLike) {
+                    // 같은 반응이면 제거
+                    await deleteDoc(doc(db, 'artifacts', appId, 'boardInteractions', existingInteraction.id));
+                    
+                    if (isLike) {
+                        await setDoc(postDoc, {
+                            likes: Math.max(0, (postData?.likes || 0) - 1)
+                        }, { merge: true });
+                    } else {
+                        await setDoc(postDoc, {
+                            dislikes: Math.max(0, (postData?.dislikes || 0) - 1)
+                        }, { merge: true });
+                    }
+                } else {
+                    // 다른 반응이면 변경
+                    await setDoc(doc(db, 'artifacts', appId, 'boardInteractions', existingInteraction.id), {
+                        isLike: isLike,
+                        timestamp: new Date().toISOString()
+                    }, { merge: true });
+                    
+                    // 게시글의 좋아요/비추천 수 업데이트
+                    if (isLike) {
+                        await setDoc(postDoc, {
+                            likes: (postData?.likes || 0) + 1,
+                            dislikes: Math.max(0, (postData?.dislikes || 0) - 1)
+                        }, { merge: true });
+                    } else {
+                        await setDoc(postDoc, {
+                            likes: Math.max(0, (postData?.likes || 0) - 1),
+                            dislikes: (postData?.dislikes || 0) + 1
+                        }, { merge: true });
+                    }
+                }
+            }
+            
+            return true;
+        } catch (e) {
+            console.error("Toggle Like Error:", e);
+            throw e;
+        }
+    },
+    
+    // 사용자의 게시글 반응 확인
+    async getUserReaction(postId, userId) {
+        if (!userId) return null;
+        try {
+            const interactionsColl = collection(db, 'artifacts', appId, 'boardInteractions');
+            const q = query(
+                interactionsColl,
+                where('postId', '==', postId),
+                where('userId', '==', userId)
+            );
+            const snapshot = await getDocs(q);
+            
+            if (snapshot.empty) return null;
+            return snapshot.docs[0].data().isLike ? 'like' : 'dislike';
+        } catch (e) {
+            console.error("Get User Reaction Error:", e);
+            return null;
+        }
+    },
+    
+    // 게시글 댓글 가져오기
+    async getComments(postId) {
+        try {
+            const commentsColl = collection(db, 'artifacts', appId, 'boardComments');
+            const q = query(
+                commentsColl,
+                where('postId', '==', postId),
+                orderBy('timestamp', 'asc')
+            );
+            const snapshot = await getDocs(q);
+            return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (e) {
+            console.error("Get Comments Error:", e);
+            return [];
+        }
+    },
+    
+    // 댓글 작성
+    async addComment(postId, content) {
+        if (!window.currentUser) {
+            throw new Error("로그인이 필요합니다.");
+        }
+        try {
+            // 사용자 닉네임 가져오기
+            let authorNickname = '익명';
+            try {
+                if (window.userSettings && window.userSettings.profile && window.userSettings.profile.nickname) {
+                    authorNickname = window.userSettings.profile.nickname;
+                } else {
+                    // userSettings가 없으면 Firestore에서 직접 가져오기
+                    const userSettingsDoc = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'config', 'settings');
+                    const userSettingsSnap = await getDoc(userSettingsDoc);
+                    if (userSettingsSnap.exists()) {
+                        const settingsData = userSettingsSnap.data();
+                        if (settingsData.profile && settingsData.profile.nickname) {
+                            authorNickname = settingsData.profile.nickname;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn("댓글 작성자 닉네임 가져오기 실패, 기본값 사용:", e);
+            }
+            
+            const commentsColl = collection(db, 'artifacts', appId, 'boardComments');
+            const newComment = {
+                postId: postId,
+                content: content,
+                authorId: window.currentUser.uid,
+                authorNickname: authorNickname,
+                timestamp: new Date().toISOString()
+            };
+            await addDoc(commentsColl, newComment);
+            
+            // 게시글의 댓글 수 증가
+            const postDoc = doc(db, 'artifacts', appId, 'boardPosts', postId);
+            const postSnap = await getDoc(postDoc);
+            if (postSnap.exists()) {
+                const postData = postSnap.data();
+                await setDoc(postDoc, {
+                    comments: (postData.comments || 0) + 1
+                }, { merge: true });
+            }
+            
+            return { id: 'temp', ...newComment };
+        } catch (e) {
+            console.error("Add Comment Error:", e);
+            throw e;
+        }
+    },
+    
+    // 댓글 삭제
+    async deleteComment(commentId, postId) {
+        if (!window.currentUser) {
+            throw new Error("로그인이 필요합니다.");
+        }
+        try {
+            const commentDoc = doc(db, 'artifacts', appId, 'boardComments', commentId);
+            const commentSnap = await getDoc(commentDoc);
+            
+            if (!commentSnap.exists()) {
+                throw new Error("댓글을 찾을 수 없습니다.");
+            }
+            
+            const commentData = commentSnap.data();
+            if (commentData.authorId !== window.currentUser.uid) {
+                throw new Error("본인의 댓글만 삭제할 수 있습니다.");
+            }
+            
+            await deleteDoc(commentDoc);
+            
+            // 게시글의 댓글 수 감소
+            const postDoc = doc(db, 'artifacts', appId, 'boardPosts', postId);
+            const postSnap = await getDoc(postDoc);
+            if (postSnap.exists()) {
+                const postData = postSnap.data();
+                await setDoc(postDoc, {
+                    comments: Math.max(0, (postData.comments || 0) - 1)
+                }, { merge: true });
+            }
+            
+            return true;
+        } catch (e) {
+            console.error("Delete Comment Error:", e);
+            throw e;
+        }
+    },
+    
+    // 게시판 리스너 설정 (실시간 업데이트)
+    setupBoardListener(callback) {
+        const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
+        const q = query(postsColl, orderBy('timestamp', 'desc'), limit(50));
+        
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const posts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            if (callback) callback(posts);
+        }, (error) => {
+            console.error("Board Listener Error:", error);
+        });
+        
+        return unsubscribe;
+    }
+};
