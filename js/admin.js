@@ -579,6 +579,11 @@ window.addEventListener('DOMContentLoaded', () => {
     if (loginPage) loginPage.classList.remove('hidden');
     if (adminPage) adminPage.classList.add('hidden');
     
+    // 로그인 버튼 이벤트 리스너
+    document.getElementById('loginBtn')?.addEventListener('click', () => {
+        window.handleAdminLogin();
+    });
+    
     // Enter 키로 로그인
     document.getElementById('adminPassword')?.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {

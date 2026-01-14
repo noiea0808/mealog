@@ -186,10 +186,11 @@ export class AuthFlowManager {
             return;
         }
         
-        // 2. 신규 사용자 처리: 단계별 진행
-        this.currentState = readiness.nextStep;
-        console.log('📋 다음 단계:', this.currentState);
-        await this.processState(this.currentState, readiness);
+        // 2. 신규 사용자 처리: 약관동의, 프로필설정, 사용가이드 건너뛰고 바로 READY
+        console.log('🆕 신규 사용자 - 약관동의, 프로필설정, 사용가이드 자동 완료 처리');
+        await this.autoCompleteNewUserSetup(user);
+        this.currentState = AuthState.READY;
+        await this.processState(this.currentState, null);
     }
     
     /**
@@ -224,6 +225,51 @@ export class AuthFlowManager {
         } catch (error) {
             console.error('❌ 약관 자동 동의 실패:', error);
             // 에러가 발생해도 계속 진행 (약관 동의는 이미 메모리에 설정됨)
+        }
+    }
+    
+    /**
+     * 신규 사용자 자동 설정 완료 (약관동의, 프로필설정, 사용가이드 모두 건너뛰기)
+     */
+    async autoCompleteNewUserSetup(user) {
+        try {
+            if (!window.userSettings) {
+                window.userSettings = JSON.parse(JSON.stringify(DEFAULT_USER_SETTINGS));
+            }
+            
+            // 약관 동의 자동 설정
+            window.userSettings.termsAgreed = true;
+            window.userSettings.termsAgreedAt = new Date().toISOString();
+            
+            // 프로필 자동 설정 (기본값 사용)
+            if (!window.userSettings.profile) {
+                window.userSettings.profile = {
+                    nickname: user.displayName || user.email?.split('@')[0] || '사용자',
+                    icon: '🐻',
+                    type: 'basic'
+                };
+            }
+            
+            // 온보딩 완료 자동 설정
+            window.userSettings.onboardingCompleted = true;
+            
+            // providerId와 email 저장
+            if (user && !user.isAnonymous) {
+                if (user.providerData && user.providerData.length > 0) {
+                    if (!window.userSettings.providerId) {
+                        window.userSettings.providerId = user.providerData[0].providerId;
+                    }
+                }
+                if (user.email && !window.userSettings.email) {
+                    window.userSettings.email = user.email;
+                }
+            }
+            
+            await dbOps.saveSettings(window.userSettings);
+            console.log('✅ 신규 사용자 자동 설정 완료 (약관동의, 프로필설정, 사용가이드 건너뜀)');
+        } catch (error) {
+            console.error('❌ 신규 사용자 자동 설정 실패:', error);
+            // 에러가 발생해도 계속 진행 (설정은 이미 메모리에 반영됨)
         }
     }
     
