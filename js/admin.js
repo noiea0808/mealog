@@ -116,8 +116,10 @@ async function getUserStatistics() {
         const last30Days = new Date(today);
         last30Days.setDate(last30Days.getDate() - 30);
         
+        // 사용자 수 계산: users 컬렉션과 sharedPhotos에서 발견된 사용자 중 큰 값 사용
+        // 단, 실제 사용자 목록과 일치시키기 위해 getUsers()와 동일한 로직 사용
         const stats = {
-            totalUsers: Math.max(usersFromCollection, uniqueUserIds.size), // 둘 중 큰 값 사용
+            totalUsers: Math.max(usersFromCollection, uniqueUserIds.size), // 둘 중 큰 값 사용 (임시)
             activeUsers: 0,
             totalMeals: 0,
             totalSharedPhotos: sharedSnapshot.size,
@@ -126,6 +128,9 @@ async function getUserStatistics() {
                 last30Days: 0
             }
         };
+        
+        // 실제 사용자 수는 getUsers()와 동일하게 계산 (나중에 통일)
+        // 현재는 users 컬렉션과 sharedPhotos의 합집합 사용
         
         console.log('📊 통계 조회 시작:', {
             totalUsers: stats.totalUsers,
@@ -977,7 +982,15 @@ function escapeHtml(text) {
 // 사용자 목록 가져오기
 async function getUsers() {
     try {
-        // users 컬렉션에서 사용자 ID 가져오기 (약관 동의한 모든 사용자 포함)
+        // 1. config/settings 문서가 있는 모든 사용자 찾기
+        // 주의: collectionGroup은 인덱스가 필요하므로 사용하지 않음
+        // 대신 users 컬렉션의 각 사용자에 대해 settings 문서 확인 (나중에 최적화 가능)
+        let userIdsFromSettings = new Set();
+        // collectionGroup은 인덱스가 필요하고 400 에러를 발생시킬 수 있으므로 비활성화
+        // users 컬렉션에서 사용자를 찾은 후 각 사용자의 settings를 확인하는 방식으로 변경
+
+        // 2. users 컬렉션에서 사용자 ID 가져오기 (약관 동의한 모든 사용자 포함)
+        // 주의: users 컬렉션은 자동 생성되므로 모든 사용자가 포함될 수 있음
         let userIdsFromUsers = new Set();
         try {
             const usersColl = collection(db, 'artifacts', appId, 'users');
@@ -989,8 +1002,11 @@ async function getUsers() {
         } catch (e) {
             console.warn('⚠️ users 컬렉션 조회 실패:', e);
         }
+        
+        // users 컬렉션의 각 사용자에 대해 settings 문서 확인하여 실제 사용자만 필터링
+        // (settings가 없거나 약관 동의하지 않은 사용자는 제외하지 않음 - 관리자가 확인할 수 있도록)
 
-        // 공유 게시물에서 사용자 ID 추출 (보조 정보로 사용)
+        // 3. 공유 게시물에서 사용자 ID 추출 (보조 정보로 사용)
         const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
         const sharedSnapshot = await getDocs(sharedColl);
         const userIdsFromShared = new Set();
@@ -1004,10 +1020,13 @@ async function getUsers() {
         
         console.log('📸 공유 게시물에서 발견된 사용자:', userIdsFromShared.size, '명');
 
-        // users 컬렉션의 사용자들을 우선 사용 (약관 동의한 모든 사용자)
-        // 공유 게시물이 있는 사용자도 포함 (혹시 users 컬렉션에 없을 수도 있으므로)
-        const userIdsToCheck = new Set([...userIdsFromUsers, ...userIdsFromShared]);
+        // 모든 소스에서 사용자 ID 수집 (중복 제거)
+        // 통계와 일치시키기 위해 users 컬렉션과 sharedPhotos를 우선 사용
+        const userIdsToCheck = new Set([...userIdsFromUsers, ...userIdsFromShared, ...userIdsFromSettings]);
         console.log(`총 ${userIdsToCheck.size}명의 사용자 처리 시작...`);
+        console.log('  - users 컬렉션:', userIdsFromUsers.size, '명');
+        console.log('  - sharedPhotos:', userIdsFromShared.size, '명');
+        console.log('  - config/settings:', userIdsFromSettings.size, '명');
 
         // 디버깅: 각 소스별 사용자 ID 목록
         if (userIdsFromUsers.size > 0) {

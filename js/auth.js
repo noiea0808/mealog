@@ -1,14 +1,24 @@
 // 인증 관련 함수들
 import { auth } from './firebase.js';
-import { GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { showToast } from './ui.js';
+import { GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS } from './constants.js';
+import { dbOps } from './db.js';
 
 export async function handleGoogleLogin() {
+    showLoading();
     const provider = new GoogleAuthProvider();
     try {
-        await signInWithPopup(auth, provider);
+        const result = await signInWithPopup(auth, provider);
+        console.log('🔐 구글 로그인 성공:', {
+            uid: result.user.uid,
+            email: result.user.email,
+            providerId: result.user.providerData[0]?.providerId,
+            providerData: result.user.providerData.map(p => p.providerId)
+        });
         showToast("구글 로그인 성공!", "success");
+        // 로그인 성공 후 로딩 오버레이는 onAuthStateChanged에서 인증 플로우가 완료될 때까지 유지
+        // 인증 플로우가 완료되면 processState의 finally에서 hideLoading() 호출됨
         } catch (error) {
             if (error.code === 'auth/unauthorized-domain' || error.message.includes('unauthorized-domain')) {
                 const domainTextEl = document.getElementById('domainText');
@@ -25,20 +35,23 @@ export async function handleGoogleLogin() {
                     domainTextEl.style.display = 'block';
                 }
                 document.getElementById('domainErrorModal').classList.remove('hidden');
+                hideLoading(); // 도메인 에러 시 숨김
             } else {
                 showToast("로그인 실패: " + error.message, "error");
+                hideLoading(); // 에러 시 숨김
             }
         }
 }
 
 export async function startGuest() {
-    document.getElementById('loadingOverlay').classList.remove('hidden');
+    showLoading();
     try {
         await signInAnonymously(auth);
         showToast("게스트 모드로 시작합니다.", "info");
+        // 로딩 오버레이는 인증 플로우에서 처리됨
     } catch (e) {
         showToast("게스트 로그인 실패", "error");
-        document.getElementById('loadingOverlay').classList.add('hidden');
+        hideLoading();
     }
 }
 
@@ -87,13 +100,26 @@ export async function handleEmailAuth() {
         showToast("이메일과 비밀번호를 입력해주세요.", "error");
         return;
     }
-    document.getElementById('loadingOverlay').classList.remove('hidden');
+    showLoading();
     try {
+        let result;
         if (window.emailAuthMode === 'signup') {
-            await createUserWithEmailAndPassword(auth, email, password);
+            result = await createUserWithEmailAndPassword(auth, email, password);
+            console.log('🔐 이메일 회원가입 성공:', {
+                uid: result.user.uid,
+                email: result.user.email,
+                providerId: result.user.providerData[0]?.providerId,
+                providerData: result.user.providerData.map(p => p.providerId)
+            });
             showToast("회원가입 성공! 환영합니다.", "success");
         } else {
-            await signInWithEmailAndPassword(auth, email, password);
+            result = await signInWithEmailAndPassword(auth, email, password);
+            console.log('🔐 이메일 로그인 성공:', {
+                uid: result.user.uid,
+                email: result.user.email,
+                providerId: result.user.providerData[0]?.providerId,
+                providerData: result.user.providerData.map(p => p.providerId)
+            });
             showToast("로그인되었습니다.", "success");
             if (document.getElementById('rememberEmailCheck').checked) {
                 localStorage.setItem('savedEmail', email);
@@ -102,6 +128,8 @@ export async function handleEmailAuth() {
             }
         }
         document.getElementById('emailAuthModal').classList.add('hidden');
+        // 로그인 성공 후 로딩 오버레이는 onAuthStateChanged에서 인증 플로우가 완료될 때까지 유지
+        // 인증 플로우가 완료되면 processState의 finally에서 hideLoading() 호출됨
     } catch (error) {
         let msg = error.message;
         if (error.code === 'auth/email-already-in-use') msg = "이미 사용 중인 이메일입니다.";
@@ -109,7 +137,7 @@ export async function handleEmailAuth() {
         if (error.code === 'auth/user-not-found') msg = "존재하지 않는 계정입니다.";
         if (error.code === 'auth/weak-password') msg = "비밀번호는 6자리 이상이어야 합니다.";
         showToast("오류: " + msg, "error");
-        document.getElementById('loadingOverlay').classList.add('hidden');
+        hideLoading(); // 에러 시에만 즉시 숨김
     }
 }
 
@@ -126,6 +154,52 @@ export async function confirmLogoutAction() {
     document.getElementById('logoutConfirmModal').classList.add('hidden');
     await signOut(auth);
     window.location.reload();
+}
+
+export function confirmDeleteAccount() {
+    document.getElementById('deleteAccountConfirmModal').classList.remove('hidden');
+}
+
+export function cancelDeleteAccount() {
+    document.getElementById('deleteAccountConfirmModal').classList.add('hidden');
+}
+
+export async function confirmDeleteAccountAction() {
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast("로그인이 필요합니다.", "error");
+        return;
+    }
+    
+    const modal = document.getElementById('deleteAccountConfirmModal');
+    
+    try {
+        modal.classList.add('hidden');
+        showLoading();
+        
+        // 1. 사용자 데이터 삭제
+        await dbOps.deleteAllUserData();
+        
+        // 2. Firebase Authentication 계정 삭제
+        const user = auth.currentUser;
+        if (user) {
+            await deleteUser(user);
+        }
+        
+        // 3. 로그아웃 및 페이지 리로드
+        await signOut(auth);
+        hideLoading();
+        showToast("계정이 성공적으로 삭제되었습니다.", "success");
+        window.location.reload();
+    } catch (error) {
+        console.error("계정 삭제 실패:", error);
+        hideLoading();
+        
+        let errorMessage = "계정 삭제 중 오류가 발생했습니다.";
+        if (error.code === 'auth/requires-recent-login') {
+            errorMessage = "보안을 위해 다시 로그인한 후 탈퇴해주세요.";
+        }
+        showToast(errorMessage, "error");
+    }
 }
 
 export function copyDomain() {
@@ -231,16 +305,62 @@ export async function confirmTermsAgreement() {
         window.userSettings.termsAgreed = true;
         window.userSettings.termsAgreedAt = new Date().toISOString();
         
+        // providerId와 email을 현재 사용자 정보로 설정 (없을 때만, 또는 같은 providerId일 때만)
+        try {
+            const currentUser = auth.currentUser;
+            if (currentUser && !currentUser.isAnonymous) {
+                // providerId는 없을 때만 설정 (덮어쓰기 방지)
+                if (currentUser.providerData && currentUser.providerData.length > 0) {
+                    const currentProviderId = currentUser.providerData[0].providerId;
+                    if (!window.userSettings.providerId) {
+                        window.userSettings.providerId = currentProviderId;
+                    } else if (window.userSettings.providerId !== currentProviderId) {
+                        // providerId가 다르면 경고만 (다른 계정일 수 있음)
+                        console.warn(`⚠️ 약관 동의 시 providerId 불일치: 저장된(${window.userSettings.providerId}) vs 현재(${currentProviderId}). 기존 값 유지합니다.`);
+                    }
+                }
+                // email은 같은 providerId일 때만 업데이트
+                if (currentUser.email) {
+                    const currentProviderId = currentUser.providerData?.[0]?.providerId;
+                    if (!window.userSettings.email) {
+                        window.userSettings.email = currentUser.email;
+                    } else if (currentProviderId && window.userSettings.providerId === currentProviderId && window.userSettings.email !== currentUser.email) {
+                        // 같은 providerId인데 이메일이 다르면 업데이트
+                        window.userSettings.email = currentUser.email;
+                    } else if (currentProviderId && window.userSettings.providerId !== currentProviderId) {
+                        // providerId가 다르면 경고만
+                        console.warn(`⚠️ 약관 동의 시 providerId 불일치로 인한 email 불일치: 저장된(${window.userSettings.email}) vs 현재(${currentUser.email}). 기존 값 유지합니다.`);
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('약관 동의 시 사용자 정보 가져오기 실패:', e);
+        }
+        
         const { dbOps } = await import('./db.js');
         await dbOps.saveSettings(window.userSettings);
         
         closeTermsModal();
         
-        // 프로필 설정 모달 표시
-        showProfileSetupModal();
+        // 인증 플로우 관리자에게 다음 단계 처리 요청
+        const { authFlowManager } = await import('./auth-flow.js');
+        await authFlowManager.onTermsAgreed();
     } catch (e) {
         console.error("약관 동의 저장 실패:", e);
-        showToast("약관 동의 저장에 실패했습니다.", "error");
+        // 모달을 닫고 토스트를 표시하여 사용자가 에러를 볼 수 있도록 함
+        closeTermsModal();
+        
+        let errorMessage = "약관 동의 저장에 실패했습니다.";
+        if (e.code === 'permission-denied') {
+            errorMessage = "권한이 없습니다. 잠시 후 다시 시도해주세요.";
+        } else if (e.code === 'unavailable') {
+            errorMessage = "네트워크 연결을 확인해주세요.";
+        }
+        
+        // 약간의 지연 후 토스트 표시 (모달이 완전히 닫힌 후)
+        setTimeout(() => {
+            showToast(errorMessage, "error");
+        }, 300);
     }
 }
 
@@ -250,37 +370,10 @@ export function showProfileSetupModal() {
     if (modal) {
         modal.classList.remove('hidden');
         
-        // 아이콘 선택 영역 렌더링
-        renderSetupIconSelector();
-        
-        // 기본값 설정
+        // 닉네임 입력 초기화
         const nicknameInput = document.getElementById('setupNickname');
         if (nicknameInput) {
             nicknameInput.value = '';
-        }
-        window.selectedSetupIcon = '🐻'; // 기본 아이콘
-        window.setupProfileType = 'emoji'; // 기본 타입
-        window.setupPhotoUrl = null; // 사진 URL 초기화
-        
-        // 프로필 타입 버튼 초기화
-        const emojiBtn = document.getElementById('setupProfileTypeEmoji');
-        const photoBtn = document.getElementById('setupProfileTypePhoto');
-        if (emojiBtn && photoBtn) {
-            emojiBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
-            photoBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
-        }
-        
-        // 섹션 표시/숨김
-        const emojiSection = document.getElementById('setupEmojiSection');
-        const photoSection = document.getElementById('setupPhotoSection');
-        if (emojiSection) emojiSection.classList.remove('hidden');
-        if (photoSection) photoSection.classList.add('hidden');
-        
-        // 사진 미리보기 초기화
-        const photoPreview = document.getElementById('setupPhotoPreview');
-        if (photoPreview) {
-            photoPreview.innerHTML = '<i class="fa-solid fa-camera text-slate-400 text-xl"></i>';
-            photoPreview.style.backgroundImage = '';
         }
     }
 }
@@ -407,24 +500,40 @@ export async function confirmProfileSetup() {
         }
         
         window.userSettings.profile.nickname = nickname;
+        // 기본 아이콘 설정
+        window.userSettings.profile.icon = '🐻';
+        window.userSettings.profile.photoUrl = null;
         
-        // 프로필 타입에 따라 icon 또는 photoUrl 저장
-        if (window.setupProfileType === 'photo' && window.setupPhotoFile) {
-            // 사진을 Firebase Storage에 업로드 (기존 Storage 규칙에 맞는 경로 사용)
-            const { storage } = await import('./firebase.js');
-            const { ref, uploadBytes, getDownloadURL } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js");
-            const timestamp = Date.now();
-            const fileName = `photo_${timestamp}.jpg`;
-            const photoRef = ref(storage, `users/${window.currentUser.uid}/profile/${fileName}`);
-            
-            await uploadBytes(photoRef, window.setupPhotoFile);
-            const photoUrl = await getDownloadURL(photoRef);
-            
-            window.userSettings.profile.photoUrl = photoUrl;
-            window.userSettings.profile.icon = null; // 이모지 제거
-        } else {
-            window.userSettings.profile.icon = window.selectedSetupIcon || '🐻';
-            window.userSettings.profile.photoUrl = null; // 사진 URL 제거
+        // providerId와 email을 현재 사용자 정보로 설정 (없을 때만, 또는 같은 providerId일 때만)
+        try {
+            const currentUser = auth.currentUser;
+            if (currentUser && !currentUser.isAnonymous) {
+                // providerId는 없을 때만 설정 (덮어쓰기 방지)
+                if (currentUser.providerData && currentUser.providerData.length > 0) {
+                    const currentProviderId = currentUser.providerData[0].providerId;
+                    if (!window.userSettings.providerId) {
+                        window.userSettings.providerId = currentProviderId;
+                    } else if (window.userSettings.providerId !== currentProviderId) {
+                        // providerId가 다르면 경고만
+                        console.warn(`⚠️ 프로필 설정 시 providerId 불일치: 저장된(${window.userSettings.providerId}) vs 현재(${currentProviderId}). 기존 값 유지합니다.`);
+                    }
+                }
+                // email은 같은 providerId일 때만 업데이트
+                if (currentUser.email) {
+                    const currentProviderId = currentUser.providerData?.[0]?.providerId;
+                    if (!window.userSettings.email) {
+                        window.userSettings.email = currentUser.email;
+                    } else if (currentProviderId && window.userSettings.providerId === currentProviderId && window.userSettings.email !== currentUser.email) {
+                        // 같은 providerId인데 이메일이 다르면 업데이트
+                        window.userSettings.email = currentUser.email;
+                    } else if (currentProviderId && window.userSettings.providerId !== currentProviderId) {
+                        // providerId가 다르면 경고만
+                        console.warn(`⚠️ 프로필 설정 시 providerId 불일치로 인한 email 불일치: 저장된(${window.userSettings.email}) vs 현재(${currentUser.email}). 기존 값 유지합니다.`);
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('프로필 설정 시 사용자 정보 가져오기 실패:', e);
         }
         
         const { dbOps } = await import('./db.js');
@@ -436,10 +545,19 @@ export async function confirmProfileSetup() {
         
         closeProfileSetupModal();
         
-        // 온보딩 표시
-        showOnboardingModal();
+        // 인증 플로우 관리자에게 다음 단계 처리 요청
+        const { authFlowManager } = await import('./auth-flow.js');
+        await authFlowManager.onProfileSetup();
     } catch (e) {
         console.error("프로필 설정 저장 실패:", e);
-        showToast("프로필 설정 저장에 실패했습니다.", "error");
+        
+        let errorMessage = "프로필 설정 저장에 실패했습니다.";
+        if (e.code === 'permission-denied') {
+            errorMessage = "권한이 없습니다. Firebase 보안 규칙을 확인해주세요.";
+        } else if (e.code === 'unavailable') {
+            errorMessage = "네트워크 연결을 확인해주세요.";
+        }
+        
+        showToast(errorMessage, "error");
     }
 }

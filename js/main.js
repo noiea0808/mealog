@@ -1,14 +1,18 @@
 // 메인 애플리케이션 로직
+console.log('📦 main.js 모듈 로드 시작');
+
 import { appState, getState } from './state.js';
 import { auth } from './firebase.js';
 import { dbOps, setupListeners, setupSharedPhotosListener, loadMoreMeals, postInteractions, boardOperations } from './db.js';
-import { switchScreen, showToast, updateHeaderUI } from './ui.js';
+import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
 import { 
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, confirmLogout, confirmLogoutAction,
     copyDomain, closeDomainModal, switchToLogin, showTermsModal, cancelTermsAgreement, confirmTermsAgreement,
-    showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup, setProfileType, handleSetupPhotoUpload
+    showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup, setProfileType, handleSetupPhotoUpload,
+    confirmDeleteAccount, cancelDeleteAccount, confirmDeleteAccountAction
 } from './auth.js';
+import { authFlowManager } from './auth-flow.js';
 import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, escapeHtml } from './render/index.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
@@ -41,6 +45,7 @@ window.toggleEmailAuthMode = toggleEmailAuthMode;
 window.handleEmailAuth = handleEmailAuth;
 window.confirmLogout = confirmLogout;
 window.confirmLogoutAction = confirmLogoutAction;
+window.confirmDeleteAccount = confirmDeleteAccount;
 window.switchToLogin = switchToLogin;
 window.showTermsModal = showTermsModal;
 window.cancelTermsAgreement = cancelTermsAgreement;
@@ -903,79 +908,50 @@ window.loadMoreMealsTimeline = async () => {
     }
 };
 
-// 인증 상태 변경 리스너
-// 현재 체크 중인 사용자 ID (중복 체크 방지)
-let currentCheckingUserId = null;
-
+// 인증 상태 변경 리스너 - 단순화된 버전
 initAuth(async (user) => {
-    if (user) { 
-        window.currentUser = user; 
+    if (user) {
+        window.currentUser = user;
         
-        // 사용자가 변경되면 플래그 리셋
-        if (currentCheckingUserId !== user.uid) {
-            currentCheckingUserId = user.uid;
-            window._firstLoginChecked = false;
+        // 이미 메인 화면이 표시되어 있으면 추가 처리 없이 리턴
+        const mainApp = document.getElementById('mainApp');
+        const landingPage = document.getElementById('landingPage');
+        if (mainApp && !mainApp.classList.contains('hidden') && landingPage && landingPage.style.display === 'none') {
+            return;
         }
+        
+                // 중요: providerId와 email은 처음 로그인 시 약관 동의 또는 프로필 설정 시에만 설정됩니다.
+                // 로그인 직후 자동 저장은 하지 않습니다. (중복 저장 방지)
         
         // 중복 기록 자동 정리 (한 번만 실행)
         if (!window._duplicateCleanupDone && window.mealHistory && window.mealHistory.length > 0) {
             window._duplicateCleanupDone = true;
-            // 약간의 지연 후 실행 (데이터 로드 완료 대기)
             setTimeout(async () => {
                 await dbOps.removeDuplicateMeals();
             }, 2000);
         }
         
-        // 게스트가 아니면 첫 로그인 체크를 onSettingsUpdate에서만 수행
-        let shouldCheckFirstLogin = !user.isAnonymous;
-        let settingsLoaded = false;
-        let initialSettingsUpdateDone = false;
-        
+        // 리스너 설정
         const { settingsUnsubscribe, dataUnsubscribe } = setupListeners(user.uid, {
             onSettingsUpdate: () => {
-                const wasFirstLoad = !settingsLoaded;
-                settingsLoaded = true;
-                
+                // 헤더 UI 업데이트 (디바운싱됨)
                 updateHeaderUI();
-                // 설정이 업데이트되면 간식 타입 칩도 다시 렌더링 (모달이 열려있지 않을 때만)
                 const entryModal = document.getElementById('entryModal');
                 if (!entryModal || entryModal.classList.contains('hidden')) {
                     renderEntryChips();
                 }
                 
-                // 첫 로그인 체크 (게스트가 아니고 설정이 로드된 후, 현재 사용자와 일치하고 아직 체크하지 않은 경우만)
-                if (shouldCheckFirstLogin && window.userSettings && window.userSettings.profile && currentCheckingUserId === user.uid && !window._firstLoginChecked) {
-                    window._firstLoginChecked = true;
-                    checkFirstLoginFlow(user);
-                }
-                
-                // 첫 설정 로드 완료 시 메인 화면 표시 (약관/프로필 모달이 없으면)
-                if (wasFirstLoad && !initialSettingsUpdateDone && shouldCheckFirstLogin) {
-                    initialSettingsUpdateDone = true;
-                    // 약관/프로필이 이미 설정되어 있으면 바로 메인 화면 표시
-                    if (window.userSettings && window.userSettings.termsAgreed && 
-                        window.userSettings.profile && window.userSettings.profile.nickname) {
-                        // checkFirstLoginFlow에서 처리하도록, 여기서는 로딩 오버레이만 숨김
-                        // (checkFirstLoginFlow가 호출되지 않을 경우를 대비)
-                        setTimeout(() => {
-                            if (!window._firstLoginChecked) {
-                                switchScreen(true);
-                                switchMainTab('timeline');
-                                document.getElementById('loadingOverlay')?.classList.add('hidden');
-                            }
-                        }, 100);
-                    }
-                }
+                // Phase 1-2: onSettingsUpdate에서 인증 플로우 호출 제거
+                // 인증 플로우는 initAuth 콜백에서만 처리됨
             },
             onDataUpdate: () => {
-                // 오늘 날짜로 초기화
                 if (appState.viewMode === 'list') {
                     const today = new Date();
                     today.setHours(0, 0, 0, 0);
                     appState.pageDate = today;
                 }
                 window.loadedDates = [];
-                window.hasScrolledToToday = false; // 스크롤 플래그 리셋
+                window.hasScrolledToToday = false;
                 const container = document.getElementById('timelineContainer');
                 if (container) container.innerHTML = "";
                 renderTimeline();
@@ -993,14 +969,12 @@ initAuth(async (user) => {
         }
         appState.sharedPhotosUnsubscribe = setupSharedPhotosListener((sharedPhotos) => {
             window.sharedPhotos = sharedPhotos;
-            // 타임라인, 갤러리 모두 업데이트 (같은 데이터 소스를 사용하므로)
             if (appState.currentTab === 'timeline') {
                 renderTimeline();
             }
             if (appState.currentTab === 'gallery') {
                 renderGallery();
             }
-            // 피드 탭이 있으면 renderFeed도 호출
             const feedContent = document.getElementById('feedContent');
             if (feedContent && !feedContent.classList.contains('hidden')) {
                 renderFeed();
@@ -1014,40 +988,57 @@ initAuth(async (user) => {
             appState.pageDate = today;
         }
         
-        // 게스트인 경우 바로 메인 화면 표시
-        if (!shouldCheckFirstLogin) {
-            switchScreen(true);
-            switchMainTab('timeline');
-            document.getElementById('loadingOverlay')?.classList.add('hidden');
+        // Phase 1-1: 인증 플로우를 한 곳에서만 호출 (단일 진입점)
+        // 설정 로드 대기 후 인증 플로우 실행
+        // 게스트는 즉시 처리, 일반 사용자는 설정 로드 대기
+        if (user.isAnonymous) {
+            // 게스트는 설정 없이 즉시 처리
+            authFlowManager.handleAuthState(user).catch(e => {
+                console.error('❌ 게스트 인증 플로우 처리 실패:', e);
+                hideLoading();
+            });
         } else {
-            // 게스트가 아닌 경우: 설정 로드를 기다리지 않고 먼저 화면 표시 시도
-            // (설정이 없거나 약관/프로필 미설정 시 모달이 표시될 것)
-            // 짧은 타임아웃 후 화면 표시 (설정 로드 완료를 기다리지 않음)
-            setTimeout(() => {
-                if (!initialSettingsUpdateDone && shouldCheckFirstLogin) {
-                    // 아직 설정이 로드되지 않았지만 화면은 표시
-                    // checkFirstLoginFlow에서 모달 표시 또는 화면 표시를 처리
-                    if (window.userSettings && window.userSettings.termsAgreed && 
-                        window.userSettings.profile && window.userSettings.profile.nickname) {
-                        // 설정이 이미 있으면 바로 표시
-                        switchScreen(true);
-                        switchMainTab('timeline');
-                        document.getElementById('loadingOverlay')?.classList.add('hidden');
-                    } else if (window.userSettings) {
-                        // 설정이 있지만 약관/프로필 미설정
-                        // checkFirstLoginFlow가 처리할 것임
-                    } else {
-                        // 설정이 아직 로드되지 않음 - 로딩 오버레이는 계속 표시
-                        // 설정 로드 후 onSettingsUpdate에서 처리
-                    }
+            // 일반 사용자: 설정 로드 대기 후 인증 플로우 실행
+            const startAuthFlow = async () => {
+                // 설정 로드 대기 (최대 5초)
+                let retryCount = 0;
+                while (!window.userSettings && retryCount < 10) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    retryCount++;
                 }
-            }, 300); // 300ms 후에 설정 로드 상태 확인
+                
+                // 설정이 로드되었거나 타임아웃되었으면 인증 플로우 실행
+                if (!authFlowManager.hasCompleted) {
+                    console.log('✅ 설정 로드 완료. 인증 플로우 시작...');
+                    authFlowManager.handleAuthState(user).catch(e => {
+                        console.error('❌ 인증 플로우 처리 실패:', e);
+                        hideLoading();
+                    });
+                }
+            };
+            
+            // 설정이 이미 로드되어 있으면 즉시 실행, 아니면 대기
+            if (window.userSettings) {
+                startAuthFlow();
+            } else {
+                // 설정 로드 대기 (onSettingsUpdate에서 설정이 로드되면 자동으로 처리됨)
+                // 하지만 여기서도 대기하여 안전하게 처리
+                startAuthFlow();
+            }
         }
     } else {
         // 로그아웃 상태
+        const mainApp = document.getElementById('mainApp');
+        const landingPage = document.getElementById('landingPage');
+        if (mainApp && !mainApp.classList.contains('hidden') && landingPage && landingPage.style.display === 'none') {
+            return;
+        }
+        
+        if (landingPage && landingPage.style.display === 'flex' && mainApp && mainApp.classList.contains('hidden')) {
+            return;
+        }
+        
         switchScreen(false);
-        currentCheckingUserId = null;
-        window._firstLoginChecked = false;
         if (appState.settingsUnsubscribe) {
             appState.settingsUnsubscribe();
             appState.settingsUnsubscribe = null;
@@ -1060,53 +1051,9 @@ initAuth(async (user) => {
             appState.sharedPhotosUnsubscribe();
             appState.sharedPhotosUnsubscribe = null;
         }
-        document.getElementById('loadingOverlay')?.classList.add('hidden');
+        hideLoading();
     }
 });
-
-// 첫 로그인 플로우 체크 함수
-async function checkFirstLoginFlow(user) {
-    if (!window.userSettings || !window.currentUser || window.currentUser.uid !== user.uid) {
-        document.getElementById('loadingOverlay')?.classList.add('hidden');
-        return;
-    }
-    
-    const termsAgreed = window.userSettings.termsAgreed === true;
-    const hasProfile = window.userSettings.profile && 
-                     window.userSettings.profile.nickname && 
-                     window.userSettings.profile.nickname !== '게스트';
-    const onboardingCompleted = window.userSettings.onboardingCompleted === true;
-    
-    // 약관 미동의 시 약관 동의 모달 표시
-    if (!termsAgreed) {
-        switchScreen(false);
-        showTermsModal();
-        document.getElementById('loadingOverlay')?.classList.add('hidden');
-        return;
-    }
-    // 프로필 미설정 시 프로필 설정 모달 표시
-    else if (!hasProfile) {
-        switchScreen(false);
-        const { showProfileSetupModal } = await import('./auth.js');
-        showProfileSetupModal();
-        document.getElementById('loadingOverlay')?.classList.add('hidden');
-        return;
-    }
-    // 온보딩 미완료 시 온보딩 표시 (메인 앱 표시 후)
-    else if (!onboardingCompleted) {
-        switchScreen(true);
-        switchMainTab('timeline');
-        const { showOnboardingModal } = await import('./onboarding.js');
-        showOnboardingModal();
-        // switchScreen이 이미 loadingOverlay를 숨김
-        return;
-    }
-    
-    // 모든 체크 통과 - 메인 화면 표시
-    switchScreen(true);
-    switchMainTab('timeline');
-    document.getElementById('loadingOverlay')?.classList.add('hidden');
-}
 
 // 스크롤 이벤트 리스너
 let scrollTimeout;
@@ -1872,6 +1819,271 @@ window.deleteBoardComment = async (commentId, postId) => {
         showToast("댓글 삭제에 실패했습니다.", 'error');
     }
 };
+
+// 이벤트 리스너 초기화 함수
+function initEventListeners() {
+    // 랜딩 페이지 버튼들
+    const googleLoginBtn = document.getElementById('googleLoginBtn');
+    if (googleLoginBtn) {
+        googleLoginBtn.addEventListener('click', handleGoogleLogin);
+    }
+    
+    const emailLoginBtn = document.getElementById('emailLoginBtn');
+    if (emailLoginBtn) {
+        emailLoginBtn.addEventListener('click', openEmailModal);
+    }
+    
+    const guestLoginBtn = document.getElementById('guestLoginBtn');
+    if (guestLoginBtn) {
+        guestLoginBtn.addEventListener('click', startGuest);
+    }
+    
+    // 이메일 인증 모달 버튼들
+    const emailAuthCloseBtn = document.getElementById('emailAuthCloseBtn');
+    if (emailAuthCloseBtn) {
+        emailAuthCloseBtn.addEventListener('click', closeEmailModal);
+    }
+    
+    const emailAuthBtn = document.getElementById('emailAuthBtn');
+    if (emailAuthBtn) {
+        emailAuthBtn.addEventListener('click', handleEmailAuth);
+    }
+    
+    const emailAuthToggleBtn = document.getElementById('emailAuthToggleBtn');
+    if (emailAuthToggleBtn) {
+        emailAuthToggleBtn.addEventListener('click', toggleEmailAuthMode);
+    }
+    
+    // Domain Error Modal
+    const domainCopyBtn = document.getElementById('domainCopyBtn');
+    if (domainCopyBtn) {
+        domainCopyBtn.addEventListener('click', copyDomain);
+    }
+    
+    const domainModalGuestBtn = document.getElementById('domainModalGuestBtn');
+    if (domainModalGuestBtn) {
+        domainModalGuestBtn.addEventListener('click', () => {
+            closeDomainModal();
+            startGuest();
+        });
+    }
+    
+    const domainModalCloseBtn = document.getElementById('domainModalCloseBtn');
+    if (domainModalCloseBtn) {
+        domainModalCloseBtn.addEventListener('click', closeDomainModal);
+    }
+    
+    // Terms Agreement Modal
+    const termsDetailBtn = document.getElementById('termsDetailBtn');
+    if (termsDetailBtn) {
+        termsDetailBtn.addEventListener('click', () => showTermsDetail('terms'));
+    }
+    
+    const privacyDetailBtn = document.getElementById('privacyDetailBtn');
+    if (privacyDetailBtn) {
+        privacyDetailBtn.addEventListener('click', () => showTermsDetail('privacy'));
+    }
+    
+    const termsCancelBtn = document.getElementById('termsCancelBtn');
+    if (termsCancelBtn) {
+        termsCancelBtn.addEventListener('click', cancelTermsAgreement);
+    }
+    
+    const termsAgreeBtn = document.getElementById('termsAgreeBtn');
+    if (termsAgreeBtn) {
+        termsAgreeBtn.addEventListener('click', confirmTermsAgreement);
+    }
+    
+    // Profile Setup Modal
+    const setupProfileTypeEmoji = document.getElementById('setupProfileTypeEmoji');
+    if (setupProfileTypeEmoji) {
+        setupProfileTypeEmoji.addEventListener('click', () => setProfileType('emoji'));
+    }
+    
+    const setupProfileTypePhoto = document.getElementById('setupProfileTypePhoto');
+    if (setupProfileTypePhoto) {
+        setupProfileTypePhoto.addEventListener('click', () => setProfileType('photo'));
+    }
+    
+    const setupPhotoSelectBtn = document.getElementById('setupPhotoSelectBtn');
+    if (setupPhotoSelectBtn) {
+        setupPhotoSelectBtn.addEventListener('click', () => {
+            document.getElementById('setupPhotoInput')?.click();
+        });
+    }
+    
+    const setupPhotoInput = document.getElementById('setupPhotoInput');
+    if (setupPhotoInput) {
+        setupPhotoInput.addEventListener('change', (e) => handleSetupPhotoUpload(e));
+    }
+    
+    const profileSetupBtn = document.getElementById('profileSetupBtn');
+    if (profileSetupBtn) {
+        profileSetupBtn.addEventListener('click', confirmProfileSetup);
+    }
+    
+    // Onboarding Modal
+    const onboardingPrevBtn = document.getElementById('onboardingPrevBtn');
+    if (onboardingPrevBtn) {
+        onboardingPrevBtn.addEventListener('click', onboardingPrev);
+    }
+    
+    const onboardingNextBtn = document.getElementById('onboardingNextBtn');
+    if (onboardingNextBtn) {
+        onboardingNextBtn.addEventListener('click', onboardingNext);
+    }
+    
+    const onboardingSkipBtn = document.getElementById('onboardingSkipBtn');
+    if (onboardingSkipBtn) {
+        onboardingSkipBtn.addEventListener('click', onboardingSkip);
+    }
+    
+    // 헤더 및 검색
+    const searchTriggerBtn = document.getElementById('searchTriggerBtn');
+    if (searchTriggerBtn) {
+        searchTriggerBtn.addEventListener('click', window.toggleSearch);
+    }
+    
+    const headerSettingsBtn = document.getElementById('headerSettingsBtn');
+    if (headerSettingsBtn) {
+        headerSettingsBtn.addEventListener('click', openSettings);
+    }
+    
+    const closeSearchBtn = document.getElementById('closeSearchBtn');
+    if (closeSearchBtn) {
+        closeSearchBtn.addEventListener('click', window.closeSearch);
+    }
+    
+    // 뷰 모드
+    const btnViewList = document.getElementById('btn-view-list');
+    if (btnViewList) {
+        btnViewList.addEventListener('click', () => window.setViewMode('list'));
+    }
+    
+    const btnViewPage = document.getElementById('btn-view-page');
+    if (btnViewPage) {
+        btnViewPage.addEventListener('click', () => window.setViewMode('page'));
+    }
+    
+    // 하단 네비게이션
+    const navDashboard = document.getElementById('nav-dashboard');
+    if (navDashboard) {
+        navDashboard.addEventListener('click', () => window.switchMainTab('dashboard'));
+    }
+    
+    const navTimeline = document.getElementById('nav-timeline');
+    if (navTimeline) {
+        navTimeline.addEventListener('click', () => window.switchMainTab('timeline'));
+    }
+    
+    const navGallery = document.getElementById('nav-gallery');
+    if (navGallery) {
+        navGallery.addEventListener('click', () => window.switchMainTab('gallery'));
+    }
+    
+    const navBoard = document.getElementById('nav-board');
+    if (navBoard) {
+        navBoard.addEventListener('click', () => window.switchMainTab('board'));
+    }
+    
+    // 설정 페이지
+    const settingsCloseBtn = document.getElementById('settingsCloseBtn');
+    if (settingsCloseBtn) {
+        settingsCloseBtn.addEventListener('click', closeSettings);
+    }
+    
+    const settingsTabProfile = document.getElementById('settingsTabProfile');
+    if (settingsTabProfile) {
+        settingsTabProfile.addEventListener('click', () => window.switchSettingsTab('profile'));
+    }
+    
+    const settingsTabTags = document.getElementById('settingsTabTags');
+    if (settingsTabTags) {
+        settingsTabTags.addEventListener('click', () => window.switchSettingsTab('tags'));
+    }
+    
+    const saveProfileSettingsBtn = document.getElementById('saveProfileSettingsBtn');
+    if (saveProfileSettingsBtn) {
+        saveProfileSettingsBtn.addEventListener('click', saveProfileSettings);
+    }
+    
+    const profileTypeEmoji = document.getElementById('profileTypeEmoji');
+    if (profileTypeEmoji) {
+        profileTypeEmoji.addEventListener('click', () => window.setSettingsProfileType('emoji'));
+    }
+    
+    const profileTypePhoto = document.getElementById('profileTypePhoto');
+    if (profileTypePhoto) {
+        profileTypePhoto.addEventListener('click', () => window.setSettingsProfileType('photo'));
+    }
+    
+    // 게시판
+    const boardWriteBtn = document.getElementById('boardWriteBtn');
+    if (boardWriteBtn) {
+        boardWriteBtn.addEventListener('click', window.openBoardWrite);
+    }
+    
+    // 게시판 카테고리 버튼들
+    ['all', 'serious', 'chat', 'food', 'admin'].forEach(category => {
+        const btn = document.getElementById(`board-category-${category}`);
+        if (btn) {
+            btn.addEventListener('click', () => window.setBoardCategory(category));
+        }
+    });
+    
+    // 대시보드 모드 버튼들
+    ['7d', 'week', 'month', 'year', 'custom'].forEach(mode => {
+        const btn = document.getElementById(`btn-dash-${mode}`);
+        if (btn) {
+            btn.addEventListener('click', () => window.setDashboardMode(mode));
+        }
+    });
+    
+    // 분석 타입 버튼들
+    ['best', 'main', 'snack'].forEach(type => {
+        const btn = document.getElementById(`btn-analysis-${type}`);
+        if (btn) {
+            btn.addEventListener('click', () => window.setAnalysisType(type));
+        }
+    });
+    
+    // 로그아웃 확인 모달
+    const logoutConfirmCancelBtn = document.getElementById('logoutConfirmCancelBtn');
+    if (logoutConfirmCancelBtn) {
+        logoutConfirmCancelBtn.addEventListener('click', () => {
+            document.getElementById('logoutConfirmModal')?.classList.add('hidden');
+        });
+    }
+    
+    const logoutConfirmActionBtn = document.getElementById('logoutConfirmActionBtn');
+    if (logoutConfirmActionBtn) {
+        logoutConfirmActionBtn.addEventListener('click', confirmLogoutAction);
+    }
+    
+    // 탈퇴 모달 버튼
+    const deleteAccountConfirmCancelBtn = document.getElementById('deleteAccountConfirmCancelBtn');
+    if (deleteAccountConfirmCancelBtn) {
+        deleteAccountConfirmCancelBtn.addEventListener('click', cancelDeleteAccount);
+    }
+    
+    const deleteAccountConfirmActionBtn = document.getElementById('deleteAccountConfirmActionBtn');
+    if (deleteAccountConfirmActionBtn) {
+        deleteAccountConfirmActionBtn.addEventListener('click', confirmDeleteAccountAction);
+    }
+}
+
+// DOM이 준비되면 이벤트 리스너 초기화
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initEventListeners);
+} else {
+    // DOM이 이미 로드된 경우
+    initEventListeners();
+}
+
+// 모듈 로드 완료 표시
+window.moduleLoaded = true;
+console.log('✅ main.js 모듈 로드 완료');
+console.log('✅ window.renderTimeline 함수 확인:', typeof window.renderTimeline);
 
 // 에러 핸들링
 window.addEventListener('error', (e) => {
