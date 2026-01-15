@@ -48,10 +48,10 @@ try {
     Write-Host "  To enable: Run setup-admin.bat as Administrator, then uncomment line 38 in server.ps1" -ForegroundColor Gray
     Write-Host ""
     
-    # 브라우저 자동 열기
-    Start-Sleep -Milliseconds 800
-    Start-Process "http://localhost:$port"
-    Write-Host "Browser opened." -ForegroundColor Green
+    # 브라우저 자동 열기 (비활성화 - 배치 파일에서 처리)
+    # Start-Sleep -Milliseconds 800
+    # Start-Process "http://localhost:$port"
+    # Write-Host "Browser opened." -ForegroundColor Green
     Write-Host ""
     Write-Host "To access from smartphone:" -ForegroundColor Cyan
     Write-Host "  1. Make sure smartphone and computer are on same Wi-Fi" -ForegroundColor White

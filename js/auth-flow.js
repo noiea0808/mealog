@@ -180,9 +180,10 @@ export class AuthFlowManager {
                 await this.autoAgreeTerms();
                 readiness.termsAgreed = true;
             }
-            // 기존 사용자는 프로필 설정 건너뛰고 온보딩만 체크
-            this.currentState = readiness.onboardingCompleted ? AuthState.READY : AuthState.NEEDS_ONBOARDING;
-            await this.processState(this.currentState, readiness);
+            // 기존 사용자는 온보딩 건너뛰고 바로 READY
+            await this.autoCompleteExistingUserSetup(user);
+            this.currentState = AuthState.READY;
+            await this.processState(this.currentState, null);
             return;
         }
         
@@ -191,6 +192,44 @@ export class AuthFlowManager {
         await this.autoCompleteNewUserSetup(user);
         this.currentState = AuthState.READY;
         await this.processState(this.currentState, null);
+    }
+    
+    /**
+     * 기존 사용자 자동 설정 완료 (온보딩 건너뛰기)
+     */
+    async autoCompleteExistingUserSetup(user) {
+        try {
+            if (!window.userSettings) {
+                window.userSettings = JSON.parse(JSON.stringify(DEFAULT_USER_SETTINGS));
+            }
+            
+            // 약관 동의 설정 (없을 경우)
+            if (!window.userSettings.termsAgreed) {
+                window.userSettings.termsAgreed = true;
+                window.userSettings.termsAgreedAt = new Date().toISOString();
+            }
+            
+            // 온보딩 완료 자동 설정
+            window.userSettings.onboardingCompleted = true;
+            
+            // providerId와 email 저장 (없을 경우)
+            if (user && !user.isAnonymous) {
+                if (user.providerData && user.providerData.length > 0) {
+                    if (!window.userSettings.providerId) {
+                        window.userSettings.providerId = user.providerData[0].providerId;
+                    }
+                }
+                if (user.email && !window.userSettings.email) {
+                    window.userSettings.email = user.email;
+                }
+            }
+            
+            await dbOps.saveSettings(window.userSettings);
+            console.log('✅ 기존 사용자 자동 설정 완료 (온보딩 건너뜀)');
+        } catch (error) {
+            console.error('❌ 기존 사용자 자동 설정 실패:', error);
+            // 에러가 발생해도 계속 진행 (설정은 이미 메모리에 반영됨)
+        }
     }
     
     /**

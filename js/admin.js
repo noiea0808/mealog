@@ -352,6 +352,7 @@ async function renderSharedPhotos() {
 
 // 관리자 로그인
 window.handleAdminLogin = async function() {
+    console.log('🔐 handleAdminLogin 호출됨');
     const email = document.getElementById('adminEmail').value;
     const password = document.getElementById('adminPassword').value;
     const errorDiv = document.getElementById('loginError');
@@ -569,7 +570,8 @@ onAuthStateChanged(adminAuth, async (user) => {
 });
 
 // 페이지 로드 시 초기화
-window.addEventListener('DOMContentLoaded', () => {
+function initAdminPage() {
+    console.log('🔧 initAdminPage 실행');
     // 초기 상태 설정 - 로그인 페이지 표시, 로딩 오버레이 숨김
     const loadingOverlay = document.getElementById('loadingOverlay');
     const loginPage = document.getElementById('loginPage');
@@ -580,26 +582,54 @@ window.addEventListener('DOMContentLoaded', () => {
     if (adminPage) adminPage.classList.add('hidden');
     
     // 로그인 버튼 이벤트 리스너
-    document.getElementById('loginBtn')?.addEventListener('click', () => {
-        window.handleAdminLogin();
-    });
+    const loginBtn = document.getElementById('loginBtn');
+    console.log('🔧 loginBtn 찾기:', loginBtn);
+    if (loginBtn) {
+        loginBtn.addEventListener('click', (e) => {
+            console.log('🔧 로그인 버튼 클릭됨');
+            e.preventDefault();
+            if (window.handleAdminLogin) {
+                window.handleAdminLogin();
+            } else {
+                console.error('❌ window.handleAdminLogin이 정의되지 않음');
+            }
+        });
+        console.log('✅ 로그인 버튼 이벤트 리스너 등록됨');
+    } else {
+        console.error('❌ loginBtn을 찾을 수 없음');
+    }
     
     // Enter 키로 로그인
-    document.getElementById('adminPassword')?.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            window.handleAdminLogin();
-        }
-    });
+    const passwordInput = document.getElementById('adminPassword');
+    if (passwordInput) {
+        passwordInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                if (window.handleAdminLogin) {
+                    window.handleAdminLogin();
+                }
+            }
+        });
+    }
     
     // 일정 시간 후에도 로딩이 계속되면 숨기기 (안전장치)
     setTimeout(() => {
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const loginPage = document.getElementById('loginPage');
         if (loadingOverlay && !loadingOverlay.classList.contains('hidden')) {
             console.warn("로딩 타임아웃 - 로딩 오버레이 강제로 숨김");
             loadingOverlay.classList.add('hidden');
             if (loginPage) loginPage.classList.remove('hidden');
         }
     }, 5000);
-});
+}
+
+// DOM 준비 상태 확인 후 초기화
+if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', initAdminPage);
+} else {
+    // DOM이 이미 준비되었으면 즉시 실행
+    setTimeout(initAdminPage, 0); // 다음 이벤트 루프에서 실행
+}
 
 // 모니터링 사이드바 전환
 window.switchMonitoringSidebar = function(section) {
@@ -1075,16 +1105,30 @@ async function getUsers() {
                 if (sharedInfo.icon) icon = sharedInfo.icon;
             }
 
-            // users/{userId} 문서에서 가입일과 마지막 로그인 날짜 가져오기
+            // users/{userId} 문서에서 가입일과 마지막 로그인 날짜, providerId 가져오기
             let createdAt = null;
             let lastLoginAt = null;
+            let userDocProviderId = null;
+            let userDocEmail = null;
             try {
                 const userDocRef = doc(db, 'artifacts', appId, 'users', userId);
                 const userDocSnap = await getDoc(userDocRef);
                 if (userDocSnap.exists()) {
                     const userData = userDocSnap.data();
-                    createdAt = userData.createdAt || null;
-                    lastLoginAt = userData.lastLoginAt || null;
+                    // Firestore Timestamp를 Date로 변환
+                    if (userData.createdAt) {
+                        createdAt = userData.createdAt.toDate ? userData.createdAt.toDate() : new Date(userData.createdAt);
+                    }
+                    if (userData.lastLoginAt) {
+                        lastLoginAt = userData.lastLoginAt.toDate ? userData.lastLoginAt.toDate() : new Date(userData.lastLoginAt);
+                    }
+                    // users/{userId} 문서에서 providerId와 email 가져오기 (우선순위 높음)
+                    if (userData.providerId) {
+                        userDocProviderId = userData.providerId;
+                    }
+                    if (userData.email) {
+                        userDocEmail = userData.email;
+                    }
                 }
             } catch (e) {
                 console.warn(`사용자 ${userId}의 기본 정보를 가져오는 중 오류:`, e);
@@ -1096,17 +1140,55 @@ async function getUsers() {
                 const settingsSnap = await getDoc(settingsDoc);
                 if (settingsSnap.exists()) {
                     settings = settingsSnap.data();
+                    console.log(`📋 사용자 ${userId} 설정 로드:`, {
+                        hasProfile: !!settings.profile,
+                        profileNickname: settings.profile?.nickname,
+                        currentNickname: nickname
+                    });
                     if (settings.profile) {
-                        nickname = settings.profile.nickname || nickname;
-                        icon = settings.profile.icon || icon;
+                        // nickname이 명시적으로 있고 빈 문자열이 아니면 사용
+                        const profileNickname = settings.profile.nickname;
+                        if (profileNickname !== undefined && profileNickname !== null && profileNickname !== '') {
+                            nickname = profileNickname;
+                            console.log(`✅ 닉네임 설정: ${nickname}`);
+                        } else {
+                            console.warn(`⚠️ 프로필 닉네임이 유효하지 않음:`, profileNickname);
+                        }
+                        if (settings.profile.icon) {
+                            icon = settings.profile.icon;
+                        }
+                    } else {
+                        console.warn(`⚠️ 사용자 ${userId}의 settings에 profile이 없습니다.`);
                     }
                     termsAgreed = settings.termsAgreed === true;
                     termsAgreedAt = settings.termsAgreedAt || null;
                     email = settings.email || null;
                     providerId = settings.providerId || null;
+                } else {
+                    console.warn(`사용자 ${userId}의 settings 문서가 존재하지 않습니다.`);
                 }
             } catch (e) {
                 console.warn(`사용자 ${userId}의 설정을 가져오는 중 오류:`, e);
+            }
+            
+            // 디버깅: 닉네임이 '익명'으로 남아있는 경우 로그 출력
+            if (nickname === '익명' && userId === 'SLHnlOOAtfe7j7g8MAdbTxfRgeQ2') {
+                console.error(`❌ 사용자 ${userId}의 닉네임이 '익명'으로 표시됨:`, {
+                    settings: settings,
+                    profile: settings?.profile,
+                    profileNickname: settings?.profile?.nickname,
+                    profileNicknameType: typeof settings?.profile?.nickname,
+                    sharedInfo: sharedUserMap.has(userId) ? sharedUserMap.get(userId) : null,
+                    finalNickname: nickname
+                });
+            }
+
+            // providerId와 email은 users/{userId} 문서에서 우선, 없으면 settings에서 사용
+            if (!providerId && userDocProviderId) {
+                providerId = userDocProviderId;
+            }
+            if (!email && userDocEmail) {
+                email = userDocEmail;
             }
 
             // 게시글 수 가져오기 (타임라인, 앨범 공유, 토크 별로)
@@ -1142,6 +1224,9 @@ async function getUsers() {
             } catch (e) {
                 console.warn(`사용자 ${userId}의 토크 게시글 수를 가져오는 중 오류:`, e);
             }
+            
+            // 가입일과 마지막 로그인 날짜는 users/{userId} 문서에서 가져온 값을 그대로 사용
+            // DB에 값이 없으면 그대로 null로 유지 (보정하지 않음)
             
             // 로그인 방법 판단
             let loginMethod = '게스트';
@@ -1214,11 +1299,26 @@ async function renderUsers() {
             const termsAgreedDate = user.termsAgreedAt ? 
                 new Date(user.termsAgreedAt).toLocaleDateString('ko-KR') : '-';
             
+            // createdAt과 lastLoginAt은 이미 Date 객체로 변환되어 있음
             const createdAtDate = user.createdAt ? 
-                new Date(user.createdAt).toLocaleDateString('ko-KR') : '-';
+                (user.createdAt instanceof Date ? user.createdAt : new Date(user.createdAt)).toLocaleString('ko-KR', { 
+                    year: 'numeric', 
+                    month: '2-digit', 
+                    day: '2-digit', 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    timeZone: 'Asia/Seoul'
+                }) : '-';
             
             const lastLoginDate = user.lastLoginAt ? 
-                new Date(user.lastLoginAt).toLocaleDateString('ko-KR') : '-';
+                (user.lastLoginAt instanceof Date ? user.lastLoginAt : new Date(user.lastLoginAt)).toLocaleString('ko-KR', { 
+                    year: 'numeric', 
+                    month: '2-digit', 
+                    day: '2-digit', 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    timeZone: 'Asia/Seoul'
+                }) : '-';
             
             let loginMethodBadge = 'bg-slate-100 text-slate-700';
             if (user.loginMethod === '구글') {
@@ -1264,7 +1364,7 @@ async function renderUsers() {
                         </button>
                     </td>
                     <td class="px-4 py-3">
-                        <span class="text-sm text-slate-600">${createdAtDate}</span>
+                        <span class="text-sm text-slate-600">${user.loginMethod === '게스트' ? '-' : createdAtDate}</span>
                     </td>
                     <td class="px-4 py-3">
                         <span class="text-sm text-slate-600">${lastLoginDate}</span>

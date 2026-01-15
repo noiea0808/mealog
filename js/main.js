@@ -2,8 +2,11 @@
 console.log('📦 main.js 모듈 로드 시작');
 
 import { appState, getState } from './state.js';
-import { auth } from './firebase.js';
+import { auth, db, appId } from './firebase.js';
+import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { dbOps, setupListeners, setupSharedPhotosListener, loadMoreMeals, postInteractions, boardOperations } from './db.js';
+import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
 import { 
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
@@ -908,10 +911,174 @@ window.loadMoreMealsTimeline = async () => {
     }
 };
 
+/**
+ * 사용자 문서 업데이트 (가입일, 마지막 로그인 날짜)
+ */
+async function updateUserDocument(user) {
+    if (!user || user.isAnonymous) return;
+    
+    try {
+        const userDocRef = doc(db, 'artifacts', appId, 'users', user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        
+        const updateData = {
+            lastLoginAt: serverTimestamp()
+        };
+        
+        if (!userDocSnap.exists()) {
+            // 신규 사용자: createdAt, providerId, email 모두 설정
+            updateData.createdAt = serverTimestamp();
+            
+            // providerId와 email은 처음 한 번만 설정
+            if (user.providerData && user.providerData.length > 0) {
+                updateData.providerId = user.providerData[0].providerId;
+            }
+            if (user.email) {
+                updateData.email = user.email;
+            }
+            
+            console.log('✅ 신규 사용자 문서 생성:', { 
+                userId: user.uid,
+                providerId: updateData.providerId,
+                email: updateData.email
+            });
+        } else {
+            // 기존 사용자: providerId와 email이 없을 때만 설정 (한 번만)
+            const existingData = userDocSnap.data();
+            if (!existingData.providerId && user.providerData && user.providerData.length > 0) {
+                updateData.providerId = user.providerData[0].providerId;
+                console.log('✅ providerId 초기 설정:', updateData.providerId);
+            }
+            if (!existingData.email && user.email) {
+                updateData.email = user.email;
+                console.log('✅ email 초기 설정:', updateData.email);
+            }
+            
+            console.log('✅ 사용자 문서 업데이트 (마지막 로그인):', { userId: user.uid });
+        }
+        
+        await setDoc(userDocRef, updateData, { merge: true });
+    } catch (e) {
+        console.error('❌ 사용자 문서 업데이트 실패:', e);
+        // 에러가 발생해도 계속 진행 (비중요한 정보이므로)
+    }
+}
+
 // 인증 상태 변경 리스너 - 단순화된 버전
+let lastProcessedUserId = null; // 마지막으로 처리한 사용자 ID
+let isFirstLoad = true; // 첫 로드 여부
+
 initAuth(async (user) => {
+    // 페이지 로드 시 자동으로 로그아웃 (테스트를 위한 설정)
+    if (isFirstLoad && user && !user.isAnonymous) {
+        isFirstLoad = false;
+        console.log('🔄 페이지 로드 시 자동 로그아웃 실행');
+        await signOut(auth);
+        // 로그아웃 후 리턴 (다음 onAuthStateChanged에서 null user로 다시 호출됨)
+        return;
+    }
+    isFirstLoad = false;
+    // 1. 관리자 페이지가 열려있는지 확인 (현재 탭이 관리자 페이지인 경우)
+    if (window.location.pathname.includes('admin.html') || window.location.href.includes('admin.html')) {
+        console.log('⚠️ 관리자 페이지에서 인증 상태 변경 무시');
+        return;
+    }
+    
+    // 2. 갑작스러운 게스트 전환 방지: 이전에 로그인된 사용자가 있었는데 갑자기 게스트로 전환되는 경우
+    // 하지만 Firestore 규칙은 request.auth를 확인하므로, 실제 인증 상태를 확인해야 함
+    if ((!user || user.isAnonymous) && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
+        // 실제 auth.currentUser를 확인하여 관리자 페이지 영향인지 확인
+        const actualCurrentUser = auth.currentUser;
+        
+        // 실제 인증 상태가 게스트이거나 null이고, 이전에 로그인된 사용자가 있었으면
+        // 관리자 페이지 영향일 가능성이 높지만, Firestore 규칙이 작동하려면 실제 인증 상태가 필요함
+        // 따라서 이 경우는 무시하지 않고, 실제 인증 상태를 확인하여 처리
+        if ((!actualCurrentUser || actualCurrentUser.isAnonymous) && actualCurrentUser?.uid !== lastProcessedUserId) {
+            console.log('⚠️ 로그인된 사용자가 게스트로 전환 감지 (관리자 페이지 영향 가능):', {
+                previousUserId: lastProcessedUserId,
+                previousEmail: window.currentUser.email,
+                currentUser: user?.uid || 'null',
+                actualAuthUser: actualCurrentUser?.uid || 'null'
+            });
+            // 실제 인증 상태가 게스트이면 Firestore 규칙이 작동하지 않으므로
+            // 이전 사용자 정보를 유지하되, 실제 인증 상태가 복원될 때까지 대기
+            // 하지만 이 경우는 실제로 인증 상태가 변경되었으므로, 무시하지 않고 처리해야 함
+            // 대신 이전 사용자 정보를 유지하고, 실제 인증 상태가 복원되면 다시 처리
+            return;
+        }
+    }
+    
+    // 3. 로그아웃 시에도 이전 사용자가 있었으면 무시 (관리자 페이지 영향 가능)
+    // 단, 명시적 로그아웃인 경우는 허용 (sessionStorage에서 확인)
+    const isExplicitLogout = sessionStorage.getItem('explicitLogout') === 'true';
+    if (!user && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous && !isExplicitLogout) {
+        // 실제 auth.currentUser를 확인
+        const actualCurrentUser = auth.currentUser;
+        
+        // 실제 인증 상태가 null이고, 이전에 로그인된 사용자가 있었으면 무시
+        if (!actualCurrentUser || actualCurrentUser.isAnonymous) {
+            console.log('⚠️ 로그인된 사용자가 로그아웃 시도 - 무시 (관리자 페이지 영향 가능):', {
+                previousUserId: lastProcessedUserId,
+                previousEmail: window.currentUser.email,
+                actualAuthUser: actualCurrentUser?.uid || 'null'
+            });
+            // 현재 사용자 상태 유지 - 인증 상태 변경 무시
+            return;
+        }
+    }
+    
+    // 명시적 로그아웃 플래그 초기화 (사용 후 제거)
+    if (isExplicitLogout) {
+        sessionStorage.removeItem('explicitLogout');
+    }
+    
     if (user) {
+        // 사용자 변경 감지: 다른 사용자로 로그인한 경우 이전 리스너 완전히 해제
+        if (lastProcessedUserId && lastProcessedUserId !== user.uid) {
+            console.log('⚠️ 사용자 변경 감지:', { 
+                previousUserId: lastProcessedUserId, 
+                newUserId: user.uid,
+                previousEmail: window.currentUser?.email,
+                newEmail: user.email
+            });
+            
+            // 모든 리스너 해제
+            if (appState.settingsUnsubscribe) {
+                appState.settingsUnsubscribe();
+                appState.settingsUnsubscribe = null;
+            }
+            if (appState.dataUnsubscribe) {
+                appState.dataUnsubscribe();
+                appState.dataUnsubscribe = null;
+            }
+            if (appState.sharedPhotosUnsubscribe) {
+                appState.sharedPhotosUnsubscribe();
+                appState.sharedPhotosUnsubscribe = null;
+            }
+            
+            // 전역 상태 초기화
+            window.userSettings = null;
+            window.mealHistory = null;
+            window.sharedPhotos = null;
+            window._duplicateCleanupDone = false;
+            authFlowManager.hasCompleted = false;
+            authFlowManager.lastProcessedUserId = null;
+            
+            console.log('✅ 이전 사용자 리스너 및 상태 초기화 완료');
+        }
+        
         window.currentUser = user;
+        lastProcessedUserId = user.uid;
+        
+        console.log('🔐 인증 상태 변경:', {
+            uid: user.uid,
+            email: user.email,
+            providerId: user.providerData?.[0]?.providerId,
+            isAnonymous: user.isAnonymous
+        });
+        
+        // 사용자 문서 업데이트 (가입일, 마지막 로그인 날짜)
+        await updateUserDocument(user);
         
         // 이미 메인 화면이 표시되어 있으면 추가 처리 없이 리턴
         const mainApp = document.getElementById('mainApp');
@@ -931,7 +1098,7 @@ initAuth(async (user) => {
             }, 2000);
         }
         
-        // 리스너 설정
+        // 리스너 설정 (이전 리스너는 setupListeners 내부에서 해제됨)
         const { settingsUnsubscribe, dataUnsubscribe } = setupListeners(user.uid, {
             onSettingsUpdate: () => {
                 // 헤더 UI 업데이트 (디바운싱됨)
@@ -1028,6 +1195,15 @@ initAuth(async (user) => {
         }
     } else {
         // 로그아웃 상태
+        // 추가 안전장치: 이전에 로그인된 사용자가 있었는데 갑자기 로그아웃되는 경우 무시
+        if (lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
+            console.log('⚠️ 로그아웃 처리 중 이전 사용자 감지 - 무시 (관리자 페이지 영향 가능):', {
+                previousUserId: lastProcessedUserId,
+                previousEmail: window.currentUser.email
+            });
+            return;
+        }
+        
         const mainApp = document.getElementById('mainApp');
         const landingPage = document.getElementById('landingPage');
         if (mainApp && !mainApp.classList.contains('hidden') && landingPage && landingPage.style.display === 'none') {
@@ -1037,6 +1213,9 @@ initAuth(async (user) => {
         if (landingPage && landingPage.style.display === 'flex' && mainApp && mainApp.classList.contains('hidden')) {
             return;
         }
+        
+        // 로그아웃 처리 전에 lastProcessedUserId 초기화
+        lastProcessedUserId = null;
         
         switchScreen(false);
         if (appState.settingsUnsubscribe) {

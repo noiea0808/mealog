@@ -11,6 +11,95 @@ import { getDashboardData } from './analytics.js';
 // 설정 저장 디바운싱을 위한 타이머
 let settingsSaveTimeout = null;
 
+// 카카오 SDK 로드 함수
+function loadKakaoSDK() {
+    // 이미 로드 중이거나 로드 완료된 경우 스킵
+    if (window.kakaoSDKLoading || window.kakaoSDKLoaded) {
+        return Promise.resolve();
+    }
+    
+    // 이미 스크립트 태그가 있는지 확인
+    const existingScript = document.querySelector('script[src*="dapi.kakao.com"]');
+    if (existingScript) {
+        // 스크립트가 있으면 로드 완료를 기다림
+        return new Promise((resolve) => {
+            if (window.kakaoSDKLoaded) {
+                resolve();
+                return;
+            }
+            
+            // 최대 5초 대기
+            let attempts = 0;
+            const maxAttempts = 50;
+            const checkInterval = setInterval(() => {
+                attempts++;
+                if (window.kakaoSDKLoaded || typeof kakao !== 'undefined') {
+                    clearInterval(checkInterval);
+                    resolve();
+                } else if (attempts >= maxAttempts) {
+                    clearInterval(checkInterval);
+                    resolve(); // 타임아웃이어도 계속 진행
+                }
+            }, 100);
+        });
+    }
+    
+    // 로드 중 플래그 설정
+    window.kakaoSDKLoading = true;
+    
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.type = 'text/javascript';
+        // Mealog JavaScript 키: 42dce12f04991c35775f3ce1081a3c76
+        // 중요: JavaScript SDK는 반드시 JavaScript 키를 사용해야 함 (REST API 키 아님)
+        const appkey = '42dce12f04991c35775f3ce1081a3c76';
+        
+        // localhost는 HTTP 사용 (HTTPS는 인증서 문제로 실패할 수 있음)
+        // 실제 배포 환경에서는 HTTPS 사용 권장
+        const protocol = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http:' : 'https:';
+        const scriptUrl = protocol + '//dapi.kakao.com/v2/maps/sdk.js?appkey=' + appkey + '&libraries=services';
+        script.src = scriptUrl;
+        script.async = true;
+        script.crossOrigin = 'anonymous';
+        
+        script.onload = function() {
+            // 약간의 지연 후 kakao 객체 확인
+            setTimeout(function() {
+                try {
+                    if (typeof kakao !== 'undefined' && kakao && kakao.maps && kakao.maps.services) {
+                        window.kakaoSDKLoaded = true;
+                        window.kakaoSDKLoading = false;
+                        console.log('✅ 카카오 SDK 로드 완료');
+                        if (typeof window.onKakaoSDKLoaded === 'function') {
+                            window.onKakaoSDKLoaded();
+                        }
+                        resolve();
+                    } else {
+                        window.kakaoSDKLoaded = false;
+                        window.kakaoSDKLoading = false;
+                        console.warn('⚠️ 카카오 SDK 스크립트는 로드되었지만 kakao 객체가 완전하지 않습니다.');
+                        resolve(); // 에러여도 계속 진행
+                    }
+                } catch (e) {
+                    window.kakaoSDKLoaded = false;
+                    window.kakaoSDKLoading = false;
+                    console.warn('⚠️ kakao 객체 확인 중 에러:', e);
+                    resolve(); // 에러여도 계속 진행
+                }
+            }, 200);
+        };
+        
+        script.onerror = function(e) {
+            window.kakaoSDKLoaded = false;
+            window.kakaoSDKLoading = false;
+            console.warn('⚠️ 카카오 지도 SDK 스크립트 로드 실패');
+            resolve(); // 에러여도 계속 진행 (필수 기능이 아니므로)
+        };
+        
+        document.head.appendChild(script);
+    });
+}
+
 export function openModal(date, slotId, entryId = null) {
     try {
         const state = appState;
@@ -20,6 +109,11 @@ export function openModal(date, slotId, entryId = null) {
             console.error('openModal: 필수 파라미터가 없습니다.', { date, slotId });
             return;
         }
+        
+        // 카카오 SDK 로드 (비동기, 백그라운드에서 로드)
+        loadKakaoSDK().catch(err => {
+            console.warn('카카오 SDK 로드 실패 (무시):', err);
+        });
         
         state.currentEditingId = entryId;
         state.currentEditingDate = date;

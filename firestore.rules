@@ -18,32 +18,47 @@ service cloud.firestore {
       return request.auth != null;
     }
     
+    // 리소스의 userId가 현재 사용자인지 확인
+    function isOwnerOfResource() {
+      return isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+    
+    // 요청 리소스의 userId가 현재 사용자인지 확인
+    function isOwnerOfRequestResource() {
+      return isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
+    
+    // 리소스의 authorId가 현재 사용자인지 확인
+    function isAuthorOfResource() {
+      return isAuthenticated() && resource.data.authorId == request.auth.uid;
+    }
+    
+    // 요청 리소스의 authorId가 현재 사용자인지 확인
+    function isAuthorOfRequestResource() {
+      return isAuthenticated() && request.resource.data.authorId == request.auth.uid;
+    }
+    
     // ============================================
     // 사용자 데이터 (users 컬렉션)
     // ============================================
     match /artifacts/{appId}/users/{userId} {
-      // 사용자 문서: ADMIN은 모든 사용자 읽기, 일반 사용자는 자신의 데이터만
       allow read: if isAdmin() || isOwner(userId);
-      allow write: if isOwner(userId);
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if false;
       
-      // ============================================
       // 식사 기록 (meals 서브컬렉션)
-      // ============================================
       match /meals/{mealId} {
-        allow read: if isAdmin() || isOwner(userId);
-        allow write: if isOwner(userId);
+        // 서브컬렉션에서 부모 경로의 userId 변수 참조는 지원되지만, 명시적으로 작성하여 안정성 확보
+        allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
+        allow create, update, delete: if request.auth != null && request.auth.uid == userId;
       }
       
-      // ============================================
       // 사용자 설정 (config 서브컬렉션)
-      // ============================================
       match /config/{configId} {
-        // 사용자 본인만 읽기/쓰기 가능
-        // isOwner 함수를 사용하여 명확하게 확인
-        allow read: if isOwner(userId);
-        allow create: if isOwner(userId);
-        allow update: if isOwner(userId);
-        allow delete: if isOwner(userId);
+        // 서브컬렉션에서 부모 경로의 userId 변수 참조는 지원되지만, 명시적으로 작성하여 안정성 확보
+        allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
+        allow create, update, delete: if request.auth != null && request.auth.uid == userId;
       }
     }
     
@@ -52,9 +67,11 @@ service cloud.firestore {
     // ============================================
     match /artifacts/{appId}/sharedPhotos/{photoId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isOwnerOfRequestResource();
+      allow update: if isAuthenticated() && 
+                     resource.data.userId == request.auth.uid && 
+                     request.resource.data.userId == request.auth.uid;
+      allow delete: if isAdmin() || isOwnerOfResource();
     }
     
     // ============================================
@@ -62,14 +79,100 @@ service cloud.firestore {
     // ============================================
     match /artifacts/{appId}/admins/{adminId} {
       allow read: if isAdmin() || isOwner(adminId);
-      allow write: if false; // 수동으로만 설정
+      allow write: if false;
     }
     
     // ============================================
-    // 기타 문서들 (기본 규칙)
+    // 게시판 (boardPosts 컬렉션)
     // ============================================
-    match /{document=**} {
-      allow read, write: if isAuthenticated();
+    match /artifacts/{appId}/boardPosts/{postId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthorOfRequestResource();
+      allow update: if isAuthorOfResource();
+      allow delete: if isAdmin() || isAuthorOfResource();
+    }
+    
+    // ============================================
+    // 게시판 상호작용 (boardInteractions 컬렉션)
+    // ============================================
+    match /artifacts/{appId}/boardInteractions/{interactionId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwnerOfRequestResource();
+      allow update: if isOwnerOfResource();
+      allow delete: if isOwnerOfResource();
+    }
+    
+    // ============================================
+    // 게시판 댓글 (boardComments 컬렉션)
+    // ============================================
+    match /artifacts/{appId}/boardComments/{commentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthorOfRequestResource();
+      allow update: if isAuthorOfResource();
+      allow delete: if isAdmin() || isAuthorOfResource();
+    }
+    
+    // ============================================
+    // 게시판 사용자 (boardUsers 컬렉션)
+    // ============================================
+    match /artifacts/{appId}/boardUsers/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOwner(userId);
+      allow delete: if false;
+    }
+    
+    // ============================================
+    // 피드 좋아요 (postLikes 컬렉션)
+    // ============================================
+    match /artifacts/{appId}/postLikes/{likeId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwnerOfRequestResource();
+      allow update: if false;
+      allow delete: if isOwnerOfResource();
+    }
+    
+    // ============================================
+    // 피드 북마크 (postBookmarks 컬렉션)
+    // ============================================
+    match /artifacts/{appId}/postBookmarks/{bookmarkId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isOwnerOfRequestResource();
+      allow update: if false;
+      allow delete: if isOwnerOfResource();
+    }
+    
+    // ============================================
+    // 피드 댓글 (postComments 컬렉션)
+    // ============================================
+    match /artifacts/{appId}/postComments/{commentId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwnerOfRequestResource();
+      allow update: if isOwnerOfResource();
+      allow delete: if isOwnerOfResource();
+    }
+    
+    // ============================================
+    // 공지사항 (notices 컬렉션) - 관리자 전용
+    // ============================================
+    match /artifacts/{appId}/notices/{noticeId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // ============================================
+    // 콘텐츠 (content 컬렉션) - 관리자 전용
+    // ============================================
+    match /artifacts/{appId}/content/{contentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // ============================================
+    // 캐릭터 (persona 컬렉션) - 관리자 전용
+    // ============================================
+    match /artifacts/{appId}/persona/{personaId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
     }
   }
 }

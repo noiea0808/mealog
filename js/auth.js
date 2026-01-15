@@ -152,6 +152,8 @@ export function confirmLogout() {
 
 export async function confirmLogoutAction() {
     document.getElementById('logoutConfirmModal').classList.add('hidden');
+    // 명시적 로그아웃 플래그 설정 (페이지 리로드 후에도 유지)
+    sessionStorage.setItem('explicitLogout', 'true');
     await signOut(auth);
     window.location.reload();
 }
@@ -186,6 +188,8 @@ export async function confirmDeleteAccountAction() {
         }
         
         // 3. 로그아웃 및 페이지 리로드
+        // 명시적 로그아웃 플래그 설정
+        sessionStorage.setItem('explicitLogout', 'true');
         await signOut(auth);
         hideLoading();
         showToast("계정이 성공적으로 삭제되었습니다.", "success");
@@ -220,6 +224,8 @@ export async function switchToLogin() {
             settingsPage.classList.add('hidden');
         }
         
+        // 명시적 로그아웃 플래그 설정
+        sessionStorage.setItem('explicitLogout', 'true');
         // 게스트 모드 로그아웃
         await signOut(auth);
         // 로그아웃 후 자동으로 랜딩 페이지로 이동 (인증 상태 변경 리스너가 처리)
@@ -256,6 +262,8 @@ export function closeTermsModal() {
 
 // 약관 동의 취소 (로그아웃)
 export async function cancelTermsAgreement() {
+    // 명시적 로그아웃 플래그 설정
+    sessionStorage.setItem('explicitLogout', 'true');
     await signOut(auth);
     window.location.reload();
 }
