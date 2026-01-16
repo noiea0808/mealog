@@ -1,6 +1,13 @@
 // 전역 상태 관리
 import { DEFAULT_USER_SETTINGS } from './constants.js';
 
+// 로컬 타임존 날짜 문자열 변환 함수 (순환 참조 방지를 위해 여기서 직접 구현)
+function getLocalMonthString(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
+}
+
 // 앱 상태 - 모든 상태를 중앙에서 관리 (평면 구조 유지하여 기존 코드와 호환)
 export const appState = {
     // 리스너 관리
@@ -30,7 +37,7 @@ export const appState = {
     dashboardMode: '7d',
     customStartDate: (() => { const d = new Date(); d.setDate(d.getDate() - 7); return d; })(),
     customEndDate: new Date(),
-    selectedMonth: new Date().toISOString().slice(0, 7),
+    selectedMonth: getLocalMonthString(new Date()),
     selectedYear: new Date().getFullYear(),
     selectedYearForYear: new Date().getFullYear(), // 연간 모드용
     selectedMonthForWeek: new Date().getMonth() + 1,

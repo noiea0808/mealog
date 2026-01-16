@@ -5,6 +5,7 @@ import { showToast } from '../ui.js';
 import { dbOps } from '../db.js';
 import { getWeekRange, getCurrentWeekInMonth, getWeeksInMonth, getDayName } from './date-utils.js';
 import { renderGallery } from '../render/index.js';
+import { toLocalDateString } from '../utils.js';
 
 // HTML 이스케이프 함수 (XSS 방지)
 function escapeHtml(text) {
@@ -17,8 +18,8 @@ function escapeHtml(text) {
 // 주간 베스트 가져오기 (만족도 4~5점, 전부 표시)
 function getWeekBestMeals(year, month, week) {
     const { start, end } = getWeekRange(year, month, week);
-    const startStr = start.toISOString().split('T')[0];
-    const endStr = end.toISOString().split('T')[0];
+    const startStr = toLocalDateString(start);
+    const endStr = toLocalDateString(end);
     
     const weekData = window.mealHistory.filter(m => {
         return m.date >= startStr && m.date <= endStr;
@@ -48,8 +49,8 @@ function getMonthBestMeals(year, month) {
     // 해당 월의 시작일과 종료일 계산
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 0);
-    const monthStartStr = monthStart.toISOString().split('T')[0];
-    const monthEndStr = monthEnd.toISOString().split('T')[0];
+    const monthStartStr = toLocalDateString(monthStart);
+    const monthEndStr = toLocalDateString(monthEnd);
     
     for (let week = 1; week <= totalWeeks; week++) {
         // 각 주간의 베스트 가져오기 (사용자가 설정한 순서 포함)

@@ -3,7 +3,7 @@ import { db, appId, auth } from './firebase.js';
 import { doc, getDoc, setDoc, collection, addDoc, deleteDoc, onSnapshot, query, orderBy, limit, where, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { showToast } from './ui.js';
 import { DEFAULT_SUB_TAGS } from './constants.js';
-import { uploadBase64ToStorage } from './utils.js';
+import { uploadBase64ToStorage, toLocalDateString } from './utils.js';
 
 export const dbOps = {
     async save(record, silent = false) {
@@ -593,12 +593,15 @@ export function setupListeners(userId, callbacks) {
                     const settingsToSave = JSON.parse(JSON.stringify(window.userSettings));
                     
                     // profile 정보 보존 확인 (닉네임이 없거나 '게스트'인 경우 기존 설정 확인)
-                    if (!settingsToSave.profile || !settingsToSave.profile.nickname || settingsToSave.profile.nickname === '게스트') {
-                        // 현재 로드된 설정이 이미 Firestore에서 가져온 것이므로, 추가 확인 불필요
-                        // 단, profile이 완전히 없으면 기본값 설정
-                        if (!settingsToSave.profile) {
-                            settingsToSave.profile = { icon: '🐻', nickname: '게스트' };
-                        }
+                    // 주의: Firestore에 '게스트'로 저장되어 있을 수 있으므로, 실제로는 기존 설정을 확인하지 않음
+                    // 대신, profile이 완전히 없을 때만 기본값 설정
+                    if (!settingsToSave.profile) {
+                        settingsToSave.profile = { icon: '🐻', nickname: '게스트' };
+                        needsSave = true;
+                    } else if (!settingsToSave.profile.nickname || settingsToSave.profile.nickname === '게스트') {
+                        // 닉네임이 '게스트'이거나 없으면, 이것이 실제 저장된 값일 수 있으므로
+                        // 마이그레이션에서는 건드리지 않음 (사용자가 직접 수정해야 함)
+                        console.log('⚠️ 닉네임이 "게스트"이거나 없습니다. 사용자가 직접 수정해야 합니다.');
                     }
                     
                     // providerId와 email 업데이트 (없을 때만 추가, 이미 있으면 유지)
@@ -1254,8 +1257,8 @@ export async function loadMealsForDateRange(startDate, endDate) {
     }
     
     try {
-        const startStr = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
-        const endStr = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
+        const startStr = typeof startDate === 'string' ? startDate : toLocalDateString(startDate);
+        const endStr = typeof endDate === 'string' ? endDate : toLocalDateString(endDate);
         
         // 이미 로드된 범위 확인
         if (window.loadedMealsDateRange) {

@@ -470,5 +470,18 @@ export function generateColorMap(data, key, VIBRANT_COLORS) {
     return colorMap;
 }
 
+// 로컬 타임존 기준으로 YYYY-MM-DD 형식 문자열 반환
+// toISOString()은 UTC로 변환되어 한국 시간(KST, UTC+9)에서 날짜가 하루 전으로 나올 수 있음
+export function toLocalDateString(date) {
+    if (!date || !(date instanceof Date)) {
+        console.warn('toLocalDateString: 유효하지 않은 날짜 객체', date);
+        return '';
+    }
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 
 
