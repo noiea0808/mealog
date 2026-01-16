@@ -67,6 +67,21 @@ export function openEmailModal() {
         document.getElementById('rememberEmailCheck').checked = false;
     }
     document.getElementById('passwordInput').value = '';
+    
+    // 비밀번호 입력창에 엔터 키 이벤트 추가
+    const passwordInput = document.getElementById('passwordInput');
+    if (passwordInput) {
+        // 기존 이벤트 리스너 제거 (중복 방지)
+        const newPasswordInput = passwordInput.cloneNode(true);
+        passwordInput.parentNode.replaceChild(newPasswordInput, passwordInput);
+        
+        // 새 이벤트 리스너 추가
+        document.getElementById('passwordInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                window.handleEmailAuth();
+            }
+        });
+    }
 }
 
 export function closeEmailModal() {

@@ -95,6 +95,9 @@
                     <button onclick="window.switchAdminTab('content')" id="admin-tab-content" class="admin-tab flex-1 px-6 py-3 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
                         <i class="fa-solid fa-file-lines mr-2"></i>콘텐츠 관리
                     </button>
+                    <button onclick="window.switchAdminTab('data')" id="admin-tab-data" class="admin-tab flex-1 px-6 py-3 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
+                        <i class="fa-solid fa-database mr-2"></i>데이터
+                    </button>
                 </div>
             </div>
         </header>
@@ -328,6 +331,60 @@
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 데이터 탭 -->
+            <div id="admin-tab-content-data" class="admin-tab-content hidden">
+                <div class="flex gap-6 items-start">
+                    <!-- 왼쪽 사이드바 -->
+                    <div class="w-64 flex-shrink-0">
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sticky top-24">
+                            <div class="space-y-2">
+                                <button onclick="window.switchDataSidebar('restaurants')" id="data-sidebar-restaurants" class="w-full px-4 py-3 text-left text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-utensils mr-2"></i>식당정보
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 오른쪽 메인 콘텐츠 영역 -->
+                    <div class="flex-1 min-w-0">
+                        <!-- 식당정보 -->
+                        <div id="data-main-restaurants" class="data-main-section">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div class="flex justify-between items-center mb-4">
+                                        <h2 class="text-lg font-black text-slate-800">식당정보</h2>
+                                        <button onclick="window.refreshRestaurantData()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                            <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                        </button>
+                                    </div>
+                                    <p class="text-sm text-slate-500 mb-4">카카오 주소검색을 통해 입력된 식당 정보를 확인할 수 있습니다.</p>
+                                    <!-- 필터 버튼 -->
+                                    <div class="flex gap-2">
+                                        <button onclick="window.setRestaurantFilter('all')" id="restaurant-filter-all" class="restaurant-filter-btn px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold transition-colors">
+                                            <i class="fa-solid fa-list mr-1"></i>전체
+                                        </button>
+                                        <button onclick="window.setRestaurantFilter('kakao')" id="restaurant-filter-kakao" class="restaurant-filter-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">
+                                            <i class="fa-solid fa-map-marker-alt mr-1"></i>카카오맵
+                                        </button>
+                                        <button onclick="window.setRestaurantFilter('manual')" id="restaurant-filter-manual" class="restaurant-filter-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">
+                                            <i class="fa-solid fa-keyboard mr-1"></i>수동입력
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div id="restaurantsContainer" class="space-y-4">
+                                        <div class="text-center py-8 text-slate-400">
+                                            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                                            <p>로딩 중...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

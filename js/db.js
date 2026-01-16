@@ -100,22 +100,26 @@ export const dbOps = {
             
             // 프로필 정보 병합 (닉네임은 새 값이 있으면 업데이트, 없으면 기존 값 유지)
             if (newSettings.profile || existingSettings.profile) {
+                // 닉네임을 제외한 프로필 정보 먼저 병합
+                const { nickname: newNickname, ...newProfileWithoutNickname } = newSettings.profile || {};
+                const { nickname: existingNickname, ...existingProfileWithoutNickname } = existingSettings.profile || {};
+                
                 settingsToSave.profile = {
-                    ...(existingSettings.profile || {}),
-                    ...(newSettings.profile || {})
+                    ...existingProfileWithoutNickname,
+                    ...newProfileWithoutNickname
                 };
                 
-                // 닉네임 처리: 새 닉네임이 명시적으로 제공되면 업데이트, 아니면 기존 값 유지
-                if (newSettings.profile?.nickname !== undefined && newSettings.profile.nickname !== null && newSettings.profile.nickname !== '') {
+                // 닉네임 처리: 새 닉네임이 명시적으로 제공되고 유효하면 업데이트, 아니면 기존 값 유지
+                if (newNickname !== undefined && newNickname !== null && newNickname !== '') {
                     // 새 닉네임이 명시적으로 제공된 경우 업데이트
-                    settingsToSave.profile.nickname = newSettings.profile.nickname;
+                    settingsToSave.profile.nickname = newNickname;
                     console.log('✅ 닉네임 업데이트:', { 
-                        old: existingSettings.profile?.nickname, 
-                        new: newSettings.profile.nickname 
+                        old: existingNickname, 
+                        new: newNickname 
                     });
-                } else if (existingSettings.profile?.nickname) {
+                } else if (existingNickname) {
                     // 새 닉네임이 없으면 기존 닉네임 유지
-                    settingsToSave.profile.nickname = existingSettings.profile.nickname;
+                    settingsToSave.profile.nickname = existingNickname;
                 }
             }
             

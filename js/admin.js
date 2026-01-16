@@ -464,6 +464,9 @@ window.switchAdminTab = function(tab) {
     } else if (tab === 'content') {
         switchContentSidebar('mealog'); // 기본으로 MEALOG 표시
         loadMealogComments();
+    } else if (tab === 'data') {
+        switchDataSidebar('restaurants'); // 기본으로 식당정보 표시
+        renderRestaurantData('all');
     }
 }
 
@@ -3549,3 +3552,280 @@ window.refreshPersona = function() {
         switchContentSidebar('mealog');
     }
 }
+
+// 데이터 탭 관련 함수들
+
+// 데이터 사이드바 전환
+window.switchDataSidebar = function(section) {
+    // 모든 사이드바 버튼 비활성화
+    document.querySelectorAll('[id^="data-sidebar-"]').forEach(btn => {
+        btn.classList.remove('text-emerald-600', 'bg-emerald-50');
+        btn.classList.add('text-slate-500', 'hover:bg-slate-50');
+    });
+    
+    // 모든 메인 섹션 숨기기
+    document.querySelectorAll('.data-main-section').forEach(sec => {
+        sec.classList.add('hidden');
+    });
+    
+    // 선택한 사이드바 버튼 활성화
+    const activeSidebarBtn = document.getElementById(`data-sidebar-${section}`);
+    const activeMainSection = document.getElementById(`data-main-${section}`);
+    
+    if (activeSidebarBtn) {
+        activeSidebarBtn.classList.add('text-emerald-600', 'bg-emerald-50');
+        activeSidebarBtn.classList.remove('text-slate-500', 'hover:bg-slate-50');
+    }
+    
+    if (activeMainSection) {
+        activeMainSection.classList.remove('hidden');
+    }
+    
+    // 섹션별 데이터 로드
+    if (section === 'restaurants') {
+        renderRestaurantData(currentRestaurantFilter || 'all');
+    }
+};
+
+// 식당정보 필터 상태
+let currentRestaurantFilter = 'all'; // 'all', 'kakao', 'manual'
+
+// 식당정보 데이터 렌더링
+window.renderRestaurantData = async function(filter = 'all') {
+    const container = document.getElementById('restaurantsContainer');
+    if (!container) return;
+    
+    currentRestaurantFilter = filter;
+    
+    container.innerHTML = `
+        <div class="text-center py-8 text-slate-400">
+            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+            <p>로딩 중...</p>
+        </div>
+    `;
+    
+    try {
+        // 모든 사용자의 meals 컬렉션에서 place 필드 수집
+        const usersColl = collection(db, 'artifacts', appId, 'users');
+        const usersSnapshot = await getDocs(usersColl);
+        
+        const restaurantMap = new Map(); // place -> { name, count, firstSeen, lastSeen, isKakao, placeId, address }
+        
+        // 각 사용자의 meals 컬렉션 조회
+        for (const userDoc of usersSnapshot.docs) {
+            const userId = userDoc.id;
+            try {
+                const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
+                const mealsSnapshot = await getDocs(mealsColl);
+                
+                mealsSnapshot.forEach(mealDoc => {
+                    const mealData = mealDoc.data();
+                    const place = mealData.place;
+                    
+                    if (place && place.trim() !== '') {
+                        const placeKey = place.trim();
+                        
+                        // 카카오맵 API로 입력된 식당인지 확인
+                        // placeId, kakaoPlaceId, placeData, kakaoPlace 등이 있으면 카카오맵 입력으로 판단
+                        const hasPlaceId = !!(mealData.placeId || mealData.kakaoPlaceId);
+                        const hasPlaceData = !!mealData.placeData;
+                        const hasKakaoPlace = mealData.kakaoPlace === true || mealData.kakaoPlace === 'true';
+                        const isKakao = hasPlaceId || hasPlaceData || hasKakaoPlace;
+                        
+                        const placeId = mealData.placeId || mealData.kakaoPlaceId || null;
+                        const address = mealData.placeAddress || mealData.address || null;
+                        
+                        // 디버깅: 카카오맵 데이터 확인 (처음 몇 개만 로그)
+                        if (isKakao && Math.random() < 0.1) { // 10% 확률로 로그
+                            console.log('✅ 카카오맵 식당 발견:', {
+                                place: placeKey,
+                                placeId: placeId,
+                                address: address,
+                                hasPlaceId: hasPlaceId,
+                                hasPlaceData: hasPlaceData,
+                                hasKakaoPlace: hasKakaoPlace,
+                                mealDataKeys: Object.keys(mealData).filter(k => k.toLowerCase().includes('place') || k.toLowerCase().includes('kakao') || k.toLowerCase().includes('address'))
+                            });
+                        }
+                        
+                        if (!restaurantMap.has(placeKey)) {
+                            restaurantMap.set(placeKey, {
+                                name: placeKey,
+                                count: 0,
+                                firstSeen: mealData.date || null,
+                                lastSeen: mealData.date || null,
+                                isKakao: isKakao,
+                                placeId: placeId,
+                                address: address,
+                                kakaoCount: 0,
+                                manualCount: 0
+                            });
+                        }
+                        
+                        const restaurant = restaurantMap.get(placeKey);
+                        restaurant.count++;
+                        
+                        // 카카오맵 입력 횟수와 수동 입력 횟수 분리 집계
+                        if (isKakao) {
+                            restaurant.isKakao = true; // 한 번이라도 카카오맵으로 입력되면 true
+                            restaurant.kakaoCount++;
+                            if (placeId && !restaurant.placeId) {
+                                restaurant.placeId = placeId;
+                            }
+                            if (address && !restaurant.address) {
+                                restaurant.address = address;
+                            }
+                        } else {
+                            restaurant.manualCount++;
+                        }
+                        
+                        // 날짜 업데이트
+                        if (mealData.date) {
+                            if (!restaurant.firstSeen || mealData.date < restaurant.firstSeen) {
+                                restaurant.firstSeen = mealData.date;
+                            }
+                            if (!restaurant.lastSeen || mealData.date > restaurant.lastSeen) {
+                                restaurant.lastSeen = mealData.date;
+                            }
+                        }
+                    }
+                });
+            } catch (e) {
+                console.warn(`사용자 ${userId}의 meals 조회 실패:`, e);
+            }
+        }
+        
+        // Map을 배열로 변환
+        let restaurants = Array.from(restaurantMap.values());
+        
+        // 디버깅: 필터 전 통계
+        const totalCount = restaurants.length;
+        const kakaoCount = restaurants.filter(r => r.isKakao).length;
+        const manualCount = restaurants.filter(r => !r.isKakao).length;
+        console.log('📊 식당 통계:', {
+            total: totalCount,
+            kakao: kakaoCount,
+            manual: manualCount,
+            filter: filter,
+            kakaoRestaurants: restaurants.filter(r => r.isKakao).slice(0, 5).map(r => ({ name: r.name, placeId: r.placeId, address: r.address }))
+        });
+        
+        // 카카오맵 식당이 없는데 필터가 'kakao'인 경우 경고
+        if (filter === 'kakao' && kakaoCount === 0 && totalCount > 0) {
+            console.warn('⚠️ 카카오맵 필터가 선택되었지만 카카오맵 식당이 없습니다.');
+            console.warn('   - 기존 데이터에 카카오맵 정보(placeId, kakaoPlaceId 등)가 저장되지 않았을 수 있습니다.');
+            console.warn('   - 새로 입력하는 식당은 카카오맵 정보가 저장됩니다.');
+        }
+        
+        // 필터 적용
+        if (filter === 'kakao') {
+            restaurants = restaurants.filter(r => r.isKakao);
+            console.log('카카오맵 필터 적용 후:', restaurants.length, '개');
+        } else if (filter === 'manual') {
+            restaurants = restaurants.filter(r => !r.isKakao);
+            console.log('수동입력 필터 적용 후:', restaurants.length, '개');
+        }
+        
+        // 정렬 (입력 횟수 내림차순)
+        restaurants.sort((a, b) => b.count - a.count);
+        
+        if (restaurants.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-12 text-slate-400">
+                    <i class="fa-solid fa-utensils text-4xl mb-4"></i>
+                    <p class="text-sm font-bold">${filter === 'all' ? '등록된 식당 정보가 없습니다.' : filter === 'kakao' ? '카카오맵으로 입력된 식당이 없습니다.' : '수동으로 입력된 식당이 없습니다.'}</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // 테이블 형태로 표시
+        container.innerHTML = `
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">순위</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">식당명</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">입력 횟수</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">입력 방식</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">최초 입력</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">최근 입력</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        ${restaurants.map((restaurant, index) => {
+                            const inputTypeBadge = restaurant.isKakao 
+                                ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
+                                    <i class="fa-solid fa-map-marker-alt mr-1"></i>카카오맵
+                                   </span>`
+                                : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
+                                    <i class="fa-solid fa-keyboard mr-1"></i>수동입력
+                                   </span>`;
+                            
+                            const countDetail = restaurant.isKakao && restaurant.manualCount > 0
+                                ? `<div class="text-xs text-slate-500 mt-1">카카오: ${restaurant.kakaoCount}회, 수동: ${restaurant.manualCount}회</div>`
+                                : '';
+                            
+                            return `
+                            <tr class="hover:bg-slate-50 transition-colors">
+                                <td class="px-4 py-3 text-sm font-bold text-slate-700">${index + 1}</td>
+                                <td class="px-4 py-3 text-sm text-slate-800">
+                                    <div class="font-bold">${escapeHtml(restaurant.name)}</div>
+                                    ${restaurant.address ? `<div class="text-xs text-slate-500 mt-1">${escapeHtml(restaurant.address)}</div>` : ''}
+                                </td>
+                                <td class="px-4 py-3 text-sm">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
+                                        ${restaurant.count}회
+                                    </span>
+                                    ${countDetail}
+                                </td>
+                                <td class="px-4 py-3 text-sm">${inputTypeBadge}</td>
+                                <td class="px-4 py-3 text-sm text-slate-600">${restaurant.firstSeen || '-'}</td>
+                                <td class="px-4 py-3 text-sm text-slate-600">${restaurant.lastSeen || '-'}</td>
+                            </tr>
+                        `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-4 text-sm text-slate-500 text-center">
+                총 ${restaurants.length}개의 식당이 ${filter === 'all' ? '등록' : filter === 'kakao' ? '카카오맵으로 입력' : '수동으로 입력'}되어 있습니다.
+            </div>
+        `;
+        
+    } catch (e) {
+        console.error('식당정보 조회 실패:', e);
+        container.innerHTML = `
+            <div class="text-center py-8 text-red-400">
+                <i class="fa-solid fa-circle-exclamation text-2xl mb-2"></i>
+                <p>데이터를 불러오는 중 오류가 발생했습니다.</p>
+                <p class="text-xs mt-2">${e.message}</p>
+            </div>
+        `;
+    }
+};
+
+// 식당정보 필터 설정
+window.setRestaurantFilter = function(filter) {
+    // 모든 필터 버튼 비활성화
+    document.querySelectorAll('.restaurant-filter-btn').forEach(btn => {
+        btn.classList.remove('bg-emerald-600', 'text-white');
+        btn.classList.add('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
+    });
+    
+    // 선택한 필터 버튼 활성화
+    const activeFilterBtn = document.getElementById(`restaurant-filter-${filter}`);
+    if (activeFilterBtn) {
+        activeFilterBtn.classList.remove('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
+        activeFilterBtn.classList.add('bg-emerald-600', 'text-white');
+    }
+    
+    // 데이터 다시 렌더링
+    renderRestaurantData(filter);
+};
+
+// 식당정보 새로고침
+window.refreshRestaurantData = function() {
+    renderRestaurantData(currentRestaurantFilter);
+};
