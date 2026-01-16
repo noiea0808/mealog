@@ -48,15 +48,12 @@ function getApiKey() {
     }
     return GEMINI_API_KEY;
 }
-// 지원 가능한 모델 목록 (우선순위 순) - 실제 존재하는 모델 우선 사용
+// 지원 가능한 모델 목록 - 데이터 분석용 추천 모델 3개만 순차적으로 사용
+// 실제 존재하는 모델명만 사용 (404 에러 방지)
 const GEMINI_MODELS = [
-    'gemini-1.5-flash-latest',
-    'gemini-1.5-flash',
-    'gemini-1.5-pro-latest',
-    'gemini-1.5-pro',
-    'gemini-2.0-flash-exp',
-    'gemini-2.5-flash',
-    'gemini-pro'
+    'gemini-2.5-pro',        // 1순위: 깊은 분석, 복잡한 쿼리, 논리적 추론 (고급 분석용)
+    'gemini-2.5-flash-lite', // 2순위: 백업 옵션 (가능하면 사용)
+    'gemini-2.5-flash'       // 3순위: 고빈도 요청, 경량 분석 (66자 응답 가능, 최후의 보루)
 ];
 
 // API URL 생성 함수 (여러 버전 시도)
@@ -193,6 +190,7 @@ function displayInsightText(text, characterName = '') {
     const container = document.getElementById('insightTextContent');
     const bubble = document.getElementById('insightBubble');
     const characterNameEl = document.getElementById('insightCharacterName');
+    const characterBtn = document.getElementById('insightCharacterBtn');
     
     if (!container) {
         console.error('insightTextContent 컨테이너를 찾을 수 없습니다.');
@@ -225,8 +223,16 @@ function displayInsightText(text, characterName = '') {
     const escapedText = escapeHtml(text).replace(/\n/g, '<br>');
     container.innerHTML = escapedText;
     
-    // 말풍선 클릭 이벤트 제거 (페이징 없음)
-    if (bubble) {
+    // 말풍선 최소 높이 설정 (캐릭터창 + 코멘트창의 합산 높이)
+    if (bubble && characterBtn) {
+        // 캐릭터창 높이 계산 (180px 설정됨)
+        const characterContainer = characterBtn.closest('.relative.flex-shrink-0');
+        if (characterContainer) {
+            const characterHeight = 180; // 캐릭터창 높이 (index.html:546에서 확인)
+            const minHeight = characterHeight + 'px';
+            bubble.style.minHeight = minHeight;
+        }
+        
         bubble.style.cursor = 'default';
         bubble.title = '';
         // handleInsightBubbleClick 함수가 정의되어 있을 때만 제거
@@ -583,22 +589,25 @@ export async function generateInsightComment() {
     let loadingInterval = null;
     let dotCount = 0;
     
+    // 분석 시작 전에 "분석중입니다" 표시
+    const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
+    const characterName = character ? character.name : '';
+    displayInsightText('분석중입니다', characterName);
+    
     if (btn) {
         btn.disabled = true;
         const originalText = btn.textContent || 'COMMENT';
         
-        // 로딩 애니메이션 시작 (COMMENT . .. ... .... ..... 순환)
+        // 로딩 애니메이션 시작 (분석중... 점 애니메이션)
         loadingInterval = setInterval(() => {
-            dotCount = (dotCount + 1) % 6; // 0~5 순환
+            dotCount = (dotCount + 1) % 4; // 0~3 순환 (최대 3개 점)
             const dots = '.'.repeat(dotCount);
-            btn.textContent = `COMMENT${dots}`;
-        }, 300); // 300ms마다 업데이트
+            btn.textContent = `분석중${dots}`;
+        }, 400); // 400ms마다 업데이트
     }
     
     try {
         // AI 코멘트 생성 및 업데이트
-        const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
-        const characterName = character ? character.name : '';
         const comment = await getGeminiComment(filteredData, currentCharacter, dateRangeText);
         displayInsightText(comment || "멋진 식사 기록이 쌓이고 있어요! ✨", characterName);
         
@@ -617,6 +626,11 @@ export async function generateInsightComment() {
         if (btn) {
             btn.disabled = false;
             btn.textContent = 'COMMENT';
+        }
+        
+        // 분석 중 메시지도 제거 (에러 발생 시에도)
+        if (loadingInterval) {
+            clearInterval(loadingInterval);
         }
     }
 }
@@ -696,7 +710,8 @@ async function listAvailableModels() {
     try {
         const apiKey = getApiKey();
         const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
-        console.log('ListModels API 호출 중...', listUrl);
+        // 보안: API 키가 포함된 URL은 로그에 출력하지 않음
+        console.log('ListModels API 호출 중...');
         const response = await fetch(listUrl);
         
         if (response.ok) {
@@ -852,19 +867,10 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         let data = null;
         const apiVersion = 'v1beta'; // v1beta만 사용
         
-        // 먼저 사용 가능한 모델 목록 확인
-        const modelsToTry = await listAvailableModels();
+        // 지정된 데이터 분석용 추천 모델 3개만 순차적으로 사용
+        const models = GEMINI_MODELS;
         
-        // 사용 가능한 모델이 있으면 그것을 사용, 없으면 기본 목록 사용
-        let models = modelsToTry && modelsToTry.length > 0 ? modelsToTry : GEMINI_MODELS;
-        
-        // tts, gemma 모델 제외 (안전장치)
-        models = models.filter(modelName => {
-            const lowerName = modelName.toLowerCase();
-            return !lowerName.includes('tts') && !lowerName.includes('gemma');
-        });
-        
-        console.log('시도할 모델 목록 (tts/gemma 제외):', models);
+        console.log('시도할 모델 목록 (순서대로):', models);
         
         for (const model of models) {
             try {
@@ -963,38 +969,82 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                 const responseData = await response.json();
                 console.log(`Gemini API 성공: ${apiVersion}/${model}`);
                 
-                // 응답 검증 (Optional Chaining으로 안전하게 처리)
-                if (responseData?.candidates?.[0]?.content?.parts?.[0]?.text) {
-                    let testComment = responseData.candidates[0].content.parts[0].text.trim();
-                    const testFinishReason = responseData.candidates[0]?.finishReason;
+                // 응답 검증 (안전 필터 및 응답 구조 처리)
+                if (responseData?.candidates && responseData.candidates.length > 0) {
+                    const candidate = responseData.candidates[0];
                     
-                    console.log('API 응답 확인:', {
-                        모델: model,
-                        finishReason: testFinishReason,
-                        원본_길이: testComment.length,
-                        원본_텍스트_미리보기: testComment.substring(0, 100) + '...'
-                    });
-                    
-                    // 응답이 불완전한 경우 (너무 짧거나 MAX_TOKENS인데 짧음) 다음 모델로 재시도
-                    if (!testComment || testComment.length < 150) {
-                        console.warn(`응답이 너무 짧습니다 (${testComment.length}자). 다음 모델로 재시도합니다.`);
-                        lastError = new Error(`응답이 너무 짧습니다: ${testComment.length}자`);
-                        continue; // 다음 모델로 재시도
+                    // 안전 필터 확인
+                    if (responseData.promptFeedback) {
+                        console.warn('⚠️ 안전 필터 작동:', responseData.promptFeedback);
+                        lastError = new Error('안전 필터로 인해 응답이 차단됨');
+                        continue; // 다음 모델 시도
                     }
                     
-                    if (testFinishReason === 'MAX_TOKENS' && testComment.length < 150) {
-                        console.warn(`MAX_TOKENS인데 응답이 너무 짧습니다 (${testComment.length}자). 다음 모델로 재시도합니다.`);
-                        lastError = new Error(`MAX_TOKENS로 잘렸지만 너무 짧음: ${testComment.length}자`);
-                        continue; // 다음 모델로 재시도
+                    // 응답 구조 확인 (다양한 구조 지원)
+                    let testComment = null;
+                    const testFinishReason = candidate?.finishReason;
+                    
+                    // 구조 1: candidate.content.parts[0].text (일반적)
+                    if (candidate?.content?.parts && candidate.content.parts.length > 0) {
+                        const textPart = candidate.content.parts[0];
+                        if (textPart?.text) {
+                            testComment = textPart.text.trim();
+                        }
                     }
                     
-                    // 응답이 충분하면 이 모델 사용
-                    data = responseData;
-                    break; // 성공하면 반복 중단
+                    // 구조 2: candidate.text (간단한 구조)
+                    if (!testComment && candidate?.text) {
+                        testComment = candidate.text.trim();
+                    }
+                    
+                    // 구조 3: candidate.output (일부 모델)
+                    if (!testComment && candidate?.output) {
+                        testComment = typeof candidate.output === 'string' 
+                            ? candidate.output.trim() 
+                            : candidate.output.text?.trim();
+                    }
+                    
+                    // 텍스트 찾기 성공
+                    if (testComment) {
+                        console.log('API 응답 확인:', {
+                            모델: model,
+                            finishReason: testFinishReason,
+                            원본_길이: testComment.length,
+                            원본_텍스트_미리보기: testComment.substring(0, 100) + '...'
+                        });
+                        
+                        // 최소 길이 체크 (50자 이상이거나 MAX_TOKENS인 경우 허용)
+                        const minLength = testFinishReason === 'MAX_TOKENS' ? 30 : 50;
+                        if (!testComment || testComment.length < minLength) {
+                            console.warn(`응답이 너무 짧습니다 (${testComment.length}자, 최소: ${minLength}자).`);
+                            lastError = new Error(`응답이 너무 짧습니다: ${testComment.length}자`);
+                            continue;
+                        }
+                        
+                        // 응답이 충분하면 이 모델 사용
+                        data = responseData;
+                        break; // 성공하면 반복 중단
+                    } else {
+                        // 텍스트를 찾지 못한 경우 - 응답 구조 로깅
+                        console.warn('⚠️ API 응답에서 텍스트를 찾을 수 없습니다:', {
+                            model: model,
+                            candidateKeys: candidate ? Object.keys(candidate) : null,
+                            candidateContent: candidate?.content ? Object.keys(candidate.content) : null,
+                            responseKeys: Object.keys(responseData)
+                        });
+                        lastError = new Error('응답에 텍스트가 없음 (응답 구조 불일치)');
+                        continue;
+                    }
                 } else {
-                    console.warn('응답 형식이 올바르지 않습니다. 다음 모델로 재시도합니다.');
-                    lastError = new Error('응답 형식 오류');
-                    continue; // 다음 모델로 재시도
+                    // candidates가 없거나 비어있는 경우
+                    console.warn('⚠️ API 응답에 candidates가 없습니다 (안전 필터 작동 가능성):', responseData);
+                    
+                    if (responseData.promptFeedback) {
+                        lastError = new Error('안전 필터로 인해 응답이 차단됨');
+                    } else {
+                        lastError = new Error('응답 형식 오류 (candidates 없음)');
+                    }
+                    continue;
                 }
                 
             } catch (error) {
@@ -1014,76 +1064,109 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
             throw lastError || new Error('모든 Gemini 모델 호출 실패. 사용 가능한 모델 목록을 확인해주세요.');
         }
         
-        // 최종 응답 처리 (Optional Chaining으로 안전하게 처리)
-        if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-            let comment = data.candidates[0].content.parts[0].text.trim();
-            const finishReason = data.candidates[0]?.finishReason;
-            
-            console.log('최종 응답 처리:', {
-                finishReason: finishReason,
-                원본_길이: comment.length,
-                원본_텍스트_전체: comment
-            });
-            
-            // MAX_TOKENS인 경우 불완전한 마지막 문장 제거
-            if (finishReason === 'MAX_TOKENS' && comment.length >= 150) {
-                console.log('MAX_TOKENS이지만 충분히 긴 응답이므로 처리합니다.');
-                // 불완전한 마지막 문장 제거
-                comment = comment.replace(/[^\n가-힣a-zA-Z0-9\s.,!?]*$/, '');
-                
-                const lines = comment.split('\n').filter(line => line.trim());
-                if (lines.length > 0) {
-                    const lastLine = lines[lines.length - 1];
-                    
-                    // 마지막 줄이 불완전하면 제거
-                    if (lastLine && !/[.!?]$/.test(lastLine.trim()) && lastLine.length < 20) {
-                        lines.pop();
-                        comment = lines.join('\n').trim();
-                    }
-                }
-                
-                // 자연스러운 마무리
-                if (comment && !/[.!?]$/.test(comment.trim())) {
-                    comment = comment.trim() + '!';
+        // 최종 응답 처리 (안전 필터 및 응답 구조 안전하게 처리)
+        let comment = null;
+        const candidate = data?.candidates?.[0];
+        const finishReason = candidate?.finishReason;
+        
+        // 다양한 응답 구조 지원
+        if (candidate) {
+            // 구조 1: candidate.content.parts[0].text (일반적)
+            if (candidate?.content?.parts && candidate.content.parts.length > 0) {
+                const textPart = candidate.content.parts[0];
+                if (textPart?.text) {
+                    comment = textPart.text.trim();
                 }
             }
             
-            // 최종 검증 (이미 루프에서 검증했지만 한 번 더)
-            if (!comment || comment.length < 150) {
-                throw new Error(`최종 응답이 너무 짧습니다: ${comment.length}자`);
+            // 구조 2: candidate.text (간단한 구조)
+            if (!comment && candidate?.text) {
+                comment = candidate.text.trim();
             }
             
-            // 응답이 불완전한 것 같으면 (문장이 끝나지 않음) 경고
-            const trimmedComment = comment.trim();
-            if (!/[.!?]$/.test(trimmedComment)) {
-                console.warn('응답이 불완전할 수 있습니다. 자연스럽게 마무리합니다.');
-                // 마지막 문장이 불완전하면 마침표 추가
-                if (trimmedComment.length > 30) {
-                    comment = trimmedComment + '.';
-                }
+            // 구조 3: candidate.output (일부 모델)
+            if (!comment && candidate?.output) {
+                comment = typeof candidate.output === 'string' 
+                    ? candidate.output.trim() 
+                    : candidate.output.text?.trim();
             }
-            
-            // 캐릭터 아이콘 추가 (아이콘은 텍스트 앞에만 한 번)
-            // 먼저 아이콘 제거 (중복 방지)
-            if (character && comment.startsWith(character.icon)) {
-                comment = comment.substring(character.icon.length).trim();
-            }
-            
-            if (character && comment) {
-                comment = `${character.icon} ${comment}`;
-            }
-            
-            console.log('최종 생성된 코멘트:', {
-                길이: comment.length,
-                줄_수: comment.split('\n').length,
-                미리보기: comment.substring(0, 150) + '...'
-            });
-            
-            return comment;
-        } else {
-            console.error('응답 데이터 구조 오류:', JSON.stringify(data, null, 2));
-            throw new Error('응답 형식이 올바르지 않습니다.');
         }
+        
+        // 텍스트 확인
+        if (!comment) {
+            // 내용이 없거나 안전 필터에 걸린 경우
+            console.warn("⚠️ API 응답에 텍스트가 없습니다 (안전 필터 작동 가능성):", data);
+            
+            if (data?.promptFeedback) {
+                throw new Error("죄송해요, 식사 기록 내용이 조금 민감해서 분석할 수 없어요. (Safety Filter)");
+            }
+            throw new Error("분석 결과를 가져오는데 실패했어요. (응답 형식 불일치)");
+        }
+        
+        // comment가 있을 때 처리
+        console.log('최종 응답 처리:', {
+            finishReason: finishReason,
+            원본_길이: comment.length,
+            원본_텍스트_전체: comment
+        });
+        
+        // MAX_TOKENS인 경우 불완전한 마지막 문장 제거
+        if (finishReason === 'MAX_TOKENS' && comment.length >= 150) {
+            console.log('MAX_TOKENS이지만 충분히 긴 응답이므로 처리합니다.');
+            // 불완전한 마지막 문장 제거
+            comment = comment.replace(/[^\n가-힣a-zA-Z0-9\s.,!?]*$/, '');
+            
+            const lines = comment.split('\n').filter(line => line.trim());
+            if (lines.length > 0) {
+                const lastLine = lines[lines.length - 1];
+                
+                // 마지막 줄이 불완전하면 제거
+                if (lastLine && !/[.!?]$/.test(lastLine.trim()) && lastLine.length < 20) {
+                    lines.pop();
+                    comment = lines.join('\n').trim();
+                }
+            }
+            
+            // 자연스러운 마무리
+            if (comment && !/[.!?]$/.test(comment.trim())) {
+                comment = comment.trim() + '!';
+            }
+        }
+        
+        // 최종 검증 (이미 루프에서 검증했지만 한 번 더)
+        // MAX_TOKENS인 경우 더 관대하게 처리 (30자 이상)
+        const minLength = finishReason === 'MAX_TOKENS' ? 30 : 50;
+        if (!comment || comment.length < minLength) {
+            throw new Error(`최종 응답이 너무 짧습니다: ${comment.length}자 (최소: ${minLength}자)`);
+        }
+        
+        // 응답이 불완전한 것 같으면 (문장이 끝나지 않음) 경고
+        const trimmedComment = comment.trim();
+        if (!/[.!?]$/.test(trimmedComment)) {
+            console.warn('응답이 불완전할 수 있습니다. 자연스럽게 마무리합니다.');
+            // 마지막 문장이 불완전하면 마침표 추가
+            if (trimmedComment.length > 30) {
+                comment = trimmedComment + '.';
+            }
+        }
+        
+        // 캐릭터 아이콘 추가 (아이콘은 텍스트 앞에만 한 번)
+        // 먼저 아이콘 제거 (중복 방지)
+        if (character && comment.startsWith(character.icon)) {
+            comment = comment.substring(character.icon.length).trim();
+        }
+        
+        if (character && comment) {
+            comment = `${character.icon} ${comment}`;
+        }
+        
+        console.log('최종 생성된 코멘트:', {
+            길이: comment.length,
+            줄_수: comment.split('\n').length,
+            미리보기: comment.substring(0, 150) + '...'
+        });
+        
+        return comment;
         
     } catch (error) {
         console.error('Gemini API 오류:', error);

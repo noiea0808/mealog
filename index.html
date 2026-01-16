@@ -177,11 +177,11 @@
                     
                     // 로딩 오버레이 숨기기
                     setTimeout(() => {
-                    const overlay = document.getElementById('loadingOverlay');
-                    if (overlay && !overlay.classList.contains('hidden')) {
-                        overlay.classList.add('hidden');
-                    }
-                }, 1000);
+                        const overlay = document.getElementById('loadingOverlay');
+                        if (overlay && !overlay.classList.contains('hidden')) {
+                            overlay.classList.add('hidden');
+                        }
+                    }, 1000);
             }
         }, true); // capture phase에서도 캐치
         
