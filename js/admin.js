@@ -917,16 +917,97 @@ function renderTags(type, tags) {
     container.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2';
     
     container.innerHTML = tags.map((tag, index) => `
-        <div class="flex items-center gap-2 bg-white rounded-lg p-3 border border-slate-200 min-w-0" data-index="${index}">
+        <div class="tag-item flex items-center gap-2 bg-white rounded-lg p-3 border border-slate-200 min-w-0 cursor-move hover:border-emerald-300 transition-colors" 
+             draggable="true" 
+             data-tag-index="${index}"
+             data-tag-type="${type}">
+            <div class="flex items-center justify-center w-6 h-6 text-slate-400 flex-shrink-0">
+                <i class="fa-solid fa-grip-vertical text-xs"></i>
+            </div>
             <input type="text" value="${escapeHtml(tag || '')}" 
-                   onchange="window.updateTagItem('${type}', ${index}, this.value)"
+                   onchange="window.updateTagItem('${type}', this)"
                    class="flex-1 min-w-0 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-800 outline-none focus:border-emerald-500"
                    placeholder="태그 이름">
-            <button onclick="window.removeTagItem('${type}', ${index})" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors flex-shrink-0">
+            <button onclick="window.removeTagItem('${type}', this.closest('.tag-item'))" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors flex-shrink-0">
                 <i class="fa-solid fa-trash"></i>
             </button>
         </div>
     `).join('');
+    
+    // 드래그 앤 드롭 이벤트 설정
+    setupTagDragAndDrop(type, container);
+}
+
+// 태그 드래그 앤 드롭 설정
+function setupTagDragAndDrop(type, container) {
+    let draggedElement = null;
+    let draggedIndex = null;
+    let dropIndex = null;
+    
+    container.querySelectorAll('.tag-item').forEach((item, index) => {
+        // 드래그 시작
+        item.addEventListener('dragstart', (e) => {
+            draggedElement = item;
+            draggedIndex = index;
+            item.classList.add('opacity-50');
+            e.dataTransfer.effectAllowed = 'move';
+        });
+        
+        // 드래그 종료
+        item.addEventListener('dragend', (e) => {
+            item.classList.remove('opacity-50');
+            
+            // 순서 변경 적용
+            if (draggedIndex !== null && dropIndex !== null && draggedIndex !== dropIndex) {
+                const tags = getCurrentTags(type);
+                const [removed] = tags.splice(draggedIndex, 1);
+                tags.splice(dropIndex, 0, removed);
+                renderTags(type, tags);
+            }
+            
+            // 초기화
+            draggedElement = null;
+            draggedIndex = null;
+            dropIndex = null;
+            
+            // 모든 항목의 드래그 오버 스타일 제거
+            container.querySelectorAll('.tag-item').forEach(el => {
+                el.classList.remove('border-emerald-500', 'bg-emerald-50');
+            });
+        });
+        
+        // 드래그 오버 (호버 효과)
+        item.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            
+            const allItems = Array.from(container.querySelectorAll('.tag-item'));
+            const currentIndex = allItems.indexOf(item);
+            
+            if (draggedIndex !== null && currentIndex !== draggedIndex) {
+                dropIndex = currentIndex;
+                
+                // 드래그 오버 스타일 적용
+                allItems.forEach(el => {
+                    el.classList.remove('border-emerald-500', 'bg-emerald-50');
+                });
+                item.classList.add('border-emerald-500', 'bg-emerald-50');
+            }
+        });
+        
+        // 드래그 리브 (호버 효과 제거)
+        item.addEventListener('dragleave', (e) => {
+            if (!item.contains(e.relatedTarget)) {
+                item.classList.remove('border-emerald-500', 'bg-emerald-50');
+            }
+        });
+        
+        // 드롭
+        item.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+    });
 }
 
 // 태그 항목 추가
@@ -941,42 +1022,46 @@ window.addTagItem = function(type) {
 };
 
 // 태그 항목 제거
-window.removeTagItem = function(type, index) {
+window.removeTagItem = function(type, itemElement) {
     const tags = getCurrentTags(type);
     if (tags.length <= 1) {
         alert('최소 한 개의 태그가 필요합니다.');
         return;
     }
     
-    tags.splice(index, 1);
-    renderTags(type, tags);
-};
-
-// 태그 항목 업데이트
-window.updateTagItem = function(type, index, value) {
-    const tags = getCurrentTags(type);
-    if (tags[index] !== undefined) {
-        tags[index] = value.trim();
+    const container = document.getElementById(`tags-${type}`);
+    const allItems = Array.from(container.querySelectorAll('.tag-item'));
+    const index = allItems.indexOf(itemElement);
+    
+    if (index > -1) {
+        tags.splice(index, 1);
+        renderTags(type, tags);
     }
 };
 
-// 현재 태그 목록 가져오기
+// 태그 항목 업데이트
+window.updateTagItem = function(type, inputElement) {
+    // DOM 순서에 따라 태그가 자동으로 업데이트되므로 별도 처리 불필요
+    // 실제 저장 시 getCurrentTags로 최신 순서를 가져옴
+};
+
+// 현재 태그 목록 가져오기 (DOM 순서대로)
 function getCurrentTags(type) {
     const container = document.getElementById(`tags-${type}`);
     if (!container) return [];
     
     const tags = [];
-    container.querySelectorAll('[data-index]').forEach(itemEl => {
-        const index = parseInt(itemEl.getAttribute('data-index'));
+    container.querySelectorAll('.tag-item').forEach(itemEl => {
         const input = itemEl.querySelector('input[type="text"]');
-        
         if (input) {
-            tags[index] = input.value.trim();
+            const value = input.value.trim();
+            if (value.length > 0) {
+                tags.push(value);
+            }
         }
     });
     
-    // 빈 값 제거 및 정렬
-    return tags.filter(tag => tag.length > 0);
+    return tags;
 }
 
 // 태그 저장
