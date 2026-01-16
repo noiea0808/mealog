@@ -899,7 +899,7 @@ export async function renderGallery() {
                             `}
                             <div class="flex-1 min-w-0">
                                 <div class="text-base font-bold text-slate-800">${filteredUserPhoto.userNickname || '익명'}</div>
-                                ${bio ? `<div class="text-sm text-slate-600 mt-1">${escapeHtml(bio)}</div>` : ''}
+                                ${bio ? `<div class="text-sm text-slate-600 mt-1 whitespace-pre-wrap">${escapeHtml(bio)}</div>` : ''}
                             </div>
                         </div>
                     </div>
@@ -1158,9 +1158,11 @@ export async function renderGallery() {
                     `}
                     <div class="flex-1 min-w-0">
                         <div class="text-sm font-bold text-slate-800 cursor-pointer hover:text-emerald-600 transition-colors" onclick="window.filterGalleryByUser('${photo.userId}', '${escapeHtml(photo.userNickname || '익명')}')">${photo.userNickname || '익명'}</div>
-                        <div class="text-xs text-slate-400">${dateStr}</div>
+                        <div class="flex items-center gap-2">
+                            <div class="text-xs text-slate-400">${dateStr}</div>
+                            ${mealLabel ? `<div class="text-[10px] font-bold ${mealLabelStyle || 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-full whitespace-nowrap">${mealLabel}</div>` : ''}
+                        </div>
                     </div>
-                    ${mealLabel ? `<div class="text-[10px] font-bold ${mealLabelStyle || 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-full whitespace-nowrap">${mealLabel}</div>` : ''}
                     ${isMyPost ? `
                         <div class="relative">
                             <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-photo-slot-id="${photo.slotId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
