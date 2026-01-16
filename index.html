@@ -541,9 +541,9 @@
                         </div>
                     </div>
                     <!-- 캐릭터와 말풍선 영역 -->
-                    <div class="flex gap-3 mt-3 relative z-10 items-end">
+                    <div class="flex gap-3 mt-3 relative z-10 items-center">
                         <!-- 캐릭터 선택 창 -->
-                        <div class="relative flex-shrink-0 flex flex-col gap-2" style="height: calc(1.6rem * 5 + 1.5rem);">
+                        <div class="relative flex-shrink-0 flex flex-col gap-2" style="height: 180px;">
                             <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="w-[75px] flex-1 bg-white/20 rounded-2xl border-2 border-white/30 flex flex-col items-center justify-center transition-colors overflow-hidden">
                                 <div id="insightCharacterIcon" class="w-full h-full flex items-center justify-center text-2xl font-black text-white">M</div>
                             </button>
@@ -553,17 +553,10 @@
                         </div>
                         <!-- 말풍선 -->
                         <div class="flex-1 relative min-w-0">
-                            <div id="insightBubble" class="bg-yellow-50/90 border-2 border-white py-3 px-3 overflow-hidden relative" style="height: calc(1.6rem * 5 + 2rem); border-radius: 0.5rem 1.25rem 1.25rem 0.5rem;">
-                                <!-- 페이지 카운터 (우상단) -->
-                                <div id="insightPageCounter" class="hidden absolute top-2 right-3 text-[10px] font-bold text-slate-500 bg-white/60 px-1.5 py-0.5 rounded">
-                                    1/1
-                                </div>
-                                <div id="insightTextPages" class="space-y-0">
-                                    <!-- 페이지별 텍스트가 여기에 표시됨 -->
-                                </div>
-                                <!-- 페이지 인디케이터 -->
-                                <div id="insightPageIndicator" class="hidden absolute bottom-3 right-4 flex gap-1">
-                                    <!-- 페이지 점들이 여기에 표시됨 -->
+                            <div id="insightBubble" class="bg-yellow-50/90 border-2 border-white py-3 px-3 relative" style="border-radius: 0.5rem 1.25rem 1.25rem 0.5rem;">
+                                <div id="insightCharacterName" class="text-sm font-black text-emerald-800 mb-2"></div>
+                                <div id="insightTextContent" class="insight-text-content">
+                                    <!-- 안내 메시지가 여기에 표시됩니다 -->
                                 </div>
                             </div>
                         </div>

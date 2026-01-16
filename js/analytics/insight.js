@@ -149,106 +149,91 @@ let currentCharacter = 'mealog';
 // MEALOG 코멘트 순차 선택을 위한 인덱스
 let mealogCommentIndex = 0;
 
-// 텍스트를 5줄 단위로 나누는 함수 (페이지 제한 없음)
+// 텍스트를 6줄 단위로 나누는 함수 (페이지 제한 없음)
 // 원본 줄바꿈을 그대로 유지 (줄바꿈이 없는 텍스트는 그대로 유지)
-function splitTextIntoPages(text, maxLines = 5) {
+function splitTextIntoPages(text, maxLines = 6) {
     if (!text) return [''];
     
     // 줄바꿈만 정규화 (원본 텍스트의 줄바꿈과 공백은 그대로 유지)
-    text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     
-    // 원본 줄바꿈을 기준으로 분할 (줄바꿈이 없으면 한 줄로 처리)
-    const originalLines = text.split('\n');
+    // 원본 텍스트의 마지막 줄바꿈 여부 확인
+    const hasTrailingNewline = normalizedText.endsWith('\n');
+    
+    // 줄 단위로 분할 (split은 마지막 빈 줄도 포함)
+    const lines = normalizedText.split('\n');
     
     // 빈 텍스트인 경우
-    if (originalLines.length === 0) return [''];
+    if (lines.length === 0) return [''];
     
     const pages = [];
-    // 5줄씩 묶어서 페이지 만들기 (모든 줄 포함, 페이지 제한 없음)
-    for (let i = 0; i < originalLines.length; i += maxLines) {
-        const pageLines = originalLines.slice(i, i + maxLines);
-        const pageText = pageLines.join('\n');
-        // 빈 페이지도 추가 (모든 줄이 공백이어도 추가)
+    // 5줄씩 묶어서 페이지 만들기
+    for (let i = 0; i < lines.length; i += maxLines) {
+        const pageLines = lines.slice(i, i + maxLines);
+        let pageText = pageLines.join('\n');
+        
+        // 마지막 페이지이고 원본이 줄바꿈으로 끝났다면 마지막 줄바꿈 추가
+        if (i + maxLines >= lines.length && hasTrailingNewline) {
+            pageText += '\n';
+        }
+        
         pages.push(pageText);
     }
     
-    // 마지막에 남은 줄이 있는지 확인 (이미 위에서 처리되지만 안전장치)
+    // 빈 페이지 방지
     if (pages.length === 0) {
-        pages.push(text);
+        pages.push(normalizedText);
     }
     
     return pages;
 }
 
-// 말풍선에 텍스트 표시 (페이지네이션, 페이지 제한 없음)
+// 말풍선에 텍스트 표시 (페이징 없이 전체 텍스트 표시)
 function displayInsightText(text, characterName = '') {
-    const container = document.getElementById('insightTextPages');
-    const pageCounter = document.getElementById('insightPageCounter');
-    const indicator = document.getElementById('insightPageIndicator');
+    const container = document.getElementById('insightTextContent');
     const bubble = document.getElementById('insightBubble');
+    const characterNameEl = document.getElementById('insightCharacterName');
     
     if (!container) {
-        console.error('insightTextPages 컨테이너를 찾을 수 없습니다.');
+        console.error('insightTextContent 컨테이너를 찾을 수 없습니다.');
         return;
     }
     
-    // 텍스트를 페이지로 분할 (페이지 제한 없음)
-    const pages = splitTextIntoPages(text, 5);
-    
-    // 디버깅: 페이지 분할 결과 확인
-    const totalLines = text.split('\n').length;
-    const totalCharsInPages = pages.reduce((sum, p) => sum + p.length, 0);
-    console.log('텍스트 페이지 분할 결과:', {
-        전체_텍스트_길이: text.length,
-        전체_줄_수: totalLines,
-        생성된_페이지_수: pages.length,
-        각_페이지_줄_수: pages.map(p => p.split('\n').length),
-        각_페이지_문자_수: pages.map(p => p.length),
-        페이지에_포함된_총_문자_수: totalCharsInPages,
-        텍스트_손실_여부: text.length !== totalCharsInPages ? '⚠️ 손실 있음' : '✅ 정상'
-    });
-    
-    // 캐릭터명은 첫 페이지에만 표시
-    const characterHeader = characterName && pages.length > 0 
-        ? `<div class="insight-character-name text-xs font-bold text-emerald-700 mb-1">[ ${characterName} ]</div>` 
-        : '';
-    
-    // 기존 내용을 먼저 지우고 새로 추가 (강제 업데이트)
-    container.innerHTML = '';
-    
-    pages.forEach((page, index) => {
-        // 줄바꿈을 <br>로 변환하고 HTML 이스케이프
-        const escapedPage = escapeHtml(page).replace(/\n/g, '<br>');
-        const pageDiv = document.createElement('div');
-        pageDiv.className = `insight-text-page ${index === 0 ? 'active' : ''}`;
-        pageDiv.setAttribute('data-page', index);
-        pageDiv.innerHTML = `${index === 0 ? characterHeader : ''}<div class="insight-text-content">${escapedPage}</div>`;
-        container.appendChild(pageDiv);
-    });
-    
-    // 페이지 카운터 표시 (우상단) - 항상 표시 (1페이지여도)
-    if (pageCounter) {
-        pageCounter.classList.remove('hidden');
-        pageCounter.textContent = `1/${pages.length}`;
-        window.totalInsightPages = pages.length;
+    // 캐릭터명 표시
+    if (characterNameEl) {
+        if (characterName) {
+            characterNameEl.textContent = `[${characterName}]`;
+            characterNameEl.classList.remove('hidden');
+        } else {
+            // characterName이 없으면 현재 선택된 캐릭터 이름 사용
+            const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
+            if (character) {
+                characterNameEl.textContent = `[${character.name}]`;
+                characterNameEl.classList.remove('hidden');
+            } else {
+                characterNameEl.classList.add('hidden');
+            }
+        }
     }
     
-    // 페이지 인디케이터 숨기기 (제거 요청)
-    if (indicator) {
-        indicator.classList.add('hidden');
+    if (!text) {
+        container.innerHTML = '';
+        return;
     }
     
-    // 말풍선 클릭 이벤트 설정 (페이지가 2개 이상일 때만)
-    if (bubble && pages.length > 1) {
-        bubble.style.cursor = 'pointer';
-        bubble.title = '클릭하여 다음 페이지 보기';
-    } else if (bubble) {
+    // 줄바꿈을 <br>로 변환하고 HTML 이스케이프
+    const escapedText = escapeHtml(text).replace(/\n/g, '<br>');
+    container.innerHTML = escapedText;
+    
+    // 말풍선 클릭 이벤트 제거 (페이징 없음)
+    if (bubble) {
         bubble.style.cursor = 'default';
         bubble.title = '';
+        // handleInsightBubbleClick 함수가 정의되어 있을 때만 제거
+        if (typeof handleInsightBubbleClick === 'function') {
+            bubble.removeEventListener('click', handleInsightBubbleClick);
+        }
     }
-    
-    // 첫 페이지로 초기화
-    window.currentInsightPage = 0;
 }
 
 // 인사이트 페이지 전환
@@ -279,32 +264,18 @@ export function showInsightPage(pageIndex) {
     window.currentInsightPage = pageIndex;
 }
 
-// 말풍선 클릭 시 다음 페이지로 (초기화)
+// 말풍선 클릭 이벤트 설정 (페이징 없으므로 사용 안 함)
 export function setupInsightBubbleClick() {
     const bubble = document.getElementById('insightBubble');
     if (!bubble) return;
     
-    // 기존 이벤트 리스너 제거 후 새로 추가
-    bubble.removeEventListener('click', handleInsightBubbleClick);
-    bubble.addEventListener('click', handleInsightBubbleClick);
-}
-
-function handleInsightBubbleClick() {
-    const pages = document.querySelectorAll('.insight-text-page');
-    if (pages.length <= 1) return;
-    
-    const currentPage = window.currentInsightPage || 0;
-    const nextPage = (currentPage + 1) % pages.length;
-    showInsightPage(nextPage);
-    
-    // 클릭 피드백 (선택사항)
-    const bubble = document.getElementById('insightBubble');
-    if (bubble) {
-        bubble.style.transform = 'scale(0.98)';
-        setTimeout(() => {
-            bubble.style.transform = '';
-        }, 150);
+    // 페이징이 없으므로 클릭 이벤트 제거
+    // handleInsightBubbleClick 함수가 정의되어 있을 때만 제거
+    if (typeof handleInsightBubbleClick === 'function') {
+        bubble.removeEventListener('click', handleInsightBubbleClick);
     }
+    bubble.style.cursor = 'default';
+    bubble.title = '';
 }
 
 // 캐릭터 선택 팝업 렌더링
@@ -486,13 +457,31 @@ async function getMealogComment() {
             const data = personaDoc.data();
             const comments = data.comments || [];
             
-            // 비어있지 않은 코멘트만 필터링
-            const validComments = comments.filter(c => c && c.trim().length > 0);
+            // 더 엄격한 필터링: undefined, null, 빈 문자열 모두 제거
+            const validComments = comments.filter(c => {
+                return c !== null && c !== undefined && typeof c === 'string' && c.trim().length > 0;
+            });
+            
+            console.log('MEALOG 코멘트 로드:', {
+                원본_배열_길이: comments.length,
+                유효한_코멘트_수: validComments.length,
+                현재_인덱스: mealogCommentIndex,
+                선택될_코멘트_인덱스: mealogCommentIndex % validComments.length
+            });
             
             if (validComments.length > 0) {
                 // 순차적으로 선택 (메시지1 > 2 > 3... 순서대로)
                 const selectedComment = validComments[mealogCommentIndex % validComments.length];
                 mealogCommentIndex = (mealogCommentIndex + 1) % validComments.length;
+                
+                console.log('선택된 코멘트:', {
+                    길이: selectedComment.length,
+                    줄_수: selectedComment.split('\n').length,
+                    미리보기: selectedComment.substring(0, 100) + '...',
+                    전체_내용: selectedComment,
+                    COMMENT_버튼_포함: selectedComment.includes('💬') || selectedComment.includes('COMMENT')
+                });
+                
                 return selectedComment;
             }
         }
@@ -591,10 +580,19 @@ export async function generateInsightComment() {
     
     // 버튼 비활성화 및 로딩 상태
     const btn = document.getElementById('generateCommentBtn');
+    let loadingInterval = null;
+    let dotCount = 0;
+    
     if (btn) {
         btn.disabled = true;
-        const originalText = btn.textContent;
-        btn.textContent = '...';
+        const originalText = btn.textContent || 'COMMENT';
+        
+        // 로딩 애니메이션 시작 (COMMENT . .. ... .... ..... 순환)
+        loadingInterval = setInterval(() => {
+            dotCount = (dotCount + 1) % 6; // 0~5 순환
+            const dots = '.'.repeat(dotCount);
+            btn.textContent = `COMMENT${dots}`;
+        }, 300); // 300ms마다 업데이트
     }
     
     try {
@@ -610,6 +608,11 @@ export async function generateInsightComment() {
         console.error('코멘트 생성 실패:', error);
         showToast('코멘트 생성 중 오류가 발생했습니다.', 'error');
     } finally {
+        // 로딩 애니메이션 중지
+        if (loadingInterval) {
+            clearInterval(loadingInterval);
+        }
+        
         // 버튼 활성화 및 원래 텍스트로 복원
         if (btn) {
             btn.disabled = false;
@@ -706,23 +709,64 @@ async function listAvailableModels() {
                     .filter(model => {
                         // supportedGenerationMethods에 generateContent가 있는지 확인
                         const methods = model.supportedGenerationMethods || [];
-                        return methods.includes('generateContent');
+                        const hasGenerateContent = methods.includes('generateContent');
+                        
+                        // 모델 이름 체크 (tts, gemma 제외)
+                        const modelName = model.name?.replace('models/', '') || '';
+                        const isExcluded = modelName.toLowerCase().includes('tts') || 
+                                          modelName.toLowerCase().includes('gemma');
+                        
+                        return hasGenerateContent && !isExcluded;
                     })
                     .map(model => model.name?.replace('models/', '') || null)
                     .filter(name => name !== null);
                 
-                console.log('generateContent를 지원하는 모델:', modelsWithGenerateContent);
+                console.log('generateContent를 지원하는 모델 (tts/gemma 제외):', modelsWithGenerateContent);
                 availableModels = modelsWithGenerateContent;
                 return modelsWithGenerateContent;
             }
         } else {
             const errorText = await response.text();
-            console.error('ListModels API 오류:', response.status, errorText);
+            let errorData;
+            try {
+                errorData = JSON.parse(errorText);
+            } catch (e) {
+                errorData = { error: { message: errorText } };
+            }
+            
+            // 에러 상세 정보 로그
+            console.warn('ListModels API 오류:', {
+                status: response.status,
+                message: errorData.error?.message,
+                reason: errorData.error?.details?.[0]?.reason,
+                전체_에러: errorData
+            });
+            
+            // API 키 문제는 나중에 사용자에게 알림
+            if (response.status === 400 && errorData.error?.message?.includes('API key')) {
+                // 에러는 이미 위에서 로그로 출력됨
+            }
         }
     } catch (error) {
         console.error('모델 목록 조회 실패:', error);
     }
     return null;
+}
+
+// 공통 페르소나 가져오기
+async function getCommonPersona() {
+    try {
+        const commonDocRef = doc(db, 'artifacts', appId, 'persona', 'common');
+        const commonDoc = await getDoc(commonDocRef);
+        
+        if (commonDoc.exists()) {
+            const data = commonDoc.data();
+            return data.systemPrompt || '';
+        }
+    } catch (e) {
+        console.error('공통 페르소나 가져오기 실패:', e);
+    }
+    return '';
 }
 
 // Gemini API를 사용하여 코멘트 생성
@@ -741,38 +785,67 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
             return character ? `${character.icon} 기록을 분석할 수 없습니다.` : "기록을 분석할 수 없습니다.";
         }
         
+        // 공통 페르소나 가져오기
+        const commonPersona = await getCommonPersona();
+        
+        // 디버깅: 공통 페르소나 로드 확인
+        console.log('공통 페르소나 로드:', {
+            존재: !!commonPersona,
+            길이: commonPersona ? commonPersona.length : 0,
+            내용_미리보기: commonPersona ? commonPersona.substring(0, 100) + '...' : '없음'
+        });
+        
         // 프롬프트 생성 (재미있고 캐릭터 성격 중심, 핵심만)
         const menuSummary = analysis.menuDetails.length > 0 
             ? analysis.menuDetails.slice(0, 5).join(', ') 
             : '없음';
         
-        const prompt = `당신은 ${character.name}입니다. ${character.systemPrompt}
-
-**중요**: ${character.persona}로서 당신의 고유한 성격과 말투를 확실히 드러내세요.
-
-식사 데이터 분석:
-- 총 ${analysis.totalMeals}회 기록
-- 식사방식: ${analysis.mealTypes || '없음'}
-- 주요 메뉴: ${menuSummary}
-- 함께한 사람: ${analysis.companions || '대부분 혼자'}
-${analysis.avgRating ? `- 만족도 평균: ${analysis.avgRating}/5` : ''}
-
-위 데이터를 보고 12-15줄의 재미있고 개성 있는 코멘트를 작성하세요.
-
-**절대 하지 말 것:**
-- 자기 소개 금지 ("안녕하세요", "저는 OOO입니다" 등)
-- 기간 언급 금지 ("지난 한 주", "이번 기간", "1월 4일부터" 등 - 상단에 이미 표시됨)
-- 지루하고 진부한 문구 사용 금지
-
-**반드시 할 것:**
-- 캐릭터 성격이 확실히 드러나도록 재미있고 개성 있게 작성
-- 식사 패턴에서 발견한 재미있거나 흥미로운 점을 우선 언급
-- 긍정적이지만 진부하지 않은, 캐릭터다운 격려
-- 핵심 인사이트만 전달 (불필요한 장황한 설명 없이)
-- 캐릭터 고유의 말투와 유머 감각 사용
-- 짧고 명확한 문장으로 구성 (한 줄당 30-40자)
-- 이모지 최대 2개 자연스럽게 사용
-- 한국어로만, 12-15줄 완전히 끝내기`;
+        // 프롬프트 구성 (간결하고 명확하게)
+        let prompt = '';
+        
+        // 공통 페르소나 (간결하게)
+        if (commonPersona && commonPersona.trim()) {
+            prompt += `[공통 페르소나 - 최우선 적용]\n${commonPersona.trim()}\n\n`;
+        }
+        
+        // 캐릭터 페르소나
+        prompt += `[캐릭터 페르소나]\n당신은 ${character.name}입니다. ${character.persona}\n`;
+        if (character.systemPrompt) {
+            prompt += `${character.systemPrompt}\n`;
+        }
+        
+        // 식사 데이터
+        prompt += `\n[식사 데이터]\n`;
+        prompt += `- 총 ${analysis.totalMeals}회 기록\n`;
+        prompt += `- 식사방식: ${analysis.mealTypes || '없음'}\n`;
+        prompt += `- 주요 메뉴: ${menuSummary}\n`;
+        prompt += `- 함께한 사람: ${analysis.companions || '대부분 혼자'}\n`;
+        if (analysis.avgRating) {
+            prompt += `- 만족도 평균: ${analysis.avgRating}/5\n`;
+        }
+        
+        // 작성 지침 (간결하게)
+        prompt += `\n[작성 지침]\n`;
+        if (commonPersona && commonPersona.trim()) {
+            prompt += `- 공통 페르소나의 모든 지침을 반드시 적용\n`;
+        }
+        prompt += `- 캐릭터 고유의 말투와 성격 드러내기\n`;
+        prompt += `- 식사 패턴의 재미있는 점 우선 언급\n`;
+        prompt += `- 자기 소개/기간 언급 금지\n`;
+        prompt += `- 이모지 최대 2개, 한국어만 사용\n`;
+        
+        // 최종 프롬프트 로그 (디버깅용)
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('📝 생성된 프롬프트 정보:');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('공통 페르소나 포함:', !!(commonPersona && commonPersona.trim()));
+        console.log('프롬프트 길이:', prompt.length, '자');
+        console.log('프롬프트 줄 수:', prompt.split('\n').length, '줄');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('📄 전체 프롬프트 내용:');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log(prompt);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
         // v1beta API만 사용 (v1은 이 모델들을 지원하지 않음)
         let lastError = null;
@@ -783,49 +856,117 @@ ${analysis.avgRating ? `- 만족도 평균: ${analysis.avgRating}/5` : ''}
         const modelsToTry = await listAvailableModels();
         
         // 사용 가능한 모델이 있으면 그것을 사용, 없으면 기본 목록 사용
-        const models = modelsToTry && modelsToTry.length > 0 ? modelsToTry : GEMINI_MODELS;
-        console.log('시도할 모델 목록:', models);
+        let models = modelsToTry && modelsToTry.length > 0 ? modelsToTry : GEMINI_MODELS;
+        
+        // tts, gemma 모델 제외 (안전장치)
+        models = models.filter(modelName => {
+            const lowerName = modelName.toLowerCase();
+            return !lowerName.includes('tts') && !lowerName.includes('gemma');
+        });
+        
+        console.log('시도할 모델 목록 (tts/gemma 제외):', models);
         
         for (const model of models) {
             try {
                 const apiUrl = getGeminiApiUrl(model, apiVersion);
                 console.log(`Gemini API 호출 시도: ${apiVersion}/${model}`);
                 
+                // API 요청 본문 구성
+                const requestBody = {
+                    contents: [{
+                        parts: [{
+                            text: prompt
+                        }]
+                    }],
+                    generationConfig: {
+                        temperature: 0.7,
+                        topK: 40,
+                        topP: 0.95,
+                        maxOutputTokens: 1000, // 충분한 토큰 수로 완전한 응답 보장
+                        stopSequences: [], // 정지 시퀀스 제거하여 완전한 응답 보장
+                    }
+                };
+                
+                // 공통 페르소나가 있으면 system instruction으로 추가
+                if (commonPersona && commonPersona.trim()) {
+                    let systemInstructionText = `${commonPersona.trim()}\n\n위 공통 페르소나를 먼저 적용한 후, 사용자 프롬프트의 캐릭터별 페르소나를 추가로 적용하세요.`;
+                    
+                    requestBody.systemInstruction = {
+                        parts: [{
+                            text: systemInstructionText
+                        }]
+                    };
+                    
+                    // 첫 번째 모델에서만 systemInstruction 로그 출력
+                    if (model === models[0]) {
+                        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                        console.log('🔧 System Instruction (공통 페르소나):');
+                        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                        console.log(systemInstructionText);
+                        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                    }
+                }
+                
+                // 첫 번째 모델에서만 전체 요청 본문 로그 출력
+                if (model === models[0]) {
+                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                    console.log('📤 구글 API에 전송할 전체 요청 본문:');
+                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                    console.log(JSON.stringify(requestBody, null, 2));
+                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                }
+                
                 const response = await fetch(apiUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        contents: [{
-                            parts: [{
-                                text: prompt
-                            }]
-                        }],
-                        generationConfig: {
-                            temperature: 0.7,
-                            topK: 40,
-                            topP: 0.95,
-                            maxOutputTokens: 1000, // 충분한 토큰 수로 완전한 응답 보장
-                            stopSequences: [], // 정지 시퀀스 제거하여 완전한 응답 보장
-                        }
-                    })
+                    body: JSON.stringify(requestBody)
                 });
                 
                 if (!response.ok) {
                     const errorText = await response.text();
-                    console.error(`모델 ${apiVersion}/${model} API 응답 오류:`, response.status, errorText);
-                    lastError = new Error(`API 요청 실패 (${apiVersion}/${model}): ${response.status} - ${errorText}`);
+                    let errorData;
+                    try {
+                        errorData = JSON.parse(errorText);
+                    } catch (e) {
+                        errorData = { error: { message: errorText } };
+                    }
+                    
+                    // 첫 번째 모델에서만 상세 에러 로그
+                    if (model === models[0]) {
+                        console.warn(`첫 모델 시도 실패 (${model}):`, {
+                            status: response.status,
+                            message: errorData.error?.message,
+                            reason: errorData.error?.details?.[0]?.reason,
+                            전체_에러: errorData
+                        });
+                    }
+                    
+                    // API 키 관련 에러
+                    if (response.status === 400 && errorData.error?.message?.includes('API key')) {
+                        lastError = new Error(`API 키 문제: ${errorData.error.message}`);
+                        continue;
+                    }
+                    
+                    // 404 (모델 없음), 429 (쿼터 초과)는 조용히 처리
+                    if (response.status === 404 || response.status === 429) {
+                        lastError = new Error(`API 요청 실패 (${apiVersion}/${model}): ${response.status}`);
+                        continue;
+                    }
+                    
+                    // 기타 에러
+                    lastError = new Error(`API 요청 실패 (${apiVersion}/${model}): ${response.status} - ${errorData.error?.message || errorText}`);
                     continue; // 다음 모델 시도
                 }
                 
                 const responseData = await response.json();
                 console.log(`Gemini API 성공: ${apiVersion}/${model}`);
                 
-                // 응답 검증
-                if (responseData.candidates && responseData.candidates[0] && responseData.candidates[0].content) {
+                // 응답 검증 (Optional Chaining으로 안전하게 처리)
+                if (responseData?.candidates?.[0]?.content?.parts?.[0]?.text) {
                     let testComment = responseData.candidates[0].content.parts[0].text.trim();
-                    const testFinishReason = responseData.candidates[0].finishReason;
+                    const testFinishReason = responseData.candidates[0]?.finishReason;
                     
                     console.log('API 응답 확인:', {
                         모델: model,
@@ -865,13 +1006,18 @@ ${analysis.avgRating ? `- 만족도 평균: ${analysis.avgRating}/5` : ''}
         
         // 모든 모델 실패 시
         if (!data) {
+            // API 키 문제인지 확인
+            const errorMessage = lastError?.message || '';
+            if (errorMessage.includes('API key') || errorMessage.includes('API 키')) {
+                throw new Error('API 키가 만료되었거나 유효하지 않습니다. 관리자에게 문의하세요.');
+            }
             throw lastError || new Error('모든 Gemini 모델 호출 실패. 사용 가능한 모델 목록을 확인해주세요.');
         }
         
-        // 최종 응답 처리
-        if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+        // 최종 응답 처리 (Optional Chaining으로 안전하게 처리)
+        if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
             let comment = data.candidates[0].content.parts[0].text.trim();
-            const finishReason = data.candidates[0].finishReason;
+            const finishReason = data.candidates[0]?.finishReason;
             
             console.log('최종 응답 처리:', {
                 finishReason: finishReason,

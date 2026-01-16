@@ -2806,8 +2806,16 @@ function renderMealogComments(comments) {
     const container = document.getElementById('mealogCommentsContainer');
     if (!container) return;
     
-    container.innerHTML = comments.map((comment, index) => `
-        <div class="bg-slate-50 rounded-xl p-4 border border-slate-200" data-index="${index}">
+    // 기존 내용 제거
+    container.innerHTML = '';
+    
+    // 각 코멘트를 DOM 요소로 생성하여 추가
+    comments.forEach((comment, index) => {
+        const commentDiv = document.createElement('div');
+        commentDiv.className = 'bg-slate-50 rounded-xl p-4 border border-slate-200';
+        commentDiv.setAttribute('data-index', index);
+        
+        commentDiv.innerHTML = `
             <div class="flex items-start justify-between mb-3">
                 <span class="text-xs font-bold text-slate-500">메시지 ${index + 1}</span>
                 <button onclick="window.removeMealogComment(${index})" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors">
@@ -2816,9 +2824,17 @@ function renderMealogComments(comments) {
             </div>
             <textarea onchange="window.updateMealogComment(${index}, this.value)"
                       class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[200px]"
-                      placeholder="MEALOG 안내 메시지를 입력하세요">${escapeHtml(comment || '')}</textarea>
-        </div>
-    `).join('');
+                      placeholder="MEALOG 안내 메시지를 입력하세요"></textarea>
+        `;
+        
+        // textarea의 값을 value 속성으로 직접 설정 (줄바꿈 유지, HTML 이스케이프 불필요)
+        const textarea = commentDiv.querySelector('textarea');
+        if (textarea && comment) {
+            textarea.value = comment; // textarea.value는 줄바꿈을 그대로 유지
+        }
+        
+        container.appendChild(commentDiv);
+    });
 }
 
 // MEALOG 코멘트 추가
@@ -2854,12 +2870,13 @@ function getCurrentMealogComments() {
     if (!container) return [];
     
     const comments = [];
+    // DOM 순서대로 모든 textarea를 순회하여 순차적으로 배열에 추가
+    // 인덱스 기반 할당 대신 push를 사용하여 빈 슬롯 방지
     container.querySelectorAll('[data-index]').forEach(itemEl => {
-        const index = parseInt(itemEl.getAttribute('data-index'));
         const textarea = itemEl.querySelector('textarea');
-        
-        if (textarea) {
-            comments[index] = textarea.value;
+        if (textarea && textarea.value) {
+            // textarea의 값을 그대로 추가 (줄바꿈 포함)
+            comments.push(textarea.value);
         }
     });
     
@@ -2871,8 +2888,10 @@ window.saveMealogComments = async function() {
     try {
         const comments = getCurrentMealogComments();
         
-        // 빈 코멘트 제거
-        const validComments = comments.filter(c => c && c.trim().length > 0);
+        // 더 엄격한 필터링: undefined, null, 빈 문자열 모두 제거
+        const validComments = comments.filter(c => {
+            return c !== null && c !== undefined && typeof c === 'string' && c.trim().length > 0;
+        });
         
         if (validComments.length === 0) {
             alert('최소 한 개의 메시지가 필요합니다.');
@@ -2889,6 +2908,17 @@ window.saveMealogComments = async function() {
         
         alert('MEALOG 메시지가 저장되었습니다.');
         console.log('MEALOG 메시지 저장 완료:', mealogData);
+        console.log('저장된 코멘트 수:', validComments.length);
+        console.log('저장된 코멘트 내용:', validComments);
+        // 각 코멘트의 전체 내용과 길이를 상세히 로그
+        validComments.forEach((comment, idx) => {
+            console.log(`코멘트 ${idx + 1}:`, {
+                길이: comment.length,
+                줄_수: comment.split('\n').length,
+                전체_내용: comment,
+                COMMENT_버튼_포함: comment.includes('💬') || comment.includes('COMMENT')
+            });
+        });
     } catch (e) {
         console.error('MEALOG 메시지 저장 실패:', e);
         alert('MEALOG 메시지 저장 중 오류가 발생했습니다: ' + e.message);
