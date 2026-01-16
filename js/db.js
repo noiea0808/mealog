@@ -110,17 +110,27 @@ export const dbOps = {
                 };
                 
                 // 닉네임 처리: 새 닉네임이 명시적으로 제공되고 유효하면 업데이트, 아니면 기존 값 유지
-                if (newNickname !== undefined && newNickname !== null && newNickname !== '') {
-                    // 새 닉네임이 명시적으로 제공된 경우 업데이트
+                // 단, 새 닉네임이 기본값('게스트')이고 기존 닉네임이 유효한 경우 기존 값 유지
+                if (newNickname !== undefined && newNickname !== null && newNickname !== '' && newNickname !== '게스트') {
+                    // 새 닉네임이 명시적으로 제공되고 기본값이 아닌 경우 업데이트
                     settingsToSave.profile.nickname = newNickname;
                     console.log('✅ 닉네임 업데이트:', { 
                         old: existingNickname, 
                         new: newNickname 
                     });
-                } else if (existingNickname) {
-                    // 새 닉네임이 없으면 기존 닉네임 유지
+                } else if (existingNickname && existingNickname !== '게스트') {
+                    // 기존 닉네임이 있고 기본값이 아니면 유지
                     settingsToSave.profile.nickname = existingNickname;
+                } else if (existingNickname) {
+                    // 기존 닉네임이 기본값이어도 일단 유지
+                    settingsToSave.profile.nickname = existingNickname;
+                } else if (!settingsToSave.profile.nickname) {
+                    // 닉네임이 전혀 없을 때만 기본값 사용
+                    settingsToSave.profile.nickname = '게스트';
                 }
+            } else if (!settingsToSave.profile) {
+                // profile 자체가 없을 때만 기본값 설정
+                settingsToSave.profile = { icon: '🐻', nickname: '게스트' };
             }
             
             // 중요: providerId와 email은 처음 로그인 시에만 설정되는 고정 항목입니다.
@@ -529,7 +539,8 @@ export function setupListeners(userId, callbacks) {
             console.log('📥 설정 로드 완료:', {
                 hasProfile: !!(window.userSettings.profile && window.userSettings.profile.nickname),
                 nickname: window.userSettings.profile?.nickname,
-                termsAgreed: window.userSettings.termsAgreed
+                termsAgreed: window.userSettings.termsAgreed,
+                termsVersion: window.userSettings.termsVersion
             });
             if (!window.userSettings.subTags) {
                 window.userSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));

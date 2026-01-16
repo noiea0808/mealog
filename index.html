@@ -298,7 +298,7 @@
     <div id="termsModal" class="hidden fixed inset-0 z-[500] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
             <h3 class="text-lg font-bold text-slate-800 text-center mb-4">약관 동의</h3>
-            <p class="text-xs text-slate-500 text-center mb-6">서비스 이용을 위해 아래 약관에 동의해주세요.</p>
+            <p id="termsModalDescription" class="text-xs text-slate-500 text-center mb-6">서비스 이용을 위해 아래 약관에 동의해주세요.</p>
             
             <div class="space-y-4 mb-6">
                 <!-- 이용약관 -->
@@ -358,33 +358,6 @@
             </div>
             
             <button id="profileSetupBtn" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-md active:bg-emerald-700 transition-colors">시작하기</button>
-        </div>
-    </div>
-
-    <!-- Onboarding Modal -->
-    <div id="onboardingModal" class="hidden fixed inset-0 z-[500] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl">
-            <div class="text-center mb-6">
-                <div class="text-4xl mb-4">🍽️</div>
-                <h3 class="text-lg font-bold text-slate-800 mb-2">MEALOG에 오신 것을 환영합니다!</h3>
-                <p class="text-xs text-slate-500">간단하게 서비스 이용 방법을 안내해드릴게요.</p>
-            </div>
-            
-            <div id="onboardingContent" class="space-y-4 mb-6 min-h-[200px]">
-                <!-- 온보딩 슬라이드가 여기에 동적으로 표시됩니다 -->
-            </div>
-            
-            <div class="flex items-center justify-center gap-2 mb-4">
-                <div id="onboardingIndicators" class="flex gap-1.5">
-                    <!-- 인디케이터가 여기에 동적으로 추가됩니다 -->
-                </div>
-            </div>
-            
-            <div class="flex gap-2">
-                <button id="onboardingPrevBtn" class="hidden flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm">이전</button>
-                <button id="onboardingNextBtn" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm">다음</button>
-                <button id="onboardingSkipBtn" class="hidden flex-1 py-3 bg-slate-100 text-slate-500 rounded-xl font-bold text-sm">건너뛰기</button>
-            </div>
         </div>
     </div>
 
@@ -667,10 +640,14 @@
             <div class="p-6 pb-3 flex justify-between items-center">
                 <div class="flex items-center gap-3"><button id="settingsCloseBtn"><i class="fa-solid fa-arrow-left text-xl text-slate-400"></i></button><h2 class="text-lg font-bold text-slate-800 tracking-tight">사용자 설정</h2></div>
             </div>
-            <!-- 탭 버튼 -->
-            <div class="flex px-6 pb-3 gap-2">
-                <button id="settingsTabProfile" class="settings-tab active flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold">프로필</button>
-                <button id="settingsTabTags" class="settings-tab flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold">태그 관리</button>
+            <!-- 탭 버튼 (바 타입) -->
+            <div class="flex px-6 pb-0 border-b border-slate-200">
+                <button id="settingsTabProfile" class="settings-tab active px-4 py-3 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors">
+                    <i class="fa-solid fa-user mr-2"></i>프로필
+                </button>
+                <button id="settingsTabTags" class="settings-tab px-4 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors">
+                    <i class="fa-solid fa-tags mr-2"></i>태그 관리
+                </button>
             </div>
         </div>
         <div class="flex-1 overflow-y-auto">
@@ -716,6 +693,12 @@
                     <div class="bg-slate-50 p-4 rounded-2xl space-y-3 mt-4">
                         <label class="text-[10px] font-bold text-slate-400 block uppercase">닉네임</label>
                         <input type="text" id="settingNickname" class="w-full bg-white p-3 rounded-xl border-none outline-none font-bold text-sm">
+                    </div>
+                    
+                    <div class="bg-slate-50 p-4 rounded-2xl space-y-3 mt-4">
+                        <label class="text-[10px] font-bold text-slate-400 block uppercase">소개</label>
+                        <textarea id="settingBio" placeholder="자신을 소개해주세요" maxlength="200" rows="4" class="w-full bg-white p-3 rounded-xl border-none outline-none text-sm resize-none focus:ring-2 focus:ring-emerald-500"></textarea>
+                        <p class="text-[10px] text-slate-400 text-right"><span id="bioCharCount">0</span>/200</p>
                     </div>
                 </div>
                 

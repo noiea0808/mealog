@@ -4,9 +4,8 @@
 import { auth } from './firebase.js';
 import { dbOps } from './db.js';
 import { showToast, switchScreen, showLoading, hideLoading } from './ui.js';
-import { DEFAULT_USER_SETTINGS } from './constants.js';
-import { showTermsModal } from './auth.js';
-import { showOnboardingModal } from './onboarding.js';
+import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
+import { showTermsModal, closeTermsModal } from './auth.js';
 
 /**
  * 인증 상태 정의
@@ -16,7 +15,6 @@ export const AuthState = {
     GUEST: 'guest',               // 게스트 모드
     NEEDS_TERMS: 'needs_terms',   // 약관 동의 필요
     NEEDS_PROFILE: 'needs_profile', // 프로필 설정 필요
-    NEEDS_ONBOARDING: 'needs_onboarding', // 온보딩 필요
     READY: 'ready'                // 모든 준비 완료
 };
 
@@ -27,19 +25,18 @@ class UserReadiness {
     constructor() {
         this.termsAgreed = false;
         this.hasProfile = false;
-        this.onboardingCompleted = false;
         this.isExistingUser = false;
     }
     
     get isReady() {
-        return this.termsAgreed && this.hasProfile && this.onboardingCompleted;
+        return this.termsAgreed && this.hasProfile;
     }
     
     get nextStep() {
         if (!this.termsAgreed) return AuthState.NEEDS_TERMS;
-        // 기존 사용자는 프로필 설정을 건너뜀 (이미 프로필이 있을 것이므로)
+        // 신규 사용자만 프로필 설정 필요
         if (!this.hasProfile && !this.isExistingUser) return AuthState.NEEDS_PROFILE;
-        if (!this.onboardingCompleted) return AuthState.NEEDS_ONBOARDING;
+        // 사용자 가이드는 삭제했으므로 프로필 설정 후 바로 완료
         return AuthState.READY;
     }
 }
@@ -71,8 +68,42 @@ export class AuthFlowManager {
         // 설정이 없으면 기본값 사용 (이미 handleAuthState에서 처리됨)
         this.userSettings = window.userSettings || JSON.parse(JSON.stringify(DEFAULT_USER_SETTINGS));
         
-        // 약관 동의 확인
-        readiness.termsAgreed = this.userSettings.termsAgreed === true;
+        // 약관 동의 확인 (약관 버전도 체크)
+        const agreedVersion = this.userSettings.termsVersion || null;
+        const hasAgreed = this.userSettings.termsAgreed === true;
+        
+        // termsVersion이 null이지만 termsAgreed가 true인 경우
+        // (이전 버전에서 약관에 동의했지만 termsVersion을 저장하지 않은 경우)
+        // 기존 사용자로 간주하고 현재 버전에 동의한 것으로 처리
+        let versionMatches = false;
+        if (agreedVersion !== null) {
+            versionMatches = String(agreedVersion) === String(CURRENT_TERMS_VERSION);
+        } else if (hasAgreed && !agreedVersion) {
+            // termsVersion이 없지만 termsAgreed가 true인 경우, 기존 사용자로 간주
+            // 현재 버전에 동의한 것으로 처리하고 termsVersion 저장
+            versionMatches = true;
+            console.log('⚠️ termsVersion이 없지만 termsAgreed가 true입니다. 현재 버전으로 설정합니다.');
+            // termsVersion을 현재 버전으로 업데이트 (비동기로 저장)
+            this.userSettings.termsVersion = CURRENT_TERMS_VERSION;
+            if (window.dbOps) {
+                window.dbOps.saveSettings(this.userSettings).catch(e => {
+                    console.warn('termsVersion 업데이트 실패:', e);
+                });
+            }
+        }
+        
+        readiness.termsAgreed = hasAgreed && versionMatches;
+        
+        // 디버깅 로그 (항상 출력)
+        console.log('📋 약관 동의 상태 확인:', {
+            termsAgreed: hasAgreed,
+            agreedVersion: agreedVersion,
+            currentVersion: CURRENT_TERMS_VERSION,
+            versionMatches: versionMatches,
+            finalAgreed: readiness.termsAgreed,
+            userSettingsTermsVersion: this.userSettings.termsVersion,
+            userSettingsTermsAgreed: this.userSettings.termsAgreed
+        });
         
         // 프로필 확인
         readiness.hasProfile = !!(
@@ -81,9 +112,6 @@ export class AuthFlowManager {
             this.userSettings.profile.nickname !== '게스트' &&
             this.userSettings.profile.nickname.trim() !== ''
         );
-        
-        // 온보딩 확인
-        readiness.onboardingCompleted = this.userSettings.onboardingCompleted === true;
         
         // 기존 사용자 확인
         try {
@@ -168,149 +196,16 @@ export class AuthFlowManager {
         console.log('✅ 준비 상태:', {
             termsAgreed: readiness.termsAgreed,
             hasProfile: readiness.hasProfile,
-            onboardingCompleted: readiness.onboardingCompleted,
             isExistingUser: readiness.isExistingUser
         });
         
-        // Phase 2-2: 상태 전이 로직 명확화
-        // 1. 기존 사용자 처리
-        if (readiness.isExistingUser) {
-            // 기존 사용자는 약관 자동 동의
-            if (!readiness.termsAgreed) {
-                await this.autoAgreeTerms();
-                readiness.termsAgreed = true;
-            }
-            // 기존 사용자는 온보딩 건너뛰고 바로 READY
-            await this.autoCompleteExistingUserSetup(user);
-            this.currentState = AuthState.READY;
-            await this.processState(this.currentState, null);
-            return;
-        }
-        
-        // 2. 신규 사용자 처리: 약관동의, 프로필설정, 사용가이드 건너뛰고 바로 READY
-        console.log('🆕 신규 사용자 - 약관동의, 프로필설정, 사용가이드 자동 완료 처리');
-        await this.autoCompleteNewUserSetup(user);
-        this.currentState = AuthState.READY;
-        await this.processState(this.currentState, null);
+        // Phase 2-2: 상태 전이 로직 명확화 - 순차적으로 처리
+        // 다음 단계 확인 및 처리 (약관 → 프로필 → 완료)
+        const nextStep = readiness.nextStep;
+        this.currentState = nextStep;
+        await this.processState(this.currentState, readiness);
     }
     
-    /**
-     * 기존 사용자 자동 설정 완료 (온보딩 건너뛰기)
-     */
-    async autoCompleteExistingUserSetup(user) {
-        try {
-            if (!window.userSettings) {
-                window.userSettings = JSON.parse(JSON.stringify(DEFAULT_USER_SETTINGS));
-            }
-            
-            // 약관 동의 설정 (없을 경우)
-            if (!window.userSettings.termsAgreed) {
-                window.userSettings.termsAgreed = true;
-                window.userSettings.termsAgreedAt = new Date().toISOString();
-            }
-            
-            // 온보딩 완료 자동 설정
-            window.userSettings.onboardingCompleted = true;
-            
-            // providerId와 email 저장 (없을 경우)
-            if (user && !user.isAnonymous) {
-                if (user.providerData && user.providerData.length > 0) {
-                    if (!window.userSettings.providerId) {
-                        window.userSettings.providerId = user.providerData[0].providerId;
-                    }
-                }
-                if (user.email && !window.userSettings.email) {
-                    window.userSettings.email = user.email;
-                }
-            }
-            
-            await dbOps.saveSettings(window.userSettings);
-            console.log('✅ 기존 사용자 자동 설정 완료 (온보딩 건너뜀)');
-        } catch (error) {
-            console.error('❌ 기존 사용자 자동 설정 실패:', error);
-            // 에러가 발생해도 계속 진행 (설정은 이미 메모리에 반영됨)
-        }
-    }
-    
-    /**
-     * 기존 사용자 약관 자동 동의
-     * Phase 2-3: 에러 처리 강화
-     */
-    async autoAgreeTerms() {
-        try {
-            if (!window.userSettings) {
-                window.userSettings = JSON.parse(JSON.stringify(DEFAULT_USER_SETTINGS));
-            }
-            
-            // 약관 동의 설정
-            window.userSettings.termsAgreed = true;
-            window.userSettings.termsAgreedAt = new Date().toISOString();
-            
-            // providerId와 email 저장 (없을 때만)
-            const currentUser = auth.currentUser;
-            if (currentUser && !currentUser.isAnonymous) {
-                if (currentUser.providerData && currentUser.providerData.length > 0) {
-                    if (!window.userSettings.providerId) {
-                        window.userSettings.providerId = currentUser.providerData[0].providerId;
-                    }
-                }
-                if (currentUser.email && !window.userSettings.email) {
-                    window.userSettings.email = currentUser.email;
-                }
-            }
-            
-            await dbOps.saveSettings(window.userSettings);
-            console.log('✅ 기존 사용자 약관 자동 동의 완료');
-        } catch (error) {
-            console.error('❌ 약관 자동 동의 실패:', error);
-            // 에러가 발생해도 계속 진행 (약관 동의는 이미 메모리에 설정됨)
-        }
-    }
-    
-    /**
-     * 신규 사용자 자동 설정 완료 (약관동의, 프로필설정, 사용가이드 모두 건너뛰기)
-     */
-    async autoCompleteNewUserSetup(user) {
-        try {
-            if (!window.userSettings) {
-                window.userSettings = JSON.parse(JSON.stringify(DEFAULT_USER_SETTINGS));
-            }
-            
-            // 약관 동의 자동 설정
-            window.userSettings.termsAgreed = true;
-            window.userSettings.termsAgreedAt = new Date().toISOString();
-            
-            // 프로필 자동 설정 (기본값 사용)
-            if (!window.userSettings.profile) {
-                window.userSettings.profile = {
-                    nickname: user.displayName || user.email?.split('@')[0] || '사용자',
-                    icon: '🐻',
-                    type: 'basic'
-                };
-            }
-            
-            // 온보딩 완료 자동 설정
-            window.userSettings.onboardingCompleted = true;
-            
-            // providerId와 email 저장
-            if (user && !user.isAnonymous) {
-                if (user.providerData && user.providerData.length > 0) {
-                    if (!window.userSettings.providerId) {
-                        window.userSettings.providerId = user.providerData[0].providerId;
-                    }
-                }
-                if (user.email && !window.userSettings.email) {
-                    window.userSettings.email = user.email;
-                }
-            }
-            
-            await dbOps.saveSettings(window.userSettings);
-            console.log('✅ 신규 사용자 자동 설정 완료 (약관동의, 프로필설정, 사용가이드 건너뜀)');
-        } catch (error) {
-            console.error('❌ 신규 사용자 자동 설정 실패:', error);
-            // 에러가 발생해도 계속 진행 (설정은 이미 메모리에 반영됨)
-        }
-    }
     
     /**
      * 상태별 처리
@@ -327,8 +222,18 @@ export class AuthFlowManager {
             switch (state) {
                 case AuthState.NEEDS_TERMS:
                     // 약관 동의 필요: 랜딩 페이지 유지, 약관 모달 표시
-                    switchScreen(false);
-                    showTermsModal();
+                    // 하지만 설정이 로드된 후 다시 확인했을 때 이미 동의한 경우 모달을 열지 않음
+                    if (readiness.termsAgreed) {
+                        console.log('⚠️ 약관 동의가 이미 완료되었습니다. 모달을 열지 않습니다.');
+                        // 다음 단계로 진행
+                        const nextReadiness = await this.checkUserReadiness(user);
+                        const nextStep = nextReadiness.nextStep;
+                        this.currentState = nextStep;
+                        await this.processState(this.currentState, nextReadiness);
+                    } else {
+                        switchScreen(false);
+                        showTermsModal();
+                    }
                     break;
                     
                 case AuthState.NEEDS_PROFILE:
@@ -342,17 +247,10 @@ export class AuthFlowManager {
                     }
                     break;
                     
-                case AuthState.NEEDS_ONBOARDING:
-                    // 온보딩 필요: 메인 화면으로 전환, 온보딩 모달 표시
-                    switchScreen(true);
-                    if (landingPage) landingPage.style.display = 'none';
-                    if (switchMainTab) switchMainTab('timeline');
-                    showOnboardingModal();
-                    // 온보딩 완료 시 READY로 전환되므로 완료 플래그는 onOnboardingCompleted에서 설정
-                    break;
-                    
                 case AuthState.READY:
                     // 준비 완료: 메인 화면으로 전환, 완료 플래그 설정
+                    // 약관 모달이 열려있으면 닫기
+                    closeTermsModal();
                     switchScreen(true);
                     if (landingPage) landingPage.style.display = 'none';
                     if (switchMainTab) switchMainTab('timeline');
@@ -431,20 +329,6 @@ export class AuthFlowManager {
         }
     }
     
-    /**
-     * 온보딩 완료 후 다음 단계로
-     * Phase 2-2: 상태 전이 로직 명확화
-     */
-    async onOnboardingCompleted() {
-        try {
-            this.currentState = AuthState.READY;
-            await this.processState(this.currentState, null);
-            // processState에서 이미 완료 플래그가 설정되므로 여기서는 불필요
-        } catch (error) {
-            console.error('❌ onOnboardingCompleted 에러:', error);
-            hideLoading();
-        }
-    }
 }
 
 // 싱글톤 인스턴스

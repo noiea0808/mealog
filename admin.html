@@ -493,14 +493,46 @@
                         <div id="content-main-terms" class="content-main-section hidden">
                             <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
                                 <div class="p-6 border-b border-slate-100">
-                                    <div class="flex justify-between items-center">
+                                    <div class="flex justify-between items-center mb-4">
                                         <h2 class="text-lg font-black text-slate-800">약관 관리</h2>
+                                    </div>
+                                    <!-- 약관 탭 -->
+                                    <div class="flex gap-2 border-b border-slate-200">
+                                        <button id="termsTabHistory" onclick="window.switchTermsTab('history')" class="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 border-b-2 border-transparent hover:border-slate-300 transition-colors">
+                                            약관이력
+                                        </button>
+                                        <button id="termsTabManage" onclick="window.switchTermsTab('manage')" class="px-4 py-2 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors">
+                                            약관관리
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- 약관이력 화면 -->
+                                <div id="termsHistorySection" class="hidden p-6">
+                                    <div class="space-y-4">
+                                        <div class="flex items-center justify-between mb-4">
+                                            <p class="text-sm text-slate-600">배포된 약관 버전 목록입니다.</p>
+                                        </div>
+                                        <div id="termsHistoryList" class="space-y-3">
+                                            <!-- 약관 버전 리스트가 여기에 동적으로 추가됩니다 -->
+                                            <div class="text-center py-8 text-slate-400">
+                                                <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                                                <p class="text-sm">약관 이력 로딩 중...</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 약관관리 화면 -->
+                                <div id="termsManageSection" class="p-6 space-y-6">
+                                    <div class="flex justify-end gap-2 mb-4">
+                                        <button onclick="window.deployTerms()" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors">
+                                            <i class="fa-solid fa-rocket mr-2"></i>배포
+                                        </button>
                                         <button onclick="window.saveTerms()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
                                             <i class="fa-solid fa-save mr-2"></i>저장
                                         </button>
                                     </div>
-                                </div>
-                                <div class="p-6 space-y-6">
                                     <!-- 이용약관 -->
                                     <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
                                         <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
@@ -646,6 +678,24 @@
     </div>
 
     <!-- 게시글 삭제 확인 모달 (기존 모달 재사용) -->
+
+    <!-- 약관 버전 보기 모달 -->
+    <div id="termsVersionModal" class="hidden fixed inset-0 bg-slate-900/50 z-[600] flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-slate-800">약관 버전 상세</h3>
+                <button onclick="window.closeTermsVersionModal()" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <div id="termsVersionContent" class="space-y-6">
+                <!-- 약관 내용이 여기에 동적으로 추가됩니다 -->
+            </div>
+            <div class="mt-6">
+                <button onclick="window.closeTermsVersionModal()" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-colors">닫기</button>
+            </div>
+        </div>
+    </div>
 
     <!-- 게시물 삭제 확인 모달 -->
     <div id="deleteModal" class="hidden fixed inset-0 bg-slate-900/50 z-[500] flex items-center justify-center p-4">

@@ -2,7 +2,7 @@
 import { auth } from './firebase.js';
 import { GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { showToast, showLoading, hideLoading } from './ui.js';
-import { DEFAULT_USER_SETTINGS } from './constants.js';
+import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
 import { dbOps } from './db.js';
 
 export async function handleGoogleLogin() {
@@ -256,7 +256,7 @@ export function initAuth(onAuthStateChangedCallback) {
 }
 
 // 약관 동의 모달 표시
-export function showTermsModal() {
+export async function showTermsModal() {
     const modal = document.getElementById('termsModal');
     if (modal) {
         modal.classList.remove('hidden');
@@ -264,6 +264,41 @@ export function showTermsModal() {
         document.getElementById('termsAgreement').checked = false;
         document.getElementById('privacyAgreement').checked = false;
         updateTermsAgreeButton();
+        
+        // 기존 사용자인지 확인하여 안내 문구 변경
+        const descriptionEl = document.getElementById('termsModalDescription');
+        if (descriptionEl) {
+            try {
+                const currentUser = auth.currentUser;
+                if (currentUser && !currentUser.isAnonymous) {
+                    // 기존 사용자 확인 (meals 데이터 존재 여부)
+                    const { collection, query, limit, getDocs } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                    const { db, appId } = await import('./firebase.js');
+                    const mealsColl = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meals');
+                    const mealsSnapshot = await getDocs(query(mealsColl, limit(1)));
+                    const isExistingUser = !mealsSnapshot.empty;
+                    
+                    if (isExistingUser) {
+                        // 기존 사용자에게는 약관 업데이트 안내 문구 표시
+                        descriptionEl.innerHTML = '<span class="text-emerald-600 font-semibold">💫 약관이 업데이트되었습니다</span><br><span class="text-slate-700">더 나은 서비스 제공을 위해 약관 내용을 일부 수정했습니다.<br>잠깐 시간을 내어 읽어 보시고 다시 동의해 주시면 감사하겠습니다. 🙏</span>';
+                        descriptionEl.className = 'text-xs text-center mb-6 leading-relaxed space-y-1';
+                    } else {
+                        // 신규 사용자에게는 기본 문구 표시
+                        descriptionEl.textContent = '서비스 이용을 위해 아래 약관에 동의해주세요.';
+                        descriptionEl.className = 'text-xs text-slate-500 text-center mb-6';
+                    }
+                } else {
+                    // 게스트 사용자는 기본 문구
+                    descriptionEl.textContent = '서비스 이용을 위해 아래 약관에 동의해주세요.';
+                    descriptionEl.className = 'text-xs text-slate-500 text-center mb-6';
+                }
+            } catch (e) {
+                console.warn('기존 사용자 확인 실패:', e);
+                // 에러 시 기본 문구 유지
+                descriptionEl.textContent = '서비스 이용을 위해 아래 약관에 동의해주세요.';
+                descriptionEl.className = 'text-xs text-slate-500 text-center mb-6';
+            }
+        }
     }
 }
 
@@ -327,6 +362,7 @@ export async function confirmTermsAgreement() {
         
         window.userSettings.termsAgreed = true;
         window.userSettings.termsAgreedAt = new Date().toISOString();
+        window.userSettings.termsVersion = CURRENT_TERMS_VERSION;
         
         // providerId와 email을 현재 사용자 정보로 설정 (없을 때만, 또는 같은 providerId일 때만)
         try {

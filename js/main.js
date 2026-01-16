@@ -11,12 +11,12 @@ import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } fro
 import { 
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, confirmLogout, confirmLogoutAction,
-    copyDomain, closeDomainModal, switchToLogin, showTermsModal, cancelTermsAgreement, confirmTermsAgreement,
+    copyDomain, closeDomainModal, switchToLogin, showTermsModal, closeTermsModal, cancelTermsAgreement, confirmTermsAgreement,
     showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup, setProfileType, handleSetupPhotoUpload,
     confirmDeleteAccount, cancelDeleteAccount, confirmDeleteAccountAction
 } from './auth.js';
 import { authFlowManager } from './auth-flow.js';
-import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, escapeHtml } from './render/index.js';
+import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, escapeHtml, filterGalleryByUser, clearGalleryFilter } from './render/index.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
@@ -26,7 +26,6 @@ import {
     openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace
 } from './modals.js';
 import { DEFAULT_SUB_TAGS } from './constants.js';
-import { onboardingPrev, onboardingNext, onboardingSkip } from './onboarding.js';
 import { normalizeUrl } from './utils.js';
 
 // 전역 객체에 함수들 할당 (HTML에서 접근 가능하도록)
@@ -36,6 +35,8 @@ window.removeDuplicateMeals = () => dbOps.removeDuplicateMeals();
 window.showToast = showToast;
 window.renderTimeline = renderTimeline;
 window.renderGallery = renderGallery;
+window.filterGalleryByUser = filterGalleryByUser;
+window.clearGalleryFilter = clearGalleryFilter;
 window.updateHeaderUI = updateHeaderUI;
 window.copyDomain = copyDomain;
 window.closeDomainModal = closeDomainModal;
@@ -51,6 +52,7 @@ window.confirmLogoutAction = confirmLogoutAction;
 window.confirmDeleteAccount = confirmDeleteAccount;
 window.switchToLogin = switchToLogin;
 window.showTermsModal = showTermsModal;
+window.closeTermsModal = closeTermsModal;
 window.cancelTermsAgreement = cancelTermsAgreement;
 window.confirmTermsAgreement = confirmTermsAgreement;
 window.showTermsDetail = showTermsDetail;
@@ -59,9 +61,6 @@ window.selectSetupIcon = selectSetupIcon;
 window.confirmProfileSetup = confirmProfileSetup;
 window.setProfileType = setProfileType;
 window.handleSetupPhotoUpload = handleSetupPhotoUpload;
-window.onboardingPrev = onboardingPrev;
-window.onboardingNext = onboardingNext;
-window.onboardingSkip = onboardingSkip;
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.saveEntry = saveEntry;
@@ -1108,8 +1107,24 @@ initAuth(async (user) => {
                     renderEntryChips();
                 }
                 
-                // Phase 1-2: onSettingsUpdate에서 인증 플로우 호출 제거
-                // 인증 플로우는 initAuth 콜백에서만 처리됨
+                // 설정이 완전히 로드된 후 인증 플로우 실행
+                // 단, 이미 완료되었거나 처리 중인 경우는 건너뛰기
+                if (!authFlowManager.hasCompleted && !authFlowManager.isProcessing && window.userSettings) {
+                    console.log('✅ 설정 업데이트 완료. 인증 플로우 실행...');
+                    authFlowManager.handleAuthState(user).catch(e => {
+                        console.error('❌ 인증 플로우 처리 실패:', e);
+                        hideLoading();
+                    });
+                } else if (authFlowManager.hasCompleted) {
+                    // 이미 완료된 경우 약관 모달이 열려있으면 닫기
+                    const termsModal = document.getElementById('termsModal');
+                    if (termsModal && !termsModal.classList.contains('hidden')) {
+                        console.log('✅ 인증 플로우 완료됨. 약관 모달 닫기');
+                        if (window.closeTermsModal) {
+                            window.closeTermsModal();
+                        }
+                    }
+                }
             },
             onDataUpdate: () => {
                 if (appState.viewMode === 'list') {
@@ -1156,8 +1171,7 @@ initAuth(async (user) => {
         }
         
         // Phase 1-1: 인증 플로우를 한 곳에서만 호출 (단일 진입점)
-        // 설정 로드 대기 후 인증 플로우 실행
-        // 게스트는 즉시 처리, 일반 사용자는 설정 로드 대기
+        // 게스트는 즉시 처리, 일반 사용자는 onSettingsUpdate에서 처리
         if (user.isAnonymous) {
             // 게스트는 설정 없이 즉시 처리
             authFlowManager.handleAuthState(user).catch(e => {
@@ -1165,33 +1179,16 @@ initAuth(async (user) => {
                 hideLoading();
             });
         } else {
-            // 일반 사용자: 설정 로드 대기 후 인증 플로우 실행
-            const startAuthFlow = async () => {
-                // 설정 로드 대기 (최대 5초)
-                let retryCount = 0;
-                while (!window.userSettings && retryCount < 10) {
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    retryCount++;
-                }
-                
-                // 설정이 로드되었거나 타임아웃되었으면 인증 플로우 실행
-                if (!authFlowManager.hasCompleted) {
-                    console.log('✅ 설정 로드 완료. 인증 플로우 시작...');
-                    authFlowManager.handleAuthState(user).catch(e => {
-                        console.error('❌ 인증 플로우 처리 실패:', e);
-                        hideLoading();
-                    });
-                }
-            };
-            
-            // 설정이 이미 로드되어 있으면 즉시 실행, 아니면 대기
-            if (window.userSettings) {
-                startAuthFlow();
-            } else {
-                // 설정 로드 대기 (onSettingsUpdate에서 설정이 로드되면 자동으로 처리됨)
-                // 하지만 여기서도 대기하여 안전하게 처리
-                startAuthFlow();
+            // 일반 사용자: onSettingsUpdate에서 설정 로드 완료 후 인증 플로우 실행
+            // 설정이 이미 로드되어 있으면 즉시 실행, 아니면 onSettingsUpdate에서 처리
+            if (window.userSettings && !authFlowManager.hasCompleted) {
+                console.log('✅ 설정이 이미 로드됨. 인증 플로우 시작...');
+                authFlowManager.handleAuthState(user).catch(e => {
+                    console.error('❌ 인증 플로우 처리 실패:', e);
+                    hideLoading();
+                });
             }
+            // 설정이 없으면 onSettingsUpdate 콜백에서 처리됨
         }
     } else {
         // 로그아웃 상태
@@ -2099,22 +2096,6 @@ function initEventListeners() {
     const profileSetupBtn = document.getElementById('profileSetupBtn');
     if (profileSetupBtn) {
         profileSetupBtn.addEventListener('click', confirmProfileSetup);
-    }
-    
-    // Onboarding Modal
-    const onboardingPrevBtn = document.getElementById('onboardingPrevBtn');
-    if (onboardingPrevBtn) {
-        onboardingPrevBtn.addEventListener('click', onboardingPrev);
-    }
-    
-    const onboardingNextBtn = document.getElementById('onboardingNextBtn');
-    if (onboardingNextBtn) {
-        onboardingNextBtn.addEventListener('click', onboardingNext);
-    }
-    
-    const onboardingSkipBtn = document.getElementById('onboardingSkipBtn');
-    if (onboardingSkipBtn) {
-        onboardingSkipBtn.addEventListener('click', onboardingSkip);
     }
     
     // 헤더 및 검색

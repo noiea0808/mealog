@@ -169,10 +169,14 @@ export function openModal(date, slotId, entryId = null) {
             if (el) el.value = '';
         });
         
-        // 카카오 검색 버튼 초기화 (숨김)
+        // 카카오 검색 버튼 초기화 (숨김) 및 placeholder 초기화
         const kakaoSearchBtn = document.getElementById('kakaoSearchBtn');
+        const placeInput = document.getElementById('placeInput');
         if (kakaoSearchBtn) {
             kakaoSearchBtn.classList.add('hidden');
+        }
+        if (placeInput) {
+            placeInput.placeholder = '식당명이나 장소 (예: 스타벅스)';
         }
         
         const mainPhotoContainer = document.getElementById('photoPreviewContainer');
@@ -409,12 +413,16 @@ export function openModal(date, slotId, entryId = null) {
                     }, 100);
                 }
                 
-                // 외식 또는 회식/술자리 선택 시 카카오 검색 버튼 표시
+                // 외식 또는 회식/술자리 선택 시 카카오 검색 버튼 표시 및 placeholder 변경
                 if (r.mealType === '외식' || r.mealType === '회식/술자리') {
                     setTimeout(() => {
                         const kakaoSearchBtn = document.getElementById('kakaoSearchBtn');
+                        const placeInput = document.getElementById('placeInput');
                         if (kakaoSearchBtn) {
                             kakaoSearchBtn.classList.remove('hidden');
+                        }
+                        if (placeInput) {
+                            placeInput.placeholder = '돋보기 버튼을 선택하여 식당을 검색해보세요';
                         }
                     }, 200);
                 }
@@ -993,13 +1001,16 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
         const isSkip = (selectedValue === 'Skip' || selectedValue === '건너뜀');
         toggleFieldsForSkip(isSkip);
         
-        // 외식 또는 회식/술자리 선택 시 카카오 검색 버튼 표시
+        // 외식 또는 회식/술자리 선택 시 카카오 검색 버튼 표시 및 placeholder 변경
         const kakaoSearchBtn = document.getElementById('kakaoSearchBtn');
-        if (kakaoSearchBtn) {
+        const placeInput = document.getElementById('placeInput');
+        if (kakaoSearchBtn && placeInput) {
             if (selectedValue === '외식' || selectedValue === '회식/술자리') {
                 kakaoSearchBtn.classList.remove('hidden');
+                placeInput.placeholder = '돋보기 버튼을 선택하여 식당을 검색해보세요';
             } else {
                 kakaoSearchBtn.classList.add('hidden');
+                placeInput.placeholder = '식당명이나 장소 (예: 스타벅스)';
             }
         }
     }
@@ -1200,7 +1211,22 @@ export function openSettings() {
         photoPreview.style.backgroundImage = '';
     }
     
-    document.getElementById('settingNickname').value = state.tempSettings.profile.nickname;
+    document.getElementById('settingNickname').value = state.tempSettings.profile.nickname || '';
+    const bioInput = document.getElementById('settingBio');
+    if (bioInput) {
+        bioInput.value = state.tempSettings.profile.bio || '';
+        const bioCharCount = document.getElementById('bioCharCount');
+        if (bioCharCount) {
+            bioCharCount.textContent = (state.tempSettings.profile.bio || '').length;
+        }
+        // 글자 수 카운터 업데이트 이벤트
+        bioInput.addEventListener('input', function() {
+            const count = this.value.length;
+            if (bioCharCount) {
+                bioCharCount.textContent = count;
+            }
+        });
+    }
     
     // 자주 사용하는 태그 초기화 (없으면 빈 객체로)
     if (!state.tempSettings.favoriteSubTags) {
@@ -1343,7 +1369,7 @@ export function closeSettings() {
     document.getElementById('settingsPage').classList.add('hidden');
 }
 
-// 설정 페이지 탭 전환 함수
+// 설정 페이지 탭 전환 함수 (바 타입)
 export function switchSettingsTab(tab) {
     const profileTab = document.getElementById('settingsTabProfile');
     const tagsTab = document.getElementById('settingsTabTags');
@@ -1353,24 +1379,24 @@ export function switchSettingsTab(tab) {
     if (tab === 'profile') {
         // 프로필 탭 활성화
         if (profileTab) {
-            profileTab.classList.add('active', 'bg-emerald-600', 'text-white');
-            profileTab.classList.remove('bg-slate-100', 'text-slate-600');
+            profileTab.className = 'settings-tab active px-4 py-3 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
+            profileTab.innerHTML = '<i class="fa-solid fa-user mr-2"></i>프로필';
         }
         if (tagsTab) {
-            tagsTab.classList.remove('active', 'bg-emerald-600', 'text-white');
-            tagsTab.classList.add('bg-slate-100', 'text-slate-600');
+            tagsTab.className = 'settings-tab px-4 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors';
+            tagsTab.innerHTML = '<i class="fa-solid fa-tags mr-2"></i>태그 관리';
         }
         if (profileContent) profileContent.classList.remove('hidden');
         if (tagsContent) tagsContent.classList.add('hidden');
     } else if (tab === 'tags') {
         // 태그 관리 탭 활성화
         if (tagsTab) {
-            tagsTab.classList.add('active', 'bg-emerald-600', 'text-white');
-            tagsTab.classList.remove('bg-slate-100', 'text-slate-600');
+            tagsTab.className = 'settings-tab active px-4 py-3 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
+            tagsTab.innerHTML = '<i class="fa-solid fa-tags mr-2"></i>태그 관리';
         }
         if (profileTab) {
-            profileTab.classList.remove('active', 'bg-emerald-600', 'text-white');
-            profileTab.classList.add('bg-slate-100', 'text-slate-600');
+            profileTab.className = 'settings-tab px-4 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors';
+            profileTab.innerHTML = '<i class="fa-solid fa-user mr-2"></i>프로필';
         }
         if (tagsContent) tagsContent.classList.remove('hidden');
         if (profileContent) profileContent.classList.add('hidden');
@@ -1449,6 +1475,7 @@ export async function saveProfileSettings() {
     const state = appState;
     try {
         state.tempSettings.profile.nickname = document.getElementById('settingNickname').value;
+        state.tempSettings.profile.bio = document.getElementById('settingBio').value.trim() || '';
         
         // 프로필 타입에 따라 icon 또는 photoUrl 저장
         // 사진 파일이 있으면 무조건 사진으로 저장

@@ -840,23 +840,80 @@ async function loadPostInteractions(container, sortedGroups) {
     await Promise.allSettled(postPromises);
 }
 
-export function renderGallery() {
+// 사용자 설정 가져오기 헬퍼 함수
+async function getUserSettings(userId) {
+    try {
+        const { db, appId } = await import('./firebase.js');
+        const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+        const settingsDoc = doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings');
+        const settingsSnap = await getDoc(settingsDoc);
+        if (settingsSnap.exists()) {
+            return settingsSnap.data();
+        }
+    } catch (e) {
+        console.warn('사용자 설정 가져오기 실패:', e);
+    }
+    return null;
+}
+
+export async function renderGallery() {
     const container = document.getElementById('galleryContainer');
     if (!container) return;
     if (!window.sharedPhotos) {
         window.sharedPhotos = [];
     }
     
+    // 사용자 필터링 적용
+    const filterUserId = appState.galleryFilterUserId;
+    let photosToRender = window.sharedPhotos;
+    
+    if (filterUserId) {
+        photosToRender = window.sharedPhotos.filter(photo => photo.userId === filterUserId);
+    }
+    
     // 디버깅: 일간보기 공유 확인
-    const dailyShares = window.sharedPhotos.filter(p => p.type === 'daily');
+    const dailyShares = photosToRender.filter(p => p.type === 'daily');
     console.log('renderGallery - 일간보기 공유 개수:', dailyShares.length, dailyShares);
     
-    if (window.sharedPhotos.length === 0) {
-        container.innerHTML = `
+    // 필터링된 사용자 정보 표시 (상단)
+    let userProfileHeader = '';
+    if (filterUserId && photosToRender.length > 0) {
+        // 필터링된 사용자의 프로필 정보 가져오기
+        const filteredUserPhoto = photosToRender[0];
+        if (filteredUserPhoto) {
+            const userSettings = await getUserSettings(filterUserId);
+            const bio = userSettings?.profile?.bio || '';
+            userProfileHeader = `
+                <div class="bg-white border-b border-slate-200 sticky top-[58px] z-30">
+                    <div class="px-6 py-4 flex items-center gap-4">
+                        <button onclick="window.clearGalleryFilter()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
+                            <i class="fa-solid fa-arrow-left text-lg"></i>
+                        </button>
+                        <div class="flex items-center gap-3 flex-1">
+                            ${filteredUserPhoto.userPhotoUrl ? `
+                                <div class="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden" style="background-image: url(${filteredUserPhoto.userPhotoUrl}); background-size: cover; background-position: center;"></div>
+                            ` : `
+                                <div class="w-12 h-12 bg-slate-200 rounded-full flex items-center justify-center text-2xl flex-shrink-0">
+                                    ${filteredUserPhoto.userIcon || '🐻'}
+                                </div>
+                            `}
+                            <div class="flex-1 min-w-0">
+                                <div class="text-base font-bold text-slate-800">${filteredUserPhoto.userNickname || '익명'}</div>
+                                ${bio ? `<div class="text-sm text-slate-600 mt-1">${escapeHtml(bio)}</div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    }
+    
+    if (photosToRender.length === 0) {
+        container.innerHTML = userProfileHeader + `
             <div class="flex flex-col items-center justify-center py-20 text-center">
                 <i class="fa-solid fa-images text-6xl text-slate-200 mb-4"></i>
-                <p class="text-sm font-bold text-slate-400">공유된 사진이 없습니다</p>
-                <p class="text-xs text-slate-300 mt-2">타임라인에서 사진을 공유해보세요!</p>
+                <p class="text-sm font-bold text-slate-400">${filterUserId ? '이 사용자의 공유된 사진이 없습니다' : '공유된 사진이 없습니다'}</p>
+                ${!filterUserId ? '<p class="text-xs text-slate-300 mt-2">타임라인에서 사진을 공유해보세요!</p>' : ''}
             </div>
         `;
         // 빈 갤러리일 때도 맨 위로 스크롤
@@ -868,7 +925,7 @@ export function renderGallery() {
     
     // 중복 제거: 같은 photoUrl과 entryId 조합은 하나만 표시
     const seen = new Set();
-    const uniquePhotos = window.sharedPhotos.filter(photo => {
+    const uniquePhotos = photosToRender.filter(photo => {
         const key = `${photo.photoUrl}_${photo.entryId || 'no-entry'}_${photo.userId}`;
         if (seen.has(key)) {
             return false;
@@ -947,7 +1004,7 @@ export function renderGallery() {
         return timeB - timeA; // 최신순
     });
     
-    container.innerHTML = sortedGroups.map((photoGroup, groupIdx) => {
+    container.innerHTML = userProfileHeader + sortedGroups.map((photoGroup, groupIdx) => {
         const photo = photoGroup[0]; // 첫 번째 사진의 정보 사용
         const photoCount = photoGroup.length;
         
@@ -1100,7 +1157,7 @@ export function renderGallery() {
                         </div>
                     `}
                     <div class="flex-1 min-w-0">
-                        <div class="text-sm font-bold text-slate-800">${photo.userNickname || '익명'}</div>
+                        <div class="text-sm font-bold text-slate-800 cursor-pointer hover:text-emerald-600 transition-colors" onclick="window.filterGalleryByUser('${photo.userId}', '${escapeHtml(photo.userNickname || '익명')}')">${photo.userNickname || '익명'}</div>
                         <div class="text-xs text-slate-400">${dateStr}</div>
                     </div>
                     ${mealLabel ? `<div class="text-[10px] font-bold ${mealLabelStyle || 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-full whitespace-nowrap">${mealLabel}</div>` : ''}
@@ -1313,6 +1370,18 @@ export function renderGallery() {
     }, 100);
 }
 
+// 갤러리 사용자 필터링 함수
+export function filterGalleryByUser(userId, userNickname) {
+    appState.galleryFilterUserId = userId;
+    renderGallery();
+}
+
+// 갤러리 필터링 해제 함수
+export function clearGalleryFilter() {
+    appState.galleryFilterUserId = null;
+    renderGallery();
+}
+
 export function renderFeed() {
     const container = document.getElementById('feedContent');
     if (!container) return;
@@ -1333,7 +1402,7 @@ export function renderFeed() {
     
     // 중복 제거: 같은 photoUrl과 entryId 조합은 하나만 표시
     const seen = new Set();
-    const uniquePhotos = window.sharedPhotos.filter(photo => {
+    const uniquePhotos = photosToRender.filter(photo => {
         const key = `${photo.photoUrl}_${photo.entryId || 'no-entry'}_${photo.userId}`;
         if (seen.has(key)) {
             return false;

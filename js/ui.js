@@ -144,9 +144,12 @@ export function updateHeaderUI() {
         
         const p = window.userSettings.profile;
         const currentNickname = p.nickname || '게스트';
+        const currentPhotoUrl = p.photoUrl || '';
+        const currentIcon = p.icon || '🐻';
         
-        // 같은 닉네임이면 업데이트하지 않음 (깜빡임 방지)
-        if (lastHeaderUpdate === currentNickname) {
+        // 프로필 정보가 변경되었는지 확인 (닉네임, 사진, 아이콘 모두 포함)
+        const currentProfileKey = `${currentNickname}|${currentPhotoUrl}|${currentIcon}`;
+        if (lastHeaderUpdate === currentProfileKey) {
             return;
         }
         
@@ -177,8 +180,9 @@ export function updateHeaderUI() {
         }
         if (nameEl) {
             nameEl.innerText = currentNickname;
-            lastHeaderUpdate = currentNickname;
         }
+        
+        lastHeaderUpdate = currentProfileKey;
     }, 100);
 }
 

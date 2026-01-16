@@ -165,6 +165,13 @@ service cloud.firestore {
     match /artifacts/{appId}/content/{contentId} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
+      
+      // 약관 버전 (terms 문서의 하위 컬렉션) - contentId가 'terms'일 때만 매칭
+      match /versions/{versionId} {
+        // contentId가 'terms'인지 확인
+        allow read: if isAuthenticated() && contentId == 'terms';
+        allow write: if isAdmin() && contentId == 'terms';
+      }
     }
     
     // ============================================

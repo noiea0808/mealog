@@ -705,13 +705,7 @@ window.switchContentSidebar = function(section) {
         renderPersonaCharacters();
     } else if (section === 'terms') {
         loadTermsContent();
-    } else if (section === 'tags') {
-        loadTagsContent();
-    }
-    
-    // 섹션별 데이터 로드
-    if (section === 'terms') {
-        loadTermsContent();
+        // 약관관리 탭이 기본이므로 약관이력은 나중에 로드
     } else if (section === 'tags') {
         loadTagsContent();
     }
@@ -839,6 +833,247 @@ function getCurrentTermsItems(type) {
     
     return items;
 }
+
+// 약관 탭 전환
+window.switchTermsTab = function(tab) {
+    const historyTab = document.getElementById('termsTabHistory');
+    const manageTab = document.getElementById('termsTabManage');
+    const historySection = document.getElementById('termsHistorySection');
+    const manageSection = document.getElementById('termsManageSection');
+    
+    if (tab === 'history') {
+        if (historyTab) {
+            historyTab.className = 'px-4 py-2 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
+        }
+        if (manageTab) {
+            manageTab.className = 'px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 border-b-2 border-transparent hover:border-slate-300 transition-colors';
+        }
+        if (historySection) historySection.classList.remove('hidden');
+        if (manageSection) manageSection.classList.add('hidden');
+        loadTermsHistory();
+    } else {
+        if (historyTab) {
+            historyTab.className = 'px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 border-b-2 border-transparent hover:border-slate-300 transition-colors';
+        }
+        if (manageTab) {
+            manageTab.className = 'px-4 py-2 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
+        }
+        if (historySection) historySection.classList.add('hidden');
+        if (manageSection) manageSection.classList.remove('hidden');
+    }
+};
+
+// 약관 이력 로드
+async function loadTermsHistory() {
+    const historyList = document.getElementById('termsHistoryList');
+    if (!historyList) return;
+    
+    try {
+        historyList.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p class="text-sm">약관 이력 로딩 중...</p></div>';
+        
+        // 배포된 약관 버전 목록 가져오기 (terms 문서의 하위 컬렉션으로 저장)
+        const versionsColl = collection(db, 'artifacts', appId, 'content', 'terms', 'versions');
+        const versionsQuery = query(versionsColl, orderBy('deployedAt', 'desc'));
+        const versionsSnapshot = await getDocs(versionsQuery);
+        
+        const versions = [];
+        versionsSnapshot.forEach(doc => {
+            const data = doc.data();
+            versions.push({
+                id: doc.id,
+                version: data.version || doc.id,
+                deployedAt: data.deployedAt,
+                deployedBy: data.deployedBy || '관리자',
+                terms: data.terms || [],
+                privacy: data.privacy || []
+            });
+        });
+        
+        if (versions.length === 0) {
+            historyList.innerHTML = '<div class="text-center py-8 text-slate-400"><p class="text-sm">배포된 약관 버전이 없습니다.</p></div>';
+            return;
+        }
+        
+        // 현재 약관 버전 가져오기
+        const currentVersion = await getCurrentTermsVersion();
+        
+        // 약관 버전 리스트 렌더링
+        historyList.innerHTML = versions.map(v => {
+            const date = v.deployedAt ? new Date(v.deployedAt).toLocaleString('ko-KR') : '날짜 없음';
+            const isCurrent = v.version === currentVersion;
+            return `
+                <div class="bg-white rounded-xl p-4 border border-slate-200 hover:border-emerald-300 transition-colors">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="text-sm font-bold text-slate-800">버전 ${v.version}</span>
+                                ${isCurrent ? '<span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-xs font-bold">현재 적용 중</span>' : ''}
+                            </div>
+                            <p class="text-xs text-slate-500">배포일: ${date}</p>
+                            <p class="text-xs text-slate-500">배포자: ${v.deployedBy}</p>
+                        </div>
+                        <button onclick="window.showTermsVersion('${v.id}')" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors ml-4">
+                            확인
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+    } catch (e) {
+        console.error('약관 이력 로드 실패:', e);
+        historyList.innerHTML = '<div class="text-center py-8 text-red-400"><p class="text-sm">약관 이력 로드 중 오류가 발생했습니다.</p></div>';
+    }
+}
+
+// 현재 적용 중인 약관 버전 가져오기
+async function getCurrentTermsVersion() {
+    try {
+        const { CURRENT_TERMS_VERSION } = await import('./constants.js');
+        return CURRENT_TERMS_VERSION;
+    } catch (e) {
+        console.warn('약관 버전 가져오기 실패:', e);
+        return '1.0';
+    }
+}
+
+// 약관 버전 보기
+window.showTermsVersion = async function(versionId) {
+    try {
+        const versionDoc = doc(db, 'artifacts', appId, 'content', 'terms', 'versions', versionId);
+        const versionSnap = await getDoc(versionDoc);
+        
+        if (!versionSnap.exists()) {
+            alert('약관 버전을 찾을 수 없습니다.');
+            return;
+        }
+        
+        const data = versionSnap.data();
+        const versionContent = document.getElementById('termsVersionContent');
+        const versionModal = document.getElementById('termsVersionModal');
+        
+        if (!versionContent || !versionModal) return;
+        
+        const date = data.deployedAt ? new Date(data.deployedAt).toLocaleString('ko-KR') : '날짜 없음';
+        const currentVersion = await getCurrentTermsVersion();
+        const isCurrent = data.version === currentVersion;
+        
+        versionContent.innerHTML = `
+            <div class="mb-4 pb-4 border-b border-slate-200">
+                <div class="flex items-center justify-between">
+                    <h4 class="text-base font-bold text-slate-800">버전 ${data.version}</h4>
+                    ${isCurrent ? '<span class="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-xs font-bold">현재 적용 중</span>' : ''}
+                </div>
+                <p class="text-xs text-slate-500 mt-1">배포일: ${date}</p>
+                <p class="text-xs text-slate-500">배포자: ${data.deployedBy || '관리자'}</p>
+            </div>
+            
+            <!-- 이용약관 -->
+            <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                <h5 class="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-file-contract text-emerald-600"></i>
+                    이용약관
+                </h5>
+                <div class="space-y-3">
+                    ${(data.terms || []).map(item => `
+                        <div class="bg-white rounded-lg p-3 border border-slate-200">
+                            <div class="text-xs font-bold text-slate-800 mb-2">${escapeHtml(item.title || '')}</div>
+                            <div class="text-xs text-slate-600 leading-relaxed">${(item.content || '').replace(/\n/g, '<br>')}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            
+            <!-- 개인정보 처리방침 -->
+            <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                <h5 class="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-shield-halved text-blue-600"></i>
+                    개인정보 처리방침
+                </h5>
+                <div class="space-y-3">
+                    ${(data.privacy || []).map(item => `
+                        <div class="bg-white rounded-lg p-3 border border-slate-200">
+                            <div class="text-xs font-bold text-slate-800 mb-2">${escapeHtml(item.title || '')}</div>
+                            <div class="text-xs text-slate-600 leading-relaxed">${(item.content || '').replace(/\n/g, '<br>')}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        
+        versionModal.classList.remove('hidden');
+    } catch (e) {
+        console.error('약관 버전 보기 실패:', e);
+        alert('약관 버전을 불러오는 중 오류가 발생했습니다: ' + e.message);
+    }
+};
+
+// 약관 버전 모달 닫기
+window.closeTermsVersionModal = function() {
+    const modal = document.getElementById('termsVersionModal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+};
+
+// 약관 배포
+window.deployTerms = async function() {
+    if (!confirm('약관을 배포하시겠습니까?\n\n배포하면 모든 사용자에게 재동의를 요청하게 됩니다.')) {
+        return;
+    }
+    
+    try {
+        // 현재 수정 중인 약관 가져오기
+        const termsItems = getCurrentTermsItems('terms');
+        const privacyItems = getCurrentTermsItems('privacy');
+        
+        if (!termsItems || termsItems.length === 0 || !privacyItems || privacyItems.length === 0) {
+            alert('약관 내용을 입력해주세요.');
+            return;
+        }
+        
+        // 현재 약관 버전 가져오기
+        const { CURRENT_TERMS_VERSION } = await import('./constants.js');
+        const currentVersion = parseFloat(CURRENT_TERMS_VERSION);
+        const newVersion = (currentVersion + 0.1).toFixed(1); // 버전 0.1씩 증가
+        
+        // 약관 버전 데이터 저장
+        const versionData = {
+            version: newVersion,
+            terms: termsItems,
+            privacy: privacyItems,
+            deployedAt: new Date().toISOString(),
+            deployedBy: adminAuth.currentUser?.email || '관리자'
+        };
+        
+        // 약관 버전 컬렉션에 저장 (terms 문서의 하위 컬렉션으로 저장)
+        const versionsColl = collection(db, 'artifacts', appId, 'content', 'terms', 'versions');
+        await addDoc(versionsColl, versionData);
+        
+        // 현재 약관도 업데이트 (수정 중인 약관 유지)
+        const termsDoc = doc(db, 'artifacts', appId, 'content', 'terms');
+        await setDoc(termsDoc, {
+            terms: termsItems,
+            privacy: privacyItems,
+            updatedAt: new Date().toISOString(),
+            currentVersion: newVersion
+        }, { merge: true });
+        
+        // CURRENT_TERMS_VERSION 업데이트는 constants.js 파일을 수동으로 수정해야 함
+        alert(`약관 버전 ${newVersion}이 배포되었습니다.\n\n주의: constants.js의 CURRENT_TERMS_VERSION을 ${newVersion}으로 수동으로 업데이트해야 합니다.`);
+        console.log(`⚠️ constants.js의 CURRENT_TERMS_VERSION을 ${newVersion}으로 수동으로 업데이트하세요.`);
+        
+        // 약관이력 탭이면 새로고침
+        const historySection = document.getElementById('termsHistorySection');
+        if (historySection && !historySection.classList.contains('hidden')) {
+            loadTermsHistory();
+        }
+        
+    } catch (e) {
+        console.error('약관 배포 실패:', e);
+        alert('약관 배포 중 오류가 발생했습니다: ' + e.message);
+    }
+};
 
 // 약관 저장
 window.saveTerms = async function() {
@@ -1184,6 +1419,7 @@ async function getUsers() {
             let email = null;
             let termsAgreed = false;
             let termsAgreedAt = null;
+            let termsVersion = null;
             let providerId = null;
 
             // 공유 게시물에서 가져온 정보로 초기값 설정
@@ -1250,6 +1486,7 @@ async function getUsers() {
                     }
                     termsAgreed = settings.termsAgreed === true;
                     termsAgreedAt = settings.termsAgreedAt || null;
+                    termsVersion = settings.termsVersion || null;
                     email = settings.email || null;
                     providerId = settings.providerId || null;
                 } else {
@@ -1332,6 +1569,7 @@ async function getUsers() {
                 loginMethod,
                 termsAgreed,
                 termsAgreedAt,
+                termsVersion,
                 timelineCount,
                 albumShareCount,
                 talkCount,
@@ -1378,11 +1616,23 @@ async function renderUsers() {
             return;
         }
         
+        // 최신 약관 버전 가져오기
+        const { CURRENT_TERMS_VERSION } = await import('./constants.js');
+        
         console.log(`${users.length}명의 사용자를 렌더링합니다.`);
         container.innerHTML = users.map(user => {
-            const termsAgreedText = user.termsAgreed ? 
-                `<span class="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">동의함</span>` : 
-                `<span class="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded">미동의</span>`;
+            // 약관 동의 상태 확인: termsAgreed가 true이고 termsVersion이 최신 버전과 일치해야 함
+            const hasAgreedToLatest = user.termsAgreed && user.termsVersion === CURRENT_TERMS_VERSION;
+            const hasAgreedToOld = user.termsAgreed && user.termsVersion !== CURRENT_TERMS_VERSION;
+            
+            let termsAgreedText;
+            if (hasAgreedToLatest) {
+                termsAgreedText = `<span class="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">동의함</span>`;
+            } else if (hasAgreedToOld) {
+                termsAgreedText = `<span class="px-2 py-1 bg-orange-100 text-orange-700 text-xs font-bold rounded">재동의 필요</span>`;
+            } else {
+                termsAgreedText = `<span class="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded">미동의</span>`;
+            }
             
             const termsAgreedDate = user.termsAgreedAt ? 
                 new Date(user.termsAgreedAt).toLocaleDateString('ko-KR') : '-';

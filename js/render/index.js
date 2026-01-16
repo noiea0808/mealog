@@ -14,5 +14,7 @@ export {
     renderTagManager,
     renderBoard,
     renderBoardDetail,
-    createDailyShareCard
+    createDailyShareCard,
+    filterGalleryByUser,
+    clearGalleryFilter
 } from '../render.js';

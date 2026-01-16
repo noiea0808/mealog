@@ -20,6 +20,7 @@ export const appState = {
     viewMode: 'list',
     currentTab: 'timeline',
     pageDate: new Date(),
+    galleryFilterUserId: null, // 앨범 탭에서 필터링된 사용자 ID
     
     // 편집 상태 (모달 관련)
     currentEditingId: null,
