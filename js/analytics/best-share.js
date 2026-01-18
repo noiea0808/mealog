@@ -3,7 +3,7 @@ import { SLOTS, SLOT_STYLES, SATIETY_DATA } from '../constants.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { dbOps } from '../db.js';
-import { getWeekRange, getCurrentWeekInMonth, getWeeksInMonth, getDayName } from './date-utils.js';
+import { getWeekRange, getCurrentWeekInMonth, getWeeksInMonth, getDayName, formatDateWithDay } from './date-utils.js';
 import { renderGallery } from '../render/index.js';
 import { toLocalDateString } from '../utils.js';
 
@@ -195,35 +195,38 @@ export function renderBestMeals() {
         const currentYear = today.getFullYear();
         const currentMonth = today.getMonth() + 1;
         const currentWeek = getCurrentWeekInMonth(currentYear, currentMonth);
+        const { start, end } = getWeekRange(currentYear, currentMonth, currentWeek);
         
         meals = getWeekBestMeals(currentYear, currentMonth, currentWeek);
         periodKey = `week_${currentYear}_${currentMonth}_${currentWeek}`;
-        periodLabel = '주간';
+        periodLabel = `${formatDateWithDay(start)} ~ ${formatDateWithDay(end)} (주간 BEST를 표시합니다)`;
     } else if (state.dashboardMode === 'week') {
         // 주간 모드: 해당 기간의 만족도 4~5개 리스트
         meals = getWeekBestMeals(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
         periodKey = `week_${state.selectedYear}_${state.selectedMonthForWeek}_${state.selectedWeek}`;
-        periodLabel = '';
+        periodLabel = `${state.selectedYear}년 ${state.selectedMonthForWeek}월 ${state.selectedWeek}주`;
     } else if (state.dashboardMode === 'month') {
         // 월간 모드: 각 주간에서 1~5위
         const [y, m] = state.selectedMonth.split('-').map(Number);
         meals = getMonthBestMeals(y, m);
         periodKey = `month_${state.selectedMonth}`;
-        periodLabel = '';
+        periodLabel = `${y}년 ${m}월`;
     } else if (state.dashboardMode === 'year') {
         // 연간 모드: 각 월별 1~5위
-        meals = getYearBestMeals(state.selectedYearForYear);
-        periodKey = `year_${state.selectedYearForYear}`;
-        periodLabel = '';
+        const year = state.selectedYearForYear || new Date().getFullYear();
+        meals = getYearBestMeals(year);
+        periodKey = `year_${year}`;
+        periodLabel = `${year}년`;
     } else if (state.dashboardMode === 'custom') {
-        // 직접설정 → 연간 베스트 표시
-        const year = state.customStartDate.getFullYear();
+        // 직접설정 → 연간 베스트 표시 (연간과 동일한 형식: 해당 연도만 표시)
+        const startDate = state.customStartDate || new Date();
+        const year = startDate.getFullYear();
         meals = getYearBestMeals(year);
         periodKey = `year_${year}_custom`;
-        periodLabel = '연간';
+        periodLabel = `${year}년 (연간 BEST를 표시합니다)`;
     }
     
-    // periodLabel 표시
+    // periodLabel 표시 (BEST 기간 옆 기간 텍스트)
     if (periodLabelEl) {
         periodLabelEl.textContent = periodLabel;
     }

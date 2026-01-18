@@ -493,12 +493,12 @@
                                 <i class="fa-solid fa-chevron-right text-sm"></i>
                             </button>
                         </div>
-                        <div id="customDatePicker" class="hidden mt-3 flex gap-2 items-center justify-between">
+                        <div id="customDatePicker" class="hidden mt-3 flex gap-4 items-center justify-center">
                             <div class="flex gap-1 items-center">
                                 <label class="text-xs font-bold text-white/80 whitespace-nowrap">시작</label>
                                 <input type="date" id="customStart" onchange="window.safeCall('updateCustomDates')" class="bg-white/20 text-white text-sm rounded px-2 py-1 border-none outline-none">
                             </div>
-                            <div class="flex gap-1 items-center ml-auto">
+                            <div class="flex gap-1 items-center">
                                 <label class="text-xs font-bold text-white/80 whitespace-nowrap">종료</label>
                                 <input type="date" id="customEnd" onchange="window.safeCall('updateCustomDates')" class="bg-white/20 text-white text-sm rounded px-2 py-1 border-none outline-none">
                             </div>
@@ -572,7 +572,7 @@
                         <div class="card py-2 px-4">
                             <div class="flex justify-between items-center mb-2">
                                 <div class="flex items-center gap-2">
-                                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">Best 식사/간식</h3>
+                                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">BEST 기간</h3>
                                     <span id="bestPeriodLabel" class="text-xs text-slate-300"></span>
                                 </div>
                                 <button id="shareBestBtn" onclick="window.openShareBestModal()" class="hidden text-xs font-bold px-3 py-1.5 active:opacity-70 transition-colors ml-2 text-blue-600">
