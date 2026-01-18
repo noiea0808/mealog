@@ -1,5 +1,5 @@
 // Service Worker for MEALOG
-const CACHE_NAME = 'mealog-v1';
+const CACHE_NAME = 'mealog-v2';
 // 상대 경로 사용 (서브디렉토리 배포 대응)
 const basePath = self.location.pathname.replace(/\/sw\.js$/, '') || '/';
 const urlsToCache = [

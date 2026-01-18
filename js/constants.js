@@ -60,6 +60,17 @@ export const DEFAULT_USER_SETTINGS = {
     onboardingCompleted: false
 };
 
+// 게시물 신고 사유 (id는 Firestore에 저장, label은 UI 표시)
+export const REPORT_REASONS = [
+    { id: 'spam', label: '스팸/홍보' },
+    { id: 'hate', label: '혐오/혐오발언' },
+    { id: 'inappropriate', label: '부적절한 콘텐츠' },
+    { id: 'violence', label: '폭력/위험' },
+    { id: 'harassment', label: '괴롭힘/협박' },
+    { id: 'copyright', label: '저작권 침해' },
+    { id: 'other', label: '기타' }
+];
+
 export const DEFAULT_SUB_TAGS = {
     place: [{ text: '우리집', parent: '집밥' }, { text: '회사 식당', parent: '구내식당' }, { text: '스타벅스', parent: '배달/포장' }],
     menu: [{ text: '김치찌개', parent: '한식' }, { text: '아메리카노', parent: '카페' }, { text: '샌드위치', parent: '양식' }],

@@ -6,6 +6,8 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPasswor
 const adminAuth = getAuth(app, 'admin');
 import { collection, getDocs, query, orderBy, limit, doc, deleteDoc, getDoc, setDoc, where, writeBatch, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { uploadImageToStorage } from './utils.js';
+import { getReportsAggregateByGroupKeys } from './db.js';
+import { REPORT_REASONS } from './constants.js';
 
 let currentDeletePhotoId = null;
 
@@ -2291,7 +2293,15 @@ async function renderFeedManagement() {
             return;
         }
         
+        const reportsMap = await getReportsAggregateByGroupKeys();
+        window._feedReportDetails = {};
+        
         container.innerHTML = paginatedMeals.map(meal => {
+            const targetGroupKey = meal.isBestShare ? `best_${meal.id}` : meal.isDailyShare ? `daily_${meal.date || ''}_${meal.userId}` : `entry_${meal.id}_${meal.userId}`;
+            const reportInfo = reportsMap[targetGroupKey];
+            if (reportInfo && reportInfo.count > 0) { window._feedReportDetails[targetGroupKey] = reportInfo.byReason; }
+            const reportBadgeHtml = (reportInfo && reportInfo.count > 0) ? `<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded cursor-pointer hover:bg-red-200" onclick="window.showReportDetailPopup('${String(targetGroupKey).replace(/'/g, "\\'")}')">🚩 신고 ${reportInfo.count}</span>` : '';
+            
             // 베스트 공유 게시물인 경우
             if (meal.isBestShare) {
                 const userInfo = { nickname: meal.userNickname || '익명', icon: meal.userIcon || '🐻' };
@@ -2326,6 +2336,7 @@ async function renderFeedManagement() {
                                         <span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">🏆 베스트 공유</span>
                                         <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">${meal.periodType || ''} ${meal.periodText || ''}</span>
                                         <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">공유됨</span>
+                                        ${reportBadgeHtml}
                                     </div>
                                 </div>
                                 ${meal.photoUrl ? `
@@ -2389,6 +2400,7 @@ async function renderFeedManagement() {
                                         <span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded">📅 일간보기 공유</span>
                                         <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">${dateDisplay}</span>
                                         <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">공유됨</span>
+                                        ${reportBadgeHtml}
                                     </div>
                                 </div>
                                 ${meal.photoUrl ? `
@@ -2449,6 +2461,7 @@ async function renderFeedManagement() {
                                     ${isShared ? '<span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">공유됨</span>' : ''}
                                     ${hasDataMismatch ? '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">데이터 불일치</span>' : ''}
                                     ${isBanned ? '<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded">금지됨</span>' : ''}
+                                    ${reportBadgeHtml}
                                 </div>
                                 ${hasDataMismatch ? `<button onclick="window.syncSharedPhotos('${meal.id}', '${meal.userId}')" class="px-3 py-1 bg-yellow-600 text-white rounded-lg text-xs font-bold hover:bg-yellow-700 transition-colors">동기화</button>` : ''}
                             </div>
@@ -2569,6 +2582,46 @@ window.refreshFeedManagement = function() {
     feedCurrentPage = 1;
     renderFeedManagement();
 }
+
+// 신고 상세 팝업 (사유별 건수)
+window.showReportDetailPopup = function(targetGroupKey) {
+    const byReason = (window._feedReportDetails && window._feedReportDetails[targetGroupKey]) || {};
+    const entries = Object.entries(byReason);
+    if (entries.length === 0) return;
+    
+    const existing = document.getElementById('reportDetailModal');
+    if (existing) existing.remove();
+    
+    const overlay = document.createElement('div');
+    overlay.id = 'reportDetailModal';
+    overlay.className = 'fixed inset-0 z-[600] flex items-center justify-center p-4';
+    
+    const bg = document.createElement('div');
+    bg.className = 'absolute inset-0 bg-black/50';
+    bg.onclick = () => overlay.remove();
+    
+    const getReasonLabel = (key) => {
+        if (String(key).startsWith('기타:')) return key;
+        return (REPORT_REASONS.find(r => r.id === key) || {}).label || key;
+    };
+    
+    const listHtml = entries.map(([reason, count]) => `<div class="flex justify-between py-2 border-b border-slate-100 last:border-0"><span class="text-slate-700">${escapeHtml(getReasonLabel(reason))}</span><span class="font-bold text-slate-800">${count}건</span></div>`).join('');
+    const total = entries.reduce((s, [, c]) => s + c, 0);
+    
+    const panel = document.createElement('div');
+    panel.className = 'relative w-full max-w-sm bg-white rounded-2xl p-6 shadow-xl';
+    panel.innerHTML = `
+        <h3 class="text-lg font-bold text-slate-800 mb-4">🚩 신고 사유</h3>
+        <p class="text-sm text-slate-600 mb-4">총 <strong>${total}</strong>건의 신고</p>
+        <div class="max-h-64 overflow-y-auto">${listHtml}</div>
+        <button type="button" class="mt-4 w-full py-3 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200">닫기</button>
+    `;
+    panel.querySelector('button').onclick = () => overlay.remove();
+    
+    overlay.appendChild(bg);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+};
 
 // 일괄 공유 취소
 window.bulkUnsharePosts = async function() {

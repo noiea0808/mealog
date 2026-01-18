@@ -1163,13 +1163,11 @@ export async function renderGallery() {
                             ${mealLabel ? `<div class="text-[10px] font-bold ${mealLabelStyle || 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-full whitespace-nowrap">${mealLabel}</div>` : ''}
                         </div>
                     </div>
-                    ${isMyPost ? `
-                        <div class="relative">
-                            <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-photo-slot-id="${photo.slotId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
-                                <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
-                            </button>
-                        </div>
-                    ` : ''}
+                    <div class="relative">
+                        <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
+                            <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="relative overflow-hidden bg-slate-100">
                     <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
@@ -1293,7 +1291,9 @@ export async function renderGallery() {
                     const photoDate = btn.getAttribute('data-photo-date') || '';
                     const photoSlotId = btn.getAttribute('data-photo-slot-id') || '';
                     const isDailyShare = btn.getAttribute('data-is-daily') === 'true';
-                    window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare);
+                    const postId = btn.getAttribute('data-post-id') || '';
+                    const authorUserId = btn.getAttribute('data-author-user-id') || '';
+                    window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId);
                 });
                 btn.setAttribute('data-listener-added', 'true');
             } else {
@@ -1308,7 +1308,9 @@ export async function renderGallery() {
                             const photoDate = btn.getAttribute('data-photo-date') || '';
                             const photoSlotId = btn.getAttribute('data-photo-slot-id') || '';
                             const isDailyShare = btn.getAttribute('data-is-daily') === 'true';
-                    window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare);
+                            const postId = btn.getAttribute('data-post-id') || '';
+                            const authorUserId = btn.getAttribute('data-author-user-id') || '';
+                            window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId);
                         });
                         btn.setAttribute('data-listener-added', 'true');
                     }
@@ -1633,13 +1635,11 @@ export function renderFeed() {
                         </div>
                     </div>
                     ${isBanned ? `<div class="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0"><i class="fa-solid fa-ban mr-1"></i>공유 금지</div>` : ''}
-                    ${isMyPost ? `
-                        <div class="relative flex-shrink-0">
-                            <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-photo-slot-id="${photo.slotId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
-                                <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
-                            </button>
-                        </div>
-                    ` : ''}
+                    <div class="relative flex-shrink-0">
+                        <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${photo.id || photoGroup[0]?.id || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
+                            <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="relative overflow-hidden bg-slate-100">
                     <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
@@ -1719,7 +1719,9 @@ export function renderFeed() {
                     const photoDate = btn.getAttribute('data-photo-date') || '';
                     const photoSlotId = btn.getAttribute('data-photo-slot-id') || '';
                     const isDailyShare = btn.getAttribute('data-is-daily') === 'true';
-                    window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare);
+                    const postId = btn.getAttribute('data-post-id') || '';
+                    const authorUserId = btn.getAttribute('data-author-user-id') || '';
+                    window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId);
                 });
                 btn.setAttribute('data-listener-added', 'true');
             } else {
@@ -1734,7 +1736,9 @@ export function renderFeed() {
                             const photoDate = btn.getAttribute('data-photo-date') || '';
                             const photoSlotId = btn.getAttribute('data-photo-slot-id') || '';
                             const isDailyShare = btn.getAttribute('data-is-daily') === 'true';
-                    window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare);
+                            const postId = btn.getAttribute('data-post-id') || '';
+                            const authorUserId = btn.getAttribute('data-author-user-id') || '';
+                            window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId);
                         });
                         btn.setAttribute('data-listener-added', 'true');
                     }

@@ -4,7 +4,7 @@ console.log('📦 main.js 모듈 로드 시작');
 import { appState, getState } from './state.js';
 import { auth, db, appId } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { dbOps, setupListeners, setupSharedPhotosListener, loadMoreMeals, postInteractions, boardOperations } from './db.js';
+import { dbOps, setupListeners, setupSharedPhotosListener, loadMoreMeals, postInteractions, boardOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
@@ -25,7 +25,7 @@ import {
     openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, setSettingsProfileType, handlePhotoUpload, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
     openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace
 } from './modals.js';
-import { DEFAULT_SUB_TAGS } from './constants.js';
+import { DEFAULT_SUB_TAGS, REPORT_REASONS } from './constants.js';
 import { normalizeUrl } from './utils.js';
 
 // 전역 객체에 함수들 할당 (HTML에서 접근 가능하도록)
@@ -1309,131 +1309,213 @@ window.onload = () => {
 };
 
 // 피드 옵션 관련 함수
-window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '', photoSlotId = '', isDailyShare = false) => {
-    // 옵션 메뉴 표시
+window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '', photoSlotId = '', isDailyShare = false, postId = '', authorUserId = '') => {
     const existingMenu = document.getElementById('feedOptionsMenu');
-    if (existingMenu) {
-        existingMenu.remove();
-    }
+    if (existingMenu) existingMenu.remove();
     
     const menu = document.createElement('div');
     menu.id = 'feedOptionsMenu';
     menu.className = 'fixed inset-0 z-[450]';
     
-    // entryId가 있는지 확인 (빈 문자열, null, 'null', 'undefined' 문자열 모두 체크)
-    // 베스트 공유가 아닌 경우에는 entryId가 없어도 수정 가능 (Comment가 있는 경우 등)
-    const hasEntryId = entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined';
-    
-    // 피드에서는 항상 게시 취소로 표시 (기록 삭제가 아닌 공유 취소)
+    const isMyPost = window.currentUser && authorUserId && window.currentUser.uid === authorUserId;
     const deleteButtonText = '게시 취소';
     const deleteButtonIcon = 'fa-share';
     
-    // 배경 클릭 시 닫기
     const bg = document.createElement('div');
     bg.className = 'fixed inset-0 bg-black/40';
     bg.onclick = () => menu.remove();
     
-    // 메뉴 컨테이너
     const menuContainer = document.createElement('div');
     menuContainer.className = 'fixed bottom-0 left-0 right-0 w-full bg-white rounded-t-3xl p-4 pb-8 animate-fade-up z-[451]';
     
-    // 핸들바
     const handlebar = document.createElement('div');
     handlebar.className = 'w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4';
     
-    // 버튼 컨테이너
     const buttonContainer = document.createElement('div');
     buttonContainer.className = 'space-y-2';
     
-    // 수정하기 버튼
-    const editBtn = document.createElement('button');
-    editBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
-    editBtn.type = 'button';
-    editBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        menu.remove();
-        setTimeout(() => {
-            if (isBestShare) {
-                // 베스트 공유 수정
-                const photoUrlArray = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(url => url.trim()).filter(url => url) : [];
-                if (photoUrlArray.length > 0) {
-                    window.editBestShare(photoUrlArray[0]);
+    if (isMyPost) {
+        // 수정하기
+        const editBtn = document.createElement('button');
+        editBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        editBtn.type = 'button';
+        editBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            menu.remove();
+            setTimeout(() => {
+                if (isBestShare) {
+                    const photoUrlArray = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(url => url.trim()).filter(url => url) : [];
+                    if (photoUrlArray.length > 0) window.editBestShare(photoUrlArray[0]);
+                    else showToast("수정할 베스트 공유를 찾을 수 없습니다.", 'error');
+                } else if (isDailyShare) {
+                    if (photoDate) window.openDailyCommentModal(photoDate);
+                    else showToast("수정할 일간보기 공유를 찾을 수 없습니다.", 'error');
                 } else {
-                    showToast("수정할 베스트 공유를 찾을 수 없습니다.", 'error');
+                    if (entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined') {
+                        window.editFeedPost(entryId);
+                    } else if (photoDate && photoSlotId) {
+                        window.openModal(photoDate, photoSlotId, null);
+                    } else {
+                        showToast("수정할 기록을 찾을 수 없습니다.", 'error');
+                    }
                 }
-            } else if (isDailyShare) {
-                // 일간보기 공유 수정: 코멘트 수정 모달 열기
-                if (photoDate) {
-                    window.openDailyCommentModal(photoDate);
-                } else {
-                    showToast("수정할 일간보기 공유를 찾을 수 없습니다.", 'error');
-                }
-            } else {
-                // 일반 공유 수정
-                if (entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined') {
-                    window.editFeedPost(entryId);
-                } else if (photoDate && photoSlotId) {
-                    // entryId가 없어도 날짜와 slotId가 있으면 모달 열기 (새로 등록하는 것처럼 열기)
-                    window.openModal(photoDate, photoSlotId, null);
-                } else {
-                    showToast("수정할 기록을 찾을 수 없습니다.", 'error');
-                }
-            }
-        }, 100);
-    });
-    editBtn.innerHTML = `
-        <div class="flex items-center gap-3">
-            <i class="fa-solid fa-pencil text-emerald-600 text-lg"></i>
-            <span class="font-bold text-slate-800">수정하기</span>
-        </div>
-    `;
-    buttonContainer.appendChild(editBtn);
+            }, 100);
+        });
+        editBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-pencil text-emerald-600 text-lg"></i><span class="font-bold text-slate-800">수정하기</span></div>';
+        buttonContainer.appendChild(editBtn);
+        
+        // 게시 취소
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        deleteBtn.type = 'button';
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            menu.remove();
+            setTimeout(() => window.deleteFeedPost(entryId || '', photoUrls || '', isBestShare), 100);
+        });
+        deleteBtn.innerHTML = `<div class="flex items-center gap-3"><i class="fa-solid ${deleteButtonIcon} text-red-500 text-lg"></i><span class="font-bold text-red-500">${deleteButtonText}</span></div>`;
+        buttonContainer.appendChild(deleteBtn);
+    } else {
+        // 다른 사람 게시물: 신고하기 (첫 번째 옵션)
+        const reportBtn = document.createElement('button');
+        reportBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        reportBtn.type = 'button';
+        reportBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            menu.remove();
+            const targetGroupKey = isBestShare ? `best_${postId || 'unknown'}` : isDailyShare ? `daily_${photoDate || 'nodate'}_${authorUserId || 'unknown'}` : `entry_${entryId || 'none'}_${authorUserId || 'unknown'}`;
+            setTimeout(() => window.showReportModal(targetGroupKey), 100);
+        });
+        reportBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-flag text-amber-600 text-lg"></i><span class="font-bold text-slate-800">신고하기</span></div>';
+        buttonContainer.appendChild(reportBtn);
+    }
     
-    // 삭제하기/게시 취소 버튼
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
-    deleteBtn.type = 'button';
-    deleteBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        menu.remove();
-        setTimeout(() => {
-            window.deleteFeedPost(entryId || '', photoUrls || '', isBestShare);
-        }, 100);
-    });
-    deleteBtn.innerHTML = `
-        <div class="flex items-center gap-3">
-            <i class="fa-solid ${deleteButtonIcon} text-red-500 text-lg"></i>
-            <span class="font-bold text-red-500">${deleteButtonText}</span>
-        </div>
-    `;
-    buttonContainer.appendChild(deleteBtn);
-    
-    // 취소 버튼
-    const cancelBtn = document.createElement('button');
-    cancelBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
-    cancelBtn.type = 'button';
-    cancelBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        menu.remove();
-    });
-    cancelBtn.innerHTML = `
-        <div class="flex items-center gap-3">
-            <i class="fa-solid fa-xmark text-slate-400 text-lg"></i>
-            <span class="font-bold text-slate-400">취소</span>
-        </div>
-    `;
-    buttonContainer.appendChild(cancelBtn);
-    
-    // 메뉴 컨테이너 클릭 시 이벤트 전파 방지
-    menuContainer.addEventListener('click', (e) => {
-        e.stopPropagation();
-    });
-    
+    // 취소 버튼 없음: 바깥 영역(배경) 탭으로 닫기
+    menuContainer.addEventListener('click', (e) => e.stopPropagation());
     menuContainer.appendChild(handlebar);
     menuContainer.appendChild(buttonContainer);
     menu.appendChild(bg);
     menu.appendChild(menuContainer);
     document.body.appendChild(menu);
+};
+
+// 신고 사유 라벨 (reason id, reasonOther -> 표시 문자열)
+function getReportReasonLabel(reason, reasonOther) {
+    if (reason === 'other' && reasonOther) return `기타: ${reasonOther}`;
+    return (REPORT_REASONS.find(r => r.id === reason) || {}).label || reason;
+}
+
+// 신고하기 모달 (이미 신고한 경우: 사유 표시 + 신고 취소, 아니면 사유 선택 폼. 하단 취소 버튼 없음)
+window.showReportModal = async (targetGroupKey) => {
+    const existing = document.getElementById('reportModal');
+    if (existing) existing.remove();
+    
+    const overlay = document.createElement('div');
+    overlay.id = 'reportModal';
+    overlay.className = 'fixed inset-0 z-[500] flex items-end sm:items-center justify-center';
+    
+    const bg = document.createElement('div');
+    bg.className = 'absolute inset-0 bg-black/50';
+    bg.onclick = () => overlay.remove();
+    
+    const panel = document.createElement('div');
+    panel.className = 'relative w-full max-w-md bg-white rounded-t-2xl sm:rounded-2xl p-6 pb-8 max-h-[85vh] overflow-y-auto';
+    panel.innerHTML = '<div id="reportModalBody" class="py-6 text-center text-slate-500">확인 중...</div>';
+    
+    overlay.appendChild(bg);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+    
+    const body = panel.querySelector('#reportModalBody');
+    const uid = (auth?.currentUser || window.currentUser)?.uid;
+    if (!uid) {
+        body.innerHTML = '<p class="text-slate-600">로그인이 필요합니다.</p>';
+        return;
+    }
+    
+    let report = null;
+    try {
+        report = await getUserReportForPost(targetGroupKey, uid);
+    } catch (e) {
+        console.error('getUserReportForPost 오류:', e);
+        body.innerHTML = '<p class="text-red-600">확인 중 오류가 발생했습니다.</p>';
+        return;
+    }
+    
+    if (report) {
+        // 이미 신고한 경우: "이미 신고함" + 신고 사유 + 신고 취소 버튼 (옆에). 하단 취소 버튼 없음
+        const label = getReportReasonLabel(report.reason, report.reasonOther);
+        body.innerHTML = `
+            <h3 class="text-lg font-bold text-slate-800 mb-4">게시물 신고</h3>
+            <p class="text-sm text-amber-600 font-bold mb-3">이미 신고한 게시물입니다.</p>
+            <div class="flex flex-wrap items-center justify-between gap-3 py-3 px-4 bg-slate-50 rounded-xl">
+                <span class="text-sm text-slate-700">신고 사유: <strong>${escapeHtml(String(label || ''))}</strong></span>
+                <button type="button" id="reportWithdrawBtn" class="flex-shrink-0 py-2 px-4 rounded-xl font-bold text-sm bg-slate-200 text-slate-700 hover:bg-slate-300 active:bg-slate-400">신고 취소</button>
+            </div>
+        `;
+        body.querySelector('#reportWithdrawBtn').onclick = async () => {
+            const btn = body.querySelector('#reportWithdrawBtn');
+            btn.disabled = true;
+            btn.textContent = '처리 중...';
+            try {
+                await withdrawReport(report.id, targetGroupKey);
+                showToast('신고가 취소되었습니다.', 'success');
+                overlay.remove();
+            } catch (e) {
+                showToast(e?.message || '신고 취소에 실패했습니다.', 'error');
+                btn.disabled = false;
+                btn.textContent = '신고 취소';
+            }
+        };
+        return;
+    }
+    
+    // 신고 사유 선택 폼 (하단 취소 버튼 없음, 신고 버튼만)
+    body.innerHTML = `
+        <h3 class="text-lg font-bold text-slate-800 mb-4">게시물 신고</h3>
+        <p class="text-sm text-slate-600 mb-4">신고 사유를 선택해주세요.</p>
+        <div class="space-y-2 mb-4" id="reportReasons"></div>
+        <div id="reportOtherWrap" class="hidden mb-4">
+            <label class="block text-sm font-bold text-slate-700 mb-2">기타 (직접 입력)</label>
+            <textarea id="reportOtherInput" rows="3" class="w-full p-3 border border-slate-200 rounded-xl text-sm resize-none" placeholder="신고 사유를 입력해주세요."></textarea>
+        </div>
+        <button type="button" id="reportSubmitBtn" class="w-full py-3 rounded-xl font-bold text-white bg-amber-600">신고</button>
+    `;
+    
+    const reasonsEl = body.querySelector('#reportReasons');
+    REPORT_REASONS.forEach(r => {
+        const lbl = document.createElement('label');
+        lbl.className = 'flex items-center gap-3 p-3 rounded-xl border border-slate-200 has-[:checked]:border-amber-500 has-[:checked]:bg-amber-50 cursor-pointer';
+        lbl.innerHTML = `<input type="radio" name="reportReason" value="${r.id}" class="report-reason-radio"> <span class="text-sm font-medium text-slate-800">${r.label}</span>`;
+        reasonsEl.appendChild(lbl);
+    });
+    
+    const otherWrap = body.querySelector('#reportOtherWrap');
+    const otherInput = body.querySelector('#reportOtherInput');
+    body.querySelectorAll('.report-reason-radio').forEach(radio => {
+        radio.addEventListener('change', () => { otherWrap.classList.toggle('hidden', radio.value !== 'other'); });
+    });
+    
+    body.querySelector('#reportSubmitBtn').onclick = async () => {
+        const checked = body.querySelector('input[name="reportReason"]:checked');
+        if (!checked) { showToast('신고 사유를 선택해주세요.', 'error'); return; }
+        const reason = checked.value;
+        const reasonOther = reason === 'other' ? (otherInput.value || '').trim() : '';
+        if (reason === 'other' && !reasonOther) { showToast('기타 사유를 입력해주세요.', 'error'); return; }
+        
+        const btn = body.querySelector('#reportSubmitBtn');
+        btn.disabled = true;
+        btn.textContent = '처리 중...';
+        try {
+            await submitReport({ targetGroupKey, reason, reasonOther });
+            showToast('신고가 접수되었습니다.', 'success');
+            overlay.remove();
+        } catch (e) {
+            showToast(e?.message || '신고 접수에 실패했습니다.', 'error');
+            btn.disabled = false;
+            btn.textContent = '신고';
+        }
+    };
 };
 
 window.editFeedPost = (entryId) => {

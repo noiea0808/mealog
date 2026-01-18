@@ -1,6 +1,6 @@
 // 데이터베이스 작업
 import { db, appId, auth } from './firebase.js';
-import { doc, getDoc, setDoc, collection, addDoc, deleteDoc, onSnapshot, query, orderBy, limit, where, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, onSnapshot, collection, addDoc, query, orderBy, limit, where, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { showToast } from './ui.js';
 import { DEFAULT_SUB_TAGS } from './constants.js';
 import { uploadBase64ToStorage, toLocalDateString } from './utils.js';
@@ -1207,6 +1207,81 @@ export const postInteractions = {
         }
     }
 };
+
+// 현재 사용자가 해당 게시물을 이미 신고했는지 조회 (있으면 { id, reason, reasonOther } 반환)
+// postReports read 권한 이슈 회피: 사용자 자신의 config/reportedPosts 문서에서 조회
+export async function getUserReportForPost(targetGroupKey, userId) {
+    if (!targetGroupKey || !userId) return null;
+    const ref = doc(db, 'artifacts', appId, 'users', userId, 'config', 'reportedPosts');
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return null;
+    const entry = snap.data()[targetGroupKey];
+    if (!entry || !entry.reportId) return null;
+    return { id: entry.reportId, reason: entry.reason, reasonOther: entry.reasonOther };
+}
+
+// 게시물 신고 (이미 신고한 경우 throw)
+export async function submitReport(payload) {
+    const currentUser = (typeof auth !== 'undefined' && auth.currentUser) ? auth.currentUser : window.currentUser;
+    if (!currentUser || currentUser.isAnonymous) {
+        throw new Error("로그인이 필요합니다.");
+    }
+    const { targetGroupKey, reason, reasonOther } = payload;
+    if (!targetGroupKey || !reason) {
+        throw new Error("신고 대상과 사유가 필요합니다.");
+    }
+    const existing = await getUserReportForPost(targetGroupKey, currentUser.uid);
+    if (existing) {
+        throw new Error("이미 신고한 게시물입니다.");
+    }
+    const reportsColl = collection(db, 'artifacts', appId, 'postReports');
+    const reasonOtherVal = (reason === 'other' && reasonOther && String(reasonOther).trim()) ? String(reasonOther).trim() : undefined;
+    const data = {
+        targetGroupKey,
+        reason,
+        reportedBy: currentUser.uid,
+        reportedAt: new Date().toISOString()
+    };
+    if (reasonOtherVal) data.reasonOther = reasonOtherVal;
+    const reportRef = await addDoc(reportsColl, data);
+    // 본인 config/reportedPosts에 기록 (getUserReportForPost에서 조회, postReports read 권한 불필요)
+    const userReportedRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'config', 'reportedPosts');
+    await setDoc(userReportedRef, { [targetGroupKey]: { reportId: reportRef.id, reason, reasonOther: reasonOtherVal || null } }, { merge: true });
+    return reportRef.id;
+}
+
+// 신고 취소 (본인이 신고한 문서만 삭제 가능, 규칙에서 검증. targetGroupKey로 config/reportedPosts에서도 제거)
+export async function withdrawReport(reportId, targetGroupKey) {
+    const currentUser = (typeof auth !== 'undefined' && auth.currentUser) ? auth.currentUser : window.currentUser;
+    if (!currentUser || currentUser.isAnonymous) {
+        throw new Error("로그인이 필요합니다.");
+    }
+    if (!reportId) throw new Error("취소할 신고가 없습니다.");
+    const reportRef = doc(db, 'artifacts', appId, 'postReports', reportId);
+    await deleteDoc(reportRef);
+    if (targetGroupKey) {
+        const userReportedRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'config', 'reportedPosts');
+        await updateDoc(userReportedRef, { [targetGroupKey]: deleteField() });
+    }
+}
+
+// 관리자: targetGroupKey별 신고 집계 (전체 조회 후 메모리에서 집계)
+export async function getReportsAggregateByGroupKeys() {
+    const reportsColl = collection(db, 'artifacts', appId, 'postReports');
+    const snapshot = await getDocs(reportsColl);
+    const byKey = {};
+    snapshot.docs.forEach(d => {
+        const { targetGroupKey, reason, reasonOther } = d.data();
+        if (!targetGroupKey) return;
+        if (!byKey[targetGroupKey]) {
+            byKey[targetGroupKey] = { count: 0, byReason: {} };
+        }
+        byKey[targetGroupKey].count += 1;
+        const reasonLabel = reason === 'other' && reasonOther ? `기타: ${reasonOther}` : reason;
+        byKey[targetGroupKey].byReason[reasonLabel] = (byKey[targetGroupKey].byReason[reasonLabel] || 0) + 1;
+    });
+    return byKey;
+}
 
 // 더보기 함수: 추가 기간의 데이터 로드
 export async function loadMoreMeals(monthsToLoad = 1) {
