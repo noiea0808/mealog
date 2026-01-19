@@ -1125,6 +1125,48 @@ export const postInteractions = {
         }
     },
     
+    // 본인이 좋아요한 포스트 ID 목록 (앨범 흔적 필터용)
+    async getPostIdsLikedByUser(userId) {
+        if (!userId) return [];
+        try {
+            const likesColl = collection(db, 'artifacts', appId, 'postLikes');
+            const q = query(likesColl, where('userId', '==', userId));
+            const snapshot = await getDocs(q);
+            return [...new Set(snapshot.docs.map(d => d.data().postId).filter(Boolean))];
+        } catch (e) {
+            console.error("Get PostIds Liked By User Error:", e);
+            return [];
+        }
+    },
+    
+    // 본인이 북마크한 포스트 ID 목록 (앨범 흔적 필터용)
+    async getPostIdsBookmarkedByUser(userId) {
+        if (!userId) return [];
+        try {
+            const bookmarksColl = collection(db, 'artifacts', appId, 'postBookmarks');
+            const q = query(bookmarksColl, where('userId', '==', userId));
+            const snapshot = await getDocs(q);
+            return [...new Set(snapshot.docs.map(d => d.data().postId).filter(Boolean))];
+        } catch (e) {
+            console.error("Get PostIds Bookmarked By User Error:", e);
+            return [];
+        }
+    },
+    
+    // 본인이 댓글 단 포스트 ID 목록 (앨범 흔적 필터용)
+    async getPostIdsCommentedByUser(userId) {
+        if (!userId) return [];
+        try {
+            const commentsColl = collection(db, 'artifacts', appId, 'postComments');
+            const q = query(commentsColl, where('userId', '==', userId));
+            const snapshot = await getDocs(q);
+            return [...new Set(snapshot.docs.map(d => d.data().postId).filter(Boolean))];
+        } catch (e) {
+            console.error("Get PostIds Commented By User Error:", e);
+            return [];
+        }
+    },
+    
     // 댓글 추가
     async addComment(postId, userId, commentText, userProfile) {
         if (!window.currentUser || window.currentUser.isAnonymous || !postId || !commentText?.trim()) {
@@ -1976,6 +2018,80 @@ export const boardOperations = {
         });
         
         return unsubscribe;
+    }
+};
+
+// 공지 관련 함수 (본문 조회, 좋아요/싫어요 - noticeInteractions 사용, notice 문서는 관리자만 쓰기 가능)
+export const noticeOperations = {
+    async getNotice(noticeId) {
+        try {
+            const noticeDoc = doc(db, 'artifacts', appId, 'notices', noticeId);
+            const snap = await getDoc(noticeDoc);
+            if (!snap.exists()) return null;
+            const d = snap.data();
+            if (d.deleted === true) return null;
+            return { id: snap.id, ...d };
+        } catch (e) {
+            console.error("Get Notice Error:", e);
+            return null;
+        }
+    },
+    async getNoticeReactionCounts(noticeId) {
+        try {
+            const coll = collection(db, 'artifacts', appId, 'noticeInteractions');
+            const q = query(coll, where('noticeId', '==', noticeId));
+            const snapshot = await getDocs(q);
+            let likes = 0, dislikes = 0;
+            snapshot.docs.forEach(d => {
+                if (d.data().isLike === true) likes++;
+                else dislikes++;
+            });
+            return { likes, dislikes };
+        } catch (e) {
+            console.error("Get Notice Reaction Counts Error:", e);
+            return { likes: 0, dislikes: 0 };
+        }
+    },
+    async getNoticeUserReaction(noticeId, userId) {
+        if (!userId) return null;
+        try {
+            const coll = collection(db, 'artifacts', appId, 'noticeInteractions');
+            const q = query(coll, where('noticeId', '==', noticeId), where('userId', '==', userId));
+            const snapshot = await getDocs(q);
+            if (snapshot.empty) return null;
+            return snapshot.docs[0].data().isLike ? 'like' : 'dislike';
+        } catch (e) {
+            console.error("Get Notice User Reaction Error:", e);
+            return null;
+        }
+    },
+    async toggleNoticeLike(noticeId, isLike = true) {
+        if (!window.currentUser) throw new Error("로그인이 필요합니다.");
+        try {
+            const coll = collection(db, 'artifacts', appId, 'noticeInteractions');
+            const q = query(coll, where('noticeId', '==', noticeId), where('userId', '==', window.currentUser.uid));
+            const snapshot = await getDocs(q);
+            if (snapshot.empty) {
+                await addDoc(coll, {
+                    noticeId,
+                    userId: window.currentUser.uid,
+                    isLike: !!isLike,
+                    timestamp: new Date().toISOString()
+                });
+            } else {
+                const ref = snapshot.docs[0].ref;
+                const data = snapshot.docs[0].data();
+                if (data.isLike === isLike) {
+                    await deleteDoc(ref);
+                } else {
+                    await setDoc(ref, { isLike: !!isLike, timestamp: new Date().toISOString() }, { merge: true });
+                }
+            }
+            return true;
+        } catch (e) {
+            console.error("Toggle Notice Like Error:", e);
+            throw e;
+        }
     }
 };
 

@@ -14,6 +14,7 @@ export {
     renderTagManager,
     renderBoard,
     renderBoardDetail,
+    renderNoticeDetail,
     createDailyShareCard,
     filterGalleryByUser,
     clearGalleryFilter

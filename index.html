@@ -363,34 +363,46 @@
 
     <!-- 2. Main Application -->
     <div id="mainApp" class="hidden">
-        <header class="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-sm">
-            <div class="p-3.5 flex justify-between items-center px-6">
+        <header class="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-sm max-h-[60px]">
+                <div class="py-2.5 flex justify-between items-center px-6">
                 <h1 class="text-2xl font-black text-emerald-600 tracking-tighter">mealog</h1>
                 <div class="flex items-center gap-2">
-                    <button id="searchTriggerBtn" class="w-8 h-8 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center active:bg-slate-100"><i class="fa-solid fa-magnifying-glass text-sm"></i></button>
+                    <!-- 타임라인 탭: 돋보기 클릭 시 왼쪽으로 입력창 확장, 프로필 밀지 않음(고정폭+absolute) -->
+                    <div id="timelineSearchPanel" class="timeline-search-wrapper hidden relative w-8 flex-shrink-0 overflow-visible">
+                        <div class="timeline-search-panel flex items-center overflow-hidden bg-slate-50 rounded-full border border-slate-100">
+                            <input type="text" id="searchInput" placeholder="메뉴, 장소 검색..." class="flex-1 min-w-0 bg-transparent border-0 pl-3 pr-1 py-1.5 text-sm outline-none focus:ring-0" oninput="window.safeCall('handleSearch', this.value)">
+                            <button type="button" onclick="window.toggleSearch()" class="timeline-search-toggle w-8 h-8 flex items-center justify-center flex-shrink-0 text-slate-400 active:bg-slate-100 rounded-full" aria-label="검색">
+                                <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <!-- 앨범 탭: 돋보기 위치에서 왼쪽으로 확장 (하트/댓글/북마크/돋보기), 4개 통합 배경 -->
+                    <div id="galleryTraceFilterPanel" class="gallery-trace-panel hidden flex items-center gap-0.5 overflow-hidden transition-all duration-300 ease-out flex-shrink-0 bg-slate-50 rounded-full border border-slate-100">
+                        <button type="button" data-trace="like" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100 hover:text-red-500 transition-colors flex-shrink-0">
+                            <i class="fa-regular fa-heart text-sm"></i>
+                        </button>
+                        <button type="button" data-trace="comment" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors flex-shrink-0">
+                            <i class="fa-regular fa-comment text-sm"></i>
+                        </button>
+                        <button type="button" data-trace="bookmark" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors flex-shrink-0">
+                            <i class="fa-regular fa-bookmark text-sm"></i>
+                        </button>
+                        <button type="button" data-trace="collapse" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100 transition-colors flex-shrink-0">
+                            <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                        </button>
+                    </div>
                     <button id="headerSettingsBtn" class="flex items-center gap-2 bg-slate-50 px-2.5 py-1.5 rounded-full border border-slate-100 active:bg-slate-100 max-w-[140px]">
                         <span id="headerIcon" class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 flex-shrink-0 overflow-hidden"></span>
                         <span id="headerName" class="text-xs font-bold text-slate-700 truncate">게스트</span>
                     </button>
                 </div>
             </div>
-            
-            <!-- Search Container (Moved inside Header) -->
-            <div id="searchContainer" class="hidden w-full px-4 pb-3 bg-white border-t border-slate-50">
-                <div class="flex items-center gap-2 pt-3">
-                    <div class="flex-1 relative">
-                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-xs"></i>
-                        <input type="text" id="searchInput" placeholder="메뉴, 장소 검색..." class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-sm outline-none focus:border-emerald-500 transition-colors" oninput="window.safeCall('handleSearch', this.value)">
-                    </div>
-                    <button id="closeSearchBtn" class="text-xs font-bold text-slate-400 px-2 active:text-slate-600">취소</button>
-                </div>
-            </div>
         </header>
 
-        <div id="trackerSection" class="sticky top-[58px] z-40 px-4 py-3 bg-white border-b border-slate-100 shadow-sm">
+        <div id="trackerSection" class="sticky top-[52px] z-40 px-4 py-3 bg-white border-b border-slate-100 shadow-sm">
             <div id="trackerHeader" class="flex justify-between items-center px-1 mb-2">
                 <span id="trackerTitle" class="text-sm font-black text-slate-800 tracking-tight uppercase">날짜 선택</span>
-                <div id="trackerTabs" class="flex p-1 bg-slate-100 rounded-lg space-x-1">
+                <div id="trackerTabs" class="flex p-1 bg-slate-100 rounded-lg gap-1">
                     <button id="btn-view-list" class="view-tab active">전체</button>
                     <button id="btn-view-page" class="view-tab inactive">일간</button>
                 </div>
@@ -433,7 +445,8 @@
                     <button onclick="window.backToBoardList()" class="w-8 h-8 flex items-center justify-center text-slate-400 active:bg-slate-100 rounded-full transition-colors">
                         <i class="fa-solid fa-arrow-left text-lg"></i>
                     </button>
-                    <h2 class="text-lg font-black text-slate-800 tracking-tight flex-1 truncate" id="boardDetailViewTitle">게시글</h2>
+                    <span id="boardDetailViewCategory" class="mr-2 shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full hidden"></span>
+                    <h2 class="text-lg font-black text-slate-800 tracking-tight flex-1 truncate min-w-0" id="boardDetailViewTitle">게시글</h2>
                 </div>
                 <div id="boardDetailContent" class="space-y-3">
                     <!-- 게시글 상세 내용이 여기에 동적으로 추가됨 -->
