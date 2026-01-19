@@ -48,15 +48,12 @@ function getApiKey() {
     }
     return GEMINI_API_KEY;
 }
-// 지원 가능한 모델 목록 (우선순위 순) - 실제 존재하는 모델 우선 사용
+// 지원 가능한 모델 목록 - 데이터 분석용 추천 모델 3개만 순차적으로 사용
+// 실제 존재하는 모델명만 사용 (404 에러 방지)
 const GEMINI_MODELS = [
-    'gemini-1.5-flash-latest',
-    'gemini-1.5-flash',
-    'gemini-1.5-pro-latest',
-    'gemini-1.5-pro',
-    'gemini-2.0-flash-exp',
-    'gemini-2.5-flash',
-    'gemini-pro'
+    'gemini-2.5-pro',        // 1순위: 깊은 분석, 복잡한 쿼리, 논리적 추론 (고급 분석용)
+    'gemini-2.5-flash-lite', // 2순위: 백업 옵션 (가능하면 사용)
+    'gemini-2.5-flash'       // 3순위: 고빈도 요청, 경량 분석 (66자 응답 가능, 최후의 보루)
 ];
 
 // API URL 생성 함수 (여러 버전 시도)
@@ -146,78 +143,103 @@ async function loadCharactersFromFirebase() {
 // 현재 선택된 캐릭터 (기본값: MEALOG)
 let currentCharacter = 'mealog';
 
-// 텍스트를 5줄 단위로 나누는 함수 (페이지 제한 없음)
-// 원본 줄바꿈을 그대로 유지하고, 자동 줄바꿈은 하지 않음
-function splitTextIntoPages(text, maxLines = 5, maxPages = Infinity) {
+// MEALOG 코멘트 순차 선택을 위한 인덱스
+let mealogCommentIndex = 0;
+
+// 텍스트를 6줄 단위로 나누는 함수 (페이지 제한 없음)
+// 원본 줄바꿈을 그대로 유지 (줄바꿈이 없는 텍스트는 그대로 유지)
+function splitTextIntoPages(text, maxLines = 6) {
     if (!text) return [''];
     
     // 줄바꿈만 정규화 (원본 텍스트의 줄바꿈과 공백은 그대로 유지)
-    text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     
-    // 원본 줄바꿈을 기준으로 분할 (자동 줄바꿈 없이)
-    const originalLines = text.split('\n');
+    // 원본 텍스트의 마지막 줄바꿈 여부 확인
+    const hasTrailingNewline = normalizedText.endsWith('\n');
     
-    // 5줄씩 묶어서 페이지 만들기 (페이지 제한 없음)
-    const linesToUse = maxPages === Infinity ? originalLines : originalLines.slice(0, maxPages * maxLines);
+    // 줄 단위로 분할 (split은 마지막 빈 줄도 포함)
+    const lines = normalizedText.split('\n');
+    
+    // 빈 텍스트인 경우
+    if (lines.length === 0) return [''];
     
     const pages = [];
-    for (let i = 0; i < linesToUse.length; i += maxLines) {
-        const pageLines = linesToUse.slice(i, i + maxLines);
-        const pageText = pageLines.join('\n');
-        // 빈 페이지가 아닌 경우 추가 (모든 줄이 공백이어도 추가)
+    // 5줄씩 묶어서 페이지 만들기
+    for (let i = 0; i < lines.length; i += maxLines) {
+        const pageLines = lines.slice(i, i + maxLines);
+        let pageText = pageLines.join('\n');
+        
+        // 마지막 페이지이고 원본이 줄바꿈으로 끝났다면 마지막 줄바꿈 추가
+        if (i + maxLines >= lines.length && hasTrailingNewline) {
+            pageText += '\n';
+        }
+        
         pages.push(pageText);
     }
     
-    // 페이지가 없으면 원본 텍스트 반환
-    return pages.length > 0 ? pages : [text];
+    // 빈 페이지 방지
+    if (pages.length === 0) {
+        pages.push(normalizedText);
+    }
+    
+    return pages;
 }
 
-// 말풍선에 텍스트 표시 (페이지네이션, 페이지 제한 없음)
+// 말풍선에 텍스트 표시 (페이징 없이 전체 텍스트 표시)
 function displayInsightText(text, characterName = '') {
-    const container = document.getElementById('insightTextPages');
-    const pageCounter = document.getElementById('insightPageCounter');
-    const indicator = document.getElementById('insightPageIndicator');
+    const container = document.getElementById('insightTextContent');
     const bubble = document.getElementById('insightBubble');
+    const characterNameEl = document.getElementById('insightCharacterName');
+    const characterBtn = document.getElementById('insightCharacterBtn');
     
-    if (!container) return;
-    
-    // 텍스트를 페이지로 분할 (페이지 제한 없음)
-    const pages = splitTextIntoPages(text, 5);
-    
-    // 캐릭터명은 첫 페이지에만 표시
-    const characterHeader = characterName && pages.length > 0 
-        ? `<div class="insight-character-name text-xs font-bold text-emerald-700 mb-1">[ ${characterName} ]</div>` 
-        : '';
-    
-    container.innerHTML = pages.map((page, index) => {
-        // 줄바꿈을 <br>로 변환하고 HTML 이스케이프
-        const escapedPage = escapeHtml(page).replace(/\n/g, '<br>');
-        return `<div class="insight-text-page ${index === 0 ? 'active' : ''}" data-page="${index}">${index === 0 ? characterHeader : ''}<div class="insight-text-content">${escapedPage}</div></div>`;
-    }).join('');
-    
-    // 페이지 카운터 표시 (우상단) - 항상 표시 (1페이지여도)
-    if (pageCounter) {
-        pageCounter.classList.remove('hidden');
-        pageCounter.textContent = `1/${pages.length}`;
-        window.totalInsightPages = pages.length;
+    if (!container) {
+        console.error('insightTextContent 컨테이너를 찾을 수 없습니다.');
+        return;
     }
     
-    // 페이지 인디케이터 숨기기 (제거 요청)
-    if (indicator) {
-        indicator.classList.add('hidden');
+    // 캐릭터명 표시
+    if (characterNameEl) {
+        if (characterName) {
+            characterNameEl.textContent = `[${characterName}]`;
+            characterNameEl.classList.remove('hidden');
+        } else {
+            // characterName이 없으면 현재 선택된 캐릭터 이름 사용
+            const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
+            if (character) {
+                characterNameEl.textContent = `[${character.name}]`;
+                characterNameEl.classList.remove('hidden');
+            } else {
+                characterNameEl.classList.add('hidden');
+            }
+        }
     }
     
-    // 말풍선 클릭 이벤트 설정 (페이지가 2개 이상일 때만)
-    if (bubble && pages.length > 1) {
-        bubble.style.cursor = 'pointer';
-        bubble.title = '클릭하여 다음 페이지 보기';
-    } else if (bubble) {
+    if (!text) {
+        container.innerHTML = '';
+        return;
+    }
+    
+    // 줄바꿈을 <br>로 변환하고 HTML 이스케이프
+    const escapedText = escapeHtml(text).replace(/\n/g, '<br>');
+    container.innerHTML = escapedText;
+    
+    // 말풍선 최소 높이 설정 (캐릭터창 + 코멘트창의 합산 높이)
+    if (bubble && characterBtn) {
+        // 캐릭터창 높이 계산 (180px 설정됨)
+        const characterContainer = characterBtn.closest('.relative.flex-shrink-0');
+        if (characterContainer) {
+            const characterHeight = 180; // 캐릭터창 높이 (index.html:546에서 확인)
+            const minHeight = characterHeight + 'px';
+            bubble.style.minHeight = minHeight;
+        }
+        
         bubble.style.cursor = 'default';
         bubble.title = '';
+        // handleInsightBubbleClick 함수가 정의되어 있을 때만 제거
+        if (typeof handleInsightBubbleClick === 'function') {
+            bubble.removeEventListener('click', handleInsightBubbleClick);
+        }
     }
-    
-    // 첫 페이지로 초기화
-    window.currentInsightPage = 0;
 }
 
 // 인사이트 페이지 전환
@@ -248,32 +270,18 @@ export function showInsightPage(pageIndex) {
     window.currentInsightPage = pageIndex;
 }
 
-// 말풍선 클릭 시 다음 페이지로 (초기화)
+// 말풍선 클릭 이벤트 설정 (페이징 없으므로 사용 안 함)
 export function setupInsightBubbleClick() {
     const bubble = document.getElementById('insightBubble');
     if (!bubble) return;
     
-    // 기존 이벤트 리스너 제거 후 새로 추가
-    bubble.removeEventListener('click', handleInsightBubbleClick);
-    bubble.addEventListener('click', handleInsightBubbleClick);
-}
-
-function handleInsightBubbleClick() {
-    const pages = document.querySelectorAll('.insight-text-page');
-    if (pages.length <= 1) return;
-    
-    const currentPage = window.currentInsightPage || 0;
-    const nextPage = (currentPage + 1) % pages.length;
-    showInsightPage(nextPage);
-    
-    // 클릭 피드백 (선택사항)
-    const bubble = document.getElementById('insightBubble');
-    if (bubble) {
-        bubble.style.transform = 'scale(0.98)';
-        setTimeout(() => {
-            bubble.style.transform = '';
-        }, 150);
+    // 페이징이 없으므로 클릭 이벤트 제거
+    // handleInsightBubbleClick 함수가 정의되어 있을 때만 제거
+    if (typeof handleInsightBubbleClick === 'function') {
+        bubble.removeEventListener('click', handleInsightBubbleClick);
     }
+    bubble.style.cursor = 'default';
+    bubble.title = '';
 }
 
 // 캐릭터 선택 팝업 렌더링
@@ -445,6 +453,7 @@ async function getCharacterDefaultComment(characterId) {
 }
 
 // MEALOG 캐릭터 사용 안내 텍스트 (Firebase에서 가져오기)
+// 메시지별로 순차적으로 반환 (메시지1 > 2 > 3...)
 async function getMealogComment() {
     try {
         const personaDocRef = doc(db, 'artifacts', appId, 'persona', 'mealog');
@@ -454,13 +463,32 @@ async function getMealogComment() {
             const data = personaDoc.data();
             const comments = data.comments || [];
             
-            // 비어있지 않은 코멘트만 필터링
-            const validComments = comments.filter(c => c && c.trim().length > 0);
+            // 더 엄격한 필터링: undefined, null, 빈 문자열 모두 제거
+            const validComments = comments.filter(c => {
+                return c !== null && c !== undefined && typeof c === 'string' && c.trim().length > 0;
+            });
+            
+            console.log('MEALOG 코멘트 로드:', {
+                원본_배열_길이: comments.length,
+                유효한_코멘트_수: validComments.length,
+                현재_인덱스: mealogCommentIndex,
+                선택될_코멘트_인덱스: mealogCommentIndex % validComments.length
+            });
             
             if (validComments.length > 0) {
-                // 랜덤으로 하나 선택
-                const randomIndex = Math.floor(Math.random() * validComments.length);
-                return validComments[randomIndex];
+                // 순차적으로 선택 (메시지1 > 2 > 3... 순서대로)
+                const selectedComment = validComments[mealogCommentIndex % validComments.length];
+                mealogCommentIndex = (mealogCommentIndex + 1) % validComments.length;
+                
+                console.log('선택된 코멘트:', {
+                    길이: selectedComment.length,
+                    줄_수: selectedComment.split('\n').length,
+                    미리보기: selectedComment.substring(0, 100) + '...',
+                    전체_내용: selectedComment,
+                    COMMENT_버튼_포함: selectedComment.includes('💬') || selectedComment.includes('COMMENT')
+                });
+                
+                return selectedComment;
             }
         }
         
@@ -553,22 +581,33 @@ export async function generateInsightComment() {
         const characterName = character ? character.name : '';
         const commentText = await getMealogComment();
         displayInsightText(commentText, characterName);
-        showToast('MEALOG는 사용 안내를 제공합니다. 다른 캐릭터를 선택하면 AI 분석을 받을 수 있어요!', 'info');
         return;
     }
     
     // 버튼 비활성화 및 로딩 상태
     const btn = document.getElementById('generateCommentBtn');
+    let loadingInterval = null;
+    let dotCount = 0;
+    
+    // 분석 시작 전에 "분석중입니다" 표시
+    const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
+    const characterName = character ? character.name : '';
+    displayInsightText('분석중입니다', characterName);
+    
     if (btn) {
         btn.disabled = true;
-        const originalText = btn.textContent;
-        btn.textContent = '...';
+        const originalText = btn.textContent || 'COMMENT';
+        
+        // 로딩 애니메이션 시작 (분석중... 점 애니메이션)
+        loadingInterval = setInterval(() => {
+            dotCount = (dotCount + 1) % 4; // 0~3 순환 (최대 3개 점)
+            const dots = '.'.repeat(dotCount);
+            btn.textContent = `분석중${dots}`;
+        }, 400); // 400ms마다 업데이트
     }
     
     try {
         // AI 코멘트 생성 및 업데이트
-        const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
-        const characterName = character ? character.name : '';
         const comment = await getGeminiComment(filteredData, currentCharacter, dateRangeText);
         displayInsightText(comment || "멋진 식사 기록이 쌓이고 있어요! ✨", characterName);
         
@@ -578,10 +617,20 @@ export async function generateInsightComment() {
         console.error('코멘트 생성 실패:', error);
         showToast('코멘트 생성 중 오류가 발생했습니다.', 'error');
     } finally {
+        // 로딩 애니메이션 중지
+        if (loadingInterval) {
+            clearInterval(loadingInterval);
+        }
+        
         // 버튼 활성화 및 원래 텍스트로 복원
         if (btn) {
             btn.disabled = false;
             btn.textContent = 'COMMENT';
+        }
+        
+        // 분석 중 메시지도 제거 (에러 발생 시에도)
+        if (loadingInterval) {
+            clearInterval(loadingInterval);
         }
     }
 }
@@ -661,7 +710,8 @@ async function listAvailableModels() {
     try {
         const apiKey = getApiKey();
         const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
-        console.log('ListModels API 호출 중...', listUrl);
+        // 보안: API 키가 포함된 URL은 로그에 출력하지 않음
+        console.log('ListModels API 호출 중...');
         const response = await fetch(listUrl);
         
         if (response.ok) {
@@ -674,23 +724,64 @@ async function listAvailableModels() {
                     .filter(model => {
                         // supportedGenerationMethods에 generateContent가 있는지 확인
                         const methods = model.supportedGenerationMethods || [];
-                        return methods.includes('generateContent');
+                        const hasGenerateContent = methods.includes('generateContent');
+                        
+                        // 모델 이름 체크 (tts, gemma 제외)
+                        const modelName = model.name?.replace('models/', '') || '';
+                        const isExcluded = modelName.toLowerCase().includes('tts') || 
+                                          modelName.toLowerCase().includes('gemma');
+                        
+                        return hasGenerateContent && !isExcluded;
                     })
                     .map(model => model.name?.replace('models/', '') || null)
                     .filter(name => name !== null);
                 
-                console.log('generateContent를 지원하는 모델:', modelsWithGenerateContent);
+                console.log('generateContent를 지원하는 모델 (tts/gemma 제외):', modelsWithGenerateContent);
                 availableModels = modelsWithGenerateContent;
                 return modelsWithGenerateContent;
             }
         } else {
             const errorText = await response.text();
-            console.error('ListModels API 오류:', response.status, errorText);
+            let errorData;
+            try {
+                errorData = JSON.parse(errorText);
+            } catch (e) {
+                errorData = { error: { message: errorText } };
+            }
+            
+            // 에러 상세 정보 로그
+            console.warn('ListModels API 오류:', {
+                status: response.status,
+                message: errorData.error?.message,
+                reason: errorData.error?.details?.[0]?.reason,
+                전체_에러: errorData
+            });
+            
+            // API 키 문제는 나중에 사용자에게 알림
+            if (response.status === 400 && errorData.error?.message?.includes('API key')) {
+                // 에러는 이미 위에서 로그로 출력됨
+            }
         }
     } catch (error) {
         console.error('모델 목록 조회 실패:', error);
     }
     return null;
+}
+
+// 공통 페르소나 가져오기
+async function getCommonPersona() {
+    try {
+        const commonDocRef = doc(db, 'artifacts', appId, 'persona', 'common');
+        const commonDoc = await getDoc(commonDocRef);
+        
+        if (commonDoc.exists()) {
+            const data = commonDoc.data();
+            return data.systemPrompt || '';
+        }
+    } catch (e) {
+        console.error('공통 페르소나 가져오기 실패:', e);
+    }
+    return '';
 }
 
 // Gemini API를 사용하여 코멘트 생성
@@ -709,119 +800,251 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
             return character ? `${character.icon} 기록을 분석할 수 없습니다.` : "기록을 분석할 수 없습니다.";
         }
         
+        // 공통 페르소나 가져오기
+        const commonPersona = await getCommonPersona();
+        
+        // 디버깅: 공통 페르소나 로드 확인
+        console.log('공통 페르소나 로드:', {
+            존재: !!commonPersona,
+            길이: commonPersona ? commonPersona.length : 0,
+            내용_미리보기: commonPersona ? commonPersona.substring(0, 100) + '...' : '없음'
+        });
+        
         // 프롬프트 생성 (재미있고 캐릭터 성격 중심, 핵심만)
         const menuSummary = analysis.menuDetails.length > 0 
             ? analysis.menuDetails.slice(0, 5).join(', ') 
             : '없음';
         
-        const prompt = `당신은 ${character.name}입니다. ${character.systemPrompt}
-
-**중요**: ${character.persona}로서 당신의 고유한 성격과 말투를 확실히 드러내세요.
-
-식사 데이터 분석:
-- 총 ${analysis.totalMeals}회 기록
-- 식사방식: ${analysis.mealTypes || '없음'}
-- 주요 메뉴: ${menuSummary}
-- 함께한 사람: ${analysis.companions || '대부분 혼자'}
-${analysis.avgRating ? `- 만족도 평균: ${analysis.avgRating}/5` : ''}
-
-위 데이터를 보고 12-15줄의 재미있고 개성 있는 코멘트를 작성하세요.
-
-**절대 하지 말 것:**
-- 자기 소개 금지 ("안녕하세요", "저는 OOO입니다" 등)
-- 기간 언급 금지 ("지난 한 주", "이번 기간", "1월 4일부터" 등 - 상단에 이미 표시됨)
-- 지루하고 진부한 문구 사용 금지
-
-**반드시 할 것:**
-- 캐릭터 성격이 확실히 드러나도록 재미있고 개성 있게 작성
-- 식사 패턴에서 발견한 재미있거나 흥미로운 점을 우선 언급
-- 긍정적이지만 진부하지 않은, 캐릭터다운 격려
-- 핵심 인사이트만 전달 (불필요한 장황한 설명 없이)
-- 캐릭터 고유의 말투와 유머 감각 사용
-- 짧고 명확한 문장으로 구성 (한 줄당 30-40자)
-- 이모지 최대 2개 자연스럽게 사용
-- 한국어로만, 12-15줄 완전히 끝내기`;
+        // 프롬프트 구성 (간결하고 명확하게)
+        let prompt = '';
+        
+        // 공통 페르소나 (간결하게)
+        if (commonPersona && commonPersona.trim()) {
+            prompt += `[공통 페르소나 - 최우선 적용]\n${commonPersona.trim()}\n\n`;
+        }
+        
+        // 캐릭터 페르소나
+        prompt += `[캐릭터 페르소나]\n당신은 ${character.name}입니다. ${character.persona}\n`;
+        if (character.systemPrompt) {
+            prompt += `${character.systemPrompt}\n`;
+        }
+        
+        // 식사 데이터
+        prompt += `\n[식사 데이터]\n`;
+        prompt += `- 총 ${analysis.totalMeals}회 기록\n`;
+        prompt += `- 식사방식: ${analysis.mealTypes || '없음'}\n`;
+        prompt += `- 주요 메뉴: ${menuSummary}\n`;
+        prompt += `- 함께한 사람: ${analysis.companions || '대부분 혼자'}\n`;
+        if (analysis.avgRating) {
+            prompt += `- 만족도 평균: ${analysis.avgRating}/5\n`;
+        }
+        
+        // 작성 지침 (간결하게)
+        prompt += `\n[작성 지침]\n`;
+        if (commonPersona && commonPersona.trim()) {
+            prompt += `- 공통 페르소나의 모든 지침을 반드시 적용\n`;
+        }
+        prompt += `- 캐릭터 고유의 말투와 성격 드러내기\n`;
+        prompt += `- 식사 패턴의 재미있는 점 우선 언급\n`;
+        prompt += `- 자기 소개/기간 언급 금지\n`;
+        prompt += `- 이모지 최대 2개, 한국어만 사용\n`;
+        
+        // 최종 프롬프트 로그 (디버깅용)
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('📝 생성된 프롬프트 정보:');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('공통 페르소나 포함:', !!(commonPersona && commonPersona.trim()));
+        console.log('프롬프트 길이:', prompt.length, '자');
+        console.log('프롬프트 줄 수:', prompt.split('\n').length, '줄');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('📄 전체 프롬프트 내용:');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log(prompt);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
         // v1beta API만 사용 (v1은 이 모델들을 지원하지 않음)
         let lastError = null;
         let data = null;
         const apiVersion = 'v1beta'; // v1beta만 사용
         
-        // 먼저 사용 가능한 모델 목록 확인
-        const modelsToTry = await listAvailableModels();
+        // 지정된 데이터 분석용 추천 모델 3개만 순차적으로 사용
+        const models = GEMINI_MODELS;
         
-        // 사용 가능한 모델이 있으면 그것을 사용, 없으면 기본 목록 사용
-        const models = modelsToTry && modelsToTry.length > 0 ? modelsToTry : GEMINI_MODELS;
-        console.log('시도할 모델 목록:', models);
+        console.log('시도할 모델 목록 (순서대로):', models);
         
         for (const model of models) {
             try {
                 const apiUrl = getGeminiApiUrl(model, apiVersion);
                 console.log(`Gemini API 호출 시도: ${apiVersion}/${model}`);
                 
+                // API 요청 본문 구성
+                const requestBody = {
+                    contents: [{
+                        parts: [{
+                            text: prompt
+                        }]
+                    }],
+                    generationConfig: {
+                        temperature: 0.7,
+                        topK: 40,
+                        topP: 0.95,
+                        maxOutputTokens: 1000, // 충분한 토큰 수로 완전한 응답 보장
+                        stopSequences: [], // 정지 시퀀스 제거하여 완전한 응답 보장
+                    }
+                };
+                
+                // 공통 페르소나가 있으면 system instruction으로 추가
+                if (commonPersona && commonPersona.trim()) {
+                    let systemInstructionText = `${commonPersona.trim()}\n\n위 공통 페르소나를 먼저 적용한 후, 사용자 프롬프트의 캐릭터별 페르소나를 추가로 적용하세요.`;
+                    
+                    requestBody.systemInstruction = {
+                        parts: [{
+                            text: systemInstructionText
+                        }]
+                    };
+                    
+                    // 첫 번째 모델에서만 systemInstruction 로그 출력
+                    if (model === models[0]) {
+                        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                        console.log('🔧 System Instruction (공통 페르소나):');
+                        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                        console.log(systemInstructionText);
+                        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                    }
+                }
+                
+                // 첫 번째 모델에서만 전체 요청 본문 로그 출력
+                if (model === models[0]) {
+                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                    console.log('📤 구글 API에 전송할 전체 요청 본문:');
+                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                    console.log(JSON.stringify(requestBody, null, 2));
+                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                }
+                
                 const response = await fetch(apiUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        contents: [{
-                            parts: [{
-                                text: prompt
-                            }]
-                        }],
-                        generationConfig: {
-                            temperature: 0.7,
-                            topK: 40,
-                            topP: 0.95,
-                            maxOutputTokens: 1000, // 충분한 토큰 수로 완전한 응답 보장
-                            stopSequences: [], // 정지 시퀀스 제거하여 완전한 응답 보장
-                        }
-                    })
+                    body: JSON.stringify(requestBody)
                 });
                 
                 if (!response.ok) {
                     const errorText = await response.text();
-                    console.error(`모델 ${apiVersion}/${model} API 응답 오류:`, response.status, errorText);
-                    lastError = new Error(`API 요청 실패 (${apiVersion}/${model}): ${response.status} - ${errorText}`);
+                    let errorData;
+                    try {
+                        errorData = JSON.parse(errorText);
+                    } catch (e) {
+                        errorData = { error: { message: errorText } };
+                    }
+                    
+                    // 첫 번째 모델에서만 상세 에러 로그
+                    if (model === models[0]) {
+                        console.warn(`첫 모델 시도 실패 (${model}):`, {
+                            status: response.status,
+                            message: errorData.error?.message,
+                            reason: errorData.error?.details?.[0]?.reason,
+                            전체_에러: errorData
+                        });
+                    }
+                    
+                    // API 키 관련 에러
+                    if (response.status === 400 && errorData.error?.message?.includes('API key')) {
+                        lastError = new Error(`API 키 문제: ${errorData.error.message}`);
+                        continue;
+                    }
+                    
+                    // 404 (모델 없음), 429 (쿼터 초과)는 조용히 처리
+                    if (response.status === 404 || response.status === 429) {
+                        lastError = new Error(`API 요청 실패 (${apiVersion}/${model}): ${response.status}`);
+                        continue;
+                    }
+                    
+                    // 기타 에러
+                    lastError = new Error(`API 요청 실패 (${apiVersion}/${model}): ${response.status} - ${errorData.error?.message || errorText}`);
                     continue; // 다음 모델 시도
                 }
                 
                 const responseData = await response.json();
                 console.log(`Gemini API 성공: ${apiVersion}/${model}`);
                 
-                // 응답 검증
-                if (responseData.candidates && responseData.candidates[0] && responseData.candidates[0].content) {
-                    let testComment = responseData.candidates[0].content.parts[0].text.trim();
-                    const testFinishReason = responseData.candidates[0].finishReason;
+                // 응답 검증 (안전 필터 및 응답 구조 처리)
+                if (responseData?.candidates && responseData.candidates.length > 0) {
+                    const candidate = responseData.candidates[0];
                     
-                    console.log('API 응답 확인:', {
-                        모델: model,
-                        finishReason: testFinishReason,
-                        원본_길이: testComment.length,
-                        원본_텍스트_미리보기: testComment.substring(0, 100) + '...'
-                    });
-                    
-                    // 응답이 불완전한 경우 (너무 짧거나 MAX_TOKENS인데 짧음) 다음 모델로 재시도
-                    if (!testComment || testComment.length < 150) {
-                        console.warn(`응답이 너무 짧습니다 (${testComment.length}자). 다음 모델로 재시도합니다.`);
-                        lastError = new Error(`응답이 너무 짧습니다: ${testComment.length}자`);
-                        continue; // 다음 모델로 재시도
+                    // 안전 필터 확인
+                    if (responseData.promptFeedback) {
+                        console.warn('⚠️ 안전 필터 작동:', responseData.promptFeedback);
+                        lastError = new Error('안전 필터로 인해 응답이 차단됨');
+                        continue; // 다음 모델 시도
                     }
                     
-                    if (testFinishReason === 'MAX_TOKENS' && testComment.length < 150) {
-                        console.warn(`MAX_TOKENS인데 응답이 너무 짧습니다 (${testComment.length}자). 다음 모델로 재시도합니다.`);
-                        lastError = new Error(`MAX_TOKENS로 잘렸지만 너무 짧음: ${testComment.length}자`);
-                        continue; // 다음 모델로 재시도
+                    // 응답 구조 확인 (다양한 구조 지원)
+                    let testComment = null;
+                    const testFinishReason = candidate?.finishReason;
+                    
+                    // 구조 1: candidate.content.parts[0].text (일반적)
+                    if (candidate?.content?.parts && candidate.content.parts.length > 0) {
+                        const textPart = candidate.content.parts[0];
+                        if (textPart?.text) {
+                            testComment = textPart.text.trim();
+                        }
                     }
                     
-                    // 응답이 충분하면 이 모델 사용
-                    data = responseData;
-                    break; // 성공하면 반복 중단
+                    // 구조 2: candidate.text (간단한 구조)
+                    if (!testComment && candidate?.text) {
+                        testComment = candidate.text.trim();
+                    }
+                    
+                    // 구조 3: candidate.output (일부 모델)
+                    if (!testComment && candidate?.output) {
+                        testComment = typeof candidate.output === 'string' 
+                            ? candidate.output.trim() 
+                            : candidate.output.text?.trim();
+                    }
+                    
+                    // 텍스트 찾기 성공
+                    if (testComment) {
+                        console.log('API 응답 확인:', {
+                            모델: model,
+                            finishReason: testFinishReason,
+                            원본_길이: testComment.length,
+                            원본_텍스트_미리보기: testComment.substring(0, 100) + '...'
+                        });
+                        
+                        // 최소 길이 체크 (50자 이상이거나 MAX_TOKENS인 경우 허용)
+                        const minLength = testFinishReason === 'MAX_TOKENS' ? 30 : 50;
+                        if (!testComment || testComment.length < minLength) {
+                            console.warn(`응답이 너무 짧습니다 (${testComment.length}자, 최소: ${minLength}자).`);
+                            lastError = new Error(`응답이 너무 짧습니다: ${testComment.length}자`);
+                            continue;
+                        }
+                        
+                        // 응답이 충분하면 이 모델 사용
+                        data = responseData;
+                        break; // 성공하면 반복 중단
+                    } else {
+                        // 텍스트를 찾지 못한 경우 - 응답 구조 로깅
+                        console.warn('⚠️ API 응답에서 텍스트를 찾을 수 없습니다:', {
+                            model: model,
+                            candidateKeys: candidate ? Object.keys(candidate) : null,
+                            candidateContent: candidate?.content ? Object.keys(candidate.content) : null,
+                            responseKeys: Object.keys(responseData)
+                        });
+                        lastError = new Error('응답에 텍스트가 없음 (응답 구조 불일치)');
+                        continue;
+                    }
                 } else {
-                    console.warn('응답 형식이 올바르지 않습니다. 다음 모델로 재시도합니다.');
-                    lastError = new Error('응답 형식 오류');
-                    continue; // 다음 모델로 재시도
+                    // candidates가 없거나 비어있는 경우
+                    console.warn('⚠️ API 응답에 candidates가 없습니다 (안전 필터 작동 가능성):', responseData);
+                    
+                    if (responseData.promptFeedback) {
+                        lastError = new Error('안전 필터로 인해 응답이 차단됨');
+                    } else {
+                        lastError = new Error('응답 형식 오류 (candidates 없음)');
+                    }
+                    continue;
                 }
                 
             } catch (error) {
@@ -833,79 +1056,117 @@ ${analysis.avgRating ? `- 만족도 평균: ${analysis.avgRating}/5` : ''}
         
         // 모든 모델 실패 시
         if (!data) {
+            // API 키 문제인지 확인
+            const errorMessage = lastError?.message || '';
+            if (errorMessage.includes('API key') || errorMessage.includes('API 키')) {
+                throw new Error('API 키가 만료되었거나 유효하지 않습니다. 관리자에게 문의하세요.');
+            }
             throw lastError || new Error('모든 Gemini 모델 호출 실패. 사용 가능한 모델 목록을 확인해주세요.');
         }
         
-        // 최종 응답 처리
-        if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-            let comment = data.candidates[0].content.parts[0].text.trim();
-            const finishReason = data.candidates[0].finishReason;
-            
-            console.log('최종 응답 처리:', {
-                finishReason: finishReason,
-                원본_길이: comment.length,
-                원본_텍스트_전체: comment
-            });
-            
-            // MAX_TOKENS인 경우 불완전한 마지막 문장 제거
-            if (finishReason === 'MAX_TOKENS' && comment.length >= 150) {
-                console.log('MAX_TOKENS이지만 충분히 긴 응답이므로 처리합니다.');
-                // 불완전한 마지막 문장 제거
-                comment = comment.replace(/[^\n가-힣a-zA-Z0-9\s.,!?]*$/, '');
-                
-                const lines = comment.split('\n').filter(line => line.trim());
-                if (lines.length > 0) {
-                    const lastLine = lines[lines.length - 1];
-                    
-                    // 마지막 줄이 불완전하면 제거
-                    if (lastLine && !/[.!?]$/.test(lastLine.trim()) && lastLine.length < 20) {
-                        lines.pop();
-                        comment = lines.join('\n').trim();
-                    }
-                }
-                
-                // 자연스러운 마무리
-                if (comment && !/[.!?]$/.test(comment.trim())) {
-                    comment = comment.trim() + '!';
+        // 최종 응답 처리 (안전 필터 및 응답 구조 안전하게 처리)
+        let comment = null;
+        const candidate = data?.candidates?.[0];
+        const finishReason = candidate?.finishReason;
+        
+        // 다양한 응답 구조 지원
+        if (candidate) {
+            // 구조 1: candidate.content.parts[0].text (일반적)
+            if (candidate?.content?.parts && candidate.content.parts.length > 0) {
+                const textPart = candidate.content.parts[0];
+                if (textPart?.text) {
+                    comment = textPart.text.trim();
                 }
             }
             
-            // 최종 검증 (이미 루프에서 검증했지만 한 번 더)
-            if (!comment || comment.length < 150) {
-                throw new Error(`최종 응답이 너무 짧습니다: ${comment.length}자`);
+            // 구조 2: candidate.text (간단한 구조)
+            if (!comment && candidate?.text) {
+                comment = candidate.text.trim();
             }
             
-            // 응답이 불완전한 것 같으면 (문장이 끝나지 않음) 경고
-            const trimmedComment = comment.trim();
-            if (!/[.!?]$/.test(trimmedComment)) {
-                console.warn('응답이 불완전할 수 있습니다. 자연스럽게 마무리합니다.');
-                // 마지막 문장이 불완전하면 마침표 추가
-                if (trimmedComment.length > 30) {
-                    comment = trimmedComment + '.';
-                }
+            // 구조 3: candidate.output (일부 모델)
+            if (!comment && candidate?.output) {
+                comment = typeof candidate.output === 'string' 
+                    ? candidate.output.trim() 
+                    : candidate.output.text?.trim();
             }
-            
-            // 캐릭터 아이콘 추가 (아이콘은 텍스트 앞에만 한 번)
-            // 먼저 아이콘 제거 (중복 방지)
-            if (character && comment.startsWith(character.icon)) {
-                comment = comment.substring(character.icon.length).trim();
-            }
-            
-            if (character && comment) {
-                comment = `${character.icon} ${comment}`;
-            }
-            
-            console.log('최종 생성된 코멘트:', {
-                길이: comment.length,
-                줄_수: comment.split('\n').length,
-                미리보기: comment.substring(0, 150) + '...'
-            });
-            
-            return comment;
-        } else {
-            console.error('응답 데이터 구조 오류:', JSON.stringify(data, null, 2));
-            throw new Error('응답 형식이 올바르지 않습니다.');
         }
+        
+        // 텍스트 확인
+        if (!comment) {
+            // 내용이 없거나 안전 필터에 걸린 경우
+            console.warn("⚠️ API 응답에 텍스트가 없습니다 (안전 필터 작동 가능성):", data);
+            
+            if (data?.promptFeedback) {
+                throw new Error("죄송해요, 식사 기록 내용이 조금 민감해서 분석할 수 없어요. (Safety Filter)");
+            }
+            throw new Error("분석 결과를 가져오는데 실패했어요. (응답 형식 불일치)");
+        }
+        
+        // comment가 있을 때 처리
+        console.log('최종 응답 처리:', {
+            finishReason: finishReason,
+            원본_길이: comment.length,
+            원본_텍스트_전체: comment
+        });
+        
+        // MAX_TOKENS인 경우 불완전한 마지막 문장 제거
+        if (finishReason === 'MAX_TOKENS' && comment.length >= 150) {
+            console.log('MAX_TOKENS이지만 충분히 긴 응답이므로 처리합니다.');
+            // 불완전한 마지막 문장 제거
+            comment = comment.replace(/[^\n가-힣a-zA-Z0-9\s.,!?]*$/, '');
+            
+            const lines = comment.split('\n').filter(line => line.trim());
+            if (lines.length > 0) {
+                const lastLine = lines[lines.length - 1];
+                
+                // 마지막 줄이 불완전하면 제거
+                if (lastLine && !/[.!?]$/.test(lastLine.trim()) && lastLine.length < 20) {
+                    lines.pop();
+                    comment = lines.join('\n').trim();
+                }
+            }
+            
+            // 자연스러운 마무리
+            if (comment && !/[.!?]$/.test(comment.trim())) {
+                comment = comment.trim() + '!';
+            }
+        }
+        
+        // 최종 검증 (이미 루프에서 검증했지만 한 번 더)
+        // MAX_TOKENS인 경우 더 관대하게 처리 (30자 이상)
+        const minLength = finishReason === 'MAX_TOKENS' ? 30 : 50;
+        if (!comment || comment.length < minLength) {
+            throw new Error(`최종 응답이 너무 짧습니다: ${comment.length}자 (최소: ${minLength}자)`);
+        }
+        
+        // 응답이 불완전한 것 같으면 (문장이 끝나지 않음) 경고
+        const trimmedComment = comment.trim();
+        if (!/[.!?]$/.test(trimmedComment)) {
+            console.warn('응답이 불완전할 수 있습니다. 자연스럽게 마무리합니다.');
+            // 마지막 문장이 불완전하면 마침표 추가
+            if (trimmedComment.length > 30) {
+                comment = trimmedComment + '.';
+            }
+        }
+        
+        // 캐릭터 아이콘 추가 (아이콘은 텍스트 앞에만 한 번)
+        // 먼저 아이콘 제거 (중복 방지)
+        if (character && comment.startsWith(character.icon)) {
+            comment = comment.substring(character.icon.length).trim();
+        }
+        
+        if (character && comment) {
+            comment = `${character.icon} ${comment}`;
+        }
+        
+        console.log('최종 생성된 코멘트:', {
+            길이: comment.length,
+            줄_수: comment.split('\n').length,
+            미리보기: comment.substring(0, 150) + '...'
+        });
+        
+        return comment;
         
     } catch (error) {
         console.error('Gemini API 오류:', error);

@@ -1,8 +1,13 @@
 // ADMIN 관리자 페이지 관련 함수들
-import { auth, db, appId } from './firebase.js';
-import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { app, db, appId } from './firebase.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+// 관리자 화면 전용 Auth 인스턴스 생성 (사용자 화면과 분리하여 인증 상태 공유 방지)
+const adminAuth = getAuth(app, 'admin');
 import { collection, getDocs, query, orderBy, limit, doc, deleteDoc, getDoc, setDoc, where, writeBatch, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { uploadImageToStorage } from './utils.js';
+import { getReportsAggregateByGroupKeys, deleteBoardPostByAdmin, setBoardPostHidden } from './db.js';
+import { REPORT_REASONS } from './constants.js';
 
 let currentDeletePhotoId = null;
 
@@ -116,8 +121,10 @@ async function getUserStatistics() {
         const last30Days = new Date(today);
         last30Days.setDate(last30Days.getDate() - 30);
         
+        // 사용자 수 계산: users 컬렉션과 sharedPhotos에서 발견된 사용자 중 큰 값 사용
+        // 단, 실제 사용자 목록과 일치시키기 위해 getUsers()와 동일한 로직 사용
         const stats = {
-            totalUsers: Math.max(usersFromCollection, uniqueUserIds.size), // 둘 중 큰 값 사용
+            totalUsers: Math.max(usersFromCollection, uniqueUserIds.size), // 둘 중 큰 값 사용 (임시)
             activeUsers: 0,
             totalMeals: 0,
             totalSharedPhotos: sharedSnapshot.size,
@@ -126,6 +133,9 @@ async function getUserStatistics() {
                 last30Days: 0
             }
         };
+        
+        // 실제 사용자 수는 getUsers()와 동일하게 계산 (나중에 통일)
+        // 현재는 users 컬렉션과 sharedPhotos의 합집합 사용
         
         console.log('📊 통계 조회 시작:', {
             totalUsers: stats.totalUsers,
@@ -344,6 +354,7 @@ async function renderSharedPhotos() {
 
 // 관리자 로그인
 window.handleAdminLogin = async function() {
+    console.log('🔐 handleAdminLogin 호출됨');
     const email = document.getElementById('adminEmail').value;
     const password = document.getElementById('adminPassword').value;
     const errorDiv = document.getElementById('loginError');
@@ -358,7 +369,7 @@ window.handleAdminLogin = async function() {
     errorDiv.classList.add('hidden');
     
     try {
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        const userCredential = await signInWithEmailAndPassword(adminAuth, email, password);
         const userId = userCredential.user.uid;
         
         console.log('🔐 로그인 성공:', {
@@ -370,7 +381,7 @@ window.handleAdminLogin = async function() {
         const isAdmin = await checkAdminStatus(userId);
         
         if (!isAdmin) {
-            await signOut(auth);
+            await signOut(adminAuth);
             errorDiv.textContent = "관리자 권한이 없습니다. 브라우저 콘솔(F12)을 확인하세요.";
             errorDiv.classList.remove('hidden');
             document.getElementById('loadingOverlay').classList.add('hidden');
@@ -455,13 +466,16 @@ window.switchAdminTab = function(tab) {
     } else if (tab === 'content') {
         switchContentSidebar('mealog'); // 기본으로 MEALOG 표시
         loadMealogComments();
+    } else if (tab === 'data') {
+        switchDataSidebar('restaurants'); // 기본으로 식당정보 표시
+        renderRestaurantData('all');
     }
 }
 
 // 관리자 로그아웃
 window.handleAdminLogout = async function() {
     try {
-        await signOut(auth);
+        await signOut(adminAuth);
         document.getElementById('adminPage').classList.add('hidden');
         document.getElementById('loginPage').classList.remove('hidden');
         document.getElementById('adminEmail').value = '';
@@ -521,7 +535,7 @@ window.confirmDeletePhoto = async function() {
 };
 
 // 인증 상태 변경 리스너
-onAuthStateChanged(auth, async (user) => {
+onAuthStateChanged(adminAuth, async (user) => {
     const loadingOverlay = document.getElementById('loadingOverlay');
     const loginPage = document.getElementById('loginPage');
     const adminPage = document.getElementById('adminPage');
@@ -540,7 +554,7 @@ onAuthStateChanged(auth, async (user) => {
                 if (loginPage) loginPage.classList.remove('hidden');
                 // 이미 로그인되어 있으면 로그아웃
                 try {
-                    await signOut(auth);
+                    await signOut(adminAuth);
                 } catch (e) {
                     console.error("로그아웃 실패:", e);
                 }
@@ -561,7 +575,8 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 // 페이지 로드 시 초기화
-window.addEventListener('DOMContentLoaded', () => {
+function initAdminPage() {
+    console.log('🔧 initAdminPage 실행');
     // 초기 상태 설정 - 로그인 페이지 표시, 로딩 오버레이 숨김
     const loadingOverlay = document.getElementById('loadingOverlay');
     const loginPage = document.getElementById('loginPage');
@@ -571,22 +586,55 @@ window.addEventListener('DOMContentLoaded', () => {
     if (loginPage) loginPage.classList.remove('hidden');
     if (adminPage) adminPage.classList.add('hidden');
     
+    // 로그인 버튼 이벤트 리스너
+    const loginBtn = document.getElementById('loginBtn');
+    console.log('🔧 loginBtn 찾기:', loginBtn);
+    if (loginBtn) {
+        loginBtn.addEventListener('click', (e) => {
+            console.log('🔧 로그인 버튼 클릭됨');
+            e.preventDefault();
+            if (window.handleAdminLogin) {
+                window.handleAdminLogin();
+            } else {
+                console.error('❌ window.handleAdminLogin이 정의되지 않음');
+            }
+        });
+        console.log('✅ 로그인 버튼 이벤트 리스너 등록됨');
+    } else {
+        console.error('❌ loginBtn을 찾을 수 없음');
+    }
+    
     // Enter 키로 로그인
-    document.getElementById('adminPassword')?.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            window.handleAdminLogin();
-        }
-    });
+    const passwordInput = document.getElementById('adminPassword');
+    if (passwordInput) {
+        passwordInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                if (window.handleAdminLogin) {
+                    window.handleAdminLogin();
+                }
+            }
+        });
+    }
     
     // 일정 시간 후에도 로딩이 계속되면 숨기기 (안전장치)
     setTimeout(() => {
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const loginPage = document.getElementById('loginPage');
         if (loadingOverlay && !loadingOverlay.classList.contains('hidden')) {
             console.warn("로딩 타임아웃 - 로딩 오버레이 강제로 숨김");
             loadingOverlay.classList.add('hidden');
             if (loginPage) loginPage.classList.remove('hidden');
         }
     }, 5000);
-});
+}
+
+// DOM 준비 상태 확인 후 초기화
+if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', initAdminPage);
+} else {
+    // DOM이 이미 준비되었으면 즉시 실행
+    setTimeout(initAdminPage, 0); // 다음 이벤트 루프에서 실행
+}
 
 // 모니터링 사이드바 전환
 window.switchMonitoringSidebar = function(section) {
@@ -659,13 +707,7 @@ window.switchContentSidebar = function(section) {
         renderPersonaCharacters();
     } else if (section === 'terms') {
         loadTermsContent();
-    } else if (section === 'tags') {
-        loadTagsContent();
-    }
-    
-    // 섹션별 데이터 로드
-    if (section === 'terms') {
-        loadTermsContent();
+        // 약관관리 탭이 기본이므로 약관이력은 나중에 로드
     } else if (section === 'tags') {
         loadTagsContent();
     }
@@ -794,6 +836,247 @@ function getCurrentTermsItems(type) {
     return items;
 }
 
+// 약관 탭 전환
+window.switchTermsTab = function(tab) {
+    const historyTab = document.getElementById('termsTabHistory');
+    const manageTab = document.getElementById('termsTabManage');
+    const historySection = document.getElementById('termsHistorySection');
+    const manageSection = document.getElementById('termsManageSection');
+    
+    if (tab === 'history') {
+        if (historyTab) {
+            historyTab.className = 'px-4 py-2 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
+        }
+        if (manageTab) {
+            manageTab.className = 'px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 border-b-2 border-transparent hover:border-slate-300 transition-colors';
+        }
+        if (historySection) historySection.classList.remove('hidden');
+        if (manageSection) manageSection.classList.add('hidden');
+        loadTermsHistory();
+    } else {
+        if (historyTab) {
+            historyTab.className = 'px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 border-b-2 border-transparent hover:border-slate-300 transition-colors';
+        }
+        if (manageTab) {
+            manageTab.className = 'px-4 py-2 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
+        }
+        if (historySection) historySection.classList.add('hidden');
+        if (manageSection) manageSection.classList.remove('hidden');
+    }
+};
+
+// 약관 이력 로드
+async function loadTermsHistory() {
+    const historyList = document.getElementById('termsHistoryList');
+    if (!historyList) return;
+    
+    try {
+        historyList.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p class="text-sm">약관 이력 로딩 중...</p></div>';
+        
+        // 배포된 약관 버전 목록 가져오기 (terms 문서의 하위 컬렉션으로 저장)
+        const versionsColl = collection(db, 'artifacts', appId, 'content', 'terms', 'versions');
+        const versionsQuery = query(versionsColl, orderBy('deployedAt', 'desc'));
+        const versionsSnapshot = await getDocs(versionsQuery);
+        
+        const versions = [];
+        versionsSnapshot.forEach(doc => {
+            const data = doc.data();
+            versions.push({
+                id: doc.id,
+                version: data.version || doc.id,
+                deployedAt: data.deployedAt,
+                deployedBy: data.deployedBy || '관리자',
+                terms: data.terms || [],
+                privacy: data.privacy || []
+            });
+        });
+        
+        if (versions.length === 0) {
+            historyList.innerHTML = '<div class="text-center py-8 text-slate-400"><p class="text-sm">배포된 약관 버전이 없습니다.</p></div>';
+            return;
+        }
+        
+        // 현재 약관 버전 가져오기
+        const currentVersion = await getCurrentTermsVersion();
+        
+        // 약관 버전 리스트 렌더링
+        historyList.innerHTML = versions.map(v => {
+            const date = v.deployedAt ? new Date(v.deployedAt).toLocaleString('ko-KR') : '날짜 없음';
+            const isCurrent = v.version === currentVersion;
+            return `
+                <div class="bg-white rounded-xl p-4 border border-slate-200 hover:border-emerald-300 transition-colors">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="text-sm font-bold text-slate-800">버전 ${v.version}</span>
+                                ${isCurrent ? '<span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-xs font-bold">현재 적용 중</span>' : ''}
+                            </div>
+                            <p class="text-xs text-slate-500">배포일: ${date}</p>
+                            <p class="text-xs text-slate-500">배포자: ${v.deployedBy}</p>
+                        </div>
+                        <button onclick="window.showTermsVersion('${v.id}')" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors ml-4">
+                            확인
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+    } catch (e) {
+        console.error('약관 이력 로드 실패:', e);
+        historyList.innerHTML = '<div class="text-center py-8 text-red-400"><p class="text-sm">약관 이력 로드 중 오류가 발생했습니다.</p></div>';
+    }
+}
+
+// 현재 적용 중인 약관 버전 가져오기
+async function getCurrentTermsVersion() {
+    try {
+        const { CURRENT_TERMS_VERSION } = await import('./constants.js');
+        return CURRENT_TERMS_VERSION;
+    } catch (e) {
+        console.warn('약관 버전 가져오기 실패:', e);
+        return '1.0';
+    }
+}
+
+// 약관 버전 보기
+window.showTermsVersion = async function(versionId) {
+    try {
+        const versionDoc = doc(db, 'artifacts', appId, 'content', 'terms', 'versions', versionId);
+        const versionSnap = await getDoc(versionDoc);
+        
+        if (!versionSnap.exists()) {
+            alert('약관 버전을 찾을 수 없습니다.');
+            return;
+        }
+        
+        const data = versionSnap.data();
+        const versionContent = document.getElementById('termsVersionContent');
+        const versionModal = document.getElementById('termsVersionModal');
+        
+        if (!versionContent || !versionModal) return;
+        
+        const date = data.deployedAt ? new Date(data.deployedAt).toLocaleString('ko-KR') : '날짜 없음';
+        const currentVersion = await getCurrentTermsVersion();
+        const isCurrent = data.version === currentVersion;
+        
+        versionContent.innerHTML = `
+            <div class="mb-4 pb-4 border-b border-slate-200">
+                <div class="flex items-center justify-between">
+                    <h4 class="text-base font-bold text-slate-800">버전 ${data.version}</h4>
+                    ${isCurrent ? '<span class="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-xs font-bold">현재 적용 중</span>' : ''}
+                </div>
+                <p class="text-xs text-slate-500 mt-1">배포일: ${date}</p>
+                <p class="text-xs text-slate-500">배포자: ${data.deployedBy || '관리자'}</p>
+            </div>
+            
+            <!-- 이용약관 -->
+            <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                <h5 class="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-file-contract text-emerald-600"></i>
+                    이용약관
+                </h5>
+                <div class="space-y-3">
+                    ${(data.terms || []).map(item => `
+                        <div class="bg-white rounded-lg p-3 border border-slate-200">
+                            <div class="text-xs font-bold text-slate-800 mb-2">${escapeHtml(item.title || '')}</div>
+                            <div class="text-xs text-slate-600 leading-relaxed">${(item.content || '').replace(/\n/g, '<br>')}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            
+            <!-- 개인정보 처리방침 -->
+            <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                <h5 class="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-shield-halved text-blue-600"></i>
+                    개인정보 처리방침
+                </h5>
+                <div class="space-y-3">
+                    ${(data.privacy || []).map(item => `
+                        <div class="bg-white rounded-lg p-3 border border-slate-200">
+                            <div class="text-xs font-bold text-slate-800 mb-2">${escapeHtml(item.title || '')}</div>
+                            <div class="text-xs text-slate-600 leading-relaxed">${(item.content || '').replace(/\n/g, '<br>')}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        
+        versionModal.classList.remove('hidden');
+    } catch (e) {
+        console.error('약관 버전 보기 실패:', e);
+        alert('약관 버전을 불러오는 중 오류가 발생했습니다: ' + e.message);
+    }
+};
+
+// 약관 버전 모달 닫기
+window.closeTermsVersionModal = function() {
+    const modal = document.getElementById('termsVersionModal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+};
+
+// 약관 배포
+window.deployTerms = async function() {
+    if (!confirm('약관을 배포하시겠습니까?\n\n배포하면 모든 사용자에게 재동의를 요청하게 됩니다.')) {
+        return;
+    }
+    
+    try {
+        // 현재 수정 중인 약관 가져오기
+        const termsItems = getCurrentTermsItems('terms');
+        const privacyItems = getCurrentTermsItems('privacy');
+        
+        if (!termsItems || termsItems.length === 0 || !privacyItems || privacyItems.length === 0) {
+            alert('약관 내용을 입력해주세요.');
+            return;
+        }
+        
+        // 현재 약관 버전 가져오기
+        const { CURRENT_TERMS_VERSION } = await import('./constants.js');
+        const currentVersion = parseFloat(CURRENT_TERMS_VERSION);
+        const newVersion = (currentVersion + 0.1).toFixed(1); // 버전 0.1씩 증가
+        
+        // 약관 버전 데이터 저장
+        const versionData = {
+            version: newVersion,
+            terms: termsItems,
+            privacy: privacyItems,
+            deployedAt: new Date().toISOString(),
+            deployedBy: adminAuth.currentUser?.email || '관리자'
+        };
+        
+        // 약관 버전 컬렉션에 저장 (terms 문서의 하위 컬렉션으로 저장)
+        const versionsColl = collection(db, 'artifacts', appId, 'content', 'terms', 'versions');
+        await addDoc(versionsColl, versionData);
+        
+        // 현재 약관도 업데이트 (수정 중인 약관 유지)
+        const termsDoc = doc(db, 'artifacts', appId, 'content', 'terms');
+        await setDoc(termsDoc, {
+            terms: termsItems,
+            privacy: privacyItems,
+            updatedAt: new Date().toISOString(),
+            currentVersion: newVersion
+        }, { merge: true });
+        
+        // CURRENT_TERMS_VERSION 업데이트는 constants.js 파일을 수동으로 수정해야 함
+        alert(`약관 버전 ${newVersion}이 배포되었습니다.\n\n주의: constants.js의 CURRENT_TERMS_VERSION을 ${newVersion}으로 수동으로 업데이트해야 합니다.`);
+        console.log(`⚠️ constants.js의 CURRENT_TERMS_VERSION을 ${newVersion}으로 수동으로 업데이트하세요.`);
+        
+        // 약관이력 탭이면 새로고침
+        const historySection = document.getElementById('termsHistorySection');
+        if (historySection && !historySection.classList.contains('hidden')) {
+            loadTermsHistory();
+        }
+        
+    } catch (e) {
+        console.error('약관 배포 실패:', e);
+        alert('약관 배포 중 오류가 발생했습니다: ' + e.message);
+    }
+};
+
 // 약관 저장
 window.saveTerms = async function() {
     try {
@@ -871,16 +1154,97 @@ function renderTags(type, tags) {
     container.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2';
     
     container.innerHTML = tags.map((tag, index) => `
-        <div class="flex items-center gap-2 bg-white rounded-lg p-3 border border-slate-200 min-w-0" data-index="${index}">
+        <div class="tag-item flex items-center gap-2 bg-white rounded-lg p-3 border border-slate-200 min-w-0 cursor-move hover:border-emerald-300 transition-colors" 
+             draggable="true" 
+             data-tag-index="${index}"
+             data-tag-type="${type}">
+            <div class="flex items-center justify-center w-6 h-6 text-slate-400 flex-shrink-0">
+                <i class="fa-solid fa-grip-vertical text-xs"></i>
+            </div>
             <input type="text" value="${escapeHtml(tag || '')}" 
-                   onchange="window.updateTagItem('${type}', ${index}, this.value)"
+                   onchange="window.updateTagItem('${type}', this)"
                    class="flex-1 min-w-0 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-800 outline-none focus:border-emerald-500"
                    placeholder="태그 이름">
-            <button onclick="window.removeTagItem('${type}', ${index})" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors flex-shrink-0">
+            <button onclick="window.removeTagItem('${type}', this.closest('.tag-item'))" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors flex-shrink-0">
                 <i class="fa-solid fa-trash"></i>
             </button>
         </div>
     `).join('');
+    
+    // 드래그 앤 드롭 이벤트 설정
+    setupTagDragAndDrop(type, container);
+}
+
+// 태그 드래그 앤 드롭 설정
+function setupTagDragAndDrop(type, container) {
+    let draggedElement = null;
+    let draggedIndex = null;
+    let dropIndex = null;
+    
+    container.querySelectorAll('.tag-item').forEach((item, index) => {
+        // 드래그 시작
+        item.addEventListener('dragstart', (e) => {
+            draggedElement = item;
+            draggedIndex = index;
+            item.classList.add('opacity-50');
+            e.dataTransfer.effectAllowed = 'move';
+        });
+        
+        // 드래그 종료
+        item.addEventListener('dragend', (e) => {
+            item.classList.remove('opacity-50');
+            
+            // 순서 변경 적용
+            if (draggedIndex !== null && dropIndex !== null && draggedIndex !== dropIndex) {
+                const tags = getCurrentTags(type);
+                const [removed] = tags.splice(draggedIndex, 1);
+                tags.splice(dropIndex, 0, removed);
+                renderTags(type, tags);
+            }
+            
+            // 초기화
+            draggedElement = null;
+            draggedIndex = null;
+            dropIndex = null;
+            
+            // 모든 항목의 드래그 오버 스타일 제거
+            container.querySelectorAll('.tag-item').forEach(el => {
+                el.classList.remove('border-emerald-500', 'bg-emerald-50');
+            });
+        });
+        
+        // 드래그 오버 (호버 효과)
+        item.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            
+            const allItems = Array.from(container.querySelectorAll('.tag-item'));
+            const currentIndex = allItems.indexOf(item);
+            
+            if (draggedIndex !== null && currentIndex !== draggedIndex) {
+                dropIndex = currentIndex;
+                
+                // 드래그 오버 스타일 적용
+                allItems.forEach(el => {
+                    el.classList.remove('border-emerald-500', 'bg-emerald-50');
+                });
+                item.classList.add('border-emerald-500', 'bg-emerald-50');
+            }
+        });
+        
+        // 드래그 리브 (호버 효과 제거)
+        item.addEventListener('dragleave', (e) => {
+            if (!item.contains(e.relatedTarget)) {
+                item.classList.remove('border-emerald-500', 'bg-emerald-50');
+            }
+        });
+        
+        // 드롭
+        item.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+    });
 }
 
 // 태그 항목 추가
@@ -895,42 +1259,46 @@ window.addTagItem = function(type) {
 };
 
 // 태그 항목 제거
-window.removeTagItem = function(type, index) {
+window.removeTagItem = function(type, itemElement) {
     const tags = getCurrentTags(type);
     if (tags.length <= 1) {
         alert('최소 한 개의 태그가 필요합니다.');
         return;
     }
     
-    tags.splice(index, 1);
-    renderTags(type, tags);
-};
-
-// 태그 항목 업데이트
-window.updateTagItem = function(type, index, value) {
-    const tags = getCurrentTags(type);
-    if (tags[index] !== undefined) {
-        tags[index] = value.trim();
+    const container = document.getElementById(`tags-${type}`);
+    const allItems = Array.from(container.querySelectorAll('.tag-item'));
+    const index = allItems.indexOf(itemElement);
+    
+    if (index > -1) {
+        tags.splice(index, 1);
+        renderTags(type, tags);
     }
 };
 
-// 현재 태그 목록 가져오기
+// 태그 항목 업데이트
+window.updateTagItem = function(type, inputElement) {
+    // DOM 순서에 따라 태그가 자동으로 업데이트되므로 별도 처리 불필요
+    // 실제 저장 시 getCurrentTags로 최신 순서를 가져옴
+};
+
+// 현재 태그 목록 가져오기 (DOM 순서대로)
 function getCurrentTags(type) {
     const container = document.getElementById(`tags-${type}`);
     if (!container) return [];
     
     const tags = [];
-    container.querySelectorAll('[data-index]').forEach(itemEl => {
-        const index = parseInt(itemEl.getAttribute('data-index'));
+    container.querySelectorAll('.tag-item').forEach(itemEl => {
         const input = itemEl.querySelector('input[type="text"]');
-        
         if (input) {
-            tags[index] = input.value.trim();
+            const value = input.value.trim();
+            if (value.length > 0) {
+                tags.push(value);
+            }
         }
     });
     
-    // 빈 값 제거 및 정렬
-    return tags.filter(tag => tag.length > 0);
+    return tags;
 }
 
 // 태그 저장
@@ -977,7 +1345,15 @@ function escapeHtml(text) {
 // 사용자 목록 가져오기
 async function getUsers() {
     try {
-        // users 컬렉션에서 사용자 ID 가져오기 (약관 동의한 모든 사용자 포함)
+        // 1. config/settings 문서가 있는 모든 사용자 찾기
+        // 주의: collectionGroup은 인덱스가 필요하므로 사용하지 않음
+        // 대신 users 컬렉션의 각 사용자에 대해 settings 문서 확인 (나중에 최적화 가능)
+        let userIdsFromSettings = new Set();
+        // collectionGroup은 인덱스가 필요하고 400 에러를 발생시킬 수 있으므로 비활성화
+        // users 컬렉션에서 사용자를 찾은 후 각 사용자의 settings를 확인하는 방식으로 변경
+
+        // 2. users 컬렉션에서 사용자 ID 가져오기 (약관 동의한 모든 사용자 포함)
+        // 주의: users 컬렉션은 자동 생성되므로 모든 사용자가 포함될 수 있음
         let userIdsFromUsers = new Set();
         try {
             const usersColl = collection(db, 'artifacts', appId, 'users');
@@ -989,8 +1365,11 @@ async function getUsers() {
         } catch (e) {
             console.warn('⚠️ users 컬렉션 조회 실패:', e);
         }
+        
+        // users 컬렉션의 각 사용자에 대해 settings 문서 확인하여 실제 사용자만 필터링
+        // (settings가 없거나 약관 동의하지 않은 사용자는 제외하지 않음 - 관리자가 확인할 수 있도록)
 
-        // 공유 게시물에서 사용자 ID 추출 (보조 정보로 사용)
+        // 3. 공유 게시물에서 사용자 ID 추출 (보조 정보로 사용)
         const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
         const sharedSnapshot = await getDocs(sharedColl);
         const userIdsFromShared = new Set();
@@ -1004,10 +1383,13 @@ async function getUsers() {
         
         console.log('📸 공유 게시물에서 발견된 사용자:', userIdsFromShared.size, '명');
 
-        // users 컬렉션의 사용자들을 우선 사용 (약관 동의한 모든 사용자)
-        // 공유 게시물이 있는 사용자도 포함 (혹시 users 컬렉션에 없을 수도 있으므로)
-        const userIdsToCheck = new Set([...userIdsFromUsers, ...userIdsFromShared]);
+        // 모든 소스에서 사용자 ID 수집 (중복 제거)
+        // 통계와 일치시키기 위해 users 컬렉션과 sharedPhotos를 우선 사용
+        const userIdsToCheck = new Set([...userIdsFromUsers, ...userIdsFromShared, ...userIdsFromSettings]);
         console.log(`총 ${userIdsToCheck.size}명의 사용자 처리 시작...`);
+        console.log('  - users 컬렉션:', userIdsFromUsers.size, '명');
+        console.log('  - sharedPhotos:', userIdsFromShared.size, '명');
+        console.log('  - config/settings:', userIdsFromSettings.size, '명');
 
         // 디버깅: 각 소스별 사용자 ID 목록
         if (userIdsFromUsers.size > 0) {
@@ -1039,6 +1421,7 @@ async function getUsers() {
             let email = null;
             let termsAgreed = false;
             let termsAgreedAt = null;
+            let termsVersion = null;
             let providerId = null;
 
             // 공유 게시물에서 가져온 정보로 초기값 설정
@@ -1048,23 +1431,91 @@ async function getUsers() {
                 if (sharedInfo.icon) icon = sharedInfo.icon;
             }
 
+            // users/{userId} 문서에서 가입일과 마지막 로그인 날짜, providerId 가져오기
+            let createdAt = null;
+            let lastLoginAt = null;
+            let userDocProviderId = null;
+            let userDocEmail = null;
+            try {
+                const userDocRef = doc(db, 'artifacts', appId, 'users', userId);
+                const userDocSnap = await getDoc(userDocRef);
+                if (userDocSnap.exists()) {
+                    const userData = userDocSnap.data();
+                    // Firestore Timestamp를 Date로 변환
+                    if (userData.createdAt) {
+                        createdAt = userData.createdAt.toDate ? userData.createdAt.toDate() : new Date(userData.createdAt);
+                    }
+                    if (userData.lastLoginAt) {
+                        lastLoginAt = userData.lastLoginAt.toDate ? userData.lastLoginAt.toDate() : new Date(userData.lastLoginAt);
+                    }
+                    // users/{userId} 문서에서 providerId와 email 가져오기 (우선순위 높음)
+                    if (userData.providerId) {
+                        userDocProviderId = userData.providerId;
+                    }
+                    if (userData.email) {
+                        userDocEmail = userData.email;
+                    }
+                }
+            } catch (e) {
+                console.warn(`사용자 ${userId}의 기본 정보를 가져오는 중 오류:`, e);
+            }
+
             try {
                 // settings 문서에서 직접 가져오기 (실제 Firestore 구조)
                 const settingsDoc = doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings');
                 const settingsSnap = await getDoc(settingsDoc);
                 if (settingsSnap.exists()) {
                     settings = settingsSnap.data();
+                    console.log(`📋 사용자 ${userId} 설정 로드:`, {
+                        hasProfile: !!settings.profile,
+                        profileNickname: settings.profile?.nickname,
+                        currentNickname: nickname
+                    });
                     if (settings.profile) {
-                        nickname = settings.profile.nickname || nickname;
-                        icon = settings.profile.icon || icon;
+                        // nickname이 명시적으로 있고 빈 문자열이 아니면 사용
+                        const profileNickname = settings.profile.nickname;
+                        if (profileNickname !== undefined && profileNickname !== null && profileNickname !== '') {
+                            nickname = profileNickname;
+                            console.log(`✅ 닉네임 설정: ${nickname}`);
+                        } else {
+                            console.warn(`⚠️ 프로필 닉네임이 유효하지 않음:`, profileNickname);
+                        }
+                        if (settings.profile.icon) {
+                            icon = settings.profile.icon;
+                        }
+                    } else {
+                        console.warn(`⚠️ 사용자 ${userId}의 settings에 profile이 없습니다.`);
                     }
                     termsAgreed = settings.termsAgreed === true;
                     termsAgreedAt = settings.termsAgreedAt || null;
+                    termsVersion = settings.termsVersion || null;
                     email = settings.email || null;
                     providerId = settings.providerId || null;
+                } else {
+                    console.warn(`사용자 ${userId}의 settings 문서가 존재하지 않습니다.`);
                 }
             } catch (e) {
                 console.warn(`사용자 ${userId}의 설정을 가져오는 중 오류:`, e);
+            }
+            
+            // 디버깅: 닉네임이 '익명'으로 남아있는 경우 로그 출력
+            if (nickname === '익명' && userId === 'SLHnlOOAtfe7j7g8MAdbTxfRgeQ2') {
+                console.error(`❌ 사용자 ${userId}의 닉네임이 '익명'으로 표시됨:`, {
+                    settings: settings,
+                    profile: settings?.profile,
+                    profileNickname: settings?.profile?.nickname,
+                    profileNicknameType: typeof settings?.profile?.nickname,
+                    sharedInfo: sharedUserMap.has(userId) ? sharedUserMap.get(userId) : null,
+                    finalNickname: nickname
+                });
+            }
+
+            // providerId와 email은 users/{userId} 문서에서 우선, 없으면 settings에서 사용
+            if (!providerId && userDocProviderId) {
+                providerId = userDocProviderId;
+            }
+            if (!email && userDocEmail) {
+                email = userDocEmail;
             }
 
             // 게시글 수 가져오기 (타임라인, 앨범 공유, 토크 별로)
@@ -1101,6 +1552,9 @@ async function getUsers() {
                 console.warn(`사용자 ${userId}의 토크 게시글 수를 가져오는 중 오류:`, e);
             }
             
+            // 가입일과 마지막 로그인 날짜는 users/{userId} 문서에서 가져온 값을 그대로 사용
+            // DB에 값이 없으면 그대로 null로 유지 (보정하지 않음)
+            
             // 로그인 방법 판단
             let loginMethod = '게스트';
             if (providerId === 'google.com') {
@@ -1117,9 +1571,12 @@ async function getUsers() {
                 loginMethod,
                 termsAgreed,
                 termsAgreedAt,
+                termsVersion,
                 timelineCount,
                 albumShareCount,
-                talkCount
+                talkCount,
+                createdAt,
+                lastLoginAt
             });
         }
 
@@ -1148,7 +1605,7 @@ async function renderUsers() {
         return;
     }
     
-    container.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
+        container.innerHTML = '<tr><td colspan="10" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
     
     try {
         console.log('renderUsers 시작');
@@ -1157,18 +1614,51 @@ async function renderUsers() {
         
         if (users.length === 0) {
             console.log('사용자가 없습니다.');
-            container.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
+            container.innerHTML = '<tr><td colspan="10" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
             return;
         }
         
+        // 최신 약관 버전 가져오기
+        const { CURRENT_TERMS_VERSION } = await import('./constants.js');
+        
         console.log(`${users.length}명의 사용자를 렌더링합니다.`);
         container.innerHTML = users.map(user => {
-            const termsAgreedText = user.termsAgreed ? 
-                `<span class="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">동의함</span>` : 
-                `<span class="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded">미동의</span>`;
+            // 약관 동의 상태 확인: termsAgreed가 true이고 termsVersion이 최신 버전과 일치해야 함
+            const hasAgreedToLatest = user.termsAgreed && user.termsVersion === CURRENT_TERMS_VERSION;
+            const hasAgreedToOld = user.termsAgreed && user.termsVersion !== CURRENT_TERMS_VERSION;
+            
+            let termsAgreedText;
+            if (hasAgreedToLatest) {
+                termsAgreedText = `<span class="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">동의함</span>`;
+            } else if (hasAgreedToOld) {
+                termsAgreedText = `<span class="px-2 py-1 bg-orange-100 text-orange-700 text-xs font-bold rounded">재동의 필요</span>`;
+            } else {
+                termsAgreedText = `<span class="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded">미동의</span>`;
+            }
             
             const termsAgreedDate = user.termsAgreedAt ? 
                 new Date(user.termsAgreedAt).toLocaleDateString('ko-KR') : '-';
+            
+            // createdAt과 lastLoginAt은 이미 Date 객체로 변환되어 있음
+            const createdAtDate = user.createdAt ? 
+                (user.createdAt instanceof Date ? user.createdAt : new Date(user.createdAt)).toLocaleString('ko-KR', { 
+                    year: 'numeric', 
+                    month: '2-digit', 
+                    day: '2-digit', 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    timeZone: 'Asia/Seoul'
+                }) : '-';
+            
+            const lastLoginDate = user.lastLoginAt ? 
+                (user.lastLoginAt instanceof Date ? user.lastLoginAt : new Date(user.lastLoginAt)).toLocaleString('ko-KR', { 
+                    year: 'numeric', 
+                    month: '2-digit', 
+                    day: '2-digit', 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    timeZone: 'Asia/Seoul'
+                }) : '-';
             
             let loginMethodBadge = 'bg-slate-100 text-slate-700';
             if (user.loginMethod === '구글') {
@@ -1206,12 +1696,25 @@ async function renderUsers() {
                     <td class="px-4 py-3">
                         <span class="font-bold text-slate-800">${user.talkCount || 0}</span>
                     </td>
+                    <td class="px-4 py-3">
+                        <button onclick="navigator.clipboard.writeText('${user.userId}').then(() => alert('사용자 ID가 복사되었습니다.')).catch(() => alert('복사 실패'))" 
+                                class="text-xs text-slate-600 hover:text-slate-800 font-mono cursor-pointer hover:underline" 
+                                title="클릭하여 복사">
+                            ${user.userId.substring(0, 8)}...
+                        </button>
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="text-sm text-slate-600">${user.loginMethod === '게스트' ? '-' : createdAtDate}</span>
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="text-sm text-slate-600">${lastLoginDate}</span>
+                    </td>
                 </tr>
             `;
         }).join('');
     } catch (e) {
         console.error("사용자 목록 렌더링 실패:", e);
-        container.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p></td></tr>';
+        container.innerHTML = '<tr><td colspan="10" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p></td></tr>';
     }
 }
 
@@ -1412,32 +1915,53 @@ async function renderBoardPosts(category = 'all') {
     if (!container) return;
     
     currentAdminBoardCategory = category;
+    container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
     
     try {
-        const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
-        let q;
-        if (category === 'all') {
-            q = query(postsColl, orderBy('timestamp', 'desc'), limit(50));
-        } else {
-            q = query(postsColl, where('category', '==', category), orderBy('timestamp', 'desc'), limit(50));
-        }
-        const postsSnapshot = await getDocs(q);
+        const [postsSnapshot, reportsMap] = await Promise.all([
+            (() => {
+                const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
+                let q;
+                if (category === 'all') {
+                    q = query(postsColl, orderBy('timestamp', 'desc'), limit(50));
+                } else {
+                    q = query(postsColl, where('category', '==', category), orderBy('timestamp', 'desc'), limit(50));
+                }
+                return getDocs(q);
+            })(),
+            getReportsAggregateByGroupKeys()
+        ]);
         
         if (postsSnapshot.empty) {
             container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-comments text-2xl mb-2"></i><p>게시물이 없습니다.</p></div>';
             return;
         }
         
-        container.innerHTML = postsSnapshot.docs.map(doc => {
-            const post = doc.data();
+        window._feedReportDetails = window._feedReportDetails || {};
+        container.innerHTML = postsSnapshot.docs.map(d => {
+            const post = d.data();
+            const postId = d.id;
             const date = post.timestamp ? new Date(post.timestamp).toLocaleDateString('ko-KR') : '-';
+            const reportInfo = reportsMap['board_' + postId];
+            if (reportInfo && reportInfo.count > 0) {
+                window._feedReportDetails['board_' + postId] = reportInfo.byReason;
+            }
+            const reportBadgeHtml = (reportInfo && reportInfo.count > 0)
+                ? `<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded cursor-pointer hover:bg-red-200" onclick="window.showReportDetailPopup('board_${String(postId).replace(/'/g, "\\'")}')">🚩 신고 ${reportInfo.count}</span>`
+                : '';
+            const isHidden = post.isHidden === true;
             return `
-                <div class="border border-slate-200 rounded-xl p-4">
-                    <div class="flex items-start justify-between">
-                        <div class="flex-1">
-                            <div class="flex items-center gap-2 mb-2">
+                <div class="border border-slate-200 rounded-xl p-4 ${isHidden ? 'bg-slate-50 opacity-90' : ''}">
+                    <div class="flex items-start gap-4">
+                        <div class="flex-shrink-0 pt-0.5">
+                            <input type="checkbox" class="board-item-checkbox w-4 h-4 rounded border-slate-300" data-post-id="${postId}" title="선택">
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 mb-2 flex-wrap">
                                 <h3 class="font-bold text-slate-800">${escapeHtml(post.title || '')}</h3>
                                 <span class="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-bold rounded">${escapeHtml(post.category || '')}</span>
+                                ${isHidden ? '<span class="px-2 py-0.5 bg-slate-300 text-slate-600 text-xs font-bold rounded">가려짐</span>' : ''}
+                                ${reportBadgeHtml}
                             </div>
                             <p class="text-sm text-slate-600 mb-2">${escapeHtml(post.content || '').substring(0, 100)}${post.content && post.content.length > 100 ? '...' : ''}</p>
                             <div class="flex items-center gap-4 text-xs text-slate-400">
@@ -1456,6 +1980,50 @@ async function renderBoardPosts(category = 'all') {
         container.innerHTML = '<div class="text-center py-8 text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>게시물을 불러오는 중 오류가 발생했습니다.</p></div>';
     }
 }
+
+function getSelectedBoardPostIds() {
+    return Array.from(document.querySelectorAll('.board-item-checkbox:checked')).map(el => el.getAttribute('data-post-id')).filter(Boolean);
+}
+
+window.adminBoardBulkHide = async function() {
+    const ids = getSelectedBoardPostIds();
+    if (ids.length === 0) { alert('가릴 게시물을 선택해주세요.'); return; }
+    try {
+        for (const id of ids) await setBoardPostHidden(id, true);
+        alert(ids.length + '건이 가려졌습니다.');
+        renderBoardPosts(currentAdminBoardCategory);
+    } catch (e) {
+        console.error(e);
+        alert('가리기 실패: ' + (e?.message || e));
+    }
+};
+
+window.adminBoardBulkUnhide = async function() {
+    const ids = getSelectedBoardPostIds();
+    if (ids.length === 0) { alert('가리기 해제할 게시물을 선택해주세요.'); return; }
+    try {
+        for (const id of ids) await setBoardPostHidden(id, false);
+        alert(ids.length + '건의 가리기가 해제되었습니다.');
+        renderBoardPosts(currentAdminBoardCategory);
+    } catch (e) {
+        console.error(e);
+        alert('가리기 해제 실패: ' + (e?.message || e));
+    }
+};
+
+window.adminBoardBulkDelete = async function() {
+    const ids = getSelectedBoardPostIds();
+    if (ids.length === 0) { alert('삭제할 게시물을 선택해주세요.'); return; }
+    if (!confirm('선택한 ' + ids.length + '건을 삭제하시겠습니까?')) return;
+    try {
+        for (const id of ids) await deleteBoardPostByAdmin(id);
+        alert(ids.length + '건이 삭제되었습니다.');
+        renderBoardPosts(currentAdminBoardCategory);
+    } catch (e) {
+        console.error(e);
+        alert('삭제 실패: ' + (e?.message || e));
+    }
+};
 
 // 게시판 게시물 새로고침
 window.refreshBoardPosts = function() {
@@ -1556,8 +2124,10 @@ async function renderFeedManagement() {
         
         console.log(`📊 총 ${allMeals.length}개의 게시물 발견`);
         
-        // sharedPhotos 컬렉션에서 실제 공유된 게시물 확인
+        // sharedPhotos 컬렉션에서 실제 공유된 게시물 확인 및 베스트 공유, 일간보기 공유 게시물 추가
         const sharedPhotosMap = new Map(); // entryId -> true (실제로 sharedPhotos 컬렉션에 존재하는지)
+        const bestShares = []; // 베스트 공유 게시물 목록
+        const dailyShares = []; // 일간보기 공유 게시물 목록
         try {
             const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
             const sharedSnapshot = await getDocs(sharedColl);
@@ -1566,11 +2136,48 @@ async function renderFeedManagement() {
                 if (data.entryId) {
                     sharedPhotosMap.set(data.entryId, true);
                 }
+                // 베스트 공유 게시물 추가
+                if (data.type === 'best') {
+                    bestShares.push({
+                        id: doc.id,
+                        userId: data.userId || '',
+                        type: 'best',
+                        periodType: data.periodType || '',
+                        periodText: data.periodText || '',
+                        comment: data.comment || '',
+                        photoUrl: data.photoUrl || '',
+                        timestamp: data.timestamp || '',
+                        userNickname: data.userNickname || '익명',
+                        userIcon: data.userIcon || '🐻',
+                        isBestShare: true // 베스트 공유 표시
+                    });
+                }
+                // 일간보기 공유 게시물 추가
+                if (data.type === 'daily') {
+                    dailyShares.push({
+                        id: doc.id,
+                        userId: data.userId || '',
+                        type: 'daily',
+                        date: data.date || '',
+                        comment: data.comment || '',
+                        photoUrl: data.photoUrl || '',
+                        timestamp: data.timestamp || '',
+                        userNickname: data.userNickname || '익명',
+                        userIcon: data.userIcon || '🐻',
+                        isDailyShare: true // 일간보기 공유 표시
+                    });
+                }
             });
             console.log(`📸 sharedPhotos 컬렉션에서 ${sharedPhotosMap.size}개의 entryId 발견`);
+            console.log(`🏆 베스트 공유 게시물: ${bestShares.length}개 발견`);
+            console.log(`📅 일간보기 공유 게시물: ${dailyShares.length}개 발견`);
         } catch (e) {
             console.warn('⚠️ sharedPhotos 컬렉션 조회 실패:', e);
         }
+        
+        // 베스트 공유 및 일간보기 공유 게시물을 allMeals에 추가
+        allMeals = [...allMeals, ...bestShares, ...dailyShares];
+        console.log(`📊 베스트 공유 및 일간보기 공유 포함 총 ${allMeals.length}개의 게시물`);
         
         // 데이터 불일치 항목 자동 동기화
         const mismatchedMeals = allMeals.filter(meal => {
@@ -1609,6 +2216,35 @@ async function renderFeedManagement() {
         // 필터 적용
         console.log('🔍 필터 적용:', feedFilters);
         let filteredMeals = allMeals.filter(meal => {
+            // 베스트 공유 게시물은 항상 공유된 상태
+            if (meal.isBestShare) {
+                // 공유 여부 필터: 베스트 공유는 항상 공유됨
+                if (feedFilters.shared === 'no') return false;
+                
+                // 사진 여부 필터: 베스트 공유는 항상 이미지가 있음
+                if (feedFilters.hasPhotos === 'no') return false;
+                
+                // 금지 여부 필터: 베스트 공유는 금지 기능 없음
+                if (feedFilters.banned === 'yes') return false;
+                
+                return true;
+            }
+            
+            // 일간보기 공유 게시물은 항상 공유된 상태
+            if (meal.isDailyShare) {
+                // 공유 여부 필터: 일간보기 공유는 항상 공유됨
+                if (feedFilters.shared === 'no') return false;
+                
+                // 사진 여부 필터: 일간보기 공유는 항상 이미지가 있음
+                if (feedFilters.hasPhotos === 'no') return false;
+                
+                // 금지 여부 필터: 일간보기 공유는 금지 기능 없음
+                if (feedFilters.banned === 'yes') return false;
+                
+                return true;
+            }
+            
+            // 일반 게시물 필터링
             // 공유 여부 필터: sharedPhotos 컬렉션에 실제로 존재하는지 확인
             const isActuallyShared = sharedPhotosMap.has(meal.id);
             if (feedFilters.shared === 'yes' && !isActuallyShared) return false;
@@ -1629,10 +2265,11 @@ async function renderFeedManagement() {
         
         console.log(`✅ 필터 적용 후: ${filteredMeals.length}개의 게시물`);
         
-        // 최신 업로드 순 정렬 (date + time 조합 사용)
+        // 최신 업로드 순 정렬 (모든 게시물을 등록된 날짜순으로 정렬)
         filteredMeals.sort((a, b) => {
-            // date + time을 조합하여 타임스탬프 계산
+            // 모든 게시물을 동일한 기준으로 정렬: date + time 또는 timestamp에서 date 추출
             const getSortTime = (meal) => {
+                // date 필드가 있으면 date + time 사용
                 if (meal.date) {
                     const dateStr = meal.date;
                     const timeStr = meal.time || '23:59'; // time이 없으면 하루의 마지막 시간으로
@@ -1643,6 +2280,20 @@ async function renderFeedManagement() {
                         return new Date(dateStr).getTime();
                     }
                 }
+                
+                // date 필드가 없으면 timestamp에서 date 추출
+                if (meal.timestamp) {
+                    try {
+                        const timestampDate = new Date(meal.timestamp);
+                        // timestamp의 날짜 부분만 사용 (시간은 00:00:00으로)
+                        const dateOnly = new Date(timestampDate.getFullYear(), timestampDate.getMonth(), timestampDate.getDate());
+                        return dateOnly.getTime();
+                    } catch (e) {
+                        // timestamp 파싱 실패 시 timestamp 그대로 사용
+                        return new Date(meal.timestamp).getTime();
+                    }
+                }
+                
                 return 0;
             };
             
@@ -1654,7 +2305,14 @@ async function renderFeedManagement() {
                 return timeB - timeA;
             }
             
-            // 타임스탬프가 같으면 date 문자열로 정렬
+            // 타임스탬프가 같으면 timestamp로 세부 정렬
+            const timestampA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+            const timestampB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+            if (timestampB !== timestampA) {
+                return timestampB - timestampA;
+            }
+            
+            // 모두 같으면 date 문자열로 정렬
             const dateA = a.date || '';
             const dateB = b.date || '';
             return dateB.localeCompare(dateA);
@@ -1670,18 +2328,27 @@ async function renderFeedManagement() {
         const userInfoMap = new Map();
         for (const meal of paginatedMeals) {
             if (!userInfoMap.has(meal.userId)) {
-                try {
-                    const settingsDoc = doc(db, 'artifacts', appId, 'users', meal.userId, 'config', 'settings');
-                    const settingsSnap = await getDoc(settingsDoc);
-                    if (settingsSnap.exists()) {
-                        const settings = settingsSnap.data();
-                        userInfoMap.set(meal.userId, {
-                            nickname: settings.profile?.nickname || '익명',
-                            icon: settings.profile?.icon || '🐻'
-                        });
+                // 베스트 공유 및 일간보기 공유 게시물은 이미 사용자 정보가 있음
+                if (meal.isBestShare || meal.isDailyShare) {
+                    userInfoMap.set(meal.userId, {
+                        nickname: meal.userNickname || '익명',
+                        icon: meal.userIcon || '🐻'
+                    });
+                } else {
+                    // 일반 게시물은 설정에서 가져오기
+                    try {
+                        const settingsDoc = doc(db, 'artifacts', appId, 'users', meal.userId, 'config', 'settings');
+                        const settingsSnap = await getDoc(settingsDoc);
+                        if (settingsSnap.exists()) {
+                            const settings = settingsSnap.data();
+                            userInfoMap.set(meal.userId, {
+                                nickname: settings.profile?.nickname || '익명',
+                                icon: settings.profile?.icon || '🐻'
+                            });
+                        }
+                    } catch (e) {
+                        console.warn(`사용자 ${meal.userId} 정보 조회 실패:`, e);
                     }
-                } catch (e) {
-                    console.warn(`사용자 ${meal.userId} 정보 조회 실패:`, e);
                 }
             }
         }
@@ -1691,7 +2358,129 @@ async function renderFeedManagement() {
             return;
         }
         
+        const reportsMap = await getReportsAggregateByGroupKeys();
+        window._feedReportDetails = {};
+        
         container.innerHTML = paginatedMeals.map(meal => {
+            const targetGroupKey = meal.isBestShare ? `best_${meal.id}` : meal.isDailyShare ? `daily_${meal.date || ''}_${meal.userId}` : `entry_${meal.id}_${meal.userId}`;
+            const reportInfo = reportsMap[targetGroupKey];
+            if (reportInfo && reportInfo.count > 0) { window._feedReportDetails[targetGroupKey] = reportInfo.byReason; }
+            const reportBadgeHtml = (reportInfo && reportInfo.count > 0) ? `<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded cursor-pointer hover:bg-red-200" onclick="window.showReportDetailPopup('${String(targetGroupKey).replace(/'/g, "\\'")}')">🚩 신고 ${reportInfo.count}</span>` : '';
+            
+            // 베스트 공유 게시물인 경우
+            if (meal.isBestShare) {
+                const userInfo = { nickname: meal.userNickname || '익명', icon: meal.userIcon || '🐻' };
+                let dateTimeStr = '-';
+                if (meal.timestamp) {
+                    try {
+                        const dateObj = new Date(meal.timestamp);
+                        dateTimeStr = dateObj.toLocaleString('ko-KR', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                    } catch (e) {
+                        dateTimeStr = meal.timestamp;
+                    }
+                }
+                
+                return `
+                    <div class="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow bg-emerald-50/30">
+                        <div class="flex gap-4">
+                            <div class="flex-shrink-0 flex items-start pt-1">
+                                <input type="checkbox" class="feed-item-checkbox" data-meal-id="${meal.id}" data-user-id="${meal.userId}" data-is-best="true">
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-xs text-slate-500 font-bold mb-2">${dateTimeStr}</div>
+                                <div class="flex items-start justify-between mb-2">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <span class="text-lg">${userInfo.icon}</span>
+                                        <span class="font-bold text-slate-800">${userInfo.nickname}</span>
+                                        <span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">🏆 베스트 공유</span>
+                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">${meal.periodType || ''} ${meal.periodText || ''}</span>
+                                        <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">공유됨</span>
+                                        ${reportBadgeHtml}
+                                    </div>
+                                </div>
+                                ${meal.photoUrl ? `
+                                    <div class="mb-2">
+                                        <img src="${meal.photoUrl}" alt="베스트 공유 이미지" class="max-w-full h-auto rounded-xl border border-slate-200" style="max-height: 300px;">
+                                    </div>
+                                ` : ''}
+                                ${meal.comment ? `<div class="mt-2 text-sm text-slate-700 bg-slate-50 p-2 rounded">${escapeHtml(meal.comment)}</div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // 일간보기 공유 게시물인 경우
+            if (meal.isDailyShare) {
+                const userInfo = { nickname: meal.userNickname || '익명', icon: meal.userIcon || '🐻' };
+                let dateTimeStr = '-';
+                if (meal.timestamp) {
+                    try {
+                        const dateObj = new Date(meal.timestamp);
+                        dateTimeStr = dateObj.toLocaleString('ko-KR', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                    } catch (e) {
+                        dateTimeStr = meal.timestamp;
+                    }
+                }
+                
+                // 날짜 표시
+                let dateDisplay = meal.date || '-';
+                if (meal.date) {
+                    try {
+                        const dateObj = new Date(meal.date + 'T00:00:00');
+                        dateDisplay = dateObj.toLocaleDateString('ko-KR', { 
+                            month: 'long', 
+                            day: 'numeric', 
+                            weekday: 'short' 
+                        });
+                    } catch (e) {
+                        dateDisplay = meal.date;
+                    }
+                }
+                
+                return `
+                    <div class="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow bg-blue-50/30">
+                        <div class="flex gap-4">
+                            <div class="flex-shrink-0 flex items-start pt-1">
+                                <input type="checkbox" class="feed-item-checkbox" data-meal-id="${meal.id}" data-user-id="${meal.userId}" data-is-daily="true">
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-xs text-slate-500 font-bold mb-2">${dateTimeStr}</div>
+                                <div class="flex items-start justify-between mb-2">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <span class="text-lg">${userInfo.icon}</span>
+                                        <span class="font-bold text-slate-800">${userInfo.nickname}</span>
+                                        <span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded">📅 일간보기 공유</span>
+                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">${dateDisplay}</span>
+                                        <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">공유됨</span>
+                                        ${reportBadgeHtml}
+                                    </div>
+                                </div>
+                                ${meal.photoUrl ? `
+                                    <div class="mb-2">
+                                        <img src="${meal.photoUrl}" alt="일간보기 공유 이미지" class="max-w-full h-auto rounded-xl border border-slate-200" style="max-height: 300px;">
+                                    </div>
+                                ` : ''}
+                                ${meal.comment ? `<div class="mt-2 text-sm text-slate-700 bg-slate-50 p-2 rounded whitespace-pre-line">${escapeHtml(meal.comment)}</div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // 일반 게시물
             const userInfo = userInfoMap.get(meal.userId) || { nickname: '익명', icon: '🐻' };
             const date = meal.date || '-';
             const time = meal.time || '';
@@ -1737,6 +2526,7 @@ async function renderFeedManagement() {
                                     ${isShared ? '<span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">공유됨</span>' : ''}
                                     ${hasDataMismatch ? '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">데이터 불일치</span>' : ''}
                                     ${isBanned ? '<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded">금지됨</span>' : ''}
+                                    ${reportBadgeHtml}
                                 </div>
                                 ${hasDataMismatch ? `<button onclick="window.syncSharedPhotos('${meal.id}', '${meal.userId}')" class="px-3 py-1 bg-yellow-600 text-white rounded-lg text-xs font-bold hover:bg-yellow-700 transition-colors">동기화</button>` : ''}
                             </div>
@@ -1858,6 +2648,46 @@ window.refreshFeedManagement = function() {
     renderFeedManagement();
 }
 
+// 신고 상세 팝업 (사유별 건수)
+window.showReportDetailPopup = function(targetGroupKey) {
+    const byReason = (window._feedReportDetails && window._feedReportDetails[targetGroupKey]) || {};
+    const entries = Object.entries(byReason);
+    if (entries.length === 0) return;
+    
+    const existing = document.getElementById('reportDetailModal');
+    if (existing) existing.remove();
+    
+    const overlay = document.createElement('div');
+    overlay.id = 'reportDetailModal';
+    overlay.className = 'fixed inset-0 z-[600] flex items-center justify-center p-4';
+    
+    const bg = document.createElement('div');
+    bg.className = 'absolute inset-0 bg-black/50';
+    bg.onclick = () => overlay.remove();
+    
+    const getReasonLabel = (key) => {
+        if (String(key).startsWith('기타:')) return key;
+        return (REPORT_REASONS.find(r => r.id === key) || {}).label || key;
+    };
+    
+    const listHtml = entries.map(([reason, count]) => `<div class="flex justify-between py-2 border-b border-slate-100 last:border-0"><span class="text-slate-700">${escapeHtml(getReasonLabel(reason))}</span><span class="font-bold text-slate-800">${count}건</span></div>`).join('');
+    const total = entries.reduce((s, [, c]) => s + c, 0);
+    
+    const panel = document.createElement('div');
+    panel.className = 'relative w-full max-w-sm bg-white rounded-2xl p-6 shadow-xl';
+    panel.innerHTML = `
+        <h3 class="text-lg font-bold text-slate-800 mb-4">🚩 신고 사유</h3>
+        <p class="text-sm text-slate-600 mb-4">총 <strong>${total}</strong>건의 신고</p>
+        <div class="max-h-64 overflow-y-auto">${listHtml}</div>
+        <button type="button" class="mt-4 w-full py-3 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200">닫기</button>
+    `;
+    panel.querySelector('button').onclick = () => overlay.remove();
+    
+    overlay.appendChild(bg);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+};
+
 // 일괄 공유 취소
 window.bulkUnsharePosts = async function() {
     const checkedBoxes = document.querySelectorAll('.feed-item-checkbox:checked');
@@ -1879,10 +2709,41 @@ window.bulkUnsharePosts = async function() {
         for (const checkbox of checkedBoxes) {
             const mealId = checkbox.dataset.mealId;
             const userId = checkbox.dataset.userId;
+            const isBest = checkbox.dataset.isBest === 'true';
+            const isDaily = checkbox.dataset.isDaily === 'true';
             
             if (!mealId || !userId) continue;
             
             try {
+                // 베스트 공유 게시물인 경우
+                if (isBest) {
+                    // sharedPhotos 컬렉션에서 해당 문서 직접 삭제
+                    try {
+                        const sharedDocRef = doc(db, 'artifacts', appId, 'sharedPhotos', mealId);
+                        batch.delete(sharedDocRef);
+                        sharedPhotosDeleteCount++;
+                        count++;
+                    } catch (e) {
+                        console.error(`베스트 공유 게시물 ${mealId} 삭제 실패:`, e);
+                    }
+                    continue;
+                }
+                
+                // 일간보기 공유 게시물인 경우
+                if (isDaily) {
+                    // sharedPhotos 컬렉션에서 해당 문서 직접 삭제
+                    try {
+                        const sharedDocRef = doc(db, 'artifacts', appId, 'sharedPhotos', mealId);
+                        batch.delete(sharedDocRef);
+                        sharedPhotosDeleteCount++;
+                        count++;
+                    } catch (e) {
+                        console.error(`일간보기 공유 게시물 ${mealId} 삭제 실패:`, e);
+                    }
+                    continue;
+                }
+                
+                // 일반 게시물 처리
                 // meal 문서 가져오기
                 const mealDocRef = doc(db, 'artifacts', appId, 'users', userId, 'meals', mealId);
                 const mealSnap = await getDoc(mealDocRef);
@@ -1952,10 +2813,26 @@ window.bulkBanPosts = async function() {
         for (const checkbox of checkedBoxes) {
             const mealId = checkbox.dataset.mealId;
             const userId = checkbox.dataset.userId;
+            const isBest = checkbox.dataset.isBest === 'true';
+            const isDaily = checkbox.dataset.isDaily === 'true';
             
             if (!mealId || !userId) continue;
             
             try {
+                // 베스트 공유 또는 일간보기 공유는 sharedPhotos 컬렉션에서만 삭제
+                if (isBest || isDaily) {
+                    try {
+                        const sharedDocRef = doc(db, 'artifacts', appId, 'sharedPhotos', mealId);
+                        batch.delete(sharedDocRef);
+                        sharedPhotosDeleteCount++;
+                        count++;
+                    } catch (e) {
+                        console.error(`${isBest ? '베스트' : '일간보기'} 공유 게시물 ${mealId} 삭제 실패:`, e);
+                    }
+                    continue;
+                }
+                
+                // 일반 게시물 처리
                 // meal 문서 가져오기
                 const mealDocRef = doc(db, 'artifacts', appId, 'users', userId, 'meals', mealId);
                 const mealSnap = await getDoc(mealDocRef);
@@ -2382,8 +3259,16 @@ function renderMealogComments(comments) {
     const container = document.getElementById('mealogCommentsContainer');
     if (!container) return;
     
-    container.innerHTML = comments.map((comment, index) => `
-        <div class="bg-slate-50 rounded-xl p-4 border border-slate-200" data-index="${index}">
+    // 기존 내용 제거
+    container.innerHTML = '';
+    
+    // 각 코멘트를 DOM 요소로 생성하여 추가
+    comments.forEach((comment, index) => {
+        const commentDiv = document.createElement('div');
+        commentDiv.className = 'bg-slate-50 rounded-xl p-4 border border-slate-200';
+        commentDiv.setAttribute('data-index', index);
+        
+        commentDiv.innerHTML = `
             <div class="flex items-start justify-between mb-3">
                 <span class="text-xs font-bold text-slate-500">메시지 ${index + 1}</span>
                 <button onclick="window.removeMealogComment(${index})" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors">
@@ -2392,9 +3277,17 @@ function renderMealogComments(comments) {
             </div>
             <textarea onchange="window.updateMealogComment(${index}, this.value)"
                       class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[200px]"
-                      placeholder="MEALOG 안내 메시지를 입력하세요">${escapeHtml(comment || '')}</textarea>
-        </div>
-    `).join('');
+                      placeholder="MEALOG 안내 메시지를 입력하세요"></textarea>
+        `;
+        
+        // textarea의 값을 value 속성으로 직접 설정 (줄바꿈 유지, HTML 이스케이프 불필요)
+        const textarea = commentDiv.querySelector('textarea');
+        if (textarea && comment) {
+            textarea.value = comment; // textarea.value는 줄바꿈을 그대로 유지
+        }
+        
+        container.appendChild(commentDiv);
+    });
 }
 
 // MEALOG 코멘트 추가
@@ -2430,12 +3323,13 @@ function getCurrentMealogComments() {
     if (!container) return [];
     
     const comments = [];
+    // DOM 순서대로 모든 textarea를 순회하여 순차적으로 배열에 추가
+    // 인덱스 기반 할당 대신 push를 사용하여 빈 슬롯 방지
     container.querySelectorAll('[data-index]').forEach(itemEl => {
-        const index = parseInt(itemEl.getAttribute('data-index'));
         const textarea = itemEl.querySelector('textarea');
-        
-        if (textarea) {
-            comments[index] = textarea.value;
+        if (textarea && textarea.value) {
+            // textarea의 값을 그대로 추가 (줄바꿈 포함)
+            comments.push(textarea.value);
         }
     });
     
@@ -2447,8 +3341,10 @@ window.saveMealogComments = async function() {
     try {
         const comments = getCurrentMealogComments();
         
-        // 빈 코멘트 제거
-        const validComments = comments.filter(c => c && c.trim().length > 0);
+        // 더 엄격한 필터링: undefined, null, 빈 문자열 모두 제거
+        const validComments = comments.filter(c => {
+            return c !== null && c !== undefined && typeof c === 'string' && c.trim().length > 0;
+        });
         
         if (validComments.length === 0) {
             alert('최소 한 개의 메시지가 필요합니다.');
@@ -2465,6 +3361,17 @@ window.saveMealogComments = async function() {
         
         alert('MEALOG 메시지가 저장되었습니다.');
         console.log('MEALOG 메시지 저장 완료:', mealogData);
+        console.log('저장된 코멘트 수:', validComments.length);
+        console.log('저장된 코멘트 내용:', validComments);
+        // 각 코멘트의 전체 내용과 길이를 상세히 로그
+        validComments.forEach((comment, idx) => {
+            console.log(`코멘트 ${idx + 1}:`, {
+                길이: comment.length,
+                줄_수: comment.split('\n').length,
+                전체_내용: comment,
+                COMMENT_버튼_포함: comment.includes('💬') || comment.includes('COMMENT')
+            });
+        });
     } catch (e) {
         console.error('MEALOG 메시지 저장 실패:', e);
         alert('MEALOG 메시지 저장 중 오류가 발생했습니다: ' + e.message);
@@ -2874,7 +3781,7 @@ window.handleCharacterImageUpload = async function(event) {
     
     try {
         // 현재 사용자 ID 가져오기 (관리자)
-        const user = auth.currentUser;
+        const user = adminAuth.currentUser;
         if (!user) {
             alert('로그인이 필요합니다.');
             return;
@@ -3128,3 +4035,280 @@ window.refreshPersona = function() {
         switchContentSidebar('mealog');
     }
 }
+
+// 데이터 탭 관련 함수들
+
+// 데이터 사이드바 전환
+window.switchDataSidebar = function(section) {
+    // 모든 사이드바 버튼 비활성화
+    document.querySelectorAll('[id^="data-sidebar-"]').forEach(btn => {
+        btn.classList.remove('text-emerald-600', 'bg-emerald-50');
+        btn.classList.add('text-slate-500', 'hover:bg-slate-50');
+    });
+    
+    // 모든 메인 섹션 숨기기
+    document.querySelectorAll('.data-main-section').forEach(sec => {
+        sec.classList.add('hidden');
+    });
+    
+    // 선택한 사이드바 버튼 활성화
+    const activeSidebarBtn = document.getElementById(`data-sidebar-${section}`);
+    const activeMainSection = document.getElementById(`data-main-${section}`);
+    
+    if (activeSidebarBtn) {
+        activeSidebarBtn.classList.add('text-emerald-600', 'bg-emerald-50');
+        activeSidebarBtn.classList.remove('text-slate-500', 'hover:bg-slate-50');
+    }
+    
+    if (activeMainSection) {
+        activeMainSection.classList.remove('hidden');
+    }
+    
+    // 섹션별 데이터 로드
+    if (section === 'restaurants') {
+        renderRestaurantData(currentRestaurantFilter || 'all');
+    }
+};
+
+// 식당정보 필터 상태
+let currentRestaurantFilter = 'all'; // 'all', 'kakao', 'manual'
+
+// 식당정보 데이터 렌더링
+window.renderRestaurantData = async function(filter = 'all') {
+    const container = document.getElementById('restaurantsContainer');
+    if (!container) return;
+    
+    currentRestaurantFilter = filter;
+    
+    container.innerHTML = `
+        <div class="text-center py-8 text-slate-400">
+            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+            <p>로딩 중...</p>
+        </div>
+    `;
+    
+    try {
+        // 모든 사용자의 meals 컬렉션에서 place 필드 수집
+        const usersColl = collection(db, 'artifacts', appId, 'users');
+        const usersSnapshot = await getDocs(usersColl);
+        
+        const restaurantMap = new Map(); // place -> { name, count, firstSeen, lastSeen, isKakao, placeId, address }
+        
+        // 각 사용자의 meals 컬렉션 조회
+        for (const userDoc of usersSnapshot.docs) {
+            const userId = userDoc.id;
+            try {
+                const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
+                const mealsSnapshot = await getDocs(mealsColl);
+                
+                mealsSnapshot.forEach(mealDoc => {
+                    const mealData = mealDoc.data();
+                    const place = mealData.place;
+                    
+                    if (place && place.trim() !== '') {
+                        const placeKey = place.trim();
+                        
+                        // 카카오맵 API로 입력된 식당인지 확인
+                        // placeId, kakaoPlaceId, placeData, kakaoPlace 등이 있으면 카카오맵 입력으로 판단
+                        const hasPlaceId = !!(mealData.placeId || mealData.kakaoPlaceId);
+                        const hasPlaceData = !!mealData.placeData;
+                        const hasKakaoPlace = mealData.kakaoPlace === true || mealData.kakaoPlace === 'true';
+                        const isKakao = hasPlaceId || hasPlaceData || hasKakaoPlace;
+                        
+                        const placeId = mealData.placeId || mealData.kakaoPlaceId || null;
+                        const address = mealData.placeAddress || mealData.address || null;
+                        
+                        // 디버깅: 카카오맵 데이터 확인 (처음 몇 개만 로그)
+                        if (isKakao && Math.random() < 0.1) { // 10% 확률로 로그
+                            console.log('✅ 카카오맵 식당 발견:', {
+                                place: placeKey,
+                                placeId: placeId,
+                                address: address,
+                                hasPlaceId: hasPlaceId,
+                                hasPlaceData: hasPlaceData,
+                                hasKakaoPlace: hasKakaoPlace,
+                                mealDataKeys: Object.keys(mealData).filter(k => k.toLowerCase().includes('place') || k.toLowerCase().includes('kakao') || k.toLowerCase().includes('address'))
+                            });
+                        }
+                        
+                        if (!restaurantMap.has(placeKey)) {
+                            restaurantMap.set(placeKey, {
+                                name: placeKey,
+                                count: 0,
+                                firstSeen: mealData.date || null,
+                                lastSeen: mealData.date || null,
+                                isKakao: isKakao,
+                                placeId: placeId,
+                                address: address,
+                                kakaoCount: 0,
+                                manualCount: 0
+                            });
+                        }
+                        
+                        const restaurant = restaurantMap.get(placeKey);
+                        restaurant.count++;
+                        
+                        // 카카오맵 입력 횟수와 수동 입력 횟수 분리 집계
+                        if (isKakao) {
+                            restaurant.isKakao = true; // 한 번이라도 카카오맵으로 입력되면 true
+                            restaurant.kakaoCount++;
+                            if (placeId && !restaurant.placeId) {
+                                restaurant.placeId = placeId;
+                            }
+                            if (address && !restaurant.address) {
+                                restaurant.address = address;
+                            }
+                        } else {
+                            restaurant.manualCount++;
+                        }
+                        
+                        // 날짜 업데이트
+                        if (mealData.date) {
+                            if (!restaurant.firstSeen || mealData.date < restaurant.firstSeen) {
+                                restaurant.firstSeen = mealData.date;
+                            }
+                            if (!restaurant.lastSeen || mealData.date > restaurant.lastSeen) {
+                                restaurant.lastSeen = mealData.date;
+                            }
+                        }
+                    }
+                });
+            } catch (e) {
+                console.warn(`사용자 ${userId}의 meals 조회 실패:`, e);
+            }
+        }
+        
+        // Map을 배열로 변환
+        let restaurants = Array.from(restaurantMap.values());
+        
+        // 디버깅: 필터 전 통계
+        const totalCount = restaurants.length;
+        const kakaoCount = restaurants.filter(r => r.isKakao).length;
+        const manualCount = restaurants.filter(r => !r.isKakao).length;
+        console.log('📊 식당 통계:', {
+            total: totalCount,
+            kakao: kakaoCount,
+            manual: manualCount,
+            filter: filter,
+            kakaoRestaurants: restaurants.filter(r => r.isKakao).slice(0, 5).map(r => ({ name: r.name, placeId: r.placeId, address: r.address }))
+        });
+        
+        // 카카오맵 식당이 없는데 필터가 'kakao'인 경우 경고
+        if (filter === 'kakao' && kakaoCount === 0 && totalCount > 0) {
+            console.warn('⚠️ 카카오맵 필터가 선택되었지만 카카오맵 식당이 없습니다.');
+            console.warn('   - 기존 데이터에 카카오맵 정보(placeId, kakaoPlaceId 등)가 저장되지 않았을 수 있습니다.');
+            console.warn('   - 새로 입력하는 식당은 카카오맵 정보가 저장됩니다.');
+        }
+        
+        // 필터 적용
+        if (filter === 'kakao') {
+            restaurants = restaurants.filter(r => r.isKakao);
+            console.log('카카오맵 필터 적용 후:', restaurants.length, '개');
+        } else if (filter === 'manual') {
+            restaurants = restaurants.filter(r => !r.isKakao);
+            console.log('수동입력 필터 적용 후:', restaurants.length, '개');
+        }
+        
+        // 정렬 (입력 횟수 내림차순)
+        restaurants.sort((a, b) => b.count - a.count);
+        
+        if (restaurants.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-12 text-slate-400">
+                    <i class="fa-solid fa-utensils text-4xl mb-4"></i>
+                    <p class="text-sm font-bold">${filter === 'all' ? '등록된 식당 정보가 없습니다.' : filter === 'kakao' ? '카카오맵으로 입력된 식당이 없습니다.' : '수동으로 입력된 식당이 없습니다.'}</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // 테이블 형태로 표시
+        container.innerHTML = `
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">순위</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">식당명</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">입력 횟수</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">입력 방식</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">최초 입력</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">최근 입력</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        ${restaurants.map((restaurant, index) => {
+                            const inputTypeBadge = restaurant.isKakao 
+                                ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
+                                    <i class="fa-solid fa-map-marker-alt mr-1"></i>카카오맵
+                                   </span>`
+                                : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
+                                    <i class="fa-solid fa-keyboard mr-1"></i>수동입력
+                                   </span>`;
+                            
+                            const countDetail = restaurant.isKakao && restaurant.manualCount > 0
+                                ? `<div class="text-xs text-slate-500 mt-1">카카오: ${restaurant.kakaoCount}회, 수동: ${restaurant.manualCount}회</div>`
+                                : '';
+                            
+                            return `
+                            <tr class="hover:bg-slate-50 transition-colors">
+                                <td class="px-4 py-3 text-sm font-bold text-slate-700">${index + 1}</td>
+                                <td class="px-4 py-3 text-sm text-slate-800">
+                                    <div class="font-bold">${escapeHtml(restaurant.name)}</div>
+                                    ${restaurant.address ? `<div class="text-xs text-slate-500 mt-1">${escapeHtml(restaurant.address)}</div>` : ''}
+                                </td>
+                                <td class="px-4 py-3 text-sm">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
+                                        ${restaurant.count}회
+                                    </span>
+                                    ${countDetail}
+                                </td>
+                                <td class="px-4 py-3 text-sm">${inputTypeBadge}</td>
+                                <td class="px-4 py-3 text-sm text-slate-600">${restaurant.firstSeen || '-'}</td>
+                                <td class="px-4 py-3 text-sm text-slate-600">${restaurant.lastSeen || '-'}</td>
+                            </tr>
+                        `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-4 text-sm text-slate-500 text-center">
+                총 ${restaurants.length}개의 식당이 ${filter === 'all' ? '등록' : filter === 'kakao' ? '카카오맵으로 입력' : '수동으로 입력'}되어 있습니다.
+            </div>
+        `;
+        
+    } catch (e) {
+        console.error('식당정보 조회 실패:', e);
+        container.innerHTML = `
+            <div class="text-center py-8 text-red-400">
+                <i class="fa-solid fa-circle-exclamation text-2xl mb-2"></i>
+                <p>데이터를 불러오는 중 오류가 발생했습니다.</p>
+                <p class="text-xs mt-2">${e.message}</p>
+            </div>
+        `;
+    }
+};
+
+// 식당정보 필터 설정
+window.setRestaurantFilter = function(filter) {
+    // 모든 필터 버튼 비활성화
+    document.querySelectorAll('.restaurant-filter-btn').forEach(btn => {
+        btn.classList.remove('bg-emerald-600', 'text-white');
+        btn.classList.add('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
+    });
+    
+    // 선택한 필터 버튼 활성화
+    const activeFilterBtn = document.getElementById(`restaurant-filter-${filter}`);
+    if (activeFilterBtn) {
+        activeFilterBtn.classList.remove('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
+        activeFilterBtn.classList.add('bg-emerald-600', 'text-white');
+    }
+    
+    // 데이터 다시 렌더링
+    renderRestaurantData(filter);
+};
+
+// 식당정보 새로고침
+window.refreshRestaurantData = function() {
+    renderRestaurantData(currentRestaurantFilter);
+};

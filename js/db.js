@@ -1,13 +1,14 @@
 // 데이터베이스 작업
-import { db, appId } from './firebase.js';
-import { doc, getDoc, setDoc, collection, addDoc, deleteDoc, onSnapshot, query, orderBy, limit, where, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { db, appId, auth } from './firebase.js';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, onSnapshot, collection, addDoc, query, orderBy, limit, where, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { showToast } from './ui.js';
 import { DEFAULT_SUB_TAGS } from './constants.js';
-import { uploadBase64ToStorage } from './utils.js';
+import { uploadBase64ToStorage, toLocalDateString } from './utils.js';
 
 export const dbOps = {
     async save(record, silent = false) {
-        if (!window.currentUser) {
+        const currentUser = auth.currentUser || window.currentUser;
+        if (!currentUser || currentUser.isAnonymous) {
             const error = new Error("로그인이 필요합니다.");
             showToast("저장 실패: 로그인이 필요합니다.", 'error');
             throw error;
@@ -16,7 +17,8 @@ export const dbOps = {
             const dataToSave = { ...record };
             const docId = dataToSave.id;
             delete dataToSave.id;
-            const coll = collection(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals');
+            const coll = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meals');
+            console.log('식사 기록 저장 시도:', { userId: currentUser.uid, docId, dataToSave });
             if (docId) {
                 await setDoc(doc(coll, docId), dataToSave);
                 if (!silent) {
@@ -25,6 +27,7 @@ export const dbOps = {
                 return docId; // 기존 ID 반환
             } else {
                 const docRef = await addDoc(coll, dataToSave);
+                console.log('식사 기록 저장 성공:', docRef.id);
                 if (!silent) {
                     showToast("식사가 기록되었습니다.", 'success');
                 }
@@ -32,6 +35,12 @@ export const dbOps = {
             }
         } catch (e) {
             console.error("Save Error:", e);
+            const currentUser = auth.currentUser || window.currentUser;
+            console.error("저장 실패 상세:", { 
+                userId: currentUser?.uid, 
+                errorCode: e.code, 
+                errorMessage: e.message 
+            });
             // 에러 메시지 생성
             let errorMessage = "저장 실패: ";
             if (e.code === 'permission-denied') {
@@ -50,7 +59,8 @@ export const dbOps = {
         }
     },
     async delete(id) {
-        if (!window.currentUser) {
+        const currentUser = auth.currentUser || window.currentUser;
+        if (!currentUser || currentUser.isAnonymous) {
             const error = new Error("로그인이 필요합니다.");
             throw error;
         }
@@ -59,7 +69,7 @@ export const dbOps = {
             throw error;
         }
         try {
-            await deleteDoc(doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals', id));
+            await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'meals', id));
             // 성공 토스트는 호출자에서 표시
         } catch (e) {
             console.error("Delete Error:", e);
@@ -68,14 +78,96 @@ export const dbOps = {
         }
     },
     async saveSettings(newSettings) {
-        if (!window.currentUser) {
+        const currentUser = auth.currentUser || window.currentUser;
+        if (!currentUser || currentUser.isAnonymous) {
             showToast("설정 저장 실패: 로그인이 필요합니다.", 'error');
             return;
         }
         try {
-            await setDoc(doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'config', 'settings'), newSettings, { merge: true });
+            // 기존 설정을 먼저 읽어서 profile 정보 보존
+            let existingSettings = {};
+            try {
+                const existingDoc = await getDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'config', 'settings'));
+                if (existingDoc.exists()) {
+                    existingSettings = existingDoc.data();
+                }
+            } catch (e) {
+                console.warn('기존 설정 읽기 실패 (무시하고 계속):', e);
+            }
+            
+            // 새 설정과 기존 설정을 병합 (profile 정보 보존)
+            const settingsToSave = { ...existingSettings, ...newSettings };
+            
+            // 프로필 정보 병합 (닉네임은 새 값이 있으면 업데이트, 없으면 기존 값 유지)
+            if (newSettings.profile || existingSettings.profile) {
+                // 닉네임을 제외한 프로필 정보 먼저 병합
+                const { nickname: newNickname, ...newProfileWithoutNickname } = newSettings.profile || {};
+                const { nickname: existingNickname, ...existingProfileWithoutNickname } = existingSettings.profile || {};
+                
+                settingsToSave.profile = {
+                    ...existingProfileWithoutNickname,
+                    ...newProfileWithoutNickname
+                };
+                
+                // 닉네임 처리: 새 닉네임이 명시적으로 제공되고 유효하면 업데이트, 아니면 기존 값 유지
+                // 단, 새 닉네임이 기본값('게스트')이고 기존 닉네임이 유효한 경우 기존 값 유지
+                if (newNickname !== undefined && newNickname !== null && newNickname !== '' && newNickname !== '게스트') {
+                    // 새 닉네임이 명시적으로 제공되고 기본값이 아닌 경우 업데이트
+                    settingsToSave.profile.nickname = newNickname;
+                    console.log('✅ 닉네임 업데이트:', { 
+                        old: existingNickname, 
+                        new: newNickname 
+                    });
+                } else if (existingNickname && existingNickname !== '게스트') {
+                    // 기존 닉네임이 있고 기본값이 아니면 유지
+                    settingsToSave.profile.nickname = existingNickname;
+                } else if (existingNickname) {
+                    // 기존 닉네임이 기본값이어도 일단 유지
+                    settingsToSave.profile.nickname = existingNickname;
+                } else if (!settingsToSave.profile.nickname) {
+                    // 닉네임이 전혀 없을 때만 기본값 사용
+                    settingsToSave.profile.nickname = '게스트';
+                }
+            } else if (!settingsToSave.profile) {
+                // profile 자체가 없을 때만 기본값 설정
+                settingsToSave.profile = { icon: '🐻', nickname: '게스트' };
+            }
+            
+            // 중요: providerId와 email은 처음 로그인 시에만 설정되는 고정 항목입니다.
+            // saveSettings에서는 기존 값만 보존하고, 절대 업데이트하지 않습니다.
+            // providerId와 email은 약관 동의 또는 프로필 설정 시에만 설정됩니다.
+            
+            // 기존 설정에서 providerId와 email 보존 (새 설정에 포함되어 있지 않으면 기존 값 유지)
+            if (existingSettings.providerId && !newSettings.providerId) {
+                settingsToSave.providerId = existingSettings.providerId;
+            }
+            if (existingSettings.email && !newSettings.email) {
+                settingsToSave.email = existingSettings.email;
+            }
+            
+            const settingsPath = `artifacts/${appId}/users/${currentUser.uid}/config/settings`;
+            console.log('💾 설정 저장 시도:', { 
+                userId: currentUser.uid, 
+                path: settingsPath,
+                providerId: settingsToSave.providerId,
+                email: settingsToSave.email,
+                nickname: settingsToSave.profile?.nickname,
+                hasProfile: !!settingsToSave.profile
+            });
+            await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'config', 'settings'), settingsToSave, { merge: true });
+            console.log('✅ 설정 저장 성공:', {
+                providerId: settingsToSave.providerId,
+                email: settingsToSave.email,
+                nickname: settingsToSave.profile?.nickname
+            });
         } catch (e) {
             console.error("Settings Save Error:", e);
+            const currentUser = auth.currentUser || window.currentUser;
+            console.error("설정 저장 실패 상세:", { 
+                userId: currentUser?.uid, 
+                errorCode: e.code, 
+                errorMessage: e.message 
+            });
             let errorMessage = "설정 저장 실패: ";
             if (e.code === 'permission-denied') {
                 errorMessage += "권한이 없습니다.";
@@ -94,7 +186,8 @@ export const dbOps = {
     },
 
     async saveDailyComment(date, comment) {
-        if (!window.currentUser) {
+        const currentUser = auth.currentUser || window.currentUser;
+        if (!currentUser || currentUser.isAnonymous) {
             showToast("저장 실패: 로그인이 필요합니다.", 'error');
             return;
         }
@@ -193,6 +286,7 @@ export const dbOps = {
                         userId: window.currentUser.uid,
                         userNickname: userProfile.nickname || '익명',
                         userIcon: userProfile.icon || '🐻',
+                        userPhotoUrl: userProfile.photoUrl || null,
                         mealType: mealData.mealType || '',
                         place: mealData.place || '',
                         menuDetail: mealData.menuDetail || '',
@@ -227,7 +321,7 @@ export const dbOps = {
             throw e;
         }
     },
-    async unsharePhotos(photos, entryId, isBestShare = false) {
+    async unsharePhotos(photos, entryId, isBestShare = false, isDailyShare = false) {
         if (!window.currentUser || !photos || photos.length === 0) return;
         try {
             const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
@@ -262,6 +356,11 @@ export const dbOps = {
                     // 베스트 공유인 경우 type='best'인 항목만 삭제
                     if (isBestShare) {
                         if (data.type === 'best') {
+                            photosToDelete.push(docSnap.id);
+                        }
+                    } else if (isDailyShare) {
+                        // 일간보기 공유인 경우: type='daily'이고 photoUrl이 일치하면 삭제
+                        if (data.type === 'daily') {
                             photosToDelete.push(docSnap.id);
                         }
                     } else {
@@ -313,19 +412,136 @@ export const dbOps = {
             showToast(errorMessage, 'error');
             throw e;
         }
+    },
+    
+    // 사용자 데이터 삭제 (탈퇴용)
+    async deleteAllUserData() {
+        if (!window.currentUser || window.currentUser.isAnonymous) {
+            throw new Error("로그인이 필요합니다.");
+        }
+        
+        const userId = window.currentUser.uid;
+        try {
+            // 1. 모든 meals 삭제
+            const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
+            const mealsSnapshot = await getDocs(mealsColl);
+            const mealsBatch = writeBatch(db);
+            mealsSnapshot.docs.forEach(docSnap => {
+                mealsBatch.delete(docSnap.ref);
+            });
+            if (mealsSnapshot.docs.length > 0) {
+                await mealsBatch.commit();
+            }
+            
+            // 2. settings 삭제
+            const settingsRef = doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings');
+            await deleteDoc(settingsRef);
+            
+            // 3. 공유된 사진 삭제
+            const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+            const sharedQuery = query(sharedColl, where('userId', '==', userId));
+            const sharedSnapshot = await getDocs(sharedQuery);
+            const sharedBatch = writeBatch(db);
+            sharedSnapshot.docs.forEach(docSnap => {
+                sharedBatch.delete(docSnap.ref);
+            });
+            if (sharedSnapshot.docs.length > 0) {
+                await sharedBatch.commit();
+            }
+            
+            // 4. 프로필 사진 삭제 (Storage)
+            if (window.userSettings?.profile?.photoUrl) {
+                try {
+                    const { storage } = await import('./firebase.js');
+                    const { ref, deleteObject } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js");
+                    // photoUrl에서 경로 추출
+                    const photoUrl = window.userSettings.profile.photoUrl;
+                    const urlMatch = photoUrl.match(/users%2F([^%]+)%2Fprofile%2F(.+)/);
+                    if (urlMatch) {
+                        const photoPath = `users/${userId}/profile/${urlMatch[2]}`;
+                        const photoRef = ref(storage, photoPath);
+                        await deleteObject(photoRef);
+                    }
+                } catch (storageError) {
+                    console.warn('프로필 사진 삭제 중 오류 (무시하고 계속 진행):', storageError);
+                }
+            }
+        } catch (e) {
+            console.error("Delete All User Data Error:", e);
+            throw e;
+        }
     }
 };
 
 export function setupListeners(userId, callbacks) {
     const { onSettingsUpdate, onDataUpdate, settingsUnsubscribe: oldSettingsUnsubscribe, dataUnsubscribe: oldDataUnsubscribe } = callbacks;
     
+    // 사용자 ID 확인 및 로깅
+    console.log('🔧 setupListeners 호출:', { 
+        userId, 
+        currentUser: window.currentUser?.uid,
+        isMatch: userId === window.currentUser?.uid
+    });
+    
+    // 사용자 ID 불일치 경고
+    if (window.currentUser && userId !== window.currentUser.uid) {
+        console.error('⚠️ ⚠️ ⚠️ 사용자 ID 불일치!', {
+            setupListenersUserId: userId,
+            currentUserUid: window.currentUser.uid,
+            email: window.currentUser.email
+        });
+    }
+    
     // Settings 리스너
-    if (oldSettingsUnsubscribe) oldSettingsUnsubscribe();
+    if (oldSettingsUnsubscribe) {
+        console.log('🔌 이전 settings 리스너 해제');
+        oldSettingsUnsubscribe();
+    }
+    
+    // Data 리스너도 미리 해제
+    if (oldDataUnsubscribe) {
+        console.log('🔌 이전 data 리스너 해제');
+        oldDataUnsubscribe();
+    }
+    
     let migrationInProgress = false; // 마이그레이션 중복 실행 방지
     
-    const settingsUnsubscribe = onSnapshot(doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings'), (snap) => {
+    const settingsUnsubscribe = onSnapshot(doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings'), async (snap) => {
+        // 사용자 ID 재확인 (리스너 내부에서)
+        if (window.currentUser && userId !== window.currentUser.uid) {
+            console.error('⚠️ ⚠️ ⚠️ 설정 리스너 콜백: 사용자 ID 불일치 감지!', {
+                listenerUserId: userId,
+                currentUserUid: window.currentUser.uid,
+                email: window.currentUser.email
+            });
+            // 잘못된 사용자의 리스너이므로 무시
+            return;
+        }
+        
+        // users/{userId} 문서가 없으면 생성 (관리자 페이지에서 사용자 목록을 보기 위해)
+        try {
+            const userDocRef = doc(db, 'artifacts', appId, 'users', userId);
+            const userDocSnap = await getDoc(userDocRef);
+            if (!userDocSnap.exists()) {
+                // 최소한의 사용자 문서 생성 (타임스탬프만)
+                await setDoc(userDocRef, {
+                    createdAt: new Date().toISOString(),
+                    lastLoginAt: new Date().toISOString()
+                }, { merge: true });
+                console.log('✅ users/{userId} 문서 생성 완료:', userId);
+            }
+        } catch (e) {
+            console.warn('users/{userId} 문서 생성 실패:', e);
+        }
+        
         if (snap.exists()) {
             window.userSettings = snap.data();
+            console.log('📥 설정 로드 완료:', {
+                hasProfile: !!(window.userSettings.profile && window.userSettings.profile.nickname),
+                nickname: window.userSettings.profile?.nickname,
+                termsAgreed: window.userSettings.termsAgreed,
+                termsVersion: window.userSettings.termsVersion
+            });
             if (!window.userSettings.subTags) {
                 window.userSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
             }
@@ -338,16 +554,108 @@ export function setupListeners(userId, callbacks) {
                 };
             }
             
+            // 관리자에서 등록한 태그를 로드하여 사용자 설정에 병합
+            try {
+                const tagsDoc = doc(db, 'artifacts', appId, 'content', 'defaultTags');
+                const tagsSnap = await getDoc(tagsDoc);
+                if (tagsSnap.exists()) {
+                    const adminTags = tagsSnap.data();
+                    // 사용자 설정의 tags가 없으면 생성
+                    if (!window.userSettings.tags) {
+                        window.userSettings.tags = {};
+                    }
+                    // 관리자 태그를 사용자 설정에 병합 (관리자 태그가 우선)
+                    if (adminTags.mealType && Array.isArray(adminTags.mealType)) {
+                        window.userSettings.tags.mealType = [...adminTags.mealType];
+                    }
+                    if (adminTags.withWhom && Array.isArray(adminTags.withWhom)) {
+                        window.userSettings.tags.withWhom = [...adminTags.withWhom];
+                    }
+                    if (adminTags.category && Array.isArray(adminTags.category)) {
+                        window.userSettings.tags.category = [...adminTags.category];
+                    }
+                    if (adminTags.snackType && Array.isArray(adminTags.snackType)) {
+                        window.userSettings.tags.snackType = [...adminTags.snackType];
+                    }
+                    console.log('✅ 관리자 태그 병합 완료:', {
+                        mealType: window.userSettings.tags.mealType?.length || 0,
+                        withWhom: window.userSettings.tags.withWhom?.length || 0,
+                        category: window.userSettings.tags.category?.length || 0,
+                        snackType: window.userSettings.tags.snackType?.length || 0
+                    });
+                } else {
+                    console.warn('⚠️ 관리자 태그 문서가 없습니다. 기본값을 사용합니다.');
+                }
+            } catch (e) {
+                console.warn('⚠️ 관리자 태그 로드 실패 (기본값 사용):', e);
+            }
+            
             // 마이그레이션 로직을 비동기로 처리하여 초기 로딩 지연 최소화
             if (!migrationInProgress) {
                 migrationInProgress = true;
                 // 즉시 콜백 호출하여 UI 업데이트 지연 방지
+                console.log('📞 onSettingsUpdate 콜백 호출');
                 if (onSettingsUpdate) onSettingsUpdate();
                 
                 // 마이그레이션은 백그라운드에서 처리
                 Promise.resolve().then(async () => {
                     let needsSave = false;
-                    const settingsToSave = { ...window.userSettings };
+                    // 깊은 복사로 기존 설정 보존
+                    const settingsToSave = JSON.parse(JSON.stringify(window.userSettings));
+                    
+                    // profile 정보 보존 확인 (닉네임이 없거나 '게스트'인 경우 기존 설정 확인)
+                    // 주의: Firestore에 '게스트'로 저장되어 있을 수 있으므로, 실제로는 기존 설정을 확인하지 않음
+                    // 대신, profile이 완전히 없을 때만 기본값 설정
+                    if (!settingsToSave.profile) {
+                        settingsToSave.profile = { icon: '🐻', nickname: '게스트' };
+                        needsSave = true;
+                    } else if (!settingsToSave.profile.nickname || settingsToSave.profile.nickname === '게스트') {
+                        // 닉네임이 '게스트'이거나 없으면, 이것이 실제 저장된 값일 수 있으므로
+                        // 마이그레이션에서는 건드리지 않음 (사용자가 직접 수정해야 함)
+                        console.log('⚠️ 닉네임이 "게스트"이거나 없습니다. 사용자가 직접 수정해야 합니다.');
+                    }
+                    
+                    // providerId와 email 업데이트 (없을 때만 추가, 이미 있으면 유지)
+                    // 주의: providerId는 로그인 방법이므로 변경되면 안 됨 (덮어쓰지 않음)
+                    try {
+                        const { auth } = await import('./firebase.js');
+                        const currentUser = auth.currentUser;
+                        if (currentUser && !currentUser.isAnonymous) {
+                            // providerId 업데이트 (없을 때만 추가, 기존 값은 보존)
+                            if (currentUser.providerData && currentUser.providerData.length > 0) {
+                                const currentProviderId = currentUser.providerData[0].providerId;
+                                if (!settingsToSave.providerId) {
+                                    // providerId가 없을 때만 설정
+                                    settingsToSave.providerId = currentProviderId;
+                                    needsSave = true;
+                                    console.log('✅ 마이그레이션: providerId 초기 설정:', currentProviderId);
+                                } else if (settingsToSave.providerId !== currentProviderId) {
+                                    // providerId가 다르면 경고만 (덮어쓰지 않음)
+                                    console.warn(`⚠️ providerId 불일치 감지: 저장된 값(${settingsToSave.providerId}) vs 현재(${currentProviderId}). 기존 값 유지합니다.`);
+                                }
+                            }
+                            // email 업데이트 (없을 때만 추가, 또는 같은 providerId일 때만 업데이트)
+                            if (currentUser.email) {
+                                const currentProviderId = currentUser.providerData?.[0]?.providerId;
+                                if (!settingsToSave.email) {
+                                    // 기존 이메일이 없으면 설정
+                                    settingsToSave.email = currentUser.email;
+                                    needsSave = true;
+                                    console.log('✅ 마이그레이션: email 초기 설정:', currentUser.email);
+                                } else if (settingsToSave.providerId === currentProviderId && settingsToSave.email !== currentUser.email) {
+                                    // 같은 providerId인데 이메일이 다르면 업데이트
+                                    settingsToSave.email = currentUser.email;
+                                    needsSave = true;
+                                    console.log('✅ 마이그레이션: email 업데이트:', currentUser.email);
+                                } else if (settingsToSave.providerId !== currentProviderId) {
+                                    // providerId가 다르면 경고만
+                                    console.warn(`⚠️ providerId 불일치로 인한 email 불일치: 저장된(${settingsToSave.email}) vs 현재(${currentUser.email}). 기존 값 유지합니다.`);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('사용자 정보 가져오기 실패:', e);
+                    }
                     
                     // "???" 항목 제거 (기존 사용자 설정 정리)
                     if (settingsToSave.tags && settingsToSave.tags.mealType) {
@@ -493,13 +801,99 @@ export function setupListeners(userId, callbacks) {
                 if (onSettingsUpdate) onSettingsUpdate();
             }
         } else {
-            // 설정이 없으면 콜백 호출 (기본값 사용)
-            if (onSettingsUpdate) onSettingsUpdate();
+            // 설정이 없으면 기본값 사용 (providerId와 email 포함)
+            console.log('📥 설정이 없음. 기본값 로드 시작...');
+            import('./constants.js').then(async ({ DEFAULT_USER_SETTINGS }) => {
+                window.userSettings = JSON.parse(JSON.stringify(DEFAULT_USER_SETTINGS));
+                
+                // 기존 사용자인지 확인 (meals 데이터가 있으면 기존 사용자)
+                let isExistingUser = false;
+                try {
+                    const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
+                    const mealsSnapshot = await getDocs(query(mealsColl, limit(1)));
+                    isExistingUser = !mealsSnapshot.empty;
+                    console.log('기존 사용자 여부 확인:', { userId, isExistingUser, hasMeals: !mealsSnapshot.empty });
+                } catch (e) {
+                    console.warn('기존 사용자 확인 실패:', e);
+                }
+                
+                // 기존 사용자라면 약관 동의를 true로 설정
+                if (isExistingUser) {
+                    window.userSettings.termsAgreed = true;
+                    window.userSettings.termsAgreedAt = new Date().toISOString();
+                    console.log('✅ 기존 사용자로 확인되어 약관 동의 자동 설정');
+                }
+                
+                // 중요: providerId와 email은 약관 동의나 프로필 설정 시에만 설정됩니다.
+                // 설정 로드 시에는 설정하지 않습니다. (고정 항목이므로)
+                
+                console.log('✅ 기본 설정 로드 완료. onSettingsUpdate 호출');
+                if (onSettingsUpdate) onSettingsUpdate();
+            }).catch(e => {
+                console.error('기본 설정 로드 실패:', e);
+                // 에러 발생 시에도 콜백 호출 (빈 설정으로라도)
+                if (onSettingsUpdate) onSettingsUpdate();
+            });
         }
+    }, async (error) => {
+        console.error("Settings Listener Error:", error);
+        console.error("에러 상세:", {
+            code: error.code,
+            message: error.message,
+            userId: userId
+        });
+        
+        // 권한 오류인 경우 기존 사용자인지 확인하여 약관 동의 자동 설정
+        if (error.code === 'permission-denied') {
+            console.warn('⚠️ 설정 읽기 권한 오류. 기존 사용자인지 확인합니다...');
+            try {
+                const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
+                const mealsSnapshot = await getDocs(query(mealsColl, limit(1)));
+                const isExistingUser = !mealsSnapshot.empty;
+                
+                if (isExistingUser) {
+                    console.log('✅ 기존 사용자로 확인. 약관 동의 자동 설정 시도...');
+                    // 기본값에 약관 동의 설정
+                    import('./constants.js').then(async ({ DEFAULT_USER_SETTINGS }) => {
+                        window.userSettings = JSON.parse(JSON.stringify(DEFAULT_USER_SETTINGS));
+                        window.userSettings.termsAgreed = true;
+                        window.userSettings.termsAgreedAt = new Date().toISOString();
+                        
+                        // 중요: providerId와 email은 약관 동의나 프로필 설정 시에만 설정됩니다.
+                        // 권한 오류 시 자동 설정에서는 설정하지 않습니다.
+                        
+                        if (onSettingsUpdate) onSettingsUpdate();
+                    });
+                    return;
+                }
+            } catch (e) {
+                console.warn('기존 사용자 확인 실패:', e);
+            }
+        }
+        
+        // 에러 발생 시 기본값 사용
+        import('./constants.js').then(({ DEFAULT_USER_SETTINGS }) => {
+            window.userSettings = JSON.parse(JSON.stringify(DEFAULT_USER_SETTINGS));
+            if (onSettingsUpdate) onSettingsUpdate();
+        }).catch(e => {
+            console.error('기본 설정 로드 실패:', e);
+            if (onSettingsUpdate) onSettingsUpdate();
+        });
     });
     
     // Meals 리스너 - 최근 1개월만 초기 로드
-    if (oldDataUnsubscribe) oldDataUnsubscribe();
+    if (oldDataUnsubscribe) {
+        console.log('🔌 이전 data 리스너 해제');
+        oldDataUnsubscribe();
+    }
+    
+    // 사용자 ID 확인 (데이터 리스너)
+    if (window.currentUser && userId !== window.currentUser.uid) {
+        console.error('⚠️ ⚠️ ⚠️ 데이터 리스너: 사용자 ID 불일치!', {
+            setupListenersUserId: userId,
+            currentUserUid: window.currentUser.uid
+        });
+    }
     
     // 최근 1개월 날짜 계산
     const cutoffDate = new Date();
@@ -516,6 +910,16 @@ export function setupListeners(userId, callbacks) {
     
     let isInitialLoad = true;
     const dataUnsubscribe = onSnapshot(mealsQuery, (snap) => {
+        // 사용자 ID 재확인 (리스너 내부에서)
+        if (window.currentUser && userId !== window.currentUser.uid) {
+            console.error('⚠️ ⚠️ ⚠️ 데이터 리스너 콜백: 사용자 ID 불일치 감지!', {
+                listenerUserId: userId,
+                currentUserUid: window.currentUser.uid,
+                email: window.currentUser.email
+            });
+            // 잘못된 사용자의 리스너이므로 무시
+            return;
+        }
         if (isInitialLoad) {
             // 초기 로드: 최근 1개월 데이터
             window.mealHistory = snap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -552,10 +956,20 @@ export function setupListeners(userId, callbacks) {
         if (onDataUpdate) onDataUpdate();
     }, (error) => {
         console.error("Meals Listener Error:", error);
+        // 사용자 ID 재확인
+        if (window.currentUser && userId !== window.currentUser.uid) {
+            console.error('⚠️ 데이터 리스너 에러 핸들러: 사용자 ID 불일치! 리스너 무시');
+            return;
+        }
         // 인덱스가 없을 경우 fallback: 전체 컬렉션 사용 (경고만 표시)
         console.warn("날짜 범위 쿼리 실패, 전체 컬렉션으로 fallback");
         const fallbackQuery = collection(db, 'artifacts', appId, 'users', userId, 'meals');
         return onSnapshot(fallbackQuery, (snap) => {
+            // 사용자 ID 재확인 (fallback 리스너 내부에서)
+            if (window.currentUser && userId !== window.currentUser.uid) {
+                console.error('⚠️ Fallback 리스너: 사용자 ID 불일치! 무시');
+                return;
+            }
             window.mealHistory = snap.docs.map(d => ({ id: d.id, ...d.data() }))
                 .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
             if (onDataUpdate) onDataUpdate();
@@ -794,6 +1208,81 @@ export const postInteractions = {
     }
 };
 
+// 현재 사용자가 해당 게시물을 이미 신고했는지 조회 (있으면 { id, reason, reasonOther } 반환)
+// postReports read 권한 이슈 회피: 사용자 자신의 config/reportedPosts 문서에서 조회
+export async function getUserReportForPost(targetGroupKey, userId) {
+    if (!targetGroupKey || !userId) return null;
+    const ref = doc(db, 'artifacts', appId, 'users', userId, 'config', 'reportedPosts');
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return null;
+    const entry = snap.data()[targetGroupKey];
+    if (!entry || !entry.reportId) return null;
+    return { id: entry.reportId, reason: entry.reason, reasonOther: entry.reasonOther };
+}
+
+// 게시물 신고 (이미 신고한 경우 throw)
+export async function submitReport(payload) {
+    const currentUser = (typeof auth !== 'undefined' && auth.currentUser) ? auth.currentUser : window.currentUser;
+    if (!currentUser || currentUser.isAnonymous) {
+        throw new Error("로그인이 필요합니다.");
+    }
+    const { targetGroupKey, reason, reasonOther } = payload;
+    if (!targetGroupKey || !reason) {
+        throw new Error("신고 대상과 사유가 필요합니다.");
+    }
+    const existing = await getUserReportForPost(targetGroupKey, currentUser.uid);
+    if (existing) {
+        throw new Error("이미 신고한 게시물입니다.");
+    }
+    const reportsColl = collection(db, 'artifacts', appId, 'postReports');
+    const reasonOtherVal = (reason === 'other' && reasonOther && String(reasonOther).trim()) ? String(reasonOther).trim() : undefined;
+    const data = {
+        targetGroupKey,
+        reason,
+        reportedBy: currentUser.uid,
+        reportedAt: new Date().toISOString()
+    };
+    if (reasonOtherVal) data.reasonOther = reasonOtherVal;
+    const reportRef = await addDoc(reportsColl, data);
+    // 본인 config/reportedPosts에 기록 (getUserReportForPost에서 조회, postReports read 권한 불필요)
+    const userReportedRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'config', 'reportedPosts');
+    await setDoc(userReportedRef, { [targetGroupKey]: { reportId: reportRef.id, reason, reasonOther: reasonOtherVal || null } }, { merge: true });
+    return reportRef.id;
+}
+
+// 신고 취소 (본인이 신고한 문서만 삭제 가능, 규칙에서 검증. targetGroupKey로 config/reportedPosts에서도 제거)
+export async function withdrawReport(reportId, targetGroupKey) {
+    const currentUser = (typeof auth !== 'undefined' && auth.currentUser) ? auth.currentUser : window.currentUser;
+    if (!currentUser || currentUser.isAnonymous) {
+        throw new Error("로그인이 필요합니다.");
+    }
+    if (!reportId) throw new Error("취소할 신고가 없습니다.");
+    const reportRef = doc(db, 'artifacts', appId, 'postReports', reportId);
+    await deleteDoc(reportRef);
+    if (targetGroupKey) {
+        const userReportedRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'config', 'reportedPosts');
+        await updateDoc(userReportedRef, { [targetGroupKey]: deleteField() });
+    }
+}
+
+// 관리자: targetGroupKey별 신고 집계 (전체 조회 후 메모리에서 집계)
+export async function getReportsAggregateByGroupKeys() {
+    const reportsColl = collection(db, 'artifacts', appId, 'postReports');
+    const snapshot = await getDocs(reportsColl);
+    const byKey = {};
+    snapshot.docs.forEach(d => {
+        const { targetGroupKey, reason, reasonOther } = d.data();
+        if (!targetGroupKey) return;
+        if (!byKey[targetGroupKey]) {
+            byKey[targetGroupKey] = { count: 0, byReason: {} };
+        }
+        byKey[targetGroupKey].count += 1;
+        const reasonLabel = reason === 'other' && reasonOther ? `기타: ${reasonOther}` : reason;
+        byKey[targetGroupKey].byReason[reasonLabel] = (byKey[targetGroupKey].byReason[reasonLabel] || 0) + 1;
+    });
+    return byKey;
+}
+
 // 더보기 함수: 추가 기간의 데이터 로드
 export async function loadMoreMeals(monthsToLoad = 1) {
     if (!window.currentUser) {
@@ -854,8 +1343,8 @@ export async function loadMealsForDateRange(startDate, endDate) {
     }
     
     try {
-        const startStr = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
-        const endStr = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
+        const startStr = typeof startDate === 'string' ? startDate : toLocalDateString(startDate);
+        const endStr = typeof endDate === 'string' ? endDate : toLocalDateString(endDate);
         
         // 이미 로드된 범위 확인
         if (window.loadedMealsDateRange) {
@@ -1044,6 +1533,7 @@ export const boardOperations = {
                 dislikes: 0,
                 views: 0,
                 comments: 0,
+                isHidden: false,
                 timestamp: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             };
@@ -1091,25 +1581,28 @@ export const boardOperations = {
         }
     },
     
-    // 게시글 목록 가져오기
+    // 게시글 목록 가져오기 (가려진 글 isHidden===true 제외, 클라이언트에서 필터)
     async getPosts(category = 'all', sortBy = 'latest', limitCount = 50) {
         try {
             const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
+            const fetchLimit = Math.min(limitCount * 2, 100);
             let q;
             
             if (category === 'all') {
-                q = query(postsColl, orderBy('timestamp', 'desc'), limit(limitCount));
+                q = query(postsColl, orderBy('timestamp', 'desc'), limit(fetchLimit));
             } else {
                 q = query(
                     postsColl,
                     where('category', '==', category),
                     orderBy('timestamp', 'desc'),
-                    limit(limitCount)
+                    limit(fetchLimit)
                 );
             }
             
             const snapshot = await getDocs(q);
-            let posts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            let posts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
+                .filter(p => p.isHidden !== true);
+            posts = posts.slice(0, limitCount);
             
             // 인기순 정렬 (좋아요 - 비추천 수 기준)
             if (sortBy === 'popular') {
@@ -1173,6 +1666,9 @@ export const boardOperations = {
             }
             
             const postData = { id: postSnap.id, ...postSnap.data() };
+            if (postData.isHidden === true) {
+                return null;
+            }
             const newViews = (postData.views || 0) + 1;
             
             // 조회수 증가
@@ -1187,7 +1683,9 @@ export const boardOperations = {
             const postDoc = doc(db, 'artifacts', appId, 'boardPosts', postId);
             const postSnap = await getDoc(postDoc);
             if (postSnap.exists()) {
-                return { id: postSnap.id, ...postSnap.data() };
+                const data = { id: postSnap.id, ...postSnap.data() };
+                if (data.isHidden === true) return null;
+                return data;
             }
             return null;
         }
@@ -1480,3 +1978,21 @@ export const boardOperations = {
         return unsubscribe;
     }
 };
+
+// 관리자: MEAL TALK 게시글 삭제 (Firestore 규칙에서 isAdmin 체크)
+export async function deleteBoardPostByAdmin(postId) {
+    if (!postId) throw new Error("게시글 ID가 필요합니다.");
+    const postDoc = doc(db, 'artifacts', appId, 'boardPosts', postId);
+    const postSnap = await getDoc(postDoc);
+    if (!postSnap.exists()) throw new Error("게시글을 찾을 수 없습니다.");
+    await deleteDoc(postDoc);
+}
+
+// 관리자: MEAL TALK 게시글 가리기/가리기 해제 (Firestore 규칙에서 isAdmin 체크)
+export async function setBoardPostHidden(postId, hidden) {
+    if (!postId) throw new Error("게시글 ID가 필요합니다.");
+    const postDoc = doc(db, 'artifacts', appId, 'boardPosts', postId);
+    const postSnap = await getDoc(postDoc);
+    if (!postSnap.exists()) throw new Error("게시글을 찾을 수 없습니다.");
+    await updateDoc(postDoc, { isHidden: !!hidden });
+}

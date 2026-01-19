@@ -6,6 +6,7 @@ import { renderProportionChart } from './charts.js';
 import { updateInsightComment, setupInsightBubbleClick, getCurrentCharacter, getInsightCharacters } from './insight.js';
 import { getWeekRange, getCurrentWeekInMonth, getWeeksInMonth, formatDateWithDay } from './date-utils.js';
 import { renderBestMeals } from './best-share.js';
+import { toLocalDateString } from '../utils.js';
 
 export function getDashboardData() {
     const state = appState;
@@ -32,16 +33,22 @@ export function getDashboardData() {
         const [y, m] = state.selectedMonth.split('-').map(Number);
         startDate = new Date(y, m - 1, 1);
         endDate = new Date(y, m, 0);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
         label = `${y}년 ${m}월`;
     } else if (state.dashboardMode === 'week') {
         const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
-        startDate = start;
-        endDate = end;
+        startDate = new Date(start);
+        endDate = new Date(end);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
         label = `${state.selectedYear}년 ${state.selectedMonthForWeek}월 ${state.selectedWeek}주`;
     } else if (state.dashboardMode === 'year') {
         const year = state.selectedYearForYear || today.getFullYear();
         startDate = new Date(year, 0, 1);
         endDate = new Date(year, 11, 31);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
         label = `${year}년`;
     } else if (state.dashboardMode === 'custom') {
         startDate = new Date(state.customStartDate);
@@ -51,8 +58,8 @@ export function getDashboardData() {
         label = `${startDate.toLocaleDateString('ko-KR')} ~ ${endDate.toLocaleDateString('ko-KR')}`;
     }
     
-    const startStr = startDate.toISOString().split('T')[0];
-    const endStr = endDate.toISOString().split('T')[0];
+    const startStr = toLocalDateString(startDate);
+    const endStr = toLocalDateString(endDate);
     const filteredData = window.mealHistory.filter(m => m.date >= startStr && m.date <= endStr);
     const daysDiff = Math.max(1, Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1);
     
@@ -84,14 +91,14 @@ export async function updateDashboard() {
                 await loadMealsForDateRange(monthStart, monthEnd);
             }
         } else if (state.dashboardMode === 'custom') {
-            const startStr = state.customStartDate.toISOString().split('T')[0];
-            const endStr = state.customEndDate.toISOString().split('T')[0];
+            const startStr = toLocalDateString(state.customStartDate);
+            const endStr = toLocalDateString(state.customEndDate);
             await loadMealsForDateRange(startStr, endStr);
         } else if (state.dashboardMode === 'week') {
             // 주간 모드: 선택한 주의 데이터 확인
             const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
-            const startStr = start.toISOString().split('T')[0];
-            const endStr = end.toISOString().split('T')[0];
+            const startStr = toLocalDateString(start);
+            const endStr = toLocalDateString(end);
             const oneMonthAgo = new Date();
             oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
             
@@ -334,7 +341,9 @@ export function setDashboardMode(m) {
         appState.selectedWeek = getCurrentWeekInMonth(today.getFullYear(), today.getMonth() + 1);
     } else if (m === 'month') {
         const today = new Date();
-        appState.selectedMonth = today.toISOString().slice(0, 7);
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        appState.selectedMonth = `${year}-${month}`;
     } else if (m === 'year') {
         const today = new Date();
         appState.selectedYearForYear = today.getFullYear();

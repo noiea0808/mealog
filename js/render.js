@@ -367,9 +367,35 @@ export function renderTimeline() {
     }
     
     sortedTargetDates.forEach(dateStr => {
+        // 일간보기 모드에서는 기존 섹션이 있어도 공유 버튼만 업데이트
+        const existingSection = document.getElementById(`date-${dateStr}`);
+        if (existingSection && state.viewMode === 'page') {
+            // 공유 버튼만 업데이트
+            const headerEl = existingSection.querySelector('.date-section-header');
+            if (headerEl) {
+                const dailyShare = window.sharedPhotos && Array.isArray(window.sharedPhotos) 
+                    ? window.sharedPhotos.find(photo => 
+                        photo.type === 'daily' && 
+                        photo.date === dateStr && 
+                        photo.userId === window.currentUser?.uid
+                    )
+                    : null;
+                const isShared = !!dailyShare;
+                
+                const shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-emerald-600 text-white' : 'text-emerald-600'}">
+                    <i class="fa-solid fa-share text-[10px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
+                </button>`;
+                
+                const h3El = headerEl.querySelector('h3');
+                if (h3El) {
+                    headerEl.innerHTML = h3El.outerHTML + shareButton;
+                }
+            }
+            return;
+        }
+        
         // 이미 로드된 날짜이거나 DOM에 이미 존재하는 경우 건너뛰기
         if (window.loadedDates.includes(dateStr)) return;
-        const existingSection = document.getElementById(`date-${dateStr}`);
         if (existingSection) return;
         
         window.loadedDates.push(dateStr);
@@ -641,7 +667,8 @@ export function renderMiniCalendar() {
 // 좋아요/북마크/댓글 데이터 로드 함수
 async function loadPostInteractions(container, sortedGroups) {
     if (!window.postInteractions) {
-        console.log('loadPostInteractions: postInteractions 없음');
+        // 디버그 로그 제거
+        // console.log('loadPostInteractions: postInteractions 없음');
         return;
     }
     
@@ -651,14 +678,16 @@ async function loadPostInteractions(container, sortedGroups) {
     const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
     
     if (posts.length === 0) {
-        console.log('loadPostInteractions: 포스트 없음');
+        // 디버그 로그 제거
+        // console.log('loadPostInteractions: 포스트 없음');
         return;
     }
     
     posts.forEach((postEl) => {
         const postId = postEl.getAttribute('data-post-id');
         if (!postId) {
-            console.warn('loadPostInteractions: postId 없음', postEl);
+            // 경고 로그는 유지 (실제 문제일 수 있음)
+            // console.warn('loadPostInteractions: postId 없음', postEl);
             return;
         }
         
@@ -699,15 +728,16 @@ async function loadPostInteractions(container, sortedGroups) {
             } else {
                 [likes, comments] = results;
             }
-            console.log(`포스트 ${postId} 데이터 로드 완료:`, { 
-                isLoggedIn,
-                isLiked, 
-                isBookmarked, 
-                likesCount: likes?.length || 0, 
-                commentsCount: comments?.length || 0,
-                likes: likes,
-                comments: comments
-            });
+            // 디버그 로그 제거 (필요시 주석 해제)
+            // console.log(`포스트 ${postId} 데이터 로드 완료:`, { 
+            //     isLoggedIn,
+            //     isLiked, 
+            //     isBookmarked, 
+            //     likesCount: likes?.length || 0, 
+            //     commentsCount: comments?.length || 0,
+            //     likes: likes,
+            //     comments: comments
+            // });
             
             // 로그인한 사용자만 좋아요/북마크 버튼 상태 업데이트
             if (isLoggedIn) {
@@ -743,20 +773,24 @@ async function loadPostInteractions(container, sortedGroups) {
             if (likeCountEl) {
                 const likeCount = likes && Array.isArray(likes) ? likes.length : 0;
                 likeCountEl.textContent = likeCount > 0 ? likeCount : '';
-                console.log(`좋아요 수 업데이트 (postId: ${postId}):`, likeCount);
-            } else {
-                console.warn(`좋아요 수 요소 없음 (postId: ${postId})`);
+                // 디버그 로그 제거 (필요시 주석 해제)
+                // console.log(`좋아요 수 업데이트 (postId: ${postId}):`, likeCount);
             }
+            // else {
+            //     console.warn(`좋아요 수 요소 없음 (postId: ${postId})`);
+            // }
             
             // 댓글 수 업데이트
             const commentCountEl = postEl.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
             if (commentCountEl) {
                 const commentCount = comments && Array.isArray(comments) ? comments.length : 0;
                 commentCountEl.textContent = commentCount > 0 ? commentCount : '';
-                console.log(`댓글 수 업데이트 (postId: ${postId}):`, commentCount);
-            } else {
-                console.warn(`댓글 수 요소 없음 (postId: ${postId})`);
+                // 디버그 로그 제거 (필요시 주석 해제)
+                // console.log(`댓글 수 업데이트 (postId: ${postId}):`, commentCount);
             }
+            // else {
+            //     console.warn(`댓글 수 요소 없음 (postId: ${postId})`);
+            // }
             
             // 댓글 표시 (최대 2개)
             const commentsListEl = postEl.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
@@ -806,19 +840,80 @@ async function loadPostInteractions(container, sortedGroups) {
     await Promise.allSettled(postPromises);
 }
 
-export function renderGallery() {
+// 사용자 설정 가져오기 헬퍼 함수
+async function getUserSettings(userId) {
+    try {
+        const { db, appId } = await import('./firebase.js');
+        const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+        const settingsDoc = doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings');
+        const settingsSnap = await getDoc(settingsDoc);
+        if (settingsSnap.exists()) {
+            return settingsSnap.data();
+        }
+    } catch (e) {
+        console.warn('사용자 설정 가져오기 실패:', e);
+    }
+    return null;
+}
+
+export async function renderGallery() {
     const container = document.getElementById('galleryContainer');
     if (!container) return;
     if (!window.sharedPhotos) {
         window.sharedPhotos = [];
     }
     
-    if (window.sharedPhotos.length === 0) {
-        container.innerHTML = `
+    // 사용자 필터링 적용
+    const filterUserId = appState.galleryFilterUserId;
+    let photosToRender = window.sharedPhotos;
+    
+    if (filterUserId) {
+        photosToRender = window.sharedPhotos.filter(photo => photo.userId === filterUserId);
+    }
+    
+    // 디버깅: 일간보기 공유 확인
+    const dailyShares = photosToRender.filter(p => p.type === 'daily');
+    console.log('renderGallery - 일간보기 공유 개수:', dailyShares.length, dailyShares);
+    
+    // 필터링된 사용자 정보 표시 (상단)
+    let userProfileHeader = '';
+    if (filterUserId && photosToRender.length > 0) {
+        // 필터링된 사용자의 프로필 정보 가져오기
+        const filteredUserPhoto = photosToRender[0];
+        if (filteredUserPhoto) {
+            const userSettings = await getUserSettings(filterUserId);
+            const bio = userSettings?.profile?.bio || '';
+            userProfileHeader = `
+                <div class="bg-white border-b border-slate-200 sticky top-[58px] z-30">
+                    <div class="px-6 py-4 flex items-center gap-4">
+                        <button onclick="window.clearGalleryFilter()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
+                            <i class="fa-solid fa-arrow-left text-lg"></i>
+                        </button>
+                        <div class="flex items-center gap-3 flex-1">
+                            ${filteredUserPhoto.userPhotoUrl ? `
+                                <div class="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden" style="background-image: url(${filteredUserPhoto.userPhotoUrl}); background-size: cover; background-position: center;"></div>
+                            ` : `
+                                <div class="w-12 h-12 bg-slate-200 rounded-full flex items-center justify-center text-2xl flex-shrink-0">
+                                    ${filteredUserPhoto.userIcon || '🐻'}
+                                </div>
+                            `}
+                            <div class="flex-1 min-w-0">
+                                <div class="text-base font-bold text-slate-800">${filteredUserPhoto.userNickname || '익명'}</div>
+                                ${bio ? `<div class="text-sm text-slate-600 mt-1 whitespace-pre-wrap">${escapeHtml(bio)}</div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    }
+    
+    if (photosToRender.length === 0) {
+        container.innerHTML = userProfileHeader + `
             <div class="flex flex-col items-center justify-center py-20 text-center">
                 <i class="fa-solid fa-images text-6xl text-slate-200 mb-4"></i>
-                <p class="text-sm font-bold text-slate-400">공유된 사진이 없습니다</p>
-                <p class="text-xs text-slate-300 mt-2">타임라인에서 사진을 공유해보세요!</p>
+                <p class="text-sm font-bold text-slate-400">${filterUserId ? '이 사용자의 공유된 사진이 없습니다' : '공유된 사진이 없습니다'}</p>
+                ${!filterUserId ? '<p class="text-xs text-slate-300 mt-2">타임라인에서 사진을 공유해보세요!</p>' : ''}
             </div>
         `;
         // 빈 갤러리일 때도 맨 위로 스크롤
@@ -830,7 +925,7 @@ export function renderGallery() {
     
     // 중복 제거: 같은 photoUrl과 entryId 조합은 하나만 표시
     const seen = new Set();
-    const uniquePhotos = window.sharedPhotos.filter(photo => {
+    const uniquePhotos = photosToRender.filter(photo => {
         const key = `${photo.photoUrl}_${photo.entryId || 'no-entry'}_${photo.userId}`;
         if (seen.has(key)) {
             return false;
@@ -841,11 +936,20 @@ export function renderGallery() {
     
     // entryId와 userId로 그룹화 (같은 기록의 사진들을 묶음)
     // 중요: 하나의 게시물(entryId)은 앨범에 한 번만 표시되어야 하므로, entryId와 userId만 사용
+    // 일간보기 공유(type: 'daily')는 date와 userId로 그룹화
     const groupedPhotos = {};
     uniquePhotos.forEach(photo => {
-        // entryId가 있는 경우: entryId_userId로 그룹화 (date, slotId는 그룹 키에서 제외)
-        // entryId가 없는 경우: no-entry_userId로 그룹화
-        const groupKey = `${photo.entryId || 'no-entry'}_${photo.userId}`;
+        let groupKey;
+        if (photo.type === 'daily') {
+            // 일간보기 공유: date_userId로 그룹화 (같은 날짜의 일간보기 공유는 하나로 묶음)
+            groupKey = `daily_${photo.date || 'no-date'}_${photo.userId}`;
+        } else if (photo.entryId) {
+            // entryId가 있는 경우: entryId_userId로 그룹화
+            groupKey = `${photo.entryId}_${photo.userId}`;
+        } else {
+            // entryId가 없는 경우: no-entry_userId로 그룹화
+            groupKey = `no-entry_${photo.userId}`;
+        }
         if (!groupedPhotos[groupKey]) {
             groupedPhotos[groupKey] = [];
         }
@@ -900,7 +1004,7 @@ export function renderGallery() {
         return timeB - timeA; // 최신순
     });
     
-    container.innerHTML = sortedGroups.map((photoGroup, groupIdx) => {
+    container.innerHTML = userProfileHeader + sortedGroups.map((photoGroup, groupIdx) => {
         const photo = photoGroup[0]; // 첫 번째 사진의 정보 사용
         const photoCount = photoGroup.length;
         
@@ -973,10 +1077,9 @@ export function renderGallery() {
         
         let caption = '';
         if (isBestShare) {
-            // 베스트 공유인 경우: periodText와 comment 표시
-            caption = photo.periodText || '';
+            // 베스트 공유인 경우: comment만 표시
             if (photo.comment) {
-                caption = caption ? `${caption} - ${photo.comment}` : photo.comment;
+                caption = photo.comment;
             }
         } else if (isDailyShare) {
             // 일간보기 공유인 경우: 날짜 표시
@@ -1014,16 +1117,21 @@ export function renderGallery() {
             const isBest = p.type === 'best';
             const isDaily = p.type === 'daily';
             return `
-            <div class="flex-shrink-0 w-full snap-start">
-                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" class="w-full h-auto object-cover" ${(isBest || isDaily) ? '' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
+            <div class="flex-shrink-0 w-full snap-start ${(isBest || isDaily) ? 'bg-white' : ''}">
+                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" class="w-full h-auto ${(isBest || isDaily) ? 'object-contain' : 'object-cover'}" ${(isBest || isDaily) ? '' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
             </div>
         `;
         }).join('');
         
         // 포스트 ID 생성 (그룹의 고유 키 기반 - 안정적인 ID 생성)
         // 같은 그룹은 항상 같은 포스트 ID를 가져야 하므로, 그룹의 첫 번째 사진 ID를 사용하거나 groupKey 기반 해시 생성
-        // 중요: 그룹 키와 일치해야 하므로 entryId_userId만 사용
-        const groupKey = `${photo.entryId || 'no-entry'}_${photo.userId || 'unknown'}`;
+        // 중요: 그룹 키와 일치해야 함 (일간보기 공유는 date_userId, 일반 공유는 entryId_userId)
+        let groupKey;
+        if (isDailyShare) {
+            groupKey = `daily_${photo.date || 'no-date'}_${photo.userId || 'unknown'}`;
+        } else {
+            groupKey = `${photo.entryId || 'no-entry'}_${photo.userId || 'unknown'}`;
+        }
         // 그룹의 첫 번째 사진 ID를 우선 사용
         let postId = photoGroup[0]?.id || photo.id || null;
         if (!postId || postId === 'undefined' || postId === 'null') {
@@ -1041,21 +1149,25 @@ export function renderGallery() {
         return `
             <div class="mb-2 bg-white border-b border-slate-200 instagram-post" data-post-id="${postId}" data-group-key="${groupKey}">
                 <div class="px-6 py-3 flex items-center gap-2 relative">
-                    <div class="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center text-lg flex-shrink-0">
-                        ${photo.userIcon || '🐻'}
-                    </div>
-                    <div class="flex-1 min-w-0 flex items-center gap-2">
-                        <div class="text-sm font-bold text-slate-800 truncate">${photo.userNickname || '익명'}</div>
-                        <div class="text-xs text-slate-400">${dateStr}</div>
-                        ${mealLabel ? `<div class="text-[10px] font-bold ${mealLabelStyle || 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-full whitespace-nowrap">${mealLabel}</div>` : ''}
-                    </div>
-                    ${isMyPost ? `
-                        <div class="relative">
-                            <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-is-best="${isBestShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-photo-slot-id="${photo.slotId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
-                                <i class="fa-solid fa-ellipsis text-lg"></i>
-                            </button>
+                    ${photo.userPhotoUrl ? `
+                        <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden" style="background-image: url(${photo.userPhotoUrl}); background-size: cover; background-position: center;"></div>
+                    ` : `
+                        <div class="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0">
+                            ${photo.userIcon || '🐻'}
                         </div>
-                    ` : ''}
+                    `}
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm font-bold text-slate-800 cursor-pointer hover:text-emerald-600 transition-colors" onclick="window.filterGalleryByUser('${photo.userId}', '${escapeHtml(photo.userNickname || '익명')}')">${photo.userNickname || '익명'}</div>
+                        <div class="flex items-center gap-2">
+                            <div class="text-xs text-slate-400">${dateStr}</div>
+                            ${mealLabel ? `<div class="text-[10px] font-bold ${mealLabelStyle || 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-full whitespace-nowrap">${mealLabel}</div>` : ''}
+                        </div>
+                    </div>
+                    <div class="relative">
+                        <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
+                            <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="relative overflow-hidden bg-slate-100">
                     <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
@@ -1086,8 +1198,8 @@ export function renderGallery() {
                     </div>
                     <!-- 캡션 -->
                     ${caption ? `<div class="mb-2 text-sm text-slate-800">${caption}</div>` : ''}
-                    <!-- 기존 코멘트 (원글) -->
-                    ${comment ? (() => {
+                    <!-- 기존 코멘트 (원글) - 베스트 공유는 제외 (이미 caption에 표시됨) -->
+                    ${comment && !isBestShare ? (() => {
                         // comment의 줄바꿈 개수 확인
                         const lineBreaks = (comment.match(/\n/g) || []).length;
                         // 대략적인 텍스트 길이로도 확인 (한 줄에 약 30자 정도로 가정)
@@ -1178,7 +1290,10 @@ export function renderGallery() {
                     const isBestShare = btn.getAttribute('data-is-best') === 'true';
                     const photoDate = btn.getAttribute('data-photo-date') || '';
                     const photoSlotId = btn.getAttribute('data-photo-slot-id') || '';
-                    window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId);
+                    const isDailyShare = btn.getAttribute('data-is-daily') === 'true';
+                    const postId = btn.getAttribute('data-post-id') || '';
+                    const authorUserId = btn.getAttribute('data-author-user-id') || '';
+                    window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId);
                 });
                 btn.setAttribute('data-listener-added', 'true');
             } else {
@@ -1192,7 +1307,10 @@ export function renderGallery() {
                             const isBestShare = btn.getAttribute('data-is-best') === 'true';
                             const photoDate = btn.getAttribute('data-photo-date') || '';
                             const photoSlotId = btn.getAttribute('data-photo-slot-id') || '';
-                            window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId);
+                            const isDailyShare = btn.getAttribute('data-is-daily') === 'true';
+                            const postId = btn.getAttribute('data-post-id') || '';
+                            const authorUserId = btn.getAttribute('data-author-user-id') || '';
+                            window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId);
                         });
                         btn.setAttribute('data-listener-added', 'true');
                     }
@@ -1256,6 +1374,18 @@ export function renderGallery() {
     }, 100);
 }
 
+// 갤러리 사용자 필터링 함수
+export function filterGalleryByUser(userId, userNickname) {
+    appState.galleryFilterUserId = userId;
+    renderGallery();
+}
+
+// 갤러리 필터링 해제 함수
+export function clearGalleryFilter() {
+    appState.galleryFilterUserId = null;
+    renderGallery();
+}
+
 export function renderFeed() {
     const container = document.getElementById('feedContent');
     if (!container) return;
@@ -1276,7 +1406,7 @@ export function renderFeed() {
     
     // 중복 제거: 같은 photoUrl과 entryId 조합은 하나만 표시
     const seen = new Set();
-    const uniquePhotos = window.sharedPhotos.filter(photo => {
+    const uniquePhotos = photosToRender.filter(photo => {
         const key = `${photo.photoUrl}_${photo.entryId || 'no-entry'}_${photo.userId}`;
         if (seen.has(key)) {
             return false;
@@ -1287,11 +1417,20 @@ export function renderFeed() {
     
     // entryId와 userId로 그룹화 (같은 기록의 사진들을 묶음)
     // 중요: 하나의 게시물(entryId)은 앨범에 한 번만 표시되어야 하므로, entryId와 userId만 사용
+    // 일간보기 공유(type: 'daily')는 date와 userId로 그룹화
     const groupedPhotos = {};
     uniquePhotos.forEach(photo => {
-        // entryId가 있는 경우: entryId_userId로 그룹화 (date, slotId는 그룹 키에서 제외)
-        // entryId가 없는 경우: no-entry_userId로 그룹화
-        const groupKey = `${photo.entryId || 'no-entry'}_${photo.userId}`;
+        let groupKey;
+        if (photo.type === 'daily') {
+            // 일간보기 공유: date_userId로 그룹화 (같은 날짜의 일간보기 공유는 하나로 묶음)
+            groupKey = `daily_${photo.date || 'no-date'}_${photo.userId}`;
+        } else if (photo.entryId) {
+            // entryId가 있는 경우: entryId_userId로 그룹화
+            groupKey = `${photo.entryId}_${photo.userId}`;
+        } else {
+            // entryId가 없는 경우: no-entry_userId로 그룹화
+            groupKey = `no-entry_${photo.userId}`;
+        }
         if (!groupedPhotos[groupKey]) {
             groupedPhotos[groupKey] = [];
         }
@@ -1424,10 +1563,9 @@ export function renderFeed() {
         
         let caption = '';
         if (isBestShare) {
-            // 베스트 공유인 경우: periodText와 comment 표시
-            caption = photo.periodText || '';
+            // 베스트 공유인 경우: comment만 표시
             if (photo.comment) {
-                caption = caption ? `${caption} - ${photo.comment}` : photo.comment;
+                caption = photo.comment;
             }
         } else if (isDailyShare) {
             // 일간보기 공유인 경우: 날짜 표시
@@ -1466,8 +1604,8 @@ export function renderFeed() {
             const isDaily = p.type === 'daily';
             const photoBanned = p.banned === true;
             return `
-            <div class="flex-shrink-0 w-full snap-start relative">
-                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" class="w-full h-auto object-cover ${photoBanned ? 'opacity-50' : ''}" ${(isBest || isDaily) ? '' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
+            <div class="flex-shrink-0 w-full snap-start relative ${(isBest || isDaily) ? 'bg-white' : ''}">
+                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" class="w-full h-auto ${(isBest || isDaily) ? 'object-contain' : 'object-cover'} ${photoBanned ? 'opacity-50' : ''}" ${(isBest || isDaily) ? '' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
                 ${photoBanned ? `
                     <div class="absolute inset-0 bg-orange-500/20 flex items-center justify-center">
                         <div class="bg-orange-600 text-white px-3 py-1.5 rounded-lg">
@@ -1482,22 +1620,26 @@ export function renderFeed() {
         return `
             <div class="mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden">
                 <div class="px-4 py-3 flex items-center gap-2 relative">
-                    <div class="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center text-lg flex-shrink-0">
-                        ${photo.userIcon || '🐻'}
-                    </div>
-                    <div class="flex-1 min-w-0 flex items-center gap-2">
-                        <div class="text-sm font-bold text-slate-800 truncate">${photo.userNickname || '익명'}</div>
-                        <div class="text-xs text-slate-400">${dateStr}</div>
-                        ${mealLabel ? `<div class="text-[10px] font-bold ${mealLabelStyle || 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-full whitespace-nowrap">${mealLabel}</div>` : ''}
-                        ${isBanned ? `<div class="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full whitespace-nowrap"><i class="fa-solid fa-ban mr-1"></i>공유 금지</div>` : ''}
-                    </div>
-                    ${isMyPost ? `
-                        <div class="relative">
-                            <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-is-best="${isBestShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-photo-slot-id="${photo.slotId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
-                                <i class="fa-solid fa-ellipsis text-lg"></i>
-                            </button>
+                    ${photo.userPhotoUrl ? `
+                        <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden" style="background-image: url(${photo.userPhotoUrl}); background-size: cover; background-position: center;"></div>
+                    ` : `
+                        <div class="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0">
+                            ${photo.userIcon || '🐻'}
                         </div>
-                    ` : ''}
+                    `}
+                    <div class="flex-1 min-w-0 mr-2">
+                        <div class="text-sm font-bold text-slate-800">${photo.userNickname || '익명'}</div>
+                        <div class="flex items-center gap-1 flex-wrap">
+                            <span class="text-xs text-slate-400">${dateStr}</span>
+                            ${mealLabel ? `<span class="text-[10px] font-bold ${mealLabelStyle || 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-full whitespace-nowrap ml-1">${mealLabel}</span>` : ''}
+                        </div>
+                    </div>
+                    ${isBanned ? `<div class="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0"><i class="fa-solid fa-ban mr-1"></i>공유 금지</div>` : ''}
+                    <div class="relative flex-shrink-0">
+                        <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${photo.id || photoGroup[0]?.id || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
+                            <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="relative overflow-hidden bg-slate-100">
                     <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
@@ -1510,7 +1652,7 @@ export function renderFeed() {
                     ` : ''}
                 </div>
                 ${caption ? `<div class="px-4 py-2 text-sm font-bold text-slate-800">${caption}</div>` : ''}
-                ${comment ? (() => {
+                ${comment && !isBestShare ? (() => {
                     // comment의 줄바꿈 개수 확인
                     const lineBreaks = (comment.match(/\n/g) || []).length;
                     // 대략적인 텍스트 길이로도 확인 (한 줄에 약 30자 정도로 가정)
@@ -1576,7 +1718,10 @@ export function renderFeed() {
                     const isBestShare = btn.getAttribute('data-is-best') === 'true';
                     const photoDate = btn.getAttribute('data-photo-date') || '';
                     const photoSlotId = btn.getAttribute('data-photo-slot-id') || '';
-                    window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId);
+                    const isDailyShare = btn.getAttribute('data-is-daily') === 'true';
+                    const postId = btn.getAttribute('data-post-id') || '';
+                    const authorUserId = btn.getAttribute('data-author-user-id') || '';
+                    window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId);
                 });
                 btn.setAttribute('data-listener-added', 'true');
             } else {
@@ -1590,7 +1735,10 @@ export function renderFeed() {
                             const isBestShare = btn.getAttribute('data-is-best') === 'true';
                             const photoDate = btn.getAttribute('data-photo-date') || '';
                             const photoSlotId = btn.getAttribute('data-photo-slot-id') || '';
-                            window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId);
+                            const isDailyShare = btn.getAttribute('data-is-daily') === 'true';
+                            const postId = btn.getAttribute('data-post-id') || '';
+                            const authorUserId = btn.getAttribute('data-author-user-id') || '';
+                            window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId);
                         });
                         btn.setAttribute('data-listener-added', 'true');
                     }
@@ -2096,7 +2244,7 @@ export async function renderBoardDetail(postId) {
                 </div>
                 
                 <!-- 추천/비추천 버튼 -->
-                <div class="flex items-center gap-4 pt-4 border-t border-slate-200">
+                <div class="flex items-center gap-4 pt-4 border-t border-slate-200 flex-wrap">
                     <button onclick="window.toggleBoardLike('${postId}', true)" class="flex items-center gap-2 px-4 py-2 ${userReaction === 'like' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'} rounded-lg text-sm font-bold active:scale-95 transition-all" ${!window.currentUser ? 'disabled' : ''}>
                         <i class="fa-solid fa-thumbs-up"></i>
                         <span>추천</span>
@@ -2114,6 +2262,13 @@ export async function renderBoardDetail(postId) {
                             </button>
                             <button onclick="window.deleteBoardPost('${postId}')" class="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-bold active:scale-95 transition-all">
                                 <i class="fa-solid fa-trash text-xs mr-1"></i>삭제
+                            </button>
+                        </div>
+                    ` : ''}
+                    ${!isAuthor && window.currentUser ? `
+                        <div class="ml-auto">
+                            <button type="button" onclick="window.showReportModal && window.showReportModal('board_${postId}')" class="flex items-center gap-1 text-[10px] text-slate-400 hover:text-amber-600 px-2 py-1 rounded active:opacity-70 transition-colors" title="신고">
+                                <i class="fa-solid fa-flag"></i><span>신고</span>
                             </button>
                         </div>
                     ` : ''}
@@ -2188,9 +2343,14 @@ export async function renderBoardDetail(postId) {
 
 export function createDailyShareCard(dateStr) {
     const dObj = new Date(dateStr + 'T00:00:00');
-    const dayOfWeek = dObj.getDay();
-    let dayColorClass = (dayOfWeek === 0 || dayOfWeek === 6) ? "text-rose-400" : "text-slate-800";
-    const dateLabel = dObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+    const year = dObj.getFullYear();
+    const month = dObj.getMonth() + 1;
+    const day = dObj.getDate();
+    
+    // 사용자 정보 가져오기
+    const userProfile = window.userSettings?.profile || {};
+    const userNickname = userProfile.nickname || '익명';
+    const userIcon = userProfile.icon || '🐻';
     
     // 기존 컨테이너 제거
     const existing = document.getElementById('dailyShareCardContainer');
@@ -2202,51 +2362,120 @@ export function createDailyShareCard(dateStr) {
     container.style.position = 'fixed';
     container.style.left = '-9999px';
     container.style.top = '0';
-    container.style.width = '400px';
+    container.style.width = '375px'; // 모바일 기준 너비
+    container.style.maxWidth = '375px';
     container.style.backgroundColor = '#ffffff';
-    container.style.padding = '24px';
+    container.style.padding = '0';
     container.style.fontFamily = 'Pretendard, sans-serif';
     
     let html = `
-        <div style="max-width: 400px; margin: 0 auto;">
-            <!-- 날짜 헤더 -->
-            <div style="display: flex; justify-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #e2e8f0;">
-                <h3 style="font-size: 16px; font-weight: 900; color: ${dayOfWeek === 0 || dayOfWeek === 6 ? '#fb7185' : '#1e293b'}; margin: 0;">${dateLabel}</h3>
+        <div style="width: 375px; max-width: 375px; margin: 0 auto; background: #ffffff;">
+            <!-- 헤더 (파란색 배경) -->
+            <div style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); padding: 8px 16px; color: #ffffff; display: flex; align-items: center;">
+                <div style="font-size: 16px; font-weight: 900; display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex: 1; justify-content: center;">
+                        <span style="font-size: 20px;">${userIcon}</span>
+                        <span>${escapeHtml(userNickname)}의 하루기록</span>
+                    </div>
+                    <span style="font-size: 12px; font-weight: 600; opacity: 0.95; flex-shrink: 0;">${year}년 ${month}월 ${day}일</span>
+                </div>
             </div>
+            
+            <!-- 본문 -->
+            <div style="padding: 0;">
     `;
     
-    // 식사 카드들 (컴팩트 버전)
+    // 타임라인처럼 모든 슬롯을 순서대로 표시 (간식 포함)
     SLOTS.forEach(slot => {
+        const records = window.mealHistory.filter(m => m.date === dateStr && m.slotId === slot.id);
+        
         if (slot.type === 'main') {
-            const records = window.mealHistory.filter(m => m.date === dateStr && m.slotId === slot.id);
+            // 메인 식사 (아침/점심/저녁)
             const r = records[0];
             const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
             
+            let containerStyle = 'border: 1px solid #e2e8f0; margin-bottom: 0;';
+            let iconTextColor = specificStyle.iconText.includes('orange') ? '#f97316' : specificStyle.iconText.includes('emerald') ? '#10b981' : specificStyle.iconText.includes('indigo') ? '#6366f1' : '#64748b';
+            
+            let titleLine1 = '';
+            let titleLine2 = '';
+            let iconHtml = '';
+            let iconBoxStyle = '';
+            
             if (r) {
-                const p = r.place || '';
-                const m = r.menuDetail || r.category || '';
-                const title = (p && m) ? `${p} | ${m}` : (p || m || r.mealType || '');
-                
-                let photoHtml = '';
-                if (r.photos && Array.isArray(r.photos) && r.photos[0]) {
-                    photoHtml = `<img src="${r.photos[0]}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px;" />`;
-                } else if (r.photos && !Array.isArray(r.photos)) {
-                    photoHtml = `<img src="${r.photos}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px;" />`;
+                if (r.mealType === 'Skip') {
+                    titleLine1 = 'Skip';
+                    iconBoxStyle = 'background: #f1f5f9; border-right: 1px solid #e2e8f0;';
+                    iconHtml = '<i class="fa-solid fa-ban" style="font-size: 24px; color: #94a3b8;"></i>';
                 } else {
-                    photoHtml = `<div style="width: 60px; height: 60px; background: #f1f5f9; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 24px;">
-                        🍽️
-                    </div>`;
+                    const p = r.place || '';
+                    const m = r.menuDetail || r.category || '';
+                    if (p) {
+                        titleLine1 = `<span style="font-size: 14px; font-weight: 900; color: ${iconTextColor};">${escapeHtml(slot.label)}</span> <span style="font-size: 12px; font-weight: 700; color: #94a3b8;">@ ${escapeHtml(p)}</span>`;
+                    } else {
+                        titleLine1 = `<span style="font-size: 14px; font-weight: 900; color: ${iconTextColor};">${escapeHtml(slot.label)}</span>`;
+                    }
+                    titleLine2 = escapeHtml(m || '');
+                    
+                    if (r.photos && Array.isArray(r.photos) && r.photos[0]) {
+                        iconBoxStyle = 'border-right: 1px solid #e2e8f0;';
+                        iconHtml = `<img src="${r.photos[0]}" style="width: 100%; height: 100%; object-fit: cover;" />`;
+                    } else if (r.photos && !Array.isArray(r.photos)) {
+                        iconBoxStyle = 'border-right: 1px solid #e2e8f0;';
+                        iconHtml = `<img src="${r.photos}" style="width: 100%; height: 100%; object-fit: cover;" />`;
+                    } else {
+                        iconBoxStyle = 'background: #f1f5f9; border-right: 1px solid #e2e8f0;';
+                        iconHtml = `<i class="fa-solid fa-utensils" style="font-size: 24px; color: ${iconTextColor};"></i>`;
+                    }
                 }
-                
-                html += `
-                    <div style="display: flex; gap: 12px; margin-bottom: 12px; padding: 12px; background: #f8fafc; border-radius: 12px;">
-                        ${photoHtml}
-                        <div style="flex: 1; min-width: 0;">
-                            <div style="display: flex; justify-between; align-items: center; margin-bottom: 4px;">
-                                <span style="font-size: 10px; font-weight: 900; color: ${specificStyle.iconText.includes('emerald') ? '#10b981' : specificStyle.iconText.includes('orange') ? '#f97316' : specificStyle.iconText.includes('blue') ? '#3b82f6' : '#64748b'}; text-transform: uppercase;">${slot.label}</span>
-                                ${r.rating ? `<span style="font-size: 12px; color: #d97706; font-weight: 900; background: #fef3c7; padding: 3px 6px; border-radius: 6px; display: inline-flex; align-items: center; gap: 2px;">★ <span style="font-weight: 900;">${r.rating}</span></span>` : ''}
+            } else {
+                titleLine1 = `<span style="font-size: 14px; font-weight: 900; color: ${iconTextColor};">${escapeHtml(slot.label)}</span>`;
+                titleLine2 = '<span style="font-size: 12px; color: #94a3b8;">기록하기</span>';
+                iconBoxStyle = 'background: #f1f5f9; border-right: 1px solid #e2e8f0;';
+                iconHtml = '<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 8px;"><span style="font-size: 32px; font-weight: 900; color: #cbd5e1; margin-bottom: 4px;">+</span><span style="font-size: 10px; color: #cbd5e1; line-height: 1.2;">입력해주세요</span></div>';
+            }
+            
+            html += `
+                <div style="${containerStyle} min-height: 140px;">
+                    <div style="display: flex;">
+                        <div style="width: 140px; min-height: 140px; ${iconBoxStyle} display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
+                            ${iconHtml}
+                        </div>
+                        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; padding: 16px;">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 2px;">
+                                <div style="flex: 1;">
+                                    <h4 style="line-height: 1.3; margin: 0; margin-bottom: 2px; font-size: 14px;">${titleLine1}</h4>
+                                    ${titleLine2 ? `<p style="font-size: 12px; font-weight: 700; color: #475569; margin: 0;">${titleLine2}</p>` : ''}
+                                </div>
+                                ${r && r.rating ? `<div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0; margin-left: 8px;">
+                                    <span style="font-size: 11px; font-weight: 900; color: #d97706; background: #fef3c7; padding: 3px 6px; border-radius: 6px; display: inline-flex; align-items: center; gap: 2px;">
+                                        <i class="fa-solid fa-star" style="font-size: 9px;"></i>
+                                        <span style="font-weight: 900;">${r.rating}</span>
+                                    </span>
+                                </div>` : ''}
                             </div>
-                            <div style="font-size: 13px; font-weight: 700; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(title)}</div>
+                            ${r && r.comment ? `<p style="font-size: 11px; color: #64748b; margin: 4px 0 0 0; line-height: 1.3; white-space: pre-wrap; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;">"${escapeHtml(r.comment)}"</p>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else {
+            // 간식 슬롯
+            if (records.length > 0) {
+                html += `
+                    <div style="display: flex; align-items: center; margin-bottom: 6px; padding: 4px 0;">
+                        <span style="font-size: 12px; font-weight: 900; color: #94a3b8; text-transform: uppercase; margin-right: 12px; flex-shrink: 0; padding: 0 16px;">${escapeHtml(slot.label)}</span>
+                        <div style="flex: 1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+                            ${records.map(r => `
+                                <div style="display: inline-flex; align-items: center; padding: 5px 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+                                    <span style="width: 6px; height: 6px; border-radius: 50%; background: #10b981; margin-right: 8px; flex-shrink: 0;"></span>
+                                    <span style="font-size: 12px; font-weight: 600; color: #1e293b;">${escapeHtml(r.menuDetail || r.snackType || '간식')}</span>
+                                    ${r.rating ? `<span style="font-size: 10px; font-weight: 900; color: #d97706; background: #fef3c7; padding: 2px 6px; border-radius: 4px; margin-left: 6px; display: inline-flex; align-items: center; gap: 2px;">
+                                        <i class="fa-solid fa-star" style="font-size: 9px;"></i>
+                                        ${r.rating}
+                                    </span>` : ''}
+                                </div>
+                            `).join('')}
                         </div>
                     </div>
                 `;
@@ -2254,42 +2483,8 @@ export function createDailyShareCard(dateStr) {
         }
     });
     
-    // 간식 요약
-    const snackRecords = window.mealHistory.filter(m => m.date === dateStr && SLOTS.find(s => s.id === m.slotId)?.type === 'snack');
-    if (snackRecords.length > 0) {
-        const snackList = snackRecords.map(r => r.menuDetail || r.snackType || '간식').join(', ');
-        html += `
-            <div style="margin-bottom: 12px; padding: 12px; background: #f0fdf4; border-radius: 12px; border-left: 3px solid #10b981;">
-                <div style="font-size: 10px; font-weight: 900; color: #059669; text-transform: uppercase; margin-bottom: 4px;">간식</div>
-                <div style="font-size: 12px; font-weight: 600; color: #1e293b;">${escapeHtml(snackList)}</div>
-            </div>
-        `;
-    }
-    
-    // 하루 소감
-    let dailyComment = '';
-    try {
-        if (window.dbOps && typeof window.dbOps.getDailyComment === 'function') {
-            dailyComment = window.dbOps.getDailyComment(dateStr) || '';
-        } else if (window.userSettings && window.userSettings.dailyComments) {
-            dailyComment = window.userSettings.dailyComments[dateStr] || '';
-        }
-    } catch (e) {
-        console.warn('getDailyComment 호출 실패:', e);
-    }
-    
-    if (dailyComment) {
-        // 3줄로 제한
-        const commentLines = dailyComment.split('\n').slice(0, 3).join('\n');
-        html += `
-            <div style="margin-bottom: 12px; padding: 12px; background: #f8fafc; border-radius: 12px; border-left: 3px solid #10b981;">
-                <div style="font-size: 10px; font-weight: 900; color: #64748b; text-transform: uppercase; margin-bottom: 6px;">하루 소감</div>
-                <div style="font-size: 12px; font-weight: 500; color: #475569; line-height: 1.5; white-space: pre-wrap; max-height: 60px; overflow: hidden;">${escapeHtml(commentLines)}</div>
-            </div>
-        `;
-    }
-    
     html += `
+            </div>
         </div>
     `;
     

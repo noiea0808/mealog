@@ -11,6 +11,115 @@ import { getDashboardData } from './analytics.js';
 // 설정 저장 디바운싱을 위한 타이머
 let settingsSaveTimeout = null;
 
+// 카카오 SDK 로드 함수
+function loadKakaoSDK() {
+    // 이미 로드 중이거나 로드 완료된 경우 스킵
+    if (window.kakaoSDKLoading || window.kakaoSDKLoaded) {
+        return Promise.resolve();
+    }
+    
+    // 이미 스크립트 태그가 있는지 확인
+    const existingScript = document.querySelector('script[src*="dapi.kakao.com"]');
+    if (existingScript) {
+        // 스크립트가 있으면 로드 완료를 기다림
+        return new Promise((resolve) => {
+            if (window.kakaoSDKLoaded) {
+                resolve();
+                return;
+            }
+            
+            // 최대 5초 대기
+            let attempts = 0;
+            const maxAttempts = 50;
+            const checkInterval = setInterval(() => {
+                attempts++;
+                if (window.kakaoSDKLoaded || typeof kakao !== 'undefined') {
+                    clearInterval(checkInterval);
+                    resolve();
+                } else if (attempts >= maxAttempts) {
+                    clearInterval(checkInterval);
+                    resolve(); // 타임아웃이어도 계속 진행
+                }
+            }, 100);
+        });
+    }
+    
+    // 로드 중 플래그 설정
+    window.kakaoSDKLoading = true;
+    
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.type = 'text/javascript';
+        // Mealog JavaScript 키: 42dce12f04991c35775f3ce1081a3c76
+        // 중요: JavaScript SDK는 반드시 JavaScript 키를 사용해야 함 (REST API 키 아님)
+        const appkey = '42dce12f04991c35775f3ce1081a3c76';
+        
+        // localhost는 HTTP 사용 (HTTPS는 인증서 문제로 실패할 수 있음)
+        // 실제 배포 환경에서는 HTTPS 사용 권장
+        const protocol = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http:' : 'https:';
+        const scriptUrl = protocol + '//dapi.kakao.com/v2/maps/sdk.js?appkey=' + appkey + '&libraries=services&autoload=false';
+        script.src = scriptUrl;
+        script.async = true;
+        
+        script.onload = function() {
+            // autoload=false를 사용했으므로 kakao.maps.load()를 명시적으로 호출해야 함
+            if (typeof kakao !== 'undefined' && kakao && kakao.maps && typeof kakao.maps.load === 'function') {
+                kakao.maps.load(function() {
+                    // kakao.maps.load() 콜백 내에서 services 라이브러리가 완전히 준비됨
+                    try {
+                        if (kakao.maps.services && typeof kakao.maps.services.Places !== 'undefined') {
+                            window.kakaoSDKLoaded = true;
+                            window.kakaoSDKLoading = false;
+                            console.log('✅ 카카오 SDK 로드 완료 (services 라이브러리 준비됨)');
+                            if (typeof window.onKakaoSDKLoaded === 'function') {
+                                window.onKakaoSDKLoaded();
+                            }
+                            resolve();
+                        } else {
+                            window.kakaoSDKLoaded = false;
+                            window.kakaoSDKLoading = false;
+                            console.warn('⚠️ 카카오 SDK 로드 후 services 라이브러리가 준비되지 않았습니다.');
+                            console.warn('   - kakao 객체 상태:', {
+                                defined: typeof kakao !== 'undefined',
+                                maps: typeof kakao?.maps,
+                                services: typeof kakao?.maps?.services
+                            });
+                            reject(new Error('카카오 SDK services 라이브러리 초기화 실패'));
+                        }
+                    } catch (e) {
+                        window.kakaoSDKLoaded = false;
+                        window.kakaoSDKLoading = false;
+                        console.error('❌ kakao.maps.load 콜백에서 에러:', e);
+                        reject(e);
+                    }
+                });
+            } else {
+                window.kakaoSDKLoaded = false;
+                window.kakaoSDKLoading = false;
+                console.error('❌ 카카오 SDK 스크립트는 로드되었지만 kakao.maps.load 함수를 찾을 수 없습니다.');
+                reject(new Error('카카오 SDK load 함수를 찾을 수 없음'));
+            }
+        };
+        
+        script.onerror = function(e) {
+            window.kakaoSDKLoaded = false;
+            window.kakaoSDKLoading = false;
+            console.error('❌ 카카오 지도 SDK 스크립트 로드 실패');
+            console.error('   - 스크립트 URL:', scriptUrl);
+            console.error('   - 현재 프로토콜:', window.location.protocol);
+            console.error('   - 현재 호스트:', window.location.host);
+            console.error('   - 가능한 원인:');
+            console.error('     1. 네트워크 연결 문제');
+            console.error('     2. 카카오 디벨로퍼스 플랫폼 도메인 미등록');
+            console.error('     3. JavaScript 키 오류 또는 카카오맵 사용 설정 OFF');
+            console.error('   - 브라우저 개발자 도구(F12) > Network 탭에서 스크립트 로드 상태 확인');
+            reject(new Error('카카오 SDK 스크립트 로드 실패: ' + scriptUrl));
+        };
+        
+        document.head.appendChild(script);
+    });
+}
+
 export function openModal(date, slotId, entryId = null) {
     try {
         const state = appState;
@@ -20,6 +129,11 @@ export function openModal(date, slotId, entryId = null) {
             console.error('openModal: 필수 파라미터가 없습니다.', { date, slotId });
             return;
         }
+        
+        // 카카오 SDK 로드 (비동기, 백그라운드에서 로드)
+        loadKakaoSDK().catch(err => {
+            console.warn('카카오 SDK 로드 실패 (무시):', err);
+        });
         
         state.currentEditingId = entryId;
         state.currentEditingDate = date;
@@ -55,10 +169,19 @@ export function openModal(date, slotId, entryId = null) {
             if (el) el.value = '';
         });
         
-        // 카카오 검색 버튼 초기화 (숨김)
+        // 카카오 검색 버튼 초기화 (숨김) 및 placeholder 초기화
         const kakaoSearchBtn = document.getElementById('kakaoSearchBtn');
+        const placeInput = document.getElementById('placeInput');
         if (kakaoSearchBtn) {
             kakaoSearchBtn.classList.add('hidden');
+        }
+        if (placeInput) {
+            placeInput.placeholder = '식당명이나 장소 (예: 스타벅스)';
+            // 이전 모달 사용에서 남은 카카오 장소 정보 제거 (카카오 미선택인데 잘못된 주소·카카오맵 분류로 들어가는 것 방지)
+            placeInput.removeAttribute('data-kakao-place-id');
+            placeInput.removeAttribute('data-kakao-place-address');
+            placeInput.removeAttribute('data-kakao-place-data');
+            placeInput.removeAttribute('data-kakao-place-name');
         }
         
         const mainPhotoContainer = document.getElementById('photoPreviewContainer');
@@ -152,6 +275,14 @@ export function openModal(date, slotId, entryId = null) {
                 // 공유 인디케이터 업데이트
                 updateShareIndicator();
                 setVal('placeInput', r.place || "");
+                // 수정 시 기존 기록에 카카오맵 정보가 있으면 placeInput에 복원 (저장 시 유지)
+                const _pi = document.getElementById('placeInput');
+                if (_pi && (r.placeId || r.placeAddress || r.placeData)) {
+                    if (r.placeId) _pi.setAttribute('data-kakao-place-id', r.placeId);
+                    _pi.setAttribute('data-kakao-place-address', (r.placeAddress != null && r.placeAddress !== undefined) ? String(r.placeAddress) : '');
+                    if (r.placeData && typeof r.placeData === 'object') _pi.setAttribute('data-kakao-place-data', JSON.stringify(r.placeData));
+                    _pi.setAttribute('data-kakao-place-name', (r.placeData && r.placeData.name) || r.place || '');
+                }
                 setVal('menuDetailInput', r.menuDetail || "");
                 setVal('withWhomInput', r.withWhomDetail || "");
                 setVal('snackDetailInput', r.menuDetail || "");
@@ -295,12 +426,16 @@ export function openModal(date, slotId, entryId = null) {
                     }, 100);
                 }
                 
-                // 외식 또는 회식/술자리 선택 시 카카오 검색 버튼 표시
+                // 외식 또는 회식/술자리 선택 시 카카오 검색 버튼 표시 및 placeholder 변경
                 if (r.mealType === '외식' || r.mealType === '회식/술자리') {
                     setTimeout(() => {
                         const kakaoSearchBtn = document.getElementById('kakaoSearchBtn');
+                        const placeInput = document.getElementById('placeInput');
                         if (kakaoSearchBtn) {
                             kakaoSearchBtn.classList.remove('hidden');
+                        }
+                        if (placeInput) {
+                            placeInput.placeholder = '돋보기 버튼을 선택하여 식당을 검색해보세요';
                         }
                     }, 200);
                 }
@@ -488,6 +623,16 @@ export async function saveEntry() {
         const existingRecord = state.currentEditingId ? window.mealHistory.find(m => m.id === state.currentEditingId) : null;
         const shareBanned = existingRecord?.shareBanned === true;
         
+        // 카카오맵 API로 입력된 식당 정보 확인
+        const placeInput = document.getElementById('placeInput');
+        const kakaoPlaceId = placeInput?.getAttribute('data-kakao-place-id');
+        const kakaoPlaceAddress = placeInput?.getAttribute('data-kakao-place-address');
+        const kakaoPlaceData = placeInput?.getAttribute('data-kakao-place-data');
+        const kakaoPlaceName = placeInput?.getAttribute('data-kakao-place-name') || '';
+        // 카카오에서 선택한 장소명을 수정한 경우: 주소·placeId를 저장하지 않음 (잘못된 주소 매칭 방지)
+        const nameMatches = !kakaoPlaceName || (String(placeInputVal || '').trim() === String(kakaoPlaceName).trim());
+        const shouldUseKakaoFields = kakaoPlaceId && !isSk && nameMatches;
+
         const record = {
             id: state.currentEditingId,
             date: state.currentEditingDate,
@@ -506,6 +651,21 @@ export async function saveEntry() {
             satiety: (isSk || isS) ? null : state.currentSatiety,
             time: new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' })
         };
+        
+        // 카카오맵 API로 입력된 식당인 경우 추가 정보 저장 (선택한 장소명을 수정한 경우는 제외 → 잘못된 주소 매칭 방지)
+        if (shouldUseKakaoFields) {
+            record.placeId = kakaoPlaceId;
+            record.kakaoPlaceId = kakaoPlaceId;
+            record.placeAddress = kakaoPlaceAddress || '';
+            if (kakaoPlaceData) {
+                try {
+                    record.placeData = JSON.parse(kakaoPlaceData);
+                } catch (e) {
+                    console.warn('카카오 장소 데이터 파싱 실패:', e);
+                }
+            }
+            record.kakaoPlace = true; // 카카오맵으로 입력된 식당임을 표시
+        }
         
         // shareBanned 필드 추가 (기존 값 유지)
         if (shareBanned) {
@@ -858,13 +1018,16 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
         const isSkip = (selectedValue === 'Skip' || selectedValue === '건너뜀');
         toggleFieldsForSkip(isSkip);
         
-        // 외식 또는 회식/술자리 선택 시 카카오 검색 버튼 표시
+        // 외식 또는 회식/술자리 선택 시 카카오 검색 버튼 표시 및 placeholder 변경
         const kakaoSearchBtn = document.getElementById('kakaoSearchBtn');
-        if (kakaoSearchBtn) {
+        const placeInput = document.getElementById('placeInput');
+        if (kakaoSearchBtn && placeInput) {
             if (selectedValue === '외식' || selectedValue === '회식/술자리') {
                 kakaoSearchBtn.classList.remove('hidden');
+                placeInput.placeholder = '돋보기 버튼을 선택하여 식당을 검색해보세요';
             } else {
                 kakaoSearchBtn.classList.add('hidden');
+                placeInput.placeholder = '식당명이나 장소 (예: 스타벅스)';
             }
         }
     }
@@ -1023,7 +1186,64 @@ export function openSettings() {
         ).join('');
     }
     
-    document.getElementById('settingNickname').value = state.tempSettings.profile.nickname;
+    // 프로필 타입 초기화
+    const profileType = state.tempSettings.profile.photoUrl ? 'photo' : 'emoji';
+    window.settingsProfileType = profileType;
+    
+    // 프로필 타입 버튼 초기화
+    const emojiBtn = document.getElementById('profileTypeEmoji');
+    const photoBtn = document.getElementById('profileTypePhoto');
+    const emojiSection = document.getElementById('emojiSection');
+    const photoSection = document.getElementById('photoSection');
+    
+    if (profileType === 'emoji') {
+        if (emojiBtn) {
+            emojiBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
+        }
+        if (photoBtn) {
+            photoBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
+        }
+        if (emojiSection) emojiSection.classList.remove('hidden');
+        if (photoSection) photoSection.classList.add('hidden');
+    } else {
+        if (emojiBtn) {
+            emojiBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
+        }
+        if (photoBtn) {
+            photoBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
+        }
+        if (emojiSection) emojiSection.classList.add('hidden');
+        if (photoSection) photoSection.classList.remove('hidden');
+    }
+    
+    // 사진 미리보기 설정
+    const photoPreview = document.getElementById('photoPreview');
+    if (photoPreview && state.tempSettings.profile.photoUrl) {
+        photoPreview.style.backgroundImage = `url(${state.tempSettings.profile.photoUrl})`;
+        photoPreview.style.backgroundSize = 'cover';
+        photoPreview.style.backgroundPosition = 'center';
+        photoPreview.innerHTML = '';
+    } else if (photoPreview) {
+        photoPreview.innerHTML = '<i class="fa-solid fa-camera text-slate-400 text-xl"></i>';
+        photoPreview.style.backgroundImage = '';
+    }
+    
+    document.getElementById('settingNickname').value = state.tempSettings.profile.nickname || '';
+    const bioInput = document.getElementById('settingBio');
+    if (bioInput) {
+        bioInput.value = state.tempSettings.profile.bio || '';
+        const bioCharCount = document.getElementById('bioCharCount');
+        if (bioCharCount) {
+            bioCharCount.textContent = (state.tempSettings.profile.bio || '').length;
+        }
+        // 글자 수 카운터 업데이트 이벤트
+        bioInput.addEventListener('input', function() {
+            const count = this.value.length;
+            if (bioCharCount) {
+                bioCharCount.textContent = count;
+            }
+        });
+    }
     
     // 자주 사용하는 태그 초기화 (없으면 빈 객체로)
     if (!state.tempSettings.favoriteSubTags) {
@@ -1166,7 +1386,7 @@ export function closeSettings() {
     document.getElementById('settingsPage').classList.add('hidden');
 }
 
-// 설정 페이지 탭 전환 함수
+// 설정 페이지 탭 전환 함수 (바 타입)
 export function switchSettingsTab(tab) {
     const profileTab = document.getElementById('settingsTabProfile');
     const tagsTab = document.getElementById('settingsTabTags');
@@ -1176,27 +1396,95 @@ export function switchSettingsTab(tab) {
     if (tab === 'profile') {
         // 프로필 탭 활성화
         if (profileTab) {
-            profileTab.classList.add('active', 'bg-emerald-600', 'text-white');
-            profileTab.classList.remove('bg-slate-100', 'text-slate-600');
+            profileTab.className = 'settings-tab active px-4 py-3 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
+            profileTab.innerHTML = '<i class="fa-solid fa-user mr-2"></i>프로필';
         }
         if (tagsTab) {
-            tagsTab.classList.remove('active', 'bg-emerald-600', 'text-white');
-            tagsTab.classList.add('bg-slate-100', 'text-slate-600');
+            tagsTab.className = 'settings-tab px-4 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors';
+            tagsTab.innerHTML = '<i class="fa-solid fa-tags mr-2"></i>태그 관리';
         }
         if (profileContent) profileContent.classList.remove('hidden');
         if (tagsContent) tagsContent.classList.add('hidden');
     } else if (tab === 'tags') {
         // 태그 관리 탭 활성화
         if (tagsTab) {
-            tagsTab.classList.add('active', 'bg-emerald-600', 'text-white');
-            tagsTab.classList.remove('bg-slate-100', 'text-slate-600');
+            tagsTab.className = 'settings-tab active px-4 py-3 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
+            tagsTab.innerHTML = '<i class="fa-solid fa-tags mr-2"></i>태그 관리';
         }
         if (profileTab) {
-            profileTab.classList.remove('active', 'bg-emerald-600', 'text-white');
-            profileTab.classList.add('bg-slate-100', 'text-slate-600');
+            profileTab.className = 'settings-tab px-4 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors';
+            profileTab.innerHTML = '<i class="fa-solid fa-user mr-2"></i>프로필';
         }
         if (tagsContent) tagsContent.classList.remove('hidden');
         if (profileContent) profileContent.classList.add('hidden');
+    }
+}
+
+// 설정 페이지 프로필 타입 설정
+export function setSettingsProfileType(type) {
+    window.settingsProfileType = type;
+    
+    const emojiBtn = document.getElementById('profileTypeEmoji');
+    const photoBtn = document.getElementById('profileTypePhoto');
+    const emojiSection = document.getElementById('emojiSection');
+    const photoSection = document.getElementById('photoSection');
+    
+    if (type === 'emoji') {
+        if (emojiBtn) {
+            emojiBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
+        }
+        if (photoBtn) {
+            photoBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
+        }
+        if (emojiSection) emojiSection.classList.remove('hidden');
+        if (photoSection) photoSection.classList.add('hidden');
+    } else {
+        if (emojiBtn) {
+            emojiBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
+        }
+        if (photoBtn) {
+            photoBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
+        }
+        if (emojiSection) emojiSection.classList.add('hidden');
+        if (photoSection) photoSection.classList.remove('hidden');
+    }
+}
+
+// 설정 페이지 사진 업로드 처리
+export async function handlePhotoUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    if (!file.type.startsWith('image/')) {
+        showToast("이미지 파일만 업로드할 수 있습니다.", "error");
+        return;
+    }
+    
+    try {
+        // 이미지 압축 및 미리보기
+        const { compressImageToBlob } = await import('./utils.js');
+        const compressedBlob = await compressImageToBlob(file);
+        const photoUrl = URL.createObjectURL(compressedBlob);
+        
+        window.settingsPhotoUrl = photoUrl;
+        window.settingsPhotoFile = compressedBlob;
+        
+        // 사진을 선택하면 자동으로 프로필 타입을 'photo'로 변경
+        if (window.settingsProfileType !== 'photo') {
+            setSettingsProfileType('photo');
+        }
+        
+        // 미리보기 업데이트
+        const photoPreview = document.getElementById('photoPreview');
+        if (photoPreview) {
+            photoPreview.style.backgroundImage = `url(${photoUrl})`;
+            photoPreview.style.backgroundSize = 'cover';
+            photoPreview.style.backgroundPosition = 'center';
+            photoPreview.innerHTML = '';
+        }
+    } catch (e) {
+        console.error("사진 업로드 처리 실패:", e);
+        showToast("사진 업로드 중 오류가 발생했습니다.", "error");
     }
 }
 
@@ -1204,11 +1492,45 @@ export async function saveProfileSettings() {
     const state = appState;
     try {
         state.tempSettings.profile.nickname = document.getElementById('settingNickname').value;
+        state.tempSettings.profile.bio = document.getElementById('settingBio').value.trim() || '';
+        
+        // 프로필 타입에 따라 icon 또는 photoUrl 저장
+        // 사진 파일이 있으면 무조건 사진으로 저장
+        if (window.settingsPhotoFile) {
+            // 사진을 Firebase Storage에 업로드 (기존 Storage 규칙에 맞는 경로 사용)
+            const { storage } = await import('./firebase.js');
+            const { ref, uploadBytes, getDownloadURL } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js");
+            const timestamp = Date.now();
+            const fileName = `photo_${timestamp}.jpg`;
+            const photoRef = ref(storage, `users/${window.currentUser.uid}/profile/${fileName}`);
+            
+            await uploadBytes(photoRef, window.settingsPhotoFile);
+            const photoUrl = await getDownloadURL(photoRef);
+            
+            state.tempSettings.profile.photoUrl = photoUrl;
+            state.tempSettings.profile.icon = null; // 이모지 제거
+            
+            // 업로드 후 변수 초기화
+            window.settingsPhotoFile = null;
+            window.settingsPhotoUrl = null;
+        } else if (window.settingsProfileType === 'photo' && state.tempSettings.profile.photoUrl) {
+            // 사진 파일은 없지만 기존에 사진이 있는 경우 유지
+            // icon은 null로 유지
+            state.tempSettings.profile.icon = null;
+        } else {
+            // 이모지 선택 시 icon만 저장
+            state.tempSettings.profile.icon = state.tempSettings.profile.icon || '🐻';
+            state.tempSettings.profile.photoUrl = null; // 사진 URL 제거
+        }
+        
         await dbOps.saveSettings(state.tempSettings);
-        showToast("프로필이 저장되었습니다.", 'success');
+        showToast("설정이 저장되었습니다.", 'success');
+        
+        // 헤더 업데이트
+        updateHeaderUI();
     } catch (e) {
         console.error('프로필 저장 실패:', e);
-        // dbOps.saveSettings에서 이미 에러 토스트를 표시하므로 여기서는 추가 처리 불필요
+        showToast("설정 저장 중 오류가 발생했습니다: " + (e.message || e), 'error');
     }
 }
 
@@ -1582,11 +1904,11 @@ function createKakaoSearchModal() {
             </div>
             <div class="p-4">
                 <div class="relative mb-4">
-                    <input type="text" id="kakaoSearchInput" placeholder="음식점 이름을 입력하세요" 
-                        class="w-full p-3 bg-slate-50 rounded-xl outline-none text-sm border border-transparent focus:border-emerald-500 transition-all pr-10">
-                    <button onclick="window.searchKakaoPlaces()" class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600">
-                        <i class="fa-solid fa-magnifying-glass"></i>
+                    <button onclick="window.searchKakaoPlaces()" class="absolute left-2 top-1/2 -translate-y-1/2 bg-emerald-600 text-white rounded-lg p-2 z-10 hover:bg-emerald-700 transition-colors">
+                        <i class="fa-solid fa-magnifying-glass text-sm"></i>
                     </button>
+                    <input type="text" id="kakaoSearchInput" placeholder="음식점 이름을 입력하세요" 
+                        class="w-full p-3 pl-12 bg-slate-50 rounded-xl outline-none text-sm border border-transparent focus:border-emerald-500 transition-all">
                 </div>
                 <div id="kakaoSearchResults" class="space-y-2 max-h-[50vh] overflow-y-auto"></div>
             </div>
@@ -1595,14 +1917,41 @@ function createKakaoSearchModal() {
     
     document.body.appendChild(modal);
     
-    // 검색 입력창에 엔터 키 이벤트 추가
+    // 검색 입력창에 이벤트 추가
     const searchInput = document.getElementById('kakaoSearchInput');
     if (searchInput) {
+        // 엔터 키 이벤트
         searchInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 window.searchKakaoPlaces();
             }
         });
+        
+        // 자동완성 (입력 중 실시간 검색) - 디바운싱 적용
+        let searchTimeout = null;
+        searchInput.addEventListener('input', (e) => {
+            const keyword = e.target.value.trim();
+            
+            // 이전 타이머 취소
+            if (searchTimeout) {
+                clearTimeout(searchTimeout);
+            }
+            
+            // 빈 문자열이면 결과 초기화
+            if (!keyword) {
+                const resultsContainer = document.getElementById('kakaoSearchResults');
+                if (resultsContainer) {
+                    resultsContainer.innerHTML = '';
+                }
+                return;
+            }
+            
+            // 500ms 후 자동 검색 실행 (디바운싱)
+            searchTimeout = setTimeout(() => {
+                window.searchKakaoPlaces();
+            }, 500);
+        });
+        
         searchInput.focus();
     }
 }
@@ -1648,12 +1997,50 @@ export function searchKakaoPlaces() {
             }
             
             // 결과 표시
-            resultsContainer.innerHTML = restaurants.slice(0, 10).map(place => {
+            resultsContainer.innerHTML = restaurants.slice(0, 10).map((place, index) => {
                 const placeName = place.place_name || '';
                 const address = place.address_name || '';
                 const roadAddress = place.road_address_name || '';
+                const placeId = place.id || '';
+                const category = place.category_name || '';
+                
+                // 안전한 이스케이프 함수 (따옴표와 백슬래시 처리)
+                const escapeForAttr = (str) => {
+                    if (!str) return '';
+                    return String(str)
+                        .replace(/\\/g, '\\\\')
+                        .replace(/'/g, "\\'")
+                        .replace(/"/g, '&quot;')
+                        .replace(/\n/g, ' ')
+                        .replace(/\r/g, '');
+                };
+                
+                const safePlaceName = escapeForAttr(placeName);
+                const safeAddress = escapeForAttr(roadAddress || address);
+                const safePlaceId = escapeForAttr(placeId);
+                const safeCategory = escapeForAttr(category);
+                
+                // data 속성에 저장할 JSON 데이터 (Base64 인코딩)
+                const placeDataObj = {
+                    id: placeId,
+                    name: placeName,
+                    address: roadAddress || address,
+                    roadAddress: roadAddress,
+                    category: category
+                };
+                
+                let placeDataB64 = '';
+                try {
+                    placeDataB64 = btoa(unescape(encodeURIComponent(JSON.stringify(placeDataObj))))
+                        .replace(/\+/g, '-')
+                        .replace(/\//g, '_')
+                        .replace(/=/g, '');
+                } catch (e) {
+                    console.warn('placeData 인코딩 실패:', e);
+                }
+                
                 return `
-                    <button onclick="window.selectKakaoPlace('${placeName.replace(/'/g, "\\'")}', '${(roadAddress || address).replace(/'/g, "\\'")}')" 
+                    <button onclick="window.selectKakaoPlace('${safePlaceName}', '${safeAddress}', '${safePlaceId}', '${placeDataB64}')" 
                         class="w-full p-4 bg-white border border-slate-200 rounded-xl text-left hover:bg-slate-50 active:bg-slate-100 transition-colors">
                         <div class="font-bold text-slate-800 mb-1">${placeName}</div>
                         <div class="text-xs text-slate-500">${roadAddress || address}</div>
@@ -1672,10 +2059,44 @@ export function searchKakaoPlaces() {
 }
 
 // 카카오 장소 선택
-export function selectKakaoPlace(placeName, address) {
+export function selectKakaoPlace(placeName, address, placeId = null, placeDataB64 = null) {
     const placeInput = document.getElementById('placeInput');
     if (placeInput) {
         placeInput.value = placeName;
+    }
+    
+    // 카카오맵 API로 입력된 식당임을 표시하기 위해 데이터 속성에 저장
+    // data-kakao-place-name: 저장 시 '장소명 수정' 여부 검사용 (다르면 주소·placeId 미적용)
+    if (placeInput && placeId) {
+        placeInput.setAttribute('data-kakao-place-id', placeId);
+        placeInput.setAttribute('data-kakao-place-address', address || '');
+        placeInput.setAttribute('data-kakao-place-name', placeName || '');
+        if (placeDataB64) {
+            try {
+                // Base64 디코딩 (URL-safe Base64)
+                const base64 = placeDataB64.replace(/-/g, '+').replace(/_/g, '/');
+                const decoded = decodeURIComponent(escape(atob(base64)));
+                const parsed = JSON.parse(decoded);
+                placeInput.setAttribute('data-kakao-place-data', JSON.stringify(parsed));
+            } catch (e) {
+                console.warn('카카오 장소 데이터 파싱 실패:', e);
+                // 파싱 실패해도 기본 정보는 저장
+                if (placeId) {
+                    placeInput.setAttribute('data-kakao-place-data', JSON.stringify({
+                        id: placeId,
+                        name: placeName,
+                        address: address
+                    }));
+                }
+            }
+        } else if (placeId) {
+            // placeDataB64가 없어도 기본 정보 저장
+            placeInput.setAttribute('data-kakao-place-data', JSON.stringify({
+                id: placeId,
+                name: placeName,
+                address: address
+            }));
+        }
     }
     
     // 모달 닫기

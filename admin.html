@@ -63,7 +63,7 @@
                     <label class="text-xs font-bold text-slate-500 block mb-2">비밀번호</label>
                     <input type="password" id="adminPassword" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-emerald-500" placeholder="비밀번호">
                 </div>
-                <button id="loginBtn" onclick="window.handleAdminLogin()" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-md hover:bg-emerald-700 transition-colors">로그인</button>
+                <button id="loginBtn" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-md hover:bg-emerald-700 transition-colors">로그인</button>
             </div>
         </div>
     </div>
@@ -94,6 +94,9 @@
                     </button>
                     <button onclick="window.switchAdminTab('content')" id="admin-tab-content" class="admin-tab flex-1 px-6 py-3 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
                         <i class="fa-solid fa-file-lines mr-2"></i>콘텐츠 관리
+                    </button>
+                    <button onclick="window.switchAdminTab('data')" id="admin-tab-data" class="admin-tab flex-1 px-6 py-3 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
+                        <i class="fa-solid fa-database mr-2"></i>데이터
                     </button>
                 </div>
             </div>
@@ -246,13 +249,26 @@
                                             <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
                                         </button>
                                     </div>
-                                    <!-- 카테고리 필터 -->
-                                    <div class="flex gap-2 overflow-x-auto scrollbar-hide">
-                                        <button onclick="window.setAdminBoardCategory('all')" id="admin-board-category-all" class="admin-board-category-btn active px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold whitespace-nowrap">전체</button>
-                                        <button onclick="window.setAdminBoardCategory('serious')" id="admin-board-category-serious" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">무거운</button>
-                                        <button onclick="window.setAdminBoardCategory('chat')" id="admin-board-category-chat" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">가벼운</button>
-                                        <button onclick="window.setAdminBoardCategory('food')" id="admin-board-category-food" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">먹는</button>
-                                        <button onclick="window.setAdminBoardCategory('admin')" id="admin-board-category-admin" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">치프에게</button>
+                                    <!-- 카테고리 필터 + 일괄처리 -->
+                                    <div class="flex gap-4 items-center flex-wrap">
+                                        <div class="flex gap-2 overflow-x-auto scrollbar-hide">
+                                            <button onclick="window.setAdminBoardCategory('all')" id="admin-board-category-all" class="admin-board-category-btn active px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold whitespace-nowrap">전체</button>
+                                            <button onclick="window.setAdminBoardCategory('serious')" id="admin-board-category-serious" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">무거운</button>
+                                            <button onclick="window.setAdminBoardCategory('chat')" id="admin-board-category-chat" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">가벼운</button>
+                                            <button onclick="window.setAdminBoardCategory('food')" id="admin-board-category-food" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">먹는</button>
+                                            <button onclick="window.setAdminBoardCategory('admin')" id="admin-board-category-admin" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">치프에게</button>
+                                        </div>
+                                        <div class="flex gap-2 items-center ml-auto flex-shrink-0">
+                                            <button onclick="window.adminBoardBulkHide()" class="px-3 py-2 bg-amber-100 text-amber-600 rounded-lg text-xs font-bold hover:bg-amber-200 transition-colors">
+                                                <i class="fa-solid fa-eye-slash mr-1"></i>가리기
+                                            </button>
+                                            <button onclick="window.adminBoardBulkUnhide()" class="px-3 py-2 bg-emerald-100 text-emerald-600 rounded-lg text-xs font-bold hover:bg-emerald-200 transition-colors">
+                                                <i class="fa-solid fa-eye mr-1"></i>가리기 해제
+                                            </button>
+                                            <button onclick="window.adminBoardBulkDelete()" class="px-3 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-bold hover:bg-red-200 transition-colors">
+                                                <i class="fa-solid fa-trash mr-1"></i>삭제
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="p-6">
@@ -314,17 +330,74 @@
                                         <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">타임라인</th>
                                         <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">앨범 공유</th>
                                         <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">토크</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">사용자 ID</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">가입일</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">마지막 로그인</th>
                                     </tr>
                                 </thead>
                                 <tbody id="usersContainer" class="divide-y divide-slate-100">
                                     <tr>
-                                        <td colspan="7" class="px-4 py-8 text-center text-slate-400">
+                                        <td colspan="10" class="px-4 py-8 text-center text-slate-400">
                                             <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
                                             <p>로딩 중...</p>
                                         </td>
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 데이터 탭 -->
+            <div id="admin-tab-content-data" class="admin-tab-content hidden">
+                <div class="flex gap-6 items-start">
+                    <!-- 왼쪽 사이드바 -->
+                    <div class="w-64 flex-shrink-0">
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sticky top-24">
+                            <div class="space-y-2">
+                                <button onclick="window.switchDataSidebar('restaurants')" id="data-sidebar-restaurants" class="w-full px-4 py-3 text-left text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-utensils mr-2"></i>식당정보
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 오른쪽 메인 콘텐츠 영역 -->
+                    <div class="flex-1 min-w-0">
+                        <!-- 식당정보 -->
+                        <div id="data-main-restaurants" class="data-main-section">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div class="flex justify-between items-center mb-4">
+                                        <h2 class="text-lg font-black text-slate-800">식당정보</h2>
+                                        <button onclick="window.refreshRestaurantData()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                            <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                        </button>
+                                    </div>
+                                    <p class="text-sm text-slate-500 mb-4">카카오 주소검색을 통해 입력된 식당 정보를 확인할 수 있습니다.</p>
+                                    <!-- 필터 버튼 -->
+                                    <div class="flex gap-2">
+                                        <button onclick="window.setRestaurantFilter('all')" id="restaurant-filter-all" class="restaurant-filter-btn px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold transition-colors">
+                                            <i class="fa-solid fa-list mr-1"></i>전체
+                                        </button>
+                                        <button onclick="window.setRestaurantFilter('kakao')" id="restaurant-filter-kakao" class="restaurant-filter-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">
+                                            <i class="fa-solid fa-map-marker-alt mr-1"></i>카카오맵
+                                        </button>
+                                        <button onclick="window.setRestaurantFilter('manual')" id="restaurant-filter-manual" class="restaurant-filter-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">
+                                            <i class="fa-solid fa-keyboard mr-1"></i>수동입력
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div id="restaurantsContainer" class="space-y-4">
+                                        <div class="text-center py-8 text-slate-400">
+                                            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                                            <p>로딩 중...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -433,14 +506,46 @@
                         <div id="content-main-terms" class="content-main-section hidden">
                             <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
                                 <div class="p-6 border-b border-slate-100">
-                                    <div class="flex justify-between items-center">
+                                    <div class="flex justify-between items-center mb-4">
                                         <h2 class="text-lg font-black text-slate-800">약관 관리</h2>
+                                    </div>
+                                    <!-- 약관 탭 -->
+                                    <div class="flex gap-2 border-b border-slate-200">
+                                        <button id="termsTabHistory" onclick="window.switchTermsTab('history')" class="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 border-b-2 border-transparent hover:border-slate-300 transition-colors">
+                                            약관이력
+                                        </button>
+                                        <button id="termsTabManage" onclick="window.switchTermsTab('manage')" class="px-4 py-2 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors">
+                                            약관관리
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- 약관이력 화면 -->
+                                <div id="termsHistorySection" class="hidden p-6">
+                                    <div class="space-y-4">
+                                        <div class="flex items-center justify-between mb-4">
+                                            <p class="text-sm text-slate-600">배포된 약관 버전 목록입니다.</p>
+                                        </div>
+                                        <div id="termsHistoryList" class="space-y-3">
+                                            <!-- 약관 버전 리스트가 여기에 동적으로 추가됩니다 -->
+                                            <div class="text-center py-8 text-slate-400">
+                                                <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                                                <p class="text-sm">약관 이력 로딩 중...</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 약관관리 화면 -->
+                                <div id="termsManageSection" class="p-6 space-y-6">
+                                    <div class="flex justify-end gap-2 mb-4">
+                                        <button onclick="window.deployTerms()" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors">
+                                            <i class="fa-solid fa-rocket mr-2"></i>배포
+                                        </button>
                                         <button onclick="window.saveTerms()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
                                             <i class="fa-solid fa-save mr-2"></i>저장
                                         </button>
                                     </div>
-                                </div>
-                                <div class="p-6 space-y-6">
                                     <!-- 이용약관 -->
                                     <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
                                         <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
@@ -586,6 +691,24 @@
     </div>
 
     <!-- 게시글 삭제 확인 모달 (기존 모달 재사용) -->
+
+    <!-- 약관 버전 보기 모달 -->
+    <div id="termsVersionModal" class="hidden fixed inset-0 bg-slate-900/50 z-[600] flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-slate-800">약관 버전 상세</h3>
+                <button onclick="window.closeTermsVersionModal()" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <div id="termsVersionContent" class="space-y-6">
+                <!-- 약관 내용이 여기에 동적으로 추가됩니다 -->
+            </div>
+            <div class="mt-6">
+                <button onclick="window.closeTermsVersionModal()" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-colors">닫기</button>
+            </div>
+        </div>
+    </div>
 
     <!-- 게시물 삭제 확인 모달 -->
     <div id="deleteModal" class="hidden fixed inset-0 bg-slate-900/50 z-[500] flex items-center justify-center p-4">

@@ -29,8 +29,11 @@ export const SATIETY_DATA = [
     { val: 5, icon: 'fa-face-grin-beam-sweat', label: '과식', color: 'text-red-400', chartColor: '#f87171' }
 ];
 
+// 약관 버전 (약관 업데이트 시 버전을 올려서 기존 사용자에게 재동의 요청)
+export const CURRENT_TERMS_VERSION = '1.0';
+
 export const DEFAULT_USER_SETTINGS = {
-    profile: { icon: '🐻', nickname: '게스트' },
+    profile: { icon: '🐻', nickname: '게스트', bio: '' },
     tags: {
         mealType: ['집밥', '외식', '회식/술자리', '배달/포장', '구내식당', '기타', '건너뜀'],
         withWhom: ['혼자', '가족', '연인', '친구', '직장동료', '학교친구', '모임', '기타'],
@@ -52,9 +55,21 @@ export const DEFAULT_USER_SETTINGS = {
     // 약관 동의 및 첫 로그인 관련
     termsAgreed: false,
     termsAgreedAt: null,
+    termsVersion: null, // 동의한 약관 버전
     isFirstLogin: true,
     onboardingCompleted: false
 };
+
+// 게시물 신고 사유 (id는 Firestore에 저장, label은 UI 표시)
+export const REPORT_REASONS = [
+    { id: 'spam', label: '스팸/홍보' },
+    { id: 'hate', label: '혐오/혐오발언' },
+    { id: 'inappropriate', label: '부적절한 콘텐츠' },
+    { id: 'violence', label: '폭력/위험' },
+    { id: 'harassment', label: '괴롭힘/협박' },
+    { id: 'copyright', label: '저작권 침해' },
+    { id: 'other', label: '기타' }
+];
 
 export const DEFAULT_SUB_TAGS = {
     place: [{ text: '우리집', parent: '집밥' }, { text: '회사 식당', parent: '구내식당' }, { text: '스타벅스', parent: '배달/포장' }],

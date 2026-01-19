@@ -140,9 +140,21 @@ async function completeOnboarding() {
         
         closeOnboardingModal();
         showToast("환영합니다! 이제 MEALOG를 시작해보세요.", "success");
+        
+        // 인증 플로우 관리자에게 온보딩 완료 알림
+        const { authFlowManager } = await import('./auth-flow.js');
+        await authFlowManager.onOnboardingCompleted();
     } catch (e) {
         console.error("온보딩 완료 저장 실패:", e);
         closeOnboardingModal();
         showToast("온보딩이 완료되었습니다.", "success");
+        
+        // 에러가 발생해도 플로우는 계속 진행
+        try {
+            const { authFlowManager } = await import('./auth-flow.js');
+            await authFlowManager.onOnboardingCompleted();
+        } catch (flowError) {
+            console.error("인증 플로우 처리 실패:", flowError);
+        }
     }
 }

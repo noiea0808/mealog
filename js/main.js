@@ -1,24 +1,31 @@
 // 메인 애플리케이션 로직
+console.log('📦 main.js 모듈 로드 시작');
+
 import { appState, getState } from './state.js';
-import { auth } from './firebase.js';
-import { dbOps, setupListeners, setupSharedPhotosListener, loadMoreMeals, postInteractions, boardOperations } from './db.js';
-import { switchScreen, showToast, updateHeaderUI } from './ui.js';
+import { auth, db, appId } from './firebase.js';
+import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { dbOps, setupListeners, setupSharedPhotosListener, loadMoreMeals, postInteractions, boardOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
+import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
 import { 
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, confirmLogout, confirmLogoutAction,
-    copyDomain, closeDomainModal, switchToLogin, showTermsModal, cancelTermsAgreement, confirmTermsAgreement,
-    showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup
+    copyDomain, closeDomainModal, switchToLogin, showTermsModal, closeTermsModal, cancelTermsAgreement, confirmTermsAgreement,
+    showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup, setProfileType, handleSetupPhotoUpload,
+    confirmDeleteAccount, cancelDeleteAccount, confirmDeleteAccountAction
 } from './auth.js';
-import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail } from './render/index.js';
+import { authFlowManager } from './auth-flow.js';
+import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, escapeHtml, filterGalleryByUser, clearGalleryFilter } from './render/index.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment } from './analytics.js';
+import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
     handleMultipleImages, removePhoto, updateShareIndicator, toggleSharePhoto,
-    openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
+    openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, setSettingsProfileType, handlePhotoUpload, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
     openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace
 } from './modals.js';
-import { DEFAULT_SUB_TAGS } from './constants.js';
-import { onboardingPrev, onboardingNext, onboardingSkip } from './onboarding.js';
+import { DEFAULT_SUB_TAGS, REPORT_REASONS } from './constants.js';
 import { normalizeUrl } from './utils.js';
 
 // 전역 객체에 함수들 할당 (HTML에서 접근 가능하도록)
@@ -28,6 +35,8 @@ window.removeDuplicateMeals = () => dbOps.removeDuplicateMeals();
 window.showToast = showToast;
 window.renderTimeline = renderTimeline;
 window.renderGallery = renderGallery;
+window.filterGalleryByUser = filterGalleryByUser;
+window.clearGalleryFilter = clearGalleryFilter;
 window.updateHeaderUI = updateHeaderUI;
 window.copyDomain = copyDomain;
 window.closeDomainModal = closeDomainModal;
@@ -40,17 +49,18 @@ window.toggleEmailAuthMode = toggleEmailAuthMode;
 window.handleEmailAuth = handleEmailAuth;
 window.confirmLogout = confirmLogout;
 window.confirmLogoutAction = confirmLogoutAction;
+window.confirmDeleteAccount = confirmDeleteAccount;
 window.switchToLogin = switchToLogin;
 window.showTermsModal = showTermsModal;
+window.closeTermsModal = closeTermsModal;
 window.cancelTermsAgreement = cancelTermsAgreement;
 window.confirmTermsAgreement = confirmTermsAgreement;
 window.showTermsDetail = showTermsDetail;
 window.updateTermsAgreeButton = updateTermsAgreeButton;
 window.selectSetupIcon = selectSetupIcon;
 window.confirmProfileSetup = confirmProfileSetup;
-window.onboardingPrev = onboardingPrev;
-window.onboardingNext = onboardingNext;
-window.onboardingSkip = onboardingSkip;
+window.setProfileType = setProfileType;
+window.handleSetupPhotoUpload = handleSetupPhotoUpload;
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.saveEntry = saveEntry;
@@ -68,6 +78,8 @@ window.switchSettingsTab = switchSettingsTab;
 window.saveSettings = saveSettings;
 window.saveProfileSettings = saveProfileSettings;
 window.selectIcon = selectIcon;
+window.setSettingsProfileType = setSettingsProfileType;
+window.handlePhotoUpload = handlePhotoUpload;
 window.addTag = addTag;
 window.removeTag = removeTag;
 window.deleteSubTag = deleteSubTag;
@@ -89,6 +101,7 @@ window.setAnalysisType = setAnalysisType;
 window.openShareBestModal = openShareBestModal;
 window.closeShareBestModal = closeShareBestModal;
 window.shareBestToFeed = shareBestToFeed;
+window.editBestShare = openEditBestShareModal;
 window.toggleComment = toggleComment;
 window.toggleFeedComment = toggleFeedComment;
 window.openKakaoPlaceSearch = openKakaoPlaceSearch;
@@ -404,13 +417,7 @@ window.togglePostCaption = (idx) => {
     }
 };
 
-// HTML 이스케이프 헬퍼 함수 (전역으로 사용)
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
+// escapeHtml은 render/index.js에서 import됨
 
 // 일간보기 공유 함수
 window.shareDailySummary = async (dateStr) => {
@@ -418,16 +425,47 @@ window.shareDailySummary = async (dateStr) => {
     if (loadingOverlay) loadingOverlay.classList.remove('hidden');
     
     try {
+        // 이미 공유된 경우 공유 해제
+        const existingShare = window.sharedPhotos && Array.isArray(window.sharedPhotos) 
+            ? window.sharedPhotos.find(photo => photo.type === 'daily' && photo.date === dateStr && photo.userId === window.currentUser.uid)
+            : null;
+        
+        if (existingShare) {
+            // 공유 해제 (일간보기 공유이므로 isDailyShare=true)
+            await dbOps.unsharePhotos([existingShare.photoUrl], null, false, true);
+            
+            // window.sharedPhotos에서 즉시 제거하여 UI 즉시 반영
+            if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+                window.sharedPhotos = window.sharedPhotos.filter(p => 
+                    !(p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid)
+                );
+            }
+            
+            showToast('공유가 해제되었습니다.', 'success');
+            
+            // 타임라인 즉시 새로고침
+            if (appState.currentTab === 'timeline') {
+                renderTimeline();
+            }
+            
+            // 갤러리 즉시 새로고침
+            if (appState.currentTab === 'gallery') {
+                renderGallery();
+            }
+            
+            return;
+        }
+        
         // 컴팩트 카드 생성
         const shareCard = createDailyShareCard(dateStr);
         
-        // html2canvas로 캡쳐
+        // html2canvas로 캡쳐 (모바일 기준 375px)
         const canvas = await html2canvas(shareCard, {
             backgroundColor: '#ffffff',
             scale: 2,
             logging: false,
             useCORS: true,
-            width: 400,
+            width: 375,
             height: shareCard.scrollHeight
         });
         
@@ -440,29 +478,68 @@ window.shareDailySummary = async (dateStr) => {
         
         // 공유 데이터 생성
         const userProfile = window.userSettings?.profile || {};
+        
+        // 일간보기 코멘트 가져오기
+        let dailyComment = '';
+        try {
+            if (window.dbOps && typeof window.dbOps.getDailyComment === 'function') {
+                dailyComment = window.dbOps.getDailyComment(dateStr) || '';
+            } else if (window.userSettings && window.userSettings.dailyComments) {
+                dailyComment = window.userSettings.dailyComments[dateStr] || '';
+            }
+        } catch (e) {
+            console.warn('getDailyComment 호출 실패:', e);
+        }
+        
         const dailyShareData = {
             photoUrl: photoUrl,
             userId: window.currentUser.uid,
             userNickname: userProfile.nickname || '익명',
             userIcon: userProfile.icon || '🐻',
+            userPhotoUrl: userProfile.photoUrl || null,
             type: 'daily',
             date: dateStr,
             timestamp: new Date().toISOString(),
-            entryId: null
+            entryId: null,
+            comment: dailyComment // 일간보기 코멘트 포함
         };
         
         // Firestore에 저장
         const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
         const { db, appId } = await import('./firebase.js');
         const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-        await addDoc(sharedColl, dailyShareData);
+        const docRef = await addDoc(sharedColl, dailyShareData);
+        
+        console.log('일간보기 공유 저장 완료:', { docId: docRef.id, dateStr, dailyShareData });
+        
+        // window.sharedPhotos에 즉시 추가하여 UI 즉시 반영
+        if (!window.sharedPhotos) {
+            window.sharedPhotos = [];
+        }
+        // 기존 일간보기 공유 제거 (같은 날짜의 기존 공유가 있다면)
+        window.sharedPhotos = window.sharedPhotos.filter(p => 
+            !(p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid)
+        );
+        // 새 공유 추가
+        window.sharedPhotos.push({ id: docRef.id, ...dailyShareData });
+        // timestamp 순으로 정렬 (최신순)
+        window.sharedPhotos.sort((a, b) => {
+            const timeA = new Date(a.timestamp || 0).getTime();
+            const timeB = new Date(b.timestamp || 0).getTime();
+            return timeB - timeA;
+        });
         
         // 컨테이너 제거
         shareCard.remove();
         
         showToast('하루 기록이 피드에 공유되었습니다!', 'success');
         
-        // 갤러리 새로고침
+        // 타임라인 즉시 새로고침 (버튼 상태 업데이트)
+        if (appState.currentTab === 'timeline') {
+            renderTimeline();
+        }
+        
+        // 갤러리 즉시 새로고침
         if (appState.currentTab === 'gallery') {
             renderGallery();
         }
@@ -491,6 +568,121 @@ window.saveDailyComment = async (date) => {
     try {
         await dbOps.saveDailyComment(date, comment);
         showToast("하루 전체 Comment가 저장되었습니다.", 'success');
+        
+        // 타임라인과 앨범 새로고침
+        if (appState.currentTab === 'timeline') {
+            renderTimeline();
+        }
+        if (appState.currentTab === 'gallery') {
+            renderGallery();
+        }
+    } catch (e) {
+        console.error("Daily Comment Save Error:", e);
+        showToast("저장 중 오류가 발생했습니다.", 'error');
+    } finally {
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+    }
+};
+
+// 일간보기 코멘트 수정 모달 열기
+window.openDailyCommentModal = (dateStr) => {
+    // 기존 모달 제거
+    const existingModal = document.getElementById('dailyCommentModal');
+    if (existingModal) existingModal.remove();
+    
+    // 날짜 포맷팅
+    const dateObj = new Date(dateStr + 'T00:00:00');
+    const year = dateObj.getFullYear();
+    const month = dateObj.getMonth() + 1;
+    const day = dateObj.getDate();
+    const dateLabel = `${year}년 ${month}월 ${day}일`;
+    
+    // 현재 코멘트 가져오기
+    let currentComment = '';
+    try {
+        if (window.dbOps && typeof window.dbOps.getDailyComment === 'function') {
+            currentComment = window.dbOps.getDailyComment(dateStr) || '';
+        } else if (window.userSettings && window.userSettings.dailyComments) {
+            currentComment = window.userSettings.dailyComments[dateStr] || '';
+        }
+    } catch (e) {
+        console.warn('getDailyComment 호출 실패:', e);
+    }
+    
+    // 모달 생성
+    const modal = document.createElement('div');
+    modal.id = 'dailyCommentModal';
+    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/50';
+    
+    modal.innerHTML = `
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-black text-slate-800">하루 소감 수정</h3>
+                <button onclick="window.closeDailyCommentModal()" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <textarea id="dailyCommentModalInput" 
+                placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해보세요." 
+                class="w-full p-4 bg-slate-50 rounded-xl text-sm border border-slate-200 focus:border-emerald-500 transition-all resize-none min-h-[150px]" 
+                rows="6">${escapeHtml(currentComment)}</textarea>
+            <div class="flex gap-3 mt-6">
+                <button onclick="window.closeDailyCommentModal()" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm">
+                    취소
+                </button>
+                <button onclick="window.saveDailyCommentFromModal('${dateStr}')" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700">
+                    저장
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // 배경 클릭 시 닫기
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            window.closeDailyCommentModal();
+        }
+    });
+    
+    // 포커스
+    setTimeout(() => {
+        const input = document.getElementById('dailyCommentModalInput');
+        if (input) input.focus();
+    }, 100);
+};
+
+// 일간보기 코멘트 모달 닫기
+window.closeDailyCommentModal = () => {
+    const modal = document.getElementById('dailyCommentModal');
+    if (modal) modal.remove();
+};
+
+// 모달에서 일간보기 코멘트 저장
+window.saveDailyCommentFromModal = async (dateStr) => {
+    const input = document.getElementById('dailyCommentModalInput');
+    if (!input) return;
+    
+    const comment = input.value || '';
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    
+    try {
+        await dbOps.saveDailyComment(dateStr, comment);
+        showToast("하루 소감이 저장되었습니다.", 'success');
+        window.closeDailyCommentModal();
+        
+        // 타임라인과 앨범 새로고침
+        if (appState.currentTab === 'timeline') {
+            renderTimeline();
+        }
+        if (appState.currentTab === 'gallery') {
+            renderGallery();
+        }
+        if (appState.currentTab === 'feed') {
+            renderFeed();
+        }
     } catch (e) {
         console.error("Daily Comment Save Error:", e);
         showToast("저장 중 오류가 발생했습니다.", 'error');
@@ -718,79 +910,230 @@ window.loadMoreMealsTimeline = async () => {
     }
 };
 
-// 인증 상태 변경 리스너
-// 현재 체크 중인 사용자 ID (중복 체크 방지)
-let currentCheckingUserId = null;
+/**
+ * 사용자 문서 업데이트 (가입일, 마지막 로그인 날짜)
+ */
+async function updateUserDocument(user) {
+    if (!user || user.isAnonymous) return;
+    
+    try {
+        const userDocRef = doc(db, 'artifacts', appId, 'users', user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        
+        const updateData = {
+            lastLoginAt: serverTimestamp()
+        };
+        
+        if (!userDocSnap.exists()) {
+            // 신규 사용자: createdAt, providerId, email 모두 설정
+            updateData.createdAt = serverTimestamp();
+            
+            // providerId와 email은 처음 한 번만 설정
+            if (user.providerData && user.providerData.length > 0) {
+                updateData.providerId = user.providerData[0].providerId;
+            }
+            if (user.email) {
+                updateData.email = user.email;
+            }
+            
+            console.log('✅ 신규 사용자 문서 생성:', { 
+                userId: user.uid,
+                providerId: updateData.providerId,
+                email: updateData.email
+            });
+        } else {
+            // 기존 사용자: providerId와 email이 없을 때만 설정 (한 번만)
+            const existingData = userDocSnap.data();
+            if (!existingData.providerId && user.providerData && user.providerData.length > 0) {
+                updateData.providerId = user.providerData[0].providerId;
+                console.log('✅ providerId 초기 설정:', updateData.providerId);
+            }
+            if (!existingData.email && user.email) {
+                updateData.email = user.email;
+                console.log('✅ email 초기 설정:', updateData.email);
+            }
+            
+            console.log('✅ 사용자 문서 업데이트 (마지막 로그인):', { userId: user.uid });
+        }
+        
+        await setDoc(userDocRef, updateData, { merge: true });
+    } catch (e) {
+        console.error('❌ 사용자 문서 업데이트 실패:', e);
+        // 에러가 발생해도 계속 진행 (비중요한 정보이므로)
+    }
+}
+
+// 인증 상태 변경 리스너 - 단순화된 버전
+let lastProcessedUserId = null; // 마지막으로 처리한 사용자 ID
+let isFirstLoad = true; // 첫 로드 여부
 
 initAuth(async (user) => {
-    if (user) { 
-        window.currentUser = user; 
+    // 페이지 로드 시 자동으로 로그아웃 (테스트를 위한 설정)
+    if (isFirstLoad && user && !user.isAnonymous) {
+        isFirstLoad = false;
+        console.log('🔄 페이지 로드 시 자동 로그아웃 실행');
+        await signOut(auth);
+        // 로그아웃 후 리턴 (다음 onAuthStateChanged에서 null user로 다시 호출됨)
+        return;
+    }
+    isFirstLoad = false;
+    // 1. 관리자 페이지가 열려있는지 확인 (현재 탭이 관리자 페이지인 경우)
+    if (window.location.pathname.includes('admin.html') || window.location.href.includes('admin.html')) {
+        console.log('⚠️ 관리자 페이지에서 인증 상태 변경 무시');
+        return;
+    }
+    
+    // 2. 갑작스러운 게스트 전환 방지: 이전에 로그인된 사용자가 있었는데 갑자기 게스트로 전환되는 경우
+    // 하지만 Firestore 규칙은 request.auth를 확인하므로, 실제 인증 상태를 확인해야 함
+    if ((!user || user.isAnonymous) && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
+        // 실제 auth.currentUser를 확인하여 관리자 페이지 영향인지 확인
+        const actualCurrentUser = auth.currentUser;
         
-        // 사용자가 변경되면 플래그 리셋
-        if (currentCheckingUserId !== user.uid) {
-            currentCheckingUserId = user.uid;
-            window._firstLoginChecked = false;
+        // 실제 인증 상태가 게스트이거나 null이고, 이전에 로그인된 사용자가 있었으면
+        // 관리자 페이지 영향일 가능성이 높지만, Firestore 규칙이 작동하려면 실제 인증 상태가 필요함
+        // 따라서 이 경우는 무시하지 않고, 실제 인증 상태를 확인하여 처리
+        if ((!actualCurrentUser || actualCurrentUser.isAnonymous) && actualCurrentUser?.uid !== lastProcessedUserId) {
+            console.log('⚠️ 로그인된 사용자가 게스트로 전환 감지 (관리자 페이지 영향 가능):', {
+                previousUserId: lastProcessedUserId,
+                previousEmail: window.currentUser.email,
+                currentUser: user?.uid || 'null',
+                actualAuthUser: actualCurrentUser?.uid || 'null'
+            });
+            // 실제 인증 상태가 게스트이면 Firestore 규칙이 작동하지 않으므로
+            // 이전 사용자 정보를 유지하되, 실제 인증 상태가 복원될 때까지 대기
+            // 하지만 이 경우는 실제로 인증 상태가 변경되었으므로, 무시하지 않고 처리해야 함
+            // 대신 이전 사용자 정보를 유지하고, 실제 인증 상태가 복원되면 다시 처리
+            return;
         }
+    }
+    
+    // 3. 로그아웃 시에도 이전 사용자가 있었으면 무시 (관리자 페이지 영향 가능)
+    // 단, 명시적 로그아웃인 경우는 허용 (sessionStorage에서 확인)
+    const isExplicitLogout = sessionStorage.getItem('explicitLogout') === 'true';
+    if (!user && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous && !isExplicitLogout) {
+        // 실제 auth.currentUser를 확인
+        const actualCurrentUser = auth.currentUser;
+        
+        // 실제 인증 상태가 null이고, 이전에 로그인된 사용자가 있었으면 무시
+        if (!actualCurrentUser || actualCurrentUser.isAnonymous) {
+            console.log('⚠️ 로그인된 사용자가 로그아웃 시도 - 무시 (관리자 페이지 영향 가능):', {
+                previousUserId: lastProcessedUserId,
+                previousEmail: window.currentUser.email,
+                actualAuthUser: actualCurrentUser?.uid || 'null'
+            });
+            // 현재 사용자 상태 유지 - 인증 상태 변경 무시
+            return;
+        }
+    }
+    
+    // 명시적 로그아웃 플래그 초기화 (사용 후 제거)
+    if (isExplicitLogout) {
+        sessionStorage.removeItem('explicitLogout');
+    }
+    
+    if (user) {
+        // 사용자 변경 감지: 다른 사용자로 로그인한 경우 이전 리스너 완전히 해제
+        if (lastProcessedUserId && lastProcessedUserId !== user.uid) {
+            console.log('⚠️ 사용자 변경 감지:', { 
+                previousUserId: lastProcessedUserId, 
+                newUserId: user.uid,
+                previousEmail: window.currentUser?.email,
+                newEmail: user.email
+            });
+            
+            // 모든 리스너 해제
+            if (appState.settingsUnsubscribe) {
+                appState.settingsUnsubscribe();
+                appState.settingsUnsubscribe = null;
+            }
+            if (appState.dataUnsubscribe) {
+                appState.dataUnsubscribe();
+                appState.dataUnsubscribe = null;
+            }
+            if (appState.sharedPhotosUnsubscribe) {
+                appState.sharedPhotosUnsubscribe();
+                appState.sharedPhotosUnsubscribe = null;
+            }
+            
+            // 전역 상태 초기화
+            window.userSettings = null;
+            window.mealHistory = null;
+            window.sharedPhotos = null;
+            window._duplicateCleanupDone = false;
+            authFlowManager.hasCompleted = false;
+            authFlowManager.lastProcessedUserId = null;
+            
+            console.log('✅ 이전 사용자 리스너 및 상태 초기화 완료');
+        }
+        
+        window.currentUser = user;
+        lastProcessedUserId = user.uid;
+        
+        console.log('🔐 인증 상태 변경:', {
+            uid: user.uid,
+            email: user.email,
+            providerId: user.providerData?.[0]?.providerId,
+            isAnonymous: user.isAnonymous
+        });
+        
+        // 사용자 문서 업데이트 (가입일, 마지막 로그인 날짜)
+        await updateUserDocument(user);
+        
+        // 이미 메인 화면이 표시되어 있으면 추가 처리 없이 리턴
+        const mainApp = document.getElementById('mainApp');
+        const landingPage = document.getElementById('landingPage');
+        if (mainApp && !mainApp.classList.contains('hidden') && landingPage && landingPage.style.display === 'none') {
+            return;
+        }
+        
+                // 중요: providerId와 email은 처음 로그인 시 약관 동의 또는 프로필 설정 시에만 설정됩니다.
+                // 로그인 직후 자동 저장은 하지 않습니다. (중복 저장 방지)
         
         // 중복 기록 자동 정리 (한 번만 실행)
         if (!window._duplicateCleanupDone && window.mealHistory && window.mealHistory.length > 0) {
             window._duplicateCleanupDone = true;
-            // 약간의 지연 후 실행 (데이터 로드 완료 대기)
             setTimeout(async () => {
                 await dbOps.removeDuplicateMeals();
             }, 2000);
         }
         
-        // 게스트가 아니면 첫 로그인 체크를 onSettingsUpdate에서만 수행
-        let shouldCheckFirstLogin = !user.isAnonymous;
-        let settingsLoaded = false;
-        let initialSettingsUpdateDone = false;
-        
+        // 리스너 설정 (이전 리스너는 setupListeners 내부에서 해제됨)
         const { settingsUnsubscribe, dataUnsubscribe } = setupListeners(user.uid, {
             onSettingsUpdate: () => {
-                const wasFirstLoad = !settingsLoaded;
-                settingsLoaded = true;
-                
+                // 헤더 UI 업데이트 (디바운싱됨)
                 updateHeaderUI();
-                // 설정이 업데이트되면 간식 타입 칩도 다시 렌더링 (모달이 열려있지 않을 때만)
                 const entryModal = document.getElementById('entryModal');
                 if (!entryModal || entryModal.classList.contains('hidden')) {
                     renderEntryChips();
                 }
                 
-                // 첫 로그인 체크 (게스트가 아니고 설정이 로드된 후, 현재 사용자와 일치하고 아직 체크하지 않은 경우만)
-                if (shouldCheckFirstLogin && window.userSettings && window.userSettings.profile && currentCheckingUserId === user.uid && !window._firstLoginChecked) {
-                    window._firstLoginChecked = true;
-                    checkFirstLoginFlow(user);
-                }
-                
-                // 첫 설정 로드 완료 시 메인 화면 표시 (약관/프로필 모달이 없으면)
-                if (wasFirstLoad && !initialSettingsUpdateDone && shouldCheckFirstLogin) {
-                    initialSettingsUpdateDone = true;
-                    // 약관/프로필이 이미 설정되어 있으면 바로 메인 화면 표시
-                    if (window.userSettings && window.userSettings.termsAgreed && 
-                        window.userSettings.profile && window.userSettings.profile.nickname) {
-                        // checkFirstLoginFlow에서 처리하도록, 여기서는 로딩 오버레이만 숨김
-                        // (checkFirstLoginFlow가 호출되지 않을 경우를 대비)
-                        setTimeout(() => {
-                            if (!window._firstLoginChecked) {
-                                switchScreen(true);
-                                switchMainTab('timeline');
-                                document.getElementById('loadingOverlay')?.classList.add('hidden');
-                            }
-                        }, 100);
+                // 설정이 완전히 로드된 후 인증 플로우 실행
+                // 단, 이미 완료되었거나 처리 중인 경우는 건너뛰기
+                if (!authFlowManager.hasCompleted && !authFlowManager.isProcessing && window.userSettings) {
+                    console.log('✅ 설정 업데이트 완료. 인증 플로우 실행...');
+                    authFlowManager.handleAuthState(user).catch(e => {
+                        console.error('❌ 인증 플로우 처리 실패:', e);
+                        hideLoading();
+                    });
+                } else if (authFlowManager.hasCompleted) {
+                    // 이미 완료된 경우 약관 모달이 열려있으면 닫기
+                    const termsModal = document.getElementById('termsModal');
+                    if (termsModal && !termsModal.classList.contains('hidden')) {
+                        console.log('✅ 인증 플로우 완료됨. 약관 모달 닫기');
+                        if (window.closeTermsModal) {
+                            window.closeTermsModal();
+                        }
                     }
                 }
             },
             onDataUpdate: () => {
-                // 오늘 날짜로 초기화
                 if (appState.viewMode === 'list') {
                     const today = new Date();
                     today.setHours(0, 0, 0, 0);
                     appState.pageDate = today;
                 }
                 window.loadedDates = [];
-                window.hasScrolledToToday = false; // 스크롤 플래그 리셋
+                window.hasScrolledToToday = false;
                 const container = document.getElementById('timelineContainer');
                 if (container) container.innerHTML = "";
                 renderTimeline();
@@ -808,14 +1151,12 @@ initAuth(async (user) => {
         }
         appState.sharedPhotosUnsubscribe = setupSharedPhotosListener((sharedPhotos) => {
             window.sharedPhotos = sharedPhotos;
-            // 타임라인, 갤러리 모두 업데이트 (같은 데이터 소스를 사용하므로)
             if (appState.currentTab === 'timeline') {
                 renderTimeline();
             }
             if (appState.currentTab === 'gallery') {
                 renderGallery();
             }
-            // 피드 탭이 있으면 renderFeed도 호출
             const feedContent = document.getElementById('feedContent');
             if (feedContent && !feedContent.classList.contains('hidden')) {
                 renderFeed();
@@ -829,40 +1170,51 @@ initAuth(async (user) => {
             appState.pageDate = today;
         }
         
-        // 게스트인 경우 바로 메인 화면 표시
-        if (!shouldCheckFirstLogin) {
-            switchScreen(true);
-            switchMainTab('timeline');
-            document.getElementById('loadingOverlay')?.classList.add('hidden');
+        // Phase 1-1: 인증 플로우를 한 곳에서만 호출 (단일 진입점)
+        // 게스트는 즉시 처리, 일반 사용자는 onSettingsUpdate에서 처리
+        if (user.isAnonymous) {
+            // 게스트는 설정 없이 즉시 처리
+            authFlowManager.handleAuthState(user).catch(e => {
+                console.error('❌ 게스트 인증 플로우 처리 실패:', e);
+                hideLoading();
+            });
         } else {
-            // 게스트가 아닌 경우: 설정 로드를 기다리지 않고 먼저 화면 표시 시도
-            // (설정이 없거나 약관/프로필 미설정 시 모달이 표시될 것)
-            // 짧은 타임아웃 후 화면 표시 (설정 로드 완료를 기다리지 않음)
-            setTimeout(() => {
-                if (!initialSettingsUpdateDone && shouldCheckFirstLogin) {
-                    // 아직 설정이 로드되지 않았지만 화면은 표시
-                    // checkFirstLoginFlow에서 모달 표시 또는 화면 표시를 처리
-                    if (window.userSettings && window.userSettings.termsAgreed && 
-                        window.userSettings.profile && window.userSettings.profile.nickname) {
-                        // 설정이 이미 있으면 바로 표시
-                        switchScreen(true);
-                        switchMainTab('timeline');
-                        document.getElementById('loadingOverlay')?.classList.add('hidden');
-                    } else if (window.userSettings) {
-                        // 설정이 있지만 약관/프로필 미설정
-                        // checkFirstLoginFlow가 처리할 것임
-                    } else {
-                        // 설정이 아직 로드되지 않음 - 로딩 오버레이는 계속 표시
-                        // 설정 로드 후 onSettingsUpdate에서 처리
-                    }
-                }
-            }, 300); // 300ms 후에 설정 로드 상태 확인
+            // 일반 사용자: onSettingsUpdate에서 설정 로드 완료 후 인증 플로우 실행
+            // 설정이 이미 로드되어 있으면 즉시 실행, 아니면 onSettingsUpdate에서 처리
+            if (window.userSettings && !authFlowManager.hasCompleted) {
+                console.log('✅ 설정이 이미 로드됨. 인증 플로우 시작...');
+                authFlowManager.handleAuthState(user).catch(e => {
+                    console.error('❌ 인증 플로우 처리 실패:', e);
+                    hideLoading();
+                });
+            }
+            // 설정이 없으면 onSettingsUpdate 콜백에서 처리됨
         }
     } else {
         // 로그아웃 상태
+        // 추가 안전장치: 이전에 로그인된 사용자가 있었는데 갑자기 로그아웃되는 경우 무시
+        if (lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
+            console.log('⚠️ 로그아웃 처리 중 이전 사용자 감지 - 무시 (관리자 페이지 영향 가능):', {
+                previousUserId: lastProcessedUserId,
+                previousEmail: window.currentUser.email
+            });
+            return;
+        }
+        
+        const mainApp = document.getElementById('mainApp');
+        const landingPage = document.getElementById('landingPage');
+        if (mainApp && !mainApp.classList.contains('hidden') && landingPage && landingPage.style.display === 'none') {
+            return;
+        }
+        
+        if (landingPage && landingPage.style.display === 'flex' && mainApp && mainApp.classList.contains('hidden')) {
+            return;
+        }
+        
+        // 로그아웃 처리 전에 lastProcessedUserId 초기화
+        lastProcessedUserId = null;
+        
         switchScreen(false);
-        currentCheckingUserId = null;
-        window._firstLoginChecked = false;
         if (appState.settingsUnsubscribe) {
             appState.settingsUnsubscribe();
             appState.settingsUnsubscribe = null;
@@ -875,53 +1227,9 @@ initAuth(async (user) => {
             appState.sharedPhotosUnsubscribe();
             appState.sharedPhotosUnsubscribe = null;
         }
-        document.getElementById('loadingOverlay')?.classList.add('hidden');
+        hideLoading();
     }
 });
-
-// 첫 로그인 플로우 체크 함수
-async function checkFirstLoginFlow(user) {
-    if (!window.userSettings || !window.currentUser || window.currentUser.uid !== user.uid) {
-        document.getElementById('loadingOverlay')?.classList.add('hidden');
-        return;
-    }
-    
-    const termsAgreed = window.userSettings.termsAgreed === true;
-    const hasProfile = window.userSettings.profile && 
-                     window.userSettings.profile.nickname && 
-                     window.userSettings.profile.nickname !== '게스트';
-    const onboardingCompleted = window.userSettings.onboardingCompleted === true;
-    
-    // 약관 미동의 시 약관 동의 모달 표시
-    if (!termsAgreed) {
-        switchScreen(false);
-        showTermsModal();
-        document.getElementById('loadingOverlay')?.classList.add('hidden');
-        return;
-    }
-    // 프로필 미설정 시 프로필 설정 모달 표시
-    else if (!hasProfile) {
-        switchScreen(false);
-        const { showProfileSetupModal } = await import('./auth.js');
-        showProfileSetupModal();
-        document.getElementById('loadingOverlay')?.classList.add('hidden');
-        return;
-    }
-    // 온보딩 미완료 시 온보딩 표시 (메인 앱 표시 후)
-    else if (!onboardingCompleted) {
-        switchScreen(true);
-        switchMainTab('timeline');
-        const { showOnboardingModal } = await import('./onboarding.js');
-        showOnboardingModal();
-        // switchScreen이 이미 loadingOverlay를 숨김
-        return;
-    }
-    
-    // 모든 체크 통과 - 메인 화면 표시
-    switchScreen(true);
-    switchMainTab('timeline');
-    document.getElementById('loadingOverlay')?.classList.add('hidden');
-}
 
 // 스크롤 이벤트 리스너
 let scrollTimeout;
@@ -1001,46 +1309,33 @@ window.onload = () => {
 };
 
 // 피드 옵션 관련 함수
-window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '', photoSlotId = '') => {
-    // 옵션 메뉴 표시
+window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '', photoSlotId = '', isDailyShare = false, postId = '', authorUserId = '') => {
     const existingMenu = document.getElementById('feedOptionsMenu');
-    if (existingMenu) {
-        existingMenu.remove();
-    }
+    if (existingMenu) existingMenu.remove();
     
     const menu = document.createElement('div');
     menu.id = 'feedOptionsMenu';
     menu.className = 'fixed inset-0 z-[450]';
     
-    // entryId가 있는지 확인 (빈 문자열, null, 'null', 'undefined' 문자열 모두 체크)
-    // 베스트 공유가 아닌 경우에는 entryId가 없어도 수정 가능 (Comment가 있는 경우 등)
-    const hasEntryId = entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined';
-    
-    // 피드에서는 항상 게시 취소로 표시 (기록 삭제가 아닌 공유 취소)
+    const isMyPost = window.currentUser && authorUserId && window.currentUser.uid === authorUserId;
     const deleteButtonText = '게시 취소';
     const deleteButtonIcon = 'fa-share';
     
-    // 배경 클릭 시 닫기
     const bg = document.createElement('div');
     bg.className = 'fixed inset-0 bg-black/40';
     bg.onclick = () => menu.remove();
     
-    // 메뉴 컨테이너
     const menuContainer = document.createElement('div');
     menuContainer.className = 'fixed bottom-0 left-0 right-0 w-full bg-white rounded-t-3xl p-4 pb-8 animate-fade-up z-[451]';
     
-    // 핸들바
     const handlebar = document.createElement('div');
     handlebar.className = 'w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4';
     
-    // 버튼 컨테이너
     const buttonContainer = document.createElement('div');
     buttonContainer.className = 'space-y-2';
     
-    // 수정하기 버튼 (베스트 공유가 아닌 경우에만 표시)
-    // entryId가 있으면 수정 가능, entryId가 없어도 Comment 등 정보가 있으면 수정 가능
-    // 베스트 공유는 별도 처리가 필요하므로 수정 옵션에서 제외
-    if (!isBestShare) {
+    if (isMyPost) {
+        // 수정하기
         const editBtn = document.createElement('button');
         editBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
         editBtn.type = 'button';
@@ -1048,71 +1343,179 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
             e.stopPropagation();
             menu.remove();
             setTimeout(() => {
-                // entryId가 있으면 editFeedPost 호출, 없으면 날짜와 slotId로 모달 열기
-                if (entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined') {
-                    window.editFeedPost(entryId);
-                } else if (photoDate && photoSlotId) {
-                    // entryId가 없어도 날짜와 slotId가 있으면 모달 열기 (새로 등록하는 것처럼 열기)
-                    window.openModal(photoDate, photoSlotId, null);
+                if (isBestShare) {
+                    const photoUrlArray = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(url => url.trim()).filter(url => url) : [];
+                    if (photoUrlArray.length > 0) window.editBestShare(photoUrlArray[0]);
+                    else showToast("수정할 베스트 공유를 찾을 수 없습니다.", 'error');
+                } else if (isDailyShare) {
+                    if (photoDate) window.openDailyCommentModal(photoDate);
+                    else showToast("수정할 일간보기 공유를 찾을 수 없습니다.", 'error');
                 } else {
-                    showToast("수정할 기록을 찾을 수 없습니다.", 'error');
+                    if (entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined') {
+                        window.editFeedPost(entryId);
+                    } else if (photoDate && photoSlotId) {
+                        window.openModal(photoDate, photoSlotId, null);
+                    } else {
+                        showToast("수정할 기록을 찾을 수 없습니다.", 'error');
+                    }
                 }
             }, 100);
         });
-        editBtn.innerHTML = `
-            <div class="flex items-center gap-3">
-                <i class="fa-solid fa-pencil text-emerald-600 text-lg"></i>
-                <span class="font-bold text-slate-800">수정하기</span>
-            </div>
-        `;
+        editBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-pencil text-emerald-600 text-lg"></i><span class="font-bold text-slate-800">수정하기</span></div>';
         buttonContainer.appendChild(editBtn);
+        
+        // 게시 취소
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        deleteBtn.type = 'button';
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            menu.remove();
+            setTimeout(() => window.deleteFeedPost(entryId || '', photoUrls || '', isBestShare), 100);
+        });
+        deleteBtn.innerHTML = `<div class="flex items-center gap-3"><i class="fa-solid ${deleteButtonIcon} text-red-500 text-lg"></i><span class="font-bold text-red-500">${deleteButtonText}</span></div>`;
+        buttonContainer.appendChild(deleteBtn);
+    } else {
+        // 다른 사람 게시물: 신고하기 (첫 번째 옵션)
+        const reportBtn = document.createElement('button');
+        reportBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        reportBtn.type = 'button';
+        reportBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            menu.remove();
+            const targetGroupKey = isBestShare ? `best_${postId || 'unknown'}` : isDailyShare ? `daily_${photoDate || 'nodate'}_${authorUserId || 'unknown'}` : `entry_${entryId || 'none'}_${authorUserId || 'unknown'}`;
+            setTimeout(() => window.showReportModal(targetGroupKey), 100);
+        });
+        reportBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-flag text-amber-600 text-lg"></i><span class="font-bold text-slate-800">신고하기</span></div>';
+        buttonContainer.appendChild(reportBtn);
     }
     
-    // 삭제하기/게시 취소 버튼
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
-    deleteBtn.type = 'button';
-    deleteBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        menu.remove();
-        setTimeout(() => {
-            window.deleteFeedPost(entryId || '', photoUrls || '', isBestShare);
-        }, 100);
-    });
-    deleteBtn.innerHTML = `
-        <div class="flex items-center gap-3">
-            <i class="fa-solid ${deleteButtonIcon} text-red-500 text-lg"></i>
-            <span class="font-bold text-red-500">${deleteButtonText}</span>
-        </div>
-    `;
-    buttonContainer.appendChild(deleteBtn);
-    
-    // 취소 버튼
-    const cancelBtn = document.createElement('button');
-    cancelBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
-    cancelBtn.type = 'button';
-    cancelBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        menu.remove();
-    });
-    cancelBtn.innerHTML = `
-        <div class="flex items-center gap-3">
-            <i class="fa-solid fa-xmark text-slate-400 text-lg"></i>
-            <span class="font-bold text-slate-400">취소</span>
-        </div>
-    `;
-    buttonContainer.appendChild(cancelBtn);
-    
-    // 메뉴 컨테이너 클릭 시 이벤트 전파 방지
-    menuContainer.addEventListener('click', (e) => {
-        e.stopPropagation();
-    });
-    
+    // 취소 버튼 없음: 바깥 영역(배경) 탭으로 닫기
+    menuContainer.addEventListener('click', (e) => e.stopPropagation());
     menuContainer.appendChild(handlebar);
     menuContainer.appendChild(buttonContainer);
     menu.appendChild(bg);
     menu.appendChild(menuContainer);
     document.body.appendChild(menu);
+};
+
+// 신고 사유 라벨 (reason id, reasonOther -> 표시 문자열)
+function getReportReasonLabel(reason, reasonOther) {
+    if (reason === 'other' && reasonOther) return `기타: ${reasonOther}`;
+    return (REPORT_REASONS.find(r => r.id === reason) || {}).label || reason;
+}
+
+// 신고하기 모달 (이미 신고한 경우: 사유 표시 + 신고 취소, 아니면 사유 선택 폼. 하단 취소 버튼 없음)
+window.showReportModal = async (targetGroupKey) => {
+    const existing = document.getElementById('reportModal');
+    if (existing) existing.remove();
+    
+    const overlay = document.createElement('div');
+    overlay.id = 'reportModal';
+    overlay.className = 'fixed inset-0 z-[500] flex items-end sm:items-center justify-center';
+    
+    const bg = document.createElement('div');
+    bg.className = 'absolute inset-0 bg-black/50';
+    bg.onclick = () => overlay.remove();
+    
+    const panel = document.createElement('div');
+    panel.className = 'relative w-full max-w-md bg-white rounded-t-2xl sm:rounded-2xl p-6 pb-8 max-h-[85vh] overflow-y-auto';
+    panel.innerHTML = '<div id="reportModalBody" class="py-6 text-center text-slate-500">확인 중...</div>';
+    
+    overlay.appendChild(bg);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+    
+    const body = panel.querySelector('#reportModalBody');
+    const uid = (auth?.currentUser || window.currentUser)?.uid;
+    if (!uid) {
+        body.innerHTML = '<p class="text-slate-600">로그인이 필요합니다.</p>';
+        return;
+    }
+    
+    let report = null;
+    try {
+        report = await getUserReportForPost(targetGroupKey, uid);
+    } catch (e) {
+        console.error('getUserReportForPost 오류:', e);
+        body.innerHTML = '<p class="text-red-600">확인 중 오류가 발생했습니다.</p>';
+        return;
+    }
+    
+    if (report) {
+        // 이미 신고한 경우: "이미 신고함" + 신고 사유 + 신고 취소 버튼 (옆에). 하단 취소 버튼 없음
+        const label = getReportReasonLabel(report.reason, report.reasonOther);
+        body.innerHTML = `
+            <h3 class="text-lg font-bold text-slate-800 mb-4">게시물 신고</h3>
+            <p class="text-sm text-amber-600 font-bold mb-3">이미 신고한 게시물입니다.</p>
+            <div class="flex flex-wrap items-center justify-between gap-3 py-3 px-4 bg-slate-50 rounded-xl">
+                <span class="text-sm text-slate-700">신고 사유: <strong>${escapeHtml(String(label || ''))}</strong></span>
+                <button type="button" id="reportWithdrawBtn" class="flex-shrink-0 py-2 px-4 rounded-xl font-bold text-sm bg-slate-200 text-slate-700 hover:bg-slate-300 active:bg-slate-400">신고 취소</button>
+            </div>
+        `;
+        body.querySelector('#reportWithdrawBtn').onclick = async () => {
+            const btn = body.querySelector('#reportWithdrawBtn');
+            btn.disabled = true;
+            btn.textContent = '처리 중...';
+            try {
+                await withdrawReport(report.id, targetGroupKey);
+                showToast('신고가 취소되었습니다.', 'success');
+                overlay.remove();
+            } catch (e) {
+                showToast(e?.message || '신고 취소에 실패했습니다.', 'error');
+                btn.disabled = false;
+                btn.textContent = '신고 취소';
+            }
+        };
+        return;
+    }
+    
+    // 신고 사유 선택 폼 (하단 취소 버튼 없음, 신고 버튼만)
+    body.innerHTML = `
+        <h3 class="text-lg font-bold text-slate-800 mb-4">게시물 신고</h3>
+        <p class="text-sm text-slate-600 mb-4">신고 사유를 선택해주세요.</p>
+        <div class="space-y-2 mb-4" id="reportReasons"></div>
+        <div id="reportOtherWrap" class="hidden mb-4">
+            <label class="block text-sm font-bold text-slate-700 mb-2">기타 (직접 입력)</label>
+            <textarea id="reportOtherInput" rows="3" class="w-full p-3 border border-slate-200 rounded-xl text-sm resize-none" placeholder="신고 사유를 입력해주세요."></textarea>
+        </div>
+        <button type="button" id="reportSubmitBtn" class="w-full py-3 rounded-xl font-bold text-white bg-amber-600">신고</button>
+    `;
+    
+    const reasonsEl = body.querySelector('#reportReasons');
+    REPORT_REASONS.forEach(r => {
+        const lbl = document.createElement('label');
+        lbl.className = 'flex items-center gap-3 p-3 rounded-xl border border-slate-200 has-[:checked]:border-amber-500 has-[:checked]:bg-amber-50 cursor-pointer';
+        lbl.innerHTML = `<input type="radio" name="reportReason" value="${r.id}" class="report-reason-radio"> <span class="text-sm font-medium text-slate-800">${r.label}</span>`;
+        reasonsEl.appendChild(lbl);
+    });
+    
+    const otherWrap = body.querySelector('#reportOtherWrap');
+    const otherInput = body.querySelector('#reportOtherInput');
+    body.querySelectorAll('.report-reason-radio').forEach(radio => {
+        radio.addEventListener('change', () => { otherWrap.classList.toggle('hidden', radio.value !== 'other'); });
+    });
+    
+    body.querySelector('#reportSubmitBtn').onclick = async () => {
+        const checked = body.querySelector('input[name="reportReason"]:checked');
+        if (!checked) { showToast('신고 사유를 선택해주세요.', 'error'); return; }
+        const reason = checked.value;
+        const reasonOther = reason === 'other' ? (otherInput.value || '').trim() : '';
+        if (reason === 'other' && !reasonOther) { showToast('기타 사유를 입력해주세요.', 'error'); return; }
+        
+        const btn = body.querySelector('#reportSubmitBtn');
+        btn.disabled = true;
+        btn.textContent = '처리 중...';
+        try {
+            await submitReport({ targetGroupKey, reason, reasonOther });
+            showToast('신고가 접수되었습니다.', 'success');
+            overlay.remove();
+        } catch (e) {
+            showToast(e?.message || '신고 접수에 실패했습니다.', 'error');
+            btn.disabled = false;
+            btn.textContent = '신고';
+        }
+    };
 };
 
 window.editFeedPost = (entryId) => {
@@ -1674,6 +2077,255 @@ window.deleteBoardComment = async (commentId, postId) => {
         showToast("댓글 삭제에 실패했습니다.", 'error');
     }
 };
+
+// 이벤트 리스너 초기화 함수
+function initEventListeners() {
+    // 랜딩 페이지 버튼들
+    const googleLoginBtn = document.getElementById('googleLoginBtn');
+    if (googleLoginBtn) {
+        googleLoginBtn.addEventListener('click', handleGoogleLogin);
+    }
+    
+    const emailLoginBtn = document.getElementById('emailLoginBtn');
+    if (emailLoginBtn) {
+        emailLoginBtn.addEventListener('click', openEmailModal);
+    }
+    
+    const guestLoginBtn = document.getElementById('guestLoginBtn');
+    if (guestLoginBtn) {
+        guestLoginBtn.addEventListener('click', startGuest);
+    }
+    
+    // 이메일 인증 모달 버튼들
+    const emailAuthCloseBtn = document.getElementById('emailAuthCloseBtn');
+    if (emailAuthCloseBtn) {
+        emailAuthCloseBtn.addEventListener('click', closeEmailModal);
+    }
+    
+    const emailAuthBtn = document.getElementById('emailAuthBtn');
+    if (emailAuthBtn) {
+        emailAuthBtn.addEventListener('click', handleEmailAuth);
+    }
+    
+    const emailAuthToggleBtn = document.getElementById('emailAuthToggleBtn');
+    if (emailAuthToggleBtn) {
+        emailAuthToggleBtn.addEventListener('click', toggleEmailAuthMode);
+    }
+    
+    // Domain Error Modal
+    const domainCopyBtn = document.getElementById('domainCopyBtn');
+    if (domainCopyBtn) {
+        domainCopyBtn.addEventListener('click', copyDomain);
+    }
+    
+    const domainModalGuestBtn = document.getElementById('domainModalGuestBtn');
+    if (domainModalGuestBtn) {
+        domainModalGuestBtn.addEventListener('click', () => {
+            closeDomainModal();
+            startGuest();
+        });
+    }
+    
+    const domainModalCloseBtn = document.getElementById('domainModalCloseBtn');
+    if (domainModalCloseBtn) {
+        domainModalCloseBtn.addEventListener('click', closeDomainModal);
+    }
+    
+    // Terms Agreement Modal
+    const termsDetailBtn = document.getElementById('termsDetailBtn');
+    if (termsDetailBtn) {
+        termsDetailBtn.addEventListener('click', () => showTermsDetail('terms'));
+    }
+    
+    const privacyDetailBtn = document.getElementById('privacyDetailBtn');
+    if (privacyDetailBtn) {
+        privacyDetailBtn.addEventListener('click', () => showTermsDetail('privacy'));
+    }
+    
+    const termsCancelBtn = document.getElementById('termsCancelBtn');
+    if (termsCancelBtn) {
+        termsCancelBtn.addEventListener('click', cancelTermsAgreement);
+    }
+    
+    const termsAgreeBtn = document.getElementById('termsAgreeBtn');
+    if (termsAgreeBtn) {
+        termsAgreeBtn.addEventListener('click', confirmTermsAgreement);
+    }
+    
+    // Profile Setup Modal
+    const setupProfileTypeEmoji = document.getElementById('setupProfileTypeEmoji');
+    if (setupProfileTypeEmoji) {
+        setupProfileTypeEmoji.addEventListener('click', () => setProfileType('emoji'));
+    }
+    
+    const setupProfileTypePhoto = document.getElementById('setupProfileTypePhoto');
+    if (setupProfileTypePhoto) {
+        setupProfileTypePhoto.addEventListener('click', () => setProfileType('photo'));
+    }
+    
+    const setupPhotoSelectBtn = document.getElementById('setupPhotoSelectBtn');
+    if (setupPhotoSelectBtn) {
+        setupPhotoSelectBtn.addEventListener('click', () => {
+            document.getElementById('setupPhotoInput')?.click();
+        });
+    }
+    
+    const setupPhotoInput = document.getElementById('setupPhotoInput');
+    if (setupPhotoInput) {
+        setupPhotoInput.addEventListener('change', (e) => handleSetupPhotoUpload(e));
+    }
+    
+    const profileSetupBtn = document.getElementById('profileSetupBtn');
+    if (profileSetupBtn) {
+        profileSetupBtn.addEventListener('click', confirmProfileSetup);
+    }
+    
+    // 헤더 및 검색
+    const searchTriggerBtn = document.getElementById('searchTriggerBtn');
+    if (searchTriggerBtn) {
+        searchTriggerBtn.addEventListener('click', window.toggleSearch);
+    }
+    
+    const headerSettingsBtn = document.getElementById('headerSettingsBtn');
+    if (headerSettingsBtn) {
+        headerSettingsBtn.addEventListener('click', openSettings);
+    }
+    
+    const closeSearchBtn = document.getElementById('closeSearchBtn');
+    if (closeSearchBtn) {
+        closeSearchBtn.addEventListener('click', window.closeSearch);
+    }
+    
+    // 뷰 모드
+    const btnViewList = document.getElementById('btn-view-list');
+    if (btnViewList) {
+        btnViewList.addEventListener('click', () => window.setViewMode('list'));
+    }
+    
+    const btnViewPage = document.getElementById('btn-view-page');
+    if (btnViewPage) {
+        btnViewPage.addEventListener('click', () => window.setViewMode('page'));
+    }
+    
+    // 하단 네비게이션
+    const navDashboard = document.getElementById('nav-dashboard');
+    if (navDashboard) {
+        navDashboard.addEventListener('click', () => window.switchMainTab('dashboard'));
+    }
+    
+    const navTimeline = document.getElementById('nav-timeline');
+    if (navTimeline) {
+        navTimeline.addEventListener('click', () => window.switchMainTab('timeline'));
+    }
+    
+    const navGallery = document.getElementById('nav-gallery');
+    if (navGallery) {
+        navGallery.addEventListener('click', () => window.switchMainTab('gallery'));
+    }
+    
+    const navBoard = document.getElementById('nav-board');
+    if (navBoard) {
+        navBoard.addEventListener('click', () => window.switchMainTab('board'));
+    }
+    
+    // 설정 페이지
+    const settingsCloseBtn = document.getElementById('settingsCloseBtn');
+    if (settingsCloseBtn) {
+        settingsCloseBtn.addEventListener('click', closeSettings);
+    }
+    
+    const settingsTabProfile = document.getElementById('settingsTabProfile');
+    if (settingsTabProfile) {
+        settingsTabProfile.addEventListener('click', () => window.switchSettingsTab('profile'));
+    }
+    
+    const settingsTabTags = document.getElementById('settingsTabTags');
+    if (settingsTabTags) {
+        settingsTabTags.addEventListener('click', () => window.switchSettingsTab('tags'));
+    }
+    
+    const saveProfileSettingsBtn = document.getElementById('saveProfileSettingsBtn');
+    if (saveProfileSettingsBtn) {
+        saveProfileSettingsBtn.addEventListener('click', saveProfileSettings);
+    }
+    
+    const profileTypeEmoji = document.getElementById('profileTypeEmoji');
+    if (profileTypeEmoji) {
+        profileTypeEmoji.addEventListener('click', () => window.setSettingsProfileType('emoji'));
+    }
+    
+    const profileTypePhoto = document.getElementById('profileTypePhoto');
+    if (profileTypePhoto) {
+        profileTypePhoto.addEventListener('click', () => window.setSettingsProfileType('photo'));
+    }
+    
+    // 게시판
+    const boardWriteBtn = document.getElementById('boardWriteBtn');
+    if (boardWriteBtn) {
+        boardWriteBtn.addEventListener('click', window.openBoardWrite);
+    }
+    
+    // 게시판 카테고리 버튼들
+    ['all', 'serious', 'chat', 'food', 'admin'].forEach(category => {
+        const btn = document.getElementById(`board-category-${category}`);
+        if (btn) {
+            btn.addEventListener('click', () => window.setBoardCategory(category));
+        }
+    });
+    
+    // 대시보드 모드 버튼들
+    ['7d', 'week', 'month', 'year', 'custom'].forEach(mode => {
+        const btn = document.getElementById(`btn-dash-${mode}`);
+        if (btn) {
+            btn.addEventListener('click', () => window.setDashboardMode(mode));
+        }
+    });
+    
+    // 분석 타입 버튼들
+    ['best', 'main', 'snack'].forEach(type => {
+        const btn = document.getElementById(`btn-analysis-${type}`);
+        if (btn) {
+            btn.addEventListener('click', () => window.setAnalysisType(type));
+        }
+    });
+    
+    // 로그아웃 확인 모달
+    const logoutConfirmCancelBtn = document.getElementById('logoutConfirmCancelBtn');
+    if (logoutConfirmCancelBtn) {
+        logoutConfirmCancelBtn.addEventListener('click', () => {
+            document.getElementById('logoutConfirmModal')?.classList.add('hidden');
+        });
+    }
+    
+    const logoutConfirmActionBtn = document.getElementById('logoutConfirmActionBtn');
+    if (logoutConfirmActionBtn) {
+        logoutConfirmActionBtn.addEventListener('click', confirmLogoutAction);
+    }
+    
+    // 탈퇴 모달 버튼
+    const deleteAccountConfirmCancelBtn = document.getElementById('deleteAccountConfirmCancelBtn');
+    if (deleteAccountConfirmCancelBtn) {
+        deleteAccountConfirmCancelBtn.addEventListener('click', cancelDeleteAccount);
+    }
+    
+    const deleteAccountConfirmActionBtn = document.getElementById('deleteAccountConfirmActionBtn');
+    if (deleteAccountConfirmActionBtn) {
+        deleteAccountConfirmActionBtn.addEventListener('click', confirmDeleteAccountAction);
+    }
+}
+
+// DOM이 준비되면 이벤트 리스너 초기화
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initEventListeners);
+} else {
+    // DOM이 이미 로드된 경우
+    initEventListeners();
+}
+
+// 모듈 로드 완료 표시
+window.moduleLoaded = true;
+console.log('✅ main.js 모듈 로드 완료');
+console.log('✅ window.renderTimeline 함수 확인:', typeof window.renderTimeline);
 
 // 에러 핸들링
 window.addEventListener('error', (e) => {
