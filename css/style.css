@@ -38,12 +38,14 @@ body {
     background: #f1f5f9; 
     color: #64748b; 
 }
+/* 기록 완료(4건 이상): mealog 타이틀(text-emerald-600)=#059669 */
 .dot-full { 
-    background: #10b981; 
+    background: #059669; 
     color: white; 
 }
+/* 미완(1~3건): #059669에 대응하는 연한 톤 */
 .dot-partial { 
-    background: #d1fae5; 
+    background: #a7f3d0; 
     color: #059669; 
 }
 .dot-selected { 
@@ -52,10 +54,10 @@ body {
     background: #fff; 
     color: #059669; 
 }
-/* 전체/일간: 연회색 통 하나, active=흰색 팩+녹색 테두리/글자, inactive=배경 없이 회색 글자만 */
+/* 전체/일간: 연회색 통 하나, active=흰색 팩+녹색 테두리/글자(mealog #059669), inactive=배경 없이 회색 글자만 */
 .view-tab { 
     padding: 4px 10px; 
-    border-radius: 8px; 
+    border-radius: 6px; 
     font-size: 11px; 
     font-weight: 700; 
     border: 1px solid transparent; 
@@ -63,13 +65,18 @@ body {
 }
 .view-tab.active { 
     background: #fff; 
-    border-color: #10b981; 
-    color: #10b981; 
+    border-color: #059669; 
+    color: #059669; 
 }
 .view-tab.inactive { 
     background: transparent; 
     border-color: transparent; 
     color: #94a3b8; 
+}
+/* 선택 탭과 연회색 배경 간격 최소화 */
+#trackerTabs { 
+    padding: 2px; 
+    gap: 2px; 
 }
 .chip { 
     padding: 8px 14px; 
