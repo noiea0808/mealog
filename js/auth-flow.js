@@ -226,13 +226,24 @@ export class AuthFlowManager {
                     if (readiness.termsAgreed) {
                         console.log('⚠️ 약관 동의가 이미 완료되었습니다. 모달을 열지 않습니다.');
                         // 다음 단계로 진행
-                        const nextReadiness = await this.checkUserReadiness(user);
+                        const nextReadiness = await this.checkUserReadiness(this.user);
                         const nextStep = nextReadiness.nextStep;
                         this.currentState = nextStep;
                         await this.processState(this.currentState, nextReadiness);
                     } else {
-                        switchScreen(false);
-                        showTermsModal();
+                        // Firestore 캐시→서버 타이밍으로 인해 agreed인데도 NEEDS_TERMS로 들어올 수 있음.
+                        // 모달을 띄우기 전에 잠시 대기 후 재확인하여, 이미 동의한 사용자에게는 모달을 표시하지 않음
+                        await new Promise(r => setTimeout(r, 120));
+                        const recheck = await this.checkUserReadiness(this.user);
+                        if (recheck.termsAgreed) {
+                            console.log('✅ 재확인: 약관 동의됨. 모달 생략 후 다음 단계로.');
+                            const nextStep = recheck.nextStep;
+                            this.currentState = nextStep;
+                            await this.processState(this.currentState, recheck);
+                        } else {
+                            switchScreen(false);
+                            showTermsModal();
+                        }
                     }
                     break;
                     
