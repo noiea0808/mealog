@@ -249,13 +249,26 @@
                                             <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
                                         </button>
                                     </div>
-                                    <!-- 카테고리 필터 -->
-                                    <div class="flex gap-2 overflow-x-auto scrollbar-hide">
-                                        <button onclick="window.setAdminBoardCategory('all')" id="admin-board-category-all" class="admin-board-category-btn active px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold whitespace-nowrap">전체</button>
-                                        <button onclick="window.setAdminBoardCategory('serious')" id="admin-board-category-serious" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">무거운</button>
-                                        <button onclick="window.setAdminBoardCategory('chat')" id="admin-board-category-chat" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">가벼운</button>
-                                        <button onclick="window.setAdminBoardCategory('food')" id="admin-board-category-food" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">먹는</button>
-                                        <button onclick="window.setAdminBoardCategory('admin')" id="admin-board-category-admin" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">치프에게</button>
+                                    <!-- 카테고리 필터 + 일괄처리 -->
+                                    <div class="flex gap-4 items-center flex-wrap">
+                                        <div class="flex gap-2 overflow-x-auto scrollbar-hide">
+                                            <button onclick="window.setAdminBoardCategory('all')" id="admin-board-category-all" class="admin-board-category-btn active px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold whitespace-nowrap">전체</button>
+                                            <button onclick="window.setAdminBoardCategory('serious')" id="admin-board-category-serious" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">무거운</button>
+                                            <button onclick="window.setAdminBoardCategory('chat')" id="admin-board-category-chat" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">가벼운</button>
+                                            <button onclick="window.setAdminBoardCategory('food')" id="admin-board-category-food" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">먹는</button>
+                                            <button onclick="window.setAdminBoardCategory('admin')" id="admin-board-category-admin" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">치프에게</button>
+                                        </div>
+                                        <div class="flex gap-2 items-center ml-auto flex-shrink-0">
+                                            <button onclick="window.adminBoardBulkHide()" class="px-3 py-2 bg-amber-100 text-amber-600 rounded-lg text-xs font-bold hover:bg-amber-200 transition-colors">
+                                                <i class="fa-solid fa-eye-slash mr-1"></i>가리기
+                                            </button>
+                                            <button onclick="window.adminBoardBulkUnhide()" class="px-3 py-2 bg-emerald-100 text-emerald-600 rounded-lg text-xs font-bold hover:bg-emerald-200 transition-colors">
+                                                <i class="fa-solid fa-eye mr-1"></i>가리기 해제
+                                            </button>
+                                            <button onclick="window.adminBoardBulkDelete()" class="px-3 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-bold hover:bg-red-200 transition-colors">
+                                                <i class="fa-solid fa-trash mr-1"></i>삭제
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="p-6">

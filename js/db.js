@@ -1533,6 +1533,7 @@ export const boardOperations = {
                 dislikes: 0,
                 views: 0,
                 comments: 0,
+                isHidden: false,
                 timestamp: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             };
@@ -1580,25 +1581,28 @@ export const boardOperations = {
         }
     },
     
-    // 게시글 목록 가져오기
+    // 게시글 목록 가져오기 (가려진 글 isHidden===true 제외, 클라이언트에서 필터)
     async getPosts(category = 'all', sortBy = 'latest', limitCount = 50) {
         try {
             const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
+            const fetchLimit = Math.min(limitCount * 2, 100);
             let q;
             
             if (category === 'all') {
-                q = query(postsColl, orderBy('timestamp', 'desc'), limit(limitCount));
+                q = query(postsColl, orderBy('timestamp', 'desc'), limit(fetchLimit));
             } else {
                 q = query(
                     postsColl,
                     where('category', '==', category),
                     orderBy('timestamp', 'desc'),
-                    limit(limitCount)
+                    limit(fetchLimit)
                 );
             }
             
             const snapshot = await getDocs(q);
-            let posts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            let posts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
+                .filter(p => p.isHidden !== true);
+            posts = posts.slice(0, limitCount);
             
             // 인기순 정렬 (좋아요 - 비추천 수 기준)
             if (sortBy === 'popular') {
@@ -1662,6 +1666,9 @@ export const boardOperations = {
             }
             
             const postData = { id: postSnap.id, ...postSnap.data() };
+            if (postData.isHidden === true) {
+                return null;
+            }
             const newViews = (postData.views || 0) + 1;
             
             // 조회수 증가
@@ -1676,7 +1683,9 @@ export const boardOperations = {
             const postDoc = doc(db, 'artifacts', appId, 'boardPosts', postId);
             const postSnap = await getDoc(postDoc);
             if (postSnap.exists()) {
-                return { id: postSnap.id, ...postSnap.data() };
+                const data = { id: postSnap.id, ...postSnap.data() };
+                if (data.isHidden === true) return null;
+                return data;
             }
             return null;
         }
@@ -1969,3 +1978,21 @@ export const boardOperations = {
         return unsubscribe;
     }
 };
+
+// 관리자: MEAL TALK 게시글 삭제 (Firestore 규칙에서 isAdmin 체크)
+export async function deleteBoardPostByAdmin(postId) {
+    if (!postId) throw new Error("게시글 ID가 필요합니다.");
+    const postDoc = doc(db, 'artifacts', appId, 'boardPosts', postId);
+    const postSnap = await getDoc(postDoc);
+    if (!postSnap.exists()) throw new Error("게시글을 찾을 수 없습니다.");
+    await deleteDoc(postDoc);
+}
+
+// 관리자: MEAL TALK 게시글 가리기/가리기 해제 (Firestore 규칙에서 isAdmin 체크)
+export async function setBoardPostHidden(postId, hidden) {
+    if (!postId) throw new Error("게시글 ID가 필요합니다.");
+    const postDoc = doc(db, 'artifacts', appId, 'boardPosts', postId);
+    const postSnap = await getDoc(postDoc);
+    if (!postSnap.exists()) throw new Error("게시글을 찾을 수 없습니다.");
+    await updateDoc(postDoc, { isHidden: !!hidden });
+}

@@ -6,7 +6,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPasswor
 const adminAuth = getAuth(app, 'admin');
 import { collection, getDocs, query, orderBy, limit, doc, deleteDoc, getDoc, setDoc, where, writeBatch, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { uploadImageToStorage } from './utils.js';
-import { getReportsAggregateByGroupKeys } from './db.js';
+import { getReportsAggregateByGroupKeys, deleteBoardPostByAdmin, setBoardPostHidden } from './db.js';
 import { REPORT_REASONS } from './constants.js';
 
 let currentDeletePhotoId = null;
@@ -1915,32 +1915,53 @@ async function renderBoardPosts(category = 'all') {
     if (!container) return;
     
     currentAdminBoardCategory = category;
+    container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
     
     try {
-        const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
-        let q;
-        if (category === 'all') {
-            q = query(postsColl, orderBy('timestamp', 'desc'), limit(50));
-        } else {
-            q = query(postsColl, where('category', '==', category), orderBy('timestamp', 'desc'), limit(50));
-        }
-        const postsSnapshot = await getDocs(q);
+        const [postsSnapshot, reportsMap] = await Promise.all([
+            (() => {
+                const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
+                let q;
+                if (category === 'all') {
+                    q = query(postsColl, orderBy('timestamp', 'desc'), limit(50));
+                } else {
+                    q = query(postsColl, where('category', '==', category), orderBy('timestamp', 'desc'), limit(50));
+                }
+                return getDocs(q);
+            })(),
+            getReportsAggregateByGroupKeys()
+        ]);
         
         if (postsSnapshot.empty) {
             container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-comments text-2xl mb-2"></i><p>게시물이 없습니다.</p></div>';
             return;
         }
         
-        container.innerHTML = postsSnapshot.docs.map(doc => {
-            const post = doc.data();
+        window._feedReportDetails = window._feedReportDetails || {};
+        container.innerHTML = postsSnapshot.docs.map(d => {
+            const post = d.data();
+            const postId = d.id;
             const date = post.timestamp ? new Date(post.timestamp).toLocaleDateString('ko-KR') : '-';
+            const reportInfo = reportsMap['board_' + postId];
+            if (reportInfo && reportInfo.count > 0) {
+                window._feedReportDetails['board_' + postId] = reportInfo.byReason;
+            }
+            const reportBadgeHtml = (reportInfo && reportInfo.count > 0)
+                ? `<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded cursor-pointer hover:bg-red-200" onclick="window.showReportDetailPopup('board_${String(postId).replace(/'/g, "\\'")}')">🚩 신고 ${reportInfo.count}</span>`
+                : '';
+            const isHidden = post.isHidden === true;
             return `
-                <div class="border border-slate-200 rounded-xl p-4">
-                    <div class="flex items-start justify-between">
-                        <div class="flex-1">
-                            <div class="flex items-center gap-2 mb-2">
+                <div class="border border-slate-200 rounded-xl p-4 ${isHidden ? 'bg-slate-50 opacity-90' : ''}">
+                    <div class="flex items-start gap-4">
+                        <div class="flex-shrink-0 pt-0.5">
+                            <input type="checkbox" class="board-item-checkbox w-4 h-4 rounded border-slate-300" data-post-id="${postId}" title="선택">
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 mb-2 flex-wrap">
                                 <h3 class="font-bold text-slate-800">${escapeHtml(post.title || '')}</h3>
                                 <span class="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-bold rounded">${escapeHtml(post.category || '')}</span>
+                                ${isHidden ? '<span class="px-2 py-0.5 bg-slate-300 text-slate-600 text-xs font-bold rounded">가려짐</span>' : ''}
+                                ${reportBadgeHtml}
                             </div>
                             <p class="text-sm text-slate-600 mb-2">${escapeHtml(post.content || '').substring(0, 100)}${post.content && post.content.length > 100 ? '...' : ''}</p>
                             <div class="flex items-center gap-4 text-xs text-slate-400">
@@ -1959,6 +1980,50 @@ async function renderBoardPosts(category = 'all') {
         container.innerHTML = '<div class="text-center py-8 text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>게시물을 불러오는 중 오류가 발생했습니다.</p></div>';
     }
 }
+
+function getSelectedBoardPostIds() {
+    return Array.from(document.querySelectorAll('.board-item-checkbox:checked')).map(el => el.getAttribute('data-post-id')).filter(Boolean);
+}
+
+window.adminBoardBulkHide = async function() {
+    const ids = getSelectedBoardPostIds();
+    if (ids.length === 0) { alert('가릴 게시물을 선택해주세요.'); return; }
+    try {
+        for (const id of ids) await setBoardPostHidden(id, true);
+        alert(ids.length + '건이 가려졌습니다.');
+        renderBoardPosts(currentAdminBoardCategory);
+    } catch (e) {
+        console.error(e);
+        alert('가리기 실패: ' + (e?.message || e));
+    }
+};
+
+window.adminBoardBulkUnhide = async function() {
+    const ids = getSelectedBoardPostIds();
+    if (ids.length === 0) { alert('가리기 해제할 게시물을 선택해주세요.'); return; }
+    try {
+        for (const id of ids) await setBoardPostHidden(id, false);
+        alert(ids.length + '건의 가리기가 해제되었습니다.');
+        renderBoardPosts(currentAdminBoardCategory);
+    } catch (e) {
+        console.error(e);
+        alert('가리기 해제 실패: ' + (e?.message || e));
+    }
+};
+
+window.adminBoardBulkDelete = async function() {
+    const ids = getSelectedBoardPostIds();
+    if (ids.length === 0) { alert('삭제할 게시물을 선택해주세요.'); return; }
+    if (!confirm('선택한 ' + ids.length + '건을 삭제하시겠습니까?')) return;
+    try {
+        for (const id of ids) await deleteBoardPostByAdmin(id);
+        alert(ids.length + '건이 삭제되었습니다.');
+        renderBoardPosts(currentAdminBoardCategory);
+    } catch (e) {
+        console.error(e);
+        alert('삭제 실패: ' + (e?.message || e));
+    }
+};
 
 // 게시판 게시물 새로고침
 window.refreshBoardPosts = function() {

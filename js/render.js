@@ -2244,7 +2244,7 @@ export async function renderBoardDetail(postId) {
                 </div>
                 
                 <!-- 추천/비추천 버튼 -->
-                <div class="flex items-center gap-4 pt-4 border-t border-slate-200">
+                <div class="flex items-center gap-4 pt-4 border-t border-slate-200 flex-wrap">
                     <button onclick="window.toggleBoardLike('${postId}', true)" class="flex items-center gap-2 px-4 py-2 ${userReaction === 'like' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'} rounded-lg text-sm font-bold active:scale-95 transition-all" ${!window.currentUser ? 'disabled' : ''}>
                         <i class="fa-solid fa-thumbs-up"></i>
                         <span>추천</span>
@@ -2262,6 +2262,13 @@ export async function renderBoardDetail(postId) {
                             </button>
                             <button onclick="window.deleteBoardPost('${postId}')" class="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-bold active:scale-95 transition-all">
                                 <i class="fa-solid fa-trash text-xs mr-1"></i>삭제
+                            </button>
+                        </div>
+                    ` : ''}
+                    ${!isAuthor && window.currentUser ? `
+                        <div class="ml-auto">
+                            <button type="button" onclick="window.showReportModal && window.showReportModal('board_${postId}')" class="flex items-center gap-1 text-[10px] text-slate-400 hover:text-amber-600 px-2 py-1 rounded active:opacity-70 transition-colors" title="신고">
+                                <i class="fa-solid fa-flag"></i><span>신고</span>
                             </button>
                         </div>
                     ` : ''}

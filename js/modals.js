@@ -177,6 +177,11 @@ export function openModal(date, slotId, entryId = null) {
         }
         if (placeInput) {
             placeInput.placeholder = '식당명이나 장소 (예: 스타벅스)';
+            // 이전 모달 사용에서 남은 카카오 장소 정보 제거 (카카오 미선택인데 잘못된 주소·카카오맵 분류로 들어가는 것 방지)
+            placeInput.removeAttribute('data-kakao-place-id');
+            placeInput.removeAttribute('data-kakao-place-address');
+            placeInput.removeAttribute('data-kakao-place-data');
+            placeInput.removeAttribute('data-kakao-place-name');
         }
         
         const mainPhotoContainer = document.getElementById('photoPreviewContainer');
@@ -270,6 +275,14 @@ export function openModal(date, slotId, entryId = null) {
                 // 공유 인디케이터 업데이트
                 updateShareIndicator();
                 setVal('placeInput', r.place || "");
+                // 수정 시 기존 기록에 카카오맵 정보가 있으면 placeInput에 복원 (저장 시 유지)
+                const _pi = document.getElementById('placeInput');
+                if (_pi && (r.placeId || r.placeAddress || r.placeData)) {
+                    if (r.placeId) _pi.setAttribute('data-kakao-place-id', r.placeId);
+                    _pi.setAttribute('data-kakao-place-address', (r.placeAddress != null && r.placeAddress !== undefined) ? String(r.placeAddress) : '');
+                    if (r.placeData && typeof r.placeData === 'object') _pi.setAttribute('data-kakao-place-data', JSON.stringify(r.placeData));
+                    _pi.setAttribute('data-kakao-place-name', (r.placeData && r.placeData.name) || r.place || '');
+                }
                 setVal('menuDetailInput', r.menuDetail || "");
                 setVal('withWhomInput', r.withWhomDetail || "");
                 setVal('snackDetailInput', r.menuDetail || "");
@@ -615,7 +628,11 @@ export async function saveEntry() {
         const kakaoPlaceId = placeInput?.getAttribute('data-kakao-place-id');
         const kakaoPlaceAddress = placeInput?.getAttribute('data-kakao-place-address');
         const kakaoPlaceData = placeInput?.getAttribute('data-kakao-place-data');
-        
+        const kakaoPlaceName = placeInput?.getAttribute('data-kakao-place-name') || '';
+        // 카카오에서 선택한 장소명을 수정한 경우: 주소·placeId를 저장하지 않음 (잘못된 주소 매칭 방지)
+        const nameMatches = !kakaoPlaceName || (String(placeInputVal || '').trim() === String(kakaoPlaceName).trim());
+        const shouldUseKakaoFields = kakaoPlaceId && !isSk && nameMatches;
+
         const record = {
             id: state.currentEditingId,
             date: state.currentEditingDate,
@@ -635,8 +652,8 @@ export async function saveEntry() {
             time: new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' })
         };
         
-        // 카카오맵 API로 입력된 식당인 경우 추가 정보 저장
-        if (kakaoPlaceId && !isSk) {
+        // 카카오맵 API로 입력된 식당인 경우 추가 정보 저장 (선택한 장소명을 수정한 경우는 제외 → 잘못된 주소 매칭 방지)
+        if (shouldUseKakaoFields) {
             record.placeId = kakaoPlaceId;
             record.kakaoPlaceId = kakaoPlaceId;
             record.placeAddress = kakaoPlaceAddress || '';
@@ -2049,9 +2066,11 @@ export function selectKakaoPlace(placeName, address, placeId = null, placeDataB6
     }
     
     // 카카오맵 API로 입력된 식당임을 표시하기 위해 데이터 속성에 저장
+    // data-kakao-place-name: 저장 시 '장소명 수정' 여부 검사용 (다르면 주소·placeId 미적용)
     if (placeInput && placeId) {
         placeInput.setAttribute('data-kakao-place-id', placeId);
         placeInput.setAttribute('data-kakao-place-address', address || '');
+        placeInput.setAttribute('data-kakao-place-name', placeName || '');
         if (placeDataB64) {
             try {
                 // Base64 디코딩 (URL-safe Base64)

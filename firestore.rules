@@ -88,7 +88,7 @@ service cloud.firestore {
     match /artifacts/{appId}/boardPosts/{postId} {
       allow read: if isAuthenticated();
       allow create: if isAuthorOfRequestResource();
-      allow update: if isAuthorOfResource();
+      allow update: if isAdmin() || isAuthorOfResource();
       allow delete: if isAdmin() || isAuthorOfResource();
     }
     
