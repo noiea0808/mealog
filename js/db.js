@@ -1898,19 +1898,22 @@ export const boardOperations = {
         }
     },
     
-    // 게시글 댓글 가져오기
+    // 게시글 댓글 가져오기 (orderBy 제거 → 복합 인덱스 불필요, 클라이언트에서 정렬)
     async getComments(postId) {
+        if (!postId) return [];
         try {
             const commentsColl = collection(db, 'artifacts', appId, 'boardComments');
-            const q = query(
-                commentsColl,
-                where('postId', '==', postId),
-                orderBy('timestamp', 'asc')
-            );
+            const q = query(commentsColl, where('postId', '==', String(postId)));
             const snapshot = await getDocs(q);
-            return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            const comments = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            comments.sort((a, b) => {
+                const tA = new Date(a.timestamp || 0).getTime();
+                const tB = new Date(b.timestamp || 0).getTime();
+                return tA - tB;
+            });
+            return comments;
         } catch (e) {
-            console.error("Get Comments Error:", e);
+            console.error("Get Comments Error (boardComments):", e);
             return [];
         }
     },
@@ -1943,7 +1946,7 @@ export const boardOperations = {
             
             const commentsColl = collection(db, 'artifacts', appId, 'boardComments');
             const newComment = {
-                postId: postId,
+                postId: String(postId),
                 content: content,
                 authorId: window.currentUser.uid,
                 authorNickname: authorNickname,

@@ -382,7 +382,7 @@ export function renderTimeline() {
                     : null;
                 const isShared = !!dailyShare;
                 
-                const shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-emerald-600 text-white' : 'text-emerald-600'}">
+                const shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-emerald-600 text-white' : 'text-slate-600'}">
                     <i class="fa-solid fa-share text-[10px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
                 </button>`;
                 
@@ -414,7 +414,7 @@ export function renderTimeline() {
                 : null;
             const isShared = !!dailyShare;
             
-            shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-emerald-600 text-white' : 'text-emerald-600'}">
+            shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-emerald-600 text-white' : 'text-slate-600'}">
                 <i class="fa-solid fa-share text-[10px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
             </button>`;
         }
@@ -512,9 +512,9 @@ export function renderTimeline() {
                     <div class="flex-1 flex flex-wrap gap-2 items-center">
                         ${records.length > 0 ? records.map(r => 
                             `<div onclick="window.openModal('${dateStr}', '${slot.id}', '${r.id}')" class="snack-tag cursor-pointer active:bg-slate-50">
-                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-2"></span>
+                                <span class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2"></span>
                                 ${r.menuDetail || r.snackType || '간식'} 
-                                ${isEntryShared(r.id) ? `<i class="fa-solid fa-share text-emerald-600 text-[8px] ml-1" title="게시됨"></i>` : ''}
+                                ${isEntryShared(r.id) ? `<i class="fa-solid fa-share text-slate-500 text-[8px] ml-1" title="게시됨"></i>` : ''}
                                 ${r.rating ? `<span class="text-[10px] font-black text-yellow-600 bg-yellow-50 px-1 py-0.5 rounded ml-1.5 flex items-center gap-0.5"><i class="fa-solid fa-star text-[9px]"></i>${r.rating}</span>` : ''}
                             </div>`
                         ).join('') : `<span class="text-xs text-slate-400 italic">기록없음</span>`}
@@ -557,12 +557,12 @@ export function renderTimeline() {
                 <div class="flex justify-between items-center mb-2">
                     <span class="text-sm font-extrabold text-slate-600 block uppercase">하루 소감</span>
                     <button onclick="window.saveDailyComment('${currentDateStr}')" 
-                        class="text-xs text-emerald-600 font-bold px-3 py-1.5 active:text-emerald-700 transition-colors">
+                        class="text-xs text-slate-600 font-bold px-3 py-1.5 active:text-slate-700 transition-colors">
                         저장
                     </button>
                 </div>
                 <textarea id="dailyCommentInput" placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해보세요." 
-                    class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all resize-none min-h-[100px]" 
+                    class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-slate-400 transition-all resize-none min-h-[100px]" 
                     rows="4">${escapeHtml(currentComment)}</textarea>
             </div>
         `;
@@ -1204,7 +1204,7 @@ export async function renderGallery() {
                         </div>
                     `}
                     <div class="flex-1 min-w-0">
-                        <div class="text-sm font-bold text-slate-800 cursor-pointer hover:text-emerald-600 transition-colors" onclick="window.filterGalleryByUser('${photo.userId}', '${escapeHtml(photo.userNickname || '익명')}')">${photo.userNickname || '익명'}</div>
+                        <div class="text-sm font-bold text-slate-800 cursor-pointer hover:text-slate-600 transition-colors" onclick="window.filterGalleryByUser('${photo.userId}', '${escapeHtml(photo.userNickname || '익명')}')">${photo.userNickname || '익명'}</div>
                         <div class="flex items-center gap-2">
                             <div class="text-xs text-slate-400">${dateStr}</div>
                             ${mealLabel ? `<div class="text-[10px] font-bold ${mealLabelStyle || 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-full whitespace-nowrap">${mealLabel}</div>` : ''}
@@ -1988,7 +1988,7 @@ export function renderTagManager(key, isSub = false, tempSettings) {
     // 메인 태그(mealType, category)는 편집 기능 제거
     if (!isNonEditable) {
         html += `<div class="flex gap-2">
-            <input type="text" id="newTag-${isSub ? 'sub-' : ''}${key}" class="flex-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-emerald-500" placeholder="태그 추가">
+            <input type="text" id="newTag-${isSub ? 'sub-' : ''}${key}" class="flex-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-slate-400" placeholder="태그 추가">
             <button onclick="window.addTag('${key}', ${isSub})" class="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-lg text-xs font-bold border border-emerald-100">추가</button>
         </div>`;
     }
@@ -2146,7 +2146,7 @@ export function renderBoard(category = 'all') {
                 const shouldHideContent = isAdminCategory && !isAuthor;
                 
                 return `
-                    <div onclick="window.openBoardDetail('${post.id}')" class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all hover:border-emerald-300 mb-2">
+                    <div onclick="window.openBoardDetail('${post.id}')" class="board-list-card board-list-card--${post.category || 'serious'} rounded-2xl p-5 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all mb-2">
                         <div class="flex items-start gap-3 mb-3">
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2 mb-2 flex-wrap">
@@ -2159,10 +2159,10 @@ export function renderBoard(category = 'all') {
                         <div class="flex items-center justify-between pt-3 border-t border-slate-100">
                             <div class="flex items-center gap-4">
                                 <div class="flex items-center gap-2">
-                                    <div class="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center text-xs font-bold text-emerald-700">${(post.authorNickname || '익명').charAt(0)}</div>
-                                    <span class="text-xs font-bold text-slate-700">${escapeHtml(post.authorNickname || '익명')}</span>
+                                    <div class="w-6 h-6 bg-slate-200 rounded-full flex items-center justify-center text-[10px] font-bold text-slate-500">${(post.authorNickname || '익명').charAt(0)}</div>
+                                    <span class="text-[11px] text-slate-400">${escapeHtml(post.authorNickname || '익명')}</span>
                                 </div>
-                                <span class="text-xs text-slate-400">${dateStr} ${timeStr}</span>
+                                <span class="text-[11px] text-slate-400">${dateStr} ${timeStr}</span>
                             </div>
                             <div class="flex items-center gap-4">
                                 <div class="flex items-center gap-1.5 text-slate-500">
@@ -2208,6 +2208,8 @@ export async function renderBoardDetail(postId) {
             </div>
         </div>
     `;
+    const myPostLbl = document.getElementById('boardDetailMyPostLabel');
+    if (myPostLbl) myPostLbl.classList.add('hidden');
     
     try {
         const post = await window.boardOperations.getPost(postId);
@@ -2263,7 +2265,6 @@ export async function renderBoardDetail(postId) {
             <div class="space-y-4">
                 <!-- 게시글 헤더 -->
                 <div class="border-b border-slate-200 pb-4">
-                    ${isAuthor ? '<div class="flex items-center gap-2 mb-3"><span class="text-[10px] text-emerald-600 font-bold">내 글</span></div>' : ''}
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
                             <div class="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center text-sm font-bold text-emerald-700">${(post.authorNickname || '익명').charAt(0)}</div>
@@ -2333,9 +2334,9 @@ export async function renderBoardDetail(postId) {
                                     <div class="flex items-center justify-between mb-2">
                                         <div class="flex items-center gap-2">
                                             <div class="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold text-slate-600">${commentAuthorNickname.charAt(0)}</div>
-                                            <div>
-                                                <div class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</div>
-                                                <div class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</div>
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</span>
+                                                <span class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</span>
                                             </div>
                                         </div>
                                         ${isCommentAuthor ? `
@@ -2347,13 +2348,13 @@ export async function renderBoardDetail(postId) {
                                     <p class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed pl-8">${escapeHtml(comment.content)}</p>
                                 </div>
                             `;
-                        }).join('') : '<p class="text-sm text-slate-400 text-center py-4">댓글이 없습니다. 첫 번째 댓글을 작성해보세요!</p>'}
+                        }).join('') : ''}
                     </div>
                     
                     <!-- 댓글 입력 -->
                     <div class="flex gap-2">
                         <input type="text" id="boardCommentInput" placeholder="${window.currentUser ? '댓글을 입력하세요 (Enter로 등록)' : '로그인 후 댓글을 작성할 수 있습니다'}" 
-                               class="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 transition-colors"
+                               class="flex-1 p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-slate-400 transition-colors"
                                ${!window.currentUser ? 'disabled' : ''}
                                onkeypress="if(event.key === 'Enter' && window.currentUser && !event.shiftKey) { event.preventDefault(); window.addBoardComment('${postId}'); }">
                         <button onclick="window.addBoardComment('${postId}')" 
@@ -2366,7 +2367,7 @@ export async function renderBoardDetail(postId) {
             </div>
         `;
         
-        // 제목·카테고리 업데이트 (헤더 바, 카테고리는 제목 왼쪽)
+        // 제목·카테고리·내글 업데이트 (헤더 바)
         const titleEl = document.getElementById('boardDetailViewTitle');
         if (titleEl) titleEl.textContent = escapeHtml(post.title);
         const catEl = document.getElementById('boardDetailViewCategory');
@@ -2374,6 +2375,11 @@ export async function renderBoardDetail(postId) {
             catEl.textContent = categoryLabels[post.category] || '무거운';
             catEl.className = 'mr-2 shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ' + (categoryColors[post.category] || categoryColors.serious);
             catEl.classList.remove('hidden');
+        }
+        const myPostLabel = document.getElementById('boardDetailMyPostLabel');
+        if (myPostLabel) {
+            if (isAuthor) myPostLabel.classList.remove('hidden');
+            else myPostLabel.classList.add('hidden');
         }
     } catch (error) {
         console.error("게시글 상세 로드 오류:", error);
@@ -2463,6 +2469,8 @@ export async function renderNoticeDetail(noticeId) {
             catEl.className = 'mr-2 shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ' + typeColor;
             catEl.classList.remove('hidden');
         }
+        const myPostLbl = document.getElementById('boardDetailMyPostLabel');
+        if (myPostLbl) myPostLbl.classList.add('hidden');
     } catch (e) {
         console.error("공지 상세 로드 오류:", e);
         container.innerHTML = `

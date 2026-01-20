@@ -12,13 +12,13 @@
     <title>MEALOG-함께한, 맛있었던 기억</title>
     
     <!-- Favicon -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%2310b981'/><text x='50%25' y='50%25' font-size='120' text-anchor='middle' dominant-baseline='central' fill='white'>🍽️</text></svg>" type="image/svg+xml">
-    <link rel="shortcut icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%2310b981'/><text x='50%25' y='50%25' font-size='120' text-anchor='middle' dominant-baseline='central' fill='white'>🍽️</text></svg>" type="image/svg+xml">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%23059669'/><text x='50%25' y='50%25' font-size='120' text-anchor='middle' dominant-baseline='central' fill='white'>🍽️</text></svg>" type="image/svg+xml">
+    <link rel="shortcut icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%23059669'/><text x='50%25' y='50%25' font-size='120' text-anchor='middle' dominant-baseline='central' fill='white'>🍽️</text></svg>" type="image/svg+xml">
     
     <!-- PWA Manifest -->
     <!-- manifest.json 파일이 없으면 주석 처리 -->
     <!-- <link rel="manifest" href="./manifest.json"> -->
-    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%2310b981'/><text x='50%25' y='50%25' font-size='120' text-anchor='middle' dominant-baseline='central' fill='white'>🍽️</text></svg>">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%23059669'/><text x='50%25' y='50%25' font-size='120' text-anchor='middle' dominant-baseline='central' fill='white'>🍽️</text></svg>">
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -213,10 +213,7 @@
 </head>
 <body class="max-w-md mx-auto min-h-screen relative">
 
-    <div id="toastContainer" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 w-full max-w-md z-[600] flex flex-col items-center gap-2 pointer-events-none px-4"></div>
-
-    <!-- 개발용: 최종 수정 시간 표시 (좌상단) -->
-    <div id="devVersionInfo" class="fixed top-2 left-2 z-[9999] text-[13.5px] text-slate-600 font-bold pointer-events-none bg-white/80 px-2 py-0.5 rounded backdrop-blur-sm border border-slate-200"></div>
+    <div id="toastContainer" class="fixed bottom-24 left-1/2 -translate-x-1/2 w-[92%] max-w-[26rem] z-[600] flex flex-col items-center gap-2 pointer-events-none px-4 box-border"></div>
 
     <div id="loadingOverlay" class="fixed inset-0 bg-white/70 z-[300] flex flex-col items-center justify-center">
         <div class="w-8 h-8 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin"></div>
@@ -225,7 +222,7 @@
     <!-- 1. Landing Page -->
     <div id="landingPage">
         <div class="mb-12 text-center">
-            <h1 class="text-5xl font-black text-white tracking-tighter mb-4">mealog</h1>
+            <h1 class="mealog-title text-5xl text-white tracking-tighter mb-4">mealog</h1>
             <p class="text-emerald-100 text-sm font-bold opacity-90 tracking-wide">우리가 함께한, 맛있었던 기억</p>
         </div>
         <div class="w-full max-w-xs px-8 space-y-3">
@@ -253,11 +250,11 @@
             <div class="space-y-3 mb-6">
                 <div>
                     <label class="text-[10px] font-bold text-slate-400 block mb-1 ml-1 uppercase">이메일</label>
-                    <input type="email" id="emailInput" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-emerald-500 transition-colors" placeholder="name@example.com">
+                    <input type="email" id="emailInput" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400 transition-colors" placeholder="name@example.com">
                 </div>
                 <div>
                     <label class="text-[10px] font-bold text-slate-400 block mb-1 ml-1 uppercase">비밀번호</label>
-                    <input type="password" id="passwordInput" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-emerald-500 transition-colors" placeholder="6자리 이상">
+                    <input type="password" id="passwordInput" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400 transition-colors" placeholder="6자리 이상">
                 </div>
                 <!-- 이메일 기억하기 체크박스 추가 -->
                 <div class="flex items-center mb-4">
@@ -305,10 +302,10 @@
                 <div class="bg-slate-50 rounded-xl p-4">
                     <div class="flex items-center justify-between mb-3">
                         <label class="flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" id="termsAgreement" onchange="window.safeCall('updateTermsAgreeButton')" class="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500">
+                            <input type="checkbox" id="termsAgreement" onchange="window.safeCall('updateTermsAgreeButton')" class="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-slate-400">
                             <span class="text-sm font-bold text-slate-800">이용약관 동의 (필수)</span>
                         </label>
-                        <button id="termsDetailBtn" class="text-xs text-emerald-600 font-bold">보기</button>
+                        <button id="termsDetailBtn" class="text-xs text-slate-600 font-bold">보기</button>
                     </div>
                     <div id="termsContent" class="hidden text-xs text-slate-600 leading-relaxed max-h-32 overflow-y-auto mt-2 pl-6">
                         <p>제1조 (목적)<br>본 약관은 MEALOG(이하 "회사")가 제공하는 식사 기록 서비스의 이용과 관련하여 회사와 이용자 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.</p>
@@ -322,7 +319,7 @@
                 <div class="bg-slate-50 rounded-xl p-4">
                     <div class="flex items-center justify-between mb-3">
                         <label class="flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" id="privacyAgreement" onchange="window.safeCall('updateTermsAgreeButton')" class="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500">
+                            <input type="checkbox" id="privacyAgreement" onchange="window.safeCall('updateTermsAgreeButton')" class="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-slate-400">
                             <span class="text-sm font-bold text-slate-800">개인정보 처리방침 동의 (필수)</span>
                         </label>
                         <button id="privacyDetailBtn" class="text-xs text-emerald-600 font-bold">보기</button>
@@ -352,7 +349,7 @@
                 <!-- 닉네임 입력 -->
                 <div>
                     <label class="text-sm font-bold text-slate-600 block mb-2">닉네임</label>
-                    <input type="text" id="setupNickname" placeholder="닉네임을 입력하세요" maxlength="20" class="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 text-sm outline-none focus:border-emerald-500 transition-colors">
+                    <input type="text" id="setupNickname" placeholder="닉네임을 입력하세요" maxlength="20" class="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 text-sm outline-none focus:border-slate-400 transition-colors">
                     <p class="text-[10px] text-slate-400 mt-1">한글, 영문, 숫자 조합 최대 20자</p>
                 </div>
             </div>
@@ -365,34 +362,34 @@
     <div id="mainApp" class="hidden">
         <header class="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-sm max-h-[60px]">
                 <div class="py-2.5 flex justify-between items-center px-6">
-                <h1 class="text-2xl font-black text-emerald-600 tracking-tighter">mealog</h1>
+                <h1 class="mealog-title text-2xl text-emerald-600 tracking-tighter">mealog</h1>
                 <div class="flex items-center gap-2">
                     <!-- 타임라인 탭: 돋보기 클릭 시 왼쪽으로 입력창 확장, 프로필 밀지 않음(고정폭+absolute) -->
                     <div id="timelineSearchPanel" class="timeline-search-wrapper hidden relative w-8 flex-shrink-0 overflow-visible">
-                        <div class="timeline-search-panel flex items-center overflow-hidden bg-slate-50 rounded-full border border-slate-100">
+                        <div class="timeline-search-panel flex items-center overflow-hidden bg-slate-100 rounded-full border border-slate-200">
                             <input type="text" id="searchInput" placeholder="메뉴, 장소 검색..." class="flex-1 min-w-0 bg-transparent border-0 pl-3 pr-1 py-1.5 text-sm outline-none focus:ring-0" oninput="window.safeCall('handleSearch', this.value)">
-                            <button type="button" onclick="window.toggleSearch()" class="timeline-search-toggle w-8 h-8 flex items-center justify-center flex-shrink-0 text-slate-400 active:bg-slate-100 rounded-full" aria-label="검색">
+                            <button type="button" onclick="window.toggleSearch()" class="timeline-search-toggle w-8 h-8 flex items-center justify-center flex-shrink-0 text-slate-500 active:bg-slate-200 rounded-full" aria-label="검색">
                                 <i class="fa-solid fa-magnifying-glass text-sm"></i>
                             </button>
                         </div>
                     </div>
                     <!-- 앨범 탭: 돋보기 위치에서 왼쪽으로 확장 (하트/댓글/북마크/돋보기), 4개 통합 배경 -->
-                    <div id="galleryTraceFilterPanel" class="gallery-trace-panel hidden flex items-center gap-0.5 overflow-hidden transition-all duration-300 ease-out flex-shrink-0 bg-slate-50 rounded-full border border-slate-100">
-                        <button type="button" data-trace="like" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100 hover:text-red-500 transition-colors flex-shrink-0">
+                    <div id="galleryTraceFilterPanel" class="gallery-trace-panel hidden flex items-center gap-0.5 overflow-hidden transition-all duration-300 ease-out flex-shrink-0 bg-slate-100 rounded-full border border-slate-200">
+                        <button type="button" data-trace="like" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-500 hover:bg-slate-200 hover:text-red-500 transition-colors flex-shrink-0">
                             <i class="fa-regular fa-heart text-sm"></i>
                         </button>
-                        <button type="button" data-trace="comment" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors flex-shrink-0">
+                        <button type="button" data-trace="comment" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-500 hover:bg-slate-200 hover:text-slate-600 transition-colors flex-shrink-0">
                             <i class="fa-regular fa-comment text-sm"></i>
                         </button>
-                        <button type="button" data-trace="bookmark" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors flex-shrink-0">
+                        <button type="button" data-trace="bookmark" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-500 hover:bg-slate-200 hover:text-slate-600 transition-colors flex-shrink-0">
                             <i class="fa-regular fa-bookmark text-sm"></i>
                         </button>
-                        <button type="button" data-trace="collapse" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100 transition-colors flex-shrink-0">
+                        <button type="button" data-trace="collapse" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-500 hover:bg-slate-200 transition-colors flex-shrink-0">
                             <i class="fa-solid fa-magnifying-glass text-sm"></i>
                         </button>
                     </div>
-                    <button id="headerSettingsBtn" class="flex items-center gap-2 bg-slate-50 px-2.5 py-1.5 rounded-full border border-slate-100 active:bg-slate-100 max-w-[140px]">
-                        <span id="headerIcon" class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 flex-shrink-0 overflow-hidden"></span>
+                    <button id="headerSettingsBtn" class="flex items-center gap-1.5 bg-slate-100 pl-1 pr-2 py-0 rounded-full border border-slate-200 active:bg-slate-200 max-w-[140px] h-9">
+                        <span id="headerIcon" class="w-[34px] h-[34px] rounded-full flex items-center justify-center bg-slate-300 flex-shrink-0 overflow-hidden"></span>
                         <span id="headerName" class="text-xs font-bold text-slate-700 truncate">게스트</span>
                     </button>
                 </div>
@@ -416,13 +413,12 @@
                 <div id="galleryContainer" class="space-y-2 bg-slate-100"></div>
             </div>
             <!-- 게시판 목록 뷰 -->
-            <div id="boardListView" class="hidden space-y-3 px-4 py-3">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-lg font-black text-slate-800 tracking-tight">MEAL TALK</h2>
-                    <button id="boardWriteBtn" class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold active:bg-emerald-700 transition-colors flex items-center gap-1.5">
-                        <i class="fa-solid fa-pen"></i>
-                        <span>글쓰기</span>
-                    </button>
+            <div id="boardListView" class="hidden space-y-3 px-4 py-3 relative">
+                <button id="boardWriteBtn" class="board-write-fab" type="button" title="글쓰기" aria-label="글쓰기">
+                    <i class="fa-solid fa-pen text-lg"></i>
+                </button>
+                <div class="mb-4">
+                    <h2 class="sub-title text-lg text-emerald-700 tracking-tighter">MEAL TALK</h2>
                 </div>
                 <div class="flex gap-2 mb-4 overflow-x-auto scrollbar-hide">
                     <button id="board-category-all" class="board-category-btn active px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold whitespace-nowrap">전체</button>
@@ -446,7 +442,8 @@
                         <i class="fa-solid fa-arrow-left text-lg"></i>
                     </button>
                     <span id="boardDetailViewCategory" class="mr-2 shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full hidden"></span>
-                    <h2 class="text-lg font-black text-slate-800 tracking-tight flex-1 truncate min-w-0" id="boardDetailViewTitle">게시글</h2>
+                    <h2 class="sub-title text-lg text-slate-800 tracking-tight flex-1 truncate min-w-0" id="boardDetailViewTitle">게시글</h2>
+                    <span id="boardDetailMyPostLabel" class="hidden shrink-0 text-[10px] text-emerald-600 font-bold">내글</span>
                 </div>
                 <div id="boardDetailContent" class="space-y-3">
                     <!-- 게시글 상세 내용이 여기에 동적으로 추가됨 -->
@@ -459,12 +456,12 @@
                     <button onclick="window.backToBoardList()" class="w-8 h-8 flex items-center justify-center text-slate-400 active:bg-slate-100 rounded-full transition-colors">
                         <i class="fa-solid fa-arrow-left text-lg"></i>
                     </button>
-                    <h2 class="text-lg font-black text-slate-800 tracking-tight">글쓰기</h2>
+                    <h2 class="sub-title text-lg text-slate-800 tracking-tight">글쓰기</h2>
                 </div>
                 <div class="space-y-4">
                     <div>
                         <label class="text-sm font-bold text-slate-600 block mb-2">카테고리</label>
-                        <select id="boardWriteCategory" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 transition-colors">
+                        <select id="boardWriteCategory" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-slate-400 transition-colors">
                             <option value="serious">무거운</option>
                             <option value="chat">가벼운</option>
                             <option value="food">먹는</option>
@@ -473,11 +470,11 @@
                     </div>
                     <div>
                         <label class="text-sm font-bold text-slate-600 block mb-2">제목</label>
-                        <input type="text" id="boardWriteTitle" placeholder="제목을 입력하세요" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 transition-colors">
+                        <input type="text" id="boardWriteTitle" placeholder="제목을 입력하세요" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-slate-400 transition-colors">
                     </div>
                     <div>
                         <label class="text-sm font-bold text-slate-600 block mb-2">내용</label>
-                        <textarea id="boardWriteContent" placeholder="내용을 입력하세요" rows="15" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 transition-colors resize-none"></textarea>
+                        <textarea id="boardWriteContent" placeholder="내용을 입력하세요" rows="15" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-slate-400 transition-colors resize-none"></textarea>
                     </div>
                     <div class="flex gap-2 pt-4 border-t">
                         <button onclick="window.backToBoardList()" class="flex-1 py-4 bg-slate-100 text-slate-600 rounded-xl font-bold active:bg-slate-200 transition-colors">취소</button>
@@ -489,7 +486,7 @@
                 <!-- Dashboard content remains same -->
                 <div class="card py-3 px-4 bg-emerald-600 text-white relative overflow-hidden">
                     <div class="flex flex-col mb-4 relative z-10">
-                        <h3 class="text-lg font-black tracking-tighter uppercase flex items-center gap-2"><span>✨</span>INSIGHT</h3>
+                        <h3 class="sub-title text-lg tracking-tighter flex items-center gap-2"><span>✨</span>INSIGHT</h3>
                         <div class="flex bg-emerald-700/40 p-1 rounded-xl mt-3 gap-1">
                             <button id="btn-dash-7d" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">최근 1주</button>
                             <button id="btn-dash-week" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">주간</button>
@@ -573,9 +570,9 @@
                 <!-- 분석 타입 선택 스위치 -->
                 <div class="card py-1.5 px-4 mt-3">
                     <div class="flex p-0.5 rounded-xl gap-1">
-                        <button id="btn-analysis-best" class="flex-1 py-1 text-xs font-bold bg-white text-emerald-700 rounded-lg shadow-sm transition-all">Best</button>
-                        <button id="btn-analysis-main" class="flex-1 py-1 text-xs font-bold text-emerald-600 hover:bg-emerald-100/50 rounded-lg transition-colors">식사</button>
-                        <button id="btn-analysis-snack" class="flex-1 py-1 text-xs font-bold text-emerald-600 hover:bg-emerald-100/50 rounded-lg transition-colors">간식</button>
+                        <button id="btn-analysis-best" class="flex-1 py-1 text-xs font-bold bg-white text-slate-700 rounded-lg shadow-sm transition-all">Best</button>
+                        <button id="btn-analysis-main" class="flex-1 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">식사</button>
+                        <button id="btn-analysis-snack" class="flex-1 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">간식</button>
                     </div>
                 </div>
                 
@@ -601,23 +598,23 @@
                 <div id="mainAnalysisSection" class="mt-2 hidden">
                     <div class="space-y-0">
                         <div class="card py-2.5 px-4">
-                            <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">식사 방식</h3><button onclick="window.openDetailModal('mealType', '식사 방식 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                            <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">식사 방식</h3><button onclick="window.openDetailModal('mealType', '식사 방식 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                             <div id="propChartContainer"></div>
                         </div>
                 <div class="card py-2.5 px-4">
-                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">메뉴 카테고리</h3><button onclick="window.openDetailModal('category', '메뉴 카테고리 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">메뉴 카테고리</h3><button onclick="window.openDetailModal('category', '메뉴 카테고리 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                     <div id="categoryChartContainer"></div>
                 </div>
                 <div class="card py-2.5 px-4">
-                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">함께한 즐거움</h3><button onclick="window.openDetailModal('withWhom', '함께한 사람 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">함께한 즐거움</h3><button onclick="window.openDetailModal('withWhom', '함께한 사람 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                     <div id="mateChartContainer"></div>
                 </div>
                 <div class="card py-2.5 px-4">
-                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">만족도</h3><button onclick="window.openDetailModal('rating', '만족도 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">만족도</h3><button onclick="window.openDetailModal('rating', '만족도 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                     <div id="ratingChartContainer"></div>
                 </div>
                 <div class="card py-2.5 px-4">
-                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">포만감</h3><button onclick="window.openDetailModal('satiety', '포만감 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">포만감</h3><button onclick="window.openDetailModal('satiety', '포만감 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                     <div id="satietyChartContainer"></div>
                 </div>
                     </div>
@@ -627,11 +624,11 @@
                 <div id="snackAnalysisSection" class="mt-2 hidden">
                     <div class="space-y-0">
                         <div class="card py-2.5 px-4">
-                            <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">간식 유형</h3><button onclick="window.openDetailModal('snackType', '간식 유형 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                            <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">간식 유형</h3><button onclick="window.openDetailModal('snackType', '간식 유형 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                             <div id="snackTypeChartContainer"></div>
                         </div>
                         <div class="card py-2.5 px-4">
-                            <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">만족도</h3><button onclick="window.openDetailModal('snackRating', '간식 만족도 통계')" class="text-xs text-emerald-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                            <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">만족도</h3><button onclick="window.openDetailModal('snackRating', '간식 만족도 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                             <div id="snackRatingChartContainer"></div>
                         </div>
                     </div>
@@ -710,7 +707,7 @@
                     
                     <div class="bg-slate-50 p-4 rounded-2xl space-y-3 mt-4">
                         <label class="text-[10px] font-bold text-slate-400 block uppercase">소개</label>
-                        <textarea id="settingBio" placeholder="자신을 소개해주세요" maxlength="200" rows="4" class="w-full bg-white p-3 rounded-xl border-none outline-none text-sm resize-none focus:ring-2 focus:ring-emerald-500"></textarea>
+                        <textarea id="settingBio" placeholder="자신을 소개해주세요" maxlength="200" rows="4" class="w-full bg-white p-3 rounded-xl border-none outline-none text-sm resize-none focus:ring-2 focus:ring-slate-400"></textarea>
                         <p class="text-[10px] text-slate-400 text-right"><span id="bioCharCount">0</span>/200</p>
                     </div>
                 </div>
@@ -793,26 +790,26 @@
                         <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">식사 방식</span>
                         <div id="typeChips" class="flex flex-wrap gap-2 mb-1.5"></div>
                         <div class="relative">
-                            <button id="kakaoSearchBtn" onclick="window.openKakaoPlaceSearch()" class="hidden absolute left-2 top-1/2 -translate-y-1/2 bg-emerald-600 text-white rounded-lg p-2 z-10 hover:bg-emerald-700 transition-colors">
+                            <button id="kakaoSearchBtn" onclick="window.openKakaoPlaceSearch()" class="hidden absolute left-2 top-1/2 -translate-y-1/2 bg-slate-600 text-white rounded-lg p-2 z-10 hover:bg-slate-700 transition-colors">
                                 <i class="fa-solid fa-magnifying-glass text-sm"></i>
                             </button>
-                            <input id="placeInput" type="text" placeholder="식당명이나 장소 (예: 스타벅스)" class="w-full p-3 pl-12 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
+                            <input id="placeInput" type="text" placeholder="식당명이나 장소 (예: 스타벅스)" class="w-full p-3 pl-12 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
                         </div>
                         <div id="restaurantSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
                     </div>
                     
                     <div id="optionalFields" class="space-y-2">
-                        <div class="p-3 bg-emerald-50/50 rounded-2xl border border-emerald-100">
+                        <div class="p-3 bg-slate-50 rounded-2xl border border-slate-200">
                             <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">메뉴 정보</span>
                             <div id="categoryChips" class="flex flex-wrap gap-2 mb-1.5"></div>
-                            <input id="menuDetailInput" type="text" placeholder="드신 메뉴 명 (예: 아이스 아메리카노)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
+                            <input id="menuDetailInput" type="text" placeholder="드신 메뉴 명 (예: 아이스 아메리카노)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
                             <div id="menuSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
                         </div>
                         
                         <div class="p-3 bg-blue-50/50 rounded-2xl border border-blue-100">
                             <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">함께한 사람</span>
                             <div id="withChips" class="flex flex-wrap gap-2 mb-1.5"></div>
-                            <input id="withWhomInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
+                            <input id="withWhomInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
                             <div id="peopleSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
                         </div>
                     </div>
@@ -837,7 +834,7 @@
 
                     <div class="mb-2">
                         <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">Comment</span>
-                        <textarea id="generalCommentInput" placeholder="오늘 식사는 어떠셨나요?" rows="4" class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all resize-y min-h-[60px]"></textarea>
+                        <textarea id="generalCommentInput" placeholder="오늘 식사는 어떠셨나요?" rows="4" class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-slate-400 transition-all resize-y min-h-[60px]"></textarea>
                     </div>
                 </div>
                 
@@ -855,10 +852,10 @@
                         </div>
                         <input type="file" id="snackImageInput" class="hidden" accept="image/*" multiple onchange="window.safeCall('handleMultipleImages', event)">
                     </div>
-                    <div class="p-3 bg-emerald-50/50 rounded-2xl border border-emerald-100 mb-2">
+                    <div class="p-3 bg-slate-50 rounded-2xl border border-slate-200 mb-2">
                         <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">간식 정보</span>
                         <div id="snackTypeChips" class="flex flex-wrap gap-2 mb-1.5"></div>
-                        <input id="snackDetailInput" type="text" placeholder="무엇을 드셨나요?" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-emerald-500 transition-all">
+                        <input id="snackDetailInput" type="text" placeholder="무엇을 드셨나요?" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
                         <div id="snackSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
                     </div>
                     <div id="snackReviewSection" class="pt-2 border-t border-slate-50 space-y-2 mb-2">
@@ -875,7 +872,7 @@
                     </div>
                     <div class="mb-2">
                         <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">Comment</span>
-                        <textarea id="snackCommentInput" placeholder="오늘 간식은 어떠셨나요?" rows="4" class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all resize-y min-h-[60px]"></textarea>
+                        <textarea id="snackCommentInput" placeholder="오늘 간식은 어떠셨나요?" rows="4" class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-slate-400 transition-all resize-y min-h-[60px]"></textarea>
                     </div>
                 </div>
             </div>
@@ -925,7 +922,7 @@
             </div>
             <div class="flex flex-col gap-3">
                 <div class="character-popup-item active flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-colors hover:bg-slate-50" data-character-id="mealog" onclick="window.selectInsightCharacter('mealog')">
-                    <div class="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700 font-black text-lg flex-shrink-0">M</div>
+                    <div class="w-12 h-12 rounded-xl bg-slate-200 flex items-center justify-center text-slate-700 font-black text-lg flex-shrink-0">M</div>
                     <div class="flex-1">
                         <div class="text-sm font-bold text-slate-800">MEALOG</div>
                         <div class="text-xs text-slate-500 mt-0.5">친근한 친구</div>
@@ -955,7 +952,7 @@
                 <div id="bestSharePreview" class="bg-slate-50 rounded-2xl p-4"></div>
                 <div>
                     <label class="text-sm font-bold text-slate-600 block mb-2">코멘트 (선택사항)</label>
-                    <textarea id="bestShareComment" placeholder="이번 주/월의 베스트에 대한 코멘트를 입력하세요..." class="w-full p-3 bg-slate-50 rounded-xl text-sm border border-transparent focus:border-emerald-500 transition-all resize-none" rows="3"></textarea>
+                    <textarea id="bestShareComment" placeholder="이번 주/월의 베스트에 대한 코멘트를 입력하세요..." class="w-full p-3 bg-slate-50 rounded-xl text-sm border border-transparent focus:border-slate-400 transition-all resize-none" rows="3"></textarea>
                 </div>
             </div>
             <div class="p-6 border-t">

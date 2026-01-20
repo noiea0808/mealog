@@ -645,7 +645,7 @@ window.openDailyCommentModal = (dateStr) => {
             </div>
             <textarea id="dailyCommentModalInput" 
                 placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해보세요." 
-                class="w-full p-4 bg-slate-50 rounded-xl text-sm border border-slate-200 focus:border-emerald-500 transition-all resize-none min-h-[150px]" 
+                class="w-full p-4 bg-slate-50 rounded-xl text-sm border border-slate-200 focus:border-slate-400 transition-all resize-none min-h-[150px]" 
                 rows="6">${escapeHtml(currentComment)}</textarea>
             <div class="flex gap-3 mt-6">
                 <button onclick="window.closeDailyCommentModal()" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm">
@@ -2121,9 +2121,9 @@ window.addBoardComment = async (postId) => {
                                     <div class="flex items-center justify-between mb-2">
                                         <div class="flex items-center gap-2">
                                             <div class="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold text-slate-600">${commentAuthorNickname.charAt(0)}</div>
-                                            <div>
-                                                <div class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</div>
-                                                <div class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</div>
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</span>
+                                                <span class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</span>
                                             </div>
                                         </div>
                                         ${isCommentAuthor ? `
@@ -2183,15 +2183,15 @@ window.deleteBoardComment = async (commentId, postId) => {
                         
                         return `
                             <div class="bg-white border border-slate-200 rounded-xl p-4 mb-3" data-comment-id="${comment.id}">
-                                <div class="flex items-center justify-between mb-2">
-                                    <div class="flex items-center gap-2">
-                                        <div class="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold text-slate-600">${commentAuthorNickname.charAt(0)}</div>
-                                        <div>
-                                            <div class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</div>
-                                            <div class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</div>
+                                    <div class="flex items-center justify-between mb-2">
+                                        <div class="flex items-center gap-2">
+                                            <div class="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold text-slate-600">${commentAuthorNickname.charAt(0)}</div>
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</span>
+                                                <span class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    ${isCommentAuthor ? `
+                                        ${isCommentAuthor ? `
                                         <button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="text-xs text-red-500 font-bold px-2 py-1 rounded-lg hover:bg-red-50 active:opacity-70 transition-colors">
                                             삭제
                                         </button>
@@ -2202,7 +2202,7 @@ window.deleteBoardComment = async (commentId, postId) => {
                         `;
                     }).join('');
                 } else {
-                    commentsListEl.innerHTML = '<p class="text-sm text-slate-400 text-center py-4">댓글이 없습니다. 첫 번째 댓글을 작성해보세요!</p>';
+                    commentsListEl.innerHTML = '';
                 }
             }
         }, 300);
