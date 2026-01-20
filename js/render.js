@@ -2285,35 +2285,35 @@ export async function renderBoardDetail(postId) {
                 <!-- 게시글 내용 -->
                 <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4 -mx-2 px-2">${escapeHtml(post.content).replace(/\n/g, '<br>')}</div>
                 
-                <!-- 추천/비추천 버튼 -->
-                <div class="flex items-center gap-4 pt-4 border-t border-slate-200 flex-wrap">
-                    <button onclick="window.toggleBoardLike('${postId}', true)" class="flex items-center gap-2 px-4 py-2 ${userReaction === 'like' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'} rounded-lg text-sm font-bold active:scale-95 transition-all" ${!window.currentUser ? 'disabled' : ''}>
-                        <i class="fa-solid fa-thumbs-up"></i>
-                        <span>추천</span>
-                        <span class="text-xs">${post.likes || 0}</span>
-                    </button>
-                    <button onclick="window.toggleBoardLike('${postId}', false)" class="flex items-center gap-2 px-4 py-2 ${userReaction === 'dislike' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'} rounded-lg text-sm font-bold active:scale-95 transition-all" ${!window.currentUser ? 'disabled' : ''}>
-                        <i class="fa-solid fa-thumbs-down"></i>
-                        <span>비추천</span>
-                        <span class="text-xs">${post.dislikes || 0}</span>
-                    </button>
-                    ${isAuthor ? `
-                        <div class="ml-auto flex gap-2">
-                            <button onclick="window.editBoardPost('${postId}')" class="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-lg text-sm font-bold active:scale-95 transition-all">
-                                <i class="fa-solid fa-pencil text-xs mr-1"></i>수정
+                <!-- 추천/비추천(왼쪽) | 수정/삭제 또는 신고(오른쪽) -->
+                <div class="board-detail-actions">
+                    <div class="board-detail-actions__left">
+                        <button onclick="window.toggleBoardLike('${postId}', true)" class="board-btn-participate board-btn-participate--like ${userReaction === 'like' ? 'is-active' : ''}" ${!window.currentUser ? 'disabled' : ''}>
+                            <i class="fa-solid fa-thumbs-up"></i>
+                            <span>추천</span>
+                            <span class="text-xs opacity-80">${post.likes || 0}</span>
+                        </button>
+                        <button onclick="window.toggleBoardLike('${postId}', false)" class="board-btn-participate board-btn-participate--dislike ${userReaction === 'dislike' ? 'is-active' : ''}" ${!window.currentUser ? 'disabled' : ''}>
+                            <i class="fa-solid fa-thumbs-down"></i>
+                            <span>비추천</span>
+                            <span class="text-xs opacity-80">${post.dislikes || 0}</span>
+                        </button>
+                    </div>
+                    <div class="board-detail-actions__right">
+                        ${isAuthor ? `
+                            <button onclick="window.editBoardPost('${postId}')" class="board-btn-manage board-btn-manage--edit">
+                                <i class="fa-solid fa-pencil"></i><span>수정</span>
                             </button>
-                            <button onclick="window.deleteBoardPost('${postId}')" class="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-bold active:scale-95 transition-all">
-                                <i class="fa-solid fa-trash text-xs mr-1"></i>삭제
+                            <button onclick="window.deleteBoardPost('${postId}')" class="board-btn-manage board-btn-manage--delete">
+                                <i class="fa-solid fa-trash"></i><span>삭제</span>
                             </button>
-                        </div>
-                    ` : ''}
-                    ${!isAuthor && window.currentUser ? `
-                        <div class="ml-auto">
-                            <button type="button" onclick="window.showReportModal && window.showReportModal('board_${postId}')" class="flex items-center gap-1 text-[10px] text-slate-400 hover:text-amber-600 px-2 py-1 rounded active:opacity-70 transition-colors" title="신고">
+                        ` : ''}
+                        ${!isAuthor && window.currentUser ? `
+                            <button type="button" onclick="window.showReportModal && window.showReportModal('board_${postId}')" class="flex items-center gap-1.5 text-[10px] text-slate-400 hover:text-amber-600 px-2 py-1.5 rounded-xl active:opacity-70 transition-colors" title="신고">
                                 <i class="fa-solid fa-flag"></i><span>신고</span>
                             </button>
-                        </div>
-                    ` : ''}
+                        ` : ''}
+                    </div>
                 </div>
                 
                 <!-- 댓글 섹션 -->
@@ -2446,17 +2446,19 @@ export async function renderNoticeDetail(noticeId) {
                     </div>
                 </div>
                 <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4 -mx-3 px-1">${escapeHtml(notice.content || '').replace(/\n/g, '<br>')}</div>
-                <div class="flex items-center gap-4 pt-4 border-t border-slate-200 flex-wrap">
-                    <button onclick="window.toggleNoticeLike('${noticeId}', true)" class="flex items-center gap-2 px-4 py-2 ${userReaction === 'like' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'} rounded-lg text-sm font-bold active:scale-95 transition-all" ${!window.currentUser ? 'disabled' : ''}>
-                        <i class="fa-solid fa-thumbs-up"></i>
-                        <span>추천</span>
-                        <span class="text-xs">${likes}</span>
-                    </button>
-                    <button onclick="window.toggleNoticeLike('${noticeId}', false)" class="flex items-center gap-2 px-4 py-2 ${userReaction === 'dislike' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'} rounded-lg text-sm font-bold active:scale-95 transition-all" ${!window.currentUser ? 'disabled' : ''}>
-                        <i class="fa-solid fa-thumbs-down"></i>
-                        <span>비추천</span>
-                        <span class="text-xs">${dislikes}</span>
-                    </button>
+                <div class="board-detail-actions">
+                    <div class="board-detail-actions__left">
+                        <button onclick="window.toggleNoticeLike('${noticeId}', true)" class="board-btn-participate board-btn-participate--like ${userReaction === 'like' ? 'is-active' : ''}" ${!window.currentUser ? 'disabled' : ''}>
+                            <i class="fa-solid fa-thumbs-up"></i>
+                            <span>추천</span>
+                            <span class="text-xs opacity-80">${likes}</span>
+                        </button>
+                        <button onclick="window.toggleNoticeLike('${noticeId}', false)" class="board-btn-participate board-btn-participate--dislike ${userReaction === 'dislike' ? 'is-active' : ''}" ${!window.currentUser ? 'disabled' : ''}>
+                            <i class="fa-solid fa-thumbs-down"></i>
+                            <span>비추천</span>
+                            <span class="text-xs opacity-80">${dislikes}</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         `;

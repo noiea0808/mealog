@@ -182,6 +182,7 @@
                             overlay.classList.add('hidden');
                         }
                     }, 1000);
+                }
             }
         }, true); // capture phase에서도 캐치
         
@@ -413,7 +414,7 @@
                 <div id="galleryContainer" class="space-y-2 bg-slate-100"></div>
             </div>
             <!-- 게시판 목록 뷰 -->
-            <div id="boardListView" class="hidden space-y-3 px-4 py-3 relative">
+            <div id="boardListView" class="hidden space-y-3 px-4 pt-1.5 pb-3 relative">
                 <button id="boardWriteBtn" class="board-write-fab" type="button" title="글쓰기" aria-label="글쓰기">
                     <i class="fa-solid fa-pen text-lg"></i>
                 </button>
@@ -482,7 +483,7 @@
                     </div>
                 </div>
             </div>
-            <div id="dashboardView" class="hidden space-y-3 px-0 py-3">
+            <div id="dashboardView" class="hidden space-y-3 px-0 pt-[0.1125rem] pb-3">
                 <!-- Dashboard content remains same -->
                 <div class="card py-3 px-4 bg-emerald-600 text-white relative overflow-hidden">
                     <div class="flex flex-col mb-4 relative z-10">

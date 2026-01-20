@@ -406,6 +406,12 @@ header .mealog-title {
 #dashboardView .card {
     border-radius: 0;
 }
+/* 베스트/식사/간식 탭과 식사카드 컨테이너 간격 (0.1125rem) */
+#dashboardView #bestAnalysisSection,
+#dashboardView #mainAnalysisSection,
+#dashboardView #snackAnalysisSection {
+    margin-top: 0.1125rem;
+}
 /* 식사/간식 분석 섹션 카드들 같은 박스처럼 보이게 */
 #mainAnalysisSection .card,
 #snackAnalysisSection .card {
@@ -574,11 +580,11 @@ header .mealog-title {
 }
 
 /* 게시판 스타일 */
-/* 글쓰기 버튼: 플로팅 FAB – 하단 탭 메뉴 우상단에 정렬 (nav와 동일한 오른쪽 끝) */
+/* 글쓰기 버튼: 플로팅 FAB – 하단 탭 메뉴 우상단에 정렬, 좌상단으로 약간 이동 */
 #boardWriteBtn.board-write-fab {
     position: fixed;
-    bottom: 5rem;
-    right: calc(50% - min(46vw, 13rem));
+    bottom: 5.75rem;
+    right: calc(50% - min(46vw, 13rem) + 1.25rem);
     z-index: 40;
     width: 48px;
     height: 48px;
@@ -640,4 +646,102 @@ header .mealog-title {
 .board-list-card--chat { border-left-color: #2563eb; }
 .board-list-card--food { border-left-color: #059669; }
 .board-list-card--admin { border-left-color: #ea580c; }
+
+/* MEAL TALK 게시글 상세 하단 버튼: 참여(추천/비추천) 왼쪽, 관리(수정/삭제) 오른쪽 */
+.board-detail-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding-top: 1rem;
+    margin-top: 0;
+    border-top: 1px solid #e2e8f0;
+}
+.board-detail-actions__left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+.board-detail-actions__right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+/* 참여 액션: 추천/비추천 - 연한 회색/outline, 눌렀을 때만 브랜드 컬러 채움 */
+.board-btn-participate {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.5rem 1rem;
+    border-radius: 0.875rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+    border: 1.5px solid #e2e8f0;
+    background: #f8fafc;
+    color: #64748b;
+    transition: all 0.2s;
+}
+.board-btn-participate:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+.board-btn-participate:not(:disabled):active {
+    transform: scale(0.98);
+}
+.board-btn-participate--like {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+    color: #64748b;
+}
+.board-btn-participate--like.is-active {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+    color: #059669;
+}
+.board-btn-participate--dislike {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+    color: #64748b;
+}
+.board-btn-participate--dislike.is-active {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #dc2626;
+}
+
+/* 관리 액션: 수정/삭제 - 텍스트 버튼, 배경 없음 */
+.board-btn-manage {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+.board-btn-manage--edit {
+    color: #475569;
+}
+.board-btn-manage--edit:hover {
+    color: #059669;
+}
+.board-btn-manage--edit:active {
+    opacity: 0.8;
+}
+/* 삭제: 기본 연한 회색, hover 시에만 붉은색(경고) */
+.board-btn-manage--delete {
+    color: #94a3b8;
+}
+.board-btn-manage--delete:hover {
+    color: #ef4444;
+}
+.board-btn-manage--delete:active {
+    opacity: 0.8;
+}
 
