@@ -233,7 +233,7 @@ export class AuthFlowManager {
                     } else {
                         // Firestore 캐시→서버 타이밍으로 인해 agreed인데도 NEEDS_TERMS로 들어올 수 있음.
                         // 모달을 띄우기 전에 잠시 대기 후 재확인하여, 이미 동의한 사용자에게는 모달을 표시하지 않음
-                        await new Promise(r => setTimeout(r, 120));
+                        await new Promise(r => setTimeout(r, 200));
                         const recheck = await this.checkUserReadiness(this.user);
                         if (recheck.termsAgreed) {
                             console.log('✅ 재확인: 약관 동의됨. 모달 생략 후 다음 단계로.');

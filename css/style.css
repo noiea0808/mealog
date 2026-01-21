@@ -60,10 +60,11 @@ header .mealog-title {
     background: #059669; 
     color: white; 
 }
-/* 미완(1~3건): #059669에 대응하는 연한 톤 */
+/* 미완(1~3건): 연한 그린(#E5F2DB) + primary 텍스트(#059669) + 테두리 #10B981 */
 .dot-partial { 
-    background: #a7f3d0; 
+    background: #E5F2DB; 
     color: #059669; 
+    border: 1px solid #10B981; 
 }
 .dot-selected { 
     transform: scale(1.15); 
@@ -337,11 +338,11 @@ header .mealog-title {
 @keyframes toastSlideUp { 
     from { 
         opacity: 0; 
-        transform: translate(-50%, 20px); 
+        transform: translateY(20px); 
     } 
     to { 
         opacity: 1; 
-        transform: translate(-50%, 0); 
+        transform: translateY(0); 
     } 
 }
 .animate-toast { 
@@ -709,9 +710,7 @@ header .mealog-title {
     background: #fef2f2;
     border-color: #fecaca;
     color: #dc2626;
-}
-
-/* 관리 액션: 수정/삭제 - 텍스트 버튼, 배경 없음 */
+}/* 관리 액션: 수정/삭제 - 텍스트 버튼, 배경 없음 */
 .board-btn-manage {
     display: inline-flex;
     align-items: center;
@@ -744,4 +743,3 @@ header .mealog-title {
 .board-btn-manage--delete:active {
     opacity: 0.8;
 }
-

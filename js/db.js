@@ -801,7 +801,22 @@ export function setupListeners(userId, callbacks) {
                 if (onSettingsUpdate) onSettingsUpdate();
             }
         } else {
-            // 설정이 없으면 기본값 사용 (providerId와 email 포함)
+            // snap.exists()=false: 캐시 미스일 수 있음. 약관 동의된 사용자가 모달이 잠깐 뜨는 현상 방지를 위해 서버에서 재확인.
+            const settingsRef = doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings');
+            try {
+                const serverSnap = await getDoc(settingsRef, { source: 'server' });
+                if (serverSnap.exists()) {
+                    window.userSettings = serverSnap.data();
+                    if (!window.userSettings.subTags) window.userSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
+                    if (!window.userSettings.favoriteSubTags) window.userSettings.favoriteSubTags = { mealType: {}, category: {}, withWhom: {}, snackType: {} };
+                    console.log('📥 설정 서버에서 로드 (캐시 미스 시): termsAgreed=', window.userSettings.termsAgreed);
+                    if (onSettingsUpdate) onSettingsUpdate();
+                    return;
+                }
+            } catch (e) {
+                console.warn('설정 서버 재확인 실패, 기본값 사용:', e);
+            }
+            // 서버에도 없음: 기본값 사용 (providerId와 email 포함)
             console.log('📥 설정이 없음. 기본값 로드 시작...');
             import('./constants.js').then(async ({ DEFAULT_USER_SETTINGS }) => {
                 window.userSettings = JSON.parse(JSON.stringify(DEFAULT_USER_SETTINGS));
