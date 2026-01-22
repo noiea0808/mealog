@@ -93,7 +93,7 @@ export function renderTimeline() {
                     : null;
                 const isShared = !!dailyShare;
                 
-                const shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-emerald-600 text-white' : 'text-emerald-600'}">
+                const shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-emerald-600 text-white' : 'text-slate-600'}">
                     <i class="fa-solid fa-share text-[10px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
                 </button>`;
                 
@@ -129,7 +129,7 @@ export function renderTimeline() {
                 : null;
             const isShared = !!dailyShare;
             
-            shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-emerald-600 text-white' : 'text-emerald-600'}">
+            shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-emerald-600 text-white' : 'text-slate-600'}">
                 <i class="fa-solid fa-share text-[10px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
             </button>`;
         }
@@ -212,7 +212,7 @@ export function renderTimeline() {
                                     ${titleLine2 ? (r ? `<p class="text-sm text-slate-600 font-bold mt-0.5 mb-0">${titleLine2}</p>` : `<p class="mt-0.5 mb-0">${titleLine2}</p>`) : ''}
                                 </div>
                                 ${r ? `<div class="flex items-center gap-2 flex-shrink-0 ml-2">
-                                    ${isEntryShared(r.id) ? `<span class="text-xs text-emerald-600" title="게시됨"><i class="fa-solid fa-share"></i></span>` : ''}
+                                    ${isEntryShared(r.id) ? `<span class="text-xs text-slate-500" title="게시됨"><i class="fa-solid fa-share"></i></span>` : ''}
                                     <span class="text-xs font-bold text-yellow-600 bg-yellow-50 px-1.5 py-0.5 rounded-md flex items-center gap-0.5"><i class="fa-solid fa-star text-[10px]"></i><span class="text-[11px] font-black">${r.rating || '-'}</span></span>
                                 </div>` : ''}
                             </div>
@@ -229,11 +229,11 @@ export function renderTimeline() {
                             `<div onclick="window.openModal('${dateStr}', '${slot.id}', '${r.id}')" class="snack-tag cursor-pointer active:bg-slate-50">
                                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-2"></span>
                                 ${r.menuDetail || r.snackType || '간식'} 
-                                ${isEntryShared(r.id) ? `<i class="fa-solid fa-share text-emerald-600 text-[8px] ml-1" title="게시됨"></i>` : ''}
+                                ${isEntryShared(r.id) ? `<i class="fa-solid fa-share text-slate-500 text-[8px] ml-1" title="게시됨"></i>` : ''}
                                 ${r.rating ? `<span class="text-[10px] font-black text-yellow-600 bg-yellow-50 px-1 py-0.5 rounded ml-1.5 flex items-center gap-0.5"><i class="fa-solid fa-star text-[9px]"></i>${r.rating}</span>` : ''}
                             </div>`
                         ).join('') : `<span class="text-xs text-slate-400 italic">기록없음</span>`}
-                        <button onclick="window.openModal('${dateStr}', '${slot.id}')" class="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-100 transition-colors">+ 추가</button>
+                        <button onclick="window.openModal('${dateStr}', '${slot.id}')" class="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-colors">+ 추가</button>
                     </div>
                 </div>`;
             }
@@ -272,12 +272,12 @@ export function renderTimeline() {
                 <div class="flex justify-between items-center mb-2">
                     <span class="text-sm font-extrabold text-slate-600 block uppercase">하루 소감</span>
                     <button onclick="window.saveDailyComment('${currentDateStr}')" 
-                        class="text-xs text-emerald-600 font-bold px-3 py-1.5 active:text-emerald-700 transition-colors">
+                        class="text-xs text-slate-600 font-bold px-3 py-1.5 active:text-slate-700 transition-colors">
                         저장
                     </button>
                 </div>
                 <textarea id="dailyCommentInput" placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해보세요." 
-                    class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all resize-none min-h-[100px]" 
+                    class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-slate-400 transition-all resize-none min-h-[100px]" 
                     rows="4">${escapeHtml(currentComment)}</textarea>
             </div>
         `;

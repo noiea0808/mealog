@@ -1607,7 +1607,7 @@ function renderFavoriteTagsEditor() {
                 }).join('')}
             </div>
             <div class="flex gap-2 mb-3">
-                <input type="text" id="newFavoriteTag-${mainTagKey}-${selectedMainTag || 'none'}" class="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-emerald-500" placeholder="태그 입력" onkeypress="if(event.key==='Enter' && window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${mainTagKey}']) window.addFavoriteTag('${mainTagKey}', window.selectedFavoriteMainTag['${mainTagKey}'])">
+                <input type="text" id="newFavoriteTag-${mainTagKey}-${selectedMainTag || 'none'}" class="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-slate-400" placeholder="태그 입력" onkeypress="if(event.key==='Enter' && window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${mainTagKey}']) window.addFavoriteTag('${mainTagKey}', window.selectedFavoriteMainTag['${mainTagKey}'])">
                 <button onclick="if(window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${mainTagKey}']) window.addFavoriteTag('${mainTagKey}', window.selectedFavoriteMainTag['${mainTagKey}'])" class="bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold ${selectedMainTag ? '' : 'opacity-50 cursor-not-allowed'}" ${selectedMainTag ? '' : 'disabled'}>추가</button>
             </div>
             ${selectedMainTag ? `
@@ -1908,7 +1908,7 @@ function createKakaoSearchModal() {
                         <i class="fa-solid fa-magnifying-glass text-sm"></i>
                     </button>
                     <input type="text" id="kakaoSearchInput" placeholder="음식점 이름을 입력하세요" 
-                        class="w-full p-3 pl-12 bg-slate-50 rounded-xl outline-none text-sm border border-transparent focus:border-emerald-500 transition-all">
+                        class="w-full p-3 pl-12 bg-slate-50 rounded-xl outline-none text-sm border border-transparent focus:border-slate-400 transition-all">
                 </div>
                 <div id="kakaoSearchResults" class="space-y-2 max-h-[50vh] overflow-y-auto"></div>
             </div>

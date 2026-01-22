@@ -801,7 +801,22 @@ export function setupListeners(userId, callbacks) {
                 if (onSettingsUpdate) onSettingsUpdate();
             }
         } else {
-            // 설정이 없으면 기본값 사용 (providerId와 email 포함)
+            // snap.exists()=false: 캐시 미스일 수 있음. 약관 동의된 사용자가 모달이 잠깐 뜨는 현상 방지를 위해 서버에서 재확인.
+            const settingsRef = doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings');
+            try {
+                const serverSnap = await getDoc(settingsRef, { source: 'server' });
+                if (serverSnap.exists()) {
+                    window.userSettings = serverSnap.data();
+                    if (!window.userSettings.subTags) window.userSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
+                    if (!window.userSettings.favoriteSubTags) window.userSettings.favoriteSubTags = { mealType: {}, category: {}, withWhom: {}, snackType: {} };
+                    console.log('📥 설정 서버에서 로드 (캐시 미스 시): termsAgreed=', window.userSettings.termsAgreed);
+                    if (onSettingsUpdate) onSettingsUpdate();
+                    return;
+                }
+            } catch (e) {
+                console.warn('설정 서버 재확인 실패, 기본값 사용:', e);
+            }
+            // 서버에도 없음: 기본값 사용 (providerId와 email 포함)
             console.log('📥 설정이 없음. 기본값 로드 시작...');
             import('./constants.js').then(async ({ DEFAULT_USER_SETTINGS }) => {
                 window.userSettings = JSON.parse(JSON.stringify(DEFAULT_USER_SETTINGS));
@@ -1122,6 +1137,48 @@ export const postInteractions = {
         } catch (e) {
             console.error("Is Bookmarked Error:", e);
             return false;
+        }
+    },
+    
+    // 본인이 좋아요한 포스트 ID 목록 (앨범 흔적 필터용)
+    async getPostIdsLikedByUser(userId) {
+        if (!userId) return [];
+        try {
+            const likesColl = collection(db, 'artifacts', appId, 'postLikes');
+            const q = query(likesColl, where('userId', '==', userId));
+            const snapshot = await getDocs(q);
+            return [...new Set(snapshot.docs.map(d => d.data().postId).filter(Boolean))];
+        } catch (e) {
+            console.error("Get PostIds Liked By User Error:", e);
+            return [];
+        }
+    },
+    
+    // 본인이 북마크한 포스트 ID 목록 (앨범 흔적 필터용)
+    async getPostIdsBookmarkedByUser(userId) {
+        if (!userId) return [];
+        try {
+            const bookmarksColl = collection(db, 'artifacts', appId, 'postBookmarks');
+            const q = query(bookmarksColl, where('userId', '==', userId));
+            const snapshot = await getDocs(q);
+            return [...new Set(snapshot.docs.map(d => d.data().postId).filter(Boolean))];
+        } catch (e) {
+            console.error("Get PostIds Bookmarked By User Error:", e);
+            return [];
+        }
+    },
+    
+    // 본인이 댓글 단 포스트 ID 목록 (앨범 흔적 필터용)
+    async getPostIdsCommentedByUser(userId) {
+        if (!userId) return [];
+        try {
+            const commentsColl = collection(db, 'artifacts', appId, 'postComments');
+            const q = query(commentsColl, where('userId', '==', userId));
+            const snapshot = await getDocs(q);
+            return [...new Set(snapshot.docs.map(d => d.data().postId).filter(Boolean))];
+        } catch (e) {
+            console.error("Get PostIds Commented By User Error:", e);
+            return [];
         }
     },
     
@@ -1856,19 +1913,22 @@ export const boardOperations = {
         }
     },
     
-    // 게시글 댓글 가져오기
+    // 게시글 댓글 가져오기 (orderBy 제거 → 복합 인덱스 불필요, 클라이언트에서 정렬)
     async getComments(postId) {
+        if (!postId) return [];
         try {
             const commentsColl = collection(db, 'artifacts', appId, 'boardComments');
-            const q = query(
-                commentsColl,
-                where('postId', '==', postId),
-                orderBy('timestamp', 'asc')
-            );
+            const q = query(commentsColl, where('postId', '==', String(postId)));
             const snapshot = await getDocs(q);
-            return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            const comments = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            comments.sort((a, b) => {
+                const tA = new Date(a.timestamp || 0).getTime();
+                const tB = new Date(b.timestamp || 0).getTime();
+                return tA - tB;
+            });
+            return comments;
         } catch (e) {
-            console.error("Get Comments Error:", e);
+            console.error("Get Comments Error (boardComments):", e);
             return [];
         }
     },
@@ -1901,7 +1961,7 @@ export const boardOperations = {
             
             const commentsColl = collection(db, 'artifacts', appId, 'boardComments');
             const newComment = {
-                postId: postId,
+                postId: String(postId),
                 content: content,
                 authorId: window.currentUser.uid,
                 authorNickname: authorNickname,
@@ -1976,6 +2036,80 @@ export const boardOperations = {
         });
         
         return unsubscribe;
+    }
+};
+
+// 공지 관련 함수 (본문 조회, 좋아요/싫어요 - noticeInteractions 사용, notice 문서는 관리자만 쓰기 가능)
+export const noticeOperations = {
+    async getNotice(noticeId) {
+        try {
+            const noticeDoc = doc(db, 'artifacts', appId, 'notices', noticeId);
+            const snap = await getDoc(noticeDoc);
+            if (!snap.exists()) return null;
+            const d = snap.data();
+            if (d.deleted === true) return null;
+            return { id: snap.id, ...d };
+        } catch (e) {
+            console.error("Get Notice Error:", e);
+            return null;
+        }
+    },
+    async getNoticeReactionCounts(noticeId) {
+        try {
+            const coll = collection(db, 'artifacts', appId, 'noticeInteractions');
+            const q = query(coll, where('noticeId', '==', noticeId));
+            const snapshot = await getDocs(q);
+            let likes = 0, dislikes = 0;
+            snapshot.docs.forEach(d => {
+                if (d.data().isLike === true) likes++;
+                else dislikes++;
+            });
+            return { likes, dislikes };
+        } catch (e) {
+            console.error("Get Notice Reaction Counts Error:", e);
+            return { likes: 0, dislikes: 0 };
+        }
+    },
+    async getNoticeUserReaction(noticeId, userId) {
+        if (!userId) return null;
+        try {
+            const coll = collection(db, 'artifacts', appId, 'noticeInteractions');
+            const q = query(coll, where('noticeId', '==', noticeId), where('userId', '==', userId));
+            const snapshot = await getDocs(q);
+            if (snapshot.empty) return null;
+            return snapshot.docs[0].data().isLike ? 'like' : 'dislike';
+        } catch (e) {
+            console.error("Get Notice User Reaction Error:", e);
+            return null;
+        }
+    },
+    async toggleNoticeLike(noticeId, isLike = true) {
+        if (!window.currentUser) throw new Error("로그인이 필요합니다.");
+        try {
+            const coll = collection(db, 'artifacts', appId, 'noticeInteractions');
+            const q = query(coll, where('noticeId', '==', noticeId), where('userId', '==', window.currentUser.uid));
+            const snapshot = await getDocs(q);
+            if (snapshot.empty) {
+                await addDoc(coll, {
+                    noticeId,
+                    userId: window.currentUser.uid,
+                    isLike: !!isLike,
+                    timestamp: new Date().toISOString()
+                });
+            } else {
+                const ref = snapshot.docs[0].ref;
+                const data = snapshot.docs[0].data();
+                if (data.isLike === isLike) {
+                    await deleteDoc(ref);
+                } else {
+                    await setDoc(ref, { isLike: !!isLike, timestamp: new Date().toISOString() }, { merge: true });
+                }
+            }
+            return true;
+        } catch (e) {
+            console.error("Toggle Notice Like Error:", e);
+            throw e;
+        }
     }
 };
 

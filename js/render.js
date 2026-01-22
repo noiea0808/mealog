@@ -382,7 +382,7 @@ export function renderTimeline() {
                     : null;
                 const isShared = !!dailyShare;
                 
-                const shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-emerald-600 text-white' : 'text-emerald-600'}">
+                const shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-emerald-600 text-white' : 'text-slate-600'}">
                     <i class="fa-solid fa-share text-[10px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
                 </button>`;
                 
@@ -414,7 +414,7 @@ export function renderTimeline() {
                 : null;
             const isShared = !!dailyShare;
             
-            shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-emerald-600 text-white' : 'text-emerald-600'}">
+            shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-emerald-600 text-white' : 'text-slate-600'}">
                 <i class="fa-solid fa-share text-[10px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
             </button>`;
         }
@@ -512,13 +512,13 @@ export function renderTimeline() {
                     <div class="flex-1 flex flex-wrap gap-2 items-center">
                         ${records.length > 0 ? records.map(r => 
                             `<div onclick="window.openModal('${dateStr}', '${slot.id}', '${r.id}')" class="snack-tag cursor-pointer active:bg-slate-50">
-                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-2"></span>
+                                <span class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2"></span>
                                 ${r.menuDetail || r.snackType || '간식'} 
-                                ${isEntryShared(r.id) ? `<i class="fa-solid fa-share text-emerald-600 text-[8px] ml-1" title="게시됨"></i>` : ''}
+                                ${isEntryShared(r.id) ? `<i class="fa-solid fa-share text-slate-500 text-[8px] ml-1" title="게시됨"></i>` : ''}
                                 ${r.rating ? `<span class="text-[10px] font-black text-yellow-600 bg-yellow-50 px-1 py-0.5 rounded ml-1.5 flex items-center gap-0.5"><i class="fa-solid fa-star text-[9px]"></i>${r.rating}</span>` : ''}
                             </div>`
                         ).join('') : `<span class="text-xs text-slate-400 italic">기록없음</span>`}
-                        <button onclick="window.openModal('${dateStr}', '${slot.id}')" class="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-100 transition-colors">+ 추가</button>
+                        <button onclick="window.openModal('${dateStr}', '${slot.id}')" class="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-colors">+ 추가</button>
                     </div>
                 </div>`;
             }
@@ -557,12 +557,12 @@ export function renderTimeline() {
                 <div class="flex justify-between items-center mb-2">
                     <span class="text-sm font-extrabold text-slate-600 block uppercase">하루 소감</span>
                     <button onclick="window.saveDailyComment('${currentDateStr}')" 
-                        class="text-xs text-emerald-600 font-bold px-3 py-1.5 active:text-emerald-700 transition-colors">
+                        class="text-xs text-slate-600 font-bold px-3 py-1.5 active:text-slate-700 transition-colors">
                         저장
                     </button>
                 </div>
                 <textarea id="dailyCommentInput" placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해보세요." 
-                    class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-emerald-500 transition-all resize-none min-h-[100px]" 
+                    class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-slate-400 transition-all resize-none min-h-[100px]" 
                     rows="4">${escapeHtml(currentComment)}</textarea>
             </div>
         `;
@@ -746,11 +746,11 @@ async function loadPostInteractions(container, sortedGroups) {
                 const likeIcon = likeBtn?.querySelector('.post-like-icon');
                 if (likeBtn && likeIcon) {
                     if (isLiked) {
-                        likeIcon.classList.remove('fa-regular', 'fa-heart');
+                        likeIcon.classList.remove('fa-regular', 'fa-heart', 'text-slate-800');
                         likeIcon.classList.add('fa-solid', 'fa-heart', 'text-red-500');
                     } else {
                         likeIcon.classList.remove('fa-solid', 'fa-heart', 'text-red-500');
-                        likeIcon.classList.add('fa-regular', 'fa-heart');
+                        likeIcon.classList.add('fa-regular', 'fa-heart', 'text-slate-800');
                     }
                 }
                 
@@ -840,6 +840,28 @@ async function loadPostInteractions(container, sortedGroups) {
     await Promise.allSettled(postPromises);
 }
 
+// photoGroup에서 postId 계산 (갤러리 흔적 필터 및 일관된 postId용)
+function getPostIdFromPhotoGroup(photoGroup) {
+    const photo = photoGroup[0];
+    if (!photo) return null;
+    const isDailyShare = photo.type === 'daily';
+    const groupKey = isDailyShare
+        ? `daily_${photo.date || 'no-date'}_${photo.userId || 'unknown'}`
+        : `${photo.entryId || 'no-entry'}_${photo.userId || 'unknown'}`;
+    let postId = photoGroup[0]?.id || photo.id || null;
+    if (!postId || postId === 'undefined' || postId === 'null') {
+        let hash = 0;
+        const ts = photo.timestamp || (photo.date ? photo.date + 'T12:00:00' : '') || '';
+        const keyForHash = `${groupKey}_${ts}`;
+        for (let i = 0; i < keyForHash.length; i++) {
+            hash = ((hash << 5) - hash) + keyForHash.charCodeAt(i);
+            hash = hash & hash;
+        }
+        postId = `post_${Math.abs(hash)}_${photo.userId || 'unknown'}`;
+    }
+    return postId;
+}
+
 // 사용자 설정 가져오기 헬퍼 함수
 async function getUserSettings(userId) {
     try {
@@ -884,7 +906,7 @@ export async function renderGallery() {
             const userSettings = await getUserSettings(filterUserId);
             const bio = userSettings?.profile?.bio || '';
             userProfileHeader = `
-                <div class="bg-white border-b border-slate-200 sticky top-[58px] z-30">
+                <div class="bg-white border-b border-slate-200 sticky top-[52px] z-30">
                     <div class="px-6 py-4 flex items-center gap-4">
                         <button onclick="window.clearGalleryFilter()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
                             <i class="fa-solid fa-arrow-left text-lg"></i>
@@ -998,13 +1020,39 @@ export async function renderGallery() {
     });
     
     // 그룹을 시간순으로 정렬
-    const sortedGroups = Object.values(groupedPhotos).sort((a, b) => {
+    let sortedGroups = Object.values(groupedPhotos).sort((a, b) => {
         const timeA = new Date(a[0].timestamp).getTime();
         const timeB = new Date(b[0].timestamp).getTime();
         return timeB - timeA; // 최신순
     });
     
-    container.innerHTML = userProfileHeader + sortedGroups.map((photoGroup, groupIdx) => {
+    // 앨범 흔적 필터: 본인이 좋아요/댓글/북마크한 게시물만 표시
+    let tracePostIds = null;
+    if (appState.galleryTraceFilter && window.currentUser && !window.currentUser.isAnonymous && window.postInteractions) {
+        let list = [];
+        if (appState.galleryTraceFilter === 'like') {
+            list = await window.postInteractions.getPostIdsLikedByUser(window.currentUser.uid);
+        } else if (appState.galleryTraceFilter === 'comment') {
+            list = await window.postInteractions.getPostIdsCommentedByUser(window.currentUser.uid);
+        } else if (appState.galleryTraceFilter === 'bookmark') {
+            list = await window.postInteractions.getPostIdsBookmarkedByUser(window.currentUser.uid);
+        }
+        tracePostIds = new Set(list);
+        sortedGroups = sortedGroups.filter(g => tracePostIds.has(getPostIdFromPhotoGroup(g)));
+    }
+    
+    const traceEmptyLabels = { like: '좋아요한', comment: '댓글 단', bookmark: '북마크한' };
+    const traceEmptyMsg = tracePostIds && sortedGroups.length === 0
+        ? (traceEmptyLabels[appState.galleryTraceFilter] || '') + ' 게시물이 없습니다'
+        : null;
+    
+    const traceEmptyIcon = appState.galleryTraceFilter === 'like' ? 'fa-heart' : (appState.galleryTraceFilter === 'comment' ? 'fa-comment' : 'fa-bookmark');
+    container.innerHTML = userProfileHeader + (traceEmptyMsg ? `
+            <div class="flex flex-col items-center justify-center py-20 text-center">
+                <i class="fa-regular ${traceEmptyIcon} text-6xl text-slate-200 mb-4"></i>
+                <p class="text-sm font-bold text-slate-400">${traceEmptyMsg}</p>
+            </div>
+        ` : '') + sortedGroups.map((photoGroup, groupIdx) => {
         const photo = photoGroup[0]; // 첫 번째 사진의 정보 사용
         const photoCount = photoGroup.length;
         
@@ -1132,16 +1180,15 @@ export async function renderGallery() {
         } else {
             groupKey = `${photo.entryId || 'no-entry'}_${photo.userId || 'unknown'}`;
         }
-        // 그룹의 첫 번째 사진 ID를 우선 사용
+        // 그룹의 첫 번째 사진 ID를 우선 사용 (getPostIdFromPhotoGroup과 동일한 계산)
         let postId = photoGroup[0]?.id || photo.id || null;
         if (!postId || postId === 'undefined' || postId === 'null') {
-            // groupKey를 기반으로 간단한 해시 생성하여 포스트 ID 생성 (같은 그룹은 항상 같은 ID)
             let hash = 0;
-            const keyForHash = `${groupKey}_${photo.timestamp || Date.now()}`;
+            const ts = photo.timestamp || (photo.date ? photo.date + 'T12:00:00' : '') || '';
+            const keyForHash = `${groupKey}_${ts}`;
             for (let i = 0; i < keyForHash.length; i++) {
-                const char = keyForHash.charCodeAt(i);
-                hash = ((hash << 5) - hash) + char;
-                hash = hash & hash; // Convert to 32bit integer
+                hash = ((hash << 5) - hash) + keyForHash.charCodeAt(i);
+                hash = hash & hash;
             }
             postId = `post_${Math.abs(hash)}_${photo.userId || 'unknown'}`;
         }
@@ -1157,7 +1204,7 @@ export async function renderGallery() {
                         </div>
                     `}
                     <div class="flex-1 min-w-0">
-                        <div class="text-sm font-bold text-slate-800 cursor-pointer hover:text-emerald-600 transition-colors" onclick="window.filterGalleryByUser('${photo.userId}', '${escapeHtml(photo.userNickname || '익명')}')">${photo.userNickname || '익명'}</div>
+                        <div class="text-sm font-bold text-slate-800 cursor-pointer hover:text-slate-600 transition-colors" onclick="window.filterGalleryByUser('${photo.userId}', '${escapeHtml(photo.userNickname || '익명')}')">${photo.userNickname || '익명'}</div>
                         <div class="flex items-center gap-2">
                             <div class="text-xs text-slate-400">${dateStr}</div>
                             ${mealLabel ? `<div class="text-[10px] font-bold ${mealLabelStyle || 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-full whitespace-nowrap">${mealLabel}</div>` : ''}
@@ -1941,7 +1988,7 @@ export function renderTagManager(key, isSub = false, tempSettings) {
     // 메인 태그(mealType, category)는 편집 기능 제거
     if (!isNonEditable) {
         html += `<div class="flex gap-2">
-            <input type="text" id="newTag-${isSub ? 'sub-' : ''}${key}" class="flex-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-emerald-500" placeholder="태그 추가">
+            <input type="text" id="newTag-${isSub ? 'sub-' : ''}${key}" class="flex-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-slate-400" placeholder="태그 추가">
             <button onclick="window.addTag('${key}', ${isSub})" class="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-lg text-xs font-bold border border-emerald-100">추가</button>
         </div>`;
     }
@@ -2009,12 +2056,12 @@ async function renderNotices() {
             const iconClass = notice.isPinned ? 'text-red-600' : 'text-emerald-600';
             const noticeContent = notice.content || '';
             const escapedContent = escapeHtml(noticeContent).replace(/\n/g, ' ');
-            const noticeType = notice.noticeType || 'notice';
+            const noticeType = notice.type || notice.noticeType || 'notice';
             const typeLabel = noticeTypeLabels[noticeType] || '알림';
             const typeColor = noticeTypeColors[noticeType] || noticeTypeColors.notice;
             
             return `
-                <div class="p-4 ${bgClass} border-2 rounded-xl mb-3">
+                <div onclick="window.openNoticeDetail('${notice.id}')" class="p-4 ${bgClass} border-2 rounded-xl mb-3 cursor-pointer hover:opacity-90 active:scale-[0.99] transition-all">
                     <div class="flex items-start justify-between mb-2">
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center gap-2 mb-1">
@@ -2099,12 +2146,12 @@ export function renderBoard(category = 'all') {
                 const shouldHideContent = isAdminCategory && !isAuthor;
                 
                 return `
-                    <div onclick="window.openBoardDetail('${post.id}')" class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all hover:border-emerald-300 mb-2">
+                    <div onclick="window.openBoardDetail('${post.id}')" class="board-list-card board-list-card--${post.category || 'serious'} rounded-2xl p-5 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all mb-2">
                         <div class="flex items-start gap-3 mb-3">
                             <div class="flex-1 min-w-0">
-                                <div class="flex items-center gap-2 mb-2">
-                                    <span class="text-[10px] font-bold px-2.5 py-1 rounded-lg ${categoryColors[post.category] || categoryColors.serious} whitespace-nowrap">${categoryLabels[post.category] || '무거운'}</span>
-                                    ${shouldHideContent ? '<h3 class="text-base font-bold text-slate-400 truncate flex-1 leading-tight">비공개 게시물</h3>' : `<h3 class="text-base font-bold text-slate-800 truncate flex-1 leading-tight">${escapeHtml(post.title)}</h3>`}
+                                <div class="flex items-center gap-2 mb-2 flex-wrap">
+                                    <span class="text-[10px] font-bold px-2.5 py-1 rounded-lg ${categoryColors[post.category] || categoryColors.serious} whitespace-nowrap shrink-0">${categoryLabels[post.category] || '무거운'}</span>
+                                    ${shouldHideContent ? '<h3 class="text-base font-bold text-slate-400 truncate flex-1 min-w-0 leading-tight">비공개 게시물</h3>' : `<h3 class="text-base font-bold text-slate-800 truncate flex-1 min-w-0 leading-tight">${escapeHtml(post.title)}</h3>`}
                                 </div>
                                 ${shouldHideContent ? '<p class="text-sm text-slate-400 line-clamp-2 mb-3 leading-relaxed">이 게시물은 작성자만 볼 수 있습니다.</p>' : `<p class="text-sm text-slate-600 line-clamp-2 mb-3 leading-relaxed">${escapeHtml(post.content)}</p>`}
                             </div>
@@ -2112,10 +2159,10 @@ export function renderBoard(category = 'all') {
                         <div class="flex items-center justify-between pt-3 border-t border-slate-100">
                             <div class="flex items-center gap-4">
                                 <div class="flex items-center gap-2">
-                                    <div class="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center text-xs font-bold text-emerald-700">${(post.authorNickname || '익명').charAt(0)}</div>
-                                    <span class="text-xs font-bold text-slate-700">${escapeHtml(post.authorNickname || '익명')}</span>
+                                    <div class="w-6 h-6 bg-slate-200 rounded-full flex items-center justify-center text-[10px] font-bold text-slate-500">${(post.authorNickname || '익명').charAt(0)}</div>
+                                    <span class="text-[11px] text-slate-400">${escapeHtml(post.authorNickname || '익명')}</span>
                                 </div>
-                                <span class="text-xs text-slate-400">${dateStr} ${timeStr}</span>
+                                <span class="text-[11px] text-slate-400">${dateStr} ${timeStr}</span>
                             </div>
                             <div class="flex items-center gap-4">
                                 <div class="flex items-center gap-1.5 text-slate-500">
@@ -2161,6 +2208,8 @@ export async function renderBoardDetail(postId) {
             </div>
         </div>
     `;
+    const myPostLbl = document.getElementById('boardDetailMyPostLabel');
+    if (myPostLbl) myPostLbl.classList.add('hidden');
     
     try {
         const post = await window.boardOperations.getPost(postId);
@@ -2216,11 +2265,6 @@ export async function renderBoardDetail(postId) {
             <div class="space-y-4">
                 <!-- 게시글 헤더 -->
                 <div class="border-b border-slate-200 pb-4">
-                    <div class="flex items-center gap-2 mb-2">
-                        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${categoryColors[post.category] || categoryColors.serious}">${categoryLabels[post.category] || '무거운'}</span>
-                        ${isAuthor ? '<span class="text-[10px] text-emerald-600 font-bold">내 글</span>' : ''}
-                    </div>
-                    <h2 class="text-xl font-black text-slate-800 mb-4">${escapeHtml(post.title)}</h2>
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
                             <div class="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center text-sm font-bold text-emerald-700">${(post.authorNickname || '익명').charAt(0)}</div>
@@ -2239,39 +2283,37 @@ export async function renderBoardDetail(postId) {
                 </div>
                 
                 <!-- 게시글 내용 -->
-                <div class="bg-white rounded-2xl p-6 mb-4 border border-slate-200">
-                    <div class="text-base text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(post.content).replace(/\n/g, '<br>')}</div>
-                </div>
+                <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4 -mx-2 px-2">${escapeHtml(post.content).replace(/\n/g, '<br>')}</div>
                 
-                <!-- 추천/비추천 버튼 -->
-                <div class="flex items-center gap-4 pt-4 border-t border-slate-200 flex-wrap">
-                    <button onclick="window.toggleBoardLike('${postId}', true)" class="flex items-center gap-2 px-4 py-2 ${userReaction === 'like' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'} rounded-lg text-sm font-bold active:scale-95 transition-all" ${!window.currentUser ? 'disabled' : ''}>
-                        <i class="fa-solid fa-thumbs-up"></i>
-                        <span>추천</span>
-                        <span class="text-xs">${post.likes || 0}</span>
-                    </button>
-                    <button onclick="window.toggleBoardLike('${postId}', false)" class="flex items-center gap-2 px-4 py-2 ${userReaction === 'dislike' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'} rounded-lg text-sm font-bold active:scale-95 transition-all" ${!window.currentUser ? 'disabled' : ''}>
-                        <i class="fa-solid fa-thumbs-down"></i>
-                        <span>비추천</span>
-                        <span class="text-xs">${post.dislikes || 0}</span>
-                    </button>
-                    ${isAuthor ? `
-                        <div class="ml-auto flex gap-2">
-                            <button onclick="window.editBoardPost('${postId}')" class="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-lg text-sm font-bold active:scale-95 transition-all">
-                                <i class="fa-solid fa-pencil text-xs mr-1"></i>수정
+                <!-- 추천/비추천(왼쪽) | 수정/삭제 또는 신고(오른쪽) -->
+                <div class="board-detail-actions">
+                    <div class="board-detail-actions__left">
+                        <button onclick="window.toggleBoardLike('${postId}', true)" class="board-btn-participate board-btn-participate--like ${userReaction === 'like' ? 'is-active' : ''}" ${!window.currentUser ? 'disabled' : ''}>
+                            <i class="fa-solid fa-thumbs-up"></i>
+                            <span>추천</span>
+                            <span class="text-xs opacity-80">${post.likes || 0}</span>
+                        </button>
+                        <button onclick="window.toggleBoardLike('${postId}', false)" class="board-btn-participate board-btn-participate--dislike ${userReaction === 'dislike' ? 'is-active' : ''}" ${!window.currentUser ? 'disabled' : ''}>
+                            <i class="fa-solid fa-thumbs-down"></i>
+                            <span>비추천</span>
+                            <span class="text-xs opacity-80">${post.dislikes || 0}</span>
+                        </button>
+                    </div>
+                    <div class="board-detail-actions__right">
+                        ${isAuthor ? `
+                            <button onclick="window.editBoardPost('${postId}')" class="board-btn-manage board-btn-manage--edit">
+                                <i class="fa-solid fa-pencil"></i><span>수정</span>
                             </button>
-                            <button onclick="window.deleteBoardPost('${postId}')" class="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-bold active:scale-95 transition-all">
-                                <i class="fa-solid fa-trash text-xs mr-1"></i>삭제
+                            <button onclick="window.deleteBoardPost('${postId}')" class="board-btn-manage board-btn-manage--delete">
+                                <i class="fa-solid fa-trash"></i><span>삭제</span>
                             </button>
-                        </div>
-                    ` : ''}
-                    ${!isAuthor && window.currentUser ? `
-                        <div class="ml-auto">
-                            <button type="button" onclick="window.showReportModal && window.showReportModal('board_${postId}')" class="flex items-center gap-1 text-[10px] text-slate-400 hover:text-amber-600 px-2 py-1 rounded active:opacity-70 transition-colors" title="신고">
+                        ` : ''}
+                        ${!isAuthor && window.currentUser ? `
+                            <button type="button" onclick="window.showReportModal && window.showReportModal('board_${postId}')" class="flex items-center gap-1.5 text-[10px] text-slate-400 hover:text-amber-600 px-2 py-1.5 rounded-xl active:opacity-70 transition-colors" title="신고">
                                 <i class="fa-solid fa-flag"></i><span>신고</span>
                             </button>
-                        </div>
-                    ` : ''}
+                        ` : ''}
+                    </div>
                 </div>
                 
                 <!-- 댓글 섹션 -->
@@ -2292,9 +2334,9 @@ export async function renderBoardDetail(postId) {
                                     <div class="flex items-center justify-between mb-2">
                                         <div class="flex items-center gap-2">
                                             <div class="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold text-slate-600">${commentAuthorNickname.charAt(0)}</div>
-                                            <div>
-                                                <div class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</div>
-                                                <div class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</div>
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</span>
+                                                <span class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</span>
                                             </div>
                                         </div>
                                         ${isCommentAuthor ? `
@@ -2306,13 +2348,13 @@ export async function renderBoardDetail(postId) {
                                     <p class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed pl-8">${escapeHtml(comment.content)}</p>
                                 </div>
                             `;
-                        }).join('') : '<p class="text-sm text-slate-400 text-center py-4">댓글이 없습니다. 첫 번째 댓글을 작성해보세요!</p>'}
+                        }).join('') : ''}
                     </div>
                     
                     <!-- 댓글 입력 -->
                     <div class="flex gap-2">
                         <input type="text" id="boardCommentInput" placeholder="${window.currentUser ? '댓글을 입력하세요 (Enter로 등록)' : '로그인 후 댓글을 작성할 수 있습니다'}" 
-                               class="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 transition-colors"
+                               class="flex-1 p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-slate-400 transition-colors"
                                ${!window.currentUser ? 'disabled' : ''}
                                onkeypress="if(event.key === 'Enter' && window.currentUser && !event.shiftKey) { event.preventDefault(); window.addBoardComment('${postId}'); }">
                         <button onclick="window.addBoardComment('${postId}')" 
@@ -2325,10 +2367,19 @@ export async function renderBoardDetail(postId) {
             </div>
         `;
         
-        // 제목 업데이트
+        // 제목·카테고리·내글 업데이트 (헤더 바)
         const titleEl = document.getElementById('boardDetailViewTitle');
-        if (titleEl) {
-            titleEl.textContent = escapeHtml(post.title);
+        if (titleEl) titleEl.textContent = escapeHtml(post.title);
+        const catEl = document.getElementById('boardDetailViewCategory');
+        if (catEl) {
+            catEl.textContent = categoryLabels[post.category] || '무거운';
+            catEl.className = 'mr-2 shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ' + (categoryColors[post.category] || categoryColors.serious);
+            catEl.classList.remove('hidden');
+        }
+        const myPostLabel = document.getElementById('boardDetailMyPostLabel');
+        if (myPostLabel) {
+            if (isAuthor) myPostLabel.classList.remove('hidden');
+            else myPostLabel.classList.add('hidden');
         }
     } catch (error) {
         console.error("게시글 상세 로드 오류:", error);
@@ -2341,7 +2392,99 @@ export async function renderBoardDetail(postId) {
     }
 }
 
-export function createDailyShareCard(dateStr) {
+// 공지 상세 렌더링 (본문 페이지, 좋아요/싫어요만 표시, 신고/댓글 없음)
+export async function renderNoticeDetail(noticeId) {
+    const container = document.getElementById('boardDetailContent');
+    if (!container || !window.noticeOperations) return;
+    
+    container.innerHTML = `
+        <div class="flex justify-center items-center py-12">
+            <div class="text-center">
+                <i class="fa-solid fa-spinner fa-spin text-4xl text-slate-300 mb-3"></i>
+                <p class="text-sm text-slate-400">공지를 불러오는 중...</p>
+            </div>
+        </div>
+    `;
+    
+    try {
+        const [notice, counts, userReaction] = await Promise.all([
+            window.noticeOperations.getNotice(noticeId),
+            window.noticeOperations.getNoticeReactionCounts(noticeId),
+            window.currentUser ? window.noticeOperations.getNoticeUserReaction(noticeId, window.currentUser.uid) : Promise.resolve(null)
+        ]);
+        
+        if (!notice) {
+            container.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-12 text-center">
+                    <i class="fa-solid fa-exclamation-triangle text-4xl text-red-300 mb-3"></i>
+                    <p class="text-sm font-bold text-red-400">공지를 찾을 수 없습니다</p>
+                </div>
+            `;
+            return;
+        }
+        
+        const date = notice.timestamp ? new Date(notice.timestamp) : new Date();
+        const dateStr = date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
+        const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+        
+        const noticeTypeLabels = { important: '중요', notice: '알림', light: '가벼운' };
+        const noticeTypeColors = { important: 'bg-red-100 text-red-700', notice: 'bg-blue-100 text-blue-700', light: 'bg-slate-100 text-slate-700' };
+        const noticeType = notice.type || notice.noticeType || 'notice';
+        const typeLabel = noticeTypeLabels[noticeType] || '알림';
+        const typeColor = noticeTypeColors[noticeType] || noticeTypeColors.notice;
+        
+        const likes = counts?.likes ?? 0;
+        const dislikes = counts?.dislikes ?? 0;
+        
+        container.innerHTML = `
+            <div class="space-y-4">
+                <div class="border-b border-slate-200 pb-4">
+                    ${notice.isPinned ? '<div class="flex items-center gap-2 mb-3"><span class="text-[10px] px-2 py-0.5 bg-yellow-100 text-yellow-700 font-bold rounded">고정</span></div>' : ''}
+                    <div class="flex items-center gap-3">
+                        <span class="text-sm font-bold text-slate-600">관리자</span>
+                        <span class="text-xs text-slate-400">${dateStr} ${timeStr}</span>
+                    </div>
+                </div>
+                <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4 -mx-3 px-1">${escapeHtml(notice.content || '').replace(/\n/g, '<br>')}</div>
+                <div class="board-detail-actions">
+                    <div class="board-detail-actions__left">
+                        <button onclick="window.toggleNoticeLike('${noticeId}', true)" class="board-btn-participate board-btn-participate--like ${userReaction === 'like' ? 'is-active' : ''}" ${!window.currentUser ? 'disabled' : ''}>
+                            <i class="fa-solid fa-thumbs-up"></i>
+                            <span>추천</span>
+                            <span class="text-xs opacity-80">${likes}</span>
+                        </button>
+                        <button onclick="window.toggleNoticeLike('${noticeId}', false)" class="board-btn-participate board-btn-participate--dislike ${userReaction === 'dislike' ? 'is-active' : ''}" ${!window.currentUser ? 'disabled' : ''}>
+                            <i class="fa-solid fa-thumbs-down"></i>
+                            <span>비추천</span>
+                            <span class="text-xs opacity-80">${dislikes}</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        const titleEl = document.getElementById('boardDetailViewTitle');
+        if (titleEl) titleEl.textContent = escapeHtml(notice.title || '공지');
+        const catEl = document.getElementById('boardDetailViewCategory');
+        if (catEl) {
+            catEl.textContent = typeLabel;
+            catEl.className = 'mr-2 shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ' + typeColor;
+            catEl.classList.remove('hidden');
+        }
+        const myPostLbl = document.getElementById('boardDetailMyPostLabel');
+        if (myPostLbl) myPostLbl.classList.add('hidden');
+    } catch (e) {
+        console.error("공지 상세 로드 오류:", e);
+        container.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-12 text-center">
+                <i class="fa-solid fa-exclamation-triangle text-4xl text-red-300 mb-3"></i>
+                <p class="text-sm font-bold text-red-400">공지를 불러올 수 없습니다</p>
+            </div>
+        `;
+    }
+}
+
+export function createDailyShareCard(dateStr, forPreview = false) {
     const dObj = new Date(dateStr + 'T00:00:00');
     const year = dObj.getFullYear();
     const month = dObj.getMonth() + 1;
@@ -2356,12 +2499,16 @@ export function createDailyShareCard(dateStr) {
     const existing = document.getElementById('dailyShareCardContainer');
     if (existing) existing.remove();
     
-    // 공유용 컨테이너 생성 (화면 밖에 숨김)
+    // 공유용 컨테이너 생성 (forPreview: 모달용으로 배치/숨김 없음, !forPreview: 화면 밖에 숨김)
     const container = document.createElement('div');
     container.id = 'dailyShareCardContainer';
-    container.style.position = 'fixed';
-    container.style.left = '-9999px';
-    container.style.top = '0';
+    if (!forPreview) {
+        container.style.position = 'fixed';
+        container.style.left = '-9999px';
+        container.style.top = '0';
+    } else {
+        container.style.margin = '0 auto';
+    }
     container.style.width = '375px'; // 모바일 기준 너비
     container.style.maxWidth = '375px';
     container.style.backgroundColor = '#ffffff';
@@ -2489,7 +2636,9 @@ export function createDailyShareCard(dateStr) {
     `;
     
     container.innerHTML = html;
-    document.body.appendChild(container);
+    if (!forPreview) {
+        document.body.appendChild(container);
+    }
     
     return container;
 }

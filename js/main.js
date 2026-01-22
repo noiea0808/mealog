@@ -4,7 +4,7 @@ console.log('📦 main.js 모듈 로드 시작');
 import { appState, getState } from './state.js';
 import { auth, db, appId } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { dbOps, setupListeners, setupSharedPhotosListener, loadMoreMeals, postInteractions, boardOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
+import { dbOps, setupListeners, setupSharedPhotosListener, loadMoreMeals, postInteractions, boardOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
@@ -16,7 +16,7 @@ import {
     confirmDeleteAccount, cancelDeleteAccount, confirmDeleteAccountAction
 } from './auth.js';
 import { authFlowManager } from './auth-flow.js';
-import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, escapeHtml, filterGalleryByUser, clearGalleryFilter } from './render/index.js';
+import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, filterGalleryByUser, clearGalleryFilter } from './render/index.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
@@ -108,8 +108,10 @@ window.openKakaoPlaceSearch = openKakaoPlaceSearch;
 window.searchKakaoPlaces = searchKakaoPlaces;
 window.selectKakaoPlace = selectKakaoPlace;
 window.boardOperations = boardOperations;
+window.noticeOperations = noticeOperations;
 window.renderBoard = renderBoard;
 window.renderBoardDetail = renderBoardDetail;
+window.renderNoticeDetail = renderNoticeDetail;
 
 // 로그인 요청 함수
 window.requestLogin = () => {
@@ -138,11 +140,11 @@ window.toggleLike = async (postId) => {
         
         if (likeBtn && likeIcon) {
             if (result.liked) {
-                likeIcon.classList.remove('fa-regular', 'fa-heart');
+                likeIcon.classList.remove('fa-regular', 'fa-heart', 'text-slate-800');
                 likeIcon.classList.add('fa-solid', 'fa-heart', 'text-red-500');
             } else {
                 likeIcon.classList.remove('fa-solid', 'fa-heart', 'text-red-500');
-                likeIcon.classList.add('fa-regular', 'fa-heart');
+                likeIcon.classList.add('fa-regular', 'fa-heart', 'text-slate-800');
             }
         }
         
@@ -419,47 +421,96 @@ window.togglePostCaption = (idx) => {
 
 // escapeHtml은 render/index.js에서 import됨
 
-// 일간보기 공유 함수
+// 일간보기 공유: 이미 공유된 경우 해제, 아니면 미리보기 모달 열기
 window.shareDailySummary = async (dateStr) => {
-    const loadingOverlay = document.getElementById('loadingOverlay');
-    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
-    
-    try {
-        // 이미 공유된 경우 공유 해제
-        const existingShare = window.sharedPhotos && Array.isArray(window.sharedPhotos) 
-            ? window.sharedPhotos.find(photo => photo.type === 'daily' && photo.date === dateStr && photo.userId === window.currentUser.uid)
-            : null;
-        
-        if (existingShare) {
-            // 공유 해제 (일간보기 공유이므로 isDailyShare=true)
+    const existingShare = window.sharedPhotos && Array.isArray(window.sharedPhotos)
+        ? window.sharedPhotos.find(photo => photo.type === 'daily' && photo.date === dateStr && photo.userId === window.currentUser.uid)
+        : null;
+
+    if (existingShare) {
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+        try {
             await dbOps.unsharePhotos([existingShare.photoUrl], null, false, true);
-            
-            // window.sharedPhotos에서 즉시 제거하여 UI 즉시 반영
             if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                window.sharedPhotos = window.sharedPhotos.filter(p => 
+                window.sharedPhotos = window.sharedPhotos.filter(p =>
                     !(p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid)
                 );
             }
-            
             showToast('공유가 해제되었습니다.', 'success');
-            
-            // 타임라인 즉시 새로고침
-            if (appState.currentTab === 'timeline') {
-                renderTimeline();
-            }
-            
-            // 갤러리 즉시 새로고침
-            if (appState.currentTab === 'gallery') {
-                renderGallery();
-            }
-            
-            return;
+            if (appState.currentTab === 'timeline') renderTimeline();
+            if (appState.currentTab === 'gallery') renderGallery();
+        } finally {
+            if (loadingOverlay) loadingOverlay.classList.add('hidden');
         }
-        
-        // 컴팩트 카드 생성
+        return;
+    }
+
+    window.openDailySharePreviewModal(dateStr);
+};
+
+// 일간 식단 공유 미리보기 모달 열기
+window.openDailySharePreviewModal = (dateStr) => {
+    const existing = document.getElementById('dailySharePreviewModal');
+    if (existing) existing.remove();
+
+    const previewCard = createDailyShareCard(dateStr, true);
+
+    const modal = document.createElement('div');
+    modal.id = 'dailySharePreviewModal';
+    modal.className = 'fixed inset-0 z-[500] flex items-end bg-black/50';
+
+    modal.innerHTML = `
+        <div class="w-full bg-white rounded-t-[2rem] flex flex-col max-h-[92vh] shadow-2xl">
+            <div class="flex justify-between items-center p-4 border-b border-slate-100 flex-shrink-0">
+                <h3 class="text-lg font-black text-slate-800">일간 식단 공유 미리보기</h3>
+                <button onclick="window.closeDailySharePreviewModal()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-full">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <div id="dailySharePreviewScroll" class="flex-1 overflow-y-auto overflow-x-hidden flex justify-center bg-slate-50 py-4 min-h-0">
+                <!-- createDailyShareCard(forPreview) 결과가 여기 들어감 -->
+            </div>
+            <div class="flex gap-3 p-4 border-t border-slate-100 flex-shrink-0">
+                <button onclick="window.closeDailySharePreviewModal()" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm">
+                    취소
+                </button>
+                <button onclick="window.confirmDailyShare('${dateStr}')" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm">
+                    공유
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    const scrollEl = document.getElementById('dailySharePreviewScroll');
+    if (scrollEl && previewCard) scrollEl.appendChild(previewCard);
+
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) window.closeDailySharePreviewModal();
+    });
+};
+
+// 일간 공유 미리보기 모달 닫기
+window.closeDailySharePreviewModal = () => {
+    const modal = document.getElementById('dailySharePreviewModal');
+    if (modal) modal.remove();
+};
+
+// 미리보기에서 공유 확정: 모달 닫고 실제 공유 실행
+window.confirmDailyShare = (dateStr) => {
+    window.closeDailySharePreviewModal();
+    window.executeDailyShare(dateStr);
+};
+
+// 일간보기 실제 공유 실행 (캡처 → 업로드 → Firestore)
+window.executeDailyShare = async (dateStr) => {
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+
+    try {
         const shareCard = createDailyShareCard(dateStr);
-        
-        // html2canvas로 캡쳐 (모바일 기준 375px)
+
         const canvas = await html2canvas(shareCard, {
             backgroundColor: '#ffffff',
             scale: 2,
@@ -468,18 +519,13 @@ window.shareDailySummary = async (dateStr) => {
             width: 375,
             height: shareCard.scrollHeight
         });
-        
-        // Canvas를 base64로 변환
+
         const base64Image = canvas.toDataURL('image/png');
-        
-        // Firebase Storage에 업로드
         const { uploadBase64ToStorage } = await import('./utils.js');
         const photoUrl = await uploadBase64ToStorage(base64Image, window.currentUser.uid, `daily_${dateStr}`);
-        
-        // 공유 데이터 생성
+
         const userProfile = window.userSettings?.profile || {};
-        
-        // 일간보기 코멘트 가져오기
+
         let dailyComment = '';
         try {
             if (window.dbOps && typeof window.dbOps.getDailyComment === 'function') {
@@ -490,9 +536,9 @@ window.shareDailySummary = async (dateStr) => {
         } catch (e) {
             console.warn('getDailyComment 호출 실패:', e);
         }
-        
+
         const dailyShareData = {
-            photoUrl: photoUrl,
+            photoUrl,
             userId: window.currentUser.uid,
             userNickname: userProfile.nickname || '익명',
             userIcon: userProfile.icon || '🐻',
@@ -501,54 +547,29 @@ window.shareDailySummary = async (dateStr) => {
             date: dateStr,
             timestamp: new Date().toISOString(),
             entryId: null,
-            comment: dailyComment // 일간보기 코멘트 포함
+            comment: dailyComment
         };
-        
-        // Firestore에 저장
+
         const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
         const { db, appId } = await import('./firebase.js');
         const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
         const docRef = await addDoc(sharedColl, dailyShareData);
-        
-        console.log('일간보기 공유 저장 완료:', { docId: docRef.id, dateStr, dailyShareData });
-        
-        // window.sharedPhotos에 즉시 추가하여 UI 즉시 반영
-        if (!window.sharedPhotos) {
-            window.sharedPhotos = [];
-        }
-        // 기존 일간보기 공유 제거 (같은 날짜의 기존 공유가 있다면)
-        window.sharedPhotos = window.sharedPhotos.filter(p => 
+
+        if (!window.sharedPhotos) window.sharedPhotos = [];
+        window.sharedPhotos = window.sharedPhotos.filter(p =>
             !(p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid)
         );
-        // 새 공유 추가
         window.sharedPhotos.push({ id: docRef.id, ...dailyShareData });
-        // timestamp 순으로 정렬 (최신순)
-        window.sharedPhotos.sort((a, b) => {
-            const timeA = new Date(a.timestamp || 0).getTime();
-            const timeB = new Date(b.timestamp || 0).getTime();
-            return timeB - timeA;
-        });
-        
-        // 컨테이너 제거
+        window.sharedPhotos.sort((a, b) => (new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
+
         shareCard.remove();
-        
         showToast('하루 기록이 피드에 공유되었습니다!', 'success');
-        
-        // 타임라인 즉시 새로고침 (버튼 상태 업데이트)
-        if (appState.currentTab === 'timeline') {
-            renderTimeline();
-        }
-        
-        // 갤러리 즉시 새로고침
-        if (appState.currentTab === 'gallery') {
-            renderGallery();
-        }
-        
+
+        if (appState.currentTab === 'timeline') renderTimeline();
+        if (appState.currentTab === 'gallery') renderGallery();
     } catch (e) {
         console.error('일간보기 공유 실패:', e);
         showToast('공유 중 오류가 발생했습니다.', 'error');
-        
-        // 컨테이너 제거
         const shareCard = document.getElementById('dailyShareCardContainer');
         if (shareCard) shareCard.remove();
     } finally {
@@ -624,7 +645,7 @@ window.openDailyCommentModal = (dateStr) => {
             </div>
             <textarea id="dailyCommentModalInput" 
                 placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해보세요." 
-                class="w-full p-4 bg-slate-50 rounded-xl text-sm border border-slate-200 focus:border-emerald-500 transition-all resize-none min-h-[150px]" 
+                class="w-full p-4 bg-slate-50 rounded-xl text-sm border border-slate-200 focus:border-slate-400 transition-all resize-none min-h-[150px]" 
                 rows="6">${escapeHtml(currentComment)}</textarea>
             <div class="flex gap-3 mt-6">
                 <button onclick="window.closeDailyCommentModal()" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm">
@@ -740,7 +761,25 @@ window.switchMainTab = (tab) => {
         'text-slate-300 flex justify-center items-center py-1';
     
     const searchBtn = document.getElementById('searchTriggerBtn');
-    if (searchBtn) searchBtn.style.display = tab === 'timeline' ? 'flex' : 'none';
+    const tracePanel = document.getElementById('galleryTraceFilterPanel');
+    const timelineSearchPanel = document.getElementById('timelineSearchPanel');
+    if (searchBtn) searchBtn.style.display = (tab === 'timeline') ? 'flex' : 'none';
+    if (timelineSearchPanel) {
+        if (tab === 'timeline') {
+            timelineSearchPanel.classList.remove('hidden');
+        } else {
+            timelineSearchPanel.classList.add('hidden');
+            timelineSearchPanel.classList.remove('expanded');
+        }
+    }
+    if (tracePanel) {
+        if (tab === 'gallery') {
+            tracePanel.classList.remove('hidden');
+        } else {
+            tracePanel.classList.add('hidden');
+            tracePanel.classList.remove('expanded');
+        }
+    }
     
     if (tab === 'dashboard') {
         updateDashboard();
@@ -843,21 +882,80 @@ window.jumpToDate = (iso) => {
     }
 };
 
+window.toggleGalleryTracePanel = () => {
+    const panel = document.getElementById('galleryTraceFilterPanel');
+    if (panel) panel.classList.toggle('expanded');
+    if (typeof window.updateGalleryTraceFilterBarUI === 'function') window.updateGalleryTraceFilterBarUI();
+};
+
 window.toggleSearch = () => {
-    const sc = document.getElementById('searchContainer');
-    if (sc.classList.contains('hidden')) {
-        sc.classList.remove('hidden');
+    if (appState.currentTab === 'gallery') {
+        window.toggleGalleryTracePanel();
+        return;
+    }
+    const panel = document.getElementById('timelineSearchPanel');
+    if (!panel) return;
+    if (panel.classList.contains('expanded')) {
+        window.closeSearch();
     } else {
-        sc.classList.add('hidden');
+        panel.classList.add('expanded');
+        document.getElementById('searchInput')?.focus();
     }
 };
 
 window.closeSearch = () => {
-    document.getElementById('searchContainer')?.classList.add('hidden');
-    document.getElementById('searchInput').value = '';
+    document.getElementById('timelineSearchPanel')?.classList.remove('expanded');
+    document.getElementById('searchInput')?.blur();
+    const inp = document.getElementById('searchInput');
+    if (inp) inp.value = '';
     window.loadedDates = [];
-    document.getElementById('timelineContainer').innerHTML = "";
+    const tc = document.getElementById('timelineContainer');
+    if (tc) tc.innerHTML = '';
     renderTimeline();
+};
+
+// 앨범 흔적 필터 패널 버튼 상태 갱신
+window.updateGalleryTraceFilterBarUI = () => {
+    const panel = document.getElementById('galleryTraceFilterPanel');
+    if (!panel) return;
+    const f = appState.galleryTraceFilter;
+    ['like', 'comment', 'bookmark'].forEach((trace) => {
+        const btn = panel.querySelector(`[data-trace="${trace}"]`);
+        if (!btn) return;
+        const icon = btn.querySelector('i');
+        const isActive = f === trace;
+        btn.classList.toggle('bg-slate-100', isActive);
+        btn.classList.toggle('text-slate-700', isActive && trace !== 'like');
+        btn.classList.remove('text-red-500');
+        if (trace === 'like') {
+            if (isActive) { btn.classList.add('text-red-500'); }
+            if (icon) {
+                icon.classList.remove('fa-regular', 'fa-solid', 'fa-heart');
+                icon.classList.add(isActive ? 'fa-solid' : 'fa-regular', 'fa-heart');
+            }
+        } else if (trace === 'comment' && icon) {
+            icon.classList.remove('fa-regular', 'fa-solid');
+            icon.classList.add(isActive ? 'fa-solid' : 'fa-regular', 'fa-comment');
+        } else if (trace === 'bookmark' && icon) {
+            icon.classList.remove('fa-regular', 'fa-solid');
+            icon.classList.add(isActive ? 'fa-solid' : 'fa-regular', 'fa-bookmark');
+        }
+    });
+};
+
+// 앨범 흔적 필터 설정 및 갤러리 다시 렌더 (같은 필터 재클릭 시 해제)
+window.setGalleryTraceFilter = (value) => {
+    if (!value || value === 'collapse') return;
+    const v = value === '' || value == null ? null : value;
+    if (v && (!window.currentUser || window.currentUser.isAnonymous)) {
+        showToast('로그인이 필요합니다.', 'info');
+        window.requestLogin();
+        return;
+    }
+    // 이미 선택된 필터를 다시 클릭하면 해제
+    appState.galleryTraceFilter = (appState.galleryTraceFilter === v) ? null : v;
+    if (typeof window.updateGalleryTraceFilterBarUI === 'function') window.updateGalleryTraceFilterBarUI();
+    renderGallery();
 };
 
 window.handleSearch = (k) => {
@@ -1771,6 +1869,7 @@ window.submitBoardPost = async () => {
 
 window.openBoardDetail = async (postId) => {
     window.currentBoardPostId = postId;
+    window.currentBoardNoticeId = null;
     
     // 상세 뷰 표시
     const boardListView = document.getElementById('boardListView');
@@ -1782,6 +1881,25 @@ window.openBoardDetail = async (postId) => {
     if (boardWriteView) boardWriteView.classList.add('hidden');
     
     await renderBoardDetail(postId);
+    
+    setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 100);
+};
+
+window.openNoticeDetail = async (noticeId) => {
+    window.currentBoardNoticeId = noticeId;
+    window.currentBoardPostId = null;
+    
+    const boardListView = document.getElementById('boardListView');
+    const boardDetailView = document.getElementById('boardDetailView');
+    const boardWriteView = document.getElementById('boardWriteView');
+    
+    if (boardListView) boardListView.classList.add('hidden');
+    if (boardDetailView) boardDetailView.classList.remove('hidden');
+    if (boardWriteView) boardWriteView.classList.add('hidden');
+    
+    await renderNoticeDetail(noticeId);
     
     setTimeout(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1820,6 +1938,22 @@ window.toggleBoardLike = async (postId, isLike) => {
         await renderBoardDetail(postId);
     } catch (e) {
         console.error("추천/비추천 오류:", e);
+        showToast("처리 중 오류가 발생했습니다.", 'error');
+    }
+};
+
+window.toggleNoticeLike = async (noticeId, isLike) => {
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast("로그인이 필요합니다.", 'error');
+        window.requestLogin();
+        return;
+    }
+    
+    try {
+        await noticeOperations.toggleNoticeLike(noticeId, isLike);
+        await renderNoticeDetail(noticeId);
+    } catch (e) {
+        console.error("공지 추천/비추천 오류:", e);
         showToast("처리 중 오류가 발생했습니다.", 'error');
     }
 };
@@ -1987,9 +2121,9 @@ window.addBoardComment = async (postId) => {
                                     <div class="flex items-center justify-between mb-2">
                                         <div class="flex items-center gap-2">
                                             <div class="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold text-slate-600">${commentAuthorNickname.charAt(0)}</div>
-                                            <div>
-                                                <div class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</div>
-                                                <div class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</div>
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</span>
+                                                <span class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</span>
                                             </div>
                                         </div>
                                         ${isCommentAuthor ? `
@@ -2049,15 +2183,15 @@ window.deleteBoardComment = async (commentId, postId) => {
                         
                         return `
                             <div class="bg-white border border-slate-200 rounded-xl p-4 mb-3" data-comment-id="${comment.id}">
-                                <div class="flex items-center justify-between mb-2">
-                                    <div class="flex items-center gap-2">
-                                        <div class="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold text-slate-600">${commentAuthorNickname.charAt(0)}</div>
-                                        <div>
-                                            <div class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</div>
-                                            <div class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</div>
+                                    <div class="flex items-center justify-between mb-2">
+                                        <div class="flex items-center gap-2">
+                                            <div class="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold text-slate-600">${commentAuthorNickname.charAt(0)}</div>
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</span>
+                                                <span class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    ${isCommentAuthor ? `
+                                        ${isCommentAuthor ? `
                                         <button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="text-xs text-red-500 font-bold px-2 py-1 rounded-lg hover:bg-red-50 active:opacity-70 transition-colors">
                                             삭제
                                         </button>
@@ -2068,7 +2202,7 @@ window.deleteBoardComment = async (commentId, postId) => {
                         `;
                     }).join('');
                 } else {
-                    commentsListEl.innerHTML = '<p class="text-sm text-slate-400 text-center py-4">댓글이 없습니다. 첫 번째 댓글을 작성해보세요!</p>';
+                    commentsListEl.innerHTML = '';
                 }
             }
         }, 300);
@@ -2191,9 +2325,18 @@ function initEventListeners() {
         headerSettingsBtn.addEventListener('click', openSettings);
     }
     
-    const closeSearchBtn = document.getElementById('closeSearchBtn');
-    if (closeSearchBtn) {
-        closeSearchBtn.addEventListener('click', window.closeSearch);
+    const galleryTraceFilterPanel = document.getElementById('galleryTraceFilterPanel');
+    if (galleryTraceFilterPanel) {
+        galleryTraceFilterPanel.addEventListener('click', (e) => {
+            const btn = e.target.closest('.gallery-trace-btn');
+            if (!btn) return;
+            const v = btn.getAttribute('data-trace');
+            if (v === 'collapse') {
+                window.toggleGalleryTracePanel();
+                return;
+            }
+            window.setGalleryTraceFilter(v);
+        });
     }
     
     // 뷰 모드
