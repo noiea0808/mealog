@@ -4456,3 +4456,4 @@ window.setRestaurantFilter = function(filter) {
 window.refreshRestaurantData = function() {
     renderRestaurantData(currentRestaurantFilter);
 };
+

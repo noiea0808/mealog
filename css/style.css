@@ -26,6 +26,13 @@ header .mealog-title {
     font-weight: 700; 
     text-transform: uppercase; 
 }
+/* INSIGHT, MEAL TALK 타이틀 - Fredoka, 얇게, 소문자 */
+.insight-title,
+.meal-talk-title {
+    font-family: 'Fredoka', sans-serif;
+    font-weight: 300;
+    text-transform: lowercase;
+}
 .card { 
     background: white; 
     border-radius: 1.5rem; 
@@ -64,7 +71,7 @@ header .mealog-title {
 .dot-partial { 
     background: #E5F2DB; 
     color: #059669; 
-    border: 1px solid #10B981; 
+    border: 2px solid #10B981; 
 }
 .dot-selected { 
     transform: scale(1.15); 

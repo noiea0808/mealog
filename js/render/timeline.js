@@ -133,7 +133,7 @@ export function renderTimeline() {
                 <i class="fa-solid fa-share text-[10px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
             </button>`;
         }
-        let html = `<div class="date-section-header text-sm font-black ${dayColorClass} mb-1.5 px-4 flex items-center justify-between">
+        let html = `<div class="date-section-header text-sm font-black ${dayColorClass} px-4 flex items-center justify-between">
             <h3>${dObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</h3>
             ${shareButton}
         </div>`;
@@ -174,7 +174,7 @@ export function renderTimeline() {
                             if (sData) tags.push(sData.label);
                         }
                         if (tags.length > 0) {
-                            tagsHtml = `<div class="mt-1 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags.map(t => 
+                            tagsHtml = `<div class="mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags.map(t => 
                                 `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${t}</span>`
                             ).join('')}</div>`;
                         }
@@ -206,17 +206,17 @@ export function renderTimeline() {
                             ${iconHtml}
                         </div>
                         <div class="flex-1 min-w-0 flex flex-col justify-center p-4">
-                            <div class="flex justify-between items-start mb-1">
+                            <div class="flex justify-between items-start">
                                 <div class="flex-1">
                                     <h4 class="leading-tight mb-0 truncate">${titleLine1}</h4>
-                                    ${titleLine2 ? (r ? `<p class="text-sm text-slate-600 font-bold mt-0.5 mb-0 truncate">${titleLine2}</p>` : `<p class="mt-0.5 mb-0 truncate">${titleLine2}</p>`) : ''}
+                                    ${titleLine2 ? (r ? `<p class="text-sm text-slate-600 font-bold mt-1.5 mb-0 truncate">${titleLine2}</p>` : `<p class="mt-1.5 mb-0 truncate">${titleLine2}</p>`) : ''}
                                 </div>
                                 ${r ? `<div class="flex items-center gap-2 flex-shrink-0 ml-2">
                                     ${isEntryShared(r.id) ? `<span class="text-xs text-slate-500" title="게시됨"><i class="fa-solid fa-share"></i></span>` : ''}
                                     <span class="text-xs font-bold text-yellow-600 bg-yellow-50 px-1.5 py-0.5 rounded-md flex items-center gap-0.5"><i class="fa-solid fa-star text-[10px]"></i><span class="text-[11px] font-black">${r.rating || '-'}</span></span>
                                 </div>` : ''}
                             </div>
-                            ${r && r.comment ? `<p class="text-xs text-slate-400 mt-1 mb-0 line-clamp-1 whitespace-pre-line">"${escapeHtml(r.comment).replace(/\n/g, '<br>')}"</p>` : ''}
+                            ${r && r.comment ? `<p class="text-xs text-slate-400 mt-1.5 mb-0 line-clamp-1 whitespace-pre-line">"${escapeHtml(r.comment).replace(/\n/g, '<br>')}"</p>` : ''}
                             ${tagsHtml}
                         </div>
                     </div>
@@ -227,7 +227,6 @@ export function renderTimeline() {
                     <div class="flex-1 flex flex-wrap gap-2 items-center">
                         ${records.length > 0 ? records.map(r => 
                             `<div onclick="window.openModal('${dateStr}', '${slot.id}', '${r.id}')" class="snack-tag cursor-pointer active:bg-slate-50">
-                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-2"></span>
                                 ${r.menuDetail || r.snackType || '간식'} 
                                 ${isEntryShared(r.id) ? `<i class="fa-solid fa-share text-slate-500 text-[8px] ml-1" title="게시됨"></i>` : ''}
                                 ${r.rating ? `<span class="text-[10px] font-black text-yellow-600 bg-yellow-50 px-1 py-0.5 rounded ml-1.5 flex items-center gap-0.5"><i class="fa-solid fa-star text-[9px]"></i>${r.rating}</span>` : ''}
@@ -365,7 +364,7 @@ export function renderMiniCalendar() {
         let dayColorClass = (d.getDay() === 0 || d.getDay() === 6) ? "text-rose-400" : "text-slate-400";
         const item = document.createElement('div');
         item.className = "calendar-item flex flex-col items-center gap-1 cursor-pointer flex-shrink-0";
-        item.innerHTML = `<span class="text-[9px] font-bold ${dayColorClass}">${d.toLocaleDateString('ko-KR', { weekday: 'narrow' })}</span>
+        item.innerHTML = `<span class="text-[11px] font-bold ${dayColorClass}">${d.toLocaleDateString('ko-KR', { weekday: 'narrow' })}</span>
             <div id="dot-${iso}" class="calendar-dot ${status} ${iso === activeStr ? 'dot-selected' : ''}">${d.getDate()}</div>`;
         item.onclick = () => window.jumpToDate(iso);
         container.appendChild(item);

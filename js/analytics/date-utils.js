@@ -73,3 +73,4 @@ export function getDayName(date) {
 export function formatDateWithDay(date) {
     return `${date.getMonth() + 1}.${date.getDate()}(${getDayName(date)})`;
 }
+

@@ -3,3 +3,4 @@
 // config.js는 .gitignore에 추가되어 Git에 커밋되지 않습니다
 
 export const GEMINI_API_KEY = 'YOUR_GEMINI_API_KEY_HERE';
+

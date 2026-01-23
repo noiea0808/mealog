@@ -815,7 +815,7 @@ export function renderMiniCalendar() {
         let dayColorClass = (d.getDay() === 0 || d.getDay() === 6) ? "text-rose-400" : "text-slate-400";
         const item = document.createElement('div');
         item.className = "calendar-item flex flex-col items-center gap-1 cursor-pointer flex-shrink-0";
-        item.innerHTML = `<span class="text-[9px] font-bold ${dayColorClass}">${d.toLocaleDateString('ko-KR', { weekday: 'narrow' })}</span>
+        item.innerHTML = `<span class="text-[11px] font-bold ${dayColorClass}">${d.toLocaleDateString('ko-KR', { weekday: 'narrow' })}</span>
             <div id="dot-${iso}" class="calendar-dot ${status} ${iso === activeStr ? 'dot-selected' : ''}">${d.getDate()}</div>`;
         item.onclick = () => window.jumpToDate(iso);
         container.appendChild(item);

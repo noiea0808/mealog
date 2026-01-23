@@ -38,3 +38,4 @@ Write-Host "프로파일을 재생성했습니다: $profilePath" -ForegroundColo
 Write-Host "`n완료! 이제 Cursor를 재시작하세요." -ForegroundColor Cyan
 Write-Host "Press any key to exit..."
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+

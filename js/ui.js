@@ -86,7 +86,6 @@ export function updateHeaderUI() {
         }
         
         const iconEl = document.getElementById('headerIcon');
-        const nameEl = document.getElementById('headerName');
         
         if (iconEl) {
             // 모든 스타일 초기화
@@ -109,9 +108,6 @@ export function updateHeaderUI() {
                 // 이모지 표시
                 iconEl.innerText = p.icon || '🐻';
             }
-        }
-        if (nameEl) {
-            nameEl.innerText = currentNickname;
         }
         
         lastHeaderUpdate = currentProfileKey;

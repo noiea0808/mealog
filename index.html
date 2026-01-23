@@ -383,7 +383,7 @@
                 <div class="flex items-center gap-2">
                     <!-- 타임라인 탭: 돋보기 클릭 시 왼쪽으로 입력창 확장, 프로필 밀지 않음(고정폭+absolute) -->
                     <div id="timelineSearchPanel" class="timeline-search-wrapper hidden relative w-8 flex-shrink-0 overflow-visible">
-                        <div class="timeline-search-panel flex items-center overflow-hidden bg-slate-100 rounded-full border border-slate-200">
+                        <div class="timeline-search-panel flex items-center overflow-hidden bg-slate-100 rounded-full border border-slate-400">
                             <input type="text" id="searchInput" placeholder="메뉴, 장소 검색..." class="flex-1 min-w-0 bg-transparent border-0 pl-3 pr-1 py-1.5 text-sm outline-none focus:ring-0" oninput="window.safeCall('handleSearch', this.value)">
                             <button type="button" onclick="window.toggleSearch()" class="timeline-search-toggle w-8 h-8 flex items-center justify-center flex-shrink-0 text-slate-500 active:bg-slate-200 rounded-full" aria-label="검색">
                                 <i class="fa-solid fa-magnifying-glass text-sm"></i>
@@ -391,7 +391,7 @@
                         </div>
                     </div>
                     <!-- 앨범 탭: 돋보기 위치에서 왼쪽으로 확장 (하트/댓글/북마크/돋보기), 4개 통합 배경 -->
-                    <div id="galleryTraceFilterPanel" class="gallery-trace-panel hidden flex items-center gap-0.5 overflow-hidden transition-all duration-300 ease-out flex-shrink-0 bg-slate-100 rounded-full border border-slate-200">
+                    <div id="galleryTraceFilterPanel" class="gallery-trace-panel hidden flex items-center gap-0.5 overflow-hidden transition-all duration-300 ease-out flex-shrink-0 bg-slate-100 rounded-full border border-slate-400">
                         <button type="button" data-trace="like" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-500 hover:bg-slate-200 hover:text-red-500 transition-colors flex-shrink-0">
                             <i class="fa-regular fa-heart text-sm"></i>
                         </button>
@@ -405,16 +405,15 @@
                             <i class="fa-solid fa-magnifying-glass text-sm"></i>
                         </button>
                     </div>
-                    <button id="headerSettingsBtn" class="flex items-center gap-1.5 bg-slate-100 pl-1 pr-2 py-0 rounded-full border border-slate-200 active:bg-slate-200 max-w-[140px] h-9">
-                        <span id="headerIcon" class="w-[34px] h-[34px] rounded-full flex items-center justify-center bg-slate-300 flex-shrink-0 overflow-hidden"></span>
-                        <span id="headerName" class="text-xs font-bold text-slate-700 truncate">게스트</span>
+                    <button id="headerSettingsBtn" class="w-8 h-8 flex items-center justify-center rounded-full border border-slate-400 active:bg-slate-200 flex-shrink-0">
+                        <span id="headerIcon" class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-300 flex-shrink-0 overflow-hidden border border-slate-400"></span>
                     </button>
                 </div>
             </div>
         </header>
 
         <div id="trackerSection" class="sticky top-[52px] z-40 px-4 py-3 bg-white border-b border-slate-100 shadow-sm">
-            <div id="trackerHeader" class="flex justify-between items-center px-1 mb-2">
+            <div id="trackerHeader" class="flex justify-between items-center px-6 mb-2">
                 <span id="trackerTitle" class="text-sm font-black text-slate-800 tracking-tight uppercase">날짜 선택</span>
                 <div id="trackerTabs" class="flex p-1 bg-slate-100 rounded-lg gap-1">
                     <button id="btn-view-list" class="view-tab active">전체</button>
@@ -434,8 +433,8 @@
                 <button id="boardWriteBtn" class="board-write-fab" type="button" title="글쓰기" aria-label="글쓰기">
                     <i class="fa-solid fa-pen text-lg"></i>
                 </button>
-                <div class="mb-4">
-                    <h2 class="sub-title text-lg text-emerald-700 tracking-tighter">MEAL TALK</h2>
+                <div class="mb-4 px-4">
+                    <h2 class="mealog-title text-2xl text-slate-700 tracking-tighter lowercase"><span>💬</span> meal talk</h2>
                 </div>
                 <div class="flex gap-2 mb-4 overflow-x-auto scrollbar-hide">
                     <button id="board-category-all" class="board-category-btn active px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold whitespace-nowrap">전체</button>
@@ -503,7 +502,7 @@
                 <!-- Dashboard content remains same -->
                 <div class="card py-3 px-4 bg-emerald-600 text-white relative overflow-hidden">
                     <div class="flex flex-col mb-4 relative z-10">
-                        <h3 class="sub-title text-lg tracking-tighter flex items-center gap-2"><span>✨</span>INSIGHT</h3>
+                        <h3 class="mealog-title text-2xl tracking-tighter lowercase px-4"><span>✨</span> insight</h3>
                         <div class="flex bg-emerald-700/40 p-1 rounded-xl mt-3 gap-1">
                             <button id="btn-dash-7d" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">최근 1주</button>
                             <button id="btn-dash-week" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">주간</button>
