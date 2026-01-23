@@ -1993,14 +1993,34 @@ export function searchKakaoPlaces() {
     // 장소 검색 객체 생성
     const ps = new kakao.maps.services.Places();
     
-    // 키워드로 장소 검색
+    // 키워드로 장소 검색 (카테고리 제한 없이 검색하여 더 많은 결과 포함)
     ps.keywordSearch(keyword, (data, status) => {
         if (status === kakao.maps.services.Status.OK) {
-            // 음식점만 필터링 (카테고리 코드: FD6 - 음식점)
+            // 음식점 필터링 (더 포괄적인 카테고리 체크)
             const restaurants = data.filter(place => {
                 const category = place.category_name || '';
-                return category.includes('음식점') || category.includes('식당') || category.includes('카페') || 
-                       category.includes('레스토랑') || category.includes('맛집');
+                const categoryGroup = place.category_group_code || '';
+                
+                // 카테고리 그룹 코드로 필터링 (FD6: 음식점)
+                if (categoryGroup === 'FD6') {
+                    return true;
+                }
+                
+                // 카테고리명으로 필터링 (더 포괄적으로)
+                const categoryLower = category.toLowerCase();
+                return categoryLower.includes('음식점') || 
+                       categoryLower.includes('식당') || 
+                       categoryLower.includes('카페') || 
+                       categoryLower.includes('레스토랑') || 
+                       categoryLower.includes('맛집') ||
+                       categoryLower.includes('요리') ||
+                       categoryLower.includes('식음료') ||
+                       categoryLower.includes('제과') ||
+                       categoryLower.includes('베이커리') ||
+                       categoryLower.includes('술집') ||
+                       categoryLower.includes('바') ||
+                       (categoryLower.includes('펜션') && categoryLower.includes('식당')) ||
+                       (categoryLower.includes('호텔') && categoryLower.includes('레스토랑'));
             });
             
             if (restaurants.length === 0) {
@@ -2065,8 +2085,6 @@ export function searchKakaoPlaces() {
             resultsContainer.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">검색 중 오류가 발생했습니다.</div>';
             console.error('카카오 장소 검색 오류:', status);
         }
-    }, {
-        category_group_code: 'FD6' // 음식점 카테고리
     });
 }
 
