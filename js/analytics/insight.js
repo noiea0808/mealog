@@ -49,12 +49,9 @@ function getApiKey() {
     }
     return GEMINI_API_KEY;
 }
-// 지원 가능한 모델 목록 - 데이터 분석용 추천 모델 3개만 순차적으로 사용
-// 실제 존재하는 모델명만 사용 (404 에러 방지)
+// 지원 가능한 모델 목록 - gemini-2.5-flash-lite만 사용
 const GEMINI_MODELS = [
-    'gemini-2.5-pro',        // 1순위: 깊은 분석, 복잡한 쿼리, 논리적 추론 (고급 분석용)
-    'gemini-2.5-flash-lite', // 2순위: 백업 옵션 (가능하면 사용)
-    'gemini-2.5-flash'       // 3순위: 고빈도 요청, 경량 분석 (66자 응답 가능, 최후의 보루)
+    'gemini-2.5-flash-lite'
 ];
 
 // API URL 생성 함수 (여러 버전 시도)
@@ -1344,7 +1341,7 @@ export async function openShareInsightModal() {
             <div style="background: #ffffff; padding: 16px; border-bottom: 1px solid #e2e8f0;">
                 <!-- 상단: MEALOG와 기간 -->
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                    <span style="font-size: 18px; font-weight: 700; color: #059669; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px;">MEALOG</span>
+                    <span style="font-size: 28.8px; font-weight: 600; color: #059669; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
                     <span style="font-size: 12px; font-weight: 400; color: #64748b; flex-shrink: 0;">${escapeHtml(dateRangeText || '')}</span>
                 </div>
                 <!-- 하단: 밀당(MEAL-DANG)들의 참견 -->

@@ -2688,8 +2688,8 @@ export function createDailyShareCard(dateStr, forPreview = false) {
     } else {
         container.style.margin = '0 auto';
     }
-    container.style.width = '375px'; // 모바일 기준 너비
-    container.style.maxWidth = '375px';
+    container.style.width = '440px'; // 모바일 기준 너비
+    container.style.maxWidth = '440px';
     container.style.backgroundColor = '#ffffff';
     container.style.padding = '0';
     container.style.fontFamily = 'Pretendard, sans-serif';
@@ -2712,18 +2712,18 @@ export function createDailyShareCard(dateStr, forPreview = false) {
     const formattedDate = `'${shortYear}년 ${month}월${day}일`;
     
     let html = `
-        <div style="width: 375px; max-width: 375px; margin: 0 auto; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
-            <!-- 헤더 (흰색 배경) -->
-            <div style="background: #ffffff; padding: 16px; border-bottom: 1px solid #e2e8f0;">
+        <div style="width: 440px; max-width: 440px; margin: 0 auto; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+            <!-- 헤더 (파란색 배경) -->
+            <div style="background: #2563eb; padding: 16px; border-bottom: 1px solid #1e40af;">
                 <!-- 상단: MEALOG와 날짜 -->
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                    <span style="font-size: 18px; font-weight: 700; color: #059669; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px;">MEALOG</span>
-                    <span style="font-size: 12px; font-weight: 400; color: #64748b; flex-shrink: 0;">${formattedDate}</span>
+                    <span style="font-size: 20px; font-weight: 600; color: #ffffff; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
+                    <span style="font-size: 12px; font-weight: 400; color: #dbeafe; flex-shrink: 0;">${formattedDate}</span>
                 </div>
                 <!-- 하단: 닉네임의 하루소감 -->
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <span style="font-size: 16px;">${userIcon}</span>
-                    <span style="font-size: 15px; font-weight: 700; color: #1e293b;">${escapeHtml(userNickname)}의 하루소감</span>
+                    <span style="font-size: 15px; font-weight: 700; color: #ffffff;">${escapeHtml(userNickname)}의 하루소감</span>
                 </div>
             </div>
             

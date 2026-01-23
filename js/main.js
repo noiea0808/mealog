@@ -471,7 +471,7 @@ window.openDailySharePreviewModal = (dateStr) => {
                     <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
             </div>
-            <div id="dailySharePreviewScroll" class="flex-1 overflow-y-auto overflow-x-hidden flex justify-center bg-slate-50 py-0 min-h-0">
+            <div id="dailySharePreviewScroll" class="flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 py-0 min-h-0">
                 <!-- createDailyShareCard(forPreview) 결과가 여기 들어감 -->
             </div>
             <div class="flex gap-3 p-4 border-t border-slate-100 flex-shrink-0">
@@ -572,7 +572,7 @@ window.confirmDailyShare = async (dateStr) => {
         await new Promise(resolve => setTimeout(resolve, 100)); // 200ms -> 100ms로 단축
 
         // 미리보기 카드의 실제 크기 계산
-        const innerContent = previewCard.querySelector('div[style*="width: 375px"]') || previewCard;
+        const innerContent = previewCard.querySelector('div[style*="width: 440px"]') || previewCard;
         let actualHeight = innerContent.offsetHeight || innerContent.scrollHeight;
         
         if (!actualHeight || actualHeight < 100) {
@@ -588,7 +588,7 @@ window.confirmDailyShare = async (dateStr) => {
             scale: 2,
             logging: false,
             useCORS: true,
-            width: 375,
+            width: 440,
             height: actualHeight,
             x: 0,
             y: 0,

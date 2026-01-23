@@ -452,10 +452,10 @@ export function renderBestMeals() {
                             <span class="text-xs text-slate-400">${formattedDate}</span>
                         </div>
                         <div class="flex items-center gap-2 mb-1.5 pr-16">
-                            <span class="text-xs font-black uppercase ${specificStyle.iconText}">${safeSlotLabel}</span>
+                            <span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span>
                             ${place ? `<span class="text-xs font-bold text-slate-400">@ ${safePlace}</span>` : ''}
                         </div>
-                        <h4 class="text-base font-bold truncate text-slate-800 mb-1 pr-2">${safeMenuDetail}</h4>
+                        <h4 class="text-sm font-bold truncate text-slate-800 mb-1 pr-2">${safeMenuDetail}</h4>
                         ${meal.comment ? `<p class="text-xs text-slate-400 mb-1.5 line-clamp-1 pr-2">"${escapeHtml(meal.comment)}"</p>` : ''}
                         ${tagsHtml}
                     </div>
@@ -675,18 +675,18 @@ export async function openShareBestModal() {
     
     // 스크린샷용 HTML 생성
     const screenshotHtml = `
-        <div id="bestScreenshotContainer" style="width: 375px; max-width: 375px; margin: 0 auto; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; font-family: Pretendard, sans-serif;">
-            <!-- 헤더 (흰색 배경) -->
-            <div style="background: #ffffff; padding: 16px; border-bottom: 1px solid #e2e8f0;">
+        <div id="bestScreenshotContainer" style="width: 440px; max-width: 440px; margin: 0 auto; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; font-family: Pretendard, sans-serif;">
+            <!-- 헤더 (밀로그 그린 배경) -->
+            <div style="background: #059669; padding: 16px; border-bottom: 1px solid #047857;">
                 <!-- 상단: MEALOG와 기간 -->
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                    <span style="font-size: 18px; font-weight: 700; color: #059669; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px;">MEALOG</span>
-                    <span style="font-size: 12px; font-weight: 400; color: #64748b; flex-shrink: 0;">${periodText}</span>
+                    <span style="font-size: 20px; font-weight: 600; color: #ffffff; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
+                    <span style="font-size: 12px; font-weight: 400; color: #d1fae5; flex-shrink: 0;">${periodText}</span>
                 </div>
                 <!-- 하단: 닉네임의 Best -->
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <span style="font-size: 16px;">${userIcon}</span>
-                    <span style="font-size: 15px; font-weight: 700; color: #1e293b;">${escapeHtml(userNickname)}의 ${periodType} Best</span>
+                    <span style="font-size: 15px; font-weight: 700; color: #ffffff;">${escapeHtml(userNickname)}의 ${periodType} Best</span>
                 </div>
             </div>
             
