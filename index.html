@@ -996,6 +996,17 @@
                 </div>
                 <div class="space-y-2">
                     <div class="text-sm text-slate-600 mb-2">사진을 드래그하여 보이는 영역을 조절하세요</div>
+                    <div class="flex gap-2 mb-2">
+                        <button onclick="window.zoomOutPhotoEdit()" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm">
+                            <i class="fa-solid fa-magnifying-glass-minus"></i> 축소
+                        </button>
+                        <button onclick="window.zoomInPhotoEdit()" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm">
+                            <i class="fa-solid fa-magnifying-glass-plus"></i> 확대
+                        </button>
+                        <button onclick="window.rotatePhotoEdit()" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm">
+                            <i class="fa-solid fa-rotate-right"></i> 회전
+                        </button>
+                    </div>
                     <div class="flex gap-2">
                         <button onclick="window.resetPhotoEdit()" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm">
                             초기화

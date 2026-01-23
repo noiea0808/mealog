@@ -180,6 +180,11 @@ export function renderPhotoPreviews() {
             item.addEventListener('drop', handleDrop);
             item.addEventListener('dragend', handleDragEnd);
             
+            // 롱터치 시 컨텍스트 메뉴 방지
+            item.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+            });
+            
             // Long press to drag (모바일/터치)
             setupLongPressDrag(item);
         });
@@ -2843,9 +2848,13 @@ let photoEditCtx = null;
 let photoEditScale = 1;
 let photoEditOffsetX = 0;
 let photoEditOffsetY = 0;
+let photoEditRotation = 0; // 회전 각도 (도 단위)
 let isDraggingPhoto = false;
 let dragStartX = 0;
 let dragStartY = 0;
+let isPinching = false;
+let initialPinchDistance = 0;
+let initialPinchScale = 1;
 
 // 사진 편집 모달 열기
 export function editPhoto(idx) {
@@ -2909,12 +2918,16 @@ function initializePhotoEdit() {
     photoEditScale = drawWidth / editingPhotoImage.width;
     photoEditOffsetX = (containerWidth - drawWidth) / 2;
     photoEditOffsetY = (containerHeight - drawHeight) / 2;
+    photoEditRotation = 0; // 초기 회전 각도
     
         // 초기 렌더링
         drawPhotoEdit();
         
         // 드래그 이벤트 추가
         setupPhotoEditDrag();
+        
+        // 줌 및 회전 이벤트 추가
+        setupPhotoEditZoomAndRotate();
     }, 100);
 }
 
@@ -2929,10 +2942,22 @@ function drawPhotoEdit() {
     photoEditCtx.fillStyle = '#f1f5f9';
     photoEditCtx.fillRect(0, 0, photoEditCanvas.width, photoEditCanvas.height);
     
-    // 이미지 그리기
+    // 이미지 그리기 (회전 적용)
     const drawWidth = editingPhotoImage.width * photoEditScale;
     const drawHeight = editingPhotoImage.height * photoEditScale;
     
+    // 회전 중심점 계산
+    const centerX = photoEditCanvas.width / 2;
+    const centerY = photoEditCanvas.height / 2;
+    
+    photoEditCtx.save();
+    
+    // 회전 중심으로 이동하고 회전
+    photoEditCtx.translate(centerX, centerY);
+    photoEditCtx.rotate((photoEditRotation * Math.PI) / 180);
+    photoEditCtx.translate(-centerX, -centerY);
+    
+    // 이미지 그리기
     photoEditCtx.drawImage(
         editingPhotoImage,
         photoEditOffsetX,
@@ -2940,6 +2965,8 @@ function drawPhotoEdit() {
         drawWidth,
         drawHeight
     );
+    
+    photoEditCtx.restore();
 }
 
 // 사진 편집 드래그 설정
@@ -2953,9 +2980,7 @@ function setupPhotoEditDrag() {
     photoEditCanvas.addEventListener('mouseup', handlePhotoEditMouseUp);
     photoEditCanvas.addEventListener('mouseleave', handlePhotoEditMouseUp);
     
-    photoEditCanvas.addEventListener('touchstart', handlePhotoEditTouchStart, { passive: false });
-    photoEditCanvas.addEventListener('touchmove', handlePhotoEditTouchMove, { passive: false });
-    photoEditCanvas.addEventListener('touchend', handlePhotoEditTouchEnd);
+    // 터치 이벤트는 setupPhotoEditZoomAndRotate에서 통합 처리
 }
 
 // 마우스 이벤트 핸들러
@@ -2999,6 +3024,10 @@ function handlePhotoEditMouseUp() {
 
 // 터치 이벤트 핸들러
 function handlePhotoEditTouchStart(e) {
+    // 핀치 줌이면 드래그 무시
+    if (e.touches.length === 2) {
+        return;
+    }
     e.preventDefault();
     const touch = e.touches[0];
     isDraggingPhoto = true;
@@ -3007,6 +3036,10 @@ function handlePhotoEditTouchStart(e) {
 }
 
 function handlePhotoEditTouchMove(e) {
+    // 핀치 줌이면 드래그 무시
+    if (e.touches.length === 2 || isPinching) {
+        return;
+    }
     if (!isDraggingPhoto) return;
     e.preventDefault();
     
@@ -3032,6 +3065,75 @@ function handlePhotoEditTouchMove(e) {
 
 function handlePhotoEditTouchEnd() {
     isDraggingPhoto = false;
+    isPinching = false;
+}
+
+// 줌 및 회전 기능 설정
+function setupPhotoEditZoomAndRotate() {
+    if (!photoEditCanvas) return;
+    
+    // 휠 줌 (데스크톱)
+    photoEditCanvas.addEventListener('wheel', handlePhotoEditWheel, { passive: false });
+    
+    // 터치 이벤트 (드래그 + 핀치 줌 통합)
+    photoEditCanvas.addEventListener('touchstart', handlePhotoEditTouchStart, { passive: false });
+    photoEditCanvas.addEventListener('touchmove', handlePhotoEditTouchMove, { passive: false });
+    photoEditCanvas.addEventListener('touchend', handlePhotoEditTouchEnd);
+}
+
+// 휠 줌 핸들러
+function handlePhotoEditWheel(e) {
+    e.preventDefault();
+    
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    const newScale = Math.max(0.5, Math.min(3, photoEditScale + delta));
+    
+    // 줌 중심점 계산
+    const rect = photoEditCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // 줌 중심점 기준으로 스케일 조정
+    const scaleChange = newScale / photoEditScale;
+    photoEditOffsetX = x - (x - photoEditOffsetX) * scaleChange;
+    photoEditOffsetY = y - (y - photoEditOffsetY) * scaleChange;
+    
+    photoEditScale = newScale;
+    drawPhotoEdit();
+}
+
+// 줌인
+export function zoomInPhotoEdit() {
+    const newScale = Math.min(3, photoEditScale * 1.2);
+    const centerX = photoEditCanvas.width / 2;
+    const centerY = photoEditCanvas.height / 2;
+    
+    const scaleChange = newScale / photoEditScale;
+    photoEditOffsetX = centerX - (centerX - photoEditOffsetX) * scaleChange;
+    photoEditOffsetY = centerY - (centerY - photoEditOffsetY) * scaleChange;
+    
+    photoEditScale = newScale;
+    drawPhotoEdit();
+}
+
+// 줌아웃
+export function zoomOutPhotoEdit() {
+    const newScale = Math.max(0.5, photoEditScale / 1.2);
+    const centerX = photoEditCanvas.width / 2;
+    const centerY = photoEditCanvas.height / 2;
+    
+    const scaleChange = newScale / photoEditScale;
+    photoEditOffsetX = centerX - (centerX - photoEditOffsetX) * scaleChange;
+    photoEditOffsetY = centerY - (centerY - photoEditOffsetY) * scaleChange;
+    
+    photoEditScale = newScale;
+    drawPhotoEdit();
+}
+
+// 회전 (90도씩)
+export function rotatePhotoEdit() {
+    photoEditRotation = (photoEditRotation + 90) % 360;
+    drawPhotoEdit();
 }
 
 // 사진 편집 초기화 (리셋)
@@ -3060,6 +3162,7 @@ export function resetPhotoEdit() {
     photoEditScale = drawWidth / editingPhotoImage.width;
     photoEditOffsetX = (containerWidth - drawWidth) / 2;
     photoEditOffsetY = (containerHeight - drawHeight) / 2;
+    photoEditRotation = 0;
     
     drawPhotoEdit();
 }
@@ -3086,9 +3189,20 @@ export function savePhotoEdit() {
     outputCtx.fillStyle = '#ffffff';
     outputCtx.fillRect(0, 0, outputCanvas.width, outputCanvas.height);
     
-    // 편집된 이미지 그리기 (현재 보이는 영역만)
+    // 편집된 이미지 그리기 (회전 적용)
     const drawWidth = editingPhotoImage.width * photoEditScale;
     const drawHeight = editingPhotoImage.height * photoEditScale;
+    
+    // 회전 중심점
+    const centerX = containerWidth / 2;
+    const centerY = containerHeight / 2;
+    
+    outputCtx.save();
+    
+    // 회전 적용
+    outputCtx.translate(centerX, centerY);
+    outputCtx.rotate((photoEditRotation * Math.PI) / 180);
+    outputCtx.translate(-centerX, -centerY);
     
     // 이미지가 컨테이너보다 작으면 중앙 정렬
     let finalOffsetX = photoEditOffsetX;
@@ -3108,6 +3222,8 @@ export function savePhotoEdit() {
         drawWidth,
         drawHeight
     );
+    
+    outputCtx.restore();
     
     // Canvas를 Blob으로 변환
     outputCanvas.toBlob((blob) => {
@@ -3147,6 +3263,7 @@ export function closePhotoEditModal() {
         photoEditCanvas.removeEventListener('touchstart', handlePhotoEditTouchStart);
         photoEditCanvas.removeEventListener('touchmove', handlePhotoEditTouchMove);
         photoEditCanvas.removeEventListener('touchend', handlePhotoEditTouchEnd);
+        photoEditCanvas.removeEventListener('wheel', handlePhotoEditWheel);
     }
     
     // 상태 초기화
@@ -3157,6 +3274,8 @@ export function closePhotoEditModal() {
     photoEditScale = 1;
     photoEditOffsetX = 0;
     photoEditOffsetY = 0;
+    photoEditRotation = 0;
+    isPinching = false;
     isDraggingPhoto = false;
 }
 
@@ -3165,6 +3284,9 @@ window.editPhoto = editPhoto;
 window.closePhotoEditModal = closePhotoEditModal;
 window.resetPhotoEdit = resetPhotoEdit;
 window.savePhotoEdit = savePhotoEdit;
+window.zoomInPhotoEdit = zoomInPhotoEdit;
+window.zoomOutPhotoEdit = zoomOutPhotoEdit;
+window.rotatePhotoEdit = rotatePhotoEdit;
 
 
 
