@@ -9,6 +9,22 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="mealog">
+    
+    <!-- Open Graph / Facebook / 카카오톡 공유 메타 태그 -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://mealog.app/">
+    <meta property="og:title" content="MEALOG - 함께한, 맛있었던 기억">
+    <meta property="og:description" content="우리가 함께한, 맛있었던 기억 - 스마트 식사 타임라인">
+    <meta property="og:image" content="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 630'><rect width='1200' height='630' fill='%23059669'/><text x='50%25' y='50%25' font-size='120' font-family='Arial, sans-serif' font-weight='bold' text-anchor='middle' dominant-baseline='central' fill='white'>MEALOG</text></svg>">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="MEALOG - 함께한, 맛있었던 기억">
+    <meta name="twitter:description" content="우리가 함께한, 맛있었던 기억 - 스마트 식사 타임라인">
+    <meta name="twitter:image" content="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 630'><rect width='1200' height='630' fill='%23059669'/><text x='50%25' y='50%25' font-size='120' font-family='Arial, sans-serif' font-weight='bold' text-anchor='middle' dominant-baseline='central' fill='white'>MEALOG</text></svg>">
+    
     <title>MEALOG-함께한, 맛있었던 기억</title>
     
     <!-- Favicon -->
@@ -243,7 +259,7 @@
 
     <!-- Email Auth Modal -->
     <div id="emailAuthModal" class="hidden fixed inset-0 z-[400] bg-slate-900/50 flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl">
+        <div class="bg-white rounded-2xl p-6 w-[80%] max-w-[20rem] shadow-2xl">
             <div class="flex justify-between items-center mb-6">
                 <h3 id="emailAuthTitle" class="text-lg font-bold text-slate-800">이메일 로그인</h3>
                 <button id="emailAuthCloseBtn"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
@@ -270,7 +286,7 @@
 
     <!-- Domain Error Modal -->
     <div id="domainErrorModal" class="hidden fixed inset-0 z-[500] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl border-2 border-red-100 animate-fade">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border-2 border-red-100 animate-fade">
             <div class="flex justify-center mb-4 text-red-500 text-3xl"><i class="fa-solid fa-triangle-exclamation"></i></div>
             <h3 class="text-lg font-bold text-slate-800 text-center mb-2">도메인 등록 필요</h3>
             <p class="text-xs text-slate-500 text-center mb-4 leading-relaxed">
@@ -342,7 +358,7 @@
 
     <!-- Profile Setup Modal (First Login) -->
     <div id="profileSetupModal" class="hidden fixed inset-0 z-[500] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
             <h3 class="text-lg font-bold text-slate-800 text-center mb-2">프로필 설정</h3>
             <p class="text-xs text-slate-500 text-center mb-6">서비스를 이용하기 위해 닉네임을 입력해주세요.</p>
             
@@ -647,6 +663,7 @@
 
     <!-- 3. Settings Page (UI 구조 변경) -->
     <div id="settingsPage" class="hidden fixed inset-0 z-[250] bg-white flex flex-col overflow-hidden">
+        <div class="max-w-md mx-auto w-full h-full flex flex-col overflow-hidden">
         <div class="border-b sticky top-0 bg-white z-10">
             <div class="p-6 pb-3 flex justify-between items-center">
                 <div class="flex items-center gap-3"><button id="settingsCloseBtn"><i class="fa-solid fa-arrow-left text-xl text-slate-400"></i></button><h2 class="text-lg font-bold text-slate-800 tracking-tight">사용자 설정</h2></div>
@@ -738,11 +755,12 @@
                 </div>
             </div>
         </div>
+        </div>
     </div>
     
     <!-- Logout Confirm Modal -->
     <div id="logoutConfirmModal" class="hidden fixed inset-0 z-[400] bg-slate-900/40 flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl transform transition-all scale-100">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl transform transition-all scale-100">
             <h3 class="text-lg font-bold text-slate-800 mb-2">로그아웃 하시겠어요?</h3>
             <p class="text-sm text-slate-500 mb-6">기록은 안전하게 저장됩니다.</p>
             <div class="flex gap-3">
@@ -754,7 +772,7 @@
 
     <!-- Delete Account Confirm Modal -->
     <div id="deleteAccountConfirmModal" class="hidden fixed inset-0 z-[400] bg-slate-900/40 flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl transform transition-all scale-100">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl transform transition-all scale-100">
             <h3 class="text-lg font-bold text-slate-800 mb-2">계정을 탈퇴하시겠어요?</h3>
             <p class="text-sm text-slate-500 mb-4">탈퇴 시 모든 기록과 데이터가 영구적으로 삭제되며 복구할 수 없습니다.</p>
             <div class="flex gap-3">
@@ -766,7 +784,7 @@
 
     <!-- Entry Modal -->
     <div id="entryModal" class="hidden fixed inset-0 bg-slate-900/60 z-[300] flex items-end">
-        <div class="w-full bg-white rounded-t-[2.5rem] flex flex-col max-h-[92vh]">
+        <div class="w-full max-w-md mx-auto bg-white rounded-t-[2.5rem] flex flex-col max-h-[92vh]">
             <div class="p-6 border-b flex justify-between items-center">
                 <h2 id="modalTitle" class="text-lg font-bold text-slate-800 tracking-tight">기록하기</h2>
                 <button onclick="window.closeModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
@@ -891,7 +909,7 @@
 
     <!-- Detail Analysis Modal -->
     <div id="detailModal" class="hidden fixed inset-0 bg-slate-900/60 z-[350] flex items-end">
-        <div class="w-full bg-white rounded-t-[2rem] p-6 max-h-[80vh] overflow-y-auto">
+        <div class="w-full max-w-md mx-auto bg-white rounded-t-[2rem] p-6 max-h-[80vh] overflow-y-auto">
             <div class="flex justify-between mb-4"><h2 id="detailModalTitle" class="font-bold">상세 통계</h2><button onclick="window.closeDetailModal()"><i class="fa-solid fa-xmark"></i></button></div>
             <div id="detailContent"></div>
         </div>
@@ -899,7 +917,7 @@
 
     <!-- Character Select Modal -->
     <div id="characterSelectModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-end">
-        <div class="w-full bg-white rounded-t-[2rem] flex flex-col max-h-[60vh]">
+        <div class="w-full max-w-md mx-auto bg-white rounded-t-[2rem] flex flex-col max-h-[60vh]">
             <div class="p-6 border-b flex justify-between items-center">
                 <h2 class="text-lg font-bold text-slate-800 tracking-tight">캐릭터 선택</h2>
                 <button onclick="window.closeCharacterSelectModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
@@ -914,7 +932,7 @@
 
     <!-- Character Select Popup (Center Modal) -->
     <div id="characterSelectPopup" class="hidden fixed inset-0 bg-slate-900/60 z-[9999] flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 w-full max-w-[320px]">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 w-full max-w-md">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-lg font-bold text-slate-800 tracking-tight">캐릭터 선택</h2>
                 <button onclick="window.closeCharacterSelectModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
@@ -944,7 +962,7 @@
 
     <!-- Best Share Modal -->
     <div id="bestShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-end">
-        <div class="w-full bg-white rounded-t-[2rem] flex flex-col max-h-[92vh]">
+        <div class="w-full max-w-md mx-auto bg-white rounded-t-[2rem] flex flex-col max-h-[92vh]">
             <div class="p-6 border-b flex justify-between items-center">
                 <h2 class="text-lg font-bold text-slate-800 tracking-tight">베스트 공유하기</h2>
                 <button onclick="window.closeShareBestModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>

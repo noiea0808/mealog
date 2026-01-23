@@ -548,30 +548,46 @@
                                     </div>
                                     <!-- 이용약관 -->
                                     <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
-                                            <i class="fa-solid fa-file-contract text-emerald-600"></i>
-                                            이용약관
-                                        </h3>
-                                        <div id="termsContentEditor" class="space-y-4">
-                                            <!-- 약관 항목들이 동적으로 추가됩니다 -->
+                                        <div class="flex items-center justify-between mb-4">
+                                            <h3 class="text-base font-black text-slate-800 flex items-center gap-2">
+                                                <i class="fa-solid fa-file-contract text-emerald-600"></i>
+                                                이용약관
+                                            </h3>
+                                            <div class="flex items-center gap-2">
+                                                <span id="termsUpdatedAt" class="text-xs text-slate-500"></span>
+                                                <button id="termsEditBtn" onclick="window.editTerms('terms')" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors">
+                                                    <i class="fa-solid fa-pencil mr-1"></i>수정
+                                                </button>
+                                            </div>
                                         </div>
-                                        <button onclick="window.addTermsItem('terms')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                                            <i class="fa-solid fa-plus mr-2"></i>항목 추가
-                                        </button>
+                                        <div id="termsContentDisplay" class="bg-white rounded-lg p-4 border border-slate-200 text-sm text-slate-700 whitespace-pre-line min-h-[200px]">
+                                            <!-- 약관 내용이 표시됩니다 -->
+                                        </div>
+                                        <div id="termsContentEditor" class="hidden">
+                                            <textarea id="termsContentTextarea" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[200px]"></textarea>
+                                        </div>
                                     </div>
                                     
                                     <!-- 개인정보 처리방침 -->
                                     <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
-                                            <i class="fa-solid fa-shield-halved text-blue-600"></i>
-                                            개인정보 처리방침
-                                        </h3>
-                                        <div id="privacyContentEditor" class="space-y-4">
-                                            <!-- 약관 항목들이 동적으로 추가됩니다 -->
+                                        <div class="flex items-center justify-between mb-4">
+                                            <h3 class="text-base font-black text-slate-800 flex items-center gap-2">
+                                                <i class="fa-solid fa-shield-halved text-blue-600"></i>
+                                                개인정보 처리방침
+                                            </h3>
+                                            <div class="flex items-center gap-2">
+                                                <span id="privacyUpdatedAt" class="text-xs text-slate-500"></span>
+                                                <button id="privacyEditBtn" onclick="window.editTerms('privacy')" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors">
+                                                    <i class="fa-solid fa-pencil mr-1"></i>수정
+                                                </button>
+                                            </div>
                                         </div>
-                                        <button onclick="window.addTermsItem('privacy')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                                            <i class="fa-solid fa-plus mr-2"></i>항목 추가
-                                        </button>
+                                        <div id="privacyContentDisplay" class="bg-white rounded-lg p-4 border border-slate-200 text-sm text-slate-700 whitespace-pre-line min-h-[200px]">
+                                            <!-- 개인정보 처리방침 내용이 표시됩니다 -->
+                                        </div>
+                                        <div id="privacyContentEditor" class="hidden">
+                                            <textarea id="privacyContentTextarea" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[200px]"></textarea>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

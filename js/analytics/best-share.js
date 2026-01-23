@@ -669,21 +669,29 @@ export async function openShareBestModal() {
         return;
     }
     
-    // 사용자 닉네임 가져오기
+    // 사용자 닉네임 및 아이콘 가져오기
     const userNickname = window.userSettings?.profile?.nickname || '익명';
+    const userIcon = window.userSettings?.profile?.icon || '🐻';
     
     // 스크린샷용 HTML 생성
     const screenshotHtml = `
-        <div id="bestScreenshotContainer" style="background: white; padding: 16px; max-width: 420px; margin: 0 auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-            <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); margin: -16px -16px 20px -16px; padding: 14px 16px; border-radius: 0; display: flex; align-items: center; justify-content: center; min-height: 50px;">
-                <h2 style="font-size: 18px; font-weight: 800; color: #ffffff; margin: 0; padding: 0; display: flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; overflow: visible; line-height: 1.2; vertical-align: middle;">
-                    <span style="font-size: 20px; line-height: 1; display: inline-flex; align-items: center; vertical-align: middle;">🏆</span>
-                    <span style="flex-shrink: 0; line-height: 1.2; display: inline-flex; align-items: center; vertical-align: middle;">
-                        ${userNickname}의 ${periodType} Best
-                        ${periodText ? `<span style="font-size: 12px; color: rgba(255,255,255,0.9); font-weight: 700; margin-left: 6px;">${periodText}</span>` : ''}
-                    </span>
-                </h2>
+        <div id="bestScreenshotContainer" style="width: 375px; max-width: 375px; margin: 0 auto; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; font-family: Pretendard, sans-serif;">
+            <!-- 헤더 (흰색 배경) -->
+            <div style="background: #ffffff; padding: 16px; border-bottom: 1px solid #e2e8f0;">
+                <!-- 상단: MEALOG와 기간 -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                    <span style="font-size: 18px; font-weight: 700; color: #059669; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px;">MEALOG</span>
+                    <span style="font-size: 12px; font-weight: 400; color: #64748b; flex-shrink: 0;">${periodText}</span>
+                </div>
+                <!-- 하단: 닉네임의 Best -->
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 16px;">${userIcon}</span>
+                    <span style="font-size: 15px; font-weight: 700; color: #1e293b;">${escapeHtml(userNickname)}의 ${periodType} Best</span>
+                </div>
             </div>
+            
+            <!-- 본문 -->
+            <div style="padding: 0; background: #f8fafc;">
             ${top3Meals.map((meal, index) => {
                 const slot = SLOTS.find(s => s.id === meal.slotId);
                 const slotLabel = slot ? slot.label : '알 수 없음';
@@ -721,8 +729,8 @@ export async function openShareBestModal() {
                 const safeSlotLabel = escapeHtml(slotLabel);
                 
                 return `
-                    <div style="display: flex; margin-bottom: 7px; border: 1px solid #e2e8f0; border-radius: 16px; overflow: visible; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-height: 130px;">
-                        <div style="width: 130px; min-height: 130px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0;">
+                    <div style="display: flex; margin: 4px 8px; margin-bottom: 7px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-height: 130px;">
+                        <div style="width: 130px; min-height: 130px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0; border-radius: 8px 0 0 8px; overflow: hidden;">
                             ${photoUrl ? `<img src="${photoUrl}" style="width: 100%; height: 100%; min-height: 130px; object-fit: cover;">` : `<div style="font-size: 28px;">🍽️</div>`}
                             <div style="position: absolute; top: 10px; left: 10px; width: 28px; height: 28px; border-radius: 50%; background: ${rankBg}; color: ${rankText}; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; line-height: 1; box-shadow: 0 2px 4px rgba(0,0,0,0.15); padding: 0; margin: 0;">
                                 <span style="display: inline-block; line-height: 1; vertical-align: middle; margin: 0; padding: 0;">${index + 1}</span>
@@ -751,6 +759,7 @@ export async function openShareBestModal() {
                     </div>
                 `;
             }).join('')}
+            </div>
         </div>
     `;
     

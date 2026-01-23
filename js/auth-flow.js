@@ -5,6 +5,7 @@ import { auth } from './firebase.js';
 import { dbOps } from './db.js';
 import { showToast, switchScreen, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
+import { getCurrentTermsVersion } from './utils-terms.js';
 import { showTermsModal, closeTermsModal } from './auth.js';
 
 /**
@@ -72,19 +73,28 @@ export class AuthFlowManager {
         const agreedVersion = this.userSettings.termsVersion || null;
         const hasAgreed = this.userSettings.termsAgreed === true;
         
+        // Firestore에서 현재 약관 버전 가져오기 (에러 발생 시 기본값 사용)
+        let currentVersion = CURRENT_TERMS_VERSION; // 기본값
+        try {
+            currentVersion = await getCurrentTermsVersion();
+        } catch (e) {
+            console.warn('약관 버전 가져오기 실패, 기본값 사용:', e);
+            // 에러가 발생해도 기본값으로 계속 진행
+        }
+        
         // termsVersion이 null이지만 termsAgreed가 true인 경우
         // (이전 버전에서 약관에 동의했지만 termsVersion을 저장하지 않은 경우)
         // 기존 사용자로 간주하고 현재 버전에 동의한 것으로 처리
         let versionMatches = false;
         if (agreedVersion !== null) {
-            versionMatches = String(agreedVersion) === String(CURRENT_TERMS_VERSION);
+            versionMatches = String(agreedVersion) === String(currentVersion);
         } else if (hasAgreed && !agreedVersion) {
             // termsVersion이 없지만 termsAgreed가 true인 경우, 기존 사용자로 간주
             // 현재 버전에 동의한 것으로 처리하고 termsVersion 저장
             versionMatches = true;
             console.log('⚠️ termsVersion이 없지만 termsAgreed가 true입니다. 현재 버전으로 설정합니다.');
             // termsVersion을 현재 버전으로 업데이트 (비동기로 저장)
-            this.userSettings.termsVersion = CURRENT_TERMS_VERSION;
+            this.userSettings.termsVersion = currentVersion;
             if (window.dbOps) {
                 window.dbOps.saveSettings(this.userSettings).catch(e => {
                     console.warn('termsVersion 업데이트 실패:', e);
@@ -98,7 +108,7 @@ export class AuthFlowManager {
         console.log('📋 약관 동의 상태 확인:', {
             termsAgreed: hasAgreed,
             agreedVersion: agreedVersion,
-            currentVersion: CURRENT_TERMS_VERSION,
+            currentVersion: currentVersion,
             versionMatches: versionMatches,
             finalAgreed: readiness.termsAgreed,
             userSettingsTermsVersion: this.userSettings.termsVersion,

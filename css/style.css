@@ -319,6 +319,44 @@ header .mealog-title {
 .settings-tab-content {
     min-height: 100%;
 }
+
+/* 사용자 설정 페이지 슬라이드 애니메이션 */
+#settingsPage {
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#settingsPage.settings-open {
+    transform: translateX(0);
+}
+
+#settingsPage.hidden {
+    transform: translateX(100%);
+}
+
+/* 사용자 설정 페이지 스크롤바 스타일 - 얇고 흰색으로 눈에 띄지 않게 */
+#settingsPage ::-webkit-scrollbar {
+    width: 3px;
+}
+
+#settingsPage ::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#settingsPage ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+}
+
+#settingsPage ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* Firefox 스크롤바 스타일 */
+#settingsPage {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
 .tag-manage-item { 
     display: inline-flex; 
     align-items: center; 

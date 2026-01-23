@@ -1321,7 +1321,14 @@ export function openSettings() {
         }
     }
     
-    document.getElementById('settingsPage').classList.remove('hidden');
+    const settingsPage = document.getElementById('settingsPage');
+    settingsPage.classList.remove('hidden');
+    // 애니메이션을 위해 다음 프레임에서 클래스 추가
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            settingsPage.classList.add('settings-open');
+        });
+    });
 }
 
 // 버전 정보 로드 함수
@@ -1383,7 +1390,12 @@ async function loadVersionInfo() {
 }
 
 export function closeSettings() {
-    document.getElementById('settingsPage').classList.add('hidden');
+    const settingsPage = document.getElementById('settingsPage');
+    // 닫기 애니메이션
+    settingsPage.classList.remove('settings-open');
+    setTimeout(() => {
+        settingsPage.classList.add('hidden');
+    }, 300); // 애니메이션 시간과 동일
 }
 
 // 설정 페이지 탭 전환 함수 (바 타입)

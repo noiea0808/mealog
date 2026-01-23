@@ -362,7 +362,11 @@ export async function confirmTermsAgreement() {
         
         window.userSettings.termsAgreed = true;
         window.userSettings.termsAgreedAt = new Date().toISOString();
-        window.userSettings.termsVersion = CURRENT_TERMS_VERSION;
+        
+        // Firestore에서 현재 약관 버전 가져오기 (동적 import로 안전하게 로드)
+        const { getCurrentTermsVersion } = await import('./utils-terms.js');
+        const currentVersion = await getCurrentTermsVersion();
+        window.userSettings.termsVersion = currentVersion;
         
         // providerId와 email을 현재 사용자 정보로 설정 (없을 때만, 또는 같은 providerId일 때만)
         try {

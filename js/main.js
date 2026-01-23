@@ -461,21 +461,21 @@ window.openDailySharePreviewModal = (dateStr) => {
     modal.className = 'fixed inset-0 z-[500] flex items-end bg-black/50';
 
     modal.innerHTML = `
-        <div class="w-full bg-white rounded-t-[2rem] flex flex-col max-h-[92vh] shadow-2xl">
+        <div class="w-full max-w-md mx-auto bg-white rounded-t-[2rem] flex flex-col max-h-[92vh] shadow-2xl">
             <div class="flex justify-between items-center p-4 border-b border-slate-100 flex-shrink-0">
                 <h3 class="text-lg font-black text-slate-800">일간 식단 공유 미리보기</h3>
                 <button onclick="window.closeDailySharePreviewModal()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-full">
                     <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
             </div>
-            <div id="dailySharePreviewScroll" class="flex-1 overflow-y-auto overflow-x-hidden flex justify-center bg-slate-50 py-4 min-h-0">
+            <div id="dailySharePreviewScroll" class="flex-1 overflow-y-auto overflow-x-hidden flex justify-center bg-slate-50 py-0 min-h-0">
                 <!-- createDailyShareCard(forPreview) 결과가 여기 들어감 -->
             </div>
             <div class="flex gap-3 p-4 border-t border-slate-100 flex-shrink-0">
                 <button onclick="window.closeDailySharePreviewModal()" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm">
                     취소
                 </button>
-                <button onclick="window.confirmDailyShare('${dateStr}')" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm">
+                <button onclick="window.confirmDailyShare('${dateStr}')" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm active:bg-emerald-700 transition-colors">
                     공유
                 </button>
             </div>
@@ -484,7 +484,13 @@ window.openDailySharePreviewModal = (dateStr) => {
 
     document.body.appendChild(modal);
     const scrollEl = document.getElementById('dailySharePreviewScroll');
-    if (scrollEl && previewCard) scrollEl.appendChild(previewCard);
+    if (scrollEl && previewCard) {
+        scrollEl.appendChild(previewCard);
+        // 처음부터 화면 안쪽을 꽉 채워서 보여주기 위해 스크롤을 상단으로
+        setTimeout(() => {
+            scrollEl.scrollTop = 0;
+        }, 0);
+    }
 
     modal.addEventListener('click', (e) => {
         if (e.target === modal) window.closeDailySharePreviewModal();
@@ -497,27 +503,130 @@ window.closeDailySharePreviewModal = () => {
     if (modal) modal.remove();
 };
 
-// 미리보기에서 공유 확정: 모달 닫고 실제 공유 실행
-window.confirmDailyShare = (dateStr) => {
-    window.closeDailySharePreviewModal();
-    window.executeDailyShare(dateStr);
-};
-
-// 일간보기 실제 공유 실행 (캡처 → 업로드 → Firestore)
-window.executeDailyShare = async (dateStr) => {
+// 미리보기에서 공유 확정: 미리보기 화면을 그대로 캡쳐해서 공유
+window.confirmDailyShare = async (dateStr) => {
+    // 버튼 즉시 반응을 위해 로딩 오버레이 먼저 표시
     const loadingOverlay = document.getElementById('loadingOverlay');
     if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    
+    // 공유 버튼 비활성화 및 로딩 표시
+    const shareBtn = event?.target || document.querySelector(`button[onclick*="confirmDailyShare('${dateStr}')"]`);
+    if (shareBtn) {
+        shareBtn.disabled = true;
+        shareBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        const originalText = shareBtn.textContent;
+        shareBtn.textContent = '공유 중...';
+    }
 
     try {
-        const shareCard = createDailyShareCard(dateStr);
+        // 미리보기 모달에서 카드 요소 찾기
+        const previewModal = document.getElementById('dailySharePreviewModal');
+        if (!previewModal) {
+            throw new Error('미리보기 모달을 찾을 수 없습니다.');
+        }
 
-        const canvas = await html2canvas(shareCard, {
-            backgroundColor: '#ffffff',
+        const previewCard = previewModal.querySelector('#dailyShareCardContainer');
+        if (!previewCard) {
+            throw new Error('미리보기 카드를 찾을 수 없습니다.');
+        }
+
+        // Fredoka 폰트 CSS를 미리 가져와서 실제 @font-face URL 추출
+        let fredokaFontCSS = '';
+        try {
+            const fontCSSResponse = await fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&display=swap');
+            fredokaFontCSS = await fontCSSResponse.text();
+            // CSS를 스타일 태그로 추가하여 폰트 로드
+            const styleTag = document.createElement('style');
+            styleTag.textContent = fredokaFontCSS;
+            document.head.appendChild(styleTag);
+            
+            // 폰트 로드 대기
+            await document.fonts.ready;
+            let attempts = 0;
+            while (attempts < 50) {
+                if (document.fonts.check('1em Fredoka')) {
+                    break;
+                }
+                await new Promise(resolve => setTimeout(resolve, 100));
+                attempts++;
+            }
+        } catch (e) {
+            console.warn('Fredoka 폰트 CSS 로드 실패:', e);
+        }
+        
+        // 폰트가 완전히 렌더링될 때까지 추가 대기
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const images = previewCard.querySelectorAll('img');
+        await Promise.all(Array.from(images).map(img => {
+            if (img.complete) return Promise.resolve();
+            return new Promise((resolve) => {
+                img.onload = resolve;
+                img.onerror = resolve;
+                setTimeout(resolve, 500); // 1초 -> 0.5초로 단축
+            });
+        }));
+
+        await new Promise(resolve => setTimeout(resolve, 100)); // 200ms -> 100ms로 단축
+
+        // 미리보기 카드의 실제 크기 계산
+        const innerContent = previewCard.querySelector('div[style*="width: 375px"]') || previewCard;
+        let actualHeight = innerContent.offsetHeight || innerContent.scrollHeight;
+        
+        if (!actualHeight || actualHeight < 100) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+            actualHeight = innerContent.offsetHeight || innerContent.scrollHeight;
+        }
+
+        actualHeight = Math.ceil(actualHeight);
+
+        // 미리보기 카드를 그대로 캡쳐
+        const canvas = await html2canvas(innerContent, {
+            backgroundColor: '#f8fafc',
             scale: 2,
             logging: false,
             useCORS: true,
             width: 375,
-            height: shareCard.scrollHeight
+            height: actualHeight,
+            x: 0,
+            y: 0,
+            scrollX: 0,
+            scrollY: 0,
+            allowTaint: false,
+            foreignObjectRendering: false,
+            fontEmbedCSS: true,
+            onclone: (clonedDoc) => {
+                // 복제된 문서에 Fredoka 폰트 CSS를 직접 주입
+                if (fredokaFontCSS) {
+                    const clonedStyle = clonedDoc.createElement('style');
+                    clonedStyle.textContent = fredokaFontCSS;
+                    clonedDoc.head.appendChild(clonedStyle);
+                } else {
+                    // 폴백: 직접 @font-face 정의
+                    const clonedStyle = clonedDoc.createElement('style');
+                    clonedStyle.textContent = `
+                        @font-face {
+                            font-family: 'Fredoka';
+                            font-style: normal;
+                            font-weight: 700;
+                            font-display: swap;
+                            src: url('https://fonts.gstatic.com/s/fredoka/v14/X7nP4b87HvSqjb_WIi2yDCRwoQ_k7367_DWs89XyHw.woff2') format('woff2');
+                            unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+                        }
+                    `;
+                    clonedDoc.head.appendChild(clonedStyle);
+                }
+                
+                // 복제된 문서의 모든 MEALOG 텍스트에 Fredoka 폰트 강제 적용
+                const allSpans = clonedDoc.querySelectorAll('span');
+                allSpans.forEach(el => {
+                    const style = el.getAttribute('style') || '';
+                    const text = el.textContent.trim();
+                    if (style.includes('MEALOG') || text === 'MEALOG' || (style.includes('font-family') && style.includes('Fredoka'))) {
+                        el.style.fontFamily = "'Fredoka', sans-serif";
+                        el.style.fontWeight = '700';
+                    }
+                });
+            }
         });
 
         const base64Image = canvas.toDataURL('image/png');
@@ -553,6 +662,7 @@ window.executeDailyShare = async (dateStr) => {
         const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
         const { db, appId } = await import('./firebase.js');
         const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+
         const docRef = await addDoc(sharedColl, dailyShareData);
 
         if (!window.sharedPhotos) window.sharedPhotos = [];
@@ -562,7 +672,9 @@ window.executeDailyShare = async (dateStr) => {
         window.sharedPhotos.push({ id: docRef.id, ...dailyShareData });
         window.sharedPhotos.sort((a, b) => (new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
 
-        shareCard.remove();
+        // 미리보기 모달 닫기
+        window.closeDailySharePreviewModal();
+        
         showToast('하루 기록이 피드에 공유되었습니다!', 'success');
 
         if (appState.currentTab === 'timeline') renderTimeline();
@@ -570,12 +682,25 @@ window.executeDailyShare = async (dateStr) => {
     } catch (e) {
         console.error('일간보기 공유 실패:', e);
         showToast('공유 중 오류가 발생했습니다.', 'error');
-        const shareCard = document.getElementById('dailyShareCardContainer');
-        if (shareCard) shareCard.remove();
+        window.closeDailySharePreviewModal();
     } finally {
         if (loadingOverlay) loadingOverlay.classList.add('hidden');
+        // 버튼 상태 복원
+        const shareBtn = document.querySelector(`button[onclick*="confirmDailyShare('${dateStr}')"]`);
+        if (shareBtn) {
+            shareBtn.disabled = false;
+            shareBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            shareBtn.textContent = '공유';
+        }
     }
 };
+
+// 일간보기 실제 공유 실행 (캡처 → 업로드 → Firestore) - 사용하지 않음 (confirmDailyShare에서 직접 처리)
+/*
+window.executeDailyShare = async (dateStr) => {
+    // 이 함수는 더 이상 사용하지 않습니다. confirmDailyShare에서 미리보기 화면을 직접 캡쳐합니다.
+};
+*/
 
 // 일간보기 하루 전체 Comment 저장 함수
 window.saveDailyComment = async (date) => {

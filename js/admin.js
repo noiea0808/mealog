@@ -8,6 +8,7 @@ import { collection, getDocs, query, orderBy, limit, doc, deleteDoc, getDoc, set
 import { uploadImageToStorage } from './utils.js';
 import { getReportsAggregateByGroupKeys, deleteBoardPostByAdmin, setBoardPostHidden } from './db.js';
 import { REPORT_REASONS } from './constants.js';
+import { getCurrentTermsVersion, invalidateTermsVersionCache } from './utils-terms.js';
 
 let currentDeletePhotoId = null;
 
@@ -331,6 +332,7 @@ async function renderSharedPhotos() {
                                     <span class="font-bold text-slate-800">${photo.userNickname || '익명'}</span>
                                     ${photo.type === 'best' ? '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">베스트</span>' : ''}
                                     ${photo.type === 'daily' ? '<span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded">일간</span>' : ''}
+                                    <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">관리번호: ${photo.id}</span>
                                 </div>
                                 <button onclick="window.openDeleteModal('${photo.id}')" class="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 transition-colors">
                                     <i class="fa-solid fa-trash mr-1"></i>삭제
@@ -715,10 +717,16 @@ window.switchContentSidebar = function(section) {
 
 // 약관 콘텐츠 로드
 async function loadTermsContent() {
+    const termsDisplay = document.getElementById('termsContentDisplay');
     const termsEditor = document.getElementById('termsContentEditor');
+    const termsTextarea = document.getElementById('termsContentTextarea');
+    const privacyDisplay = document.getElementById('privacyContentDisplay');
     const privacyEditor = document.getElementById('privacyContentEditor');
+    const privacyTextarea = document.getElementById('privacyContentTextarea');
+    const termsUpdatedAt = document.getElementById('termsUpdatedAt');
+    const privacyUpdatedAt = document.getElementById('privacyUpdatedAt');
     
-    if (!termsEditor || !privacyEditor) return;
+    if (!termsDisplay || !termsEditor || !termsTextarea || !privacyDisplay || !privacyEditor || !privacyTextarea) return;
     
     try {
         // Firestore에서 약관 데이터 가져오기
@@ -726,115 +734,146 @@ async function loadTermsContent() {
         const termsSnap = await getDoc(termsDoc);
         
         let termsData = {
-            terms: [
-                { title: '제1조 (목적)', content: '본 약관은 MEALOG(이하 "회사")가 제공하는 식사 기록 서비스의 이용과 관련하여 회사와 이용자 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.' },
-                { title: '제2조 (정의)', content: '1. "서비스"란 회사가 제공하는 식사 기록 및 관리 서비스를 의미합니다.<br>2. "이용자"란 본 약관에 동의하고 회사가 제공하는 서비스를 이용하는 자를 의미합니다.' },
-                { title: '제3조 (서비스의 제공)', content: '회사는 다음과 같은 서비스를 제공합니다: 식사 기록, 통계 분석, 사진 공유 등' },
-                { title: '제4조 (이용자의 의무)', content: '이용자는 서비스를 이용함에 있어 관련 법령을 준수해야 합니다.' }
-            ],
-            privacy: [
-                { title: '제1조 (개인정보의 수집 및 이용 목적)', content: '회사는 다음의 목적을 위하여 개인정보를 처리합니다:<br>1. 서비스 제공 및 계약의 이행<br>2. 회원 관리 및 본인 확인<br>3. 서비스 개선 및 신규 서비스 개발' },
-                { title: '제2조 (수집하는 개인정보의 항목)', content: '회사는 다음과 같은 개인정보를 수집합니다:<br>1. 필수항목: 이메일, 닉네임, 프로필 아이콘<br>2. 선택항목: 위치 정보 (카카오 지도 이용 시)' },
-                { title: '제3조 (개인정보의 보유 및 이용기간)', content: '회원 탈퇴 시까지 보유하며, 탈퇴 후 즉시 파기합니다.' }
-            ]
+            terms: '본 약관은 MEALOG(이하 "회사")가 제공하는 식사 기록 서비스의 이용과 관련하여 회사와 이용자 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.\n\n제1조 (정의)\n1. "서비스"란 회사가 제공하는 식사 기록 및 관리 서비스를 의미합니다.\n2. "이용자"란 본 약관에 동의하고 회사가 제공하는 서비스를 이용하는 자를 의미합니다.\n\n제2조 (서비스의 제공)\n회사는 다음과 같은 서비스를 제공합니다: 식사 기록, 통계 분석, 사진 공유 등\n\n제3조 (이용자의 의무)\n이용자는 서비스를 이용함에 있어 관련 법령을 준수해야 합니다.',
+            privacy: '회사는 다음의 목적을 위하여 개인정보를 처리합니다:\n1. 서비스 제공 및 계약의 이행\n2. 회원 관리 및 본인 확인\n3. 서비스 개선 및 신규 서비스 개발\n\n제1조 (수집하는 개인정보의 항목)\n회사는 다음과 같은 개인정보를 수집합니다:\n1. 필수항목: 이메일, 닉네임, 프로필 아이콘\n2. 선택항목: 위치 정보 (카카오 지도 이용 시)\n\n제2조 (개인정보의 보유 및 이용기간)\n회원 탈퇴 시까지 보유하며, 탈퇴 후 즉시 파기합니다.',
+            updatedAt: null
         };
         
         if (termsSnap.exists()) {
             const data = termsSnap.data();
-            if (data.terms) termsData.terms = data.terms;
-            if (data.privacy) termsData.privacy = data.privacy;
+            // 기존 배열 형식에서 단일 텍스트로 변환
+            if (data.terms) {
+                if (Array.isArray(data.terms)) {
+                    // 배열 형식인 경우 통합
+                    termsData.terms = data.terms.map(item => {
+                        const title = item.title || '';
+                        const content = item.content || '';
+                        return title ? `${title}\n${content}` : content;
+                    }).join('\n\n');
+                } else {
+                    // 이미 단일 텍스트인 경우
+                    termsData.terms = data.terms;
+                }
+            }
+            if (data.privacy) {
+                if (Array.isArray(data.privacy)) {
+                    // 배열 형식인 경우 통합
+                    termsData.privacy = data.privacy.map(item => {
+                        const title = item.title || '';
+                        const content = item.content || '';
+                        return title ? `${title}\n${content}` : content;
+                    }).join('\n\n');
+                } else {
+                    // 이미 단일 텍스트인 경우
+                    termsData.privacy = data.privacy;
+                }
+            }
+            if (data.updatedAt) {
+                termsData.updatedAt = data.updatedAt;
+            }
         }
         
-        // 약관 렌더링
-        renderTermsItems('terms', termsData.terms);
-        renderTermsItems('privacy', termsData.privacy);
+        // 약관 렌더링 (읽기 모드)
+        renderTermsContent('terms', termsData.terms, termsData.updatedAt);
+        renderTermsContent('privacy', termsData.privacy, termsData.updatedAt);
         
     } catch (e) {
         console.error('약관 콘텐츠 로드 실패:', e);
         // 기본값으로 렌더링
-        renderTermsItems('terms', termsData.terms);
-        renderTermsItems('privacy', termsData.privacy);
+        renderTermsContent('terms', termsData.terms, null);
+        renderTermsContent('privacy', termsData.privacy, null);
     }
 }
 
-// 약관 항목 렌더링
-function renderTermsItems(type, items) {
+// 약관 내용 렌더링 (읽기 모드)
+function renderTermsContent(type, content, updatedAt) {
+    const display = document.getElementById(`${type}ContentDisplay`);
     const editor = document.getElementById(`${type}ContentEditor`);
-    if (!editor) return;
+    const textarea = document.getElementById(`${type}ContentTextarea`);
+    const updatedAtEl = document.getElementById(`${type}UpdatedAt`);
     
-    editor.innerHTML = items.map((item, index) => `
-        <div class="bg-white rounded-xl p-4 border border-slate-200" data-index="${index}">
-            <div class="flex items-start justify-between mb-3">
-                <input type="text" value="${escapeHtml(item.title || '')}" 
-                       onchange="window.updateTermsItem('${type}', ${index}, 'title', this.value)"
-                       class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-800 outline-none focus:border-emerald-500"
-                       placeholder="항목 제목 (예: 제1조 (목적))">
-                <button onclick="window.removeTermsItem('${type}', ${index})" class="ml-2 px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors">
-                    <i class="fa-solid fa-trash"></i>
-                </button>
-            </div>
-            <textarea onchange="window.updateTermsItem('${type}', ${index}, 'content', this.value)"
-                      class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[100px]"
-                      placeholder="항목 내용">${escapeHtml(item.content || '')}</textarea>
-        </div>
-    `).join('');
-}
-
-// 약관 항목 추가
-window.addTermsItem = function(type) {
-    const editor = document.getElementById(`${type}ContentEditor`);
-    if (!editor) return;
+    if (!display || !editor || !textarea) return;
     
-    const newItem = {
-        title: '',
-        content: ''
-    };
+    // 읽기 모드로 전환
+    display.classList.remove('hidden');
+    editor.classList.add('hidden');
     
-    const items = getCurrentTermsItems(type);
-    items.push(newItem);
+    // 내용 표시
+    display.textContent = content || '';
     
-    renderTermsItems(type, items);
-};
-
-// 약관 항목 제거
-window.removeTermsItem = function(type, index) {
-    const items = getCurrentTermsItems(type);
-    if (items.length <= 1) {
-        alert('최소 한 개의 항목이 필요합니다.');
-        return;
+    // textarea에 현재 값 저장 (편집 모드 전환 시 사용)
+    textarea.value = content || '';
+    
+    // 저장 일자 표시
+    if (updatedAtEl) {
+        if (updatedAt) {
+            try {
+                const date = new Date(updatedAt);
+                updatedAtEl.textContent = `최종 저장: ${date.toLocaleString('ko-KR', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                })}`;
+            } catch (e) {
+                updatedAtEl.textContent = '';
+            }
+        } else {
+            updatedAtEl.textContent = '';
+        }
     }
     
-    items.splice(index, 1);
-    renderTermsItems(type, items);
-};
-
-// 약관 항목 업데이트
-window.updateTermsItem = function(type, index, field, value) {
-    const items = getCurrentTermsItems(type);
-    if (items[index]) {
-        items[index][field] = value;
+    // 편집 버튼 상태 초기화
+    const editBtn = document.getElementById(`${type}EditBtn`);
+    if (editBtn) {
+        editBtn.innerHTML = '<i class="fa-solid fa-pencil mr-1"></i>수정';
+        editBtn.onclick = () => window.editTerms(type);
+        editBtn.className = 'px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors';
     }
+}
+
+// 약관 편집 모드 전환
+window.editTerms = function(type) {
+    const display = document.getElementById(`${type}ContentDisplay`);
+    const editor = document.getElementById(`${type}ContentEditor`);
+    const textarea = document.getElementById(`${type}ContentTextarea`);
+    const editBtn = document.getElementById(`${type}EditBtn`);
+    
+    if (!display || !editor || !textarea || !editBtn) return;
+    
+    // 편집 모드로 전환
+    display.classList.add('hidden');
+    editor.classList.remove('hidden');
+    textarea.focus();
+    
+    // 버튼 텍스트 변경
+    editBtn.innerHTML = '<i class="fa-solid fa-times mr-1"></i>취소';
+    editBtn.onclick = () => window.cancelEditTerms(type);
+    editBtn.className = 'px-3 py-1.5 bg-slate-600 text-white rounded-lg text-sm font-bold hover:bg-slate-700 transition-colors';
 };
 
-// 현재 약관 항목 가져오기
-function getCurrentTermsItems(type) {
+// 약관 편집 취소
+window.cancelEditTerms = function(type) {
+    const display = document.getElementById(`${type}ContentDisplay`);
     const editor = document.getElementById(`${type}ContentEditor`);
-    if (!editor) return [];
+    const textarea = document.getElementById(`${type}ContentTextarea`);
+    const editBtn = document.getElementById(`${type}EditBtn`);
     
-    const items = [];
-    editor.querySelectorAll('[data-index]').forEach(itemEl => {
-        const index = parseInt(itemEl.getAttribute('data-index'));
-        const titleInput = itemEl.querySelector('input[type="text"]');
-        const contentTextarea = itemEl.querySelector('textarea');
-        
-        items[index] = {
-            title: titleInput ? titleInput.value : '',
-            content: contentTextarea ? contentTextarea.value : ''
-        };
-    });
+    if (!display || !editor || !textarea || !editBtn) return;
     
-    return items;
-}
+    // 읽기 모드로 전환
+    display.classList.remove('hidden');
+    editor.classList.add('hidden');
+    
+    // textarea 값을 원래 값(display의 내용)으로 복원
+    textarea.value = display.textContent;
+    
+    // 버튼 텍스트 변경
+    editBtn.innerHTML = '<i class="fa-solid fa-pencil mr-1"></i>수정';
+    editBtn.onclick = () => window.editTerms(type);
+    editBtn.className = 'px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors';
+};
 
 // 약관 탭 전환
 window.switchTermsTab = function(tab) {
@@ -902,7 +941,13 @@ async function loadTermsHistory() {
         // 약관 버전 리스트 렌더링
         historyList.innerHTML = versions.map(v => {
             const date = v.deployedAt ? new Date(v.deployedAt).toLocaleString('ko-KR') : '날짜 없음';
-            const isCurrent = v.version === currentVersion;
+            // 버전 비교 시 숫자로 변환하여 비교 (1.0과 1은 같음)
+            const vVersion = String(v.version).trim();
+            const cVersion = String(currentVersion).trim();
+            const vNum = parseFloat(vVersion);
+            const cNum = parseFloat(cVersion);
+            const isCurrent = !isNaN(vNum) && !isNaN(cNum) && vNum === cNum;
+            
             return `
                 <div class="bg-white rounded-xl p-4 border border-slate-200 hover:border-emerald-300 transition-colors">
                     <div class="flex items-center justify-between">
@@ -914,9 +959,14 @@ async function loadTermsHistory() {
                             <p class="text-xs text-slate-500">배포일: ${date}</p>
                             <p class="text-xs text-slate-500">배포자: ${v.deployedBy}</p>
                         </div>
-                        <button onclick="window.showTermsVersion('${v.id}')" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors ml-4">
-                            확인
-                        </button>
+                        <div class="flex items-center gap-2">
+                            <button onclick="window.showTermsVersion('${v.id}')" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors">
+                                확인
+                            </button>
+                            ${!isCurrent ? `<button onclick="window.deleteTermsVersion('${v.id}')" class="px-4 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors">
+                                <i class="fa-solid fa-trash mr-1"></i>삭제
+                            </button>` : ''}
+                        </div>
                     </div>
                 </div>
             `;
@@ -925,17 +975,6 @@ async function loadTermsHistory() {
     } catch (e) {
         console.error('약관 이력 로드 실패:', e);
         historyList.innerHTML = '<div class="text-center py-8 text-red-400"><p class="text-sm">약관 이력 로드 중 오류가 발생했습니다.</p></div>';
-    }
-}
-
-// 현재 적용 중인 약관 버전 가져오기
-async function getCurrentTermsVersion() {
-    try {
-        const { CURRENT_TERMS_VERSION } = await import('./constants.js');
-        return CURRENT_TERMS_VERSION;
-    } catch (e) {
-        console.warn('약관 버전 가져오기 실패:', e);
-        return '1.0';
     }
 }
 
@@ -958,7 +997,10 @@ window.showTermsVersion = async function(versionId) {
         
         const date = data.deployedAt ? new Date(data.deployedAt).toLocaleString('ko-KR') : '날짜 없음';
         const currentVersion = await getCurrentTermsVersion();
-        const isCurrent = data.version === currentVersion;
+        // 버전 비교 시 숫자로 변환하여 비교 (1.0과 1은 같음)
+        const vNum = parseFloat(String(data.version).trim());
+        const cNum = parseFloat(String(currentVersion).trim());
+        const isCurrent = !isNaN(vNum) && !isNaN(cNum) && vNum === cNum;
         
         versionContent.innerHTML = `
             <div class="mb-4 pb-4 border-b border-slate-200">
@@ -976,13 +1018,12 @@ window.showTermsVersion = async function(versionId) {
                     <i class="fa-solid fa-file-contract text-emerald-600"></i>
                     이용약관
                 </h5>
-                <div class="space-y-3">
-                    ${(data.terms || []).map(item => `
-                        <div class="bg-white rounded-lg p-3 border border-slate-200">
-                            <div class="text-xs font-bold text-slate-800 mb-2">${escapeHtml(item.title || '')}</div>
-                            <div class="text-xs text-slate-600 leading-relaxed">${(item.content || '').replace(/\n/g, '<br>')}</div>
-                        </div>
-                    `).join('')}
+                <div class="bg-white rounded-lg p-3 border border-slate-200 text-xs text-slate-600 leading-relaxed whitespace-pre-line">
+                    ${escapeHtml(Array.isArray(data.terms) ? data.terms.map(item => {
+                        const title = item.title || '';
+                        const content = item.content || '';
+                        return title ? `${title}\n${content}` : content;
+                    }).join('\n\n') : (data.terms || ''))}
                 </div>
             </div>
             
@@ -992,13 +1033,12 @@ window.showTermsVersion = async function(versionId) {
                     <i class="fa-solid fa-shield-halved text-blue-600"></i>
                     개인정보 처리방침
                 </h5>
-                <div class="space-y-3">
-                    ${(data.privacy || []).map(item => `
-                        <div class="bg-white rounded-lg p-3 border border-slate-200">
-                            <div class="text-xs font-bold text-slate-800 mb-2">${escapeHtml(item.title || '')}</div>
-                            <div class="text-xs text-slate-600 leading-relaxed">${(item.content || '').replace(/\n/g, '<br>')}</div>
-                        </div>
-                    `).join('')}
+                <div class="bg-white rounded-lg p-3 border border-slate-200 text-xs text-slate-600 leading-relaxed whitespace-pre-line">
+                    ${escapeHtml(Array.isArray(data.privacy) ? data.privacy.map(item => {
+                        const title = item.title || '';
+                        const content = item.content || '';
+                        return title ? `${title}\n${content}` : content;
+                    }).join('\n\n') : (data.privacy || ''))}
                 </div>
             </div>
         `;
@@ -1018,32 +1058,74 @@ window.closeTermsVersionModal = function() {
     }
 };
 
-// 약관 배포
+// 약관 버전 삭제
+window.deleteTermsVersion = async function(versionId) {
+    if (!confirm('이 약관 버전을 삭제하시겠습니까?\n\n삭제된 버전은 복구할 수 없습니다.')) {
+        return;
+    }
+    
+    try {
+        const versionDoc = doc(db, 'artifacts', appId, 'content', 'terms', 'versions', versionId);
+        await deleteDoc(versionDoc);
+        
+        alert('약관 버전이 삭제되었습니다.');
+        
+        // 약관이력 새로고침
+        await loadTermsHistory();
+    } catch (e) {
+        console.error('약관 버전 삭제 실패:', e);
+        alert('약관 버전 삭제 중 오류가 발생했습니다: ' + e.message);
+    }
+};
 window.deployTerms = async function() {
     if (!confirm('약관을 배포하시겠습니까?\n\n배포하면 모든 사용자에게 재동의를 요청하게 됩니다.')) {
         return;
     }
     
     try {
-        // 현재 수정 중인 약관 가져오기
-        const termsItems = getCurrentTermsItems('terms');
-        const privacyItems = getCurrentTermsItems('privacy');
+        // 현재 표시된 약관 내용 가져오기
+        const termsDisplay = document.getElementById('termsContentDisplay');
+        const privacyDisplay = document.getElementById('privacyContentDisplay');
+        const termsTextarea = document.getElementById('termsContentTextarea');
+        const privacyTextarea = document.getElementById('privacyContentTextarea');
+        const termsEditor = document.getElementById('termsContentEditor');
+        const privacyEditor = document.getElementById('privacyContentEditor');
         
-        if (!termsItems || termsItems.length === 0 || !privacyItems || privacyItems.length === 0) {
+        let termsContent = '';
+        let privacyContent = '';
+        
+        // 편집 모드인지 확인하고, 편집 모드의 내용을 가져오기
+        if (termsEditor && !termsEditor.classList.contains('hidden')) {
+            // 편집 모드이므로 textarea의 값을 가져옴
+            termsContent = termsTextarea ? termsTextarea.value : '';
+        } else {
+            // 읽기 모드이므로 display의 내용을 가져옴
+            termsContent = termsDisplay ? termsDisplay.textContent : '';
+        }
+        
+        if (privacyEditor && !privacyEditor.classList.contains('hidden')) {
+            // 편집 모드이므로 textarea의 값을 가져옴
+            privacyContent = privacyTextarea ? privacyTextarea.value : '';
+        } else {
+            // 읽기 모드이므로 display의 내용을 가져옴
+            privacyContent = privacyDisplay ? privacyDisplay.textContent : '';
+        }
+        
+        if (!termsContent || !privacyContent) {
             alert('약관 내용을 입력해주세요.');
             return;
         }
         
-        // 현재 약관 버전 가져오기
-        const { CURRENT_TERMS_VERSION } = await import('./constants.js');
-        const currentVersion = parseFloat(CURRENT_TERMS_VERSION);
-        const newVersion = (currentVersion + 0.1).toFixed(1); // 버전 0.1씩 증가
+        // 현재 약관 버전 가져오기 (Firestore 우선, 없으면 constants.js 기본값)
+        const currentVersion = await getCurrentTermsVersion();
+        const baseVersion = parseFloat(currentVersion);
+        const newVersion = (baseVersion + 0.1).toFixed(1); // 버전 0.1씩 증가
         
-        // 약관 버전 데이터 저장
+        // 약관 버전 데이터 저장 (배열 형식으로 변환하여 저장 - 기존 호환성 유지)
         const versionData = {
             version: newVersion,
-            terms: termsItems,
-            privacy: privacyItems,
+            terms: [{ title: '이용약관', content: termsContent }],
+            privacy: [{ title: '개인정보 처리방침', content: privacyContent }],
             deployedAt: new Date().toISOString(),
             deployedBy: adminAuth.currentUser?.email || '관리자'
         };
@@ -1052,23 +1134,31 @@ window.deployTerms = async function() {
         const versionsColl = collection(db, 'artifacts', appId, 'content', 'terms', 'versions');
         await addDoc(versionsColl, versionData);
         
-        // 현재 약관도 업데이트 (수정 중인 약관 유지)
+        // 현재 약관도 업데이트 (단일 텍스트 형식으로 저장)
         const termsDoc = doc(db, 'artifacts', appId, 'content', 'terms');
         await setDoc(termsDoc, {
-            terms: termsItems,
-            privacy: privacyItems,
+            terms: termsContent,
+            privacy: privacyContent,
             updatedAt: new Date().toISOString(),
-            currentVersion: newVersion
+            currentVersion: newVersion  // Firestore에 현재 버전 저장
         }, { merge: true });
         
-        // CURRENT_TERMS_VERSION 업데이트는 constants.js 파일을 수동으로 수정해야 함
-        alert(`약관 버전 ${newVersion}이 배포되었습니다.\n\n주의: constants.js의 CURRENT_TERMS_VERSION을 ${newVersion}으로 수동으로 업데이트해야 합니다.`);
-        console.log(`⚠️ constants.js의 CURRENT_TERMS_VERSION을 ${newVersion}으로 수동으로 업데이트하세요.`);
+        // 약관 버전 캐시 무효화
+        invalidateTermsVersionCache();
+        
+        alert(`약관 버전 ${newVersion}이 배포되었습니다.\n\n버전이 자동으로 업데이트되었습니다.`);
+        console.log(`✅ 약관 버전 ${newVersion} 배포 완료. Firestore에 currentVersion 저장됨.`);
         
         // 약관이력 탭이면 새로고침
         const historySection = document.getElementById('termsHistorySection');
         if (historySection && !historySection.classList.contains('hidden')) {
             loadTermsHistory();
+        }
+        
+        // 약관 관리 탭이면 내용 새로고침
+        const manageSection = document.getElementById('termsManageSection');
+        if (manageSection && !manageSection.classList.contains('hidden')) {
+            await loadTermsContent();
         }
         
     } catch (e) {
@@ -1080,12 +1170,41 @@ window.deployTerms = async function() {
 // 약관 저장
 window.saveTerms = async function() {
     try {
-        const termsItems = getCurrentTermsItems('terms');
-        const privacyItems = getCurrentTermsItems('privacy');
+        const termsTextarea = document.getElementById('termsContentTextarea');
+        const privacyTextarea = document.getElementById('privacyContentTextarea');
+        const termsDisplay = document.getElementById('termsContentDisplay');
+        const termsEditor = document.getElementById('termsContentEditor');
+        const privacyDisplay = document.getElementById('privacyContentDisplay');
+        const privacyEditor = document.getElementById('privacyContentEditor');
+        
+        if (!termsTextarea || !privacyTextarea) {
+            alert('약관 데이터를 찾을 수 없습니다.');
+            return;
+        }
+        
+        // 편집 모드인지 확인하고, 편집 모드의 내용을 가져오기
+        let termsContent = '';
+        let privacyContent = '';
+        
+        if (termsEditor && !termsEditor.classList.contains('hidden')) {
+            // 편집 모드이므로 textarea의 값을 가져옴
+            termsContent = termsTextarea.value || '';
+        } else {
+            // 읽기 모드이므로 display의 내용을 가져옴
+            termsContent = termsDisplay ? termsDisplay.textContent : '';
+        }
+        
+        if (privacyEditor && !privacyEditor.classList.contains('hidden')) {
+            // 편집 모드이므로 textarea의 값을 가져옴
+            privacyContent = privacyTextarea.value || '';
+        } else {
+            // 읽기 모드이므로 display의 내용을 가져옴
+            privacyContent = privacyDisplay ? privacyDisplay.textContent : '';
+        }
         
         const termsData = {
-            terms: termsItems,
-            privacy: privacyItems,
+            terms: termsContent,
+            privacy: privacyContent,
             updatedAt: new Date().toISOString()
         };
         
@@ -1094,6 +1213,10 @@ window.saveTerms = async function() {
         
         alert('약관이 저장되었습니다.');
         console.log('약관 저장 완료:', termsData);
+        
+        // 저장 후 다시 로드하여 최종 저장 일자 업데이트 및 편집 모드 해제
+        await loadTermsContent();
+        
     } catch (e) {
         console.error('약관 저장 실패:', e);
         alert('약관 저장 중 오류가 발생했습니다: ' + e.message);
@@ -1619,13 +1742,13 @@ async function renderUsers() {
         }
         
         // 최신 약관 버전 가져오기
-        const { CURRENT_TERMS_VERSION } = await import('./constants.js');
+        const currentVersion = await getCurrentTermsVersion();
         
         console.log(`${users.length}명의 사용자를 렌더링합니다.`);
         container.innerHTML = users.map(user => {
             // 약관 동의 상태 확인: termsAgreed가 true이고 termsVersion이 최신 버전과 일치해야 함
-            const hasAgreedToLatest = user.termsAgreed && user.termsVersion === CURRENT_TERMS_VERSION;
-            const hasAgreedToOld = user.termsAgreed && user.termsVersion !== CURRENT_TERMS_VERSION;
+            const hasAgreedToLatest = user.termsAgreed && user.termsVersion === currentVersion;
+            const hasAgreedToOld = user.termsAgreed && user.termsVersion !== currentVersion;
             
             let termsAgreedText;
             if (hasAgreedToLatest) {
@@ -2399,6 +2522,7 @@ async function renderFeedManagement() {
                                         <span class="text-lg">${userInfo.icon}</span>
                                         <span class="font-bold text-slate-800">${userInfo.nickname}</span>
                                         <span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">🏆 베스트 공유</span>
+                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">관리번호: ${meal.id}</span>
                                         <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">${meal.periodType || ''} ${meal.periodText || ''}</span>
                                         <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">공유됨</span>
                                         ${reportBadgeHtml}
@@ -2463,6 +2587,7 @@ async function renderFeedManagement() {
                                         <span class="text-lg">${userInfo.icon}</span>
                                         <span class="font-bold text-slate-800">${userInfo.nickname}</span>
                                         <span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded">📅 일간보기 공유</span>
+                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">관리번호: ${meal.id}</span>
                                         <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">${dateDisplay}</span>
                                         <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">공유됨</span>
                                         ${reportBadgeHtml}
