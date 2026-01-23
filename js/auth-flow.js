@@ -73,26 +73,60 @@ export class AuthFlowManager {
         const agreedVersion = this.userSettings.termsVersion || null;
         const hasAgreed = this.userSettings.termsAgreed === true;
         
-        // Firestore에서 현재 약관 버전 가져오기 (에러 발생 시 기본값 사용)
-        let currentVersion = CURRENT_TERMS_VERSION; // 기본값
-        try {
-            currentVersion = await getCurrentTermsVersion();
-        } catch (e) {
-            console.warn('약관 버전 가져오기 실패, 기본값 사용:', e);
-            // 에러가 발생해도 기본값으로 계속 진행
-        }
+        // 약관 동의 상태 확인 로직 개선
+        // 1. termsAgreed가 false이면 무조건 동의 필요
+        // 2. termsAgreed가 true이고 termsVersion이 있으면 버전 비교
+        // 3. termsAgreed가 true이지만 termsVersion이 없으면 기존 사용자로 간주 (동의 완료 처리)
         
-        // termsVersion이 null이지만 termsAgreed가 true인 경우
-        // (이전 버전에서 약관에 동의했지만 termsVersion을 저장하지 않은 경우)
-        // 기존 사용자로 간주하고 현재 버전에 동의한 것으로 처리
         let versionMatches = false;
-        if (agreedVersion !== null) {
-            versionMatches = String(agreedVersion) === String(currentVersion);
-        } else if (hasAgreed && !agreedVersion) {
-            // termsVersion이 없지만 termsAgreed가 true인 경우, 기존 사용자로 간주
-            // 현재 버전에 동의한 것으로 처리하고 termsVersion 저장
+        
+        if (!hasAgreed) {
+            // 약관에 동의하지 않음
+            versionMatches = false;
+        } else if (agreedVersion !== null && agreedVersion !== '') {
+            // termsVersion이 있는 경우: Firestore에서 현재 버전 가져와서 비교
+            let currentVersion = CURRENT_TERMS_VERSION; // 기본값
+            let versionCheckFailed = false;
+            
+            try {
+                currentVersion = await getCurrentTermsVersion();
+            } catch (e) {
+                console.warn('약관 버전 가져오기 실패, 기본값 사용:', e);
+                versionCheckFailed = true;
+            }
+            
+            if (versionCheckFailed) {
+                // 버전 확인 실패 시: 사용자가 이미 동의했고 termsVersion이 있으면,
+                // 동의한 것으로 간주 (네트워크 문제 등으로 인한 오탐 방지)
+                versionMatches = true;
+                console.log('⚠️ 약관 버전 확인 실패했지만, 이미 동의한 사용자로 간주합니다.');
+            } else {
+                // 버전 비교 (정규화하여 비교)
+                const normalizedAgreed = String(agreedVersion).trim();
+                const normalizedCurrent = String(currentVersion).trim();
+                versionMatches = normalizedAgreed === normalizedCurrent;
+                
+                if (!versionMatches) {
+                    console.log('📋 약관 버전 불일치:', {
+                        동의한_버전: normalizedAgreed,
+                        현재_버전: normalizedCurrent
+                    });
+                }
+            }
+        } else {
+            // termsVersion이 없지만 termsAgreed가 true인 경우
+            // 기존 사용자로 간주하고 현재 버전에 동의한 것으로 처리
             versionMatches = true;
             console.log('⚠️ termsVersion이 없지만 termsAgreed가 true입니다. 현재 버전으로 설정합니다.');
+            
+            // Firestore에서 현재 버전 가져오기 (에러 발생 시 기본값 사용)
+            let currentVersion = CURRENT_TERMS_VERSION;
+            try {
+                currentVersion = await getCurrentTermsVersion();
+            } catch (e) {
+                console.warn('약관 버전 가져오기 실패, 기본값 사용:', e);
+            }
+            
             // termsVersion을 현재 버전으로 업데이트 (비동기로 저장)
             this.userSettings.termsVersion = currentVersion;
             if (window.dbOps) {
@@ -105,10 +139,10 @@ export class AuthFlowManager {
         readiness.termsAgreed = hasAgreed && versionMatches;
         
         // 디버깅 로그 (항상 출력)
+        // currentVersion은 버전 비교가 성공한 경우에만 의미가 있으므로, 로그에서 제외하거나 별도로 표시
         console.log('📋 약관 동의 상태 확인:', {
             termsAgreed: hasAgreed,
             agreedVersion: agreedVersion,
-            currentVersion: currentVersion,
             versionMatches: versionMatches,
             finalAgreed: readiness.termsAgreed,
             userSettingsTermsVersion: this.userSettings.termsVersion,

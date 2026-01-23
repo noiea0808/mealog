@@ -164,20 +164,24 @@ export function renderPhotoPreviews() {
                 <button onclick="window.removePhoto(${idx})" class="photo-remove-btn">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
+                <button onclick="window.editPhoto(${idx})" class="photo-edit-btn">
+                    <i class="fa-solid fa-crop"></i>
+                </button>
                 <div class="absolute bottom-1 left-1 w-5 h-5 bg-black/60 text-white text-[10px] font-bold rounded-full flex items-center justify-center">${idx + 1}</div>
-                <div class="absolute top-1 left-1 w-5 h-5 bg-black/40 text-white rounded-full flex items-center justify-center cursor-move">
-                    <i class="fa-solid fa-grip-vertical text-[8px]"></i>
-                </div>
             </div>`
         ).join('');
         
-        // 드래그 앤 드롭 이벤트 리스너 추가
+        // 드래그 앤 드롭 이벤트 리스너 추가 (long press 지원)
         const photoItems = container.querySelectorAll('.photo-preview-item');
         photoItems.forEach(item => {
+            // 기존 드래그 앤 드롭 (데스크톱)
             item.addEventListener('dragstart', handleDragStart);
             item.addEventListener('dragover', handleDragOver);
             item.addEventListener('drop', handleDrop);
             item.addEventListener('dragend', handleDragEnd);
+            
+            // Long press to drag (모바일/터치)
+            setupLongPressDrag(item);
         });
     }
     
@@ -213,6 +217,162 @@ export function renderPhotoPreviews() {
 let draggedIndex = null;
 let draggedElement = null;
 let dropIndex = null;
+
+// Long press to drag (터치 디바이스 지원)
+let longPressTimer = null;
+let isLongPressing = false;
+let touchStartY = null;
+
+function setupLongPressDrag(item) {
+    const LONG_PRESS_DURATION = 300; // 300ms
+    
+    // 터치 시작
+    item.addEventListener('touchstart', (e) => {
+        // 편집 버튼이나 삭제 버튼 클릭 시 무시
+        if (e.target.closest('.photo-edit-btn') || e.target.closest('.photo-remove-btn')) {
+            return;
+        }
+        
+        isLongPressing = false;
+        touchStartY = e.touches[0].clientY;
+        
+        longPressTimer = setTimeout(() => {
+            isLongPressing = true;
+            const index = parseInt(item.dataset.index);
+            
+            // 드래그 시작
+            draggedIndex = index;
+            draggedElement = item;
+            dropIndex = index;
+            
+            item.classList.add('opacity-50', 'scale-110', 'z-50');
+            item.style.transition = 'transform 0.2s';
+            
+            // 햅틱 피드백 (지원되는 경우)
+            if (navigator.vibrate) {
+                navigator.vibrate(50);
+            }
+        }, LONG_PRESS_DURATION);
+    }, { passive: true });
+    
+    // 터치 이동
+    item.addEventListener('touchmove', (e) => {
+        if (!isLongPressing || !draggedElement) return;
+        
+        e.preventDefault();
+        const touchY = e.touches[0].clientY;
+        const container = item.parentElement;
+        const allItems = Array.from(container.querySelectorAll('.photo-preview-item'));
+        
+        // 가장 가까운 아이템 찾기
+        let closestItem = null;
+        let closestDistance = Infinity;
+        
+        allItems.forEach(otherItem => {
+            if (otherItem === draggedElement) return;
+            
+            const rect = otherItem.getBoundingClientRect();
+            const itemCenterY = rect.top + rect.height / 2;
+            const distance = Math.abs(touchY - itemCenterY);
+            
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closestItem = otherItem;
+            }
+        });
+        
+        if (closestItem) {
+            const targetIndex = parseInt(closestItem.dataset.index);
+            if (draggedIndex !== null && draggedIndex !== targetIndex) {
+                dropIndex = targetIndex;
+                
+                // 시각적 피드백: DOM 위치 변경
+                if (draggedIndex < targetIndex) {
+                    container.insertBefore(draggedElement, closestItem.nextSibling);
+                } else {
+                    container.insertBefore(draggedElement, closestItem);
+                }
+                
+                // 모든 아이템의 인덱스와 번호 업데이트
+                const updatedItems = Array.from(container.querySelectorAll('.photo-preview-item'));
+                updatedItems.forEach((updatedItem, idx) => {
+                    updatedItem.dataset.index = idx;
+                    const numberBadge = updatedItem.querySelector('.absolute.bottom-1');
+                    if (numberBadge) {
+                        numberBadge.textContent = idx + 1;
+                    }
+                });
+            }
+        }
+    }, { passive: false });
+    
+    // 터치 종료
+    item.addEventListener('touchend', (e) => {
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+        
+        if (isLongPressing && draggedIndex !== null && dropIndex !== null && draggedIndex !== dropIndex) {
+            // 순서 업데이트
+            const container = draggedElement.parentElement;
+            const allItems = Array.from(container.querySelectorAll('.photo-preview-item'));
+            
+            const reorderedPhotos = [...appState.currentPhotos];
+            const [movedPhoto] = reorderedPhotos.splice(draggedIndex, 1);
+            reorderedPhotos.splice(dropIndex, 0, movedPhoto);
+            appState.currentPhotos = reorderedPhotos;
+            
+            // 모든 아이템의 인덱스와 버튼 업데이트
+            allItems.forEach((updatedItem, idx) => {
+                updatedItem.dataset.index = idx;
+                const numberBadge = updatedItem.querySelector('.absolute.bottom-1');
+                if (numberBadge) {
+                    numberBadge.textContent = idx + 1;
+                }
+                const removeBtn = updatedItem.querySelector('.photo-remove-btn');
+                if (removeBtn) {
+                    removeBtn.setAttribute('onclick', `window.removePhoto(${idx})`);
+                }
+                const editBtn = updatedItem.querySelector('.photo-edit-btn');
+                if (editBtn) {
+                    editBtn.setAttribute('onclick', `window.editPhoto(${idx})`);
+                }
+            });
+        }
+        
+        // 상태 초기화
+        if (draggedElement) {
+            draggedElement.classList.remove('opacity-50', 'scale-110', 'z-50');
+            draggedElement.style.transition = '';
+        }
+        
+        isLongPressing = false;
+        draggedIndex = null;
+        draggedElement = null;
+        dropIndex = null;
+        touchStartY = null;
+    }, { passive: true });
+    
+    // 터치 취소
+    item.addEventListener('touchcancel', () => {
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+        
+        if (draggedElement) {
+            draggedElement.classList.remove('opacity-50', 'scale-110', 'z-50');
+            draggedElement.style.transition = '';
+        }
+        
+        isLongPressing = false;
+        draggedIndex = null;
+        draggedElement = null;
+        dropIndex = null;
+        touchStartY = null;
+    }, { passive: true });
+}
 
 function handleDragStart(e) {
     draggedIndex = parseInt(e.currentTarget.dataset.index);
@@ -2674,6 +2834,337 @@ export function createDailyShareCard(dateStr, forPreview = false) {
     
     return container;
 }
+
+// 사진 편집 관련 변수
+let editingPhotoIndex = null;
+let editingPhotoImage = null;
+let photoEditCanvas = null;
+let photoEditCtx = null;
+let photoEditScale = 1;
+let photoEditOffsetX = 0;
+let photoEditOffsetY = 0;
+let isDraggingPhoto = false;
+let dragStartX = 0;
+let dragStartY = 0;
+
+// 사진 편집 모달 열기
+export function editPhoto(idx) {
+    if (idx < 0 || idx >= appState.currentPhotos.length) return;
+    
+    editingPhotoIndex = idx;
+    const photoSrc = appState.currentPhotos[idx];
+    
+    // 모달 열기
+    const modal = document.getElementById('photoEditModal');
+    if (!modal) return;
+    
+    modal.classList.remove('hidden');
+    
+    // Canvas 초기화
+    photoEditCanvas = document.getElementById('photoEditCanvas');
+    if (!photoEditCanvas) return;
+    
+    photoEditCtx = photoEditCanvas.getContext('2d');
+    
+    // 이미지 로드
+    editingPhotoImage = new Image();
+    editingPhotoImage.onload = () => {
+        initializePhotoEdit();
+    };
+    editingPhotoImage.src = photoSrc;
+}
+
+// 사진 편집 초기화
+function initializePhotoEdit() {
+    if (!photoEditCanvas || !photoEditCtx || !editingPhotoImage) return;
+    
+    const container = document.getElementById('photoEditCanvasContainer');
+    if (!container) return;
+    
+    // 모달이 완전히 렌더링된 후 크기 계산
+    setTimeout(() => {
+        const containerRect = container.getBoundingClientRect();
+        const containerWidth = containerRect.width || container.offsetWidth;
+        const containerHeight = containerRect.height || container.offsetHeight;
+        
+        // Canvas 크기 설정
+        photoEditCanvas.width = containerWidth;
+        photoEditCanvas.height = containerHeight;
+    
+    // 이미지 비율 계산
+    const imgAspect = editingPhotoImage.width / editingPhotoImage.height;
+    const containerAspect = containerWidth / containerHeight;
+    
+    let drawWidth, drawHeight;
+    if (imgAspect > containerAspect) {
+        // 이미지가 더 넓음 - 높이에 맞춤
+        drawHeight = containerHeight;
+        drawWidth = drawHeight * imgAspect;
+    } else {
+        // 이미지가 더 높음 - 너비에 맞춤
+        drawWidth = containerWidth;
+        drawHeight = drawWidth / imgAspect;
+    }
+    
+    photoEditScale = drawWidth / editingPhotoImage.width;
+    photoEditOffsetX = (containerWidth - drawWidth) / 2;
+    photoEditOffsetY = (containerHeight - drawHeight) / 2;
+    
+        // 초기 렌더링
+        drawPhotoEdit();
+        
+        // 드래그 이벤트 추가
+        setupPhotoEditDrag();
+    }, 100);
+}
+
+// 사진 편집 화면 그리기
+function drawPhotoEdit() {
+    if (!photoEditCanvas || !photoEditCtx || !editingPhotoImage) return;
+    
+    // Canvas 클리어
+    photoEditCtx.clearRect(0, 0, photoEditCanvas.width, photoEditCanvas.height);
+    
+    // 배경
+    photoEditCtx.fillStyle = '#f1f5f9';
+    photoEditCtx.fillRect(0, 0, photoEditCanvas.width, photoEditCanvas.height);
+    
+    // 이미지 그리기
+    const drawWidth = editingPhotoImage.width * photoEditScale;
+    const drawHeight = editingPhotoImage.height * photoEditScale;
+    
+    photoEditCtx.drawImage(
+        editingPhotoImage,
+        photoEditOffsetX,
+        photoEditOffsetY,
+        drawWidth,
+        drawHeight
+    );
+}
+
+// 사진 편집 드래그 설정
+function setupPhotoEditDrag() {
+    if (!photoEditCanvas) return;
+    
+    photoEditCanvas.style.cursor = 'grab';
+    
+    photoEditCanvas.addEventListener('mousedown', handlePhotoEditMouseDown);
+    photoEditCanvas.addEventListener('mousemove', handlePhotoEditMouseMove);
+    photoEditCanvas.addEventListener('mouseup', handlePhotoEditMouseUp);
+    photoEditCanvas.addEventListener('mouseleave', handlePhotoEditMouseUp);
+    
+    photoEditCanvas.addEventListener('touchstart', handlePhotoEditTouchStart, { passive: false });
+    photoEditCanvas.addEventListener('touchmove', handlePhotoEditTouchMove, { passive: false });
+    photoEditCanvas.addEventListener('touchend', handlePhotoEditTouchEnd);
+}
+
+// 마우스 이벤트 핸들러
+function handlePhotoEditMouseDown(e) {
+    isDraggingPhoto = true;
+    dragStartX = e.clientX - photoEditOffsetX;
+    dragStartY = e.clientY - photoEditOffsetY;
+    if (photoEditCanvas) {
+        photoEditCanvas.style.cursor = 'grabbing';
+    }
+}
+
+function handlePhotoEditMouseMove(e) {
+    if (!isDraggingPhoto) return;
+    
+    photoEditOffsetX = e.clientX - dragStartX;
+    photoEditOffsetY = e.clientY - dragStartY;
+    
+    // 경계 체크
+    const drawWidth = editingPhotoImage.width * photoEditScale;
+    const drawHeight = editingPhotoImage.height * photoEditScale;
+    
+    if (photoEditOffsetX > 0) photoEditOffsetX = 0;
+    if (photoEditOffsetY > 0) photoEditOffsetY = 0;
+    if (photoEditOffsetX + drawWidth < photoEditCanvas.width) {
+        photoEditOffsetX = photoEditCanvas.width - drawWidth;
+    }
+    if (photoEditOffsetY + drawHeight < photoEditCanvas.height) {
+        photoEditOffsetY = photoEditCanvas.height - drawHeight;
+    }
+    
+    drawPhotoEdit();
+}
+
+function handlePhotoEditMouseUp() {
+    isDraggingPhoto = false;
+    if (photoEditCanvas) {
+        photoEditCanvas.style.cursor = 'grab';
+    }
+}
+
+// 터치 이벤트 핸들러
+function handlePhotoEditTouchStart(e) {
+    e.preventDefault();
+    const touch = e.touches[0];
+    isDraggingPhoto = true;
+    dragStartX = touch.clientX - photoEditOffsetX;
+    dragStartY = touch.clientY - photoEditOffsetY;
+}
+
+function handlePhotoEditTouchMove(e) {
+    if (!isDraggingPhoto) return;
+    e.preventDefault();
+    
+    const touch = e.touches[0];
+    photoEditOffsetX = touch.clientX - dragStartX;
+    photoEditOffsetY = touch.clientY - dragStartY;
+    
+    // 경계 체크
+    const drawWidth = editingPhotoImage.width * photoEditScale;
+    const drawHeight = editingPhotoImage.height * photoEditScale;
+    
+    if (photoEditOffsetX > 0) photoEditOffsetX = 0;
+    if (photoEditOffsetY > 0) photoEditOffsetY = 0;
+    if (photoEditOffsetX + drawWidth < photoEditCanvas.width) {
+        photoEditOffsetX = photoEditCanvas.width - drawWidth;
+    }
+    if (photoEditOffsetY + drawHeight < photoEditCanvas.height) {
+        photoEditOffsetY = photoEditCanvas.height - drawHeight;
+    }
+    
+    drawPhotoEdit();
+}
+
+function handlePhotoEditTouchEnd() {
+    isDraggingPhoto = false;
+}
+
+// 사진 편집 초기화 (리셋)
+export function resetPhotoEdit() {
+    if (!editingPhotoImage) return;
+    
+    const container = document.getElementById('photoEditCanvasContainer');
+    if (!container) return;
+    
+    const containerRect = container.getBoundingClientRect();
+    const containerWidth = containerRect.width;
+    const containerHeight = containerRect.height;
+    
+    const imgAspect = editingPhotoImage.width / editingPhotoImage.height;
+    const containerAspect = containerWidth / containerHeight;
+    
+    let drawWidth, drawHeight;
+    if (imgAspect > containerAspect) {
+        drawHeight = containerHeight;
+        drawWidth = drawHeight * imgAspect;
+    } else {
+        drawWidth = containerWidth;
+        drawHeight = drawWidth / imgAspect;
+    }
+    
+    photoEditScale = drawWidth / editingPhotoImage.width;
+    photoEditOffsetX = (containerWidth - drawWidth) / 2;
+    photoEditOffsetY = (containerHeight - drawHeight) / 2;
+    
+    drawPhotoEdit();
+}
+
+// 사진 편집 저장
+export function savePhotoEdit() {
+    if (editingPhotoIndex === null || !photoEditCanvas || !editingPhotoImage) return;
+    
+    // Canvas에서 편집된 이미지 추출
+    const container = document.getElementById('photoEditCanvasContainer');
+    if (!container) return;
+    
+    const containerRect = container.getBoundingClientRect();
+    const containerWidth = containerRect.width || container.offsetWidth;
+    const containerHeight = containerRect.height || container.offsetHeight;
+    
+    // 새로운 Canvas 생성하여 편집된 이미지 추출
+    const outputCanvas = document.createElement('canvas');
+    outputCanvas.width = containerWidth;
+    outputCanvas.height = containerHeight;
+    const outputCtx = outputCanvas.getContext('2d');
+    
+    // 배경 (흰색)
+    outputCtx.fillStyle = '#ffffff';
+    outputCtx.fillRect(0, 0, outputCanvas.width, outputCanvas.height);
+    
+    // 편집된 이미지 그리기 (현재 보이는 영역만)
+    const drawWidth = editingPhotoImage.width * photoEditScale;
+    const drawHeight = editingPhotoImage.height * photoEditScale;
+    
+    // 이미지가 컨테이너보다 작으면 중앙 정렬
+    let finalOffsetX = photoEditOffsetX;
+    let finalOffsetY = photoEditOffsetY;
+    
+    if (drawWidth < containerWidth) {
+        finalOffsetX = (containerWidth - drawWidth) / 2;
+    }
+    if (drawHeight < containerHeight) {
+        finalOffsetY = (containerHeight - drawHeight) / 2;
+    }
+    
+    outputCtx.drawImage(
+        editingPhotoImage,
+        finalOffsetX,
+        finalOffsetY,
+        drawWidth,
+        drawHeight
+    );
+    
+    // Canvas를 Blob으로 변환
+    outputCanvas.toBlob((blob) => {
+        if (!blob) return;
+        
+        // FileReader로 base64로 변환
+        const reader = new FileReader();
+        reader.onload = () => {
+            const editedPhotoSrc = reader.result;
+            
+            // appState.currentPhotos 업데이트
+            appState.currentPhotos[editingPhotoIndex] = editedPhotoSrc;
+            
+            // 미리보기 업데이트
+            renderPhotoPreviews();
+            
+            // 모달 닫기
+            closePhotoEditModal();
+        };
+        reader.readAsDataURL(blob);
+    }, 'image/jpeg', 0.9);
+}
+
+// 사진 편집 모달 닫기
+export function closePhotoEditModal() {
+    const modal = document.getElementById('photoEditModal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+    
+    // 이벤트 리스너 제거
+    if (photoEditCanvas) {
+        photoEditCanvas.removeEventListener('mousedown', handlePhotoEditMouseDown);
+        photoEditCanvas.removeEventListener('mousemove', handlePhotoEditMouseMove);
+        photoEditCanvas.removeEventListener('mouseup', handlePhotoEditMouseUp);
+        photoEditCanvas.removeEventListener('mouseleave', handlePhotoEditMouseUp);
+        photoEditCanvas.removeEventListener('touchstart', handlePhotoEditTouchStart);
+        photoEditCanvas.removeEventListener('touchmove', handlePhotoEditTouchMove);
+        photoEditCanvas.removeEventListener('touchend', handlePhotoEditTouchEnd);
+    }
+    
+    // 상태 초기화
+    editingPhotoIndex = null;
+    editingPhotoImage = null;
+    photoEditCanvas = null;
+    photoEditCtx = null;
+    photoEditScale = 1;
+    photoEditOffsetX = 0;
+    photoEditOffsetY = 0;
+    isDraggingPhoto = false;
+}
+
+// 전역 함수로 노출
+window.editPhoto = editPhoto;
+window.closePhotoEditModal = closePhotoEditModal;
+window.resetPhotoEdit = resetPhotoEdit;
+window.savePhotoEdit = savePhotoEdit;
 
 
 

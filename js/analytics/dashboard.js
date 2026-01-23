@@ -270,8 +270,8 @@ export async function updateDashboard() {
     const snackRecordCountEl = document.getElementById('snackRecordCount');
     if (snackRecordCountEl) snackRecordCountEl.textContent = snackCount;
     
-    // 인사이트 코멘트 - MEALOG 캐릭터는 사용 안내 표시 (AI 호출 안 함)
-    await updateInsightComment(filteredData, dateRangeText);
+    // 인사이트 코멘트는 COMMENT 버튼을 눌렀을 때만 업데이트됨
+    // (탭 전환 시 자동 업데이트 방지)
     
     // 말풍선 클릭 이벤트 설정
     setupInsightBubbleClick();
