@@ -30,7 +30,10 @@ export {
     updateInsightComment,
     generateInsightComment,
     getCurrentCharacter,
-    getInsightCharacters
+    getInsightCharacters,
+    openShareInsightModal,
+    closeShareInsightModal,
+    shareInsightToFeed
 } from './analytics/insight.js';
 
 // Best Share 관련 함수들

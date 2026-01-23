@@ -554,7 +554,12 @@
                         <!-- 말풍선 -->
                         <div class="flex-1 relative min-w-0">
                             <div id="insightBubble" class="bg-yellow-50/90 border-2 border-white py-3 px-3 relative" style="border-radius: 0.5rem 1.25rem 1.25rem 0.5rem;">
-                                <div id="insightCharacterName" class="text-sm font-black text-emerald-800 mb-2"></div>
+                                <div class="flex items-center justify-between mb-2">
+                                    <div id="insightCharacterName" class="text-sm font-black text-emerald-800"></div>
+                                    <button id="shareInsightBtn" onclick="window.openShareInsightModal()" class="flex-shrink-0 bg-emerald-600 rounded-lg font-bold text-[10px] shadow-md active:bg-emerald-700 transition-colors py-1 px-2 text-white border border-emerald-700 hidden">
+                                        <i class="fa-solid fa-share text-[10px] mr-1"></i>공유
+                                    </button>
+                                </div>
                                 <div id="insightTextContent" class="insight-text-content">
                                     <!-- 안내 메시지가 여기에 표시됩니다 -->
                                 </div>
@@ -995,6 +1000,26 @@
             </div>
             <div class="p-6 border-t">
                 <button id="bestShareSubmitBtn" onclick="window.shareBestToFeed()" class="w-full py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all">공유하기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Insight Share Modal -->
+    <div id="insightShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-end">
+        <div class="w-full max-w-md mx-auto bg-white rounded-t-[2rem] flex flex-col max-h-[92vh]">
+            <div class="p-6 border-b flex justify-between items-center">
+                <h2 class="text-lg font-bold text-slate-800 tracking-tight">밀당(MEAL-DANG)들의 참견 공유하기</h2>
+                <button onclick="window.closeShareInsightModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
+            </div>
+            <div class="p-6 space-y-4 overflow-y-auto pb-10">
+                <div id="insightSharePreview" class="bg-slate-50 rounded-2xl"></div>
+                <div>
+                    <label class="text-sm font-bold text-slate-600 block mb-2">코멘트 (선택사항)</label>
+                    <textarea id="insightShareComment" placeholder="밀당(MEAL-DANG)들의 참견에 대한 코멘트를 입력하세요..." class="w-full p-3 bg-slate-50 rounded-xl text-sm border border-transparent focus:border-slate-400 transition-all resize-none" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="p-6 border-t">
+                <button id="insightShareSubmitBtn" onclick="window.shareInsightToFeed()" class="w-full py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all">공유하기</button>
             </div>
         </div>
     </div>

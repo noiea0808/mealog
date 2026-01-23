@@ -1,6 +1,7 @@
 // 인사이트 코멘트 관련 함수들
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
+import { dbOps } from '../db.js';
 import { GEMINI_API_KEY as DEFAULT_API_KEY } from '../config.default.js';
 import { db, appId } from '../firebase.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -191,6 +192,7 @@ function displayInsightText(text, characterName = '') {
     const bubble = document.getElementById('insightBubble');
     const characterNameEl = document.getElementById('insightCharacterName');
     const characterBtn = document.getElementById('insightCharacterBtn');
+    const shareBtn = document.getElementById('shareInsightBtn');
     
     if (!container) {
         console.error('insightTextContent 컨테이너를 찾을 수 없습니다.');
@@ -216,12 +218,41 @@ function displayInsightText(text, characterName = '') {
     
     if (!text) {
         container.innerHTML = '';
+        // 공유 버튼 숨기기
+        if (shareBtn) {
+            shareBtn.classList.add('hidden');
+        }
         return;
     }
     
     // 줄바꿈을 <br>로 변환하고 HTML 이스케이프
     const escapedText = escapeHtml(text).replace(/\n/g, '<br>');
     container.innerHTML = escapedText;
+    
+    // 공유 버튼 표시 (MEALOG 캐릭터가 아니고, 텍스트가 있을 때만)
+    if (shareBtn) {
+        if (currentCharacter !== 'mealog' && text && text.trim() !== '') {
+            shareBtn.classList.remove('hidden');
+            // 공유 상태 확인 및 버튼 텍스트 업데이트
+            (async () => {
+                if (window.getDashboardData) {
+                    const { dateRangeText } = window.getDashboardData();
+                    const existingShare = await checkInsightShareStatus(dateRangeText);
+                    const isShared = !!existingShare;
+                    
+                    if (isShared) {
+                        shareBtn.innerHTML = '<i class="fa-solid fa-share text-[10px] mr-1"></i>공유됨';
+                        shareBtn.className = 'flex-shrink-0 bg-emerald-600 rounded-lg font-bold text-[10px] shadow-md active:bg-emerald-700 transition-colors py-1 px-2 text-white border border-emerald-700';
+                    } else {
+                        shareBtn.innerHTML = '<i class="fa-solid fa-share text-[10px] mr-1"></i>공유';
+                        shareBtn.className = 'flex-shrink-0 bg-emerald-600 rounded-lg font-bold text-[10px] shadow-md active:bg-emerald-700 transition-colors py-1 px-2 text-white border border-emerald-700';
+                    }
+                }
+            })();
+        } else {
+            shareBtn.classList.add('hidden');
+        }
+    }
     
     // 말풍선 최소 높이 설정 (캐릭터창 + 코멘트창의 합산 높이)
     if (bubble && characterBtn) {
@@ -1238,4 +1269,283 @@ export function getCurrentCharacter() {
 export async function getInsightCharacters() {
     await loadCharactersFromFirebase();
     return INSIGHT_CHARACTERS;
+}
+
+// 인사이트 공유 상태 확인
+async function checkInsightShareStatus(dateRangeText) {
+    if (!window.currentUser || !window.sharedPhotos) return null;
+    
+    // window.sharedPhotos에서 해당 기간의 인사이트 공유 찾기
+    const insightShare = window.sharedPhotos.find(photo => 
+        photo.type === 'insight' && 
+        photo.dateRangeText === dateRangeText
+    );
+    
+    return insightShare || null;
+}
+
+// 밀당 코멘트 공유 모달 열기
+export async function openShareInsightModal() {
+    const modal = document.getElementById('insightShareModal');
+    const preview = document.getElementById('insightSharePreview');
+    if (!modal || !preview) return;
+    
+    // 코멘트가 있는지 확인
+    const insightTextContent = document.getElementById('insightTextContent');
+    if (!insightTextContent || !insightTextContent.textContent || insightTextContent.textContent.trim() === '') {
+        showToast('공유할 코멘트가 없습니다. COMMENT 버튼을 눌러 코멘트를 생성해주세요.', 'error');
+        return;
+    }
+    
+    // 현재 기간 정보 가져오기
+    if (!window.getDashboardData) {
+        showToast('대시보드 데이터를 가져올 수 없습니다.', 'error');
+        return;
+    }
+    
+    const { dateRangeText } = window.getDashboardData();
+    
+    // 공유 상태 확인
+    const existingShare = await checkInsightShareStatus(dateRangeText);
+    const isShared = !!existingShare;
+    
+    // 사용자 닉네임 및 아이콘 가져오기
+    const userNickname = window.userSettings?.profile?.nickname || '익명';
+    const userIcon = window.userSettings?.profile?.icon || '🐻';
+    
+    // 현재 선택된 캐릭터 정보
+    const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
+    const characterName = character ? character.name : '';
+    const characterIcon = character ? (character.icon || '') : '';
+    
+    // 인사이트 박스 내용 가져오기 (innerHTML 사용하여 줄바꿈 유지)
+    const insightBubble = document.getElementById('insightBubble');
+    const insightCharacterName = document.getElementById('insightCharacterName');
+    const insightCharacterIcon = document.getElementById('insightCharacterIcon');
+    const insightText = insightTextContent.innerHTML || insightTextContent.textContent || '';
+    const characterNameText = insightCharacterName ? insightCharacterName.textContent : '';
+    
+    // 캐릭터 아이콘 HTML 가져오기
+    let characterIconHtml = '';
+    if (insightCharacterIcon) {
+        if (character.image) {
+            characterIconHtml = `<img src="${escapeHtml(character.image)}" alt="${escapeHtml(characterName)}" style="width: 100%; height: 100%; object-fit: contain;">`;
+        } else if (character.id === 'mealog') {
+            characterIconHtml = `<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 900; color: white;">M</div>`;
+        } else {
+            characterIconHtml = `<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 32px;">${escapeHtml(characterIcon)}</div>`;
+        }
+    }
+    
+    // 스크린샷용 HTML 생성 (실제 화면과 동일한 구조 및 색상)
+    const screenshotHtml = `
+        <div id="insightScreenshotContainer" style="width: 448px; max-width: 448px; margin: 0 auto; background: #f8fafc; border-radius: 8px; overflow: hidden; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+            <!-- 헤더 (흰색 배경) -->
+            <div style="background: #ffffff; padding: 16px; border-bottom: 1px solid #e2e8f0;">
+                <!-- 상단: MEALOG와 기간 -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                    <span style="font-size: 18px; font-weight: 700; color: #059669; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px;">MEALOG</span>
+                    <span style="font-size: 12px; font-weight: 400; color: #64748b; flex-shrink: 0;">${escapeHtml(dateRangeText || '')}</span>
+                </div>
+                <!-- 하단: 밀당(MEAL-DANG)들의 참견 -->
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 16px;">${escapeHtml(characterIcon)}</span>
+                    <span style="font-size: 15px; font-weight: 700; color: #1e293b;">밀당(MEAL-DANG)들의 참견</span>
+                </div>
+            </div>
+            
+            <!-- 인사이트 섹션 (초록색 배경) -->
+            <div style="background: #059669; padding: 12px 16px;">
+                <!-- 캐릭터와 말풍선 영역 -->
+                <div style="display: flex; gap: 12px; align-items: flex-start;">
+                    <!-- 밀당 캐릭터 선택 창 -->
+                    <div style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; width: 75px;">
+                        <div style="width: 75px; height: 164px; background: rgba(255, 255, 255, 0.2); border-radius: 16px; border: 2px solid rgba(255, 255, 255, 0.3); display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden;">
+                            ${characterIconHtml}
+                        </div>
+                        <div style="width: 75px; height: auto; background: #fbbf24; border-radius: 12px; padding: 4px; text-align: center; font-size: 10px; font-weight: 700; color: #3E2723; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                            COMMENT
+                        </div>
+                    </div>
+                    
+                    <!-- 말풍선 -->
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="background: rgba(254, 252, 232, 0.9); border: 2px solid white; padding: 12px; border-radius: 0.5rem 1.25rem 1.25rem 0.5rem; min-height: 164px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                ${characterNameText ? `<div style="font-size: 14px; font-weight: 800; color: #065f46;">${escapeHtml(characterNameText)}</div>` : '<div></div>'}
+                                <div style="flex-shrink: 0; background: #059669; border-radius: 8px; padding: 4px 8px; font-size: 10px; font-weight: 700; color: white; border: 1px solid #047857; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                    <i class="fa-solid fa-share" style="font-size: 10px; margin-right: 4px;"></i>공유
+                                </div>
+                            </div>
+                            <div style="font-size: 14px; line-height: 1.6; color: #1e293b; font-weight: 400; white-space: pre-line; word-wrap: break-word; overflow-wrap: break-word;">
+                                ${insightText}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // 미리보기 영역에 HTML 표시
+    preview.innerHTML = screenshotHtml;
+    
+    // 모달 열기
+    modal.classList.remove('hidden');
+    
+    // Comment 초기화 또는 기존 코멘트 표시
+    const commentInput = document.getElementById('insightShareComment');
+    if (commentInput) {
+        if (isShared && existingShare.comment) {
+            commentInput.value = existingShare.comment;
+        } else {
+            commentInput.value = '';
+        }
+    }
+    
+    // 공유 버튼 텍스트 업데이트
+    const submitBtn = document.getElementById('insightShareSubmitBtn');
+    if (submitBtn) {
+        if (isShared) {
+            submitBtn.textContent = '공유 취소';
+            submitBtn.className = 'w-full py-4 bg-red-600 text-white rounded-xl font-bold active:bg-red-700 shadow-lg transition-all';
+        } else {
+            submitBtn.textContent = '공유하기';
+            submitBtn.className = 'w-full py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all';
+        }
+    }
+}
+
+// 밀당 코멘트 공유 모달 닫기
+export function closeShareInsightModal() {
+    const modal = document.getElementById('insightShareModal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
+// 밀당 코멘트를 피드에 공유하기
+export async function shareInsightToFeed() {
+    const preview = document.getElementById('insightScreenshotContainer');
+    const commentInput = document.getElementById('insightShareComment');
+    const submitBtn = document.getElementById('insightShareSubmitBtn');
+    
+    if (!commentInput || !preview) return;
+    
+    const comment = commentInput.value.trim();
+    
+    // 현재 기간 정보 가져오기
+    if (!window.getDashboardData) {
+        showToast('대시보드 데이터를 가져올 수 없습니다.', 'error');
+        return;
+    }
+    
+    const { dateRangeText } = window.getDashboardData();
+    
+    // 공유 상태 확인
+    const existingShare = await checkInsightShareStatus(dateRangeText);
+    
+    if (existingShare) {
+        // 이미 공유된 경우: 공유 취소
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = '취소 중...';
+        }
+        
+        try {
+            await dbOps.unsharePhotos([existingShare.photoUrl], null, false, false);
+            showToast('공유가 취소되었습니다.', 'success');
+            closeShareInsightModal();
+            
+            // 갤러리/피드 새로고침
+            if (appState.currentTab === 'gallery') {
+                const { renderGallery } = await import('../render/index.js');
+                renderGallery();
+            } else if (appState.currentTab === 'feed') {
+                const { renderFeed } = await import('../render/index.js');
+                renderFeed();
+            }
+        } catch (e) {
+            console.error('인사이트 공유 취소 실패:', e);
+            showToast('공유 취소 중 오류가 발생했습니다.', 'error');
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '공유하기';
+            }
+        }
+        return;
+    }
+    
+    // 공유되지 않은 경우: 공유하기
+    // 로딩 상태
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '공유 중...';
+    }
+    
+    try {
+        // html2canvas가 전역에 있는지 확인
+        const html2canvasFunc = (typeof window !== 'undefined' && window.html2canvas) || (typeof html2canvas !== 'undefined' ? html2canvas : null);
+        
+        if (!html2canvasFunc) {
+            throw new Error('html2canvas를 찾을 수 없습니다. HTML에 html2canvas 라이브러리가 로드되었는지 확인하세요.');
+        }
+        
+        // 스크린샷 생성
+        const canvas = await html2canvasFunc(preview, {
+            backgroundColor: '#ffffff',
+            scale: 2,
+            logging: false,
+            useCORS: true,
+            allowTaint: true
+        });
+        
+        // Canvas를 Blob으로 변환
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png', 0.95));
+        
+        // base64로 저장
+        const base64Image = canvas.toDataURL('image/png');
+        
+        const userProfile = window.userSettings?.profile || {};
+        const insightShareData = {
+            photoUrl: base64Image,
+            userId: window.currentUser.uid,
+            userNickname: userProfile.nickname || '익명',
+            userIcon: userProfile.icon || '🐻',
+            userPhotoUrl: userProfile.photoUrl || null,
+            type: 'insight',
+            dateRangeText: dateRangeText,
+            comment: comment,
+            timestamp: new Date().toISOString(),
+            entryId: null // 인사이트 공유는 entryId가 없음
+        };
+        
+        // Firestore에 저장
+        const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+        const { db: firestoreDb, appId } = await import('../firebase.js');
+        const sharedColl = collection(firestoreDb, 'artifacts', appId, 'sharedPhotos');
+        await addDoc(sharedColl, insightShareData);
+        
+        showToast('밀당(MEAL-DANG)들의 참견이 피드에 공유되었습니다!', 'success');
+        closeShareInsightModal();
+        
+        // 갤러리/피드 새로고침
+        if (appState.currentTab === 'gallery') {
+            const { renderGallery } = await import('../render/index.js');
+            renderGallery();
+        } else if (appState.currentTab === 'feed') {
+            const { renderFeed } = await import('../render/index.js');
+            renderFeed();
+        }
+        
+    } catch (e) {
+        console.error('인사이트 공유 실패:', e);
+        showToast('인사이트 공유 중 오류가 발생했습니다.', 'error');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = '공유하기';
+        }
+    }
 }

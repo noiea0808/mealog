@@ -17,7 +17,7 @@ import {
 } from './auth.js';
 import { authFlowManager } from './auth-flow.js';
 import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, filterGalleryByUser, clearGalleryFilter } from './render/index.js';
-import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment } from './analytics.js';
+import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
@@ -96,6 +96,9 @@ window.openCharacterSelectModal = openCharacterSelectModal;
 window.closeCharacterSelectModal = closeCharacterSelectModal;
 window.selectInsightCharacter = selectInsightCharacter;
 window.generateInsightComment = generateInsightComment;
+window.openShareInsightModal = openShareInsightModal;
+window.closeShareInsightModal = closeShareInsightModal;
+window.shareInsightToFeed = shareInsightToFeed;
 window.closeDetailModal = closeDetailModal;
 window.setAnalysisType = setAnalysisType;
 window.openShareBestModal = openShareBestModal;

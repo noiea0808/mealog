@@ -244,15 +244,17 @@ export async function updateDashboard() {
         targetDays = 7;
     }
     
-    // 식사 기록 통계 계산
+    // 식사 기록 통계 계산 (간식 제외, 식사만 계산)
+    // 하루 3끼 식사 기준으로 전체 식사 기록 수 계산
     const totalRec = Math.max(0, targetDays * 3);
+    // 식사 기록만 필터링 (slot.type === 'main'이고 mealType !== 'Skip'인 것만)
     const recCount = filteredData.filter(m => {
         const slot = SLOTS.find(s => s.id === m.slotId && s.type === 'main');
         return slot && m.mealType !== 'Skip';
     }).length;
     const mealPercent = totalRec > 0 ? Math.round((recCount / totalRec) * 100) : 0;
     
-    // 간식 기록 통계 계산
+    // 간식 기록 통계 계산 (식사와 별도로 계산)
     const snackCount = filteredData.filter(m => {
         const slot = SLOTS.find(s => s.id === m.slotId && s.type === 'snack');
         return slot && m.snackType;
