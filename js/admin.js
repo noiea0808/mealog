@@ -3713,6 +3713,11 @@ async function loadCharacterEditor(characterId) {
             characterData.defaultComments = [];
         }
         
+        // 로딩 멘트가 없으면 기본값 설정
+        if (!characterData.loadingMessage) {
+            characterData.loadingMessage = '분석중입니다';
+        }
+        
         // 편집 폼 렌더링
         renderCharacterEditorForm(characterData);
     } catch (e) {
@@ -3821,6 +3826,17 @@ function renderCharacterEditorForm(characterData) {
                 <button onclick="window.addCharacterDefaultComment()" class="mt-2 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
                     <i class="fa-solid fa-plus mr-2"></i>멘트 추가
                 </button>
+            </div>
+            
+            <!-- 로딩 멘트 -->
+            <div>
+                <label class="block text-sm font-bold text-slate-700 mb-2">
+                    <i class="fa-solid fa-spinner mr-2"></i>로딩 멘트 (AI 분석 중 표시)
+                </label>
+                <p class="text-xs text-slate-500 mb-2">AI 코멘트 생성 중에 표시될 기본 멘트입니다. (AI를 사용하지 않은 일반 텍스트)</p>
+                <textarea id="characterLoadingMessage" 
+                          class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px]"
+                          placeholder="예: 분석중입니다">${escapeHtml(characterData.loadingMessage || '')}</textarea>
             </div>
             
             <!-- 페르소나 (구글 AI 스튜디오용) -->
@@ -4074,6 +4090,7 @@ window.saveCharacter = async function() {
         const imageInput = document.getElementById('characterImage');
         const nameInput = document.getElementById('characterName');
         const systemPromptInput = document.getElementById('characterSystemPrompt');
+        const loadingMessageInput = document.getElementById('characterLoadingMessage');
         const commentsContainer = document.getElementById('characterDefaultCommentsContainer');
         
         if (!imageInput || !nameInput || !systemPromptInput) {
@@ -4084,6 +4101,7 @@ window.saveCharacter = async function() {
         const image = imageInput.value.trim();
         const name = nameInput.value.trim();
         const systemPrompt = systemPromptInput.value.trim();
+        const loadingMessage = loadingMessageInput ? loadingMessageInput.value.trim() : '';
         
         if (!name) {
             alert('캐릭터 이름을 입력해주세요.');
@@ -4123,6 +4141,7 @@ window.saveCharacter = async function() {
             persona: name, // 간단한 설명으로 이름 사용
             systemPrompt: systemPrompt,
             defaultComments: defaultComments,
+            loadingMessage: loadingMessage || '분석중입니다', // 기본값
             image: image || null,
             name: name,
             updatedAt: new Date().toISOString()

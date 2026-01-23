@@ -270,8 +270,15 @@ export async function updateDashboard() {
     const snackRecordCountEl = document.getElementById('snackRecordCount');
     if (snackRecordCountEl) snackRecordCountEl.textContent = snackCount;
     
-    // 인사이트 코멘트는 COMMENT 버튼을 눌렀을 때만 업데이트됨
-    // (탭 전환 시 자동 업데이트 방지)
+    // 인사이트 코멘트는 처음 로드 시 기본 코멘트를 표시하고, 이후에는 COMMENT 버튼을 눌렀을 때만 업데이트됨
+    // 처음 로드 시에만 기본 코멘트 표시 (이미 코멘트가 있으면 표시하지 않음)
+    const insightTextContent = document.getElementById('insightTextContent');
+    if (insightTextContent && (!insightTextContent.textContent || insightTextContent.textContent.trim() === '')) {
+        if (window.getDashboardData) {
+            const { filteredData, dateRangeText } = window.getDashboardData();
+            updateInsightComment(filteredData, dateRangeText);
+        }
+    }
     
     // 말풍선 클릭 이벤트 설정
     setupInsightBubbleClick();

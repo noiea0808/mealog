@@ -174,8 +174,8 @@ export function renderTimeline() {
                             if (sData) tags.push(sData.label);
                         }
                         if (tags.length > 0) {
-                            tagsHtml = `<div class="mt-1 flex flex-wrap gap-1">${tags.map(t => 
-                                `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded">#${t}</span>`
+                            tagsHtml = `<div class="mt-1 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags.map(t => 
+                                `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${t}</span>`
                             ).join('')}</div>`;
                         }
                     }
@@ -208,8 +208,8 @@ export function renderTimeline() {
                         <div class="flex-1 min-w-0 flex flex-col justify-center p-4">
                             <div class="flex justify-between items-start mb-1">
                                 <div class="flex-1">
-                                    <h4 class="leading-tight mb-0">${titleLine1}</h4>
-                                    ${titleLine2 ? (r ? `<p class="text-sm text-slate-600 font-bold mt-0.5 mb-0">${titleLine2}</p>` : `<p class="mt-0.5 mb-0">${titleLine2}</p>`) : ''}
+                                    <h4 class="leading-tight mb-0 truncate">${titleLine1}</h4>
+                                    ${titleLine2 ? (r ? `<p class="text-sm text-slate-600 font-bold mt-0.5 mb-0 truncate">${titleLine2}</p>` : `<p class="mt-0.5 mb-0 truncate">${titleLine2}</p>`) : ''}
                                 </div>
                                 ${r ? `<div class="flex items-center gap-2 flex-shrink-0 ml-2">
                                     ${isEntryShared(r.id) ? `<span class="text-xs text-slate-500" title="게시됨"><i class="fa-solid fa-share"></i></span>` : ''}

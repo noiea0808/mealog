@@ -2512,6 +2512,11 @@ function initEventListeners() {
         settingsTabTags.addEventListener('click', () => window.switchSettingsTab('tags'));
     }
     
+    const settingsTabShortcuts = document.getElementById('settingsTabShortcuts');
+    if (settingsTabShortcuts) {
+        settingsTabShortcuts.addEventListener('click', () => window.switchSettingsTab('shortcuts'));
+    }
+    
     const saveProfileSettingsBtn = document.getElementById('saveProfileSettingsBtn');
     if (saveProfileSettingsBtn) {
         saveProfileSettingsBtn.addEventListener('click', saveProfileSettings);

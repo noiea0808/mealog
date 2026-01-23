@@ -419,8 +419,8 @@ export function renderBestMeals() {
         // 태그 HTML 생성
         let tagsHtml = '';
         if (tags.length > 0) {
-            tagsHtml = `<div class="mt-1 flex flex-wrap gap-1 pr-2">${tags.map(t => 
-                `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded">#${t}</span>`
+            tagsHtml = `<div class="mt-1 flex flex-nowrap gap-1 pr-2 overflow-x-auto scrollbar-hide">${tags.map(t => 
+                `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${t}</span>`
             ).join('')}</div>`;
         }
         

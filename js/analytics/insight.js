@@ -284,7 +284,7 @@ export function setupInsightBubbleClick() {
     bubble.title = '';
 }
 
-// 캐릭터 선택 팝업 렌더링
+// 밀당 캐릭터 선택 팝업 렌더링
 async function renderCharacterSelectPopup() {
     const popup = document.getElementById('characterSelectPopup');
     if (!popup) return;
@@ -328,7 +328,7 @@ async function renderCharacterSelectPopup() {
     }).join('');
 }
 
-// 캐릭터 선택 팝업 열기/토글
+// 밀당 캐릭터 선택 팝업 열기/토글
 export async function openCharacterSelectModal() {
     const popup = document.getElementById('characterSelectPopup');
     
@@ -364,7 +364,7 @@ function handleOutsideClick(e) {
     }
 }
 
-// 캐릭터 선택 팝업 닫기
+// 밀당 캐릭터 선택 팝업 닫기
 export function closeCharacterSelectModal() {
     const popup = document.getElementById('characterSelectPopup');
     if (popup) {
@@ -373,7 +373,7 @@ export function closeCharacterSelectModal() {
     document.removeEventListener('click', handleOutsideClick, true);
 }
 
-// 캐릭터 선택
+// 밀당 캐릭터 선택
 export function selectInsightCharacter(characterId) {
     const character = INSIGHT_CHARACTERS.find(c => c.id === characterId);
     if (!character) return;
@@ -419,7 +419,28 @@ export function selectInsightCharacter(characterId) {
     }
 }
 
-// AI 캐릭터 기본 코멘트 가져오기 (Firebase에서 가져오기)
+// 캐릭터 로딩 멘트 가져오기 (Firebase에서 가져오기)
+async function getCharacterLoadingMessage(characterId) {
+    try {
+        const personaDocRef = doc(db, 'artifacts', appId, 'persona', characterId);
+        const personaDoc = await getDoc(personaDocRef);
+        
+        if (personaDoc.exists()) {
+            const data = personaDoc.data();
+            const loadingMessage = data.loadingMessage || '';
+            
+            if (loadingMessage && loadingMessage.trim()) {
+                return loadingMessage.trim();
+            }
+        }
+        
+        // 기본값
+        return '분석중입니다';
+    } catch (e) {
+        console.error('캐릭터 로딩 멘트 가져오기 실패:', e);
+        return '분석중입니다';
+    }
+}
 async function getCharacterDefaultComment(characterId) {
     try {
         const personaDocRef = doc(db, 'artifacts', appId, 'persona', characterId);
@@ -496,9 +517,9 @@ async function getMealogComment() {
         return `안녕하세요! MEALOG 사용 방법을
 안내해드릴게요.
 
-📌 캐릭터 선택
+📌 밀당 캐릭터 선택
 왼쪽 캐릭터 아이콘을 클릭하면
-다양한 캐릭터를 선택할 수 있어요.
+다양한 밀당 캐릭터를 선택할 수 있어요.
 각 캐릭터는 서로 다른 스타일로
 식사 기록을 분석해줘요.
 
@@ -524,9 +545,9 @@ Best, 식사, 간식 탭을 눌러서
         return `안녕하세요! MEALOG 사용 방법을
 안내해드릴게요.
 
-📌 캐릭터 선택
+📌 밀당 캐릭터 선택
 왼쪽 캐릭터 아이콘을 클릭하면
-다양한 캐릭터를 선택할 수 있어요.
+다양한 밀당 캐릭터를 선택할 수 있어요.
 각 캐릭터는 서로 다른 스타일로
 식사 기록을 분석해줘요.
 
@@ -589,10 +610,11 @@ export async function generateInsightComment() {
     let loadingInterval = null;
     let dotCount = 0;
     
-    // 분석 시작 전에 "분석중입니다" 표시
+    // 분석 시작 전에 로딩 멘트 표시
     const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
     const characterName = character ? character.name : '';
-    displayInsightText('분석중입니다', characterName);
+    const loadingMessage = await getCharacterLoadingMessage(currentCharacter);
+    displayInsightText(loadingMessage, characterName);
     
     if (btn) {
         btn.disabled = true;
@@ -615,7 +637,14 @@ export async function generateInsightComment() {
         closeCharacterSelectModal();
     } catch (error) {
         console.error('코멘트 생성 실패:', error);
-        showToast('코멘트 생성 중 오류가 발생했습니다.', 'error');
+        
+        // API 키 관련 에러인 경우 명확한 메시지 표시
+        if (error.message && (error.message.includes('API 키') || error.message.includes('API key'))) {
+            showToast(error.message, 'error');
+            displayInsightText(error.message, characterName);
+        } else {
+            showToast('코멘트 생성 중 오류가 발생했습니다.', 'error');
+        }
     } finally {
         // 로딩 애니메이션 중지
         if (loadingInterval) {
@@ -788,6 +817,16 @@ async function getCommonPersona() {
 async function getGeminiComment(filteredData, characterId = currentCharacter, dateRangeText = '') {
     const character = INSIGHT_CHARACTERS.find(c => c.id === characterId);
     
+    // API 키 확인
+    const apiKey = getApiKey();
+    if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE' || apiKey.trim() === '') {
+        console.error('❌ Gemini API 키가 설정되지 않았습니다.');
+        const errorMessage = character 
+            ? `${character.icon} API 키가 설정되지 않았습니다. js/config.js 파일에 GEMINI_API_KEY를 설정해주세요.`
+            : 'API 키가 설정되지 않았습니다. js/config.js 파일에 GEMINI_API_KEY를 설정해주세요.';
+        throw new Error(errorMessage);
+    }
+    
     // 데이터가 없을 때 기본 메시지
     if (!filteredData || filteredData.length === 0) {
         return character ? `${character.icon} 이 기간 동안 아직 식사 기록이 없네요. 맛있는 식사 기록을 시작해보세요!` : "이 기간 동안 아직 식사 기록이 없네요.";
@@ -803,12 +842,8 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         // 공통 페르소나 가져오기
         const commonPersona = await getCommonPersona();
         
-        // 디버깅: 공통 페르소나 로드 확인
-        console.log('공통 페르소나 로드:', {
-            존재: !!commonPersona,
-            길이: commonPersona ? commonPersona.length : 0,
-            내용_미리보기: commonPersona ? commonPersona.substring(0, 100) + '...' : '없음'
-        });
+        // 밀당 메모 가져오기 (AI 분석 참고용)
+        const userShortcuts = window.userSettings?.shortcuts || '';
         
         // 프롬프트 생성 (재미있고 캐릭터 성격 중심, 핵심만)
         const menuSummary = analysis.menuDetails.length > 0 
@@ -818,9 +853,10 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         // 프롬프트 구성 (간결하고 명확하게)
         let prompt = '';
         
-        // 공통 페르소나 (간결하게)
-        if (commonPersona && commonPersona.trim()) {
-            prompt += `[공통 페르소나 - 최우선 적용]\n${commonPersona.trim()}\n\n`;
+        // 공통 페르소나는 systemInstruction에 포함되므로 프롬프트에는 제외
+        // 밀당 메모 (AI 분석 참고용)
+        if (userShortcuts && userShortcuts.trim()) {
+            prompt += `[밀당 메모 - 반드시 참고]\n${userShortcuts.trim()}\n\n`;
         }
         
         // 캐릭터 페르소나
@@ -844,23 +880,24 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         if (commonPersona && commonPersona.trim()) {
             prompt += `- 공통 페르소나의 모든 지침을 반드시 적용\n`;
         }
+        if (userShortcuts && userShortcuts.trim()) {
+            prompt += `- 밀당 메모를 반드시 참고하여 분석 (예: 메뉴 약어 해석, 사용자 상태 고려)\n`;
+        }
         prompt += `- 캐릭터 고유의 말투와 성격 드러내기\n`;
         prompt += `- 식사 패턴의 재미있는 점 우선 언급\n`;
         prompt += `- 자기 소개/기간 언급 금지\n`;
         prompt += `- 이모지 최대 2개, 한국어만 사용\n`;
         
-        // 최종 프롬프트 로그 (디버깅용)
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('📝 생성된 프롬프트 정보:');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('공통 페르소나 포함:', !!(commonPersona && commonPersona.trim()));
-        console.log('프롬프트 길이:', prompt.length, '자');
-        console.log('프롬프트 줄 수:', prompt.split('\n').length, '줄');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('📄 전체 프롬프트 내용:');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log(prompt);
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        // 간소화된 프롬프트 정보 로그 (개발 모드에서만 상세 로그)
+        const isDevMode = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (isDevMode) {
+            console.log('📝 프롬프트 생성:', {
+                공통페르소나: !!(commonPersona && commonPersona.trim()),
+                밀당메모: !!(userShortcuts && userShortcuts.trim()),
+                프롬프트길이: prompt.length + '자',
+                프롬프트줄수: prompt.split('\n').length + '줄'
+            });
+        }
         
         // v1beta API만 사용 (v1은 이 모델들을 지원하지 않음)
         let lastError = null;
@@ -870,12 +907,16 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         // 지정된 데이터 분석용 추천 모델 3개만 순차적으로 사용
         const models = GEMINI_MODELS;
         
-        console.log('시도할 모델 목록 (순서대로):', models);
+        if (isDevMode) {
+            console.log('시도할 모델 목록:', models);
+        }
         
         for (const model of models) {
             try {
                 const apiUrl = getGeminiApiUrl(model, apiVersion);
-                console.log(`Gemini API 호출 시도: ${apiVersion}/${model}`);
+                if (isDevMode) {
+                    console.log(`🔄 API 호출: ${model}`);
+                }
                 
                 // API 요청 본문 구성
                 const requestBody = {
@@ -902,24 +943,15 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                             text: systemInstructionText
                         }]
                     };
-                    
-                    // 첫 번째 모델에서만 systemInstruction 로그 출력
-                    if (model === models[0]) {
-                        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                        console.log('🔧 System Instruction (공통 페르소나):');
-                        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                        console.log(systemInstructionText);
-                        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                    }
                 }
                 
-                // 첫 번째 모델에서만 전체 요청 본문 로그 출력
-                if (model === models[0]) {
-                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                    console.log('📤 구글 API에 전송할 전체 요청 본문:');
-                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                    console.log(JSON.stringify(requestBody, null, 2));
-                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                // 개발 모드에서만 상세 로그 출력
+                if (isDevMode && model === models[0]) {
+                    console.log('📤 요청 정보:', {
+                        모델: model,
+                        프롬프트길이: prompt.length,
+                        systemInstruction: !!(requestBody.systemInstruction)
+                    });
                 }
                 
                 const response = await fetch(apiUrl, {
@@ -940,18 +972,22 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                     }
                     
                     // 첫 번째 모델에서만 상세 에러 로그
-                    if (model === models[0]) {
-                        console.warn(`첫 모델 시도 실패 (${model}):`, {
+                    if (model === models[0] && isDevMode) {
+                        console.warn(`⚠️ 모델 실패 (${model}):`, {
                             status: response.status,
-                            message: errorData.error?.message,
-                            reason: errorData.error?.details?.[0]?.reason,
-                            전체_에러: errorData
+                            message: errorData.error?.message
                         });
                     }
                     
                     // API 키 관련 에러
                     if (response.status === 400 && errorData.error?.message?.includes('API key')) {
-                        lastError = new Error(`API 키 문제: ${errorData.error.message}`);
+                        const errorMsg = `API 키 문제: ${errorData.error.message}`;
+                        console.error('❌', errorMsg);
+                        lastError = new Error(errorMsg);
+                        // API 키가 유효하지 않으면 다른 모델 시도하지 않고 즉시 중단
+                        if (errorData.error?.message?.includes('invalid') || errorData.error?.message?.includes('Invalid')) {
+                            throw new Error(`API 키가 유효하지 않습니다. js/config.js 파일의 GEMINI_API_KEY를 확인해주세요.`);
+                        }
                         continue;
                     }
                     
@@ -967,7 +1003,9 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                 }
                 
                 const responseData = await response.json();
-                console.log(`Gemini API 성공: ${apiVersion}/${model}`);
+                if (isDevMode) {
+                    console.log(`✅ API 성공: ${model}`);
+                }
                 
                 // 응답 검증 (안전 필터 및 응답 구조 처리)
                 if (responseData?.candidates && responseData.candidates.length > 0) {
@@ -1006,17 +1044,19 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                     
                     // 텍스트 찾기 성공
                     if (testComment) {
-                        console.log('API 응답 확인:', {
-                            모델: model,
-                            finishReason: testFinishReason,
-                            원본_길이: testComment.length,
-                            원본_텍스트_미리보기: testComment.substring(0, 100) + '...'
-                        });
+                        if (isDevMode) {
+                            console.log(`✅ ${model} 응답 확인:`, {
+                                finishReason: testFinishReason,
+                                길이: testComment.length + '자'
+                            });
+                        }
                         
                         // 최소 길이 체크 (50자 이상이거나 MAX_TOKENS인 경우 허용)
                         const minLength = testFinishReason === 'MAX_TOKENS' ? 30 : 50;
                         if (!testComment || testComment.length < minLength) {
-                            console.warn(`응답이 너무 짧습니다 (${testComment.length}자, 최소: ${minLength}자).`);
+                            if (isDevMode) {
+                                console.warn(`⚠️ 응답이 너무 짧음: ${testComment.length}자 (최소: ${minLength}자)`);
+                            }
                             lastError = new Error(`응답이 너무 짧습니다: ${testComment.length}자`);
                             continue;
                         }
@@ -1025,13 +1065,13 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                         data = responseData;
                         break; // 성공하면 반복 중단
                     } else {
-                        // 텍스트를 찾지 못한 경우 - 응답 구조 로깅
-                        console.warn('⚠️ API 응답에서 텍스트를 찾을 수 없습니다:', {
-                            model: model,
-                            candidateKeys: candidate ? Object.keys(candidate) : null,
-                            candidateContent: candidate?.content ? Object.keys(candidate.content) : null,
-                            responseKeys: Object.keys(responseData)
-                        });
+                        // 텍스트를 찾지 못한 경우 - 개발 모드에서만 로깅
+                        if (isDevMode) {
+                            console.warn('⚠️ 응답 구조 불일치:', {
+                                model: model,
+                                candidateKeys: candidate ? Object.keys(candidate) : null
+                            });
+                        }
                         lastError = new Error('응답에 텍스트가 없음 (응답 구조 불일치)');
                         continue;
                     }
@@ -1104,15 +1144,18 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         }
         
         // comment가 있을 때 처리
-        console.log('최종 응답 처리:', {
-            finishReason: finishReason,
-            원본_길이: comment.length,
-            원본_텍스트_전체: comment
-        });
+        if (isDevMode) {
+            console.log('✅ 최종 응답:', {
+                finishReason: finishReason,
+                길이: comment.length + '자'
+            });
+        }
         
         // MAX_TOKENS인 경우 불완전한 마지막 문장 제거
         if (finishReason === 'MAX_TOKENS' && comment.length >= 150) {
-            console.log('MAX_TOKENS이지만 충분히 긴 응답이므로 처리합니다.');
+            if (isDevMode) {
+                console.log('ℹ️ MAX_TOKENS - 불완전한 문장 정리 중');
+            }
             // 불완전한 마지막 문장 제거
             comment = comment.replace(/[^\n가-힣a-zA-Z0-9\s.,!?]*$/, '');
             
@@ -1160,16 +1203,22 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
             comment = `${character.icon} ${comment}`;
         }
         
-        console.log('최종 생성된 코멘트:', {
-            길이: comment.length,
-            줄_수: comment.split('\n').length,
-            미리보기: comment.substring(0, 150) + '...'
-        });
+        if (isDevMode) {
+            console.log('✅ 코멘트 생성 완료:', {
+                길이: comment.length + '자',
+                미리보기: comment.substring(0, 80) + '...'
+            });
+        }
         
         return comment;
         
     } catch (error) {
         console.error('Gemini API 오류:', error);
+        
+        // API 키 관련 에러인 경우 명확한 메시지 표시
+        if (error.message && (error.message.includes('API 키') || error.message.includes('API key'))) {
+            throw error; // 상위로 전달하여 사용자에게 표시
+        }
         
         // 오류 발생 시 기본 메시지 반환
         const fallbackMessage = character 

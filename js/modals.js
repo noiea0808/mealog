@@ -1245,6 +1245,30 @@ export function openSettings() {
         });
     }
     
+    // 밀당 메모 입력 필드 초기화
+    const shortcutsInput = document.getElementById('shortcutsInput');
+    if (shortcutsInput) {
+        shortcutsInput.value = state.tempSettings.shortcuts || '';
+    }
+    
+    // 밀당 메모 저장 버튼 이벤트 리스너
+    const saveShortcutsBtn = document.getElementById('saveShortcutsBtn');
+    if (saveShortcutsBtn) {
+        saveShortcutsBtn.onclick = async () => {
+            if (shortcutsInput) {
+                state.tempSettings.shortcuts = shortcutsInput.value.trim();
+                window.userSettings = JSON.parse(JSON.stringify(state.tempSettings));
+                try {
+                    await dbOps.saveSettings(window.userSettings);
+                    showToast("밀당 메모가 저장되었습니다.", 'success');
+                } catch (e) {
+                    console.error('밀당 메모 저장 실패:', e);
+                    showToast("밀당 메모 저장 중 오류가 발생했습니다.", 'error');
+                }
+            }
+        };
+    }
+    
     // 자주 사용하는 태그 초기화 (없으면 빈 객체로)
     if (!state.tempSettings.favoriteSubTags) {
         state.tempSettings.favoriteSubTags = {
@@ -1255,14 +1279,14 @@ export function openSettings() {
         };
     }
     
-        // 자주 사용하는 태그 편집 UI 렌더링
-        renderFavoriteTagsEditor();
-        
-        // 버전 정보 로드 및 표시
-        loadVersionInfo();
-        
-        // 기본 탭을 프로필로 설정
-        switchSettingsTab('profile');
+    // 자주 사용하는 태그 편집 UI 렌더링
+    renderFavoriteTagsEditor();
+    
+    // 버전 정보 로드 및 표시
+    loadVersionInfo();
+    
+    // 기본 탭을 프로필로 설정
+    switchSettingsTab('profile');
         
         const accountSection = document.getElementById('accountSection');
     if (accountSection) {
@@ -1402,8 +1426,22 @@ export function closeSettings() {
 export function switchSettingsTab(tab) {
     const profileTab = document.getElementById('settingsTabProfile');
     const tagsTab = document.getElementById('settingsTabTags');
+    const shortcutsTab = document.getElementById('settingsTabShortcuts');
     const profileContent = document.getElementById('settingsTabContentProfile');
     const tagsContent = document.getElementById('settingsTabContentTags');
+    const shortcutsContent = document.getElementById('settingsTabContentShortcuts');
+    
+    // 모든 탭 비활성화
+    [profileTab, tagsTab, shortcutsTab].forEach(t => {
+        if (t) {
+            t.className = 'settings-tab px-4 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors';
+        }
+    });
+    
+    // 모든 콘텐츠 숨기기
+    [profileContent, tagsContent, shortcutsContent].forEach(c => {
+        if (c) c.classList.add('hidden');
+    });
     
     if (tab === 'profile') {
         // 프로필 탭 활성화
@@ -1411,24 +1449,21 @@ export function switchSettingsTab(tab) {
             profileTab.className = 'settings-tab active px-4 py-3 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
             profileTab.innerHTML = '<i class="fa-solid fa-user mr-2"></i>프로필';
         }
-        if (tagsTab) {
-            tagsTab.className = 'settings-tab px-4 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors';
-            tagsTab.innerHTML = '<i class="fa-solid fa-tags mr-2"></i>태그 관리';
-        }
         if (profileContent) profileContent.classList.remove('hidden');
-        if (tagsContent) tagsContent.classList.add('hidden');
     } else if (tab === 'tags') {
         // 태그 관리 탭 활성화
         if (tagsTab) {
             tagsTab.className = 'settings-tab active px-4 py-3 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
             tagsTab.innerHTML = '<i class="fa-solid fa-tags mr-2"></i>태그 관리';
         }
-        if (profileTab) {
-            profileTab.className = 'settings-tab px-4 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors';
-            profileTab.innerHTML = '<i class="fa-solid fa-user mr-2"></i>프로필';
-        }
         if (tagsContent) tagsContent.classList.remove('hidden');
-        if (profileContent) profileContent.classList.add('hidden');
+    } else if (tab === 'shortcuts') {
+        // 밀당 메모 탭 활성화
+        if (shortcutsTab) {
+            shortcutsTab.className = 'settings-tab active px-4 py-3 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
+            shortcutsTab.innerHTML = '<i class="fa-solid fa-keyboard mr-2"></i>밀당 메모';
+        }
+        if (shortcutsContent) shortcutsContent.classList.remove('hidden');
     }
 }
 
