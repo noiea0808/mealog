@@ -17,7 +17,7 @@ import {
 } from './auth.js';
 import { authFlowManager } from './auth-flow.js';
 import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, filterGalleryByUser, clearGalleryFilter } from './render/index.js';
-import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed } from './analytics.js';
+import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
@@ -105,6 +105,10 @@ window.openShareBestModal = openShareBestModal;
 window.closeShareBestModal = closeShareBestModal;
 window.shareBestToFeed = shareBestToFeed;
 window.editBestShare = openEditBestShareModal;
+window.openShareInsightModal = openShareInsightModal;
+window.closeShareInsightModal = closeShareInsightModal;
+window.shareInsightToFeed = shareInsightToFeed;
+window.editInsightShare = openEditInsightShareModal;
 window.toggleComment = toggleComment;
 window.toggleFeedComment = toggleFeedComment;
 window.openKakaoPlaceSearch = openKakaoPlaceSearch;
@@ -535,48 +539,57 @@ window.confirmDailyShare = async (dateStr) => {
 
         // Fredoka 폰트 CSS를 미리 가져와서 실제 @font-face URL 추출
         let fredokaFontCSS = '';
-        try {
-            const fontCSSResponse = await fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&display=swap');
-            fredokaFontCSS = await fontCSSResponse.text();
-            // CSS를 스타일 태그로 추가하여 폰트 로드
-            const styleTag = document.createElement('style');
-            styleTag.textContent = fredokaFontCSS;
-            document.head.appendChild(styleTag);
-            
-            // 폰트 로드 대기
-            await document.fonts.ready;
-            let attempts = 0;
-            while (attempts < 50) {
-                if (document.fonts.check('1em Fredoka')) {
-                    break;
+        // 폰트가 이미 로드되어 있는지 먼저 확인
+        const fontAlreadyLoaded = document.fonts.check('1em Fredoka');
+        
+        if (!fontAlreadyLoaded) {
+            try {
+                const fontCSSResponse = await fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&display=swap');
+                fredokaFontCSS = await fontCSSResponse.text();
+                // CSS를 스타일 태그로 추가하여 폰트 로드
+                const styleTag = document.createElement('style');
+                styleTag.textContent = fredokaFontCSS;
+                document.head.appendChild(styleTag);
+                
+                // 폰트 로드 대기 (최대 2초로 단축)
+                await document.fonts.ready;
+                let attempts = 0;
+                while (attempts < 20) { // 50 -> 20으로 단축
+                    if (document.fonts.check('1em Fredoka')) {
+                        break;
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    attempts++;
                 }
-                await new Promise(resolve => setTimeout(resolve, 100));
-                attempts++;
+            } catch (e) {
+                console.warn('Fredoka 폰트 CSS 로드 실패:', e);
             }
-        } catch (e) {
-            console.warn('Fredoka 폰트 CSS 로드 실패:', e);
         }
         
-        // 폰트가 완전히 렌더링될 때까지 추가 대기
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // 이미지 로드 확인 (이미 로드된 이미지는 즉시 스킵)
         const images = previewCard.querySelectorAll('img');
-        await Promise.all(Array.from(images).map(img => {
-            if (img.complete) return Promise.resolve();
+        const imageLoadPromises = Array.from(images).map(img => {
+            if (img.complete && img.naturalWidth > 0) {
+                return Promise.resolve(); // 이미 로드된 이미지
+            }
             return new Promise((resolve) => {
                 img.onload = resolve;
                 img.onerror = resolve;
-                setTimeout(resolve, 500); // 1초 -> 0.5초로 단축
+                setTimeout(resolve, 1000); // 최대 1초 대기
             });
-        }));
+        });
+        await Promise.all(imageLoadPromises);
 
-        await new Promise(resolve => setTimeout(resolve, 100)); // 200ms -> 100ms로 단축
+        // 짧은 대기 (렌더링 안정화)
+        await new Promise(resolve => setTimeout(resolve, 100));
 
         // 미리보기 카드의 실제 크기 계산
         const innerContent = previewCard.querySelector('div[style*="width: 440px"]') || previewCard;
         let actualHeight = innerContent.offsetHeight || innerContent.scrollHeight;
         
+        // 높이가 없거나 너무 작으면 한 번만 재확인 (대기 시간 단축)
         if (!actualHeight || actualHeight < 100) {
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await new Promise(resolve => setTimeout(resolve, 100)); // 200ms -> 100ms로 단축
             actualHeight = innerContent.offsetHeight || innerContent.scrollHeight;
         }
 
@@ -1535,7 +1548,7 @@ window.onload = () => {
 };
 
 // 피드 옵션 관련 함수
-window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '', photoSlotId = '', isDailyShare = false, postId = '', authorUserId = '') => {
+window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '', photoSlotId = '', isDailyShare = false, postId = '', authorUserId = '', isInsightShare = false, dateRangeText = '') => {
     const existingMenu = document.getElementById('feedOptionsMenu');
     if (existingMenu) existingMenu.remove();
     
@@ -1576,6 +1589,10 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
                 } else if (isDailyShare) {
                     if (photoDate) window.openDailyCommentModal(photoDate);
                     else showToast("수정할 일간보기 공유를 찾을 수 없습니다.", 'error');
+                } else if (isInsightShare) {
+                    const photoUrlArray = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(url => url.trim()).filter(url => url) : [];
+                    if (photoUrlArray.length > 0) window.editInsightShare(photoUrlArray[0]);
+                    else showToast("수정할 밀당 코멘트 공유를 찾을 수 없습니다.", 'error');
                 } else {
                     if (entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined') {
                         window.editFeedPost(entryId);
@@ -1597,7 +1614,7 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
         deleteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             menu.remove();
-            setTimeout(() => window.deleteFeedPost(entryId || '', photoUrls || '', isBestShare), 100);
+            setTimeout(() => window.deleteFeedPost(entryId || '', photoUrls || '', isBestShare, isDailyShare, isInsightShare), 100);
         });
         deleteBtn.innerHTML = `<div class="flex items-center gap-3"><i class="fa-solid ${deleteButtonIcon} text-red-500 text-lg"></i><span class="font-bold text-red-500">${deleteButtonText}</span></div>`;
         buttonContainer.appendChild(deleteBtn);
@@ -1609,7 +1626,7 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
         reportBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             menu.remove();
-            const targetGroupKey = isBestShare ? `best_${postId || 'unknown'}` : isDailyShare ? `daily_${photoDate || 'nodate'}_${authorUserId || 'unknown'}` : `entry_${entryId || 'none'}_${authorUserId || 'unknown'}`;
+            const targetGroupKey = isBestShare ? `best_${postId || 'unknown'}` : isDailyShare ? `daily_${photoDate || 'nodate'}_${authorUserId || 'unknown'}` : isInsightShare ? `insight_${dateRangeText || 'no-range'}_${authorUserId || 'unknown'}` : `entry_${entryId || 'none'}_${authorUserId || 'unknown'}`;
             setTimeout(() => window.showReportModal(targetGroupKey), 100);
         });
         reportBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-flag text-amber-600 text-lg"></i><span class="font-bold text-slate-800">신고하기</span></div>';
@@ -1765,7 +1782,7 @@ window.editFeedPost = (entryId) => {
     openModal(record.date, record.slotId, entryId);
 };
 
-window.deleteFeedPost = async (entryId, photoUrls, isBestShare = false) => {
+window.deleteFeedPost = async (entryId, photoUrls, isBestShare = false, isDailyShare = false, isInsightShare = false) => {
     // 피드에서는 항상 게시 취소
     if (!confirm("정말 게시를 취소하시겠습니까?")) {
         return;
@@ -1783,7 +1800,7 @@ window.deleteFeedPost = async (entryId, photoUrls, isBestShare = false) => {
             // photoUrl 정규화 (쿼리 파라미터 제거하여 비교) - utils.js의 normalizeUrl 사용
             const normalizedPhotoUrls = photoUrlArray.map(normalizeUrl);
             
-            await dbOps.unsharePhotos(photoUrlArray, validEntryId, isBestShare);
+            await dbOps.unsharePhotos(photoUrlArray, validEntryId, isBestShare, isDailyShare, isInsightShare);
             
             // window.sharedPhotos에서 삭제된 사진들 즉시 제거 (URL 정규화하여 비교)
             if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
@@ -1798,6 +1815,12 @@ window.deleteFeedPost = async (entryId, photoUrls, isBestShare = false) => {
                     // 베스트 공유인 경우 type='best'인 것만 제거
                     if (isBestShare) {
                         return !(photo.type === 'best');
+                    } else if (isDailyShare) {
+                        // 일간보기 공유인 경우 type='daily'인 것만 제거
+                        return !(photo.type === 'daily');
+                    } else if (isInsightShare) {
+                        // 인사이트 공유인 경우 type='insight'인 것만 제거
+                        return !(photo.type === 'insight');
                     } else {
                         // 일반 공유인 경우: entryId 조건 확인
                         if (validEntryId) {

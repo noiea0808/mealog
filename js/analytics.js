@@ -33,7 +33,9 @@ export {
     getInsightCharacters,
     openShareInsightModal,
     closeShareInsightModal,
-    shareInsightToFeed
+    shareInsightToFeed,
+    updateShareButtonStatus,
+    openEditInsightShareModal
 } from './analytics/insight.js';
 
 // Best Share 관련 함수들

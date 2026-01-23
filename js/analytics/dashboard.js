@@ -3,7 +3,7 @@ import { SLOTS } from '../constants.js';
 import { appState } from '../state.js';
 import { loadMealsForDateRange } from '../db.js';
 import { renderProportionChart } from './charts.js';
-import { updateInsightComment, setupInsightBubbleClick, getCurrentCharacter, getInsightCharacters } from './insight.js';
+import { updateInsightComment, setupInsightBubbleClick, getCurrentCharacter, getInsightCharacters, updateShareButtonStatus } from './insight.js';
 import { getWeekRange, getCurrentWeekInMonth, getWeeksInMonth, formatDateWithDay } from './date-utils.js';
 import { renderBestMeals } from './best-share.js';
 import { toLocalDateString } from '../utils.js';
@@ -281,6 +281,9 @@ export async function updateDashboard() {
             updateInsightComment(filteredData, dateRangeText);
         }
     }
+    
+    // 공유 버튼 상태 업데이트 (공유 상태가 변경되었을 수 있으므로 항상 업데이트)
+    updateShareButtonStatus();
     
     // 말풍선 클릭 이벤트 설정
     setupInsightBubbleClick();

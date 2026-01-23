@@ -321,7 +321,7 @@ export const dbOps = {
             throw e;
         }
     },
-    async unsharePhotos(photos, entryId, isBestShare = false, isDailyShare = false) {
+    async unsharePhotos(photos, entryId, isBestShare = false, isDailyShare = false, isInsightShare = false) {
         if (!window.currentUser || !photos || photos.length === 0) return;
         try {
             const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
@@ -361,6 +361,11 @@ export const dbOps = {
                     } else if (isDailyShare) {
                         // 일간보기 공유인 경우: type='daily'이고 photoUrl이 일치하면 삭제
                         if (data.type === 'daily') {
+                            photosToDelete.push(docSnap.id);
+                        }
+                    } else if (isInsightShare) {
+                        // 인사이트 공유인 경우: type='insight'이고 photoUrl이 일치하면 삭제
+                        if (data.type === 'insight') {
                             photosToDelete.push(docSnap.id);
                         }
                     } else {

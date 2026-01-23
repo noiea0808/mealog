@@ -226,30 +226,8 @@ function displayInsightText(text, characterName = '') {
     const escapedText = escapeHtml(text).replace(/\n/g, '<br>');
     container.innerHTML = escapedText;
     
-    // 공유 버튼 표시 (MEALOG 캐릭터가 아니고, 텍스트가 있을 때만)
-    if (shareBtn) {
-        if (currentCharacter !== 'mealog' && text && text.trim() !== '') {
-            shareBtn.classList.remove('hidden');
-            // 공유 상태 확인 및 버튼 텍스트 업데이트
-            (async () => {
-                if (window.getDashboardData) {
-                    const { dateRangeText } = window.getDashboardData();
-                    const existingShare = await checkInsightShareStatus(dateRangeText);
-                    const isShared = !!existingShare;
-                    
-                    if (isShared) {
-                        shareBtn.innerHTML = '<i class="fa-solid fa-share text-[10px] mr-1"></i>공유됨';
-                        shareBtn.className = 'flex-shrink-0 bg-emerald-600 rounded-lg font-bold text-[10px] shadow-md active:bg-emerald-700 transition-colors py-1 px-2 text-white border border-emerald-700';
-                    } else {
-                        shareBtn.innerHTML = '<i class="fa-solid fa-share text-[10px] mr-1"></i>공유';
-                        shareBtn.className = 'flex-shrink-0 bg-emerald-600 rounded-lg font-bold text-[10px] shadow-md active:bg-emerald-700 transition-colors py-1 px-2 text-white border border-emerald-700';
-                    }
-                }
-            })();
-        } else {
-            shareBtn.classList.add('hidden');
-        }
-    }
+    // 공유 버튼 상태 업데이트 (공유 상태에 따라 버튼 박스 표시 여부도 결정)
+    updateShareButtonStatus();
     
     // 말풍선 최소 높이 설정 (캐릭터창 + 코멘트창의 합산 높이)
     if (bubble && characterBtn) {
@@ -1273,12 +1251,45 @@ async function checkInsightShareStatus(dateRangeText) {
     if (!window.currentUser || !window.sharedPhotos) return null;
     
     // window.sharedPhotos에서 해당 기간의 인사이트 공유 찾기
+    // 각 기간별로 한 번만 공유 가능하므로 dateRangeText만으로 확인
     const insightShare = window.sharedPhotos.find(photo => 
         photo.type === 'insight' && 
         photo.dateRangeText === dateRangeText
     );
     
     return insightShare || null;
+}
+
+// 공유 버튼 상태 업데이트 함수
+export async function updateShareButtonStatus() {
+    const shareBtn = document.getElementById('shareInsightBtn');
+    if (!shareBtn) return;
+    
+    // MEALOG 캐릭터가 아니고 코멘트가 있을 때만 표시
+    const insightTextContent = document.getElementById('insightTextContent');
+    if (currentCharacter === 'mealog' || !insightTextContent || !insightTextContent.textContent || insightTextContent.textContent.trim() === '') {
+        shareBtn.classList.add('hidden');
+        return;
+    }
+    
+    shareBtn.classList.remove('hidden');
+    
+    // 공유 상태 확인
+    if (window.getDashboardData) {
+        const { dateRangeText } = window.getDashboardData();
+        const existingShare = await checkInsightShareStatus(dateRangeText);
+        const isShared = !!existingShare;
+        
+        if (isShared) {
+            // 공유됨 상태: 버튼 박스 표시 (배경색만, 보더 없음)
+            shareBtn.innerHTML = '<i class="fa-solid fa-share text-[10px] mr-1"></i>공유됨';
+            shareBtn.className = 'flex-shrink-0 bg-emerald-600 rounded-lg font-bold text-[10px] shadow-md active:bg-emerald-700 transition-colors py-1 px-2 text-white';
+        } else {
+            // 공유 안 됨 상태: 버튼 박스 제거 (텍스트만 표시)
+            shareBtn.innerHTML = '<i class="fa-solid fa-share text-[10px] mr-1"></i>공유하기';
+            shareBtn.className = 'flex-shrink-0 font-bold text-[10px] text-emerald-600 hover:text-emerald-700 transition-colors py-1 px-2';
+        }
+    }
 }
 
 // 밀당 코멘트 공유 모달 열기
@@ -1337,17 +1348,17 @@ export async function openShareInsightModal() {
     // 스크린샷용 HTML 생성 (실제 화면과 동일한 구조 및 색상)
     const screenshotHtml = `
         <div id="insightScreenshotContainer" style="width: 448px; max-width: 448px; margin: 0 auto; background: #f8fafc; border-radius: 8px; overflow: hidden; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-            <!-- 헤더 (흰색 배경) -->
-            <div style="background: #ffffff; padding: 16px; border-bottom: 1px solid #e2e8f0;">
+            <!-- 헤더 (밀로그 그린 배경) -->
+            <div style="background: #059669; padding: 16px; border-bottom: 1px solid #047857;">
                 <!-- 상단: MEALOG와 기간 -->
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                    <span style="font-size: 28.8px; font-weight: 600; color: #059669; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
-                    <span style="font-size: 12px; font-weight: 400; color: #64748b; flex-shrink: 0;">${escapeHtml(dateRangeText || '')}</span>
+                    <span style="font-size: 28.8px; font-weight: 600; color: #ffffff; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
+                    <span style="font-size: 12px; font-weight: 400; color: #d1fae5; flex-shrink: 0;">${escapeHtml(dateRangeText || '')}</span>
                 </div>
                 <!-- 하단: 밀당(MEAL-DANG)들의 참견 -->
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <span style="font-size: 16px;">${escapeHtml(characterIcon)}</span>
-                    <span style="font-size: 15px; font-weight: 700; color: #1e293b;">밀당(MEAL-DANG)들의 참견</span>
+                    <span style="font-size: 15px; font-weight: 700; color: #ffffff;">밀당(MEAL-DANG)들의 참견</span>
                 </div>
             </div>
             
@@ -1413,6 +1424,59 @@ export async function openShareInsightModal() {
     }
 }
 
+// 밀당 코멘트 공유 수정 모달 열기 (photoUrl로 찾기)
+export async function openEditInsightShareModal(photoUrl) {
+    if (!photoUrl || !window.sharedPhotos) {
+        showToast('밀당 코멘트 공유를 찾을 수 없습니다.', 'error');
+        return;
+    }
+    
+    // window.sharedPhotos에서 해당 photoUrl의 인사이트 공유 찾기
+    const insightShare = window.sharedPhotos.find(photo => 
+        photo.type === 'insight' && 
+        (photo.photoUrl === photoUrl || photo.photoUrl?.includes(photoUrl) || photoUrl?.includes(photo.photoUrl))
+    );
+    
+    if (!insightShare) {
+        showToast('밀당 코멘트 공유를 찾을 수 없습니다.', 'error');
+        return;
+    }
+    
+    const modal = document.getElementById('insightShareModal');
+    const preview = document.getElementById('insightSharePreview');
+    if (!modal || !preview) return;
+    
+    // 기존 이미지 사용
+    const existingImageHtml = insightShare.photoUrl ? `
+        <div id="insightScreenshotContainer" style="width: 448px; max-width: 448px; margin: 0 auto; background: #f8fafc; border-radius: 8px; overflow: hidden; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+            <div style="text-align: center;">
+                <img src="${insightShare.photoUrl}" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" alt="밀당 코멘트 공유 이미지">
+            </div>
+        </div>
+    ` : '<div style="text-align: center; padding: 40px; color: #94a3b8;">이미지를 불러올 수 없습니다.</div>';
+    
+    preview.innerHTML = existingImageHtml;
+    
+    // 모달 열기
+    modal.classList.remove('hidden');
+    
+    // Comment 초기화 또는 기존 코멘트 표시
+    const commentInput = document.getElementById('insightShareComment');
+    if (commentInput) {
+        commentInput.value = insightShare.comment || '';
+    }
+    
+    // 공유 버튼 텍스트 업데이트 (수정 모드)
+    const submitBtn = document.getElementById('insightShareSubmitBtn');
+    if (submitBtn) {
+        submitBtn.textContent = '수정 완료';
+        submitBtn.className = 'w-full py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all';
+        // 수정 모드임을 표시하기 위한 데이터 속성 추가
+        submitBtn.setAttribute('data-edit-mode', 'true');
+        submitBtn.setAttribute('data-photo-url', photoUrl);
+    }
+}
+
 // 밀당 코멘트 공유 모달 닫기
 export function closeShareInsightModal() {
     const modal = document.getElementById('insightShareModal');
@@ -1431,6 +1495,10 @@ export async function shareInsightToFeed() {
     
     const comment = commentInput.value.trim();
     
+    // 수정 모드 확인
+    const isEditMode = submitBtn && submitBtn.getAttribute('data-edit-mode') === 'true';
+    const editPhotoUrl = isEditMode ? submitBtn.getAttribute('data-photo-url') : null;
+    
     // 현재 기간 정보 가져오기
     if (!window.getDashboardData) {
         showToast('대시보드 데이터를 가져올 수 없습니다.', 'error');
@@ -1441,6 +1509,77 @@ export async function shareInsightToFeed() {
     
     // 공유 상태 확인
     const existingShare = await checkInsightShareStatus(dateRangeText);
+    
+    if (isEditMode && editPhotoUrl) {
+        // 수정 모드: 코멘트만 업데이트
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = '수정 중...';
+        }
+        
+        try {
+            // Firestore에서 해당 인사이트 공유 문서 찾아서 업데이트
+            const { collection, query, where, getDocs, updateDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+            const { db: firestoreDb, appId } = await import('../firebase.js');
+            const sharedColl = collection(firestoreDb, 'artifacts', appId, 'sharedPhotos');
+            
+            // photoUrl로 문서 찾기 (유연한 매칭)
+            const q = query(sharedColl, where('userId', '==', window.currentUser.uid), where('type', '==', 'insight'));
+            const querySnapshot = await getDocs(q);
+            
+            let foundDoc = null;
+            for (const docSnap of querySnapshot.docs) {
+                const data = docSnap.data();
+                const docPhotoUrl = data.photoUrl || '';
+                if (docPhotoUrl === editPhotoUrl || docPhotoUrl.includes(editPhotoUrl) || editPhotoUrl.includes(docPhotoUrl)) {
+                    foundDoc = docSnap;
+                    break;
+                }
+            }
+            
+            if (foundDoc) {
+                await updateDoc(doc(sharedColl, foundDoc.id), {
+                    comment: comment
+                });
+                
+                // window.sharedPhotos 업데이트
+                if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+                    const shareIndex = window.sharedPhotos.findIndex(photo => 
+                        photo.type === 'insight' && 
+                        (photo.photoUrl === editPhotoUrl || photo.photoUrl?.includes(editPhotoUrl) || editPhotoUrl?.includes(photo.photoUrl))
+                    );
+                    if (shareIndex !== -1) {
+                        window.sharedPhotos[shareIndex].comment = comment;
+                    }
+                }
+                
+                showToast('밀당 코멘트 공유가 수정되었습니다!', 'success');
+                closeShareInsightModal();
+                
+                // 갤러리/피드 새로고침
+                if (appState.currentTab === 'gallery') {
+                    const { renderGallery } = await import('../render/index.js');
+                    renderGallery();
+                } else if (appState.currentTab === 'feed') {
+                    const { renderFeed } = await import('../render/index.js');
+                    renderFeed();
+                }
+            } else {
+                showToast('밀당 코멘트 공유를 찾을 수 없습니다.', 'error');
+            }
+        } catch (e) {
+            console.error('인사이트 공유 수정 실패:', e);
+            showToast('인사이트 공유 수정 중 오류가 발생했습니다.', 'error');
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '수정 완료';
+                submitBtn.removeAttribute('data-edit-mode');
+                submitBtn.removeAttribute('data-photo-url');
+            }
+        }
+        return;
+    }
     
     if (existingShare) {
         // 이미 공유된 경우: 공유 취소
@@ -1453,6 +1592,9 @@ export async function shareInsightToFeed() {
             await dbOps.unsharePhotos([existingShare.photoUrl], null, false, false);
             showToast('공유가 취소되었습니다.', 'success');
             closeShareInsightModal();
+            
+            // 공유 버튼 상태 업데이트
+            await updateShareButtonStatus();
             
             // 갤러리/피드 새로고침
             if (appState.currentTab === 'gallery') {
@@ -1526,6 +1668,9 @@ export async function shareInsightToFeed() {
         
         showToast('밀당(MEAL-DANG)들의 참견이 피드에 공유되었습니다!', 'success');
         closeShareInsightModal();
+        
+        // 공유 버튼 상태 업데이트
+        await updateShareButtonStatus();
         
         // 갤러리/피드 새로고침
         if (appState.currentTab === 'gallery') {
