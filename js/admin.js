@@ -12,6 +12,147 @@ import { getCurrentTermsVersion, invalidateTermsVersionCache } from './utils-ter
 
 let currentDeletePhotoId = null;
 
+// 사용자 테이블 정렬 상태/캐시
+let usersCache = null; // 마지막으로 로드된 사용자 목록 (정렬 전 원본)
+let usersSortState = { key: 'nickname', dir: 'asc' };
+
+const USERS_SORT_DEFAULT_DIR = {
+    loginMethod: 'asc',
+    email: 'asc',
+    nickname: 'asc',
+    terms: 'desc',
+    timelineCount: 'desc',
+    albumShareCount: 'desc',
+    talkCount: 'desc',
+    userId: 'asc',
+    createdAt: 'desc',
+    lastLoginAt: 'desc'
+};
+
+function normalizeString(v) {
+    return (v === undefined || v === null) ? '' : String(v);
+}
+
+function normalizeNumber(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeDateValue(v) {
+    if (!v) return null;
+    if (v instanceof Date) return v.getTime();
+    if (typeof v === 'string') {
+        const t = new Date(v).getTime();
+        return Number.isFinite(t) ? t : null;
+    }
+    // Firestore Timestamp 대응
+    if (typeof v === 'object' && typeof v.toDate === 'function') {
+        try {
+            return v.toDate().getTime();
+        } catch {
+            return null;
+        }
+    }
+    return null;
+}
+
+function compareWithNullsLast(a, b, dir) {
+    const aNull = a === null || a === undefined || (typeof a === 'number' && !Number.isFinite(a));
+    const bNull = b === null || b === undefined || (typeof b === 'number' && !Number.isFinite(b));
+    if (aNull && bNull) return 0;
+    if (aNull) return 1;
+    if (bNull) return -1;
+    
+    if (typeof a === 'number' && typeof b === 'number') {
+        return dir === 'asc' ? a - b : b - a;
+    }
+    const aStr = normalizeString(a);
+    const bStr = normalizeString(b);
+    const cmp = aStr.localeCompare(bStr, 'ko');
+    return dir === 'asc' ? cmp : -cmp;
+}
+
+function getTermsRank(user, currentVersion) {
+    // 2: 최신 동의, 1: 구버전 동의(재동의 필요), 0: 미동의
+    const agreed = user?.termsAgreed === true;
+    if (!agreed) return 0;
+    if (currentVersion && user?.termsVersion === currentVersion) return 2;
+    return 1;
+}
+
+function sortUsersForTable(users, currentVersion) {
+    const { key, dir } = usersSortState;
+    const sorted = [...users];
+    sorted.sort((a, b) => {
+        let av;
+        let bv;
+        switch (key) {
+            case 'timelineCount':
+            case 'albumShareCount':
+            case 'talkCount':
+                av = normalizeNumber(a?.[key]);
+                bv = normalizeNumber(b?.[key]);
+                return compareWithNullsLast(av, bv, dir);
+            case 'createdAt':
+            case 'lastLoginAt':
+                av = normalizeDateValue(a?.[key]);
+                bv = normalizeDateValue(b?.[key]);
+                return compareWithNullsLast(av, bv, dir);
+            case 'terms':
+                av = getTermsRank(a, currentVersion);
+                bv = getTermsRank(b, currentVersion);
+                return compareWithNullsLast(av, bv, dir);
+            default:
+                av = normalizeString(a?.[key]);
+                bv = normalizeString(b?.[key]);
+                return compareWithNullsLast(av, bv, dir);
+        }
+    });
+    return sorted;
+}
+
+function updateUsersSortHeaderUI() {
+    const buttons = document.querySelectorAll('.admin-users-sort');
+    buttons.forEach(btn => {
+        const key = btn.getAttribute('data-sort-key');
+        const indicator = btn.querySelector('.admin-users-sort-indicator');
+        if (!indicator) return;
+        if (key === usersSortState.key) {
+            indicator.textContent = usersSortState.dir === 'asc' ? '▲' : '▼';
+            indicator.classList.remove('text-slate-400');
+            indicator.classList.add('text-slate-700');
+        } else {
+            indicator.textContent = '↕';
+            indicator.classList.remove('text-slate-700');
+            indicator.classList.add('text-slate-400');
+        }
+    });
+}
+
+function initUsersSortHandlers() {
+    const buttons = document.querySelectorAll('.admin-users-sort');
+    if (!buttons || buttons.length === 0) return;
+    
+    buttons.forEach(btn => {
+        if (btn.dataset.sortBound === '1') return;
+        btn.dataset.sortBound = '1';
+        btn.addEventListener('click', () => {
+            const key = btn.getAttribute('data-sort-key');
+            if (!key) return;
+            if (usersSortState.key === key) {
+                usersSortState.dir = usersSortState.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                usersSortState.key = key;
+                usersSortState.dir = USERS_SORT_DEFAULT_DIR[key] || 'asc';
+            }
+            updateUsersSortHeaderUI();
+            // 캐시를 재정렬하여 즉시 반영 (재조회 없음)
+            renderUsers({ useCacheOnly: true });
+        });
+    });
+    updateUsersSortHeaderUI();
+}
+
 // ADMIN 권한 확인
 async function checkAdminStatus(userId) {
     if (!userId) {
@@ -1711,13 +1852,6 @@ async function getUsers() {
 
         console.log('✅ 사용자 목록 생성 완료:', users.length, '명');
 
-        // 닉네임으로 정렬
-        users.sort((a, b) => {
-            if (a.nickname < b.nickname) return -1;
-            if (a.nickname > b.nickname) return 1;
-            return 0;
-        });
-
         return users;
     } catch (e) {
         console.error("Get users error:", e);
@@ -1727,7 +1861,7 @@ async function getUsers() {
 }
 
 // 사용자 목록 렌더링
-async function renderUsers() {
+async function renderUsers(options = {}) {
     const container = document.getElementById('usersContainer');
     if (!container) {
         console.error('usersContainer를 찾을 수 없습니다.');
@@ -1738,7 +1872,19 @@ async function renderUsers() {
     
     try {
         console.log('renderUsers 시작');
-        const users = await getUsers();
+        // 헤더 정렬 핸들러는 한 번만 바인딩
+        initUsersSortHandlers();
+        
+        let users;
+        const useCacheOnly = options?.useCacheOnly === true;
+        if (usersCache && Array.isArray(usersCache)) {
+            users = usersCache;
+        } else if (useCacheOnly) {
+            users = [];
+        } else {
+            users = await getUsers();
+            usersCache = users;
+        }
         console.log('getUsers 결과:', users);
         
         if (users.length === 0) {
@@ -1750,8 +1896,12 @@ async function renderUsers() {
         // 최신 약관 버전 가져오기
         const currentVersion = await getCurrentTermsVersion();
         
-        console.log(`${users.length}명의 사용자를 렌더링합니다.`);
-        container.innerHTML = users.map(user => {
+        // 정렬 적용
+        const sortedUsers = sortUsersForTable(users, currentVersion);
+        updateUsersSortHeaderUI();
+        
+        console.log(`${sortedUsers.length}명의 사용자를 렌더링합니다.`);
+        container.innerHTML = sortedUsers.map(user => {
             // 약관 동의 상태 확인: termsAgreed가 true이고 termsVersion이 최신 버전과 일치해야 함
             const hasAgreedToLatest = user.termsAgreed && user.termsVersion === currentVersion;
             const hasAgreedToOld = user.termsAgreed && user.termsVersion !== currentVersion;
@@ -1849,6 +1999,7 @@ async function renderUsers() {
 
 // 사용자 목록 새로고침
 window.refreshUsers = function() {
+    usersCache = null;
     renderUsers();
 }
 
