@@ -357,15 +357,28 @@ export function openModal(date, slotId, entryId = null) {
                         }
                     }
                     
-                    // 메뉴 상세 (menuDetail) - sub-chip
+                    // 메뉴 상세 (menuDetail) - sub-chip (다중 선택 가능, 쉼표로 구분)
                     if (r.menuDetail) {
                         const menuSuggestions = document.getElementById('menuSuggestions');
-                        if (menuSuggestions) {
+                        const menuDetailInput = document.getElementById('menuDetailInput');
+                        if (menuSuggestions && menuDetailInput) {
+                            // 쉼표로 구분된 여러 값 처리
+                            const detailValues = r.menuDetail.split(',').map(v => v.trim()).filter(v => v);
+                            const activeValues = [];
                             menuSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
-                                if (ch.innerText.trim() === r.menuDetail.trim()) {
+                                const chipText = ch.innerText.trim();
+                                if (detailValues.includes(chipText)) {
                                     ch.classList.add('active');
+                                    activeValues.push(chipText);
                                 }
                             });
+                            // input에 선택된 값들 저장
+                            if (activeValues.length > 0) {
+                                menuDetailInput.value = activeValues.join(', ');
+                            } else {
+                                // 자주 사용한 태그에 없는 경우 입력값 그대로 표시
+                                menuDetailInput.value = r.menuDetail;
+                            }
                         }
                     }
                     
@@ -585,9 +598,15 @@ export async function saveEntry() {
             newSettings.subTags.place.push({ text: placeInputVal, parent: mealType });
             tagsChanged = true;
         }
-        if (menuInputVal && !newSettings.subTags.menu.find(t => (t.text || t) === menuInputVal)) {
-            newSettings.subTags.menu.push({ text: menuInputVal, parent: getT('categoryChips') });
-            tagsChanged = true;
+        // 메뉴 상세 태그는 다중 선택 가능 (쉼표로 구분)
+        if (menuInputVal) {
+            const menuValues = menuInputVal.split(',').map(v => v.trim()).filter(v => v);
+            menuValues.forEach(val => {
+                if (!newSettings.subTags.menu.find(t => (t.text || t) === val)) {
+                    newSettings.subTags.menu.push({ text: val, parent: getT('categoryChips') });
+                    tagsChanged = true;
+                }
+            });
         }
         // 함께한 사람 상세 태그는 다중 선택 가능 (쉼표로 구분)
         if (withInputVal) {
@@ -1177,6 +1196,10 @@ export function openSettings() {
     const state = appState;
     if (!window.currentUser) return;
     
+    // 편집 취소를 위한 스냅샷 보관
+    state._profileSettingsSnapshot = JSON.parse(JSON.stringify(window.userSettings || {}));
+    state.isProfileEditing = false;
+
     state.tempSettings = JSON.parse(JSON.stringify(window.userSettings));
     
     const ic = document.getElementById('iconSelector');
@@ -1186,35 +1209,13 @@ export function openSettings() {
         ).join('');
     }
     
-    // 프로필 타입 초기화
-    const profileType = state.tempSettings.profile.photoUrl ? 'photo' : 'emoji';
+    // 프로필 타입 초기화 (text | emoji | photo)
+    const inferredType =
+        state.tempSettings?.profile?.photoUrl ? 'photo' :
+        (state.tempSettings?.profile?.icon ? 'emoji' : 'text');
+    const profileType = state.tempSettings?.profile?.iconType || inferredType;
     window.settingsProfileType = profileType;
-    
-    // 프로필 타입 버튼 초기화
-    const emojiBtn = document.getElementById('profileTypeEmoji');
-    const photoBtn = document.getElementById('profileTypePhoto');
-    const emojiSection = document.getElementById('emojiSection');
-    const photoSection = document.getElementById('photoSection');
-    
-    if (profileType === 'emoji') {
-        if (emojiBtn) {
-            emojiBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
-        }
-        if (photoBtn) {
-            photoBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
-        }
-        if (emojiSection) emojiSection.classList.remove('hidden');
-        if (photoSection) photoSection.classList.add('hidden');
-    } else {
-        if (emojiBtn) {
-            emojiBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
-        }
-        if (photoBtn) {
-            photoBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
-        }
-        if (emojiSection) emojiSection.classList.add('hidden');
-        if (photoSection) photoSection.classList.remove('hidden');
-    }
+    setSettingsProfileType(profileType);
     
     // 사진 미리보기 설정
     const photoPreview = document.getElementById('photoPreview');
@@ -1228,8 +1229,47 @@ export function openSettings() {
         photoPreview.style.backgroundImage = '';
     }
     
-    document.getElementById('settingNickname').value = state.tempSettings.profile.nickname || '';
+    const nicknameInput = document.getElementById('settingNickname');
+    if (nicknameInput) {
+        nicknameInput.value = state.tempSettings.profile.nickname || '';
+        // 닉네임 입력 시 텍스트 미리보기 즉시 반영 (중복 리스너 방지)
+        nicknameInput.removeEventListener('input', nicknameInput._profileNicknameHandler);
+        nicknameInput._profileNicknameHandler = () => {
+            if (window.settingsProfileType === 'text') {
+                setSettingsProfileType('text');
+            }
+        };
+        nicknameInput.addEventListener('input', nicknameInput._profileNicknameHandler);
+    }
     const bioInput = document.getElementById('settingBio');
+    // 생년월일 / 라이프스타일 초기화
+    const birthdateInput = document.getElementById('settingBirthdate');
+    if (birthdateInput) {
+        birthdateInput.value = state.tempSettings?.profile?.birthdate || '';
+    }
+    const lifestyleInput = document.getElementById('settingLifestyle');
+    if (lifestyleInput) {
+        lifestyleInput.value = state.tempSettings?.profile?.lifestyle || '';
+    }
+    // 라이프스타일 버튼 선택 상태 복원
+    const selectedLifestyle = (state.tempSettings?.profile?.lifestyle || '').trim();
+    document.querySelectorAll('.settings-lifestyle-btn').forEach(btn => {
+        const v = btn.getAttribute('data-value') || '';
+        const active = v === selectedLifestyle;
+        btn.classList.toggle('bg-emerald-600', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('border-emerald-600', active);
+        btn.classList.toggle('bg-white', !active);
+        btn.classList.toggle('text-slate-600', !active);
+        btn.classList.toggle('border-slate-200', !active);
+    });
+
+    // 생년월일 힌트 업데이트 (이미 1회 수정했으면 안내)
+    const birthdateHint = document.getElementById('birthdateHint');
+    const changeCount = Number(state.tempSettings?.profile?.birthdateChangeCount || 0);
+    if (birthdateHint) {
+        birthdateHint.textContent = changeCount >= 1 ? '이미 1회 수정 완료 (추가 변경 불가)' : '가입 후 1회만 수정 가능';
+    }
     if (bioInput) {
         bioInput.value = state.tempSettings.profile.bio || '';
         const bioCharCount = document.getElementById('bioCharCount');
@@ -1287,6 +1327,9 @@ export function openSettings() {
     
     // 기본 탭을 프로필로 설정
     switchSettingsTab('profile');
+    
+    // 최초 진입은 '보기' 모드로 (수정 버튼을 눌러야 편집 가능)
+    setProfileSettingsEditMode(false);
         
         const accountSection = document.getElementById('accountSection');
     if (accountSection) {
@@ -1467,38 +1510,166 @@ export function switchSettingsTab(tab) {
     }
 }
 
+function setProfileSettingsEditMode(isEditing) {
+    const state = appState;
+    state.isProfileEditing = !!isEditing;
+
+    const editBtn = document.getElementById('editProfileSettingsBtn');
+    const cancelBtn = document.getElementById('cancelProfileSettingsBtn');
+    const saveBtn = document.getElementById('saveProfileSettingsBtn');
+    if (editBtn) editBtn.classList.toggle('hidden', isEditing);
+    if (cancelBtn) cancelBtn.classList.toggle('hidden', !isEditing);
+    if (saveBtn) saveBtn.classList.toggle('hidden', !isEditing);
+
+    const nicknameInput = document.getElementById('settingNickname');
+    const bioInput = document.getElementById('settingBio');
+    const birthdateInput = document.getElementById('settingBirthdate');
+    const lifestyleInput = document.getElementById('settingLifestyle');
+    if (nicknameInput) nicknameInput.disabled = !isEditing;
+    if (bioInput) bioInput.disabled = !isEditing;
+    if (birthdateInput) birthdateInput.disabled = !isEditing;
+    if (lifestyleInput) lifestyleInput.disabled = !isEditing;
+
+    // 탭 버튼 및 선택 UI 비활성화
+    const textBtn = document.getElementById('profileTypeText');
+    const emojiBtn = document.getElementById('profileTypeEmoji');
+    const photoBtn = document.getElementById('profileTypePhoto');
+    [textBtn, emojiBtn, photoBtn].forEach(btn => {
+        if (!btn) return;
+        btn.disabled = !isEditing;
+        btn.classList.toggle('opacity-60', !isEditing);
+        btn.classList.toggle('cursor-not-allowed', !isEditing);
+    });
+
+    const iconSelector = document.getElementById('iconSelector');
+    if (iconSelector) {
+        iconSelector.classList.toggle('pointer-events-none', !isEditing);
+        iconSelector.classList.toggle('opacity-60', !isEditing);
+    }
+
+    const photoSelectBtn = document.getElementById('photoSelectBtn');
+    if (photoSelectBtn) {
+        photoSelectBtn.disabled = !isEditing;
+        photoSelectBtn.classList.toggle('opacity-60', !isEditing);
+        photoSelectBtn.classList.toggle('cursor-not-allowed', !isEditing);
+    }
+
+    // 라이프스타일 버튼 비활성화
+    document.querySelectorAll('.settings-lifestyle-btn').forEach(btn => {
+        btn.disabled = !isEditing;
+        btn.classList.toggle('opacity-60', !isEditing);
+        btn.classList.toggle('cursor-not-allowed', !isEditing);
+    });
+}
+
+window.startProfileSettingsEdit = () => setProfileSettingsEditMode(true);
+
+window.cancelProfileSettingsEdit = () => {
+    const state = appState;
+    // snapshot으로 원복
+    if (state._profileSettingsSnapshot) {
+        state.tempSettings = JSON.parse(JSON.stringify(state._profileSettingsSnapshot));
+        window.userSettings = JSON.parse(JSON.stringify(state._profileSettingsSnapshot));
+    }
+
+    // 편집 중 선택한 사진(미저장) 상태 초기화
+    window.settingsPhotoFile = null;
+    window.settingsPhotoUrl = null;
+    const photoInput = document.getElementById('photoInput');
+    if (photoInput) photoInput.value = '';
+
+    // UI 재적용
+    const inferredType =
+        state.tempSettings?.profile?.photoUrl ? 'photo' :
+        (state.tempSettings?.profile?.icon ? 'emoji' : 'text');
+    const profileType = state.tempSettings?.profile?.iconType || inferredType;
+    window.settingsProfileType = profileType;
+    setSettingsProfileType(profileType);
+
+    const nicknameInput = document.getElementById('settingNickname');
+    if (nicknameInput) nicknameInput.value = state.tempSettings?.profile?.nickname || '';
+    const bioInput = document.getElementById('settingBio');
+    if (bioInput) bioInput.value = state.tempSettings?.profile?.bio || '';
+
+    const photoPreview = document.getElementById('photoPreview');
+    if (photoPreview && state.tempSettings?.profile?.photoUrl) {
+        photoPreview.style.backgroundImage = `url(${state.tempSettings.profile.photoUrl})`;
+        photoPreview.style.backgroundSize = 'cover';
+        photoPreview.style.backgroundPosition = 'center';
+        photoPreview.innerHTML = '';
+    } else if (photoPreview) {
+        photoPreview.innerHTML = '<i class="fa-solid fa-camera text-slate-400 text-xl"></i>';
+        photoPreview.style.backgroundImage = '';
+    }
+
+    const emojiPreview = document.getElementById('emojiPreview');
+    if (emojiPreview) emojiPreview.textContent = state.tempSettings?.profile?.icon || '🐻';
+
+    setProfileSettingsEditMode(false);
+};
+
 // 설정 페이지 프로필 타입 설정
 export function setSettingsProfileType(type) {
     window.settingsProfileType = type;
     
+    // tempSettings에도 iconType 반영 (취소/저장에 사용)
+    if (appState?.tempSettings?.profile) {
+        appState.tempSettings.profile.iconType = type;
+    }
+    
+    const textBtn = document.getElementById('profileTypeText');
     const emojiBtn = document.getElementById('profileTypeEmoji');
     const photoBtn = document.getElementById('profileTypePhoto');
+    const textSection = document.getElementById('textSection');
     const emojiSection = document.getElementById('emojiSection');
     const photoSection = document.getElementById('photoSection');
     
-    if (type === 'emoji') {
-        if (emojiBtn) {
-            emojiBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
-        }
-        if (photoBtn) {
-            photoBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
-        }
-        if (emojiSection) emojiSection.classList.remove('hidden');
-        if (photoSection) photoSection.classList.add('hidden');
-    } else {
-        if (emojiBtn) {
-            emojiBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
-        }
-        if (photoBtn) {
-            photoBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
-        }
-        if (emojiSection) emojiSection.classList.add('hidden');
-        if (photoSection) photoSection.classList.remove('hidden');
+    const setActive = (btn, active) => {
+        if (!btn) return;
+        // index.html의 컴팩트 탭 UI와 동일한 스펙으로 유지 (클래스 덮어쓰기 방지)
+        btn.className = active
+            ? 'flex-1 h-6 bg-emerald-600 text-white rounded-xl text-[12px] font-bold leading-none active:bg-emerald-700 transition-colors'
+            : 'flex-1 h-6 bg-transparent text-slate-600 rounded-xl text-[12px] font-bold leading-none active:bg-slate-200 transition-colors';
+    };
+
+    setActive(textBtn, type === 'text');
+    setActive(emojiBtn, type === 'emoji');
+    setActive(photoBtn, type === 'photo');
+
+    if (textSection) textSection.classList.toggle('hidden', type !== 'text');
+    if (emojiSection) emojiSection.classList.toggle('hidden', type !== 'emoji');
+    if (photoSection) photoSection.classList.toggle('hidden', type !== 'photo');
+
+    // 텍스트 미리보기 업데이트
+    const textPreview = document.getElementById('textPreview');
+    const nicknameVal = (
+        document.getElementById('settingNickname')?.value ||
+        appState?.tempSettings?.profile?.nickname ||
+        window.userSettings?.profile?.nickname ||
+        ''
+    ).trim();
+    if (textPreview) {
+        const initial = Array.from(nicknameVal || '?')[0] || '?';
+        textPreview.textContent = initial;
+    }
+
+    // 이모지 미리보기 업데이트
+    const emojiPreview = document.getElementById('emojiPreview');
+    if (emojiPreview) {
+        emojiPreview.textContent = appState?.tempSettings?.profile?.icon || window.userSettings?.profile?.icon || '🐻';
     }
 }
 
-// 설정 페이지 사진 업로드 처리
+// 전역 노출 (탭 클릭용)
+window.setSettingsProfileType = setSettingsProfileType;
+
+// 설정 페이지 사진 업로드 처리 (선택 → 편집 모달 → 저장 시 미리보기 반영)
 export async function handlePhotoUpload(event) {
+    if (!appState.isProfileEditing) {
+        showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+        if (event?.target) event.target.value = '';
+        return;
+    }
     const file = event.target.files[0];
     if (!file) return;
     
@@ -1508,26 +1679,19 @@ export async function handlePhotoUpload(event) {
     }
     
     try {
-        // 이미지 압축 및 미리보기
         const { compressImageToBlob } = await import('./utils.js');
         const compressedBlob = await compressImageToBlob(file);
         const photoUrl = URL.createObjectURL(compressedBlob);
         
-        window.settingsPhotoUrl = photoUrl;
-        window.settingsPhotoFile = compressedBlob;
-        
-        // 사진을 선택하면 자동으로 프로필 타입을 'photo'로 변경
         if (window.settingsProfileType !== 'photo') {
             setSettingsProfileType('photo');
         }
         
-        // 미리보기 업데이트
-        const photoPreview = document.getElementById('photoPreview');
-        if (photoPreview) {
-            photoPreview.style.backgroundImage = `url(${photoUrl})`;
-            photoPreview.style.backgroundSize = 'cover';
-            photoPreview.style.backgroundPosition = 'center';
-            photoPreview.innerHTML = '';
+        if (typeof window.openProfilePhotoEdit === 'function') {
+            window.openProfilePhotoEdit(photoUrl);
+        } else {
+            showToast("사진 편집 기능을 불러올 수 없습니다.", "error");
+            URL.revokeObjectURL(photoUrl);
         }
     } catch (e) {
         console.error("사진 업로드 처리 실패:", e);
@@ -1538,43 +1702,129 @@ export async function handlePhotoUpload(event) {
 export async function saveProfileSettings() {
     const state = appState;
     try {
-        state.tempSettings.profile.nickname = document.getElementById('settingNickname').value;
-        state.tempSettings.profile.bio = document.getElementById('settingBio').value.trim() || '';
+        if (!state.isProfileEditing) {
+            showToast("수정 버튼을 누른 뒤 저장할 수 있습니다.", "info");
+            return;
+        }
+        // 생년월일 / 라이프스타일
+        const newBirthdate = (document.getElementById('settingBirthdate')?.value || '').trim();
+        const newLifestyle = (document.getElementById('settingLifestyle')?.value || '').trim();
+        if (!newBirthdate) {
+            showToast("생년월일을 입력해주세요.", "error");
+            return;
+        }
+        if (!newLifestyle) {
+            showToast("라이프 스타일을 선택해주세요.", "error");
+            return;
+        }
+
+        const newNickname = (document.getElementById('settingNickname')?.value || '').trim();
+        const existingNickname = (window.userSettings?.profile?.nickname || '').trim();
+        const nicknameChanged = newNickname !== existingNickname;
         
-        // 프로필 타입에 따라 icon 또는 photoUrl 저장
-        // 사진 파일이 있으면 무조건 사진으로 저장
-        if (window.settingsPhotoFile) {
-            // 사진을 Firebase Storage에 업로드 (기존 Storage 규칙에 맞는 경로 사용)
-            const { storage } = await import('./firebase.js');
-            const { ref, uploadBytes, getDownloadURL } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js");
-            const timestamp = Date.now();
-            const fileName = `photo_${timestamp}.jpg`;
-            const photoRef = ref(storage, `users/${window.currentUser.uid}/profile/${fileName}`);
-            
-            await uploadBytes(photoRef, window.settingsPhotoFile);
-            const photoUrl = await getDownloadURL(photoRef);
-            
-            state.tempSettings.profile.photoUrl = photoUrl;
-            state.tempSettings.profile.icon = null; // 이모지 제거
-            
-            // 업로드 후 변수 초기화
+        if (nicknameChanged) {
+            if (!newNickname) {
+                showToast("닉네임을 입력해주세요.", "error");
+                return;
+            }
+            if (newNickname.length > 20) {
+                showToast("닉네임은 20자 이하로 입력해주세요.", "error");
+                return;
+            }
+            const { containsProfanity, isNicknameDuplicate, canChangeNickname, updateNicknameChangeDate } = await import('./utils/nickname.js');
+            if (containsProfanity(newNickname)) {
+                showToast("사용할 수 없는 닉네임입니다. 다른 닉네임을 입력해주세요.", "error");
+                return;
+            }
+            const duplicate = await isNicknameDuplicate(newNickname, window.currentUser?.uid || null);
+            if (duplicate) {
+                showToast("이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.", "error");
+                return;
+            }
+            const { canChange, daysUntilNextChange } = await canChangeNickname(window.currentUser?.uid || null);
+            if (!canChange) {
+                showToast(`닉네임은 한 달에 한 번만 변경할 수 있습니다. ${daysUntilNextChange}일 후에 다시 시도해주세요.`, "error");
+                return;
+            }
+        }
+        
+        state.tempSettings.profile.nickname = newNickname || existingNickname || '게스트';
+        state.tempSettings.profile.bio = document.getElementById('settingBio').value.trim() || '';
+
+        // 생년월일 변경 1회 제한
+        const existingBirthdate = (window.userSettings?.profile?.birthdate || '').trim();
+        const existingCount = Number(window.userSettings?.profile?.birthdateChangeCount || 0);
+        const isBirthdateChanged = existingBirthdate && newBirthdate && existingBirthdate !== newBirthdate;
+        if (isBirthdateChanged) {
+            if (existingCount >= 1) {
+                showToast("생년월일은 가입 후 1회만 변경할 수 있습니다.", "error");
+                return;
+            }
+            state.tempSettings.profile.birthdateChangeCount = existingCount + 1;
+            state.tempSettings.profile.birthdateChangedAt = new Date().toISOString();
+        } else {
+            // 기존 값 유지 (또는 최초 설정이면 0 유지)
+            state.tempSettings.profile.birthdateChangeCount = Number(state.tempSettings.profile.birthdateChangeCount || existingCount || 0);
+            state.tempSettings.profile.birthdateChangedAt = state.tempSettings.profile.birthdateChangedAt || window.userSettings?.profile?.birthdateChangedAt || null;
+        }
+        state.tempSettings.profile.birthdate = newBirthdate;
+        state.tempSettings.profile.lifestyle = newLifestyle;
+        
+        // 프로필 완료 플래그: 닉네임이 실제 값이면 완료로 처리
+        const finalNickname = (state.tempSettings.profile.nickname || '').trim();
+        if (finalNickname && finalNickname !== '게스트') {
+            state.tempSettings.profileCompleted = true;
+            state.tempSettings.profileCompletedAt = state.tempSettings.profileCompletedAt || new Date().toISOString();
+        }
+        
+        // 아이콘 타입 저장 (text | emoji | photo)
+        state.tempSettings.profile.iconType = window.settingsProfileType || 'text';
+
+        // 프로필 타입에 따라 icon/photoUrl 저장
+        if (window.settingsProfileType === 'photo') {
+            // 사진 파일이 있으면 업로드, 없으면 기존 photoUrl 유지
+            if (window.settingsPhotoFile) {
+                const { storage } = await import('./firebase.js');
+                const { ref, uploadBytes, getDownloadURL } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js");
+                const timestamp = Date.now();
+                const fileName = `photo_${timestamp}.jpg`;
+                const photoRef = ref(storage, `users/${window.currentUser.uid}/profile/${fileName}`);
+                
+                await uploadBytes(photoRef, window.settingsPhotoFile);
+                const photoUrl = await getDownloadURL(photoRef);
+                
+                state.tempSettings.profile.photoUrl = photoUrl;
+                // 업로드 후 변수 초기화
+                window.settingsPhotoFile = null;
+                window.settingsPhotoUrl = null;
+            }
+            state.tempSettings.profile.icon = null;
+        } else if (window.settingsProfileType === 'emoji') {
+            state.tempSettings.profile.icon = state.tempSettings.profile.icon || '🐻';
+            state.tempSettings.profile.photoUrl = null;
             window.settingsPhotoFile = null;
             window.settingsPhotoUrl = null;
-        } else if (window.settingsProfileType === 'photo' && state.tempSettings.profile.photoUrl) {
-            // 사진 파일은 없지만 기존에 사진이 있는 경우 유지
-            // icon은 null로 유지
-            state.tempSettings.profile.icon = null;
         } else {
-            // 이모지 선택 시 icon만 저장
-            state.tempSettings.profile.icon = state.tempSettings.profile.icon || '🐻';
-            state.tempSettings.profile.photoUrl = null; // 사진 URL 제거
+            // text: 닉네임 첫 글자 표시 (저장은 nickname만으로 충분)
+            state.tempSettings.profile.icon = null;
+            state.tempSettings.profile.photoUrl = null;
+            window.settingsPhotoFile = null;
+            window.settingsPhotoUrl = null;
         }
         
         await dbOps.saveSettings(state.tempSettings);
+        if (nicknameChanged && window.currentUser?.uid) {
+            const { updateNicknameChangeDate } = await import('./utils/nickname.js');
+            await updateNicknameChangeDate(window.currentUser.uid);
+        }
         showToast("설정이 저장되었습니다.", 'success');
         
         // 헤더 업데이트
         updateHeaderUI();
+
+        // 저장 후 보기 모드로 전환 및 스냅샷 갱신
+        state._profileSettingsSnapshot = JSON.parse(JSON.stringify(state.tempSettings));
+        setProfileSettingsEditMode(false);
     } catch (e) {
         console.error('프로필 저장 실패:', e);
         showToast("설정 저장 중 오류가 발생했습니다: " + (e.message || e), 'error');
@@ -1588,8 +1838,14 @@ export async function saveSettings() {
 
 export function selectIcon(i) {
     const state = appState;
+    if (!state.isProfileEditing) {
+        showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+        return;
+    }
     state.tempSettings.profile.icon = i;
     document.querySelectorAll('.icon-option').forEach(el => el.classList.toggle('selected', el.innerText === i));
+    const emojiPreview = document.getElementById('emojiPreview');
+    if (emojiPreview) emojiPreview.textContent = i;
 }
 
 export function addTag(k, isSub) {

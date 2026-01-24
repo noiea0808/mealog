@@ -235,6 +235,11 @@ export function closeDomainModal() {
 export async function switchToLogin() {
     // 게스트 모드에서 로그인 페이지로 전환
     try {
+        // Firestore 리스너가 살아있으면 signOut 시점에 permission-denied가 연쇄로 발생할 수 있으므로 선제 해제
+        if (typeof window.cleanupFirestoreListeners === 'function') {
+            window.cleanupFirestoreListeners();
+        }
+
         // 설정 페이지 닫기
         const settingsPage = document.getElementById('settingsPage');
         if (settingsPage) {
@@ -440,6 +445,19 @@ export function showProfileSetupModal() {
         if (nicknameInput) {
             nicknameInput.value = '';
         }
+        const birthdateInput = document.getElementById('setupBirthdate');
+        if (birthdateInput) {
+            birthdateInput.value = '';
+        }
+        const lifestyleSelect = document.getElementById('setupLifestyle');
+        if (lifestyleSelect) {
+            lifestyleSelect.value = '';
+        }
+        // 버튼 선택 상태 초기화
+        document.querySelectorAll('.setup-lifestyle-btn').forEach(btn => {
+            btn.classList.remove('bg-emerald-600', 'text-white', 'border-emerald-600');
+            btn.classList.add('bg-slate-50', 'text-slate-600', 'border-slate-200');
+        });
     }
 }
 
@@ -547,6 +565,9 @@ export async function handleSetupPhotoUpload(event) {
 export async function confirmProfileSetup() {
     const nicknameInput = document.getElementById('setupNickname');
     const nickname = nicknameInput?.value.trim() || '';
+
+    const birthdate = (document.getElementById('setupBirthdate')?.value || '').trim();
+    const lifestyle = (document.getElementById('setupLifestyle')?.value || '').trim();
     
     if (!nickname) {
         showToast("닉네임을 입력해주세요.", "error");
@@ -558,15 +579,45 @@ export async function confirmProfileSetup() {
         return;
     }
     
+    const { containsProfanity, isNicknameDuplicate } = await import('./utils/nickname.js');
+    if (containsProfanity(nickname)) {
+        showToast("사용할 수 없는 닉네임입니다. 다른 닉네임을 입력해주세요.", "error");
+        return;
+    }
+    
+    const duplicate = await isNicknameDuplicate(nickname, auth.currentUser?.uid || null);
+    if (duplicate) {
+        showToast("이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.", "error");
+        return;
+    }
+
+    if (!birthdate) {
+        showToast("생년월일을 입력해주세요.", "error");
+        return;
+    }
+
+    if (!lifestyle) {
+        showToast("라이프 스타일을 선택해주세요.", "error");
+        return;
+    }
+    
     try {
         if (!window.userSettings) {
             window.userSettings = { ...DEFAULT_USER_SETTINGS };
         }
         
         window.userSettings.profile.nickname = nickname;
-        // 기본 아이콘 설정
-        window.userSettings.profile.icon = '🐻';
+        window.userSettings.profile.birthdate = birthdate;
+        window.userSettings.profile.lifestyle = lifestyle;
+        window.userSettings.profile.birthdateChangeCount = 0;
+        window.userSettings.profile.birthdateChangedAt = null;
+        // 초기 가입은 아이콘 설정 없이 텍스트(닉네임 첫 글자) 기본
+        window.userSettings.profile.iconType = 'text';
+        window.userSettings.profile.icon = null;
         window.userSettings.profile.photoUrl = null;
+        // 프로필 완료 플래그 저장 (닉네임 문자열에 의존하지 않기 위함)
+        window.userSettings.profileCompleted = true;
+        window.userSettings.profileCompletedAt = new Date().toISOString();
         
         // providerId와 email을 현재 사용자 정보로 설정 (없을 때만, 또는 같은 providerId일 때만)
         try {

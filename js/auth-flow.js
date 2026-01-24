@@ -35,8 +35,8 @@ class UserReadiness {
     
     get nextStep() {
         if (!this.termsAgreed) return AuthState.NEEDS_TERMS;
-        // 신규 사용자만 프로필 설정 필요
-        if (!this.hasProfile && !this.isExistingUser) return AuthState.NEEDS_PROFILE;
+        // 프로필이 완료되지 않았으면 항상 프로필 설정으로 (닉네임 문자열 의존 제거)
+        if (!this.hasProfile) return AuthState.NEEDS_PROFILE;
         // 사용자 가이드는 삭제했으므로 프로필 설정 후 바로 완료
         return AuthState.READY;
     }
@@ -149,13 +149,21 @@ export class AuthFlowManager {
             userSettingsTermsAgreed: this.userSettings.termsAgreed
         });
         
-        // 프로필 확인
-        readiness.hasProfile = !!(
-            this.userSettings.profile &&
-            this.userSettings.profile.nickname &&
-            this.userSettings.profile.nickname !== '게스트' &&
-            this.userSettings.profile.nickname.trim() !== ''
-        );
+        // 프로필 확인: profileCompleted 플래그를 1차 기준으로 사용
+        // (구버전 데이터 호환을 위해, 플래그가 없으면 기존 닉네임 기준으로만 임시 판단)
+        if (this.userSettings.profileCompleted === true) {
+            readiness.hasProfile = true;
+        } else if (this.userSettings.profileCompleted === false) {
+            readiness.hasProfile = false;
+        } else {
+            // legacy fallback
+            readiness.hasProfile = !!(
+                this.userSettings.profile &&
+                this.userSettings.profile.nickname &&
+                this.userSettings.profile.nickname !== '게스트' &&
+                this.userSettings.profile.nickname.trim() !== ''
+            );
+        }
         
         // 기존 사용자 확인
         try {
@@ -219,6 +227,9 @@ export class AuthFlowManager {
             if (landingPage) {
                 landingPage.style.display = 'none';
             }
+            // ✅ 초기 진입에서도 타임라인 렌더가 되도록 탭을 명시적으로 세팅
+            const switchMainTab = window.switchMainTab;
+            if (switchMainTab) switchMainTab('timeline');
             this.hasCompleted = true;
             this.lastProcessedUserId = user?.uid;
             hideLoading();
@@ -287,6 +298,8 @@ export class AuthFlowManager {
                         } else {
                             switchScreen(false);
                             showTermsModal();
+                            // 모달이 뜨면 로딩 오버레이는 내려야 함 (무한 스피너 방지)
+                            hideLoading();
                         }
                     }
                     break;
@@ -300,6 +313,8 @@ export class AuthFlowManager {
                         const { showProfileSetupModal } = await import('./auth.js');
                         showProfileSetupModal();
                     }
+                    // 모달이 뜨면 로딩 오버레이는 내려야 함 (무한 스피너 방지)
+                    hideLoading();
                     break;
                     
                 case AuthState.READY:
@@ -338,8 +353,13 @@ export class AuthFlowManager {
             throw error; // 에러를 다시 던져서 호출자가 처리할 수 있도록
         } finally {
             this.isProcessing = false;
-            // READY나 GUEST 상태가 아니면 로딩 오버레이는 유지 (모달이 표시되므로)
-            if (this.currentState === AuthState.READY || this.currentState === AuthState.GUEST) {
+            // 모달/화면 전환이 끝났으면 로딩 오버레이는 내려야 함
+            if (
+                this.currentState === AuthState.READY ||
+                this.currentState === AuthState.GUEST ||
+                this.currentState === AuthState.NEEDS_TERMS ||
+                this.currentState === AuthState.NEEDS_PROFILE
+            ) {
                 hideLoading();
             }
         }

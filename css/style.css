@@ -273,8 +273,7 @@ header .mealog-title {
 }
 .timeline-search-wrapper.expanded .timeline-search-panel {
     justify-content: flex-start;
-    /* 상한 170px, MEALOG 안 겹치게 (100vw-300) 이내 */
-    width: max(6rem, min(170px, calc(100vw - 300px)));
+    /* JS로 타이틀 오른쪽 + 20px 거리까지 확장 (updateTimelineSearchExpandWidth) */
     padding-left: 0.75rem;
 }
 .photo-remove-btn { 
@@ -677,18 +676,18 @@ header .mealog-title {
 .board-category-btn {
     padding: 0.375rem 0.75rem;
     font-weight: 600;
-    background-color: #f8fafc !important;
-    color: #64748b !important;
+    background-color: #ffffff !important;
+    color: #334155 !important;
     border: 1px solid #e2e8f0;
 }
 .board-category-btn:hover:not(.active) {
-    background-color: #f1f5f9 !important;
-    color: #475569 !important;
+    background-color: #f8fafc !important;
+    color: #0f172a !important;
 }
 .board-category-btn.active {
-    background-color: #ecfdf5 !important;
-    color: #059669 !important;
-    border-color: #a7f3d0 !important;
+    background-color: #000000 !important;
+    color: #ffffff !important;
+    border-color: #000000 !important;
 }
 
 #board-sort-latest.active,

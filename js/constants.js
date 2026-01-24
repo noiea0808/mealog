@@ -33,7 +33,23 @@ export const SATIETY_DATA = [
 export const CURRENT_TERMS_VERSION = '1.0';
 
 export const DEFAULT_USER_SETTINGS = {
-    profile: { icon: '🐻', nickname: '게스트', bio: '' },
+    profile: {
+        // iconType: 'text' | 'emoji' | 'photo'
+        iconType: 'text',
+        icon: null,
+        photoUrl: null,
+        nickname: '게스트',
+        bio: '',
+        // 신규 가입 시 필수 입력
+        birthdate: '',
+        lifestyle: '',
+        // 생년월일 변경 제한 (가입 후 1회만 변경 가능)
+        birthdateChangeCount: 0,
+        birthdateChangedAt: null
+    },
+    // 프로필 완료 플래그 (닉네임 문자열에 의존하지 않기 위함)
+    profileCompleted: false,
+    profileCompletedAt: null,
     tags: {
         mealType: ['집밥', '외식', '회식/술자리', '배달/포장', '구내식당', '기타', '건너뜀'],
         withWhom: ['혼자', '가족', '연인', '친구', '직장동료', '학교친구', '모임', '기타'],

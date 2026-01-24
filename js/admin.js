@@ -1595,19 +1595,25 @@ async function getUsers() {
                         currentNickname: nickname
                     });
                     if (settings.profile) {
-                        // nickname이 명시적으로 있고 빈 문자열이 아니면 사용
-                        const profileNickname = settings.profile.nickname;
-                        if (profileNickname !== undefined && profileNickname !== null && profileNickname !== '') {
-                            nickname = profileNickname;
-                            console.log(`✅ 닉네임 설정: ${nickname}`);
+                        // profileCompleted가 true일 때만 닉네임을 '확정된 값'으로 표시
+                        if (settings.profileCompleted === true) {
+                            const profileNickname = settings.profile.nickname;
+                            if (profileNickname !== undefined && profileNickname !== null && profileNickname !== '' && profileNickname !== '게스트') {
+                                nickname = profileNickname;
+                                console.log(`✅ 닉네임 설정(완료): ${nickname}`);
+                            } else {
+                                nickname = '미설정';
+                                console.warn(`⚠️ profileCompleted=true인데 닉네임이 유효하지 않음:`, profileNickname);
+                            }
                         } else {
-                            console.warn(`⚠️ 프로필 닉네임이 유효하지 않음:`, profileNickname);
+                            nickname = '미설정';
                         }
                         if (settings.profile.icon) {
                             icon = settings.profile.icon;
                         }
                     } else {
                         console.warn(`⚠️ 사용자 ${userId}의 settings에 profile이 없습니다.`);
+                        nickname = '미설정';
                     }
                     termsAgreed = settings.termsAgreed === true;
                     termsAgreedAt = settings.termsAgreedAt || null;

@@ -16,6 +16,26 @@ import {
     confirmDeleteAccount, cancelDeleteAccount, confirmDeleteAccountAction
 } from './auth.js';
 import { authFlowManager } from './auth-flow.js';
+
+// 전역 리스너 정리 함수 (게스트→로그인 이동 등에서 사용)
+window.cleanupFirestoreListeners = () => {
+    try {
+        if (appState.settingsUnsubscribe) {
+            appState.settingsUnsubscribe();
+            appState.settingsUnsubscribe = null;
+        }
+        if (appState.dataUnsubscribe) {
+            appState.dataUnsubscribe();
+            appState.dataUnsubscribe = null;
+        }
+        if (appState.sharedPhotosUnsubscribe) {
+            appState.sharedPhotosUnsubscribe();
+            appState.sharedPhotosUnsubscribe = null;
+        }
+    } catch (e) {
+        console.warn('cleanupFirestoreListeners 실패(무시):', e);
+    }
+};
 import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, filterGalleryByUser, clearGalleryFilter } from './render/index.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
@@ -1124,6 +1144,19 @@ window.toggleGalleryTracePanel = () => {
     if (typeof window.updateGalleryTraceFilterBarUI === 'function') window.updateGalleryTraceFilterBarUI();
 };
 
+/** 타임라인 검색 확장 너비: 타이틀(MEALOG) 오른쪽에서 20px 거리까지 (화면 크기 무관) */
+function updateTimelineSearchExpandWidth() {
+    const title = document.querySelector('header .mealog-title');
+    const wrapper = document.getElementById('timelineSearchPanel');
+    const panel = wrapper?.querySelector('.timeline-search-panel');
+    if (!title || !wrapper || !panel || !wrapper.classList.contains('expanded')) return;
+    const titleRight = title.getBoundingClientRect().right;
+    const wrapperRight = wrapper.getBoundingClientRect().right;
+    let w = wrapperRight - titleRight - 20;
+    w = Math.max(96, w);
+    panel.style.width = `${w}px`;
+}
+
 window.toggleSearch = () => {
     if (appState.currentTab === 'gallery') {
         window.toggleGalleryTracePanel();
@@ -1135,12 +1168,18 @@ window.toggleSearch = () => {
         window.closeSearch();
     } else {
         panel.classList.add('expanded');
+        requestAnimationFrame(updateTimelineSearchExpandWidth);
         document.getElementById('searchInput')?.focus();
     }
 };
 
 window.closeSearch = () => {
-    document.getElementById('timelineSearchPanel')?.classList.remove('expanded');
+    const wrapper = document.getElementById('timelineSearchPanel');
+    if (wrapper) {
+        wrapper.classList.remove('expanded');
+        const panel = wrapper.querySelector('.timeline-search-panel');
+        if (panel) panel.style.width = '';
+    }
     document.getElementById('searchInput')?.blur();
     const inp = document.getElementById('searchInput');
     if (inp) inp.value = '';
@@ -1149,6 +1188,8 @@ window.closeSearch = () => {
     if (tc) tc.innerHTML = '';
     renderTimeline();
 };
+
+window.addEventListener('resize', updateTimelineSearchExpandWidth);
 
 // 앨범 흔적 필터 패널 버튼 상태 갱신
 window.updateGalleryTraceFilterBarUI = () => {
@@ -1431,71 +1472,94 @@ initAuth(async (user) => {
             }, 2000);
         }
         
-        // 리스너 설정 (이전 리스너는 setupListeners 내부에서 해제됨)
-        const { settingsUnsubscribe, dataUnsubscribe } = setupListeners(user.uid, {
-            onSettingsUpdate: () => {
-                // 헤더 UI 업데이트 (디바운싱됨)
-                updateHeaderUI();
-                const entryModal = document.getElementById('entryModal');
-                if (!entryModal || entryModal.classList.contains('hidden')) {
-                    renderEntryChips();
-                }
-                
-                // 설정이 완전히 로드된 후 인증 플로우 실행
-                // 단, 이미 완료되었거나 처리 중인 경우는 건너뛰기
-                if (!authFlowManager.hasCompleted && !authFlowManager.isProcessing && window.userSettings) {
-                    console.log('✅ 설정 업데이트 완료. 인증 플로우 실행...');
-                    authFlowManager.handleAuthState(user).catch(e => {
-                        console.error('❌ 인증 플로우 처리 실패:', e);
-                        hideLoading();
-                    });
-                } else if (authFlowManager.hasCompleted) {
-                    // 이미 완료된 경우 약관 모달이 열려있으면 닫기
-                    const termsModal = document.getElementById('termsModal');
-                    if (termsModal && !termsModal.classList.contains('hidden')) {
-                        console.log('✅ 인증 플로우 완료됨. 약관 모달 닫기');
-                        if (window.closeTermsModal) {
-                            window.closeTermsModal();
+        // ✅ 게스트(익명) 모드:
+        // - 내 meals/settings는 굳이 리스너를 붙이지 않음(기록/설정 기능도 제한됨)
+        // - 대신 앨범(공유 피드)은 보여야 하므로 sharedPhotos 리스너는 유지
+        if (user.isAnonymous) {
+            if (appState.settingsUnsubscribe) {
+                appState.settingsUnsubscribe();
+                appState.settingsUnsubscribe = null;
+            }
+            if (appState.dataUnsubscribe) {
+                appState.dataUnsubscribe();
+                appState.dataUnsubscribe = null;
+            }
+
+            if (appState.sharedPhotosUnsubscribe) {
+                appState.sharedPhotosUnsubscribe();
+            }
+            appState.sharedPhotosUnsubscribe = setupSharedPhotosListener((sharedPhotos) => {
+                window.sharedPhotos = sharedPhotos;
+                if (appState.currentTab === 'gallery') renderGallery();
+                if (appState.currentTab === 'timeline') renderTimeline();
+            });
+        } else {
+            // 리스너 설정 (이전 리스너는 setupListeners 내부에서 해제됨)
+            const { settingsUnsubscribe, dataUnsubscribe } = setupListeners(user.uid, {
+                onSettingsUpdate: () => {
+                    // 헤더 UI 업데이트 (디바운싱됨)
+                    updateHeaderUI();
+                    const entryModal = document.getElementById('entryModal');
+                    if (!entryModal || entryModal.classList.contains('hidden')) {
+                        renderEntryChips();
+                    }
+                    
+                    // 설정이 완전히 로드된 후 인증 플로우 실행
+                    // 단, 이미 완료되었거나 처리 중인 경우는 건너뛰기
+                    if (!authFlowManager.hasCompleted && !authFlowManager.isProcessing && window.userSettings) {
+                        console.log('✅ 설정 업데이트 완료. 인증 플로우 실행...');
+                        authFlowManager.handleAuthState(user).catch(e => {
+                            console.error('❌ 인증 플로우 처리 실패:', e);
+                            hideLoading();
+                        });
+                    } else if (authFlowManager.hasCompleted) {
+                        // 이미 완료된 경우 약관 모달이 열려있으면 닫기
+                        const termsModal = document.getElementById('termsModal');
+                        if (termsModal && !termsModal.classList.contains('hidden')) {
+                            console.log('✅ 인증 플로우 완료됨. 약관 모달 닫기');
+                            if (window.closeTermsModal) {
+                                window.closeTermsModal();
+                            }
                         }
                     }
+                },
+                onDataUpdate: () => {
+                    if (appState.viewMode === 'list') {
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        appState.pageDate = today;
+                    }
+                    window.loadedDates = [];
+                    window.hasScrolledToToday = false;
+                    const container = document.getElementById('timelineContainer');
+                    if (container) container.innerHTML = "";
+                    renderTimeline();
+                    renderMiniCalendar();
+                },
+                settingsUnsubscribe: appState.settingsUnsubscribe,
+                dataUnsubscribe: appState.dataUnsubscribe
+            });
+            appState.settingsUnsubscribe = settingsUnsubscribe;
+            appState.dataUnsubscribe = dataUnsubscribe;
+            
+            // 공유 사진 리스너 설정
+            if (appState.sharedPhotosUnsubscribe) {
+                appState.sharedPhotosUnsubscribe();
+            }
+            appState.sharedPhotosUnsubscribe = setupSharedPhotosListener((sharedPhotos) => {
+                window.sharedPhotos = sharedPhotos;
+                if (appState.currentTab === 'timeline') {
+                    renderTimeline();
                 }
-            },
-            onDataUpdate: () => {
-                if (appState.viewMode === 'list') {
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    appState.pageDate = today;
+                if (appState.currentTab === 'gallery') {
+                    renderGallery();
                 }
-                window.loadedDates = [];
-                window.hasScrolledToToday = false;
-                const container = document.getElementById('timelineContainer');
-                if (container) container.innerHTML = "";
-                renderTimeline();
-                renderMiniCalendar();
-            },
-            settingsUnsubscribe: appState.settingsUnsubscribe,
-            dataUnsubscribe: appState.dataUnsubscribe
-        });
-        appState.settingsUnsubscribe = settingsUnsubscribe;
-        appState.dataUnsubscribe = dataUnsubscribe;
-        
-        // 공유 사진 리스너 설정
-        if (appState.sharedPhotosUnsubscribe) {
-            appState.sharedPhotosUnsubscribe();
+                const feedContent = document.getElementById('feedContent');
+                if (feedContent && !feedContent.classList.contains('hidden')) {
+                    renderFeed();
+                }
+            });
         }
-        appState.sharedPhotosUnsubscribe = setupSharedPhotosListener((sharedPhotos) => {
-            window.sharedPhotos = sharedPhotos;
-            if (appState.currentTab === 'timeline') {
-                renderTimeline();
-            }
-            if (appState.currentTab === 'gallery') {
-                renderGallery();
-            }
-            const feedContent = document.getElementById('feedContent');
-            if (feedContent && !feedContent.classList.contains('hidden')) {
-                renderFeed();
-            }
-        });
         
         // 초기 로드 시 오늘 날짜로 설정
         if (appState.viewMode === 'list') {
@@ -1527,7 +1591,12 @@ initAuth(async (user) => {
     } else {
         // 로그아웃 상태
         // 추가 안전장치: 이전에 로그인된 사용자가 있었는데 갑자기 로그아웃되는 경우 무시
-        if (lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
+        // 단, 명시적 로그아웃(게스트→로그인 이동 포함)은 반드시 처리해야 함
+        const isExplicitLogout = sessionStorage.getItem('explicitLogout') === 'true';
+        if (isExplicitLogout) {
+            sessionStorage.removeItem('explicitLogout');
+        }
+        if (!isExplicitLogout && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
             console.log('⚠️ 로그아웃 처리 중 이전 사용자 감지 - 무시 (관리자 페이지 영향 가능):', {
                 previousUserId: lastProcessedUserId,
                 previousEmail: window.currentUser.email
@@ -1537,10 +1606,7 @@ initAuth(async (user) => {
         
         const mainApp = document.getElementById('mainApp');
         const landingPage = document.getElementById('landingPage');
-        if (mainApp && !mainApp.classList.contains('hidden') && landingPage && landingPage.style.display === 'none') {
-            return;
-        }
-        
+        // 이미 랜딩 화면이면 추가 처리 없이 종료
         if (landingPage && landingPage.style.display === 'flex' && mainApp && mainApp.classList.contains('hidden')) {
             return;
         }
@@ -2039,6 +2105,9 @@ window.openBoardWrite = () => {
     document.getElementById('boardWriteTitle').value = '';
     document.getElementById('boardWriteContent').value = '';
     document.getElementById('boardWriteCategory').value = 'serious';
+    if (typeof window.setBoardWriteCategory === 'function') {
+        window.setBoardWriteCategory('serious');
+    }
     
     // 제목 및 버튼 초기화
     const titleEl = document.querySelector('#boardWriteView h2');
@@ -2077,6 +2146,19 @@ window.backToBoardList = () => {
     setTimeout(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 100);
+};
+
+// 게시판 글쓰기 카테고리 선택 (버튼 UI)
+window.setBoardWriteCategory = (category) => {
+    const input = document.getElementById('boardWriteCategory');
+    if (input) input.value = category;
+    
+    document.querySelectorAll('.board-write-category-btn').forEach(btn => {
+        const value = btn.getAttribute('data-value');
+        const active = value === category;
+        btn.classList.toggle('active', active);
+        // 기본 스타일은 css/style.css (.board-category-btn / .active)가 강제함
+    });
 };
 
 window.submitBoardPost = async () => {
@@ -2157,13 +2239,13 @@ window.setBoardCategory = (category) => {
     
     // 버튼 상태 업데이트
     document.querySelectorAll('.board-category-btn').forEach(btn => {
-        btn.classList.remove('active', 'bg-emerald-600', 'text-white');
-        btn.classList.add('bg-slate-100', 'text-slate-600');
+        btn.classList.remove('active', 'bg-black', 'text-white', 'border-black');
+        btn.classList.add('bg-white', 'text-slate-700', 'border', 'border-slate-200');
     });
     const activeBtn = document.getElementById(`board-category-${category}`);
     if (activeBtn) {
-        activeBtn.classList.add('active', 'bg-emerald-600', 'text-white');
-        activeBtn.classList.remove('bg-slate-100', 'text-slate-600');
+        activeBtn.classList.add('active', 'bg-black', 'text-white', 'border', 'border-black');
+        activeBtn.classList.remove('bg-white', 'text-slate-700', 'border-slate-200');
     }
     
     // 게시글 목록 새로고침
@@ -2235,6 +2317,9 @@ window.editBoardPost = async (postId) => {
         document.getElementById('boardWriteTitle').value = post.title || '';
         document.getElementById('boardWriteContent').value = post.content || '';
         document.getElementById('boardWriteCategory').value = post.category || 'serious';
+        if (typeof window.setBoardWriteCategory === 'function') {
+            window.setBoardWriteCategory(post.category || 'serious');
+        }
         
         // 수정 모드 표시를 위한 플래그 저장
         window.currentEditingPostId = postId;
@@ -2289,8 +2374,10 @@ window.addBoardComment = async (postId) => {
     if (submitBtn) submitBtn.disabled = true;
     
     try {
-        // 사용자 닉네임 가져오기
+        // 사용자 닉네임 및 프로필 정보 가져오기
         const authorNickname = (window.userSettings && window.userSettings.profile && window.userSettings.profile.nickname) || '익명';
+        const authorPhotoUrl = (window.userSettings && window.userSettings.profile && window.userSettings.profile.photoUrl) || null;
+        const authorIcon = (window.userSettings && window.userSettings.profile && window.userSettings.profile.icon) || null;
         
         const commentsListEl = document.getElementById('boardCommentsList');
         const commentsCountEl = document.getElementById('boardCommentsCount');
@@ -2323,7 +2410,13 @@ window.addBoardComment = async (postId) => {
                 <div class="bg-white border border-slate-200 rounded-xl p-4 mb-3" data-comment-id="${tempCommentId}">
                     <div class="flex items-center justify-between mb-2">
                         <div class="flex items-center gap-2">
-                            <div class="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold text-slate-600">${authorNickname.charAt(0)}</div>
+                            ${authorPhotoUrl ? `
+                                <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${authorPhotoUrl}); background-size: cover; background-position: center;"></div>
+                            ` : `
+                                <div class="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0 border-2 border-slate-300">
+                                    ${authorIcon || authorNickname.charAt(0)}
+                                </div>
+                            `}
                             <div>
                                 <div class="text-xs font-bold text-slate-700">${escapeHtml(authorNickname)}</div>
                                 <div class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</div>
@@ -2431,7 +2524,13 @@ window.deleteBoardComment = async (commentId, postId) => {
                             <div class="bg-white border border-slate-200 rounded-xl p-4 mb-3" data-comment-id="${comment.id}">
                                     <div class="flex items-center justify-between mb-2">
                                         <div class="flex items-center gap-2">
-                                            <div class="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold text-slate-600">${commentAuthorNickname.charAt(0)}</div>
+                                            ${comment.authorPhotoUrl ? `
+                                                <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${comment.authorPhotoUrl}); background-size: cover; background-position: center;"></div>
+                                            ` : `
+                                                <div class="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0 border-2 border-slate-300">
+                                                    ${comment.authorIcon || commentAuthorNickname.charAt(0)}
+                                                </div>
+                                            `}
                                             <div class="flex items-center gap-2">
                                                 <span class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</span>
                                                 <span class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</span>
@@ -2615,6 +2714,24 @@ function initEventListeners() {
     if (profileSetupBtn) {
         profileSetupBtn.addEventListener('click', confirmProfileSetup);
     }
+
+    // 초기 가입: 라이프스타일 버튼
+    document.querySelectorAll('.setup-lifestyle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const v = btn.getAttribute('data-value') || '';
+            const hidden = document.getElementById('setupLifestyle');
+            if (hidden) hidden.value = v;
+            document.querySelectorAll('.setup-lifestyle-btn').forEach(b => {
+                const active = b === btn;
+                b.classList.toggle('bg-emerald-600', active);
+                b.classList.toggle('text-white', active);
+                b.classList.toggle('border-emerald-600', active);
+                b.classList.toggle('bg-slate-50', !active);
+                b.classList.toggle('text-slate-600', !active);
+                b.classList.toggle('border-slate-200', !active);
+            });
+        });
+    });
     
     // 헤더 및 검색
     const searchTriggerBtn = document.getElementById('searchTriggerBtn');
@@ -2698,6 +2815,16 @@ function initEventListeners() {
     if (saveProfileSettingsBtn) {
         saveProfileSettingsBtn.addEventListener('click', saveProfileSettings);
     }
+
+    const editProfileSettingsBtn = document.getElementById('editProfileSettingsBtn');
+    if (editProfileSettingsBtn) {
+        editProfileSettingsBtn.addEventListener('click', () => window.startProfileSettingsEdit?.());
+    }
+
+    const cancelProfileSettingsBtn = document.getElementById('cancelProfileSettingsBtn');
+    if (cancelProfileSettingsBtn) {
+        cancelProfileSettingsBtn.addEventListener('click', () => window.cancelProfileSettingsEdit?.());
+    }
     
     const profileTypeEmoji = document.getElementById('profileTypeEmoji');
     if (profileTypeEmoji) {
@@ -2708,6 +2835,44 @@ function initEventListeners() {
     if (profileTypePhoto) {
         profileTypePhoto.addEventListener('click', () => window.setSettingsProfileType('photo'));
     }
+
+    const profileTypeText = document.getElementById('profileTypeText');
+    if (profileTypeText) {
+        profileTypeText.addEventListener('click', () => window.setSettingsProfileType('text'));
+    }
+
+    const photoSelectBtn = document.getElementById('photoSelectBtn');
+    if (photoSelectBtn) {
+        photoSelectBtn.addEventListener('click', () => {
+            if (!appState.isProfileEditing) {
+                showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+                return;
+            }
+            document.getElementById('photoInput')?.click();
+        });
+    }
+
+    // 설정: 라이프스타일 버튼
+    document.querySelectorAll('.settings-lifestyle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (!appState.isProfileEditing) {
+                showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+                return;
+            }
+            const v = btn.getAttribute('data-value') || '';
+            const hidden = document.getElementById('settingLifestyle');
+            if (hidden) hidden.value = v;
+            document.querySelectorAll('.settings-lifestyle-btn').forEach(b => {
+                const active = b === btn;
+                b.classList.toggle('bg-emerald-600', active);
+                b.classList.toggle('text-white', active);
+                b.classList.toggle('border-emerald-600', active);
+                b.classList.toggle('bg-white', !active);
+                b.classList.toggle('text-slate-600', !active);
+                b.classList.toggle('border-slate-200', !active);
+            });
+        });
+    });
     
     // 게시판
     const boardWriteBtn = document.getElementById('boardWriteBtn');

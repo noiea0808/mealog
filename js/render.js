@@ -1384,9 +1384,9 @@ export async function renderGallery() {
             <div class="mb-2 bg-white border-b border-slate-200 instagram-post" data-post-id="${postId}" data-group-key="${groupKey}">
                 <div class="px-6 py-3 flex items-center gap-2 relative">
                     ${photo.userPhotoUrl ? `
-                        <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden" style="background-image: url(${photo.userPhotoUrl}); background-size: cover; background-position: center;"></div>
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${photo.userPhotoUrl}); background-size: cover; background-position: center;"></div>
                     ` : `
-                        <div class="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0">
+                        <div class="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0 border-2 border-slate-300">
                             ${photo.userIcon || '🐻'}
                         </div>
                     `}
@@ -1413,6 +1413,11 @@ export async function renderGallery() {
                         </div>
                     ` : ''}
                 </div>
+                ${!isBestShare && !isDailyShare && !isInsightShare && caption ? `
+                <div class="px-6 py-2 bg-slate-100 text-sm text-slate-800">
+                    ${caption}
+                </div>
+                ` : ''}
                 <div class="px-6 py-3">
                     <!-- 좋아요, 북마크 버튼 -->
                     <div class="flex items-center justify-between mb-2">
@@ -1430,8 +1435,8 @@ export async function renderGallery() {
                             <i class="fa-regular fa-bookmark text-2xl text-slate-800 post-bookmark-icon"></i>
                         </button>
                     </div>
-                    <!-- 캡션 -->
-                    ${caption ? `<div class="mb-2 text-sm text-slate-800">${caption}</div>` : ''}
+                    <!-- 캡션 (베스트/일간/인사이트만: 코멘트 표시) -->
+                    ${caption && (isBestShare || isDailyShare || isInsightShare) ? `<div class="mb-2 text-sm text-slate-800">${caption}</div>` : ''}
                     <!-- 기존 코멘트 (원글) - 베스트 공유, 일간보기 공유, 인사이트 공유는 제외 (이미 caption에 표시됨) -->
                     ${comment && !isBestShare && !isDailyShare && !isInsightShare ? (() => {
                         // comment의 줄바꿈 개수 확인
@@ -1442,11 +1447,13 @@ export async function renderGallery() {
                         const toggleBtnClass = shouldShowToggle ? '' : 'hidden';
                         
                         return `
-                        <div class="mb-2 text-sm text-slate-800 relative">
-                            <div id="post-caption-collapsed-${groupIdx}" class="whitespace-pre-line line-clamp-2 pr-16">${escapeHtml(comment).replace(/\n/g, '<br>')}</div>
-                            <div id="post-caption-expanded-${groupIdx}" class="whitespace-pre-line hidden pr-16">${escapeHtml(comment).replace(/\n/g, '<br>')}</div>
-                            <button onclick="window.togglePostCaption(${groupIdx})" id="post-caption-toggle-${groupIdx}" class="absolute right-0 text-xs text-slate-400 font-bold hover:text-slate-600 active:text-slate-800 transition-colors ${toggleBtnClass}" style="bottom: 0;">더 보기</button>
-                            <button onclick="window.togglePostCaption(${groupIdx})" id="post-caption-collapse-${groupIdx}" class="absolute right-0 text-xs text-slate-400 font-bold hover:text-slate-600 active:text-slate-800 transition-colors hidden" style="bottom: 0;">접기</button>
+                        <div class="mb-2 text-sm text-slate-800">
+                            <span id="post-caption-collapsed-${groupIdx}" class="whitespace-pre-line line-clamp-2 inline">${escapeHtml(comment).replace(/\n/g, '<br>')}</span>
+                            <button onclick="window.togglePostCaption(${groupIdx})" id="post-caption-toggle-${groupIdx}" class="inline text-xs text-emerald-600 font-bold hover:text-emerald-700 active:text-emerald-800 transition-colors ml-1 ${toggleBtnClass}">더 보기</button>
+                            <div id="post-caption-expanded-${groupIdx}" class="whitespace-pre-line hidden">
+                                ${escapeHtml(comment).replace(/\n/g, '<br>')}
+                                <button onclick="window.togglePostCaption(${groupIdx})" id="post-caption-collapse-${groupIdx}" class="inline text-xs text-emerald-600 font-bold hover:text-emerald-700 active:text-emerald-800 transition-colors ml-1">접기</button>
+                            </div>
                         </div>
                     `;
                     })() : ''}
@@ -1877,9 +1884,9 @@ export function renderFeed() {
             <div class="mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden">
                 <div class="px-4 py-3 flex items-center gap-2 relative">
                     ${photo.userPhotoUrl ? `
-                        <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden" style="background-image: url(${photo.userPhotoUrl}); background-size: cover; background-position: center;"></div>
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${photo.userPhotoUrl}); background-size: cover; background-position: center;"></div>
                     ` : `
-                        <div class="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0">
+                        <div class="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0 border-2 border-slate-300">
                             ${photo.userIcon || '🐻'}
                         </div>
                     `}
@@ -1917,11 +1924,13 @@ export function renderFeed() {
                     const toggleBtnClass = shouldShowToggle ? '' : 'hidden';
                     
                     return `
-                    <div class="px-4 pb-3 text-sm text-slate-600 relative">
-                        <div id="feed-comment-collapsed-${groupIdx}" class="comment-text whitespace-pre-line line-clamp-2 pr-16">${escapeHtml(comment).replace(/\n/g, '<br>')}</div>
-                        <div id="feed-comment-expanded-${groupIdx}" class="comment-text whitespace-pre-line hidden pr-16">${escapeHtml(comment).replace(/\n/g, '<br>')}</div>
-                        <button onclick="window.toggleFeedComment(${groupIdx})" id="feed-comment-toggle-${groupIdx}" class="absolute right-4 text-xs text-blue-600 font-bold hover:text-blue-700 active:text-blue-800 transition-colors comment-toggle-btn px-2 py-0.5 rounded bg-slate-100/80 backdrop-blur-sm ${toggleBtnClass}" style="bottom: 3px;">더 보기</button>
-                        <button onclick="window.toggleFeedComment(${groupIdx})" id="feed-comment-collapse-${groupIdx}" class="absolute right-4 text-xs text-blue-600 font-bold hover:text-blue-700 active:text-blue-800 transition-colors comment-toggle-btn px-2 py-0.5 rounded bg-slate-100/80 backdrop-blur-sm hidden" style="bottom: 3px;">접기</button>
+                    <div class="px-4 pb-3 text-sm text-slate-600">
+                        <span id="feed-comment-collapsed-${groupIdx}" class="comment-text whitespace-pre-line line-clamp-2 inline">${escapeHtml(comment).replace(/\n/g, '<br>')}</span>
+                        <button onclick="window.toggleFeedComment(${groupIdx})" id="feed-comment-toggle-${groupIdx}" class="inline text-xs text-blue-600 font-bold hover:text-blue-700 active:text-blue-800 transition-colors ml-1 ${toggleBtnClass}">더 보기</button>
+                        <div id="feed-comment-expanded-${groupIdx}" class="comment-text whitespace-pre-line hidden">
+                            ${escapeHtml(comment).replace(/\n/g, '<br>')}
+                            <button onclick="window.toggleFeedComment(${groupIdx})" id="feed-comment-collapse-${groupIdx}" class="inline text-xs text-blue-600 font-bold hover:text-blue-700 active:text-blue-800 transition-colors ml-1">접기</button>
+                        </div>
                     </div>
                 `;
                 })() : ''}
@@ -2359,7 +2368,7 @@ export function renderBoard(category = 'all') {
                 const shouldHideContent = isAdminCategory && !isAuthor;
                 
                 return `
-                    <div onclick="window.openBoardDetail('${post.id}')" class="board-list-card board-list-card--${post.category || 'serious'} rounded-2xl p-5 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all mb-2">
+                    <div onclick="window.openBoardDetail('${post.id}')" class="board-list-card board-list-card--${post.category || 'serious'} rounded-2xl pt-5 px-5 pb-1.5 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all mb-2">
                         <div class="flex items-start gap-3 mb-3">
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2 mb-2 flex-wrap">
@@ -2369,10 +2378,12 @@ export function renderBoard(category = 'all') {
                                 ${shouldHideContent ? '<p class="text-sm text-slate-400 line-clamp-2 mb-3 leading-relaxed">이 게시물은 작성자만 볼 수 있습니다.</p>' : `<p class="text-sm text-slate-600 line-clamp-2 mb-3 leading-relaxed">${escapeHtml(post.content)}</p>`}
                             </div>
                         </div>
-                        <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+                        <div class="flex items-center justify-between pt-1 border-t border-slate-100">
                             <div class="flex items-center gap-4">
                                 <div class="flex items-center gap-2">
-                                    <div class="w-6 h-6 bg-slate-200 rounded-full flex items-center justify-center text-[10px] font-bold text-slate-500">${(post.authorNickname || '익명').charAt(0)}</div>
+                                    <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 ${post.authorPhotoUrl ? '' : 'bg-slate-200'}" ${post.authorPhotoUrl ? `style="background-image: url(${post.authorPhotoUrl}); background-size: cover; background-position: center;"` : ''}>
+                                        ${post.authorPhotoUrl ? '' : (post.authorIcon ? `<span class="text-lg">${post.authorIcon}</span>` : `<span class="text-sm font-bold text-slate-500">${(post.authorNickname || '익명').charAt(0)}</span>`)}
+                                    </div>
                                     <span class="text-[11px] text-slate-400">${escapeHtml(post.authorNickname || '익명')}</span>
                                 </div>
                                 <span class="text-[11px] text-slate-400">${dateStr} ${timeStr}</span>
@@ -2480,7 +2491,13 @@ export async function renderBoardDetail(postId) {
                 <div class="border-b border-slate-200 pb-4">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
-                            <div class="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center text-sm font-bold text-emerald-700">${(post.authorNickname || '익명').charAt(0)}</div>
+                            ${post.authorPhotoUrl ? `
+                                <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${post.authorPhotoUrl}); background-size: cover; background-position: center;"></div>
+                            ` : `
+                                <div class="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0 border-2 border-slate-300">
+                                    ${post.authorIcon || (post.authorNickname || '익명').charAt(0)}
+                                </div>
+                            `}
                             <div>
                                 <div class="text-sm font-bold text-slate-800">${escapeHtml(post.authorNickname || '익명')}</div>
                                 <div class="text-xs text-slate-400">${dateStr} ${timeStr}</div>
@@ -2546,7 +2563,13 @@ export async function renderBoardDetail(postId) {
                                 <div class="bg-white border border-slate-200 rounded-xl p-4 mb-3" data-comment-id="${comment.id}">
                                     <div class="flex items-center justify-between mb-2">
                                         <div class="flex items-center gap-2">
-                                            <div class="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold text-slate-600">${commentAuthorNickname.charAt(0)}</div>
+                                            ${comment.authorPhotoUrl ? `
+                                                <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${comment.authorPhotoUrl}); background-size: cover; background-position: center;"></div>
+                                            ` : `
+                                                <div class="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0 border-2 border-slate-300">
+                                                    ${comment.authorIcon || commentAuthorNickname.charAt(0)}
+                                                </div>
+                                            `}
                                             <div class="flex items-center gap-2">
                                                 <span class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</span>
                                                 <span class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</span>
@@ -2746,7 +2769,7 @@ export function createDailyShareCard(dateStr, forPreview = false) {
     const formattedDate = `'${shortYear}년 ${month}월${day}일`;
     
     let html = `
-        <div style="width: 420px; max-width: 420px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+        <div style="width: 420px; max-width: 420px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background: rgba(24, 119, 242, 0.7);">
             <!-- 헤더 (페이스북 블루 배경) -->
             <div style="background: #1877F2; padding: 16px; border-bottom: 1px solid #ffffff;">
                 <!-- 상단: MEALOG와 날짜 -->
@@ -2756,13 +2779,13 @@ export function createDailyShareCard(dateStr, forPreview = false) {
                 </div>
                 <!-- 하단: 닉네임의 하루소감 -->
                 <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="font-size: 16px;">${userIcon}</span>
+                    <span style="font-size: 16px;">📅</span>
                     <span style="font-size: 15px; font-weight: 700; color: #ffffff; font-family: 'NanumSquareRound', sans-serif;">${escapeHtml(userNickname)}의 하루소감</span>
                 </div>
             </div>
             
             <!-- 본문 -->
-            <div style="padding: 0; background: rgba(24, 119, 242, 0.7); border-top: 1px solid #ffffff;">
+            <div style="padding: 0; background: rgba(24, 119, 242, 0.7); border-top: 1px solid #ffffff; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;">
     `;
     
     // 타임라인처럼 모든 슬롯을 순서대로 표시 (간식 포함)
@@ -2774,7 +2797,7 @@ export function createDailyShareCard(dateStr, forPreview = false) {
             const r = records[0];
             const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
             
-            let containerStyle = 'border: 1px solid rgba(255, 255, 255, 0.3); margin: 4px 8px; margin-bottom: 7px; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); background: rgba(255, 255, 255, 0.9);';
+            let containerStyle = 'border: 1px solid #000000; margin: 4px 8px; margin-bottom: 7px; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); background: rgba(255, 255, 255, 0.9);';
             let iconTextColor = specificStyle.iconText.includes('orange') ? '#f97316' : specificStyle.iconText.includes('emerald') ? '#10b981' : specificStyle.iconText.includes('indigo') ? '#6366f1' : '#64748b';
             
             let titleLine1 = '';
@@ -2891,30 +2914,51 @@ let dragStartY = 0;
 let isPinching = false;
 let initialPinchDistance = 0;
 let initialPinchScale = 1;
+/** 'meal' | 'profile' | null */
+let photoEditContext = null;
+/** 프로필 편집 시 취소/닫기 시 revoke용 */
+let profilePhotoEditObjectUrl = null;
 
-// 사진 편집 모달 열기
+// 사진 편집 모달 열기 (식사 사진)
 export function editPhoto(idx) {
     if (idx < 0 || idx >= appState.currentPhotos.length) return;
     
+    photoEditContext = 'meal';
+    profilePhotoEditObjectUrl = null;
     editingPhotoIndex = idx;
     const photoSrc = appState.currentPhotos[idx];
     
-    // 모달 열기
+    openPhotoEditModalWithImage(photoSrc);
+}
+
+// 프로필 사진 편집 모달 열기 (사진 직접 등록 시)
+export function openProfilePhotoEdit(objectUrl) {
+    if (!objectUrl) return;
+    photoEditContext = 'profile';
+    profilePhotoEditObjectUrl = objectUrl;
+    editingPhotoIndex = null;
+    
+    openPhotoEditModalWithImage(objectUrl);
+}
+
+function openPhotoEditModalWithImage(photoSrc) {
     const modal = document.getElementById('photoEditModal');
     if (!modal) return;
     
     modal.classList.remove('hidden');
     
-    // Canvas 초기화
     photoEditCanvas = document.getElementById('photoEditCanvas');
     if (!photoEditCanvas) return;
     
     photoEditCtx = photoEditCanvas.getContext('2d');
     
-    // 이미지 로드
     editingPhotoImage = new Image();
     editingPhotoImage.onload = () => {
         initializePhotoEdit();
+    };
+    editingPhotoImage.onerror = () => {
+        if (typeof window.showToast === 'function') window.showToast('이미지를 불러올 수 없습니다.', 'error');
+        closePhotoEditModal();
     };
     editingPhotoImage.src = photoSrc;
 }
@@ -3205,9 +3249,8 @@ export function resetPhotoEdit() {
 
 // 사진 편집 저장
 export function savePhotoEdit() {
-    if (editingPhotoIndex === null || !photoEditCanvas || !editingPhotoImage) return;
+    if (!photoEditCanvas || !editingPhotoImage) return;
     
-    // Canvas에서 편집된 이미지 추출
     const container = document.getElementById('photoEditCanvasContainer');
     if (!container) return;
     
@@ -3215,68 +3258,59 @@ export function savePhotoEdit() {
     const containerWidth = containerRect.width || container.offsetWidth;
     const containerHeight = containerRect.height || container.offsetHeight;
     
-    // 새로운 Canvas 생성하여 편집된 이미지 추출
     const outputCanvas = document.createElement('canvas');
     outputCanvas.width = containerWidth;
     outputCanvas.height = containerHeight;
     const outputCtx = outputCanvas.getContext('2d');
     
-    // 배경 (흰색)
     outputCtx.fillStyle = '#ffffff';
     outputCtx.fillRect(0, 0, outputCanvas.width, outputCanvas.height);
     
-    // 편집된 이미지 그리기 (회전 적용)
     const drawWidth = editingPhotoImage.width * photoEditScale;
     const drawHeight = editingPhotoImage.height * photoEditScale;
-    
-    // 회전 중심점
     const centerX = containerWidth / 2;
     const centerY = containerHeight / 2;
     
     outputCtx.save();
-    
-    // 회전 적용
     outputCtx.translate(centerX, centerY);
     outputCtx.rotate((photoEditRotation * Math.PI) / 180);
     outputCtx.translate(-centerX, -centerY);
     
-    // 이미지가 컨테이너보다 작으면 중앙 정렬
     let finalOffsetX = photoEditOffsetX;
     let finalOffsetY = photoEditOffsetY;
+    if (drawWidth < containerWidth) finalOffsetX = (containerWidth - drawWidth) / 2;
+    if (drawHeight < containerHeight) finalOffsetY = (containerHeight - drawHeight) / 2;
     
-    if (drawWidth < containerWidth) {
-        finalOffsetX = (containerWidth - drawWidth) / 2;
-    }
-    if (drawHeight < containerHeight) {
-        finalOffsetY = (containerHeight - drawHeight) / 2;
-    }
-    
-    outputCtx.drawImage(
-        editingPhotoImage,
-        finalOffsetX,
-        finalOffsetY,
-        drawWidth,
-        drawHeight
-    );
-    
+    outputCtx.drawImage(editingPhotoImage, finalOffsetX, finalOffsetY, drawWidth, drawHeight);
     outputCtx.restore();
     
-    // Canvas를 Blob으로 변환
     outputCanvas.toBlob((blob) => {
         if (!blob) return;
         
-        // FileReader로 base64로 변환
+        if (photoEditContext === 'profile') {
+            window.settingsPhotoFile = blob;
+            window.settingsPhotoUrl = URL.createObjectURL(blob);
+            if (profilePhotoEditObjectUrl) {
+                URL.revokeObjectURL(profilePhotoEditObjectUrl);
+                profilePhotoEditObjectUrl = null;
+            }
+            const photoPreview = document.getElementById('photoPreview');
+            if (photoPreview) {
+                photoPreview.style.backgroundImage = `url(${window.settingsPhotoUrl})`;
+                photoPreview.style.backgroundSize = 'cover';
+                photoPreview.style.backgroundPosition = 'center';
+                photoPreview.innerHTML = '';
+            }
+            closePhotoEditModal();
+            if (typeof window.showToast === 'function') window.showToast('사진이 적용되었습니다.', 'success');
+            return;
+        }
+        
+        if (editingPhotoIndex === null) return;
         const reader = new FileReader();
         reader.onload = () => {
-            const editedPhotoSrc = reader.result;
-            
-            // appState.currentPhotos 업데이트
-            appState.currentPhotos[editingPhotoIndex] = editedPhotoSrc;
-            
-            // 미리보기 업데이트
+            appState.currentPhotos[editingPhotoIndex] = reader.result;
             renderPhotoPreviews();
-            
-            // 모달 닫기
             closePhotoEditModal();
         };
         reader.readAsDataURL(blob);
@@ -3290,7 +3324,6 @@ export function closePhotoEditModal() {
         modal.classList.add('hidden');
     }
     
-    // 이벤트 리스너 제거
     if (photoEditCanvas) {
         photoEditCanvas.removeEventListener('mousedown', handlePhotoEditMouseDown);
         photoEditCanvas.removeEventListener('mousemove', handlePhotoEditMouseMove);
@@ -3302,7 +3335,15 @@ export function closePhotoEditModal() {
         photoEditCanvas.removeEventListener('wheel', handlePhotoEditWheel);
     }
     
-    // 상태 초기화
+    if (photoEditContext === 'profile') {
+        if (profilePhotoEditObjectUrl) {
+            URL.revokeObjectURL(profilePhotoEditObjectUrl);
+            profilePhotoEditObjectUrl = null;
+        }
+        const photoInput = document.getElementById('photoInput');
+        if (photoInput) photoInput.value = '';
+    }
+    
     editingPhotoIndex = null;
     editingPhotoImage = null;
     photoEditCanvas = null;
@@ -3313,10 +3354,12 @@ export function closePhotoEditModal() {
     photoEditRotation = 0;
     isPinching = false;
     isDraggingPhoto = false;
+    photoEditContext = null;
 }
 
 // 전역 함수로 노출
 window.editPhoto = editPhoto;
+window.openProfilePhotoEdit = openProfilePhotoEdit;
 window.closePhotoEditModal = closePhotoEditModal;
 window.resetPhotoEdit = resetPhotoEdit;
 window.savePhotoEdit = savePhotoEdit;

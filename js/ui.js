@@ -77,7 +77,7 @@ export function updateHeaderUI() {
         const p = window.userSettings.profile;
         const currentNickname = p.nickname || '게스트';
         const currentPhotoUrl = p.photoUrl || '';
-        const currentIcon = p.icon || '🐻';
+        const currentIcon = p.icon || '';
         
         // 프로필 정보가 변경되었는지 확인 (닉네임, 사진, 아이콘 모두 포함)
         const currentProfileKey = `${currentNickname}|${currentPhotoUrl}|${currentIcon}`;
@@ -104,9 +104,14 @@ export function updateHeaderUI() {
                 iconEl.style.backgroundSize = 'cover';
                 iconEl.style.backgroundPosition = 'center';
                 iconEl.style.borderRadius = '50%';
-            } else {
+            } else if (p.icon) {
                 // 이모지 표시
-                iconEl.innerText = p.icon || '🐻';
+                iconEl.innerText = p.icon;
+            } else {
+                // 텍스트(닉네임 첫 글자)
+                const nn = (p.nickname || '').trim();
+                const initial = (Array.from(nn)[0] || '?');
+                iconEl.innerText = initial;
             }
         }
         

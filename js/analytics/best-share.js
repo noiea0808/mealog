@@ -678,7 +678,7 @@ export async function openShareBestModal() {
     
     // 스크린샷용 HTML 생성
     const screenshotHtml = `
-        <div id="bestScreenshotContainer" style="width: 420px; max-width: 420px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; font-family: Pretendard, sans-serif;">
+        <div id="bestScreenshotContainer" style="width: 420px; max-width: 420px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; font-family: Pretendard, sans-serif; background: rgba(252, 211, 77, 0.5);">
             <!-- 헤더 (노란색 계열 배경) -->
             <div style="background: #fcd34d; padding: 16px; border-bottom: 1px solid #ffffff;">
                 <!-- 상단: MEALOG와 기간 -->
@@ -688,13 +688,13 @@ export async function openShareBestModal() {
                 </div>
                 <!-- 하단: 닉네임의 Best -->
                 <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="font-size: 16px;">${userIcon}</span>
+                    <span style="font-size: 16px;">🏆</span>
                     <span style="font-size: 15px; font-weight: 700; color: #000000; font-family: 'NanumSquareRound', sans-serif;">${escapeHtml(userNickname)}의 ${periodType} Best</span>
                 </div>
             </div>
             
             <!-- 본문 -->
-            <div style="padding: 0; background: rgba(252, 211, 77, 0.5); border-top: 1px solid #ffffff;">
+            <div style="padding: 0; background: rgba(252, 211, 77, 0.5); border-top: 1px solid #ffffff; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;">
             ${top3Meals.map((meal, index) => {
                 const slot = SLOTS.find(s => s.id === meal.slotId);
                 const slotLabel = slot ? slot.label : '알 수 없음';
@@ -732,7 +732,7 @@ export async function openShareBestModal() {
                 const safeSlotLabel = escapeHtml(slotLabel);
                 
                 return `
-                    <div style="display: flex; margin: 4px 8px; margin-bottom: 7px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 8px; overflow: hidden; background: rgba(255, 255, 255, 0.9); box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-height: 130px;">
+                    <div style="display: flex; margin: 4px 8px; margin-bottom: 7px; border: 1px solid #000000; border-radius: 8px; overflow: hidden; background: rgba(255, 255, 255, 0.9); box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-height: 130px;">
                         <div style="width: 130px; min-height: 130px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0; border-radius: 8px 0 0 8px; overflow: hidden;">
                             ${photoUrl ? `<img src="${photoUrl}" style="width: 100%; height: 100%; min-height: 130px; object-fit: cover;">` : `<div style="font-size: 28px;">🍽️</div>`}
                             <div style="position: absolute; top: 10px; left: 10px; width: 28px; height: 28px; border-radius: 50%; background: ${rankBg}; color: ${rankText}; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; line-height: 1; box-shadow: 0 2px 4px rgba(0,0,0,0.15); padding: 0; margin: 0;">
