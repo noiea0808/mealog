@@ -444,16 +444,16 @@
         </div>
 
         <main>
-            <div id="timelineView" class="min-h-[60vh]"><div id="timelineContainer" class="space-y-4"></div></div>
-            <div id="galleryView" class="hidden min-h-[60vh]">
-                <div id="galleryContainer" class="space-y-2 bg-slate-100"></div>
+            <div id="timelineView" class="ui-tab-view"><div id="timelineContainer" class="ui-stack-lg"></div></div>
+            <div id="galleryView" class="hidden ui-tab-view">
+                <div id="galleryContainer" class="ui-surface-soft ui-stack-sm"></div>
             </div>
             <!-- 게시판 목록 뷰 -->
-            <div id="boardListView" class="hidden space-y-3 px-4 pt-1.5 pb-3 relative">
+            <div id="boardListView" class="hidden ui-tab-view ui-stack-md relative">
                 <button id="boardWriteBtn" class="board-write-fab" type="button" title="글쓰기" aria-label="글쓰기">
                     <i class="fa-solid fa-pen text-lg"></i>
                 </button>
-                <div class="mb-4 px-4">
+                <div class="mb-4">
                     <h2 class="mealog-title text-2xl text-slate-700 tracking-tighter lowercase"><span>💬</span> meal talk</h2>
                 </div>
                 <div class="flex gap-2 mb-4 overflow-x-auto scrollbar-hide">
@@ -463,16 +463,16 @@
                     <button id="board-category-food" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">먹는</button>
                     <button id="board-category-admin" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">치프에게</button>
                 </div>
-                <div id="noticesContainer" class="mb-4 space-y-3">
+                <div id="noticesContainer" class="mb-4 ui-stack-md">
                     <!-- 공지가 여기에 동적으로 추가됨 -->
                 </div>
-                <div id="boardContainer" class="space-y-1.5 bg-slate-100">
+                <div id="boardContainer" class="ui-surface-soft ui-stack-tight">
                     <!-- 게시글 목록이 여기에 동적으로 추가됨 -->
                 </div>
             </div>
             
             <!-- 게시판 상세 뷰 -->
-            <div id="boardDetailView" class="hidden space-y-3 px-4 py-3">
+            <div id="boardDetailView" class="hidden ui-tab-view ui-stack-md">
                 <div class="flex items-center gap-3 mb-4">
                     <button onclick="window.backToBoardList()" class="w-8 h-8 flex items-center justify-center text-slate-400 active:bg-slate-100 rounded-full transition-colors">
                         <i class="fa-solid fa-arrow-left text-lg"></i>
@@ -487,7 +487,7 @@
             </div>
             
             <!-- 게시판 작성 뷰 -->
-            <div id="boardWriteView" class="hidden space-y-3 px-4 py-3">
+            <div id="boardWriteView" class="hidden ui-tab-view ui-stack-md">
                 <div class="flex items-center gap-3 mb-4">
                     <button onclick="window.backToBoardList()" class="w-8 h-8 flex items-center justify-center text-slate-400 active:bg-slate-100 rounded-full transition-colors">
                         <i class="fa-solid fa-arrow-left text-lg"></i>
@@ -521,7 +521,7 @@
             </div>
             <div id="dashboardView" class="hidden space-y-3 px-0 pt-[0.1125rem] pb-3">
                 <!-- Dashboard content remains same -->
-                <div class="card py-3 px-4 bg-emerald-600 text-white relative overflow-hidden">
+                <div class="card ui-card-pad-lg bg-emerald-600 text-white relative overflow-hidden">
                     <div class="flex flex-col mb-4 relative z-10">
                         <h3 class="mealog-title text-2xl tracking-tighter lowercase px-4"><span>✨</span> insight</h3>
                         <div class="flex bg-emerald-700/40 p-1 rounded-xl mt-3 gap-1">
@@ -561,10 +561,10 @@
                         </div>
                     </div>
                     <!-- 캐릭터와 말풍선 영역 -->
-                    <div class="flex gap-3 mt-3 relative z-10 items-center">
+                    <div class="flex gap-3 mt-3 relative z-10 items-start">
                         <!-- 밀당 캐릭터 선택 창 -->
-                        <div class="relative flex-shrink-0 flex flex-col gap-2" style="height: 180px;">
-                            <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="w-[75px] flex-1 bg-white/20 rounded-2xl border-2 border-white/30 flex flex-col items-center justify-center transition-colors overflow-hidden">
+                        <div class="relative flex-shrink-0 flex flex-col gap-2 w-[75px]">
+                            <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="w-[75px] h-[132px] bg-white/20 rounded-2xl border-2 border-white/30 flex flex-col items-center justify-center transition-colors overflow-hidden">
                                 <div id="insightCharacterIcon" class="w-full h-full flex items-center justify-center text-2xl font-black text-white">M</div>
                             </button>
                             <button id="generateCommentBtn" onclick="window.generateInsightComment()" class="w-[75px] bg-yellow-400 rounded-xl font-bold text-[10px] shadow-md active:bg-yellow-500 transition-colors py-1" style="color: #3E2723;">
@@ -590,7 +590,7 @@
                         <div id="stickerEmoji" class="text-2xl">🍽️</div>
                         <div class="flex-1 ml-2 flex items-center justify-between">
                             <div class="flex-1">
-                                <div id="stickerTitle" class="text-[10px] font-bold opacity-70 uppercase tracking-tighter">식사 기록</div>
+                                <div id="stickerTitle" class="ui-kpi-label ui-kpi-label--inverse">식사 기록</div>
                                 <div id="insightStats" class="text-lg font-black leading-none mt-0.5">
                                     <span id="mealRecordCount">0</span><span id="mealRecordTotal" class="text-xs font-bold opacity-60 ml-1">/0</span>
                                     <span id="mealRecordPercent" class="text-xs font-bold opacity-60 ml-1">(0%)</span>
@@ -599,7 +599,7 @@
                             <div class="flex-1 ml-4 flex items-start gap-2">
                                 <div class="text-2xl">🍪</div>
                                 <div class="flex-1">
-                                    <div class="text-[10px] font-bold opacity-70 uppercase tracking-tighter">간식 기록</div>
+                                    <div class="ui-kpi-label ui-kpi-label--inverse">간식 기록</div>
                                     <div id="snackStats" class="text-lg font-black leading-none mt-0.5">
                                         <span id="snackRecordCount">0</span><span class="text-xs font-bold opacity-60 ml-1">회</span>
                                     </div>
@@ -610,7 +610,7 @@
                 </div>
                 
                 <!-- 분석 타입 선택 스위치 -->
-                <div class="card py-1.5 px-4 mt-3">
+                <div class="card ui-card-pad-chip mt-3">
                     <div class="flex p-0.5 rounded-xl gap-1">
                         <button id="btn-analysis-main" class="flex-1 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">식사</button>
                         <button id="btn-analysis-snack" class="flex-1 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">간식</button>
@@ -621,10 +621,10 @@
                 <!-- Best 분석 섹션 -->
                 <div id="bestAnalysisSection" class="mt-2">
                     <div class="space-y-3">
-                        <div class="card py-2 px-4">
-                            <div class="flex justify-between items-center mb-2">
+                        <div class="card ui-card-pad-compact">
+                            <div class="ui-card-head">
                                 <div class="flex items-center gap-2">
-                                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">BEST 기간</h3>
+                                    <h3 class="ui-section-label">BEST 기간</h3>
                                     <span id="bestPeriodLabel" class="text-xs text-slate-300"></span>
                                 </div>
                                 <button id="shareBestBtn" onclick="window.openShareBestModal()" class="hidden text-xs font-bold px-3 py-1.5 active:opacity-70 transition-colors ml-2 text-blue-600">
@@ -639,24 +639,24 @@
                 <!-- 식사 분석 섹션 -->
                 <div id="mainAnalysisSection" class="mt-2 hidden">
                     <div class="space-y-0">
-                        <div class="card py-2.5 px-4">
-                            <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">식사 방식</h3><button onclick="window.openDetailModal('mealType', '식사 방식 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                        <div class="card ui-card-pad">
+                            <div class="ui-card-head"><h3 class="ui-section-label">식사 방식</h3><button onclick="window.openDetailModal('mealType', '식사 방식 통계')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                             <div id="propChartContainer"></div>
                         </div>
-                <div class="card py-2.5 px-4">
-                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">메뉴 카테고리</h3><button onclick="window.openDetailModal('category', '메뉴 카테고리 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                <div class="card ui-card-pad">
+                    <div class="ui-card-head"><h3 class="ui-section-label">메뉴 카테고리</h3><button onclick="window.openDetailModal('category', '메뉴 카테고리 통계')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                     <div id="categoryChartContainer"></div>
                 </div>
-                <div class="card py-2.5 px-4">
-                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">함께한 즐거움</h3><button onclick="window.openDetailModal('withWhom', '함께한 사람 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                <div class="card ui-card-pad">
+                    <div class="ui-card-head"><h3 class="ui-section-label">함께한 즐거움</h3><button onclick="window.openDetailModal('withWhom', '함께한 사람 통계')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                     <div id="mateChartContainer"></div>
                 </div>
-                <div class="card py-2.5 px-4">
-                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">만족도</h3><button onclick="window.openDetailModal('rating', '만족도 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                <div class="card ui-card-pad">
+                    <div class="ui-card-head"><h3 class="ui-section-label">만족도</h3><button onclick="window.openDetailModal('rating', '만족도 통계')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                     <div id="ratingChartContainer"></div>
                 </div>
-                <div class="card py-2.5 px-4">
-                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">포만감</h3><button onclick="window.openDetailModal('satiety', '포만감 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                <div class="card ui-card-pad">
+                    <div class="ui-card-head"><h3 class="ui-section-label">포만감</h3><button onclick="window.openDetailModal('satiety', '포만감 통계')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                     <div id="satietyChartContainer"></div>
                 </div>
                     </div>
@@ -665,12 +665,12 @@
                 <!-- 간식 분석 섹션 -->
                 <div id="snackAnalysisSection" class="mt-2 hidden">
                     <div class="space-y-0">
-                        <div class="card py-2.5 px-4">
-                            <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">간식 유형</h3><button onclick="window.openDetailModal('snackType', '간식 유형 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                        <div class="card ui-card-pad">
+                            <div class="ui-card-head"><h3 class="ui-section-label">간식 유형</h3><button onclick="window.openDetailModal('snackType', '간식 유형 통계')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                             <div id="snackTypeChartContainer"></div>
                         </div>
-                        <div class="card py-2.5 px-4">
-                            <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">만족도</h3><button onclick="window.openDetailModal('snackRating', '간식 만족도 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                        <div class="card ui-card-pad">
+                            <div class="ui-card-head"><h3 class="ui-section-label">만족도</h3><button onclick="window.openDetailModal('snackRating', '간식 만족도 통계')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                             <div id="snackRatingChartContainer"></div>
                         </div>
                     </div>

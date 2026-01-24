@@ -12,6 +12,54 @@ body {
     overflow-x: hidden; 
     padding-bottom: calc(80px + var(--safe-bottom)); 
 }
+
+/* =========================
+   UI Hierarchy (Main Screen)
+   main > sub > sub1 > content
+   ========================= */
+.ui-section-label {
+    font-size: 0.75rem;          /* 12px (text-xs) */
+    font-weight: 900;            /* font-black */
+    color: #64748b;              /* slate-500 */
+    text-transform: uppercase;
+    letter-spacing: 0.12em;      /* tracking-widest 느낌 */
+}
+.ui-section-action {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #475569;              /* slate-600 */
+}
+.ui-kpi-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;      /* tracking-tighter 대신 일정한 리듬 */
+    opacity: 0.75;
+}
+.ui-kpi-label--inverse {
+    color: rgba(255,255,255,0.85);
+}
+.ui-card-pad-lg { padding: 0.75rem 1rem; }     /* py-3 px-4 */
+.ui-card-pad { padding: 0.625rem 1rem; }       /* py-2.5 px-4 */
+.ui-card-pad-compact { padding: 0.5rem 1rem; } /* py-2 px-4 */
+.ui-card-pad-chip { padding: 0.375rem 1rem; }  /* py-1.5 px-4 */
+.ui-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem; /* mb-2 */
+}
+
+/* Tab layout primitives (main app) */
+.ui-tab-view {
+    min-height: 60vh;
+    padding: 0.75rem 1rem; /* py-3 px-4 */
+}
+.ui-surface-soft { background: #f1f5f9; } /* slate-100 */
+.ui-stack-lg > * + * { margin-top: 1rem; }       /* space-y-4 */
+.ui-stack-md > * + * { margin-top: 0.75rem; }    /* space-y-3 */
+.ui-stack-sm > * + * { margin-top: 0.5rem; }     /* space-y-2 */
+.ui-stack-tight > * + * { margin-top: 0.375rem; }/* space-y-1.5 */
 .mealog-title { 
     font-family: 'Fredoka', sans-serif; 
     font-weight: 600; 

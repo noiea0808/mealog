@@ -2269,6 +2269,21 @@ async function renderNotices() {
             'notice': 'bg-blue-100 text-blue-700',
             'light': 'bg-slate-100 text-slate-700'
         };
+
+        // 공지별 반응(추천/비추천) 카운트는 noticeInteractions에서 계산
+        // (댓글은 현재 공지 상세에 기능이 없으므로 0/필드 기반으로만 표시)
+        const reactionCounts = await Promise.all(sortedNotices.map(async (n) => {
+            try {
+                if (window.noticeOperations?.getNoticeReactionCounts) {
+                    const c = await window.noticeOperations.getNoticeReactionCounts(n.id);
+                    return { noticeId: n.id, likes: c?.likes ?? 0, dislikes: c?.dislikes ?? 0 };
+                }
+            } catch (e) {
+                console.warn('공지 반응 카운트 로드 실패(무시):', n?.id, e);
+            }
+            return { noticeId: n.id, likes: 0, dislikes: 0 };
+        }));
+        const reactionMap = new Map(reactionCounts.map(r => [r.noticeId, r]));
         
         noticesContainer.innerHTML = sortedNotices.map((notice, index) => {
             const date = notice.timestamp ? new Date(notice.timestamp) : new Date();
@@ -2281,23 +2296,37 @@ async function renderNotices() {
             const noticeType = notice.type || notice.noticeType || 'notice';
             const typeLabel = noticeTypeLabels[noticeType] || '알림';
             const typeColor = noticeTypeColors[noticeType] || noticeTypeColors.notice;
+
+            const reactions = reactionMap.get(notice.id) || { likes: 0, dislikes: 0 };
+            const likeCount = reactions.likes || 0;
+            const viewCount = Number(notice.views || notice.viewCount || notice.viewsCount || notice.viewCounts || 0) || 0;
             
             return `
                 <div onclick="window.openNoticeDetail('${notice.id}')" class="p-4 ${bgClass} border-2 rounded-xl mb-3 cursor-pointer hover:opacity-90 active:scale-[0.99] transition-all">
                     <div class="flex items-start justify-between mb-2">
                         <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-2 mb-1">
+                            <div class="flex items-center gap-2 mb-2">
                                 ${notice.isPinned ? `<i class="fa-solid fa-thumbtack ${iconClass} text-xs"></i>` : ''}
                                 <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${typeColor} whitespace-nowrap">${typeLabel}</span>
-                                <h3 class="text-sm font-bold text-slate-800 truncate flex-1">${escapeHtml(notice.title || '제목 없음')}</h3>
+                                <h3 class="text-base font-bold text-slate-800 truncate flex-1 min-w-0 leading-tight">${escapeHtml(notice.title || '제목 없음')}</h3>
                             </div>
-                            <p class="text-xs text-slate-500 line-clamp-2 mb-2">${escapedContent}</p>
+                            <p class="text-sm text-slate-600 line-clamp-2 mb-3 leading-relaxed">${escapedContent}</p>
                         </div>
                     </div>
-                    <div class="flex items-center justify-between text-[10px] text-slate-400">
-                        <div class="flex items-center gap-3">
-                            <span>관리자</span>
-                            <span>${dateStr} ${timeStr}</span>
+                    <div class="flex items-center justify-between pt-1 border-t border-slate-200/60">
+                        <div class="flex items-center gap-4">
+                            <span class="text-[11px] text-slate-400">관리자</span>
+                            <span class="text-[11px] text-slate-400">${dateStr} ${timeStr}</span>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <div class="flex items-center gap-1.5 text-slate-500">
+                                <i class="fa-solid fa-thumbs-up text-xs"></i>
+                                <span class="text-xs font-bold">${likeCount}</span>
+                            </div>
+                            <div class="flex items-center gap-1.5 text-slate-500">
+                                <i class="fa-solid fa-eye text-xs"></i>
+                                <span class="text-xs font-bold">${viewCount}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
