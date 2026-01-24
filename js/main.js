@@ -2459,6 +2459,62 @@ window.deleteBoardComment = async (commentId, postId) => {
 };
 
 // 이벤트 리스너 초기화 함수
+// 이벤트 리스너 관리 유틸리티 (중복 등록 방지 및 정리)
+const eventListenerManager = {
+    listeners: new Map(), // element -> Map<eventType, handler>
+    
+    // 이벤트 리스너 등록 (중복 방지)
+    add(element, eventType, handler, options = false) {
+        if (!element) return;
+        
+        const key = `${eventType}_${options ? JSON.stringify(options) : 'default'}`;
+        
+        // 기존 리스너가 있으면 제거
+        if (this.listeners.has(element)) {
+            const elementListeners = this.listeners.get(element);
+            if (elementListeners.has(key)) {
+                const oldHandler = elementListeners.get(key);
+                element.removeEventListener(eventType, oldHandler, options);
+            }
+        } else {
+            this.listeners.set(element, new Map());
+        }
+        
+        // 새 리스너 등록
+        this.listeners.get(element).set(key, handler);
+        element.addEventListener(eventType, handler, options);
+    },
+    
+    // 특정 요소의 모든 리스너 제거
+    removeAll(element) {
+        if (!element || !this.listeners.has(element)) return;
+        
+        const elementListeners = this.listeners.get(element);
+        elementListeners.forEach((handler, key) => {
+            const [eventType, optionsStr] = key.split('_');
+            const options = optionsStr !== 'default' ? JSON.parse(optionsStr) : false;
+            element.removeEventListener(eventType, handler, options);
+        });
+        
+        this.listeners.delete(element);
+    },
+    
+    // 모든 리스너 제거
+    clear() {
+        this.listeners.forEach((elementListeners, element) => {
+            elementListeners.forEach((handler, key) => {
+                const [eventType, optionsStr] = key.split('_');
+                const options = optionsStr !== 'default' ? JSON.parse(optionsStr) : false;
+                element.removeEventListener(eventType, handler, options);
+            });
+        });
+        this.listeners.clear();
+    }
+};
+
+// 전역 이벤트 리스너 관리자 노출 (디버깅용)
+window.Mealog.eventListenerManager = eventListenerManager;
+
 function initEventListeners() {
     // 랜딩 페이지 버튼들
     const googleLoginBtn = document.getElementById('googleLoginBtn');
