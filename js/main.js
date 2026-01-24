@@ -28,97 +28,185 @@ import {
 import { DEFAULT_SUB_TAGS, REPORT_REASONS } from './constants.js';
 import { normalizeUrl } from './utils.js';
 
+// 전역 네임스페이스 객체 생성 (하위 호환성 유지)
+window.Mealog = window.Mealog || {};
+
 // 전역 객체에 함수들 할당 (HTML에서 접근 가능하도록)
+// 하위 호환성을 위해 window.*에도 유지하고, window.Mealog에도 할당
 window.dbOps = dbOps;
+window.Mealog.dbOps = dbOps;
 window.postInteractions = postInteractions;
+window.Mealog.postInteractions = postInteractions;
 window.removeDuplicateMeals = () => dbOps.removeDuplicateMeals();
+window.Mealog.removeDuplicateMeals = window.removeDuplicateMeals;
 window.showToast = showToast;
+window.Mealog.showToast = showToast;
 window.renderTimeline = renderTimeline;
+window.Mealog.renderTimeline = renderTimeline;
 window.renderGallery = renderGallery;
+window.Mealog.renderGallery = renderGallery;
 window.filterGalleryByUser = filterGalleryByUser;
+window.Mealog.filterGalleryByUser = filterGalleryByUser;
 window.clearGalleryFilter = clearGalleryFilter;
+window.Mealog.clearGalleryFilter = clearGalleryFilter;
 window.updateHeaderUI = updateHeaderUI;
+window.Mealog.updateHeaderUI = updateHeaderUI;
 window.copyDomain = copyDomain;
+window.Mealog.copyDomain = copyDomain;
 window.closeDomainModal = closeDomainModal;
+window.Mealog.closeDomainModal = closeDomainModal;
 window.handleGoogleLogin = handleGoogleLogin;
+window.Mealog.handleGoogleLogin = handleGoogleLogin;
 window.startGuest = startGuest;
+window.Mealog.startGuest = startGuest;
 window.openEmailModal = openEmailModal;
+window.Mealog.openEmailModal = openEmailModal;
 window.closeEmailModal = closeEmailModal;
+window.Mealog.closeEmailModal = closeEmailModal;
 window.setEmailAuthMode = setEmailAuthMode;
+window.Mealog.setEmailAuthMode = setEmailAuthMode;
 window.toggleEmailAuthMode = toggleEmailAuthMode;
+window.Mealog.toggleEmailAuthMode = toggleEmailAuthMode;
 window.handleEmailAuth = handleEmailAuth;
+window.Mealog.handleEmailAuth = handleEmailAuth;
 window.confirmLogout = confirmLogout;
+window.Mealog.confirmLogout = confirmLogout;
 window.confirmLogoutAction = confirmLogoutAction;
+window.Mealog.confirmLogoutAction = confirmLogoutAction;
 window.confirmDeleteAccount = confirmDeleteAccount;
+window.Mealog.confirmDeleteAccount = confirmDeleteAccount;
 window.switchToLogin = switchToLogin;
+window.Mealog.switchToLogin = switchToLogin;
 window.showTermsModal = showTermsModal;
+window.Mealog.showTermsModal = showTermsModal;
 window.closeTermsModal = closeTermsModal;
+window.Mealog.closeTermsModal = closeTermsModal;
 window.cancelTermsAgreement = cancelTermsAgreement;
+window.Mealog.cancelTermsAgreement = cancelTermsAgreement;
 window.confirmTermsAgreement = confirmTermsAgreement;
+window.Mealog.confirmTermsAgreement = confirmTermsAgreement;
 window.showTermsDetail = showTermsDetail;
+window.Mealog.showTermsDetail = showTermsDetail;
 window.updateTermsAgreeButton = updateTermsAgreeButton;
+window.Mealog.updateTermsAgreeButton = updateTermsAgreeButton;
 window.selectSetupIcon = selectSetupIcon;
+window.Mealog.selectSetupIcon = selectSetupIcon;
 window.confirmProfileSetup = confirmProfileSetup;
+window.Mealog.confirmProfileSetup = confirmProfileSetup;
 window.setProfileType = setProfileType;
+window.Mealog.setProfileType = setProfileType;
 window.handleSetupPhotoUpload = handleSetupPhotoUpload;
+window.Mealog.handleSetupPhotoUpload = handleSetupPhotoUpload;
 window.openModal = openModal;
+window.Mealog.openModal = openModal;
 window.closeModal = closeModal;
+window.Mealog.closeModal = closeModal;
 window.saveEntry = saveEntry;
+window.Mealog.saveEntry = saveEntry;
 window.deleteEntry = deleteEntry;
+window.Mealog.deleteEntry = deleteEntry;
 window.setRating = setRating;
+window.Mealog.setRating = setRating;
 window.setSatiety = setSatiety;
+window.Mealog.setSatiety = setSatiety;
 window.selectTag = selectTag;
+window.Mealog.selectTag = selectTag;
 window.handleMultipleImages = handleMultipleImages;
+window.Mealog.handleMultipleImages = handleMultipleImages;
 window.removePhoto = removePhoto;
+window.Mealog.removePhoto = removePhoto;
 window.updateShareIndicator = updateShareIndicator;
+window.Mealog.updateShareIndicator = updateShareIndicator;
 window.toggleSharePhoto = toggleSharePhoto;
+window.Mealog.toggleSharePhoto = toggleSharePhoto;
 window.openSettings = openSettings;
+window.Mealog.openSettings = openSettings;
 window.closeSettings = closeSettings;
+window.Mealog.closeSettings = closeSettings;
 window.switchSettingsTab = switchSettingsTab;
+window.Mealog.switchSettingsTab = switchSettingsTab;
 window.saveSettings = saveSettings;
+window.Mealog.saveSettings = saveSettings;
 window.saveProfileSettings = saveProfileSettings;
+window.Mealog.saveProfileSettings = saveProfileSettings;
 window.selectIcon = selectIcon;
+window.Mealog.selectIcon = selectIcon;
 window.setSettingsProfileType = setSettingsProfileType;
+window.Mealog.setSettingsProfileType = setSettingsProfileType;
 window.handlePhotoUpload = handlePhotoUpload;
+window.Mealog.handlePhotoUpload = handlePhotoUpload;
 window.addTag = addTag;
+window.Mealog.addTag = addTag;
 window.removeTag = removeTag;
+window.Mealog.removeTag = removeTag;
 window.deleteSubTag = deleteSubTag;
+window.Mealog.deleteSubTag = deleteSubTag;
 window.addFavoriteTag = addFavoriteTag;
+window.Mealog.addFavoriteTag = addFavoriteTag;
 window.removeFavoriteTag = removeFavoriteTag;
+window.Mealog.removeFavoriteTag = removeFavoriteTag;
 window.selectFavoriteMainTag = selectFavoriteMainTag;
+window.Mealog.selectFavoriteMainTag = selectFavoriteMainTag;
 window.setDashboardMode = setDashboardMode;
+window.Mealog.setDashboardMode = setDashboardMode;
 window.updateCustomDates = updateCustomDates;
+window.Mealog.updateCustomDates = updateCustomDates;
 window.updateSelectedMonth = updateSelectedMonth;
+window.Mealog.updateSelectedMonth = updateSelectedMonth;
 window.updateSelectedWeek = updateSelectedWeek;
+window.Mealog.updateSelectedWeek = updateSelectedWeek;
 window.navigatePeriod = navigatePeriod;
+window.Mealog.navigatePeriod = navigatePeriod;
 window.openDetailModal = openDetailModal;
+window.Mealog.openDetailModal = openDetailModal;
 window.openCharacterSelectModal = openCharacterSelectModal;
+window.Mealog.openCharacterSelectModal = openCharacterSelectModal;
 window.closeCharacterSelectModal = closeCharacterSelectModal;
+window.Mealog.closeCharacterSelectModal = closeCharacterSelectModal;
 window.selectInsightCharacter = selectInsightCharacter;
+window.Mealog.selectInsightCharacter = selectInsightCharacter;
 window.generateInsightComment = generateInsightComment;
+window.Mealog.generateInsightComment = generateInsightComment;
 window.openShareInsightModal = openShareInsightModal;
+window.Mealog.openShareInsightModal = openShareInsightModal;
 window.closeShareInsightModal = closeShareInsightModal;
+window.Mealog.closeShareInsightModal = closeShareInsightModal;
 window.shareInsightToFeed = shareInsightToFeed;
+window.Mealog.shareInsightToFeed = shareInsightToFeed;
 window.closeDetailModal = closeDetailModal;
+window.Mealog.closeDetailModal = closeDetailModal;
 window.setAnalysisType = setAnalysisType;
+window.Mealog.setAnalysisType = setAnalysisType;
 window.openShareBestModal = openShareBestModal;
+window.Mealog.openShareBestModal = openShareBestModal;
 window.closeShareBestModal = closeShareBestModal;
+window.Mealog.closeShareBestModal = closeShareBestModal;
 window.shareBestToFeed = shareBestToFeed;
+window.Mealog.shareBestToFeed = shareBestToFeed;
 window.editBestShare = openEditBestShareModal;
-window.openShareInsightModal = openShareInsightModal;
-window.closeShareInsightModal = closeShareInsightModal;
-window.shareInsightToFeed = shareInsightToFeed;
+window.Mealog.editBestShare = openEditBestShareModal;
 window.editInsightShare = openEditInsightShareModal;
+window.Mealog.editInsightShare = openEditInsightShareModal;
 window.toggleComment = toggleComment;
+window.Mealog.toggleComment = toggleComment;
 window.toggleFeedComment = toggleFeedComment;
+window.Mealog.toggleFeedComment = toggleFeedComment;
 window.openKakaoPlaceSearch = openKakaoPlaceSearch;
+window.Mealog.openKakaoPlaceSearch = openKakaoPlaceSearch;
 window.searchKakaoPlaces = searchKakaoPlaces;
+window.Mealog.searchKakaoPlaces = searchKakaoPlaces;
 window.selectKakaoPlace = selectKakaoPlace;
+window.Mealog.selectKakaoPlace = selectKakaoPlace;
 window.boardOperations = boardOperations;
+window.Mealog.boardOperations = boardOperations;
 window.noticeOperations = noticeOperations;
+window.Mealog.noticeOperations = noticeOperations;
 window.renderBoard = renderBoard;
+window.Mealog.renderBoard = renderBoard;
 window.renderBoardDetail = renderBoardDetail;
+window.Mealog.renderBoardDetail = renderBoardDetail;
 window.renderNoticeDetail = renderNoticeDetail;
+window.Mealog.renderNoticeDetail = renderNoticeDetail;
 
 // 로그인 요청 함수
 window.requestLogin = () => {
@@ -130,6 +218,7 @@ window.requestLogin = () => {
         }, 500);
     }
 };
+window.Mealog.requestLogin = window.requestLogin;
 
 // 좋아요 토글 함수
 window.toggleLike = async (postId) => {
@@ -166,6 +255,7 @@ window.toggleLike = async (postId) => {
         showToast("좋아요 처리 중 오류가 발생했습니다.", 'error');
     }
 };
+window.Mealog.toggleLike = window.toggleLike;
 
 // 북마크 토글 함수
 window.toggleBookmark = async (postId) => {
@@ -196,6 +286,7 @@ window.toggleBookmark = async (postId) => {
         showToast("북마크 처리 중 오류가 발생했습니다.", 'error');
     }
 };
+window.Mealog.toggleBookmark = window.toggleBookmark;
 
 // 댓글 추가 함수
 window.addCommentToPost = async (postId) => {
@@ -295,6 +386,8 @@ window.addCommentToPost = async (postId) => {
     }
 };
 
+window.Mealog.addCommentToPost = window.addCommentToPost;
+
 // 댓글 삭제 함수
 window.deleteCommentFromPost = async (commentId, postId) => {
     if (!window.currentUser || window.currentUser.isAnonymous || !commentId || !postId) {
@@ -357,6 +450,8 @@ window.deleteCommentFromPost = async (commentId, postId) => {
         showToast("댓글 삭제 중 오류가 발생했습니다.", 'error');
     }
 };
+
+window.Mealog.deleteCommentFromPost = window.deleteCommentFromPost;
 
 // 댓글 모두 보기 함수
 window.showAllComments = async (postId) => {
