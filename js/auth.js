@@ -68,19 +68,21 @@ export function openEmailModal() {
     }
     document.getElementById('passwordInput').value = '';
     
-    // 비밀번호 입력창에 엔터 키 이벤트 추가
-    const passwordInput = document.getElementById('passwordInput');
-    if (passwordInput) {
-        // 기존 이벤트 리스너 제거 (중복 방지)
-        const newPasswordInput = passwordInput.cloneNode(true);
-        passwordInput.parentNode.replaceChild(newPasswordInput, passwordInput);
-        
-        // 새 이벤트 리스너 추가
-        document.getElementById('passwordInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
+    // 비밀번호 입력창에 엔터 키 이벤트 추가 (이벤트 위임 사용)
+    const emailAuthModal = document.getElementById('emailAuthModal');
+    if (emailAuthModal) {
+        // 모달에 이벤트 위임으로 한 번만 등록 (중복 방지)
+        const handleKeyPress = (e) => {
+            if (e.target.id === 'passwordInput' && e.key === 'Enter') {
+                e.preventDefault();
                 window.handleEmailAuth();
             }
-        });
+        };
+        
+        // 기존 리스너가 있으면 제거 후 재등록
+        emailAuthModal.removeEventListener('keypress', emailAuthModal._passwordKeyHandler);
+        emailAuthModal._passwordKeyHandler = handleKeyPress;
+        emailAuthModal.addEventListener('keypress', handleKeyPress);
     }
 }
 
@@ -454,7 +456,6 @@ function renderSetupIconSelector() {
     const container = document.getElementById('setupIconSelector');
     if (!container) return;
     
-    const { DEFAULT_ICONS } = require('./constants.js');
     // 동적 import로 변경
     import('./constants.js').then(({ DEFAULT_ICONS }) => {
         container.innerHTML = DEFAULT_ICONS.map(icon => `

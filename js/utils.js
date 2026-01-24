@@ -2,6 +2,35 @@
 import { storage } from './firebase.js';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
+// 프로덕션 환경 감지 (localhost 또는 127.0.0.1이 아니면 프로덕션)
+const isProduction = () => {
+    const hostname = window.location.hostname;
+    return hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.includes('192.168.');
+};
+
+// 프로덕션에서 console.log 제거를 위한 래퍼 함수
+export const logger = {
+    log: (...args) => {
+        if (!isProduction()) {
+            console.log(...args);
+        }
+    },
+    warn: (...args) => {
+        if (!isProduction()) {
+            console.warn(...args);
+        }
+    },
+    error: (...args) => {
+        // error는 프로덕션에서도 표시 (중요한 에러 추적)
+        console.error(...args);
+    },
+    info: (...args) => {
+        if (!isProduction()) {
+            console.info(...args);
+        }
+    }
+};
+
 export function setVal(id, value) {
     const el = document.getElementById(id);
     if (el) el.value = value;

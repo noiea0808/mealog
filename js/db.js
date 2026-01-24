@@ -3,7 +3,7 @@ import { db, appId, auth } from './firebase.js';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, onSnapshot, collection, addDoc, query, orderBy, limit, where, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { showToast } from './ui.js';
 import { DEFAULT_SUB_TAGS } from './constants.js';
-import { uploadBase64ToStorage, toLocalDateString } from './utils.js';
+import { uploadBase64ToStorage, toLocalDateString, logger } from './utils.js';
 
 export const dbOps = {
     async save(record, silent = false) {
@@ -18,7 +18,7 @@ export const dbOps = {
             const docId = dataToSave.id;
             delete dataToSave.id;
             const coll = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meals');
-            console.log('식사 기록 저장 시도:', { userId: currentUser.uid, docId, dataToSave });
+            logger.log('식사 기록 저장 시도:', { userId: currentUser.uid, docId, dataToSave });
             if (docId) {
                 await setDoc(doc(coll, docId), dataToSave);
                 if (!silent) {
@@ -27,7 +27,7 @@ export const dbOps = {
                 return docId; // 기존 ID 반환
             } else {
                 const docRef = await addDoc(coll, dataToSave);
-                console.log('식사 기록 저장 성공:', docRef.id);
+                logger.log('식사 기록 저장 성공:', docRef.id);
                 if (!silent) {
                     showToast("식사가 기록되었습니다.", 'success');
                 }
@@ -1054,23 +1054,37 @@ export const postInteractions = {
         if (!postId) return [];
         try {
             const likesColl = collection(db, 'artifacts', appId, 'postLikes');
-            // orderBy 없이 먼저 시도 (인덱스 불필요)
+            // 서버 측에서 정렬 (인덱스 필요: postId, timestamp)
             const q = query(
                 likesColl,
-                where('postId', '==', postId)
+                where('postId', '==', postId),
+                orderBy('timestamp', 'desc')
             );
             const snapshot = await getDocs(q);
-            const likes = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-            // 클라이언트 측에서 정렬 (최신순)
-            likes.sort((a, b) => {
-                const timeA = new Date(a.timestamp || 0).getTime();
-                const timeB = new Date(b.timestamp || 0).getTime();
-                return timeB - timeA;
-            });
-            return likes;
+            return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         } catch (e) {
             console.error("Get Likes Error:", e);
-            // 에러 발생 시 빈 배열 반환
+            // 인덱스가 없을 경우 fallback: 클라이언트 측 정렬
+            if (e.code === 'failed-precondition') {
+                try {
+                    const likesColl = collection(db, 'artifacts', appId, 'postLikes');
+                    const fallbackQ = query(
+                        likesColl,
+                        where('postId', '==', postId)
+                    );
+                    const snapshot = await getDocs(fallbackQ);
+                    const likes = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                    likes.sort((a, b) => {
+                        const timeA = new Date(a.timestamp || 0).getTime();
+                        const timeB = new Date(b.timestamp || 0).getTime();
+                        return timeB - timeA;
+                    });
+                    return likes;
+                } catch (fallbackError) {
+                    console.error("Get Likes Fallback Error:", fallbackError);
+                    return [];
+                }
+            }
             return [];
         }
     },
@@ -1215,23 +1229,37 @@ export const postInteractions = {
         if (!postId) return [];
         try {
             const commentsColl = collection(db, 'artifacts', appId, 'postComments');
-            // orderBy 없이 먼저 시도 (인덱스 불필요)
+            // 서버 측에서 정렬 (인덱스 필요: postId, timestamp)
             const q = query(
                 commentsColl,
-                where('postId', '==', postId)
+                where('postId', '==', postId),
+                orderBy('timestamp', 'asc')
             );
             const snapshot = await getDocs(q);
-            const comments = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-            // 클라이언트 측에서 정렬 (오래된순)
-            comments.sort((a, b) => {
-                const timeA = new Date(a.timestamp || 0).getTime();
-                const timeB = new Date(b.timestamp || 0).getTime();
-                return timeA - timeB;
-            });
-            return comments;
+            return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         } catch (e) {
             console.error("Get Comments Error:", e);
-            // 에러 발생 시 빈 배열 반환
+            // 인덱스가 없을 경우 fallback: 클라이언트 측 정렬
+            if (e.code === 'failed-precondition') {
+                try {
+                    const commentsColl = collection(db, 'artifacts', appId, 'postComments');
+                    const fallbackQ = query(
+                        commentsColl,
+                        where('postId', '==', postId)
+                    );
+                    const snapshot = await getDocs(fallbackQ);
+                    const comments = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                    comments.sort((a, b) => {
+                        const timeA = new Date(a.timestamp || 0).getTime();
+                        const timeB = new Date(b.timestamp || 0).getTime();
+                        return timeA - timeB;
+                    });
+                    return comments;
+                } catch (fallbackError) {
+                    console.error("Get Comments Fallback Error:", fallbackError);
+                    return [];
+                }
+            }
             return [];
         }
     },
