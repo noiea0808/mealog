@@ -2774,7 +2774,7 @@ export function createDailyShareCard(dateStr, forPreview = false) {
             const r = records[0];
             const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
             
-            let containerStyle = 'border: 1px solid rgba(255, 255, 255, 0.3); margin: 4px 8px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); background: rgba(255, 255, 255, 0.9);';
+            let containerStyle = 'border: 1px solid rgba(255, 255, 255, 0.3); margin: 4px 8px; margin-bottom: 7px; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); background: rgba(255, 255, 255, 0.9);';
             let iconTextColor = specificStyle.iconText.includes('orange') ? '#f97316' : specificStyle.iconText.includes('emerald') ? '#10b981' : specificStyle.iconText.includes('indigo') ? '#6366f1' : '#64748b';
             
             let titleLine1 = '';
@@ -2784,57 +2784,60 @@ export function createDailyShareCard(dateStr, forPreview = false) {
             
             if (r) {
                 if (r.mealType === 'Skip') {
-                    titleLine1 = 'Skip';
+                    titleLine2 = 'Skip';
                     iconBoxStyle = 'background: #f1f5f9; border-right: 1px solid #e2e8f0;';
                     iconHtml = '<i class="fa-solid fa-ban" style="font-size: 24px; color: #94a3b8;"></i>';
                 } else {
                     const p = r.place || '';
                     const m = r.menuDetail || r.category || '';
-                    if (p) {
-                        titleLine1 = `<span style="font-size: 14px; font-weight: 900; color: ${iconTextColor}; line-height: 1.4; display: inline-block;">${escapeHtml(slot.label)}</span> <span style="font-size: 12px; font-weight: 700; color: #94a3b8; line-height: 1.4; display: inline-block;">@ ${escapeHtml(p)}</span>`;
-                    } else {
-                        titleLine1 = `<span style="font-size: 14px; font-weight: 900; color: ${iconTextColor}; line-height: 1.4; display: inline-block;">${escapeHtml(slot.label)}</span>`;
-                    }
                     titleLine2 = escapeHtml(m || '');
                     
                     if (r.photos && Array.isArray(r.photos) && r.photos[0]) {
                         iconBoxStyle = 'border-right: 1px solid #e2e8f0;';
-                        iconHtml = `<img src="${r.photos[0]}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px 0 0 8px;" />`;
+                        iconHtml = `<img src="${r.photos[0]}" style="width: 100%; height: 100%; min-height: 130px; object-fit: cover;">`;
                     } else if (r.photos && !Array.isArray(r.photos)) {
                         iconBoxStyle = 'border-right: 1px solid #e2e8f0;';
-                        iconHtml = `<img src="${r.photos}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px 0 0 8px;" />`;
+                        iconHtml = `<img src="${r.photos}" style="width: 100%; height: 100%; min-height: 130px; object-fit: cover;">`;
                     } else {
                         iconBoxStyle = 'background: #f1f5f9; border-right: 1px solid #e2e8f0;';
-                        iconHtml = `<i class="fa-solid fa-utensils" style="font-size: 24px; color: ${iconTextColor};"></i>`;
+                        iconHtml = `<div style="font-size: 28px;">🍽️</div>`;
                     }
                 }
             } else {
-                titleLine1 = `<span style="font-size: 14px; font-weight: 900; color: ${iconTextColor};">${escapeHtml(slot.label)}</span>`;
-                titleLine2 = '<span style="font-size: 12px; color: #94a3b8;">기록하기</span>';
+                titleLine2 = '';
                 iconBoxStyle = 'background: #f1f5f9; border-right: 1px solid #e2e8f0;';
                 iconHtml = '<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 8px;"><span style="font-size: 32px; font-weight: 900; color: #cbd5e1; margin-bottom: 4px;">+</span><span style="font-size: 10px; color: #cbd5e1; line-height: 1.2;">입력해주세요</span></div>';
             }
             
+            // 날짜 포맷팅 (베스트와 동일한 형식)
+            const dateObj = r ? new Date(r.date + 'T00:00:00') : new Date(dateStr + 'T00:00:00');
+            const formattedDateForCard = dateObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+            
             html += `
-                <div style="${containerStyle} min-height: 140px;">
+                <div style="${containerStyle} min-height: 130px;">
                     <div style="display: flex;">
-                        <div style="width: 140px; min-height: 140px; ${iconBoxStyle} display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; border-radius: 8px 0 0 8px;">
+                        <div style="width: 130px; min-height: 130px; ${iconBoxStyle} display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; border-radius: 8px 0 0 8px;">
                             ${iconHtml}
                         </div>
-                        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-start; padding: 16px; padding-top: 16px; position: relative;">
-                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2px; gap: 8px;">
-                                <div style="flex: 1; min-width: 0; display: block;">
-                                    <h4 style="line-height: 1.4; margin: 0; margin-bottom: 4px; font-size: 14px; display: block; word-wrap: break-word; overflow-wrap: break-word;">${titleLine1}</h4>
-                                    ${titleLine2 ? `<p style="font-size: 12px; font-weight: 700; color: #475569; margin: 0; margin-bottom: 2px; line-height: 1.4; display: block; word-wrap: break-word; overflow-wrap: break-word;">${titleLine2}</p>` : ''}
-                                </div>
-                                ${r && r.rating ? `<div style="display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; vertical-align: top;">
-                                    <span style="font-size: 11px; font-weight: 900; color: #d97706; background: #fef3c7; padding: 3px 6px; border-radius: 6px; display: inline-flex; align-items: center; gap: 2px; line-height: 1; white-space: nowrap;">
-                                        <i class="fa-solid fa-star" style="font-size: 9px; line-height: 1;"></i>
-                                        <span style="font-weight: 900; line-height: 1;">${r.rating}</span>
-                                    </span>
-                                </div>` : ''}
+                        <div style="flex: 1; padding: 10px 12px 12px 12px; display: flex; flex-direction: column; justify-content: flex-start; min-width: 0; min-height: 130px;">
+                            <div style="font-size: 11px; color: #64748b; margin-bottom: 6px; line-height: 1.4;">
+                                <span style="font-weight: 700; color: ${iconTextColor};">${escapeHtml(slot.label)}</span>
+                                ${r && r.place ? ` <span style="color: #94a3b8; font-weight: 700;">@ ${escapeHtml(r.place)}</span>` : ''}
+                                <span style="color: #cbd5e1; margin: 0 4px;">·</span>
+                                <span style="color: #94a3b8;">${formattedDateForCard}</span>
                             </div>
-                            ${r && r.comment ? `<p style="font-size: 11px; color: #64748b; margin: 4px 0 3px 0; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; padding-bottom: 3px;">"${escapeHtml(r.comment)}"</p>` : ''}
+                            ${titleLine2 ? `<div style="font-size: 15px; font-weight: 700; color: #1e293b; margin-bottom: 6px; line-height: 1.3; word-break: break-word;">
+                                ${titleLine2}
+                            </div>` : ''}
+                            ${r && r.comment ? `<div style="font-size: 11px; color: #94a3b8; margin-bottom: 8px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic; padding-bottom: 2px;">
+                                "${escapeHtml(r.comment)}"
+                            </div>` : ''}
+                            ${r && r.rating ? `<div style="display: flex; align-items: center; justify-content: flex-start; gap: 4px; margin-top: auto; padding-top: 4px;">
+                                <span style="font-size: 11px; color: #ca8a04; font-weight: 900; background: #fefce8; padding: 4px 10px; border-radius: 999px; border: 1px solid #fde047; display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 24px; white-space: nowrap;">
+                                    <span style="font-size: 13px; line-height: 1; display: inline-flex; align-items: center;">⭐</span>
+                                    <span style="font-size: 12px; font-weight: 900; line-height: 1; display: inline-flex; align-items: center;">${r.rating}</span>
+                                </span>
+                            </div>` : ''}
                         </div>
                     </div>
                 </div>
@@ -2848,9 +2851,9 @@ export function createDailyShareCard(dateStr, forPreview = false) {
                         ${records.length > 0 ? records.map(r => `
                             <div style="display: inline-flex; align-items: center; padding: 2.5px 5px; background: rgba(255, 255, 255, 0.2); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.3); flex-shrink: 0; box-sizing: border-box;">
                                 <span style="font-size: 12px; font-weight: 600; color: #ffffff; word-wrap: break-word; overflow-wrap: break-word; white-space: nowrap;">${escapeHtml(r.menuDetail || r.snackType || '간식')}</span>
-                                ${r.rating ? `<span style="font-size: 10px; font-weight: 900; color: #d97706; background: #fef3c7; padding: 2px 6px; border-radius: 4px; margin-left: 6px; display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; white-space: nowrap;">
-                                    <i class="fa-solid fa-star" style="font-size: 9px;"></i>
-                                    ${r.rating}
+                                ${r.rating ? `<span style="font-size: 10px; font-weight: 900; color: #ca8a04; background: #fefce8; padding: 2px 7px; border-radius: 999px; border: 1px solid #fde047; margin-left: 6px; display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; white-space: nowrap;">
+                                    <span style="font-size: 11px; line-height: 1; display: inline-flex; align-items: center;">⭐</span>
+                                    <span style="font-size: 11px; font-weight: 900; line-height: 1; display: inline-flex; align-items: center;">${r.rating}</span>
                                 </span>` : ''}
                             </div>
                         `).join('') : ''}

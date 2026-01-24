@@ -584,7 +584,7 @@ window.confirmDailyShare = async (dateStr) => {
         await new Promise(resolve => setTimeout(resolve, 100));
 
         // 미리보기 카드의 실제 크기 계산
-        const innerContent = previewCard.querySelector('div[style*="width: 440px"]') || previewCard;
+        const innerContent = previewCard.querySelector('div[style*="width: 420px"]') || previewCard;
         let actualHeight = innerContent.offsetHeight || innerContent.scrollHeight;
         
         // 높이가 없거나 너무 작으면 한 번만 재확인 (대기 시간 단축)
@@ -597,11 +597,11 @@ window.confirmDailyShare = async (dateStr) => {
 
         // 미리보기 카드를 그대로 캡쳐
         const canvas = await html2canvas(innerContent, {
-            backgroundColor: '#f8fafc',
+            backgroundColor: '#ffffff',
             scale: 2,
             logging: false,
             useCORS: true,
-            width: 440,
+            width: 420,
             height: actualHeight,
             x: 0,
             y: 0,

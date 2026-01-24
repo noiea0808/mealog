@@ -443,10 +443,13 @@ export function renderBestMeals() {
                         </div>
                         ${iconHtml}
                     </div>
-                    <div class="flex-1 min-w-0 flex flex-col p-4 pr-12 relative">
+                        <div class="flex-1 min-w-0 flex flex-col p-4 pr-12 relative">
                         <div class="absolute top-2 right-2 flex items-center gap-2 z-10">
                             ${meal.sharedPhotos && Array.isArray(meal.sharedPhotos) && meal.sharedPhotos.length > 0 ? `<span class="text-xs text-emerald-600" title="게시됨"><i class="fa-solid fa-share"></i></span>` : ''}
-                            <span class="text-xs font-bold text-yellow-600 bg-yellow-50 px-1.5 py-0.5 rounded-md flex items-center gap-0.5"><i class="fa-solid fa-star text-[10px]"></i><span class="text-[11px] font-black">${rating || '-'}</span></span>
+                            <span class="text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-300 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                <span class="text-[13px]">⭐</span>
+                                <span class="text-[12px] font-black">${rating || '-'}</span>
+                            </span>
                         </div>
                         <div class="mb-1 pr-16">
                             <span class="text-xs text-slate-400">${formattedDate}</span>
@@ -750,9 +753,9 @@ export async function openShareBestModal() {
                                 "${safeComment}"
                             </div>` : ''}
                             <div style="display: flex; align-items: center; justify-content: flex-start; gap: 4px; margin-top: auto; padding-top: 4px;">
-                                <span style="font-size: 12px; color: #d97706; font-weight: 900; background: #fef3c7; padding: 4px 10px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 24px;">
+                                <span style="font-size: 11px; color: #ca8a04; font-weight: 900; background: #fefce8; padding: 4px 10px; border-radius: 999px; border: 1px solid #fde047; display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 24px; white-space: nowrap;">
                                     <span style="font-size: 13px; line-height: 1; display: inline-flex; align-items: center;">⭐</span>
-                                    <span style="font-weight: 900; line-height: 1; display: inline-flex; align-items: center;">${rating}</span>
+                                    <span style="font-size: 12px; font-weight: 900; line-height: 1; display: inline-flex; align-items: center;">${rating}</span>
                                 </span>
                             </div>
                         </div>
