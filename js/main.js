@@ -1454,11 +1454,21 @@ initAuth(async (user) => {
         // 사용자 문서 업데이트 (가입일, 마지막 로그인 날짜)
         await updateUserDocument(user);
         
-        // 이미 메인 화면이 표시되어 있으면 추가 처리 없이 리턴
+        // 이미 메인 화면이 표시되어 있으면 보통은 추가 처리 없이 리턴.
+        // 단, 게스트 → 이메일/구글 로그인처럼 "메인 화면 위에서" 인증이 바뀌는 경우,
+        // 약관/프로필 플로우 및 리스너 설정이 반드시 필요하므로 여기서 종료하면 안 됨.
         const mainApp = document.getElementById('mainApp');
         const landingPage = document.getElementById('landingPage');
         if (mainApp && !mainApp.classList.contains('hidden') && landingPage && landingPage.style.display === 'none') {
-            return;
+            const sameUser = lastProcessedUserId === user.uid;
+            const readyToSkip =
+                sameUser &&
+                !user.isAnonymous &&
+                !!window.userSettings &&
+                authFlowManager.hasCompleted;
+            if (readyToSkip) {
+                return;
+            }
         }
         
                 // 중요: providerId와 email은 처음 로그인 시 약관 동의 또는 프로필 설정 시에만 설정됩니다.
