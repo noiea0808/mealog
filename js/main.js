@@ -475,14 +475,14 @@ window.openDailySharePreviewModal = (dateStr) => {
                     <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
             </div>
-            <div id="dailySharePreviewScroll" class="flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 py-0 min-h-0">
+            <div id="dailySharePreviewScroll" class="flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 py-0 min-h-0" style="padding: 3px;">
                 <!-- createDailyShareCard(forPreview) 결과가 여기 들어감 -->
             </div>
             <div class="flex gap-3 p-4 border-t border-slate-100 flex-shrink-0">
                 <button onclick="window.closeDailySharePreviewModal()" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm">
                     취소
                 </button>
-                <button onclick="window.confirmDailyShare('${dateStr}')" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm active:bg-emerald-700 transition-colors">
+                <button onclick="window.confirmDailyShare('${dateStr}')" class="flex-1 py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all">
                     공유
                 </button>
             </div>
@@ -1565,7 +1565,7 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
     bg.onclick = () => menu.remove();
     
     const menuContainer = document.createElement('div');
-    menuContainer.className = 'fixed bottom-0 left-0 right-0 w-full bg-white rounded-t-3xl p-4 pb-8 animate-fade-up z-[451]';
+    menuContainer.className = 'fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white rounded-t-3xl p-4 pb-8 animate-fade-up z-[451]';
     
     const handlebar = document.createElement('div');
     handlebar.className = 'w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4';

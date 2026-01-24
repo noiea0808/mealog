@@ -326,19 +326,33 @@ function updateAnalysisTypeUI() {
     const activeBtnClass = "flex-1 py-2.5 text-sm font-semibold transition-all relative text-emerald-600 border-b-2 border-emerald-600";
     const inactiveBtnClass = "flex-1 py-2.5 text-sm font-semibold transition-all relative text-slate-400 hover:text-slate-600 border-b-2 border-transparent";
     
+    // 최근 1주 또는 직접설정일 때 Best 탭 숨기기
+    const shouldHideBest = state.dashboardMode === '7d' || state.dashboardMode === 'custom';
+    
     if (bestBtn && mainBtn && snackBtn) {
+        // Best 탭 표시/숨김
+        if (shouldHideBest) {
+            bestBtn.style.display = 'none';
+            // Best가 활성화되어 있으면 식사로 전환
+            if (state.analysisType === 'best') {
+                state.analysisType = 'main';
+            }
+        } else {
+            bestBtn.style.display = '';
+        }
+        
         bestBtn.className = state.analysisType === 'best' ? activeBtnClass : inactiveBtnClass;
         mainBtn.className = state.analysisType === 'main' ? activeBtnClass : inactiveBtnClass;
         snackBtn.className = state.analysisType === 'snack' ? activeBtnClass : inactiveBtnClass;
     }
     
     if (bestSection && mainSection && snackSection) {
-        bestSection.classList.toggle('hidden', state.analysisType !== 'best');
+        bestSection.classList.toggle('hidden', state.analysisType !== 'best' || shouldHideBest);
         mainSection.classList.toggle('hidden', state.analysisType !== 'main');
         snackSection.classList.toggle('hidden', state.analysisType !== 'snack');
     }
     
-    if (state.analysisType === 'best') {
+    if (state.analysisType === 'best' && !shouldHideBest) {
         renderBestMeals();
     }
 }

@@ -1347,23 +1347,23 @@ export async function openShareInsightModal() {
     
     // 스크린샷용 HTML 생성 (실제 화면과 동일한 구조 및 색상)
     const screenshotHtml = `
-        <div id="insightScreenshotContainer" style="width: 448px; max-width: 448px; margin: 0 auto; background: #f8fafc; border-radius: 8px; overflow: hidden; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+        <div id="insightScreenshotContainer" style="width: 420px; max-width: 420px; margin: 0 auto; background: #f8fafc; border-radius: 8px; overflow: hidden; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
             <!-- 헤더 (밀로그 그린 배경) -->
             <div style="background: #059669; padding: 16px; border-bottom: 1px solid #047857;">
                 <!-- 상단: MEALOG와 기간 -->
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 8px;">
                     <span style="font-size: 28.8px; font-weight: 600; color: #ffffff; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
                     <span style="font-size: 12px; font-weight: 400; color: #d1fae5; flex-shrink: 0;">${escapeHtml(dateRangeText || '')}</span>
                 </div>
                 <!-- 하단: 밀당(MEAL-DANG)들의 참견 -->
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <span style="font-size: 16px;">${escapeHtml(characterIcon)}</span>
-                    <span style="font-size: 15px; font-weight: 700; color: #ffffff;">밀당(MEAL-DANG)들의 참견</span>
+                    <span style="font-size: 15px; font-weight: 700; color: #ffffff; font-family: 'NanumSquareRound', sans-serif;">${escapeHtml(userNickname)}님에 대한 밀당(MEAL黨)들의 참견</span>
                 </div>
             </div>
             
-            <!-- 인사이트 섹션 (초록색 배경) -->
-            <div style="background: #059669; padding: 12px 16px;">
+            <!-- 인사이트 섹션 (초록색 배경, 투명도 20%) -->
+            <div style="background: rgba(5, 150, 105, 0.8); padding: 12px 16px; border-top: 1px solid #ffffff;">
                 <!-- 캐릭터와 말풍선 영역 -->
                 <div style="display: flex; gap: 12px; align-items: flex-start;">
                     <!-- 밀당 캐릭터 선택 창 -->
@@ -1381,7 +1381,7 @@ export async function openShareInsightModal() {
                         <div style="background: rgba(254, 252, 232, 0.9); border: 2px solid white; padding: 12px; border-radius: 0.5rem 1.25rem 1.25rem 0.5rem; min-height: 164px;">
                             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                                 ${characterNameText ? `<div style="font-size: 14px; font-weight: 800; color: #065f46;">${escapeHtml(characterNameText)}</div>` : '<div></div>'}
-                                <div style="flex-shrink: 0; background: #059669; border-radius: 8px; padding: 4px 8px; font-size: 10px; font-weight: 700; color: white; border: 1px solid #047857; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                <div style="flex-shrink: 0; background: #059669; border-radius: 8px; padding: 4px 8px; font-size: 10px; font-weight: 700; color: white; border: 1px solid #047857; box-shadow: 0 1px 3px rgba(0,0,0,0.1);" class="insight-share-button">
                                     <i class="fa-solid fa-share" style="font-size: 10px; margin-right: 4px;"></i>공유
                                 </div>
                             </div>
@@ -1448,7 +1448,7 @@ export async function openEditInsightShareModal(photoUrl) {
     
     // 기존 이미지 사용
     const existingImageHtml = insightShare.photoUrl ? `
-        <div id="insightScreenshotContainer" style="width: 448px; max-width: 448px; margin: 0 auto; background: #f8fafc; border-radius: 8px; overflow: hidden; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+        <div id="insightScreenshotContainer" style="width: 420px; max-width: 420px; margin: 0 auto; background: #f8fafc; border-radius: 8px; overflow: hidden; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
             <div style="text-align: center;">
                 <img src="${insightShare.photoUrl}" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" alt="밀당 코멘트 공유 이미지">
             </div>
@@ -1637,7 +1637,14 @@ export async function shareInsightToFeed() {
             scale: 2,
             logging: false,
             useCORS: true,
-            allowTaint: true
+            allowTaint: true,
+            onclone: (clonedDoc) => {
+                // 공유 버튼 숨기기
+                const shareBtn = clonedDoc.querySelector('.insight-share-button');
+                if (shareBtn) {
+                    shareBtn.style.display = 'none';
+                }
+            }
         });
         
         // Canvas를 Blob으로 변환

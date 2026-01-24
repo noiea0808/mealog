@@ -675,23 +675,23 @@ export async function openShareBestModal() {
     
     // 스크린샷용 HTML 생성
     const screenshotHtml = `
-        <div id="bestScreenshotContainer" style="width: 440px; max-width: 440px; margin: 0 auto; background: #fcd34d; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; font-family: Pretendard, sans-serif;">
+        <div id="bestScreenshotContainer" style="width: 420px; max-width: 420px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; font-family: Pretendard, sans-serif;">
             <!-- 헤더 (노란색 계열 배경) -->
             <div style="background: #fcd34d; padding: 16px; border-bottom: 1px solid #ffffff;">
                 <!-- 상단: MEALOG와 기간 -->
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                    <span style="font-size: 20px; font-weight: 600; color: #000000; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
+                <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 8px;">
+                    <span style="font-size: 28.8px; font-weight: 600; color: #000000; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
                     <span style="font-size: 12px; font-weight: 400; color: #000000; flex-shrink: 0;">${periodText}</span>
                 </div>
                 <!-- 하단: 닉네임의 Best -->
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <span style="font-size: 16px;">${userIcon}</span>
-                    <span style="font-size: 15px; font-weight: 700; color: #000000;">${escapeHtml(userNickname)}의 ${periodType} Best</span>
+                    <span style="font-size: 15px; font-weight: 700; color: #000000; font-family: 'NanumSquareRound', sans-serif;">${escapeHtml(userNickname)}의 ${periodType} Best</span>
                 </div>
             </div>
             
             <!-- 본문 -->
-            <div style="padding: 0; background: #fcd34d; border-top: 1px solid #ffffff;">
+            <div style="padding: 0; background: rgba(252, 211, 77, 0.5); border-top: 1px solid #ffffff;">
             ${top3Meals.map((meal, index) => {
                 const slot = SLOTS.find(s => s.id === meal.slotId);
                 const slotLabel = slot ? slot.label : '알 수 없음';

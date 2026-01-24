@@ -2722,8 +2722,8 @@ export function createDailyShareCard(dateStr, forPreview = false) {
     } else {
         container.style.margin = '0 auto';
     }
-    container.style.width = '440px'; // 모바일 기준 너비
-    container.style.maxWidth = '440px';
+    container.style.width = '420px'; // 모바일 기준 너비
+    container.style.maxWidth = '420px';
     container.style.backgroundColor = '#ffffff';
     container.style.padding = '0';
     container.style.fontFamily = 'Pretendard, sans-serif';
@@ -2746,23 +2746,23 @@ export function createDailyShareCard(dateStr, forPreview = false) {
     const formattedDate = `'${shortYear}년 ${month}월${day}일`;
     
     let html = `
-        <div style="width: 440px; max-width: 440px; margin: 0 auto; background: #1877F2; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+        <div style="width: 420px; max-width: 420px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
             <!-- 헤더 (페이스북 블루 배경) -->
             <div style="background: #1877F2; padding: 16px; border-bottom: 1px solid #ffffff;">
                 <!-- 상단: MEALOG와 날짜 -->
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                    <span style="font-size: 20px; font-weight: 600; color: #ffffff; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
+                <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 8px;">
+                    <span style="font-size: 28.8px; font-weight: 600; color: #ffffff; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
                     <span style="font-size: 12px; font-weight: 400; color: #ffffff; flex-shrink: 0;">${formattedDate}</span>
                 </div>
                 <!-- 하단: 닉네임의 하루소감 -->
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <span style="font-size: 16px;">${userIcon}</span>
-                    <span style="font-size: 15px; font-weight: 700; color: #ffffff;">${escapeHtml(userNickname)}의 하루소감</span>
+                    <span style="font-size: 15px; font-weight: 700; color: #ffffff; font-family: 'NanumSquareRound', sans-serif;">${escapeHtml(userNickname)}의 하루소감</span>
                 </div>
             </div>
             
             <!-- 본문 -->
-            <div style="padding: 0; background: #1877F2; border-top: 1px solid #ffffff;">
+            <div style="padding: 0; background: rgba(24, 119, 242, 0.7); border-top: 1px solid #ffffff;">
     `;
     
     // 타임라인처럼 모든 슬롯을 순서대로 표시 (간식 포함)
@@ -2834,7 +2834,7 @@ export function createDailyShareCard(dateStr, forPreview = false) {
                                     </span>
                                 </div>` : ''}
                             </div>
-                            ${r && r.comment ? `<p style="font-size: 11px; color: #64748b; margin: 4px 0 3px 0; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word; display: block; padding-bottom: 3px;">"${escapeHtml(r.comment)}"</p>` : ''}
+                            ${r && r.comment ? `<p style="font-size: 11px; color: #64748b; margin: 4px 0 3px 0; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; padding-bottom: 3px;">"${escapeHtml(r.comment)}"</p>` : ''}
                         </div>
                     </div>
                 </div>
@@ -2844,10 +2844,10 @@ export function createDailyShareCard(dateStr, forPreview = false) {
             html += `
                 <div style="display: flex; align-items: center; margin-bottom: 6px; padding: 4px 8px; min-height: 32px; gap: 12px;">
                     <span style="font-size: 12px; font-weight: 900; color: #ffffff; text-transform: uppercase; flex-shrink: 0; padding: 0 8px; white-space: nowrap;">${escapeHtml(slot.label)}</span>
-                    <div style="flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-start;">
+                    <div style="flex: 1; min-width: 0; display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; justify-content: flex-start; overflow-x: auto;">
                         ${records.length > 0 ? records.map(r => `
-                            <div style="display: inline-flex; align-items: center; padding: 5px 10px; background: rgba(255, 255, 255, 0.2); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.3); max-width: 100%; box-sizing: border-box;">
-                                <span style="font-size: 12px; font-weight: 600; color: #ffffff; word-wrap: break-word; overflow-wrap: break-word; max-width: calc(100% - 40px);">${escapeHtml(r.menuDetail || r.snackType || '간식')}</span>
+                            <div style="display: inline-flex; align-items: center; padding: 2.5px 5px; background: rgba(255, 255, 255, 0.2); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.3); flex-shrink: 0; box-sizing: border-box;">
+                                <span style="font-size: 12px; font-weight: 600; color: #ffffff; word-wrap: break-word; overflow-wrap: break-word; white-space: nowrap;">${escapeHtml(r.menuDetail || r.snackType || '간식')}</span>
                                 ${r.rating ? `<span style="font-size: 10px; font-weight: 900; color: #d97706; background: #fef3c7; padding: 2px 6px; border-radius: 4px; margin-left: 6px; display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; white-space: nowrap;">
                                     <i class="fa-solid fa-star" style="font-size: 9px;"></i>
                                     ${r.rating}

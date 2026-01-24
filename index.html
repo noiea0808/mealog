@@ -38,6 +38,7 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/earlyaccess/nanumsquareround.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <link rel="stylesheet" href="css/style.css">
@@ -555,8 +556,8 @@
                             <div id="insightBubble" class="bg-yellow-50/90 border-2 border-white py-3 px-3 relative" style="border-radius: 0.5rem 1.25rem 1.25rem 0.5rem;">
                                 <div class="flex items-center justify-between mb-2">
                                     <div id="insightCharacterName" class="text-sm font-black text-emerald-800"></div>
-                                    <button id="shareInsightBtn" onclick="window.openShareInsightModal()" class="flex-shrink-0 bg-emerald-600 rounded-lg font-bold text-[10px] shadow-md active:bg-emerald-700 transition-colors py-1 px-2 text-white border border-emerald-700 hidden">
-                                        <i class="fa-solid fa-share text-[10px] mr-1"></i>공유
+                                    <button id="shareInsightBtn" onclick="window.openShareInsightModal()" class="flex-shrink-0 bg-emerald-600 rounded-lg font-bold text-xs shadow-md active:bg-emerald-700 transition-colors py-1.5 px-3 text-white border border-emerald-700 hidden">
+                                        <i class="fa-solid fa-share text-xs mr-1"></i>공유
                                     </button>
                                 </div>
                                 <div id="insightTextContent" class="insight-text-content">
@@ -591,9 +592,9 @@
                 <!-- 분석 타입 선택 스위치 -->
                 <div class="card py-1.5 px-4 mt-3">
                     <div class="flex p-0.5 rounded-xl gap-1">
-                        <button id="btn-analysis-best" class="flex-1 py-1 text-xs font-bold bg-white text-slate-700 rounded-lg shadow-sm transition-all">Best</button>
                         <button id="btn-analysis-main" class="flex-1 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">식사</button>
                         <button id="btn-analysis-snack" class="flex-1 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">간식</button>
+                        <button id="btn-analysis-best" class="flex-1 py-1 text-xs font-bold bg-white text-slate-700 rounded-lg shadow-sm transition-all">Best</button>
                     </div>
                 </div>
                 
@@ -942,7 +943,7 @@
     <div id="characterSelectModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-end">
         <div class="w-full max-w-md mx-auto bg-white rounded-t-[2rem] flex flex-col max-h-[60vh]">
             <div class="p-6 border-b flex justify-between items-center">
-                <h2 class="text-lg font-bold text-slate-800 tracking-tight">밀당(MEAL-DANG) 캐릭터 선택</h2>
+                <h2 class="text-lg font-bold text-slate-800 tracking-tight">밀당(MEAL黨) 캐릭터 선택</h2>
                 <button onclick="window.closeCharacterSelectModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
             </div>
             <div class="p-6 overflow-y-auto">
@@ -957,7 +958,7 @@
     <div id="characterSelectPopup" class="hidden fixed inset-0 bg-slate-900/60 z-[9999] flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 w-full max-w-md">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-lg font-bold text-slate-800 tracking-tight">밀당(MEAL-DANG) 캐릭터 선택</h2>
+                <h2 class="text-lg font-bold text-slate-800 tracking-tight">밀당(MEAL黨) 캐릭터 선택</h2>
                 <button onclick="window.closeCharacterSelectModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
                     <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
@@ -991,7 +992,7 @@
                 <button onclick="window.closeShareBestModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
             </div>
             <div class="space-y-4 overflow-y-auto pb-10">
-                <div id="bestSharePreview" class="bg-slate-50 rounded-2xl"></div>
+                <div id="bestSharePreview" class="bg-slate-50 rounded-2xl" style="padding: 3px;"></div>
                 <div class="px-6">
                     <label class="text-sm font-bold text-slate-600 block mb-2">코멘트 (선택사항)</label>
                     <textarea id="bestShareComment" placeholder="이번 주/월의 베스트에 대한 코멘트를 입력하세요..." class="w-full p-3 bg-slate-50 rounded-xl text-sm border border-transparent focus:border-slate-400 transition-all resize-none" rows="3"></textarea>
@@ -1011,7 +1012,7 @@
                 <button onclick="window.closeShareInsightModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
             </div>
             <div class="space-y-4 overflow-y-auto pb-10">
-                <div id="insightSharePreview" class="bg-slate-50 rounded-2xl"></div>
+                <div id="insightSharePreview" class="bg-slate-50 rounded-2xl" style="padding: 3px;"></div>
                 <div class="px-6">
                     <label class="text-sm font-bold text-slate-600 block mb-2">코멘트 (선택사항)</label>
                     <textarea id="insightShareComment" placeholder="밀당(MEAL-DANG)들의 참견에 대한 코멘트를 입력하세요..." class="w-full p-3 bg-slate-50 rounded-xl text-sm border border-transparent focus:border-slate-400 transition-all resize-none" rows="3"></textarea>
