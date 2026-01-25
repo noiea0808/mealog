@@ -1,65 +1,27 @@
 // 게시판 및 공지 관련 함수들
-import { db, appId } from '../firebase.js';
+import { db, appId, callableFunctions } from '../firebase.js';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, query, orderBy, limit, where, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { showToast } from '../ui.js';
 
 // 게시판 관련 함수들
 export const boardOperations = {
-    // 게시글 작성
+    // 게시글 작성 (Cloud Functions 사용 - 레이트 리밋 및 스팸 필터 적용)
     async createPost(postData) {
         if (!window.currentUser) {
             throw new Error("로그인이 필요합니다.");
         }
         try {
-            // 사용자 닉네임 및 프로필 정보 가져오기
-            let authorNickname = '익명';
-            let authorPhotoUrl = null;
-            let authorIcon = null;
-            try {
-                if (window.userSettings && window.userSettings.profile) {
-                    authorNickname = window.userSettings.profile.nickname || '익명';
-                    authorPhotoUrl = window.userSettings.profile.photoUrl || null;
-                    authorIcon = window.userSettings.profile.icon || null;
-                } else {
-                    // userSettings가 없으면 Firestore에서 직접 가져오기
-                    const userSettingsDoc = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'config', 'settings');
-                    const userSettingsSnap = await getDoc(userSettingsDoc);
-                    if (userSettingsSnap.exists()) {
-                        const settingsData = userSettingsSnap.data();
-                        if (settingsData.profile) {
-                            authorNickname = settingsData.profile.nickname || '익명';
-                            authorPhotoUrl = settingsData.profile.photoUrl || null;
-                            authorIcon = settingsData.profile.icon || null;
-                        }
-                    }
-                }
-            } catch (e) {
-                console.warn("사용자 정보 가져오기 실패, 기본값 사용:", e);
-            }
-            
-            const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
-            const newPost = {
+            const result = await callableFunctions.createBoardPost({
                 title: postData.title,
                 content: postData.content,
-                category: postData.category || 'serious',
-                authorId: window.currentUser.uid,
-                authorNickname: authorNickname,
-                authorPhotoUrl: authorPhotoUrl,
-                authorIcon: authorIcon,
-                likes: 0,
-                dislikes: 0,
-                views: 0,
-                comments: 0,
-                isHidden: false,
-                timestamp: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            };
-            const docRef = await addDoc(postsColl, newPost);
+                category: postData.category || 'serious'
+            });
             showToast("게시글이 등록되었습니다.", 'success');
-            return { id: docRef.id, ...newPost };
+            return result.data;
         } catch (e) {
             console.error("Create Post Error:", e);
-            showToast("게시글 등록에 실패했습니다.", 'error');
+            const errorMessage = e.message || e.details || "게시글 등록에 실패했습니다.";
+            showToast(errorMessage, 'error');
             throw e;
         }
     },
@@ -208,64 +170,41 @@ export const boardOperations = {
         }
     },
     
-    // 게시글 수정
+    // 게시글 수정 (Cloud Functions 사용 - 스팸 필터 적용)
     async updatePost(postId, postData) {
         if (!window.currentUser) {
             throw new Error("로그인이 필요합니다.");
         }
         try {
-            const postDoc = doc(db, 'artifacts', appId, 'boardPosts', postId);
-            const postSnap = await getDoc(postDoc);
-            
-            if (!postSnap.exists()) {
-                throw new Error("게시글을 찾을 수 없습니다.");
-            }
-            
-            const existingPost = postSnap.data();
-            if (existingPost.authorId !== window.currentUser.uid) {
-                throw new Error("본인의 게시글만 수정할 수 있습니다.");
-            }
-            
-            await setDoc(postDoc, {
+            const result = await callableFunctions.updateBoardPost({
+                postId,
                 title: postData.title,
                 content: postData.content,
-                category: postData.category || existingPost.category,
-                updatedAt: new Date().toISOString()
-            }, { merge: true });
-            
+                category: postData.category
+            });
             showToast("게시글이 수정되었습니다.", 'success');
-            return true;
+            return result.data.success;
         } catch (e) {
             console.error("Update Post Error:", e);
-            showToast("게시글 수정에 실패했습니다.", 'error');
+            const errorMessage = e.message || e.details || "게시글 수정에 실패했습니다.";
+            showToast(errorMessage, 'error');
             throw e;
         }
     },
     
-    // 게시글 삭제
+    // 게시글 삭제 (Cloud Functions 사용)
     async deletePost(postId) {
         if (!window.currentUser) {
             throw new Error("로그인이 필요합니다.");
         }
         try {
-            const postDoc = doc(db, 'artifacts', appId, 'boardPosts', postId);
-            const postSnap = await getDoc(postDoc);
-            
-            if (!postSnap.exists()) {
-                throw new Error("게시글을 찾을 수 없습니다.");
-            }
-            
-            const postData = postSnap.data();
-            if (postData.authorId !== window.currentUser.uid) {
-                throw new Error("본인의 게시글만 삭제할 수 있습니다.");
-            }
-            
-            await deleteDoc(postDoc);
+            const result = await callableFunctions.deleteBoardPost({ postId });
             showToast("게시글이 삭제되었습니다.", 'success');
-            return true;
+            return result.data.success;
         } catch (e) {
             console.error("Delete Post Error:", e);
-            showToast("게시글 삭제에 실패했습니다.", 'error');
+            const errorMessage = e.message || e.details || "게시글 삭제에 실패했습니다.";
+            showToast(errorMessage, 'error');
             throw e;
         }
     },
@@ -393,100 +332,40 @@ export const boardOperations = {
         }
     },
     
-    // 댓글 작성
+    // 댓글 작성 (Cloud Functions 사용 - 레이트 리밋 및 스팸 필터 적용)
     async addComment(postId, content) {
         if (!window.currentUser) {
             throw new Error("로그인이 필요합니다.");
         }
         try {
-            // 사용자 닉네임 및 프로필 정보 가져오기
-            let authorNickname = '익명';
-            let authorPhotoUrl = null;
-            let authorIcon = null;
-            try {
-                if (window.userSettings && window.userSettings.profile) {
-                    authorNickname = window.userSettings.profile.nickname || '익명';
-                    authorPhotoUrl = window.userSettings.profile.photoUrl || null;
-                    authorIcon = window.userSettings.profile.icon || null;
-                } else {
-                    // userSettings가 없으면 Firestore에서 직접 가져오기
-                    const userSettingsDoc = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'config', 'settings');
-                    const userSettingsSnap = await getDoc(userSettingsDoc);
-                    if (userSettingsSnap.exists()) {
-                        const settingsData = userSettingsSnap.data();
-                        if (settingsData.profile) {
-                            authorNickname = settingsData.profile.nickname || '익명';
-                            authorPhotoUrl = settingsData.profile.photoUrl || null;
-                            authorIcon = settingsData.profile.icon || null;
-                        }
-                    }
-                }
-            } catch (e) {
-                console.warn("댓글 작성자 정보 가져오기 실패, 기본값 사용:", e);
-            }
-            
-            const commentsColl = collection(db, 'artifacts', appId, 'boardComments');
-            const newComment = {
-                postId: String(postId),
-                content: content,
-                authorId: window.currentUser.uid,
-                authorNickname: authorNickname,
-                authorPhotoUrl: authorPhotoUrl,
-                authorIcon: authorIcon,
-                timestamp: new Date().toISOString()
-            };
-            await addDoc(commentsColl, newComment);
-            
-            // 게시글의 댓글 수 증가
-            const postDoc = doc(db, 'artifacts', appId, 'boardPosts', postId);
-            const postSnap = await getDoc(postDoc);
-            if (postSnap.exists()) {
-                const postData = postSnap.data();
-                await setDoc(postDoc, {
-                    comments: (postData.comments || 0) + 1
-                }, { merge: true });
-            }
-            
-            return { id: 'temp', ...newComment };
+            const result = await callableFunctions.addBoardComment({
+                postId,
+                content
+            });
+            return result.data;
         } catch (e) {
             console.error("Add Comment Error:", e);
+            const errorMessage = e.message || e.details || "댓글 작성에 실패했습니다.";
+            showToast(errorMessage, 'error');
             throw e;
         }
     },
     
-    // 댓글 삭제
+    // 댓글 삭제 (Cloud Functions 사용)
     async deleteComment(commentId, postId) {
         if (!window.currentUser) {
             throw new Error("로그인이 필요합니다.");
         }
         try {
-            const commentDoc = doc(db, 'artifacts', appId, 'boardComments', commentId);
-            const commentSnap = await getDoc(commentDoc);
-            
-            if (!commentSnap.exists()) {
-                throw new Error("댓글을 찾을 수 없습니다.");
-            }
-            
-            const commentData = commentSnap.data();
-            if (commentData.authorId !== window.currentUser.uid) {
-                throw new Error("본인의 댓글만 삭제할 수 있습니다.");
-            }
-            
-            await deleteDoc(commentDoc);
-            
-            // 게시글의 댓글 수 감소
-            const postDoc = doc(db, 'artifacts', appId, 'boardPosts', postId);
-            const postSnap = await getDoc(postDoc);
-            if (postSnap.exists()) {
-                const postData = postSnap.data();
-                await setDoc(postDoc, {
-                    comments: Math.max(0, (postData.comments || 0) - 1)
-                }, { merge: true });
-            }
-            
-            return true;
+            const result = await callableFunctions.deleteBoardComment({
+                commentId,
+                postId
+            });
+            return result.data.success;
         } catch (e) {
             console.error("Delete Comment Error:", e);
+            const errorMessage = e.message || e.details || "댓글 삭제에 실패했습니다.";
+            showToast(errorMessage, 'error');
             throw e;
         }
     },

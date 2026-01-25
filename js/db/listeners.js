@@ -559,7 +559,17 @@ export function setupSharedPhotosListener(callback) {
     const q = query(sharedColl, orderBy('timestamp', 'desc'), limit(100));
     
     const unsubscribe = onSnapshot(q, (snap) => {
-        const sharedPhotos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const sharedPhotos = snap.docs.map(d => {
+            const data = d.data();
+            // Firestore Timestamp를 Date로 변환
+            if (data.timestamp && data.timestamp.toDate) {
+                data.timestamp = data.timestamp.toDate().toISOString();
+            } else if (data.timestamp && typeof data.timestamp === 'object' && data.timestamp.seconds) {
+                // Timestamp 객체의 seconds 속성이 있는 경우
+                data.timestamp = new Date(data.timestamp.seconds * 1000).toISOString();
+            }
+            return { id: d.id, ...data };
+        });
         if (callback) callback(sharedPhotos);
     }, (error) => {
         console.error("Shared Photos Listener Error:", error);

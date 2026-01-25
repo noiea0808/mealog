@@ -3,10 +3,18 @@ js/config.js
 
 # Node modules (프로젝트에 사용되지 않지만 일반적으로 제외)
 node_modules/
+functions/node_modules/
 
 # 로그 파일
 *.log
+functions/*.log
 
 # OS 파일
 .DS_Store
 Thumbs.db
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log

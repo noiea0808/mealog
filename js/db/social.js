@@ -1,5 +1,5 @@
 // 소셜 기능 (좋아요, 댓글, 북마크, 신고)
-import { db, appId, auth } from '../firebase.js';
+import { db, appId, auth, callableFunctions } from '../firebase.js';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, addDoc, query, orderBy, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // 좋아요, 댓글, 북마크 관련 함수들
@@ -171,26 +171,21 @@ export const postInteractions = {
         }
     },
     
-    // 댓글 추가
+    // 댓글 추가 (Cloud Functions 사용 - 레이트 리밋 및 스팸 필터 적용)
     async addComment(postId, userId, commentText, userProfile) {
         if (!window.currentUser || window.currentUser.isAnonymous || !postId || !commentText?.trim()) {
             throw new Error("로그인이 필요합니다.");
         }
         try {
-            const commentsColl = collection(db, 'artifacts', appId, 'postComments');
-            const commentData = {
+            const result = await callableFunctions.addPostComment({
                 postId,
-                userId,
-                userNickname: userProfile?.nickname || '익명',
-                userIcon: userProfile?.icon || '🐻',
-                comment: commentText.trim(),
-                timestamp: new Date().toISOString()
-            };
-            const docRef = await addDoc(commentsColl, commentData);
-            return { id: docRef.id, ...commentData };
+                commentText
+            });
+            return result.data;
         } catch (e) {
             console.error("Add Comment Error:", e);
-            throw e;
+            const errorMessage = e.message || e.details || "댓글 작성에 실패했습니다.";
+            throw new Error(errorMessage);
         }
     },
     
@@ -215,36 +210,20 @@ export const postInteractions = {
         }
     },
     
-    // 댓글 삭제
+    // 댓글 삭제 (Cloud Functions 사용)
     async deleteComment(commentId, userId) {
         if (!window.currentUser || window.currentUser.isAnonymous || !commentId) {
             throw new Error("로그인이 필요합니다.");
         }
         try {
-            // 본인 댓글인지 확인
-            const commentRef = doc(db, 'artifacts', appId, 'postComments', commentId);
-            const commentSnap = await getDocs(query(
-                collection(db, 'artifacts', appId, 'postComments'),
-                where('userId', '==', userId)
-            ));
-            
-            // 해당 commentId를 가진 댓글이 있는지 확인
-            const targetComment = commentSnap.docs.find(d => d.id === commentId);
-            if (targetComment) {
-                await deleteDoc(commentRef);
-                return true;
-            }
-            return false;
+            const result = await callableFunctions.deletePostComment({
+                commentId
+            });
+            return result.data.success;
         } catch (e) {
             console.error("Delete Comment Error:", e);
-            // 직접 삭제 시도 (권한 체크는 Firestore 규칙에서 처리)
-            try {
-                await deleteDoc(doc(db, 'artifacts', appId, 'postComments', commentId));
-                return true;
-            } catch (deleteError) {
-                console.error("직접 삭제 실패:", deleteError);
-                throw e;
-            }
+            const errorMessage = e.message || e.details || "댓글 삭제에 실패했습니다.";
+            throw new Error(errorMessage);
         }
     }
 };
@@ -261,7 +240,7 @@ export async function getUserReportForPost(targetGroupKey, userId) {
     return { id: entry.reportId, reason: entry.reason, reasonOther: entry.reasonOther };
 }
 
-// 게시물 신고 (이미 신고한 경우 throw)
+// 게시물 신고 (Cloud Functions 사용 - 레이트 리밋 및 중복 신고 방지)
 export async function submitReport(payload) {
     const currentUser = (typeof auth !== 'undefined' && auth.currentUser) ? auth.currentUser : window.currentUser;
     if (!currentUser || currentUser.isAnonymous) {
@@ -271,24 +250,18 @@ export async function submitReport(payload) {
     if (!targetGroupKey || !reason) {
         throw new Error("신고 대상과 사유가 필요합니다.");
     }
-    const existing = await getUserReportForPost(targetGroupKey, currentUser.uid);
-    if (existing) {
-        throw new Error("이미 신고한 게시물입니다.");
+    try {
+        const result = await callableFunctions.submitPostReport({
+            targetGroupKey,
+            reason,
+            reasonOther
+        });
+        return result.data.reportId;
+    } catch (e) {
+        console.error("Submit Report Error:", e);
+        const errorMessage = e.message || e.details || "신고에 실패했습니다.";
+        throw new Error(errorMessage);
     }
-    const reportsColl = collection(db, 'artifacts', appId, 'postReports');
-    const reasonOtherVal = (reason === 'other' && reasonOther && String(reasonOther).trim()) ? String(reasonOther).trim() : undefined;
-    const data = {
-        targetGroupKey,
-        reason,
-        reportedBy: currentUser.uid,
-        reportedAt: new Date().toISOString()
-    };
-    if (reasonOtherVal) data.reasonOther = reasonOtherVal;
-    const reportRef = await addDoc(reportsColl, data);
-    // 본인 config/reportedPosts에 기록 (getUserReportForPost에서 조회, postReports read 권한 불필요)
-    const userReportedRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'config', 'reportedPosts');
-    await setDoc(userReportedRef, { [targetGroupKey]: { reportId: reportRef.id, reason, reasonOther: reasonOtherVal || null } }, { merge: true });
-    return reportRef.id;
 }
 
 // 신고 취소 (본인이 신고한 문서만 삭제 가능, 규칙에서 검증. targetGroupKey로 config/reportedPosts에서도 제거)

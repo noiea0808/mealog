@@ -38,6 +38,11 @@ service cloud.firestore {
       return isAuthenticated() && request.resource.data.authorId == request.auth.uid;
     }
     
+    // App Check 토큰 확인 함수 (향후 사용을 위해 추가)
+    function hasValidAppCheckToken() {
+      return request.appCheck != null && request.appCheck.token != null;
+    }
+    
     // ============================================
     // 사용자 데이터 (users 컬렉션)
     // ============================================
@@ -65,9 +70,11 @@ service cloud.firestore {
     // ============================================
     // 공유 사진 (sharedPhotos 컬렉션)
     // ============================================
+    // 보안 강화: create는 Cloud Functions를 통해서만 허용 (레이트 리밋 및 스팸 필터 적용)
     match /artifacts/{appId}/sharedPhotos/{photoId} {
       allow read: if isAuthenticated();
-      allow create: if isOwnerOfRequestResource();
+      // create는 Cloud Functions를 통해서만 허용 (클라이언트 직접 쓰기 차단)
+      allow create: if false;
       allow update: if isAuthenticated() && 
                      resource.data.userId == request.auth.uid && 
                      request.resource.data.userId == request.auth.uid;
@@ -85,10 +92,13 @@ service cloud.firestore {
     // ============================================
     // 게시판 (boardPosts 컬렉션)
     // ============================================
+    // 보안 강화: create는 Cloud Functions를 통해서만 허용 (레이트 리밋 및 스팸 필터 적용)
     match /artifacts/{appId}/boardPosts/{postId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthorOfRequestResource();
+      // create는 Cloud Functions를 통해서만 허용 (클라이언트 직접 쓰기 차단)
+      allow create: if false;
       // 수정/삭제: 관리자 또는 작성자. 조회수(views)·댓글수(comments)만 바꿀 때는 로그인 사용자 허용
+      // (Cloud Functions는 admin SDK로 쓰므로 Rules를 우회하여 업데이트 가능)
       allow update: if isAdmin() || isAuthorOfResource() || (
         isAuthenticated() && (
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views']) ||
@@ -111,9 +121,11 @@ service cloud.firestore {
     // ============================================
     // 게시판 댓글 (boardComments 컬렉션)
     // ============================================
+    // 보안 강화: create는 Cloud Functions를 통해서만 허용 (레이트 리밋 및 스팸 필터 적용)
     match /artifacts/{appId}/boardComments/{commentId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthorOfRequestResource();
+      // create는 Cloud Functions를 통해서만 허용 (클라이언트 직접 쓰기 차단)
+      allow create: if false;
       allow update: if isAuthorOfResource();
       allow delete: if isAdmin() || isAuthorOfResource();
     }
@@ -150,9 +162,11 @@ service cloud.firestore {
     // ============================================
     // 피드 댓글 (postComments 컬렉션)
     // ============================================
+    // 보안 강화: create는 Cloud Functions를 통해서만 허용 (레이트 리밋 및 스팸 필터 적용)
     match /artifacts/{appId}/postComments/{commentId} {
       allow read: if isAuthenticated();
-      allow create: if isOwnerOfRequestResource();
+      // create는 Cloud Functions를 통해서만 허용 (클라이언트 직접 쓰기 차단)
+      allow create: if false;
       allow update: if isOwnerOfResource();
       allow delete: if isOwnerOfResource();
     }
@@ -160,9 +174,11 @@ service cloud.firestore {
     // ============================================
     // 게시물 신고 (postReports 컬렉션)
     // ============================================
+    // 보안 강화: create는 Cloud Functions를 통해서만 허용 (레이트 리밋 및 중복 신고 방지)
     match /artifacts/{appId}/postReports/{reportId} {
       allow read: if isAdmin();
-      allow create: if request.auth != null;
+      // create는 Cloud Functions를 통해서만 허용 (클라이언트 직접 쓰기 차단)
+      allow create: if false;
       allow update, delete: if isAdmin();
     }
     

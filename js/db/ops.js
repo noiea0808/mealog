@@ -1,5 +1,5 @@
 // 기본 CRUD 작업
-import { db, appId, auth } from '../firebase.js';
+import { db, appId, auth, callableFunctions } from '../firebase.js';
 import { doc, getDoc, setDoc, deleteDoc, collection, addDoc, query, where, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { showToast } from '../ui.js';
 import { logger } from '../utils.js';
@@ -218,6 +218,7 @@ export const dbOps = {
         return window.userSettings.dailyComments[date] || '';
     },
     
+    // 공유 사진 추가 (Cloud Functions 사용 - 레이트 리밋 적용)
     async sharePhotos(photosToShare, mealData) {
         if (!window.currentUser) return;
         
@@ -231,188 +232,36 @@ export const dbOps = {
         // photosToShare가 있으면 공유 설정 (기존 문서 삭제 + 새 문서 추가)
         
         try {
-            const userProfile = window.userSettings.profile || {};
-            const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-            const batch = writeBatch(db);
-            
-            // entryId가 있는 경우: 같은 entryId의 기존 문서를 모두 삭제
-            if (mealData.id) {
-                try {
-                    const existingQuery = query(
-                        sharedColl,
-                        where('userId', '==', window.currentUser.uid),
-                        where('entryId', '==', mealData.id)
-                    );
-                    const existingSnapshot = await getDocs(existingQuery);
-                    existingSnapshot.docs.forEach(docSnap => {
-                        batch.delete(docSnap.ref);
-                    });
-                    if (existingSnapshot.docs.length > 0) {
-                        console.log(`기존 ${existingSnapshot.docs.length}개 문서 삭제 (entryId: ${mealData.id})`);
-                    }
-                } catch (e) {
-                    console.warn('기존 문서 삭제 중 오류 (무시하고 계속 진행):', e);
-                }
-            } else {
-                // entryId가 null인 경우: userId로만 필터링 후 메모리에서 entryId null인 것만 삭제
-                try {
-                    const existingQuery = query(
-                        sharedColl,
-                        where('userId', '==', window.currentUser.uid)
-                    );
-                    const allUserPhotos = await getDocs(existingQuery);
-                    const docsToDelete = allUserPhotos.docs.filter(docSnap => {
-                        const data = docSnap.data();
-                        return !data.entryId || data.entryId === null;
-                    });
-                    docsToDelete.forEach(docSnap => {
-                        batch.delete(docSnap.ref);
-                    });
-                    if (docsToDelete.length > 0) {
-                        console.log(`기존 ${docsToDelete.length}개 문서 삭제 (entryId: null)`);
-                    }
-                } catch (e) {
-                    console.warn('entryId null인 기존 문서 삭제 중 오류 (무시하고 계속 진행):', e);
-                }
-            }
-            
-            // 새로운 사진들을 추가 (photosToShare가 빈 배열이면 추가 안 함 = 공유 해제)
-            if (photosToShare && photosToShare.length > 0) {
-                photosToShare.forEach(photoUrl => {
-                    const docRef = doc(sharedColl);
-                    batch.set(docRef, {
-                        photoUrl,
-                        userId: window.currentUser.uid,
-                        userNickname: userProfile.nickname || '익명',
-                        userIcon: userProfile.icon || '🐻',
-                        userPhotoUrl: userProfile.photoUrl || null,
-                        mealType: mealData.mealType || '',
-                        place: mealData.place || '',
-                        menuDetail: mealData.menuDetail || '',
-                        snackType: mealData.snackType || '',
-                        date: mealData.date || '',
-                        slotId: mealData.slotId || '',
-                        time: mealData.time || new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }),
-                        timestamp: new Date().toISOString(),
-                        entryId: mealData.id || null
-                    });
-                });
-            }
-            
-            await batch.commit();
-            
-            // record.sharedPhotos 필드 업데이트 (mealData.id가 있는 경우에만)
-            if (mealData.id) {
-                try {
-                    const mealDoc = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals', mealData.id);
-                    await setDoc(mealDoc, { sharedPhotos: photosToShare || [] }, { merge: true });
-                } catch (e) {
-                    console.warn('record.sharedPhotos 필드 업데이트 실패 (무시하고 계속 진행):', e);
-                }
-            }
+            const result = await callableFunctions.sharePhotos({
+                photosToShare: photosToShare || [],
+                mealData: mealData || {}
+            });
             
             const action = photosToShare && photosToShare.length > 0 ? '공유' : '공유 해제';
-            console.log(`${action} 완료 (entryId: ${mealData.id || 'null'}, 사진 수: ${photosToShare?.length || 0})`);
+            console.log(`${action} 완료 (entryId: ${mealData?.id || 'null'}, 사진 수: ${photosToShare?.length || 0})`);
+            return result.data;
         } catch (e) {
             console.error("Share Photos Error:", e);
-            // 에러 토스트는 호출자에서 표시하도록 하고, 여기서는 throw만 함
-            // (중복 토스트 방지)
+            const errorMessage = e.message || e.details || "사진 공유에 실패했습니다.";
+            showToast(errorMessage, 'error');
             throw e;
         }
     },
+    // 공유 사진 해제 (Cloud Functions 사용)
     async unsharePhotos(photos, entryId, isBestShare = false, isDailyShare = false, isInsightShare = false) {
         if (!window.currentUser || !photos || photos.length === 0) return;
         try {
-            const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-            
-            // 모든 공유 사진 가져오기 (userId로 필터링)
-            const q = query(
-                sharedColl,
-                where('userId', '==', window.currentUser.uid)
-            );
-            
-            const snapshot = await getDocs(q);
-            const photosToDelete = [];
-            
-            snapshot.forEach((docSnap) => {
-                const data = docSnap.data();
-                // 공유 해제하려는 사진 목록에 있는 경우 삭제
-                // photoUrl이 정확히 일치하거나, URL의 파일명 부분이 일치하는지 확인
-                const photoUrlMatch = photos.some(photoUrl => {
-                    // 정확히 일치하는 경우
-                    if (photoUrl === data.photoUrl) return true;
-                    // URL에서 파일명 부분만 추출하여 비교 (쿼리 파라미터 제거)
-                    const photoUrlBase = photoUrl.split('?')[0];
-                    const dataUrlBase = data.photoUrl.split('?')[0];
-                    if (photoUrlBase === dataUrlBase) return true;
-                    // 파일명만 추출하여 비교
-                    const photoFileName = photoUrlBase.split('/').pop();
-                    const dataFileName = dataUrlBase.split('/').pop();
-                    return photoFileName === dataFileName && photoFileName !== '';
-                });
-                
-                if (photoUrlMatch) {
-                    // 베스트 공유인 경우 type='best'인 항목만 삭제
-                    if (isBestShare) {
-                        if (data.type === 'best') {
-                            photosToDelete.push(docSnap.id);
-                        }
-                    } else if (isDailyShare) {
-                        // 일간보기 공유인 경우: type='daily'이고 photoUrl이 일치하면 삭제
-                        if (data.type === 'daily') {
-                            photosToDelete.push(docSnap.id);
-                        }
-                    } else if (isInsightShare) {
-                        // 인사이트 공유인 경우: type='insight'이고 photoUrl이 일치하면 삭제
-                        if (data.type === 'insight') {
-                            photosToDelete.push(docSnap.id);
-                        }
-                    } else {
-                        // 일반 공유인 경우: photoUrl이 일치하면 삭제
-                        // entryId가 제공된 경우에는 entryId도 일치해야 하지만, 
-                        // entryId가 없거나 null인 경우에도 photoUrl만 일치하면 삭제
-                        let shouldDelete = false;
-                        
-                        if (entryId) {
-                            // entryId가 제공된 경우: entryId가 일치하거나 현재 사진의 entryId가 null/없으면 삭제
-                            if (data.entryId === entryId || !data.entryId || data.entryId === null) {
-                                shouldDelete = true;
-                            }
-                        } else {
-                            // entryId가 제공되지 않은 경우: photoUrl만 일치하면 삭제 (entryId 유무와 관계없이)
-                            shouldDelete = true;
-                        }
-                        
-                        if (shouldDelete) {
-                            photosToDelete.push(docSnap.id);
-                        }
-                    }
-                }
+            const result = await callableFunctions.unsharePhotos({
+                photos,
+                entryId,
+                isBestShare,
+                isDailyShare,
+                isInsightShare
             });
-            
-            // 배치 삭제 사용: 여러 사진을 한 번에 삭제 (1번으로 카운트)
-            if (photosToDelete.length > 0) {
-                const batch = writeBatch(db);
-                photosToDelete.forEach(docId => {
-                    const docRef = doc(db, 'artifacts', appId, 'sharedPhotos', docId);
-                    batch.delete(docRef);
-                });
-                await batch.commit();
-            }
+            return result.data;
         } catch (e) {
             console.error("Unshare Photos Error:", e);
-            let errorMessage = "사진 공유 해제 실패: ";
-            if (e.code === 'permission-denied') {
-                errorMessage += "권한이 없습니다.";
-            } else if (e.code === 'unavailable') {
-                errorMessage += "네트워크 연결을 확인해주세요.";
-            } else if (e.message && e.message.includes('Quota exceeded')) {
-                errorMessage = "Firebase 할당량이 초과되었습니다.";
-            } else if (e.message) {
-                errorMessage += e.message;
-            } else {
-                errorMessage += "알 수 없는 오류가 발생했습니다.";
-            }
+            const errorMessage = e.message || e.details || "사진 공유 해제에 실패했습니다.";
             showToast(errorMessage, 'error');
             throw e;
         }

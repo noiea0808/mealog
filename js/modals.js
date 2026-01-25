@@ -730,6 +730,11 @@ export async function saveEntry() {
         const currentTab = state.currentTab;
         const editingDate = state.currentEditingDate;
         
+        // 공유 상태 변경 여부 추적 변수 (함수 스코프)
+        // 상태 초기화 전에 originalSharedPhotos 확인
+        const hadSharedPhotos = state.originalSharedPhotos && state.originalSharedPhotos.length > 0;
+        let sharedPhotosUpdated = false;
+        
         // 상태 초기화 (모달 닫기 직후)
         state.currentEditingId = null;
         state.currentPhotos = [];
@@ -750,17 +755,30 @@ export async function saveEntry() {
             
             // 공유 처리 (ID 확보 후 실행)
             // sharePhotos 함수가 기존 문서 삭제 + 새 문서 추가 + record.sharedPhotos 필드 업데이트를 모두 처리
+            // 공유 상태가 변경되었을 때만 호출 (공유 설정 또는 공유 해제)
             if (record.id) {
-                try {
-                    await dbOps.sharePhotos(photosToShare, record);
-                    console.log('공유 처리 완료:', {
-                        공유사진수: photosToShare.length,
-                        recordId: record.id
-                    });
-                } catch (e) {
-                    console.error("공유 처리 실패:", e);
-                    showToast("사진 공유 처리 중 오류가 발생했습니다.", 'error');
-                    // 공유 실패 시에도 기록은 이미 저장되었으므로 계속 진행
+                // 현재 공유할 사진이 있는지 확인
+                const hasPhotosToShare = photosToShare && photosToShare.length > 0;
+                
+                // 공유 상태가 변경된 경우에만 호출
+                // 1. 공유할 사진이 있는 경우 (공유 설정)
+                // 2. 기존에 공유된 사진이 있었는데 지금은 없는 경우 (공유 해제)
+                if (hasPhotosToShare || hadSharedPhotos) {
+                    sharedPhotosUpdated = true;
+                    try {
+                        await dbOps.sharePhotos(photosToShare, record);
+                        console.log('공유 처리 완료:', {
+                            공유사진수: photosToShare.length,
+                            recordId: record.id,
+                            공유설정: hasPhotosToShare,
+                            공유해제: !hasPhotosToShare && hadSharedPhotos
+                        });
+                        // 리스너가 자동으로 갤러리를 업데이트하므로 여기서 직접 호출하지 않음
+                    } catch (e) {
+                        console.error("공유 처리 실패:", e);
+                        showToast("사진 공유 처리 중 오류가 발생했습니다.", 'error');
+                        // 공유 실패 시에도 기록은 이미 저장되었으므로 계속 진행
+                    }
                 }
             }
         } catch (saveError) {
@@ -782,6 +800,10 @@ export async function saveEntry() {
                     if (window.jumpToDate) {
                         window.jumpToDate(editingDate);
                     }
+                    
+                    // 공유 상태가 변경된 경우 리스너가 자동으로 타임라인을 업데이트하므로
+                    // 여기서는 추가 렌더링 호출 불필요 (중복 방지)
+                    // 리스너가 100ms 내에 자동으로 renderTimeline()을 호출함
                     
                     // 타임라인 상단으로 스크롤하여 새로 추가된 항목이 트래커 아래에 보이도록
                     setTimeout(() => {
@@ -835,16 +857,19 @@ export async function saveEntry() {
                 }
             } else if (currentTab === 'gallery') {
                 // 갤러리 탭: 갤러리 다시 렌더링 (데이터가 업데이트되었으므로)
-                try {
-                    renderGallery();
-                    // 피드도 함께 렌더링 (피드가 갤러리 안에 있을 수 있음)
-                    const feedContent = document.getElementById('feedContent');
-                    if (feedContent) {
-                        renderFeed();
+                // 리스너가 업데이트될 시간을 주기 위해 약간의 지연 후 렌더링
+                setTimeout(() => {
+                    try {
+                        renderGallery();
+                        // 피드도 함께 렌더링 (피드가 갤러리 안에 있을 수 있음)
+                        const feedContent = document.getElementById('feedContent');
+                        if (feedContent) {
+                            renderFeed();
+                        }
+                    } catch (e) {
+                        console.error('갤러리/피드 렌더링 오류:', e);
                     }
-                } catch (e) {
-                    console.error('갤러리/피드 렌더링 오류:', e);
-                }
+                }, 500);
             } else {
                 // 피드가 별도 탭이거나 갤러리와 함께 표시되는 경우
                 const feedContent = document.getElementById('feedContent');

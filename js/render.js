@@ -4,6 +4,12 @@ import { appState } from './state.js';
 import { escapeHtml } from './render/utils.js';
 import { normalizeUrl } from './utils.js';
 
+// renderGallery 실행 중 플래그 및 이벤트 리스너 관리
+let isRenderingGallery = false;
+let galleryScrollListeners = new Map(); // scrollContainer -> AbortController
+let intersectionObserver = null; // Intersection Observer 인스턴스
+let loadedPostIds = new Set(); // 이미 로드한 포스트 ID 캐시
+
 // renderTimeline과 renderMiniCalendar는 render/timeline.js로 이동됨
 
 export function renderEntryChips() {
@@ -662,7 +668,7 @@ export function renderTimeline() {
                                     ${titleLine2 ? (r ? `<p class="text-sm text-slate-600 font-bold mt-0.5 mb-0 truncate">${titleLine2}</p>` : `<p class="mt-0.5 mb-0 truncate">${titleLine2}</p>`) : ''}
                                 </div>
                                 ${r ? `<div class="flex items-center gap-2 flex-shrink-0 ml-2">
-                                    ${isEntryShared(r.id) ? `<span class="text-xs text-emerald-600" title="게시됨"><i class="fa-solid fa-share"></i></span>` : ''}
+                                    ${isEntryShared(r.id) ? `<span class="text-xs text-emerald-600" title="공유됨"><i class="fa-solid fa-share"></i></span>` : ''}
                                     <span class="text-xs font-bold text-yellow-600 bg-yellow-50 px-1.5 py-0.5 rounded-md flex items-center gap-0.5"><i class="fa-solid fa-star text-[10px]"></i><span class="text-[11px] font-black">${r.rating || '-'}</span></span>
                                 </div>` : ''}
                             </div>
@@ -679,7 +685,7 @@ export function renderTimeline() {
                             `<div onclick="window.openModal('${dateStr}', '${slot.id}', '${r.id}')" class="snack-tag cursor-pointer active:bg-slate-50">
                                 <span class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2"></span>
                                 ${r.menuDetail || r.snackType || '간식'} 
-                                ${isEntryShared(r.id) ? `<i class="fa-solid fa-share text-slate-500 text-[8px] ml-1" title="게시됨"></i>` : ''}
+                                ${isEntryShared(r.id) ? `<i class="fa-solid fa-share text-slate-500 text-[8px] ml-1" title="공유됨"></i>` : ''}
                                 ${r.rating ? `<span class="text-[10px] font-black text-yellow-600 bg-yellow-50 px-1 py-0.5 rounded ml-1.5 flex items-center gap-0.5"><i class="fa-solid fa-star text-[9px]"></i>${r.rating}</span>` : ''}
                             </div>`
                         ).join('') : `<span class="text-xs text-slate-400 italic">기록없음</span>`}
@@ -829,180 +835,143 @@ export function renderMiniCalendar() {
     }, 100);
 }
 
-// 좋아요/북마크/댓글 데이터 로드 함수
-async function loadPostInteractions(container, sortedGroups) {
-    if (!window.postInteractions) {
-        // 디버그 로그 제거
-        // console.log('loadPostInteractions: postInteractions 없음');
+// 좋아요/북마크/댓글 데이터 로드 함수 (단일 포스트용 - Intersection Observer에서 호출)
+async function loadPostInteractions(postEl, postId) {
+    if (!window.postInteractions || !postEl || !postId) {
         return;
     }
     
-    // 모든 포스트에 대한 데이터를 병렬로 로드
-    const postPromises = [];
-    const posts = container.querySelectorAll('.instagram-post');
     const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
     
-    if (posts.length === 0) {
-        // 디버그 로그 제거
-        // console.log('loadPostInteractions: 포스트 없음');
-        return;
+    // 로그인한 사용자는 좋아요/북마크 상태도 확인, 비로그인 사용자는 좋아요 수와 댓글만 가져오기
+    const promiseArray = [
+        window.postInteractions.getLikes(postId).catch(e => {
+            console.error(`좋아요 목록 가져오기 실패 (postId: ${postId}):`, e);
+            return [];
+        }),
+        window.postInteractions.getComments(postId).catch(e => {
+            console.error(`댓글 목록 가져오기 실패 (postId: ${postId}):`, e);
+            return [];
+        })
+    ];
+    
+    // 로그인한 사용자만 좋아요/북마크 상태 확인
+    if (isLoggedIn) {
+        promiseArray.unshift(
+            window.postInteractions.isLiked(postId, window.currentUser.uid).catch(e => {
+                console.error(`좋아요 상태 확인 실패 (postId: ${postId}):`, e);
+                return false;
+            }),
+            window.postInteractions.isBookmarked(postId, window.currentUser.uid).catch(e => {
+                console.error(`북마크 상태 확인 실패 (postId: ${postId}):`, e);
+                return false;
+            })
+        );
     }
     
-    posts.forEach((postEl) => {
-        const postId = postEl.getAttribute('data-post-id');
-        if (!postId) {
-            // 경고 로그는 유지 (실제 문제일 수 있음)
-            // console.warn('loadPostInteractions: postId 없음', postEl);
-            return;
-        }
+    try {
+        const results = await Promise.all(promiseArray);
+        let isLiked = false;
+        let isBookmarked = false;
+        let likes = [];
+        let comments = [];
         
-        // 로그인한 사용자는 좋아요/북마크 상태도 확인, 비로그인 사용자는 좋아요 수와 댓글만 가져오기
-        const promiseArray = [
-            window.postInteractions.getLikes(postId).catch(e => {
-                console.error(`좋아요 목록 가져오기 실패 (postId: ${postId}):`, e);
-                return [];
-            }),
-            window.postInteractions.getComments(postId).catch(e => {
-                console.error(`댓글 목록 가져오기 실패 (postId: ${postId}):`, e);
-                return [];
-            })
-        ];
-        
-        // 로그인한 사용자만 좋아요/북마크 상태 확인
         if (isLoggedIn) {
-            promiseArray.unshift(
-                window.postInteractions.isLiked(postId, window.currentUser.uid).catch(e => {
-                    console.error(`좋아요 상태 확인 실패 (postId: ${postId}):`, e);
-                    return false;
-                }),
-                window.postInteractions.isBookmarked(postId, window.currentUser.uid).catch(e => {
-                    console.error(`북마크 상태 확인 실패 (postId: ${postId}):`, e);
-                    return false;
-                })
-            );
+            [isLiked, isBookmarked, likes, comments] = results;
+        } else {
+            [likes, comments] = results;
         }
         
-        const promise = Promise.all(promiseArray).then((results) => {
-            let isLiked = false;
-            let isBookmarked = false;
-            let likes = [];
-            let comments = [];
-            
-            if (isLoggedIn) {
-                [isLiked, isBookmarked, likes, comments] = results;
-            } else {
-                [likes, comments] = results;
-            }
-            // 디버그 로그 제거 (필요시 주석 해제)
-            // console.log(`포스트 ${postId} 데이터 로드 완료:`, { 
-            //     isLoggedIn,
-            //     isLiked, 
-            //     isBookmarked, 
-            //     likesCount: likes?.length || 0, 
-            //     commentsCount: comments?.length || 0,
-            //     likes: likes,
-            //     comments: comments
-            // });
-            
-            // 로그인한 사용자만 좋아요/북마크 버튼 상태 업데이트
-            if (isLoggedIn) {
-                // 좋아요 버튼 업데이트
-                const likeBtn = postEl.querySelector(`.post-like-btn[data-post-id="${postId}"]`);
-                const likeIcon = likeBtn?.querySelector('.post-like-icon');
-                if (likeBtn && likeIcon) {
-                    if (isLiked) {
-                        likeIcon.classList.remove('fa-regular', 'fa-heart', 'text-slate-800');
-                        likeIcon.classList.add('fa-solid', 'fa-heart', 'text-red-500');
-                    } else {
-                        likeIcon.classList.remove('fa-solid', 'fa-heart', 'text-red-500');
-                        likeIcon.classList.add('fa-regular', 'fa-heart', 'text-slate-800');
-                    }
+        // DOM이 여전히 존재하는지 확인
+        if (!document.contains(postEl)) {
+            return; // 포스트가 DOM에서 제거되었으면 업데이트하지 않음
+        }
+        
+        // 로그인한 사용자만 좋아요/북마크 버튼 상태 업데이트
+        if (isLoggedIn) {
+            // 좋아요 버튼 업데이트
+            const likeBtn = postEl.querySelector(`.post-like-btn[data-post-id="${postId}"]`);
+            const likeIcon = likeBtn?.querySelector('.post-like-icon');
+            if (likeBtn && likeIcon) {
+                if (isLiked) {
+                    likeIcon.classList.remove('fa-regular', 'fa-heart', 'text-slate-800');
+                    likeIcon.classList.add('fa-solid', 'fa-heart', 'text-red-500');
+                } else {
+                    likeIcon.classList.remove('fa-solid', 'fa-heart', 'text-red-500');
+                    likeIcon.classList.add('fa-regular', 'fa-heart', 'text-slate-800');
                 }
+            }
+            
+            // 북마크 버튼 업데이트
+            const bookmarkBtn = postEl.querySelector(`.post-bookmark-btn[data-post-id="${postId}"]`);
+            const bookmarkIcon = bookmarkBtn?.querySelector('.post-bookmark-icon');
+            if (bookmarkBtn && bookmarkIcon) {
+                if (isBookmarked) {
+                    bookmarkIcon.classList.remove('fa-regular', 'fa-bookmark');
+                    bookmarkIcon.classList.add('fa-solid', 'fa-bookmark', 'text-slate-800');
+                } else {
+                    bookmarkIcon.classList.remove('fa-solid', 'fa-bookmark', 'text-slate-800');
+                    bookmarkIcon.classList.add('fa-regular', 'fa-bookmark');
+                }
+            }
+        }
+        
+        // 좋아요 수 업데이트
+        const likeCountEl = postEl.querySelector(`.post-like-count[data-post-id="${postId}"]`);
+        if (likeCountEl) {
+            const likeCount = likes && Array.isArray(likes) ? likes.length : 0;
+            likeCountEl.textContent = likeCount > 0 ? likeCount : '';
+        }
+        
+        // 댓글 수 업데이트
+        const commentCountEl = postEl.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
+        if (commentCountEl) {
+            const commentCount = comments && Array.isArray(comments) ? comments.length : 0;
+            commentCountEl.textContent = commentCount > 0 ? commentCount : '';
+        }
+        
+        // 댓글 표시 (최대 2개)
+        const commentsListEl = postEl.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
+        if (commentsListEl) {
+            if (comments.length > 0) {
+                // 댓글이 있으면 배경색 추가
+                commentsListEl.classList.add('bg-slate-50');
+                const displayComments = comments.slice(0, 2);
+                commentsListEl.innerHTML = displayComments.map(c => `
+                    <div class="mb-1 text-sm">
+                        <span class="font-bold text-slate-800">${c.userNickname || '익명'}</span>
+                        <span class="text-slate-800">${escapeHtml(c.comment)}</span>
+                        ${isLoggedIn && c.userId === window.currentUser?.uid ? `<button onclick="window.deleteCommentFromPost('${c.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
+                    </div>
+                `).join('');
                 
-                // 북마크 버튼 업데이트
-                const bookmarkBtn = postEl.querySelector(`.post-bookmark-btn[data-post-id="${postId}"]`);
-                const bookmarkIcon = bookmarkBtn?.querySelector('.post-bookmark-icon');
-                if (bookmarkBtn && bookmarkIcon) {
-                    if (isBookmarked) {
-                        bookmarkIcon.classList.remove('fa-regular', 'fa-bookmark');
-                        bookmarkIcon.classList.add('fa-solid', 'fa-bookmark', 'text-slate-800');
-                    } else {
-                        bookmarkIcon.classList.remove('fa-solid', 'fa-bookmark', 'text-slate-800');
-                        bookmarkIcon.classList.add('fa-regular', 'fa-bookmark');
-                    }
-                }
-            }
-            
-            // 좋아요 수 업데이트
-            const likeCountEl = postEl.querySelector(`.post-like-count[data-post-id="${postId}"]`);
-            if (likeCountEl) {
-                const likeCount = likes && Array.isArray(likes) ? likes.length : 0;
-                likeCountEl.textContent = likeCount > 0 ? likeCount : '';
-                // 디버그 로그 제거 (필요시 주석 해제)
-                // console.log(`좋아요 수 업데이트 (postId: ${postId}):`, likeCount);
-            }
-            // else {
-            //     console.warn(`좋아요 수 요소 없음 (postId: ${postId})`);
-            // }
-            
-            // 댓글 수 업데이트
-            const commentCountEl = postEl.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
-            if (commentCountEl) {
-                const commentCount = comments && Array.isArray(comments) ? comments.length : 0;
-                commentCountEl.textContent = commentCount > 0 ? commentCount : '';
-                // 디버그 로그 제거 (필요시 주석 해제)
-                // console.log(`댓글 수 업데이트 (postId: ${postId}):`, commentCount);
-            }
-            // else {
-            //     console.warn(`댓글 수 요소 없음 (postId: ${postId})`);
-            // }
-            
-            // 댓글 표시 (최대 2개)
-            const commentsListEl = postEl.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
-            if (commentsListEl) {
-                if (comments.length > 0) {
-                    // 댓글이 있으면 배경색 추가
-                    commentsListEl.classList.add('bg-slate-50');
-                    const displayComments = comments.slice(0, 2);
-                    commentsListEl.innerHTML = displayComments.map(c => `
-                        <div class="mb-1 text-sm">
-                            <span class="font-bold text-slate-800">${c.userNickname || '익명'}</span>
-                            <span class="text-slate-800">${escapeHtml(c.comment)}</span>
-                            ${isLoggedIn && c.userId === window.currentUser?.uid ? `<button onclick="window.deleteCommentFromPost('${c.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
-                        </div>
-                    `).join('');
-                    
-                    // 댓글이 2개보다 많으면 "댓글 모두 보기" 버튼 표시
-                    if (comments.length > 2) {
-                        const viewCommentsBtn = postEl.querySelector(`#view-comments-${postId}`);
-                        if (viewCommentsBtn) {
-                            viewCommentsBtn.classList.remove('hidden');
-                            viewCommentsBtn.textContent = `댓글 ${comments.length}개 모두 보기`;
-                        }
-                    } else {
-                        const viewCommentsBtn = postEl.querySelector(`#view-comments-${postId}`);
-                        if (viewCommentsBtn) {
-                            viewCommentsBtn.classList.add('hidden');
-                        }
+                // 댓글이 2개보다 많으면 "댓글 모두 보기" 버튼 표시
+                if (comments.length > 2) {
+                    const viewCommentsBtn = postEl.querySelector(`#view-comments-${postId}`);
+                    if (viewCommentsBtn) {
+                        viewCommentsBtn.classList.remove('hidden');
+                        viewCommentsBtn.textContent = `댓글 ${comments.length}개 모두 보기`;
                     }
                 } else {
-                    commentsListEl.innerHTML = '';
-                    commentsListEl.classList.remove('bg-slate-50');
                     const viewCommentsBtn = postEl.querySelector(`#view-comments-${postId}`);
                     if (viewCommentsBtn) {
                         viewCommentsBtn.classList.add('hidden');
                     }
                 }
+            } else {
+                commentsListEl.innerHTML = '';
+                commentsListEl.classList.remove('bg-slate-50');
+                const viewCommentsBtn = postEl.querySelector(`#view-comments-${postId}`);
+                if (viewCommentsBtn) {
+                    viewCommentsBtn.classList.add('hidden');
+                }
             }
-        }).catch(err => {
-            console.error(`포스트 ${postId}의 좋아요/북마크/댓글 로드 실패:`, err);
-        });
-        
-        postPromises.push(promise);
-    });
-    
-    // 모든 포스트의 데이터 로드 완료 대기
-    await Promise.allSettled(postPromises);
+        }
+    } catch (err) {
+        console.error(`포스트 ${postId}의 좋아요/북마크/댓글 로드 실패:`, err);
+        // 실패 시 캐시에서 제거하여 재시도 가능하게
+        loadedPostIds.delete(postId);
+    }
 }
 
 // photoGroup에서 postId 계산 (갤러리 흔적 필터 및 일관된 postId용)
@@ -1044,11 +1013,41 @@ async function getUserSettings(userId) {
 }
 
 export async function renderGallery() {
-    const container = document.getElementById('galleryContainer');
-    if (!container) return;
-    if (!window.sharedPhotos) {
-        window.sharedPhotos = [];
+    // 중복 실행 방지
+    if (isRenderingGallery) {
+        console.log('[renderGallery] 이미 실행 중이므로 스킵');
+        return;
     }
+    
+    try {
+        isRenderingGallery = true;
+        console.log('[renderGallery] 시작, window.sharedPhotos:', window.sharedPhotos?.length || 0);
+        
+        const container = document.getElementById('galleryContainer');
+        if (!container) {
+            console.warn('[renderGallery] galleryContainer를 찾을 수 없습니다');
+            return;
+        }
+        
+        // 이전 스크롤 이벤트 리스너 정리
+        galleryScrollListeners.forEach((abortController, scrollContainer) => {
+            abortController.abort();
+        });
+        galleryScrollListeners.clear();
+        
+        // 이전 Intersection Observer 정리
+        if (intersectionObserver) {
+            intersectionObserver.disconnect();
+            intersectionObserver = null;
+        }
+        
+        // 로드된 포스트 캐시 초기화 (렌더링이 완전히 새로 시작되므로)
+        loadedPostIds.clear();
+        
+        if (!window.sharedPhotos) {
+            console.log('[renderGallery] window.sharedPhotos가 없어서 빈 배열로 초기화');
+            window.sharedPhotos = [];
+        }
     
     // 사용자 필터링 적용
     const filterUserId = appState.galleryFilterUserId;
@@ -1065,11 +1064,26 @@ export async function renderGallery() {
     // 필터링된 사용자 정보 표시 (상단)
     let userProfileHeader = '';
     if (filterUserId && photosToRender.length > 0) {
-        // 필터링된 사용자의 프로필 정보 가져오기
+        // 필터링된 사용자의 프로필 정보 가져오기 (비동기로 처리하여 블로킹 방지)
         const filteredUserPhoto = photosToRender[0];
         if (filteredUserPhoto) {
-            const userSettings = await getUserSettings(filterUserId);
-            const bio = userSettings?.profile?.bio || '';
+            // getUserSettings를 비동기로 호출하되 await하지 않음 (즉시 렌더링 진행)
+            getUserSettings(filterUserId).then(userSettings => {
+                const bio = userSettings?.profile?.bio || '';
+                // 프로필 헤더가 이미 렌더링되었는지 확인
+                const existingHeader = container.querySelector('.bg-white.border-b.border-slate-200.sticky');
+                if (existingHeader && bio) {
+                    // bio가 있으면 업데이트
+                    const bioEl = existingHeader.querySelector('.text-sm.text-slate-600');
+                    if (bioEl) {
+                        bioEl.innerHTML = escapeHtml(bio);
+                    }
+                }
+            }).catch(err => {
+                console.warn('사용자 설정 가져오기 실패:', err);
+            });
+            
+            // 기본 헤더 (bio 없이 먼저 렌더링)
             userProfileHeader = `
                 <div class="bg-white border-b border-slate-200 sticky top-[52px] z-30">
                     <div class="px-6 py-4 flex items-center gap-4">
@@ -1086,7 +1100,6 @@ export async function renderGallery() {
                             `}
                             <div class="flex-1 min-w-0">
                                 <div class="text-base font-bold text-slate-800">${filteredUserPhoto.userNickname || '익명'}</div>
-                                ${bio ? `<div class="text-sm text-slate-600 mt-1 whitespace-pre-wrap">${escapeHtml(bio)}</div>` : ''}
                             </div>
                         </div>
                     </div>
@@ -1193,9 +1206,20 @@ export async function renderGallery() {
     
     // 그룹을 시간순으로 정렬
     let sortedGroups = Object.values(groupedPhotos).sort((a, b) => {
-        const timeA = new Date(a[0].timestamp).getTime();
-        const timeB = new Date(b[0].timestamp).getTime();
-        return timeB - timeA; // 최신순
+        // timestamp를 Date로 변환 (이미 ISO 문자열이거나 Date 객체일 수 있음)
+        const getTimestamp = (photo) => {
+            if (!photo.timestamp) return 0;
+            if (photo.timestamp instanceof Date) return photo.timestamp.getTime();
+            if (typeof photo.timestamp === 'string') return new Date(photo.timestamp).getTime();
+            if (photo.timestamp.toDate) return photo.timestamp.toDate().getTime();
+            if (photo.timestamp.seconds) return photo.timestamp.seconds * 1000;
+            return 0;
+        };
+        
+        const timeA = getTimestamp(a[0]);
+        const timeB = getTimestamp(b[0]);
+        
+        return timeB - timeA; // 최신순 (큰 값이 먼저)
     });
     
     // 앨범 흔적 필터: 본인이 좋아요/댓글/북마크한 게시물만 표시
@@ -1424,7 +1448,7 @@ export async function renderGallery() {
                         <div class="flex items-center gap-4">
                             <button onclick="window.toggleLike('${postId}')" class="post-like-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
                                 <i class="fa-regular fa-heart text-2xl text-slate-800 post-like-icon"></i>
-                                <span class="post-like-count text-sm font-bold text-slate-800" data-post-id="${postId}">0</span>
+                                <span class="post-like-count text-sm font-bold text-slate-800" data-post-id="${postId}"></span>
                             </button>
                             <button onclick="window.toggleCommentInput('${postId}')" class="post-comment-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
                                 <i class="fa-regular fa-comment text-2xl text-slate-800"></i>
@@ -1491,7 +1515,7 @@ export async function renderGallery() {
         const scrollContainers = container.querySelectorAll('.flex.overflow-x-auto');
         scrollContainers.forEach((scrollContainer, idx) => {
             const counter = scrollContainer.parentElement.querySelector('.photo-counter-current');
-            if (counter && sortedGroups[idx].length > 1) {
+            if (counter && sortedGroups[idx] && sortedGroups[idx].length > 1) {
                 const photos = scrollContainer.querySelectorAll('div');
                 const updateCounter = () => {
                     const containerWidth = scrollContainer.clientWidth;
@@ -1511,7 +1535,12 @@ export async function renderGallery() {
                     });
                     counter.textContent = currentIndex;
                 };
-                scrollContainer.addEventListener('scroll', updateCounter);
+                
+                // AbortController를 사용하여 이벤트 리스너 관리
+                const abortController = new AbortController();
+                scrollContainer.addEventListener('scroll', updateCounter, { signal: abortController.signal });
+                galleryScrollListeners.set(scrollContainer, abortController);
+                
                 // 초기 카운터 설정
                 updateCounter();
             }
@@ -1585,11 +1614,46 @@ export async function renderGallery() {
             });
         }, 100);
         
-        // 좋아요/북마크 상태 및 댓글 로드 (모든 사용자가 좋아요 수와 댓글 볼 수 있음)
+        // 좋아요/북마크 상태 및 댓글 로드 (지연 로딩: 화면에 보이는 포스트만 로드)
+        // Intersection Observer를 사용하여 성능 최적화
         if (window.postInteractions) {
-            loadPostInteractions(container, sortedGroups).catch(err => {
-                console.error("포스트 상호작용 데이터 로드 실패:", err);
+            // 이전 Observer 정리
+            if (intersectionObserver) {
+                intersectionObserver.disconnect();
+            }
+            
+            // 새 Observer 생성: 화면에 보이는 포스트만 로드
+            intersectionObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const postEl = entry.target;
+                        const postId = postEl.getAttribute('data-post-id');
+                        
+                        // 이미 로드한 포스트는 스킵
+                        if (!postId || loadedPostIds.has(postId)) {
+                            return;
+                        }
+                        
+                        // 로드 시작
+                        loadedPostIds.add(postId);
+                        loadPostInteractions(postEl, postId).catch(err => {
+                            console.error(`포스트 ${postId} 상호작용 데이터 로드 실패:`, err);
+                            // 실패 시 캐시에서 제거하여 재시도 가능하게
+                            loadedPostIds.delete(postId);
+                        });
+                    }
+                });
+            }, {
+                rootMargin: '200px' // 화면 밖 200px 전에 미리 로드
             });
+            
+            // 모든 포스트에 Observer 연결
+            setTimeout(() => {
+                const posts = container.querySelectorAll('.instagram-post');
+                posts.forEach(post => {
+                    intersectionObserver.observe(post);
+                });
+            }, 100);
         }
         
         // Comment "더 보기" 버튼 표시 여부 확인 및 위치 조정 (DOM 렌더링 후)
@@ -1617,6 +1681,16 @@ export async function renderGallery() {
         // 갤러리 렌더링 완료 후 항상 맨 위로 스크롤
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 100);
+    
+    console.log('[renderGallery] 완료, 렌더링된 그룹 수:', sortedGroups.length, '전체 sharedPhotos:', window.sharedPhotos?.length || 0);
+    } catch (error) {
+        console.error('[renderGallery] 오류 발생:', error);
+        console.error('[renderGallery] 스택:', error.stack);
+    } finally {
+        isRenderingGallery = false;
+        // renderGallery 완료 후에도 배치 작업은 계속 실행되므로 AbortController는 유지
+        // (다음 renderGallery 호출 시 취소됨)
+    }
 }
 
 // 갤러리 사용자 필터링 함수
