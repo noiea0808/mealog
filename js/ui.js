@@ -70,17 +70,43 @@ export function updateHeaderUI() {
     }
     
     headerUpdateTimeout = setTimeout(() => {
+        // 게스트 모드 확인 (먼저 확인)
+        const isGuest = window.currentUser && window.currentUser.isAnonymous;
+        
+        // 게스트 모드이거나 userSettings가 없는 경우에도 처리
         if (!window.userSettings || !window.userSettings.profile) {
+            // 게스트 모드일 때는 '게' 표시
+            if (isGuest) {
+                const iconEl = document.getElementById('headerIcon');
+                if (iconEl) {
+                    // 모든 스타일 및 클래스 초기화
+                    iconEl.className = 'w-8 h-8 rounded-full flex items-center justify-center bg-slate-300 flex-shrink-0 overflow-hidden border border-slate-400';
+                    iconEl.style.backgroundImage = '';
+                    iconEl.style.backgroundSize = '';
+                    iconEl.style.backgroundPosition = '';
+                    iconEl.style.borderRadius = '';
+                    iconEl.style.width = '';
+                    iconEl.style.height = '';
+                    iconEl.style.objectFit = '';
+                    iconEl.style.position = '';
+                    iconEl.innerHTML = '';
+                    iconEl.innerText = '게';
+                    
+                    const currentProfileKey = `게스트||${isGuest}`;
+                    if (lastHeaderUpdate !== currentProfileKey) {
+                        lastHeaderUpdate = currentProfileKey;
+                    }
+                }
+            }
             return;
         }
         
         const p = window.userSettings.profile;
         const currentNickname = p.nickname || '게스트';
         const currentPhotoUrl = p.photoUrl || '';
-        const currentIcon = p.icon || '';
         
-        // 프로필 정보가 변경되었는지 확인 (닉네임, 사진, 아이콘 모두 포함)
-        const currentProfileKey = `${currentNickname}|${currentPhotoUrl}|${currentIcon}`;
+        // 프로필 정보가 변경되었는지 확인 (닉네임, 사진, 게스트 상태 포함)
+        const currentProfileKey = `${currentNickname}|${currentPhotoUrl}|${isGuest}`;
         if (lastHeaderUpdate === currentProfileKey) {
             return;
         }
@@ -96,6 +122,7 @@ export function updateHeaderUI() {
             iconEl.style.width = '';
             iconEl.style.height = '';
             iconEl.style.objectFit = '';
+            iconEl.style.position = '';
             iconEl.innerHTML = '';
             
             if (p.photoUrl) {
@@ -104,14 +131,21 @@ export function updateHeaderUI() {
                 iconEl.style.backgroundSize = 'cover';
                 iconEl.style.backgroundPosition = 'center';
                 iconEl.style.borderRadius = '50%';
-            } else if (p.icon) {
-                // 이모지 표시
-                iconEl.innerText = p.icon;
+                iconEl.style.position = 'relative';
+                
+                // 게스트 모드이면 '게' 오버레이 추가
+                if (isGuest) {
+                    iconEl.innerHTML = '<span style="position: absolute; bottom: 0; right: 0; background: rgba(0,0,0,0.7); color: white; font-size: 10px; font-weight: bold; width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white;">게</span>';
+                }
             } else {
-                // 텍스트(닉네임 첫 글자) - 게스트 모드일 때도 표시
-                const nn = (p.nickname || '게스트').trim();
-                const initial = (Array.from(nn)[0] || '?');
-                iconEl.innerText = initial;
+                // 사진이 없으면 닉네임 첫 글자 또는 '게' 표시
+                if (isGuest) {
+                    iconEl.innerText = '게';
+                } else {
+                    const nn = (p.nickname || '게스트').trim();
+                    const initial = (Array.from(nn)[0] || '?');
+                    iconEl.innerText = initial;
+                }
             }
         }
         

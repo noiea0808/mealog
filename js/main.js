@@ -1,6 +1,9 @@
 // 메인 애플리케이션 로직
 console.log('📦 main.js 모듈 로드 시작');
 
+// 모듈 로드 시작 플래그 설정 (index.html의 체크가 감지할 수 있도록)
+window.moduleLoading = true;
+
 import { appState, getState } from './state.js';
 import { auth, db, appId } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -1653,6 +1656,9 @@ initAuth(async (user) => {
                 if (appState.currentTab === 'gallery') renderGallery();
                 if (appState.currentTab === 'timeline') renderTimeline();
             });
+            
+            // 게스트 모드일 때 헤더 UI 업데이트
+            updateHeaderUI();
         } else {
             // 리스너 설정 (이전 리스너는 setupListeners 내부에서 해제됨)
             const { settingsUnsubscribe, dataUnsubscribe } = setupListeners(user.uid, {
@@ -1702,15 +1708,35 @@ initAuth(async (user) => {
             
             // 리스너 콜백 디바운싱을 위한 타이머
             let sharedPhotosUpdateTimer = null;
+            let isInitialSharedPhotosLoad = true; // 초기 로드 플래그
             
             appState.sharedPhotosUnsubscribe = setupSharedPhotosListener((sharedPhotos) => {
                 console.log('[리스너] 공유 사진 업데이트:', {
                     사진수: sharedPhotos?.length || 0,
                     현재탭: appState.currentTab,
+                    초기로드: isInitialSharedPhotosLoad,
                     sharedPhotos: sharedPhotos
                 });
                 
-                // 디바운싱: 빠른 연속 업데이트 방지
+                // 초기 로드는 즉시 처리 (디바운싱 없음)
+                if (isInitialSharedPhotosLoad) {
+                    isInitialSharedPhotosLoad = false;
+                    window.sharedPhotos = sharedPhotos;
+                    if (appState.currentTab === 'timeline') {
+                        renderTimeline();
+                    }
+                    if (appState.currentTab === 'gallery') {
+                        console.log('[리스너] 초기 로드: 갤러리 탭에서 renderGallery 호출');
+                        renderGallery();
+                    }
+                    const feedContent = document.getElementById('feedContent');
+                    if (feedContent && !feedContent.classList.contains('hidden')) {
+                        renderFeed();
+                    }
+                    return; // 초기 로드 후 즉시 반환
+                }
+                
+                // 이후 업데이트는 디바운싱 적용 (빠른 연속 업데이트 방지)
                 if (sharedPhotosUpdateTimer) {
                     clearTimeout(sharedPhotosUpdateTimer);
                 }
@@ -1728,7 +1754,7 @@ initAuth(async (user) => {
                     if (feedContent && !feedContent.classList.contains('hidden')) {
                         renderFeed();
                     }
-                }, 100); // 100ms 디바운싱 (너무 빠른 연속 업데이트만 방지)
+                }, 500); // 500ms 디바운싱 (공유 처리 후 빠른 연속 업데이트 방지)
             });
         }
         

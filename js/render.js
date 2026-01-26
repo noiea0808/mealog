@@ -9,6 +9,10 @@ let isRenderingGallery = false;
 let galleryScrollListeners = new Map(); // scrollContainer -> AbortController
 let intersectionObserver = null; // Intersection Observer 인스턴스
 let loadedPostIds = new Set(); // 이미 로드한 포스트 ID 캐시
+let postLoadQueue = []; // 포스트 로드 대기 큐
+let postLoadBatchTimer = null; // 배치 처리 타이머
+const MAX_CONCURRENT_LOADS = 2; // 동시에 로드할 최대 포스트 수 (3에서 2로 감소)
+const BATCH_DELAY = 200; // 배치 처리 지연 시간 (ms) (100에서 200으로 증가)
 
 // renderTimeline과 renderMiniCalendar는 render/timeline.js로 이동됨
 
@@ -472,7 +476,8 @@ function isEntryShared(entryId) {
     return window.sharedPhotos.some(photo => photo.entryId === entryId);
 }
 
-export function renderTimeline() {
+// renderTimeline과 renderMiniCalendar는 render/timeline.js로 이동됨
+// 이 함수들은 더 이상 render.js에 없음
     const state = appState;
     if (!window.currentUser || state.currentTab !== 'timeline') return;
     const container = document.getElementById('timelineContainer');
@@ -797,42 +802,37 @@ export function renderTimeline() {
     }
 }
 
-export function renderMiniCalendar() {
-    const state = appState;
-    const container = document.getElementById('miniCalendar');
-    if (!container || !window.currentUser) return;
-    container.innerHTML = "";
-    // 로컬 날짜로 변환하여 시간대 문제 방지
-    const pageYear = state.pageDate.getFullYear();
-    const pageMonth = String(state.pageDate.getMonth() + 1).padStart(2, '0');
-    const pageDay = String(state.pageDate.getDate()).padStart(2, '0');
-    const activeStr = `${pageYear}-${pageMonth}-${pageDay}`;
-    
-    for (let i = 60; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        // 로컬 날짜로 변환하여 시간대 문제 방지
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        const iso = `${year}-${month}-${day}`;
-        const count = window.mealHistory.filter(m => m.date === iso).length;
-        let status = count >= 4 ? "dot-full" : (count > 0 ? "dot-partial" : "dot-none");
-        let dayColorClass = (d.getDay() === 0 || d.getDay() === 6) ? "text-rose-400" : "text-slate-400";
-        const item = document.createElement('div');
-        item.className = "calendar-item flex flex-col items-center gap-1 cursor-pointer flex-shrink-0";
-        item.innerHTML = `<span class="text-[11px] font-bold ${dayColorClass}">${d.toLocaleDateString('ko-KR', { weekday: 'narrow' })}</span>
-            <div id="dot-${iso}" class="calendar-dot ${status} ${iso === activeStr ? 'dot-selected' : ''}">${d.getDate()}</div>`;
-        item.onclick = () => window.jumpToDate(iso);
-        container.appendChild(item);
+// renderMiniCalendar는 render/timeline.js로 이동됨
+// 이 함수는 더 이상 render.js에 없음
+
+// 포스트 로드 배치 처리 함수
+function processPostLoadQueue() {
+    if (postLoadQueue.length === 0) {
+        return;
     }
     
-    setTimeout(() => {
-        const activeDot = document.getElementById(`dot-${activeStr}`);
-        if (activeDot) activeDot.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-        const title = document.getElementById('trackerTitle');
-        if (title) title.innerText = `${state.pageDate.getFullYear()}년 ${state.pageDate.getMonth() + 1}월`;
-    }, 100);
+    // 최대 동시 로드 수만큼만 처리
+    const toProcess = postLoadQueue.splice(0, MAX_CONCURRENT_LOADS);
+    
+    toProcess.forEach(({ postEl, postId }) => {
+        // DOM이 여전히 존재하는지 확인
+        if (!document.contains(postEl)) {
+            return;
+        }
+        
+        loadPostInteractions(postEl, postId).catch(err => {
+            console.error(`포스트 ${postId} 상호작용 데이터 로드 실패:`, err);
+            // 실패 시 캐시에서 제거하여 재시도 가능하게
+            loadedPostIds.delete(postId);
+        });
+    });
+    
+    // 큐에 남은 항목이 있으면 다음 배치 예약
+    if (postLoadQueue.length > 0) {
+        postLoadBatchTimer = setTimeout(processPostLoadQueue, BATCH_DELAY);
+    } else {
+        postLoadBatchTimer = null;
+    }
 }
 
 // 좋아요/북마크/댓글 데이터 로드 함수 (단일 포스트용 - Intersection Observer에서 호출)
@@ -1041,6 +1041,13 @@ export async function renderGallery() {
             intersectionObserver = null;
         }
         
+        // 포스트 로드 큐 및 타이머 초기화
+        postLoadQueue = [];
+        if (postLoadBatchTimer) {
+            clearTimeout(postLoadBatchTimer);
+            postLoadBatchTimer = null;
+        }
+        
         // 로드된 포스트 캐시 초기화 (렌더링이 완전히 새로 시작되므로)
         loadedPostIds.clear();
         
@@ -1091,13 +1098,18 @@ export async function renderGallery() {
                             <i class="fa-solid fa-arrow-left text-lg"></i>
                         </button>
                         <div class="flex items-center gap-3 flex-1">
-                            ${filteredUserPhoto.userPhotoUrl ? `
-                                <div class="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden" style="background-image: url(${filteredUserPhoto.userPhotoUrl}); background-size: cover; background-position: center;"></div>
-                            ` : `
-                                <div class="w-12 h-12 bg-slate-200 rounded-full flex items-center justify-center text-2xl flex-shrink-0">
-                                    ${filteredUserPhoto.userIcon || '🐻'}
-                                </div>
-                            `}
+                            ${(() => {
+                                const isFilteredUserGuest = window.currentUser && window.currentUser.isAnonymous && filteredUserPhoto.userId === window.currentUser.uid;
+                                return filteredUserPhoto.userPhotoUrl ? `
+                                    <div class="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden relative" style="background-image: url(${filteredUserPhoto.userPhotoUrl}); background-size: cover; background-position: center;">
+                                        ${isFilteredUserGuest ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
+                                    </div>
+                                ` : `
+                                    <div class="w-12 h-12 bg-slate-200 rounded-full flex items-center justify-center text-2xl flex-shrink-0">
+                                        ${isFilteredUserGuest ? '게' : (filteredUserPhoto.userIcon || '🐻')}
+                                    </div>
+                                `;
+                            })()}
                             <div class="flex-1 min-w-0">
                                 <div class="text-base font-bold text-slate-800">${filteredUserPhoto.userNickname || '익명'}</div>
                             </div>
@@ -1162,15 +1174,29 @@ export async function renderGallery() {
         groupedPhotos[groupKey].push(photo);
     });
     
+    // mealHistory를 Map으로 변환하여 O(1) 조회 최적화 (근본 원인 해결)
+    // 이렇게 하면 각 포스트마다 O(n) 시간이 걸리던 find() 호출이 O(1)로 최적화됨
+    // 예: mealHistory가 1000개, 포스트가 50개면
+    // 기존: 50 * 1000 = 50,000번의 비교
+    // 최적화 후: 1000번의 Map 생성 + 50번의 Map 조회 = 1,050번의 작업
+    let mealHistoryMap = new Map();
+    if (window.mealHistory && Array.isArray(window.mealHistory)) {
+        window.mealHistory.forEach(meal => {
+            if (meal.id) {
+                mealHistoryMap.set(meal.id, meal);
+            }
+        });
+    }
+    
     // 각 그룹 내 사진들을 mealHistory의 photos 배열 순서에 맞게 정렬
     Object.keys(groupedPhotos).forEach(groupKey => {
         const photoGroup = groupedPhotos[groupKey];
         const entryId = photoGroup[0]?.entryId;
         
         // 베스트 공유나 일간보기 공유는 mealHistory 정렬 불필요
-        if (entryId && window.mealHistory && !photoGroup[0]?.type) {
+        if (entryId && mealHistoryMap.has(entryId) && !photoGroup[0]?.type) {
             try {
-                const mealRecord = window.mealHistory.find(m => m.id === entryId);
+                const mealRecord = mealHistoryMap.get(entryId);
                 if (mealRecord && Array.isArray(mealRecord.photos) && mealRecord.photos.length > 0) {
                     // mealHistory의 photos 배열 순서대로 정렬
                     const photosOrder = mealRecord.photos.map(normalizeUrl);
@@ -1243,12 +1269,80 @@ export async function renderGallery() {
         : null;
     
     const traceEmptyIcon = appState.galleryTraceFilter === 'like' ? 'fa-heart' : (appState.galleryTraceFilter === 'comment' ? 'fa-comment' : 'fa-bookmark');
-    container.innerHTML = userProfileHeader + (traceEmptyMsg ? `
+    
+    // 헤더와 빈 메시지만 먼저 렌더링
+    const headerHtml = userProfileHeader + (traceEmptyMsg ? `
             <div class="flex flex-col items-center justify-center py-20 text-center">
                 <i class="fa-regular ${traceEmptyIcon} text-6xl text-slate-200 mb-4"></i>
                 <p class="text-sm font-bold text-slate-400">${traceEmptyMsg}</p>
             </div>
-        ` : '') + sortedGroups.map((photoGroup, groupIdx) => {
+        ` : '');
+    
+    container.innerHTML = headerHtml;
+    
+    // 초기 렌더링: 화면에 보일 포스트만 먼저 렌더링 (가상 스크롤링)
+    // 화면 높이 기준으로 예상 포스트 수 계산 (각 포스트 약 600px 높이 가정)
+    const viewportHeight = window.innerHeight;
+    const estimatedPostHeight = 600; // 각 포스트의 예상 높이
+    const INITIAL_POSTS_COUNT = Math.max(5, Math.ceil(viewportHeight / estimatedPostHeight) + 2); // 화면에 보일 포스트 + 여유분
+    
+    // 초기 포스트만 먼저 렌더링
+    const initialPosts = sortedGroups.slice(0, INITIAL_POSTS_COUNT);
+    const initialHtml = initialPosts.map((photoGroup, idx) => renderPostGroup(photoGroup, idx)).join('');
+    
+    // DocumentFragment 사용하여 DOM 조작 최적화
+    const fragment = document.createDocumentFragment();
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = initialHtml;
+    while (tempDiv.firstChild) {
+        fragment.appendChild(tempDiv.firstChild);
+    }
+    container.appendChild(fragment);
+    
+    // 나머지 포스트는 placeholder로 렌더링 (스크롤 시 실제 포스트로 교체)
+    if (sortedGroups.length > INITIAL_POSTS_COUNT) {
+        const remainingCount = sortedGroups.length - INITIAL_POSTS_COUNT;
+        const placeholderHtml = `<div id="gallery-placeholder" data-remaining="${remainingCount}" data-start-index="${INITIAL_POSTS_COUNT}" style="height: ${remainingCount * estimatedPostHeight}px;"></div>`;
+        const placeholderDiv = document.createElement('div');
+        placeholderDiv.innerHTML = placeholderHtml;
+        container.appendChild(placeholderDiv.firstChild);
+    }
+    
+    // 이벤트 리스너 설정
+    setTimeout(() => {
+        setupGalleryEventListeners(container, sortedGroups);
+        
+        // IntersectionObserver 설정 (포스트 렌더링 및 상호작용 로드용)
+        setTimeout(() => {
+            setupIntersectionObserver(container);
+            setupLazyPostRenderer(container, sortedGroups, INITIAL_POSTS_COUNT);
+        }, 200);
+        
+        // Comment "더 보기" 버튼 표시 여부 확인 및 위치 조정
+        setTimeout(() => {
+            initialPosts.forEach((photoGroup, idx) => {
+                const collapsedEl = document.getElementById(`post-caption-collapsed-${idx}`);
+                const toggleBtn = document.getElementById(`post-caption-toggle-${idx}`);
+                
+                if (collapsedEl && toggleBtn) {
+                    const collapsedHeight = collapsedEl.scrollHeight;
+                    const lineHeight = parseFloat(getComputedStyle(collapsedEl).lineHeight) || 20;
+                    const maxHeight = lineHeight * 2;
+                    
+                    if (collapsedHeight > maxHeight + 2 && toggleBtn.classList.contains('hidden')) {
+                        toggleBtn.classList.remove('hidden');
+                    }
+                }
+            });
+        }, 100);
+        
+        // 갤러리 렌더링 완료 후 항상 맨 위로 스크롤
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 50);
+    
+    // 포스트 그룹 HTML 생성 함수 (기존 map 로직을 함수로 분리)
+    // mealHistoryMap을 클로저로 전달하여 O(1) 조회 최적화
+    function renderPostGroup(photoGroup, groupIdx) {
         const photo = photoGroup[0]; // 첫 번째 사진의 정보 사용
         const photoCount = photoGroup.length;
         
@@ -1263,6 +1357,9 @@ export async function renderGallery() {
         
         // 본인 게시물인지 확인
         const isMyPost = window.currentUser && photo.userId === window.currentUser.uid;
+        
+        // 게스트 모드 확인 (본인 게시물이고 게스트인 경우)
+        const isGuestPost = isMyPost && window.currentUser && window.currentUser.isAnonymous;
         
         // 일자 정보
         const photoDate = photo.date ? new Date(photo.date + 'T00:00:00') : new Date(photo.timestamp);
@@ -1298,17 +1395,18 @@ export async function renderGallery() {
         let comment = '';
         if (!isDailyShare) {
             // 1. photo 객체에 comment가 있으면 우선 사용
-            // 2. entryId가 있고 mealHistory에서 찾을 수 있으면 사용
+            // 2. entryId가 있고 mealHistoryMap에서 찾을 수 있으면 사용 (O(1) 조회로 최적화)
             if (photo.comment) {
                 comment = photo.comment;
-            } else if (entryId && window.mealHistory) {
-                const mealRecord = window.mealHistory.find(m => m.id === entryId);
+            } else if (entryId && mealHistoryMap.has(entryId)) {
+                const mealRecord = mealHistoryMap.get(entryId);
                 if (mealRecord) {
                     comment = mealRecord.comment || '';
                 }
             }
             
             // entryId가 없어도 comment가 있거나, 같은 날짜/슬롯의 기록을 찾아서 entryId 찾기
+            // 이 부분은 entryId가 없는 경우에만 실행되므로 드물지만, 최적화 필요 시 date+slotId 기반 Map 추가 고려
             if (!entryId && window.mealHistory && photo.date && photo.slotId) {
                 // photo의 comment나 다른 정보로 mealHistory에서 매칭되는 기록 찾기
                 const matchingRecord = window.mealHistory.find(m => 
@@ -1408,10 +1506,12 @@ export async function renderGallery() {
             <div class="mb-2 bg-white border-b border-slate-200 instagram-post" data-post-id="${postId}" data-group-key="${groupKey}">
                 <div class="px-6 py-3 flex items-center gap-2 relative">
                     ${photo.userPhotoUrl ? `
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${photo.userPhotoUrl}); background-size: cover; background-position: center;"></div>
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${photo.userPhotoUrl}); background-size: cover; background-position: center;">
+                            ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
+                        </div>
                     ` : `
                         <div class="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0 border-2 border-slate-300">
-                            ${photo.userIcon || '🐻'}
+                            ${isGuestPost ? '게' : (photo.userIcon || '🐻')}
                         </div>
                     `}
                     <div class="flex-1 min-w-0">
@@ -1432,7 +1532,7 @@ export async function renderGallery() {
                         ${photosHtml}
                     </div>
                     ${photoCount > 1 ? `
-                        <div class="absolute bottom-3 right-3 bg-black/60 text-white text-xs font-bold px-2.5 py-1 rounded-full backdrop-blur-sm">
+                        <div class="absolute top-3 right-3 bg-black/60 text-white text-xs font-bold px-2.5 py-1 rounded-full backdrop-blur-sm">
                             <span class="photo-counter-current">1</span>/${photoCount}
                         </div>
                     ` : ''}
@@ -1486,21 +1586,14 @@ export async function renderGallery() {
                         <!-- 댓글들이 동적으로 추가됨 -->
                     </div>
                     <!-- 댓글 더보기 -->
-                    <button onclick="window.showAllComments('${postId}')" class="text-xs text-slate-400 font-bold mb-2 post-view-comments-btn hidden" data-post-id="${postId}" id="view-comments-${postId}">
-                        댓글 모두 보기
+                    <button id="view-comments-${postId}" class="hidden text-xs text-slate-500 font-bold mb-2 hover:text-slate-700 active:text-slate-900 transition-colors" onclick="window.viewAllComments('${postId}')">
+                        댓글 더보기
                     </button>
                     <!-- 댓글 입력 -->
-                    <div class="border-t border-slate-100 pt-2 mt-2">
+                    <div id="comment-input-${postId}" class="hidden mt-2">
                         <div class="flex items-center gap-2">
-                            <input type="text" 
-                                   placeholder="댓글 달기..." 
-                                   class="post-comment-input flex-1 text-sm outline-none border-none bg-transparent text-slate-800 placeholder-slate-400" 
-                                   data-post-id="${postId}"
-                                   id="comment-input-${postId}"
-                                   data-requires-login="true"
-                                   onkeypress="if(event.key === 'Enter') window.addCommentToPost('${postId}')"
-                                   onclick="if (!window.currentUser || window.currentUser.isAnonymous) { window.requestLogin(); this.blur(); return false; }">
-                            <button onclick="window.addCommentToPost('${postId}')" class="text-emerald-600 font-bold text-sm active:text-emerald-700 disabled:text-slate-300 disabled:cursor-not-allowed post-comment-submit-btn" data-post-id="${postId}" data-requires-login="true">
+                            <input type="text" id="comment-text-${postId}" placeholder="댓글을 입력하세요..." class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent" onkeypress="if(event.key === 'Enter') window.submitComment('${postId}')">
+                            <button onclick="window.submitComment('${postId}')" class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold active:bg-emerald-700 transition-colors">
                                 게시
                             </button>
                         </div>
@@ -1508,10 +1601,11 @@ export async function renderGallery() {
                 </div>
             </div>
         `;
-    }).join('');
+    }
     
-    // 사진 카운터 업데이트를 위한 이벤트 리스너 추가
-    setTimeout(() => {
+    // 갤러리 이벤트 리스너 설정 함수
+    function setupGalleryEventListeners(container, sortedGroups) {
+        // 사진 카운터 업데이트를 위한 이벤트 리스너 추가
         const scrollContainers = container.querySelectorAll('.flex.overflow-x-auto');
         scrollContainers.forEach((scrollContainer, idx) => {
             const counter = scrollContainer.parentElement.querySelector('.photo-counter-current');
@@ -1520,15 +1614,12 @@ export async function renderGallery() {
                 const updateCounter = () => {
                     const containerWidth = scrollContainer.clientWidth;
                     const scrollLeft = scrollContainer.scrollLeft;
-                    // 각 사진의 위치를 확인하여 현재 보이는 사진 인덱스 계산
                     let currentIndex = 1;
                     photos.forEach((photo, photoIdx) => {
                         const photoLeft = photo.offsetLeft;
-                        const photoRight = photoLeft + photo.offsetWidth;
+                        const photoCenter = photoLeft + photo.offsetWidth / 2;
                         const viewportLeft = scrollLeft;
                         const viewportRight = scrollLeft + containerWidth;
-                        // 사진의 중앙이 뷰포트 안에 있으면 현재 사진
-                        const photoCenter = photoLeft + photo.offsetWidth / 2;
                         if (photoCenter >= viewportLeft && photoCenter <= viewportRight) {
                             currentIndex = photoIdx + 1;
                         }
@@ -1536,12 +1627,9 @@ export async function renderGallery() {
                     counter.textContent = currentIndex;
                 };
                 
-                // AbortController를 사용하여 이벤트 리스너 관리
                 const abortController = new AbortController();
                 scrollContainer.addEventListener('scroll', updateCounter, { signal: abortController.signal });
                 galleryScrollListeners.set(scrollContainer, abortController);
-                
-                // 초기 카운터 설정
                 updateCounter();
             }
         });
@@ -1549,7 +1637,6 @@ export async function renderGallery() {
         // 피드 옵션 버튼에 이벤트 리스너 추가
         const feedOptionsButtons = container.querySelectorAll('.feed-options-btn');
         feedOptionsButtons.forEach(btn => {
-            // 이미 이벤트 리스너가 추가되었는지 확인 (중복 방지)
             if (btn.hasAttribute('data-listener-added')) return;
             
             if (window.showFeedOptions) {
@@ -1569,7 +1656,6 @@ export async function renderGallery() {
                 });
                 btn.setAttribute('data-listener-added', 'true');
             } else {
-                // 함수가 아직 로드되지 않았으면 조금 후에 다시 시도
                 setTimeout(() => {
                     if (window.showFeedOptions && !btn.hasAttribute('data-listener-added')) {
                         btn.addEventListener('click', (e) => {
@@ -1593,94 +1679,138 @@ export async function renderGallery() {
         });
         
         // 버튼 상태 업데이트 (로그인 여부에 따라)
-        setTimeout(() => {
-            const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
-            container.querySelectorAll('[data-requires-login="true"]').forEach(btn => {
-                if (!isLoggedIn) {
-                    btn.classList.add('opacity-50', 'cursor-not-allowed');
-                    btn.title = '로그인이 필요합니다';
-                    if (btn.tagName === 'INPUT') {
-                        btn.disabled = true;
-                        btn.placeholder = '로그인 후 댓글을 달아보세요';
-                    }
-                } else {
-                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
-                    btn.title = '';
-                    if (btn.tagName === 'INPUT') {
-                        btn.disabled = false;
-                        btn.placeholder = '댓글 달기...';
-                    }
+        const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
+        container.querySelectorAll('[data-requires-login="true"]').forEach(btn => {
+            if (!isLoggedIn) {
+                btn.classList.add('opacity-50', 'cursor-not-allowed');
+                btn.title = '로그인이 필요합니다';
+                if (btn.tagName === 'INPUT') {
+                    btn.disabled = true;
+                    btn.placeholder = '로그인 후 댓글을 달아보세요';
                 }
-            });
-        }, 100);
-        
-        // 좋아요/북마크 상태 및 댓글 로드 (지연 로딩: 화면에 보이는 포스트만 로드)
-        // Intersection Observer를 사용하여 성능 최적화
-        if (window.postInteractions) {
-            // 이전 Observer 정리
-            if (intersectionObserver) {
-                intersectionObserver.disconnect();
+            } else {
+                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                btn.title = '';
+                if (btn.tagName === 'INPUT') {
+                    btn.disabled = false;
+                    btn.placeholder = '댓글 달기...';
+                }
             }
-            
-            // 새 Observer 생성: 화면에 보이는 포스트만 로드
-            intersectionObserver = new IntersectionObserver((entries) => {
-                entries.forEach(entry => {
-                    if (entry.isIntersecting) {
-                        const postEl = entry.target;
-                        const postId = postEl.getAttribute('data-post-id');
-                        
-                        // 이미 로드한 포스트는 스킵
-                        if (!postId || loadedPostIds.has(postId)) {
+        });
+    }
+    
+    // Lazy Post Renderer 설정 함수 (스크롤 시 포스트 렌더링)
+    function setupLazyPostRenderer(container, sortedGroups, initialCount) {
+        const placeholder = document.getElementById('gallery-placeholder');
+        if (!placeholder || sortedGroups.length <= initialCount) return;
+        
+        let renderedCount = initialCount;
+        let isRendering = false;
+        const POSTS_PER_BATCH = 3; // 한 번에 렌더링할 포스트 수
+        const estimatedPostHeight = 600;
+        
+        // Placeholder를 관찰하는 Observer
+        const placeholderObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting && !isRendering && renderedCount < sortedGroups.length) {
+                    isRendering = true;
+                    
+                    // 배치로 포스트 렌더링
+                    function renderNextLazyBatch() {
+                        if (renderedCount >= sortedGroups.length) {
+                            // 모든 포스트 렌더링 완료
+                            placeholder.remove();
+                            placeholderObserver.disconnect();
+                            isRendering = false;
                             return;
                         }
                         
-                        // 로드 시작
-                        loadedPostIds.add(postId);
-                        loadPostInteractions(postEl, postId).catch(err => {
-                            console.error(`포스트 ${postId} 상호작용 데이터 로드 실패:`, err);
-                            // 실패 시 캐시에서 제거하여 재시도 가능하게
-                            loadedPostIds.delete(postId);
-                        });
+                        const batch = sortedGroups.slice(renderedCount, renderedCount + POSTS_PER_BATCH);
+                        const batchHtml = batch.map((photoGroup, batchIdx) => {
+                            const groupIdx = renderedCount + batchIdx;
+                            return renderPostGroup(photoGroup, groupIdx);
+                        }).join('');
+                        
+                        // Placeholder 앞에 포스트 삽입
+                        const fragment = document.createDocumentFragment();
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = batchHtml;
+                        while (tempDiv.firstChild) {
+                            fragment.appendChild(tempDiv.firstChild);
+                        }
+                        placeholder.parentNode.insertBefore(fragment, placeholder);
+                        
+                        renderedCount += POSTS_PER_BATCH;
+                        
+                        // Placeholder 높이 조정
+                        const remaining = sortedGroups.length - renderedCount;
+                        if (remaining > 0) {
+                            placeholder.style.height = `${remaining * estimatedPostHeight}px`;
+                        } else {
+                            placeholder.remove();
+                            placeholderObserver.disconnect();
+                        }
+                        
+                        // 다음 배치 렌더링 (다음 프레임)
+                        if (renderedCount < sortedGroups.length) {
+                            requestAnimationFrame(() => {
+                                setTimeout(renderNextLazyBatch, 50);
+                            });
+                        } else {
+                            isRendering = false;
+                        }
                     }
-                });
-            }, {
-                rootMargin: '200px' // 화면 밖 200px 전에 미리 로드
+                    
+                    renderNextLazyBatch();
+                }
             });
-            
-            // 모든 포스트에 Observer 연결
-            setTimeout(() => {
-                const posts = container.querySelectorAll('.instagram-post');
-                posts.forEach(post => {
-                    intersectionObserver.observe(post);
-                });
-            }, 100);
+        }, {
+            rootMargin: '200px' // 화면 밖 200px 전에 미리 렌더링
+        });
+        
+        placeholderObserver.observe(placeholder);
+    }
+    
+    // Intersection Observer 설정 함수
+    function setupIntersectionObserver(container) {
+        if (!window.postInteractions) return;
+        
+        // 이전 Observer 정리
+        if (intersectionObserver) {
+            intersectionObserver.disconnect();
         }
         
-        // Comment "더 보기" 버튼 표시 여부 확인 및 위치 조정 (DOM 렌더링 후)
-        setTimeout(() => {
-            sortedGroups.forEach((photoGroup, idx) => {
-                const collapsedEl = document.getElementById(`post-caption-collapsed-${idx}`);
-                const expandedEl = document.getElementById(`post-caption-expanded-${idx}`);
-                const toggleBtn = document.getElementById(`post-caption-toggle-${idx}`);
-                const collapseBtn = document.getElementById(`post-caption-collapse-${idx}`);
-                
-                if (collapsedEl && toggleBtn) {
-                    // 실제 렌더링된 높이 측정
-                    const collapsedHeight = collapsedEl.scrollHeight;
-                    const lineHeight = parseFloat(getComputedStyle(collapsedEl).lineHeight) || 20;
-                    const maxHeight = lineHeight * 2; // 2줄 높이
+        // 새 Observer 생성: 화면에 보이는 포스트만 로드 (배치 처리)
+        intersectionObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const postEl = entry.target;
+                    const postId = postEl.getAttribute('data-post-id');
                     
-                    // 실제 높이가 두 줄을 넘으면 "더 보기" 버튼 표시
-                    if (collapsedHeight > maxHeight + 2 && toggleBtn.classList.contains('hidden')) {
-                        toggleBtn.classList.remove('hidden');
+                    if (!postId || loadedPostIds.has(postId)) {
+                        return;
+                    }
+                    
+                    loadedPostIds.add(postId);
+                    postLoadQueue.push({ postEl, postId });
+                    
+                    if (!postLoadBatchTimer) {
+                        postLoadBatchTimer = setTimeout(processPostLoadQueue, BATCH_DELAY);
                     }
                 }
             });
-        }, 300);
+        }, {
+            rootMargin: '100px' // 화면 밖 100px 전에 미리 로드 (50px에서 증가 - 너무 작으면 스크롤 시 깜빡임 발생)
+        });
         
-        // 갤러리 렌더링 완료 후 항상 맨 위로 스크롤
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 100);
+        // 모든 포스트에 Observer 연결 (렌더링 완료 후 지연 연결)
+        setTimeout(() => {
+            const posts = container.querySelectorAll('.instagram-post');
+            posts.forEach(post => {
+                intersectionObserver.observe(post);
+            });
+        }, 300); // 100ms에서 300ms로 증가 (초기 렌더링 완료 후 연결)
+    }
     
     console.log('[renderGallery] 완료, 렌더링된 그룹 수:', sortedGroups.length, '전체 sharedPhotos:', window.sharedPhotos?.length || 0);
     } catch (error) {
@@ -1762,15 +1892,29 @@ export function renderFeed() {
         groupedPhotos[groupKey].push(photo);
     });
     
+    // mealHistory를 Map으로 변환하여 O(1) 조회 최적화 (근본 원인 해결)
+    // 이렇게 하면 각 포스트마다 O(n) 시간이 걸리던 find() 호출이 O(1)로 최적화됨
+    // 예: mealHistory가 1000개, 포스트가 50개면
+    // 기존: 50 * 1000 = 50,000번의 비교
+    // 최적화 후: 1000번의 Map 생성 + 50번의 Map 조회 = 1,050번의 작업
+    let mealHistoryMap = new Map();
+    if (window.mealHistory && Array.isArray(window.mealHistory)) {
+        window.mealHistory.forEach(meal => {
+            if (meal.id) {
+                mealHistoryMap.set(meal.id, meal);
+            }
+        });
+    }
+    
     // 각 그룹 내 사진들을 mealHistory의 photos 배열 순서에 맞게 정렬
     Object.keys(groupedPhotos).forEach(groupKey => {
         const photoGroup = groupedPhotos[groupKey];
         const entryId = photoGroup[0]?.entryId;
         
         // 베스트 공유나 일간보기 공유는 mealHistory 정렬 불필요
-        if (entryId && window.mealHistory && !photoGroup[0]?.type) {
+        if (entryId && mealHistoryMap.has(entryId) && !photoGroup[0]?.type) {
             try {
-                const mealRecord = window.mealHistory.find(m => m.id === entryId);
+                const mealRecord = mealHistoryMap.get(entryId);
                 if (mealRecord && Array.isArray(mealRecord.photos) && mealRecord.photos.length > 0) {
                     // mealHistory의 photos 배열 순서대로 정렬
                     const photosOrder = mealRecord.photos.map(normalizeUrl);
@@ -1838,6 +1982,9 @@ export function renderFeed() {
         
         // 본인 게시물인지 확인
         const isMyPost = window.currentUser && photo.userId === window.currentUser.uid;
+        
+        // 게스트 모드 확인 (본인 게시물이고 게스트인 경우)
+        const isGuestPost = isMyPost && window.currentUser && window.currentUser.isAnonymous;
         
         // 공유 금지 상태 확인 (그룹 내 사진 중 하나라도 금지된 것이 있으면 금지 상태로 표시)
         const isBanned = photoGroup.some(p => p.banned === true);
@@ -1958,10 +2105,12 @@ export function renderFeed() {
             <div class="mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden">
                 <div class="px-4 py-3 flex items-center gap-2 relative">
                     ${photo.userPhotoUrl ? `
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${photo.userPhotoUrl}); background-size: cover; background-position: center;"></div>
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${photo.userPhotoUrl}); background-size: cover; background-position: center;">
+                            ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
+                        </div>
                     ` : `
                         <div class="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0 border-2 border-slate-300">
-                            ${photo.userIcon || '🐻'}
+                            ${isGuestPost ? '게' : (photo.userIcon || '🐻')}
                         </div>
                     `}
                     <div class="flex-1 min-w-0 mr-2">
@@ -1983,7 +2132,7 @@ export function renderFeed() {
                         ${photosHtml}
                     </div>
                     ${photoCount > 1 ? `
-                        <div class="absolute bottom-3 right-3 bg-black/60 text-white text-xs font-bold px-2.5 py-1 rounded-full backdrop-blur-sm">
+                        <div class="absolute top-3 right-3 bg-black/60 text-white text-xs font-bold px-2.5 py-1 rounded-full backdrop-blur-sm">
                             <span class="photo-counter-current">1</span>/${photoCount}
                         </div>
                     ` : ''}
@@ -3398,11 +3547,19 @@ export function savePhotoEdit() {
                 profilePhotoEditObjectUrl = null;
             }
             const photoPreview = document.getElementById('photoPreview');
+            const photoDeleteBtn = document.getElementById('photoDeleteBtn');
             if (photoPreview) {
                 photoPreview.style.backgroundImage = `url(${window.settingsPhotoUrl})`;
                 photoPreview.style.backgroundSize = 'cover';
                 photoPreview.style.backgroundPosition = 'center';
                 photoPreview.innerHTML = '';
+                if (photoDeleteBtn) {
+                    photoDeleteBtn.classList.remove('hidden');
+                }
+            }
+            // 프로필 타입을 photo로 설정
+            if (typeof window.setSettingsProfileType === 'function') {
+                window.setSettingsProfileType('photo');
             }
             closePhotoEditModal();
             if (typeof window.showToast === 'function') window.showToast('사진이 적용되었습니다.', 'success');

@@ -283,6 +283,13 @@ header .mealog-title {
     width: 100% !important;
     max-width: 100% !important;
 }
+/* 앨범 탭 뷰: 패딩 제거 (카드가 직접 px-6 패딩을 가지므로) */
+#galleryView {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
 /* 헤더 돋보기 위치: 1) 접힌 상태=돋보기만(오른쪽 정렬) 2) 펼침=왼쪽부터 하트/댓글/북마크/돋보기 */
 .gallery-trace-panel {
     width: 2rem;

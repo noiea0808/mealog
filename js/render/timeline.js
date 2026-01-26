@@ -18,6 +18,11 @@ export function renderTimeline() {
     const container = document.getElementById('timelineContainer');
     if (!container) return;
     
+    // mealHistory가 없으면 빈 배열로 초기화
+    if (!window.mealHistory || !Array.isArray(window.mealHistory)) {
+        window.mealHistory = [];
+    }
+    
     // 오늘 날짜를 명확하게 계산 (시간대 문제 방지)
     const today = new Date();
     today.setHours(0, 0, 0, 0);

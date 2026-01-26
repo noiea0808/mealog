@@ -86,25 +86,31 @@
         
         // 모듈 로드 완료 감지
         const checkModuleLoaded = setInterval(() => {
-            if (window.renderTimeline && typeof window.renderTimeline === 'function') {
-                window.moduleLoaded = true;
-                clearInterval(checkModuleLoaded);
-                console.log('✅ JavaScript 모듈 로드 완료');
-                // 로딩 오버레이 숨기기
-                const overlay = document.getElementById('loadingOverlay');
-                if (overlay && !overlay.classList.contains('hidden')) {
-                    overlay.classList.add('hidden');
+            // window.moduleLoaded가 이미 설정되었거나, renderTimeline 함수가 로드되었는지 확인
+            // 또는 window.moduleLoading이 true인 경우 (모듈이 로드 중임을 의미)
+            if (window.moduleLoaded || window.moduleLoading || (window.renderTimeline && typeof window.renderTimeline === 'function')) {
+                // moduleLoading만 있고 moduleLoaded가 없으면 아직 로드 중이므로 계속 대기
+                if (window.moduleLoaded || (window.renderTimeline && typeof window.renderTimeline === 'function')) {
+                    window.moduleLoaded = true;
+                    clearInterval(checkModuleLoaded);
+                    console.log('✅ JavaScript 모듈 로드 완료');
+                    // 로딩 오버레이 숨기기
+                    const overlay = document.getElementById('loadingOverlay');
+                    if (overlay && !overlay.classList.contains('hidden')) {
+                        overlay.classList.add('hidden');
+                    }
                 }
             } else if (window.moduleLoadError) {
                 // 이미 오류가 발생한 경우 체크 중단
                 clearInterval(checkModuleLoaded);
             }
-        }, 100);
+        }, 50); // 100ms에서 50ms로 줄여서 더 빠르게 감지
         
-        // 최대 10초 후 타임아웃
+        // 최대 15초 후 타임아웃 (10초에서 15초로 증가 - 모듈 import 시간 고려)
+        // 단, window.moduleLoading이 true인 경우에는 모듈이 로드 중이므로 타임아웃하지 않음
         setTimeout(() => {
             clearInterval(checkModuleLoaded);
-            if (!window.moduleLoaded && !window.moduleLoadError) {
+            if (!window.moduleLoaded && !window.moduleLoadError && !window.moduleLoading) {
                 console.error('⚠️ JavaScript 모듈 로드 타임아웃');
                 const overlay = document.getElementById('loadingOverlay');
                 if (overlay && !overlay.classList.contains('hidden')) {
@@ -112,8 +118,33 @@
                     const port = window.location.port || '8080';
                     alert('JavaScript 모듈을 로드할 수 없습니다.\n\n가능한 원인:\n1. 웹 서버를 통해 실행하지 않음 (파일 직접 열기)\n2. 네트워크 연결 문제\n3. JavaScript 파일 경로 오류\n\n브라우저 콘솔(F12)을 열어 정확한 오류를 확인하세요.\n\n현재 URL: ' + window.location.href);
                 }
+            } else if (window.moduleLoading && !window.moduleLoaded) {
+                // 모듈이 로드 중이지만 아직 완료되지 않은 경우, 추가 시간을 주기 위해 체크를 계속함
+                console.log('⏳ 모듈 로드 중... 추가 대기 시간 제공');
+                const extendedCheck = setInterval(() => {
+                    if (window.moduleLoaded || (window.renderTimeline && typeof window.renderTimeline === 'function')) {
+                        window.moduleLoaded = true;
+                        clearInterval(extendedCheck);
+                        console.log('✅ JavaScript 모듈 로드 완료 (연장된 대기)');
+                        const overlay = document.getElementById('loadingOverlay');
+                        if (overlay && !overlay.classList.contains('hidden')) {
+                            overlay.classList.add('hidden');
+                        }
+                    }
+                }, 50);
+                // 추가로 10초 더 대기
+                setTimeout(() => {
+                    clearInterval(extendedCheck);
+                    if (!window.moduleLoaded) {
+                        console.error('⚠️ JavaScript 모듈 로드 타임아웃 (연장된 대기 후)');
+                        const overlay = document.getElementById('loadingOverlay');
+                        if (overlay && !overlay.classList.contains('hidden')) {
+                            overlay.classList.add('hidden');
+                        }
+                    }
+                }, 10000);
             }
-        }, 10000);
+        }, 15000); // 10000에서 15000으로 증가
     </script>
     
     <script type="module" src="js/main.js?v=2" onerror="console.error('❌ main.js 스크립트 태그 로드 실패'); window.moduleLoadError = {message: '스크립트 태그 로드 실패'};"></script>
@@ -748,47 +779,31 @@
                     <!-- 1) 아이콘 -->
                     <div class="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-2">
                         <div class="text-xs font-black text-slate-500 uppercase tracking-widest">아이콘</div>
-                        <!-- 아이콘 설정 타입 선택 (세그먼트 탭) -->
-                        <div class="bg-slate-100 border border-slate-200 rounded-2xl p-[1px] flex gap-0.5">
-                            <button id="profileTypeText" class="flex-1 h-6 bg-emerald-600 text-white rounded-xl text-[12px] font-bold leading-none active:bg-emerald-700 transition-colors">
-                                텍스트
-                            </button>
-                            <button id="profileTypeEmoji" class="flex-1 h-6 bg-transparent text-slate-600 rounded-xl text-[12px] font-bold leading-none active:bg-slate-200 transition-colors">
-                                이모지
-                            </button>
-                            <button id="profileTypePhoto" class="flex-1 h-6 bg-transparent text-slate-600 rounded-xl text-[12px] font-bold leading-none active:bg-slate-200 transition-colors">
-                                사진
-                            </button>
-                        </div>
-                        <!-- 텍스트(닉네임 첫 글자) 영역 -->
+                        <!-- 텍스트(닉네임 첫 글자) 영역 - 사진이 없을 때 기본 표시 -->
                         <div id="textSection">
                             <div class="bg-white p-3 rounded-2xl border border-slate-200 flex items-center gap-3 min-h-[72px]">
-                                <div id="textPreview" class="w-12 h-12 rounded-full bg-slate-50 border-2 border-slate-200 flex items-center justify-center text-base font-black text-slate-700">?</div>
+                                <div id="textPreview" class="w-12 h-12 rounded-full bg-slate-50 border-2 border-slate-200 flex items-center justify-center text-base font-black text-slate-700 flex-shrink-0">?</div>
                                 <div class="flex-1 min-w-0">
                                     <div class="text-xs font-bold text-slate-700">닉네임 첫 글자</div>
                                     <div class="text-[11px] text-slate-500 mt-0.5">닉네임 변경 시 자동 반영</div>
                                 </div>
-                            </div>
-                        </div>
-                        <!-- 이모지 선택 영역 -->
-                        <div id="emojiSection" class="hidden">
-                            <div class="bg-white p-3 rounded-2xl border border-slate-200 flex items-center gap-3 min-h-[72px]">
-                                <div id="emojiPreview" class="w-12 h-12 rounded-full bg-slate-50 border-2 border-slate-200 flex items-center justify-center text-lg">🐻</div>
-                                <div class="flex-1 min-w-0 overflow-hidden">
-                                    <div id="iconSelector" class="flex gap-2 overflow-x-auto pb-1"></div>
-                                </div>
+                                <button id="textSectionPhotoBtn" type="button" class="px-3 py-1.5 bg-slate-800 text-white rounded-xl text-[11px] font-bold active:bg-slate-900 transition-colors whitespace-nowrap">
+                                    사진 설정
+                                </button>
                             </div>
                         </div>
                         <!-- 사진 직접 등록 영역 -->
                         <div id="photoSection" class="hidden">
-                            <div class="bg-white p-3 rounded-2xl border border-slate-200 grid grid-cols-[1fr_auto_1fr] items-center gap-3 min-h-[72px]">
-                                <div></div>
-                                <div id="photoPreview" class="w-12 h-12 rounded-full bg-slate-50 border-2 border-slate-200 overflow-hidden flex items-center justify-center justify-self-center">
+                            <div class="bg-white p-3 rounded-2xl border border-slate-200 flex items-center gap-3 min-h-[72px]">
+                                <div id="photoPreview" class="w-12 h-12 rounded-full bg-slate-50 border-2 border-slate-200 overflow-hidden flex items-center justify-center flex-shrink-0">
                                     <i class="fa-solid fa-camera text-slate-400 text-base"></i>
                                 </div>
-                                <div class="flex justify-end">
+                                <div class="flex-1 min-w-0 flex items-center gap-2">
                                     <button id="photoSelectBtn" type="button" class="px-3 py-1.5 bg-slate-800 text-white rounded-xl text-[11px] font-bold active:bg-slate-900 transition-colors whitespace-nowrap">
                                         사진 선택
+                                    </button>
+                                    <button id="photoDeleteBtn" type="button" class="hidden px-3 py-1.5 bg-red-500 text-white rounded-xl text-[11px] font-bold active:bg-red-600 transition-colors whitespace-nowrap">
+                                        삭제
                                     </button>
                                 </div>
                                 <input type="file" id="photoInput" class="hidden" accept="image/*" onchange="window.safeCall('handlePhotoUpload', event)">

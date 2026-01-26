@@ -111,12 +111,27 @@ export function toggleEmailAuthMode() {
 }
 
 export async function handleEmailAuth() {
-    const email = document.getElementById('emailInput').value;
+    const email = document.getElementById('emailInput').value.trim();
     const password = document.getElementById('passwordInput').value;
+    
     if (!email || !password) {
         showToast("이메일과 비밀번호를 입력해주세요.", "error");
         return;
     }
+    
+    // 이메일 형식 기본 검증
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        showToast("올바른 이메일 형식이 아닙니다.", "error");
+        return;
+    }
+    
+    // 비밀번호 최소 길이 검증
+    if (password.length < 6) {
+        showToast("비밀번호는 6자리 이상이어야 합니다.", "error");
+        return;
+    }
+    
     showLoading();
     try {
         let result;
@@ -148,11 +163,39 @@ export async function handleEmailAuth() {
         // 로그인 성공 후 로딩 오버레이는 onAuthStateChanged에서 인증 플로우가 완료될 때까지 유지
         // 인증 플로우가 완료되면 processState의 finally에서 hideLoading() 호출됨
     } catch (error) {
-        let msg = error.message;
-        if (error.code === 'auth/email-already-in-use') msg = "이미 사용 중인 이메일입니다.";
-        if (error.code === 'auth/wrong-password') msg = "비밀번호가 틀렸습니다.";
-        if (error.code === 'auth/user-not-found') msg = "존재하지 않는 계정입니다.";
-        if (error.code === 'auth/weak-password') msg = "비밀번호는 6자리 이상이어야 합니다.";
+        console.error('🔐 이메일 인증 에러:', {
+            code: error.code,
+            message: error.message,
+            error: error
+        });
+        
+        let msg = error.message || '알 수 없는 오류가 발생했습니다.';
+        
+        // Firebase Auth 에러 코드별 메시지 처리
+        if (error.code === 'auth/email-already-in-use') {
+            msg = "이미 사용 중인 이메일입니다.";
+        } else if (error.code === 'auth/wrong-password') {
+            msg = "비밀번호가 틀렸습니다.";
+        } else if (error.code === 'auth/user-not-found') {
+            msg = "존재하지 않는 계정입니다.";
+        } else if (error.code === 'auth/weak-password') {
+            msg = "비밀번호는 6자리 이상이어야 합니다.";
+        } else if (error.code === 'auth/invalid-email') {
+            msg = "올바른 이메일 형식이 아닙니다.";
+        } else if (error.code === 'auth/user-disabled') {
+            msg = "이 계정은 비활성화되었습니다. 관리자에게 문의하세요.";
+        } else if (error.code === 'auth/too-many-requests') {
+            msg = "너무 많은 시도가 있었습니다. 잠시 후 다시 시도해주세요.";
+        } else if (error.code === 'auth/operation-not-allowed') {
+            msg = "이메일/비밀번호 로그인이 비활성화되었습니다.";
+        } else if (error.code === 'auth/invalid-credential') {
+            msg = "이메일 또는 비밀번호가 올바르지 않습니다.";
+        } else if (error.code === 'auth/network-request-failed') {
+            msg = "네트워크 연결을 확인해주세요.";
+        } else if (error.message && error.message.includes('400')) {
+            msg = "로그인 요청이 실패했습니다. 이메일과 비밀번호를 확인해주세요.";
+        }
+        
         showToast("오류: " + msg, "error");
         hideLoading(); // 에러 시에만 즉시 숨김
     }
