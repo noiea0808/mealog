@@ -67,3 +67,13 @@ export const callableFunctions = {
         // App Check 실패해도 앱은 계속 작동
     }
 })();
+
+// 에러 리포팅 시스템 초기화
+(async () => {
+    try {
+        const { initErrorReporting } = await import('./error-reporting.js');
+        await initErrorReporting();
+    } catch (e) {
+        console.warn('⚠️ 에러 리포팅 초기화 실패:', e);
+    }
+})();

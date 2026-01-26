@@ -222,5 +222,13 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
+    
+    // ============================================
+    // 에러 로그 (errorLogs 컬렉션) - 관리자만 읽기 가능, 쓰기는 Cloud Functions만
+    // ============================================
+    match /artifacts/{appId}/errorLogs/{errorId} {
+      allow read: if isAdmin();
+      allow write: if false; // Cloud Functions만 쓰기 가능 (admin SDK 사용)
+    }
   }
 }

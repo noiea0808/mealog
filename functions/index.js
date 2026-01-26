@@ -38,6 +38,62 @@ const LINK_PATTERNS = [
 ];
 
 /**
+ * 에러 리포팅 헬퍼 (Functions용)
+ */
+async function logErrorToFirestore(errorInfo, functionName) {
+  try {
+    const errorLogsColl = db.collection('artifacts').doc(APP_ID).collection('errorLogs');
+    const sanitizedError = {
+      message: errorInfo.message?.substring(0, 500) || 'Unknown error',
+      type: 'cloud_function_error',
+      functionName: functionName || 'unknown',
+      errorCode: errorInfo.code || null,
+      stack: errorInfo.stack?.substring(0, 2000) || null,
+      userId: errorInfo.userId || null,
+      timestamp: FieldValue.serverTimestamp()
+    };
+    await errorLogsColl.add(sanitizedError);
+  } catch (e) {
+    // 에러 로그 저장 실패는 무시 (무한 루프 방지)
+    logger.error('에러 로그 저장 실패:', e);
+  }
+}
+
+/**
+ * 에러 핸들링 래퍼 (Functions용)
+ */
+function wrapFunction(functionName, handler) {
+  return async (request) => {
+    try {
+      return await handler(request);
+    } catch (error) {
+      // HttpsError는 그대로 전달 (이미 적절히 처리됨)
+      if (error instanceof HttpsError) {
+        throw error;
+      }
+      
+      // 예상치 못한 에러는 로깅
+      logger.error(`${functionName} 에러:`, {
+        message: error.message,
+        stack: error.stack,
+        userId: request.auth?.uid || null
+      });
+      
+      // 에러 리포팅
+      await logErrorToFirestore({
+        message: error.message,
+        stack: error.stack,
+        code: error.code,
+        userId: request.auth?.uid || null
+      }, functionName);
+      
+      // 사용자에게는 일반적인 에러 메시지 반환
+      throw new HttpsError('internal', '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+    }
+  };
+}
+
+/**
  * 레이트 리밋 체크
  */
 async function checkRateLimit(userId, actionType, context) {

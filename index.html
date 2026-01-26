@@ -182,6 +182,19 @@
                 }
                 console.error('==========================');
                 
+                // 에러 리포팅 (에러 리포팅 시스템이 로드되면 자동 처리)
+                if (window.reportError) {
+                    window.reportError({
+                        message: e.message,
+                        filename: e.filename,
+                        lineno: e.lineno,
+                        colno: e.colno,
+                        error: e.error,
+                        stack: e.error?.stack,
+                        type: 'javascript_error'
+                    });
+                }
+                
                 // 모듈 로드 오류인 경우
                 if (e.filename && (e.filename.includes('main.js') || e.filename.includes('.js') || e.filename.includes('module'))) {
                     window.moduleLoadError = {
@@ -214,6 +227,16 @@
                 console.error('스택 트레이스:', e.reason.stack);
             }
             console.error('============================');
+            
+            // 에러 리포팅 (에러 리포팅 시스템이 로드되면 자동 처리)
+            if (window.reportError) {
+                window.reportError({
+                    message: e.reason?.message || String(e.reason) || 'Unhandled promise rejection',
+                    reason: e.reason,
+                    stack: e.reason?.stack,
+                    type: 'promise_rejection'
+                });
+            }
             
             // 모듈 로드 관련 오류인 경우
             if (e.reason && (
