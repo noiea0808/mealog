@@ -1038,31 +1038,32 @@ export async function shareBestToFeed() {
         // Canvas를 Blob으로 변환
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png', 0.95));
         
-        // Firebase Storage에 업로드 (또는 base64로 저장)
-        // 여기서는 간단하게 base64로 저장하겠습니다
+        // Firebase Storage에 업로드
         const base64Image = canvas.toDataURL('image/png');
+        const { uploadBase64ToStorage } = await import('../utils.js');
+        const photoUrl = await uploadBase64ToStorage(base64Image, window.currentUser.uid, `best_${periodType}_${periodText.replace(/\s+/g, '_')}`);
         
         const userProfile = window.userSettings?.profile || {};
-        const bestShareData = {
-            photoUrl: base64Image,
-            userId: window.currentUser.uid,
-            userNickname: userProfile.nickname || '익명',
-            userIcon: userProfile.icon || '🐻',
-            userPhotoUrl: userProfile.photoUrl || null,
-            type: 'best',
+        
+        // Cloud Functions를 통해 베스트 공유 생성
+        const { callableFunctions } = await import('../firebase.js');
+        const result = await callableFunctions.createBestShare({
+            photoUrl: photoUrl,
             periodType: periodType,
             periodText: periodText,
-            comment: comment,
-            timestamp: new Date().toISOString(),
-            entryId: null // 베스트 공유는 entryId가 없음
-        };
+            comment: comment
+        });
+
+        const bestShareData = result.data;
         
-        // Firestore에 저장
-        const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-        const { db: firestoreDb, appId } = await import('../firebase.js');
-        const sharedColl = collection(firestoreDb, 'artifacts', appId, 'sharedPhotos');
-        await addDoc(sharedColl, bestShareData);
-        
+        // window.sharedPhotos 업데이트
+        if (!window.sharedPhotos) window.sharedPhotos = [];
+        window.sharedPhotos = window.sharedPhotos.filter(p =>
+            !(p.type === 'best' && p.periodType === periodType && p.periodText === periodText && p.userId === window.currentUser.uid)
+        );
+        window.sharedPhotos.push(bestShareData);
+        window.sharedPhotos.sort((a, b) => (new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
+
         showToast('베스트가 피드에 공유되었습니다!', 'success');
         closeShareBestModal();
         
@@ -1073,10 +1074,10 @@ export async function shareBestToFeed() {
         if (appState.currentTab === 'gallery') {
             renderGallery();
         }
-        
     } catch (e) {
         console.error('베스트 공유 실패:', e);
-        showToast('베스트 공유 중 오류가 발생했습니다.', 'error');
+        const errorMessage = e.message || e.details || '공유 중 오류가 발생했습니다.';
+        showToast(errorMessage, 'error');
     } finally {
         if (submitBtn) {
             submitBtn.disabled = false;

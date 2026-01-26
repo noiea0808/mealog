@@ -37,7 +37,10 @@ export const callableFunctions = {
     deletePostComment: httpsCallable(functions, 'deletePostComment'),
     submitPostReport: httpsCallable(functions, 'submitPostReport'),
     sharePhotos: httpsCallable(functions, 'sharePhotos'),
-    unsharePhotos: httpsCallable(functions, 'unsharePhotos')
+    unsharePhotos: httpsCallable(functions, 'unsharePhotos'),
+    createDailyShare: httpsCallable(functions, 'createDailyShare'),
+    createBestShare: httpsCallable(functions, 'createBestShare'),
+    createInsightShare: httpsCallable(functions, 'createInsightShare')
 };
 
 // App Check 초기화 (reCAPTCHA v3 사용)

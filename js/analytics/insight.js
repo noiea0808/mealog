@@ -1650,29 +1650,31 @@ export async function shareInsightToFeed() {
         // Canvas를 Blob으로 변환
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png', 0.95));
         
-        // base64로 저장
+        // Firebase Storage에 업로드
         const base64Image = canvas.toDataURL('image/png');
+        const { uploadBase64ToStorage } = await import('../utils.js');
+        const photoUrl = await uploadBase64ToStorage(base64Image, window.currentUser.uid, `insight_${dateRangeText.replace(/\s+/g, '_')}`);
         
         const userProfile = window.userSettings?.profile || {};
-        const insightShareData = {
-            photoUrl: base64Image,
-            userId: window.currentUser.uid,
-            userNickname: userProfile.nickname || '익명',
-            userIcon: userProfile.icon || '🐻',
-            userPhotoUrl: userProfile.photoUrl || null,
-            type: 'insight',
+        
+        // Cloud Functions를 통해 인사이트 공유 생성
+        const { callableFunctions } = await import('../firebase.js');
+        const result = await callableFunctions.createInsightShare({
+            photoUrl: photoUrl,
             dateRangeText: dateRangeText,
-            comment: comment,
-            timestamp: new Date().toISOString(),
-            entryId: null // 인사이트 공유는 entryId가 없음
-        };
+            comment: comment
+        });
+
+        const insightShareData = result.data;
         
-        // Firestore에 저장
-        const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-        const { db: firestoreDb, appId } = await import('../firebase.js');
-        const sharedColl = collection(firestoreDb, 'artifacts', appId, 'sharedPhotos');
-        await addDoc(sharedColl, insightShareData);
-        
+        // window.sharedPhotos 업데이트
+        if (!window.sharedPhotos) window.sharedPhotos = [];
+        window.sharedPhotos = window.sharedPhotos.filter(p =>
+            !(p.type === 'insight' && p.dateRangeText === dateRangeText && p.userId === window.currentUser.uid)
+        );
+        window.sharedPhotos.push(insightShareData);
+        window.sharedPhotos.sort((a, b) => (new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
+
         showToast('밀당(MEAL-DANG)들의 참견이 피드에 공유되었습니다!', 'success');
         closeShareInsightModal();
         
@@ -1687,10 +1689,10 @@ export async function shareInsightToFeed() {
             const { renderFeed } = await import('../render/index.js');
             renderFeed();
         }
-        
     } catch (e) {
         console.error('인사이트 공유 실패:', e);
-        showToast('인사이트 공유 중 오류가 발생했습니다.', 'error');
+        const errorMessage = e.message || e.details || '공유 중 오류가 발생했습니다.';
+        showToast(errorMessage, 'error');
     } finally {
         if (submitBtn) {
             submitBtn.disabled = false;

@@ -205,7 +205,7 @@ async function checkDuplicateReport(userId, targetGroupKey) {
 /**
  * 게시글 작성 (Callable)
  */
-exports.createBoardPost = onCall({ region: REGION }, async (request) => {
+exports.createBoardPost = onCall({ region: REGION }, wrapFunction('createBoardPost', async (request) => {
   const { auth, data } = request;
   
   if (!auth || !auth.uid) {
@@ -260,7 +260,7 @@ exports.createBoardPost = onCall({ region: REGION }, async (request) => {
   const docRef = await postsRef.add(newPost);
   
   return { id: docRef.id, ...newPost, timestamp: new Date().toISOString() };
-});
+}));
 
 /**
  * 게시글 수정 (Callable)
@@ -345,7 +345,7 @@ exports.deleteBoardPost = onCall({ region: REGION }, async (request) => {
 /**
  * 게시글 댓글 작성 (Callable)
  */
-exports.addBoardComment = onCall({ region: REGION }, async (request) => {
+exports.addBoardComment = onCall({ region: REGION }, wrapFunction('addBoardComment', async (request) => {
   const { auth, data } = request;
   
   if (!auth || !auth.uid) {
@@ -402,7 +402,7 @@ exports.addBoardComment = onCall({ region: REGION }, async (request) => {
   }
 
   return { id: docRef.id, ...newComment, timestamp: new Date().toISOString() };
-});
+}));
 
 /**
  * 게시글 댓글 삭제 (Callable)
@@ -452,7 +452,7 @@ exports.deleteBoardComment = onCall({ region: REGION }, async (request) => {
 /**
  * 피드 댓글 작성 (Callable)
  */
-exports.addPostComment = onCall({ region: REGION }, async (request) => {
+exports.addPostComment = onCall({ region: REGION }, wrapFunction('addPostComment', async (request) => {
   const { auth, data } = request;
   
   if (!auth || !auth.uid) {
@@ -498,7 +498,7 @@ exports.addPostComment = onCall({ region: REGION }, async (request) => {
   const docRef = await commentsRef.add(commentData);
 
   return { id: docRef.id, ...commentData, timestamp: new Date().toISOString() };
-});
+}));
 
 /**
  * 피드 댓글 삭제 (Callable)
@@ -743,6 +743,237 @@ exports.sharePhotos = onCall({ region: REGION }, async (request) => {
     }
     throw new HttpsError('internal', '공유 처리 중 오류가 발생했습니다.');
   }
+});
+
+/**
+ * 일간보기 공유 (Callable)
+ */
+exports.createDailyShare = onCall({ region: REGION }, async (request) => {
+  const { auth, data } = request;
+  
+  if (!auth || !auth.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+
+  const { photoUrl, date, comment } = data;
+  
+  if (!photoUrl || !date) {
+    throw new HttpsError('invalid-argument', '사진 URL과 날짜가 필요합니다.');
+  }
+
+  // 레이트 리밋 체크
+  await checkRateLimit(auth.uid, 'share', request);
+
+  // 사용자 프로필 정보 가져오기
+  const userSettingsRef = db.collection('artifacts').doc(APP_ID)
+    .collection('users').doc(auth.uid)
+    .collection('config').doc('settings');
+  const userSettingsDoc = await userSettingsRef.get();
+  
+  const profile = userSettingsDoc.exists ? (userSettingsDoc.data().profile || {}) : {};
+  const userNickname = profile.nickname || '익명';
+  const userIcon = profile.icon || '🐻';
+  const userPhotoUrl = profile.photoUrl || null;
+
+  const sharedColl = db.collection('artifacts').doc(APP_ID).collection('sharedPhotos');
+  
+  // 같은 날짜의 기존 일간보기 공유 삭제
+  const existingQuery = await sharedColl
+    .where('userId', '==', auth.uid)
+    .where('type', '==', 'daily')
+    .where('date', '==', date)
+    .get();
+  
+  const batch = db.batch();
+  existingQuery.docs.forEach(docSnap => {
+    batch.delete(docSnap.ref);
+  });
+
+  // 새로운 일간보기 공유 추가
+  const docRef = sharedColl.doc();
+  batch.set(docRef, {
+    photoUrl,
+    userId: auth.uid,
+    userNickname,
+    userIcon,
+    userPhotoUrl,
+    type: 'daily',
+    date,
+    timestamp: FieldValue.serverTimestamp(),
+    entryId: null,
+    comment: comment || ''
+  });
+
+  await batch.commit();
+
+  return { 
+    id: docRef.id, 
+    photoUrl,
+    userId: auth.uid,
+    userNickname,
+    userIcon,
+    userPhotoUrl,
+    type: 'daily',
+    date,
+    timestamp: new Date().toISOString(),
+    entryId: null,
+    comment: comment || ''
+  };
+});
+
+/**
+ * 베스트 공유 (Callable)
+ */
+exports.createBestShare = onCall({ region: REGION }, async (request) => {
+  const { auth, data } = request;
+  
+  if (!auth || !auth.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+
+  const { photoUrl, periodType, periodText, comment } = data;
+  
+  if (!photoUrl || !periodType || !periodText) {
+    throw new HttpsError('invalid-argument', '사진 URL, 기간 타입, 기간 텍스트가 필요합니다.');
+  }
+
+  // 레이트 리밋 체크
+  await checkRateLimit(auth.uid, 'share', request);
+
+  // 사용자 프로필 정보 가져오기
+  const userSettingsRef = db.collection('artifacts').doc(APP_ID)
+    .collection('users').doc(auth.uid)
+    .collection('config').doc('settings');
+  const userSettingsDoc = await userSettingsRef.get();
+  
+  const profile = userSettingsDoc.exists ? (userSettingsDoc.data().profile || {}) : {};
+  const userNickname = profile.nickname || '익명';
+  const userIcon = profile.icon || '🐻';
+  const userPhotoUrl = profile.photoUrl || null;
+
+  const sharedColl = db.collection('artifacts').doc(APP_ID).collection('sharedPhotos');
+  
+  // 같은 기간의 기존 베스트 공유 삭제
+  const existingQuery = await sharedColl
+    .where('userId', '==', auth.uid)
+    .where('type', '==', 'best')
+    .where('periodType', '==', periodType)
+    .where('periodText', '==', periodText)
+    .get();
+  
+  const batch = db.batch();
+  existingQuery.docs.forEach(docSnap => {
+    batch.delete(docSnap.ref);
+  });
+
+  // 새로운 베스트 공유 추가
+  const docRef = sharedColl.doc();
+  batch.set(docRef, {
+    photoUrl,
+    userId: auth.uid,
+    userNickname,
+    userIcon,
+    userPhotoUrl,
+    type: 'best',
+    periodType,
+    periodText,
+    timestamp: FieldValue.serverTimestamp(),
+    entryId: null,
+    comment: comment || ''
+  });
+
+  await batch.commit();
+
+  return { 
+    id: docRef.id, 
+    photoUrl,
+    userId: auth.uid,
+    userNickname,
+    userIcon,
+    userPhotoUrl,
+    type: 'best',
+    periodType,
+    periodText,
+    timestamp: new Date().toISOString(),
+    entryId: null,
+    comment: comment || ''
+  };
+});
+
+/**
+ * 인사이트 공유 (Callable)
+ */
+exports.createInsightShare = onCall({ region: REGION }, async (request) => {
+  const { auth, data } = request;
+  
+  if (!auth || !auth.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+
+  const { photoUrl, dateRangeText, comment } = data;
+  
+  if (!photoUrl || !dateRangeText) {
+    throw new HttpsError('invalid-argument', '사진 URL과 날짜 범위 텍스트가 필요합니다.');
+  }
+
+  // 레이트 리밋 체크
+  await checkRateLimit(auth.uid, 'share', request);
+
+  // 사용자 프로필 정보 가져오기
+  const userSettingsRef = db.collection('artifacts').doc(APP_ID)
+    .collection('users').doc(auth.uid)
+    .collection('config').doc('settings');
+  const userSettingsDoc = await userSettingsRef.get();
+  
+  const profile = userSettingsDoc.exists ? (userSettingsDoc.data().profile || {}) : {};
+  const userNickname = profile.nickname || '익명';
+  const userIcon = profile.icon || '🐻';
+  const userPhotoUrl = profile.photoUrl || null;
+
+  const sharedColl = db.collection('artifacts').doc(APP_ID).collection('sharedPhotos');
+  
+  // 같은 날짜 범위의 기존 인사이트 공유 삭제
+  const existingQuery = await sharedColl
+    .where('userId', '==', auth.uid)
+    .where('type', '==', 'insight')
+    .where('dateRangeText', '==', dateRangeText)
+    .get();
+  
+  const batch = db.batch();
+  existingQuery.docs.forEach(docSnap => {
+    batch.delete(docSnap.ref);
+  });
+
+  // 새로운 인사이트 공유 추가
+  const docRef = sharedColl.doc();
+  batch.set(docRef, {
+    photoUrl,
+    userId: auth.uid,
+    userNickname,
+    userIcon,
+    userPhotoUrl,
+    type: 'insight',
+    dateRangeText,
+    timestamp: FieldValue.serverTimestamp(),
+    entryId: null,
+    comment: comment || ''
+  });
+
+  await batch.commit();
+
+  return { 
+    id: docRef.id, 
+    photoUrl,
+    userId: auth.uid,
+    userNickname,
+    userIcon,
+    userPhotoUrl,
+    type: 'insight',
+    dateRangeText,
+    timestamp: new Date().toISOString(),
+    entryId: null,
+    comment: comment || ''
+  };
 });
 
 /**

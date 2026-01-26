@@ -177,14 +177,22 @@ export const postInteractions = {
             throw new Error("로그인이 필요합니다.");
         }
         try {
+            console.log('[postInteractions.addComment] 시작:', { postId, commentLength: commentText?.length });
             const result = await callableFunctions.addPostComment({
                 postId,
                 commentText
             });
+            console.log('[postInteractions.addComment] 성공:', result.data);
             return result.data;
         } catch (e) {
-            console.error("Add Comment Error:", e);
-            const errorMessage = e.message || e.details || "댓글 작성에 실패했습니다.";
+            console.error("[postInteractions.addComment] 에러:", e);
+            console.error("[postInteractions.addComment] 에러 상세:", {
+                code: e.code,
+                message: e.message,
+                details: e.details,
+                stack: e.stack
+            });
+            const errorMessage = e.message || e.details || e.code || "댓글 작성에 실패했습니다.";
             throw new Error(errorMessage);
         }
     },

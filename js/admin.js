@@ -2404,10 +2404,11 @@ async function renderFeedManagement() {
         
         console.log(`📊 총 ${allMeals.length}개의 게시물 발견`);
         
-        // sharedPhotos 컬렉션에서 실제 공유된 게시물 확인 및 베스트 공유, 일간보기 공유 게시물 추가
+        // sharedPhotos 컬렉션에서 실제 공유된 게시물 확인 및 베스트 공유, 일간보기 공유, 인사이트 공유 게시물 추가
         const sharedPhotosMap = new Map(); // entryId -> true (실제로 sharedPhotos 컬렉션에 존재하는지)
         const bestShares = []; // 베스트 공유 게시물 목록
         const dailyShares = []; // 일간보기 공유 게시물 목록
+        const insightShares = []; // 인사이트 공유 게시물 목록
         try {
             const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
             const sharedSnapshot = await getDocs(sharedColl);
@@ -2447,17 +2448,33 @@ async function renderFeedManagement() {
                         isDailyShare: true // 일간보기 공유 표시
                     });
                 }
+                // 인사이트 공유 게시물 추가
+                if (data.type === 'insight') {
+                    insightShares.push({
+                        id: doc.id,
+                        userId: data.userId || '',
+                        type: 'insight',
+                        dateRangeText: data.dateRangeText || '',
+                        comment: data.comment || '',
+                        photoUrl: data.photoUrl || '',
+                        timestamp: data.timestamp || '',
+                        userNickname: data.userNickname || '익명',
+                        userIcon: data.userIcon || '🐻',
+                        isInsightShare: true // 인사이트 공유 표시
+                    });
+                }
             });
             console.log(`📸 sharedPhotos 컬렉션에서 ${sharedPhotosMap.size}개의 entryId 발견`);
             console.log(`🏆 베스트 공유 게시물: ${bestShares.length}개 발견`);
             console.log(`📅 일간보기 공유 게시물: ${dailyShares.length}개 발견`);
+            console.log(`💡 인사이트 공유 게시물: ${insightShares.length}개 발견`);
         } catch (e) {
             console.warn('⚠️ sharedPhotos 컬렉션 조회 실패:', e);
         }
         
-        // 베스트 공유 및 일간보기 공유 게시물을 allMeals에 추가
-        allMeals = [...allMeals, ...bestShares, ...dailyShares];
-        console.log(`📊 베스트 공유 및 일간보기 공유 포함 총 ${allMeals.length}개의 게시물`);
+        // 베스트 공유, 일간보기 공유, 인사이트 공유 게시물을 allMeals에 추가
+        allMeals = [...allMeals, ...bestShares, ...dailyShares, ...insightShares];
+        console.log(`📊 베스트 공유, 일간보기 공유, 인사이트 공유 포함 총 ${allMeals.length}개의 게시물`);
         
         // 데이터 불일치 항목 자동 동기화
         const mismatchedMeals = allMeals.filter(meal => {
@@ -2519,6 +2536,20 @@ async function renderFeedManagement() {
                 if (feedFilters.hasPhotos === 'no') return false;
                 
                 // 금지 여부 필터: 일간보기 공유는 금지 기능 없음
+                if (feedFilters.banned === 'yes') return false;
+                
+                return true;
+            }
+            
+            // 인사이트 공유 게시물은 항상 공유된 상태
+            if (meal.isInsightShare) {
+                // 공유 여부 필터: 인사이트 공유는 항상 공유됨
+                if (feedFilters.shared === 'no') return false;
+                
+                // 사진 여부 필터: 인사이트 공유는 항상 이미지가 있음
+                if (feedFilters.hasPhotos === 'no') return false;
+                
+                // 금지 여부 필터: 인사이트 공유는 금지 기능 없음
                 if (feedFilters.banned === 'yes') return false;
                 
                 return true;
@@ -2608,8 +2639,8 @@ async function renderFeedManagement() {
         const userInfoMap = new Map();
         for (const meal of paginatedMeals) {
             if (!userInfoMap.has(meal.userId)) {
-                // 베스트 공유 및 일간보기 공유 게시물은 이미 사용자 정보가 있음
-                if (meal.isBestShare || meal.isDailyShare) {
+                // 베스트 공유, 일간보기 공유, 인사이트 공유 게시물은 이미 사용자 정보가 있음
+                if (meal.isBestShare || meal.isDailyShare || meal.isInsightShare) {
                     userInfoMap.set(meal.userId, {
                         nickname: meal.userNickname || '익명',
                         icon: meal.userIcon || '🐻'
@@ -2642,7 +2673,7 @@ async function renderFeedManagement() {
         window._feedReportDetails = {};
         
         container.innerHTML = paginatedMeals.map(meal => {
-            const targetGroupKey = meal.isBestShare ? `best_${meal.id}` : meal.isDailyShare ? `daily_${meal.date || ''}_${meal.userId}` : `entry_${meal.id}_${meal.userId}`;
+            const targetGroupKey = meal.isBestShare ? `best_${meal.id}` : meal.isDailyShare ? `daily_${meal.date || ''}_${meal.userId}` : meal.isInsightShare ? `insight_${meal.dateRangeText || ''}_${meal.userId}` : `entry_${meal.id}_${meal.userId}`;
             const reportInfo = reportsMap[targetGroupKey];
             if (reportInfo && reportInfo.count > 0) { window._feedReportDetails[targetGroupKey] = reportInfo.byReason; }
             const reportBadgeHtml = (reportInfo && reportInfo.count > 0) ? `<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded cursor-pointer hover:bg-red-200" onclick="window.showReportDetailPopup('${String(targetGroupKey).replace(/'/g, "\\'")}')">🚩 신고 ${reportInfo.count}</span>` : '';
@@ -2753,6 +2784,56 @@ async function renderFeedManagement() {
                                 ${meal.photoUrl ? `
                                     <div class="mb-2">
                                         <img src="${meal.photoUrl}" alt="일간보기 공유 이미지" class="max-w-full h-auto rounded-xl border border-slate-200" style="max-height: 300px;">
+                                    </div>
+                                ` : ''}
+                                ${meal.comment ? `<div class="mt-2 text-sm text-slate-700 bg-slate-50 p-2 rounded whitespace-pre-line">${escapeHtml(meal.comment)}</div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // 인사이트 공유 게시물인 경우
+            if (meal.isInsightShare) {
+                const userInfo = { nickname: meal.userNickname || '익명', icon: meal.userIcon || '🐻' };
+                let dateTimeStr = '-';
+                if (meal.timestamp) {
+                    try {
+                        const dateObj = new Date(meal.timestamp);
+                        dateTimeStr = dateObj.toLocaleString('ko-KR', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                    } catch (e) {
+                        dateTimeStr = meal.timestamp;
+                    }
+                }
+                
+                return `
+                    <div class="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow bg-purple-50/30">
+                        <div class="flex gap-4">
+                            <div class="flex-shrink-0 flex items-start pt-1">
+                                <input type="checkbox" class="feed-item-checkbox" data-meal-id="${meal.id}" data-user-id="${meal.userId}" data-is-insight="true">
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-xs text-slate-500 font-bold mb-2">${dateTimeStr}</div>
+                                <div class="flex items-start justify-between mb-2">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <span class="text-lg">${userInfo.icon}</span>
+                                        <span class="font-bold text-slate-800">${userInfo.nickname}</span>
+                                        <span class="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-bold rounded">💡 인사이트 공유</span>
+                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">관리번호: ${meal.id}</span>
+                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">${meal.dateRangeText || ''}</span>
+                                        <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">공유됨</span>
+                                        ${reportBadgeHtml}
+                                    </div>
+                                </div>
+                                ${meal.photoUrl ? `
+                                    <div class="mb-2">
+                                        <img src="${meal.photoUrl}" alt="인사이트 공유 이미지" class="max-w-full h-auto rounded-xl border border-slate-200" style="max-height: 300px;">
                                     </div>
                                 ` : ''}
                                 ${meal.comment ? `<div class="mt-2 text-sm text-slate-700 bg-slate-50 p-2 rounded whitespace-pre-line">${escapeHtml(meal.comment)}</div>` : ''}
@@ -2993,6 +3074,7 @@ window.bulkUnsharePosts = async function() {
             const userId = checkbox.dataset.userId;
             const isBest = checkbox.dataset.isBest === 'true';
             const isDaily = checkbox.dataset.isDaily === 'true';
+            const isInsight = checkbox.dataset.isInsight === 'true';
             
             if (!mealId || !userId) continue;
             
@@ -3021,6 +3103,20 @@ window.bulkUnsharePosts = async function() {
                         count++;
                     } catch (e) {
                         console.error(`일간보기 공유 게시물 ${mealId} 삭제 실패:`, e);
+                    }
+                    continue;
+                }
+                
+                // 인사이트 공유 게시물인 경우
+                if (isInsight) {
+                    // sharedPhotos 컬렉션에서 해당 문서 직접 삭제
+                    try {
+                        const sharedDocRef = doc(db, 'artifacts', appId, 'sharedPhotos', mealId);
+                        batch.delete(sharedDocRef);
+                        sharedPhotosDeleteCount++;
+                        count++;
+                    } catch (e) {
+                        console.error(`인사이트 공유 게시물 ${mealId} 삭제 실패:`, e);
                     }
                     continue;
                 }
@@ -3097,19 +3193,21 @@ window.bulkBanPosts = async function() {
             const userId = checkbox.dataset.userId;
             const isBest = checkbox.dataset.isBest === 'true';
             const isDaily = checkbox.dataset.isDaily === 'true';
+            const isInsight = checkbox.dataset.isInsight === 'true';
             
             if (!mealId || !userId) continue;
             
             try {
-                // 베스트 공유 또는 일간보기 공유는 sharedPhotos 컬렉션에서만 삭제
-                if (isBest || isDaily) {
+                // 베스트 공유 또는 일간보기 공유 또는 인사이트 공유는 sharedPhotos 컬렉션에서만 삭제
+                if (isBest || isDaily || isInsight) {
                     try {
                         const sharedDocRef = doc(db, 'artifacts', appId, 'sharedPhotos', mealId);
                         batch.delete(sharedDocRef);
                         sharedPhotosDeleteCount++;
                         count++;
                     } catch (e) {
-                        console.error(`${isBest ? '베스트' : '일간보기'} 공유 게시물 ${mealId} 삭제 실패:`, e);
+                        const typeName = isBest ? '베스트' : isDaily ? '일간보기' : '인사이트';
+                        console.error(`${typeName} 공유 게시물 ${mealId} 삭제 실패:`, e);
                     }
                     continue;
                 }

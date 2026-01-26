@@ -612,7 +612,7 @@ window.deleteCommentFromPost = async (commentId, postId) => {
 window.Mealog.deleteCommentFromPost = window.deleteCommentFromPost;
 
 // 댓글 모두 보기 함수
-window.showAllComments = async (postId) => {
+window.viewAllComments = async (postId) => {
     try {
         const comments = await postInteractions.getComments(postId);
         const commentsListEl = document.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
@@ -622,13 +622,35 @@ window.showAllComments = async (postId) => {
             if (comments.length > 0) {
                 commentsListEl.classList.add('bg-slate-50');
                 const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
-                commentsListEl.innerHTML = comments.map(c => `
-                    <div class="mb-1 text-sm">
-                        <span class="font-bold text-slate-800">${c.userNickname || '익명'}</span>
-                        <span class="text-slate-800">${escapeHtml(c.comment)}</span>
-                        ${isLoggedIn && c.userId === window.currentUser?.uid ? `<button onclick="window.deleteCommentFromPost('${c.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
-                    </div>
-                `).join('');
+                commentsListEl.innerHTML = comments.map(comment => {
+                    // timestamp가 유효한지 확인
+                    let dateStr = '';
+                    let timeStr = '';
+                    if (comment.timestamp) {
+                        try {
+                            const commentDate = comment.timestamp instanceof Date 
+                                ? comment.timestamp 
+                                : (comment.timestamp.toDate ? comment.timestamp.toDate() : new Date(comment.timestamp));
+                            
+                            if (!isNaN(commentDate.getTime())) {
+                                dateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+                                timeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                            }
+                        } catch (e) {
+                            console.warn('댓글 날짜 파싱 실패:', comment.timestamp, e);
+                        }
+                    }
+                    
+                    const isMyComment = isLoggedIn && comment.userId === window.currentUser.uid;
+                    return `
+                        <div class="mb-1 text-sm">
+                            <span class="font-bold text-slate-800">${escapeHtml(comment.userNickname || '익명')}</span>
+                            <span class="text-slate-800 ml-2">${escapeHtml(comment.comment || '')}</span>
+                            ${dateStr && timeStr ? `<span class="text-xs text-slate-400 ml-2">${dateStr} ${timeStr}</span>` : ''}
+                            ${isMyComment ? `<button onclick="window.deleteCommentFromPost('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
+                        </div>
+                    `;
+                }).join('');
             } else {
                 commentsListEl.innerHTML = '';
                 commentsListEl.classList.remove('bg-slate-50');
@@ -643,8 +665,12 @@ window.showAllComments = async (postId) => {
         showToast("댓글을 불러오는 중 오류가 발생했습니다.", 'error');
     }
 };
+window.Mealog.viewAllComments = window.viewAllComments;
 
-// 댓글 입력 필드 토글 (더블클릭으로 댓글 입력창 포커스)
+// 댓글 모두 보기 함수 (기존 함수명 유지)
+window.showAllComments = window.viewAllComments;
+
+// 댓글 입력 필드 토글 (댓글 버튼 클릭 시)
 window.toggleCommentInput = (postId) => {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         window.requestLogin();
@@ -652,9 +678,138 @@ window.toggleCommentInput = (postId) => {
     }
     const inputEl = document.getElementById(`comment-input-${postId}`);
     if (inputEl) {
-        inputEl.focus();
+        const isHidden = inputEl.classList.contains('hidden');
+        if (isHidden) {
+            inputEl.classList.remove('hidden');
+            const textInput = document.getElementById(`comment-text-${postId}`);
+            if (textInput) {
+                textInput.focus();
+            }
+        } else {
+            inputEl.classList.add('hidden');
+        }
     }
 };
+
+// 피드 댓글 작성 함수
+window.submitComment = async (postId) => {
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast("로그인이 필요합니다.", 'error');
+        window.requestLogin();
+        return;
+    }
+    
+    const inputEl = document.getElementById(`comment-text-${postId}`);
+    if (!inputEl) return;
+    
+    const commentText = inputEl.value.trim();
+    if (!commentText) {
+        showToast("댓글을 입력해주세요.", 'error');
+        return;
+    }
+    
+    // 입력 필드 비활성화
+    inputEl.disabled = true;
+    
+    try {
+        console.log('[submitComment] 시작:', { postId, commentLength: commentText.length });
+        const userProfile = window.userSettings?.profile || {};
+        const result = await postInteractions.addComment(postId, window.currentUser.uid, commentText, userProfile);
+        console.log('[submitComment] 성공:', result);
+        
+        // 입력 필드 초기화
+        inputEl.value = '';
+        
+        // 댓글 목록 새로고침
+        await loadPostComments(postId);
+        
+        showToast("댓글이 등록되었습니다.", 'success');
+    } catch (e) {
+        console.error("[submitComment] 에러:", e);
+        console.error("[submitComment] 에러 상세:", {
+            code: e.code,
+            message: e.message,
+            details: e.details,
+            stack: e.stack
+        });
+        const errorMessage = e.message || e.details || e.code || "댓글 작성에 실패했습니다.";
+        showToast(errorMessage, 'error');
+    } finally {
+        // 입력 필드 활성화
+        inputEl.disabled = false;
+    }
+};
+
+// 포스트 댓글 로드 함수
+async function loadPostComments(postId) {
+    try {
+        const comments = await postInteractions.getComments(postId);
+        const commentsListEl = document.getElementById(`comments-list-${postId}`);
+        const commentCountEl = document.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
+        
+        if (commentCountEl) {
+            commentCountEl.textContent = comments.length > 0 ? comments.length : '';
+        }
+        
+        if (commentsListEl) {
+            if (comments.length === 0) {
+                commentsListEl.innerHTML = '';
+                commentsListEl.classList.remove('bg-slate-50');
+            } else {
+                commentsListEl.classList.add('bg-slate-50');
+                const displayComments = comments.slice(0, 2);
+                commentsListEl.innerHTML = displayComments.map(comment => {
+                    // timestamp가 유효한지 확인
+                    let dateStr = '';
+                    let timeStr = '';
+                    if (comment.timestamp) {
+                        try {
+                            const commentDate = comment.timestamp instanceof Date 
+                                ? comment.timestamp 
+                                : (comment.timestamp.toDate ? comment.timestamp.toDate() : new Date(comment.timestamp));
+                            
+                            if (!isNaN(commentDate.getTime())) {
+                                dateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+                                timeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                            }
+                        } catch (e) {
+                            console.warn('댓글 날짜 파싱 실패:', comment.timestamp, e);
+                        }
+                    }
+                    
+                    const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
+                    const isMyComment = isLoggedIn && comment.userId === window.currentUser.uid;
+                    return `
+                        <div class="mb-1 text-sm">
+                            <span class="font-bold text-slate-800">${escapeHtml(comment.userNickname || '익명')}</span>
+                            <span class="text-slate-800 ml-2">${escapeHtml(comment.comment || '')}</span>
+                            ${dateStr && timeStr ? `<span class="text-xs text-slate-400 ml-2">${dateStr} ${timeStr}</span>` : ''}
+                            ${isMyComment ? `<button onclick="window.deleteCommentFromPost('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
+                        </div>
+                    `;
+                }).join('');
+                
+                // 댓글이 2개보다 많으면 "댓글 모두 보기" 버튼 표시
+                if (comments.length > 2) {
+                    const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
+                    if (viewCommentsBtn) {
+                        viewCommentsBtn.classList.remove('hidden');
+                        viewCommentsBtn.textContent = `댓글 ${comments.length}개 모두 보기`;
+                    }
+                } else {
+                    const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
+                    if (viewCommentsBtn) {
+                        viewCommentsBtn.classList.add('hidden');
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.error("댓글 로드 실패:", e);
+    }
+}
+window.loadPostComments = loadPostComments;
+window.Mealog.loadPostComments = loadPostComments;
 
 // 포스트 캡션 토글 (더 보기/접기)
 window.togglePostCaption = (idx) => {
@@ -915,30 +1070,21 @@ window.confirmDailyShare = async (dateStr) => {
             console.warn('getDailyComment 호출 실패:', e);
         }
 
-        const dailyShareData = {
+        // Cloud Functions를 통해 일간보기 공유 생성
+        const { callableFunctions } = await import('./firebase.js');
+        const result = await callableFunctions.createDailyShare({
             photoUrl,
-            userId: window.currentUser.uid,
-            userNickname: userProfile.nickname || '익명',
-            userIcon: userProfile.icon || '🐻',
-            userPhotoUrl: userProfile.photoUrl || null,
-            type: 'daily',
             date: dateStr,
-            timestamp: new Date().toISOString(),
-            entryId: null,
             comment: dailyComment
-        };
+        });
 
-        const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-        const { db, appId } = await import('./firebase.js');
-        const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-
-        const docRef = await addDoc(sharedColl, dailyShareData);
+        const dailyShareData = result.data;
 
         if (!window.sharedPhotos) window.sharedPhotos = [];
         window.sharedPhotos = window.sharedPhotos.filter(p =>
             !(p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid)
         );
-        window.sharedPhotos.push({ id: docRef.id, ...dailyShareData });
+        window.sharedPhotos.push(dailyShareData);
         window.sharedPhotos.sort((a, b) => (new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
 
         // 미리보기 모달 닫기
@@ -950,7 +1096,8 @@ window.confirmDailyShare = async (dateStr) => {
         if (appState.currentTab === 'gallery') renderGallery();
     } catch (e) {
         console.error('일간보기 공유 실패:', e);
-        showToast('공유 중 오류가 발생했습니다.', 'error');
+        const errorMessage = e.message || e.details || '공유 중 오류가 발생했습니다.';
+        showToast(errorMessage, 'error');
         window.closeDailySharePreviewModal();
     } finally {
         if (loadingOverlay) loadingOverlay.classList.add('hidden');
@@ -2373,11 +2520,22 @@ window.submitBoardPost = async () => {
             window.currentEditingPostId = null;
         } else {
             // 새 게시글 작성
+            console.log('[submitBoardPost] 게시글 작성 시작:', { title, category });
             await boardOperations.createPost({ title, content, category });
         }
-        window.backToBoardList();
+        // 글 작성 후 Firestore 동기화를 위해 약간의 지연 후 목록 새로고침
+        setTimeout(() => {
+            window.backToBoardList();
+        }, 500);
     } catch (e) {
-        console.error("게시글 처리 오류:", e);
+        console.error("[submitBoardPost] 에러:", e);
+        console.error("[submitBoardPost] 에러 상세:", {
+            code: e.code,
+            message: e.message,
+            details: e.details,
+            stack: e.stack
+        });
+        // 에러는 boardOperations.createPost에서 이미 표시됨
     }
 };
 
@@ -2556,8 +2714,6 @@ window.addBoardComment = async (postId) => {
     
     // 입력 필드 비활성화
     input.disabled = true;
-    const submitBtn = input.nextElementSibling;
-    if (submitBtn) submitBtn.disabled = true;
     
     try {
         // 사용자 닉네임 및 프로필 정보 가져오기
@@ -2569,7 +2725,9 @@ window.addBoardComment = async (postId) => {
         const commentsCountEl = document.getElementById('boardCommentsCount');
         
         // 댓글 추가 (데이터베이스에 저장)
+        console.log('[addBoardComment] 댓글 작성 시작:', { postId, contentLength: content.length });
         await boardOperations.addComment(postId, content);
+        console.log('[addBoardComment] 댓글 작성 성공');
         
         input.value = '';
         
@@ -2635,29 +2793,41 @@ window.addBoardComment = async (postId) => {
                         
                         // 댓글 목록 다시 렌더링 (실제 데이터로 업데이트)
                         commentsListEl.innerHTML = comments.map(comment => {
-                            const commentDate = new Date(comment.timestamp);
+                            // timestamp 안전하게 변환 (Firestore Timestamp 객체 또는 문자열 지원)
+                            let commentDate;
+                            if (!comment.timestamp) {
+                                commentDate = new Date();
+                            } else if (comment.timestamp.toDate && typeof comment.timestamp.toDate === 'function') {
+                                // Firestore Timestamp 객체
+                                commentDate = comment.timestamp.toDate();
+                            } else if (typeof comment.timestamp === 'string') {
+                                // ISO 문자열
+                                commentDate = new Date(comment.timestamp);
+                            } else if (comment.timestamp instanceof Date) {
+                                // 이미 Date 객체
+                                commentDate = comment.timestamp;
+                            } else {
+                                // 기타 경우 (숫자 등)
+                                commentDate = new Date(comment.timestamp);
+                            }
+                            
+                            // 유효하지 않은 날짜인지 확인
+                            if (isNaN(commentDate.getTime())) {
+                                console.warn('Invalid timestamp for comment:', comment.id, comment.timestamp);
+                                commentDate = new Date(); // 기본값으로 현재 시간 사용
+                            }
+                            
                             const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
                             const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
                             const isCommentAuthor = window.currentUser && comment.authorId === window.currentUser.uid;
                             const commentAuthorNickname = comment.authorNickname || comment.anonymousId || '익명';
                             
                             return `
-                                <div class="bg-white border border-slate-200 rounded-xl p-4 mb-3" data-comment-id="${comment.id}">
-                                    <div class="flex items-center justify-between mb-2">
-                                        <div class="flex items-center gap-2">
-                                            <div class="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold text-slate-600">${commentAuthorNickname.charAt(0)}</div>
-                                            <div class="flex items-center gap-2">
-                                                <span class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</span>
-                                                <span class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</span>
-                                            </div>
-                                        </div>
-                                        ${isCommentAuthor ? `
-                                            <button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="text-xs text-red-500 font-bold px-2 py-1 rounded-lg hover:bg-red-50 active:opacity-70 transition-colors">
-                                                삭제
-                                            </button>
-                                        ` : ''}
-                                    </div>
-                                    <p class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed pl-8">${escapeHtml(comment.content)}</p>
+                                <div class="mb-1 text-sm">
+                                    <span class="font-bold text-slate-800">${escapeHtml(commentAuthorNickname)}</span>
+                                    <span class="text-slate-800 ml-2">${escapeHtml(comment.content || '')}</span>
+                                    ${commentDateStr && commentTimeStr ? `<span class="text-xs text-slate-400 ml-2">${commentDateStr} ${commentTimeStr}</span>` : ''}
+                                    ${isCommentAuthor ? `<button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
                                 </div>
                             `;
                         }).join('');
@@ -2676,7 +2846,6 @@ window.addBoardComment = async (postId) => {
     } finally {
         // 입력 필드 다시 활성화
         input.disabled = false;
-        if (submitBtn) submitBtn.disabled = false;
     }
 };
 
@@ -2700,35 +2869,41 @@ window.deleteBoardComment = async (commentId, postId) => {
                 // 댓글 목록 다시 렌더링
                 if (comments.length > 0) {
                     commentsListEl.innerHTML = comments.map(comment => {
-                        const commentDate = new Date(comment.timestamp);
+                        // timestamp 안전하게 변환 (Firestore Timestamp 객체 또는 문자열 지원)
+                        let commentDate;
+                        if (!comment.timestamp) {
+                            commentDate = new Date();
+                        } else if (comment.timestamp.toDate && typeof comment.timestamp.toDate === 'function') {
+                            // Firestore Timestamp 객체
+                            commentDate = comment.timestamp.toDate();
+                        } else if (typeof comment.timestamp === 'string') {
+                            // ISO 문자열
+                            commentDate = new Date(comment.timestamp);
+                        } else if (comment.timestamp instanceof Date) {
+                            // 이미 Date 객체
+                            commentDate = comment.timestamp;
+                        } else {
+                            // 기타 경우 (숫자 등)
+                            commentDate = new Date(comment.timestamp);
+                        }
+                        
+                        // 유효하지 않은 날짜인지 확인
+                        if (isNaN(commentDate.getTime())) {
+                            console.warn('Invalid timestamp for comment:', comment.id, comment.timestamp);
+                            commentDate = new Date(); // 기본값으로 현재 시간 사용
+                        }
+                        
                         const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
                         const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
                         const isCommentAuthor = window.currentUser && comment.authorId === window.currentUser.uid;
                         const commentAuthorNickname = comment.authorNickname || comment.anonymousId || '익명';
                         
                         return `
-                            <div class="bg-white border border-slate-200 rounded-xl p-4 mb-3" data-comment-id="${comment.id}">
-                                    <div class="flex items-center justify-between mb-2">
-                                        <div class="flex items-center gap-2">
-                                            ${comment.authorPhotoUrl ? `
-                                                <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${comment.authorPhotoUrl}); background-size: cover; background-position: center;"></div>
-                                            ` : `
-                                                <div class="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0 border-2 border-slate-300">
-                                                    ${comment.authorIcon || commentAuthorNickname.charAt(0)}
-                                                </div>
-                                            `}
-                                            <div class="flex items-center gap-2">
-                                                <span class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</span>
-                                                <span class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</span>
-                                            </div>
-                                        </div>
-                                        ${isCommentAuthor ? `
-                                        <button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="text-xs text-red-500 font-bold px-2 py-1 rounded-lg hover:bg-red-50 active:opacity-70 transition-colors">
-                                            삭제
-                                        </button>
-                                    ` : ''}
-                                </div>
-                                <p class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed pl-8">${escapeHtml(comment.content)}</p>
+                            <div class="mb-1 text-sm">
+                                <span class="font-bold text-slate-800">${escapeHtml(commentAuthorNickname)}</span>
+                                <span class="text-slate-800 ml-2">${escapeHtml(comment.content || '')}</span>
+                                ${commentDateStr && commentTimeStr ? `<span class="text-xs text-slate-400 ml-2">${commentDateStr} ${commentTimeStr}</span>` : ''}
+                                ${isCommentAuthor ? `<button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
                             </div>
                         `;
                     }).join('');

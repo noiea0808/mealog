@@ -1738,7 +1738,7 @@ export async function renderGallery() {
                     `;
                     })() : ''}
                     <!-- 댓글 목록 -->
-                    <div class="post-comments-list mb-2 rounded-lg px-3 py-2" data-post-id="${postId}" id="comments-list-${postId}">
+                    <div class="post-comments-list mb-2 rounded-lg py-2 -mx-6 px-6" data-post-id="${postId}" id="comments-list-${postId}">
                         <!-- 댓글들이 동적으로 추가됨 -->
                     </div>
                     <!-- 댓글 더보기 -->
@@ -1746,12 +1746,10 @@ export async function renderGallery() {
                         댓글 더보기
                     </button>
                     <!-- 댓글 입력 -->
-                    <div id="comment-input-${postId}" class="hidden mt-2">
-                        <div class="flex items-center gap-2">
-                            <input type="text" id="comment-text-${postId}" placeholder="댓글을 입력하세요..." class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent" onkeypress="if(event.key === 'Enter') window.submitComment('${postId}')">
-                            <button onclick="window.submitComment('${postId}')" class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold active:bg-emerald-700 transition-colors">
-                                게시
-                            </button>
+                    <div id="comment-input-${postId}" class="hidden mt-1 -mx-6 px-6">
+                        <div class="relative">
+                            <input type="text" id="comment-text-${postId}" placeholder="댓글을 입력하세요..." class="w-full px-3 py-2 pr-16 border border-slate-300 rounded-lg text-sm focus:outline-none" onkeypress="if(event.key === 'Enter') window.submitComment('${postId}')">
+                            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold cursor-pointer hover:text-emerald-700" onclick="window.submitComment('${postId}')">게시</span>
                         </div>
                     </div>
                 </div>
@@ -2076,6 +2074,14 @@ export function renderFeed() {
         return;
     }
     
+    // 사용자 필터링 적용
+    const filterUserId = appState.galleryFilterUserId;
+    let photosToRender = window.sharedPhotos;
+    
+    if (filterUserId) {
+        photosToRender = window.sharedPhotos.filter(photo => photo.userId === filterUserId);
+    }
+    
     // 중복 제거: 같은 photoUrl과 entryId 조합은 하나만 표시
     const seen = new Set();
     const uniquePhotos = photosToRender.filter(photo => {
@@ -2202,6 +2208,31 @@ export function renderFeed() {
         
         // 인사이트 공유인지 확인
         const isInsightShare = photo.type === 'insight';
+        
+        // 그룹 키 생성 (postId 계산용)
+        let groupKey;
+        if (isDailyShare) {
+            groupKey = `daily_${photo.date || 'no-date'}_${photo.userId || 'unknown'}`;
+        } else if (isBestShare) {
+            groupKey = `best_${photo.id || 'no-id'}_${photo.userId || 'unknown'}`;
+        } else if (isInsightShare) {
+            groupKey = `insight_${photo.dateRangeText || 'no-range'}_${photo.userId || 'unknown'}`;
+        } else {
+            groupKey = `${entryId || 'no-entry'}_${photo.userId || 'unknown'}`;
+        }
+        
+        // postId 계산 (getPostIdFromPhotoGroup과 동일한 로직)
+        let postId = photoGroup[0]?.id || photo.id || null;
+        if (!postId || postId === 'undefined' || postId === 'null') {
+            let hash = 0;
+            const ts = photo.timestamp || (photo.date ? photo.date + 'T12:00:00' : '') || '';
+            const keyForHash = `${groupKey}_${ts}`;
+            for (let i = 0; i < keyForHash.length; i++) {
+                hash = ((hash << 5) - hash) + keyForHash.charCodeAt(i);
+                hash = hash & hash;
+            }
+            postId = `post_${Math.abs(hash)}_${photo.userId || 'unknown'}`;
+        }
         
         // 본인 게시물인지 확인
         const isMyPost = window.currentUser && photo.userId === window.currentUser.uid;
@@ -2509,6 +2540,76 @@ export function renderFeed() {
                 }
             });
         }, 300);
+        
+        // 각 포스트의 좋아요, 북마크, 댓글 로드
+        sortedGroups.forEach((photoGroup) => {
+            const photo = photoGroup[0];
+            // 그룹 키 생성 (postId 계산용)
+            let groupKey;
+            const isBestShare = photo.type === 'best';
+            const isDailyShare = photo.type === 'daily';
+            const isInsightShare = photo.type === 'insight';
+            if (isDailyShare) {
+                groupKey = `daily_${photo.date || 'no-date'}_${photo.userId || 'unknown'}`;
+            } else if (isBestShare) {
+                groupKey = `best_${photo.id || 'no-id'}_${photo.userId || 'unknown'}`;
+            } else if (isInsightShare) {
+                groupKey = `insight_${photo.dateRangeText || 'no-range'}_${photo.userId || 'unknown'}`;
+            } else {
+                groupKey = `${photo.entryId || 'no-entry'}_${photo.userId || 'unknown'}`;
+            }
+            
+            // postId 계산
+            let postId = photoGroup[0]?.id || photo.id || null;
+            if (!postId || postId === 'undefined' || postId === 'null') {
+                let hash = 0;
+                const ts = photo.timestamp || (photo.date ? photo.date + 'T12:00:00' : '') || '';
+                const keyForHash = `${groupKey}_${ts}`;
+                for (let i = 0; i < keyForHash.length; i++) {
+                    hash = ((hash << 5) - hash) + keyForHash.charCodeAt(i);
+                    hash = hash & hash;
+                }
+                postId = `post_${Math.abs(hash)}_${photo.userId || 'unknown'}`;
+            }
+            
+            if (postId && window.postInteractions && window.currentUser && !window.currentUser.isAnonymous) {
+                // 좋아요 상태 및 수 로드
+                Promise.all([
+                    window.postInteractions.isLiked(postId, window.currentUser.uid).catch(() => false),
+                    window.postInteractions.getLikes(postId).catch(() => []),
+                    window.postInteractions.isBookmarked(postId, window.currentUser.uid).catch(() => false)
+                ]).then(([isLiked, likes, isBookmarked]) => {
+                    const likeBtn = document.querySelector(`.post-like-btn[data-post-id="${postId}"]`);
+                    const likeIcon = likeBtn?.querySelector('.post-like-icon');
+                    const likeCountEl = document.querySelector(`.post-like-count[data-post-id="${postId}"]`);
+                    const bookmarkBtn = document.querySelector(`.post-bookmark-btn[data-post-id="${postId}"]`);
+                    const bookmarkIcon = bookmarkBtn?.querySelector('.post-bookmark-icon');
+                    
+                    if (likeBtn && likeIcon) {
+                        if (isLiked) {
+                            likeIcon.classList.remove('fa-regular', 'fa-heart', 'text-slate-800');
+                            likeIcon.classList.add('fa-solid', 'fa-heart', 'text-red-500');
+                        }
+                    }
+                    if (likeCountEl) {
+                        likeCountEl.textContent = likes.length > 0 ? likes.length : '';
+                    }
+                    if (bookmarkBtn && bookmarkIcon && isBookmarked) {
+                        bookmarkIcon.classList.remove('fa-regular', 'fa-bookmark');
+                        bookmarkIcon.classList.add('fa-solid', 'fa-bookmark');
+                    }
+                }).catch(e => {
+                    console.error(`좋아요/북마크 상태 로드 실패 (postId: ${postId}):`, e);
+                });
+            }
+            
+            // 댓글 로드
+            if (postId && window.loadPostComments) {
+                window.loadPostComments(postId).catch(e => {
+                    console.error(`댓글 로드 실패 (postId: ${postId}):`, e);
+                });
+            }
+        });
     }, 100);
 }
 
@@ -2732,7 +2833,25 @@ async function renderNotices() {
         const reactionMap = new Map(reactionCounts.map(r => [r.noticeId, r]));
         
         noticesContainer.innerHTML = sortedNotices.map((notice, index) => {
-            const date = notice.timestamp ? new Date(notice.timestamp) : new Date();
+            let date = notice.timestamp ? (() => {
+                // timestamp 안전하게 변환
+                if (notice.timestamp.toDate && typeof notice.timestamp.toDate === 'function') {
+                    return notice.timestamp.toDate();
+                } else if (typeof notice.timestamp === 'string') {
+                    return new Date(notice.timestamp);
+                } else if (notice.timestamp instanceof Date) {
+                    return notice.timestamp;
+                } else {
+                    return new Date(notice.timestamp);
+                }
+            })() : new Date();
+            
+            // 유효하지 않은 날짜인지 확인
+            if (isNaN(date.getTime())) {
+                console.warn('Invalid timestamp for notice:', notice.id, notice.timestamp);
+                date = new Date();
+            }
+            
             const dateStr = date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
             const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
             const bgClass = notice.isPinned ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200';
@@ -2806,7 +2925,7 @@ export function renderBoard(category = 'all') {
     
     // 게시글 목록 비동기 로드
     if (window.boardOperations) {
-        window.boardOperations.getPosts(category, 'latest', 10).then(posts => {
+        window.boardOperations.getPosts(category, 'latest', 20).then(posts => {
             if (posts.length === 0) {
                 container.innerHTML = `
                     <div class="flex flex-col items-center justify-center py-12 text-center">
@@ -2818,8 +2937,52 @@ export function renderBoard(category = 'all') {
                 return;
             }
             
+            // 최신순 정렬 보장 (timestamp 기준 내림차순)
+            posts.sort((a, b) => {
+                // timestamp 안전하게 변환
+                const getTimestamp = (post) => {
+                    if (!post.timestamp) return 0;
+                    if (post.timestamp.toDate && typeof post.timestamp.toDate === 'function') {
+                        return post.timestamp.toDate().getTime();
+                    }
+                    if (typeof post.timestamp === 'string') {
+                        return new Date(post.timestamp).getTime();
+                    }
+                    if (post.timestamp instanceof Date) {
+                        return post.timestamp.getTime();
+                    }
+                    return new Date(post.timestamp || 0).getTime();
+                };
+                const timeA = getTimestamp(a);
+                const timeB = getTimestamp(b);
+                return timeB - timeA; // 최신이 위로
+            });
+            
             container.innerHTML = posts.map(post => {
-                const postDate = new Date(post.timestamp);
+                // timestamp 안전하게 변환 (Firestore Timestamp 객체 또는 문자열 지원)
+                let postDate;
+                if (!post.timestamp) {
+                    postDate = new Date();
+                } else if (post.timestamp.toDate && typeof post.timestamp.toDate === 'function') {
+                    // Firestore Timestamp 객체
+                    postDate = post.timestamp.toDate();
+                } else if (typeof post.timestamp === 'string') {
+                    // ISO 문자열
+                    postDate = new Date(post.timestamp);
+                } else if (post.timestamp instanceof Date) {
+                    // 이미 Date 객체
+                    postDate = post.timestamp;
+                } else {
+                    // 기타 경우 (숫자 등)
+                    postDate = new Date(post.timestamp);
+                }
+                
+                // 유효하지 않은 날짜인지 확인
+                if (isNaN(postDate.getTime())) {
+                    console.warn('Invalid timestamp for post:', post.id, post.timestamp);
+                    postDate = new Date(); // 기본값으로 현재 시간 사용
+                }
+                
                 const dateStr = postDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
                 const timeStr = postDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
                 
@@ -2922,7 +3085,30 @@ export async function renderBoardDetail(postId) {
             return;
         }
         
-        const postDate = new Date(post.timestamp);
+        // timestamp 안전하게 변환 (Firestore Timestamp 객체 또는 문자열 지원)
+        let postDate;
+        if (!post.timestamp) {
+            postDate = new Date();
+        } else if (post.timestamp.toDate && typeof post.timestamp.toDate === 'function') {
+            // Firestore Timestamp 객체
+            postDate = post.timestamp.toDate();
+        } else if (typeof post.timestamp === 'string') {
+            // ISO 문자열
+            postDate = new Date(post.timestamp);
+        } else if (post.timestamp instanceof Date) {
+            // 이미 Date 객체
+            postDate = post.timestamp;
+        } else {
+            // 기타 경우 (숫자 등)
+            postDate = new Date(post.timestamp);
+        }
+        
+        // 유효하지 않은 날짜인지 확인
+        if (isNaN(postDate.getTime())) {
+            console.warn('Invalid timestamp for post:', post.id, post.timestamp);
+            postDate = new Date(); // 기본값으로 현재 시간 사용
+        }
+        
         const dateStr = postDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
         const timeStr = postDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
         
@@ -3026,7 +3212,30 @@ export async function renderBoardDetail(postId) {
                     <h3 class="text-sm font-black text-slate-800 mb-4">댓글 <span id="boardCommentsCount" class="text-emerald-600">${comments.length}</span></h3>
                     <div id="boardCommentsList" class="space-y-3 mb-4">
                         ${comments.length > 0 ? comments.map(comment => {
-                            const commentDate = new Date(comment.timestamp);
+                            // timestamp 안전하게 변환 (Firestore Timestamp 객체 또는 문자열 지원)
+                            let commentDate;
+                            if (!comment.timestamp) {
+                                commentDate = new Date();
+                            } else if (comment.timestamp.toDate && typeof comment.timestamp.toDate === 'function') {
+                                // Firestore Timestamp 객체
+                                commentDate = comment.timestamp.toDate();
+                            } else if (typeof comment.timestamp === 'string') {
+                                // ISO 문자열
+                                commentDate = new Date(comment.timestamp);
+                            } else if (comment.timestamp instanceof Date) {
+                                // 이미 Date 객체
+                                commentDate = comment.timestamp;
+                            } else {
+                                // 기타 경우 (숫자 등)
+                                commentDate = new Date(comment.timestamp);
+                            }
+                            
+                            // 유효하지 않은 날짜인지 확인
+                            if (isNaN(commentDate.getTime())) {
+                                console.warn('Invalid timestamp for comment:', comment.id, comment.timestamp);
+                                commentDate = new Date(); // 기본값으로 현재 시간 사용
+                            }
+                            
                             const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
                             const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
                             const isCommentAuthor = window.currentUser && comment.authorId === window.currentUser.uid;
@@ -3035,28 +3244,11 @@ export async function renderBoardDetail(postId) {
                             const commentAuthorNickname = comment.authorNickname || comment.anonymousId || '익명';
                             
                             return `
-                                <div class="bg-white border border-slate-200 rounded-xl p-4 mb-3" data-comment-id="${comment.id}">
-                                    <div class="flex items-center justify-between mb-2">
-                                        <div class="flex items-center gap-2">
-                                            ${comment.authorPhotoUrl ? `
-                                                <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${comment.authorPhotoUrl}); background-size: cover; background-position: center;"></div>
-                                            ` : `
-                                                <div class="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0 border-2 border-slate-300">
-                                                    ${comment.authorIcon || commentAuthorNickname.charAt(0)}
-                                                </div>
-                                            `}
-                                            <div class="flex items-center gap-2">
-                                                <span class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</span>
-                                                <span class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</span>
-                                            </div>
-                                        </div>
-                                        ${isCommentAuthor ? `
-                                            <button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="text-xs text-red-500 font-bold px-2 py-1 rounded-lg hover:bg-red-50 active:opacity-70 transition-colors">
-                                                삭제
-                                            </button>
-                                        ` : ''}
-                                    </div>
-                                    <p class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed pl-8">${escapeHtml(comment.content)}</p>
+                                <div class="mb-1 text-sm">
+                                    <span class="font-bold text-slate-800">${escapeHtml(commentAuthorNickname)}</span>
+                                    <span class="text-slate-800 ml-2">${escapeHtml(comment.content || '')}</span>
+                                    ${commentDateStr && commentTimeStr ? `<span class="text-xs text-slate-400 ml-2">${commentDateStr} ${commentTimeStr}</span>` : ''}
+                                    ${isCommentAuthor ? `<button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
                                 </div>
                             `;
                         }).join('') : ''}
@@ -3064,15 +3256,13 @@ export async function renderBoardDetail(postId) {
                     
                     <!-- 댓글 입력 -->
                     <div class="flex gap-2">
-                        <input type="text" id="boardCommentInput" placeholder="${window.currentUser ? '댓글을 입력하세요 (Enter로 등록)' : '로그인 후 댓글을 작성할 수 있습니다'}" 
-                               class="flex-1 p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-slate-400 transition-colors"
-                               ${!window.currentUser ? 'disabled' : ''}
-                               onkeypress="if(event.key === 'Enter' && window.currentUser && !event.shiftKey) { event.preventDefault(); window.addBoardComment('${postId}'); }">
-                        <button onclick="window.addBoardComment('${postId}')" 
-                                class="px-4 py-3 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed"
-                                ${!window.currentUser ? 'disabled' : ''}>
-                            <i class="fa-solid fa-paper-plane text-xs"></i>
-                        </button>
+                        <div class="relative flex-1">
+                            <input type="text" id="boardCommentInput" placeholder="${window.currentUser ? '댓글을 입력하세요...' : '로그인 후 댓글을 작성할 수 있습니다'}" 
+                                   class="w-full px-3 py-2 pr-16 border border-slate-300 rounded-lg text-sm focus:outline-none"
+                                   ${!window.currentUser ? 'disabled' : ''}
+                                   onkeypress="if(event.key === 'Enter' && window.currentUser && !event.shiftKey) { event.preventDefault(); window.addBoardComment('${postId}'); }">
+                            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold cursor-pointer hover:text-emerald-700" onclick="if(window.currentUser) window.addBoardComment('${postId}')">게시</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -3134,7 +3324,25 @@ export async function renderNoticeDetail(noticeId) {
             return;
         }
         
-        const date = notice.timestamp ? new Date(notice.timestamp) : new Date();
+        let date = notice.timestamp ? (() => {
+            // timestamp 안전하게 변환
+            if (notice.timestamp.toDate && typeof notice.timestamp.toDate === 'function') {
+                return notice.timestamp.toDate();
+            } else if (typeof notice.timestamp === 'string') {
+                return new Date(notice.timestamp);
+            } else if (notice.timestamp instanceof Date) {
+                return notice.timestamp;
+            } else {
+                return new Date(notice.timestamp);
+            }
+        })() : new Date();
+        
+        // 유효하지 않은 날짜인지 확인
+        if (isNaN(date.getTime())) {
+            console.warn('Invalid timestamp for notice:', notice.id, notice.timestamp);
+            date = new Date();
+        }
+        
         const dateStr = date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
         const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
         

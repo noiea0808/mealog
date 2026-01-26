@@ -11,16 +11,24 @@ export const boardOperations = {
             throw new Error("로그인이 필요합니다.");
         }
         try {
+            console.log('[boardOperations.createPost] 시작:', { title: postData.title, category: postData.category });
             const result = await callableFunctions.createBoardPost({
                 title: postData.title,
                 content: postData.content,
                 category: postData.category || 'serious'
             });
+            console.log('[boardOperations.createPost] 성공:', result.data);
             showToast("게시글이 등록되었습니다.", 'success');
             return result.data;
         } catch (e) {
-            console.error("Create Post Error:", e);
-            const errorMessage = e.message || e.details || "게시글 등록에 실패했습니다.";
+            console.error("[boardOperations.createPost] 에러:", e);
+            console.error("[boardOperations.createPost] 에러 상세:", {
+                code: e.code,
+                message: e.message,
+                details: e.details,
+                stack: e.stack
+            });
+            const errorMessage = e.message || e.details || e.code || "게시글 등록에 실패했습니다.";
             showToast(errorMessage, 'error');
             throw e;
         }
@@ -81,6 +89,29 @@ export const boardOperations = {
             const snapshot = await getDocs(q);
             let posts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
                 .filter(p => p.isHidden !== true);
+            
+            // timestamp 안전하게 변환하는 헬퍼 함수
+            const getTimestamp = (post) => {
+                if (!post.timestamp) return 0;
+                if (post.timestamp.toDate && typeof post.timestamp.toDate === 'function') {
+                    return post.timestamp.toDate().getTime();
+                }
+                if (typeof post.timestamp === 'string') {
+                    return new Date(post.timestamp).getTime();
+                }
+                if (post.timestamp instanceof Date) {
+                    return post.timestamp.getTime();
+                }
+                return new Date(post.timestamp || 0).getTime();
+            };
+            
+            // 최신순 정렬 보장 (timestamp 기준 내림차순)
+            posts.sort((a, b) => {
+                const timeA = getTimestamp(a);
+                const timeB = getTimestamp(b);
+                return timeB - timeA; // 최신이 위로
+            });
+            
             posts = posts.slice(0, limitCount);
             
             // 인기순 정렬 (좋아요 - 비추천 수 기준)
@@ -90,7 +121,9 @@ export const boardOperations = {
                     const scoreB = (b.likes || 0) - (b.dislikes || 0);
                     if (scoreB !== scoreA) return scoreB - scoreA;
                     // 점수가 같으면 최신순
-                    return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+                    const timeA = getTimestamp(a);
+                    const timeB = getTimestamp(b);
+                    return timeB - timeA;
                 });
             }
             
@@ -106,10 +139,32 @@ export const boardOperations = {
                     const snapshot = await getDocs(fallbackQuery);
                     let allPosts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
                     
+                    // timestamp 안전하게 변환하는 헬퍼 함수
+                    const getTimestamp = (post) => {
+                        if (!post.timestamp) return 0;
+                        if (post.timestamp.toDate && typeof post.timestamp.toDate === 'function') {
+                            return post.timestamp.toDate().getTime();
+                        }
+                        if (typeof post.timestamp === 'string') {
+                            return new Date(post.timestamp).getTime();
+                        }
+                        if (post.timestamp instanceof Date) {
+                            return post.timestamp.getTime();
+                        }
+                        return new Date(post.timestamp || 0).getTime();
+                    };
+                    
                     // 카테고리 필터링
                     if (category !== 'all') {
                         allPosts = allPosts.filter(post => post.category === category);
                     }
+                    
+                    // 최신순 정렬 보장 (timestamp 기준 내림차순)
+                    allPosts.sort((a, b) => {
+                        const timeA = getTimestamp(a);
+                        const timeB = getTimestamp(b);
+                        return timeB - timeA; // 최신이 위로
+                    });
                     
                     // limit 적용
                     allPosts = allPosts.slice(0, limitCount);
@@ -120,7 +175,9 @@ export const boardOperations = {
                             const scoreA = (a.likes || 0) - (a.dislikes || 0);
                             const scoreB = (b.likes || 0) - (b.dislikes || 0);
                             if (scoreB !== scoreA) return scoreB - scoreA;
-                            return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+                            const timeA = getTimestamp(a);
+                            const timeB = getTimestamp(b);
+                            return timeB - timeA;
                         });
                     }
                     
@@ -320,9 +377,25 @@ export const boardOperations = {
             const q = query(commentsColl, where('postId', '==', String(postId)));
             const snapshot = await getDocs(q);
             const comments = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            
+            // timestamp 안전하게 변환하는 헬퍼 함수
+            const getCommentTimestamp = (comment) => {
+                if (!comment.timestamp) return 0;
+                if (comment.timestamp.toDate && typeof comment.timestamp.toDate === 'function') {
+                    return comment.timestamp.toDate().getTime();
+                }
+                if (typeof comment.timestamp === 'string') {
+                    return new Date(comment.timestamp).getTime();
+                }
+                if (comment.timestamp instanceof Date) {
+                    return comment.timestamp.getTime();
+                }
+                return new Date(comment.timestamp || 0).getTime();
+            };
+            
             comments.sort((a, b) => {
-                const tA = new Date(a.timestamp || 0).getTime();
-                const tB = new Date(b.timestamp || 0).getTime();
+                const tA = getCommentTimestamp(a);
+                const tB = getCommentTimestamp(b);
                 return tA - tB;
             });
             return comments;
@@ -338,14 +411,22 @@ export const boardOperations = {
             throw new Error("로그인이 필요합니다.");
         }
         try {
+            console.log('[boardOperations.addComment] 시작:', { postId, contentLength: content?.length });
             const result = await callableFunctions.addBoardComment({
                 postId,
                 content
             });
+            console.log('[boardOperations.addComment] 성공:', result.data);
             return result.data;
         } catch (e) {
-            console.error("Add Comment Error:", e);
-            const errorMessage = e.message || e.details || "댓글 작성에 실패했습니다.";
+            console.error("[boardOperations.addComment] 에러:", e);
+            console.error("[boardOperations.addComment] 에러 상세:", {
+                code: e.code,
+                message: e.message,
+                details: e.details,
+                stack: e.stack
+            });
+            const errorMessage = e.message || e.details || e.code || "댓글 작성에 실패했습니다.";
             showToast(errorMessage, 'error');
             throw e;
         }
