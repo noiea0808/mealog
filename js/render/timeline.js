@@ -196,9 +196,9 @@ export function renderTimeline() {
                     // photos가 배열이 아닌 경우 (문자열 등) 처리
                     iconHtml = `<img src="${r.photos}" class="w-full h-full object-cover">`;
                 } else if (r.mealType === 'Skip') {
-                    iconHtml = `<i class="fa-solid fa-ban text-2xl"></i>`;
+                    iconHtml = `<i class="fa-solid fa-ban text-2xl text-slate-600"></i>`;
                 } else {
-                    iconHtml = `<i class="fa-solid fa-utensils text-2xl"></i>`;
+                    iconHtml = `<i class="fa-solid fa-utensils text-2xl text-slate-400"></i>`;
                 }
                 html += `<div onclick="window.openModal('${dateStr}', '${slot.id}', ${r ? `'${r.id}'` : null})" class="card mb-1.5 border ${containerClass} cursor-pointer active:scale-[0.98] transition-all !rounded-none">
                     <div class="flex">

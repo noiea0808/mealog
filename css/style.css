@@ -127,7 +127,7 @@ header .mealog-title {
     background: #fff; 
     color: #059669; 
 }
-/* 전체/일간: 연회색 통 하나, active=흰색 팩+녹색 테두리/글자(mealog #059669), inactive=배경 없이 회색 글자만 */
+/* 전체/일간: 연회색 통 하나, active=흰색 팩+검은색 테두리/글자, inactive=배경 없이 회색 글자만 */
 .view-tab { 
     padding: 4px 10px; 
     border-radius: 6px; 
@@ -138,8 +138,8 @@ header .mealog-title {
 }
 .view-tab.active { 
     background: #fff; 
-    border-color: #059669; 
-    color: #059669; 
+    border-color: #000000; 
+    color: #000000; 
 }
 .view-tab.inactive { 
     background: transparent; 

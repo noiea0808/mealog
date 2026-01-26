@@ -652,9 +652,9 @@ export function renderTimeline() {
                     // photos가 배열이 아닌 경우 (문자열 등) 처리
                     iconHtml = `<img src="${r.photos}" class="w-full h-full object-cover">`;
                 } else if (r.mealType === 'Skip') {
-                    iconHtml = `<i class="fa-solid fa-ban text-2xl"></i>`;
+                    iconHtml = `<i class="fa-solid fa-ban text-2xl text-slate-600"></i>`;
                 } else {
-                    iconHtml = `<i class="fa-solid fa-utensils text-2xl"></i>`;
+                    iconHtml = `<i class="fa-solid fa-utensils text-2xl text-slate-400"></i>`;
                 }
                 html += `<div onclick="window.openModal('${dateStr}', '${slot.id}', ${r ? `'${r.id}'` : null})" class="card mb-1.5 border ${containerClass} cursor-pointer active:scale-[0.98] transition-all !rounded-none">
                     <div class="flex">
@@ -2932,7 +2932,7 @@ export function createDailyShareCard(dateStr, forPreview = false) {
             } else {
                 titleLine2 = '';
                 iconBoxStyle = 'background: #f1f5f9; border-right: 1px solid #e2e8f0;';
-                iconHtml = '<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 8px;"><span style="font-size: 32px; font-weight: 900; color: #cbd5e1; margin-bottom: 4px;">+</span><span style="font-size: 10px; color: #cbd5e1; line-height: 1.2;">입력해주세요</span></div>';
+                iconHtml = '<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 8px;"><span style="font-size: 32px; font-weight: 700; color: #94a3b8; margin-bottom: 4px;">+</span><span style="font-size: 10px; color: #94a3b8; line-height: 1.2;">입력해주세요</span></div>';
             }
             
             // 날짜 포맷팅 (베스트와 동일한 형식)

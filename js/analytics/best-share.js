@@ -411,9 +411,9 @@ export function renderBestMeals() {
         if (photoUrl) {
             iconHtml = `<img src="${photoUrl}" class="w-full h-full object-cover">`;
         } else if (meal.mealType === 'Skip') {
-            iconHtml = `<i class="fa-solid fa-ban text-2xl"></i>`;
+            iconHtml = `<i class="fa-solid fa-ban text-2xl text-slate-600"></i>`;
         } else {
-            iconHtml = `<i class="fa-solid fa-utensils text-2xl"></i>`;
+            iconHtml = `<i class="fa-solid fa-utensils text-2xl text-slate-400"></i>`;
         }
         
         // 태그 HTML 생성
