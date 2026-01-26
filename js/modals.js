@@ -1350,11 +1350,27 @@ export function openSettings() {
     // 버전 정보 로드 및 표시
     loadVersionInfo();
     
-    // 기본 탭을 프로필로 설정
-    switchSettingsTab('profile');
+    // 게스트 모드일 때 태그 관리 및 밀당 메모 탭 숨기기
+    const tagsTab = document.getElementById('settingsTabTags');
+    const shortcutsTab = document.getElementById('settingsTabShortcuts');
+    const profileSettingsSection = document.querySelector('#settingsTabContentProfile .space-y-3');
     
-    // 최초 진입은 '보기' 모드로 (수정 버튼을 눌러야 편집 가능)
-    setProfileSettingsEditMode(false);
+    if (window.currentUser && window.currentUser.isAnonymous) {
+        // 게스트 모드일 때 태그 관리 및 밀당 메모 탭 숨기기
+        if (tagsTab) tagsTab.classList.add('hidden');
+        if (shortcutsTab) shortcutsTab.classList.add('hidden');
+        // 게스트 모드일 때 프로필 설정 섹션 숨기기
+        if (profileSettingsSection) profileSettingsSection.classList.add('hidden');
+    } else {
+        // 일반 사용자일 때 모든 탭 표시
+        if (tagsTab) tagsTab.classList.remove('hidden');
+        if (shortcutsTab) shortcutsTab.classList.remove('hidden');
+        if (profileSettingsSection) profileSettingsSection.classList.remove('hidden');
+        // 기본 탭을 프로필로 설정
+        switchSettingsTab('profile');
+        // 최초 진입은 '보기' 모드로 (수정 버튼을 눌러야 편집 가능)
+        setProfileSettingsEditMode(false);
+    }
         
         const accountSection = document.getElementById('accountSection');
     if (accountSection) {

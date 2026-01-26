@@ -41,9 +41,21 @@ export const callableFunctions = {
 };
 
 // App Check 초기화 (reCAPTCHA v3 사용)
+// 로컬 개발 환경에서는 App Check를 비활성화 (localhost, 127.0.0.1, 0.0.0.0)
 // 에러가 발생해도 앱이 계속 작동하도록 try-catch로 감쌈
 (async () => {
     try {
+        // 로컬 개발 환경 체크
+        const isLocalhost = window.location.hostname === 'localhost' || 
+                           window.location.hostname === '127.0.0.1' || 
+                           window.location.hostname === '0.0.0.0' ||
+                           window.location.hostname === '';
+        
+        if (isLocalhost) {
+            console.log('🔧 로컬 개발 환경: App Check 비활성화');
+            return;
+        }
+        
         const { initializeAppCheck, ReCaptchaV3Provider } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js");
         const appCheck = initializeAppCheck(app, {
             provider: new ReCaptchaV3Provider('6LdjYVUsAAAAAP7RvrJgOEp-7wvDpmoC8Bll9-Kw'),

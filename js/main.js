@@ -1599,7 +1599,10 @@ initAuth(async (user) => {
         });
         
         // 사용자 문서 업데이트 (가입일, 마지막 로그인 날짜)
-        await updateUserDocument(user);
+        // 로그인 플로우를 지연시키지 않기 위해 비동기로 나중에 실행
+        updateUserDocument(user).catch(e => {
+            console.warn('사용자 문서 업데이트 실패 (무시):', e);
+        });
         
         // 이미 메인 화면이 표시되어 있으면 보통은 추가 처리 없이 리턴.
         // 단, 게스트 → 이메일/구글 로그인처럼 "메인 화면 위에서" 인증이 바뀌는 경우,
@@ -1669,16 +1672,9 @@ initAuth(async (user) => {
                             console.error('❌ 인증 플로우 처리 실패:', e);
                             hideLoading();
                         });
-                    } else if (authFlowManager.hasCompleted) {
-                        // 이미 완료된 경우 약관 모달이 열려있으면 닫기
-                        const termsModal = document.getElementById('termsModal');
-                        if (termsModal && !termsModal.classList.contains('hidden')) {
-                            console.log('✅ 인증 플로우 완료됨. 약관 모달 닫기');
-                            if (window.closeTermsModal) {
-                                window.closeTermsModal();
-                            }
-                        }
                     }
+                    // 약관 모달은 auth-flow.js에서만 관리하므로 여기서는 닫지 않음
+                    // onSettingsUpdate에서 약관 모달을 닫으면 타이밍 이슈로 인해 모달이 잠깐 표시되었다가 사라질 수 있음
                 },
                 onDataUpdate: () => {
                     if (appState.viewMode === 'list') {

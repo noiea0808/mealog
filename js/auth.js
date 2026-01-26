@@ -278,12 +278,25 @@ export async function showTermsModal() {
             try {
                 const currentUser = auth.currentUser;
                 if (currentUser && !currentUser.isAnonymous) {
-                    // 기존 사용자 확인 (meals 데이터 존재 여부)
-                    const { collection, query, limit, getDocs } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-                    const { db, appId } = await import('./firebase.js');
-                    const mealsColl = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meals');
-                    const mealsSnapshot = await getDocs(query(mealsColl, limit(1)));
-                    const isExistingUser = !mealsSnapshot.empty;
+                    // authFlowManager에서 캐시된 기존 사용자 정보 확인 (이미 백그라운드에서 확인됨)
+                    let isExistingUser = false;
+                    try {
+                        const { authFlowManager } = await import('./auth-flow.js');
+                        if (authFlowManager._cachedExistingUser !== undefined) {
+                            isExistingUser = authFlowManager._cachedExistingUser;
+                        } else {
+                            // 캐시가 없으면 약관 모달에서만 확인 (로그인 플로우를 지연시키지 않음)
+                            const { collection, query, limit, getDocs } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                            const { db, appId } = await import('./firebase.js');
+                            const mealsColl = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meals');
+                            const mealsSnapshot = await getDocs(query(mealsColl, limit(1)));
+                            isExistingUser = !mealsSnapshot.empty;
+                            // 캐시에 저장
+                            authFlowManager._cachedExistingUser = isExistingUser;
+                        }
+                    } catch (e) {
+                        console.warn('기존 사용자 확인 실패:', e);
+                    }
                     
                     if (isExistingUser) {
                         // 기존 사용자에게는 약관 업데이트 안내 문구 표시

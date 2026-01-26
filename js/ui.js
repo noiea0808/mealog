@@ -108,8 +108,8 @@ export function updateHeaderUI() {
                 // 이모지 표시
                 iconEl.innerText = p.icon;
             } else {
-                // 텍스트(닉네임 첫 글자)
-                const nn = (p.nickname || '').trim();
+                // 텍스트(닉네임 첫 글자) - 게스트 모드일 때도 표시
+                const nn = (p.nickname || '게스트').trim();
                 const initial = (Array.from(nn)[0] || '?');
                 iconEl.innerText = initial;
             }
