@@ -1382,7 +1382,11 @@ window.setGalleryTraceFilter = (value) => {
     // 이미 선택된 필터를 다시 클릭하면 해제
     appState.galleryTraceFilter = (appState.galleryTraceFilter === v) ? null : v;
     if (typeof window.updateGalleryTraceFilterBarUI === 'function') window.updateGalleryTraceFilterBarUI();
-    renderGallery();
+    
+    // 갤러리 탭에서만 렌더링 (다른 탭에서는 렌더링하지 않음 - 프리즈 방지)
+    if (appState.currentTab === 'gallery') {
+        renderGallery();
+    }
 };
 
 window.handleSearch = (k) => {
@@ -1653,8 +1657,15 @@ initAuth(async (user) => {
             }
             appState.sharedPhotosUnsubscribe = setupSharedPhotosListener((sharedPhotos) => {
                 window.sharedPhotos = sharedPhotos;
-                if (appState.currentTab === 'gallery') renderGallery();
-                if (appState.currentTab === 'timeline') renderTimeline();
+                
+                // 현재 탭에서만 렌더링 (다른 탭에서는 렌더링하지 않음 - 프리즈 방지)
+                const currentTab = appState.currentTab;
+                if (currentTab === 'gallery') {
+                    renderGallery();
+                } else if (currentTab === 'timeline') {
+                    renderTimeline();
+                }
+                // analytics, dashboard 등 다른 탭에서는 렌더링하지 않음
             });
             
             // 게스트 모드일 때 헤더 UI 업데이트
@@ -1722,17 +1733,21 @@ initAuth(async (user) => {
                 if (isInitialSharedPhotosLoad) {
                     isInitialSharedPhotosLoad = false;
                     window.sharedPhotos = sharedPhotos;
-                    if (appState.currentTab === 'timeline') {
+                    
+                    // 현재 탭에서만 렌더링 (다른 탭에서는 렌더링하지 않음 - 프리즈 방지)
+                    const currentTab = appState.currentTab;
+                    if (currentTab === 'timeline') {
                         renderTimeline();
-                    }
-                    if (appState.currentTab === 'gallery') {
+                    } else if (currentTab === 'gallery') {
                         console.log('[리스너] 초기 로드: 갤러리 탭에서 renderGallery 호출');
                         renderGallery();
+                    } else if (currentTab === 'feed') {
+                        const feedContent = document.getElementById('feedContent');
+                        if (feedContent && !feedContent.classList.contains('hidden')) {
+                            renderFeed();
+                        }
                     }
-                    const feedContent = document.getElementById('feedContent');
-                    if (feedContent && !feedContent.classList.contains('hidden')) {
-                        renderFeed();
-                    }
+                    // analytics, dashboard 등 다른 탭에서는 렌더링하지 않음
                     return; // 초기 로드 후 즉시 반환
                 }
                 
@@ -1743,17 +1758,21 @@ initAuth(async (user) => {
                 
                 sharedPhotosUpdateTimer = setTimeout(() => {
                     window.sharedPhotos = sharedPhotos;
-                    if (appState.currentTab === 'timeline') {
+                    
+                    // 현재 탭에서만 렌더링 (다른 탭에서는 렌더링하지 않음 - 프리즈 방지)
+                    const currentTab = appState.currentTab;
+                    if (currentTab === 'timeline') {
                         renderTimeline();
-                    }
-                    if (appState.currentTab === 'gallery') {
+                    } else if (currentTab === 'gallery') {
                         console.log('[리스너] 갤러리 탭에서 renderGallery 호출');
                         renderGallery();
+                    } else if (currentTab === 'feed') {
+                        const feedContent = document.getElementById('feedContent');
+                        if (feedContent && !feedContent.classList.contains('hidden')) {
+                            renderFeed();
+                        }
                     }
-                    const feedContent = document.getElementById('feedContent');
-                    if (feedContent && !feedContent.classList.contains('hidden')) {
-                        renderFeed();
-                    }
+                    // analytics, dashboard 등 다른 탭에서는 렌더링하지 않음
                 }, 500); // 500ms 디바운싱 (공유 처리 후 빠른 연속 업데이트 방지)
             });
         }

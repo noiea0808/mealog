@@ -8,9 +8,12 @@ import { normalizeUrl } from './utils.js';
 let isRenderingGallery = false;
 let galleryScrollListeners = new Map(); // scrollContainer -> AbortController
 let intersectionObserver = null; // Intersection Observer 인스턴스
+let placeholderObserver = null; // Lazy Post Renderer의 Placeholder Observer
+let galleryAbortController = null; // 현재 렌더링 작업의 AbortController
 let loadedPostIds = new Set(); // 이미 로드한 포스트 ID 캐시
 let postLoadQueue = []; // 포스트 로드 대기 큐
 let postLoadBatchTimer = null; // 배치 처리 타이머
+let previousGalleryPostIds = new Set(); // 이전 렌더링의 포스트 ID 목록 (diffing용)
 const MAX_CONCURRENT_LOADS = 2; // 동시에 로드할 최대 포스트 수 (3에서 2로 감소)
 const BATCH_DELAY = 200; // 배치 처리 지연 시간 (ms) (100에서 200으로 증가)
 
@@ -478,6 +481,7 @@ function isEntryShared(entryId) {
 
 // renderTimeline과 renderMiniCalendar는 render/timeline.js로 이동됨
 // 이 함수들은 더 이상 render.js에 없음
+function renderTimeline() {
     const state = appState;
     if (!window.currentUser || state.currentTab !== 'timeline') return;
     const container = document.getElementById('timelineContainer');
@@ -1026,29 +1030,45 @@ export async function renderGallery() {
         const container = document.getElementById('galleryContainer');
         if (!container) {
             console.warn('[renderGallery] galleryContainer를 찾을 수 없습니다');
+            isRenderingGallery = false;
             return;
         }
         
-        // 이전 스크롤 이벤트 리스너 정리
+        // ===== STRICT CLEANUP: 모든 Observer와 비동기 작업을 먼저 정리 =====
+        
+        // 1. 이전 AbortController로 모든 비동기 작업 취소
+        if (galleryAbortController) {
+            galleryAbortController.abort();
+        }
+        galleryAbortController = new AbortController();
+        const abortSignal = galleryAbortController.signal;
+        
+        // 2. 이전 스크롤 이벤트 리스너 정리
         galleryScrollListeners.forEach((abortController, scrollContainer) => {
             abortController.abort();
         });
         galleryScrollListeners.clear();
         
-        // 이전 Intersection Observer 정리
+        // 3. 이전 Intersection Observer 정리
         if (intersectionObserver) {
             intersectionObserver.disconnect();
             intersectionObserver = null;
         }
         
-        // 포스트 로드 큐 및 타이머 초기화
+        // 4. 이전 Placeholder Observer 정리
+        if (placeholderObserver) {
+            placeholderObserver.disconnect();
+            placeholderObserver = null;
+        }
+        
+        // 5. 포스트 로드 큐 및 타이머 초기화
         postLoadQueue = [];
         if (postLoadBatchTimer) {
             clearTimeout(postLoadBatchTimer);
             postLoadBatchTimer = null;
         }
         
-        // 로드된 포스트 캐시 초기화 (렌더링이 완전히 새로 시작되므로)
+        // 6. 로드된 포스트 캐시 초기화 (렌더링이 완전히 새로 시작되므로)
         loadedPostIds.clear();
         
         if (!window.sharedPhotos) {
@@ -1076,6 +1096,11 @@ export async function renderGallery() {
         if (filteredUserPhoto) {
             // getUserSettings를 비동기로 호출하되 await하지 않음 (즉시 렌더링 진행)
             getUserSettings(filterUserId).then(userSettings => {
+                // AbortSignal 체크
+                if (abortSignal && abortSignal.aborted) {
+                    return;
+                }
+                
                 const bio = userSettings?.profile?.bio || '';
                 // 프로필 헤더가 이미 렌더링되었는지 확인
                 const existingHeader = container.querySelector('.bg-white.border-b.border-slate-200.sticky');
@@ -1128,10 +1153,15 @@ export async function renderGallery() {
                 ${!filterUserId ? '<p class="text-xs text-slate-300 mt-2">타임라인에서 사진을 공유해보세요!</p>' : ''}
             </div>
         `;
+        // 이전 포스트 ID 목록 초기화
+        previousGalleryPostIds.clear();
         // 빈 갤러리일 때도 맨 위로 스크롤
         setTimeout(() => {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            if (!abortSignal || !abortSignal.aborted) {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
         }, 100);
+        isRenderingGallery = false;
         return;
     }
     
@@ -1270,6 +1300,21 @@ export async function renderGallery() {
     
     const traceEmptyIcon = appState.galleryTraceFilter === 'like' ? 'fa-heart' : (appState.galleryTraceFilter === 'comment' ? 'fa-comment' : 'fa-bookmark');
     
+    // ===== DIFFING: 변경사항이 작으면 차등 업데이트, 크면 전체 재렌더링 =====
+    const currentPostIds = new Set(sortedGroups.map(g => getPostIdFromPhotoGroup(g)));
+    const hasSignificantChanges = 
+        previousGalleryPostIds.size === 0 || // 초기 로드
+        currentPostIds.size === 0 || // 모든 포스트 삭제
+        Math.abs(currentPostIds.size - previousGalleryPostIds.size) > 5 || // 5개 이상 차이
+        Array.from(currentPostIds).slice(0, 10).some(id => !previousGalleryPostIds.has(id)); // 상위 10개 중 새 포스트 있음
+    
+    // AbortSignal 체크: 취소되었으면 중단
+    if (abortSignal.aborted) {
+        console.log('[renderGallery] AbortSignal 감지 - 렌더링 중단');
+        isRenderingGallery = false;
+        return;
+    }
+    
     // 헤더와 빈 메시지만 먼저 렌더링
     const headerHtml = userProfileHeader + (traceEmptyMsg ? `
             <div class="flex flex-col items-center justify-center py-20 text-center">
@@ -1278,7 +1323,67 @@ export async function renderGallery() {
             </div>
         ` : '');
     
-    container.innerHTML = headerHtml;
+    // 변경사항이 크거나 초기 로드면 전체 재렌더링
+    if (hasSignificantChanges) {
+        container.innerHTML = headerHtml;
+    } else {
+        // 차등 업데이트: 새로 추가된 포스트만 prepend
+        const newPostIds = Array.from(currentPostIds).filter(id => !previousGalleryPostIds.has(id));
+        if (newPostIds.length > 0) {
+            const newGroups = sortedGroups.filter(g => {
+                const postId = getPostIdFromPhotoGroup(g);
+                return newPostIds.includes(postId);
+            });
+            
+            if (newGroups.length > 0) {
+                // 헤더가 없으면 추가
+                const existingHeader = container.querySelector('.bg-white.border-b.border-slate-200.sticky');
+                if (!existingHeader && userProfileHeader) {
+                    const headerDiv = document.createElement('div');
+                    headerDiv.innerHTML = userProfileHeader;
+                    container.insertBefore(headerDiv.firstChild, container.firstChild);
+                }
+                
+                // 새 포스트를 맨 위에 추가
+                const newPostsHtml = newGroups.map((photoGroup, idx) => {
+                    const postId = getPostIdFromPhotoGroup(photoGroup);
+                    const existingIdx = Array.from(currentPostIds).indexOf(postId);
+                    return renderPostGroup(photoGroup, existingIdx);
+                }).join('');
+                
+                const fragment = document.createDocumentFragment();
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = newPostsHtml;
+                while (tempDiv.firstChild) {
+                    fragment.appendChild(tempDiv.firstChild);
+                }
+                
+                // 헤더 다음에 삽입
+                const firstPost = container.querySelector('.instagram-post');
+                if (firstPost) {
+                    container.insertBefore(fragment, firstPost);
+                } else {
+                    container.appendChild(fragment);
+                }
+                
+                // 이전 포스트 ID 목록 업데이트
+                previousGalleryPostIds = new Set(currentPostIds);
+                
+                // 이벤트 리스너만 다시 설정 (전체 재렌더링 없이)
+                setTimeout(() => {
+                    if (abortSignal.aborted) return;
+                    setupGalleryEventListeners(container, sortedGroups);
+                    setupIntersectionObserver(container);
+                }, 50);
+                
+                isRenderingGallery = false;
+                return; // 차등 업데이트 완료
+            }
+        }
+        
+        // 차등 업데이트 실패 시 전체 재렌더링으로 폴백
+        container.innerHTML = headerHtml;
+    }
     
     // 초기 렌더링: 화면에 보일 포스트만 먼저 렌더링 (가상 스크롤링)
     // 화면 높이 기준으로 예상 포스트 수 계산 (각 포스트 약 600px 높이 가정)
@@ -1286,59 +1391,110 @@ export async function renderGallery() {
     const estimatedPostHeight = 600; // 각 포스트의 예상 높이
     const INITIAL_POSTS_COUNT = Math.max(5, Math.ceil(viewportHeight / estimatedPostHeight) + 2); // 화면에 보일 포스트 + 여유분
     
-    // 초기 포스트만 먼저 렌더링
+    // 초기 포스트만 먼저 렌더링 (비동기 배치 처리로 브라우저 블로킹 방지)
     const initialPosts = sortedGroups.slice(0, INITIAL_POSTS_COUNT);
-    const initialHtml = initialPosts.map((photoGroup, idx) => renderPostGroup(photoGroup, idx)).join('');
     
-    // DocumentFragment 사용하여 DOM 조작 최적화
-    const fragment = document.createDocumentFragment();
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = initialHtml;
-    while (tempDiv.firstChild) {
-        fragment.appendChild(tempDiv.firstChild);
-    }
-    container.appendChild(fragment);
+    // 렌더링을 배치로 나누어 실행 (브라우저 프리즈 방지)
+    let renderedIndex = 0;
+    const POSTS_PER_BATCH = 2; // 한 번에 렌더링할 포스트 수 (작게 설정하여 블로킹 방지)
     
-    // 나머지 포스트는 placeholder로 렌더링 (스크롤 시 실제 포스트로 교체)
-    if (sortedGroups.length > INITIAL_POSTS_COUNT) {
-        const remainingCount = sortedGroups.length - INITIAL_POSTS_COUNT;
-        const placeholderHtml = `<div id="gallery-placeholder" data-remaining="${remainingCount}" data-start-index="${INITIAL_POSTS_COUNT}" style="height: ${remainingCount * estimatedPostHeight}px;"></div>`;
-        const placeholderDiv = document.createElement('div');
-        placeholderDiv.innerHTML = placeholderHtml;
-        container.appendChild(placeholderDiv.firstChild);
-    }
-    
-    // 이벤트 리스너 설정
-    setTimeout(() => {
-        setupGalleryEventListeners(container, sortedGroups);
+    function renderNextBatch() {
+        // AbortSignal 체크
+        if (abortSignal.aborted) {
+            console.log('[renderGallery] AbortSignal 감지 - 배치 렌더링 중단');
+            isRenderingGallery = false;
+            return;
+        }
         
-        // IntersectionObserver 설정 (포스트 렌더링 및 상호작용 로드용)
-        setTimeout(() => {
-            setupIntersectionObserver(container);
-            setupLazyPostRenderer(container, sortedGroups, INITIAL_POSTS_COUNT);
-        }, 200);
-        
-        // Comment "더 보기" 버튼 표시 여부 확인 및 위치 조정
-        setTimeout(() => {
-            initialPosts.forEach((photoGroup, idx) => {
-                const collapsedEl = document.getElementById(`post-caption-collapsed-${idx}`);
-                const toggleBtn = document.getElementById(`post-caption-toggle-${idx}`);
-                
-                if (collapsedEl && toggleBtn) {
-                    const collapsedHeight = collapsedEl.scrollHeight;
-                    const lineHeight = parseFloat(getComputedStyle(collapsedEl).lineHeight) || 20;
-                    const maxHeight = lineHeight * 2;
-                    
-                    if (collapsedHeight > maxHeight + 2 && toggleBtn.classList.contains('hidden')) {
-                        toggleBtn.classList.remove('hidden');
-                    }
+        if (renderedIndex >= initialPosts.length) {
+            // 모든 초기 포스트 렌더링 완료
+            // 나머지 포스트는 placeholder로 렌더링 (스크롤 시 실제 포스트로 교체)
+            if (sortedGroups.length > INITIAL_POSTS_COUNT) {
+                const remainingCount = sortedGroups.length - INITIAL_POSTS_COUNT;
+                const placeholderHtml = `<div id="gallery-placeholder" data-remaining="${remainingCount}" data-start-index="${INITIAL_POSTS_COUNT}" style="height: ${remainingCount * estimatedPostHeight}px;"></div>`;
+                const placeholderDiv = document.createElement('div');
+                placeholderDiv.innerHTML = placeholderHtml;
+                container.appendChild(placeholderDiv.firstChild);
+            }
+            
+            // 이전 포스트 ID 목록 업데이트 (전체 재렌더링인 경우)
+            previousGalleryPostIds = new Set(currentPostIds);
+            
+            // 이벤트 리스너 설정 (AbortSignal 체크 포함)
+            setTimeout(() => {
+                if (abortSignal.aborted) {
+                    console.log('[renderGallery] AbortSignal 감지 - 이벤트 리스너 설정 중단');
+                    isRenderingGallery = false;
+                    return;
                 }
-            });
-        }, 100);
+                
+                setupGalleryEventListeners(container, sortedGroups, abortSignal);
+                
+                // IntersectionObserver 설정 (포스트 렌더링 및 상호작용 로드용)
+                setTimeout(() => {
+                    if (abortSignal.aborted) {
+                        console.log('[renderGallery] AbortSignal 감지 - Observer 설정 중단');
+                        isRenderingGallery = false;
+                        return;
+                    }
+                    setupIntersectionObserver(container, abortSignal);
+                    setupLazyPostRenderer(container, sortedGroups, INITIAL_POSTS_COUNT, abortSignal);
+                }, 200);
+                
+                // Comment "더 보기" 버튼 표시 여부 확인 및 위치 조정
+                setTimeout(() => {
+                    if (abortSignal.aborted) return;
+                    initialPosts.forEach((photoGroup, idx) => {
+                        const collapsedEl = document.getElementById(`post-caption-collapsed-${idx}`);
+                        const toggleBtn = document.getElementById(`post-caption-toggle-${idx}`);
+                        
+                        if (collapsedEl && toggleBtn) {
+                            const collapsedHeight = collapsedEl.scrollHeight;
+                            const lineHeight = parseFloat(getComputedStyle(collapsedEl).lineHeight) || 20;
+                            const maxHeight = lineHeight * 2;
+                            
+                            if (collapsedHeight > maxHeight + 2 && toggleBtn.classList.contains('hidden')) {
+                                toggleBtn.classList.remove('hidden');
+                            }
+                        }
+                    });
+                }, 100);
+                
+                // 갤러리 렌더링 완료 후 항상 맨 위로 스크롤 (AbortSignal 체크)
+                if (!abortSignal.aborted) {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+            }, 50);
+            
+            return;
+        }
         
-        // 갤러리 렌더링 완료 후 항상 맨 위로 스크롤
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 50);
+        // 다음 배치 렌더링
+        const batch = initialPosts.slice(renderedIndex, renderedIndex + POSTS_PER_BATCH);
+        const batchHtml = batch.map((photoGroup, batchIdx) => {
+            const groupIdx = renderedIndex + batchIdx;
+            return renderPostGroup(photoGroup, groupIdx);
+        }).join('');
+        
+        // DocumentFragment 사용하여 DOM 조작 최적화
+        const fragment = document.createDocumentFragment();
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = batchHtml;
+        while (tempDiv.firstChild) {
+            fragment.appendChild(tempDiv.firstChild);
+        }
+        container.appendChild(fragment);
+        
+        renderedIndex += POSTS_PER_BATCH;
+        
+        // 다음 배치를 다음 프레임에서 실행 (브라우저가 렌더링할 시간을 줌)
+        requestAnimationFrame(() => {
+            setTimeout(renderNextBatch, 0);
+        });
+    }
+    
+    // 첫 배치 렌더링 시작
+    renderNextBatch();
     
     // 포스트 그룹 HTML 생성 함수 (기존 map 로직을 함수로 분리)
     // mealHistoryMap을 클로저로 전달하여 O(1) 조회 최적화
@@ -1604,7 +1760,7 @@ export async function renderGallery() {
     }
     
     // 갤러리 이벤트 리스너 설정 함수
-    function setupGalleryEventListeners(container, sortedGroups) {
+    function setupGalleryEventListeners(container, sortedGroups, abortSignal = null) {
         // 사진 카운터 업데이트를 위한 이벤트 리스너 추가
         const scrollContainers = container.querySelectorAll('.flex.overflow-x-auto');
         scrollContainers.forEach((scrollContainer, idx) => {
@@ -1700,27 +1856,56 @@ export async function renderGallery() {
     }
     
     // Lazy Post Renderer 설정 함수 (스크롤 시 포스트 렌더링)
-    function setupLazyPostRenderer(container, sortedGroups, initialCount) {
+    function setupLazyPostRenderer(container, sortedGroups, initialCount, abortSignal = null) {
         const placeholder = document.getElementById('gallery-placeholder');
         if (!placeholder || sortedGroups.length <= initialCount) return;
+        
+        // AbortSignal 체크
+        if (abortSignal && abortSignal.aborted) {
+            return;
+        }
         
         let renderedCount = initialCount;
         let isRendering = false;
         const POSTS_PER_BATCH = 3; // 한 번에 렌더링할 포스트 수
         const estimatedPostHeight = 600;
         
-        // Placeholder를 관찰하는 Observer
-        const placeholderObserver = new IntersectionObserver((entries) => {
+        // Placeholder를 관찰하는 Observer (전역 변수에 저장하여 나중에 정리 가능)
+        placeholderObserver = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
+                // AbortSignal 체크
+                if (abortSignal && abortSignal.aborted) {
+                    placeholderObserver.disconnect();
+                    return;
+                }
+                
                 if (entry.isIntersecting && !isRendering && renderedCount < sortedGroups.length) {
                     isRendering = true;
                     
                     // 배치로 포스트 렌더링
                     function renderNextLazyBatch() {
+                        // AbortSignal 체크
+                        if (abortSignal && abortSignal.aborted) {
+                            placeholderObserver.disconnect();
+                            isRendering = false;
+                            return;
+                        }
+                        
                         if (renderedCount >= sortedGroups.length) {
                             // 모든 포스트 렌더링 완료
-                            placeholder.remove();
+                            if (placeholder && placeholder.parentNode) {
+                                placeholder.remove();
+                            }
                             placeholderObserver.disconnect();
+                            placeholderObserver = null;
+                            isRendering = false;
+                            return;
+                        }
+                        
+                        // DOM 존재 확인
+                        if (!document.contains(placeholder)) {
+                            placeholderObserver.disconnect();
+                            placeholderObserver = null;
                             isRendering = false;
                             return;
                         }
@@ -1738,23 +1923,31 @@ export async function renderGallery() {
                         while (tempDiv.firstChild) {
                             fragment.appendChild(tempDiv.firstChild);
                         }
-                        placeholder.parentNode.insertBefore(fragment, placeholder);
+                        
+                        if (placeholder && placeholder.parentNode) {
+                            placeholder.parentNode.insertBefore(fragment, placeholder);
+                        }
                         
                         renderedCount += POSTS_PER_BATCH;
                         
                         // Placeholder 높이 조정
                         const remaining = sortedGroups.length - renderedCount;
-                        if (remaining > 0) {
+                        if (remaining > 0 && placeholder) {
                             placeholder.style.height = `${remaining * estimatedPostHeight}px`;
                         } else {
-                            placeholder.remove();
+                            if (placeholder && placeholder.parentNode) {
+                                placeholder.remove();
+                            }
                             placeholderObserver.disconnect();
+                            placeholderObserver = null;
                         }
                         
                         // 다음 배치 렌더링 (다음 프레임)
-                        if (renderedCount < sortedGroups.length) {
+                        if (renderedCount < sortedGroups.length && (!abortSignal || !abortSignal.aborted)) {
                             requestAnimationFrame(() => {
-                                setTimeout(renderNextLazyBatch, 50);
+                                if (!abortSignal || !abortSignal.aborted) {
+                                    setTimeout(renderNextLazyBatch, 50);
+                                }
                             });
                         } else {
                             isRendering = false;
@@ -1772,8 +1965,13 @@ export async function renderGallery() {
     }
     
     // Intersection Observer 설정 함수
-    function setupIntersectionObserver(container) {
+    function setupIntersectionObserver(container, abortSignal = null) {
         if (!window.postInteractions) return;
+        
+        // AbortSignal 체크
+        if (abortSignal && abortSignal.aborted) {
+            return;
+        }
         
         // 이전 Observer 정리
         if (intersectionObserver) {
@@ -1783,8 +1981,19 @@ export async function renderGallery() {
         // 새 Observer 생성: 화면에 보이는 포스트만 로드 (배치 처리)
         intersectionObserver = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
+                // AbortSignal 체크
+                if (abortSignal && abortSignal.aborted) {
+                    return;
+                }
+                
                 if (entry.isIntersecting) {
                     const postEl = entry.target;
+                    
+                    // DOM 존재 확인
+                    if (!document.contains(postEl)) {
+                        return;
+                    }
+                    
                     const postId = postEl.getAttribute('data-post-id');
                     
                     if (!postId || loadedPostIds.has(postId)) {
@@ -1794,8 +2003,12 @@ export async function renderGallery() {
                     loadedPostIds.add(postId);
                     postLoadQueue.push({ postEl, postId });
                     
-                    if (!postLoadBatchTimer) {
-                        postLoadBatchTimer = setTimeout(processPostLoadQueue, BATCH_DELAY);
+                    if (!postLoadBatchTimer && (!abortSignal || !abortSignal.aborted)) {
+                        postLoadBatchTimer = setTimeout(() => {
+                            if (!abortSignal || !abortSignal.aborted) {
+                                processPostLoadQueue();
+                            }
+                        }, BATCH_DELAY);
                     }
                 }
             });
@@ -1805,9 +2018,19 @@ export async function renderGallery() {
         
         // 모든 포스트에 Observer 연결 (렌더링 완료 후 지연 연결)
         setTimeout(() => {
+            // AbortSignal 체크
+            if (abortSignal && abortSignal.aborted) {
+                return;
+            }
+            
             const posts = container.querySelectorAll('.instagram-post');
             posts.forEach(post => {
-                intersectionObserver.observe(post);
+                if (abortSignal && abortSignal.aborted) {
+                    return;
+                }
+                if (document.contains(post)) {
+                    intersectionObserver.observe(post);
+                }
             });
         }, 300); // 100ms에서 300ms로 증가 (초기 렌더링 완료 후 연결)
     }
@@ -1818,8 +2041,8 @@ export async function renderGallery() {
         console.error('[renderGallery] 스택:', error.stack);
     } finally {
         isRenderingGallery = false;
-        // renderGallery 완료 후에도 배치 작업은 계속 실행되므로 AbortController는 유지
-        // (다음 renderGallery 호출 시 취소됨)
+        // AbortController는 다음 renderGallery 호출 시 새로운 것으로 교체되므로 여기서는 null로 설정하지 않음
+        // (현재 렌더링의 비동기 작업들이 완료될 때까지 유지)
     }
 }
 
