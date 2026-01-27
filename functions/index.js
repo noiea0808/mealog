@@ -644,17 +644,9 @@ exports.sharePhotos = onCall({ region: REGION }, async (request) => {
         await batch.commit();
       }
 
-      // record.sharedPhotos 필드 업데이트 (mealData.id가 있는 경우에만)
-      if (mealData && mealData.id) {
-        try {
-          const mealDoc = db.collection('artifacts').doc(APP_ID)
-            .collection('users').doc(auth.uid)
-            .collection('meals').doc(mealData.id);
-          await mealDoc.set({ sharedPhotos: [] }, { merge: true });
-        } catch (e) {
-          logger.warn('record.sharedPhotos 필드 업데이트 실패:', e);
-        }
-      }
+      // meal 문서의 sharedPhotos 필드는 호출 전에 클라이언트 save(record)에서 이미 반영됨.
+      // 여기서 mealDoc.set을 하면 meals 리스너가 한 번 더 떨어져 onDataUpdate가 이중 호출되고,
+      // 타임라인 전체 재렌더가 연속 두 번 발생해 공유 시 브라우저 프리징/CPU 급증의 원인이 됨.
 
       return { success: true, action: 'unshare' };
     }
@@ -723,17 +715,9 @@ exports.sharePhotos = onCall({ region: REGION }, async (request) => {
 
     await batch.commit();
 
-    // record.sharedPhotos 필드 업데이트 (mealData.id가 있는 경우에만)
-    if (mealData && mealData.id) {
-      try {
-        const mealDoc = db.collection('artifacts').doc(APP_ID)
-          .collection('users').doc(auth.uid)
-          .collection('meals').doc(mealData.id);
-        await mealDoc.set({ sharedPhotos: photosToShare }, { merge: true });
-      } catch (e) {
-        logger.warn('record.sharedPhotos 필드 업데이트 실패:', e);
-      }
-    }
+    // meal 문서의 sharedPhotos 필드는 호출 전에 클라이언트 save(record)에서 이미 반영됨.
+    // 여기서 mealDoc.set을 하면 meals 리스너가 한 번 더 떨어져 onDataUpdate가 이중 호출되고,
+    // 타임라인 전체 재렌더가 연속 두 번 발생해 공유 시 브라우저 프리징/CPU 급증의 원인이 됨.
 
     return { success: true, action: 'share' };
   } catch (error) {

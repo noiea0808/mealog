@@ -1819,6 +1819,7 @@ initAuth(async (user) => {
             updateHeaderUI();
         } else {
             // 리스너 설정 (이전 리스너는 setupListeners 내부에서 해제됨)
+            let dataUpdateTimer = null; // 공유 시 meals 이중 리스너 방지용 디바운스
             const { settingsUnsubscribe, dataUnsubscribe } = setupListeners(user.uid, {
                 onSettingsUpdate: () => {
                     // 헤더 UI 업데이트 (디바운싱됨)
@@ -1841,17 +1842,25 @@ initAuth(async (user) => {
                     // onSettingsUpdate에서 약관 모달을 닫으면 타이밍 이슈로 인해 모달이 잠깐 표시되었다가 사라질 수 있음
                 },
                 onDataUpdate: () => {
-                    if (appState.viewMode === 'list') {
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        appState.pageDate = today;
-                    }
-                    window.loadedDates = [];
-                    window.hasScrolledToToday = false;
-                    const container = document.getElementById('timelineContainer');
-                    if (container) container.innerHTML = "";
-                    renderTimeline();
-                    renderMiniCalendar();
+                    // 타임라인 탭이 보일 때만 재렌더. 다른 탭(앨범/분석/피드)에서는 스킵해 프리즈·고CPU 방지.
+                    // (데이터는 db/listeners에서 이미 window.mealHistory 반영됨. 탭 전환 시 switchMainTab에서 렌더)
+                    if (appState.currentTab !== 'timeline') return;
+                    if (dataUpdateTimer) clearTimeout(dataUpdateTimer);
+                    dataUpdateTimer = setTimeout(() => {
+                        dataUpdateTimer = null;
+                        if (appState.currentTab !== 'timeline') return; // 대기 중 탭 바뀌면 스킵
+                        if (appState.viewMode === 'list') {
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            appState.pageDate = today;
+                        }
+                        window.loadedDates = [];
+                        window.hasScrolledToToday = false;
+                        const container = document.getElementById('timelineContainer');
+                        if (container) container.innerHTML = "";
+                        renderTimeline();
+                        renderMiniCalendar();
+                    }, 120);
                 },
                 settingsUnsubscribe: appState.settingsUnsubscribe,
                 dataUnsubscribe: appState.dataUnsubscribe
@@ -1869,12 +1878,8 @@ initAuth(async (user) => {
             let isInitialSharedPhotosLoad = true; // 초기 로드 플래그
             
             appState.sharedPhotosUnsubscribe = setupSharedPhotosListener((sharedPhotos) => {
-                console.log('[리스너] 공유 사진 업데이트:', {
-                    사진수: sharedPhotos?.length || 0,
-                    현재탭: appState.currentTab,
-                    초기로드: isInitialSharedPhotosLoad,
-                    sharedPhotos: sharedPhotos
-                });
+                // 전체 배열 로깅 제거: 공유 시마다 대용량 객체 직렬화로 CPU/메모리 부담·프리징 악화
+                // 필요 시: console.log('[리스너] 공유 사진:', sharedPhotos?.length, appState.currentTab);
                 
                 // 초기 로드는 즉시 처리 (디바운싱 없음)
                 if (isInitialSharedPhotosLoad) {

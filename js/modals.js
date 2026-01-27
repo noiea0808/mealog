@@ -789,8 +789,10 @@ export async function saveEntry() {
         }
         
         // 탭에 따라 적절한 뷰 업데이트 (데이터가 Firestore 리스너를 통해 업데이트되므로 약간의 지연 후 렌더링)
+        // 실행 시점의 현재 탭 사용. 저장 중 사용자가 다른 탭으로 옮겼으면 그 탭 기준으로만 처리해 프리즈 방지.
         setTimeout(() => {
-            if (currentTab === 'timeline' && editingDate) {
+            const tabNow = appState.currentTab;
+            if (tabNow === 'timeline' && editingDate) {
                 // 타임라인 탭: 저장된 항목의 날짜로 이동
                 try {
                     const wasScrolling = window.isScrolling;
@@ -855,39 +857,35 @@ export async function saveEntry() {
                 } catch (scrollError) {
                     console.error('날짜 이동 오류:', scrollError);
                 }
-            } else if (currentTab === 'gallery') {
+            } else if (tabNow === 'gallery') {
                 // 갤러리 탭: 갤러리 다시 렌더링 (데이터가 업데이트되었으므로)
                 // 리스너가 업데이트될 시간을 주기 위해 약간의 지연 후 렌더링
                 setTimeout(() => {
+                    if (appState.currentTab !== 'gallery') return; // 대기 중 탭 바뀌면 스킵
                     try {
                         renderGallery();
-                        // 피드도 함께 렌더링 (피드가 갤러리 안에 있을 수 있음)
                         const feedContent = document.getElementById('feedContent');
-                        if (feedContent) {
-                            renderFeed();
-                        }
+                        if (feedContent) renderFeed();
                     } catch (e) {
                         console.error('갤러리/피드 렌더링 오류:', e);
                     }
                 }, 500);
-            } else {
-                // 피드가 별도 탭이거나 갤러리와 함께 표시되는 경우
+            } else if (tabNow === 'dashboard') {
+                // 분석 탭: 리스너가 타임라인/갤러리만 갱신하므로 여기서 추가 작업 없음. 탭 전환 시 최신 데이터 반영됨.
+            } else if (tabNow === 'feed') {
                 const feedContent = document.getElementById('feedContent');
                 if (feedContent) {
-                    try {
-                        renderFeed();
-                    } catch (e) {
-                        console.error('피드 렌더링 오류:', e);
-                    }
+                    try { renderFeed(); } catch (e) { console.error('피드 렌더링 오류:', e); }
                 }
-                // 갤러리도 함께 확인
+            } else {
+                // 기타: 보이는 뷰만 갱신 (피드/갤러리 노출 시)
+                const feedContent = document.getElementById('feedContent');
+                if (feedContent) {
+                    try { renderFeed(); } catch (e) { console.error('피드 렌더링 오류:', e); }
+                }
                 const galleryView = document.getElementById('galleryView');
                 if (galleryView && !galleryView.classList.contains('hidden')) {
-                    try {
-                        renderGallery();
-                    } catch (e) {
-                        console.error('갤러리 렌더링 오류:', e);
-                    }
+                    try { renderGallery(); } catch (e) { console.error('갤러리 렌더링 오류:', e); }
                 }
             }
         }, 100);
