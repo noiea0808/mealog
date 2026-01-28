@@ -459,7 +459,7 @@ exports.addPostComment = onCall({ region: REGION }, wrapFunction('addPostComment
     throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
   }
 
-  const { postId, commentText } = data;
+  const { postId, commentText, userNickname: clientNickname, userIcon: clientIcon } = data;
   
   if (!postId || !commentText || !commentText.trim()) {
     throw new HttpsError('invalid-argument', '댓글 내용을 입력해주세요.');
@@ -474,15 +474,21 @@ exports.addPostComment = onCall({ region: REGION }, wrapFunction('addPostComment
     throw new HttpsError('invalid-argument', spamCheck.reason);
   }
 
-  // 사용자 프로필 정보 가져오기
-  const userSettingsRef = db.collection('artifacts').doc(APP_ID)
-    .collection('users').doc(auth.uid)
-    .collection('config').doc('settings');
-  const userSettingsDoc = await userSettingsRef.get();
-  
-  const profile = userSettingsDoc.exists ? (userSettingsDoc.data().profile || {}) : {};
-  const userNickname = profile.nickname || '익명';
-  const userIcon = profile.icon || '🐻';
+  // 클라이언트에서 닉네임/아이콘을 보냈으면 사용(Firestore 조회 생략), 없으면 Firestore에서 조회
+  let userNickname = '익명';
+  let userIcon = '🐻';
+  if (typeof clientNickname === 'string' && clientNickname.trim()) {
+    userNickname = clientNickname.trim();
+    userIcon = (typeof clientIcon === 'string' && clientIcon) ? clientIcon : '🐻';
+  } else {
+    const userSettingsRef = db.collection('artifacts').doc(APP_ID)
+      .collection('users').doc(auth.uid)
+      .collection('config').doc('settings');
+    const userSettingsDoc = await userSettingsRef.get();
+    const profile = userSettingsDoc.exists ? (userSettingsDoc.data().profile || {}) : {};
+    userNickname = profile.nickname || '익명';
+    userIcon = profile.icon || '🐻';
+  }
 
   // 댓글 생성
   const commentsRef = db.collection('artifacts').doc(APP_ID).collection('postComments');

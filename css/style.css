@@ -265,6 +265,11 @@ header .mealog-title {
     margin-bottom: 8px; 
     scroll-margin-top: 148px; 
 }
+/* 타임라인: 식사 카드가 화면 양옆에 꽉 차도록 좌우 패딩 제거 */
+#timelineView {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
 #timelineContainer .card {
     border-radius: 0 !important;
 }

@@ -95,6 +95,13 @@ export function renderEntryChips() {
                 recentTagsList.push(item);
             }
         });
+        // 나만의 태그 중 subTags(최근 사용)에 아직 없는 것도 칩으로 표시
+        myTags.forEach(text => {
+            const alreadyIn = filteredList.some(item => (typeof item === 'string' ? item : item.text) === text);
+            if (!alreadyIn) {
+                myTagsList.push({ text });
+            }
+        });
         
         // 나만의 태그를 인덱스 순서대로 정렬
         myTagsList.sort((a, b) => {
@@ -934,20 +941,35 @@ async function loadPostInteractions(postEl, postId) {
             commentCountEl.textContent = commentCount > 0 ? commentCount : '';
         }
         
-        // 댓글 표시 (최대 2개)
+        // 댓글 표시 (최대 2개) — 등록 시간 포함
         const commentsListEl = postEl.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
         if (commentsListEl) {
             if (comments.length > 0) {
                 // 댓글이 있으면 배경색 추가
                 commentsListEl.classList.add('bg-slate-50');
                 const displayComments = comments.slice(0, 2);
-                commentsListEl.innerHTML = displayComments.map(c => `
+                commentsListEl.innerHTML = displayComments.map(c => {
+                    let dateStr = '', timeStr = '';
+                    if (c.timestamp) {
+                        try {
+                            const commentDate = c.timestamp instanceof Date
+                                ? c.timestamp
+                                : (c.timestamp.toDate ? c.timestamp.toDate() : new Date(c.timestamp));
+                            if (!isNaN(commentDate.getTime())) {
+                                dateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+                                timeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                            }
+                        } catch (_) {}
+                    }
+                    return `
                     <div class="mb-1 text-sm">
                         <span class="font-bold text-slate-800">${c.userNickname || '익명'}</span>
                         <span class="text-slate-800">${escapeHtml(c.comment)}</span>
+                        ${dateStr && timeStr ? `<span class="text-xs text-slate-400 ml-2">${dateStr} ${timeStr}</span>` : ''}
                         ${isLoggedIn && c.userId === window.currentUser?.uid ? `<button onclick="window.deleteCommentFromPost('${c.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
                     </div>
-                `).join('');
+                `;
+                }).join('');
                 
                 // 댓글이 2개보다 많으면 "댓글 모두 보기" 버튼 표시
                 if (comments.length > 2) {

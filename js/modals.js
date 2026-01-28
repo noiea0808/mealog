@@ -2122,9 +2122,11 @@ export async function addFavoriteTag(mainTagKey, mainTag) {
     input.value = '';
     renderFavoriteTagsEditor();
     
-    // 즉시 저장
+    // 즉시 저장 후 화면(기록 모달 등)에서 쓰는 userSettings에도 반영
     try {
         await dbOps.saveSettings(state.tempSettings);
+        if (!window.userSettings) window.userSettings = {};
+        window.userSettings.favoriteSubTags = JSON.parse(JSON.stringify(state.tempSettings.favoriteSubTags || {}));
         showToast("태그가 저장되었습니다.", 'success');
     } catch (e) {
         console.error('태그 저장 실패:', e);
@@ -2145,9 +2147,11 @@ export async function removeFavoriteTag(mainTagKey, mainTag, index) {
         favorites.splice(index, 1);
         renderFavoriteTagsEditor();
         
-        // 즉시 저장
+        // 즉시 저장 후 화면(기록 모달 등)에서 쓰는 userSettings에도 반영
         try {
             await dbOps.saveSettings(state.tempSettings);
+            if (!window.userSettings) window.userSettings = {};
+            window.userSettings.favoriteSubTags = JSON.parse(JSON.stringify(state.tempSettings.favoriteSubTags || {}));
             showToast("태그가 삭제되었습니다.", 'success');
         } catch (e) {
             console.error('태그 삭제 저장 실패:', e);

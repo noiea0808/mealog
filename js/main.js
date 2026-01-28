@@ -409,60 +409,16 @@ window.addCommentToPost = async (postId) => {
             return;
         }
         
-        // 서버 응답 후 실제 데이터로 업데이트 (낙관적 업데이트 대체)
-        // 짧은 지연으로 Firestore 인덱싱 반영 시간 확보
-        setTimeout(async () => {
-            try {
-                // 한 번만 네트워크 요청
-                const comments = await postInteractions.getComments(postId);
-                
-                // 댓글 개수 업데이트
-                if (commentCountEl) {
-                    commentCountEl.textContent = comments.length > 0 ? comments.length : '';
-                }
-                
-                // 댓글 목록 업데이트
-                if (commentsListEl) {
-                    const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
-                    
-                    // 임시 댓글 제거
-                    const tempComment = commentsListEl.querySelector(`[data-temp-comment-id="${tempCommentId}"]`);
-                    if (tempComment) tempComment.remove();
-                    
-                    if (comments.length > 0) {
-                        commentsListEl.classList.add('bg-slate-50');
-                        const displayComments = comments.slice(0, 2);
-                        commentsListEl.innerHTML = displayComments.map(c => `
-                            <div class="mb-1 text-sm">
-                                <span class="font-bold text-slate-800">${c.userNickname || '익명'}</span>
-                                <span class="text-slate-800">${escapeHtml(c.comment)}</span>
-                                ${isLoggedIn && c.userId === window.currentUser?.uid ? `<button onclick="window.deleteCommentFromPost('${c.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
-                            </div>
-                        `).join('');
-                        
-                        if (comments.length > 2) {
-                            if (viewCommentsBtn) {
-                                viewCommentsBtn.textContent = `댓글 ${comments.length}개 모두 보기`;
-                                viewCommentsBtn.classList.remove('hidden');
-                            }
-                        } else {
-                            if (viewCommentsBtn) {
-                                viewCommentsBtn.classList.add('hidden');
-                            }
-                        }
-                    } else {
-                        commentsListEl.innerHTML = '';
-                        commentsListEl.classList.remove('bg-slate-50');
-                        if (viewCommentsBtn) {
-                            viewCommentsBtn.classList.add('hidden');
-                        }
-                    }
-                }
-            } catch (e) {
-                console.error("댓글 목록 업데이트 실패:", e);
-                // 에러가 발생해도 낙관적 업데이트는 유지
+        // 서버 응답으로 임시 댓글만 실제 id로 갱신 (getComments 제거 → 체감 속도 개선)
+        if (commentsListEl && newComment.id) {
+            const tempComment = commentsListEl.querySelector(`[data-temp-comment-id="${tempCommentId}"]`);
+            if (tempComment) {
+                tempComment.removeAttribute('data-temp-comment-id');
+                tempComment.setAttribute('data-comment-id', newComment.id);
+                const delBtn = tempComment.querySelector('button[onclick*="deleteCommentFromPost"]');
+                if (delBtn) delBtn.setAttribute('onclick', `window.deleteCommentFromPost('${String(newComment.id).replace(/'/g, "\\'")}', '${postId}')`);
             }
-        }, 200); // 500ms → 200ms로 단축
+        }
         
         showToast("댓글이 추가되었습니다.", 'success');
     } catch (e) {
@@ -691,7 +647,7 @@ window.toggleCommentInput = (postId) => {
     }
 };
 
-// 피드 댓글 작성 함수
+// 피드 댓글 작성 함수 (앨범/밀톡 공통)
 window.submitComment = async (postId) => {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         showToast("로그인이 필요합니다.", 'error');
@@ -708,34 +664,83 @@ window.submitComment = async (postId) => {
         return;
     }
     
-    // 입력 필드 비활성화
+    const commentsListEl = document.getElementById(`comments-list-${postId}`);
+    const commentCountEl = document.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
+    const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
+    const userProfile = window.userSettings?.profile || {};
+    const userNickname = userProfile?.nickname || '익명';
+    const tempId = `temp-${Date.now()}`;
+    
+    // 입력 필드 비활성화 + 즉시 비우기 (더블 탭 방지)
     inputEl.disabled = true;
+    inputEl.value = '';
+    
+    // 낙관적 업데이트: 댓글 한 줄 즉시 표시
+    if (commentsListEl) {
+        commentsListEl.classList.add('bg-slate-50');
+        commentsListEl.insertAdjacentHTML('beforeend',
+            `<div class="mb-1 text-sm" data-temp-comment-id="${tempId}">
+                <span class="font-bold text-slate-800">${escapeHtml(userNickname)}</span>
+                <span class="text-slate-800 ml-2">${escapeHtml(commentText)}</span>
+            </div>`);
+    }
+    if (commentCountEl) {
+        const n = (parseInt(commentCountEl.textContent || '0', 10) || 0) + 1;
+        commentCountEl.textContent = n;
+        if (viewCommentsBtn && n > 2) {
+            viewCommentsBtn.classList.remove('hidden');
+            viewCommentsBtn.textContent = `댓글 ${n}개 모두 보기`;
+        }
+    }
     
     try {
-        console.log('[submitComment] 시작:', { postId, commentLength: commentText.length });
-        const userProfile = window.userSettings?.profile || {};
         const result = await postInteractions.addComment(postId, window.currentUser.uid, commentText, userProfile);
-        console.log('[submitComment] 성공:', result);
-        
-        // 입력 필드 초기화
-        inputEl.value = '';
-        
-        // 댓글 목록 새로고침
-        await loadPostComments(postId);
-        
+        if (!result || !result.id) {
+            throw new Error('댓글 등록 결과가 없습니다.');
+        }
+        // 임시 줄을 실제 id가 반영된 한 줄로 교체 (loadPostComments 호출 제거로 체감 속도 개선)
+        if (commentsListEl) {
+            const tempRow = commentsListEl.querySelector(`[data-temp-comment-id="${tempId}"]`);
+            if (tempRow) {
+                let dateStr = '', timeStr = '';
+                if (result.timestamp) {
+                    try {
+                        const d = new Date(result.timestamp);
+                        if (!isNaN(d.getTime())) {
+                            dateStr = d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+                            timeStr = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                        }
+                    } catch (_) {}
+                }
+                const safeId = String(result.id).replace(/'/g, "\\'");
+                tempRow.outerHTML = `
+                    <div class="mb-1 text-sm">
+                        <span class="font-bold text-slate-800">${escapeHtml(result.userNickname || '익명')}</span>
+                        <span class="text-slate-800 ml-2">${escapeHtml(result.comment || '')}</span>
+                        ${dateStr && timeStr ? `<span class="text-xs text-slate-400 ml-2">${dateStr} ${timeStr}</span>` : ''}
+                        <button onclick="window.deleteCommentFromPost('${safeId}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>
+                    </div>`;
+            }
+        }
         showToast("댓글이 등록되었습니다.", 'success');
     } catch (e) {
         console.error("[submitComment] 에러:", e);
-        console.error("[submitComment] 에러 상세:", {
-            code: e.code,
-            message: e.message,
-            details: e.details,
-            stack: e.stack
-        });
         const errorMessage = e.message || e.details || e.code || "댓글 작성에 실패했습니다.";
         showToast(errorMessage, 'error');
+        // 낙관적 업데이트 롤백
+        if (commentsListEl) {
+            const tempRow = commentsListEl.querySelector(`[data-temp-comment-id="${tempId}"]`);
+            if (tempRow) tempRow.remove();
+            const left = commentsListEl.querySelectorAll('.mb-1.text-sm').length;
+            if (left === 0) commentsListEl.classList.remove('bg-slate-50');
+        }
+        if (commentCountEl) {
+            const n = Math.max(0, (parseInt(commentCountEl.textContent || '0', 10) || 0) - 1);
+            commentCountEl.textContent = n || '';
+            if (viewCommentsBtn && n <= 2) viewCommentsBtn.classList.add('hidden');
+            else if (viewCommentsBtn && n > 2) viewCommentsBtn.textContent = `댓글 ${n}개 모두 보기`;
+        }
     } finally {
-        // 입력 필드 활성화
         inputEl.disabled = false;
     }
 };

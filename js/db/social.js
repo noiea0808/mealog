@@ -180,7 +180,9 @@ export const postInteractions = {
             console.log('[postInteractions.addComment] 시작:', { postId, commentLength: commentText?.length });
             const result = await callableFunctions.addPostComment({
                 postId,
-                commentText
+                commentText,
+                userNickname: userProfile?.nickname ?? undefined,
+                userIcon: userProfile?.icon ?? undefined
             });
             console.log('[postInteractions.addComment] 성공:', result.data);
             return result.data;
