@@ -3264,11 +3264,12 @@ export async function renderBoardDetail(postId) {
                             
                             // 댓글 작성자 닉네임 (저장된 닉네임 사용)
                             const commentAuthorNickname = comment.authorNickname || comment.anonymousId || '익명';
+                            const commentBody = comment.content ?? comment.text ?? '';
                             
                             return `
-                                <div class="mb-1 text-sm">
+                                <div class="mb-1 text-sm" data-comment-id="${comment.id}">
                                     <span class="font-bold text-slate-800">${escapeHtml(commentAuthorNickname)}</span>
-                                    <span class="text-slate-800 ml-2">${escapeHtml(comment.content || '')}</span>
+                                    <span class="text-slate-800 ml-2">${escapeHtml(commentBody)}</span>
                                     ${commentDateStr && commentTimeStr ? `<span class="text-xs text-slate-400 ml-2">${commentDateStr} ${commentTimeStr}</span>` : ''}
                                     ${isCommentAuthor ? `<button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
                                 </div>

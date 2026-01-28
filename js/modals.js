@@ -5,7 +5,7 @@ import { setVal, compressImage, getInputIdFromContainer, normalizeUrl } from './
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from './render/index.js';
 import { dbOps } from './db.js';
 import { showToast } from './ui.js';
-import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed } from './render/index.js';
+import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed } from './render/index.js';
 import { getDashboardData } from './analytics.js';
 
 // 설정 저장 디바운싱을 위한 타이머
@@ -752,8 +752,21 @@ export async function saveEntry() {
                 console.log('새 레코드 ID 확보:', savedId);
             }
             console.log('저장 완료');
+            // 낙관적 반영: 리스너 도착 전에 mealHistory에 즉시 반영해 스크롤·렌더가 최신 데이터 기준으로 동작
+            if (record.id && window.mealHistory && Array.isArray(window.mealHistory)) {
+                const idx = window.mealHistory.findIndex(m => m.id === record.id);
+                const merged = { ...record };
+                if (idx >= 0) {
+                    window.mealHistory[idx] = merged;
+                } else {
+                    window.mealHistory.push(merged);
+                }
+                window.mealHistory.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''));
+            }
+            // 저장 직후 잠깐 타임라인 전체 재렌더를 막아, jumpToDate·스크롤이 리스너 재렌더에 덮이지 않게 함
+            window._timelineRerenderFreezeUntil = Date.now() + 800;
             
-            // 공유 처리 (ID 확보 후 실행)
+            // 공유 처리 (ID 확보 후 실행, 비동기로 떼어 두어 체감 속도 개선)
             // sharePhotos 함수가 기존 문서 삭제 + 새 문서 추가 + record.sharedPhotos 필드 업데이트를 모두 처리
             // 공유 상태가 변경되었을 때만 호출 (공유 설정 또는 공유 해제)
             if (record.id) {
@@ -765,20 +778,25 @@ export async function saveEntry() {
                 // 2. 기존에 공유된 사진이 있었는데 지금은 없는 경우 (공유 해제)
                 if (hasPhotosToShare || hadSharedPhotos) {
                     sharedPhotosUpdated = true;
-                    try {
-                        await dbOps.sharePhotos(photosToShare, record);
-                        console.log('공유 처리 완료:', {
-                            공유사진수: photosToShare.length,
-                            recordId: record.id,
-                            공유설정: hasPhotosToShare,
-                            공유해제: !hasPhotosToShare && hadSharedPhotos
-                        });
-                        // 리스너가 자동으로 갤러리를 업데이트하므로 여기서 직접 호출하지 않음
-                    } catch (e) {
+                    // 공유 화살표는 먼저 낙관 반영하고, sharePhotos는 백그라운드로 보내서 체감 지연 감소
+                    if (record.id) {
+                        if (hasPhotosToShare && photosToShare?.length) {
+                            if (!window.sharedPhotos) window.sharedPhotos = [];
+                            const newEntries = photosToShare.map(url => ({ entryId: record.id, photoUrl: url, userId: window.currentUser?.uid }));
+                            window.sharedPhotos = (window.sharedPhotos || []).filter(p => p.entryId !== record.id).concat(newEntries);
+                        } else if (hadSharedPhotos && !hasPhotosToShare) {
+                            if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+                                window.sharedPhotos = window.sharedPhotos.filter(p => p.entryId !== record.id);
+                            }
+                        }
+                        updateTimelineShareIndicators();
+                    }
+                    dbOps.sharePhotos(photosToShare, record).then(() => {
+                        console.log('공유 처리 완료:', { recordId: record.id, 공유설정: hasPhotosToShare });
+                    }).catch((e) => {
                         console.error("공유 처리 실패:", e);
                         showToast("사진 공유 처리 중 오류가 발생했습니다.", 'error');
-                        // 공유 실패 시에도 기록은 이미 저장되었으므로 계속 진행
-                    }
+                    });
                 }
             }
         } catch (saveError) {
@@ -788,74 +806,57 @@ export async function saveEntry() {
             return; // 저장 실패 시 여기서 종료
         }
         
-        // 탭에 따라 적절한 뷰 업데이트 (데이터가 Firestore 리스너를 통해 업데이트되므로 약간의 지연 후 렌더링)
-        // 실행 시점의 현재 탭 사용. 저장 중 사용자가 다른 탭으로 옮겼으면 그 탭 기준으로만 처리해 프리즈 방지.
+        // 탭에 따라 적절한 뷰 업데이트 (setTimeout 0으로 지연 없이 다음 틱에서 실행)
         setTimeout(() => {
             const tabNow = appState.currentTab;
             if (tabNow === 'timeline' && editingDate) {
-                // 타임라인 탭: 저장된 항목의 날짜로 이동
+                // 타임라인 탭: 날짜 이동·렌더 후 수정한 날짜 섹션이 상단(트래커 아래)에 오도록 한 번만 스크롤
+                const wasScrolling = window.isScrolling;
                 try {
-                    const wasScrolling = window.isScrolling;
                     if (window.isScrolling !== undefined) {
-                        window.isScrolling = true; // jumpToDate의 자동 스크롤 방지
+                        window.isScrolling = true; // jumpToDate 내부 스크롤 방지
                     }
                     if (window.jumpToDate) {
                         window.jumpToDate(editingDate);
                     }
-                    
-                    // 공유 상태가 변경된 경우 리스너가 자동으로 타임라인을 업데이트하므로
-                    // 여기서는 추가 렌더링 호출 불필요 (중복 방지)
-                    // 리스너가 100ms 내에 자동으로 renderTimeline()을 호출함
-                    
-                    // 타임라인 상단으로 스크롤하여 새로 추가된 항목이 트래커 아래에 보이도록
-                    setTimeout(() => {
-                        try {
-                            // 트래커 섹션과 헤더 높이 계산
-                            const trackerSection = document.getElementById('trackerSection');
-                            const trackerHeight = trackerSection ? trackerSection.offsetHeight : 0;
-                            const headerHeight = 73; // 헤더 높이 (top-[73px])
-                            const totalOffset = headerHeight + trackerHeight;
-                            
-                            // 날짜 섹션이 렌더링된 후 해당 섹션으로 스크롤 (트래커 높이만큼 오프셋)
-                            setTimeout(() => {
-                                try {
-                                    const dateSection = document.getElementById(`date-${editingDate}`);
-                                    if (dateSection) {
-                                        // 섹션의 위치를 계산하여 트래커 아래에 보이도록 스크롤
-                                        const elementTop = dateSection.getBoundingClientRect().top + window.pageYOffset;
-                                        const offsetPosition = elementTop - totalOffset - 16; // 16px 여유 공간
-                                        window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'smooth' });
-                                        if (window.isScrolling !== undefined) {
-                                            window.isScrolling = wasScrolling; // 원래 상태 복원
-                                        }
-                                    } else {
-                                        // 섹션이 아직 렌더링되지 않았으면 다시 시도
-                                        setTimeout(() => {
-                                            try {
-                                                const dateSection2 = document.getElementById(`date-${editingDate}`);
-                                                if (dateSection2) {
-                                                    const elementTop = dateSection2.getBoundingClientRect().top + window.pageYOffset;
-                                                    const offsetPosition = elementTop - totalOffset - 16;
-                                                    window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'smooth' });
-                                                }
-                                                if (window.isScrolling !== undefined) {
-                                                    window.isScrolling = wasScrolling; // 원래 상태 복원
-                                                }
-                                            } catch (scrollError) {
-                                                console.error('스크롤 오류:', scrollError);
-                                            }
-                                        }, 200);
-                                    }
-                                } catch (scrollError) {
-                                    console.error('스크롤 오류:', scrollError);
-                                }
-                            }, 400);
-                        } catch (scrollError) {
-                            console.error('스크롤 오류:', scrollError);
+                    updateTimelineShareIndicators();
+                    // 렌더·이미지 로딩·레이아웃 확정 후, 브라우저가 그린 직후(rAF) 정확한 좌표로 한 번만 스크롤
+                    const scrollEditedDateToTop = () => {
+                        const dateSection = document.getElementById(`date-${editingDate}`);
+                        const trackerSection = document.getElementById('trackerSection');
+                        if (!dateSection || !trackerSection) {
+                            if (window.isScrolling !== undefined) window.isScrolling = wasScrolling;
+                            return;
                         }
-                    }, 200);
+                        const tr = trackerSection.getBoundingClientRect();
+                        const ds = dateSection.getBoundingClientRect();
+                        const goalY = tr.bottom + 16;
+                        const scrollDelta = ds.top - goalY;
+                        const top = Math.max(0, window.scrollY + scrollDelta);
+                        window.scrollTo({ top, behavior: 'instant' });
+                        if (window.isScrolling !== undefined) window.isScrolling = wasScrolling;
+                    };
+                    const imgs = document.querySelectorAll(`#date-${editingDate} img`);
+                    const imageLoadPromise = imgs.length === 0 ? Promise.resolve() : Promise.race([
+                        Promise.all(Array.from(imgs).map(img =>
+                            img.complete ? Promise.resolve() : new Promise(r => { img.onload = r; img.onerror = r; })
+                        )),
+                        new Promise(r => setTimeout(r, 400))
+                    ]);
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            imageLoadPromise.then(() => {
+                                requestAnimationFrame(() => {
+                                    requestAnimationFrame(scrollEditedDateToTop);
+                                });
+                            });
+                        });
+                    });
                 } catch (scrollError) {
                     console.error('날짜 이동 오류:', scrollError);
+                    if (window.isScrolling !== undefined) {
+                        window.isScrolling = wasScrolling;
+                    }
                 }
             } else if (tabNow === 'gallery') {
                 // 갤러리 탭: 갤러리 다시 렌더링 (데이터가 업데이트되었으므로)
@@ -888,7 +889,7 @@ export async function saveEntry() {
                     try { renderGallery(); } catch (e) { console.error('갤러리 렌더링 오류:', e); }
                 }
             }
-        }, 100);
+        }, 0);
     } catch (e) {
         console.error('saveEntry 오류:', e);
         console.error('오류 스택:', e.stack);

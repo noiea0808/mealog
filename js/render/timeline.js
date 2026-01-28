@@ -12,6 +12,21 @@ function isEntryShared(entryId) {
     return window.sharedPhotos.some(photo => photo.entryId === entryId);
 }
 
+/** 타임라인에서 공유 화살표만 즉시 갱신 (기존 DOM만 업데이트, 풀 렌더 없음) */
+export function updateTimelineShareIndicators() {
+    const state = appState;
+    if (!window.currentUser || state.currentTab !== 'timeline') return;
+    const container = document.getElementById('timelineContainer');
+    if (!container) return;
+    container.querySelectorAll('[data-entry-id]').forEach(el => {
+        const entryId = el.getAttribute('data-entry-id');
+        const arrow = el.querySelector('.timeline-share-arrow');
+        if (arrow) {
+            arrow.style.display = isEntryShared(entryId) ? 'inline' : 'none';
+        }
+    });
+}
+
 export function renderTimeline() {
     const state = appState;
     if (!window.currentUser || state.currentTab !== 'timeline') return;
@@ -205,7 +220,7 @@ export function renderTimeline() {
                 } else {
                     iconHtml = `<i class="fa-solid fa-utensils text-2xl text-slate-400"></i>`;
                 }
-                html += `<div onclick="window.openModal('${dateStr}', '${slot.id}', ${r ? `'${r.id}'` : null})" class="card mb-1.5 border ${containerClass} cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+                html += `<div onclick="window.openModal('${dateStr}', '${slot.id}', ${r ? `'${r.id}'` : null})" class="card mb-1.5 border ${containerClass} cursor-pointer active:scale-[0.98] transition-all !rounded-none" ${r ? `data-entry-id="${r.id}"` : ''}>
                     <div class="flex">
                         <div class="w-[140px] h-[140px] ${iconBoxClass} flex-shrink-0 flex items-center justify-center overflow-hidden border-r">
                             ${iconHtml}
@@ -217,7 +232,7 @@ export function renderTimeline() {
                                     ${titleLine2 ? (r ? `<p class="text-sm text-slate-600 font-bold mt-1.5 mb-0 truncate">${titleLine2}</p>` : `<p class="mt-1.5 mb-0 truncate">${titleLine2}</p>`) : ''}
                                 </div>
                                 ${r ? `<div class="flex items-center gap-2 flex-shrink-0 ml-2">
-                                    ${isEntryShared(r.id) ? `<span class="text-xs text-slate-500" title="게시됨"><i class="fa-solid fa-share"></i></span>` : ''}
+                                    <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
                                     <span class="text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-300 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
                                         <span class="text-[13px]">⭐</span>
                                         <span class="text-[12px] font-black">${r.rating || '-'}</span>
@@ -234,9 +249,9 @@ export function renderTimeline() {
                     <span class="text-xs font-black text-slate-400 uppercase mr-3 flex-shrink-0 px-4">${slot.label}</span>
                     <div class="flex-1 flex flex-wrap gap-2 items-center">
                         ${records.length > 0 ? records.map(r => 
-                            `<div onclick="window.openModal('${dateStr}', '${slot.id}', '${r.id}')" class="snack-tag cursor-pointer active:bg-slate-50">
+                            `<div onclick="window.openModal('${dateStr}', '${slot.id}', '${r.id}')" class="snack-tag cursor-pointer active:bg-slate-50" data-entry-id="${r.id}">
                                 ${r.menuDetail || r.snackType || '간식'} 
-                                ${isEntryShared(r.id) ? `<i class="fa-solid fa-share text-slate-500 text-[8px] ml-1" title="게시됨"></i>` : ''}
+                                <span class="timeline-share-arrow" style="display:${isEntryShared(r.id) ? 'inline' : 'none'}"><i class="fa-solid fa-share text-slate-500 text-[8px] ml-1" title="게시됨"></i></span>
                                 ${r.rating ? `<span class="text-[10px] font-black text-yellow-600 bg-yellow-50 border border-yellow-300 px-1 py-0.5 rounded-full ml-1.5 flex items-center gap-0.5">
                                     <span class="text-[11px]">⭐</span>
                                     <span class="text-[11px] font-black">${r.rating}</span>

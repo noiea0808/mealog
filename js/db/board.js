@@ -376,7 +376,14 @@ export const boardOperations = {
             const commentsColl = collection(db, 'artifacts', appId, 'boardComments');
             const q = query(commentsColl, where('postId', '==', String(postId)));
             const snapshot = await getDocs(q);
-            const comments = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            const comments = snapshot.docs.map(d => {
+                const data = d.data();
+                return {
+                    id: d.id,
+                    ...data,
+                    content: data.content ?? data.text ?? ''
+                };
+            });
             
             // timestamp 안전하게 변환하는 헬퍼 함수
             const getCommentTimestamp = (comment) => {
