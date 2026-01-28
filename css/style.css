@@ -773,6 +773,26 @@ header .mealog-title {
 .board-list-card--food { border-left-color: #059669; }
 .board-list-card--admin { border-left-color: #ea580c; }
 
+/* 밀톡 본문보기 바탕: 짙은 연회색 + 좌우 여백 반으로 */
+#boardDetailContent {
+    background: #e2e8f0; /* slate-200, 조금 짙은 연회색 */
+    margin-left: -0.5rem;
+    margin-right: -0.5rem;
+    padding: 0.5rem;
+    border-radius: 0 0 1rem 1rem;
+}
+
+/* 밀톡 본문보기 카드: 내부 화이트, 위아래 여백 + 그림자 */
+.board-post-card {
+    margin-top: 0.5rem;
+    margin-bottom: 1rem;
+    padding: 1.25rem 1rem;
+    border-radius: 1rem;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
 /* MEAL TALK 게시글 상세 하단 버튼: 참여(추천/비추천) 왼쪽, 관리(수정/삭제) 오른쪽 */
 .board-detail-actions {
     display: flex;

@@ -3169,7 +3169,7 @@ export async function renderBoardDetail(postId) {
         ]);
         
         container.innerHTML = `
-            <div class="space-y-4">
+            <div class="board-post-card space-y-4">
                 <!-- 게시글 헤더 -->
                 <div class="border-b border-slate-200 pb-4">
                     <div class="flex items-center justify-between">
@@ -3379,7 +3379,7 @@ export async function renderNoticeDetail(noticeId) {
         const dislikes = counts?.dislikes ?? 0;
         
         container.innerHTML = `
-            <div class="space-y-4">
+            <div class="board-post-card space-y-4">
                 <div class="border-b border-slate-200 pb-4">
                     ${notice.isPinned ? '<div class="flex items-center gap-2 mb-3"><span class="text-[10px] px-2 py-0.5 bg-yellow-100 text-yellow-700 font-bold rounded">고정</span></div>' : ''}
                     <div class="flex items-center gap-3">
