@@ -2003,8 +2003,19 @@ window.refreshUsers = function() {
     renderUsers();
 }
 
-// 공지 렌더링
+// 공지 렌더링 (관리자: 글목록 + 선택 시 본문)
 let currentEditingNoticeId = null;
+let currentSelectedNoticeId = null;
+
+const NOTICE_TYPE_LABELS = { important: '중요', notice: '알림', light: '가벼운' };
+const NOTICE_TYPE_CLASSES = { important: 'bg-red-100 text-red-700', notice: 'bg-blue-100 text-blue-700', light: 'bg-slate-100 text-slate-700' };
+
+function formatNoticeDate(notice) {
+    const ts = notice.timestamp;
+    if (!ts) return '-';
+    const d = typeof ts?.toDate === 'function' ? ts.toDate() : new Date(ts);
+    return Number.isFinite(d.getTime()) ? d.toLocaleDateString('ko-KR') : '-';
+}
 
 async function renderNotices() {
     const container = document.getElementById('noticesContainer');
@@ -2015,41 +2026,124 @@ async function renderNotices() {
         const noticesSnapshot = await getDocs(query(noticesColl, orderBy('timestamp', 'desc')));
         
         if (noticesSnapshot.empty) {
-            container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-bullhorn text-2xl mb-2"></i><p>공지가 없습니다.</p></div>';
+            container.innerHTML = '<div class="text-center py-8 text-slate-400 px-4"><i class="fa-solid fa-bullhorn text-2xl mb-2"></i><p>공지가 없습니다.</p></div>';
+            document.getElementById('noticeDetailContainer').innerHTML = '목록에서 공지를 선택하면 본문이 표시됩니다.';
             return;
         }
         
-        container.innerHTML = noticesSnapshot.docs.map(doc => {
-            const notice = doc.data();
-            const date = notice.timestamp ? new Date(notice.timestamp).toLocaleDateString('ko-KR') : '-';
+        container.innerHTML = noticesSnapshot.docs.map(d => {
+            const notice = d.data();
+            const noticeId = d.id;
+            const date = formatNoticeDate(notice);
+            const type = notice.type || notice.noticeType || 'notice';
+            const typeLabel = NOTICE_TYPE_LABELS[type] || '알림';
+            const typeClass = NOTICE_TYPE_CLASSES[type] || NOTICE_TYPE_CLASSES.notice;
+            const isSelected = currentSelectedNoticeId === noticeId;
             return `
-                <div class="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow">
-                    <div class="flex items-start justify-between">
-                        <div class="flex-1">
-                            <div class="flex items-center gap-2 mb-2">
-                                <h3 class="font-bold text-slate-800">${escapeHtml(notice.title || '')}</h3>
-                                ${notice.isPinned ? '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">고정</span>' : ''}
-                            </div>
-                            <p class="text-sm text-slate-600 whitespace-pre-wrap">${escapeHtml(notice.content || '')}</p>
-                            <div class="text-xs text-slate-400 mt-2">${date}</div>
-                        </div>
-                        <div class="flex gap-2 ml-4">
-                            <button onclick="window.editNotice('${doc.id}')" class="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors">
-                                <i class="fa-solid fa-pencil mr-1"></i>수정
-                            </button>
-                            <button onclick="window.deleteNotice('${doc.id}')" class="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 transition-colors">
-                                <i class="fa-solid fa-trash mr-1"></i>삭제
-                            </button>
-                        </div>
+                <div data-notice-id="${noticeId}" onclick="window.selectAdminNotice('${noticeId}')" class="admin-notice-row px-4 py-3 border-b border-slate-100 last:border-b-0 cursor-pointer hover:bg-slate-50 transition-colors ${isSelected ? 'bg-emerald-50 border-l-4 border-l-emerald-500' : ''}">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="px-2 py-0.5 text-xs font-bold rounded ${typeClass}">${escapeHtml(typeLabel)}</span>
+                        ${notice.isPinned === true ? '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">고정</span>' : ''}
+                        ${notice.hidden === true ? '<span class="px-2 py-0.5 bg-slate-200 text-slate-600 text-xs font-bold rounded">숨김</span>' : ''}
                     </div>
+                    <h3 class="font-bold text-slate-800 truncate mt-1">${escapeHtml(notice.title || '제목 없음')}</h3>
+                    <div class="text-xs text-slate-400 mt-1">${date}</div>
                 </div>
             `;
         }).join('');
+        
+        const listPage = document.getElementById('noticeListPage');
+        const detailPage = document.getElementById('noticeDetailPage');
+        if (listPage) listPage.classList.remove('hidden');
+        if (detailPage) detailPage.classList.add('hidden');
     } catch (e) {
         console.error("공지 렌더링 실패:", e);
-        container.innerHTML = '<div class="text-center py-8 text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>공지를 불러오는 중 오류가 발생했습니다.</p></div>';
+        container.innerHTML = '<div class="text-center py-8 text-red-400 px-4"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>공지를 불러오는 중 오류가 발생했습니다.</p></div>';
     }
 }
+
+// 관리자 공지 본문 표시
+async function renderNoticeDetailInAdmin(noticeId) {
+    const container = document.getElementById('noticeDetailContainer');
+    if (!container) return;
+    
+    if (!noticeId) {
+        container.innerHTML = '';
+        return;
+    }
+    
+    try {
+        const noticeDoc = doc(db, 'artifacts', appId, 'notices', noticeId);
+        const snap = await getDoc(noticeDoc);
+        if (!snap.exists()) {
+            container.innerHTML = '<p class="text-red-400">공지를 찾을 수 없습니다.</p>';
+            return;
+        }
+        const notice = snap.data();
+        const date = formatNoticeDate(notice);
+        const type = notice.type || notice.noticeType || 'notice';
+        const typeLabel = NOTICE_TYPE_LABELS[type] || '알림';
+        const typeClass = NOTICE_TYPE_CLASSES[type] || NOTICE_TYPE_CLASSES.notice;
+        
+        container.innerHTML = `
+            <div class="bg-white rounded-xl p-4 border border-slate-200">
+                <div class="flex items-center gap-2 flex-wrap mb-2">
+                    <span class="px-2 py-0.5 text-xs font-bold rounded ${typeClass}">${escapeHtml(typeLabel)}</span>
+                    ${notice.isPinned === true ? '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">고정</span>' : ''}
+                    ${notice.hidden === true ? '<span class="px-2 py-0.5 bg-slate-200 text-slate-600 text-xs font-bold rounded">숨김</span>' : ''}
+                </div>
+                <h2 class="text-lg font-bold text-slate-800 mb-2">${escapeHtml(notice.title || '제목 없음')}</h2>
+                <div class="text-xs text-slate-400 mb-4">${date}</div>
+                <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4">${escapeHtml(notice.content || '').replace(/\n/g, '<br>')}</div>
+                <div class="pt-2 border-t border-slate-200">
+                    <p class="text-xs text-slate-500 mb-2">작업</p>
+                    <div class="flex gap-2 flex-wrap">
+                        <button type="button" onclick="window.toggleNoticeHidden('${noticeId}')" class="px-4 py-2 ${notice.hidden === true ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-500 text-white hover:bg-slate-600'} rounded-lg text-sm font-bold transition-colors">
+                            <i class="fa-solid fa-eye${notice.hidden === true ? '-slash' : ''} mr-1.5"></i>${notice.hidden === true ? '숨김 해제' : '숨김'}
+                        </button>
+                        <button type="button" onclick="window.editNotice('${noticeId}')" class="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors">
+                            <i class="fa-solid fa-pencil mr-1"></i>수정
+                        </button>
+                        <button type="button" onclick="window.deleteNotice('${noticeId}')" class="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 transition-colors">
+                            <i class="fa-solid fa-trash mr-1"></i>삭제
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    } catch (e) {
+        console.error("공지 본문 로드 실패:", e);
+        container.innerHTML = '<p class="text-red-400">본문을 불러오는 중 오류가 발생했습니다.</p>';
+    }
+}
+
+// 관리자 공지 목록에서 항목 선택 → 글본문 페이지로 전환
+window.selectAdminNotice = function(noticeId) {
+    currentSelectedNoticeId = noticeId;
+    const listPage = document.getElementById('noticeListPage');
+    const detailPage = document.getElementById('noticeDetailPage');
+    if (listPage) listPage.classList.add('hidden');
+    if (detailPage) detailPage.classList.remove('hidden');
+    renderNoticeDetailInAdmin(noticeId);
+    document.querySelectorAll('.admin-notice-row').forEach(row => {
+        const id = row.getAttribute('data-notice-id');
+        if (id === noticeId) {
+            row.classList.add('bg-emerald-50', 'border-l-4', 'border-l-emerald-500');
+            row.classList.remove('border-l-0');
+        } else {
+            row.classList.remove('bg-emerald-50', 'border-l-4', 'border-l-emerald-500');
+        }
+    });
+};
+
+// 관리자 공지 글본문 → 글목록 페이지로 돌아가기
+window.backToNoticeList = function() {
+    currentSelectedNoticeId = null;
+    const listPage = document.getElementById('noticeListPage');
+    const detailPage = document.getElementById('noticeDetailPage');
+    if (listPage) listPage.classList.remove('hidden');
+    if (detailPage) detailPage.classList.add('hidden');
+};
 
 // 공지 작성 모달 열기
 window.openNoticeWriteModal = function(noticeId = null) {
@@ -2061,6 +2155,7 @@ window.openNoticeWriteModal = function(noticeId = null) {
     const contentInput = document.getElementById('noticeContent');
     const typeSelect = document.getElementById('noticeType');
     const pinnedCheckbox = document.getElementById('noticeIsPinned');
+    const hiddenCheckbox = document.getElementById('noticeHidden');
     
     if (!modal) return;
     
@@ -2069,6 +2164,7 @@ window.openNoticeWriteModal = function(noticeId = null) {
     if (contentInput) contentInput.value = '';
     if (typeSelect) typeSelect.value = 'important';
     if (pinnedCheckbox) pinnedCheckbox.checked = false;
+    if (hiddenCheckbox) hiddenCheckbox.checked = false;
     
     // 수정 모드인 경우
     if (noticeId) {
@@ -2084,6 +2180,7 @@ window.openNoticeWriteModal = function(noticeId = null) {
                 if (contentInput) contentInput.value = noticeData.content || '';
                 if (typeSelect) typeSelect.value = noticeData.type || 'important';
                 if (pinnedCheckbox) pinnedCheckbox.checked = Boolean(noticeData.isPinned === true);
+                if (hiddenCheckbox) hiddenCheckbox.checked = Boolean(noticeData.hidden === true);
             }
         }).catch(e => {
             console.error("공지 로드 실패:", e);
@@ -2110,6 +2207,7 @@ window.submitNotice = async function() {
     const contentInput = document.getElementById('noticeContent');
     const typeSelect = document.getElementById('noticeType');
     const pinnedCheckbox = document.getElementById('noticeIsPinned');
+    const hiddenCheckbox = document.getElementById('noticeHidden');
     const submitBtn = document.getElementById('noticeSubmitBtn');
     
     if (!titleInput || !contentInput) return;
@@ -2118,6 +2216,7 @@ window.submitNotice = async function() {
     const content = contentInput.value.trim();
     const type = typeSelect ? typeSelect.value : 'important';
     const isPinned = pinnedCheckbox ? Boolean(pinnedCheckbox.checked) : false;
+    const hidden = hiddenCheckbox ? Boolean(hiddenCheckbox.checked) : false;
     
     if (!title) {
         alert('제목을 입력해주세요.');
@@ -2140,13 +2239,14 @@ window.submitNotice = async function() {
             content: content,
             type: type,
             isPinned: isPinned,
+            hidden: hidden,
             timestamp: new Date().toISOString()
         };
         
         if (currentEditingNoticeId) {
-            // 수정 (isPinned 명시적 저장 - 체크 해제 시 false로 반영)
+            // 수정 (isPinned, hidden 명시적 저장 - 체크 해제 시 false로 반영)
             const noticeDoc = doc(db, 'artifacts', appId, 'notices', currentEditingNoticeId);
-            await setDoc(noticeDoc, { ...noticeData, isPinned: isPinned }, { merge: true });
+            await setDoc(noticeDoc, { ...noticeData, isPinned: isPinned, hidden: hidden }, { merge: true });
             alert('공지가 수정되었습니다.');
         } else {
             // 작성
@@ -2157,6 +2257,14 @@ window.submitNotice = async function() {
         
         window.closeNoticeModal();
         await renderNotices();
+        // 수정한 공지를 보고 있었으면 글본문 페이지 유지 후 본문 갱신
+        if (currentSelectedNoticeId) {
+            const listPage = document.getElementById('noticeListPage');
+            const detailPage = document.getElementById('noticeDetailPage');
+            if (listPage) listPage.classList.add('hidden');
+            if (detailPage) detailPage.classList.remove('hidden');
+            await renderNoticeDetailInAdmin(currentSelectedNoticeId);
+        }
     } catch (e) {
         console.error("공지 저장 실패:", e);
         alert("공지 저장 중 오류가 발생했습니다: " + e.message);
@@ -2173,11 +2281,32 @@ window.editNotice = function(noticeId) {
     window.openNoticeWriteModal(noticeId);
 };
 
+// 공지 숨김/숨김 해제 토글 (글본문 페이지에서 바로)
+window.toggleNoticeHidden = async function(noticeId) {
+    if (!noticeId) return;
+    try {
+        const noticeDoc = doc(db, 'artifacts', appId, 'notices', noticeId);
+        const snap = await getDoc(noticeDoc);
+        if (!snap.exists()) {
+            alert('공지를 찾을 수 없습니다.');
+            return;
+        }
+        const current = Boolean(snap.data().hidden === true);
+        await setDoc(noticeDoc, { hidden: !current }, { merge: true });
+        await renderNoticeDetailInAdmin(noticeId);
+        await renderNotices();
+    } catch (e) {
+        console.error("공지 숨김 토글 실패:", e);
+        alert("처리 중 오류가 발생했습니다: " + e.message);
+    }
+};
+
 // 공지 삭제
 window.deleteNotice = async function(noticeId) {
     if (!confirm('정말 삭제하시겠습니까?')) return;
     
     try {
+        if (noticeId === currentSelectedNoticeId) currentSelectedNoticeId = null;
         const noticeDoc = doc(db, 'artifacts', appId, 'notices', noticeId);
         await deleteDoc(noticeDoc);
         alert('공지가 삭제되었습니다.');

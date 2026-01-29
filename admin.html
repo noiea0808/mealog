@@ -294,10 +294,24 @@
                                     </div>
                                 </div>
                                 <div class="p-6">
-                                    <div id="noticesContainer" class="space-y-4">
-                                        <div class="text-center py-8 text-slate-400">
-                                            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
-                                            <p>로딩 중...</p>
+                                    <!-- 글목록 페이지 -->
+                                    <div id="noticeListPage" class="notice-admin-page">
+                                        <h3 class="text-sm font-bold text-slate-500 mb-3">글목록</h3>
+                                        <div id="noticesContainer" class="space-y-2 border border-slate-200 rounded-xl overflow-hidden">
+                                            <div class="text-center py-8 text-slate-400">
+                                                <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                                                <p>로딩 중...</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- 글본문 페이지 (선택 시 이 페이지로 전환) -->
+                                    <div id="noticeDetailPage" class="notice-admin-page hidden">
+                                        <div class="flex items-center gap-3 mb-4">
+                                            <button type="button" onclick="window.backToNoticeList()" class="px-3 py-2 text-slate-600 hover:bg-slate-100 rounded-xl text-sm font-bold transition-colors">
+                                                <i class="fa-solid fa-arrow-left mr-2"></i>목록으로
+                                            </button>
+                                        </div>
+                                        <div id="noticeDetailContainer" class="bg-slate-50 rounded-xl border border-slate-200 p-4 min-h-[200px]">
                                         </div>
                                     </div>
                                 </div>
@@ -737,6 +751,10 @@
                 <div class="flex items-center gap-2">
                     <input type="checkbox" id="noticeIsPinned" class="w-4 h-4">
                     <label for="noticeIsPinned" class="text-sm text-slate-600">상단 고정</label>
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="noticeHidden" class="w-4 h-4">
+                    <label for="noticeHidden" class="text-sm text-slate-600">숨김 (밀로그·밀톡에 노출하지 않음)</label>
                 </div>
             </div>
             <div class="flex gap-3 mt-6">

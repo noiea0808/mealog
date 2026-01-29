@@ -2806,7 +2806,7 @@ async function renderNotices() {
     
     try {
         const notices = await getNotices();
-        const activeNotices = notices.filter(n => n && !n.deleted); // 삭제되지 않은 공지만 표시
+        const activeNotices = notices.filter(n => n && !n.deleted && !n.hidden); // 삭제·숨김 아닌 공지만 표시 (밀로그·밀톡용)
         
         if (activeNotices.length === 0) {
             noticesContainer.innerHTML = '';
@@ -2902,7 +2902,7 @@ async function renderNotices() {
                     <div class="flex items-start gap-3 mb-3">
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center gap-2 mb-2 flex-wrap">
-                                ${notice.isPinned === true ? `<i class="fa-solid fa-thumbtack text-emerald-600 text-xs"></i>` : ''}
+                                ${notice.isPinned === true ? `<i class="fa-solid fa-thumbtack text-black text-xs"></i>` : ''}
                                 <span class="text-[10px] font-bold px-2.5 py-1 rounded-lg ${typeColor} whitespace-nowrap shrink-0">${typeLabel}</span>
                                 <h3 class="text-base font-bold text-slate-800 truncate flex-1 min-w-0 leading-tight">${escapeHtml(notice.title || '제목 없음')}</h3>
                             </div>
