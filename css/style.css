@@ -583,7 +583,8 @@ header .mealog-title {
 /* 인사이트 기간 탭: 바와 버튼 라운드를 맞춰 상하·좌우·모서리 여백 동일하게 */
 #dashboardView .insight-period-tabs {
     --insight-period-gap: 2px;
-    padding: var(--insight-period-gap);
+    padding-block: 1px;
+    padding-inline: var(--insight-period-gap);
     border-radius: 12px;
     box-sizing: border-box;
 }
