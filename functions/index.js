@@ -751,14 +751,14 @@ exports.createDailyShare = onCall({ region: REGION }, async (request) => {
     throw new HttpsError('invalid-argument', '사진 URL과 날짜가 필요합니다.');
   }
 
-  // 레이트 리밋 체크
-  await checkRateLimit(auth.uid, 'share', request);
-
-  // 사용자 프로필 정보 가져오기
+  // 레이트 리밋 체크와 프로필 조회 병렬 수행
   const userSettingsRef = db.collection('artifacts').doc(APP_ID)
     .collection('users').doc(auth.uid)
     .collection('config').doc('settings');
-  const userSettingsDoc = await userSettingsRef.get();
+  const [_, userSettingsDoc] = await Promise.all([
+    checkRateLimit(auth.uid, 'share', request),
+    userSettingsRef.get()
+  ]);
   
   const profile = userSettingsDoc.exists ? (userSettingsDoc.data().profile || {}) : {};
   const userNickname = profile.nickname || '익명';
@@ -827,14 +827,13 @@ exports.createBestShare = onCall({ region: REGION }, async (request) => {
     throw new HttpsError('invalid-argument', '사진 URL, 기간 타입, 기간 텍스트가 필요합니다.');
   }
 
-  // 레이트 리밋 체크
-  await checkRateLimit(auth.uid, 'share', request);
-
-  // 사용자 프로필 정보 가져오기
   const userSettingsRef = db.collection('artifacts').doc(APP_ID)
     .collection('users').doc(auth.uid)
     .collection('config').doc('settings');
-  const userSettingsDoc = await userSettingsRef.get();
+  const [_, userSettingsDoc] = await Promise.all([
+    checkRateLimit(auth.uid, 'share', request),
+    userSettingsRef.get()
+  ]);
   
   const profile = userSettingsDoc.exists ? (userSettingsDoc.data().profile || {}) : {};
   const userNickname = profile.nickname || '익명';
@@ -906,14 +905,13 @@ exports.createInsightShare = onCall({ region: REGION }, async (request) => {
     throw new HttpsError('invalid-argument', '사진 URL과 날짜 범위 텍스트가 필요합니다.');
   }
 
-  // 레이트 리밋 체크
-  await checkRateLimit(auth.uid, 'share', request);
-
-  // 사용자 프로필 정보 가져오기
   const userSettingsRef = db.collection('artifacts').doc(APP_ID)
     .collection('users').doc(auth.uid)
     .collection('config').doc('settings');
-  const userSettingsDoc = await userSettingsRef.get();
+  const [_, userSettingsDoc] = await Promise.all([
+    checkRateLimit(auth.uid, 'share', request),
+    userSettingsRef.get()
+  ]);
   
   const profile = userSettingsDoc.exists ? (userSettingsDoc.data().profile || {}) : {};
   const userNickname = profile.nickname || '익명';
@@ -983,7 +981,17 @@ exports.unsharePhotos = onCall({ region: REGION }, async (request) => {
   }
 
   const sharedColl = db.collection('artifacts').doc(APP_ID).collection('sharedPhotos');
-  const query = await sharedColl.where('userId', '==', auth.uid).get();
+  let querySnap;
+  if (isBestShare) {
+    querySnap = await sharedColl.where('userId', '==', auth.uid).where('type', '==', 'best').get();
+  } else if (isDailyShare) {
+    querySnap = await sharedColl.where('userId', '==', auth.uid).where('type', '==', 'daily').get();
+  } else if (isInsightShare) {
+    querySnap = await sharedColl.where('userId', '==', auth.uid).where('type', '==', 'insight').get();
+  } else {
+    querySnap = await sharedColl.where('userId', '==', auth.uid).get();
+  }
+  const query = querySnap;
   
   const photosToDelete = [];
   

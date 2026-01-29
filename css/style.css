@@ -636,13 +636,9 @@ header .mealog-title {
     font-weight: 800;
 }
 
-/* 인스타그램 스타일 포스트 */
+/* 인스타그램 스타일 포스트 (앨범) - 선택 시 scale 효과 제거 */
 .instagram-post {
-    transition: transform 0.2s;
-}
-
-.instagram-post:active {
-    transform: scale(0.98);
+    /* 클릭 시 작아졌다 커졌다 효과 없음 */
 }
 
 /* 좋아요, 북마크, 댓글 아이콘 stroke 얇게 (앨범·밀톡) - 배경색과 블렌드하여 보더라인 얇게 */

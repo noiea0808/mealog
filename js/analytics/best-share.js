@@ -973,43 +973,39 @@ export async function shareBestToFeed() {
     const existingShare = await checkBestShareStatus(periodType, periodText);
     
     if (existingShare) {
-        // 이미 공유된 경우: 공유 취소
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.textContent = '취소 중...';
+        const photoUrlToRemove = existingShare.photoUrl;
+        const prevPeriodType = existingShare.periodType;
+        const prevPeriodText = existingShare.periodText;
+        const prevShared = window.sharedPhotos ? [...window.sharedPhotos] : [];
+        if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+            window.sharedPhotos = window.sharedPhotos.filter(p =>
+                !(p.type === 'best' && p.periodType === prevPeriodType && p.periodText === prevPeriodText && p.userId === window.currentUser.uid)
+            );
         }
-        
-        try {
-            await dbOps.unsharePhotos([existingShare.photoUrl], null, true);
-            showToast('공유가 취소되었습니다.', 'success');
-            closeShareBestModal();
-            
-            // 베스트 목록 새로고침
+        closeShareBestModal();
+        renderBestMeals();
+        if (appState.currentTab === 'gallery') renderGallery();
+        showToast('공유가 취소되었습니다.', 'success');
+        dbOps.unsharePhotos([photoUrlToRemove], null, true).catch(() => {
+            if (window.sharedPhotos) window.sharedPhotos = prevShared;
             renderBestMeals();
-            
-            // 갤러리 새로고침
-            if (appState.currentTab === 'gallery') {
-                renderGallery();
-            }
-        } catch (e) {
-            console.error('베스트 공유 취소 실패:', e);
-            showToast('공유 취소 중 오류가 발생했습니다.', 'error');
-        } finally {
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.textContent = '공유하기';
-            }
-        }
+            if (appState.currentTab === 'gallery') renderGallery();
+        });
         return;
     }
     
     // 공유되지 않은 경우: 공유하기
-    // 로딩 상태
+    const bestShareModal = document.getElementById('bestShareModal');
+    const bestShareSpinner = bestShareModal?.querySelector('#bestShareLoadingOverlay');
+    if (bestShareSpinner) bestShareSpinner.classList.remove('hidden');
     if (submitBtn) {
         submitBtn.disabled = true;
-        submitBtn.textContent = '공유 중...';
+        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>공유 중...';
     }
-    
+    // 스피너가 화면에 그려진 뒤 무거운 작업 진행
+    await new Promise(r => requestAnimationFrame(r));
+    await new Promise(r => setTimeout(r, 50));
+
     try {
         // html2canvas가 전역에 있는지 확인 (window.html2canvas 또는 전역 html2canvas)
         const html2canvasFunc = (typeof window !== 'undefined' && window.html2canvas) || (typeof html2canvas !== 'undefined' ? html2canvas : null);
@@ -1041,18 +1037,21 @@ export async function shareBestToFeed() {
         
         const userProfile = window.userSettings?.profile || {};
         
-        // Cloud Functions를 통해 베스트 공유 생성
-        const { callableFunctions } = await import('../firebase.js');
-        const result = await callableFunctions.createBestShare({
-            photoUrl: photoUrl,
-            periodType: periodType,
-            periodText: periodText,
-            comment: comment
-        });
+        const bestShareData = {
+            id: 'pending-' + Date.now(),
+            photoUrl,
+            userId: window.currentUser.uid,
+            userNickname: userProfile.nickname || '익명',
+            userIcon: userProfile.icon || '🐻',
+            userPhotoUrl: userProfile.photoUrl || null,
+            type: 'best',
+            periodType,
+            periodText,
+            timestamp: new Date().toISOString(),
+            entryId: null,
+            comment: comment || ''
+        };
 
-        const bestShareData = result.data;
-        
-        // window.sharedPhotos 업데이트
         if (!window.sharedPhotos) window.sharedPhotos = [];
         window.sharedPhotos = window.sharedPhotos.filter(p =>
             !(p.type === 'best' && p.periodType === periodType && p.periodText === periodText && p.userId === window.currentUser.uid)
@@ -1062,19 +1061,41 @@ export async function shareBestToFeed() {
 
         showToast('베스트가 피드에 공유되었습니다!', 'success');
         closeShareBestModal();
-        
-        // 베스트 목록 새로고침
         renderBestMeals();
-        
-        // 갤러리 새로고침
-        if (appState.currentTab === 'gallery') {
-            renderGallery();
-        }
+        if (appState.currentTab === 'gallery') renderGallery();
+
+        const { callableFunctions } = await import('../firebase.js');
+        callableFunctions.createBestShare({
+            photoUrl,
+            periodType,
+            periodText,
+            comment
+        }).then((result) => {
+            const serverData = result.data;
+            const idx = window.sharedPhotos?.findIndex(p => p.id === bestShareData.id || (p.type === 'best' && p.periodType === periodType && p.periodText === periodText && p.userId === window.currentUser.uid && p.photoUrl === photoUrl));
+            if (idx !== undefined && idx !== -1 && window.sharedPhotos) {
+                window.sharedPhotos[idx] = serverData;
+                if (appState.currentTab === 'gallery') renderGallery();
+            }
+        }).catch((e) => {
+            console.error('베스트 공유 서버 반영 실패:', e);
+            if (window.sharedPhotos) {
+                window.sharedPhotos = window.sharedPhotos.filter(p =>
+                    !(p.type === 'best' && p.periodType === periodType && p.periodText === periodText && p.userId === window.currentUser.uid)
+                );
+                renderBestMeals();
+                if (appState.currentTab === 'gallery') renderGallery();
+            }
+            showToast(e?.message || e?.details || '공유 반영에 실패했습니다. 다시 시도해 주세요.', 'error');
+        });
     } catch (e) {
         console.error('베스트 공유 실패:', e);
         const errorMessage = e.message || e.details || '공유 중 오류가 발생했습니다.';
         showToast(errorMessage, 'error');
     } finally {
+        const modal = document.getElementById('bestShareModal');
+        const spinner = modal?.querySelector('#bestShareLoadingOverlay');
+        if (spinner) spinner.classList.add('hidden');
         if (submitBtn) {
             submitBtn.disabled = false;
             submitBtn.textContent = '공유하기';

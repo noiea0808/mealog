@@ -1582,37 +1582,30 @@ export async function shareInsightToFeed() {
     }
     
     if (existingShare) {
-        // 이미 공유된 경우: 공유 취소
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.textContent = '취소 중...';
+        const photoUrlToRemove = existingShare.photoUrl;
+        const prevShared = window.sharedPhotos ? [...window.sharedPhotos] : [];
+        if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+            window.sharedPhotos = window.sharedPhotos.filter(p =>
+                !(p.type === 'insight' && p.dateRangeText === dateRangeText && p.userId === window.currentUser.uid)
+            );
         }
-        
-        try {
-            await dbOps.unsharePhotos([existingShare.photoUrl], null, false, false);
-            showToast('공유가 취소되었습니다.', 'success');
-            closeShareInsightModal();
-            
-            // 공유 버튼 상태 업데이트
-            await updateShareButtonStatus();
-            
-            // 갤러리/피드 새로고침
+        closeShareInsightModal();
+        showToast('공유가 취소되었습니다.', 'success');
+        updateShareButtonStatus();
+        if (appState.currentTab === 'gallery') {
+            import('../render/index.js').then(({ renderGallery }) => renderGallery());
+        } else if (appState.currentTab === 'feed') {
+            import('../render/index.js').then(({ renderFeed }) => renderFeed());
+        }
+        dbOps.unsharePhotos([photoUrlToRemove], null, false, true).catch(() => {
+            if (window.sharedPhotos) window.sharedPhotos = prevShared;
+            updateShareButtonStatus();
             if (appState.currentTab === 'gallery') {
-                const { renderGallery } = await import('../render/index.js');
-                renderGallery();
+                import('../render/index.js').then(({ renderGallery }) => renderGallery());
             } else if (appState.currentTab === 'feed') {
-                const { renderFeed } = await import('../render/index.js');
-                renderFeed();
+                import('../render/index.js').then(({ renderFeed }) => renderFeed());
             }
-        } catch (e) {
-            console.error('인사이트 공유 취소 실패:', e);
-            showToast('공유 취소 중 오류가 발생했습니다.', 'error');
-        } finally {
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.textContent = '공유하기';
-            }
-        }
+        });
         return;
     }
     
@@ -1657,17 +1650,20 @@ export async function shareInsightToFeed() {
         
         const userProfile = window.userSettings?.profile || {};
         
-        // Cloud Functions를 통해 인사이트 공유 생성
-        const { callableFunctions } = await import('../firebase.js');
-        const result = await callableFunctions.createInsightShare({
-            photoUrl: photoUrl,
-            dateRangeText: dateRangeText,
-            comment: comment
-        });
+        const insightShareData = {
+            id: 'pending-' + Date.now(),
+            photoUrl,
+            userId: window.currentUser.uid,
+            userNickname: userProfile.nickname || '익명',
+            userIcon: userProfile.icon || '🐻',
+            userPhotoUrl: userProfile.photoUrl || null,
+            type: 'insight',
+            dateRangeText,
+            timestamp: new Date().toISOString(),
+            entryId: null,
+            comment: comment || ''
+        };
 
-        const insightShareData = result.data;
-        
-        // window.sharedPhotos 업데이트
         if (!window.sharedPhotos) window.sharedPhotos = [];
         window.sharedPhotos = window.sharedPhotos.filter(p =>
             !(p.type === 'insight' && p.dateRangeText === dateRangeText && p.userId === window.currentUser.uid)
@@ -1677,11 +1673,7 @@ export async function shareInsightToFeed() {
 
         showToast('밀당(MEAL-DANG)들의 참견이 피드에 공유되었습니다!', 'success');
         closeShareInsightModal();
-        
-        // 공유 버튼 상태 업데이트
-        await updateShareButtonStatus();
-        
-        // 갤러리/피드 새로고침
+        updateShareButtonStatus();
         if (appState.currentTab === 'gallery') {
             const { renderGallery } = await import('../render/index.js');
             renderGallery();
@@ -1689,6 +1681,32 @@ export async function shareInsightToFeed() {
             const { renderFeed } = await import('../render/index.js');
             renderFeed();
         }
+
+        const { callableFunctions } = await import('../firebase.js');
+        callableFunctions.createInsightShare({
+            photoUrl,
+            dateRangeText,
+            comment
+        }).then((result) => {
+            const serverData = result.data;
+            const idx = window.sharedPhotos?.findIndex(p => p.id === insightShareData.id || (p.type === 'insight' && p.dateRangeText === dateRangeText && p.userId === window.currentUser.uid && p.photoUrl === photoUrl));
+            if (idx !== undefined && idx !== -1 && window.sharedPhotos) {
+                window.sharedPhotos[idx] = serverData;
+                if (appState.currentTab === 'gallery') import('../render/index.js').then(({ renderGallery }) => renderGallery());
+                if (appState.currentTab === 'feed') import('../render/index.js').then(({ renderFeed }) => renderFeed());
+            }
+        }).catch((e) => {
+            console.error('인사이트 공유 서버 반영 실패:', e);
+            if (window.sharedPhotos) {
+                window.sharedPhotos = window.sharedPhotos.filter(p =>
+                    !(p.type === 'insight' && p.dateRangeText === dateRangeText && p.userId === window.currentUser.uid)
+                );
+                updateShareButtonStatus();
+                if (appState.currentTab === 'gallery') import('../render/index.js').then(({ renderGallery }) => renderGallery());
+                if (appState.currentTab === 'feed') import('../render/index.js').then(({ renderFeed }) => renderFeed());
+            }
+            showToast(e?.message || e?.details || '공유 반영에 실패했습니다. 다시 시도해 주세요.', 'error');
+        });
     } catch (e) {
         console.error('인사이트 공유 실패:', e);
         const errorMessage = e.message || e.details || '공유 중 오류가 발생했습니다.';

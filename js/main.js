@@ -861,15 +861,12 @@ window.shareDailySummary = async (dateStr) => {
         }
         if (appState.currentTab === 'timeline') renderTimeline();
         if (appState.currentTab === 'gallery') renderGallery();
-        try {
-            await dbOps.unsharePhotos([photoUrlToRemove], null, false, true);
-            showToast('공유가 해제되었습니다.', 'success');
-        } catch (e) {
+        showToast('공유가 해제되었습니다.', 'success');
+        dbOps.unsharePhotos([photoUrlToRemove], null, false, true).catch(() => {
             if (window.sharedPhotos) window.sharedPhotos = prevShared;
             if (appState.currentTab === 'timeline') renderTimeline();
             if (appState.currentTab === 'gallery') renderGallery();
-            showToast(e?.message || '공유 해제에 실패했습니다.', 'error');
-        }
+        });
         return;
     }
 
@@ -888,7 +885,11 @@ window.openDailySharePreviewModal = (dateStr) => {
     modal.className = 'fixed inset-0 z-[500] flex items-end bg-black/50';
 
     modal.innerHTML = `
-        <div class="w-full max-w-md mx-auto bg-white rounded-t-[2rem] flex flex-col max-h-[92vh] shadow-2xl">
+        <div class="relative w-full max-w-md mx-auto bg-white rounded-t-[2rem] flex flex-col max-h-[92vh] shadow-2xl">
+            <div id="dailyShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-t-[2rem] flex flex-col items-center justify-center z-20">
+                <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>
+                <p class="text-slate-600 font-bold">공유 중...</p>
+            </div>
             <div class="flex justify-between items-center p-4 border-b border-slate-100 flex-shrink-0">
                 <h3 class="text-lg font-black text-slate-800">일간 식단 공유 미리보기</h3>
                 <button onclick="window.closeDailySharePreviewModal()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-full">
@@ -932,8 +933,9 @@ window.closeDailySharePreviewModal = () => {
 
 // 미리보기에서 공유 확정: 미리보기 화면을 그대로 캡쳐해서 공유
 window.confirmDailyShare = async (dateStr) => {
-    const loadingOverlay = document.getElementById('loadingOverlay');
-    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    const previewModal = document.getElementById('dailySharePreviewModal');
+    const inModalSpinner = previewModal?.querySelector('#dailyShareLoadingOverlay');
+    if (inModalSpinner) inModalSpinner.classList.remove('hidden');
 
     const shareBtn = event?.target || document.querySelector(`button[onclick*="confirmDailyShare('${dateStr}')"]`);
     if (shareBtn) {
@@ -941,11 +943,11 @@ window.confirmDailyShare = async (dateStr) => {
         shareBtn.classList.add('opacity-50', 'cursor-not-allowed');
         shareBtn.textContent = '공유 중...';
     }
-    // 로딩 상태가 화면에 그려지도록 한 프레임 양보 후 무거운 작업 진행
+    // 스피너가 실제로 화면에 그려진 뒤 무거운 작업 진행 (두 프레임 양보로 페인트 확실히 반영)
     await new Promise(r => requestAnimationFrame(r));
+    await new Promise(r => setTimeout(r, 50));
 
     try {
-        const previewModal = document.getElementById('dailySharePreviewModal');
         if (!previewModal) {
             throw new Error('미리보기 모달을 찾을 수 없습니다.');
         }
@@ -1071,15 +1073,20 @@ window.confirmDailyShare = async (dateStr) => {
             console.warn('getDailyComment 호출 실패:', e);
         }
 
-        // Cloud Functions를 통해 일간보기 공유 생성
-        const { callableFunctions } = await import('./firebase.js');
-        const result = await callableFunctions.createDailyShare({
+        // 낙관적 UI: 클라이언트 데이터로 즉시 반영 후 서버는 백그라운드 호출
+        const dailyShareData = {
+            id: 'pending-' + Date.now(),
             photoUrl,
+            userId: window.currentUser.uid,
+            userNickname: userProfile.nickname || '익명',
+            userIcon: userProfile.icon || '🐻',
+            userPhotoUrl: userProfile.photoUrl || null,
+            type: 'daily',
             date: dateStr,
-            comment: dailyComment
-        });
-
-        const dailyShareData = result.data;
+            timestamp: new Date().toISOString(),
+            entryId: null,
+            comment: dailyComment || ''
+        };
 
         if (!window.sharedPhotos) window.sharedPhotos = [];
         window.sharedPhotos = window.sharedPhotos.filter(p =>
@@ -1088,21 +1095,45 @@ window.confirmDailyShare = async (dateStr) => {
         window.sharedPhotos.push(dailyShareData);
         window.sharedPhotos.sort((a, b) => (new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
 
-        // 미리보기 모달 닫기
         window.closeDailySharePreviewModal();
-        
         showToast('하루 기록이 피드에 공유되었습니다!', 'success');
-
         if (appState.currentTab === 'timeline') renderTimeline();
         if (appState.currentTab === 'gallery') renderGallery();
+
+        const { callableFunctions } = await import('./firebase.js');
+        callableFunctions.createDailyShare({
+            photoUrl,
+            date: dateStr,
+            comment: dailyComment
+        }).then((result) => {
+            const serverData = result.data;
+            const idx = window.sharedPhotos?.findIndex(p => p.id === dailyShareData.id || (p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid && p.photoUrl === photoUrl));
+            if (idx !== undefined && idx !== -1 && window.sharedPhotos) {
+                window.sharedPhotos[idx] = serverData;
+                if (appState.currentTab === 'timeline') renderTimeline();
+                if (appState.currentTab === 'gallery') renderGallery();
+            }
+        }).catch((e) => {
+            console.error('일간보기 공유 서버 반영 실패:', e);
+            if (window.sharedPhotos) {
+                window.sharedPhotos = window.sharedPhotos.filter(p =>
+                    !(p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid)
+                );
+                if (appState.currentTab === 'timeline') renderTimeline();
+                if (appState.currentTab === 'gallery') renderGallery();
+            }
+            showToast(e?.message || e?.details || '공유 반영에 실패했습니다. 다시 시도해 주세요.', 'error');
+        });
     } catch (e) {
         console.error('일간보기 공유 실패:', e);
         const errorMessage = e.message || e.details || '공유 중 오류가 발생했습니다.';
         showToast(errorMessage, 'error');
         window.closeDailySharePreviewModal();
     } finally {
-        if (loadingOverlay) loadingOverlay.classList.add('hidden');
-        // 버튼 상태 복원
+        const modal = document.getElementById('dailySharePreviewModal');
+        const spinner = modal?.querySelector('#dailyShareLoadingOverlay');
+        if (spinner) spinner.classList.add('hidden');
+        // 버튼 상태 복원 (모달이 아직 DOM에 있을 때만)
         const shareBtn = document.querySelector(`button[onclick*="confirmDailyShare('${dateStr}')"]`);
         if (shareBtn) {
             shareBtn.disabled = false;
@@ -2152,7 +2183,7 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
         deleteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             menu.remove();
-            setTimeout(() => window.deleteFeedPost(entryId || '', photoUrls || '', isBestShare, isDailyShare, isInsightShare), 100);
+            window.deleteFeedPost(entryId || '', photoUrls || '', isBestShare, isDailyShare, isInsightShare);
         });
         deleteBtn.innerHTML = `<div class="flex items-center gap-3"><i class="fa-solid ${deleteButtonIcon} text-red-500 text-lg"></i><span class="font-bold text-red-500">${deleteButtonText}</span></div>`;
         buttonContainer.appendChild(deleteBtn);
@@ -2326,107 +2357,95 @@ window.deleteFeedPost = async (entryId, photoUrls, isBestShare = false, isDailyS
         return;
     }
     
-    const loadingOverlay = document.getElementById('loadingOverlay');
-    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    const photoUrlArray = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(url => url.trim()).filter(url => url) : [];
+    if (photoUrlArray.length === 0) return;
     
-    try {
-        // 공유된 사진 삭제
-        const photoUrlArray = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(url => url.trim()).filter(url => url) : [];
-        if (photoUrlArray.length > 0) {
-            const validEntryId = (entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined') ? entryId : null;
-            
-            // photoUrl 정규화 (쿼리 파라미터 제거하여 비교) - utils.js의 normalizeUrl 사용
-            const normalizedPhotoUrls = photoUrlArray.map(normalizeUrl);
-            
-            await dbOps.unsharePhotos(photoUrlArray, validEntryId, isBestShare, isDailyShare, isInsightShare);
-            
-            // window.sharedPhotos에서 삭제된 사진들 즉시 제거 (URL 정규화하여 비교)
-            if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                window.sharedPhotos = window.sharedPhotos.filter(photo => {
-                    const photoUrlNormalized = normalizeUrl(photo.photoUrl);
-                    const isMatched = normalizedPhotoUrls.some(normalizedUrl => 
-                        normalizedUrl === photoUrlNormalized || photo.photoUrl === normalizedUrl
-                    );
-                    
-                    if (!isMatched) return true;
-                    
-                    // 베스트 공유인 경우 type='best'인 것만 제거
-                    if (isBestShare) {
-                        return !(photo.type === 'best');
-                    } else if (isDailyShare) {
-                        // 일간보기 공유인 경우 type='daily'인 것만 제거
-                        return !(photo.type === 'daily');
-                    } else if (isInsightShare) {
-                        // 인사이트 공유인 경우 type='insight'인 것만 제거
-                        return !(photo.type === 'insight');
-                    } else {
-                        // 일반 공유인 경우: entryId 조건 확인
-                        if (validEntryId) {
-                            // entryId가 제공된 경우: entryId가 일치하거나 photo의 entryId가 없으면 제거
-                            return !(photo.entryId === validEntryId || !photo.entryId || photo.entryId === null);
-                        } else {
-                            // entryId가 없으면 photoUrl만 일치하면 제거
-                            return false;
-                        }
-                    }
+    const validEntryId = (entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined') ? entryId : null;
+    const normalizedPhotoUrls = photoUrlArray.map(normalizeUrl);
+    
+    // 롤백용 이전 상태 저장
+    const prevSharedPhotos = window.sharedPhotos && Array.isArray(window.sharedPhotos) ? [...window.sharedPhotos] : [];
+    let record = null;
+    let prevRecordSharedPhotos = null;
+    if (entryId && entryId !== '' && entryId !== 'null' && window.mealHistory) {
+        record = window.mealHistory.find(m => m.id === entryId);
+        if (record && record.sharedPhotos && Array.isArray(record.sharedPhotos)) {
+            prevRecordSharedPhotos = [...record.sharedPhotos];
+        }
+    }
+    
+    // 공유 제거 판별 헬퍼
+    const shouldRemovePhoto = (photo) => {
+        const photoUrlNormalized = normalizeUrl(photo.photoUrl);
+        const isMatched = normalizedPhotoUrls.some(normalizedUrl =>
+            normalizedUrl === photoUrlNormalized || photo.photoUrl === normalizedUrl
+        );
+        if (!isMatched) return false;
+        if (isBestShare) return photo.type === 'best';
+        if (isDailyShare) return photo.type === 'daily';
+        if (isInsightShare) return photo.type === 'insight';
+        if (validEntryId) return photo.entryId === validEntryId || !photo.entryId || photo.entryId === null;
+        return true;
+    };
+    
+    // 낙관적 업데이트: UI 즉시 반영
+    if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+        window.sharedPhotos = window.sharedPhotos.filter(photo => !shouldRemovePhoto(photo));
+    }
+    if (record && record.sharedPhotos && Array.isArray(record.sharedPhotos)) {
+        record.sharedPhotos = record.sharedPhotos.filter(url => {
+            if (photoUrlArray.includes(url)) return false;
+            const urlBase = url.split('?')[0];
+            const urlFileName = urlBase.split('/').pop();
+            return !photoUrlArray.some(photoUrl => {
+                const photoUrlBase = photoUrl.split('?')[0];
+                const photoUrlFileName = photoUrlBase.split('/').pop();
+                return urlFileName === photoUrlFileName && urlFileName !== '';
+            });
+        });
+        if (record.sharedPhotos.length === 0) record.sharedPhotos = [];
+    }
+    if (appState.currentTab === 'timeline') {
+        updateTimelineShareIndicators();
+        renderTimeline();
+    }
+    if (appState.currentTab === 'gallery') {
+        // 일반 식사 기록: 해당 카드만 DOM에서 제거 (전체 renderGallery 호출 없이 즉시 반영)
+        const uid = window.currentUser?.uid;
+        if (!isBestShare && !isDailyShare && !isInsightShare && validEntryId && uid) {
+            const groupKey = `${validEntryId}_${uid}`;
+            const container = document.getElementById('galleryContainer');
+            const postEl = container?.querySelector(`[data-group-key="${groupKey}"]`);
+            if (postEl) postEl.remove();
+        } else {
+            renderGallery();
+        }
+    }
+    if (!window._feedPostDeleteInProgress) {
+        window._feedPostDeleteInProgress = true;
+        showToast("공유가 취소되었습니다.", 'success');
+        setTimeout(() => { window._feedPostDeleteInProgress = false; }, 1000);
+    }
+    
+    // 서버는 백그라운드에서 호출
+    dbOps.unsharePhotos(photoUrlArray, validEntryId, isBestShare, isDailyShare, isInsightShare)
+        .then(() => {
+            if (record && prevRecordSharedPhotos !== null) {
+                dbOps.save(record, true).catch((e) => {
+                    console.error("sharedPhotos 필드 업데이트 실패:", e);
+                    showToast("공유 취소는 되었으나 기록 반영에 실패했습니다.", 'error');
                 });
             }
-            // 타임라인 공유 화살표 즉시 갱신 (공유 취소 후 화면 반영)
+        })
+        .catch(() => {
+            if (window.sharedPhotos) window.sharedPhotos = prevSharedPhotos;
+            if (record && prevRecordSharedPhotos !== null) record.sharedPhotos = prevRecordSharedPhotos;
             if (appState.currentTab === 'timeline') {
                 updateTimelineShareIndicators();
+                renderTimeline();
             }
-        }
-        
-        // 공유 취소 시 mealHistory의 sharedPhotos 필드 업데이트 (기록은 삭제하지 않음)
-        if (entryId && entryId !== '' && entryId !== 'null' && window.mealHistory) {
-            const record = window.mealHistory.find(m => m.id === entryId);
-            if (record) {
-                // sharedPhotos 필드에서 해당 사진들 제거 (유연한 URL 매칭)
-                if (record.sharedPhotos && Array.isArray(record.sharedPhotos)) {
-                    record.sharedPhotos = record.sharedPhotos.filter(url => {
-                        // 정확히 일치하는 경우 제외
-                        if (photoUrlArray.includes(url)) return false;
-                        // URL의 파일명 부분만 비교 (쿼리 파라미터 제거)
-                        const urlBase = url.split('?')[0];
-                        const urlFileName = urlBase.split('/').pop();
-                        return !photoUrlArray.some(photoUrl => {
-                            const photoUrlBase = photoUrl.split('?')[0];
-                            const photoUrlFileName = photoUrlBase.split('/').pop();
-                            return urlFileName === photoUrlFileName && urlFileName !== '';
-                        });
-                    });
-                    // sharedPhotos가 비어있으면 빈 배열로 설정
-                    if (record.sharedPhotos.length === 0) {
-                        record.sharedPhotos = [];
-                    }
-                    // 데이터베이스에 업데이트 (토스트 표시하지 않음 - 공유 취소 토스트만 표시)
-                    try {
-                        await dbOps.save(record, true); // silent = true
-                    } catch (e) {
-                        console.error("sharedPhotos 필드 업데이트 실패:", e);
-                    }
-                }
-            }
-        }
-        
-        // 공유 취소 성공 토스트 표시 (한 번만)
-        // sharedPhotos 리스너가 업데이트를 트리거할 수 있으므로 여기서만 토스트 표시
-        if (!window._feedPostDeleteInProgress) {
-            window._feedPostDeleteInProgress = true;
-            showToast("공유가 취소되었습니다.", 'success');
-            setTimeout(() => {
-                window._feedPostDeleteInProgress = false;
-            }, 1000);
-        }
-        
-        // 타임라인과 갤러리는 리스너가 자동으로 업데이트하므로 여기서 직접 호출하지 않음
-        // 리스너가 업데이트를 트리거하므로 중복 호출 방지
-    } catch (e) {
-        console.error("공유 취소 실패:", e);
-        showToast("공유 취소 중 오류가 발생했습니다.", 'error');
-    } finally {
-        if (loadingOverlay) loadingOverlay.classList.add('hidden');
-    }
+            if (appState.currentTab === 'gallery') renderGallery();
+        });
 };
 
 // 게시판 관련 함수들
@@ -2472,7 +2491,7 @@ window.openBoardWrite = () => {
     }, 100);
 };
 
-window.backToBoardList = (optimisticPost = null) => {
+window.backToBoardList = (optimisticPost = null, options = null) => {
     const boardListView = document.getElementById('boardListView');
     const boardDetailView = document.getElementById('boardDetailView');
     const boardWriteView = document.getElementById('boardWriteView');
@@ -2492,9 +2511,8 @@ window.backToBoardList = (optimisticPost = null) => {
     const submitBtn = boardWriteView?.querySelector('button[onclick="window.submitBoardPost()"]');
     if (submitBtn) submitBtn.textContent = '등록';
     
-    // 게시판 목록 새로고침 (낙관적 업데이트: 새 글 데이터 전달 시 즉시 반영)
     const category = window.currentBoardCategory || 'all';
-    renderBoard(category, optimisticPost);
+    renderBoard(category, optimisticPost, options);
     
     setTimeout(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2533,29 +2551,43 @@ window.submitBoardPost = async () => {
         return;
     }
     
-    try {
-        // 수정 모드인 경우
-        if (window.currentEditingPostId) {
-            await boardOperations.updatePost(window.currentEditingPostId, { title, content, category });
-            window.currentEditingPostId = null;
-        } else {
-            // 새 게시글 작성 (낙관적 업데이트: 반환된 글을 즉시 목록에 반영)
-            console.log('[submitBoardPost] 게시글 작성 시작:', { title, category });
-            const result = await boardOperations.createPost({ title, content, category });
-            window.backToBoardList(result?.id ? { id: result.id, title, content, category, authorId: window.currentUser.uid, authorNickname: window.userSettings?.profile?.nickname || '익명', authorPhotoUrl: window.userSettings?.profile?.photoUrl || null, authorIcon: window.userSettings?.profile?.icon || null, likes: 0, dislikes: 0, views: 0, comments: 0, timestamp: result.timestamp || new Date().toISOString() } : null);
-            return;
-        }
+    const listCategory = window.currentBoardCategory || 'all';
+    
+    if (window.currentEditingPostId) {
+        const postId = window.currentEditingPostId;
+        window.currentEditingPostId = null;
         window.backToBoardList();
-    } catch (e) {
-        console.error("[submitBoardPost] 에러:", e);
-        console.error("[submitBoardPost] 에러 상세:", {
-            code: e.code,
-            message: e.message,
-            details: e.details,
-            stack: e.stack
-        });
-        // 에러는 boardOperations.createPost에서 이미 표시됨
+        boardOperations.updatePost(postId, { title, content, category })
+            .then(() => renderBoard(listCategory))
+            .catch((e) => {
+                console.error("[submitBoardPost] 수정 에러:", e);
+            });
+        return;
     }
+    
+    const optimisticPost = {
+        id: 'pending-' + Date.now(),
+        title,
+        content,
+        category: category || 'serious',
+        authorId: window.currentUser.uid,
+        authorNickname: window.userSettings?.profile?.nickname || '익명',
+        authorPhotoUrl: window.userSettings?.profile?.photoUrl || null,
+        authorIcon: window.userSettings?.profile?.icon || null,
+        likes: 0,
+        dislikes: 0,
+        views: 0,
+        comments: 0,
+        timestamp: new Date().toISOString()
+    };
+    window.backToBoardList(optimisticPost);
+    boardOperations.createPost({ title, content, category })
+        .then((result) => {
+            if (result?.id) renderBoard(listCategory);
+        })
+        .catch(() => {
+            renderBoard(listCategory);
+        });
 };
 
 window.openBoardDetail = async (postId) => {
@@ -2853,15 +2885,15 @@ window.editBoardPost = async (postId) => {
     }
 };
 
-window.deleteBoardPost = async (postId) => {
+window.deleteBoardPost = (postId) => {
     if (!confirm("정말 삭제하시겠습니까?")) return;
     
-    try {
-        await boardOperations.deletePost(postId);
-        window.backToBoardList();
-    } catch (e) {
+    window.backToBoardList(null, { excludePostId: postId });
+    boardOperations.deletePost(postId).catch((e) => {
         console.error("게시글 삭제 오류:", e);
-    }
+        const category = window.currentBoardCategory || 'all';
+        renderBoard(category);
+    });
 };
 
 window.addBoardComment = async (postId) => {

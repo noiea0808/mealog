@@ -1097,6 +1097,12 @@ export async function renderGallery() {
         // 6. 로드된 포스트 캐시 초기화 (렌더링이 완전히 새로 시작되므로)
         loadedPostIds.clear();
         
+        // 7. 갤러리 피드 옵션 위임 리스너 제거 (재설정 시 중복 방지)
+        if (container._galleryFeedOptionsDelegate) {
+            container.removeEventListener('click', container._galleryFeedOptionsDelegate);
+            delete container._galleryFeedOptionsDelegate;
+        }
+        
         if (!window.sharedPhotos) {
             console.log('[renderGallery] window.sharedPhotos가 없어서 빈 배열로 초기화');
             window.sharedPhotos = [];
@@ -1725,8 +1731,8 @@ export async function renderGallery() {
                 </div>
                 ` : ''}
                 <div class="px-6 py-3">
-                    <!-- 좋아요, 북마크 버튼 -->
-                    <div class="flex items-center justify-between mb-2">
+                    <!-- 좋아요, 댓글, 북마크 버튼 (아래 보더로 본문과 구분, 좌우 길이 통일을 위해 -mx-6 px-6) -->
+                    <div class="flex items-center justify-between mb-2 pb-2 -mx-6 px-6 border-b border-slate-200">
                         <div class="flex items-center gap-4">
                             <button onclick="window.toggleLike('${postId}')" class="post-like-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
                                 <i class="fa-regular fa-heart text-2xl text-slate-800 post-like-icon"></i>
@@ -1763,8 +1769,8 @@ export async function renderGallery() {
                         </div>
                     `;
                     })() : ''}
-                    <!-- 댓글 영역 (상단 구분선, 댓글 없을 때 comments-empty로 빈 영역 제거) -->
-                    <div class="comment-section comments-empty border-t border-slate-200 -mx-6 px-6 pt-1.5 mt-1" id="comment-section-${postId}">
+                    <!-- 댓글 영역 (본문 있을 때만 상단 구분선, 없으면 아이콘행 보더 하나만 표시) -->
+                    <div class="comment-section comments-empty ${((caption && (isBestShare || isDailyShare || isInsightShare)) || (comment && !isBestShare && !isDailyShare && !isInsightShare)) ? 'border-t border-slate-200 ' : ''}-mx-6 px-6 pt-1.5 mt-1" id="comment-section-${postId}">
                         <!-- 댓글 목록 (흰색) -->
                         <div class="post-comments-list mb-1 rounded-lg py-2 bg-white" data-post-id="${postId}" id="comments-list-${postId}">
                             <!-- 댓글들이 동적으로 추가됨 -->
@@ -1817,49 +1823,28 @@ export async function renderGallery() {
             }
         });
         
-        // 피드 옵션 버튼에 이벤트 리스너 추가
-        const feedOptionsButtons = container.querySelectorAll('.feed-options-btn');
-        feedOptionsButtons.forEach(btn => {
-            if (btn.hasAttribute('data-listener-added')) return;
-            
-            if (window.showFeedOptions) {
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const entryId = btn.getAttribute('data-entry-id') || '';
-                    const photoUrls = btn.getAttribute('data-photo-urls') || '';
-                    const isBestShare = btn.getAttribute('data-is-best') === 'true';
-                    const photoDate = btn.getAttribute('data-photo-date') || '';
-                    const photoSlotId = btn.getAttribute('data-photo-slot-id') || '';
-                    const isDailyShare = btn.getAttribute('data-is-daily') === 'true';
-                    const isInsightShare = btn.getAttribute('data-is-insight') === 'true';
-                    const dateRangeText = btn.getAttribute('data-date-range-text') || '';
-                    const postId = btn.getAttribute('data-post-id') || '';
-                    const authorUserId = btn.getAttribute('data-author-user-id') || '';
-                    window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId, isInsightShare, dateRangeText);
-                });
-                btn.setAttribute('data-listener-added', 'true');
-            } else {
-                setTimeout(() => {
-                    if (window.showFeedOptions && !btn.hasAttribute('data-listener-added')) {
-                        btn.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            const entryId = btn.getAttribute('data-entry-id') || '';
-                            const photoUrls = btn.getAttribute('data-photo-urls') || '';
-                            const isBestShare = btn.getAttribute('data-is-best') === 'true';
-                            const photoDate = btn.getAttribute('data-photo-date') || '';
-                            const photoSlotId = btn.getAttribute('data-photo-slot-id') || '';
-                            const isDailyShare = btn.getAttribute('data-is-daily') === 'true';
-                            const isInsightShare = btn.getAttribute('data-is-insight') === 'true';
-                            const dateRangeText = btn.getAttribute('data-date-range-text') || '';
-                            const postId = btn.getAttribute('data-post-id') || '';
-                            const authorUserId = btn.getAttribute('data-author-user-id') || '';
-                            window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId, isInsightShare, dateRangeText);
-                        });
-                        btn.setAttribute('data-listener-added', 'true');
-                    }
-                }, 200);
-            }
-        });
+        // 피드 옵션 버튼: 이벤트 위임 (레이지 로드된 게시글 포함 모두 동작)
+        if (window.showFeedOptions && !container._galleryFeedOptionsDelegate) {
+            const delegateHandler = (e) => {
+                const btn = e.target.closest('.feed-options-btn');
+                if (!btn) return;
+                e.stopPropagation();
+                e.preventDefault();
+                const entryId = btn.getAttribute('data-entry-id') || '';
+                const photoUrls = btn.getAttribute('data-photo-urls') || '';
+                const isBestShare = btn.getAttribute('data-is-best') === 'true';
+                const photoDate = btn.getAttribute('data-photo-date') || '';
+                const photoSlotId = btn.getAttribute('data-photo-slot-id') || '';
+                const isDailyShare = btn.getAttribute('data-is-daily') === 'true';
+                const isInsightShare = btn.getAttribute('data-is-insight') === 'true';
+                const dateRangeText = btn.getAttribute('data-date-range-text') || '';
+                const postId = btn.getAttribute('data-post-id') || '';
+                const authorUserId = btn.getAttribute('data-author-user-id') || '';
+                window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId, isInsightShare, dateRangeText);
+            };
+            container._galleryFeedOptionsDelegate = delegateHandler;
+            container.addEventListener('click', delegateHandler);
+        }
         
         // 버튼 상태 업데이트 (로그인 여부에 따라)
         const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
@@ -2956,13 +2941,75 @@ async function renderNotices() {
     }
 }
 
-// 게시판 렌더링 함수 (optimisticPost: 새 글 등록 시 즉시 표시할 데이터)
-export async function renderBoard(category = 'all', optimisticPost = null) {
+// 게시판 렌더링 함수 (optimisticPost: 새 글 등록 시 즉시 표시, options.excludePostId: 삭제 시 캐시에서 제외)
+export async function renderBoard(category = 'all', optimisticPost = null, options = null) {
     const container = document.getElementById('boardContainer');
     if (!container) return;
     
-    // 공지 먼저 렌더링
     renderNotices();
+    
+    if (!window.boardOperations) return;
+    
+    const excludePostId = options?.excludePostId ?? null;
+    const hasFilter = appState.boardTraceFilter && window.currentUser && !window.currentUser.isAnonymous;
+    const tracePromise = hasFilter ? (() => {
+        const f = appState.boardTraceFilter;
+        if (f === 'like') return window.boardOperations.getPostIdsLikedByUser(window.currentUser.uid);
+        if (f === 'comment') return window.boardOperations.getPostIdsCommentedByUser(window.currentUser.uid);
+        if (f === 'bookmark') return window.boardOperations.getPostIdsBookmarkedByUser(window.currentUser.uid);
+        return Promise.resolve([]);
+    })() : Promise.resolve(null);
+    
+    // 낙관적: 새 글만 즉시 표시
+    if (optimisticPost?.id && (category === 'all' || optimisticPost.category === category)) {
+        const optWithTimestamp = { ...optimisticPost, timestamp: optimisticPost.timestamp || new Date().toISOString() };
+        const likedPostIds = new Set();
+        const bookmarkedPostIds = new Set();
+        let filteredPosts = [optWithTimestamp];
+        const tracePostIds = null;
+        _renderBoardList(container, filteredPosts, likedPostIds, bookmarkedPostIds, tracePostIds);
+        Promise.all([
+            tracePromise,
+            window.boardOperations.getPosts(category, 'latest', 50),
+            window.currentUser && !window.currentUser.isAnonymous ? window.boardOperations.getPostIdsLikedByUser(window.currentUser.uid) : Promise.resolve([]),
+            window.currentUser && !window.currentUser.isAnonymous ? window.boardOperations.getPostIdsBookmarkedByUser(window.currentUser.uid) : Promise.resolve([])
+        ]).then(([traceList, posts, liked, bookmarked]) => {
+            const tracePostIds2 = traceList ? new Set(traceList) : null;
+            const likedPostIds2 = new Set(liked || []);
+            const bookmarkedPostIds2 = new Set(bookmarked || []);
+            let merged = [optWithTimestamp, ...(posts || []).filter(p => p.id !== optimisticPost.id)];
+            merged = tracePostIds2 ? merged.filter(p => tracePostIds2.has(p.id)) : merged;
+            merged.sort((a, b) => (new Date(b.timestamp || 0).getTime()) - (new Date(a.timestamp || 0).getTime()));
+            window._boardPostsCache = merged;
+            _renderBoardList(container, merged, likedPostIds2, bookmarkedPostIds2, tracePostIds2);
+        }).catch(() => {});
+        return;
+    }
+    
+    // 낙관적: 삭제 시 캐시에서 제외하고 즉시 표시
+    if (excludePostId && window._boardPostsCache && Array.isArray(window._boardPostsCache)) {
+        let filteredPosts = window._boardPostsCache.filter(p => p.id !== excludePostId);
+        const likedPostIds = new Set();
+        const bookmarkedPostIds = new Set();
+        const tracePostIds = null;
+        _renderBoardList(container, filteredPosts, likedPostIds, bookmarkedPostIds, tracePostIds);
+        Promise.all([
+            tracePromise,
+            window.boardOperations.getPosts(category, 'latest', 50),
+            window.currentUser && !window.currentUser.isAnonymous ? window.boardOperations.getPostIdsLikedByUser(window.currentUser.uid) : Promise.resolve([]),
+            window.currentUser && !window.currentUser.isAnonymous ? window.boardOperations.getPostIdsBookmarkedByUser(window.currentUser.uid) : Promise.resolve([])
+        ]).then(([traceList, posts, liked, bookmarked]) => {
+            const tracePostIds2 = traceList ? new Set(traceList) : null;
+            const likedPostIds2 = new Set(liked || []);
+            const bookmarkedPostIds2 = new Set(bookmarked || []);
+            let merged = tracePostIds2 ? (posts || []).filter(p => tracePostIds2.has(p.id)) : (posts || []);
+            merged = merged.filter(p => p.isHidden !== true);
+            merged = merged.filter(p => p.id !== excludePostId);
+            window._boardPostsCache = merged;
+            _renderBoardList(container, merged, likedPostIds2, bookmarkedPostIds2, tracePostIds2);
+        }).catch(() => {});
+        return;
+    }
     
     container.innerHTML = `
         <div class="flex justify-center items-center py-12">
@@ -2973,19 +3020,7 @@ export async function renderBoard(category = 'all', optimisticPost = null) {
         </div>
     `;
     
-    if (!window.boardOperations) return;
-    
     try {
-        // API 호출 병렬화: traceIds, getPosts, liked, bookmarked 동시 요청
-        const hasFilter = appState.boardTraceFilter && window.currentUser && !window.currentUser.isAnonymous;
-        const tracePromise = hasFilter ? (() => {
-            const f = appState.boardTraceFilter;
-            if (f === 'like') return window.boardOperations.getPostIdsLikedByUser(window.currentUser.uid);
-            if (f === 'comment') return window.boardOperations.getPostIdsCommentedByUser(window.currentUser.uid);
-            if (f === 'bookmark') return window.boardOperations.getPostIdsBookmarkedByUser(window.currentUser.uid);
-            return Promise.resolve([]);
-        })() : Promise.resolve(null);
-        
         const [traceList, posts, liked, bookmarked] = await Promise.all([
             tracePromise,
             window.boardOperations.getPosts(category, 'latest', 50),
@@ -2998,52 +3033,51 @@ export async function renderBoard(category = 'all', optimisticPost = null) {
         const bookmarkedPostIds = new Set(bookmarked || []);
         
         let filteredPosts = tracePostIds ? posts.filter(p => tracePostIds.has(p.id)) : posts;
+        if (excludePostId) filteredPosts = filteredPosts.filter(p => p.id !== excludePostId);
         
-        // 낙관적 업데이트: 새 글이 있으면 상단에 병합 (중복 제거, 현재 카테고리와 일치할 때만)
-        if (optimisticPost?.id && (category === 'all' || optimisticPost.category === category)) {
-            const optWithTimestamp = { ...optimisticPost, timestamp: optimisticPost.timestamp || new Date().toISOString() };
-            filteredPosts = [optWithTimestamp, ...filteredPosts.filter(p => p.id !== optimisticPost.id)];
-        }
-        
-        if (filteredPosts.length === 0) {
-            const traceEmptyLabels = { like: '좋아요한', comment: '댓글 단', bookmark: '북마크한' };
-            const traceEmptyMsg = tracePostIds
-                ? (traceEmptyLabels[appState.boardTraceFilter] || '') + ' 게시글이 없습니다'
-                : '게시글이 없습니다';
-            const traceEmptySub = tracePostIds ? '다른 게시글에 좋아요, 댓글, 북마크를 남겨보세요!' : '첫 번째 게시글을 작성해보세요!';
-            const traceEmptyIcon = appState.boardTraceFilter === 'like' ? 'fa-heart' : (appState.boardTraceFilter === 'comment' ? 'fa-comment' : 'fa-bookmark');
-            container.innerHTML = `
-                <div class="flex flex-col items-center justify-center py-12 text-center">
-                    <i class="fa-regular ${tracePostIds ? traceEmptyIcon : 'fa-comments'} text-4xl text-slate-200 mb-3"></i>
-                    <p class="text-sm font-bold text-slate-400">${traceEmptyMsg}</p>
-                    <p class="text-xs text-slate-300 mt-2">${traceEmptySub}</p>
-                </div>
-            `;
-            return;
-        }
-        
-        // 최신순 정렬 보장 (timestamp 기준 내림차순)
         filteredPosts.sort((a, b) => {
-                // timestamp 안전하게 변환
-                const getTimestamp = (post) => {
-                    if (!post.timestamp) return 0;
-                    if (post.timestamp.toDate && typeof post.timestamp.toDate === 'function') {
-                        return post.timestamp.toDate().getTime();
-                    }
-                    if (typeof post.timestamp === 'string') {
-                        return new Date(post.timestamp).getTime();
-                    }
-                    if (post.timestamp instanceof Date) {
-                        return post.timestamp.getTime();
-                    }
-                    return new Date(post.timestamp || 0).getTime();
-                };
-                const timeA = getTimestamp(a);
-                const timeB = getTimestamp(b);
-                return timeB - timeA; // 최신이 위로
-            });
-        
-        container.innerHTML = filteredPosts.map(post => {
+            const getTimestamp = (post) => {
+                if (!post.timestamp) return 0;
+                if (post.timestamp.toDate && typeof post.timestamp.toDate === 'function') return post.timestamp.toDate().getTime();
+                if (typeof post.timestamp === 'string') return new Date(post.timestamp).getTime();
+                if (post.timestamp instanceof Date) return post.timestamp.getTime();
+                return new Date(post.timestamp || 0).getTime();
+            };
+            return getTimestamp(b) - getTimestamp(a);
+        });
+        window._boardPostsCache = filteredPosts;
+        _renderBoardList(container, filteredPosts, likedPostIds, bookmarkedPostIds, tracePostIds);
+    } catch (error) {
+        console.error("게시판 로드 오류:", error);
+        container.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-12 text-center">
+                <i class="fa-solid fa-exclamation-triangle text-4xl text-red-300 mb-3"></i>
+                <p class="text-sm font-bold text-red-400">게시글을 불러올 수 없습니다</p>
+                <p class="text-xs text-slate-300 mt-2">잠시 후 다시 시도해주세요</p>
+            </div>
+        `;
+    }
+}
+
+function _renderBoardList(container, filteredPosts, likedPostIds, bookmarkedPostIds, tracePostIds) {
+    if (!container) return;
+    if (filteredPosts.length === 0) {
+        const traceEmptyLabels = { like: '좋아요한', comment: '댓글 단', bookmark: '북마크한' };
+        const traceEmptyMsg = tracePostIds
+            ? (traceEmptyLabels[appState.boardTraceFilter] || '') + ' 게시글이 없습니다'
+            : '게시글이 없습니다';
+        const traceEmptySub = tracePostIds ? '다른 게시글에 좋아요, 댓글, 북마크를 남겨보세요!' : '첫 번째 게시글을 작성해보세요!';
+        const traceEmptyIcon = appState.boardTraceFilter === 'like' ? 'fa-heart' : (appState.boardTraceFilter === 'comment' ? 'fa-comment' : 'fa-bookmark');
+        container.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-12 text-center">
+                <i class="fa-regular ${tracePostIds ? traceEmptyIcon : 'fa-comments'} text-4xl text-slate-200 mb-3"></i>
+                <p class="text-sm font-bold text-slate-400">${traceEmptyMsg}</p>
+                <p class="text-xs text-slate-300 mt-2">${traceEmptySub}</p>
+            </div>
+        `;
+        return;
+    }
+    container.innerHTML = filteredPosts.map(post => {
                 // timestamp 안전하게 변환 (Firestore Timestamp 객체 또는 문자열 지원)
                 let postDate;
                 if (!post.timestamp) {
@@ -3134,16 +3168,6 @@ export async function renderBoard(category = 'all', optimisticPost = null) {
                 </div>
             `;
         }).join('');
-    } catch (error) {
-        console.error("게시판 로드 오류:", error);
-        container.innerHTML = `
-            <div class="flex flex-col items-center justify-center py-12 text-center">
-                <i class="fa-solid fa-exclamation-triangle text-4xl text-red-300 mb-3"></i>
-                <p class="text-sm font-bold text-red-400">게시글을 불러올 수 없습니다</p>
-                <p class="text-xs text-slate-300 mt-2">잠시 후 다시 시도해주세요</p>
-            </div>
-        `;
-    }
 }
 
 // 게시판 상세 렌더링

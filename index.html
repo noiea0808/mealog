@@ -1092,7 +1092,11 @@
 
     <!-- Best Share Modal -->
     <div id="bestShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-end">
-        <div class="w-full max-w-md mx-auto bg-white rounded-t-[2rem] flex flex-col max-h-[92vh]">
+        <div class="relative w-full max-w-md mx-auto bg-white rounded-t-[2rem] flex flex-col max-h-[92vh]">
+            <div id="bestShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-t-[2rem] flex flex-col items-center justify-center z-20">
+                <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>
+                <p class="text-slate-600 font-bold">공유 중...</p>
+            </div>
             <div class="p-6 border-b flex justify-between items-center">
                 <h2 class="text-lg font-bold text-slate-800 tracking-tight">베스트 공유하기</h2>
                 <button onclick="window.closeShareBestModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
