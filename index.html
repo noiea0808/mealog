@@ -571,12 +571,12 @@
                 <div class="card ui-card-pad-lg bg-emerald-600 text-white relative overflow-hidden">
                     <div class="flex flex-col mb-4 relative z-10">
                         <h3 class="mealog-title text-2xl tracking-tighter lowercase px-4"><span>✨</span> insight</h3>
-                        <div class="flex bg-emerald-700/40 p-1 rounded-xl mt-3 gap-1">
-                            <button id="btn-dash-7d" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">최근 1주</button>
-                            <button id="btn-dash-week" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">주간</button>
-                            <button id="btn-dash-month" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">월간</button>
-                            <button id="btn-dash-year" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">연간</button>
-                            <button id="btn-dash-custom" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">직접 설정</button>
+                        <div id="insightPeriodTabs" class="insight-period-tabs flex bg-[#047857] mt-3 gap-0.5 min-h-[38px] items-center">
+                            <button id="btn-dash-7d" class="insight-period-tab flex-1 text-xs font-bold text-white transition-colors">최근 1주</button>
+                            <button id="btn-dash-week" class="insight-period-tab flex-1 text-xs font-bold text-white transition-colors">주간</button>
+                            <button id="btn-dash-month" class="insight-period-tab flex-1 text-xs font-bold text-white transition-colors">월간</button>
+                            <button id="btn-dash-year" class="insight-period-tab flex-1 text-xs font-bold text-white transition-colors">연간</button>
+                            <button id="btn-dash-custom" class="insight-period-tab flex-1 text-xs font-bold text-white transition-colors">직접 설정</button>
                         </div>
                         <div id="periodNavigator" class="hidden mt-3 flex items-center justify-center gap-3">
                             <button id="periodPrevBtn" onclick="window.navigatePeriod(-1)" class="w-7 h-7 rounded-full bg-white/20 text-white flex items-center justify-center active:bg-white/30 transition-colors">

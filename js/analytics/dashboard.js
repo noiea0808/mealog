@@ -197,15 +197,14 @@ export async function updateDashboard() {
         }
     }
     
-    // 버튼 스타일 업데이트
+    // 버튼 스타일 업데이트 (선택 탭은 배경으로 구분, 텍스트는 모두 흰색)
+    const tabBase = "insight-period-tab flex-1 text-xs font-bold text-white transition-colors";
     ['7d', 'week', 'month', 'year', 'custom'].forEach(mode => {
         const btn = document.getElementById(`btn-dash-${mode}`);
         if (btn) {
-            if (state.dashboardMode === mode) {
-                btn.className = "flex-1 py-1 text-xs font-bold bg-emerald-600 text-white rounded-lg transition-colors";
-            } else {
-                btn.className = "flex-1 py-1 text-xs font-bold text-emerald-100 transition-colors";
-            }
+            btn.className = state.dashboardMode === mode
+                ? `${tabBase} bg-[#059669]`
+                : tabBase;
         }
     });
     

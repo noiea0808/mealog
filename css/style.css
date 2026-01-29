@@ -580,6 +580,21 @@ header .mealog-title {
     margin-right: -1rem !important;
     width: calc(100% + 2rem) !important;
 }
+/* 인사이트 기간 탭: 바와 버튼 라운드를 맞춰 상하·좌우·모서리 여백 동일하게 */
+#dashboardView .insight-period-tabs {
+    --insight-period-gap: 2px;
+    padding: var(--insight-period-gap);
+    border-radius: 12px;
+    box-sizing: border-box;
+}
+#dashboardView .insight-period-tabs .insight-period-tab {
+    margin: 0 !important;
+    padding: 6px !important;
+    /* 바 radius(12px) - gap(2px) = 10px → 모서리에서도 gap이 2px로 보이게 */
+    border-radius: calc(12px - var(--insight-period-gap)) !important;
+    box-sizing: border-box;
+    min-width: 0;
+}
 /* 인사이트 말풍선 스타일 */
 #insightBubble {
     line-height: 1.6;
