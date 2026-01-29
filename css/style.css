@@ -87,6 +87,30 @@ header .mealog-title {
     box-shadow: 0 2px 10px rgba(0,0,0,0.02); 
     border: 1px solid #f1f5f9; 
 }
+
+/* 하루소감·주간베스트 코멘트 입력창: 포커스 시 보더 진한 회색 1px */
+#dailyCommentInput:focus,
+#bestShareComment:focus {
+    outline: none;
+    border-width: 1px;
+    border-color: #475569; /* slate-600, 진한 회색 */
+}
+
+/* 앨범 사진 아래 메뉴@장소 캡션: 나눔손글씨 가람연꽃 (폰트 파일 없으면 Nanum Pen Script 폴백) */
+/* 나눔손글씨 가람연꽃 woff2 파일을 assets/fonts/ 에 넣으면 적용됨 (눈누/네이버에서 다운로드) */
+@font-face {
+    font-family: '나눔손글씨 가람연꽃';
+    src: url('../assets/fonts/NanumGaramYeonkot.woff2') format('woff2'),
+         url('../assets/fonts/NanumGaramYeonkot.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+.gallery-caption-menu-place {
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-size: 1.2rem;
+    font-weight: normal;
+}
 .calendar-scroll { 
     display: flex; 
     overflow-x: auto; 

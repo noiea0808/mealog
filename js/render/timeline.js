@@ -370,6 +370,9 @@ export function renderMiniCalendar() {
     const state = appState;
     const container = document.getElementById('miniCalendar');
     if (!container || !window.currentUser) return;
+    // 상단 월 표시를 선택된 pageDate 기준으로 즉시 갱신 (전월 선택 시에도 맞게 표시)
+    const titleEl = document.getElementById('trackerTitle');
+    if (titleEl) titleEl.innerText = `${state.pageDate.getFullYear()}년 ${state.pageDate.getMonth() + 1}월`;
     container.innerHTML = "";
     // 로컬 날짜로 변환하여 시간대 문제 방지
     const pageYear = state.pageDate.getFullYear();

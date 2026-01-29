@@ -676,25 +676,24 @@ export async function openShareBestModal() {
     const userNickname = window.userSettings?.profile?.nickname || '익명';
     const userIcon = window.userSettings?.profile?.icon || '🐻';
     
-    // 스크린샷용 HTML 생성
+    // 스크린샷용 HTML 생성 (하루소감과 동일 레이아웃, mealog만 노란색)
+    const borderLightGray = '#e2e8f0';
+    const borderOuterGray = '#cbd5e1';
+    const mealogYellow = '#fcd34d';
+    const photoAreaEmptyBg = '#e2e8f0';
     const screenshotHtml = `
-        <div id="bestScreenshotContainer" style="width: 420px; max-width: 420px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; font-family: Pretendard, sans-serif; background: rgba(252, 211, 77, 0.5);">
-            <!-- 헤더 (노란색 계열 배경) -->
-            <div style="background: #fcd34d; padding: 16px; border-bottom: 1px solid #ffffff;">
-                <!-- 상단: MEALOG와 기간 -->
+        <div id="bestScreenshotContainer" style="width: 420px; max-width: 420px; margin: 0 auto; border: 1px solid ${borderOuterGray}; border-radius: 20px; overflow: hidden; font-family: Pretendard, sans-serif; background: #f1f5f9;">
+            <div style="background: #ffffff; padding: 16px; border-bottom: 1px solid ${borderLightGray};">
                 <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 8px;">
-                    <span style="font-size: 28.8px; font-weight: 600; color: #000000; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
-                    <span style="font-size: 12px; font-weight: 400; color: #000000; flex-shrink: 0;">${periodText}</span>
+                    <span style="font-size: 28.8px; font-weight: 600; color: #eab308; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
+                    <span style="font-size: 12px; font-weight: 400; color: #64748b; flex-shrink: 0;">${periodText}</span>
                 </div>
-                <!-- 하단: 닉네임의 Best -->
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <span style="font-size: 16px;">🏆</span>
-                    <span style="font-size: 15px; font-weight: 700; color: #000000; font-family: 'NanumSquareRound', sans-serif;">${escapeHtml(userNickname)}의 ${periodType} Best</span>
+                    <span style="font-size: 15px; font-weight: 700; color: #1e293b; font-family: 'NanumSquareRound', sans-serif;">${escapeHtml(userNickname)}의 ${periodType} Best</span>
                 </div>
             </div>
-            
-            <!-- 본문 -->
-            <div style="padding: 0; background: rgba(252, 211, 77, 0.5); border-top: 1px solid #ffffff; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;">
+            <div style="padding: 0 0 12px 0; background: #f1f5f9; border-bottom-left-radius: 19px; border-bottom-right-radius: 19px;">
             ${top3Meals.map((meal, index) => {
                 const slot = SLOTS.find(s => s.id === meal.slotId);
                 const slotLabel = slot ? slot.label : '알 수 없음';
@@ -708,32 +707,29 @@ export async function openShareBestModal() {
                 const menuDetail = meal.menuDetail || '';
                 const comment = meal.comment || '';
                 
-                // 슬롯 스타일 가져오기
                 const specificStyle = SLOT_STYLES[meal.slotId] || SLOT_STYLES['default'];
                 const slotColor = specificStyle.iconText === 'text-orange-500' ? '#f97316' : 
                                  specificStyle.iconText === 'text-emerald-600' ? '#059669' : 
                                  specificStyle.iconText === 'text-indigo-600' ? '#4f46e5' : '#64748b';
                 
-                // 순위 색상
                 let rankBg = '#10b981';
                 let rankText = '#ffffff';
                 if (index === 0) {
-                    rankBg = '#eab308'; // 금색
+                    rankBg = '#eab308';
                 } else if (index === 1) {
-                    rankBg = '#9ca3af'; // 은색
+                    rankBg = '#9ca3af';
                 } else if (index === 2) {
-                    rankBg = '#d97706'; // 동색
+                    rankBg = '#d97706';
                 }
-                
-                // 안전한 문자열 이스케이프
                 const safePlace = escapeHtml(place);
                 const safeMenuDetail = escapeHtml(menuDetail || displayTitle);
                 const safeComment = escapeHtml(comment);
                 const safeSlotLabel = escapeHtml(slotLabel);
-                
+                const photoBoxBg = photoUrl ? '' : `background: ${photoAreaEmptyBg};`;
+                const photoBoxBorder = 'border-right: 1px solid #e2e8f0;';
                 return `
-                    <div style="display: flex; margin: 4px 8px; margin-bottom: 7px; border: 1px solid #000000; border-radius: 8px; overflow: hidden; background: rgba(255, 255, 255, 0.9); box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-height: 130px;">
-                        <div style="width: 130px; min-height: 130px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0; border-radius: 8px 0 0 8px; overflow: hidden;">
+                    <div style="display: flex; margin: 4px 8px; margin-bottom: 7px; border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; background: rgba(255, 255, 255, 0.9); box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-height: 130px;">
+                        <div style="width: 130px; min-height: 130px; ${photoBoxBg} ${photoBoxBorder} display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0; border-radius: 12px 0 0 12px; overflow: hidden;">
                             ${photoUrl ? `<img src="${photoUrl}" style="width: 100%; height: 100%; min-height: 130px; object-fit: cover;">` : `<div style="font-size: 28px;">🍽️</div>`}
                             <div style="position: absolute; top: 10px; left: 10px; width: 28px; height: 28px; border-radius: 50%; background: ${rankBg}; color: ${rankText}; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; line-height: 1; box-shadow: 0 2px 4px rgba(0,0,0,0.15); padding: 0; margin: 0;">
                                 <span style="display: inline-block; line-height: 1; vertical-align: middle; margin: 0; padding: 0;">${index + 1}</span>

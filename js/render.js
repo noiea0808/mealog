@@ -1633,13 +1633,13 @@ export async function renderGallery() {
                 caption = photo.place;
             }
         } else {
-            // 일반 식사인 경우: "메뉴 @ 장소" 형식 (메뉴와 장소를 굵게 표시)
+            // 일반 식사인 경우: "메뉴 @ 장소" 형식 (앨범 캡션은 .gallery-caption-menu-place에서 크기·굵기 적용)
             if (photo.place && photo.menuDetail) {
-                caption = `<span class="font-bold">${escapeHtml(photo.menuDetail)}</span> @ <span class="font-bold">${escapeHtml(photo.place)}</span>`;
+                caption = `<span>${escapeHtml(photo.menuDetail)}</span> @ <span>${escapeHtml(photo.place)}</span>`;
             } else if (photo.place) {
-                caption = `<span class="font-bold">${escapeHtml(photo.place)}</span>`;
+                caption = `<span>${escapeHtml(photo.place)}</span>`;
             } else if (photo.menuDetail) {
-                caption = `<span class="font-bold">${escapeHtml(photo.menuDetail)}</span>`;
+                caption = `<span>${escapeHtml(photo.menuDetail)}</span>`;
             } else if (photo.mealType) {
                 caption = escapeHtml(photo.mealType);
             }
@@ -1720,7 +1720,7 @@ export async function renderGallery() {
                     ` : ''}
                 </div>
                 ${!isBestShare && !isDailyShare && !isInsightShare && caption ? `
-                <div class="px-6 py-2 text-sm text-white" style="background-color: #047857;">
+                <div class="gallery-caption-menu-place px-6 py-1 text-white" style="background-color: #047857;">
                     ${caption}
                 </div>
                 ` : ''}
@@ -2846,9 +2846,9 @@ async function renderNotices() {
             'light': 'bg-slate-100 text-slate-700'
         };
         const noticeTypeBorderColors = {
-            'important': 'border-l-4 border-red-400',
-            'notice': 'border-l-4 border-blue-400',
-            'light': 'border-l-4 border-yellow-400'
+            'important': 'border-l-2 border-red-400',
+            'notice': 'border-l-2 border-blue-400',
+            'light': 'border-l-2 border-yellow-400'
         };
 
         // 로그인 사용자의 공지 하트/북마크 상태
@@ -3510,24 +3510,28 @@ export function createDailyShareCard(dateStr, forPreview = false) {
     const shortYear = year.toString().slice(-2);
     const formattedDate = `'${shortYear}년 ${month}월${day}일`;
     
+    const blue = '#1877F2';
+    const borderLightGray = '#e2e8f0';
+    const borderOuterGray = '#cbd5e1';
+    const photoAreaEmptyBg = '#e2e8f0'; /* 사진 없을 때 영역: 본문보다 진한 회색 */
     let html = `
-        <div style="width: 420px; max-width: 420px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background: rgba(24, 119, 242, 0.7);">
-            <!-- 헤더 (페이스북 블루 배경) -->
-            <div style="background: #1877F2; padding: 16px; border-bottom: 1px solid #ffffff;">
-                <!-- 상단: MEALOG와 날짜 -->
+        <div style="width: 420px; max-width: 420px; margin: 0 auto; border: 1px solid ${borderOuterGray}; border-radius: 20px; overflow: hidden; background: #f1f5f9;">
+            <!-- 헤더: 흰 배경, mealog만 파란색, 내부 라인 연회색 -->
+            <div style="background: #ffffff; padding: 16px; border-bottom: 1px solid ${borderLightGray};">
+                <!-- 상단: mealog(파란색)와 날짜 -->
                 <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 8px;">
-                    <span style="font-size: 28.8px; font-weight: 600; color: #ffffff; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
-                    <span style="font-size: 12px; font-weight: 400; color: #ffffff; flex-shrink: 0;">${formattedDate}</span>
+                    <span style="font-size: 28.8px; font-weight: 600; color: ${blue}; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
+                    <span style="font-size: 12px; font-weight: 400; color: #64748b; flex-shrink: 0;">${formattedDate}</span>
                 </div>
                 <!-- 하단: 닉네임의 하루소감 -->
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <span style="font-size: 16px;">📅</span>
-                    <span style="font-size: 15px; font-weight: 700; color: #ffffff; font-family: 'NanumSquareRound', sans-serif;">${escapeHtml(userNickname)}의 하루소감</span>
+                    <span style="font-size: 15px; font-weight: 700; color: #1e293b; font-family: 'NanumSquareRound', sans-serif;">${escapeHtml(userNickname)}의 하루소감</span>
                 </div>
             </div>
             
-            <!-- 본문 -->
-            <div style="padding: 0; background: rgba(24, 119, 242, 0.7); border-top: 1px solid #ffffff; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;">
+            <!-- 본문: 연회색 배경, 하단 패딩으로 외부 보더 끝까지 채움 -->
+            <div style="padding: 0 0 12px 0; background: #f1f5f9; border-bottom-left-radius: 19px; border-bottom-right-radius: 19px;">
     `;
     
     // 타임라인처럼 모든 슬롯을 순서대로 표시 (간식 포함)
@@ -3539,7 +3543,7 @@ export function createDailyShareCard(dateStr, forPreview = false) {
             const r = records[0];
             const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
             
-            let containerStyle = 'border: 1px solid #000000; margin: 4px 8px; margin-bottom: 7px; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); background: rgba(255, 255, 255, 0.9);';
+            let containerStyle = 'border: 1px solid #cbd5e1; margin: 4px 8px; margin-bottom: 7px; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); background: rgba(255, 255, 255, 0.9);';
             let iconTextColor = specificStyle.iconText.includes('orange') ? '#f97316' : specificStyle.iconText.includes('emerald') ? '#10b981' : specificStyle.iconText.includes('indigo') ? '#6366f1' : '#64748b';
             
             let titleLine1 = '';
@@ -3550,7 +3554,7 @@ export function createDailyShareCard(dateStr, forPreview = false) {
             if (r) {
                 if (r.mealType === 'Skip') {
                     titleLine2 = 'Skip';
-                    iconBoxStyle = 'background: #f1f5f9; border-right: 1px solid #e2e8f0;';
+                    iconBoxStyle = `background: ${photoAreaEmptyBg}; border-right: 1px solid #e2e8f0;`;
                     iconHtml = '<i class="fa-solid fa-ban" style="font-size: 24px; color: #94a3b8;"></i>';
                 } else {
                     const p = r.place || '';
@@ -3564,13 +3568,13 @@ export function createDailyShareCard(dateStr, forPreview = false) {
                         iconBoxStyle = 'border-right: 1px solid #e2e8f0;';
                         iconHtml = `<img src="${r.photos}" style="width: 100%; height: 100%; min-height: 130px; object-fit: cover;">`;
                     } else {
-                        iconBoxStyle = 'background: #f1f5f9; border-right: 1px solid #e2e8f0;';
+                        iconBoxStyle = `background: ${photoAreaEmptyBg}; border-right: 1px solid #e2e8f0;`;
                         iconHtml = `<div style="font-size: 28px;">🍽️</div>`;
                     }
                 }
             } else {
                 titleLine2 = '';
-                iconBoxStyle = 'background: #f1f5f9; border-right: 1px solid #e2e8f0;';
+                iconBoxStyle = `background: ${photoAreaEmptyBg}; border-right: 1px solid #e2e8f0;`;
                 iconHtml = '<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 8px;"><span style="font-size: 32px; font-weight: 700; color: #94a3b8; margin-bottom: 4px;">+</span><span style="font-size: 10px; color: #94a3b8; line-height: 1.2;">입력해주세요</span></div>';
             }
             
@@ -3581,7 +3585,7 @@ export function createDailyShareCard(dateStr, forPreview = false) {
             html += `
                 <div style="${containerStyle} min-height: 130px;">
                     <div style="display: flex;">
-                        <div style="width: 130px; min-height: 130px; ${iconBoxStyle} display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; border-radius: 8px 0 0 8px;">
+                        <div style="width: 130px; min-height: 130px; ${iconBoxStyle} display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; border-radius: 12px 0 0 12px;">
                             ${iconHtml}
                         </div>
                         <div style="flex: 1; padding: 10px 12px 12px 12px; display: flex; flex-direction: column; justify-content: flex-start; min-width: 0; min-height: 130px;">
@@ -3611,11 +3615,11 @@ export function createDailyShareCard(dateStr, forPreview = false) {
             // 간식 슬롯 (기록이 없어도 공간은 만들어줌)
             html += `
                 <div style="display: flex; align-items: center; margin-bottom: 6px; padding: 4px 8px; min-height: 32px; gap: 12px;">
-                    <span style="font-size: 12px; font-weight: 900; color: #ffffff; text-transform: uppercase; flex-shrink: 0; padding: 0 8px; white-space: nowrap;">${escapeHtml(slot.label)}</span>
+                    <span style="font-size: 12px; font-weight: 900; color: #1e293b; text-transform: uppercase; flex-shrink: 0; padding: 0 8px; white-space: nowrap;">${escapeHtml(slot.label)}</span>
                     <div style="flex: 1; min-width: 0; display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; justify-content: flex-start; overflow-x: auto;">
                         ${records.length > 0 ? records.map(r => `
-                            <div style="display: inline-flex; align-items: center; padding: 2.5px 5px; background: rgba(255, 255, 255, 0.2); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.3); flex-shrink: 0; box-sizing: border-box;">
-                                <span style="font-size: 12px; font-weight: 600; color: #ffffff; word-wrap: break-word; overflow-wrap: break-word; white-space: nowrap;">${escapeHtml(r.menuDetail || r.snackType || '간식')}</span>
+                            <div style="display: inline-flex; align-items: center; padding: 2.5px 5px; background: #f1f5f9; border-radius: 8px; border: 1px solid #e2e8f0; flex-shrink: 0; box-sizing: border-box;">
+                                <span style="font-size: 12px; font-weight: 600; color: #334155; word-wrap: break-word; overflow-wrap: break-word; white-space: nowrap;">${escapeHtml(r.menuDetail || r.snackType || '간식')}</span>
                                 ${r.rating ? `<span style="font-size: 10px; font-weight: 900; color: #ca8a04; background: #fefce8; padding: 2px 7px; border-radius: 999px; border: 1px solid #fde047; margin-left: 6px; display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; white-space: nowrap;">
                                     <span style="font-size: 11px; line-height: 1; display: inline-flex; align-items: center;">⭐</span>
                                     <span style="font-size: 11px; font-weight: 900; line-height: 1; display: inline-flex; align-items: center;">${r.rating}</span>

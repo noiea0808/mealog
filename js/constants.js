@@ -19,14 +19,18 @@ export const SLOT_STYLES = {
 };
 
 export const VIBRANT_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'];
-export const RATING_GRADIENT = ['#ecfdf5', '#d1fae5', '#6ee7b7', '#34d399', '#059669'];
+/** 분석 탭 누적 막대(식사방식/메뉴/함께한 즐거움) 좌→우 빈도순 그라데이션: 빨강→주황(1개)→호박→녹색→청록→남색 */
+export const CUMULATIVE_BAR_GRADIENT = ['#F06292', '#FF9800', '#FFC107', '#9CCC65', '#66BB6A', '#26C6DA', '#5C6BC0'];
+/** 만족도·포만감 5단계용: 1→5 순서로 남색→청록→녹색→호박→핑크 (배고픔/1점=남색, 과식/5점=핑크) */
+export const RATING_SATIETY_GRADIENT = ['#5C6BC0', '#26C6DA', '#66BB6A', '#FFC107', '#F06292'];
+export const RATING_GRADIENT = RATING_SATIETY_GRADIENT;
 
 export const SATIETY_DATA = [
-    { val: 1, icon: 'fa-face-dizzy', label: '배고픔', color: 'text-slate-400', chartColor: '#94a3b8' },
-    { val: 2, icon: 'fa-face-frown-open', label: '약간 허기', color: 'text-blue-400', chartColor: '#60a5fa' },
-    { val: 3, icon: 'fa-face-smile', label: '적당함', color: 'text-emerald-500', chartColor: '#10b981' },
-    { val: 4, icon: 'fa-face-grin', label: '배부름', color: 'text-orange-400', chartColor: '#fb923c' },
-    { val: 5, icon: 'fa-face-grin-beam-sweat', label: '과식', color: 'text-red-400', chartColor: '#f87171' }
+    { val: 1, icon: 'fa-face-dizzy', label: '배고픔', color: 'text-slate-400', chartColor: '#5C6BC0' },
+    { val: 2, icon: 'fa-face-frown-open', label: '약간 허기', color: 'text-blue-400', chartColor: '#26C6DA' },
+    { val: 3, icon: 'fa-face-smile', label: '적당함', color: 'text-emerald-500', chartColor: '#66BB6A' },
+    { val: 4, icon: 'fa-face-grin', label: '배부름', color: 'text-orange-400', chartColor: '#FFC107' },
+    { val: 5, icon: 'fa-face-grin-beam-sweat', label: '과식', color: 'text-red-400', chartColor: '#F06292' }
 ];
 
 // 약관 버전 (약관 업데이트 시 버전을 올려서 기존 사용자에게 재동의 요청)

@@ -852,20 +852,23 @@ window.shareDailySummary = async (dateStr) => {
         : null;
 
     if (existingShare) {
-        const loadingOverlay = document.getElementById('loadingOverlay');
-        if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+        const photoUrlToRemove = existingShare.photoUrl;
+        const prevShared = window.sharedPhotos ? [...window.sharedPhotos] : [];
+        if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+            window.sharedPhotos = window.sharedPhotos.filter(p =>
+                !(p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid)
+            );
+        }
+        if (appState.currentTab === 'timeline') renderTimeline();
+        if (appState.currentTab === 'gallery') renderGallery();
         try {
-            await dbOps.unsharePhotos([existingShare.photoUrl], null, false, true);
-            if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                window.sharedPhotos = window.sharedPhotos.filter(p =>
-                    !(p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid)
-                );
-            }
+            await dbOps.unsharePhotos([photoUrlToRemove], null, false, true);
             showToast('공유가 해제되었습니다.', 'success');
+        } catch (e) {
+            if (window.sharedPhotos) window.sharedPhotos = prevShared;
             if (appState.currentTab === 'timeline') renderTimeline();
             if (appState.currentTab === 'gallery') renderGallery();
-        } finally {
-            if (loadingOverlay) loadingOverlay.classList.add('hidden');
+            showToast(e?.message || '공유 해제에 실패했습니다.', 'error');
         }
         return;
     }
@@ -929,21 +932,19 @@ window.closeDailySharePreviewModal = () => {
 
 // 미리보기에서 공유 확정: 미리보기 화면을 그대로 캡쳐해서 공유
 window.confirmDailyShare = async (dateStr) => {
-    // 버튼 즉시 반응을 위해 로딩 오버레이 먼저 표시
     const loadingOverlay = document.getElementById('loadingOverlay');
     if (loadingOverlay) loadingOverlay.classList.remove('hidden');
-    
-    // 공유 버튼 비활성화 및 로딩 표시
+
     const shareBtn = event?.target || document.querySelector(`button[onclick*="confirmDailyShare('${dateStr}')"]`);
     if (shareBtn) {
         shareBtn.disabled = true;
         shareBtn.classList.add('opacity-50', 'cursor-not-allowed');
-        const originalText = shareBtn.textContent;
         shareBtn.textContent = '공유 중...';
     }
+    // 로딩 상태가 화면에 그려지도록 한 프레임 양보 후 무거운 작업 진행
+    await new Promise(r => requestAnimationFrame(r));
 
     try {
-        // 미리보기 모달에서 카드 요소 찾기
         const previewModal = document.getElementById('dailySharePreviewModal');
         if (!previewModal) {
             throw new Error('미리보기 모달을 찾을 수 없습니다.');
@@ -968,14 +969,11 @@ window.confirmDailyShare = async (dateStr) => {
                 styleTag.textContent = fredokaFontCSS;
                 document.head.appendChild(styleTag);
                 
-                // 폰트 로드 대기 (최대 2초로 단축)
                 await document.fonts.ready;
                 let attempts = 0;
-                while (attempts < 20) { // 50 -> 20으로 단축
-                    if (document.fonts.check('1em Fredoka')) {
-                        break;
-                    }
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                while (attempts < 10) {
+                    if (document.fonts.check('1em Fredoka')) break;
+                    await new Promise(resolve => setTimeout(resolve, 50));
                     attempts++;
                 }
             } catch (e) {
@@ -992,21 +990,15 @@ window.confirmDailyShare = async (dateStr) => {
             return new Promise((resolve) => {
                 img.onload = resolve;
                 img.onerror = resolve;
-                setTimeout(resolve, 1000); // 최대 1초 대기
+                setTimeout(resolve, 400);
             });
         });
         await Promise.all(imageLoadPromises);
 
-        // 짧은 대기 (렌더링 안정화)
-        await new Promise(resolve => setTimeout(resolve, 100));
-
-        // 미리보기 카드의 실제 크기 계산
         const innerContent = previewCard.querySelector('div[style*="width: 420px"]') || previewCard;
         let actualHeight = innerContent.offsetHeight || innerContent.scrollHeight;
-        
-        // 높이가 없거나 너무 작으면 한 번만 재확인 (대기 시간 단축)
         if (!actualHeight || actualHeight < 100) {
-            await new Promise(resolve => setTimeout(resolve, 100)); // 200ms -> 100ms로 단축
+            await new Promise(resolve => setTimeout(resolve, 50));
             actualHeight = innerContent.offsetHeight || innerContent.scrollHeight;
         }
 

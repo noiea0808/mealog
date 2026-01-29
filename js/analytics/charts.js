@@ -1,6 +1,8 @@
 // 차트 렌더링 관련 함수들
-import { VIBRANT_COLORS, RATING_GRADIENT, SATIETY_DATA } from '../constants.js';
+import { VIBRANT_COLORS, CUMULATIVE_BAR_GRADIENT, RATING_GRADIENT, SATIETY_DATA } from '../constants.js';
 import { generateColorMap } from '../utils.js';
+
+const CUMULATIVE_KEYS = ['mealType', 'category', 'withWhom'];
 import { getDayName } from './date-utils.js';
 
 export function renderProportionChart(containerId, data, key) {
@@ -96,10 +98,11 @@ export function renderProportionChart(containerId, data, key) {
     
     // 차트와 라벨을 감싸는 컨테이너
     let html = '<div class="relative">';
-    html += '<div class="flex items-stretch h-6 rounded-full overflow-hidden border border-slate-200">';
+    html += '<div class="flex items-stretch h-8 rounded-full overflow-hidden border border-slate-200">';
     
     let cumulativePercent = 0;
     const segments = [];
+    let cumulativeColorIndex = 0; // 식사방식/메뉴/함께한 즐거움: 좌→우 빈도순 그라데이션용
     
     sorted.forEach(([name, count]) => {
         const pct = Math.round((count / total) * 100);
@@ -110,6 +113,10 @@ export function renderProportionChart(containerId, data, key) {
         if (name === '미입력') {
             bg = '#e2e8f0'; // 연회색
             textColor = '#64748b'; // 진한 회색 텍스트
+        } else if (CUMULATIVE_KEYS.includes(key)) {
+            // 식사방식/메뉴/함께한 즐거움: 좌(많은 순)부터 그라데이션 색상 적용
+            bg = CUMULATIVE_BAR_GRADIENT[cumulativeColorIndex % CUMULATIVE_BAR_GRADIENT.length];
+            cumulativeColorIndex += 1;
         } else if (key === 'rating' || key === 'snackRating') {
             const ratingNum = parseInt(name);
             if (!isNaN(ratingNum)) {
@@ -127,7 +134,7 @@ export function renderProportionChart(containerId, data, key) {
         
         if (pct < 5 || ((key === 'rating' || key === 'snackRating') && parseInt(name) <= 2)) textColor = '#475569';
         if (pct > 0) {
-            html += `<div class="prop-segment" style="width: ${pct}%; background: ${bg}; color: ${textColor}">${pct >= 5 ? `${pct}%` : ''}</div>`;
+            html += `<div class="prop-segment flex items-center justify-center" style="width: ${pct}%; background: ${bg}; color: ${textColor}">${pct >= 5 ? `<span style="font-size: 1.2em">${pct}%</span>` : ''}</div>`;
             segments.push({
                 name,
                 count,
@@ -319,10 +326,11 @@ export function openDetailModal(key, title) {
         html += `<div class="mb-4">
             <h3 class="text-sm font-bold text-slate-700 mb-2">${slotLabel}</h3>
             <div class="relative">
-                <div class="flex items-stretch h-8 rounded-full overflow-hidden border border-slate-200">`;
+                <div class="flex items-stretch h-10 rounded-full overflow-hidden border border-slate-200">`;
         
         let cumulativePercent = 0;
         const segments = [];
+        let detailColorIndex = 0; // 식사방식/메뉴/함께한 즐거움: 좌→우 빈도순 그라데이션용
         
         sorted.forEach(([name, count]) => {
             const pct = Math.round((count / total) * 100);
@@ -333,6 +341,9 @@ export function openDetailModal(key, title) {
             if (name === '미입력') {
                 bg = '#e2e8f0'; // 연회색
                 textColor = '#64748b'; // 진한 회색 텍스트
+            } else if (CUMULATIVE_KEYS.includes(key)) {
+                bg = CUMULATIVE_BAR_GRADIENT[detailColorIndex % CUMULATIVE_BAR_GRADIENT.length];
+                detailColorIndex += 1;
             } else if (key === 'rating' || key === 'snackRating') {
                 const ratingNum = parseInt(name.replace('점', ''));
                 if (!isNaN(ratingNum)) {
@@ -347,8 +358,8 @@ export function openDetailModal(key, title) {
             
             if (pct < 5 || ((key === 'rating' || key === 'snackRating') && parseInt(name) <= 2)) textColor = '#475569';
             if (pct > 0) {
-                html += `<div class="prop-segment relative" style="width: ${pct}%; background: ${bg}; color: ${textColor}">
-                    ${pct >= 8 ? `<span class="text-[10px] font-bold">${pct}%</span>` : ''}
+                html += `<div class="prop-segment relative flex items-center justify-center" style="width: ${pct}%; background: ${bg}; color: ${textColor}">
+                    ${pct >= 8 ? `<span class="text-[12px]">${pct}%</span>` : ''}
                 </div>`;
                 segments.push({
                     name,
