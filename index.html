@@ -102,8 +102,17 @@
                     }
                 }
             } else if (window.moduleLoadError) {
-                // 이미 오류가 발생한 경우 체크 중단
+                // 스크립트 로드 실패 시 체크 중단, 오버레이 숨기고 안내 표시
                 clearInterval(checkModuleLoaded);
+                const overlay = document.getElementById('loadingOverlay');
+                if (overlay && !overlay.classList.contains('hidden')) {
+                    overlay.classList.add('hidden');
+                    if (window.moduleLoadError.quicHint) {
+                        alert('스크립트를 불러오지 못했습니다.\n\n콘솔에 ERR_QUIC_PROTOCOL_ERROR가 보인다면:\n1. Chrome 주소창에 chrome://flags/#enable-quic 입력\n2. "Experimental QUIC protocol"을 Disabled로 변경\n3. Chrome 다시 시작 후 이 페이지 새로고침\n\n자세한 내용은 docs/troubleshooting-quic.md 를 참고하세요.');
+                    } else {
+                        alert('JavaScript 모듈을 로드할 수 없습니다.\n\n가능한 원인: 웹 서버 미사용, 네트워크 문제, 경로 오류.\n브라우저 콘솔(F12)에서 오류를 확인하세요.');
+                    }
+                }
             }
         }, 50); // 100ms에서 50ms로 줄여서 더 빠르게 감지
         
@@ -117,7 +126,8 @@
                 if (overlay && !overlay.classList.contains('hidden')) {
                     overlay.classList.add('hidden');
                     const port = window.location.port || '8080';
-                    alert('JavaScript 모듈을 로드할 수 없습니다.\n\n가능한 원인:\n1. 웹 서버를 통해 실행하지 않음 (파일 직접 열기)\n2. 네트워크 연결 문제\n3. JavaScript 파일 경로 오류\n\n브라우저 콘솔(F12)을 열어 정확한 오류를 확인하세요.\n\n현재 URL: ' + window.location.href);
+                    const quicNote = (window.moduleLoadError && window.moduleLoadError.quicHint) ? '\n\nERR_QUIC_PROTOCOL_ERROR가 보이면: chrome://flags/#enable-quic 에서 QUIC을 Disabled로 한 뒤 Chrome 재시작 (docs/troubleshooting-quic.md 참고).' : '';
+                    alert('JavaScript 모듈을 로드할 수 없습니다.\n\n가능한 원인:\n1. 웹 서버를 통해 실행하지 않음 (파일 직접 열기)\n2. 네트워크 연결 문제\n3. JavaScript 파일 경로 오류' + quicNote + '\n\n브라우저 콘솔(F12)을 열어 정확한 오류를 확인하세요.\n\n현재 URL: ' + window.location.href);
                 }
             } else if (window.moduleLoading && !window.moduleLoaded) {
                 // 모듈이 로드 중이지만 아직 완료되지 않은 경우, 추가 시간을 주기 위해 체크를 계속함
@@ -148,7 +158,7 @@
         }, 15000); // 10000에서 15000으로 증가
     </script>
     
-    <script type="module" src="js/main.js?v=2" onerror="console.error('❌ main.js 스크립트 태그 로드 실패'); window.moduleLoadError = {message: '스크립트 태그 로드 실패'};"></script>
+    <script type="module" src="js/main.js?v=2" onerror="console.error('❌ main.js 스크립트 태그 로드 실패'); window.moduleLoadError = {message: '스크립트 태그 로드 실패', quicHint: true};"></script>
     
     <script>
         
@@ -571,7 +581,7 @@
                 <div class="card ui-card-pad-lg bg-emerald-600 text-white relative overflow-hidden">
                     <div class="flex flex-col mb-4 relative z-10">
                         <h3 class="mealog-title text-2xl tracking-tighter lowercase px-4"><span>✨</span> insight</h3>
-                        <div id="insightPeriodTabs" class="insight-period-tabs flex bg-[#047857] mt-3 gap-0.5 min-h-[38px] items-center">
+                        <div id="insightPeriodTabs" class="insight-period-tabs flex bg-[#047857] mt-3 gap-0.5 items-stretch">
                             <button id="btn-dash-7d" class="insight-period-tab flex-1 text-xs font-bold text-white transition-colors">최근 1주</button>
                             <button id="btn-dash-week" class="insight-period-tab flex-1 text-xs font-bold text-white transition-colors">주간</button>
                             <button id="btn-dash-month" class="insight-period-tab flex-1 text-xs font-bold text-white transition-colors">월간</button>
@@ -611,7 +621,7 @@
                     <div class="flex gap-3 mt-3 relative z-10 items-start">
                         <!-- 밀당 캐릭터 선택 창 -->
                         <div class="relative flex-shrink-0 flex flex-col gap-2 w-[75px]">
-                            <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="w-[75px] h-[132px] bg-white/20 rounded-2xl border-2 border-white/30 flex flex-col items-center justify-center transition-colors overflow-hidden">
+                            <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="w-[75px] h-[132px] rounded-2xl flex flex-col items-center justify-center transition-colors overflow-hidden">
                                 <div id="insightCharacterIcon" class="w-full h-full flex items-center justify-center text-2xl font-black text-white">M</div>
                             </button>
                             <button id="generateCommentBtn" onclick="window.generateInsightComment()" class="w-[75px] bg-yellow-400 rounded-xl font-bold text-[10px] shadow-md active:bg-yellow-500 transition-colors py-1" style="color: #3E2723;">
@@ -620,7 +630,7 @@
                         </div>
                         <!-- 말풍선 -->
                         <div class="flex-1 relative min-w-0">
-                            <div id="insightBubble" class="bg-yellow-50/90 border-2 border-white py-3 px-3 relative" style="border-radius: 0.5rem 1.25rem 1.25rem 0.5rem;">
+                            <div id="insightBubble" class="bg-yellow-50/90 py-3 px-3 relative" style="border-radius: 0.5rem 1.25rem 1.25rem 0.5rem;">
                                 <div class="flex items-center justify-between mb-2">
                                     <div id="insightCharacterName" class="text-sm font-black text-emerald-800"></div>
                                     <button id="shareInsightBtn" onclick="window.openShareInsightModal()" class="flex-shrink-0 bg-emerald-600 rounded-lg font-bold text-xs shadow-md active:bg-emerald-700 transition-colors py-1.5 px-3 text-white border border-emerald-700 hidden">

@@ -277,7 +277,7 @@ header .mealog-title {
     align-items: center; 
     gap: 10px; 
     margin-top: 14px; 
-    border: 1px solid rgba(255,255,255,0.1); 
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
 }
 .date-section-header { 
     position: sticky; 
@@ -580,21 +580,37 @@ header .mealog-title {
     margin-right: -1rem !important;
     width: calc(100% + 2rem) !important;
 }
-/* 인사이트 기간 탭: 바와 버튼 라운드를 맞춰 상하·좌우·모서리 여백 동일하게 */
+/* 인사이트 기간 탭: 참고 이미지 구조(라운드·선택 박스 테두리·균일 여백), 색상만 그린 테마 */
 #dashboardView .insight-period-tabs {
-    --insight-period-gap: 2px;
-    padding-block: 1px;
-    padding-inline: var(--insight-period-gap);
-    border-radius: 12px;
+    --insight-period-gap: 1px;
+    padding: var(--insight-period-gap);
+    border-radius: 8px;
     box-sizing: border-box;
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    background-color: #047857;
 }
 #dashboardView .insight-period-tabs .insight-period-tab {
     margin: 0 !important;
-    padding: 6px !important;
-    /* 바 radius(12px) - gap(2px) = 10px → 모서리에서도 gap이 2px로 보이게 */
-    border-radius: calc(12px - var(--insight-period-gap)) !important;
+    padding: 8px 12px !important;
+    min-height: 0 !important;
+    height: 30px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid transparent;
     box-sizing: border-box;
     min-width: 0;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.75);
+}
+#dashboardView .insight-period-tabs .insight-period-tab--selected {
+    background-color: #059669;
+    color: #fff;
+    border-color: rgb(4, 120, 87);
 }
 /* 인사이트 말풍선 스타일 */
 #insightBubble {
@@ -638,8 +654,14 @@ header .mealog-title {
     width: 8px;
     height: 8px;
 }
+/* 말풍선: 보더 제거, 로그인 화면과 유사한 쉐도우 */
+#insightBubble {
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+}
+
 /* 캐릭터 선택 창 */
 #insightCharacterBtn {
+    background: rgb(4 120 87);
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 /* 캐릭터 선택 팝업 */
