@@ -119,6 +119,16 @@ service cloud.firestore {
     }
     
     // ============================================
+    // 게시판 북마크 (boardBookmarks 컬렉션)
+    // ============================================
+    match /artifacts/{appId}/boardBookmarks/{bookmarkId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isOwnerOfRequestResource();
+      allow update: if false;
+      allow delete: if isOwnerOfResource();
+    }
+    
+    // ============================================
     // 게시판 댓글 (boardComments 컬렉션)
     // ============================================
     // 보안 강화: create는 Cloud Functions를 통해서만 허용 (레이트 리밋 및 스팸 필터 적용)
@@ -191,7 +201,17 @@ service cloud.firestore {
     }
     
     // ============================================
-    // 공지 반응 (noticeInteractions 컬렉션) - 좋아요/싫어요
+    // 공지 북마크 (noticeBookmarks 컬렉션)
+    // ============================================
+    match /artifacts/{appId}/noticeBookmarks/{bookmarkId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isOwnerOfRequestResource();
+      allow update: if false;
+      allow delete: if isOwnerOfResource();
+    }
+    
+    // ============================================
+    // 공지 반응 (noticeInteractions 컬렉션) - 하트(좋아요)
     // ============================================
     match /artifacts/{appId}/noticeInteractions/{interactionId} {
       allow read: if isAuthenticated();

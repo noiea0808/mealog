@@ -621,6 +621,23 @@ header .mealog-title {
     transform: scale(0.98);
 }
 
+/* 좋아요, 북마크, 댓글 아이콘 stroke 얇게 (앨범·밀톡) - 배경색과 블렌드하여 보더라인 얇게 */
+.gallery-trace-btn .fa-heart,
+.gallery-trace-btn .fa-comment,
+.gallery-trace-btn .fa-bookmark {
+    -webkit-text-stroke: 0.5px #f1f5f9;  /* slate-100 - 패널 배경 */
+}
+.post-like-icon.fa-regular,
+.post-bookmark-icon.fa-regular,
+.post-comment-btn .fa-comment,
+.board-post-like-btn .fa-heart.fa-regular,
+.board-post-bookmark-btn .fa-bookmark.fa-regular,
+.board-list-card .fa-heart,
+.board-list-card .fa-comment,
+.board-list-card .fa-bookmark {
+    -webkit-text-stroke: 0.5px #ffffff;   /* white - 카드 배경 */
+}
+
 /* 좋아요, 북마크 버튼 애니메이션 */
 .post-like-btn,
 .post-bookmark-btn {

@@ -400,6 +400,52 @@ export const boardOperations = {
         }
     },
     
+    // 본인이 좋아요한 게시글 ID 목록 (밀톡 흔적 필터용)
+    async getPostIdsLikedByUser(userId) {
+        if (!userId) return [];
+        try {
+            const interactionsColl = collection(db, 'artifacts', appId, 'boardInteractions');
+            const q = query(
+                interactionsColl,
+                where('userId', '==', userId),
+                where('isLike', '==', true)
+            );
+            const snapshot = await getDocs(q);
+            return [...new Set(snapshot.docs.map(d => d.data().postId).filter(Boolean))];
+        } catch (e) {
+            console.error("Get Board PostIds Liked By User Error:", e);
+            return [];
+        }
+    },
+    
+    // 본인이 댓글 단 게시글 ID 목록 (밀톡 흔적 필터용)
+    async getPostIdsCommentedByUser(userId) {
+        if (!userId) return [];
+        try {
+            const commentsColl = collection(db, 'artifacts', appId, 'boardComments');
+            const q = query(commentsColl, where('authorId', '==', userId));
+            const snapshot = await getDocs(q);
+            return [...new Set(snapshot.docs.map(d => d.data().postId).filter(Boolean))];
+        } catch (e) {
+            console.error("Get Board PostIds Commented By User Error:", e);
+            return [];
+        }
+    },
+    
+    // 본인이 북마크한 게시글 ID 목록 (밀톡 흔적 필터용)
+    async getPostIdsBookmarkedByUser(userId) {
+        if (!userId) return [];
+        try {
+            const bookmarksColl = collection(db, 'artifacts', appId, 'boardBookmarks');
+            const q = query(bookmarksColl, where('userId', '==', userId));
+            const snapshot = await getDocs(q);
+            return [...new Set(snapshot.docs.map(d => d.data().postId).filter(Boolean))];
+        } catch (e) {
+            console.error("Get Board PostIds Bookmarked By User Error:", e);
+            return [];
+        }
+    },
+    
     // 사용자 북마크 여부 확인
     async isBookmarked(postId, userId) {
         if (!postId || !userId) return false;
@@ -593,6 +639,55 @@ export const noticeOperations = {
         } catch (e) {
             console.error("Toggle Notice Like Error:", e);
             throw e;
+        }
+    },
+    
+    async toggleNoticeBookmark(noticeId) {
+        if (!window.currentUser) throw new Error("로그인이 필요합니다.");
+        try {
+            const coll = collection(db, 'artifacts', appId, 'noticeBookmarks');
+            const q = query(coll, where('noticeId', '==', noticeId), where('userId', '==', window.currentUser.uid));
+            const snapshot = await getDocs(q);
+            if (snapshot.empty) {
+                await addDoc(coll, {
+                    noticeId,
+                    userId: window.currentUser.uid,
+                    timestamp: new Date().toISOString()
+                });
+                return { bookmarked: true };
+            } else {
+                await deleteDoc(snapshot.docs[0].ref);
+                return { bookmarked: false };
+            }
+        } catch (e) {
+            console.error("Toggle Notice Bookmark Error:", e);
+            throw e;
+        }
+    },
+    
+    async isNoticeBookmarked(noticeId, userId) {
+        if (!noticeId || !userId) return false;
+        try {
+            const coll = collection(db, 'artifacts', appId, 'noticeBookmarks');
+            const q = query(coll, where('noticeId', '==', noticeId), where('userId', '==', userId));
+            const snapshot = await getDocs(q);
+            return !snapshot.empty;
+        } catch (e) {
+            console.error("Is Notice Bookmarked Error:", e);
+            return false;
+        }
+    },
+    
+    async getNoticeIdsLikedByUser(userId) {
+        if (!userId) return [];
+        try {
+            const coll = collection(db, 'artifacts', appId, 'noticeInteractions');
+            const q = query(coll, where('userId', '==', userId), where('isLike', '==', true));
+            const snapshot = await getDocs(q);
+            return [...new Set(snapshot.docs.map(d => d.data().noticeId).filter(Boolean))];
+        } catch (e) {
+            console.error("Get Notice Ids Liked By User Error:", e);
+            return [];
         }
     }
 };

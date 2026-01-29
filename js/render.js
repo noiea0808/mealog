@@ -2829,9 +2829,9 @@ async function renderNotices() {
             return;
         }
         
-        // 상단 고정 공지와 일반 공지 분리
-        const pinnedNotices = activeNotices.filter(n => n.isPinned);
-        const normalNotices = activeNotices.filter(n => !n.isPinned);
+        // 상단 고정 공지와 일반 공지 분리 (isPinned === true만 고정)
+        const pinnedNotices = activeNotices.filter(n => n.isPinned === true);
+        const normalNotices = activeNotices.filter(n => n.isPinned !== true);
         const sortedNotices = [...pinnedNotices, ...normalNotices];
         
         const noticeTypeLabels = {
@@ -2845,9 +2845,25 @@ async function renderNotices() {
             'notice': 'bg-blue-100 text-blue-700',
             'light': 'bg-slate-100 text-slate-700'
         };
+        const noticeTypeBorderColors = {
+            'important': 'border-l-4 border-red-400',
+            'notice': 'border-l-4 border-blue-400',
+            'light': 'border-l-4 border-yellow-400'
+        };
 
-        // 공지별 반응(추천/비추천) 카운트는 noticeInteractions에서 계산
-        // (댓글은 현재 공지 상세에 기능이 없으므로 0/필드 기반으로만 표시)
+        // 로그인 사용자의 공지 하트/북마크 상태
+        let likedNoticeIds = new Set();
+        let bookmarkedNoticeIds = new Set();
+        if (window.currentUser && !window.currentUser.isAnonymous && window.noticeOperations) {
+            const [liked, bookmarkResults] = await Promise.all([
+                window.noticeOperations.getNoticeIdsLikedByUser ? window.noticeOperations.getNoticeIdsLikedByUser(window.currentUser.uid) : [],
+                window.noticeOperations.isNoticeBookmarked ? Promise.all(sortedNotices.map(n => window.noticeOperations.isNoticeBookmarked(n.id, window.currentUser.uid))) : Promise.resolve([])
+            ]);
+            likedNoticeIds = new Set(liked || []);
+            bookmarkedNoticeIds = new Set(Array.isArray(bookmarkResults) ? sortedNotices.map((n, i) => bookmarkResults[i] ? n.id : null).filter(Boolean) : []);
+        }
+        
+        // 공지별 하트(좋아요) 카운트 - noticeInteractions에서 isLike=true만 계산
         const reactionCounts = await Promise.all(sortedNotices.map(async (n) => {
             try {
                 if (window.noticeOperations?.getNoticeReactionCounts) {
@@ -2883,44 +2899,49 @@ async function renderNotices() {
             
             const dateStr = date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
             const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-            const bgClass = notice.isPinned ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200';
-            const iconClass = notice.isPinned ? 'text-red-600' : 'text-emerald-600';
             const noticeContent = notice.content || '';
             const escapedContent = escapeHtml(noticeContent).replace(/\n/g, ' ');
             const noticeType = notice.type || notice.noticeType || 'notice';
             const typeLabel = noticeTypeLabels[noticeType] || '알림';
             const typeColor = noticeTypeColors[noticeType] || noticeTypeColors.notice;
+            const typeBorder = noticeTypeBorderColors[noticeType] || noticeTypeBorderColors.notice;
 
             const reactions = reactionMap.get(notice.id) || { likes: 0, dislikes: 0 };
             const likeCount = reactions.likes || 0;
             const viewCount = Number(notice.views || notice.viewCount || notice.viewsCount || notice.viewCounts || 0) || 0;
+            const isLiked = likedNoticeIds.has(notice.id);
+            const isBookmarked = bookmarkedNoticeIds.has(notice.id);
             
             return `
-                <div onclick="window.openNoticeDetail('${notice.id}')" class="p-4 ${bgClass} border-2 rounded-xl mb-3 cursor-pointer hover:opacity-90 active:scale-[0.99] transition-all">
-                    <div class="flex items-start justify-between mb-2">
+                <div onclick="window.openNoticeDetail('${notice.id}')" class="board-list-card rounded-2xl pt-5 px-5 pb-1.5 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all mb-2 ${typeBorder}">
+                    <div class="flex items-start gap-3 mb-3">
                         <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-2 mb-2">
-                                ${notice.isPinned ? `<i class="fa-solid fa-thumbtack ${iconClass} text-xs"></i>` : ''}
-                                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${typeColor} whitespace-nowrap">${typeLabel}</span>
+                            <div class="flex items-center gap-2 mb-2 flex-wrap">
+                                ${notice.isPinned === true ? `<i class="fa-solid fa-thumbtack text-emerald-600 text-xs"></i>` : ''}
+                                <span class="text-[10px] font-bold px-2.5 py-1 rounded-lg ${typeColor} whitespace-nowrap shrink-0">${typeLabel}</span>
                                 <h3 class="text-base font-bold text-slate-800 truncate flex-1 min-w-0 leading-tight">${escapeHtml(notice.title || '제목 없음')}</h3>
                             </div>
                             <p class="text-sm text-slate-600 line-clamp-2 mb-3 leading-relaxed">${escapedContent}</p>
                         </div>
                     </div>
-                    <div class="flex items-center justify-between pt-1 border-t border-slate-200/60">
-                        <div class="flex items-center gap-4">
-                            <span class="text-[11px] text-slate-400">관리자</span>
-                            <span class="text-[11px] text-slate-400">${dateStr} ${timeStr}</span>
+                    <div class="flex items-center justify-between pt-3 border-t border-slate-200">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-sm flex-shrink-0 border-2 border-slate-300">
+                                <i class="fa-solid fa-bullhorn text-slate-500 text-xs"></i>
+                            </div>
+                            <div>
+                                <div class="text-xs font-bold text-slate-800">관리자</div>
+                                <div class="text-[10px] text-slate-400">${dateStr} ${timeStr} · 조회 ${viewCount}</div>
+                            </div>
                         </div>
-                        <div class="flex items-center gap-4">
-                            <div class="flex items-center gap-1.5 text-slate-500">
-                                <i class="fa-solid fa-thumbs-up text-xs"></i>
-                                <span class="text-xs font-bold">${likeCount}</span>
-                            </div>
-                            <div class="flex items-center gap-1.5 text-slate-500">
-                                <i class="fa-solid fa-eye text-xs"></i>
-                                <span class="text-xs font-bold">${viewCount}</span>
-                            </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="event.stopPropagation(); window.toggleNoticeLike('${notice.id}', true)" class="board-post-like-btn flex items-center gap-1.5 active:scale-95 transition-transform ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-notice-id="${notice.id}" ${!window.currentUser ? 'disabled' : ''}>
+                                <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart text-xl ${isLiked ? 'text-red-500' : 'text-slate-800'}"></i>
+                                <span class="text-xs font-bold text-slate-800">${likeCount}</span>
+                            </button>
+                            <button onclick="event.stopPropagation(); window.toggleNoticeBookmark('${notice.id}')" class="board-post-bookmark-btn flex items-center gap-1.5 active:scale-95 transition-transform ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-notice-id="${notice.id}" ${!window.currentUser ? 'disabled' : ''}>
+                                <i class="fa-${isBookmarked ? 'solid' : 'regular'} fa-bookmark text-xl text-slate-800"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -2935,8 +2956,8 @@ async function renderNotices() {
     }
 }
 
-// 게시판 렌더링 함수
-export function renderBoard(category = 'all') {
+// 게시판 렌더링 함수 (optimisticPost: 새 글 등록 시 즉시 표시할 데이터)
+export async function renderBoard(category = 'all', optimisticPost = null) {
     const container = document.getElementById('boardContainer');
     if (!container) return;
     
@@ -2952,22 +2973,57 @@ export function renderBoard(category = 'all') {
         </div>
     `;
     
-    // 게시글 목록 비동기 로드
-    if (window.boardOperations) {
-        window.boardOperations.getPosts(category, 'latest', 20).then(posts => {
-            if (posts.length === 0) {
-                container.innerHTML = `
-                    <div class="flex flex-col items-center justify-center py-12 text-center">
-                        <i class="fa-solid fa-comments text-4xl text-slate-200 mb-3"></i>
-                        <p class="text-sm font-bold text-slate-400">게시글이 없습니다</p>
-                        <p class="text-xs text-slate-300 mt-2">첫 번째 게시글을 작성해보세요!</p>
-                    </div>
-                `;
-                return;
-            }
-            
-            // 최신순 정렬 보장 (timestamp 기준 내림차순)
-            posts.sort((a, b) => {
+    if (!window.boardOperations) return;
+    
+    try {
+        // API 호출 병렬화: traceIds, getPosts, liked, bookmarked 동시 요청
+        const hasFilter = appState.boardTraceFilter && window.currentUser && !window.currentUser.isAnonymous;
+        const tracePromise = hasFilter ? (() => {
+            const f = appState.boardTraceFilter;
+            if (f === 'like') return window.boardOperations.getPostIdsLikedByUser(window.currentUser.uid);
+            if (f === 'comment') return window.boardOperations.getPostIdsCommentedByUser(window.currentUser.uid);
+            if (f === 'bookmark') return window.boardOperations.getPostIdsBookmarkedByUser(window.currentUser.uid);
+            return Promise.resolve([]);
+        })() : Promise.resolve(null);
+        
+        const [traceList, posts, liked, bookmarked] = await Promise.all([
+            tracePromise,
+            window.boardOperations.getPosts(category, 'latest', 50),
+            window.currentUser && !window.currentUser.isAnonymous ? window.boardOperations.getPostIdsLikedByUser(window.currentUser.uid) : Promise.resolve([]),
+            window.currentUser && !window.currentUser.isAnonymous ? window.boardOperations.getPostIdsBookmarkedByUser(window.currentUser.uid) : Promise.resolve([])
+        ]);
+        
+        const tracePostIds = traceList ? new Set(traceList) : null;
+        const likedPostIds = new Set(liked || []);
+        const bookmarkedPostIds = new Set(bookmarked || []);
+        
+        let filteredPosts = tracePostIds ? posts.filter(p => tracePostIds.has(p.id)) : posts;
+        
+        // 낙관적 업데이트: 새 글이 있으면 상단에 병합 (중복 제거, 현재 카테고리와 일치할 때만)
+        if (optimisticPost?.id && (category === 'all' || optimisticPost.category === category)) {
+            const optWithTimestamp = { ...optimisticPost, timestamp: optimisticPost.timestamp || new Date().toISOString() };
+            filteredPosts = [optWithTimestamp, ...filteredPosts.filter(p => p.id !== optimisticPost.id)];
+        }
+        
+        if (filteredPosts.length === 0) {
+            const traceEmptyLabels = { like: '좋아요한', comment: '댓글 단', bookmark: '북마크한' };
+            const traceEmptyMsg = tracePostIds
+                ? (traceEmptyLabels[appState.boardTraceFilter] || '') + ' 게시글이 없습니다'
+                : '게시글이 없습니다';
+            const traceEmptySub = tracePostIds ? '다른 게시글에 좋아요, 댓글, 북마크를 남겨보세요!' : '첫 번째 게시글을 작성해보세요!';
+            const traceEmptyIcon = appState.boardTraceFilter === 'like' ? 'fa-heart' : (appState.boardTraceFilter === 'comment' ? 'fa-comment' : 'fa-bookmark');
+            container.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-12 text-center">
+                    <i class="fa-regular ${tracePostIds ? traceEmptyIcon : 'fa-comments'} text-4xl text-slate-200 mb-3"></i>
+                    <p class="text-sm font-bold text-slate-400">${traceEmptyMsg}</p>
+                    <p class="text-xs text-slate-300 mt-2">${traceEmptySub}</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // 최신순 정렬 보장 (timestamp 기준 내림차순)
+        filteredPosts.sort((a, b) => {
                 // timestamp 안전하게 변환
                 const getTimestamp = (post) => {
                     if (!post.timestamp) return 0;
@@ -2986,8 +3042,8 @@ export function renderBoard(category = 'all') {
                 const timeB = getTimestamp(b);
                 return timeB - timeA; // 최신이 위로
             });
-            
-            container.innerHTML = posts.map(post => {
+        
+        container.innerHTML = filteredPosts.map(post => {
                 // timestamp 안전하게 변환 (Firestore Timestamp 객체 또는 문자열 지원)
                 let postDate;
                 if (!post.timestamp) {
@@ -3033,6 +3089,8 @@ export function renderBoard(category = 'all') {
                 const isAuthor = window.currentUser && post.authorId === window.currentUser.uid;
                 const isAdminCategory = post.category === 'admin';
                 const shouldHideContent = isAdminCategory && !isAuthor;
+                const isLiked = likedPostIds.has(post.id);
+                const isBookmarked = bookmarkedPostIds.has(post.id);
                 
                 return `
                     <div onclick="window.openBoardDetail('${post.id}')" class="board-list-card rounded-2xl pt-5 px-5 pb-1.5 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all mb-2">
@@ -3061,27 +3119,30 @@ export function renderBoard(category = 'all') {
                             </div>
                             <div class="flex items-center gap-2">
                                 <div class="flex items-center gap-1.5 text-slate-800">
-                                    <i class="fa-regular fa-heart text-xl"></i>
-                                    <span class="text-xs font-bold">${post.likes || 0}</span>
+                                    <i class="fa-regular fa-comment text-xl"></i>
+                                    <span class="text-xs font-bold">${post.comments ?? 0}</span>
                                 </div>
-                                <div class="flex items-center gap-1.5 text-slate-800">
-                                    <i class="fa-regular fa-bookmark text-xl"></i>
-                                </div>
+                                <button onclick="event.stopPropagation(); window.toggleBoardLike('${post.id}', true)" class="board-post-like-btn flex items-center gap-1.5 active:scale-95 transition-transform ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-post-id="${post.id}" ${!window.currentUser ? 'disabled' : ''}>
+                                    <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart text-xl ${isLiked ? 'text-red-500' : 'text-slate-800'}"></i>
+                                    <span class="text-xs font-bold text-slate-800">${post.likes || 0}</span>
+                                </button>
+                                <button onclick="event.stopPropagation(); window.toggleBoardBookmark('${post.id}')" class="board-post-bookmark-btn flex items-center gap-1.5 active:scale-95 transition-transform ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-post-id="${post.id}" ${!window.currentUser ? 'disabled' : ''}>
+                                    <i class="fa-${isBookmarked ? 'solid' : 'regular'} fa-bookmark text-xl text-slate-800"></i>
+                                </button>
                             </div>
-                        </div>
                     </div>
-                `;
-            }).join('');
-        }).catch(error => {
-            console.error("게시판 로드 오류:", error);
-            container.innerHTML = `
-                <div class="flex flex-col items-center justify-center py-12 text-center">
-                    <i class="fa-solid fa-exclamation-triangle text-4xl text-red-300 mb-3"></i>
-                    <p class="text-sm font-bold text-red-400">게시글을 불러올 수 없습니다</p>
-                    <p class="text-xs text-slate-300 mt-2">잠시 후 다시 시도해주세요</p>
                 </div>
             `;
-        });
+        }).join('');
+    } catch (error) {
+        console.error("게시판 로드 오류:", error);
+        container.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-12 text-center">
+                <i class="fa-solid fa-exclamation-triangle text-4xl text-red-300 mb-3"></i>
+                <p class="text-sm font-bold text-red-400">게시글을 불러올 수 없습니다</p>
+                <p class="text-xs text-slate-300 mt-2">잠시 후 다시 시도해주세요</p>
+            </div>
+        `;
     }
 }
 
@@ -3303,10 +3364,11 @@ export async function renderNoticeDetail(noticeId) {
     `;
     
     try {
-        const [notice, counts, userReaction] = await Promise.all([
+        const [notice, counts, userReaction, isBookmarked] = await Promise.all([
             window.noticeOperations.getNotice(noticeId),
             window.noticeOperations.getNoticeReactionCounts(noticeId),
-            window.currentUser ? window.noticeOperations.getNoticeUserReaction(noticeId, window.currentUser.uid) : Promise.resolve(null)
+            window.currentUser ? window.noticeOperations.getNoticeUserReaction(noticeId, window.currentUser.uid) : Promise.resolve(null),
+            window.currentUser && window.noticeOperations.isNoticeBookmarked ? window.noticeOperations.isNoticeBookmarked(noticeId, window.currentUser.uid) : Promise.resolve(false)
         ]);
         
         if (!notice) {
@@ -3348,7 +3410,8 @@ export async function renderNoticeDetail(noticeId) {
         const typeColor = noticeTypeColors[noticeType] || noticeTypeColors.notice;
         
         const likes = counts?.likes ?? 0;
-        const dislikes = counts?.dislikes ?? 0;
+        const viewCount = Number(notice.views || notice.viewCount || notice.viewsCount || notice.viewCounts || 0) || 0;
+        const isLiked = userReaction === 'like';
         
         container.innerHTML = `
             <div class="board-post-card space-y-4">
@@ -3359,26 +3422,30 @@ export async function renderNoticeDetail(noticeId) {
                     </button>
                     <span class="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${typeColor}">${typeLabel}</span>
                     <h2 class="sub-title text-base text-slate-800 tracking-tight flex-1 truncate min-w-0">${escapeHtml(notice.title || '공지')}</h2>
+                    ${notice.isPinned === true ? '<span class="shrink-0 text-[10px] text-emerald-600 font-bold">고정</span>' : ''}
                 </div>
-                <div class="border-b border-slate-200 pb-3">
+                
+                <!-- 게시글 내용 -->
+                <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4 -mx-2 px-2">${escapeHtml(notice.content || '').replace(/\n/g, '<br>')}</div>
+                
+                <!-- 하단: 작성자/일자/조회수(왼쪽) | 하트·북마크(오른쪽) -->
+                <div class="flex items-center justify-between pt-3 border-t border-slate-200">
                     <div class="flex items-center gap-3">
-                        ${notice.isPinned ? '<span class="text-[10px] px-2 py-0.5 bg-yellow-100 text-yellow-700 font-bold rounded">고정</span>' : ''}
-                        <span class="text-xs font-bold text-slate-600">관리자</span>
-                        <span class="text-[10px] text-slate-400">${dateStr} ${timeStr}</span>
+                        <div class="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-sm flex-shrink-0 border-2 border-slate-300">
+                            <i class="fa-solid fa-bullhorn text-slate-500 text-xs"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs font-bold text-slate-800">관리자</div>
+                            <div class="text-[10px] text-slate-400">${dateStr} ${timeStr} · 조회 ${viewCount}</div>
+                        </div>
                     </div>
-                </div>
-                <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4 -mx-3 px-1">${escapeHtml(notice.content || '').replace(/\n/g, '<br>')}</div>
-                <div class="board-detail-actions">
-                    <div class="board-detail-actions__left">
-                        <button onclick="window.toggleNoticeLike('${noticeId}', true)" class="board-btn-participate board-btn-participate--like ${userReaction === 'like' ? 'is-active' : ''}" ${!window.currentUser ? 'disabled' : ''}>
-                            <i class="fa-solid fa-thumbs-up"></i>
-                            <span>추천</span>
-                            <span class="text-xs opacity-80">${likes}</span>
+                    <div class="flex items-center gap-2">
+                        <button onclick="window.toggleNoticeLike('${noticeId}', true)" class="board-post-like-btn flex items-center gap-1.5 active:scale-95 transition-transform" data-notice-id="${noticeId}" ${!window.currentUser ? 'disabled' : ''}>
+                            <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart text-xl ${isLiked ? 'text-red-500' : 'text-slate-800'}"></i>
+                            <span class="text-xs font-bold text-slate-800">${likes}</span>
                         </button>
-                        <button onclick="window.toggleNoticeLike('${noticeId}', false)" class="board-btn-participate board-btn-participate--dislike ${userReaction === 'dislike' ? 'is-active' : ''}" ${!window.currentUser ? 'disabled' : ''}>
-                            <i class="fa-solid fa-thumbs-down"></i>
-                            <span>비추천</span>
-                            <span class="text-xs opacity-80">${dislikes}</span>
+                        <button onclick="window.toggleNoticeBookmark('${noticeId}')" class="board-post-bookmark-btn flex items-center gap-1.5 active:scale-95 transition-transform" data-notice-id="${noticeId}" ${!window.currentUser ? 'disabled' : ''}>
+                            <i class="fa-${isBookmarked ? 'solid' : 'regular'} fa-bookmark text-xl text-slate-800"></i>
                         </button>
                     </div>
                 </div>

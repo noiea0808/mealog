@@ -421,8 +421,6 @@ window.addCommentToPost = async (postId) => {
                 if (delBtn) delBtn.setAttribute('onclick', `window.deleteCommentFromPost('${String(newComment.id).replace(/'/g, "\\'")}', '${postId}')`);
             }
         }
-        
-        showToast("댓글이 추가되었습니다.", 'success');
     } catch (e) {
         console.error("댓글 추가 실패:", e);
         showToast("댓글 추가 중 오류가 발생했습니다: " + (e.message || e), 'error');
@@ -729,7 +727,6 @@ window.submitComment = async (postId) => {
                     </div>`;
             }
         }
-        showToast("댓글이 등록되었습니다.", 'success');
     } catch (e) {
         console.error("[submitComment] 에러:", e);
         const errorMessage = e.message || e.details || e.code || "댓글 작성에 실패했습니다.";
@@ -1288,7 +1285,7 @@ window.switchMainTab = (tab) => {
         if (boardDetailView) boardDetailView.classList.add('hidden');
         if (boardWriteView) boardWriteView.classList.add('hidden');
         
-        // 게시글 목록 로드
+        if (typeof window.updateGalleryTraceFilterBarUI === 'function') window.updateGalleryTraceFilterBarUI();
         const category = window.currentBoardCategory || 'all';
         renderBoard(category);
         setTimeout(() => {
@@ -1328,7 +1325,7 @@ window.switchMainTab = (tab) => {
         }
     }
     if (tracePanel) {
-        if (tab === 'gallery') {
+        if (tab === 'gallery' || tab === 'board') {
             tracePanel.classList.remove('hidden');
         } else {
             tracePanel.classList.add('hidden');
@@ -1467,7 +1464,7 @@ function updateTimelineSearchExpandWidth() {
 }
 
 window.toggleSearch = () => {
-    if (appState.currentTab === 'gallery') {
+    if (appState.currentTab === 'gallery' || appState.currentTab === 'board') {
         window.toggleGalleryTracePanel();
         return;
     }
@@ -1500,11 +1497,11 @@ window.closeSearch = () => {
 
 window.addEventListener('resize', updateTimelineSearchExpandWidth);
 
-// 앨범 흔적 필터 패널 버튼 상태 갱신
+// 앨범/밀톡 흔적 필터 패널 버튼 상태 갱신
 window.updateGalleryTraceFilterBarUI = () => {
     const panel = document.getElementById('galleryTraceFilterPanel');
     if (!panel) return;
-    const f = appState.galleryTraceFilter;
+    const f = appState.currentTab === 'board' ? appState.boardTraceFilter : appState.galleryTraceFilter;
     ['like', 'comment', 'bookmark'].forEach((trace) => {
         const btn = panel.querySelector(`[data-trace="${trace}"]`);
         if (!btn) return;
@@ -1529,7 +1526,7 @@ window.updateGalleryTraceFilterBarUI = () => {
     });
 };
 
-// 앨범 흔적 필터 설정 및 갤러리 다시 렌더 (같은 필터 재클릭 시 해제)
+// 앨범/밀톡 흔적 필터 설정 및 다시 렌더 (같은 필터 재클릭 시 해제)
 window.setGalleryTraceFilter = (value) => {
     if (!value || value === 'collapse') return;
     const v = value === '' || value == null ? null : value;
@@ -1538,13 +1535,18 @@ window.setGalleryTraceFilter = (value) => {
         window.requestLogin();
         return;
     }
-    // 이미 선택된 필터를 다시 클릭하면 해제
-    appState.galleryTraceFilter = (appState.galleryTraceFilter === v) ? null : v;
+    if (appState.currentTab === 'board') {
+        appState.boardTraceFilter = (appState.boardTraceFilter === v) ? null : v;
+    } else {
+        appState.galleryTraceFilter = (appState.galleryTraceFilter === v) ? null : v;
+    }
     if (typeof window.updateGalleryTraceFilterBarUI === 'function') window.updateGalleryTraceFilterBarUI();
     
-    // 갤러리 탭에서만 렌더링 (다른 탭에서는 렌더링하지 않음 - 프리즈 방지)
     if (appState.currentTab === 'gallery') {
         renderGallery();
+    } else if (appState.currentTab === 'board') {
+        const category = window.currentBoardCategory || 'all';
+        renderBoard(category);
     }
 };
 
@@ -2478,14 +2480,16 @@ window.openBoardWrite = () => {
     }, 100);
 };
 
-window.backToBoardList = () => {
+window.backToBoardList = (optimisticPost = null) => {
     const boardListView = document.getElementById('boardListView');
     const boardDetailView = document.getElementById('boardDetailView');
     const boardWriteView = document.getElementById('boardWriteView');
+    const tracePanel = document.getElementById('galleryTraceFilterPanel');
     
     if (boardListView) boardListView.classList.remove('hidden');
     if (boardDetailView) boardDetailView.classList.add('hidden');
     if (boardWriteView) boardWriteView.classList.add('hidden');
+    if (tracePanel && appState.currentTab === 'board') tracePanel.classList.remove('hidden');
     
     window.currentBoardPostId = null;
     window.currentEditingPostId = null;
@@ -2496,13 +2500,13 @@ window.backToBoardList = () => {
     const submitBtn = boardWriteView?.querySelector('button[onclick="window.submitBoardPost()"]');
     if (submitBtn) submitBtn.textContent = '등록';
     
-    // 게시판 목록 새로고침
+    // 게시판 목록 새로고침 (낙관적 업데이트: 새 글 데이터 전달 시 즉시 반영)
     const category = window.currentBoardCategory || 'all';
-    renderBoard(category);
+    renderBoard(category, optimisticPost);
     
     setTimeout(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 100);
+    }, 50);
 };
 
 // 게시판 글쓰기 카테고리 선택 (버튼 UI)
@@ -2543,14 +2547,13 @@ window.submitBoardPost = async () => {
             await boardOperations.updatePost(window.currentEditingPostId, { title, content, category });
             window.currentEditingPostId = null;
         } else {
-            // 새 게시글 작성
+            // 새 게시글 작성 (낙관적 업데이트: 반환된 글을 즉시 목록에 반영)
             console.log('[submitBoardPost] 게시글 작성 시작:', { title, category });
-            await boardOperations.createPost({ title, content, category });
+            const result = await boardOperations.createPost({ title, content, category });
+            window.backToBoardList(result?.id ? { id: result.id, title, content, category, authorId: window.currentUser.uid, authorNickname: window.userSettings?.profile?.nickname || '익명', authorPhotoUrl: window.userSettings?.profile?.photoUrl || null, authorIcon: window.userSettings?.profile?.icon || null, likes: 0, dislikes: 0, views: 0, comments: 0, timestamp: result.timestamp || new Date().toISOString() } : null);
+            return;
         }
-        // 글 작성 후 Firestore 동기화를 위해 약간의 지연 후 목록 새로고침
-        setTimeout(() => {
-            window.backToBoardList();
-        }, 500);
+        window.backToBoardList();
     } catch (e) {
         console.error("[submitBoardPost] 에러:", e);
         console.error("[submitBoardPost] 에러 상세:", {
@@ -2571,10 +2574,12 @@ window.openBoardDetail = async (postId) => {
     const boardListView = document.getElementById('boardListView');
     const boardDetailView = document.getElementById('boardDetailView');
     const boardWriteView = document.getElementById('boardWriteView');
+    const tracePanel = document.getElementById('galleryTraceFilterPanel');
     
     if (boardListView) boardListView.classList.add('hidden');
     if (boardDetailView) boardDetailView.classList.remove('hidden');
     if (boardWriteView) boardWriteView.classList.add('hidden');
+    if (tracePanel) tracePanel.classList.add('hidden');
     
     await renderBoardDetail(postId);
     
@@ -2590,10 +2595,12 @@ window.openNoticeDetail = async (noticeId) => {
     const boardListView = document.getElementById('boardListView');
     const boardDetailView = document.getElementById('boardDetailView');
     const boardWriteView = document.getElementById('boardWriteView');
+    const tracePanel = document.getElementById('galleryTraceFilterPanel');
     
     if (boardListView) boardListView.classList.add('hidden');
     if (boardDetailView) boardDetailView.classList.remove('hidden');
     if (boardWriteView) boardWriteView.classList.add('hidden');
+    if (tracePanel) tracePanel.classList.add('hidden');
     
     await renderNoticeDetail(noticeId);
     
@@ -2628,9 +2635,26 @@ window.toggleBoardLike = async (postId, isLike) => {
         return;
     }
     
+    const likeBtns = document.querySelectorAll(`.board-post-like-btn[data-post-id="${postId}"]`);
+    const firstBtn = likeBtns[0];
+    const likeIcon = firstBtn?.querySelector('.fa-heart');
+    const likeCountEl = firstBtn?.querySelector('span.text-xs');
+    const wasLiked = likeIcon?.classList.contains('fa-solid');
+    
     try {
         await boardOperations.toggleLike(postId, isLike);
-        await renderBoardDetail(postId);
+        likeBtns.forEach(btn => {
+            const icon = btn.querySelector('.fa-heart');
+            const countEl = btn.querySelector('span.text-xs');
+            if (icon) {
+                icon.classList.remove('fa-regular', 'fa-solid', 'text-red-500', 'text-slate-800');
+                icon.classList.add(wasLiked ? 'fa-regular' : 'fa-solid', 'fa-heart', wasLiked ? 'text-slate-800' : 'text-red-500');
+            }
+            if (countEl) {
+                const current = parseInt(countEl.textContent || '0', 10);
+                countEl.textContent = wasLiked ? Math.max(0, current - 1) : current + 1;
+            }
+        });
     } catch (e) {
         console.error("좋아요 오류:", e);
         showToast("처리 중 오류가 발생했습니다.", 'error');
@@ -2644,14 +2668,17 @@ window.toggleBoardBookmark = async (postId) => {
         return;
     }
     
+    const bookmarkBtns = document.querySelectorAll(`.board-post-bookmark-btn[data-post-id="${postId}"]`);
+    
     try {
         const result = await boardOperations.toggleBookmark(postId);
-        await renderBoardDetail(postId);
-        if (result?.bookmarked) {
-            showToast("북마크에 추가되었습니다.", 'success');
-        } else {
-            showToast("북마크에서 제거되었습니다.", 'info');
-        }
+        bookmarkBtns.forEach(btn => {
+            const icon = btn.querySelector('.fa-bookmark');
+            if (icon) {
+                icon.classList.remove('fa-regular', 'fa-solid');
+                icon.classList.add(result?.bookmarked ? 'fa-solid' : 'fa-regular', 'fa-bookmark');
+            }
+        });
     } catch (e) {
         console.error("북마크 오류:", e);
         showToast("처리 중 오류가 발생했습니다.", 'error');
@@ -2723,18 +2750,58 @@ window.showBoardPostOptions = (postId, isAuthor) => {
     document.body.appendChild(menu);
 };
 
-window.toggleNoticeLike = async (noticeId, isLike) => {
+window.toggleNoticeLike = async (noticeId, isLike = true) => {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         showToast("로그인이 필요합니다.", 'error');
         window.requestLogin();
         return;
     }
     
+    const likeBtns = document.querySelectorAll(`.board-post-like-btn[data-notice-id="${noticeId}"]`);
+    const firstBtn = likeBtns[0];
+    const likeIcon = firstBtn?.querySelector('.fa-heart');
+    const wasLiked = likeIcon?.classList.contains('fa-solid');
+    
     try {
         await noticeOperations.toggleNoticeLike(noticeId, isLike);
-        await renderNoticeDetail(noticeId);
+        likeBtns.forEach(btn => {
+            const icon = btn.querySelector('.fa-heart');
+            const countEl = btn.querySelector('span.text-xs');
+            if (icon) {
+                icon.classList.remove('fa-regular', 'fa-solid', 'text-red-500', 'text-slate-800');
+                icon.classList.add(wasLiked ? 'fa-regular' : 'fa-solid', 'fa-heart', wasLiked ? 'text-slate-800' : 'text-red-500');
+            }
+            if (countEl) {
+                const current = parseInt(countEl.textContent || '0', 10);
+                countEl.textContent = wasLiked ? Math.max(0, current - 1) : current + 1;
+            }
+        });
     } catch (e) {
-        console.error("공지 추천/비추천 오류:", e);
+        console.error("공지 하트 오류:", e);
+        showToast("처리 중 오류가 발생했습니다.", 'error');
+    }
+};
+
+window.toggleNoticeBookmark = async (noticeId) => {
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast("로그인이 필요합니다.", 'error');
+        window.requestLogin();
+        return;
+    }
+    
+    const bookmarkBtns = document.querySelectorAll(`.board-post-bookmark-btn[data-notice-id="${noticeId}"]`);
+    
+    try {
+        const result = await noticeOperations.toggleNoticeBookmark(noticeId);
+        bookmarkBtns.forEach(btn => {
+            const icon = btn.querySelector('.fa-bookmark');
+            if (icon) {
+                icon.classList.remove('fa-regular', 'fa-solid');
+                icon.classList.add(result?.bookmarked ? 'fa-solid' : 'fa-regular', 'fa-bookmark');
+            }
+        });
+    } catch (e) {
+        console.error("공지 북마크 오류:", e);
         showToast("처리 중 오류가 발생했습니다.", 'error');
     }
 };
@@ -2861,7 +2928,6 @@ window.addBoardComment = async (postId) => {
                 if (btn) btn.setAttribute('onclick', `window.deleteBoardComment('${realId}', '${postId}')`);
             }
         }
-        showToast("댓글이 등록되었습니다.", 'success');
     } catch (e) {
         console.error("댓글 작성 오류:", e);
         showToast("댓글 작성에 실패했습니다.", 'error');

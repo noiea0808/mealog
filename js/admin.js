@@ -2083,7 +2083,7 @@ window.openNoticeWriteModal = function(noticeId = null) {
                 if (titleInput) titleInput.value = noticeData.title || '';
                 if (contentInput) contentInput.value = noticeData.content || '';
                 if (typeSelect) typeSelect.value = noticeData.type || 'important';
-                if (pinnedCheckbox) pinnedCheckbox.checked = noticeData.isPinned === true;
+                if (pinnedCheckbox) pinnedCheckbox.checked = Boolean(noticeData.isPinned === true);
             }
         }).catch(e => {
             console.error("공지 로드 실패:", e);
@@ -2117,7 +2117,7 @@ window.submitNotice = async function() {
     const title = titleInput.value.trim();
     const content = contentInput.value.trim();
     const type = typeSelect ? typeSelect.value : 'important';
-    const isPinned = pinnedCheckbox ? pinnedCheckbox.checked : false;
+    const isPinned = pinnedCheckbox ? Boolean(pinnedCheckbox.checked) : false;
     
     if (!title) {
         alert('제목을 입력해주세요.');
@@ -2144,9 +2144,9 @@ window.submitNotice = async function() {
         };
         
         if (currentEditingNoticeId) {
-            // 수정
+            // 수정 (isPinned 명시적 저장 - 체크 해제 시 false로 반영)
             const noticeDoc = doc(db, 'artifacts', appId, 'notices', currentEditingNoticeId);
-            await setDoc(noticeDoc, noticeData, { merge: true });
+            await setDoc(noticeDoc, { ...noticeData, isPinned: isPinned }, { merge: true });
             alert('공지가 수정되었습니다.');
         } else {
             // 작성

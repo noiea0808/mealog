@@ -25,6 +25,14 @@
       ]
     },
     {
+      "collectionGroup": "boardInteractions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "isLike", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "postComments",
       "queryScope": "COLLECTION",
       "fields": [
@@ -54,6 +62,14 @@
       "fields": [
         { "fieldPath": "noticeId", "order": "ASCENDING" },
         { "fieldPath": "userId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "noticeInteractions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "isLike", "order": "ASCENDING" }
       ]
     }
   ],

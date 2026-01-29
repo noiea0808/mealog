@@ -22,6 +22,7 @@ export const appState = {
     pageDate: new Date(),
     galleryFilterUserId: null, // 앨범 탭에서 필터링된 사용자 ID
     galleryTraceFilter: null, // 앨범 흔적 필터: null | 'like' | 'comment' | 'bookmark'
+    boardTraceFilter: null,   // 밀톡 흔적 필터: null | 'like' | 'comment' | 'bookmark'
     
     // 편집 상태 (모달 관련)
     currentEditingId: null,
