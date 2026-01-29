@@ -635,16 +635,19 @@ window.toggleCommentInput = (postId) => {
         return;
     }
     const inputEl = document.getElementById(`comment-input-${postId}`);
+    const commentSection = document.getElementById(`comment-section-${postId}`);
     if (inputEl) {
         const isHidden = inputEl.classList.contains('hidden');
         if (isHidden) {
             inputEl.classList.remove('hidden');
+            if (commentSection) commentSection.classList.add('comment-input-open');
             const textInput = document.getElementById(`comment-text-${postId}`);
             if (textInput) {
                 textInput.focus();
             }
         } else {
             inputEl.classList.add('hidden');
+            if (commentSection) commentSection.classList.remove('comment-input-open');
         }
     }
 };
@@ -685,6 +688,8 @@ window.submitComment = async (postId) => {
                 <span class="font-bold text-slate-800">${escapeHtml(userNickname)}</span>
                 <span class="text-slate-800 ml-2">${escapeHtml(commentText)}</span>
             </div>`);
+        const commentSection = document.getElementById(`comment-section-${postId}`);
+        if (commentSection) commentSection.classList.remove('comments-empty');
     }
     if (commentCountEl) {
         const n = (parseInt(commentCountEl.textContent || '0', 10) || 0) + 1;
@@ -2625,12 +2630,97 @@ window.toggleBoardLike = async (postId, isLike) => {
     
     try {
         await boardOperations.toggleLike(postId, isLike);
-        // 게시글 상세 새로고침
         await renderBoardDetail(postId);
     } catch (e) {
-        console.error("추천/비추천 오류:", e);
+        console.error("좋아요 오류:", e);
         showToast("처리 중 오류가 발생했습니다.", 'error');
     }
+};
+
+window.toggleBoardBookmark = async (postId) => {
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast("로그인이 필요합니다.", 'error');
+        window.requestLogin();
+        return;
+    }
+    
+    try {
+        const result = await boardOperations.toggleBookmark(postId);
+        await renderBoardDetail(postId);
+        if (result?.bookmarked) {
+            showToast("북마크에 추가되었습니다.", 'success');
+        } else {
+            showToast("북마크에서 제거되었습니다.", 'info');
+        }
+    } catch (e) {
+        console.error("북마크 오류:", e);
+        showToast("처리 중 오류가 발생했습니다.", 'error');
+    }
+};
+
+// 밀톡 게시글 점3개 메뉴 (내글: 수정/삭제, 타인글: 신고)
+window.showBoardPostOptions = (postId, isAuthor) => {
+    const existingMenu = document.getElementById('boardPostOptionsMenu');
+    if (existingMenu) existingMenu.remove();
+    
+    const menu = document.createElement('div');
+    menu.id = 'boardPostOptionsMenu';
+    menu.className = 'fixed inset-0 z-[450]';
+    
+    const bg = document.createElement('div');
+    bg.className = 'fixed inset-0 bg-black/40';
+    bg.onclick = () => menu.remove();
+    
+    const menuContainer = document.createElement('div');
+    menuContainer.className = 'fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white rounded-t-3xl p-4 pb-8 animate-fade-up z-[451]';
+    
+    const handlebar = document.createElement('div');
+    handlebar.className = 'w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4';
+    
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'space-y-2';
+    
+    if (isAuthor) {
+        const editBtn = document.createElement('button');
+        editBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        editBtn.type = 'button';
+        editBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            menu.remove();
+            setTimeout(() => window.editBoardPost(postId), 100);
+        });
+        editBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-pencil text-emerald-600 text-lg"></i><span class="font-bold text-slate-800">수정하기</span></div>';
+        buttonContainer.appendChild(editBtn);
+        
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        deleteBtn.type = 'button';
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            menu.remove();
+            setTimeout(() => window.deleteBoardPost(postId), 100);
+        });
+        deleteBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-trash text-red-500 text-lg"></i><span class="font-bold text-red-500">삭제하기</span></div>';
+        buttonContainer.appendChild(deleteBtn);
+    } else {
+        const reportBtn = document.createElement('button');
+        reportBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        reportBtn.type = 'button';
+        reportBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            menu.remove();
+            setTimeout(() => window.showReportModal && window.showReportModal(`board_${postId}`), 100);
+        });
+        reportBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-flag text-amber-600 text-lg"></i><span class="font-bold text-slate-800">신고하기</span></div>';
+        buttonContainer.appendChild(reportBtn);
+    }
+    
+    menuContainer.addEventListener('click', (e) => e.stopPropagation());
+    menuContainer.appendChild(handlebar);
+    menuContainer.appendChild(buttonContainer);
+    menu.appendChild(bg);
+    menu.appendChild(menuContainer);
+    document.body.appendChild(menu);
 };
 
 window.toggleNoticeLike = async (noticeId, isLike) => {

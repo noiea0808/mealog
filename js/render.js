@@ -944,9 +944,10 @@ async function loadPostInteractions(postEl, postId) {
         // 댓글 표시 (최대 2개) — 등록 시간 포함
         const commentsListEl = postEl.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
         if (commentsListEl) {
+            const commentSection = postEl.querySelector(`#comment-section-${postId}`);
             if (comments.length > 0) {
-                // 댓글이 있으면 배경색 추가
-                commentsListEl.classList.add('bg-slate-50');
+                if (commentSection) commentSection.classList.remove('comments-empty');
+                // 댓글 목록은 흰색 배경 유지 (앨범 스타일)
                 const displayComments = comments.slice(0, 2);
                 commentsListEl.innerHTML = displayComments.map(c => {
                     let dateStr = '', timeStr = '';
@@ -986,12 +987,15 @@ async function loadPostInteractions(postEl, postId) {
                 }
             } else {
                 commentsListEl.innerHTML = '';
-                commentsListEl.classList.remove('bg-slate-50');
                 const viewCommentsBtn = postEl.querySelector(`#view-comments-${postId}`);
                 if (viewCommentsBtn) {
                     viewCommentsBtn.classList.add('hidden');
                 }
+                if (commentSection) commentSection.classList.add('comments-empty');
             }
+        } else {
+            const commentSection = postEl.querySelector(`#comment-section-${postId}`);
+            if (commentSection) commentSection.classList.add('comments-empty');
         }
     } catch (err) {
         console.error(`포스트 ${postId}의 좋아요/북마크/댓글 로드 실패:`, err);
@@ -1682,7 +1686,7 @@ export async function renderGallery() {
         
         return `
             <div class="mb-2 bg-white border-b border-slate-200 instagram-post" data-post-id="${postId}" data-group-key="${groupKey}">
-                <div class="px-6 py-3 flex items-center gap-2 relative">
+                <div class="px-3 py-3 flex items-center gap-1 relative">
                     ${photo.userPhotoUrl ? `
                         <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${photo.userPhotoUrl}); background-size: cover; background-position: center;">
                             ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
@@ -1716,7 +1720,7 @@ export async function renderGallery() {
                     ` : ''}
                 </div>
                 ${!isBestShare && !isDailyShare && !isInsightShare && caption ? `
-                <div class="px-6 py-2 bg-slate-100 text-sm text-slate-800">
+                <div class="px-6 py-2 text-sm text-white" style="background-color: #047857;">
                     ${caption}
                 </div>
                 ` : ''}
@@ -1759,19 +1763,22 @@ export async function renderGallery() {
                         </div>
                     `;
                     })() : ''}
-                    <!-- 댓글 목록 -->
-                    <div class="post-comments-list mb-2 rounded-lg py-2 -mx-6 px-6" data-post-id="${postId}" id="comments-list-${postId}">
-                        <!-- 댓글들이 동적으로 추가됨 -->
-                    </div>
-                    <!-- 댓글 더보기 -->
-                    <button id="view-comments-${postId}" class="hidden text-xs text-slate-500 font-bold mb-2 hover:text-slate-700 active:text-slate-900 transition-colors" onclick="window.viewAllComments('${postId}')">
-                        댓글 더보기
-                    </button>
-                    <!-- 댓글 입력 -->
-                    <div id="comment-input-${postId}" class="hidden mt-1 -mx-6 px-6">
-                        <div class="relative">
-                            <input type="text" id="comment-text-${postId}" placeholder="댓글을 입력하세요..." class="w-full px-3 py-2 pr-16 border border-slate-300 rounded-lg text-sm focus:outline-none" onkeypress="if(event.key === 'Enter') window.submitComment('${postId}')">
-                            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold cursor-pointer hover:text-emerald-700" onclick="window.submitComment('${postId}')">게시</span>
+                    <!-- 댓글 영역 (상단 구분선, 댓글 없을 때 comments-empty로 빈 영역 제거) -->
+                    <div class="comment-section comments-empty border-t border-slate-200 -mx-6 px-6 pt-1.5 mt-1" id="comment-section-${postId}">
+                        <!-- 댓글 목록 (흰색) -->
+                        <div class="post-comments-list mb-1 rounded-lg py-2 bg-white" data-post-id="${postId}" id="comments-list-${postId}">
+                            <!-- 댓글들이 동적으로 추가됨 -->
+                        </div>
+                        <!-- 댓글 더보기 -->
+                        <button id="view-comments-${postId}" class="hidden text-xs text-slate-500 font-bold mb-1 hover:text-slate-700 active:text-slate-900 transition-colors" onclick="window.viewAllComments('${postId}')">
+                            댓글 더보기
+                        </button>
+                        <!-- 댓글 입력 영역 -->
+                        <div id="comment-input-${postId}" class="hidden mt-1 py-3 -mx-6 px-6">
+                            <div class="relative">
+                                <input type="text" id="comment-text-${postId}" placeholder="댓글을 입력하세요..." class="w-full px-3 py-2 pr-16 border border-slate-300 rounded-lg text-sm focus:outline-none bg-slate-100" onkeypress="if(event.key === 'Enter') window.submitComment('${postId}')">
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold cursor-pointer hover:text-emerald-700" onclick="window.submitComment('${postId}')">게시</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2379,7 +2386,7 @@ export function renderFeed() {
         
         return `
             <div class="mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden">
-                <div class="px-4 py-3 flex items-center gap-2 relative">
+                <div class="px-2 py-3 flex items-center gap-1 relative">
                     ${photo.userPhotoUrl ? `
                         <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${photo.userPhotoUrl}); background-size: cover; background-position: center;">
                             ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
@@ -3028,7 +3035,7 @@ export function renderBoard(category = 'all') {
                 const shouldHideContent = isAdminCategory && !isAuthor;
                 
                 return `
-                    <div onclick="window.openBoardDetail('${post.id}')" class="board-list-card board-list-card--${post.category || 'serious'} rounded-2xl pt-5 px-5 pb-1.5 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all mb-2">
+                    <div onclick="window.openBoardDetail('${post.id}')" class="board-list-card rounded-2xl pt-5 px-5 pb-1.5 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all mb-2">
                         <div class="flex items-start gap-3 mb-3">
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2 mb-2 flex-wrap">
@@ -3038,28 +3045,27 @@ export function renderBoard(category = 'all') {
                                 ${shouldHideContent ? '<p class="text-sm text-slate-400 line-clamp-2 mb-3 leading-relaxed">이 게시물은 작성자만 볼 수 있습니다.</p>' : `<p class="text-sm text-slate-600 line-clamp-2 mb-3 leading-relaxed">${escapeHtml(post.content)}</p>`}
                             </div>
                         </div>
-                        <div class="flex items-center justify-between pt-1 border-t border-slate-100">
-                            <div class="flex items-center gap-4">
-                                <div class="flex items-center gap-2">
-                                    <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 ${post.authorPhotoUrl ? '' : 'bg-slate-200'}" ${post.authorPhotoUrl ? `style="background-image: url(${post.authorPhotoUrl}); background-size: cover; background-position: center;"` : ''}>
-                                        ${post.authorPhotoUrl ? '' : (post.authorIcon ? `<span class="text-lg">${post.authorIcon}</span>` : `<span class="text-sm font-bold text-slate-500">${(post.authorNickname || '익명').charAt(0)}</span>`)}
+                        <div class="flex items-center justify-between pt-3 border-t border-slate-200">
+                            <div class="flex items-center gap-3">
+                                ${post.authorPhotoUrl ? `
+                                    <div class="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${post.authorPhotoUrl}); background-size: cover; background-position: center;"></div>
+                                ` : `
+                                    <div class="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-sm flex-shrink-0 border-2 border-slate-300">
+                                        ${post.authorIcon ? post.authorIcon : (post.authorNickname || '익명').charAt(0)}
                                     </div>
-                                    <span class="text-[11px] text-slate-400">${escapeHtml(post.authorNickname || '익명')}</span>
+                                `}
+                                <div>
+                                    <div class="text-xs font-bold text-slate-800">${escapeHtml(post.authorNickname || '익명')}</div>
+                                    <div class="text-[10px] text-slate-400">${dateStr} ${timeStr} · 조회 ${post.views || 0}</div>
                                 </div>
-                                <span class="text-[11px] text-slate-400">${dateStr} ${timeStr}</span>
                             </div>
-                            <div class="flex items-center gap-4">
-                                <div class="flex items-center gap-1.5 text-slate-500">
-                                    <i class="fa-solid fa-thumbs-up text-xs"></i>
+                            <div class="flex items-center gap-2">
+                                <div class="flex items-center gap-1.5 text-slate-800">
+                                    <i class="fa-regular fa-heart text-xl"></i>
                                     <span class="text-xs font-bold">${post.likes || 0}</span>
                                 </div>
-                                <div class="flex items-center gap-1.5 text-slate-500">
-                                    <i class="fa-solid fa-comment text-xs"></i>
-                                    <span class="text-xs font-bold">${post.comments || 0}</span>
-                                </div>
-                                <div class="flex items-center gap-1.5 text-slate-500">
-                                    <i class="fa-solid fa-eye text-xs"></i>
-                                    <span class="text-xs font-bold">${post.views || 0}</span>
+                                <div class="flex items-center gap-1.5 text-slate-800">
+                                    <i class="fa-regular fa-bookmark text-xl"></i>
                                 </div>
                             </div>
                         </div>
@@ -3092,9 +3098,6 @@ export async function renderBoardDetail(postId) {
             </div>
         </div>
     `;
-    const myPostLbl = document.getElementById('boardDetailMyPostLabel');
-    if (myPostLbl) myPostLbl.classList.add('hidden');
-    
     try {
         const post = await window.boardOperations.getPost(postId);
         if (!post) {
@@ -3162,70 +3165,54 @@ export async function renderBoardDetail(postId) {
             return;
         }
         
-        // 사용자의 반응 확인과 댓글 목록을 병렬로 가져오기
-        const [userReaction, comments] = await Promise.all([
+        // 사용자의 반응(좋아요), 북마크 확인과 댓글 목록을 병렬로 가져오기
+        const [userReaction, isBookmarked, comments] = await Promise.all([
             window.currentUser ? window.boardOperations.getUserReaction(postId, window.currentUser.uid) : Promise.resolve(null),
+            window.currentUser && window.boardOperations.isBookmarked ? window.boardOperations.isBookmarked(postId, window.currentUser.uid) : Promise.resolve(false),
             window.boardOperations.getComments(postId)
         ]);
         
         container.innerHTML = `
             <div class="board-post-card space-y-4">
-                <!-- 게시글 헤더 -->
-                <div class="border-b border-slate-200 pb-4">
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-3">
-                            ${post.authorPhotoUrl ? `
-                                <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${post.authorPhotoUrl}); background-size: cover; background-position: center;"></div>
-                            ` : `
-                                <div class="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0 border-2 border-slate-300">
-                                    ${post.authorIcon || (post.authorNickname || '익명').charAt(0)}
-                                </div>
-                            `}
-                            <div>
-                                <div class="text-sm font-bold text-slate-800">${escapeHtml(post.authorNickname || '익명')}</div>
-                                <div class="text-xs text-slate-400">${dateStr} ${timeStr}</div>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-4 text-xs text-slate-400">
-                            <span class="flex items-center gap-1">
-                                <i class="fa-solid fa-eye"></i>
-                                <span>${post.views || 0}</span>
-                            </span>
-                        </div>
-                    </div>
+                <!-- 상단: 뒤로가기 / 카테고리·제목 / 내글 / 점3개 -->
+                <div class="flex items-center gap-2 pb-3 border-b border-slate-200">
+                    <button onclick="window.backToBoardList()" class="w-8 h-8 flex items-center justify-center text-slate-400 active:bg-slate-100 rounded-full transition-colors flex-shrink-0">
+                        <i class="fa-solid fa-arrow-left text-lg"></i>
+                    </button>
+                    <span class="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${categoryColors[post.category] || categoryColors.serious}">${categoryLabels[post.category] || '무거운'}</span>
+                    <h2 class="sub-title text-base text-slate-800 tracking-tight flex-1 truncate min-w-0">${escapeHtml(post.title || '게시글')}</h2>
+                    ${isAuthor ? '<span class="shrink-0 text-[10px] text-emerald-600 font-bold">내글</span>' : ''}
+                    <button type="button" onclick="window.showBoardPostOptions && window.showBoardPostOptions('${postId}', ${isAuthor})" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors flex-shrink-0">
+                        <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
+                    </button>
                 </div>
                 
                 <!-- 게시글 내용 -->
                 <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4 -mx-2 px-2">${escapeHtml(post.content).replace(/\n/g, '<br>')}</div>
                 
-                <!-- 추천/비추천(왼쪽) | 수정/삭제 또는 신고(오른쪽) -->
-                <div class="board-detail-actions">
-                    <div class="board-detail-actions__left">
-                        <button onclick="window.toggleBoardLike('${postId}', true)" class="board-btn-participate board-btn-participate--like ${userReaction === 'like' ? 'is-active' : ''}" ${!window.currentUser ? 'disabled' : ''}>
-                            <i class="fa-solid fa-thumbs-up"></i>
-                            <span>추천</span>
-                            <span class="text-xs opacity-80">${post.likes || 0}</span>
-                        </button>
-                        <button onclick="window.toggleBoardLike('${postId}', false)" class="board-btn-participate board-btn-participate--dislike ${userReaction === 'dislike' ? 'is-active' : ''}" ${!window.currentUser ? 'disabled' : ''}>
-                            <i class="fa-solid fa-thumbs-down"></i>
-                            <span>비추천</span>
-                            <span class="text-xs opacity-80">${post.dislikes || 0}</span>
-                        </button>
+                <!-- 하단: 작성자/일자/조회수(왼쪽) | 좋아요·북마크(오른쪽) -->
+                <div class="flex items-center justify-between pt-3 border-t border-slate-200">
+                    <div class="flex items-center gap-3">
+                        ${post.authorPhotoUrl ? `
+                            <div class="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${post.authorPhotoUrl}); background-size: cover; background-position: center;"></div>
+                        ` : `
+                            <div class="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-sm flex-shrink-0 border-2 border-slate-300">
+                                ${post.authorIcon || (post.authorNickname || '익명').charAt(0)}
+                            </div>
+                        `}
+                        <div>
+                            <div class="text-xs font-bold text-slate-800">${escapeHtml(post.authorNickname || '익명')}</div>
+                            <div class="text-[10px] text-slate-400">${dateStr} ${timeStr} · 조회 ${post.views || 0}</div>
+                        </div>
                     </div>
-                    <div class="board-detail-actions__right">
-                        ${isAuthor ? `
-                            <button onclick="window.editBoardPost('${postId}')" class="board-btn-manage board-btn-manage--edit">
-                                <i class="fa-solid fa-pencil"></i><span>수정</span>
-                            </button>
-                            <button onclick="window.deleteBoardPost('${postId}')" class="board-btn-manage board-btn-manage--delete">
-                                <i class="fa-solid fa-trash"></i><span>삭제</span>
-                            </button>
-                        ` : ''}
-                        ${!isAuthor && window.currentUser ? `
-                            <button type="button" onclick="window.showReportModal && window.showReportModal('board_${postId}')" class="flex items-center gap-1.5 text-[10px] text-slate-400 hover:text-amber-600 px-2 py-1.5 rounded-xl active:opacity-70 transition-colors" title="신고">
-                                <i class="fa-solid fa-flag"></i><span>신고</span>
-                            </button>
-                        ` : ''}
+                    <div class="flex items-center gap-2">
+                        <button onclick="window.toggleBoardLike('${postId}', true)" class="board-post-like-btn flex items-center gap-1.5 active:scale-95 transition-transform" data-post-id="${postId}" ${!window.currentUser ? 'disabled' : ''}>
+                            <i class="fa-${userReaction === 'like' ? 'solid' : 'regular'} fa-heart text-xl ${userReaction === 'like' ? 'text-red-500' : 'text-slate-800'}"></i>
+                            <span class="text-xs font-bold text-slate-800">${post.likes || 0}</span>
+                        </button>
+                        <button onclick="window.toggleBoardBookmark('${postId}')" class="board-post-bookmark-btn flex items-center gap-1.5 active:scale-95 transition-transform" data-post-id="${postId}" ${!window.currentUser ? 'disabled' : ''}>
+                            <i class="fa-${isBookmarked ? 'solid' : 'regular'} fa-bookmark text-xl text-slate-800"></i>
+                        </button>
                     </div>
                 </div>
                 
@@ -3278,10 +3265,10 @@ export async function renderBoardDetail(postId) {
                     </div>
                     
                     <!-- 댓글 입력 -->
-                    <div class="flex gap-2">
+                    <div class="flex gap-2 py-3 px-3 -mx-3 -mb-3">
                         <div class="relative flex-1">
                             <input type="text" id="boardCommentInput" placeholder="${window.currentUser ? '댓글을 입력하세요...' : '로그인 후 댓글을 작성할 수 있습니다'}" 
-                                   class="w-full px-3 py-2 pr-16 border border-slate-300 rounded-lg text-sm focus:outline-none"
+                                   class="w-full px-3 py-2 pr-16 border border-slate-300 rounded-lg text-sm focus:outline-none bg-slate-100"
                                    ${!window.currentUser ? 'disabled' : ''}
                                    onkeypress="if(event.key === 'Enter' && window.currentUser && !event.shiftKey) { event.preventDefault(); window.addBoardComment('${postId}'); }">
                             <span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold cursor-pointer hover:text-emerald-700" onclick="if(window.currentUser) window.addBoardComment('${postId}')">게시</span>
@@ -3290,21 +3277,6 @@ export async function renderBoardDetail(postId) {
                 </div>
             </div>
         `;
-        
-        // 제목·카테고리·내글 업데이트 (헤더 바)
-        const titleEl = document.getElementById('boardDetailViewTitle');
-        if (titleEl) titleEl.textContent = escapeHtml(post.title);
-        const catEl = document.getElementById('boardDetailViewCategory');
-        if (catEl) {
-            catEl.textContent = categoryLabels[post.category] || '무거운';
-            catEl.className = 'mr-2 shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ' + (categoryColors[post.category] || categoryColors.serious);
-            catEl.classList.remove('hidden');
-        }
-        const myPostLabel = document.getElementById('boardDetailMyPostLabel');
-        if (myPostLabel) {
-            if (isAuthor) myPostLabel.classList.remove('hidden');
-            else myPostLabel.classList.add('hidden');
-        }
     } catch (error) {
         console.error("게시글 상세 로드 오류:", error);
         container.innerHTML = `
@@ -3380,11 +3352,19 @@ export async function renderNoticeDetail(noticeId) {
         
         container.innerHTML = `
             <div class="board-post-card space-y-4">
-                <div class="border-b border-slate-200 pb-4">
-                    ${notice.isPinned ? '<div class="flex items-center gap-2 mb-3"><span class="text-[10px] px-2 py-0.5 bg-yellow-100 text-yellow-700 font-bold rounded">고정</span></div>' : ''}
+                <!-- 상단: 뒤로가기 / 타입·제목 -->
+                <div class="flex items-center gap-2 pb-3 border-b border-slate-200">
+                    <button onclick="window.backToBoardList()" class="w-8 h-8 flex items-center justify-center text-slate-400 active:bg-slate-100 rounded-full transition-colors flex-shrink-0">
+                        <i class="fa-solid fa-arrow-left text-lg"></i>
+                    </button>
+                    <span class="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${typeColor}">${typeLabel}</span>
+                    <h2 class="sub-title text-base text-slate-800 tracking-tight flex-1 truncate min-w-0">${escapeHtml(notice.title || '공지')}</h2>
+                </div>
+                <div class="border-b border-slate-200 pb-3">
                     <div class="flex items-center gap-3">
-                        <span class="text-sm font-bold text-slate-600">관리자</span>
-                        <span class="text-xs text-slate-400">${dateStr} ${timeStr}</span>
+                        ${notice.isPinned ? '<span class="text-[10px] px-2 py-0.5 bg-yellow-100 text-yellow-700 font-bold rounded">고정</span>' : ''}
+                        <span class="text-xs font-bold text-slate-600">관리자</span>
+                        <span class="text-[10px] text-slate-400">${dateStr} ${timeStr}</span>
                     </div>
                 </div>
                 <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4 -mx-3 px-1">${escapeHtml(notice.content || '').replace(/\n/g, '<br>')}</div>
@@ -3404,17 +3384,6 @@ export async function renderNoticeDetail(noticeId) {
                 </div>
             </div>
         `;
-        
-        const titleEl = document.getElementById('boardDetailViewTitle');
-        if (titleEl) titleEl.textContent = escapeHtml(notice.title || '공지');
-        const catEl = document.getElementById('boardDetailViewCategory');
-        if (catEl) {
-            catEl.textContent = typeLabel;
-            catEl.className = 'mr-2 shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ' + typeColor;
-            catEl.classList.remove('hidden');
-        }
-        const myPostLbl = document.getElementById('boardDetailMyPostLabel');
-        if (myPostLbl) myPostLbl.classList.add('hidden');
     } catch (e) {
         console.error("공지 상세 로드 오류:", e);
         container.innerHTML = `

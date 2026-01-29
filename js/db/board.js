@@ -369,6 +369,55 @@ export const boardOperations = {
         }
     },
     
+    // 게시글 북마크 토글
+    async toggleBookmark(postId) {
+        if (!window.currentUser) {
+            throw new Error("로그인이 필요합니다.");
+        }
+        try {
+            const bookmarksColl = collection(db, 'artifacts', appId, 'boardBookmarks');
+            const q = query(
+                bookmarksColl,
+                where('postId', '==', postId),
+                where('userId', '==', window.currentUser.uid)
+            );
+            const snapshot = await getDocs(q);
+            
+            if (snapshot.empty) {
+                await addDoc(bookmarksColl, {
+                    postId,
+                    userId: window.currentUser.uid,
+                    timestamp: new Date().toISOString()
+                });
+                return { bookmarked: true };
+            } else {
+                await deleteDoc(doc(db, 'artifacts', appId, 'boardBookmarks', snapshot.docs[0].id));
+                return { bookmarked: false };
+            }
+        } catch (e) {
+            console.error("Toggle Board Bookmark Error:", e);
+            throw e;
+        }
+    },
+    
+    // 사용자 북마크 여부 확인
+    async isBookmarked(postId, userId) {
+        if (!postId || !userId) return false;
+        try {
+            const bookmarksColl = collection(db, 'artifacts', appId, 'boardBookmarks');
+            const q = query(
+                bookmarksColl,
+                where('postId', '==', postId),
+                where('userId', '==', userId)
+            );
+            const snapshot = await getDocs(q);
+            return !snapshot.empty;
+        } catch (e) {
+            console.error("Is Board Bookmarked Error:", e);
+            return false;
+        }
+    },
+    
     // 게시글 댓글 가져오기 (orderBy 제거 → 복합 인덱스 불필요, 클라이언트에서 정렬)
     async getComments(postId) {
         if (!postId) return [];
