@@ -55,9 +55,9 @@ export async function startGuest() {
     }
 }
 
-export function openEmailModal() {
+export function openEmailModal(initialMode = 'login') {
     document.getElementById('emailAuthModal').classList.remove('hidden');
-    window.setEmailAuthMode('login');
+    window.setEmailAuthMode(initialMode);
     const savedEmail = localStorage.getItem('savedEmail');
     if (savedEmail) {
         document.getElementById('emailInput').value = savedEmail;
@@ -652,10 +652,7 @@ export async function confirmProfileSetup() {
         return;
     }
 
-    if (!lifestyle) {
-        showToast("라이프 스타일을 선택해주세요.", "error");
-        return;
-    }
+    // 라이프스타일은 선택 입력 (필수 아님)
     
     try {
         if (!window.userSettings) {

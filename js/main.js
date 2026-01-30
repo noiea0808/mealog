@@ -3092,7 +3092,11 @@ function initEventListeners() {
     
     const emailLoginBtn = document.getElementById('emailLoginBtn');
     if (emailLoginBtn) {
-        emailLoginBtn.addEventListener('click', openEmailModal);
+        emailLoginBtn.addEventListener('click', () => openEmailModal());
+    }
+    const emailSignupLink = document.getElementById('emailSignupLink');
+    if (emailSignupLink) {
+        emailSignupLink.addEventListener('click', () => openEmailModal('signup'));
     }
     
     const guestLoginBtn = document.getElementById('guestLoginBtn');
