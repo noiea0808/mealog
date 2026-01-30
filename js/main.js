@@ -13,7 +13,7 @@ import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/fireb
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
 import { 
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
-    setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, confirmLogout, confirmLogoutAction,
+    setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
     copyDomain, closeDomainModal, switchToLogin, showTermsModal, closeTermsModal, cancelTermsAgreement, confirmTermsAgreement,
     showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup, setProfileType, handleSetupPhotoUpload,
     confirmDeleteAccount, cancelDeleteAccount, confirmDeleteAccountAction
@@ -94,6 +94,8 @@ window.toggleEmailAuthMode = toggleEmailAuthMode;
 window.Mealog.toggleEmailAuthMode = toggleEmailAuthMode;
 window.handleEmailAuth = handleEmailAuth;
 window.Mealog.handleEmailAuth = handleEmailAuth;
+window.requestPasswordReset = requestPasswordReset;
+window.Mealog.requestPasswordReset = requestPasswordReset;
 window.confirmLogout = confirmLogout;
 window.Mealog.confirmLogout = confirmLogout;
 window.confirmLogoutAction = confirmLogoutAction;
@@ -3103,7 +3105,6 @@ function initEventListeners() {
     if (guestLoginBtn) {
         guestLoginBtn.addEventListener('click', startGuest);
     }
-    
     // 이메일 인증 모달 버튼들
     const emailAuthCloseBtn = document.getElementById('emailAuthCloseBtn');
     if (emailAuthCloseBtn) {
@@ -3113,6 +3114,10 @@ function initEventListeners() {
     const emailAuthBtn = document.getElementById('emailAuthBtn');
     if (emailAuthBtn) {
         emailAuthBtn.addEventListener('click', handleEmailAuth);
+    }
+    const emailPasswordResetLink = document.getElementById('emailPasswordResetLink');
+    if (emailPasswordResetLink) {
+        emailPasswordResetLink.addEventListener('click', requestPasswordReset);
     }
     
     const emailAuthToggleBtn = document.getElementById('emailAuthToggleBtn');

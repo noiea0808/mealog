@@ -1,6 +1,6 @@
 // 인증 관련 함수들
 import { auth } from './firebase.js';
-import { GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
 import { dbOps } from './db.js';
@@ -198,6 +198,34 @@ export async function handleEmailAuth() {
         
         showToast("오류: " + msg, "error");
         hideLoading(); // 에러 시에만 즉시 숨김
+    }
+}
+
+/** 비밀번호 재설정 메일 발송 (Firebase sendPasswordResetEmail) */
+export async function requestPasswordReset() {
+    const email = document.getElementById('emailInput')?.value?.trim() || '';
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email) {
+        showToast("이메일을 입력해주세요.", "error");
+        return;
+    }
+    if (!emailRegex.test(email)) {
+        showToast("올바른 이메일 형식이 아닙니다.", "error");
+        return;
+    }
+    showLoading();
+    try {
+        await sendPasswordResetEmail(auth, email);
+        showToast("비밀번호 재설정 메일을 발송했습니다. 이메일을 확인해주세요.", "success");
+        document.getElementById('emailAuthModal')?.classList.add('hidden');
+    } catch (error) {
+        console.error('비밀번호 재설정 메일 발송 실패:', error);
+        let msg = error.message || '발송에 실패했습니다.';
+        if (error.code === 'auth/invalid-email') msg = "올바른 이메일 형식이 아닙니다.";
+        else if (error.code === 'auth/too-many-requests') msg = "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.";
+        showToast(msg, "error");
+    } finally {
+        hideLoading();
     }
 }
 

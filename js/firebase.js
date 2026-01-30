@@ -17,6 +17,8 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+// 이메일 인증·비밀번호 재설정 메일을 한글로 발송
+auth.languageCode = 'ko';
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
