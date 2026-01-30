@@ -1,11 +1,14 @@
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { getAuth } = require('firebase-admin/auth');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { logger } = require('firebase-functions');
 
 // Firebase Admin 초기화
 initializeApp();
 const db = getFirestore();
+const auth = getAuth();
 
 const APP_ID = 'mealog-r0';
 
@@ -91,6 +94,30 @@ function wrapFunction(functionName, handler) {
       throw new HttpsError('internal', '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
     }
   };
+}
+
+/**
+ * 사용자 제재(금지) 여부 조회
+ */
+async function getUserBan(userId) {
+  const banRef = db.collection('artifacts').doc(APP_ID).collection('userBans').doc(userId);
+  const banSnap = await banRef.get();
+  if (!banSnap.exists) return { bannedShare: false, bannedWrite: false };
+  const d = banSnap.data();
+  return {
+    bannedShare: d.bannedShare === true,
+    bannedWrite: d.bannedWrite === true
+  };
+}
+
+/**
+ * UID가 관리자인지 확인 (Firestore admins 컬렉션)
+ */
+async function isAdminByUid(uid) {
+  if (!uid) return false;
+  const adminRef = db.collection('artifacts').doc(APP_ID).collection('admins').doc(uid);
+  const adminSnap = await adminRef.get();
+  return adminSnap.exists && adminSnap.data().isAdmin === true;
 }
 
 /**
@@ -210,6 +237,11 @@ exports.createBoardPost = onCall({ region: REGION }, wrapFunction('createBoardPo
   
   if (!auth || !auth.uid) {
     throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+
+  const ban = await getUserBan(auth.uid);
+  if (ban.bannedWrite) {
+    throw new HttpsError('permission-denied', '글쓰기가 제한된 계정입니다.');
   }
 
   const { title, content, category } = data;
@@ -352,6 +384,11 @@ exports.addBoardComment = onCall({ region: REGION }, wrapFunction('addBoardComme
     throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
   }
 
+  const ban = await getUserBan(auth.uid);
+  if (ban.bannedWrite) {
+    throw new HttpsError('permission-denied', '댓글 작성이 제한된 계정입니다.');
+  }
+
   const { postId, content } = data;
   
   if (!postId || !content || !content.trim()) {
@@ -457,6 +494,11 @@ exports.addPostComment = onCall({ region: REGION }, wrapFunction('addPostComment
   
   if (!auth || !auth.uid) {
     throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+
+  const ban = await getUserBan(auth.uid);
+  if (ban.bannedWrite) {
+    throw new HttpsError('permission-denied', '댓글 작성이 제한된 계정입니다.');
   }
 
   const { postId, commentText, userNickname: clientNickname, userIcon: clientIcon } = data;
@@ -603,6 +645,11 @@ exports.sharePhotos = onCall({ region: REGION }, async (request) => {
     
     if (!auth || !auth.uid) {
       throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    }
+
+    const ban = await getUserBan(auth.uid);
+    if (ban.bannedShare) {
+      throw new HttpsError('permission-denied', '밀로그 공유가 제한된 계정입니다.');
     }
 
     const { photosToShare, mealData } = data;
@@ -1041,3 +1088,85 @@ exports.unsharePhotos = onCall({ region: REGION }, async (request) => {
 
   return { success: true, deletedCount: photosToDelete.length };
 });
+
+/**
+ * 관리자 사용자 삭제 요청 처리 (Firestore 문서 생성 시 트리거)
+ * deleteUserRequests/{requestId} 문서가 생성되면 requestedBy가 관리자인지 확인 후 Auth 사용자 삭제
+ */
+exports.onDeleteUserRequest = onDocumentCreated(
+  {
+    document: 'artifacts/' + APP_ID + '/deleteUserRequests/{requestId}',
+    region: REGION
+  },
+  async (event) => {
+    const snap = event.data;
+    if (!snap || !snap.exists) return;
+    const { userId, requestedBy } = snap.data();
+    if (!userId || !requestedBy) {
+      logger.warn('onDeleteUserRequest: missing userId or requestedBy', snap.data());
+      await snap.ref.delete();
+      return;
+    }
+    const isAdmin = await isAdminByUid(requestedBy);
+    if (!isAdmin) {
+      logger.warn('onDeleteUserRequest: requestedBy is not admin', { requestedBy, userId });
+      await snap.ref.delete();
+      return;
+    }
+    try {
+      await auth.deleteUser(String(userId));
+      logger.info('onDeleteUserRequest: user deleted', { userId, requestedBy });
+      await snap.ref.delete();
+    } catch (err) {
+      logger.error('onDeleteUserRequest: deleteUser failed', { userId, err: err.message });
+      // 문서는 삭제하지 않음 → 재로딩 시에도 회색 표시 유지, 나중에 재시도 가능
+    }
+  }
+);
+
+/**
+ * 대기 중인 삭제 요청 수동 처리 (Callable)
+ * 트리거가 동작하지 않을 때 관리자가 호출해 남아 있는 deleteUserRequests 문서를 처리
+ */
+exports.processDeleteUserRequests = onCall(
+  { region: REGION },
+  async (request) => {
+    const callerUid = request.auth?.uid;
+    if (!callerUid) {
+      throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    }
+    const isAdmin = await isAdminByUid(callerUid);
+    if (!isAdmin) {
+      throw new HttpsError('permission-denied', '관리자만 호출할 수 있습니다.');
+    }
+    const requestsRef = db.collection('artifacts').doc(APP_ID).collection('deleteUserRequests');
+    const snapshot = await requestsRef.get();
+    let processed = 0;
+    let failed = 0;
+    const errors = [];
+    for (const docSnap of snapshot.docs) {
+      const { userId, requestedBy } = docSnap.data();
+      if (!userId || !requestedBy) {
+        await docSnap.ref.delete();
+        continue;
+      }
+      const requesterIsAdmin = await isAdminByUid(requestedBy);
+      if (!requesterIsAdmin) {
+        await docSnap.ref.delete();
+        continue;
+      }
+      try {
+        await auth.deleteUser(String(userId));
+        processed++;
+        logger.info('processDeleteUserRequests: user deleted', { userId, requestedBy });
+        await docSnap.ref.delete();
+      } catch (err) {
+        failed++;
+        errors.push(`${userId}: ${err.message || err}`);
+        logger.error('processDeleteUserRequests: deleteUser failed', { userId, err: err.message });
+        // 문서는 삭제하지 않음 → 회색 표시 유지, 재시도 가능
+      }
+    }
+    return { processed, failed, total: snapshot.size, errors: errors.length ? errors : undefined };
+  }
+);

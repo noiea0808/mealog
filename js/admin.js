@@ -1,10 +1,11 @@
 // ADMIN 관리자 페이지 관련 함수들
-import { app, db, appId } from './firebase.js';
+import { app, db, appId, functions } from './firebase.js';
+import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-// 관리자 화면 전용 Auth 인스턴스 생성 (사용자 화면과 분리하여 인증 상태 공유 방지)
-const adminAuth = getAuth(app, 'admin');
-import { collection, getDocs, query, orderBy, limit, doc, deleteDoc, getDoc, setDoc, where, writeBatch, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+// Firestore 규칙·Callable은 기본 Auth만 인식하므로 관리자도 기본 Auth 사용 (admin 페이지는 별도 URL)
+const adminAuth = getAuth(app);
+import { collection, getDocs, query, orderBy, limit, doc, deleteDoc, getDoc, setDoc, where, writeBatch, addDoc, serverTimestamp, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { uploadImageToStorage } from './utils.js';
 import { getReportsAggregateByGroupKeys, deleteBoardPostByAdmin, setBoardPostHidden } from './db.js';
 import { REPORT_REASONS } from './constants.js';
@@ -1606,69 +1607,61 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// 사용자 목록 가져오기
+// 사용자 목록 가져오기 (병렬·일괄 조회로 로딩 시간 단축)
 async function getUsers() {
     try {
-        // 1. config/settings 문서가 있는 모든 사용자 찾기
-        // 주의: collectionGroup은 인덱스가 필요하므로 사용하지 않음
-        // 대신 users 컬렉션의 각 사용자에 대해 settings 문서 확인 (나중에 최적화 가능)
-        let userIdsFromSettings = new Set();
-        // collectionGroup은 인덱스가 필요하고 400 에러를 발생시킬 수 있으므로 비활성화
-        // users 컬렉션에서 사용자를 찾은 후 각 사용자의 settings를 확인하는 방식으로 변경
-
-        // 2. users 컬렉션에서 사용자 ID 가져오기 (약관 동의한 모든 사용자 포함)
-        // 주의: users 컬렉션은 자동 생성되므로 모든 사용자가 포함될 수 있음
-        let userIdsFromUsers = new Set();
-        try {
-            const usersColl = collection(db, 'artifacts', appId, 'users');
-            const usersSnapshot = await getDocs(usersColl);
-            usersSnapshot.docs.forEach(userDoc => {
-                userIdsFromUsers.add(userDoc.id);
-            });
-            console.log('👥 users 컬렉션에서 발견된 사용자:', userIdsFromUsers.size, '명');
-        } catch (e) {
-            console.warn('⚠️ users 컬렉션 조회 실패:', e);
-        }
-        
-        // users 컬렉션의 각 사용자에 대해 settings 문서 확인하여 실제 사용자만 필터링
-        // (settings가 없거나 약관 동의하지 않은 사용자는 제외하지 않음 - 관리자가 확인할 수 있도록)
-
-        // 3. 공유 게시물에서 사용자 ID 추출 (보조 정보로 사용)
+        const usersColl = collection(db, 'artifacts', appId, 'users');
         const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-        const sharedSnapshot = await getDocs(sharedColl);
+        const userBansColl = collection(db, 'artifacts', appId, 'userBans');
+        const boardPostsColl = collection(db, 'artifacts', appId, 'boardPosts');
+        const deleteRequestsColl = collection(db, 'artifacts', appId, 'deleteUserRequests');
+
+        // 1) users, sharedPhotos, userBans, boardPosts, deleteUserRequests 한 번에 조회
+        const [usersSnapshot, sharedSnapshot, userBansSnapshot, boardPostsSnapshot, deleteRequestsSnapshot] = await Promise.all([
+            getDocs(usersColl),
+            getDocs(sharedColl),
+            getDocs(userBansColl),
+            getDocs(boardPostsColl),
+            getDocs(deleteRequestsColl)
+        ]);
+
+        const userIdsFromUsers = new Set(usersSnapshot.docs.map(d => d.id));
         const userIdsFromShared = new Set();
-        
-        sharedSnapshot.forEach(doc => {
-            const data = doc.data();
-            if (data.userId) {
-                userIdsFromShared.add(data.userId);
-            }
+        sharedSnapshot.docs.forEach(d => {
+            const uid = d.data().userId;
+            if (uid) userIdsFromShared.add(uid);
         });
-        
-        console.log('📸 공유 게시물에서 발견된 사용자:', userIdsFromShared.size, '명');
+        const userIdsToCheck = Array.from(new Set([...userIdsFromUsers, ...userIdsFromShared]));
 
-        // 모든 소스에서 사용자 ID 수집 (중복 제거)
-        // 통계와 일치시키기 위해 users 컬렉션과 sharedPhotos를 우선 사용
-        const userIdsToCheck = new Set([...userIdsFromUsers, ...userIdsFromShared, ...userIdsFromSettings]);
-        console.log(`총 ${userIdsToCheck.size}명의 사용자 처리 시작...`);
-        console.log('  - users 컬렉션:', userIdsFromUsers.size, '명');
-        console.log('  - sharedPhotos:', userIdsFromShared.size, '명');
-        console.log('  - config/settings:', userIdsFromSettings.size, '명');
+        // 2) userBans Map, 앨범 공유 수 Map, 토크 수 Map (이미 조회한 스냅으로 집계)
+        const userBansMap = new Map();
+        userBansSnapshot.docs.forEach(d => {
+            const data = d.data();
+            userBansMap.set(d.id, {
+                bannedShare: data.bannedShare === true,
+                bannedWrite: data.bannedWrite === true
+            });
+        });
+        const albumShareCountMap = new Map();
+        sharedSnapshot.docs.forEach(d => {
+            const uid = d.data().userId;
+            if (uid) albumShareCountMap.set(uid, (albumShareCountMap.get(uid) || 0) + 1);
+        });
+        const talkCountMap = new Map();
+        boardPostsSnapshot.docs.forEach(d => {
+            const aid = d.data().authorId;
+            if (aid) talkCountMap.set(aid, (talkCountMap.get(aid) || 0) + 1);
+        });
+        const deleteRequestedUserIds = new Set();
+        deleteRequestsSnapshot.docs.forEach(d => {
+            const uid = d.data().userId;
+            if (uid) deleteRequestedUserIds.add(uid);
+        });
 
-        // 디버깅: 각 소스별 사용자 ID 목록
-        if (userIdsFromUsers.size > 0) {
-            console.log('  - users 컬렉션에서:', Array.from(userIdsFromUsers));
-        }
-        if (userIdsFromShared.size > 0) {
-            console.log('  - sharedPhotos에서:', Array.from(userIdsFromShared));
-        }
-
-        const users = [];
-        
-        // 공유 게시물에서 사용자 정보 추출 (닉네임, 아이콘 등)
+        // 공유에서 닉네임/아이콘 (첫 번째만)
         const sharedUserMap = new Map();
-        sharedSnapshot.forEach(doc => {
-            const data = doc.data();
+        sharedSnapshot.docs.forEach(d => {
+            const data = d.data();
             if (data.userId && !sharedUserMap.has(data.userId)) {
                 sharedUserMap.set(data.userId, {
                     nickname: data.userNickname || null,
@@ -1677,9 +1670,17 @@ async function getUsers() {
             }
         });
 
-        for (const userId of userIdsToCheck) {
-            // 사용자 설정 가져오기 (settings는 별도 문서로 저장됨)
-            let settings = {};
+        // 3) 모든 사용자에 대해 user 문서, settings, meals 개수 병렬 조회 (meals는 실패 시 0으로 처리)
+        const [userDocs, settingsDocs, mealCountSettled] = await Promise.all([
+            Promise.all(userIdsToCheck.map(id => getDoc(doc(db, 'artifacts', appId, 'users', id)))),
+            Promise.all(userIdsToCheck.map(id => getDoc(doc(db, 'artifacts', appId, 'users', id, 'config', 'settings')))),
+            Promise.allSettled(userIdsToCheck.map(id => getCountFromServer(collection(db, 'artifacts', appId, 'users', id, 'meals'))))
+        ]);
+        const mealCounts = mealCountSettled.map(s => s.status === 'fulfilled' ? s.value : null);
+
+        const users = [];
+        for (let i = 0; i < userIdsToCheck.length; i++) {
+            const userId = userIdsToCheck[i];
             let nickname = '익명';
             let icon = '🐻';
             let email = null;
@@ -1687,151 +1688,64 @@ async function getUsers() {
             let termsAgreedAt = null;
             let termsVersion = null;
             let providerId = null;
-
-            // 공유 게시물에서 가져온 정보로 초기값 설정
-            if (sharedUserMap.has(userId)) {
-                const sharedInfo = sharedUserMap.get(userId);
-                if (sharedInfo.nickname) nickname = sharedInfo.nickname;
-                if (sharedInfo.icon) icon = sharedInfo.icon;
-            }
-
-            // users/{userId} 문서에서 가입일과 마지막 로그인 날짜, providerId 가져오기
             let createdAt = null;
             let lastLoginAt = null;
-            let userDocProviderId = null;
-            let userDocEmail = null;
-            try {
-                const userDocRef = doc(db, 'artifacts', appId, 'users', userId);
-                const userDocSnap = await getDoc(userDocRef);
-                if (userDocSnap.exists()) {
-                    const userData = userDocSnap.data();
-                    // Firestore Timestamp를 Date로 변환
-                    if (userData.createdAt) {
-                        createdAt = userData.createdAt.toDate ? userData.createdAt.toDate() : new Date(userData.createdAt);
-                    }
-                    if (userData.lastLoginAt) {
-                        lastLoginAt = userData.lastLoginAt.toDate ? userData.lastLoginAt.toDate() : new Date(userData.lastLoginAt);
-                    }
-                    // users/{userId} 문서에서 providerId와 email 가져오기 (우선순위 높음)
-                    if (userData.providerId) {
-                        userDocProviderId = userData.providerId;
-                    }
-                    if (userData.email) {
-                        userDocEmail = userData.email;
-                    }
-                }
-            } catch (e) {
-                console.warn(`사용자 ${userId}의 기본 정보를 가져오는 중 오류:`, e);
+
+            if (sharedUserMap.has(userId)) {
+                const s = sharedUserMap.get(userId);
+                if (s.nickname) nickname = s.nickname;
+                if (s.icon) icon = s.icon;
             }
 
-            try {
-                // settings 문서에서 직접 가져오기 (실제 Firestore 구조)
-                const settingsDoc = doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings');
-                const settingsSnap = await getDoc(settingsDoc);
-                if (settingsSnap.exists()) {
-                    settings = settingsSnap.data();
-                    console.log(`📋 사용자 ${userId} 설정 로드:`, {
-                        hasProfile: !!settings.profile,
-                        profileNickname: settings.profile?.nickname,
-                        currentNickname: nickname
-                    });
-                    if (settings.profile) {
-                        // profileCompleted가 true일 때만 닉네임을 '확정된 값'으로 표시
-                        if (settings.profileCompleted === true) {
-                            const profileNickname = settings.profile.nickname;
-                            if (profileNickname !== undefined && profileNickname !== null && profileNickname !== '' && profileNickname !== '게스트') {
-                                nickname = profileNickname;
-                                console.log(`✅ 닉네임 설정(완료): ${nickname}`);
-                            } else {
-                                nickname = '미설정';
-                                console.warn(`⚠️ profileCompleted=true인데 닉네임이 유효하지 않음:`, profileNickname);
-                            }
+            const userDocSnap = userDocs[i];
+            if (userDocSnap?.exists()) {
+                const userData = userDocSnap.data();
+                if (userData.createdAt) {
+                    createdAt = userData.createdAt.toDate ? userData.createdAt.toDate() : new Date(userData.createdAt);
+                }
+                if (userData.lastLoginAt) {
+                    lastLoginAt = userData.lastLoginAt.toDate ? userData.lastLoginAt.toDate() : new Date(userData.lastLoginAt);
+                }
+                if (userData.providerId) providerId = userData.providerId;
+                if (userData.email) email = userData.email;
+            }
+
+            const settingsSnap = settingsDocs[i];
+            if (settingsSnap?.exists()) {
+                const settings = settingsSnap.data();
+                if (settings.profile) {
+                    if (settings.profileCompleted === true) {
+                        const pn = settings.profile.nickname;
+                        if (pn !== undefined && pn !== null && String(pn).trim() !== '' && pn !== '게스트') {
+                            nickname = pn;
                         } else {
                             nickname = '미설정';
                         }
-                        if (settings.profile.icon) {
-                            icon = settings.profile.icon;
-                        }
                     } else {
-                        console.warn(`⚠️ 사용자 ${userId}의 settings에 profile이 없습니다.`);
                         nickname = '미설정';
                     }
-                    termsAgreed = settings.termsAgreed === true;
-                    termsAgreedAt = settings.termsAgreedAt || null;
-                    termsVersion = settings.termsVersion || null;
-                    email = settings.email || null;
-                    providerId = settings.providerId || null;
+                    if (settings.profile.icon) icon = settings.profile.icon;
                 } else {
-                    console.warn(`사용자 ${userId}의 settings 문서가 존재하지 않습니다.`);
+                    nickname = '미설정';
                 }
-            } catch (e) {
-                console.warn(`사용자 ${userId}의 설정을 가져오는 중 오류:`, e);
-            }
-            
-            // 디버깅: 닉네임이 '익명'으로 남아있는 경우 로그 출력
-            if (nickname === '익명' && userId === 'SLHnlOOAtfe7j7g8MAdbTxfRgeQ2') {
-                console.error(`❌ 사용자 ${userId}의 닉네임이 '익명'으로 표시됨:`, {
-                    settings: settings,
-                    profile: settings?.profile,
-                    profileNickname: settings?.profile?.nickname,
-                    profileNicknameType: typeof settings?.profile?.nickname,
-                    sharedInfo: sharedUserMap.has(userId) ? sharedUserMap.get(userId) : null,
-                    finalNickname: nickname
-                });
+                termsAgreed = settings.termsAgreed === true;
+                termsAgreedAt = settings.termsAgreedAt || null;
+                termsVersion = settings.termsVersion || null;
+                if (settings.email) email = settings.email;
+                if (settings.providerId) providerId = settings.providerId;
             }
 
-            // providerId와 email은 users/{userId} 문서에서 우선, 없으면 settings에서 사용
-            if (!providerId && userDocProviderId) {
-                providerId = userDocProviderId;
-            }
-            if (!email && userDocEmail) {
-                email = userDocEmail;
-            }
-
-            // 게시글 수 가져오기 (타임라인, 앨범 공유, 토크 별로)
-            let timelineCount = 0;
-            let albumShareCount = 0;
-            let talkCount = 0;
-            
-            // 타임라인 게시물 수
-            try {
-                const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
-                const mealsSnapshot = await getDocs(mealsColl);
-                timelineCount = mealsSnapshot.size;
-            } catch (e) {
-                console.warn(`사용자 ${userId}의 타임라인 게시글 수를 가져오는 중 오류:`, e);
-            }
-            
-            // 앨범 공유 수 (sharedPhotos에서 userId로 필터링)
-            try {
-                const sharedPhotosColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-                const sharedQuery = query(sharedPhotosColl, where('userId', '==', userId));
-                const sharedUserSnapshot = await getDocs(sharedQuery);
-                albumShareCount = sharedUserSnapshot.size;
-            } catch (e) {
-                console.warn(`사용자 ${userId}의 앨범 공유 수를 가져오는 중 오류:`, e);
-            }
-            
-            // 토크 게시물 수 (boardPosts에서 authorId로 필터링)
-            try {
-                const boardPostsColl = collection(db, 'artifacts', appId, 'boardPosts');
-                const boardQuery = query(boardPostsColl, where('authorId', '==', userId));
-                const boardSnapshot = await getDocs(boardQuery);
-                talkCount = boardSnapshot.size;
-            } catch (e) {
-                console.warn(`사용자 ${userId}의 토크 게시글 수를 가져오는 중 오류:`, e);
-            }
-            
-            // 가입일과 마지막 로그인 날짜는 users/{userId} 문서에서 가져온 값을 그대로 사용
-            // DB에 값이 없으면 그대로 null로 유지 (보정하지 않음)
-            
-            // 로그인 방법 판단
             let loginMethod = '게스트';
-            if (providerId === 'google.com') {
-                loginMethod = '구글';
-            } else if (email) {
-                loginMethod = '이메일';
-            }
+            if (providerId === 'google.com') loginMethod = '구글';
+            else if (email) loginMethod = '이메일';
+
+            const ban = userBansMap.get(userId);
+            const bannedShare = ban?.bannedShare ?? false;
+            const bannedWrite = ban?.bannedWrite ?? false;
+            const deleteRequested = deleteRequestedUserIds.has(userId);
+            const timelineCount = (mealCounts[i] && typeof mealCounts[i].data === 'function') ? mealCounts[i].data().count : 0;
+            const albumShareCount = albumShareCountMap.get(userId) ?? 0;
+            const talkCount = talkCountMap.get(userId) ?? 0;
 
             users.push({
                 userId,
@@ -1846,16 +1760,16 @@ async function getUsers() {
                 albumShareCount,
                 talkCount,
                 createdAt,
-                lastLoginAt
+                lastLoginAt,
+                bannedShare,
+                bannedWrite,
+                deleteRequested
             });
         }
-
-        console.log('✅ 사용자 목록 생성 완료:', users.length, '명');
 
         return users;
     } catch (e) {
         console.error("Get users error:", e);
-        console.error("에러 상세:", e.message, e.stack);
         throw e;
     }
 }
@@ -1868,7 +1782,7 @@ async function renderUsers(options = {}) {
         return;
     }
     
-        container.innerHTML = '<tr><td colspan="10" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
+        container.innerHTML = '<tr><td colspan="13" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
     
     try {
         console.log('renderUsers 시작');
@@ -1889,7 +1803,8 @@ async function renderUsers(options = {}) {
         
         if (users.length === 0) {
             console.log('사용자가 없습니다.');
-            container.innerHTML = '<tr><td colspan="10" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
+            container.innerHTML = '<tr><td colspan="13" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
+            try { applyAdminUsersPageVisibility(adminUsersCurrentPage); } catch (_) {}
             return;
         }
         
@@ -1946,56 +1861,273 @@ async function renderUsers(options = {}) {
                 loginMethodBadge = 'bg-blue-100 text-blue-700';
             }
             
+            const shareBanBadge = user.bannedShare
+                ? '<span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded">금지</span>'
+                : '<span class="text-slate-400 text-xs">-</span>';
+            const writeBanBadge = user.bannedWrite
+                ? '<span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded">금지</span>'
+                : '<span class="text-slate-400 text-xs">-</span>';
+            const deleteRequestedBadge = user.deleteRequested
+                ? '<span class="px-2 py-0.5 bg-slate-200 text-slate-600 text-xs font-bold rounded">삭제 요청됨</span>'
+                : '';
+            const rowClass = user.deleteRequested
+                ? 'bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors'
+                : 'hover:bg-slate-50 transition-colors';
             return `
-                <tr class="hover:bg-slate-50 transition-colors">
-                    <td class="px-4 py-3">
+                <tr class="${rowClass}">
+                    <td data-page="1 2" class="px-2 py-3">
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" class="admin-user-checkbox rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" data-user-id="${escapeHtml(user.userId)}" title="선택" ${user.deleteRequested ? 'disabled' : ''}>
+                            ${deleteRequestedBadge}
+                        </label>
+                    </td>
+                    <td data-page="1" class="px-2 py-3">${writeBanBadge}</td>
+                    <td data-page="1" class="px-2 py-3">${shareBanBadge}</td>
+                    <td data-page="1" class="px-4 py-3">
                         <span class="px-2 py-1 ${loginMethodBadge} text-xs font-bold rounded">${user.loginMethod || '게스트'}</span>
                     </td>
-                    <td class="px-4 py-3">
+                    <td data-page="1" class="px-4 py-3">
                         <span class="text-sm text-slate-600">${user.email || '-'}</span>
                     </td>
-                    <td class="px-4 py-3">
-                        <div class="flex items-center gap-2">
+                    <td data-page="1 2" class="px-4 py-3">
+                        <div class="flex items-center gap-2 whitespace-nowrap">
                             <span class="text-xl">${user.icon || '🐻'}</span>
                             <span class="font-bold text-slate-800">${user.nickname || '익명'}</span>
                         </div>
                     </td>
-                    <td class="px-4 py-3">
-                        <div class="flex flex-col gap-1">
-                            ${termsAgreedText}
-                            ${user.termsAgreedAt ? `<span class="text-xs text-slate-500">${termsAgreedDate}</span>` : ''}
-                        </div>
-                    </td>
-                    <td class="px-4 py-3">
-                        <span class="font-bold text-slate-800">${user.timelineCount || 0}</span>
-                    </td>
-                    <td class="px-4 py-3">
-                        <span class="font-bold text-slate-800">${user.albumShareCount || 0}</span>
-                    </td>
-                    <td class="px-4 py-3">
-                        <span class="font-bold text-slate-800">${user.talkCount || 0}</span>
-                    </td>
-                    <td class="px-4 py-3">
+                    <td data-page="1" class="px-4 py-3">
                         <button onclick="navigator.clipboard.writeText('${user.userId}').then(() => alert('사용자 ID가 복사되었습니다.')).catch(() => alert('복사 실패'))" 
                                 class="text-xs text-slate-600 hover:text-slate-800 font-mono cursor-pointer hover:underline" 
                                 title="클릭하여 복사">
                             ${user.userId.substring(0, 8)}...
                         </button>
                     </td>
-                    <td class="px-4 py-3">
+                    <td data-page="1" class="px-4 py-3">
+                        <div class="flex flex-col gap-1">
+                            ${termsAgreedText}
+                            ${user.termsAgreedAt ? `<span class="text-xs text-slate-500">${termsAgreedDate}</span>` : ''}
+                        </div>
+                    </td>
+                    <td data-page="1" class="px-4 py-3">
                         <span class="text-sm text-slate-600">${user.loginMethod === '게스트' ? '-' : createdAtDate}</span>
                     </td>
-                    <td class="px-4 py-3">
+                    <td data-page="1" class="px-4 py-3">
                         <span class="text-sm text-slate-600">${lastLoginDate}</span>
+                    </td>
+                    <td data-page="2" class="px-4 py-3">
+                        <span class="font-bold text-slate-800">${user.timelineCount || 0}</span>
+                    </td>
+                    <td data-page="2" class="px-4 py-3">
+                        <span class="font-bold text-slate-800">${user.albumShareCount || 0}</span>
+                    </td>
+                    <td data-page="2" class="px-4 py-3">
+                        <span class="font-bold text-slate-800">${user.talkCount || 0}</span>
                     </td>
                 </tr>
             `;
         }).join('');
+        initAdminUsersSelectAll();
+        applyAdminUsersPageVisibility(typeof adminUsersCurrentPage !== 'undefined' ? adminUsersCurrentPage : 1);
     } catch (e) {
         console.error("사용자 목록 렌더링 실패:", e);
-        container.innerHTML = '<tr><td colspan="10" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p></td></tr>';
+        const errMsg = (e && (e.message || e.code || String(e))) || '알 수 없는 오류';
+        container.innerHTML = '<tr><td colspan="13" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
     }
 }
+
+let adminUsersCurrentPage = 1;
+
+function applyAdminUsersPageVisibility(pageNum) {
+    try {
+        const table = document.getElementById('adminUsersTable');
+        if (!table) return;
+        const sel = pageNum === 1 ? '[data-page="1"], [data-page="1 2"]' : '[data-page="2"], [data-page="1 2"]';
+        const hide = pageNum === 1 ? '[data-page="2"]' : '[data-page="1"]';
+        table.querySelectorAll('th' + hide).forEach(el => { el.style.display = 'none'; });
+        table.querySelectorAll('th' + sel).forEach(el => { el.style.display = ''; });
+        table.querySelectorAll('tbody td' + hide).forEach(el => { el.style.display = 'none'; });
+        table.querySelectorAll('tbody td' + sel).forEach(el => { el.style.display = ''; });
+    } catch (e) {
+        console.warn('applyAdminUsersPageVisibility:', e);
+    }
+}
+
+window.switchAdminUsersPage = function (pageNum) {
+    if (pageNum !== 1 && pageNum !== 2) return;
+    adminUsersCurrentPage = pageNum;
+    applyAdminUsersPageVisibility(pageNum);
+    const btn1 = document.getElementById('adminUsersPage1');
+    const btn2 = document.getElementById('adminUsersPage2');
+    if (btn1 && btn2) {
+        if (pageNum === 1) {
+            btn1.classList.add('bg-emerald-100', 'text-emerald-800');
+            btn1.classList.remove('bg-slate-100', 'text-slate-600');
+            btn1.setAttribute('aria-pressed', 'true');
+            btn2.classList.add('bg-slate-100', 'text-slate-600');
+            btn2.classList.remove('bg-emerald-100', 'text-emerald-800');
+            btn2.setAttribute('aria-pressed', 'false');
+        } else {
+            btn2.classList.add('bg-emerald-100', 'text-emerald-800');
+            btn2.classList.remove('bg-slate-100', 'text-slate-600');
+            btn2.setAttribute('aria-pressed', 'true');
+            btn1.classList.add('bg-slate-100', 'text-slate-600');
+            btn1.classList.remove('bg-emerald-100', 'text-emerald-800');
+            btn1.setAttribute('aria-pressed', 'false');
+        }
+    }
+};
+
+// 사용자 테이블 전체 선택 체크박스
+function initAdminUsersSelectAll() {
+    const selectAll = document.getElementById('adminUsersSelectAll');
+    const checkboxes = document.querySelectorAll('.admin-user-checkbox');
+    if (!selectAll) return;
+    selectAll.checked = false;
+    selectAll.indeterminate = false;
+    selectAll.onchange = function () {
+        checkboxes.forEach(cb => { cb.checked = selectAll.checked; });
+        selectAll.indeterminate = false;
+    };
+    checkboxes.forEach(cb => {
+        cb.onchange = function () {
+            const checked = document.querySelectorAll('.admin-user-checkbox:checked').length;
+            selectAll.checked = checked === checkboxes.length;
+            selectAll.indeterminate = checked > 0 && checked < checkboxes.length;
+        };
+    });
+}
+
+// 선택된 사용자 ID 목록
+function getSelectedUserIds() {
+    return Array.from(document.querySelectorAll('.admin-user-checkbox:checked'))
+        .map(cb => cb.getAttribute('data-user-id'))
+        .filter(Boolean);
+}
+
+// 대기 중인 삭제 요청 수동 처리 (트리거가 동작하지 않을 때 사용)
+window.processDeleteUserRequests = async function () {
+    const uid = adminAuth.currentUser?.uid;
+    if (!uid) {
+        alert('관리자 로그인이 필요합니다.');
+        return;
+    }
+    try {
+        const processDeleteUserRequestsFn = httpsCallable(functions, 'processDeleteUserRequests');
+        const result = await processDeleteUserRequestsFn();
+        const data = result?.data || {};
+        const { processed = 0, failed = 0, total = 0, errors } = data;
+        if (total === 0) {
+            alert('처리할 삭제 요청이 없습니다.');
+        } else {
+            let msg = `삭제 요청 처리: ${processed}명 삭제됨`;
+            if (failed > 0) {
+                msg += `, ${failed}명 실패.\n실패한 요청은 회색으로 유지되며, 새로고침 후 다시 "삭제 요청 처리"를 시도할 수 있습니다.`;
+                if (errors && errors.length) msg += '\n\n실패 사유:\n' + errors.slice(0, 8).join('\n');
+            }
+            alert(msg);
+        }
+        usersCache = null;
+        renderUsers();
+    } catch (e) {
+        console.error('삭제 요청 처리 실패:', e);
+        alert('삭제 요청 처리 중 오류가 발생했습니다: ' + (e.message || e));
+    }
+};
+
+// 선택 삭제: deleteUserRequests에 문서 생성 → Cloud Function에서 Auth 삭제
+window.adminUserDeleteSelected = async function () {
+    const ids = getSelectedUserIds();
+    if (ids.length === 0) {
+        alert('삭제할 사용자를 선택해 주세요.');
+        return;
+    }
+    if (!confirm(`선택한 ${ids.length}명의 사용자를 삭제하시겠습니까?\\n삭제 후 해당 계정으로 로그인할 수 없습니다.`)) {
+        return;
+    }
+    const uid = adminAuth.currentUser?.uid;
+    if (!uid) {
+        alert('관리자 로그인이 필요합니다.');
+        return;
+    }
+    try {
+        const coll = collection(db, 'artifacts', appId, 'deleteUserRequests');
+        for (const userId of ids) {
+            await addDoc(coll, { userId, requestedBy: uid, timestamp: serverTimestamp() });
+        }
+        alert(`삭제 요청이 접수되었습니다. (${ids.length}명)\\n잠시 후 목록을 새로고침해 주세요.`);
+        usersCache = null;
+        renderUsers();
+    } catch (e) {
+        console.error('삭제 요청 실패:', e);
+        alert('삭제 요청 중 오류가 발생했습니다: ' + (e.message || e));
+    }
+};
+
+// 공유 금지 설정/해제
+window.adminUserBanShare = async function (value) {
+    const ids = getSelectedUserIds();
+    if (ids.length === 0) {
+        alert('대상을 선택해 주세요.');
+        return;
+    }
+    const uid = adminAuth.currentUser?.uid;
+    if (!uid) {
+        alert('관리자 로그인이 필요합니다.');
+        return;
+    }
+    try {
+        for (const userId of ids) {
+            const ref = doc(db, 'artifacts', appId, 'userBans', userId);
+            const snap = await getDoc(ref);
+            const current = snap.exists() ? snap.data() : {};
+            await setDoc(ref, {
+                ...current,
+                bannedShare: !!value,
+                updatedAt: new Date().toISOString(),
+                updatedBy: uid
+            }, { merge: true });
+        }
+        alert(value ? `선택한 ${ids.length}명에게 공유 금지를 적용했습니다.` : `선택한 ${ids.length}명의 공유 금지를 해제했습니다.`);
+        usersCache = null;
+        renderUsers();
+    } catch (e) {
+        console.error('공유 금지 설정 실패:', e);
+        alert('설정 중 오류가 발생했습니다: ' + (e.message || e));
+    }
+};
+
+// 글쓰기(댓글 포함) 금지 설정/해제
+window.adminUserBanWrite = async function (value) {
+    const ids = getSelectedUserIds();
+    if (ids.length === 0) {
+        alert('대상을 선택해 주세요.');
+        return;
+    }
+    const uid = adminAuth.currentUser?.uid;
+    if (!uid) {
+        alert('관리자 로그인이 필요합니다.');
+        return;
+    }
+    try {
+        for (const userId of ids) {
+            const ref = doc(db, 'artifacts', appId, 'userBans', userId);
+            const snap = await getDoc(ref);
+            const current = snap.exists() ? snap.data() : {};
+            await setDoc(ref, {
+                ...current,
+                bannedWrite: !!value,
+                updatedAt: new Date().toISOString(),
+                updatedBy: uid
+            }, { merge: true });
+        }
+        alert(value ? `선택한 ${ids.length}명에게 글쓰기(댓글) 금지를 적용했습니다.` : `선택한 ${ids.length}명의 글쓰기 금지를 해제했습니다.`);
+        usersCache = null;
+        renderUsers();
+    } catch (e) {
+        console.error('글쓰기 금지 설정 실패:', e);
+        alert('설정 중 오류가 발생했습니다: ' + (e.message || e));
+    }
+};
 
 // 사용자 목록 새로고침
 window.refreshUsers = function() {

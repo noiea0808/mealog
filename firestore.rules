@@ -89,6 +89,18 @@ service cloud.firestore {
       allow write: if false;
     }
     
+    // 사용자 제재 (공유/글쓰기 금지) - 관리자만 읽기/쓰기
+    match /artifacts/{appId}/userBans/{userId} {
+      allow read, write: if isAdmin();
+    }
+    
+    // 사용자 삭제 요청 (관리자 생성 → Cloud Functions에서 처리 후 삭제)
+    match /artifacts/{appId}/deleteUserRequests/{requestId} {
+      allow create: if isAdmin();
+      allow read, delete: if isAdmin();
+      allow update: if false;
+    }
+    
     // ============================================
     // 게시판 (boardPosts 컬렉션)
     // ============================================
