@@ -11,6 +11,7 @@ export {
     setDashboardMode, 
     setAnalysisType,
     updateCustomDates,
+    syncCustomDatePlaceholder,
     updateSelectedMonth,
     updateSelectedWeek,
     changeWeek,

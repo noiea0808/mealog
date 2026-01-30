@@ -12,9 +12,9 @@ export const SLOTS = [
 ];
 
 export const SLOT_STYLES = {
-    'morning': { iconBg: 'bg-orange-50', iconText: 'text-orange-500', border: 'border-orange-200', text: 'text-orange-600' },
+    'morning': { iconBg: 'bg-amber-50', iconText: 'text-amber-600', border: 'border-amber-200', text: 'text-amber-600' },
     'lunch': { iconBg: 'bg-emerald-50', iconText: 'text-emerald-600', border: 'border-emerald-200', text: 'text-emerald-600' },
-    'dinner': { iconBg: 'bg-indigo-50', iconText: 'text-indigo-600', border: 'border-indigo-200', text: 'text-indigo-600' },
+    'dinner': { iconBg: 'bg-sky-50', iconText: 'text-sky-600', border: 'border-sky-200', text: 'text-sky-600' },
     'default': { iconBg: 'bg-slate-50', iconText: 'text-slate-400', border: 'border-slate-100', text: 'text-slate-400' }
 };
 

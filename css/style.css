@@ -37,7 +37,22 @@ body {
     opacity: 0.75;
 }
 .ui-kpi-label--inverse {
-    color: rgba(255,255,255,0.85);
+    color: #fff;
+}
+/* 분석 카드 내 식사기록/간식기록 라벨·숫자 흰색 */
+#dashboardView .sticker-badge .ui-kpi-label--inverse,
+#dashboardView .sticker-badge #insightStats,
+#dashboardView .sticker-badge #snackStats {
+    color: #fff;
+}
+#dashboardView .sticker-badge #insightStats span,
+#dashboardView .sticker-badge #snackStats span {
+    color: #fff;
+    opacity: 1;
+}
+#dashboardView .sticker-badge #insightStats .opacity-60,
+#dashboardView .sticker-badge #snackStats .opacity-60 {
+    opacity: 0.85;
 }
 .ui-card-pad-lg { padding: 0.75rem 1rem; }     /* py-3 px-4 */
 .ui-card-pad { padding: 0.625rem 1rem; }       /* py-2.5 px-4 */
@@ -67,6 +82,10 @@ body {
 /* 헤더 타이틀: text-2xl(1.5rem) 대비 20% 확대 = 1.8rem */
 header .mealog-title { 
     font-size: 1.8rem; 
+}
+.header-section-label {
+    color: #047857;
+    transition: opacity 0.15s ease;
 }
 /* 서브 타이틀 (INSIGHT, MEAL TALK, 게시글, 글쓰기) – Pretendard, 700, 대문자 */
 .sub-title { 
@@ -151,7 +170,7 @@ header .mealog-title {
     background: #fff; 
     color: #059669; 
 }
-/* 전체/일간: 연회색 통 하나, active=흰색 팩+검은색 테두리/글자, inactive=배경 없이 회색 글자만 */
+/* 전체/일간: 연회색 통 하나, active=흰색 팩+#1e293b 테두리/글자, inactive=배경 없이 회색 글자만 */
 .view-tab { 
     padding: 4px 10px; 
     border-radius: 6px; 
@@ -162,8 +181,8 @@ header .mealog-title {
 }
 .view-tab.active { 
     background: #fff; 
-    border-color: #000000; 
-    color: #000000; 
+    border-color: #1e293b; 
+    color: #1e293b; 
 }
 .view-tab.inactive { 
     background: transparent; 
@@ -289,6 +308,8 @@ header .mealog-title {
     margin-bottom: 8px; 
     scroll-margin-top: 148px; 
 }
+.date-section-header h3 { color: #1e293b; }
+.date-section-header.text-rose-400 h3 { color: #fb7185; }
 /* 타임라인: 식사 카드가 화면 양옆에 꽉 차도록 좌우 패딩 제거 */
 #timelineView {
     padding-left: 0 !important;
@@ -431,6 +452,120 @@ header .mealog-title {
     min-height: 100%;
 }
 
+/* 프로필 설정 (트위터 스타일: 리스트형 행 + 얇은 구분선, 박스 최소화) */
+.profile-settings-list {
+    padding: 0;
+}
+/* 로그인 정보(이메일) 박스: 상단 탭과 간격 */
+.profile-account-section {
+    margin-top: 1rem;
+    padding: 0 1rem;
+}
+.profile-account-section:empty {
+    margin-top: 0;
+    padding: 0;
+}
+.profile-settings-header {
+    background: #fff;
+}
+.profile-settings-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: #fff;
+}
+.profile-settings-label {
+    flex: 0 0 100%;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 0.25rem;
+}
+.profile-settings-field {
+    flex: 1 1 100%;
+    min-width: 0;
+}
+.profile-settings-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: #1e293b;
+    background: #f1f5f9;
+    border: none;
+    border-bottom: 2px solid #94a3b8;
+    border-radius: 0;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.profile-settings-input::placeholder {
+    color: #94a3b8;
+}
+.profile-settings-input:focus {
+    background: #f8fafc;
+    border-bottom-color: #475569;
+    box-shadow: 0 2px 0 0 #475569;
+}
+.profile-settings-textarea {
+    min-height: 4rem;
+    resize: vertical;
+    line-height: 1.5;
+}
+.profile-settings-hint {
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+.profile-settings-btn {
+    padding: 0.25rem 0;
+    border-radius: 0.25rem;
+    transition: color 0.15s, background 0.15s;
+}
+.profile-avatar {
+    border: 1px solid #e2e8f0;
+}
+.profile-lifestyle-chip {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #64748b;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 9999px;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.profile-lifestyle-chip:hover,
+.profile-lifestyle-chip:focus {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+}
+/* 라이프스타일 칩: 선택 시 검정으로 표시 (JS가 bg-emerald-600 등 붙여도 여기서 덮어씀) */
+.profile-settings-list .settings-lifestyle-btn.bg-emerald-600,
+.profile-settings-list .profile-lifestyle-chip.bg-emerald-600 {
+    background: #1e293b !important;
+    border-color: #1e293b !important;
+    color: #fff !important;
+}
+.settings-lifestyle-btn.selected,
+.profile-lifestyle-chip.selected {
+    background: #1e293b;
+    border-color: #1e293b;
+    color: #fff;
+}
+.profile-settings-footer {
+    background: #fff;
+}
+.profile-settings-footer-btn {
+    transition: background 0.15s;
+}
+.profile-logout-btn {
+    border-radius: 6px;
+}
+.profile-settings-action {
+    transition: background 0.15s;
+}
+
 /* 사용자 설정 페이지 슬라이드 애니메이션 */
 #settingsPage {
     transform: translateX(100%);
@@ -544,13 +679,96 @@ header .mealog-title {
     align-items: center;
     justify-content: center;
 }
-/* 직접 설정 모드 캘린더 높이 통일 */
-#customDatePicker input {
-    min-height: 1.4rem;
-    padding-top: 0.25rem;
-    padding-bottom: 0.25rem;
+/* 직접 설정: 시작/종료 날짜 (흰색 컨테이너, 기간 탭과 높이 맞춤) */
+.custom-date-range {
+    width: 100%;
+}
+.custom-date-range-inner {
+    display: flex;
+    align-items: stretch;
+    background: #047857;
+    border-radius: 10px;
+    padding: 0.375rem 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    min-height: 30px;
+    height: 30px;
+}
+.custom-date-section {
+    flex: 1;
     display: flex;
     align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    min-width: 0;
+}
+.custom-date-section:first-child {
+    padding-right: 0.5rem;
+}
+.custom-date-section:last-child {
+    padding-left: 0.5rem;
+}
+.custom-date-label {
+    font-size: 0.8125rem;
+    font-weight: 400;
+    color: #fff;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.custom-date-input-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    margin-left: 0.75rem;
+}
+.custom-date-placeholder {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.9);
+    pointer-events: none;
+    display: none;
+}
+.custom-date-input-wrap.is-empty .custom-date-placeholder {
+    display: block;
+}
+.custom-date-input-wrap.is-empty .custom-date-input::-webkit-datetime-edit {
+    color: transparent;
+}
+.custom-date-input-wrap.is-empty .custom-date-input::-webkit-datetime-edit-fields-wrapper {
+    visibility: hidden;
+}
+.custom-date-input {
+    flex: 0 0 auto;
+    width: 7.5rem;
+    min-height: 1.25rem;
+    padding: 0 0.25rem 0 0;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #fff;
+    background: transparent;
+    border: none;
+    outline: none;
+    box-sizing: content-box;
+}
+.custom-date-input::-webkit-datetime-edit {
+    color: #fff;
+}
+.custom-date-input::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    opacity: 0.9;
+    cursor: pointer;
+    margin-left: 0;
+    width: 1.2em;
+    height: 1.2em;
+}
+.custom-date-divider {
+    width: 1px;
+    background: rgba(255, 255, 255, 0.35);
+    flex-shrink: 0;
+    margin: 0.15rem 0;
 }
 /* 분석창 카드 좌우 꽉 차게 */
 #dashboardView .card {
@@ -580,66 +798,124 @@ header .mealog-title {
     margin-right: -1rem !important;
     width: calc(100% + 2rem) !important;
 }
-/* 인사이트 기간 탭: 참고 이미지 구조(라운드·선택 박스 테두리·균일 여백), 색상만 그린 테마 */
+/* 인사이트 기간 탭: 좌우 꽉 채움, 각진 모양 */
 #dashboardView .insight-period-tabs {
-    --insight-period-gap: 1px;
-    padding: var(--insight-period-gap);
-    border-radius: 8px;
-    box-sizing: border-box;
     display: flex;
     align-items: stretch;
-    gap: 0;
-    background-color: #047857;
+    gap: 1px;
+    flex-wrap: nowrap;
+    padding: 1px;
+    background: rgb(5, 150, 105);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 6px;
 }
 #dashboardView .insight-period-tabs .insight-period-tab {
     margin: 0 !important;
-    padding: 8px 12px !important;
+    padding: 0.375rem 0.25rem !important;
     min-height: 0 !important;
-    height: 30px;
-    line-height: 1;
+    flex: 1 1 0;
+    min-width: 0;
+    height: auto;
+    line-height: 1.25;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: 6px;
+    border-radius: 4px;
     border: 1px solid transparent;
     box-sizing: border-box;
-    min-width: 0;
     background: transparent;
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.85);
+}
+#dashboardView .insight-period-tabs .insight-period-tab:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.12);
 }
 #dashboardView .insight-period-tabs .insight-period-tab--selected {
-    background-color: #059669;
-    color: #fff;
-    border-color: rgb(4, 120, 87);
+    background: #fff;
+    color: #047857;
+    border-color: #fff;
 }
-/* 인사이트 말풍선 스타일 */
-#insightBubble {
-    line-height: 1.6;
-    font-size: 0.875rem;
-    color: #1e293b;
+#dashboardView .insight-period-tabs .insight-period-tab--selected:hover {
+    background: #f0fdf4;
+    color: #047857;
+}
+/* 인사이트 영역 (트위터 스타일: 깔끔한 카드·타이포 위주) */
+#insightBubble.insight-bubble,
+.insight-bubble {
     display: flex;
     flex-direction: column;
     position: relative;
-    font-weight: 400;
-    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    box-sizing: border-box;
+    min-height: fit-content;
+    padding: 0.5rem 1.25rem;
+    background: #ffffff;
+    border: none;
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     word-wrap: break-word;
     overflow-wrap: break-word;
-    box-sizing: border-box;
-    min-height: fit-content; /* 내용에 맞춰 최소 높이 설정 */
 }
-#insightTextContent {
-    line-height: 1.6;
+.insight-bubble-header {
+    margin-bottom: 0.375rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+#insightCharacterName.insight-character-name {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.01em;
+}
+.insight-share-btn {
+    padding: 0.375rem 0.75rem;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    background: #059669;
+    border: none;
+    border-radius: 9999px;
+    transition: background 0.15s;
+}
+.insight-share-btn:hover {
+    background: #047857;
+}
+.insight-share-btn:active {
+    background: #065f46;
+}
+#insightTextContent.insight-text-content,
+.insight-text-content {
+    line-height: 1.55;
+    font-size: 0.9375rem;
     font-weight: 400;
-    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    color: #334155;
     word-wrap: break-word;
-    word-break: break-word; /* 긴 단어도 박스 안에서 줄바꿈 */
+    word-break: break-word;
     overflow-wrap: break-word;
     max-width: 100%;
     width: 100%;
     box-sizing: border-box;
-    white-space: pre-line; /* 줄바꿈은 유지하되, 긴 줄은 자동 줄바꿈 */
-    overflow: visible; /* 텍스트가 잘리지 않도록 */
+    white-space: pre-line;
+    overflow: visible;
     display: block;
+}
+.insight-character-btn {
+    background: #047857;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.insight-comment-trigger {
+    font-size: 12px;
+    color: #1e293b;
+    background: #ffca2c;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+}
+.insight-comment-trigger:hover {
+    background: #e6b828;
+    border-color: rgba(0, 0, 0, 0.12);
+}
+.insight-comment-trigger:active {
+    background: #d4a024;
 }
 .insight-page-dot {
     width: 6px;
@@ -654,16 +930,7 @@ header .mealog-title {
     width: 8px;
     height: 8px;
 }
-/* 말풍선: 보더 제거, 로그인 화면과 유사한 쉐도우 */
-#insightBubble {
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
-}
 
-/* 캐릭터 선택 창 */
-#insightCharacterBtn {
-    background: rgb(4 120 87);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
 /* 캐릭터 선택 팝업 */
 .character-popup-item.active {
     background: #ecfdf5 !important;
@@ -679,11 +946,21 @@ header .mealog-title {
     /* 클릭 시 작아졌다 커졌다 효과 없음 */
 }
 
-/* 좋아요, 북마크, 댓글 아이콘 stroke 얇게 (앨범·밀톡) - 배경색과 블렌드하여 보더라인 얇게 */
+/* 앨범·밀톡 검색 패널: 좋아요/댓글/북마크 아이콘 두께·색상을 돋보기와 동일하게 */
 .gallery-trace-btn .fa-heart,
 .gallery-trace-btn .fa-comment,
 .gallery-trace-btn .fa-bookmark {
-    -webkit-text-stroke: 0.5px #f1f5f9;  /* slate-100 - 패널 배경 */
+    color: #64748b;                    /* slate-500 - 돋보기와 동일 */
+    -webkit-text-stroke: 0.6px #64748b;  /* 선 두께 돋보기와 비슷하게 */
+}
+.gallery-trace-btn[data-trace="like"]:hover .fa-heart {
+    color: #ef4444;
+    -webkit-text-stroke: 0.6px #ef4444;
+}
+.gallery-trace-btn[data-trace="comment"]:hover .fa-comment,
+.gallery-trace-btn[data-trace="bookmark"]:hover .fa-bookmark {
+    color: #475569;
+    -webkit-text-stroke: 0.6px #475569;
 }
 .post-like-icon.fa-regular,
 .post-bookmark-icon.fa-regular,

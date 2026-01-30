@@ -40,7 +40,7 @@ window.cleanupFirestoreListeners = () => {
     }
 };
 import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, filterGalleryByUser, clearGalleryFilter } from './render/index.js';
-import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
+import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
@@ -175,6 +175,7 @@ window.Mealog.selectFavoriteMainTag = selectFavoriteMainTag;
 window.setDashboardMode = setDashboardMode;
 window.Mealog.setDashboardMode = setDashboardMode;
 window.updateCustomDates = updateCustomDates;
+window.syncCustomDatePlaceholder = syncCustomDatePlaceholder;
 window.Mealog.updateCustomDates = updateCustomDates;
 window.updateSelectedMonth = updateSelectedMonth;
 window.Mealog.updateSelectedMonth = updateSelectedMonth;
@@ -1289,10 +1290,19 @@ window.saveDailyCommentFromModal = async (dateStr) => {
 // (함수들이 정의되기 전에 renderFeed가 호출될 수 있으므로)
 
 // 탭 및 뷰 모드 전환
+const HEADER_SECTION_BY_TAB = { dashboard: '밀당', timeline: '밀로그', gallery: '모먼트', board: '밀톡' };
+
+function updateHeaderSectionLabel(tab) {
+    const el = document.getElementById('headerSectionLabel');
+    if (!el) return;
+    el.textContent = HEADER_SECTION_BY_TAB[tab] ?? '밀로그';
+}
+
 window.switchMainTab = (tab) => {
     try {
         console.log('[탭전환] 시작:', { 이전탭: appState.currentTab, 새탭: tab });
         appState.currentTab = tab;
+    updateHeaderSectionLabel(tab);
     document.getElementById('timelineView').classList.toggle('hidden', tab !== 'timeline');
     document.getElementById('galleryView').classList.toggle('hidden', tab !== 'gallery');
     document.getElementById('dashboardView').classList.toggle('hidden', tab !== 'dashboard');
@@ -1323,16 +1333,16 @@ window.switchMainTab = (tab) => {
     
     document.getElementById('trackerSection').classList.toggle('hidden', tab !== 'timeline');
     document.getElementById('nav-timeline').className = tab === 'timeline' ? 
-        'text-emerald-600 flex justify-center items-center py-1' : 
+        'text-slate-600 flex justify-center items-center py-1' : 
         'text-slate-300 flex justify-center items-center py-1';
     document.getElementById('nav-gallery').className = tab === 'gallery' ? 
-        'text-emerald-600 flex justify-center items-center py-1' : 
+        'text-slate-600 flex justify-center items-center py-1' : 
         'text-slate-300 flex justify-center items-center py-1';
     document.getElementById('nav-dashboard').className = tab === 'dashboard' ? 
-        'text-emerald-600 flex justify-center items-center py-1' : 
+        'text-slate-600 flex justify-center items-center py-1' : 
         'text-slate-300 flex justify-center items-center py-1';
     document.getElementById('nav-board').className = tab === 'board' ? 
-        'text-emerald-600 flex justify-center items-center py-1' : 
+        'text-slate-600 flex justify-center items-center py-1' : 
         'text-slate-300 flex justify-center items-center py-1';
     
     const searchBtn = document.getElementById('searchTriggerBtn');

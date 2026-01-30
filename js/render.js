@@ -3568,7 +3568,7 @@ export function createDailyShareCard(dateStr, forPreview = false) {
             const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
             
             let containerStyle = 'border: 1px solid #cbd5e1; margin: 4px 8px; margin-bottom: 7px; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); background: rgba(255, 255, 255, 0.9);';
-            let iconTextColor = specificStyle.iconText.includes('orange') ? '#f97316' : specificStyle.iconText.includes('emerald') ? '#10b981' : specificStyle.iconText.includes('indigo') ? '#6366f1' : '#64748b';
+            let iconTextColor = specificStyle.iconText.includes('amber') ? '#d97706' : specificStyle.iconText.includes('emerald') ? '#059669' : specificStyle.iconText.includes('sky') ? '#0284c7' : '#64748b';
             
             let titleLine1 = '';
             let titleLine2 = '';
@@ -4072,7 +4072,7 @@ export function savePhotoEdit() {
                 photoPreview.style.backgroundPosition = 'center';
                 photoPreview.innerHTML = '';
                 if (photoDeleteBtn) {
-                    photoDeleteBtn.classList.remove('hidden');
+                    photoDeleteBtn.classList.toggle('hidden', !appState.isProfileEditing);
                 }
             }
             // 프로필 타입을 photo로 설정

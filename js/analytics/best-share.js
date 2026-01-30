@@ -708,9 +708,9 @@ export async function openShareBestModal() {
                 const comment = meal.comment || '';
                 
                 const specificStyle = SLOT_STYLES[meal.slotId] || SLOT_STYLES['default'];
-                const slotColor = specificStyle.iconText === 'text-orange-500' ? '#f97316' : 
+                const slotColor = specificStyle.iconText === 'text-amber-600' ? '#d97706' : 
                                  specificStyle.iconText === 'text-emerald-600' ? '#059669' : 
-                                 specificStyle.iconText === 'text-indigo-600' ? '#4f46e5' : '#64748b';
+                                 specificStyle.iconText === 'text-sky-600' ? '#0284c7' : '#64748b';
                 
                 let rankBg = '#10b981';
                 let rankText = '#ffffff';

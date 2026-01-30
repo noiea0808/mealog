@@ -1242,7 +1242,7 @@ export function openSettings() {
         photoPreview.style.backgroundPosition = 'center';
         photoPreview.innerHTML = '';
         if (photoDeleteBtn) {
-            photoDeleteBtn.classList.remove('hidden');
+            photoDeleteBtn.classList.toggle('hidden', !state.isProfileEditing);
         }
     } else if (photoPreview) {
         photoPreview.innerHTML = '<i class="fa-solid fa-camera text-slate-400 text-xl"></i>';
@@ -1602,25 +1602,21 @@ function setProfileSettingsEditMode(isEditing) {
     if (birthdateInput) birthdateInput.disabled = !isEditing;
     if (lifestyleInput) lifestyleInput.disabled = !isEditing;
 
+    /* 프로필 사진: 수정 모드일 때만 사진 설정/사진 선택/삭제 버튼 표시 */
     const photoSelectBtn = document.getElementById('photoSelectBtn');
+    const textSectionPhotoBtn = document.getElementById('textSectionPhotoBtn');
+    const photoDeleteBtn = document.getElementById('photoDeleteBtn');
     if (photoSelectBtn) {
         photoSelectBtn.disabled = !isEditing;
-        photoSelectBtn.classList.toggle('opacity-60', !isEditing);
-        photoSelectBtn.classList.toggle('cursor-not-allowed', !isEditing);
+        photoSelectBtn.classList.toggle('hidden', !isEditing);
     }
-
-    const textSectionPhotoBtn = document.getElementById('textSectionPhotoBtn');
     if (textSectionPhotoBtn) {
         textSectionPhotoBtn.disabled = !isEditing;
-        textSectionPhotoBtn.classList.toggle('opacity-60', !isEditing);
-        textSectionPhotoBtn.classList.toggle('cursor-not-allowed', !isEditing);
+        textSectionPhotoBtn.classList.toggle('hidden', !isEditing);
     }
-
-    const photoDeleteBtn = document.getElementById('photoDeleteBtn');
     if (photoDeleteBtn) {
         photoDeleteBtn.disabled = !isEditing;
-        photoDeleteBtn.classList.toggle('opacity-60', !isEditing);
-        photoDeleteBtn.classList.toggle('cursor-not-allowed', !isEditing);
+        photoDeleteBtn.classList.toggle('hidden', !isEditing);
     }
 
     // 라이프스타일 버튼 비활성화
@@ -1667,7 +1663,7 @@ window.cancelProfileSettingsEdit = () => {
         photoPreview.style.backgroundPosition = 'center';
         photoPreview.innerHTML = '';
         if (photoDeleteBtn) {
-            photoDeleteBtn.classList.remove('hidden');
+            photoDeleteBtn.classList.toggle('hidden', !state.isProfileEditing);
         }
     } else if (photoPreview) {
         photoPreview.innerHTML = '<i class="fa-solid fa-camera text-slate-400 text-xl"></i>';
@@ -1714,7 +1710,7 @@ export function setSettingsProfileType(type) {
         textPreview.textContent = initial;
     }
 
-    // 사진 미리보기 및 삭제 버튼 업데이트
+    // 사진 미리보기 및 삭제 버튼 업데이트 (수정 모드일 때만 삭제 버튼 표시)
     if (type === 'photo' && photoPreview) {
         const photoUrl = appState?.tempSettings?.profile?.photoUrl || window.settingsPhotoUrl || window.userSettings?.profile?.photoUrl;
         if (photoUrl) {
@@ -1723,7 +1719,7 @@ export function setSettingsProfileType(type) {
             photoPreview.style.backgroundPosition = 'center';
             photoPreview.innerHTML = '';
             if (photoDeleteBtn) {
-                photoDeleteBtn.classList.remove('hidden');
+                photoDeleteBtn.classList.toggle('hidden', !appState.isProfileEditing);
             }
         } else {
             photoPreview.innerHTML = '<i class="fa-solid fa-camera text-slate-400 text-xl"></i>';

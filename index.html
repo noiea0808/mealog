@@ -464,7 +464,10 @@
     <div id="mainApp" class="hidden">
         <header class="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-sm max-h-[60px]">
                 <div class="py-2.5 flex justify-between items-center px-6">
-                <h1 class="mealog-title text-2xl text-emerald-600 tracking-tighter">mealog</h1>
+                <div class="flex items-baseline gap-2">
+                    <h1 id="headerAppTitle" class="mealog-title text-2xl text-emerald-600 tracking-tighter">mealog</h1>
+                    <span id="headerSectionLabel" class="header-section-label text-xs font-semibold tracking-tight">밀로그</span>
+                </div>
                 <div class="flex items-center gap-2">
                     <!-- 타임라인 탭: 돋보기 클릭 시 왼쪽으로 입력창 확장, 프로필 밀지 않음(고정폭+absolute) -->
                     <div id="timelineSearchPanel" class="timeline-search-wrapper hidden relative w-8 flex-shrink-0 overflow-visible">
@@ -518,10 +521,7 @@
                 <button id="boardWriteBtn" class="board-write-fab" type="button" title="글쓰기" aria-label="글쓰기">
                     <i class="fa-solid fa-pen text-lg"></i>
                 </button>
-                <div class="mb-4">
-                    <h2 class="mealog-title text-2xl text-slate-700 tracking-tighter lowercase"><span>💬</span> meal talk</h2>
-                </div>
-                <div class="flex gap-2 mb-4 overflow-x-auto scrollbar-hide">
+                <div class="flex gap-2 mb-4 mt-2 overflow-x-auto scrollbar-hide">
                     <button id="board-category-all" class="board-category-btn active px-4 py-2 bg-black text-white border border-black rounded-lg text-xs font-bold whitespace-nowrap">전체</button>
                     <button id="board-category-serious" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">무거운</button>
                     <button id="board-category-chat" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">가벼운</button>
@@ -580,13 +580,12 @@
                 <!-- Dashboard content remains same -->
                 <div class="card ui-card-pad-lg bg-emerald-600 text-white relative overflow-hidden">
                     <div class="flex flex-col mb-4 relative z-10">
-                        <h3 class="mealog-title text-2xl tracking-tighter lowercase px-4"><span>✨</span> insight</h3>
-                        <div id="insightPeriodTabs" class="insight-period-tabs flex bg-[#047857] mt-3 gap-0.5 items-stretch">
-                            <button id="btn-dash-7d" class="insight-period-tab flex-1 text-xs font-bold text-white transition-colors">최근 1주</button>
-                            <button id="btn-dash-week" class="insight-period-tab flex-1 text-xs font-bold text-white transition-colors">주간</button>
-                            <button id="btn-dash-month" class="insight-period-tab flex-1 text-xs font-bold text-white transition-colors">월간</button>
-                            <button id="btn-dash-year" class="insight-period-tab flex-1 text-xs font-bold text-white transition-colors">연간</button>
-                            <button id="btn-dash-custom" class="insight-period-tab flex-1 text-xs font-bold text-white transition-colors">직접 설정</button>
+                        <div id="insightPeriodTabs" class="insight-period-tabs flex gap-1.5 items-center flex-wrap">
+                            <button id="btn-dash-7d" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">최근 1주</button>
+                            <button id="btn-dash-week" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">주간</button>
+                            <button id="btn-dash-month" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">월간</button>
+                            <button id="btn-dash-year" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">연간</button>
+                            <button id="btn-dash-custom" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">직접 설정</button>
                         </div>
                         <div id="periodNavigator" class="hidden mt-3 flex items-center justify-center gap-3">
                             <button id="periodPrevBtn" onclick="window.navigatePeriod(-1)" class="w-7 h-7 rounded-full bg-white/20 text-white flex items-center justify-center active:bg-white/30 transition-colors">
@@ -597,14 +596,23 @@
                                 <i class="fa-solid fa-chevron-right text-sm"></i>
                             </button>
                         </div>
-                        <div id="customDatePicker" class="hidden mt-3 flex gap-4 items-center justify-center">
-                            <div class="flex gap-1 items-center">
-                                <label class="text-xs font-bold text-white/80 whitespace-nowrap">시작</label>
-                                <input type="date" id="customStart" onchange="window.safeCall('updateCustomDates')" class="bg-white/20 text-white text-sm rounded px-2 py-1 border-none outline-none">
-                            </div>
-                            <div class="flex gap-1 items-center">
-                                <label class="text-xs font-bold text-white/80 whitespace-nowrap">종료</label>
-                                <input type="date" id="customEnd" onchange="window.safeCall('updateCustomDates')" class="bg-white/20 text-white text-sm rounded px-2 py-1 border-none outline-none">
+                        <div id="customDatePicker" class="hidden mt-3 custom-date-range">
+                            <div class="custom-date-range-inner">
+                                <div class="custom-date-section">
+                                    <label class="custom-date-label" for="customStart">시작</label>
+                                    <span class="custom-date-input-wrap">
+                                        <span class="custom-date-placeholder" aria-hidden="true">-.-.-</span>
+                                        <input type="date" id="customStart" onchange="window.safeCall('updateCustomDates'); window.syncCustomDatePlaceholder && window.syncCustomDatePlaceholder();" class="custom-date-input">
+                                    </span>
+                                </div>
+                                <div class="custom-date-divider" aria-hidden="true"></div>
+                                <div class="custom-date-section">
+                                    <label class="custom-date-label" for="customEnd">종료</label>
+                                    <span class="custom-date-input-wrap">
+                                        <span class="custom-date-placeholder" aria-hidden="true">-.-.-</span>
+                                        <input type="date" id="customEnd" onchange="window.safeCall('updateCustomDates'); window.syncCustomDatePlaceholder && window.syncCustomDatePlaceholder();" class="custom-date-input">
+                                    </span>
+                                </div>
                             </div>
                         </div>
                         <div id="weekPickerContainer" class="hidden mt-3 flex gap-2">
@@ -617,23 +625,23 @@
                              <input type="month" id="monthInput" onchange="window.safeCall('updateSelectedMonth')" class="w-full bg-white/20 text-white text-sm rounded p-2 border-none outline-none">
                         </div>
                     </div>
-                    <!-- 캐릭터와 말풍선 영역 -->
-                    <div class="flex gap-3 mt-3 relative z-10 items-start">
+                    <!-- 캐릭터와 말풍선 영역 (트위터 스타일) -->
+                    <div class="insight-area flex gap-3 mt-3 relative z-10 items-start">
                         <!-- 밀당 캐릭터 선택 창 -->
-                        <div class="relative flex-shrink-0 flex flex-col gap-2 w-[75px]">
-                            <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="w-[75px] h-[132px] rounded-2xl flex flex-col items-center justify-center transition-colors overflow-hidden">
-                                <div id="insightCharacterIcon" class="w-full h-full flex items-center justify-center text-2xl font-black text-white">M</div>
+                        <div class="insight-character-column relative flex-shrink-0 flex flex-col gap-2 w-[75px]">
+                            <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="insight-character-btn w-[75px] h-[132px] rounded-2xl flex flex-col items-center justify-center transition-colors overflow-hidden">
+                                <div id="insightCharacterIcon" class="w-full h-full flex items-center justify-center text-2xl font-bold text-white">M</div>
                             </button>
-                            <button id="generateCommentBtn" onclick="window.generateInsightComment()" class="w-[75px] bg-yellow-400 rounded-xl font-bold text-[10px] shadow-md active:bg-yellow-500 transition-colors py-1" style="color: #3E2723;">
-                                COMMENT
+                            <button id="generateCommentBtn" onclick="window.generateInsightComment()" class="insight-comment-trigger w-[75px] rounded-xl font-semibold py-1.5 transition-colors">
+                                분석하기
                             </button>
                         </div>
                         <!-- 말풍선 -->
                         <div class="flex-1 relative min-w-0">
-                            <div id="insightBubble" class="bg-yellow-50/90 py-3 px-3 relative" style="border-radius: 0.5rem 1.25rem 1.25rem 0.5rem;">
-                                <div class="flex items-center justify-between mb-2">
-                                    <div id="insightCharacterName" class="text-sm font-black text-emerald-800"></div>
-                                    <button id="shareInsightBtn" onclick="window.openShareInsightModal()" class="flex-shrink-0 bg-emerald-600 rounded-lg font-bold text-xs shadow-md active:bg-emerald-700 transition-colors py-1.5 px-3 text-white border border-emerald-700 hidden">
+                            <div id="insightBubble" class="insight-bubble relative">
+                                <div class="insight-bubble-header flex items-center justify-between gap-3">
+                                    <span id="insightCharacterName" class="insight-character-name"></span>
+                                    <button id="shareInsightBtn" onclick="window.openShareInsightModal()" class="insight-share-btn flex-shrink-0 hidden">
                                         <i class="fa-solid fa-share text-xs mr-1"></i>공유
                                     </button>
                                 </div>
@@ -737,7 +745,7 @@
 
         <nav class="bottom-nav">
             <button id="nav-dashboard" class="text-slate-300 flex justify-center items-center py-1"><i class="fa-solid fa-chart-pie text-xl"></i></button>
-            <button id="nav-timeline" class="text-emerald-600 flex justify-center items-center py-1"><i class="fa-solid fa-list-ul text-xl"></i></button>
+            <button id="nav-timeline" class="text-slate-600 flex justify-center items-center py-1"><i class="fa-solid fa-list-ul text-xl"></i></button>
             <button id="nav-gallery" class="text-slate-300 flex justify-center items-center py-1"><i class="fa-solid fa-images text-xl"></i></button>
             <button id="nav-board" class="text-slate-300 flex justify-center items-center py-1"><i class="fa-solid fa-comments text-xl"></i></button>
         </nav>
@@ -764,109 +772,99 @@
             </div>
         </div>
         <div class="flex-1 overflow-y-auto">
-            <!-- 프로필 탭 -->
-            <div id="settingsTabContentProfile" class="settings-tab-content p-4 space-y-4 pb-28">
-                <!-- 계정 연동 섹션 -->
-                <div id="accountSection"></div>
+            <!-- 프로필 탭 (트위터 스타일: 리스트형 행 + 얇은 구분선) -->
+            <div id="settingsTabContentProfile" class="settings-tab-content profile-settings-list pb-28">
+                <div id="accountSection" class="profile-account-section"></div>
 
-                <div class="space-y-3">
-                    <div class="flex items-center justify-between mb-2">
-                        <h3 class="text-sm font-black text-slate-700 tracking-tight">프로필 설정</h3>
-                        <div class="flex items-center gap-2">
-                            <button id="editProfileSettingsBtn" class="px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-[11px] font-bold shadow-md whitespace-nowrap active:bg-emerald-700 transition-colors">수정</button>
-                            <button id="cancelProfileSettingsBtn" class="hidden px-3 py-1.5 bg-slate-100 text-slate-600 rounded-xl text-[11px] font-bold whitespace-nowrap active:bg-slate-200 transition-colors">취소</button>
-                            <button id="saveProfileSettingsBtn" class="hidden px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-[11px] font-bold shadow-md whitespace-nowrap active:bg-emerald-700 transition-colors">저장</button>
-                        </div>
+                <div class="profile-settings-header flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                    <h3 class="text-sm font-bold text-slate-800">프로필</h3>
+                    <div class="flex items-center gap-2">
+                        <button id="editProfileSettingsBtn" class="profile-settings-action px-3 py-1.5 text-sm font-bold text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors">수정</button>
+                        <button id="cancelProfileSettingsBtn" class="hidden px-3 py-1.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-full transition-colors">취소</button>
+                        <button id="saveProfileSettingsBtn" class="hidden px-3 py-1.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-full transition-colors">저장</button>
                     </div>
+                </div>
 
-                    <!-- 1) 아이콘 -->
-                    <div class="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-2">
-                        <div class="text-xs font-black text-slate-500 uppercase tracking-widest">아이콘</div>
-                        <!-- 텍스트(닉네임 첫 글자) 영역 - 사진이 없을 때 기본 표시 -->
+                <!-- 1) 프로필 사진 -->
+                <div class="profile-settings-row border-b border-slate-100">
+                    <div class="profile-settings-label">프로필 사진</div>
+                    <div class="profile-settings-field flex items-center gap-4 py-3">
                         <div id="textSection">
-                            <div class="bg-white p-3 rounded-2xl border border-slate-200 flex items-center gap-3 min-h-[72px]">
-                                <div id="textPreview" class="w-12 h-12 rounded-full bg-slate-50 border-2 border-slate-200 flex items-center justify-center text-base font-black text-slate-700 flex-shrink-0">?</div>
-                                <div class="flex-1 min-w-0">
-                                    <div class="text-xs font-bold text-slate-700">닉네임 첫 글자</div>
-                                    <div class="text-[11px] text-slate-500 mt-0.5">닉네임 변경 시 자동 반영</div>
+                            <div class="flex items-center gap-4">
+                                <div id="textPreview" class="profile-avatar w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-base font-bold text-slate-600 flex-shrink-0">?</div>
+                                <div class="min-w-0">
+                                    <p class="text-sm text-slate-600">닉네임 첫 글자</p>
+                                    <p class="text-xs text-slate-400 mt-0.5">닉네임 변경 시 자동 반영</p>
                                 </div>
-                                <button id="textSectionPhotoBtn" type="button" class="px-3 py-1.5 bg-slate-800 text-white rounded-xl text-[11px] font-bold active:bg-slate-900 transition-colors whitespace-nowrap">
-                                    사진 설정
-                                </button>
+                                <button id="textSectionPhotoBtn" type="button" class="profile-settings-btn text-sm font-bold text-slate-700 hover:text-slate-900">사진 설정</button>
                             </div>
                         </div>
-                        <!-- 사진 직접 등록 영역 -->
                         <div id="photoSection" class="hidden">
-                            <div class="bg-white p-3 rounded-2xl border border-slate-200 flex items-center gap-3 min-h-[72px]">
-                                <div id="photoPreview" class="w-12 h-12 rounded-full bg-slate-50 border-2 border-slate-200 overflow-hidden flex items-center justify-center flex-shrink-0">
+                            <div class="flex items-center gap-4">
+                                <div id="photoPreview" class="profile-avatar w-12 h-12 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center flex-shrink-0">
                                     <i class="fa-solid fa-camera text-slate-400 text-base"></i>
                                 </div>
-                                <div class="flex-1 min-w-0 flex items-center gap-2">
-                                    <button id="photoSelectBtn" type="button" class="px-3 py-1.5 bg-slate-800 text-white rounded-xl text-[11px] font-bold active:bg-slate-900 transition-colors whitespace-nowrap">
-                                        사진 선택
-                                    </button>
-                                    <button id="photoDeleteBtn" type="button" class="hidden px-3 py-1.5 bg-red-500 text-white rounded-xl text-[11px] font-bold active:bg-red-600 transition-colors whitespace-nowrap">
-                                        삭제
-                                    </button>
+                                <div class="flex items-center gap-2">
+                                    <button id="photoSelectBtn" type="button" class="profile-settings-btn text-sm font-bold text-slate-700 hover:text-slate-900">사진 선택</button>
+                                    <button id="photoDeleteBtn" type="button" class="hidden text-sm font-bold text-red-500 hover:text-red-600">삭제</button>
                                 </div>
                                 <input type="file" id="photoInput" class="hidden" accept="image/*" onchange="window.safeCall('handlePhotoUpload', event)">
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <!-- 2) 닉네임 / 소개 -->
-                    <div class="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-2">
-                        <div>
-                            <label class="text-[10px] font-bold text-slate-400 block uppercase mb-2">닉네임</label>
-                            <input type="text" id="settingNickname" class="w-full bg-white p-2.5 rounded-xl border border-slate-200 outline-none font-bold text-sm focus:border-slate-400 transition-colors">
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-bold text-slate-400 block uppercase mb-2">소개</label>
-                            <textarea id="settingBio" placeholder="자신을 소개해주세요" maxlength="200" rows="4" class="w-full bg-white p-2.5 rounded-xl border border-slate-200 outline-none text-sm resize-none focus:ring-2 focus:ring-slate-400"></textarea>
-                            <p class="text-[10px] text-slate-400 text-right mt-1"><span id="bioCharCount">0</span>/200</p>
-                        </div>
+                <!-- 2) 닉네임 -->
+                <div class="profile-settings-row border-b border-slate-100">
+                    <label class="profile-settings-label" for="settingNickname">닉네임</label>
+                    <div class="profile-settings-field">
+                        <input type="text" id="settingNickname" class="profile-settings-input" placeholder="닉네임을 입력하세요">
                     </div>
+                </div>
 
-                    <!-- 3) 생년월일 -->
-                    <div class="bg-slate-50 px-3 py-2 rounded-2xl border border-slate-100 space-y-2">
-                        <div class="text-xs font-black text-slate-500 uppercase tracking-widest">생년월일</div>
-                        <div class="flex items-center justify-between gap-3">
-                            <div class="text-sm font-black text-slate-700 tracking-tight">생년월일</div>
-                            <div class="flex flex-col items-end">
-                                <input type="date" id="settingBirthdate" class="bg-white px-3 py-1.5 rounded-xl border border-slate-200 outline-none text-xs font-bold focus:border-slate-400 transition-colors w-[220px] max-w-full text-right">
-                                <p id="birthdateHint" class="text-[9px] text-slate-400 leading-tight mt-0.5 text-right w-[220px] max-w-full">가입 후 1회만 수정 가능</p>
-                            </div>
-                        </div>
+                <!-- 3) 소개 -->
+                <div class="profile-settings-row border-b border-slate-100">
+                    <label class="profile-settings-label" for="settingBio">소개</label>
+                    <div class="profile-settings-field">
+                        <textarea id="settingBio" class="profile-settings-input profile-settings-textarea" placeholder="자신을 소개해주세요" maxlength="200" rows="3"></textarea>
+                        <p class="profile-settings-hint text-right mt-1"><span id="bioCharCount">0</span>/200</p>
                     </div>
+                </div>
 
-                    <!-- 4) 라이프스타일 -->
-                    <div class="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-2">
-                        <div class="text-xs font-black text-slate-500 uppercase tracking-widest">라이프 스타일</div>
+                <!-- 4) 생년월일 -->
+                <div class="profile-settings-row border-b border-slate-100">
+                    <label class="profile-settings-label" for="settingBirthdate">생년월일</label>
+                    <div class="profile-settings-field">
+                        <input type="date" id="settingBirthdate" class="profile-settings-input">
+                        <p id="birthdateHint" class="profile-settings-hint mt-1">가입 후 1회만 수정 가능</p>
+                    </div>
+                </div>
+
+                <!-- 5) 라이프스타일 -->
+                <div class="profile-settings-row border-b border-slate-100">
+                    <div class="profile-settings-label">라이프 스타일</div>
+                    <div class="profile-settings-field py-3">
                         <input type="hidden" id="settingLifestyle" value="">
-                        <div class="grid grid-cols-3 gap-2">
-                            <button type="button" class="settings-lifestyle-btn px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 whitespace-nowrap active:bg-slate-100 transition-colors" data-value="학생">학생</button>
-                            <button type="button" class="settings-lifestyle-btn px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 whitespace-nowrap active:bg-slate-100 transition-colors" data-value="주부">주부</button>
-                            <button type="button" class="settings-lifestyle-btn px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 whitespace-nowrap active:bg-slate-100 transition-colors" data-value="직장인">직장인</button>
-                            <button type="button" class="settings-lifestyle-btn px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 whitespace-nowrap active:bg-slate-100 transition-colors" data-value="자영업">자영업</button>
-                            <button type="button" class="settings-lifestyle-btn px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 whitespace-nowrap active:bg-slate-100 transition-colors" data-value="프리랜서">프리랜서</button>
-                            <button type="button" class="settings-lifestyle-btn px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 whitespace-nowrap active:bg-slate-100 transition-colors" data-value="기타">기타</button>
+                        <div class="profile-lifestyle-chips flex flex-wrap gap-2">
+                            <button type="button" class="settings-lifestyle-btn profile-lifestyle-chip" data-value="학생">학생</button>
+                            <button type="button" class="settings-lifestyle-btn profile-lifestyle-chip" data-value="주부">주부</button>
+                            <button type="button" class="settings-lifestyle-btn profile-lifestyle-chip" data-value="직장인">직장인</button>
+                            <button type="button" class="settings-lifestyle-btn profile-lifestyle-chip" data-value="자영업">자영업</button>
+                            <button type="button" class="settings-lifestyle-btn profile-lifestyle-chip" data-value="프리랜서">프리랜서</button>
+                            <button type="button" class="settings-lifestyle-btn profile-lifestyle-chip" data-value="기타">기타</button>
                         </div>
                     </div>
                 </div>
-                
-                <div class="space-y-3">
-                    <!-- 로그아웃 버튼 영역 -->
-                    <div id="logoutBtnArea" class="hidden pt-3 border-t border-slate-100 space-y-2">
-                        <button onclick="window.confirmLogout()" class="w-full py-2.5 bg-slate-100 text-slate-500 rounded-xl text-xs font-bold">로그아웃</button>
-                        <button onclick="window.confirmDeleteAccount()" class="w-full py-2 text-slate-400 text-[10px] underline">계정 탈퇴</button>
+
+                <!-- 로그아웃 · 버전 (프로필 탭 내부) -->
+                <div class="profile-settings-footer px-4 pt-4 space-y-2 border-t border-slate-100">
+                    <div id="logoutBtnArea" class="hidden space-y-2">
+                        <button onclick="window.confirmLogout()" class="profile-settings-footer-btn profile-logout-btn w-full py-3 text-sm font-bold text-slate-700 bg-slate-100 border border-slate-200 hover:bg-slate-200 transition-colors">로그아웃</button>
+                        <button onclick="window.confirmDeleteAccount()" class="w-full py-2 text-xs text-slate-400 hover:text-slate-600 underline">계정 탈퇴</button>
                     </div>
-                    
-                    <!-- 버전 정보 영역 -->
-                    <div class="pt-3 border-t border-slate-100">
-                        <div id="versionInfo" class="text-center text-[10px] text-slate-400 space-y-1">
-                            <div>버전 <span id="versionNumber">-</span></div>
-                            <div>배포 <span id="buildDate">-</span></div>
-                        </div>
+                    <div id="versionInfo" class="text-center text-xs text-slate-400 space-y-0.5 py-2">
+                        <div>버전 <span id="versionNumber">-</span></div>
+                        <div>배포 <span id="buildDate">-</span></div>
                     </div>
                 </div>
             </div>

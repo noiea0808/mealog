@@ -624,7 +624,7 @@ export async function generateInsightComment() {
     
     if (btn) {
         btn.disabled = true;
-        const originalText = btn.textContent || 'COMMENT';
+        const originalText = btn.textContent || '분석하기';
         
         // 로딩 애니메이션 시작 (분석중... 점 애니메이션)
         loadingInterval = setInterval(() => {
@@ -660,7 +660,7 @@ export async function generateInsightComment() {
         // 버튼 활성화 및 원래 텍스트로 복원
         if (btn) {
             btn.disabled = false;
-            btn.textContent = 'COMMENT';
+            btn.textContent = '분석하기';
         }
         
         // 분석 중 메시지도 제거 (에러 발생 시에도)
@@ -1371,8 +1371,8 @@ export async function openShareInsightModal() {
                         <div style="width: 75px; height: 164px; background: rgba(255, 255, 255, 0.2); border-radius: 16px; border: 2px solid rgba(255, 255, 255, 0.3); display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden;">
                             ${characterIconHtml}
                         </div>
-                        <div style="width: 75px; height: auto; background: #fbbf24; border-radius: 12px; padding: 4px; text-align: center; font-size: 10px; font-weight: 700; color: #3E2723; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                            COMMENT
+                        <div style="width: 75px; height: auto; background: #ffca2c; border-radius: 12px; padding: 4px; text-align: center; font-size: 12px; font-weight: 700; color: #1e293b; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                            분석하기
                         </div>
                     </div>
                     

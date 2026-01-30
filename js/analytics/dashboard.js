@@ -160,6 +160,7 @@ export async function updateDashboard() {
                 startInput.value = startDate.toISOString().split('T')[0];
                 endInput.value = endDate.toISOString().split('T')[0];
             }
+            if (typeof syncCustomDatePlaceholder === 'function') syncCustomDatePlaceholder();
         }
         if (periodNavigator) {
             periodNavigator.classList.add('hidden');
@@ -197,7 +198,7 @@ export async function updateDashboard() {
         }
     }
     
-    // 버튼 스타일 업데이트 (선택 탭: 박스+테두리, 비선택: 텍스트만)
+    // 버튼 스타일 업데이트 (선택 탭: 흰색 필, 비선택: 텍스트만, 좌우 균등 배치)
     const tabBase = "insight-period-tab flex-1 text-xs font-bold transition-colors";
     ['7d', 'week', 'month', 'year', 'custom'].forEach(mode => {
         const btn = document.getElementById(`btn-dash-${mode}`);
@@ -389,12 +390,22 @@ export function setAnalysisType(type) {
     updateDashboard();
 }
 
+export function syncCustomDatePlaceholder() {
+    const startInput = document.getElementById('customStart');
+    const endInput = document.getElementById('customEnd');
+    const startWrap = startInput?.closest('.custom-date-input-wrap');
+    const endWrap = endInput?.closest('.custom-date-input-wrap');
+    if (startWrap) startWrap.classList.toggle('is-empty', !startInput?.value);
+    if (endWrap) endWrap.classList.toggle('is-empty', !endInput?.value);
+}
+
 export function updateCustomDates() {
     const startInput = document.getElementById('customStart');
     const endInput = document.getElementById('customEnd');
     if (startInput && endInput) {
-        appState.customStartDate = new Date(startInput.value);
-        appState.customEndDate = new Date(endInput.value);
+        if (startInput.value) appState.customStartDate = new Date(startInput.value);
+        if (endInput.value) appState.customEndDate = new Date(endInput.value);
+        syncCustomDatePlaceholder();
         updateDashboard();
     }
 }
