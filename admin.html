@@ -70,39 +70,39 @@
 
     <!-- 메인 관리자 페이지 -->
     <div id="adminPage" class="hidden min-h-screen">
-        <header class="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-50">
+        <header id="adminHeader" class="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-50 admin-header-compact">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex justify-between items-center py-4">
+                <div class="flex justify-between items-center admin-header-inner">
                     <div>
-                        <h1 class="text-2xl font-black text-emerald-600">MEALOG 관리자</h1>
-                        <p class="text-xs text-slate-500 mt-1" id="adminUserInfo">관리자</p>
+                        <h1 class="text-xl font-black text-emerald-600">MEALOG 관리자</h1>
+                        <p class="text-xs text-slate-500 mt-0.5" id="adminUserInfo">관리자</p>
                     </div>
                     <button onclick="window.handleAdminLogout()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
                         <i class="fa-solid fa-sign-out-alt mr-2"></i>로그아웃
                     </button>
                 </div>
                 <!-- 탭 네비게이션 (헤더 안에 포함) -->
-                <div class="flex border-t border-slate-200">
-                    <button onclick="window.switchAdminTab('dashboard')" id="admin-tab-dashboard" class="admin-tab active flex-1 px-6 py-3 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors">
+                <div class="flex border-t border-slate-200 admin-tabs-row">
+                    <button onclick="window.switchAdminTab('dashboard')" id="admin-tab-dashboard" class="admin-tab active flex-1 px-4 py-2 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors">
                         <i class="fa-solid fa-chart-pie mr-2"></i>대시보드
                     </button>
-                    <button onclick="window.switchAdminTab('users')" id="admin-tab-users" class="admin-tab flex-1 px-6 py-3 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
+                    <button onclick="window.switchAdminTab('users')" id="admin-tab-users" class="admin-tab flex-1 px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
                         <i class="fa-solid fa-users mr-2"></i>사용자
                     </button>
-                    <button onclick="window.switchAdminTab('monitoring')" id="admin-tab-monitoring" class="admin-tab flex-1 px-6 py-3 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
+                    <button onclick="window.switchAdminTab('monitoring')" id="admin-tab-monitoring" class="admin-tab flex-1 px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
                         <i class="fa-solid fa-chart-line mr-2"></i>모니터링
                     </button>
-                    <button onclick="window.switchAdminTab('content')" id="admin-tab-content" class="admin-tab flex-1 px-6 py-3 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
+                    <button onclick="window.switchAdminTab('content')" id="admin-tab-content" class="admin-tab flex-1 px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
                         <i class="fa-solid fa-file-lines mr-2"></i>콘텐츠 관리
                     </button>
-                    <button onclick="window.switchAdminTab('data')" id="admin-tab-data" class="admin-tab flex-1 px-6 py-3 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
+                    <button onclick="window.switchAdminTab('data')" id="admin-tab-data" class="admin-tab flex-1 px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
                         <i class="fa-solid fa-database mr-2"></i>데이터
                     </button>
                 </div>
             </div>
         </header>
 
-        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 admin-main-padding">
 
             <!-- 대시보드 탭 -->
             <div id="admin-tab-content-dashboard" class="admin-tab-content">
@@ -324,13 +324,17 @@
             <!-- 사용자 탭 -->
             <div id="admin-tab-content-users" class="admin-tab-content hidden">
                 <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
-                    <div class="p-6 border-b border-slate-100 sticky top-0 z-20 bg-white rounded-t-2xl">
-                        <div class="flex flex-wrap justify-between items-center gap-3">
-                            <h2 class="text-lg font-black text-slate-800">사용자 관리</h2>
+                    <div class="admin-users-toolbar border-b border-slate-100 bg-white rounded-t-2xl">
+                        <div class="flex flex-wrap justify-between items-center admin-users-toolbar-inner">
+                            <h2 class="text-base font-black text-slate-800">사용자 관리</h2>
                             <div class="flex flex-wrap items-center gap-2">
-                                <span class="text-slate-500 text-xs font-bold mr-1">페이지</span>
-                                <button type="button" id="adminUsersPage1" onclick="window.switchAdminUsersPage(1)" class="admin-users-page-btn px-3 py-1.5 rounded-lg text-sm font-bold transition-colors bg-emerald-100 text-emerald-800" aria-pressed="true">1</button>
-                                <button type="button" id="adminUsersPage2" onclick="window.switchAdminUsersPage(2)" class="admin-users-page-btn px-3 py-1.5 rounded-lg text-sm font-bold transition-colors bg-slate-100 text-slate-600 hover:bg-slate-200" aria-pressed="false">2</button>
+                                <span class="text-slate-500 text-xs font-bold mr-1">목록</span>
+                                <span id="adminUsersListPaginationInfo" class="text-slate-600 text-xs">-</span>
+                                <div id="adminUsersListPagination" class="flex items-center gap-1"></div>
+                                <span class="w-px h-5 bg-slate-200 mx-1" aria-hidden="true"></span>
+                                <span class="text-slate-500 text-xs font-bold mr-1">보기</span>
+                                <button type="button" id="adminUsersPage1" onclick="window.switchAdminUsersPage(1)" class="admin-users-page-btn px-3 py-1.5 rounded-lg text-sm font-bold transition-colors bg-emerald-100 text-emerald-800" aria-pressed="true">기본</button>
+                                <button type="button" id="adminUsersPage2" onclick="window.switchAdminUsersPage(2)" class="admin-users-page-btn px-3 py-1.5 rounded-lg text-sm font-bold transition-colors bg-slate-100 text-slate-600 hover:bg-slate-200" aria-pressed="false">통계</button>
                                 <span class="w-px h-5 bg-slate-200 mx-1" aria-hidden="true"></span>
                                 <button onclick="window.refreshUsers()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
                                     <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
@@ -356,10 +360,10 @@
                             </div>
                         </div>
                     </div>
-                    <div class="p-6">
-                        <div id="adminUsersTableScroll" class="overflow-y-auto overflow-x-hidden scrollbar-thin border border-slate-100 rounded-xl" style="max-height: 70vh; -webkit-overflow-scrolling: touch;">
+                    <div class="p-4">
+                        <div id="adminUsersTableScroll" class="border border-slate-100 rounded-xl overflow-x-auto">
                             <table id="adminUsersTable" class="w-full admin-users-table">
-                                <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-10 shadow-sm">
+                                <thead class="admin-users-thead bg-slate-50 border-b border-slate-200">
                                     <tr>
                                         <th data-page="1 2" class="px-2 py-3 text-left text-xs font-bold text-slate-600 uppercase w-10 whitespace-nowrap min-w-[2.5rem]">
                                             <label class="flex items-center gap-1 cursor-pointer">
@@ -367,16 +371,9 @@
                                                 <span>선택</span>
                                             </label>
                                         </th>
-                                        <th data-page="1" class="px-2 py-3 text-left text-xs font-bold text-slate-600 uppercase min-w-[2.5rem] leading-tight">글쓰기<br>금지</th>
-                                        <th data-page="1" class="px-2 py-3 text-left text-xs font-bold text-slate-600 uppercase min-w-[2.5rem] leading-tight">공유<br>금지</th>
-                                        <th data-page="1" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase min-w-[2.5rem] leading-tight">
-                                            <button type="button" class="admin-users-sort hover:text-slate-800 transition-colors text-left" data-sort-key="loginMethod">
-                                                로그인<br>방법 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
-                                            </button>
-                                        </th>
-                                        <th data-page="1" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase whitespace-nowrap min-w-[5rem]">
-                                            <button type="button" class="admin-users-sort inline-flex items-center gap-1 hover:text-slate-800 transition-colors whitespace-nowrap" data-sort-key="email">
-                                                이메일 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
+                                        <th data-page="1 2" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase min-w-[5rem]">
+                                            <button type="button" class="admin-users-sort inline-flex items-center gap-1 hover:text-slate-800 transition-colors text-left whitespace-nowrap" data-sort-key="email">
+                                                이메일 / 사용자 ID <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
                                             </button>
                                         </th>
                                         <th data-page="1 2" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase whitespace-nowrap min-w-[5rem]">
@@ -384,11 +381,15 @@
                                                 닉네임 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
                                             </button>
                                         </th>
-                                        <th data-page="1" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase whitespace-nowrap min-w-[5rem]">
-                                            <button type="button" class="admin-users-sort inline-flex items-center gap-1 hover:text-slate-800 transition-colors whitespace-nowrap" data-sort-key="userId">
-                                                사용자 ID <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
+                                        <th data-page="1 2" class="px-3 py-3 text-left text-xs font-bold text-slate-600 uppercase whitespace-nowrap min-w-[4rem]">생년월일</th>
+                                        <th data-page="1 2" class="px-3 py-3 text-left text-xs font-bold text-slate-600 uppercase whitespace-nowrap min-w-[3.5rem]">라이프 스타일</th>
+                                        <th data-page="1" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase min-w-[2.5rem] leading-tight">
+                                            <button type="button" class="admin-users-sort hover:text-slate-800 transition-colors text-left" data-sort-key="loginMethod">
+                                                로그인<br>방법 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
                                             </button>
                                         </th>
+                                        <th data-page="1" class="px-2 py-3 text-left text-xs font-bold text-slate-600 uppercase min-w-[2.5rem] leading-tight">글쓰기<br>금지</th>
+                                        <th data-page="1" class="px-2 py-3 text-left text-xs font-bold text-slate-600 uppercase min-w-[2.5rem] leading-tight">공유<br>금지</th>
                                         <th data-page="1" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase whitespace-nowrap min-w-[4.5rem]">
                                             <button type="button" class="admin-users-sort inline-flex items-center gap-1 hover:text-slate-800 transition-colors whitespace-nowrap" data-sort-key="terms">
                                                 약관 동의 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
@@ -423,7 +424,7 @@
                                 </thead>
                                 <tbody id="usersContainer" class="divide-y divide-slate-100">
                                     <tr>
-                                        <td colspan="13" class="px-4 py-8 text-center text-slate-400">
+                                        <td colspan="12" class="px-4 py-8 text-center text-slate-400">
                                             <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
                                             <p>로딩 중...</p>
                                         </td>

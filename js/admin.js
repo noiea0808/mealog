@@ -77,7 +77,10 @@ function getTermsRank(user, currentVersion) {
     // 2: 최신 동의, 1: 구버전 동의(재동의 필요), 0: 미동의
     const agreed = user?.termsAgreed === true;
     if (!agreed) return 0;
-    if (currentVersion && user?.termsVersion === currentVersion) return 2;
+    // termsVersion 없음 = 앱과 동일하게 기존 사용자로 간주 → 동의함
+    const ver = user?.termsVersion;
+    if (ver === null || ver === undefined || String(ver).trim() === '') return 2;
+    if (currentVersion && ver === currentVersion) return 2;
     return 1;
 }
 
@@ -1683,6 +1686,8 @@ async function getUsers() {
             const userId = userIdsToCheck[i];
             let nickname = '익명';
             let icon = '🐻';
+            let birthdate = '';
+            let lifestyle = '';
             let email = null;
             let termsAgreed = false;
             let termsAgreedAt = null;
@@ -1725,6 +1730,8 @@ async function getUsers() {
                         nickname = '미설정';
                     }
                     if (settings.profile.icon) icon = settings.profile.icon;
+                    if (settings.profile.birthdate) birthdate = String(settings.profile.birthdate).trim();
+                    if (settings.profile.lifestyle) lifestyle = String(settings.profile.lifestyle).trim();
                 } else {
                     nickname = '미설정';
                 }
@@ -1751,6 +1758,8 @@ async function getUsers() {
                 userId,
                 nickname,
                 icon,
+                birthdate,
+                lifestyle,
                 email,
                 loginMethod,
                 termsAgreed,
@@ -1782,7 +1791,7 @@ async function renderUsers(options = {}) {
         return;
     }
     
-        container.innerHTML = '<tr><td colspan="13" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
+        container.innerHTML = '<tr><td colspan="14" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
     
     try {
         console.log('renderUsers 시작');
@@ -1798,12 +1807,13 @@ async function renderUsers(options = {}) {
         } else {
             users = await getUsers();
             usersCache = users;
+            adminUsersListPage = 1;
         }
         console.log('getUsers 결과:', users);
         
         if (users.length === 0) {
             console.log('사용자가 없습니다.');
-            container.innerHTML = '<tr><td colspan="13" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
+            container.innerHTML = '<tr><td colspan="14" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
             try { applyAdminUsersPageVisibility(adminUsersCurrentPage); } catch (_) {}
             return;
         }
@@ -1815,12 +1825,21 @@ async function renderUsers(options = {}) {
         const sortedUsers = sortUsersForTable(users, currentVersion);
         updateUsersSortHeaderUI();
         
-        console.log(`${sortedUsers.length}명의 사용자를 렌더링합니다.`);
-        container.innerHTML = sortedUsers.map(user => {
-            // 약관 동의 상태 확인: termsAgreed가 true이고 termsVersion이 최신 버전과 일치해야 함
-            const hasAgreedToLatest = user.termsAgreed && user.termsVersion === currentVersion;
-            const hasAgreedToOld = user.termsAgreed && user.termsVersion !== currentVersion;
-            
+        const totalListPages = Math.max(1, Math.ceil(sortedUsers.length / USERS_PER_PAGE));
+        if (typeof adminUsersListPage === 'undefined' || adminUsersListPage < 1) adminUsersListPage = 1;
+        if (adminUsersListPage > totalListPages) adminUsersListPage = totalListPages;
+        const start = (adminUsersListPage - 1) * USERS_PER_PAGE;
+        const usersToShow = sortedUsers.slice(start, start + USERS_PER_PAGE);
+        
+        updateAdminUsersListPagination(sortedUsers.length, totalListPages);
+        
+        console.log(`${usersToShow.length}명 표시 (${start + 1}-${start + usersToShow.length} / ${sortedUsers.length}명).`);
+        container.innerHTML = usersToShow.map(user => {
+            // 약관 동의 상태: 앱(auth-flow)과 동일 기준 — termsVersion 없으면 기존 사용자로 간주하여 동의함
+            const hasVersion = user.termsVersion != null && String(user.termsVersion).trim() !== '';
+            const hasAgreedToLatest = user.termsAgreed && (!hasVersion || user.termsVersion === currentVersion);
+            const hasAgreedToOld = user.termsAgreed && hasVersion && user.termsVersion !== currentVersion;
+
             let termsAgreedText;
             if (hasAgreedToLatest) {
                 termsAgreedText = `<span class="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">동의함</span>`;
@@ -1833,26 +1852,15 @@ async function renderUsers(options = {}) {
             const termsAgreedDate = user.termsAgreedAt ? 
                 new Date(user.termsAgreedAt).toLocaleDateString('ko-KR') : '-';
             
-            // createdAt과 lastLoginAt은 이미 Date 객체로 변환되어 있음
-            const createdAtDate = user.createdAt ? 
-                (user.createdAt instanceof Date ? user.createdAt : new Date(user.createdAt)).toLocaleString('ko-KR', { 
-                    year: 'numeric', 
-                    month: '2-digit', 
-                    day: '2-digit', 
-                    hour: '2-digit', 
-                    minute: '2-digit',
-                    timeZone: 'Asia/Seoul'
-                }) : '-';
-            
-            const lastLoginDate = user.lastLoginAt ? 
-                (user.lastLoginAt instanceof Date ? user.lastLoginAt : new Date(user.lastLoginAt)).toLocaleString('ko-KR', { 
-                    year: 'numeric', 
-                    month: '2-digit', 
-                    day: '2-digit', 
-                    hour: '2-digit', 
-                    minute: '2-digit',
-                    timeZone: 'Asia/Seoul'
-                }) : '-';
+            const createdDt = user.createdAt ? (user.createdAt instanceof Date ? user.createdAt : new Date(user.createdAt)) : null;
+            const lastLoginDt = user.lastLoginAt ? (user.lastLoginAt instanceof Date ? user.lastLoginAt : new Date(user.lastLoginAt)) : null;
+            const opts = { timeZone: 'Asia/Seoul' };
+            const createdAtDate = createdDt
+                ? createdDt.toLocaleDateString('ko-KR', opts) + '<br>' + createdDt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', ...opts })
+                : '-';
+            const lastLoginDate = lastLoginDt
+                ? lastLoginDt.toLocaleDateString('ko-KR', opts) + '<br>' + lastLoginDt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', ...opts })
+                : '-';
             
             let loginMethodBadge = 'bg-slate-100 text-slate-700';
             if (user.loginMethod === '구글') {
@@ -1873,35 +1881,35 @@ async function renderUsers(options = {}) {
             const rowClass = user.deleteRequested
                 ? 'bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors'
                 : 'hover:bg-slate-50 transition-colors';
+            const userIdAttr = String(user.userId).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\&quot;');
+            const emailUserIdCell = `<span class="text-sm text-slate-600 block">${escapeHtml(user.email || '-')}</span>
+                        <button onclick="navigator.clipboard.writeText('${userIdAttr}').then(() => alert('사용자 ID가 복사되었습니다.')).catch(() => alert('복사 실패'))" 
+                                class="text-xs text-slate-500 hover:text-slate-700 font-mono cursor-pointer hover:underline mt-0.5 block text-left" 
+                                title="클릭하여 복사">${escapeHtml(user.userId)}</button>`;
             return `
                 <tr class="${rowClass}">
                     <td data-page="1 2" class="px-2 py-3">
                         <label class="flex items-center gap-1.5 cursor-pointer">
                             <input type="checkbox" class="admin-user-checkbox rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" data-user-id="${escapeHtml(user.userId)}" title="선택" ${user.deleteRequested ? 'disabled' : ''}>
-                            ${deleteRequestedBadge}
                         </label>
                     </td>
-                    <td data-page="1" class="px-2 py-3">${writeBanBadge}</td>
-                    <td data-page="1" class="px-2 py-3">${shareBanBadge}</td>
+                    <td data-page="1 2" class="px-4 py-3 align-top">${emailUserIdCell}</td>
+                    <td data-page="1 2" class="px-4 py-3">
+                        <div class="flex flex-col gap-0.5">
+                            <div class="flex items-center gap-2 whitespace-nowrap">
+                                <span class="text-xl">${user.icon || '🐻'}</span>
+                                <span class="font-bold text-slate-800">${user.nickname || '익명'}</span>
+                            </div>
+                            ${deleteRequestedBadge ? `<div class="mt-0.5">${deleteRequestedBadge}</div>` : ''}
+                        </div>
+                    </td>
+                    <td data-page="1 2" class="px-3 py-3 text-sm text-slate-600">${user.birthdate ? escapeHtml(user.birthdate) : '-'}</td>
+                    <td data-page="1 2" class="px-3 py-3 text-sm text-slate-600">${user.lifestyle ? escapeHtml(user.lifestyle) : '-'}</td>
                     <td data-page="1" class="px-4 py-3">
                         <span class="px-2 py-1 ${loginMethodBadge} text-xs font-bold rounded">${user.loginMethod || '게스트'}</span>
                     </td>
-                    <td data-page="1" class="px-4 py-3">
-                        <span class="text-sm text-slate-600">${user.email || '-'}</span>
-                    </td>
-                    <td data-page="1 2" class="px-4 py-3">
-                        <div class="flex items-center gap-2 whitespace-nowrap">
-                            <span class="text-xl">${user.icon || '🐻'}</span>
-                            <span class="font-bold text-slate-800">${user.nickname || '익명'}</span>
-                        </div>
-                    </td>
-                    <td data-page="1" class="px-4 py-3">
-                        <button onclick="navigator.clipboard.writeText('${user.userId}').then(() => alert('사용자 ID가 복사되었습니다.')).catch(() => alert('복사 실패'))" 
-                                class="text-xs text-slate-600 hover:text-slate-800 font-mono cursor-pointer hover:underline" 
-                                title="클릭하여 복사">
-                            ${user.userId.substring(0, 8)}...
-                        </button>
-                    </td>
+                    <td data-page="1" class="px-2 py-3">${writeBanBadge}</td>
+                    <td data-page="1" class="px-2 py-3">${shareBanBadge}</td>
                     <td data-page="1" class="px-4 py-3">
                         <div class="flex flex-col gap-1">
                             ${termsAgreedText}
@@ -1931,11 +1939,51 @@ async function renderUsers(options = {}) {
     } catch (e) {
         console.error("사용자 목록 렌더링 실패:", e);
         const errMsg = (e && (e.message || e.code || String(e))) || '알 수 없는 오류';
-        container.innerHTML = '<tr><td colspan="13" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
+        container.innerHTML = '<tr><td colspan="14" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
     }
 }
 
 let adminUsersCurrentPage = 1;
+let adminUsersListPage = 1;
+
+const USERS_PER_PAGE = 50;
+
+function updateAdminUsersListPagination(totalCount, totalPages) {
+    const infoEl = document.getElementById('adminUsersListPaginationInfo');
+    const navEl = document.getElementById('adminUsersListPagination');
+    if (!infoEl || !navEl) return;
+    const start = (adminUsersListPage - 1) * USERS_PER_PAGE + 1;
+    const end = Math.min(adminUsersListPage * USERS_PER_PAGE, totalCount);
+    infoEl.textContent = totalCount === 0 ? '0명' : `${start}-${end} / ${totalCount}명`;
+    navEl.innerHTML = '';
+    if (totalPages <= 1) return;
+    const prevBtn = document.createElement('button');
+    prevBtn.type = 'button';
+    prevBtn.className = 'px-2 py-1 rounded text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed';
+    prevBtn.textContent = '이전';
+    prevBtn.disabled = adminUsersListPage <= 1;
+    prevBtn.onclick = () => { adminUsersListPage = Math.max(1, adminUsersListPage - 1); renderUsers({ useCacheOnly: true }); };
+    navEl.appendChild(prevBtn);
+    const maxButtons = 7;
+    let from = Math.max(1, adminUsersListPage - Math.floor(maxButtons / 2));
+    let to = Math.min(totalPages, from + maxButtons - 1);
+    if (to - from + 1 < maxButtons) from = Math.max(1, to - maxButtons + 1);
+    for (let p = from; p <= to; p++) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'admin-users-list-page-btn min-w-[1.75rem] px-2 py-1 rounded text-xs font-bold transition-colors ' + (p === adminUsersListPage ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600 hover:bg-slate-200');
+        btn.textContent = String(p);
+        btn.onclick = () => { adminUsersListPage = p; renderUsers({ useCacheOnly: true }); };
+        navEl.appendChild(btn);
+    }
+    const nextBtn = document.createElement('button');
+    nextBtn.type = 'button';
+    nextBtn.className = 'px-2 py-1 rounded text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed';
+    nextBtn.textContent = '다음';
+    nextBtn.disabled = adminUsersListPage >= totalPages;
+    nextBtn.onclick = () => { adminUsersListPage = Math.min(totalPages, adminUsersListPage + 1); renderUsers({ useCacheOnly: true }); };
+    navEl.appendChild(nextBtn);
+}
 
 function applyAdminUsersPageVisibility(pageNum) {
     try {
@@ -1966,6 +2014,32 @@ window.switchAdminUsersPage = function (pageNum) {
             btn2.classList.add('bg-slate-100', 'text-slate-600');
             btn2.classList.remove('bg-emerald-100', 'text-emerald-800');
             btn2.setAttribute('aria-pressed', 'false');
+        } else {
+            btn2.classList.add('bg-emerald-100', 'text-emerald-800');
+            btn2.classList.remove('bg-slate-100', 'text-slate-600');
+            btn2.setAttribute('aria-pressed', 'true');
+            btn1.classList.add('bg-slate-100', 'text-slate-600');
+            btn1.classList.remove('bg-emerald-100', 'text-emerald-800');
+            btn1.setAttribute('aria-pressed', 'false');
+        }
+    }
+};
+
+window.switchAdminUsersListPage = function (pageNum) {
+    if (pageNum < 1) return;
+    adminUsersListPage = pageNum;
+    renderUsers({ useCacheOnly: true });
+};
+
+function _applyAdminUsersPageBtnState() {
+    const btn1 = document.getElementById('adminUsersPage1');
+    const btn2 = document.getElementById('adminUsersPage2');
+    if (btn1 && btn2) {
+        if (adminUsersCurrentPage === 1) {
+            btn1.classList.add('bg-emerald-100', 'text-emerald-800');
+            btn1.classList.remove('bg-slate-100', 'text-slate-600');
+            btn2.classList.add('bg-slate-100', 'text-slate-600');
+            btn2.classList.remove('bg-emerald-100', 'text-emerald-800');
         } else {
             btn2.classList.add('bg-emerald-100', 'text-emerald-800');
             btn2.classList.remove('bg-slate-100', 'text-slate-600');
@@ -2034,14 +2108,15 @@ window.processDeleteUserRequests = async function () {
     }
 };
 
-// 선택 삭제: deleteUserRequests에 문서 생성 → Cloud Function에서 Auth 삭제
+// 선택 삭제: deleteUserRequests에 문서 생성 후 즉시 processDeleteUserRequests 호출
 window.adminUserDeleteSelected = async function () {
-    const ids = getSelectedUserIds();
+    let ids = getSelectedUserIds();
     if (ids.length === 0) {
         alert('삭제할 사용자를 선택해 주세요.');
         return;
     }
-    if (!confirm(`선택한 ${ids.length}명의 사용자를 삭제하시겠습니까?\\n삭제 후 해당 계정으로 로그인할 수 없습니다.`)) {
+    ids = [...new Set(ids)];
+    if (!confirm(`선택한 ${ids.length}명의 사용자를 삭제하시겠습니까?\n삭제 후 해당 계정으로 로그인할 수 없습니다.`)) {
         return;
     }
     const uid = adminAuth.currentUser?.uid;
@@ -2054,8 +2129,24 @@ window.adminUserDeleteSelected = async function () {
         for (const userId of ids) {
             await addDoc(coll, { userId, requestedBy: uid, timestamp: serverTimestamp() });
         }
-        alert(`삭제 요청이 접수되었습니다. (${ids.length}명)\\n잠시 후 목록을 새로고침해 주세요.`);
         usersCache = null;
+        try {
+            const processDeleteUserRequestsFn = httpsCallable(functions, 'processDeleteUserRequests');
+            const result = await processDeleteUserRequestsFn();
+            const data = result?.data || {};
+            const { processed = 0, failed = 0, total = 0, errors } = data;
+            let msg = total === 0
+                ? '처리할 삭제 요청이 없습니다.'
+                : `${processed}명 삭제됨`;
+            if (failed > 0) {
+                msg += `, ${failed}명 실패.`;
+                if (errors && errors.length) msg += '\n\n실패: ' + errors.slice(0, 5).join('\n');
+            }
+            alert(msg);
+        } catch (e) {
+            console.error('삭제 요청 처리 실패:', e);
+            alert('삭제 요청은 접수되었으나 즉시 처리에 실패했습니다.\n"삭제 요청 처리" 버튼을 눌러 다시 시도해 주세요.\n\n' + (e.message || e));
+        }
         renderUsers();
     } catch (e) {
         console.error('삭제 요청 실패:', e);

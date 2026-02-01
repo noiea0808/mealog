@@ -1257,3 +1257,67 @@ header .mealog-title {
 .board-btn-manage--delete:active {
     opacity: 0.8;
 }
+
+/* =========================
+   Admin page layout
+   ========================= */
+#adminPage .admin-header-inner {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+    min-height: 40px;
+    box-sizing: border-box;
+}
+#adminPage .admin-header-compact .admin-tabs-row .admin-tab {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+}
+#adminPage .admin-main-padding {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+}
+/* 사용자 탭: 관리 툴바 (일반 블록, 스크롤 고정 없음) */
+#adminPage .admin-users-toolbar {
+    padding: 0.5rem 1rem;
+    min-height: 40px;
+    box-sizing: border-box;
+    border-bottom: 1px solid #e2e8f0;
+}
+#adminPage .admin-users-toolbar-inner {
+    gap: 0.5rem;
+    align-items: center;
+}
+#adminPage .admin-users-toolbar-inner .admin-users-page-btn,
+#adminPage .admin-users-toolbar-inner button {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+    line-height: 1.25;
+}
+#adminPage .admin-users-toolbar-inner h2 {
+    margin: 0;
+}
+/* 사용자 테이블: 일반 표시 (thead → tbody 순서) */
+#adminPage #adminUsersTable {
+    width: 100%;
+}
+#adminPage .admin-users-thead {
+    background: #f8fafc;
+}
+#adminPage .admin-users-thead th {
+    background: #f8fafc;
+}
+/* 이메일/닉네임/로그인방법 컬럼 간격 축소 (2,3,4번째 컬럼) */
+#adminPage #adminUsersTable th:nth-child(2),
+#adminPage #adminUsersTable th:nth-child(3),
+#adminPage #adminUsersTable th:nth-child(4),
+#adminPage #adminUsersTable td:nth-child(2),
+#adminPage #adminUsersTable td:nth-child(3),
+#adminPage #adminUsersTable td:nth-child(4) {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+}
+#adminPage #adminUsersTable th:nth-child(2) { min-width: 0; max-width: 12rem; }
+#adminPage #adminUsersTable th:nth-child(3) { min-width: 0; max-width: 8rem; }
+#adminPage #adminUsersTable th:nth-child(4) { min-width: 0; max-width: 5rem; }
+#adminPage #adminUsersTable td:nth-child(2) { max-width: 12rem; }
+#adminPage #adminUsersTable td:nth-child(3) { max-width: 8rem; }
+#adminPage #adminUsersTable td:nth-child(4) { max-width: 5rem; }

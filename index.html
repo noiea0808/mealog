@@ -862,15 +862,17 @@
                     </div>
                 </div>
 
-                <!-- 로그아웃 · 버전 (프로필 탭 내부) -->
+                <!-- 로그아웃 · 버전 · 계정탈퇴 (프로필 탭 내부) -->
                 <div class="profile-settings-footer px-4 pt-4 space-y-2 border-t border-slate-100">
-                    <div id="logoutBtnArea" class="hidden space-y-2">
+                    <div id="logoutBtnArea" class="hidden">
                         <button onclick="window.confirmLogout()" class="profile-settings-footer-btn profile-logout-btn w-full py-3 text-sm font-bold text-slate-700 bg-slate-100 border border-slate-200 hover:bg-slate-200 transition-colors">로그아웃</button>
-                        <button onclick="window.confirmDeleteAccount()" class="w-full py-2 text-xs text-slate-400 hover:text-slate-600 underline">계정 탈퇴</button>
                     </div>
                     <div id="versionInfo" class="text-center text-xs text-slate-400 space-y-0.5 py-2">
                         <div>버전 <span id="versionNumber">-</span></div>
                         <div>배포 <span id="buildDate">-</span></div>
+                    </div>
+                    <div id="deleteAccountBtnArea" class="hidden pt-2">
+                        <button onclick="window.confirmDeleteAccount()" class="w-full py-2 text-xs text-slate-400 hover:text-slate-600 underline">계정 탈퇴</button>
                     </div>
                 </div>
             </div>

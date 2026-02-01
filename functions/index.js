@@ -1113,14 +1113,24 @@ exports.onDeleteUserRequest = onDocumentCreated(
       await snap.ref.delete();
       return;
     }
+    const userRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(String(userId));
     try {
       await auth.deleteUser(String(userId));
       logger.info('onDeleteUserRequest: user deleted', { userId, requestedBy });
-      await snap.ref.delete();
     } catch (err) {
-      logger.error('onDeleteUserRequest: deleteUser failed', { userId, err: err.message });
-      // 문서는 삭제하지 않음 → 재로딩 시에도 회색 표시 유지, 나중에 재시도 가능
+      if (err.code !== 'auth/user-not-found') {
+        logger.error('onDeleteUserRequest: deleteUser failed', { userId, err: err.message });
+        return;
+      }
+      logger.info('onDeleteUserRequest: user already gone in Auth', { userId });
     }
+    try {
+      await userRef.delete();
+      logger.info('onDeleteUserRequest: Firestore user doc deleted', { userId });
+    } catch (e) {
+      logger.warn('onDeleteUserRequest: Firestore user doc delete failed (may not exist)', { userId, err: e.message });
+    }
+    await snap.ref.delete();
   }
 );
 
@@ -1155,17 +1165,28 @@ exports.processDeleteUserRequests = onCall(
         await docSnap.ref.delete();
         continue;
       }
+      const userRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(String(userId));
       try {
         await auth.deleteUser(String(userId));
-        processed++;
-        logger.info('processDeleteUserRequests: user deleted', { userId, requestedBy });
-        await docSnap.ref.delete();
+        logger.info('processDeleteUserRequests: user deleted from Auth', { userId, requestedBy });
       } catch (err) {
-        failed++;
-        errors.push(`${userId}: ${err.message || err}`);
-        logger.error('processDeleteUserRequests: deleteUser failed', { userId, err: err.message });
-        // 문서는 삭제하지 않음 → 회색 표시 유지, 재시도 가능
+        if (err.code === 'auth/user-not-found') {
+          logger.info('processDeleteUserRequests: user already gone in Auth', { userId });
+        } else {
+          failed++;
+          errors.push(`${userId}: ${err.message || err}`);
+          logger.error('processDeleteUserRequests: deleteUser failed', { userId, err: err.message });
+          continue;
+        }
       }
+      try {
+        await userRef.delete();
+        logger.info('processDeleteUserRequests: Firestore user doc deleted', { userId });
+      } catch (e) {
+        logger.warn('processDeleteUserRequests: Firestore user doc delete failed', { userId, err: e.message });
+      }
+      processed++;
+      await docSnap.ref.delete();
     }
     return { processed, failed, total: snapshot.size, errors: errors.length ? errors : undefined };
   }

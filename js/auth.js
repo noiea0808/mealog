@@ -260,6 +260,11 @@ export async function confirmDeleteAccountAction() {
         return;
     }
     
+    // 한 번 더 확인
+    if (!confirm('정말로 탈퇴하시겠어요?\n\n모든 기록과 데이터가 삭제되며 복구할 수 없습니다.')) {
+        return;
+    }
+    
     const modal = document.getElementById('deleteAccountConfirmModal');
     
     try {

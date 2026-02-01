@@ -1422,6 +1422,8 @@ export function openSettings() {
                 </button>
             </div>`;
             document.getElementById('logoutBtnArea').classList.add('hidden');
+            const deleteArea = document.getElementById('deleteAccountBtnArea');
+            if (deleteArea) deleteArea.classList.add('hidden');
         } else {
             const email = window.currentUser.email || 'Google 계정';
             const providerIcon = window.currentUser.providerData[0]?.providerId === 'google.com' ? 
@@ -1431,6 +1433,8 @@ export function openSettings() {
                 <div class="flex items-center gap-2 text-emerald-700 font-bold text-sm">${providerIcon} ${email}</div>
             </div>`;
             document.getElementById('logoutBtnArea').classList.remove('hidden');
+            const deleteArea = document.getElementById('deleteAccountBtnArea');
+            if (deleteArea) deleteArea.classList.remove('hidden');
         }
         accountSection.innerHTML = accountHtml;
         
