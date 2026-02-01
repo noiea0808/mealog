@@ -448,6 +448,63 @@ exports.addBoardComment = onCall({ region: REGION }, wrapFunction('addBoardComme
 }));
 
 /**
+ * 관리자 게시글 댓글 작성 (Callable) - 관리자 표시 이름 사용
+ */
+exports.addBoardCommentAsAdmin = onCall({ region: REGION }, async (request) => {
+  const { auth, data } = request;
+
+  if (!auth || !auth.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+
+  const isAdmin = await isAdminByUid(auth.uid);
+  if (!isAdmin) {
+    throw new HttpsError('permission-denied', '관리자만 사용할 수 있습니다.');
+  }
+
+  const { postId, content, displayName: clientDisplayName } = data;
+
+  if (!postId || !content || !content.trim()) {
+    throw new HttpsError('invalid-argument', '댓글 내용을 입력해주세요.');
+  }
+
+  // 클라이언트에서 보낸 표시 이름 우선 사용 (관리자 설정에서 저장한 값이 즉시 반영되도록)
+  let authorNickname = '관리자';
+  if (clientDisplayName != null && String(clientDisplayName).trim()) {
+    authorNickname = String(clientDisplayName).trim();
+  } else {
+    const adminSettingsRef = db.collection('artifacts').doc(APP_ID).collection('adminSettings').doc('config');
+    const adminSettingsSnap = await adminSettingsRef.get();
+    if (adminSettingsSnap.exists && adminSettingsSnap.data().displayName) {
+      authorNickname = String(adminSettingsSnap.data().displayName).trim() || '관리자';
+    }
+  }
+
+  const commentsRef = db.collection('artifacts').doc(APP_ID).collection('boardComments');
+  const newComment = {
+    postId: String(postId),
+    content: content.trim(),
+    authorId: auth.uid,
+    authorNickname: authorNickname || '관리자',
+    authorPhotoUrl: null,
+    authorIcon: null,
+    timestamp: FieldValue.serverTimestamp()
+  };
+
+  const docRef = await commentsRef.add(newComment);
+
+  const postRef = db.collection('artifacts').doc(APP_ID).collection('boardPosts').doc(postId);
+  const postDoc = await postRef.get();
+  if (postDoc.exists) {
+    await postRef.update({
+      comments: FieldValue.increment(1)
+    });
+  }
+
+  return { id: docRef.id, ...newComment, timestamp: new Date().toISOString() };
+});
+
+/**
  * 게시글 댓글 삭제 (Callable)
  */
 exports.deleteBoardComment = onCall({ region: REGION }, async (request) => {

@@ -1,6 +1,7 @@
 // ADMIN 관리자 페이지 관련 함수들
-import { app, db, appId, functions } from './firebase.js';
+import { app, db, appId, functions, callableFunctions } from './firebase.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js';
+import { boardOperations } from './db/board.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
 // Firestore 규칙·Callable은 기본 Auth만 인식하므로 관리자도 기본 Auth 사용 (admin 페이지는 별도 URL)
@@ -606,6 +607,7 @@ window.switchAdminTab = function(tab) {
     } else if (tab === 'monitoring') {
         switchMonitoringSidebar('feed'); // 기본으로 피드 관리 표시
         renderFeedManagement();
+        loadAdminSettings(); // 공지·댓글 표시 이름 캐시 로드
     } else if (tab === 'persona') {
         // 페르소나 탭은 더 이상 사용하지 않음
     } else if (tab === 'users') {
@@ -816,6 +818,8 @@ window.switchMonitoringSidebar = function(section) {
         renderBoardPosts(currentAdminBoardCategory);
     } else if (section === 'notice') {
         renderNotices();
+    } else if (section === 'settings') {
+        loadAdminSettings();
     }
 };
 
@@ -2463,7 +2467,8 @@ window.submitNotice = async function() {
             type: type,
             isPinned: isPinned,
             hidden: hidden,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            authorDisplayName: getAdminDisplayName()
         };
         
         if (currentEditingNoticeId) {
@@ -2540,6 +2545,43 @@ window.deleteNotice = async function(noticeId) {
     }
 };
 
+// 관리자 표시 이름 캐시 (공지·댓글 작성 시 사용)
+let cachedAdminDisplayName = '관리자';
+
+async function loadAdminSettings() {
+    const inputEl = document.getElementById('adminDisplayNameInput');
+    if (!inputEl) return;
+    try {
+        const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
+        const snap = await getDoc(configRef);
+        const displayName = snap.exists() && snap.data().displayName ? String(snap.data().displayName).trim() : '관리자';
+        cachedAdminDisplayName = displayName || '관리자';
+        inputEl.value = cachedAdminDisplayName;
+    } catch (e) {
+        console.warn('관리자 설정 로드 실패:', e);
+        inputEl.value = cachedAdminDisplayName;
+    }
+}
+
+window.saveAdminDisplayName = async function() {
+    const inputEl = document.getElementById('adminDisplayNameInput');
+    if (!inputEl) return;
+    const value = inputEl.value.trim() || '관리자';
+    try {
+        const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
+        await setDoc(configRef, { displayName: value }, { merge: true });
+        cachedAdminDisplayName = value;
+        alert('저장되었습니다.');
+    } catch (e) {
+        console.error('관리자 표시 이름 저장 실패:', e);
+        alert('저장에 실패했습니다: ' + (e?.message || e));
+    }
+};
+
+function getAdminDisplayName() {
+    return cachedAdminDisplayName || '관리자';
+}
+
 // 게시판 게시물 렌더링 (기본 구현)
 let currentAdminBoardCategory = 'all';
 async function renderBoardPosts(category = 'all') {
@@ -2573,7 +2615,11 @@ async function renderBoardPosts(category = 'all') {
         container.innerHTML = postsSnapshot.docs.map(d => {
             const post = d.data();
             const postId = d.id;
-            const date = post.timestamp ? new Date(post.timestamp).toLocaleDateString('ko-KR') : '-';
+            const ts = post.timestamp;
+            const date = ts ? (() => {
+                const d = typeof ts?.toDate === 'function' ? ts.toDate() : new Date(ts);
+                return Number.isFinite(d.getTime()) ? d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
+            })() : '-';
             const reportInfo = reportsMap['board_' + postId];
             if (reportInfo && reportInfo.count > 0) {
                 window._feedReportDetails['board_' + postId] = reportInfo.byReason;
@@ -2583,9 +2629,9 @@ async function renderBoardPosts(category = 'all') {
                 : '';
             const isHidden = post.isHidden === true;
             return `
-                <div class="border border-slate-200 rounded-xl p-4 ${isHidden ? 'bg-slate-50 opacity-90' : ''}">
+                <div class="border border-slate-200 rounded-xl p-4 ${isHidden ? 'bg-slate-50 opacity-90' : ''} board-list-row cursor-pointer hover:bg-slate-50 transition-colors" data-post-id="${postId}" onclick="window.selectBoardPost('${String(postId).replace(/'/g, "\\'")}')">
                     <div class="flex items-start gap-4">
-                        <div class="flex-shrink-0 pt-0.5">
+                        <div class="flex-shrink-0 pt-0.5" onclick="event.stopPropagation()">
                             <input type="checkbox" class="board-item-checkbox w-4 h-4 rounded border-slate-300" data-post-id="${postId}" title="선택">
                         </div>
                         <div class="flex-1 min-w-0">
@@ -2660,6 +2706,103 @@ window.adminBoardBulkDelete = async function() {
 // 게시판 게시물 새로고침
 window.refreshBoardPosts = function() {
     renderBoardPosts(currentAdminBoardCategory);
+}
+
+// 게시판 글 선택 → 상세(본문+댓글) 보기
+let currentSelectedBoardPostId = null;
+window.selectBoardPost = async function(postId) {
+    currentSelectedBoardPostId = postId;
+    const listPage = document.getElementById('boardListPage');
+    const detailPage = document.getElementById('boardDetailPage');
+    if (listPage) listPage.classList.add('hidden');
+    if (detailPage) detailPage.classList.remove('hidden');
+    const inputEl = document.getElementById('boardDetailCommentInput');
+    if (inputEl) inputEl.value = '';
+    await renderBoardPostDetail(postId);
+}
+
+window.backToBoardList = function() {
+    currentSelectedBoardPostId = null;
+    const listPage = document.getElementById('boardListPage');
+    const detailPage = document.getElementById('boardDetailPage');
+    if (listPage) listPage.classList.remove('hidden');
+    if (detailPage) detailPage.classList.add('hidden');
+}
+
+async function renderBoardPostDetail(postId) {
+    const container = document.getElementById('boardDetailContainer');
+    const commentsContainer = document.getElementById('boardDetailCommentsList');
+    if (!container || !postId) return;
+    container.innerHTML = '<div class="text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>로딩 중...</div>';
+    if (commentsContainer) commentsContainer.innerHTML = '';
+    try {
+        const postRef = doc(db, 'artifacts', appId, 'boardPosts', postId);
+        const postSnap = await getDoc(postRef);
+        if (!postSnap.exists()) {
+            container.innerHTML = '<p class="text-red-400">게시글을 찾을 수 없습니다.</p>';
+            return;
+        }
+        const post = postSnap.data();
+        const ts = post.timestamp;
+        const dateStr = ts ? (() => {
+            const d = typeof ts?.toDate === 'function' ? ts.toDate() : new Date(ts);
+            return Number.isFinite(d.getTime()) ? d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
+        })() : '-';
+        container.innerHTML = `
+            <div class="mb-2">
+                <span class="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-bold rounded">${escapeHtml(post.category || '')}</span>
+                ${post.isHidden === true ? '<span class="px-2 py-0.5 bg-slate-300 text-slate-600 text-xs font-bold rounded ml-1">가려짐</span>' : ''}
+            </div>
+            <h2 class="text-lg font-bold text-slate-800 mb-2">${escapeHtml(post.title || '제목 없음')}</h2>
+            <div class="text-xs text-slate-400 mb-3">${escapeHtml(post.authorNickname || '익명')} · ${dateStr} · 조회 ${post.views || 0}</div>
+            <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(post.content || '').replace(/\n/g, '<br>')}</div>
+        `;
+        const comments = await boardOperations.getComments(postId);
+        if (commentsContainer) {
+            if (comments.length === 0) {
+                commentsContainer.innerHTML = '<p class="text-slate-400 text-sm py-2">댓글이 없습니다.</p>';
+            } else {
+                commentsContainer.innerHTML = comments.map(c => {
+                    const ct = c.timestamp;
+                    const cd = ct ? (typeof ct?.toDate === 'function' ? ct.toDate() : new Date(ct)) : null;
+                    const timeStr = cd && Number.isFinite(cd.getTime()) ? cd.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
+                    return `<div class="flex gap-2 p-2 bg-white rounded-lg border border-slate-100">
+                        <span class="font-bold text-slate-700 text-sm">${escapeHtml(c.authorNickname || '익명')}</span>
+                        <span class="text-slate-500 text-xs">${timeStr}</span>
+                        <p class="text-slate-600 text-sm flex-1">${escapeHtml(c.content || '')}</p>
+                    </div>`;
+                }).join('');
+            }
+        }
+    } catch (e) {
+        console.error('게시글 상세 로드 실패:', e);
+        container.innerHTML = '<p class="text-red-400">본문을 불러오는 중 오류가 발생했습니다.</p>';
+    }
+}
+
+window.submitBoardCommentAsAdmin = async function() {
+    const postId = currentSelectedBoardPostId;
+    const inputEl = document.getElementById('boardDetailCommentInput');
+    if (!postId || !inputEl) return;
+    const content = inputEl.value.trim();
+    if (!content) {
+        alert('댓글 내용을 입력해주세요.');
+        return;
+    }
+    try {
+        const result = await callableFunctions.addBoardCommentAsAdmin({
+            postId,
+            content,
+            displayName: getAdminDisplayName()
+        });
+        if (result?.data) {
+            inputEl.value = '';
+            await renderBoardPostDetail(postId);
+        }
+    } catch (e) {
+        console.error('관리자 댓글 등록 실패:', e);
+        alert('댓글 등록에 실패했습니다: ' + (e?.message || e));
+    }
 }
 
 // 게시판 카테고리 설정
