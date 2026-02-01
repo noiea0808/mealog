@@ -244,11 +244,13 @@ exports.createBoardPost = onCall({ region: REGION }, wrapFunction('createBoardPo
     throw new HttpsError('permission-denied', '글쓰기가 제한된 계정입니다.');
   }
 
-  const { title, content, category } = data;
+  const { title, content, category, imageUrls } = data;
   
   if (!title || !content || !title.trim() || !content.trim()) {
     throw new HttpsError('invalid-argument', '제목과 내용을 입력해주세요.');
   }
+
+  const sanitizedImageUrls = Array.isArray(imageUrls) ? imageUrls.slice(0, 5).filter(u => typeof u === 'string' && u) : [];
 
   // 레이트 리밋 체크
   await checkRateLimit(auth.uid, 'post', request);
@@ -276,6 +278,7 @@ exports.createBoardPost = onCall({ region: REGION }, wrapFunction('createBoardPo
     title: title.trim(),
     content: content.trim(),
     category: category || 'serious',
+    imageUrls: sanitizedImageUrls,
     authorId: auth.uid,
     authorNickname,
     authorPhotoUrl,
@@ -304,7 +307,7 @@ exports.updateBoardPost = onCall({ region: REGION }, async (request) => {
     throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
   }
 
-  const { postId, title, content, category } = data;
+  const { postId, title, content, category, imageUrls } = data;
   
   if (!postId || !title || !content) {
     throw new HttpsError('invalid-argument', '필수 정보가 누락되었습니다.');
@@ -323,6 +326,8 @@ exports.updateBoardPost = onCall({ region: REGION }, async (request) => {
     throw new HttpsError('permission-denied', '본인의 게시글만 수정할 수 있습니다.');
   }
 
+  const sanitizedImageUrls = Array.isArray(imageUrls) ? imageUrls.slice(0, 5).filter(u => typeof u === 'string' && u) : (postData.imageUrls || []);
+
   // 스팸 필터링
   const spamCheck = checkSpam(title + ' ' + content);
   if (spamCheck.isSpam) {
@@ -334,6 +339,7 @@ exports.updateBoardPost = onCall({ region: REGION }, async (request) => {
     title: title.trim(),
     content: content.trim(),
     category: category || postData.category,
+    imageUrls: sanitizedImageUrls,
     updatedAt: FieldValue.serverTimestamp()
   });
 

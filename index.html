@@ -573,6 +573,16 @@
                         <input type="text" id="boardWriteTitle" placeholder="제목을 입력하세요" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-slate-400 transition-colors">
                     </div>
                     <div>
+                        <label class="text-sm font-bold text-slate-600 block mb-2">사진 <span class="text-slate-400 font-normal">(최대 5장, 장당 500KB)</span></label>
+                        <input type="file" id="boardWriteImages" accept="image/*" multiple class="hidden">
+                        <div class="flex items-center gap-2 mb-2">
+                            <button type="button" id="boardWriteAddPhotosBtn" class="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-bold hover:bg-slate-50 active:bg-slate-100 transition-colors">
+                                <i class="fa-solid fa-image mr-1"></i>사진 추가
+                            </button>
+                        </div>
+                        <div id="boardWriteImagePreviews" class="flex flex-wrap gap-2 min-h-0"></div>
+                    </div>
+                    <div>
                         <label class="text-sm font-bold text-slate-600 block mb-2">내용</label>
                         <textarea id="boardWriteContent" placeholder="내용을 입력하세요" rows="15" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-slate-400 transition-colors resize-none"></textarea>
                     </div>

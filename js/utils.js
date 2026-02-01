@@ -159,6 +159,75 @@ export function compressImageToBlob(file) {
     });
 }
 
+/** 밀톡용: 최대 용량 제한 압축 (장당 500KB 이하). 초과 시 에러 throw */
+export function compressImageToBlobMaxSize(file, maxSizeKB = 500) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        const reader = new FileReader();
+        const targetSizeBytes = maxSizeKB * 1024;
+
+        reader.onload = (e) => {
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const maxInitialWidth = getViewportMaxWidth();
+                const minWidth = getViewportMinWidth();
+
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxInitialWidth) {
+                    height = (height / width) * maxInitialWidth;
+                    width = maxInitialWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+
+                let quality = 0.6;
+                let attempts = 0;
+                const maxAttempts = 12;
+
+                const compress = () => {
+                    attempts++;
+                    canvas.toBlob((blob) => {
+                        if (!blob) {
+                            reject(new Error('이미지 압축 실패'));
+                            return;
+                        }
+                        if (blob.size <= targetSizeBytes || attempts >= maxAttempts) {
+                            if (blob.size > targetSizeBytes) {
+                                reject(new Error(`이미지 용량이 ${maxSizeKB}KB를 초과합니다. 다른 사진을 선택해 주세요.`));
+                                return;
+                            }
+                            resolve(blob);
+                            return;
+                        }
+                        quality = Math.max(0.15, quality - 0.1);
+                        if (width > minWidth && blob.size > targetSizeBytes * 1.1) {
+                            width = Math.max(minWidth, Math.floor(width * 0.85));
+                            height = Math.floor((height / canvas.width) * width);
+                            canvas.width = width;
+                            canvas.height = height;
+                            ctx.drawImage(img, 0, 0, width, height);
+                        }
+                        compress();
+                    }, 'image/jpeg', quality);
+                };
+
+                compress();
+            };
+
+            img.onerror = () => reject(new Error('이미지 로드 실패'));
+            img.src = e.target.result;
+        };
+
+        reader.onerror = () => reject(new Error('파일 읽기 실패'));
+        reader.readAsDataURL(file);
+    });
+}
+
 // base64 데이터 URL을 Blob으로 변환
 export function base64ToBlob(base64DataUrl) {
     return new Promise((resolve, reject) => {
@@ -357,6 +426,27 @@ export async function uploadMultipleImages(files, userId, entryId = null, progre
         }
     });
     
+    return Promise.all(uploadPromises);
+}
+
+/** 밀톡 게시글용 이미지 업로드: 최대 5장, 장당 500KB 이하 압축 후 users/{userId}/board/ 에 저장 */
+export async function uploadBoardImages(files, userId) {
+    if (!files || files.length === 0) return [];
+    const list = Array.from(files).slice(0, 5);
+
+    const compressPromises = list.map(file => compressImageToBlobMaxSize(file, 500));
+    const compressedBlobs = await Promise.all(compressPromises);
+
+    const uploadPromises = compressedBlobs.map(async (blob, index) => {
+        const timestamp = Date.now();
+        const randomStr = Math.random().toString(36).substring(2, 9);
+        const fileName = `${timestamp}_${randomStr}_${index}.jpg`;
+        const path = `users/${userId}/board/${fileName}`;
+        const storageRef = ref(storage, path);
+        await uploadBytes(storageRef, blob);
+        return getDownloadURL(storageRef);
+    });
+
     return Promise.all(uploadPromises);
 }
 

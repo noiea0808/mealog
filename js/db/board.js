@@ -15,7 +15,8 @@ export const boardOperations = {
             const result = await callableFunctions.createBoardPost({
                 title: postData.title,
                 content: postData.content,
-                category: postData.category || 'serious'
+                category: postData.category || 'serious',
+                imageUrls: postData.imageUrls || []
             });
             console.log('[boardOperations.createPost] 성공:', result.data);
             showToast("게시글이 등록되었습니다.", 'success');
@@ -256,7 +257,8 @@ export const boardOperations = {
                 postId,
                 title: postData.title,
                 content: postData.content,
-                category: postData.category
+                category: postData.category,
+                imageUrls: postData.imageUrls
             });
             showToast("게시글이 수정되었습니다.", 'success');
             return result.data.success;

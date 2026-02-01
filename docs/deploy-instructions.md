@@ -41,11 +41,16 @@ firebase deploy --only functions
 firebase deploy --only firestore:rules
 ```
 
+### 4단계: Storage Rules 배포 (밀톡 사진 등 업로드용)
+```bash
+firebase deploy --only storage
+```
+
 ## 한 번에 배포하기
 
 ```bash
-# Functions와 Rules 동시 배포
-firebase deploy --only functions,firestore:rules
+# Functions, Firestore Rules, Storage Rules 동시 배포
+firebase deploy --only functions,firestore:rules,storage
 ```
 
 ## 배포 확인
@@ -61,6 +66,9 @@ firebase deploy --only functions,firestore:rules
 
 2. Firebase Console > Firestore > Rules에서 규칙 확인
    - https://console.firebase.google.com/project/mealog-r0/firestore/rules
+
+3. Firebase Console > Storage > Rules에서 규칙 확인 (밀톡 사진 업로드용)
+   - https://console.firebase.google.com/project/mealog-r0/storage/rules
 
 ## 문제 해결
 

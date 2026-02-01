@@ -11,7 +11,7 @@ import { dbOps, setupListeners, setupSharedPhotosListener, loadMoreMeals, postIn
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
-import { getDisplayProfile } from './utils.js';
+import { getDisplayProfile, uploadBoardImages } from './utils.js';
 import { 
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
@@ -77,9 +77,10 @@ window.clearGalleryFilter = clearGalleryFilter;
 window.Mealog.clearGalleryFilter = clearGalleryFilter;
 window.switchGalleryFilterTab = switchGalleryFilterTab;
 window.Mealog.switchGalleryFilterTab = switchGalleryFilterTab;
-// 밀톡에서 작성자 클릭 시 사용자 프로필 화면(모먼트와 동일)으로 이동, 밀톡 탭 선택 상태로 표시
+// 밀톡에서 작성자 클릭 시 사용자 프로필 화면(모먼트와 동일)으로 이동, 밀톡 탭 선택 상태로 표시. 뒤로가기 시 밀톡으로 복귀하기 위해 진입 탭 저장
 window.openUserProfileFromBoard = (userId) => {
     if (!userId) return;
+    appState.galleryFilterEntryTab = 'board'; // 뒤로가기 시 밀톡 탭으로 나가기 위함
     appState.galleryFilterTab = 'board';
     filterGalleryByUser(userId, '사용자');
     switchMainTab('gallery');
@@ -2535,6 +2536,17 @@ window.openBoardWrite = () => {
     // 수정 모드 초기화
     window.currentEditingPostId = null;
     
+    // 사진 미리보기 초기화
+    if (window.boardWriteObjectUrls?.length) {
+        window.boardWriteObjectUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch (_) {} });
+    }
+    window.boardWriteFiles = [];
+    window.boardWriteExistingUrls = [];
+    window.boardWriteObjectUrls = [];
+    const boardWriteImagesEl = document.getElementById('boardWriteImages');
+    if (boardWriteImagesEl) boardWriteImagesEl.value = '';
+    if (typeof window.renderBoardWritePreviews === 'function') window.renderBoardWritePreviews();
+    
     // 입력 필드 초기화
     document.getElementById('boardWriteTitle').value = '';
     document.getElementById('boardWriteContent').value = '';
@@ -2583,6 +2595,64 @@ window.backToBoardList = (optimisticPost = null, options = null) => {
     }, 50);
 };
 
+// 밀톡 작성: 사진 미리보기 렌더 (기존 URL + 새 파일)
+window.renderBoardWritePreviews = () => {
+    const container = document.getElementById('boardWriteImagePreviews');
+    if (!container) return;
+    const existing = window.boardWriteExistingUrls || [];
+    const files = window.boardWriteFiles || [];
+    container.innerHTML = '';
+    existing.forEach((url, i) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0';
+        wrap.innerHTML = `
+            <img src="${url}" alt="미리보기" class="w-full h-full object-cover">
+            <button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl hover:bg-red-600" data-type="url" data-index="${i}" aria-label="삭제">
+                <i class="fa-solid fa-times"></i>
+            </button>
+        `;
+        wrap.querySelector('button').addEventListener('click', () => {
+            window.boardWriteExistingUrls.splice(i, 1);
+            window.renderBoardWritePreviews();
+        });
+        container.appendChild(wrap);
+    });
+    files.forEach((file, i) => {
+        const objectUrl = window.boardWriteObjectUrls && window.boardWriteObjectUrls[i];
+        if (!objectUrl) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0';
+        wrap.innerHTML = `
+            <img src="${objectUrl}" alt="미리보기" class="w-full h-full object-cover">
+            <button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl hover:bg-red-600" data-type="file" data-index="${i}" aria-label="삭제">
+                <i class="fa-solid fa-times"></i>
+            </button>
+        `;
+        wrap.querySelector('button').addEventListener('click', () => {
+            if (window.boardWriteObjectUrls && window.boardWriteObjectUrls[i]) {
+                try { URL.revokeObjectURL(window.boardWriteObjectUrls[i]); } catch (_) {}
+                window.boardWriteObjectUrls.splice(i, 1);
+            }
+            window.boardWriteFiles.splice(i, 1);
+            window.renderBoardWritePreviews();
+        });
+        container.appendChild(wrap);
+    });
+};
+
+// 밀톡 작성: 미리보기에서 항목 제거 (버튼용 래퍼는 위에서 직접 바인딩)
+window.removeBoardWritePreview = (type, index) => {
+    if (type === 'url') (window.boardWriteExistingUrls || []).splice(index, 1);
+    else if (type === 'file') {
+        if (window.boardWriteObjectUrls && window.boardWriteObjectUrls[index]) {
+            try { URL.revokeObjectURL(window.boardWriteObjectUrls[index]); } catch (_) {}
+            window.boardWriteObjectUrls.splice(index, 1);
+        }
+        (window.boardWriteFiles || []).splice(index, 1);
+    }
+    window.renderBoardWritePreviews();
+};
+
 // 게시판 글쓰기 카테고리 선택 (버튼 UI)
 window.setBoardWriteCategory = (category) => {
     const input = document.getElementById('boardWriteCategory');
@@ -2621,7 +2691,21 @@ window.submitBoardPost = async () => {
         const postId = window.currentEditingPostId;
         window.currentEditingPostId = null;
         window.backToBoardList();
-        boardOperations.updatePost(postId, { title, content, category })
+        const existingUrls = window.boardWriteExistingUrls || [];
+        const newFiles = window.boardWriteFiles || [];
+        let finalImageUrls = [...existingUrls];
+        if (newFiles.length > 0) {
+            try {
+                showToast('사진 업로드 중...', 'info');
+                const newUrls = await uploadBoardImages(newFiles, window.currentUser.uid);
+                finalImageUrls = [...existingUrls, ...newUrls];
+            } catch (e) {
+                console.error("[submitBoardPost] 사진 업로드 에러:", e);
+                showToast(e?.message || "사진 업로드에 실패했습니다.", 'error');
+                return;
+            }
+        }
+        boardOperations.updatePost(postId, { title, content, category, imageUrls: finalImageUrls })
             .then(() => renderBoard(listCategory))
             .catch((e) => {
                 console.error("[submitBoardPost] 수정 에러:", e);
@@ -2629,11 +2713,24 @@ window.submitBoardPost = async () => {
         return;
     }
     
+    const newFiles = window.boardWriteFiles || [];
+    let imageUrls = [];
+    if (newFiles.length > 0) {
+        try {
+            showToast('사진 업로드 중...', 'info');
+            imageUrls = await uploadBoardImages(newFiles, window.currentUser.uid);
+        } catch (e) {
+            console.error("[submitBoardPost] 사진 업로드 에러:", e);
+            showToast(e?.message || "사진 업로드에 실패했습니다.", 'error');
+            return;
+        }
+    }
     const optimisticPost = {
         id: 'pending-' + Date.now(),
         title,
         content,
         category: category || 'serious',
+        imageUrls: imageUrls.length ? imageUrls : undefined,
         authorId: window.currentUser.uid,
         authorNickname: window.userSettings?.profile?.nickname || '익명',
         authorPhotoUrl: window.userSettings?.profile?.photoUrl || null,
@@ -2645,7 +2742,7 @@ window.submitBoardPost = async () => {
         timestamp: new Date().toISOString()
     };
     window.backToBoardList(optimisticPost);
-    boardOperations.createPost({ title, content, category })
+    boardOperations.createPost({ title, content, category, imageUrls })
         .then((result) => {
             if (result?.id) renderBoard(listCategory);
         })
@@ -2928,6 +3025,16 @@ window.editBoardPost = async (postId) => {
         if (typeof window.setBoardWriteCategory === 'function') {
             window.setBoardWriteCategory(post.category || 'serious');
         }
+        // 기존 사진 미리보기
+        window.boardWriteExistingUrls = Array.isArray(post.imageUrls) ? [...post.imageUrls] : [];
+        window.boardWriteFiles = [];
+        if (window.boardWriteObjectUrls?.length) {
+            window.boardWriteObjectUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch (_) {} });
+        }
+        window.boardWriteObjectUrls = [];
+        const boardWriteImagesInput = document.getElementById('boardWriteImages');
+        if (boardWriteImagesInput) boardWriteImagesInput.value = '';
+        if (typeof window.renderBoardWritePreviews === 'function') window.renderBoardWritePreviews();
         
         // 수정 모드 표시를 위한 플래그 저장
         window.currentEditingPostId = postId;
@@ -3408,6 +3515,34 @@ function initEventListeners() {
     const boardWriteBtn = document.getElementById('boardWriteBtn');
     if (boardWriteBtn) {
         boardWriteBtn.addEventListener('click', window.openBoardWrite);
+    }
+    const boardWriteImagesInput = document.getElementById('boardWriteImages');
+    const boardWriteAddPhotosBtn = document.getElementById('boardWriteAddPhotosBtn');
+    if (boardWriteAddPhotosBtn && boardWriteImagesInput) {
+        boardWriteAddPhotosBtn.addEventListener('click', () => boardWriteImagesInput.click());
+    }
+    if (boardWriteImagesInput) {
+        boardWriteImagesInput.addEventListener('change', (e) => {
+            const existing = (window.boardWriteExistingUrls || []).length;
+            const filesCount = (window.boardWriteFiles || []).length;
+            const total = existing + filesCount;
+            const canAdd = Math.max(0, 5 - total);
+            const files = Array.from(e.target.files || []).slice(0, canAdd);
+            if (files.length === 0) {
+                if ((e.target.files || []).length > canAdd && canAdd === 0) showToast('사진은 최대 5장까지 추가할 수 있습니다.', 'info');
+                e.target.value = '';
+                return;
+            }
+            if (!window.boardWriteFiles) window.boardWriteFiles = [];
+            if (!window.boardWriteObjectUrls) window.boardWriteObjectUrls = [];
+            files.forEach(f => {
+                if (!f.type.startsWith('image/')) return;
+                window.boardWriteFiles.push(f);
+                window.boardWriteObjectUrls.push(URL.createObjectURL(f));
+            });
+            if (typeof window.renderBoardWritePreviews === 'function') window.renderBoardWritePreviews();
+            e.target.value = '';
+        });
     }
     
     // 게시판 카테고리 버튼들

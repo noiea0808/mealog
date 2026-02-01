@@ -2130,16 +2130,26 @@ export async function renderGallery() {
 
 // 갤러리 사용자 필터링 함수
 export function filterGalleryByUser(userId, userNickname) {
+    // 모먼트 피드에서 사용자 클릭 시 진입 → 뒤로가기 시 모먼트로 복귀. openUserProfileFromBoard에서 'board'로 덮어씀
+    if (appState.galleryFilterEntryTab === undefined || appState.galleryFilterEntryTab === null) {
+        appState.galleryFilterEntryTab = 'gallery';
+    }
     appState.galleryFilterUserId = userId;
     renderGallery();
 }
 
-// 갤러리 필터링 해제 함수
+// 갤러리 필터링 해제 함수 (뒤로가기 시 진입했던 탭으로 복귀)
 export function clearGalleryFilter() {
+    const returnTab = appState.galleryFilterEntryTab;
     appState.galleryFilterUserId = null;
     appState.galleryFilterTab = 'moment';
+    appState.galleryFilterEntryTab = null;
     const mainHeader = document.querySelector('#mainApp > header');
     if (mainHeader) mainHeader.classList.remove('hidden');
+    if (returnTab === 'board') {
+        if (typeof window.switchMainTab === 'function') window.switchMainTab('board');
+        return;
+    }
     renderGallery();
 }
 
@@ -3209,13 +3219,15 @@ function _renderBoardList(container, filteredPosts, likedPostIds, bookmarkedPost
                 const isBookmarked = bookmarkedPostIds.has(post.id);
                 const authorDisplay = getDisplayProfile(post.authorId, { nickname: post.authorNickname, icon: post.authorIcon, photoUrl: post.authorPhotoUrl });
                 
+                const hasImages = Array.isArray(post.imageUrls) && post.imageUrls.length > 0;
                 return `
                     <div onclick="window.openBoardDetail('${post.id}')" class="board-list-card rounded-2xl pt-5 px-5 pb-1.5 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all mb-2">
                         <div class="flex items-start gap-3 mb-3">
                             <div class="flex-1 min-w-0">
-                                <div class="flex items-center gap-2 mb-2 flex-wrap">
+                                <div class="flex items-center gap-2 mb-2 min-w-0">
                                     <span class="text-[10px] font-bold px-2.5 py-1 rounded-lg ${categoryColors[post.category] || categoryColors.serious} whitespace-nowrap shrink-0">${categoryLabels[post.category] || '무거운'}</span>
                                     ${shouldHideContent ? '<h3 class="text-base font-bold text-slate-400 truncate flex-1 min-w-0 leading-tight">비공개 게시물</h3>' : `<h3 class="text-base font-bold text-slate-800 truncate flex-1 min-w-0 leading-tight">${escapeHtml(post.title)}</h3>`}
+                                    ${hasImages ? '<span class="text-slate-400 shrink-0" title="사진 포함"><i class="fa-solid fa-image text-sm"></i></span>' : ''}
                                 </div>
                                 ${shouldHideContent ? '<p class="text-sm text-slate-400 line-clamp-2 mb-3 leading-relaxed">이 게시물은 작성자만 볼 수 있습니다.</p>' : `<p class="text-sm text-slate-600 line-clamp-2 mb-3 leading-relaxed">${escapeHtml(post.content)}</p>`}
                             </div>
@@ -3354,6 +3366,13 @@ export async function renderBoardDetail(postId) {
                         <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
                     </button>
                 </div>
+                
+                <!-- 사진 (본문 상단, 중앙 정렬, 좌우 여백 축소로 크게 표시) -->
+                ${Array.isArray(post.imageUrls) && post.imageUrls.length > 0 ? `
+                <div class="flex flex-wrap justify-center items-center gap-2 mb-4 -mx-4 px-1">
+                    ${post.imageUrls.map(url => `<img src="${url}" alt="게시글 사진" class="max-w-full h-auto rounded-xl border border-slate-200 object-cover" style="max-height: 320px;" loading="lazy">`).join('')}
+                </div>
+                ` : ''}
                 
                 <!-- 게시글 내용 -->
                 <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4 -mx-2 px-2">${escapeHtml(post.content).replace(/\n/g, '<br>')}</div>
