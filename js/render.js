@@ -2,7 +2,7 @@
 import { SLOTS, SLOT_STYLES, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS } from './constants.js';
 import { appState } from './state.js';
 import { escapeHtml } from './render/utils.js';
-import { normalizeUrl } from './utils.js';
+import { normalizeUrl, getDisplayProfile } from './utils.js';
 
 // renderGallery 실행 중 플래그 및 이벤트 리스너 관리
 let isRenderingGallery = false;
@@ -962,9 +962,10 @@ async function loadPostInteractions(postEl, postId) {
                             }
                         } catch (_) {}
                     }
+                    const commentDisplay = getDisplayProfile(c.userId, { nickname: c.userNickname });
                     return `
                     <div class="mb-1 text-sm">
-                        <span class="font-bold text-slate-800">${c.userNickname || '익명'}</span>
+                        <span class="font-bold text-slate-800">${commentDisplay.nickname}</span>
                         <span class="text-slate-800">${escapeHtml(c.comment)}</span>
                         ${dateStr && timeStr ? `<span class="text-xs text-slate-400 ml-2">${dateStr} ${timeStr}</span>` : ''}
                         ${isLoggedIn && c.userId === window.currentUser?.uid ? `<button onclick="window.deleteCommentFromPost('${c.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
@@ -1110,71 +1111,139 @@ export async function renderGallery() {
     
     // 사용자 필터링 적용
     const filterUserId = appState.galleryFilterUserId;
+    const galleryFilterTab = appState.galleryFilterTab || 'moment';
     let photosToRender = window.sharedPhotos;
     
     if (filterUserId) {
         photosToRender = window.sharedPhotos.filter(photo => photo.userId === filterUserId);
     }
     
+    // 사용자 프로필 뷰일 때 최상단 앱 헤더 숨김
+    const mainHeader = document.querySelector('#mainApp > header');
+    if (mainHeader) {
+        if (filterUserId) mainHeader.classList.add('hidden');
+        else mainHeader.classList.remove('hidden');
+    }
+    
     // 디버깅: 일간보기 공유 확인
     const dailyShares = photosToRender.filter(p => p.type === 'daily');
     console.log('renderGallery - 일간보기 공유 개수:', dailyShares.length, dailyShares);
     
-    // 필터링된 사용자 정보 표시 (상단)
+    // 필터링된 사용자 정보 표시 (상단) — 프로필+소개+모먼트/밀톡 탭
     let userProfileHeader = '';
-    if (filterUserId && photosToRender.length > 0) {
-        // 필터링된 사용자의 프로필 정보 가져오기 (비동기로 처리하여 블로킹 방지)
-        const filteredUserPhoto = photosToRender[0];
-        if (filteredUserPhoto) {
-            // getUserSettings를 비동기로 호출하되 await하지 않음 (즉시 렌더링 진행)
-            getUserSettings(filterUserId).then(userSettings => {
-                // AbortSignal 체크
-                if (abortSignal && abortSignal.aborted) {
-                    return;
-                }
-                
+    if (filterUserId) {
+        const filteredUserPhoto = photosToRender[0] || null;
+        const initialDisplay = filteredUserPhoto
+            ? getDisplayProfile(filteredUserPhoto.userId, { nickname: filteredUserPhoto.userNickname, icon: filteredUserPhoto.userIcon, photoUrl: filteredUserPhoto.userPhotoUrl })
+            : getDisplayProfile(filterUserId, { nickname: '로딩...', icon: '🐻', photoUrl: null });
+        (async () => {
+            if (abortSignal && abortSignal.aborted) return;
+            try {
+                const userSettings = await getUserSettings(filterUserId);
+                const { db, appId } = await import('./firebase.js');
+                const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                const userDocSnap = await getDoc(doc(db, 'artifacts', appId, 'users', filterUserId));
+                const existingHeader = container.querySelector('.gallery-user-profile-header');
+                if (!existingHeader) return;
                 const bio = userSettings?.profile?.bio || '';
-                // 프로필 헤더가 이미 렌더링되었는지 확인
-                const existingHeader = container.querySelector('.bg-white.border-b.border-slate-200.sticky');
-                if (existingHeader && bio) {
-                    // bio가 있으면 업데이트
-                    const bioEl = existingHeader.querySelector('.text-sm.text-slate-600');
-                    if (bioEl) {
-                        bioEl.innerHTML = escapeHtml(bio);
+                const bioEl = existingHeader.querySelector('.gallery-filter-bio');
+                if (bioEl) bioEl.textContent = bio;
+                let joinedStr = '';
+                if (userDocSnap.exists()) {
+                    const data = userDocSnap.data();
+                    const createdAt = data.createdAt;
+                    if (createdAt) {
+                        try {
+                            const d = createdAt.toDate ? createdAt.toDate() : new Date(createdAt);
+                            if (!isNaN(d.getTime())) joinedStr = '가입일 ' + d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+                        } catch (_) {}
                     }
                 }
-            }).catch(err => {
-                console.warn('사용자 설정 가져오기 실패:', err);
-            });
-            
-            // 기본 헤더 (bio 없이 먼저 렌더링)
-            userProfileHeader = `
-                <div class="bg-white border-b border-slate-200 sticky top-[52px] z-30">
-                    <div class="px-6 py-4 flex items-center gap-4">
-                        <button onclick="window.clearGalleryFilter()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
+                const joinedEl = existingHeader.querySelector('.gallery-filter-joined');
+                if (joinedEl) joinedEl.textContent = joinedStr;
+                if (!filteredUserPhoto && userSettings?.profile) {
+                    const nickEl = existingHeader.querySelector('.gallery-filter-nickname');
+                    const iconEl = existingHeader.querySelector('.gallery-filter-icon');
+                    const photoEl = existingHeader.querySelector('.gallery-filter-photo');
+                    const disp = getDisplayProfile(filterUserId, { nickname: userSettings.profile.nickname, icon: userSettings.profile.icon, photoUrl: userSettings.profile.photoUrl });
+                    if (nickEl) nickEl.textContent = disp.nickname || '익명';
+                    if (iconEl) iconEl.textContent = disp.icon || '🐻';
+                    if (photoEl && disp.photoUrl) {
+                        photoEl.style.backgroundImage = `url(${disp.photoUrl})`;
+                        photoEl.classList.add('bg-cover', 'bg-center');
+                    }
+                }
+            } catch (_) {}
+        })();
+        
+        const isFilteredUserGuest = window.currentUser && window.currentUser.isAnonymous && filterUserId === window.currentUser.uid;
+        userProfileHeader = `
+            <div class="gallery-user-profile-header bg-white">
+                <div class="gallery-user-profile-scrollable">
+                    <div class="px-4 py-3 flex items-center gap-2 border-b border-slate-200">
+                        <button onclick="window.clearGalleryFilter()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors flex-shrink-0">
                             <i class="fa-solid fa-arrow-left text-lg"></i>
                         </button>
-                        <div class="flex items-center gap-3 flex-1">
-                            ${(() => {
-                                const isFilteredUserGuest = window.currentUser && window.currentUser.isAnonymous && filteredUserPhoto.userId === window.currentUser.uid;
-                                return filteredUserPhoto.userPhotoUrl ? `
-                                    <div class="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden relative" style="background-image: url(${filteredUserPhoto.userPhotoUrl}); background-size: cover; background-position: center;">
-                                        ${isFilteredUserGuest ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
-                                    </div>
-                                ` : `
-                                    <div class="w-12 h-12 bg-slate-200 rounded-full flex items-center justify-center text-2xl flex-shrink-0">
-                                        ${isFilteredUserGuest ? '게' : (filteredUserPhoto.userIcon || '🐻')}
-                                    </div>
-                                `;
-                            })()}
-                            <div class="flex-1 min-w-0">
-                                <div class="text-base font-bold text-slate-800">${filteredUserPhoto.userNickname || '익명'}</div>
-                            </div>
+                        ${initialDisplay.photoUrl ? `
+                            <div class="gallery-filter-photo w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border border-slate-300 bg-slate-100" style="background-image: url(${initialDisplay.photoUrl}); background-size: cover; background-position: center;"></div>
+                        ` : `
+                            <div class="gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-base flex-shrink-0 border border-slate-300 bg-slate-200">${initialDisplay.icon || '🐻'}</div>
+                        `}
+                        <div class="flex-1 min-w-0">
+                            <div class="gallery-filter-nickname text-sm font-bold text-slate-800">${initialDisplay.nickname || '익명'}</div>
+                            <div class="gallery-filter-joined text-xs text-slate-400"></div>
                         </div>
                     </div>
+                    <div class="gallery-filter-bio text-sm text-slate-600 whitespace-pre-wrap min-h-[1.5rem] px-4 py-3 border-b-2 border-slate-200">${filteredUserPhoto ? ('' /* 비동기로 채움 */) : ''}</div>
                 </div>
-            `;
-        }
+                <div class="gallery-filter-tabs sticky top-0 z-30 flex w-full min-w-0 bg-white border-t-2 border-slate-200">
+                    <button type="button" onclick="window.switchGalleryFilterTab && window.switchGalleryFilterTab('moment')" class="gallery-filter-tab-btn flex-1 min-w-0 py-3 text-sm font-bold transition-colors border-b-2 ${galleryFilterTab === 'moment' ? 'text-emerald-600 border-emerald-600' : 'text-slate-600 border-transparent'}">모먼트</button>
+                    <button type="button" onclick="window.switchGalleryFilterTab && window.switchGalleryFilterTab('board')" class="gallery-filter-tab-btn flex-1 min-w-0 py-3 text-sm font-bold transition-colors border-b-2 ${galleryFilterTab === 'board' ? 'text-emerald-600 border-emerald-600' : 'text-slate-600 border-transparent'}">밀톡</button>
+                </div>
+            </div>
+        `;
+    }
+    
+    // 사용자 프로필 뷰 + 밀톡 탭: 밀톡 탭과 동일한 목록 렌더링 (_renderBoardList 사용)
+    if (filterUserId && galleryFilterTab === 'board') {
+        container.innerHTML = userProfileHeader + `
+            <div id="galleryFilterBoardList" class="px-4 pt-1 pb-4">
+                <div class="flex justify-center py-8"><i class="fa-solid fa-spinner fa-spin text-2xl text-slate-300"></i></div>
+            </div>
+        `;
+        (async () => {
+            try {
+                const { boardOperations } = await import('./db.js');
+                const [posts, liked, bookmarked] = await Promise.all([
+                    boardOperations.getPostsByAuthor(filterUserId, 50),
+                    window.currentUser && !window.currentUser.isAnonymous ? boardOperations.getPostIdsLikedByUser(window.currentUser.uid) : Promise.resolve([]),
+                    window.currentUser && !window.currentUser.isAnonymous ? boardOperations.getPostIdsBookmarkedByUser(window.currentUser.uid) : Promise.resolve([])
+                ]);
+                const listEl = document.getElementById('galleryFilterBoardList');
+                if (!listEl || (abortSignal && abortSignal.aborted)) return;
+                const likedPostIds = new Set(liked || []);
+                const bookmarkedPostIds = new Set(bookmarked || []);
+                if (posts.length === 0) {
+                    listEl.innerHTML = `
+                        <div class="flex flex-col items-center justify-center py-12 text-center">
+                            <i class="fa-regular fa-comments text-4xl text-slate-200 mb-3"></i>
+                            <p class="text-sm font-bold text-slate-400">작성한 글이 없습니다</p>
+                            <p class="text-xs text-slate-300 mt-2">첫 번째 게시글을 작성해보세요!</p>
+                        </div>
+                    `;
+                } else {
+                    _renderBoardList(listEl, posts, likedPostIds, bookmarkedPostIds, null);
+                }
+            } catch (e) {
+                console.warn('getPostsByAuthor 실패:', e);
+                const listEl = document.getElementById('galleryFilterBoardList');
+                if (listEl && !(abortSignal && abortSignal.aborted))
+                    listEl.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">글 목록을 불러오지 못했습니다.</div>';
+            } finally {
+                isRenderingGallery = false;
+            }
+        })();
+        return;
     }
     
     if (photosToRender.length === 0) {
@@ -1690,20 +1759,21 @@ export async function renderGallery() {
             postId = `post_${Math.abs(hash)}_${photo.userId || 'unknown'}`;
         }
         
+        const userDisplay = getDisplayProfile(photo.userId, { nickname: photo.userNickname, icon: photo.userIcon, photoUrl: photo.userPhotoUrl });
         return `
             <div class="mb-2 bg-white border-b border-slate-200 instagram-post" data-post-id="${postId}" data-group-key="${groupKey}">
                 <div class="px-3 py-3 flex items-center gap-1 relative">
-                    ${photo.userPhotoUrl ? `
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${photo.userPhotoUrl}); background-size: cover; background-position: center;">
+                    ${userDisplay.photoUrl ? `
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${userDisplay.photoUrl}); background-size: cover; background-position: center;">
                             ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
                         </div>
                     ` : `
                         <div class="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0 border-2 border-slate-300">
-                            ${isGuestPost ? '게' : (photo.userIcon || '🐻')}
+                            ${isGuestPost ? '게' : (userDisplay.icon || '🐻')}
                         </div>
                     `}
                     <div class="flex-1 min-w-0">
-                        <div class="text-sm font-bold text-slate-800 cursor-pointer hover:text-slate-600 transition-colors" onclick="window.filterGalleryByUser('${photo.userId}', '${escapeHtml(photo.userNickname || '익명')}')">${photo.userNickname || '익명'}</div>
+                        <div class="text-sm font-bold text-slate-800 cursor-pointer hover:text-slate-600 transition-colors" onclick="window.filterGalleryByUser('${photo.userId}', '${escapeHtml(userDisplay.nickname)}')">${userDisplay.nickname}</div>
                         <div class="flex items-center gap-2">
                             <div class="text-xs text-slate-400">${dateStr}</div>
                             ${mealLabel ? `<div class="text-[10px] font-bold ${mealLabelStyle || 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-full whitespace-nowrap">${mealLabel}</div>` : ''}
@@ -2067,7 +2137,18 @@ export function filterGalleryByUser(userId, userNickname) {
 // 갤러리 필터링 해제 함수
 export function clearGalleryFilter() {
     appState.galleryFilterUserId = null;
+    appState.galleryFilterTab = 'moment';
+    const mainHeader = document.querySelector('#mainApp > header');
+    if (mainHeader) mainHeader.classList.remove('hidden');
     renderGallery();
+}
+
+// 사용자 프로필 뷰에서 모먼트/밀톡 탭 전환
+export function switchGalleryFilterTab(tab) {
+    if (tab !== 'moment' && tab !== 'board') return;
+    appState.galleryFilterTab = tab;
+    renderGallery();
+    if (window.syncBottomNavForGalleryFilter) window.syncBottomNavForGalleryFilter();
 }
 
 export function renderFeed() {
@@ -2369,20 +2450,21 @@ export function renderFeed() {
         `;
         }).join('');
         
+        const userDisplay = getDisplayProfile(photo.userId, { nickname: photo.userNickname, icon: photo.userIcon, photoUrl: photo.userPhotoUrl });
         return `
             <div class="mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden">
                 <div class="px-2 py-3 flex items-center gap-1 relative">
-                    ${photo.userPhotoUrl ? `
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${photo.userPhotoUrl}); background-size: cover; background-position: center;">
+                    ${userDisplay.photoUrl ? `
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${userDisplay.photoUrl}); background-size: cover; background-position: center;">
                             ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
                         </div>
                     ` : `
                         <div class="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0 border-2 border-slate-300">
-                            ${isGuestPost ? '게' : (photo.userIcon || '🐻')}
+                            ${isGuestPost ? '게' : (userDisplay.icon || '🐻')}
                         </div>
                     `}
                     <div class="flex-1 min-w-0 mr-2">
-                        <div class="text-sm font-bold text-slate-800">${photo.userNickname || '익명'}</div>
+                        <div class="text-sm font-bold text-slate-800">${userDisplay.nickname}</div>
                         <div class="flex items-center gap-1 flex-wrap">
                             <span class="text-xs text-slate-400">${dateStr}</span>
                             ${mealLabel ? `<span class="text-[10px] font-bold ${mealLabelStyle || 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-full whitespace-nowrap ml-1">${mealLabel}</span>` : ''}
@@ -3125,6 +3207,7 @@ function _renderBoardList(container, filteredPosts, likedPostIds, bookmarkedPost
                 const shouldHideContent = isAdminCategory && !isAuthor;
                 const isLiked = likedPostIds.has(post.id);
                 const isBookmarked = bookmarkedPostIds.has(post.id);
+                const authorDisplay = getDisplayProfile(post.authorId, { nickname: post.authorNickname, icon: post.authorIcon, photoUrl: post.authorPhotoUrl });
                 
                 return `
                     <div onclick="window.openBoardDetail('${post.id}')" class="board-list-card rounded-2xl pt-5 px-5 pb-1.5 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all mb-2">
@@ -3138,16 +3221,16 @@ function _renderBoardList(container, filteredPosts, likedPostIds, bookmarkedPost
                             </div>
                         </div>
                         <div class="flex items-center justify-between pt-3 border-t border-slate-200">
-                            <div class="flex items-center gap-3">
-                                ${post.authorPhotoUrl ? `
-                                    <div class="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${post.authorPhotoUrl}); background-size: cover; background-position: center;"></div>
+                            <div class="flex items-center gap-3 cursor-pointer hover:opacity-80 active:opacity-70 transition-opacity rounded-lg -m-1 p-1" onclick="event.stopPropagation(); window.openUserProfileFromBoard && window.openUserProfileFromBoard('${post.authorId}')" role="button" tabindex="0">
+                                ${authorDisplay.photoUrl ? `
+                                    <div class="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${authorDisplay.photoUrl}); background-size: cover; background-position: center;"></div>
                                 ` : `
                                     <div class="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-sm flex-shrink-0 border-2 border-slate-300">
-                                        ${post.authorIcon ? post.authorIcon : (post.authorNickname || '익명').charAt(0)}
+                                        ${authorDisplay.icon || authorDisplay.nickname.charAt(0)}
                                     </div>
                                 `}
                                 <div>
-                                    <div class="text-xs font-bold text-slate-800">${escapeHtml(post.authorNickname || '익명')}</div>
+                                    <div class="text-xs font-bold text-slate-800">${escapeHtml(authorDisplay.nickname)}</div>
                                     <div class="text-[10px] text-slate-400">${dateStr} ${timeStr} · 조회 ${post.views || 0}</div>
                                 </div>
                             </div>
@@ -3276,17 +3359,20 @@ export async function renderBoardDetail(postId) {
                 <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4 -mx-2 px-2">${escapeHtml(post.content).replace(/\n/g, '<br>')}</div>
                 
                 <!-- 하단: 작성자/일자/조회수(왼쪽) | 좋아요·북마크(오른쪽) -->
+                ${(() => {
+                    const authorDisplay = getDisplayProfile(post.authorId, { nickname: post.authorNickname, icon: post.authorIcon, photoUrl: post.authorPhotoUrl });
+                    return `
                 <div class="flex items-center justify-between pt-3 border-t border-slate-200">
                     <div class="flex items-center gap-3">
-                        ${post.authorPhotoUrl ? `
-                            <div class="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${post.authorPhotoUrl}); background-size: cover; background-position: center;"></div>
+                        ${authorDisplay.photoUrl ? `
+                            <div class="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${authorDisplay.photoUrl}); background-size: cover; background-position: center;"></div>
                         ` : `
                             <div class="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-sm flex-shrink-0 border-2 border-slate-300">
-                                ${post.authorIcon || (post.authorNickname || '익명').charAt(0)}
+                                ${authorDisplay.icon || authorDisplay.nickname.charAt(0)}
                             </div>
                         `}
                         <div>
-                            <div class="text-xs font-bold text-slate-800">${escapeHtml(post.authorNickname || '익명')}</div>
+                            <div class="text-xs font-bold text-slate-800">${escapeHtml(authorDisplay.nickname)}</div>
                             <div class="text-[10px] text-slate-400">${dateStr} ${timeStr} · 조회 ${post.views || 0}</div>
                         </div>
                     </div>
@@ -3300,6 +3386,8 @@ export async function renderBoardDetail(postId) {
                         </button>
                     </div>
                 </div>
+                `;
+                })()}
                 
                 <!-- 댓글 섹션 -->
                 <div class="pt-4 border-t border-slate-200">
@@ -3333,14 +3421,12 @@ export async function renderBoardDetail(postId) {
                             const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
                             const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
                             const isCommentAuthor = window.currentUser && comment.authorId === window.currentUser.uid;
-                            
-                            // 댓글 작성자 닉네임 (저장된 닉네임 사용)
-                            const commentAuthorNickname = comment.authorNickname || comment.anonymousId || '익명';
+                            const commentDisplay = getDisplayProfile(comment.authorId, { nickname: comment.authorNickname || comment.anonymousId });
                             const commentBody = comment.content ?? comment.text ?? '';
                             
                             return `
                                 <div class="mb-1 text-sm" data-comment-id="${comment.id}">
-                                    <span class="font-bold text-slate-800">${escapeHtml(commentAuthorNickname)}</span>
+                                    <span class="font-bold text-slate-800">${escapeHtml(commentDisplay.nickname)}</span>
                                     <span class="text-slate-800 ml-2">${escapeHtml(commentBody)}</span>
                                     ${commentDateStr && commentTimeStr ? `<span class="text-xs text-slate-400 ml-2">${commentDateStr} ${commentTimeStr}</span>` : ''}
                                     ${isCommentAuthor ? `<button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}

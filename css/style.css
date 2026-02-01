@@ -350,6 +350,20 @@ header .mealog-title {
     justify-content: flex-start;
 }
 
+/* 모먼트 사용자 프로필: 탭 바 좌우 꽉 채움, 스크롤 시 탭만 상단 고정 */
+.gallery-user-profile-header {
+    box-sizing: border-box;
+}
+.gallery-filter-tabs {
+    width: 100% !important;
+    box-sizing: border-box;
+}
+.gallery-filter-tabs .gallery-filter-tab-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
 /* 타임라인 검색: 돋보기 고정·입력창만 왼쪽으로 확장(프로필 밀지 않음), MEALOG 가리지 않음, 닫을 때 창 닫는 모션(왼쪽→오른쪽) */
 .timeline-search-wrapper {
     width: 2rem;

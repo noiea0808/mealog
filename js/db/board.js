@@ -135,52 +135,26 @@ export const boardOperations = {
                 console.warn("Firestore 인덱스가 없어 fallback 모드로 작동합니다. 전체 게시글을 가져와 필터링합니다.");
                 try {
                     const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
-                    const fallbackQuery = query(postsColl, orderBy('timestamp', 'desc'), limit(limitCount * 2)); // 더 많이 가져와서 필터링
+                    const fallbackQuery = query(postsColl, orderBy('timestamp', 'desc'), limit(limitCount * 2));
                     const snapshot = await getDocs(fallbackQuery);
                     let allPosts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                    
-                    // timestamp 안전하게 변환하는 헬퍼 함수
                     const getTimestamp = (post) => {
                         if (!post.timestamp) return 0;
-                        if (post.timestamp.toDate && typeof post.timestamp.toDate === 'function') {
-                            return post.timestamp.toDate().getTime();
-                        }
-                        if (typeof post.timestamp === 'string') {
-                            return new Date(post.timestamp).getTime();
-                        }
-                        if (post.timestamp instanceof Date) {
-                            return post.timestamp.getTime();
-                        }
+                        if (post.timestamp.toDate && typeof post.timestamp.toDate === 'function') return post.timestamp.toDate().getTime();
+                        if (typeof post.timestamp === 'string') return new Date(post.timestamp).getTime();
                         return new Date(post.timestamp || 0).getTime();
                     };
-                    
-                    // 카테고리 필터링
-                    if (category !== 'all') {
-                        allPosts = allPosts.filter(post => post.category === category);
-                    }
-                    
-                    // 최신순 정렬 보장 (timestamp 기준 내림차순)
-                    allPosts.sort((a, b) => {
-                        const timeA = getTimestamp(a);
-                        const timeB = getTimestamp(b);
-                        return timeB - timeA; // 최신이 위로
-                    });
-                    
-                    // limit 적용
+                    if (category !== 'all') allPosts = allPosts.filter(post => post.category === category);
+                    allPosts.sort((a, b) => getTimestamp(b) - getTimestamp(a));
                     allPosts = allPosts.slice(0, limitCount);
-                    
-                    // 인기순 정렬
                     if (sortBy === 'popular') {
                         allPosts.sort((a, b) => {
                             const scoreA = (a.likes || 0) - (a.dislikes || 0);
                             const scoreB = (b.likes || 0) - (b.dislikes || 0);
                             if (scoreB !== scoreA) return scoreB - scoreA;
-                            const timeA = getTimestamp(a);
-                            const timeB = getTimestamp(b);
-                            return timeB - timeA;
+                            return getTimestamp(b) - getTimestamp(a);
                         });
                     }
-                    
                     return allPosts;
                 } catch (fallbackError) {
                     console.error("Fallback Get Posts Error:", fallbackError);
@@ -190,7 +164,52 @@ export const boardOperations = {
             return [];
         }
     },
-    
+
+    // 특정 사용자의 게시글 목록 가져오기 (모먼트 사용자 프로필 밀톡 탭용)
+    async getPostsByAuthor(userId, limitCount = 50) {
+        if (!userId) return [];
+        try {
+            const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
+            const q = query(
+                postsColl,
+                where('authorId', '==', userId),
+                orderBy('timestamp', 'desc'),
+                limit(Math.min(limitCount * 2, 100))
+            );
+            const snapshot = await getDocs(q);
+            let posts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
+                .filter(p => p.isHidden !== true);
+            const getTimestamp = (post) => {
+                if (!post.timestamp) return 0;
+                if (post.timestamp.toDate && typeof post.timestamp.toDate === 'function') return post.timestamp.toDate().getTime();
+                if (typeof post.timestamp === 'string') return new Date(post.timestamp).getTime();
+                return new Date(post.timestamp || 0).getTime();
+            };
+            posts.sort((a, b) => getTimestamp(b) - getTimestamp(a));
+            return posts.slice(0, limitCount);
+        } catch (e) {
+            console.warn("Get Posts By Author Error (fallback):", e);
+            try {
+                const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
+                const q = query(postsColl, orderBy('timestamp', 'desc'), limit(200));
+                const snapshot = await getDocs(q);
+                let posts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
+                    .filter(p => p.isHidden !== true && p.authorId === userId);
+                const getTimestamp = (post) => {
+                    if (!post.timestamp) return 0;
+                    if (post.timestamp.toDate && typeof post.timestamp.toDate === 'function') return post.timestamp.toDate().getTime();
+                    if (typeof post.timestamp === 'string') return new Date(post.timestamp).getTime();
+                    return new Date(post.timestamp || 0).getTime();
+                };
+                posts.sort((a, b) => getTimestamp(b) - getTimestamp(a));
+                return posts.slice(0, limitCount);
+            } catch (fallbackE) {
+                console.error("Get Posts By Author fallback Error:", fallbackE);
+                return [];
+            }
+        }
+    },
+
     // 게시글 상세 가져오기
     async getPost(postId) {
         try {

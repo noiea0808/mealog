@@ -17,5 +17,6 @@ export {
     renderNoticeDetail,
     createDailyShareCard,
     filterGalleryByUser,
-    clearGalleryFilter
+    clearGalleryFilter,
+    switchGalleryFilterTab
 } from '../render.js';

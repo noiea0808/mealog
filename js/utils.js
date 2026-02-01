@@ -42,6 +42,30 @@ export function normalizeUrl(url) {
     return url.split('?')[0];
 }
 
+/**
+ * 표시용 프로필 반환: 작성자가 현재 로그인 사용자이면 현재 프로필(닉네임/아이콘/사진)을 사용하고,
+ * 그렇지 않으면 저장된 값을 사용합니다. (프로필 변경 시 과거 게시물도 현재 프로필로 표시)
+ * @param {string} authorId - 작성자 userId
+ * @param {{ nickname?: string, icon?: string, photoUrl?: string }} stored - 게시물에 저장된 프로필
+ * @returns {{ nickname: string, icon: string, photoUrl: string|null }}
+ */
+export function getDisplayProfile(authorId, stored = {}) {
+    const isCurrentUser = typeof window !== 'undefined' && window.currentUser && authorId === window.currentUser.uid;
+    const profile = window?.userSettings?.profile;
+    if (isCurrentUser && profile) {
+        return {
+            nickname: profile.nickname || stored.nickname || '익명',
+            icon: profile.icon ?? stored.icon ?? '🐻',
+            photoUrl: profile.photoUrl ?? stored.photoUrl ?? null
+        };
+    }
+    return {
+        nickname: stored.nickname || '익명',
+        icon: stored.icon ?? '🐻',
+        photoUrl: stored.photoUrl ?? null
+    };
+}
+
 export function getInputIdFromContainer(containerId) {
     const container = document.getElementById(containerId);
     if (!container) return null;

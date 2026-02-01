@@ -11,6 +11,7 @@ import { dbOps, setupListeners, setupSharedPhotosListener, loadMoreMeals, postIn
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
+import { getDisplayProfile } from './utils.js';
 import { 
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
@@ -39,7 +40,7 @@ window.cleanupFirestoreListeners = () => {
         console.warn('cleanupFirestoreListeners 실패(무시):', e);
     }
 };
-import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, filterGalleryByUser, clearGalleryFilter } from './render/index.js';
+import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab } from './render/index.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
@@ -74,6 +75,31 @@ window.filterGalleryByUser = filterGalleryByUser;
 window.Mealog.filterGalleryByUser = filterGalleryByUser;
 window.clearGalleryFilter = clearGalleryFilter;
 window.Mealog.clearGalleryFilter = clearGalleryFilter;
+window.switchGalleryFilterTab = switchGalleryFilterTab;
+window.Mealog.switchGalleryFilterTab = switchGalleryFilterTab;
+// 밀톡에서 작성자 클릭 시 사용자 프로필 화면(모먼트와 동일)으로 이동, 밀톡 탭 선택 상태로 표시
+window.openUserProfileFromBoard = (userId) => {
+    if (!userId) return;
+    appState.galleryFilterTab = 'board';
+    filterGalleryByUser(userId, '사용자');
+    switchMainTab('gallery');
+};
+window.Mealog.openUserProfileFromBoard = window.openUserProfileFromBoard;
+
+// 사용자 프로필 뷰 내 모먼트/밀톡 탭 전환 시 하단 탭 표시 동기화 (render.js에서 호출)
+window.syncBottomNavForGalleryFilter = () => {
+    const navGallery = document.getElementById('nav-gallery');
+    const navBoard = document.getElementById('nav-board');
+    if (!navGallery || !navBoard) return;
+    if (appState.currentTab === 'gallery' && appState.galleryFilterUserId && appState.galleryFilterTab === 'board') {
+        navGallery.className = 'text-slate-300 flex justify-center items-center py-1';
+        navBoard.className = 'text-slate-600 flex justify-center items-center py-1';
+    } else if (appState.currentTab === 'gallery') {
+        navGallery.className = 'text-slate-600 flex justify-center items-center py-1';
+        navBoard.className = 'text-slate-300 flex justify-center items-center py-1';
+    }
+};
+window.Mealog.syncBottomNavForGalleryFilter = window.syncBottomNavForGalleryFilter;
 window.updateHeaderUI = updateHeaderUI;
 window.Mealog.updateHeaderUI = updateHeaderUI;
 window.copyDomain = copyDomain;
@@ -518,13 +544,16 @@ window.deleteCommentFromPost = async (commentId, postId) => {
                             commentsListEl.classList.add('bg-slate-50');
                             const displayComments = comments.slice(0, 2);
                             const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
-                            commentsListEl.innerHTML = displayComments.map(c => `
+                            commentsListEl.innerHTML = displayComments.map(c => {
+                                const commentDisplay = getDisplayProfile(c.userId, { nickname: c.userNickname });
+                                return `
                                 <div class="mb-1 text-sm">
-                                    <span class="font-bold text-slate-800">${c.userNickname || '익명'}</span>
+                                    <span class="font-bold text-slate-800">${commentDisplay.nickname}</span>
                                     <span class="text-slate-800">${escapeHtml(c.comment)}</span>
                                     ${isLoggedIn && c.userId === window.currentUser?.uid ? `<button onclick="window.deleteCommentFromPost('${c.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
                                 </div>
-                            `).join('');
+                            `;
+                            }).join('');
                             
                             if (comments.length > 2) {
                                 if (viewCommentsBtn) {
@@ -601,9 +630,10 @@ window.viewAllComments = async (postId) => {
                     }
                     
                     const isMyComment = isLoggedIn && comment.userId === window.currentUser.uid;
+                    const commentDisplay = getDisplayProfile(comment.userId, { nickname: comment.userNickname });
                     return `
                         <div class="mb-1 text-sm">
-                            <span class="font-bold text-slate-800">${escapeHtml(comment.userNickname || '익명')}</span>
+                            <span class="font-bold text-slate-800">${escapeHtml(commentDisplay.nickname)}</span>
                             <span class="text-slate-800 ml-2">${escapeHtml(comment.comment || '')}</span>
                             ${dateStr && timeStr ? `<span class="text-xs text-slate-400 ml-2">${dateStr} ${timeStr}</span>` : ''}
                             ${isMyComment ? `<button onclick="window.deleteCommentFromPost('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
@@ -721,9 +751,10 @@ window.submitComment = async (postId) => {
                     } catch (_) {}
                 }
                 const safeId = String(result.id).replace(/'/g, "\\'");
+                const commentDisplay = getDisplayProfile(window.currentUser?.uid, { nickname: result.userNickname });
                 tempRow.outerHTML = `
                     <div class="mb-1 text-sm">
-                        <span class="font-bold text-slate-800">${escapeHtml(result.userNickname || '익명')}</span>
+                        <span class="font-bold text-slate-800">${escapeHtml(commentDisplay.nickname)}</span>
                         <span class="text-slate-800 ml-2">${escapeHtml(result.comment || '')}</span>
                         ${dateStr && timeStr ? `<span class="text-xs text-slate-400 ml-2">${dateStr} ${timeStr}</span>` : ''}
                         <button onclick="window.deleteCommentFromPost('${safeId}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>
@@ -791,9 +822,10 @@ async function loadPostComments(postId) {
                     
                     const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
                     const isMyComment = isLoggedIn && comment.userId === window.currentUser.uid;
+                    const commentDisplay = getDisplayProfile(comment.userId, { nickname: comment.userNickname });
                     return `
                         <div class="mb-1 text-sm">
-                            <span class="font-bold text-slate-800">${escapeHtml(comment.userNickname || '익명')}</span>
+                            <span class="font-bold text-slate-800">${escapeHtml(commentDisplay.nickname)}</span>
                             <span class="text-slate-800 ml-2">${escapeHtml(comment.comment || '')}</span>
                             ${dateStr && timeStr ? `<span class="text-xs text-slate-400 ml-2">${dateStr} ${timeStr}</span>` : ''}
                             ${isMyComment ? `<button onclick="window.deleteCommentFromPost('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
@@ -1304,6 +1336,11 @@ window.switchMainTab = (tab) => {
     try {
         console.log('[탭전환] 시작:', { 이전탭: appState.currentTab, 새탭: tab });
         appState.currentTab = tab;
+        // 사용자별 보기에서 다른 탭으로 나가면 최상단 헤더 다시 표시
+        if (tab !== 'gallery') {
+            const mainHeader = document.querySelector('#mainApp > header');
+            if (mainHeader) mainHeader.classList.remove('hidden');
+        }
     updateHeaderSectionLabel(tab);
     document.getElementById('timelineView').classList.toggle('hidden', tab !== 'timeline');
     document.getElementById('galleryView').classList.toggle('hidden', tab !== 'gallery');
@@ -1347,6 +1384,14 @@ window.switchMainTab = (tab) => {
         'text-slate-600 flex justify-center items-center py-1' : 
         'text-slate-300 flex justify-center items-center py-1';
     
+    // 사용자 프로필 뷰에서 밀톡 탭 선택 시: 하단 탭도 밀톡이 선택된 것처럼 표시
+    if (tab === 'gallery' && appState.galleryFilterUserId && appState.galleryFilterTab === 'board') {
+        const navGallery = document.getElementById('nav-gallery');
+        const navBoard = document.getElementById('nav-board');
+        if (navGallery) navGallery.className = 'text-slate-300 flex justify-center items-center py-1';
+        if (navBoard) navBoard.className = 'text-slate-600 flex justify-center items-center py-1';
+    }
+    
     const searchBtn = document.getElementById('searchTriggerBtn');
     const tracePanel = document.getElementById('galleryTraceFilterPanel');
     const timelineSearchPanel = document.getElementById('timelineSearchPanel');
@@ -1374,6 +1419,13 @@ window.switchMainTab = (tab) => {
         // 리스너가 업데이트될 시간을 주기 위해 약간의 지연 후 렌더링
         setTimeout(() => {
             renderGallery();
+            // 사용자 프로필 + 밀톡 탭이면 하단 탭도 밀톡 선택 상태 유지
+            if (appState.galleryFilterUserId && appState.galleryFilterTab === 'board') {
+                const navGallery = document.getElementById('nav-gallery');
+                const navBoard = document.getElementById('nav-board');
+                if (navGallery) navGallery.className = 'text-slate-300 flex justify-center items-center py-1';
+                if (navBoard) navBoard.className = 'text-slate-600 flex justify-center items-center py-1';
+            }
             // 갤러리 탭으로 전환 시 맨 위로 스크롤
             setTimeout(() => {
                 window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -3014,9 +3066,9 @@ window.deleteBoardComment = async (commentId, postId) => {
                         const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
                         const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
                         const isCommentAuthor = window.currentUser && comment.authorId === window.currentUser.uid;
-                        const commentAuthorNickname = comment.authorNickname || comment.anonymousId || '익명';
+                        const commentDisplay = getDisplayProfile(comment.authorId, { nickname: comment.authorNickname || comment.anonymousId });
                         const commentBody = comment.content ?? comment.text ?? '';
-                        return `<div class="mb-1 text-sm" data-comment-id="${comment.id}"><span class="font-bold text-slate-800">${escapeHtml(commentAuthorNickname)}</span><span class="text-slate-800 ml-2">${escapeHtml(commentBody)}</span><span class="text-xs text-slate-400 ml-2">${commentDateStr} ${commentTimeStr}</span>${isCommentAuthor ? `<button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}</div>`;
+                        return `<div class="mb-1 text-sm" data-comment-id="${comment.id}"><span class="font-bold text-slate-800">${escapeHtml(commentDisplay.nickname)}</span><span class="text-slate-800 ml-2">${escapeHtml(commentBody)}</span><span class="text-xs text-slate-400 ml-2">${commentDateStr} ${commentTimeStr}</span>${isCommentAuthor ? `<button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}</div>`;
                     }).join('');
                 } else {
                     commentsListEl.innerHTML = '';
