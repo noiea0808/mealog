@@ -118,6 +118,8 @@ async function loadCharactersFromFirebase() {
                             const personaData = personaDoc.data();
                             if (personaData.persona) char.persona = personaData.persona;
                             if (personaData.systemPrompt) char.systemPrompt = personaData.systemPrompt;
+                            if (personaData.name) char.name = personaData.name;
+                            if (personaData.image !== undefined) char.image = personaData.image || null;
                         }
                     } catch (e) {
                         console.error(`캐릭터 ${char.id} 설정 가져오기 실패:`, e);

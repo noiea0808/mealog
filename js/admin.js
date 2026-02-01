@@ -4282,7 +4282,7 @@ function renderCharacterEditorForm(characterData) {
             <!-- 이미지 업로드 -->
             <div>
                 <label class="block text-sm font-bold text-slate-700 mb-2">
-                    <i class="fa-solid fa-image mr-2"></i>캐릭터 이미지
+                    <i class="fa-solid fa-image mr-2"></i>캐릭터 이미지 <span class="text-slate-500 font-normal">(75px × 132px)</span>
                 </label>
                 <div class="space-y-3">
                     <input type="file" id="characterImageFile" accept="image/*" 
