@@ -535,22 +535,24 @@ export function openDetailModal(key, title) {
     
     chartHtml += '</div>';
     
-    // 식사방식/메뉴/함께한 즐거움: 탭만 상단, 제목 숨김 / 탭 선택=검정, 미선택=회색
+    // 식사방식/메뉴/함께한 즐거움: 탭만 상단, 제목 숨김 / 왼쪽=랭크, 오른쪽=시간대 차트
     const useTabs = DETAIL_MODAL_TAB_KEYS.includes(key);
     const headerEl = document.getElementById('detailModalHeader');
+    const RANK_TAB_LABELS = { mealType: '어디서', category: '자주먹은 메뉴', withWhom: '누구와', snackPlace: '어디서', snackType: '자주먹은 메뉴' };
+    const rankTabLabel = RANK_TAB_LABELS[key] || title;
     if (useTabs) {
         if (headerEl) headerEl.classList.add('hidden');
         const rankHtml = buildDetailRankTabHtml(filteredData, key);
         container.innerHTML = `
             <div class="flex items-center border-b border-slate-200 mb-4 -mx-1 flex-shrink-0">
                 <div class="flex flex-1">
-                    <button type="button" id="detailTabChartBtn" class="detail-modal-tab active flex-1 py-2.5 px-3 text-sm font-bold text-slate-900 border-b-2 border-slate-900 transition-colors">${title}</button>
-                    <button type="button" id="detailTabRankBtn" class="detail-modal-tab flex-1 py-2.5 px-3 text-sm font-bold text-slate-400 border-b-2 border-transparent hover:text-slate-600 transition-colors">어디서 / 메뉴 / 누구와</button>
+                    <button type="button" id="detailTabRankBtn" class="detail-modal-tab active flex-1 py-2.5 px-3 text-sm font-bold text-slate-900 border-b-2 border-slate-900 transition-colors">${rankTabLabel}</button>
+                    <button type="button" id="detailTabChartBtn" class="detail-modal-tab flex-1 py-2.5 px-3 text-sm font-bold text-slate-400 border-b-2 border-transparent hover:text-slate-600 transition-colors">시간대</button>
                 </div>
                 <button type="button" onclick="window.closeDetailModal()" class="p-2 -m-2 text-slate-500 hover:text-slate-700 flex-shrink-0" aria-label="닫기"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            <div id="detailTabChartPanel" class="detail-modal-panel">${chartHtml}</div>
-            <div id="detailTabRankPanel" class="detail-modal-panel hidden">${rankHtml}</div>
+            <div id="detailTabRankPanel" class="detail-modal-panel">${rankHtml}</div>
+            <div id="detailTabChartPanel" class="detail-modal-panel hidden">${chartHtml}</div>
         `;
         const chartBtn = document.getElementById('detailTabChartBtn');
         const rankBtn = document.getElementById('detailTabRankBtn');
