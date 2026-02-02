@@ -1321,21 +1321,8 @@ export async function renderGallery() {
         groupedPhotos[groupKey].push(photo);
     });
     
-    // mealHistory를 Map으로 변환하여 O(1) 조회 최적화 (근본 원인 해결)
-    // 이렇게 하면 각 포스트마다 O(n) 시간이 걸리던 find() 호출이 O(1)로 최적화됨
-    // 예: mealHistory가 1000개, 포스트가 50개면
-    // 기존: 50 * 1000 = 50,000번의 비교
-    // 최적화 후: 1000번의 Map 생성 + 50번의 Map 조회 = 1,050번의 작업
-    let mealHistoryMap = new Map();
-    if (window.mealHistory && Array.isArray(window.mealHistory)) {
-        window.mealHistory.forEach(meal => {
-            if (meal.id) {
-                mealHistoryMap.set(meal.id, meal);
-            }
-        });
-    }
-    
-    // 각 그룹 내 사진들을 mealHistory의 photos 배열 순서에 맞게 정렬 (사용자/브라우저 무관 동일 순서: normalizeUrl로 쿼리/인코딩 차이 제거)
+    // 각 그룹 내 사진을 Firestore photoIndex 기준으로만 정렬 (글쓴이/다른 사용자 동일 순서 보장)
+    // mealHistory.photos 순서는 글쓴이에게만 있어서 사용하지 않음
     const photoSortTieBreaker = (a, b) => {
         const aKey = String(a.id ?? normalizeUrl(a.photoUrl) ?? '');
         const bKey = String(b.id ?? normalizeUrl(b.photoUrl) ?? '');
@@ -1343,56 +1330,18 @@ export async function renderGallery() {
     };
     Object.keys(groupedPhotos).forEach(groupKey => {
         const photoGroup = groupedPhotos[groupKey];
-        const entryId = photoGroup[0]?.entryId;
-        
-        // 베스트 공유나 일간보기 공유는 mealHistory 정렬 불필요
-        if (entryId && mealHistoryMap.has(entryId) && !photoGroup[0]?.type) {
-            try {
-                const mealRecord = mealHistoryMap.get(entryId);
-                if (mealRecord && Array.isArray(mealRecord.photos) && mealRecord.photos.length > 0) {
-                    // mealHistory의 photos 배열 순서대로 정렬
-                    const photosOrder = mealRecord.photos.map(normalizeUrl);
-                    
-                    photoGroup.sort((a, b) => {
-                        const ai = a.photoIndex;
-                        const bi = b.photoIndex;
-                        if (typeof ai === 'number' && typeof bi === 'number') {
-                            const cmp = ai - bi;
-                            if (cmp !== 0) return cmp;
-                        }
-                        const aUrl = normalizeUrl(a.photoUrl);
-                        const bUrl = normalizeUrl(b.photoUrl);
-                        const aIndex = photosOrder.indexOf(aUrl);
-                        const bIndex = photosOrder.indexOf(bUrl);
-                        if (aIndex !== -1 && bIndex !== -1) {
-                            const cmp = aIndex - bIndex;
-                            return cmp !== 0 ? cmp : photoSortTieBreaker(a, b);
-                        } else if (aIndex !== -1) return -1;
-                        else if (bIndex !== -1) return 1;
-                        const ta = new Date(a.timestamp).getTime();
-                        const tb = new Date(b.timestamp).getTime();
-                        const cmp = ta - tb;
-                        return cmp !== 0 ? cmp : photoSortTieBreaker(a, b);
-                    });
-                }
-            } catch (e) {
-                console.warn('사진 순서 정렬 중 오류 (무시하고 계속 진행):', e);
+        photoGroup.sort((a, b) => {
+            const ai = a.photoIndex;
+            const bi = b.photoIndex;
+            if (typeof ai === 'number' && typeof bi === 'number') {
+                const cmp = ai - bi;
+                if (cmp !== 0) return cmp;
             }
-        } else {
-            // entryId가 없으면(다른 사용자 게시물 등) photoIndex 우선, 없으면 timestamp + 2차 키 (모든 사용자 동일 순서)
-            photoGroup.sort((a, b) => {
-                const ai = a.photoIndex;
-                const bi = b.photoIndex;
-                if (typeof ai === 'number' && typeof bi === 'number') {
-                    const cmp = ai - bi;
-                    if (cmp !== 0) return cmp;
-                }
-                const ta = new Date(a.timestamp).getTime();
-                const tb = new Date(b.timestamp).getTime();
-                const cmp = ta - tb;
-                return cmp !== 0 ? cmp : photoSortTieBreaker(a, b);
-            });
-        }
+            const ta = new Date(a.timestamp).getTime();
+            const tb = new Date(b.timestamp).getTime();
+            const cmp = ta - tb;
+            return cmp !== 0 ? cmp : photoSortTieBreaker(a, b);
+        });
     });
     
     // 그룹을 시간순으로 정렬 (동점 시 2차 키로 동일 순서 보장)
@@ -2250,21 +2199,7 @@ export function renderFeed() {
         groupedPhotos[groupKey].push(photo);
     });
     
-    // mealHistory를 Map으로 변환하여 O(1) 조회 최적화 (근본 원인 해결)
-    // 이렇게 하면 각 포스트마다 O(n) 시간이 걸리던 find() 호출이 O(1)로 최적화됨
-    // 예: mealHistory가 1000개, 포스트가 50개면
-    // 기존: 50 * 1000 = 50,000번의 비교
-    // 최적화 후: 1000번의 Map 생성 + 50번의 Map 조회 = 1,050번의 작업
-    let mealHistoryMap = new Map();
-    if (window.mealHistory && Array.isArray(window.mealHistory)) {
-        window.mealHistory.forEach(meal => {
-            if (meal.id) {
-                mealHistoryMap.set(meal.id, meal);
-            }
-        });
-    }
-    
-    // 각 그룹 내 사진들을 mealHistory/photoIndex 기준으로 정렬 (브라우저·사용자 무관 동일 순서, normalizeUrl로 URL 차이 제거)
+    // 각 그룹 내 사진을 Firestore photoIndex 기준으로만 정렬 (글쓴이/다른 사용자 동일 순서 보장)
     const photoSortTieBreakerSimple = (a, b) => {
         const aKey = String(a.id ?? normalizeUrl(a.photoUrl) ?? '');
         const bKey = String(b.id ?? normalizeUrl(b.photoUrl) ?? '');
@@ -2272,48 +2207,16 @@ export function renderFeed() {
     };
     Object.keys(groupedPhotos).forEach(groupKey => {
         const photoGroup = groupedPhotos[groupKey];
-        const entryId = photoGroup[0]?.entryId;
-        
-        if (entryId && mealHistoryMap.has(entryId) && !photoGroup[0]?.type) {
-            try {
-                const mealRecord = mealHistoryMap.get(entryId);
-                if (mealRecord && Array.isArray(mealRecord.photos) && mealRecord.photos.length > 0) {
-                    const photosOrder = mealRecord.photos.map(normalizeUrl);
-                    photoGroup.sort((a, b) => {
-                        const ai = a.photoIndex;
-                        const bi = b.photoIndex;
-                        if (typeof ai === 'number' && typeof bi === 'number') {
-                            const cmp = ai - bi;
-                            if (cmp !== 0) return cmp;
-                        }
-                        const aUrl = normalizeUrl(a.photoUrl);
-                        const bUrl = normalizeUrl(b.photoUrl);
-                        const aIndex = photosOrder.indexOf(aUrl);
-                        const bIndex = photosOrder.indexOf(bUrl);
-                        if (aIndex !== -1 && bIndex !== -1) {
-                            const cmp = aIndex - bIndex;
-                            return cmp !== 0 ? cmp : photoSortTieBreakerSimple(a, b);
-                        } else if (aIndex !== -1) return -1;
-                        else if (bIndex !== -1) return 1;
-                        const cmp = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-                        return cmp !== 0 ? cmp : photoSortTieBreakerSimple(a, b);
-                    });
-                }
-            } catch (e) {
-                console.warn('사진 순서 정렬 중 오류 (무시하고 계속 진행):', e);
+        photoGroup.sort((a, b) => {
+            const ai = a.photoIndex;
+            const bi = b.photoIndex;
+            if (typeof ai === 'number' && typeof bi === 'number') {
+                const cmp = ai - bi;
+                if (cmp !== 0) return cmp;
             }
-        } else {
-            photoGroup.sort((a, b) => {
-                const ai = a.photoIndex;
-                const bi = b.photoIndex;
-                if (typeof ai === 'number' && typeof bi === 'number') {
-                    const cmp = ai - bi;
-                    if (cmp !== 0) return cmp;
-                }
-                const cmp = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-                return cmp !== 0 ? cmp : photoSortTieBreakerSimple(a, b);
-            });
-        }
+            const cmp = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+            return cmp !== 0 ? cmp : photoSortTieBreakerSimple(a, b);
+        });
     });
     
     // 그룹을 시간순으로 정렬 (동점 시 2차 키로 동일 순서 보장)
