@@ -64,6 +64,17 @@ body {
     align-items: center;
     margin-bottom: 0.5rem; /* mb-2 */
 }
+/* 밀당 분석 카드 전용: 식사/간식 분석 섹션 안에서만 적용 (다른 컨테이너 영향 없음) */
+#mainAnalysisSection .analytics-chart-wrap,
+#snackAnalysisSection .analytics-chart-wrap {
+    padding-left: 2px;
+    padding-right: 2px;
+}
+#mainAnalysisSection .analytics-card-head,
+#snackAnalysisSection .analytics-card-head {
+    padding-left: 12px;
+    padding-right: 22px;
+}
 
 /* Tab layout primitives (main app) */
 .ui-tab-view {
@@ -473,6 +484,22 @@ header .mealog-title {
 }
 .settings-tab-content {
     min-height: 100%;
+}
+/* 태그 관리 / 밀당 메모: 좌우 화면 너비에 맞춰 컨테이너 폭 최대 */
+.settings-tab-content-fullwidth {
+    margin-left: -1rem;
+    margin-right: -1rem;
+    width: calc(100% + 2rem);
+    padding-left: 0;
+    padding-right: 0;
+}
+/* 사용자 > 태그 관리 / 밀당 메모: 바깥 컨테이너 영역 표시 */
+.settings-section-container {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    padding: 1rem 0.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 /* 프로필 설정 (트위터 스타일: 리스트형 행 + 얇은 구분선, 박스 최소화) */

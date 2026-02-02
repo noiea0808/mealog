@@ -228,7 +228,8 @@ export async function updateDashboard() {
     renderProportionChart('ratingChartContainer', mainMealsOnly.filter(m => m.rating), 'rating');
     renderProportionChart('satietyChartContainer', filteredData.filter(m => m.satiety), 'satiety');
     
-    // 간식 분석 차트
+    // 간식 분석 차트 (어디서 → 무엇을 순)
+    renderProportionChart('snackPlaceChartContainer', snacksOnly.filter(m => m.place), 'snackPlace');
     renderProportionChart('snackTypeChartContainer', snacksOnly.filter(m => m.snackType), 'snackType');
     renderProportionChart('snackRatingChartContainer', snacksOnly.filter(m => m.rating), 'rating');
     
@@ -324,7 +325,7 @@ function updateAnalysisTypeUI() {
     const mainSection = document.getElementById('mainAnalysisSection');
     const snackSection = document.getElementById('snackAnalysisSection');
     
-    const activeBtnClass = "flex-1 py-2.5 text-sm font-semibold transition-all relative text-emerald-600 border-b-2 border-emerald-600";
+    const activeBtnClass = "flex-1 py-2.5 text-sm font-semibold transition-all relative text-slate-900 border-b-2 border-slate-900";
     const inactiveBtnClass = "flex-1 py-2.5 text-sm font-semibold transition-all relative text-slate-400 hover:text-slate-600 border-b-2 border-transparent";
     
     // 최근 1주 또는 직접설정일 때 Best 탭 숨기기

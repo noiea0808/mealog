@@ -876,9 +876,9 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         // 식사 데이터
         prompt += `\n[식사 데이터]\n`;
         prompt += `- 총 ${analysis.totalMeals}회 기록\n`;
-        prompt += `- 식사방식: ${analysis.mealTypes || '없음'}\n`;
+        prompt += `- 어떻게: ${analysis.mealTypes || '없음'}\n`;
         prompt += `- 주요 메뉴: ${menuSummary}\n`;
-        prompt += `- 함께한 사람: ${analysis.companions || '대부분 혼자'}\n`;
+        prompt += `- 누구와: ${analysis.companions || '대부분 혼자'}\n`;
         if (analysis.avgRating) {
             prompt += `- 만족도 평균: ${analysis.avgRating}/5\n`;
         }

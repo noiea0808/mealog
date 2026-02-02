@@ -73,6 +73,7 @@ export function getInputIdFromContainer(containerId) {
     if (containerId === 'menuSuggestions') return 'menuDetailInput';
     if (containerId === 'peopleSuggestions') return 'withWhomInput';
     if (containerId === 'snackSuggestions') return 'snackDetailInput';
+    if (containerId === 'snackPlaceSuggestions') return 'snackPlaceInput';
     return null;
 }
 

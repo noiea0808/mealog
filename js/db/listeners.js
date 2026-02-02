@@ -79,7 +79,8 @@ export function setupListeners(userId, callbacks) {
                     mealType: {},
                     category: {},
                     withWhom: {},
-                    snackType: {}
+                    snackType: {},
+                    snackPlace: {}
                 };
             }
             if (!window.userSettings.tags) {
@@ -113,6 +114,9 @@ export function setupListeners(userId, callbacks) {
                         if (cachedDefaultTags.withWhom?.length) window.userSettings.tags.withWhom = [...cachedDefaultTags.withWhom];
                         if (cachedDefaultTags.category?.length) window.userSettings.tags.category = [...cachedDefaultTags.category];
                         if (cachedDefaultTags.snackType?.length) window.userSettings.tags.snackType = [...cachedDefaultTags.snackType];
+                        if (cachedDefaultTags.subTagsPlaceSnack?.length) {
+                            window.userSettings.tags.snackPlaceMain = [...cachedDefaultTags.subTagsPlaceSnack];
+                        }
                     } else {
                         const tagsDoc = doc(db, 'artifacts', appId, 'content', 'defaultTags');
                         const tagsSnap = await getDoc(tagsDoc);
@@ -122,12 +126,17 @@ export function setupListeners(userId, callbacks) {
                                 mealType: adminTags.mealType,
                                 withWhom: adminTags.withWhom,
                                 category: adminTags.category,
-                                snackType: adminTags.snackType
+                                snackType: adminTags.snackType,
+                                subTagsPlaceSnack: adminTags.subTagsPlaceSnack
                             };
                             if (adminTags.mealType?.length) window.userSettings.tags.mealType = [...adminTags.mealType];
                             if (adminTags.withWhom?.length) window.userSettings.tags.withWhom = [...adminTags.withWhom];
                             if (adminTags.category?.length) window.userSettings.tags.category = [...adminTags.category];
                             if (adminTags.snackType?.length) window.userSettings.tags.snackType = [...adminTags.snackType];
+                            // 간식 어디서: 관리자 메인태그 순서대로 사용 (메인태그는 칩으로, 개별 태그는 사용자 설정에서 등록)
+                            if (adminTags.subTagsPlaceSnack && Array.isArray(adminTags.subTagsPlaceSnack) && adminTags.subTagsPlaceSnack.length > 0) {
+                                window.userSettings.tags.snackPlaceMain = [...adminTags.subTagsPlaceSnack];
+                            }
                             console.log('✅ 관리자 태그 병합 완료 (캐시 저장)');
                         }
                     }
@@ -372,7 +381,7 @@ export function setupListeners(userId, callbacks) {
                 if (serverSnap.exists()) {
                     window.userSettings = serverSnap.data();
                     if (!window.userSettings.subTags) window.userSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
-                    if (!window.userSettings.favoriteSubTags) window.userSettings.favoriteSubTags = { mealType: {}, category: {}, withWhom: {}, snackType: {} };
+                    if (!window.userSettings.favoriteSubTags) window.userSettings.favoriteSubTags = { mealType: {}, category: {}, withWhom: {}, snackType: {}, snackPlace: {} };
                     console.log('📥 설정 서버에서 로드 (캐시 미스 시): termsAgreed=', window.userSettings.termsAgreed);
                     if (onSettingsUpdate) onSettingsUpdate();
                     return;

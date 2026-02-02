@@ -164,7 +164,7 @@ export function openModal(date, slotId, entryId = null) {
         const shareIndicator = document.getElementById('sharePhotoIndicator');
         if (shareIndicator) shareIndicator.classList.add('hidden');
         
-        ['placeInput', 'menuDetailInput', 'withWhomInput', 'snackDetailInput', 'generalCommentInput', 'snackCommentInput'].forEach(id => {
+        ['placeInput', 'menuDetailInput', 'withWhomInput', 'snackDetailInput', 'snackPlaceInput', 'generalCommentInput', 'snackCommentInput'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
@@ -228,6 +228,10 @@ export function openModal(date, slotId, entryId = null) {
         document.getElementById('mainMealFields')?.classList.toggle('hidden', isS);
         document.getElementById('snackFields')?.classList.toggle('hidden', !isS);
         
+        if (isS) {
+            appState.selectedSnackPlaceMainTag = null;
+        }
+        
         // 필드 활성화 상태 초기화 (Skip이 아닌 경우 활성화)
         if (!isS) {
             toggleFieldsForSkip(false);
@@ -286,6 +290,7 @@ export function openModal(date, slotId, entryId = null) {
                 setVal('menuDetailInput', r.menuDetail || "");
                 setVal('withWhomInput', r.withWhomDetail || "");
                 setVal('snackDetailInput', r.menuDetail || "");
+                setVal('snackPlaceInput', r.place || "");
                 setVal('generalCommentInput', r.comment || "");
                 setVal('snackCommentInput', r.comment || "");
                 
@@ -345,7 +350,33 @@ export function openModal(date, slotId, entryId = null) {
                         }
                     }
                     
-                    // 장소 (place) - sub-chip
+                    // 간식 어디서 (snackPlace): 메인칩 선택 시 개별 추천 표시
+                    if (isS && r.place) {
+                        const snackPlaceMain = window.userSettings?.tags?.snackPlaceMain || ['집', '사무실', '카페'];
+                        if (snackPlaceMain.includes(r.place.trim())) {
+                            appState.selectedSnackPlaceMainTag = r.place.trim();
+                            const subTags = window.userSettings?.subTags?.place || [];
+                            window.renderSecondary('snackPlaceSuggestions', subTags, 'snackPlaceInput', r.place.trim(), 'place');
+                        }
+                        const snackPlaceTypeChips = document.getElementById('snackPlaceTypeChips');
+                        if (snackPlaceTypeChips) {
+                            snackPlaceTypeChips.querySelectorAll('button.chip').forEach(ch => {
+                                if (ch.innerText.trim() === r.place.trim()) {
+                                    ch.classList.add('active');
+                                }
+                            });
+                        }
+                        const snackPlaceSuggestions = document.getElementById('snackPlaceSuggestions');
+                        if (snackPlaceSuggestions) {
+                            snackPlaceSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
+                                if (ch.innerText.trim().replace(/\s*★\s*$/, '') === r.place.trim()) {
+                                    ch.classList.add('active');
+                                }
+                            });
+                        }
+                    }
+                    
+                    // 장소 (place) - sub-chip (본식)
                     if (r.place) {
                         const restaurantSuggestions = document.getElementById('restaurantSuggestions');
                         if (restaurantSuggestions) {
@@ -457,6 +488,15 @@ export function openModal(date, slotId, entryId = null) {
                 if (isS && r.snackType) {
                     const subTags = window.userSettings.subTags.snack || [];
                     window.renderSecondary('snackSuggestions', subTags, 'snackDetailInput', r.snackType, 'snack');
+                }
+                // 간식 어디서: place가 메인태그에 있으면 선택 상태로 추천 표시
+                if (isS && r.place) {
+                    const snackPlaceMain = window.userSettings?.tags?.snackPlaceMain || ['집', '사무실', '카페'];
+                    if (snackPlaceMain.includes(r.place.trim())) {
+                        appState.selectedSnackPlaceMainTag = r.place.trim();
+                        const subTags = window.userSettings?.subTags?.place || [];
+                        window.renderSecondary('snackPlaceSuggestions', subTags, 'snackPlaceInput', r.place.trim(), 'place');
+                    }
                 }
                 
                 document.getElementById('btnDelete')?.classList.remove('hidden');
@@ -572,6 +612,7 @@ export async function saveEntry() {
         // 간식 입력값 가져오기 (hidden 상태여도 값을 가져올 수 있음)
         const snackDetailInput = document.getElementById('snackDetailInput');
         const snackInputVal = snackDetailInput ? snackDetailInput.value.trim() : '';
+        const snackPlaceInputVal = document.getElementById('snackPlaceInput')?.value?.trim() || '';
         
         // 디버깅: 간식 입력값 확인
         if (isS) {
@@ -596,6 +637,11 @@ export async function saveEntry() {
         let tagsChanged = false;
         if (placeInputVal && !newSettings.subTags.place.find(t => (t.text || t) === placeInputVal)) {
             newSettings.subTags.place.push({ text: placeInputVal, parent: mealType });
+            tagsChanged = true;
+        }
+        const selectedSnackPlaceMain = appState.selectedSnackPlaceMainTag || null;
+        if (isS && snackPlaceInputVal && !newSettings.subTags.place.find(t => (t.text || t) === snackPlaceInputVal)) {
+            newSettings.subTags.place.push({ text: snackPlaceInputVal, parent: selectedSnackPlaceMain || snackPlaceInputVal });
             tagsChanged = true;
         }
         // 메뉴 상세 태그는 다중 선택 가능 (쉼표로 구분)
@@ -664,7 +710,7 @@ export async function saveEntry() {
             snackType: getT('snackTypeChips'),
             photos: state.currentPhotos,
             menuDetail: isSk ? '' : (isS ? snackInputVal : menuInputVal),
-            place: isSk ? '' : placeInputVal,
+            place: isSk ? '' : (isS ? (snackPlaceInputVal || appState.selectedSnackPlaceMainTag || '') : placeInputVal),
             comment: isSk ? '' : (isS ? (document.getElementById('snackCommentInput')?.value || '') : (document.getElementById('generalCommentInput')?.value || '')),
             rating: (isSk) ? null : state.currentRating,
             satiety: (isSk || isS) ? null : state.currentSatiety,
@@ -1070,16 +1116,18 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
                 placeInput.placeholder = '돋보기 버튼을 선택하여 식당을 검색해보세요';
             } else {
                 kakaoSearchBtn.classList.add('hidden');
-                placeInput.placeholder = '식당명이나 장소 (예: 스타벅스)';
+                placeInput.placeholder = '어디서 (예: 스타벅스)';
             }
         }
     }
     
     if (isPrimary && subTagKey && subContainerId) {
+        if (subContainerId === 'snackPlaceSuggestions') {
+            appState.selectedSnackPlaceMainTag = selectedValue;
+        }
         const subTags = window.userSettings.subTags[subTagKey] || [];
-        // 함께한 사람의 경우 inputId를 'withWhomInput'으로 설정 (메인 태그 선택 시 자동 입력 방지)
         const inputIdForSecondary = (subTagKey === 'people') ? 'withWhomInput' : 
-            (document.getElementById(subContainerId).getAttribute('data-input-id') || getInputIdFromContainer(subContainerId));
+            (document.getElementById(subContainerId)?.getAttribute('data-input-id') || getInputIdFromContainer(subContainerId));
         window.renderSecondary(subContainerId, subTags, inputIdForSecondary, selectedValue, subTagKey);
     }
 }
@@ -1994,43 +2042,47 @@ function renderFavoriteTagsEditor() {
     }
     
     const tagConfigs = {
-        mealType: { label: '식사 방식', subTagKey: 'place', mainTags: state.tempSettings.tags?.mealType || [] },
-        category: { label: '메뉴 카테고리', subTagKey: 'menu', mainTags: state.tempSettings.tags?.category || [] },
-        withWhom: { label: '함께한 사람', subTagKey: 'people', mainTags: state.tempSettings.tags?.withWhom || [] },
-        snackType: { label: '간식 유형', subTagKey: 'snack', mainTags: state.tempSettings.tags?.snackType || [] }
+        mealType: { prefix: '본식: ', label: '어떻게', subTagKey: 'place', mainTags: state.tempSettings.tags?.mealType || [] },
+        category: { prefix: '본식: ', label: '무엇을', subTagKey: 'menu', mainTags: state.tempSettings.tags?.category || [] },
+        withWhom: { prefix: '본식: ', label: '누구와', subTagKey: 'people', mainTags: state.tempSettings.tags?.withWhom || [] },
+        snackType: { prefix: '간식: ', label: '무엇을', subTagKey: 'snack', mainTags: state.tempSettings.tags?.snackType || [] },
+        snackPlace: { prefix: '간식: ', label: '어디서', subTagKey: 'place', mainTags: state.tempSettings.tags?.snackPlaceMain || ['집', '사무실', '카페'] }
     };
     
     let html = '';
-    Object.entries(tagConfigs).forEach(([mainTagKey, config]) => {
-        const favoritesByMainTag = state.tempSettings.favoriteSubTags[mainTagKey] || {};
-        const selectedMainTag = state.selectedFavoriteMainTag[mainTagKey] || null;
+    Object.entries(tagConfigs).forEach(([sectionId, config]) => {
+        const sectionKey = config.sectionKey || sectionId;
+        const storageKey = config.storageKey || sectionId;
+        const favoritesByMainTag = state.tempSettings.favoriteSubTags[storageKey] || {};
+        const selectedMainTag = state.selectedFavoriteMainTag[sectionKey] || null;
         const selectedFavorites = selectedMainTag ? (favoritesByMainTag[selectedMainTag] || []) : [];
+        const sectionTitle = (config.prefix || '') + config.label;
         
         html += `<div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-6">
-            <div class="text-xs font-bold text-slate-600 mb-3 uppercase">${config.label}</div>
-            <div id="favoriteMainTags-${mainTagKey}" class="flex flex-wrap gap-2 mb-3">
+            <div class="text-xs font-bold text-slate-600 mb-3 uppercase">${sectionTitle}</div>
+            <div id="favoriteMainTags-${sectionKey}" class="flex flex-wrap gap-2 mb-3">
                 ${config.mainTags.map(mainTag => {
                     const isSelected = selectedMainTag === mainTag;
                     const favorites = favoritesByMainTag[mainTag] || [];
-                    return `<button onclick="window.selectFavoriteMainTag('${mainTagKey}', '${mainTag.replace(/'/g, "\\'")}')" 
+                    return `<button onclick="window.selectFavoriteMainTag('${sectionKey}', '${mainTag.replace(/'/g, "\\'")}')" 
                         class="chip ${isSelected ? 'active' : ''}">
                         <span class="font-bold">${mainTag}</span> <span class="text-[10px] opacity-70">(${favorites.length}/5)</span>
                     </button>`;
                 }).join('')}
             </div>
             <div class="flex gap-2 mb-3">
-                <input type="text" id="newFavoriteTag-${mainTagKey}-${selectedMainTag || 'none'}" class="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-slate-400" placeholder="태그 입력" onkeypress="if(event.key==='Enter' && window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${mainTagKey}']) window.addFavoriteTag('${mainTagKey}', window.selectedFavoriteMainTag['${mainTagKey}'])">
-                <button onclick="if(window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${mainTagKey}']) window.addFavoriteTag('${mainTagKey}', window.selectedFavoriteMainTag['${mainTagKey}'])" class="bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold ${selectedMainTag ? '' : 'opacity-50 cursor-not-allowed'}" ${selectedMainTag ? '' : 'disabled'}>추가</button>
+                <input type="text" id="newFavoriteTag-${sectionKey}-${selectedMainTag || 'none'}" class="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-slate-400" placeholder="태그 입력" onkeypress="if(event.key==='Enter' && window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${sectionKey}']) window.addFavoriteTag('${storageKey}', window.selectedFavoriteMainTag['${sectionKey}'])">
+                <button onclick="if(window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${sectionKey}']) window.addFavoriteTag('${storageKey}', window.selectedFavoriteMainTag['${sectionKey}'])" class="bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold ${selectedMainTag ? '' : 'opacity-50 cursor-not-allowed'}" ${selectedMainTag ? '' : 'disabled'}>추가</button>
             </div>
             ${selectedMainTag ? `
                 ${selectedFavorites.length >= 5 ? '<div class="text-[10px] text-slate-500 mb-3">최대 5개까지 입력 가능합니다</div>' : ''}
                 <div class="mt-3">
                     <div class="text-[10px] text-slate-400 mb-2">나만의 태그 (최대 5개)</div>
-                    <div class="flex flex-wrap gap-2" id="favoriteTags-${mainTagKey}-${selectedMainTag}">
+                    <div class="flex flex-wrap gap-2" id="favoriteTags-${sectionKey}-${selectedMainTag}">
                         ${selectedFavorites.map((text, idx) => `
                             <div class="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold">
                                 <span>${text}</span>
-                                <button onclick="window.removeFavoriteTag('${mainTagKey}', '${selectedMainTag.replace(/'/g, "\\'")}', ${idx})" class="ml-1 hover:bg-emerald-700 rounded-full w-4 h-4 flex items-center justify-center transition-colors">
+                                <button onclick="window.removeFavoriteTag('${storageKey}', '${selectedMainTag.replace(/'/g, "\\'")}', ${idx})" class="ml-1 hover:bg-emerald-700 rounded-full w-4 h-4 flex items-center justify-center transition-colors">
                                     <i class="fa-solid fa-xmark text-[8px]"></i>
                                 </button>
                             </div>

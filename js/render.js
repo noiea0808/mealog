@@ -71,14 +71,14 @@ export function renderEntryChips() {
             return;
         }
         
-        // 메인 태그가 선택되었을 때만 나만의 태그 표시
+        // 메인 태그가 선택되었을 때만 나만의 태그 표시 (간식 어디서는 snackPlace 사용)
         const mainTagKeyMap = {
             'place': 'mealType',
             'menu': 'category',
             'people': 'withWhom',
             'snack': 'snackType'
         };
-        const mainTagKey = mainTagKeyMap[subTagKey];
+        const mainTagKey = (subTagKey === 'place' && id === 'snackPlaceSuggestions') ? 'snackPlace' : mainTagKeyMap[subTagKey];
         const favoriteSubTags = window.userSettings?.favoriteSubTags?.[mainTagKey] || {};
         const myTags = favoriteSubTags[parentFilter] || [];
         
@@ -112,8 +112,8 @@ export function renderEntryChips() {
             return indexA - indexB;
         });
         
-        // 최근 태그는 역순으로 정렬 (최근 사용한 태그가 왼쪽에 오도록)
-        recentTagsList.reverse();
+        // 최근 태그는 역순으로 정렬 (최근 사용한 태그가 왼쪽에). 간식 어디서는 관리자 배열 순서 유지
+        if (id !== 'snackPlaceSuggestions') recentTagsList.reverse();
         
         // 나만의 태그 + 최근 태그 순서로 합치기
         const sortedList = [...myTagsList, ...recentTagsList];
@@ -124,12 +124,14 @@ export function renderEntryChips() {
             let html = '';
             
             // 나만의 태그와 최근 태그 모두 표시
+            // 간식 어디서: 관리자 강제 태그만 표시, 기록 화면에서는 삭제 불가
+            const isSnackPlace = id === 'snackPlaceSuggestions';
             html += sortedList.map(t => {
                 const text = typeof t === 'string' ? t : t.text;
                 const isActive = isMultiSelect ? (currentValues.includes(text) ? 'active' : '') : (currentInputVal === text ? 'active' : '');
                 const isMyTag = myTagsSet.has(text);
-                // 나만의 태그는 삭제 불가, 최근 태그는 삭제 가능
-                const canDelete = !isMyTag;
+                // 나만의 태그는 삭제 불가, 간식 어디서는 관리자 강제만이라 모두 삭제 불가
+                const canDelete = !isSnackPlace && !isMyTag;
                 // 최근 태그도 나만의 태그와 동일한 크기로
                 const tagClass = isMyTag 
                     ? 'bg-emerald-100 border border-emerald-400 text-emerald-700 font-bold text-xs' 
@@ -153,7 +155,11 @@ export function renderEntryChips() {
     renderPrimary('withChips', tags.withWhom, 'null', 'people', 'peopleSuggestions');
     window.renderSecondary('peopleSuggestions', subTags?.people || [], 'withWhomInput', null, 'people');
     
-    // 간식 타입 칩 렌더링 (설정이 없으면 기본값 사용)
+    // 간식 어디서: 관리자 메인태그 순서대로 칩 표시 (선택 시 개별 태그는 selectTag에서 renderSecondary 호출)
+    const snackPlaceMain = tags.snackPlaceMain || ['집', '사무실', '카페'];
+    renderPrimary('snackPlaceTypeChips', snackPlaceMain, 'null', 'place', 'snackPlaceSuggestions');
+    window.renderSecondary('snackPlaceSuggestions', subTags?.place || [], 'snackPlaceInput', null, 'place');
+    // 간식 무엇을
     const snackTypes = tags.snackType || ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타'];
     renderPrimary('snackTypeChips', snackTypes, 'null', 'snack', 'snackSuggestions');
     window.renderSecondary('snackSuggestions', subTags?.snack || [], 'snackDetailInput', null, 'snack');
@@ -1321,8 +1327,14 @@ export async function renderGallery() {
         groupedPhotos[groupKey].push(photo);
     });
     
+    // mealHistoryMap: renderPostGroup에서 댓글 등 meal 정보 조회용 (사진 순서 정렬에는 사용하지 않음)
+    let mealHistoryMap = new Map();
+    if (window.mealHistory && Array.isArray(window.mealHistory)) {
+        window.mealHistory.forEach(meal => {
+            if (meal.id) mealHistoryMap.set(meal.id, meal);
+        });
+    }
     // 각 그룹 내 사진을 Firestore photoIndex 기준으로만 정렬 (글쓴이/다른 사용자 동일 순서 보장)
-    // mealHistory.photos 순서는 글쓴이에게만 있어서 사용하지 않음
     const photoSortTieBreaker = (a, b) => {
         const aKey = String(a.id ?? normalizeUrl(a.photoUrl) ?? '');
         const bKey = String(b.id ?? normalizeUrl(b.photoUrl) ?? '');
@@ -2754,7 +2766,7 @@ export function renderTagManager(key, isSub = false, tempSettings) {
     
     let labelText = "";
     if (!isSub) {
-        if (key === 'mealType') labelText = '식사 방식 (대분류)';
+        if (key === 'mealType') labelText = '어떻게 (대분류)';
         else if (key === 'withWhom') labelText = '함께한 사람 (대분류)';
         else if (key === 'category') labelText = '메뉴 정보 (대분류)';
         else if (key === 'snackType') labelText = '간식 구분 (대분류)';

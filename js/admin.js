@@ -1386,7 +1386,8 @@ async function loadTagsContent() {
             mealType: ['집밥', '외식', '회식/술자리', '배달/포장', '구내식당', '기타', '건너뜀'],
             withWhom: ['혼자', '가족', '연인', '친구', '직장동료', '학교친구', '모임', '기타'],
             category: ['한식', '양식', '일식', '중식', '분식', '카페'],
-            snackType: ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타']
+            snackType: ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타'],
+            subTagsPlaceSnack: ['집', '사무실', '카페']
         };
         
         if (tagsSnap.exists()) {
@@ -1395,6 +1396,7 @@ async function loadTagsContent() {
             if (data.withWhom) tagsData.withWhom = data.withWhom;
             if (data.category) tagsData.category = data.category;
             if (data.snackType) tagsData.snackType = data.snackType;
+            if (data.subTagsPlaceSnack && Array.isArray(data.subTagsPlaceSnack)) tagsData.subTagsPlaceSnack = data.subTagsPlaceSnack;
         }
         
         // 태그 렌더링
@@ -1402,6 +1404,7 @@ async function loadTagsContent() {
         renderTags('withWhom', tagsData.withWhom);
         renderTags('category', tagsData.category);
         renderTags('snackType', tagsData.snackType);
+        renderTags('subTagsPlaceSnack', tagsData.subTagsPlaceSnack);
         
     } catch (e) {
         console.error('태그 콘텐츠 로드 실패:', e);
@@ -1410,12 +1413,14 @@ async function loadTagsContent() {
             mealType: ['집밥', '외식', '회식/술자리', '배달/포장', '구내식당', '기타', '건너뜀'],
             withWhom: ['혼자', '가족', '연인', '친구', '직장동료', '학교친구', '모임', '기타'],
             category: ['한식', '양식', '일식', '중식', '분식', '카페'],
-            snackType: ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타']
+            snackType: ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타'],
+            subTagsPlaceSnack: ['집', '사무실', '카페']
         };
         renderTags('mealType', defaultTags.mealType);
         renderTags('withWhom', defaultTags.withWhom);
         renderTags('category', defaultTags.category);
         renderTags('snackType', defaultTags.snackType);
+        renderTags('subTagsPlaceSnack', defaultTags.subTagsPlaceSnack);
     }
 }
 
@@ -1582,10 +1587,15 @@ window.saveTags = async function() {
         const withWhom = getCurrentTags('withWhom');
         const category = getCurrentTags('category');
         const snackType = getCurrentTags('snackType');
+        const subTagsPlaceSnack = getCurrentTags('subTagsPlaceSnack');
         
         // 빈 태그가 있는지 확인
         if (mealType.length === 0 || withWhom.length === 0 || category.length === 0 || snackType.length === 0) {
             alert('각 카테고리마다 최소 한 개의 태그가 필요합니다.');
+            return;
+        }
+        if (subTagsPlaceSnack.length === 0) {
+            alert('간식 장소는 최소 한 개의 태그가 필요합니다.');
             return;
         }
         
@@ -1594,6 +1604,7 @@ window.saveTags = async function() {
             withWhom: withWhom,
             category: category,
             snackType: snackType,
+            subTagsPlaceSnack: subTagsPlaceSnack,
             updatedAt: new Date().toISOString()
         };
         

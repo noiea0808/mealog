@@ -727,13 +727,16 @@
                             </div>
                         </div>
                         
-                        <!-- 태그 관리 -->
+                        <!-- 태그 관리 (메인태그 편집) -->
                         <div id="content-main-tags" class="content-main-section hidden">
                             <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
                                 <div class="p-6 border-b border-slate-100">
                                     <div class="flex justify-between items-center">
-                                        <h2 class="text-lg font-black text-slate-800">태그 관리</h2>
-                                        <button onclick="window.saveTags()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                        <div>
+                                            <h2 class="text-lg font-black text-slate-800">태그 관리</h2>
+                                            <p class="text-xs text-slate-500 mt-0.5">메인태그 편집 · 신규 사용자 기본 태그(어떻게/무엇을/누구와/간식 유형/간식 장소)를 수정할 수 있습니다.</p>
+                                        </div>
+                                        <button onclick="window.saveTags()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors flex-shrink-0">
                                             <i class="fa-solid fa-save mr-2"></i>저장
                                         </button>
                                     </div>
@@ -781,16 +784,31 @@
                                         </button>
                                     </div>
                                     
-                                    <!-- 간식 유형 (snackType) -->
+                                    <!-- 무엇을 - 간식 (snackType) -->
                                     <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
                                         <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
                                             <i class="fa-solid fa-cookie text-purple-600"></i>
-                                            간식 유형 (snackType)
+                                            무엇을 (snackType)
                                         </h3>
                                         <div id="tags-snackType" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                                             <!-- 태그들이 동적으로 추가됩니다 -->
                                         </div>
                                         <button onclick="window.addTagItem('snackType')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
+                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
+                                        </button>
+                                    </div>
+                                    
+                                    <!-- 간식 장소 (subTagsPlaceSnack) -->
+                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
+                                            <i class="fa-solid fa-location-dot text-rose-600"></i>
+                                            간식 장소 (subTagsPlaceSnack)
+                                        </h3>
+                                        <p class="text-xs text-slate-500 mb-3">밀로그 간식 입력 시 장소 추천 칩(집/사무실/카페 등)으로 사용됩니다.</p>
+                                        <div id="tags-subTagsPlaceSnack" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                            <!-- 태그들이 동적으로 추가됩니다 -->
+                                        </div>
+                                        <button onclick="window.addTagItem('subTagsPlaceSnack')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
                                             <i class="fa-solid fa-plus mr-2"></i>태그 추가
                                         </button>
                                     </div>
