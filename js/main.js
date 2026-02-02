@@ -1325,7 +1325,7 @@ window.saveDailyCommentFromModal = async (dateStr) => {
 // (함수들이 정의되기 전에 renderFeed가 호출될 수 있으므로)
 
 // 탭 및 뷰 모드 전환
-const HEADER_SECTION_BY_TAB = { dashboard: '밀당', timeline: '밀로그', gallery: '모먼트', board: '밀톡' };
+const HEADER_SECTION_BY_TAB = { dashboard: '밀당', timeline: '밀로그', gallery: '모먼트', board: '밀톡', settings: '사용자' };
 
 function updateHeaderSectionLabel(tab) {
     const el = document.getElementById('headerSectionLabel');
@@ -1346,6 +1346,8 @@ window.switchMainTab = (tab) => {
     document.getElementById('timelineView').classList.toggle('hidden', tab !== 'timeline');
     document.getElementById('galleryView').classList.toggle('hidden', tab !== 'gallery');
     document.getElementById('dashboardView').classList.toggle('hidden', tab !== 'dashboard');
+    const settingsView = document.getElementById('settingsView');
+    if (settingsView) settingsView.classList.toggle('hidden', tab !== 'settings');
     
     // 게시판 관련 뷰 관리
     const boardListView = document.getElementById('boardListView');
@@ -1373,17 +1375,21 @@ window.switchMainTab = (tab) => {
     
     document.getElementById('trackerSection').classList.toggle('hidden', tab !== 'timeline');
     document.getElementById('nav-timeline').className = tab === 'timeline' ? 
-        'text-slate-600 flex justify-center items-center py-1' : 
-        'text-slate-300 flex justify-center items-center py-1';
+        'text-slate-600 flex justify-center items-center py-1 flex-1' : 
+        'text-slate-300 flex justify-center items-center py-1 flex-1';
     document.getElementById('nav-gallery').className = tab === 'gallery' ? 
-        'text-slate-600 flex justify-center items-center py-1' : 
-        'text-slate-300 flex justify-center items-center py-1';
+        'text-slate-600 flex justify-center items-center py-1 flex-1' : 
+        'text-slate-300 flex justify-center items-center py-1 flex-1';
     document.getElementById('nav-dashboard').className = tab === 'dashboard' ? 
-        'text-slate-600 flex justify-center items-center py-1' : 
-        'text-slate-300 flex justify-center items-center py-1';
+        'text-slate-600 flex justify-center items-center py-1 flex-1' : 
+        'text-slate-300 flex justify-center items-center py-1 flex-1';
     document.getElementById('nav-board').className = tab === 'board' ? 
-        'text-slate-600 flex justify-center items-center py-1' : 
-        'text-slate-300 flex justify-center items-center py-1';
+        'text-slate-600 flex justify-center items-center py-1 flex-1' : 
+        'text-slate-300 flex justify-center items-center py-1 flex-1';
+    const navSettings = document.getElementById('nav-settings');
+    if (navSettings) navSettings.className = tab === 'settings' ? 
+        'text-slate-600 flex justify-center items-center py-1 flex-1 rounded-full overflow-hidden' : 
+        'text-slate-300 flex justify-center items-center py-1 flex-1 rounded-full overflow-hidden';
     
     // 사용자 프로필 뷰에서 밀톡 탭 선택 시: 하단 탭도 밀톡이 선택된 것처럼 표시
     if (tab === 'gallery' && appState.galleryFilterUserId && appState.galleryFilterTab === 'board') {
@@ -1416,6 +1422,8 @@ window.switchMainTab = (tab) => {
     
     if (tab === 'dashboard') {
         updateDashboard();
+    } else if (tab === 'settings') {
+        // 설정 탭 전환 시 폼 채우기는 nav-settings 클릭 시 openSettings()에서 수행
     } else if (tab === 'gallery') {
         // 리스너가 업데이트될 시간을 주기 위해 약간의 지연 후 렌더링
         setTimeout(() => {
@@ -3376,10 +3384,6 @@ function initEventListeners() {
         searchTriggerBtn.addEventListener('click', window.toggleSearch);
     }
     
-    const headerSettingsBtn = document.getElementById('headerSettingsBtn');
-    if (headerSettingsBtn) {
-        headerSettingsBtn.addEventListener('click', openSettings);
-    }
     
     const galleryTraceFilterPanel = document.getElementById('galleryTraceFilterPanel');
     if (galleryTraceFilterPanel) {
@@ -3427,10 +3431,12 @@ function initEventListeners() {
         navBoard.addEventListener('click', () => window.switchMainTab('board'));
     }
     
-    // 설정 페이지
-    const settingsCloseBtn = document.getElementById('settingsCloseBtn');
-    if (settingsCloseBtn) {
-        settingsCloseBtn.addEventListener('click', closeSettings);
+    const navSettings = document.getElementById('nav-settings');
+    if (navSettings) {
+        navSettings.addEventListener('click', () => {
+            if (typeof openSettings === 'function') openSettings();
+            else if (typeof window.switchMainTab === 'function') window.switchMainTab('settings');
+        });
     }
     
     const settingsTabProfile = document.getElementById('settingsTabProfile');

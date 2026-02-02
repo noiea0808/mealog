@@ -75,13 +75,15 @@ function compareWithNullsLast(a, b, dir) {
 }
 
 function getTermsRank(user, currentVersion) {
-    // 2: 최신 동의, 1: 구버전 동의(재동의 필요), 0: 미동의
+    // 2: 최신 동의(또는 앱에서 재동의를 요구하지 않는 기존 사용자), 1: 구버전 동의(재동의 필요), 0: 미동의
     const agreed = user?.termsAgreed === true;
     if (!agreed) return 0;
     // termsVersion 없음 = 앱과 동일하게 기존 사용자로 간주 → 동의함
     const ver = user?.termsVersion;
     if (ver === null || ver === undefined || String(ver).trim() === '') return 2;
     if (currentVersion && ver === currentVersion) return 2;
+    // 앱 정책: 식사 기록이 있는 사용자(기존 사용자)는 약관 버전을 검사하지 않고 동의한 것으로 처리 → 관리자 표시 일치
+    if ((user?.timelineCount ?? 0) > 0) return 2;
     return 1;
 }
 
@@ -1795,7 +1797,7 @@ async function renderUsers(options = {}) {
         return;
     }
     
-        container.innerHTML = '<tr><td colspan="14" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
+        container.innerHTML = '<tr><td colspan="12" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
     
     try {
         console.log('renderUsers 시작');
@@ -1817,7 +1819,7 @@ async function renderUsers(options = {}) {
         
         if (users.length === 0) {
             console.log('사용자가 없습니다.');
-            container.innerHTML = '<tr><td colspan="14" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
+            container.innerHTML = '<tr><td colspan="12" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
             try { applyAdminUsersPageVisibility(adminUsersCurrentPage); } catch (_) {}
             return;
         }
@@ -1840,9 +1842,11 @@ async function renderUsers(options = {}) {
         console.log(`${usersToShow.length}명 표시 (${start + 1}-${start + usersToShow.length} / ${sortedUsers.length}명).`);
         container.innerHTML = usersToShow.map(user => {
             // 약관 동의 상태: 앱(auth-flow)과 동일 기준 — termsVersion 없으면 기존 사용자로 간주하여 동의함
+            // 앱은 식사 기록이 있는 사용자(기존 사용자)는 약관 버전을 검사하지 않으므로, 여기서도 timelineCount > 0 이면 재동의 필요로 표시하지 않음
             const hasVersion = user.termsVersion != null && String(user.termsVersion).trim() !== '';
-            const hasAgreedToLatest = user.termsAgreed && (!hasVersion || user.termsVersion === currentVersion);
-            const hasAgreedToOld = user.termsAgreed && hasVersion && user.termsVersion !== currentVersion;
+            const isExistingUserByMeals = (user.timelineCount ?? 0) > 0;
+            const hasAgreedToLatest = user.termsAgreed && (!hasVersion || user.termsVersion === currentVersion || isExistingUserByMeals);
+            const hasAgreedToOld = user.termsAgreed && hasVersion && user.termsVersion !== currentVersion && !isExistingUserByMeals;
 
             let termsAgreedText;
             if (hasAgreedToLatest) {
@@ -1907,8 +1911,6 @@ async function renderUsers(options = {}) {
                             ${deleteRequestedBadge ? `<div class="mt-0.5">${deleteRequestedBadge}</div>` : ''}
                         </div>
                     </td>
-                    <td data-page="1 2" class="px-3 py-3 text-sm text-slate-600">${user.birthdate ? escapeHtml(user.birthdate) : '-'}</td>
-                    <td data-page="1 2" class="px-3 py-3 text-sm text-slate-600">${user.lifestyle ? escapeHtml(user.lifestyle) : '-'}</td>
                     <td data-page="1" class="px-4 py-3">
                         <span class="px-2 py-1 ${loginMethodBadge} text-xs font-bold rounded">${user.loginMethod || '게스트'}</span>
                     </td>
@@ -1943,7 +1945,7 @@ async function renderUsers(options = {}) {
     } catch (e) {
         console.error("사용자 목록 렌더링 실패:", e);
         const errMsg = (e && (e.message || e.code || String(e))) || '알 수 없는 오류';
-        container.innerHTML = '<tr><td colspan="14" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
+        container.innerHTML = '<tr><td colspan="12" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
     }
 }
 
@@ -2013,16 +2015,16 @@ window.switchAdminUsersPage = function (pageNum) {
     if (btn1 && btn2) {
         if (pageNum === 1) {
             btn1.classList.add('bg-emerald-100', 'text-emerald-800');
-            btn1.classList.remove('bg-slate-100', 'text-slate-600');
+            btn1.classList.remove('bg-transparent', 'text-slate-600');
             btn1.setAttribute('aria-pressed', 'true');
-            btn2.classList.add('bg-slate-100', 'text-slate-600');
+            btn2.classList.add('bg-transparent', 'text-slate-600');
             btn2.classList.remove('bg-emerald-100', 'text-emerald-800');
             btn2.setAttribute('aria-pressed', 'false');
         } else {
             btn2.classList.add('bg-emerald-100', 'text-emerald-800');
-            btn2.classList.remove('bg-slate-100', 'text-slate-600');
+            btn2.classList.remove('bg-transparent', 'text-slate-600');
             btn2.setAttribute('aria-pressed', 'true');
-            btn1.classList.add('bg-slate-100', 'text-slate-600');
+            btn1.classList.add('bg-transparent', 'text-slate-600');
             btn1.classList.remove('bg-emerald-100', 'text-emerald-800');
             btn1.setAttribute('aria-pressed', 'false');
         }
@@ -2041,14 +2043,14 @@ function _applyAdminUsersPageBtnState() {
     if (btn1 && btn2) {
         if (adminUsersCurrentPage === 1) {
             btn1.classList.add('bg-emerald-100', 'text-emerald-800');
-            btn1.classList.remove('bg-slate-100', 'text-slate-600');
-            btn2.classList.add('bg-slate-100', 'text-slate-600');
+            btn1.classList.remove('bg-transparent', 'text-slate-600');
+            btn2.classList.add('bg-transparent', 'text-slate-600');
             btn2.classList.remove('bg-emerald-100', 'text-emerald-800');
         } else {
             btn2.classList.add('bg-emerald-100', 'text-emerald-800');
-            btn2.classList.remove('bg-slate-100', 'text-slate-600');
+            btn2.classList.remove('bg-transparent', 'text-slate-600');
             btn2.setAttribute('aria-pressed', 'true');
-            btn1.classList.add('bg-slate-100', 'text-slate-600');
+            btn1.classList.add('bg-transparent', 'text-slate-600');
             btn1.classList.remove('bg-emerald-100', 'text-emerald-800');
             btn1.setAttribute('aria-pressed', 'false');
         }

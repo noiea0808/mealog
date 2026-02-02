@@ -376,37 +376,35 @@
             <div id="admin-tab-content-users" class="admin-tab-content hidden">
                 <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
                     <div class="admin-users-toolbar border-b border-slate-100 bg-white rounded-t-2xl">
-                        <div class="flex flex-wrap justify-between items-center admin-users-toolbar-inner">
-                            <h2 class="text-base font-black text-slate-800">사용자 관리</h2>
+                        <div class="flex flex-wrap justify-between items-center admin-users-toolbar-inner gap-2">
                             <div class="flex flex-wrap items-center gap-2">
-                                <span class="text-slate-500 text-xs font-bold mr-1">목록</span>
+                                <h2 class="text-base font-black text-slate-800">사용자 관리</h2>
                                 <span id="adminUsersListPaginationInfo" class="text-slate-600 text-xs">-</span>
                                 <div id="adminUsersListPagination" class="flex items-center gap-1"></div>
-                                <span class="w-px h-5 bg-slate-200 mx-1" aria-hidden="true"></span>
-                                <span class="text-slate-500 text-xs font-bold mr-1">보기</span>
-                                <button type="button" id="adminUsersPage1" onclick="window.switchAdminUsersPage(1)" class="admin-users-page-btn px-3 py-1.5 rounded-lg text-sm font-bold transition-colors bg-emerald-100 text-emerald-800" aria-pressed="true">기본</button>
-                                <button type="button" id="adminUsersPage2" onclick="window.switchAdminUsersPage(2)" class="admin-users-page-btn px-3 py-1.5 rounded-lg text-sm font-bold transition-colors bg-slate-100 text-slate-600 hover:bg-slate-200" aria-pressed="false">통계</button>
-                                <span class="w-px h-5 bg-slate-200 mx-1" aria-hidden="true"></span>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <div class="inline-flex rounded-lg bg-slate-100 p-0.5" role="group" aria-label="보기 전환">
+                                    <button type="button" id="adminUsersPage1" onclick="window.switchAdminUsersPage(1)" class="admin-users-page-btn px-3 py-1.5 rounded-md text-sm font-bold transition-colors bg-emerald-100 text-emerald-800" aria-pressed="true">기본</button>
+                                    <button type="button" id="adminUsersPage2" onclick="window.switchAdminUsersPage(2)" class="admin-users-page-btn px-3 py-1.5 rounded-md text-sm font-bold transition-colors bg-transparent text-slate-600 hover:bg-slate-200/50" aria-pressed="false">통계</button>
+                                </div>
+                                <span class="w-px h-5 bg-slate-200" aria-hidden="true"></span>
                                 <button onclick="window.refreshUsers()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
                                     <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
                                 </button>
                                 <button type="button" onclick="window.adminUserDeleteSelected()" class="px-3 py-2 bg-red-100 text-red-700 rounded-xl text-xs font-bold hover:bg-red-200 transition-colors">
                                     선택 삭제
                                 </button>
-                                <button type="button" onclick="window.processDeleteUserRequests()" class="px-3 py-2 bg-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-300 transition-colors" title="대기 중인 삭제 요청을 즉시 처리합니다">
-                                    삭제 요청 처리
-                                </button>
                                 <button type="button" onclick="window.adminUserBanShare(true)" class="px-3 py-2 bg-amber-100 text-amber-800 rounded-xl text-xs font-bold hover:bg-amber-200 transition-colors">
-                                    공유 금지 설정
+                                    공유금지
                                 </button>
                                 <button type="button" onclick="window.adminUserBanShare(false)" class="px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-colors">
-                                    공유 금지 해제
+                                    공유금지 해제
                                 </button>
                                 <button type="button" onclick="window.adminUserBanWrite(true)" class="px-3 py-2 bg-amber-100 text-amber-800 rounded-xl text-xs font-bold hover:bg-amber-200 transition-colors">
-                                    글쓰기 금지 설정
+                                    글쓰기금지
                                 </button>
                                 <button type="button" onclick="window.adminUserBanWrite(false)" class="px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-colors">
-                                    글쓰기 금지 해제
+                                    글쓰기금지 해제
                                 </button>
                             </div>
                         </div>
@@ -432,8 +430,6 @@
                                                 닉네임 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
                                             </button>
                                         </th>
-                                        <th data-page="1 2" class="px-3 py-3 text-left text-xs font-bold text-slate-600 uppercase whitespace-nowrap min-w-[4rem]">생년월일</th>
-                                        <th data-page="1 2" class="px-3 py-3 text-left text-xs font-bold text-slate-600 uppercase whitespace-nowrap min-w-[3.5rem]">라이프 스타일</th>
                                         <th data-page="1" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase min-w-[2.5rem] leading-tight">
                                             <button type="button" class="admin-users-sort hover:text-slate-800 transition-colors text-left" data-sort-key="loginMethod">
                                                 로그인<br>방법 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>

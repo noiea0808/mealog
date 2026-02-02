@@ -77,7 +77,7 @@ export function updateHeaderUI() {
         if (!window.userSettings || !window.userSettings.profile) {
             // 게스트 모드일 때는 '게' 표시
             if (isGuest) {
-                const iconEl = document.getElementById('headerIcon');
+                const iconEl = document.getElementById('navProfileIcon');
                 if (iconEl) {
                     // 모든 스타일 및 클래스 초기화
                     iconEl.className = 'w-8 h-8 rounded-full flex items-center justify-center bg-slate-300 flex-shrink-0 overflow-hidden border border-slate-400';
@@ -111,7 +111,7 @@ export function updateHeaderUI() {
             return;
         }
         
-        const iconEl = document.getElementById('headerIcon');
+        const iconEl = document.getElementById('navProfileIcon');
         
         if (iconEl) {
             // 모든 스타일 초기화

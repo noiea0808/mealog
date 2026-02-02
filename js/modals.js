@@ -1464,14 +1464,10 @@ export function openSettings() {
         }
     }
     
-    const settingsPage = document.getElementById('settingsPage');
-    settingsPage.classList.remove('hidden');
-    // 애니메이션을 위해 다음 프레임에서 클래스 추가
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            settingsPage.classList.add('settings-open');
-        });
-    });
+    // 사용자 설정을 탭으로 전환 (밀려오는 방식 없이 다른 탭과 동일하게)
+    if (typeof window.switchMainTab === 'function') {
+        window.switchMainTab('settings');
+    }
 }
 
 // 버전 정보 로드 함수
@@ -1533,12 +1529,10 @@ async function loadVersionInfo() {
 }
 
 export function closeSettings() {
-    const settingsPage = document.getElementById('settingsPage');
-    // 닫기 애니메이션
-    settingsPage.classList.remove('settings-open');
-    setTimeout(() => {
-        settingsPage.classList.add('hidden');
-    }, 300); // 애니메이션 시간과 동일
+    // 설정 탭일 때는 타임라인 탭으로 전환
+    if (typeof appState !== 'undefined' && appState.currentTab === 'settings' && typeof window.switchMainTab === 'function') {
+        window.switchMainTab('timeline');
+    }
 }
 
 // 설정 페이지 탭 전환 함수 (바 타입)
