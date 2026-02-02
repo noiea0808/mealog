@@ -1,6 +1,6 @@
 // 게시판 및 공지 관련 함수들
 import { db, appId, callableFunctions } from '../firebase.js';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, query, orderBy, limit, where, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, query, orderBy, limit, where, getDocs, getDocsFromServer, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { showToast } from '../ui.js';
 
 // 게시판 관련 함수들
@@ -524,6 +524,60 @@ export const boardOperations = {
             return comments;
         } catch (e) {
             console.error("Get Comments Error (boardComments):", e);
+            return [];
+        }
+    },
+
+    /** 내가 작성한 밀톡 글에 달린 댓글 목록: postId별 최신 댓글 시각·개수·제목 (알림용) */
+    async getBoardPostsWithCommentsForUser(ownerId) {
+        if (!ownerId) return [];
+        try {
+            const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
+            const myPostsQ = query(postsColl, where('authorId', '==', ownerId), limit(100));
+            let myPostsSnap;
+            try {
+                myPostsSnap = await getDocsFromServer(myPostsQ);
+            } catch (_) {
+                myPostsSnap = await getDocs(myPostsQ);
+            }
+            const myPostTitles = new Map();
+            myPostsSnap.docs.forEach(d => {
+                const data = d.data();
+                myPostTitles.set(d.id, (data.title || '').trim() || '(제목 없음)');
+            });
+
+            // 알림용: 서버에 저장된 postAuthorId로 "내 글에 달린 댓글"만 쿼리 (구조 변경으로 확실히 동작)
+            const commentsColl = collection(db, 'artifacts', appId, 'boardComments');
+            const commentsQ = query(commentsColl, where('postAuthorId', '==', ownerId));
+            let commentsSnap;
+            try {
+                commentsSnap = await getDocsFromServer(commentsQ);
+            } catch (_) {
+                try {
+                    commentsSnap = await getDocs(commentsQ);
+                } catch (__) {
+                    commentsSnap = { docs: [] };
+                }
+            }
+            const byPost = {};
+            for (const d of commentsSnap.docs) {
+                const data = d.data();
+                const postId = String(data.postId || '').trim();
+                if (!postId) continue;
+                const title = myPostTitles.get(postId) || '(제목 없음)';
+                let ts = 0;
+                try {
+                    const t = data.timestamp;
+                    const dateObj = t && (t.toDate ? t.toDate() : new Date(t));
+                    ts = dateObj && !Number.isNaN(dateObj.getTime()) ? dateObj.getTime() : 0;
+                } catch (_) { ts = 0; }
+                if (!byPost[postId]) byPost[postId] = { postId, lastCommentAt: 0, commentCount: 0, type: 'board', title };
+                byPost[postId].commentCount += 1;
+                if (ts > byPost[postId].lastCommentAt) byPost[postId].lastCommentAt = ts;
+            }
+            return Object.values(byPost).sort((a, b) => b.lastCommentAt - a.lastCommentAt);
+        } catch (e) {
+            console.error("Get Board Posts With Comments For User Error:", e);
             return [];
         }
     },

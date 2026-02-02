@@ -855,12 +855,13 @@ async function loadPostInteractions(postEl, postId) {
     const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
     
     // 로그인한 사용자는 좋아요/북마크 상태도 확인, 비로그인 사용자는 좋아요 수와 댓글만 가져오기
+    const alternatePostIds = (postEl.getAttribute('data-post-id-alternates') || '').split(',').filter(Boolean);
     const promiseArray = [
         window.postInteractions.getLikes(postId).catch(e => {
             console.error(`좋아요 목록 가져오기 실패 (postId: ${postId}):`, e);
             return [];
         }),
-        window.postInteractions.getComments(postId).catch(e => {
+        window.postInteractions.getComments(postId, alternatePostIds).catch(e => {
             console.error(`댓글 목록 가져오기 실패 (postId: ${postId}):`, e);
             return [];
         })
@@ -1005,26 +1006,27 @@ async function loadPostInteractions(postEl, postId) {
     }
 }
 
-// photoGroup에서 postId 계산 (갤러리 흔적 필터 및 일관된 postId용)
+// photoGroup에서 postId 계산 (갤러리 흔적 필터 및 댓글/좋아요 일관된 키용)
+// 모든 사용자가 동일한 postId를 보도록 entryId_userId 등 고정 키 사용 (첫 사진 문서 id 사용 시 사용자마다 달라져 댓글 미노출 문제 발생)
 function getPostIdFromPhotoGroup(photoGroup) {
     const photo = photoGroup[0];
     if (!photo) return null;
     const isDailyShare = photo.type === 'daily';
-    const groupKey = isDailyShare
-        ? `daily_${photo.date || 'no-date'}_${photo.userId || 'unknown'}`
-        : `${photo.entryId || 'no-entry'}_${photo.userId || 'unknown'}`;
-    let postId = photoGroup[0]?.id || photo.id || null;
-    if (!postId || postId === 'undefined' || postId === 'null') {
-        let hash = 0;
-        const ts = photo.timestamp || (photo.date ? photo.date + 'T12:00:00' : '') || '';
-        const keyForHash = `${groupKey}_${ts}`;
-        for (let i = 0; i < keyForHash.length; i++) {
-            hash = ((hash << 5) - hash) + keyForHash.charCodeAt(i);
-            hash = hash & hash;
-        }
-        postId = `post_${Math.abs(hash)}_${photo.userId || 'unknown'}`;
+    const isBestShare = photo.type === 'best';
+    const isInsightShare = photo.type === 'insight';
+    if (isDailyShare) return `daily_${photo.date || 'no-date'}_${photo.userId || 'unknown'}`;
+    if (isBestShare) return `best_${photo.id || 'no-id'}_${photo.userId || 'unknown'}`;
+    if (isInsightShare) return `insight_${(photo.dateRangeText || 'no-range').replace(/\s/g, '_')}_${photo.userId || 'unknown'}`;
+    if (photo.entryId && photo.userId) return `${photo.entryId}_${photo.userId}`;
+    let hash = 0;
+    const groupKey = `${photo.entryId || 'no-entry'}_${photo.userId || 'unknown'}`;
+    const ts = photo.timestamp || (photo.date ? photo.date + 'T12:00:00' : '') || '';
+    const keyForHash = `${groupKey}_${ts}`;
+    for (let i = 0; i < keyForHash.length; i++) {
+        hash = ((hash << 5) - hash) + keyForHash.charCodeAt(i);
+        hash = hash & hash;
     }
-    return postId;
+    return `post_${Math.abs(hash)}_${photo.userId || 'unknown'}`;
 }
 
 // 사용자 설정 가져오기 헬퍼 함수
@@ -1204,6 +1206,20 @@ export async function renderGallery() {
         `;
     }
     
+    // 알림에서 클릭 시 해당 게시물만 보기: 상단에 전체보기 버튼
+    if (appState.galleryFilterPostId && !filterUserId) {
+        userProfileHeader = `
+            <div class="gallery-post-filter-header bg-white border-b border-slate-200 sticky top-0 z-30">
+                <div class="px-4 py-3 flex items-center gap-2">
+                    <button type="button" onclick="window.clearGalleryFilterPostId && window.clearGalleryFilterPostId()" class="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-slate-700 active:bg-slate-50 rounded-full transition-colors flex-shrink-0">
+                        <i class="fa-solid fa-arrow-left text-lg"></i>
+                    </button>
+                    <span class="text-sm font-bold text-slate-800">댓글 달린 게시물</span>
+                </div>
+            </div>
+        `;
+    }
+    
     // 사용자 프로필 뷰 + 밀톡 탭: 밀톡 탭과 동일한 목록 렌더링 (_renderBoardList 사용)
     if (filterUserId && galleryFilterTab === 'board') {
         container.innerHTML = userProfileHeader + `
@@ -1319,7 +1335,12 @@ export async function renderGallery() {
         });
     }
     
-    // 각 그룹 내 사진들을 mealHistory의 photos 배열 순서에 맞게 정렬
+    // 각 그룹 내 사진들을 mealHistory의 photos 배열 순서에 맞게 정렬 (사용자/브라우저 무관 동일 순서: normalizeUrl로 쿼리/인코딩 차이 제거)
+    const photoSortTieBreaker = (a, b) => {
+        const aKey = String(a.id ?? normalizeUrl(a.photoUrl) ?? '');
+        const bKey = String(b.id ?? normalizeUrl(b.photoUrl) ?? '');
+        return aKey.localeCompare(bKey, 'en');
+    };
     Object.keys(groupedPhotos).forEach(groupKey => {
         const photoGroup = groupedPhotos[groupKey];
         const entryId = photoGroup[0]?.entryId;
@@ -1333,35 +1354,48 @@ export async function renderGallery() {
                     const photosOrder = mealRecord.photos.map(normalizeUrl);
                     
                     photoGroup.sort((a, b) => {
+                        const ai = a.photoIndex;
+                        const bi = b.photoIndex;
+                        if (typeof ai === 'number' && typeof bi === 'number') {
+                            const cmp = ai - bi;
+                            if (cmp !== 0) return cmp;
+                        }
                         const aUrl = normalizeUrl(a.photoUrl);
                         const bUrl = normalizeUrl(b.photoUrl);
                         const aIndex = photosOrder.indexOf(aUrl);
                         const bIndex = photosOrder.indexOf(bUrl);
-                        
-                        // 순서가 있으면 순서대로, 없으면 timestamp 순으로
                         if (aIndex !== -1 && bIndex !== -1) {
-                            return aIndex - bIndex;
-                        } else if (aIndex !== -1) {
-                            return -1;
-                        } else if (bIndex !== -1) {
-                            return 1;
-                        } else {
-                            return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-                        }
+                            const cmp = aIndex - bIndex;
+                            return cmp !== 0 ? cmp : photoSortTieBreaker(a, b);
+                        } else if (aIndex !== -1) return -1;
+                        else if (bIndex !== -1) return 1;
+                        const ta = new Date(a.timestamp).getTime();
+                        const tb = new Date(b.timestamp).getTime();
+                        const cmp = ta - tb;
+                        return cmp !== 0 ? cmp : photoSortTieBreaker(a, b);
                     });
                 }
             } catch (e) {
                 console.warn('사진 순서 정렬 중 오류 (무시하고 계속 진행):', e);
             }
         } else {
-            // entryId가 없으면 timestamp 순으로 정렬
+            // entryId가 없으면(다른 사용자 게시물 등) photoIndex 우선, 없으면 timestamp + 2차 키 (모든 사용자 동일 순서)
             photoGroup.sort((a, b) => {
-                return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+                const ai = a.photoIndex;
+                const bi = b.photoIndex;
+                if (typeof ai === 'number' && typeof bi === 'number') {
+                    const cmp = ai - bi;
+                    if (cmp !== 0) return cmp;
+                }
+                const ta = new Date(a.timestamp).getTime();
+                const tb = new Date(b.timestamp).getTime();
+                const cmp = ta - tb;
+                return cmp !== 0 ? cmp : photoSortTieBreaker(a, b);
             });
         }
     });
     
-    // 그룹을 시간순으로 정렬
+    // 그룹을 시간순으로 정렬 (동점 시 2차 키로 동일 순서 보장)
     let sortedGroups = Object.values(groupedPhotos).sort((a, b) => {
         // timestamp를 Date로 변환 (이미 ISO 문자열이거나 Date 객체일 수 있음)
         const getTimestamp = (photo) => {
@@ -1375,13 +1409,13 @@ export async function renderGallery() {
         
         const timeA = getTimestamp(a[0]);
         const timeB = getTimestamp(b[0]);
-        
-        return timeB - timeA; // 최신순 (큰 값이 먼저)
+        const cmp = timeB - timeA; // 최신순 (큰 값이 먼저)
+        return cmp !== 0 ? cmp : (getPostIdFromPhotoGroup(a) || '').localeCompare(getPostIdFromPhotoGroup(b) || '', 'en');
     });
     
-    // 앨범 흔적 필터: 본인이 좋아요/댓글/북마크한 게시물만 표시
+    // 앨범 흔적 필터: 본인이 좋아요/댓글/북마크한 게시물만 표시 (알림에서 한 게시물만 볼 때는 생략해 로딩 단축)
     let tracePostIds = null;
-    if (appState.galleryTraceFilter && window.currentUser && !window.currentUser.isAnonymous && window.postInteractions) {
+    if (appState.galleryTraceFilter && !appState.galleryFilterPostId && window.currentUser && !window.currentUser.isAnonymous && window.postInteractions) {
         let list = [];
         if (appState.galleryTraceFilter === 'like') {
             list = await window.postInteractions.getPostIdsLikedByUser(window.currentUser.uid);
@@ -1394,12 +1428,24 @@ export async function renderGallery() {
         sortedGroups = sortedGroups.filter(g => tracePostIds.has(getPostIdFromPhotoGroup(g)));
     }
     
+    // 알림에서 클릭 시 해당 게시물만 필터
+    const filterPostId = appState.galleryFilterPostId;
+    if (filterPostId) {
+        sortedGroups = sortedGroups.filter(g =>
+            getPostIdFromPhotoGroup(g) === filterPostId
+            || (Array.isArray(g) && (g.some(p => p.id === filterPostId) || g.some(p => p.entryId === filterPostId)))
+        );
+    }
+    
     const traceEmptyLabels = { like: '좋아요한', comment: '댓글 단', bookmark: '북마크한' };
     const traceEmptyMsg = tracePostIds && sortedGroups.length === 0
         ? (traceEmptyLabels[appState.galleryTraceFilter] || '') + ' 게시물이 없습니다'
         : null;
     
     const traceEmptyIcon = appState.galleryTraceFilter === 'like' ? 'fa-heart' : (appState.galleryTraceFilter === 'comment' ? 'fa-comment' : 'fa-bookmark');
+    
+    // 알림 필터 시 빈 메시지 (해당 게시물이 없을 때)
+    const filterPostEmptyMsg = filterPostId && sortedGroups.length === 0 ? '해당 게시물을 찾을 수 없습니다' : null;
     
     // ===== DIFFING: 변경사항이 작으면 차등 업데이트, 크면 전체 재렌더링 =====
     const currentPostIds = new Set(sortedGroups.map(g => getPostIdFromPhotoGroup(g)));
@@ -1417,10 +1463,11 @@ export async function renderGallery() {
     }
     
     // 헤더와 빈 메시지만 먼저 렌더링
-    const headerHtml = userProfileHeader + (traceEmptyMsg ? `
+    const emptyMsg = filterPostEmptyMsg || traceEmptyMsg;
+    const headerHtml = userProfileHeader + (emptyMsg ? `
             <div class="flex flex-col items-center justify-center py-20 text-center">
-                <i class="fa-regular ${traceEmptyIcon} text-6xl text-slate-200 mb-4"></i>
-                <p class="text-sm font-bold text-slate-400">${traceEmptyMsg}</p>
+                <i class="fa-regular ${filterPostEmptyMsg ? 'fa-comment' : traceEmptyIcon} text-6xl text-slate-200 mb-4"></i>
+                <p class="text-sm font-bold text-slate-400">${emptyMsg}</p>
             </div>
         ` : '');
     
@@ -1733,35 +1780,12 @@ export async function renderGallery() {
         `;
         }).join('');
         
-        // 포스트 ID 생성 (그룹의 고유 키 기반 - 안정적인 ID 생성)
-        // 같은 그룹은 항상 같은 포스트 ID를 가져야 하므로, 그룹의 첫 번째 사진 ID를 사용하거나 groupKey 기반 해시 생성
-        // 중요: 그룹 키와 일치해야 함 (일간보기 공유는 date_userId, 베스트 공유는 best_id_userId, 인사이트 공유는 dateRangeText_userId, 일반 공유는 entryId_userId)
-        let groupKey;
-        if (isDailyShare) {
-            groupKey = `daily_${photo.date || 'no-date'}_${photo.userId || 'unknown'}`;
-        } else if (isBestShare) {
-            groupKey = `best_${photo.id || 'no-id'}_${photo.userId || 'unknown'}`;
-        } else if (isInsightShare) {
-            groupKey = `insight_${photo.dateRangeText || 'no-range'}_${photo.userId || 'unknown'}`;
-        } else {
-            groupKey = `${photo.entryId || 'no-entry'}_${photo.userId || 'unknown'}`;
-        }
-        // 그룹의 첫 번째 사진 ID를 우선 사용 (getPostIdFromPhotoGroup과 동일한 계산)
-        let postId = photoGroup[0]?.id || photo.id || null;
-        if (!postId || postId === 'undefined' || postId === 'null') {
-            let hash = 0;
-            const ts = photo.timestamp || (photo.date ? photo.date + 'T12:00:00' : '') || '';
-            const keyForHash = `${groupKey}_${ts}`;
-            for (let i = 0; i < keyForHash.length; i++) {
-                hash = ((hash << 5) - hash) + keyForHash.charCodeAt(i);
-                hash = hash & hash;
-            }
-            postId = `post_${Math.abs(hash)}_${photo.userId || 'unknown'}`;
-        }
-        
+        const postId = getPostIdFromPhotoGroup(photoGroup);
+        const groupKey = postId; // 흔적 필터/신고 등에서 사용
+        const alternatePostIds = photoGroup.map(p => p.id).filter(Boolean).join(',');
         const userDisplay = getDisplayProfile(photo.userId, { nickname: photo.userNickname, icon: photo.userIcon, photoUrl: photo.userPhotoUrl });
         return `
-            <div class="mb-2 bg-white border-b border-slate-200 instagram-post" data-post-id="${postId}" data-group-key="${groupKey}">
+            <div class="mb-2 bg-white border-b border-slate-200 instagram-post" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}">
                 <div class="px-3 py-3 flex items-center gap-1 relative">
                     ${userDisplay.photoUrl ? `
                         <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${userDisplay.photoUrl}); background-size: cover; background-position: center;">
@@ -2240,53 +2264,64 @@ export function renderFeed() {
         });
     }
     
-    // 각 그룹 내 사진들을 mealHistory의 photos 배열 순서에 맞게 정렬
+    // 각 그룹 내 사진들을 mealHistory/photoIndex 기준으로 정렬 (브라우저·사용자 무관 동일 순서, normalizeUrl로 URL 차이 제거)
+    const photoSortTieBreakerSimple = (a, b) => {
+        const aKey = String(a.id ?? normalizeUrl(a.photoUrl) ?? '');
+        const bKey = String(b.id ?? normalizeUrl(b.photoUrl) ?? '');
+        return aKey.localeCompare(bKey, 'en');
+    };
     Object.keys(groupedPhotos).forEach(groupKey => {
         const photoGroup = groupedPhotos[groupKey];
         const entryId = photoGroup[0]?.entryId;
         
-        // 베스트 공유나 일간보기 공유는 mealHistory 정렬 불필요
         if (entryId && mealHistoryMap.has(entryId) && !photoGroup[0]?.type) {
             try {
                 const mealRecord = mealHistoryMap.get(entryId);
                 if (mealRecord && Array.isArray(mealRecord.photos) && mealRecord.photos.length > 0) {
-                    // mealHistory의 photos 배열 순서대로 정렬
                     const photosOrder = mealRecord.photos.map(normalizeUrl);
-                    
                     photoGroup.sort((a, b) => {
+                        const ai = a.photoIndex;
+                        const bi = b.photoIndex;
+                        if (typeof ai === 'number' && typeof bi === 'number') {
+                            const cmp = ai - bi;
+                            if (cmp !== 0) return cmp;
+                        }
                         const aUrl = normalizeUrl(a.photoUrl);
                         const bUrl = normalizeUrl(b.photoUrl);
                         const aIndex = photosOrder.indexOf(aUrl);
                         const bIndex = photosOrder.indexOf(bUrl);
-                        
-                        // 순서가 있으면 순서대로, 없으면 timestamp 순으로
                         if (aIndex !== -1 && bIndex !== -1) {
-                            return aIndex - bIndex;
-                        } else if (aIndex !== -1) {
-                            return -1;
-                        } else if (bIndex !== -1) {
-                            return 1;
-                        } else {
-                            return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-                        }
+                            const cmp = aIndex - bIndex;
+                            return cmp !== 0 ? cmp : photoSortTieBreakerSimple(a, b);
+                        } else if (aIndex !== -1) return -1;
+                        else if (bIndex !== -1) return 1;
+                        const cmp = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+                        return cmp !== 0 ? cmp : photoSortTieBreakerSimple(a, b);
                     });
                 }
             } catch (e) {
                 console.warn('사진 순서 정렬 중 오류 (무시하고 계속 진행):', e);
             }
         } else {
-            // entryId가 없으면 timestamp 순으로 정렬
             photoGroup.sort((a, b) => {
-                return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+                const ai = a.photoIndex;
+                const bi = b.photoIndex;
+                if (typeof ai === 'number' && typeof bi === 'number') {
+                    const cmp = ai - bi;
+                    if (cmp !== 0) return cmp;
+                }
+                const cmp = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+                return cmp !== 0 ? cmp : photoSortTieBreakerSimple(a, b);
             });
         }
     });
     
-    // 그룹을 시간순으로 정렬
+    // 그룹을 시간순으로 정렬 (동점 시 2차 키로 동일 순서 보장)
     const sortedGroups = Object.values(groupedPhotos).sort((a, b) => {
         const timeA = new Date(a[0].timestamp).getTime();
         const timeB = new Date(b[0].timestamp).getTime();
-        return timeB - timeA; // 최신순
+        const cmp = timeB - timeA; // 최신순
+        return cmp !== 0 ? cmp : (getPostIdFromPhotoGroup(a) || '').localeCompare(getPostIdFromPhotoGroup(b) || '', 'en');
     });
     
     container.innerHTML = sortedGroups.map((photoGroup, groupIdx) => {
@@ -2314,30 +2349,8 @@ export function renderFeed() {
         // 인사이트 공유인지 확인
         const isInsightShare = photo.type === 'insight';
         
-        // 그룹 키 생성 (postId 계산용)
-        let groupKey;
-        if (isDailyShare) {
-            groupKey = `daily_${photo.date || 'no-date'}_${photo.userId || 'unknown'}`;
-        } else if (isBestShare) {
-            groupKey = `best_${photo.id || 'no-id'}_${photo.userId || 'unknown'}`;
-        } else if (isInsightShare) {
-            groupKey = `insight_${photo.dateRangeText || 'no-range'}_${photo.userId || 'unknown'}`;
-        } else {
-            groupKey = `${entryId || 'no-entry'}_${photo.userId || 'unknown'}`;
-        }
-        
-        // postId 계산 (getPostIdFromPhotoGroup과 동일한 로직)
-        let postId = photoGroup[0]?.id || photo.id || null;
-        if (!postId || postId === 'undefined' || postId === 'null') {
-            let hash = 0;
-            const ts = photo.timestamp || (photo.date ? photo.date + 'T12:00:00' : '') || '';
-            const keyForHash = `${groupKey}_${ts}`;
-            for (let i = 0; i < keyForHash.length; i++) {
-                hash = ((hash << 5) - hash) + keyForHash.charCodeAt(i);
-                hash = hash & hash;
-            }
-            postId = `post_${Math.abs(hash)}_${photo.userId || 'unknown'}`;
-        }
+        const postId = getPostIdFromPhotoGroup(photoGroup);
+        const alternatePostIds = photoGroup.map(p => p.id).filter(Boolean).join(',');
         
         // 본인 게시물인지 확인
         const isMyPost = window.currentUser && photo.userId === window.currentUser.uid;
@@ -2462,7 +2475,7 @@ export function renderFeed() {
         
         const userDisplay = getDisplayProfile(photo.userId, { nickname: photo.userNickname, icon: photo.userIcon, photoUrl: photo.userPhotoUrl });
         return `
-            <div class="mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden">
+            <div class="mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden instagram-post" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}">
                 <div class="px-2 py-3 flex items-center gap-1 relative">
                     ${userDisplay.photoUrl ? `
                         <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${userDisplay.photoUrl}); background-size: cover; background-position: center;">
@@ -2482,7 +2495,7 @@ export function renderFeed() {
                     </div>
                     ${isBanned ? `<div class="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0"><i class="fa-solid fa-ban mr-1"></i>공유 금지</div>` : ''}
                     <div class="relative flex-shrink-0">
-                        <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-is-insight="${isInsightShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-date-range-text="${photo.dateRangeText || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${photo.id || photoGroup[0]?.id || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
+                        <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-is-insight="${isInsightShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-date-range-text="${photo.dateRangeText || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
                             <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
                         </button>
                     </div>

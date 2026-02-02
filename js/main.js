@@ -528,7 +528,8 @@ window.deleteCommentFromPost = async (commentId, postId) => {
             // 서버 응답 후 실제 데이터로 업데이트
             setTimeout(async () => {
                 try {
-                    const comments = await postInteractions.getComments(postId);
+                    const alternates = getAlternatePostIdsForPost(postId);
+                    const comments = await postInteractions.getComments(postId, alternates);
                     
                     // 댓글 개수 업데이트
                     if (commentCountEl) {
@@ -600,10 +601,19 @@ window.deleteCommentFromPost = async (commentId, postId) => {
 
 window.Mealog.deleteCommentFromPost = window.deleteCommentFromPost;
 
+// 앨범 카드의 구 postId(문서 id) 목록 — 댓글 조회 시 canonical id + 이 목록으로 함께 조회해 작성자/댓글 작성자 동일하게 표시
+function getAlternatePostIdsForPost(postId) {
+    const el = document.querySelector(`.instagram-post[data-post-id="${postId}"]`);
+    if (!el) return [];
+    const attr = el.getAttribute('data-post-id-alternates');
+    return attr ? attr.split(',').filter(Boolean) : [];
+}
+
 // 댓글 모두 보기 함수
 window.viewAllComments = async (postId) => {
     try {
-        const comments = await postInteractions.getComments(postId);
+        const alternates = getAlternatePostIdsForPost(postId);
+        const comments = await postInteractions.getComments(postId, alternates);
         const commentsListEl = document.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
         const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
         
@@ -787,7 +797,8 @@ window.submitComment = async (postId) => {
 // 포스트 댓글 로드 함수
 async function loadPostComments(postId) {
     try {
-        const comments = await postInteractions.getComments(postId);
+        const alternates = getAlternatePostIdsForPost(postId);
+        const comments = await postInteractions.getComments(postId, alternates);
         const commentsListEl = document.getElementById(`comments-list-${postId}`);
         const commentCountEl = document.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
         
@@ -1402,6 +1413,19 @@ window.switchMainTab = (tab) => {
     const searchBtn = document.getElementById('searchTriggerBtn');
     const tracePanel = document.getElementById('galleryTraceFilterPanel');
     const timelineSearchPanel = document.getElementById('timelineSearchPanel');
+    const notificationWrap = document.getElementById('notificationWrap');
+    const showNotification = window.currentUser && !window.currentUser.isAnonymous;
+    if (notificationWrap) {
+        if (showNotification) {
+            notificationWrap.classList.remove('hidden');
+            if (typeof window.updateNotificationDot === 'function') window.updateNotificationDot();
+            const popup = document.getElementById('notificationPopup');
+            if (popup && !popup.classList.contains('hidden') && typeof window.loadNotificationList === 'function') window.loadNotificationList();
+        } else {
+            notificationWrap.classList.add('hidden');
+            if (typeof window.closeNotificationPopup === 'function') window.closeNotificationPopup();
+        }
+    }
     if (searchBtn) searchBtn.style.display = (tab === 'timeline') ? 'flex' : 'none';
     if (timelineSearchPanel) {
         if (tab === 'timeline') {
@@ -1546,17 +1570,22 @@ window.toggleGalleryTracePanel = () => {
     if (typeof window.updateGalleryTraceFilterBarUI === 'function') window.updateGalleryTraceFilterBarUI();
 };
 
-/** 타임라인 검색 확장 너비: 타이틀(MEALOG) 오른쪽에서 20px 거리까지 (화면 크기 무관) */
+/** 타임라인 검색 확장 너비: 타이틀(MEALOG) 오른쪽에서 20px 거리까지 (화면 크기 무관). 접힌 상태에서는 영역 없음 */
 function updateTimelineSearchExpandWidth() {
     const title = document.querySelector('header .mealog-title');
     const wrapper = document.getElementById('timelineSearchPanel');
     const panel = wrapper?.querySelector('.timeline-search-panel');
-    if (!title || !wrapper || !panel || !wrapper.classList.contains('expanded')) return;
+    if (!title || !wrapper || !panel) return;
+    if (!wrapper.classList.contains('expanded')) {
+        panel.style.width = '';
+        wrapper.style.width = '';
+        return;
+    }
     const titleRight = title.getBoundingClientRect().right;
-    const wrapperRight = wrapper.getBoundingClientRect().right;
-    let w = wrapperRight - titleRight - 20;
+    const headerRight = wrapper.parentElement?.getBoundingClientRect().right ?? titleRight + 200;
+    let w = headerRight - titleRight - 20;
     w = Math.max(96, w);
-    panel.style.width = `${w}px`;
+    wrapper.style.width = `${w}px`;
 }
 
 window.toggleSearch = () => {
@@ -1581,6 +1610,7 @@ window.closeSearch = () => {
         wrapper.classList.remove('expanded');
         const panel = wrapper.querySelector('.timeline-search-panel');
         if (panel) panel.style.width = '';
+        wrapper.style.width = '';
     }
     document.getElementById('searchInput')?.blur();
     const inp = document.getElementById('searchInput');
@@ -1591,7 +1621,202 @@ window.closeSearch = () => {
     renderTimeline();
 };
 
+const NOTIFICATION_LAST_OPENED_KEY = 'mealog_notification_last_opened';
+const NOTIFICATION_READ_POST_IDS_KEY = 'mealog_notification_read_post_ids';
+
+/** 읽음 상태: { "type:postId": { lastCommentAt, commentCount } }. 같은 글에 새 댓글이 달리면 lastCommentAt이 커져서 다시 미확인으로 표시됨 */
+function getNotificationReadState() {
+    try {
+        const raw = localStorage.getItem(NOTIFICATION_READ_POST_IDS_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+            const obj = {};
+            parsed.forEach(key => { obj[key] = { lastCommentAt: Infinity, commentCount: Infinity }; });
+            return obj;
+        }
+        if (parsed && typeof parsed === 'object') return parsed;
+        return {};
+    } catch (_) { return {}; }
+}
+
+function setNotificationReadState(state) {
+    try { localStorage.setItem(NOTIFICATION_READ_POST_IDS_KEY, JSON.stringify(state)); } catch (_) {}
+}
+
+window.toggleNotificationPopup = () => {
+    const popup = document.getElementById('notificationPopup');
+    if (!popup) return;
+    const isOpen = !popup.classList.contains('hidden');
+    if (isOpen) {
+        window.closeNotificationPopup();
+        return;
+    }
+    popup.classList.remove('hidden');
+    try { localStorage.setItem(NOTIFICATION_LAST_OPENED_KEY, String(Date.now())); } catch (_) {}
+    if (typeof window.updateNotificationDot === 'function') window.updateNotificationDot();
+    window.loadNotificationList();
+};
+
+window.closeNotificationPopup = () => {
+    const popup = document.getElementById('notificationPopup');
+    if (popup) popup.classList.add('hidden');
+};
+
+function getNotificationReadPostIds() {
+    const state = getNotificationReadState();
+    return new Set(Object.keys(state));
+}
+
+function markNotificationAsRead(notificationKey, lastCommentAt, commentCount) {
+    const state = getNotificationReadState();
+    state[notificationKey] = { lastCommentAt: lastCommentAt ?? 0, commentCount: commentCount ?? 0 };
+    setNotificationReadState(state);
+}
+
+/** 같은 글에 새 댓글이 달리면( lastCommentAt이 커지면) 미확인으로 표시 */
+function isNotificationRead(item, readState) {
+    const key = `${item.type}:${item.postId}`;
+    const legacyKey = item.type === 'moment' ? item.postId : null;
+    const stored = readState[key] || (legacyKey ? readState[legacyKey] : null);
+    if (!stored) return false;
+    const lastAt = Number(stored.lastCommentAt);
+    const count = Number(stored.commentCount);
+    if (Number.isNaN(lastAt)) return false;
+    if (item.lastCommentAt > lastAt) return false;
+    if (!Number.isNaN(count) && item.commentCount > count) return false;
+    return true;
+}
+
+window.loadNotificationList = async () => {
+    const listEl = document.getElementById('notificationList');
+    const emptyEl = document.getElementById('notificationEmpty');
+    if (!listEl || !emptyEl) return;
+    listEl.innerHTML = '<div class="p-4 text-center text-slate-400 text-sm">불러오는 중...</div>';
+    emptyEl.classList.add('hidden');
+    if (!window.currentUser || window.currentUser.isAnonymous || !window.postInteractions) {
+        listEl.innerHTML = '';
+        emptyEl.classList.remove('hidden');
+        return;
+    }
+    try {
+        const [momentItems, boardItems] = await Promise.all([
+            postInteractions.getPostsWithCommentsForUser(window.currentUser.uid),
+            window.boardOperations && typeof window.boardOperations.getBoardPostsWithCommentsForUser === 'function'
+                ? window.boardOperations.getBoardPostsWithCommentsForUser(window.currentUser.uid)
+                : Promise.resolve([])
+        ]);
+        const merged = [...momentItems, ...boardItems].sort((a, b) => b.lastCommentAt - a.lastCommentAt);
+        const readState = getNotificationReadState();
+        const unread = merged.filter(item => !isNotificationRead(item, readState));
+        listEl.innerHTML = '';
+        const markAllReadBtn = document.getElementById('notificationMarkAllReadBtn');
+        if (markAllReadBtn) {
+            if (unread.length === 0) {
+                markAllReadBtn.classList.add('invisible');
+                markAllReadBtn.onclick = null;
+            } else {
+                markAllReadBtn.classList.remove('invisible');
+                markAllReadBtn.onclick = () => {
+                    const state = getNotificationReadState();
+                    unread.forEach(item => {
+                        const key = `${item.type}:${item.postId}`;
+                        state[key] = { lastCommentAt: item.lastCommentAt, commentCount: item.commentCount };
+                    });
+                    setNotificationReadState(state);
+                    window.loadNotificationList();
+                    window.updateNotificationDot();
+                };
+            }
+        }
+        if (unread.length === 0) {
+            emptyEl.classList.remove('hidden');
+            emptyEl.textContent = '새로운 댓글이 없습니다.';
+            return;
+        }
+        emptyEl.classList.add('hidden');
+        unread.forEach((item) => {
+            const { postId, type, lastCommentAt, commentCount, thumbnailUrl, title, momentLabel } = item;
+            const notificationKey = `${type}:${postId}`;
+            const d = new Date(lastCommentAt);
+            const timeStr = d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }) + ' ' + d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+            const row = document.createElement('button');
+            row.type = 'button';
+            row.className = 'w-full text-left px-3 py-2.5 rounded-lg hover:bg-slate-50 active:bg-slate-100 transition-colors border-b border-slate-50 last:border-0 flex items-center gap-3';
+            const label = type === 'board' ? (title ? escapeHtml(title) : '해당 게시물') : (momentLabel ? escapeHtml(momentLabel) : '해당 게시물');
+            const thumbHtml = type === 'moment' && thumbnailUrl
+                ? `<div class="flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden bg-slate-100 border border-slate-200"><img src="${escapeHtml(thumbnailUrl)}" alt="" class="w-full h-full object-cover" loading="lazy"></div>`
+                : '';
+            row.innerHTML = `${thumbHtml}<div class="flex-1 min-w-0"><span class="text-slate-700 text-sm font-medium block truncate">${label}</span><span class="text-slate-500 text-xs">댓글 ${commentCount}개 · ${timeStr}</span></div>`;
+            row.addEventListener('click', () => {
+                markNotificationAsRead(notificationKey, lastCommentAt, commentCount);
+                window.closeNotificationPopup();
+                if (type === 'board') {
+                    if (typeof window.switchMainTab === 'function') window.switchMainTab('board');
+                    if (typeof window.openBoardDetail === 'function') window.openBoardDetail(postId);
+                } else {
+                    window.navigateToNotificationPost(postId);
+                }
+                window.updateNotificationDot();
+            });
+            listEl.appendChild(row);
+        });
+    } catch (e) {
+        console.error('알림 목록 로드 실패:', e);
+        listEl.innerHTML = '';
+        emptyEl.textContent = '목록을 불러올 수 없습니다.';
+        emptyEl.classList.remove('hidden');
+    }
+};
+
+window.updateNotificationDot = async () => {
+    const dotEl = document.getElementById('notificationDot');
+    if (!dotEl) return;
+    if (!window.currentUser || window.currentUser.isAnonymous || !window.postInteractions) {
+        dotEl.classList.add('hidden');
+        return;
+    }
+    try {
+        const [momentItems, boardItems] = await Promise.all([
+            postInteractions.getPostsWithCommentsForUser(window.currentUser.uid),
+            window.boardOperations && typeof window.boardOperations.getBoardPostsWithCommentsForUser === 'function'
+                ? window.boardOperations.getBoardPostsWithCommentsForUser(window.currentUser.uid)
+                : Promise.resolve([])
+        ]);
+        const merged = [...momentItems, ...boardItems];
+        const readState = getNotificationReadState();
+        const unread = merged.filter(item => !isNotificationRead(item, readState));
+        if (unread.length > 0) dotEl.classList.remove('hidden'); else dotEl.classList.add('hidden');
+    } catch (_) {
+        dotEl.classList.add('hidden');
+    }
+};
+
+window.navigateToNotificationPost = (postId) => {
+    if (!postId) return;
+    appState.currentTab = 'gallery';
+    appState.galleryFilterUserId = null;
+    appState.galleryFilterPostId = postId;
+    appState.galleryFilterTab = 'moment';
+    if (typeof window.switchMainTab === 'function') window.switchMainTab('gallery');
+    setTimeout(() => renderGallery(), 100);
+};
+
+window.clearGalleryFilterPostId = () => {
+    appState.galleryFilterPostId = null;
+    renderGallery();
+};
+
 window.addEventListener('resize', updateTimelineSearchExpandWidth);
+
+// 앱 탭으로 돌아올 때 알림(빨간 점·목록) 갱신
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && window.currentUser && !window.currentUser.isAnonymous) {
+        if (typeof window.updateNotificationDot === 'function') window.updateNotificationDot();
+        const popup = document.getElementById('notificationPopup');
+        if (popup && !popup.classList.contains('hidden') && typeof window.loadNotificationList === 'function') window.loadNotificationList();
+    }
+});
 
 // 앨범/밀톡 흔적 필터 패널 버튼 상태 갱신
 window.updateGalleryTraceFilterBarUI = () => {
@@ -3384,6 +3609,21 @@ function initEventListeners() {
         searchTriggerBtn.addEventListener('click', window.toggleSearch);
     }
     
+    // 알림: 클릭 시 팝업, 바깥 클릭 시 닫기
+    const notificationTriggerBtn = document.getElementById('notificationTriggerBtn');
+    if (notificationTriggerBtn) {
+        notificationTriggerBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            window.toggleNotificationPopup();
+        });
+    }
+    document.addEventListener('click', () => {
+        if (typeof window.closeNotificationPopup === 'function') window.closeNotificationPopup();
+    });
+    const notificationPopup = document.getElementById('notificationPopup');
+    if (notificationPopup) {
+        notificationPopup.addEventListener('click', (e) => e.stopPropagation());
+    }
     
     const galleryTraceFilterPanel = document.getElementById('galleryTraceFilterPanel');
     if (galleryTraceFilterPanel) {

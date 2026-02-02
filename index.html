@@ -469,35 +469,50 @@
     <!-- 2. Main Application -->
     <div id="mainApp" class="hidden">
         <header class="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-sm max-h-[60px]">
-                <div class="py-2.5 flex justify-between items-center px-6">
-                <div class="flex items-baseline gap-2">
+            <div class="py-2.5 flex justify-between items-center px-6">
+                <div class="flex items-baseline gap-2 min-w-0">
                     <h1 id="headerAppTitle" class="mealog-title text-2xl text-emerald-600 tracking-tighter">mealog</h1>
                     <span id="headerSectionLabel" class="header-section-label text-xs font-semibold tracking-tight">밀로그</span>
                 </div>
-                <div class="flex items-center gap-2">
-                    <!-- 타임라인 탭: 돋보기 클릭 시 왼쪽으로 입력창 확장, 프로필 밀지 않음(고정폭+absolute) -->
-                    <div id="timelineSearchPanel" class="timeline-search-wrapper hidden relative w-8 flex-shrink-0 overflow-visible">
-                        <div class="timeline-search-panel flex items-center overflow-hidden bg-slate-100 rounded-full border border-slate-400">
+                <!-- 우측: 돋보기(모먼트/밀로그/밀톡만) → 알림(모든 메뉴) 순서 고정 -->
+                <div class="header-right flex items-center gap-2 flex-shrink-0">
+                    <!-- 돋보기: 모먼트(타임라인) = 검색, 밀로그/밀톡 = 하트·댓글·북마크·돋보기 -->
+                    <div id="timelineSearchPanel" class="timeline-search-wrapper hidden relative overflow-visible">
+                        <div class="timeline-search-panel flex items-center overflow-hidden">
                             <input type="text" id="searchInput" placeholder="메뉴, 장소 검색..." class="flex-1 min-w-0 bg-transparent border-0 pl-3 pr-1 py-1.5 text-sm outline-none focus:ring-0" oninput="window.safeCall('handleSearch', this.value)">
-                            <button type="button" onclick="window.toggleSearch()" class="timeline-search-toggle w-8 h-8 flex items-center justify-center flex-shrink-0 text-slate-500 active:bg-slate-200 rounded-full" aria-label="검색">
+                            <button type="button" id="searchTriggerBtn" class="timeline-search-toggle w-8 h-8 flex items-center justify-center flex-shrink-0 text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors" aria-label="검색">
                                 <i class="fa-solid fa-magnifying-glass text-sm"></i>
                             </button>
                         </div>
                     </div>
-                    <!-- 앨범 탭: 돋보기 위치에서 왼쪽으로 확장 (하트/댓글/북마크/돋보기), 4개 통합 배경 -->
-                    <div id="galleryTraceFilterPanel" class="gallery-trace-panel hidden flex items-center gap-0.5 overflow-hidden transition-all duration-300 ease-out flex-shrink-0 bg-slate-100 rounded-full border border-slate-400">
-                        <button type="button" data-trace="like" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-500 hover:bg-slate-200 hover:text-red-500 transition-colors flex-shrink-0">
+                    <div id="galleryTraceFilterPanel" class="gallery-trace-panel hidden flex items-center gap-0.5 overflow-hidden transition-all duration-300 ease-out">
+                        <button type="button" data-trace="like" class="gallery-trace-btn flex items-center justify-center w-8 h-8 text-slate-600 hover:text-red-500 active:opacity-80 transition-colors flex-shrink-0">
                             <i class="fa-regular fa-heart text-sm"></i>
                         </button>
-                        <button type="button" data-trace="comment" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-500 hover:bg-slate-200 hover:text-slate-600 transition-colors flex-shrink-0">
+                        <button type="button" data-trace="comment" class="gallery-trace-btn flex items-center justify-center w-8 h-8 text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors flex-shrink-0">
                             <i class="fa-regular fa-comment text-sm"></i>
                         </button>
-                        <button type="button" data-trace="bookmark" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-500 hover:bg-slate-200 hover:text-slate-600 transition-colors flex-shrink-0">
+                        <button type="button" data-trace="bookmark" class="gallery-trace-btn flex items-center justify-center w-8 h-8 text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors flex-shrink-0">
                             <i class="fa-regular fa-bookmark text-sm"></i>
                         </button>
-                        <button type="button" data-trace="collapse" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-500 hover:bg-slate-200 transition-colors flex-shrink-0">
+                        <button type="button" data-trace="collapse" class="gallery-trace-btn flex items-center justify-center w-8 h-8 text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors flex-shrink-0">
                             <i class="fa-solid fa-magnifying-glass text-sm"></i>
                         </button>
+                    </div>
+                    <!-- 알림: 최우측, 모든 메뉴 -->
+                    <div id="notificationWrap" class="relative hidden">
+                        <button type="button" id="notificationTriggerBtn" class="notification-trigger w-8 h-8 flex items-center justify-center text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors" aria-label="알림">
+                            <i class="fa-regular fa-bell text-lg"></i>
+                            <span id="notificationDot" class="notification-dot absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full hidden" aria-hidden="true"></span>
+                        </button>
+                        <div id="notificationPopup" class="notification-popup absolute right-0 top-full mt-1.5 w-72 max-h-[70vh] overflow-hidden hidden rounded-xl border border-slate-200 bg-white shadow-lg z-[60]">
+                            <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-100">
+                                <span class="font-semibold text-sm text-slate-700">새로운 댓글</span>
+                                <button type="button" id="notificationMarkAllReadBtn" class="text-xs font-medium text-emerald-600 hover:text-emerald-700 active:opacity-80 ml-auto">모두 읽음</button>
+                            </div>
+                            <div id="notificationList" class="overflow-y-auto max-h-[60vh] p-2"></div>
+                            <div id="notificationEmpty" class="p-4 text-center text-slate-400 text-sm hidden">새로운 댓글이 없습니다.</div>
+                        </div>
                     </div>
                 </div>
             </div>

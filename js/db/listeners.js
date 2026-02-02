@@ -69,32 +69,8 @@ export function setupListeners(userId, callbacks) {
             return;
         }
         
-        // users/{userId} 문서가 없으면 생성 (세션당 1회만 getDoc → 읽기 절감)
-        if (userDocEnsureDoneForUid !== userId) {
-            try {
-                const userDocRef = doc(db, 'artifacts', appId, 'users', userId);
-                const userDocSnap = await getDoc(userDocRef);
-                if (!userDocSnap.exists()) {
-                    await setDoc(userDocRef, {
-                        createdAt: new Date().toISOString(),
-                        lastLoginAt: new Date().toISOString()
-                    }, { merge: true });
-                    console.log('✅ users/{userId} 문서 생성 완료:', userId);
-                }
-                userDocEnsureDoneForUid = userId;
-            } catch (e) {
-                console.warn('users/{userId} 문서 생성 실패:', e);
-            }
-        }
-        
         if (snap.exists()) {
             window.userSettings = snap.data();
-            console.log('📥 설정 로드 완료:', {
-                hasProfile: !!(window.userSettings.profile && window.userSettings.profile.nickname),
-                nickname: window.userSettings.profile?.nickname,
-                termsAgreed: window.userSettings.termsAgreed,
-                termsVersion: window.userSettings.termsVersion
-            });
             if (!window.userSettings.subTags) {
                 window.userSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
             }
@@ -106,50 +82,65 @@ export function setupListeners(userId, callbacks) {
                     snackType: {}
                 };
             }
+            if (!window.userSettings.tags) {
+                window.userSettings.tags = {};
+            }
+            // 첫 화면을 빨리 보여주기 위해 user doc·태그 로드 전에 먼저 콜백 호출
+            console.log('📞 onSettingsUpdate 콜백 호출 (초기)');
+            if (onSettingsUpdate) onSettingsUpdate();
             
-            // 관리자 태그: 캐시 있으면 재사용, 없을 때만 getDoc (읽기 절감)
-            try {
-                if (!window.userSettings.tags) {
-                    window.userSettings.tags = {};
-                }
-                if (cachedDefaultTags) {
-                    if (cachedDefaultTags.mealType?.length) window.userSettings.tags.mealType = [...cachedDefaultTags.mealType];
-                    if (cachedDefaultTags.withWhom?.length) window.userSettings.tags.withWhom = [...cachedDefaultTags.withWhom];
-                    if (cachedDefaultTags.category?.length) window.userSettings.tags.category = [...cachedDefaultTags.category];
-                    if (cachedDefaultTags.snackType?.length) window.userSettings.tags.snackType = [...cachedDefaultTags.snackType];
-                } else {
-                    const tagsDoc = doc(db, 'artifacts', appId, 'content', 'defaultTags');
-                    const tagsSnap = await getDoc(tagsDoc);
-                    if (tagsSnap.exists()) {
-                        const adminTags = tagsSnap.data();
-                        cachedDefaultTags = {
-                            mealType: adminTags.mealType,
-                            withWhom: adminTags.withWhom,
-                            category: adminTags.category,
-                            snackType: adminTags.snackType
-                        };
-                        if (adminTags.mealType?.length) window.userSettings.tags.mealType = [...adminTags.mealType];
-                        if (adminTags.withWhom?.length) window.userSettings.tags.withWhom = [...adminTags.withWhom];
-                        if (adminTags.category?.length) window.userSettings.tags.category = [...adminTags.category];
-                        if (adminTags.snackType?.length) window.userSettings.tags.snackType = [...adminTags.snackType];
-                        console.log('✅ 관리자 태그 병합 완료 (캐시 저장):', {
-                            mealType: window.userSettings.tags.mealType?.length || 0,
-                            withWhom: window.userSettings.tags.withWhom?.length || 0,
-                            category: window.userSettings.tags.category?.length || 0,
-                            snackType: window.userSettings.tags.snackType?.length || 0
-                        });
-                    } else {
-                        console.warn('⚠️ 관리자 태그 문서가 없습니다. 기본값을 사용합니다.');
+            // user doc 생성·관리자 태그는 백그라운드에서 처리 (초기 로딩 지연 최소화)
+            Promise.resolve().then(async () => {
+                if (userDocEnsureDoneForUid !== userId) {
+                    try {
+                        const userDocRef = doc(db, 'artifacts', appId, 'users', userId);
+                        const userDocSnap = await getDoc(userDocRef);
+                        if (!userDocSnap.exists()) {
+                            await setDoc(userDocRef, {
+                                createdAt: new Date().toISOString(),
+                                lastLoginAt: new Date().toISOString()
+                            }, { merge: true });
+                            console.log('✅ users/{userId} 문서 생성 완료:', userId);
+                        }
+                        userDocEnsureDoneForUid = userId;
+                    } catch (e) {
+                        console.warn('users/{userId} 문서 생성 실패:', e);
                     }
                 }
-            } catch (e) {
-                console.warn('⚠️ 관리자 태그 로드 실패 (기본값 사용):', e);
-            }
+                try {
+                    if (cachedDefaultTags) {
+                        if (cachedDefaultTags.mealType?.length) window.userSettings.tags.mealType = [...cachedDefaultTags.mealType];
+                        if (cachedDefaultTags.withWhom?.length) window.userSettings.tags.withWhom = [...cachedDefaultTags.withWhom];
+                        if (cachedDefaultTags.category?.length) window.userSettings.tags.category = [...cachedDefaultTags.category];
+                        if (cachedDefaultTags.snackType?.length) window.userSettings.tags.snackType = [...cachedDefaultTags.snackType];
+                    } else {
+                        const tagsDoc = doc(db, 'artifacts', appId, 'content', 'defaultTags');
+                        const tagsSnap = await getDoc(tagsDoc);
+                        if (tagsSnap.exists()) {
+                            const adminTags = tagsSnap.data();
+                            cachedDefaultTags = {
+                                mealType: adminTags.mealType,
+                                withWhom: adminTags.withWhom,
+                                category: adminTags.category,
+                                snackType: adminTags.snackType
+                            };
+                            if (adminTags.mealType?.length) window.userSettings.tags.mealType = [...adminTags.mealType];
+                            if (adminTags.withWhom?.length) window.userSettings.tags.withWhom = [...adminTags.withWhom];
+                            if (adminTags.category?.length) window.userSettings.tags.category = [...adminTags.category];
+                            if (adminTags.snackType?.length) window.userSettings.tags.snackType = [...adminTags.snackType];
+                            console.log('✅ 관리자 태그 병합 완료 (캐시 저장)');
+                        }
+                    }
+                    if (onSettingsUpdate) onSettingsUpdate();
+                } catch (e) {
+                    console.warn('⚠️ 관리자 태그 로드 실패 (기본값 사용):', e);
+                    if (onSettingsUpdate) onSettingsUpdate();
+                }
+            });
             
             // 마이그레이션 로직을 비동기로 처리하여 초기 로딩 지연 최소화
             if (!migrationInProgress) {
                 migrationInProgress = true;
-                // 즉시 콜백 호출하여 UI 업데이트 지연 방지
                 console.log('📞 onSettingsUpdate 콜백 호출');
                 if (onSettingsUpdate) onSettingsUpdate();
                 
@@ -483,9 +474,9 @@ export function setupListeners(userId, callbacks) {
         });
     }
     
-    // 최근 2주 날짜 계산 (읽기 절감: 1개월 → 2주로 축소)
+    // 최근 7일만 초기 로드 (로그인 후 첫 화면 속도 단축, 더 오래된 건 '더보기'로 로드)
     const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - 14);
+    cutoffDate.setDate(cutoffDate.getDate() - 7);
     const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
     const todayStr = new Date().toISOString().split('T')[0];
     
@@ -508,7 +499,7 @@ export function setupListeners(userId, callbacks) {
             return;
         }
         if (isInitialLoad) {
-            // 초기 로드: 최근 2주 데이터 (읽기 절감)
+            // 초기 로드: 최근 7일 데이터
             window.mealHistory = snap.docs.map(d => ({ id: d.id, ...d.data() }))
                 .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
             window.loadedMealsDateRange = { start: cutoffDateStr, end: todayStr };

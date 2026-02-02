@@ -421,10 +421,16 @@ exports.addBoardComment = onCall({ region: REGION }, wrapFunction('addBoardComme
   const authorPhotoUrl = profile.photoUrl || null;
   const authorIcon = profile.icon || null;
 
-  // 댓글 생성
+  // 게시글 조회 (댓글 수 증가 + 알림용 postAuthorId)
+  const postRef = db.collection('artifacts').doc(APP_ID).collection('boardPosts').doc(postId);
+  const postDoc = await postRef.get();
+  const postAuthorId = postDoc.exists && postDoc.data().authorId ? String(postDoc.data().authorId).trim() : '';
+
+  // 댓글 생성 (postAuthorId: 알림에서 "내 글에 달린 댓글"만 쿼리할 때 사용)
   const commentsRef = db.collection('artifacts').doc(APP_ID).collection('boardComments');
   const newComment = {
     postId: String(postId),
+    postAuthorId: postAuthorId || null,
     content: content.trim(),
     authorId: auth.uid,
     authorNickname,
@@ -435,9 +441,6 @@ exports.addBoardComment = onCall({ region: REGION }, wrapFunction('addBoardComme
 
   const docRef = await commentsRef.add(newComment);
 
-  // 게시글의 댓글 수 증가
-  const postRef = db.collection('artifacts').doc(APP_ID).collection('boardPosts').doc(postId);
-  const postDoc = await postRef.get();
   if (postDoc.exists) {
     await postRef.update({
       comments: FieldValue.increment(1)
@@ -480,9 +483,14 @@ exports.addBoardCommentAsAdmin = onCall({ region: REGION }, async (request) => {
     }
   }
 
+  const postRef = db.collection('artifacts').doc(APP_ID).collection('boardPosts').doc(postId);
+  const postDoc = await postRef.get();
+  const postAuthorId = postDoc.exists && postDoc.data().authorId ? String(postDoc.data().authorId).trim() : '';
+
   const commentsRef = db.collection('artifacts').doc(APP_ID).collection('boardComments');
   const newComment = {
     postId: String(postId),
+    postAuthorId: postAuthorId || null,
     content: content.trim(),
     authorId: auth.uid,
     authorNickname: authorNickname || '관리자',
@@ -493,8 +501,6 @@ exports.addBoardCommentAsAdmin = onCall({ region: REGION }, async (request) => {
 
   const docRef = await commentsRef.add(newComment);
 
-  const postRef = db.collection('artifacts').doc(APP_ID).collection('boardPosts').doc(postId);
-  const postDoc = await postRef.get();
   if (postDoc.exists) {
     await postRef.update({
       comments: FieldValue.increment(1)
@@ -595,10 +601,23 @@ exports.addPostComment = onCall({ region: REGION }, wrapFunction('addPostComment
     userIcon = profile.icon || '🐻';
   }
 
+  // 알림용: 이 댓글이 달린 글의 작성자 ID (postOwnerId) 저장 → 클라이언트가 "내 글에 달린 댓글"만 쿼리 가능
+  let postOwnerId = '';
+  if (typeof postId === 'string' && postId.includes('_')) {
+    postOwnerId = postId.slice(postId.lastIndexOf('_') + 1).trim();
+  } else {
+    const sharedRef = db.collection('artifacts').doc(APP_ID).collection('sharedPhotos').doc(String(postId));
+    const sharedSnap = await sharedRef.get();
+    if (sharedSnap.exists && sharedSnap.data().userId) {
+      postOwnerId = String(sharedSnap.data().userId).trim();
+    }
+  }
+
   // 댓글 생성
   const commentsRef = db.collection('artifacts').doc(APP_ID).collection('postComments');
   const commentData = {
     postId,
+    postOwnerId: postOwnerId || null,
     userId: auth.uid,
     userNickname,
     userIcon,
@@ -808,11 +827,12 @@ exports.sharePhotos = onCall({ region: REGION }, async (request) => {
       });
     }
 
-    // 새로운 사진들을 추가
-    photosToShare.forEach(photoUrl => {
+    // 새로운 사진들을 추가 (photoIndex로 업로드 순서 저장 → 모든 사용자에게 동일한 사진 순서 보장)
+    photosToShare.forEach((photoUrl, index) => {
       const docRef = sharedColl.doc();
       batch.set(docRef, {
         photoUrl,
+        photoIndex: index,
         userId: auth.uid,
         userNickname,
         userIcon,

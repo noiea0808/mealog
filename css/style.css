@@ -342,7 +342,9 @@ header .mealog-title {
     padding-top: 0 !important;
     padding-bottom: 0 !important;
 }
-/* 헤더 돋보기 위치: 1) 접힌 상태=돋보기만(오른쪽 정렬) 2) 펼침=왼쪽부터 하트/댓글/북마크/돋보기 */
+/* 헤더 우측: .header-right = [돋보기] [알림] 순서 flex, 별도 absolute 없음 */
+
+/* 갤러리 트레이스: 접힌 상태=돋보기만, 펼침=하트/댓글/북마크/돋보기 */
 .gallery-trace-panel {
     width: 2rem;
     justify-content: flex-end;
@@ -366,13 +368,18 @@ header .mealog-title {
     box-sizing: border-box;
 }
 
-/* 타임라인 검색: 돋보기 고정·입력창만 왼쪽으로 확장(프로필 밀지 않음), MEALOG 가리지 않음, 닫을 때 창 닫는 모션(왼쪽→오른쪽) */
+/* 타임라인 검색: 접힌 상태=돋보기 2rem, 펼치면 입력창 확장 */
 .timeline-search-wrapper {
     width: 2rem;
+    min-width: 2rem;
     height: 2rem;
     flex-shrink: 0;
+    overflow: visible;
 }
-/* 접힌 상태: input이 min-width 등으로 공간을 차지해 돋보기가 오른쪽으로 밀리지 않도록 0으로 */
+.timeline-search-wrapper.expanded {
+    min-width: 2rem;
+    /* 너비는 JS updateTimelineSearchExpandWidth에서 설정 */
+}
 .timeline-search-wrapper:not(.expanded) #searchInput {
     flex: 0 0 0 !important;
     min-width: 0 !important;
@@ -383,18 +390,18 @@ header .mealog-title {
     overflow: hidden;
 }
 .timeline-search-panel {
-    position: absolute;
-    right: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 2rem;
+    display: flex;
+    align-items: center;
+    width: 100%;
     height: 2rem;
-    justify-content: center;   /* 접힌 상태: 돋보기 중앙 */
+    justify-content: center;
     transition: width 0.3s ease-out;
 }
 .timeline-search-wrapper.expanded .timeline-search-panel {
     justify-content: flex-start;
-    /* JS로 타이틀 오른쪽 + 20px 거리까지 확장 (updateTimelineSearchExpandWidth) */
+    background: #f1f5f9;
+    border-radius: 9999px;
+    border: 1px solid #94a3b8;
     padding-left: 0.75rem;
 }
 .photo-remove-btn { 

@@ -1,6 +1,6 @@
 // 소셜 기능 (좋아요, 댓글, 북마크, 신고)
 import { db, appId, auth, callableFunctions } from '../firebase.js';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, addDoc, query, orderBy, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, addDoc, query, orderBy, where, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // 좋아요, 댓글, 북마크 관련 함수들
 export const postInteractions = {
@@ -199,15 +199,23 @@ export const postInteractions = {
         }
     },
     
-    // 댓글 목록 가져오기
-    async getComments(postId) {
+    // 댓글 목록 가져오기 (postId: canonical id, alternatePostIds: 예전에 문서 id로 저장된 댓글도 함께 조회)
+    async getComments(postId, alternatePostIds = []) {
         if (!postId) return [];
         try {
             const commentsColl = collection(db, 'artifacts', appId, 'postComments');
-            // 인덱스 요구를 피하기 위해 orderBy 없이 조회 후 클라이언트 정렬
-            const q = query(commentsColl, where('postId', '==', postId));
+            const ids = [postId, ...(Array.isArray(alternatePostIds) ? alternatePostIds : [])].filter(Boolean);
+            const uniqueIds = [...new Set(ids)].slice(0, 10); // Firestore 'in' 최대 10개
+            const q = uniqueIds.length <= 1
+                ? query(commentsColl, where('postId', '==', postId))
+                : query(commentsColl, where('postId', 'in', uniqueIds));
             const snapshot = await getDocs(q);
-            const comments = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            const byId = new Map();
+            snapshot.docs.forEach(d => {
+                const data = { id: d.id, ...d.data() };
+                if (!byId.has(data.id)) byId.set(data.id, data);
+            });
+            const comments = [...byId.values()];
             comments.sort((a, b) => {
                 const timeA = new Date(a.timestamp || 0).getTime();
                 const timeB = new Date(b.timestamp || 0).getTime();
@@ -234,6 +242,98 @@ export const postInteractions = {
             console.error("Delete Comment Error:", e);
             const errorMessage = e.message || e.details || "댓글 삭제에 실패했습니다.";
             throw new Error(errorMessage);
+        }
+    },
+
+    /** 내가 작성한 글(모먼트/갤러리)에 달린 댓글 목록: postId별 최신 댓글 시각·개수·썸네일 (알림용) */
+    async getPostsWithCommentsForUser(ownerId) {
+        const uid = String(ownerId || '').trim();
+        if (!uid) return [];
+        try {
+            const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+            const sharedQ = query(sharedColl, where('userId', '==', uid));
+            let sharedSnap;
+            try {
+                sharedSnap = await getDocsFromServer(sharedQ);
+            } catch (_) {
+                sharedSnap = await getDocs(sharedQ);
+            }
+            const mySharedDocIds = new Set(sharedSnap.docs.map(d => d.id));
+            const myEntryIds = new Set(sharedSnap.docs.map(d => String(d.data().entryId || '').trim()).filter(Boolean));
+            const byEntryUserId = {};
+            const byDocId = {};
+            const byEntryId = {};
+            const momentLabel = (data) => {
+                const place = (data.place || '').trim();
+                const menuDetail = (data.menuDetail || '').trim();
+                if (menuDetail && place) return `${menuDetail} @ ${place}`;
+                if (place) return place;
+                if (menuDetail) return menuDetail;
+                const mealType = (data.mealType || '').trim();
+                if (mealType) return mealType;
+                return '해당 게시물';
+            };
+            for (const d of sharedSnap.docs) {
+                const data = d.data();
+                const docId = d.id;
+                const entryId = data.entryId;
+                const docUserId = String(data.userId || '').trim();
+                const photoUrl = data.photoUrl || null;
+                const photoIndex = typeof data.photoIndex === 'number' ? data.photoIndex : 999;
+                const label = momentLabel(data);
+                byDocId[docId] = { photoUrl, label };
+                if (entryId) {
+                    const eid = String(entryId).trim();
+                    if (!byEntryId[eid] || (typeof byEntryId[eid].photoIndex === 'number' && photoIndex < byEntryId[eid].photoIndex))
+                        byEntryId[eid] = { photoUrl, photoIndex, label };
+                }
+                if (entryId && docUserId) {
+                    const key = `${entryId}_${docUserId}`;
+                    if (!byEntryUserId[key] || (typeof byEntryUserId[key].photoIndex === 'number' && photoIndex < byEntryUserId[key].photoIndex))
+                        byEntryUserId[key] = { photoUrl, photoIndex, label };
+                }
+            }
+
+            // 알림용: 서버에 저장된 postOwnerId로 "내 글에 달린 댓글"만 쿼리 (구조 변경으로 확실히 동작)
+            const commentsColl = collection(db, 'artifacts', appId, 'postComments');
+            const commentsQ = query(commentsColl, where('postOwnerId', '==', uid));
+            let snapshot;
+            try {
+                snapshot = await getDocsFromServer(commentsQ);
+            } catch (_) {
+                try {
+                    snapshot = await getDocs(commentsQ);
+                } catch (__) {
+                    snapshot = { docs: [] };
+                }
+            }
+            const byPost = {};
+            for (const d of snapshot.docs) {
+                const data = d.data();
+                const postId = String(data.postId ?? '').trim();
+                if (!postId) continue;
+                let ts = 0;
+                try {
+                    const t = data.timestamp;
+                    ts = t && (t.toDate ? t.toDate() : new Date(t)).getTime();
+                    if (Number.isNaN(ts)) ts = 0;
+                } catch (_) { ts = 0; }
+                if (!byPost[postId]) byPost[postId] = { postId, lastCommentAt: 0, commentCount: 0, type: 'moment' };
+                byPost[postId].commentCount += 1;
+                if (ts > byPost[postId].lastCommentAt) byPost[postId].lastCommentAt = ts;
+            }
+            const list = Object.values(byPost);
+            list.forEach(item => {
+                const entry = byEntryUserId[item.postId];
+                const docEntry = byDocId[item.postId];
+                const entryOnly = byEntryId[item.postId];
+                item.thumbnailUrl = (entry && entry.photoUrl) || (docEntry && docEntry.photoUrl) || (entryOnly && entryOnly.photoUrl) || null;
+                item.momentLabel = (entry && entry.label) || (docEntry && docEntry.label) || (entryOnly && entryOnly.label) || '해당 게시물';
+            });
+            return list.sort((a, b) => b.lastCommentAt - a.lastCommentAt);
+        } catch (e) {
+            console.error("Get Posts With Comments For User Error:", e);
+            return [];
         }
     }
 };

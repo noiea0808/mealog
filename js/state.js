@@ -21,6 +21,7 @@ export const appState = {
     currentTab: 'timeline',
     pageDate: new Date(),
     galleryFilterUserId: null, // 앨범 탭에서 필터링된 사용자 ID
+    galleryFilterPostId: null,  // 알림에서 클릭 시 해당 게시물만 보기
     galleryFilterTab: 'moment',  // 사용자 프로필 뷰에서 탭: 'moment' | 'board' (모먼트 | 밀톡)
     galleryTraceFilter: null, // 앨범 흔적 필터: null | 'like' | 'comment' | 'bookmark'
     boardTraceFilter: null,   // 밀톡 흔적 필터: null | 'like' | 'comment' | 'bookmark'
