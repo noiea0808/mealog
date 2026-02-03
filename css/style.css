@@ -501,6 +501,12 @@ header .mealog-title {
     padding: 1rem 0.5rem;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
+/* 프로필/태그관리/밀당메모 섹션 제목만 왼쪽 10px 여유 */
+.settings-section-container > h3,
+.profile-settings-header,
+.settings-section-container > div:first-child > h3 {
+    padding-left: 10px;
+}
 
 /* 프로필 설정 (트위터 스타일: 리스트형 행 + 얇은 구분선, 박스 최소화) */
 .profile-settings-list {
