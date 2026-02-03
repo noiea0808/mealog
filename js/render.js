@@ -253,6 +253,7 @@ let dropIndex = null;
 let longPressTimer = null;
 let isLongPressing = false;
 let touchStartY = null;
+let originalDragIndex = null; // 터치 종료 시 splice용 원본 인덱스
 
 function setupLongPressDrag(item) {
     const LONG_PRESS_DURATION = 300; // 300ms
@@ -272,6 +273,7 @@ function setupLongPressDrag(item) {
             const index = parseInt(item.dataset.index);
             
             // 드래그 시작
+            originalDragIndex = index;
             draggedIndex = index;
             draggedElement = item;
             dropIndex = index;
@@ -286,16 +288,16 @@ function setupLongPressDrag(item) {
         }, LONG_PRESS_DURATION);
     }, { passive: true });
     
-    // 터치 이동
+    // 터치 이동 (사진은 가로 배치이므로 X축 기준으로 가장 가까운 아이템 찾기)
     item.addEventListener('touchmove', (e) => {
         if (!isLongPressing || !draggedElement) return;
         
         e.preventDefault();
-        const touchY = e.touches[0].clientY;
+        const touchX = e.touches[0].clientX;
         const container = item.parentElement;
         const allItems = Array.from(container.querySelectorAll('.photo-preview-item'));
         
-        // 가장 가까운 아이템 찾기
+        // 가장 가까운 아이템 찾기 (가로 배치이므로 X축 중심 기준)
         let closestItem = null;
         let closestDistance = Infinity;
         
@@ -303,8 +305,8 @@ function setupLongPressDrag(item) {
             if (otherItem === draggedElement) return;
             
             const rect = otherItem.getBoundingClientRect();
-            const itemCenterY = rect.top + rect.height / 2;
-            const distance = Math.abs(touchY - itemCenterY);
+            const itemCenterX = rect.left + rect.width / 2;
+            const distance = Math.abs(touchX - itemCenterX);
             
             if (distance < closestDistance) {
                 closestDistance = distance;
@@ -314,7 +316,16 @@ function setupLongPressDrag(item) {
         
         if (closestItem) {
             const targetIndex = parseInt(closestItem.dataset.index);
+            const rect = closestItem.getBoundingClientRect();
+            const itemCenterX = rect.left + rect.width / 2;
+            const swapThreshold = rect.width * 0.35; // 아이템 너비의 35% 이상 넘어가야 스왑 (민감도 완화)
+            
             if (draggedIndex !== null && draggedIndex !== targetIndex) {
+                // 스왑 임계값: 터치가 대상 아이템 중심을 충분히 넘어갔을 때만 스왑
+                const pastCenter = (draggedIndex < targetIndex && touchX > itemCenterX + swapThreshold) ||
+                    (draggedIndex > targetIndex && touchX < itemCenterX - swapThreshold);
+                if (!pastCenter) return;
+                
                 dropIndex = targetIndex;
                 
                 // 시각적 피드백: DOM 위치 변경
@@ -333,6 +344,7 @@ function setupLongPressDrag(item) {
                         numberBadge.textContent = idx + 1;
                     }
                 });
+                draggedIndex = targetIndex; // 스왑 후 갱신 (즉시 되돌아가는 현상 방지)
             }
         }
     }, { passive: false });
@@ -344,13 +356,13 @@ function setupLongPressDrag(item) {
             longPressTimer = null;
         }
         
-        if (isLongPressing && draggedIndex !== null && dropIndex !== null && draggedIndex !== dropIndex) {
-            // 순서 업데이트
+        if (isLongPressing && originalDragIndex !== null && dropIndex !== null && originalDragIndex !== dropIndex) {
+            // 순서 업데이트 (originalDragIndex: 원본 위치, dropIndex: 최종 위치)
             const container = draggedElement.parentElement;
             const allItems = Array.from(container.querySelectorAll('.photo-preview-item'));
             
             const reorderedPhotos = [...appState.currentPhotos];
-            const [movedPhoto] = reorderedPhotos.splice(draggedIndex, 1);
+            const [movedPhoto] = reorderedPhotos.splice(originalDragIndex, 1);
             reorderedPhotos.splice(dropIndex, 0, movedPhoto);
             appState.currentPhotos = reorderedPhotos;
             
@@ -379,6 +391,7 @@ function setupLongPressDrag(item) {
         }
         
         isLongPressing = false;
+        originalDragIndex = null;
         draggedIndex = null;
         draggedElement = null;
         dropIndex = null;
@@ -398,6 +411,7 @@ function setupLongPressDrag(item) {
         }
         
         isLongPressing = false;
+        originalDragIndex = null;
         draggedIndex = null;
         draggedElement = null;
         dropIndex = null;

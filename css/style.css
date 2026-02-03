@@ -311,6 +311,14 @@ header .mealog-title {
     margin-top: 14px; 
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
 }
+/* 인사이트 박스 내 식사/간식 기록: 외부 초록 박스와 동일 배경, 기간 영역과 동일 보더 */
+#dashboardView .sticker-badge {
+    background: #059669;
+    backdrop-filter: none;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 6px;
+    box-shadow: none;
+}
 .date-section-header { 
     position: sticky; 
     top: 148px; 
@@ -904,7 +912,7 @@ header .mealog-title {
     box-sizing: border-box;
     min-height: fit-content;
     padding: 0.5rem 1.25rem;
-    background: #ffffff;
+    background: #047857;
     border: none;
     border-radius: 1rem;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -915,12 +923,12 @@ header .mealog-title {
 .insight-bubble-header {
     margin-bottom: 0.375rem;
     padding-bottom: 0.25rem;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
 }
 #insightCharacterName.insight-character-name {
-    font-size: 0.8125rem;
+    font-size: 15px;
     font-weight: 700;
-    color: #0f172a;
+    color: #ffffff;
     letter-spacing: -0.01em;
 }
 .insight-share-btn {
@@ -942,9 +950,9 @@ header .mealog-title {
 #insightTextContent.insight-text-content,
 .insight-text-content {
     line-height: 1.55;
-    font-size: 0.9375rem;
+    font-size: 14px;
     font-weight: 400;
-    color: #334155;
+    color: #ffffff;
     word-wrap: break-word;
     word-break: break-word;
     overflow-wrap: break-word;
@@ -956,9 +964,20 @@ header .mealog-title {
     display: block;
 }
 .insight-character-btn {
-    background: #047857;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.08);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.insight-character-btn #insightCharacterIcon {
+    color: #047857;
+}
+/* 캐릭터 이미지: 창 전체를 채우고 모서리 둥글게 */
+.insight-character-btn #insightCharacterIcon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    border-radius: 1rem;
 }
 .insight-comment-trigger {
     font-size: 12px;

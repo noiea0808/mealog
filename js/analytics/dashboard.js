@@ -406,7 +406,7 @@ export async function updateDashboard() {
             if (character) {
                 if (character.image) {
                     // 이미지가 있으면 이미지 표시
-                    characterIconEl.innerHTML = `<img src="${character.image}" alt="${character.name}" class="w-full h-full object-contain">`;
+                    characterIconEl.innerHTML = `<img src="${character.image}" alt="${character.name}" class="w-full h-full object-cover">`;
                     characterIconEl.className = 'w-full h-full flex items-center justify-center';
                 } else if (character.id === 'mealog') {
                     // MEALOG는 텍스트 아이콘

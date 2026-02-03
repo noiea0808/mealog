@@ -248,7 +248,7 @@ export function openModal(date, slotId, entryId = null) {
             } else {
                 // 일반 모드: 버튼 활성화 및 텍스트 설정
                 btnSave.disabled = false;
-                btnSave.className = 'flex-1 py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all';
+                btnSave.className = 'flex-1 py-4 bg-slate-900 text-white rounded-xl font-bold active:bg-slate-800 shadow-lg transition-all';
                 btnSave.innerText = entryId ? '수정 완료' : '기록 완료';
             }
         }
