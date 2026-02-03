@@ -318,7 +318,7 @@ function setupLongPressDrag(item) {
             const targetIndex = parseInt(closestItem.dataset.index);
             const rect = closestItem.getBoundingClientRect();
             const itemCenterX = rect.left + rect.width / 2;
-            const swapThreshold = rect.width * 0.22; // 아이템 너비의 22% 넘어가면 스왑 (부드러운 반응)
+            const swapThreshold = rect.width * 0.1; // 아이템 너비의 10% 넘어가면 스왑 (충분히 부드러운 반응)
             
             if (draggedIndex !== null && draggedIndex !== targetIndex) {
                 // 스왑 임계값: 터치가 대상 아이템 중심을 충분히 넘어갔을 때만 스왑
@@ -1872,11 +1872,16 @@ export async function renderGallery() {
             // 스크롤 종료 시 가장 가까운 사진으로 스냅 (한장한장 구분감)
             if (photoCount > 1) {
                 const snapToNearest = () => {
-                    const cw = scrollContainer.clientWidth;
                     const sl = scrollContainer.scrollLeft;
-                    const pw = photos[0]?.offsetWidth || cw;
-                    const nearest = Math.round(sl / pw);
-                    const target = Math.max(0, Math.min(nearest, photoCount - 1)) * pw;
+                    const cw = scrollContainer.clientWidth;
+                    let nearest = 0;
+                    let minDist = Infinity;
+                    photos.forEach((p, i) => {
+                        const pos = p.offsetLeft + p.offsetWidth / 2;
+                        const d = Math.abs(sl + cw / 2 - pos);
+                        if (d < minDist) { minDist = d; nearest = i; }
+                    });
+                    const target = photos[nearest]?.offsetLeft ?? 0;
                     if (Math.abs(sl - target) > 2) {
                         scrollContainer.scrollTo({ left: target, behavior: 'auto' });
                     }
@@ -1884,7 +1889,7 @@ export async function renderGallery() {
                 let snapTimeout = null;
                 const onScrollEnd = () => {
                     clearTimeout(snapTimeout);
-                    snapTimeout = setTimeout(snapToNearest, 150);
+                    snapTimeout = setTimeout(snapToNearest, 80);
                 };
                 scrollContainer.addEventListener('scroll', onScrollEnd, { passive: true });
                 if ('onscrollend' in scrollContainer) {
@@ -2504,9 +2509,15 @@ export function renderFeed() {
             if (photoCount > 1) {
                 const snapToNearest = () => {
                     const sl = scrollContainer.scrollLeft;
-                    const pw = photos[0]?.offsetWidth || scrollContainer.clientWidth;
-                    const nearest = Math.round(sl / pw);
-                    const target = Math.max(0, Math.min(nearest, photoCount - 1)) * pw;
+                    const cw = scrollContainer.clientWidth;
+                    let nearest = 0;
+                    let minDist = Infinity;
+                    photos.forEach((p, i) => {
+                        const pos = p.offsetLeft + p.offsetWidth / 2;
+                        const d = Math.abs(sl + cw / 2 - pos);
+                        if (d < minDist) { minDist = d; nearest = i; }
+                    });
+                    const target = photos[nearest]?.offsetLeft ?? 0;
                     if (Math.abs(sl - target) > 2) {
                         scrollContainer.scrollTo({ left: target, behavior: 'auto' });
                     }
@@ -2514,7 +2525,7 @@ export function renderFeed() {
                 let snapTimeout = null;
                 const onScrollEnd = () => {
                     clearTimeout(snapTimeout);
-                    snapTimeout = setTimeout(snapToNearest, 150);
+                    snapTimeout = setTimeout(snapToNearest, 80);
                 };
                 scrollContainer.addEventListener('scroll', onScrollEnd, { passive: true });
                 if ('onscrollend' in scrollContainer) {

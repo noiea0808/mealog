@@ -733,6 +733,11 @@ header .mealog-title {
     overscroll-behavior-x: contain;
     scroll-snap-type: x mandatory;
     scroll-snap-stop: always;
+    gap: 2px;
+}
+.gallery-photo-scroll > * {
+    scroll-snap-stop: always;
+    scroll-snap-align: start;
 }
 /* Comment 줄바꿈 및 제한 스타일 */
 .line-clamp-2 {
