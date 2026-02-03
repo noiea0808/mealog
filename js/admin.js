@@ -7,7 +7,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPasswor
 // Firestore 규칙·Callable은 기본 Auth만 인식하므로 관리자도 기본 Auth 사용 (admin 페이지는 별도 URL)
 const adminAuth = getAuth(app);
 import { collection, getDocs, query, orderBy, limit, doc, deleteDoc, getDoc, setDoc, where, writeBatch, addDoc, serverTimestamp, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { uploadImageToStorage } from './utils.js';
+import { uploadImageToStorage, uploadPersonaImageToStorage } from './utils.js';
 import { getReportsAggregateByGroupKeys, deleteBoardPostByAdmin, setBoardPostHidden } from './db.js';
 import { REPORT_REASONS } from './constants.js';
 import { getCurrentTermsVersion, invalidateTermsVersionCache } from './utils-terms.js';
@@ -4691,8 +4691,8 @@ window.handleCharacterImageUpload = async function(event) {
             return;
         }
         
-        // Firebase Storage에 업로드
-        const imageUrl = await uploadImageToStorage(file, user.uid, `persona/${currentEditingCharacterId || 'temp'}`);
+        // Firebase Storage에 업로드 (PNG 투명 배경 보존)
+        const imageUrl = await uploadPersonaImageToStorage(file, user.uid, currentEditingCharacterId || 'temp');
         
         // 이미지 URL 필드에 설정
         const imageInput = document.getElementById('characterImage');

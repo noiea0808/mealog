@@ -396,9 +396,9 @@ export function selectInsightCharacter(characterId) {
             iconEl.innerHTML = `<img src="${character.image}" alt="${character.name}" class="w-full h-full object-cover">`;
             iconEl.className = 'w-full h-full flex items-center justify-center';
         } else if (character.id === 'mealog') {
-            // MEALOG는 텍스트 아이콘
+            // MEALOG는 텍스트 아이콘 (Fredoka 폰트)
             iconEl.textContent = 'M';
-            iconEl.className = 'text-2xl font-black text-white';
+            iconEl.className = 'text-2xl font-black mealog-character-m';
         } else {
             // 기본 이모지 아이콘
             iconEl.textContent = character.icon;
@@ -1283,13 +1283,13 @@ export async function updateShareButtonStatus() {
         const isShared = !!existingShare;
         
         if (isShared) {
-            // 공유됨 상태: 버튼 박스 표시 (배경색만, 보더 없음)
+            // 공유됨 상태: 흰 배경으로 구분감
             shareBtn.innerHTML = '<i class="fa-solid fa-share text-[10px] mr-1"></i>공유됨';
-            shareBtn.className = 'flex-shrink-0 bg-emerald-600 rounded-lg font-bold text-[10px] shadow-md active:bg-emerald-700 transition-colors py-1 px-2 text-white';
+            shareBtn.className = 'insight-share-btn insight-share-btn--shared flex-shrink-0 rounded-lg font-bold text-[10px] py-1 px-2';
         } else {
-            // 공유 안 됨 상태: 버튼 박스 제거 (텍스트만 표시)
+            // 공유 안 됨 상태: 흰 배경으로 구분감
             shareBtn.innerHTML = '<i class="fa-solid fa-share text-[10px] mr-1"></i>공유하기';
-            shareBtn.className = 'flex-shrink-0 font-bold text-[10px] text-emerald-600 hover:text-emerald-700 transition-colors py-1 px-2';
+            shareBtn.className = 'insight-share-btn insight-share-btn--default flex-shrink-0 rounded-lg font-bold text-[10px] py-1 px-2';
         }
     }
 }

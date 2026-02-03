@@ -409,9 +409,9 @@ export async function updateDashboard() {
                     characterIconEl.innerHTML = `<img src="${character.image}" alt="${character.name}" class="w-full h-full object-cover">`;
                     characterIconEl.className = 'w-full h-full flex items-center justify-center';
                 } else if (character.id === 'mealog') {
-                    // MEALOG는 텍스트 아이콘
+                    // MEALOG는 텍스트 아이콘 (Fredoka 폰트)
                     characterIconEl.textContent = 'M';
-                    characterIconEl.className = 'text-2xl font-black text-white';
+                    characterIconEl.className = 'text-2xl font-black mealog-character-m';
                 } else {
                     // 기본 이모지 아이콘
                     characterIconEl.textContent = character.icon;

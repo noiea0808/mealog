@@ -658,7 +658,7 @@
                         <!-- 밀당 캐릭터 선택 창 -->
                         <div class="insight-character-column relative flex-shrink-0 flex flex-col gap-2 w-[75px]">
                             <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="insight-character-btn w-[75px] h-[132px] rounded-2xl flex flex-col items-center justify-center transition-colors overflow-hidden">
-                                <div id="insightCharacterIcon" class="w-full h-full flex items-center justify-center text-2xl font-bold text-white">M</div>
+                                <div id="insightCharacterIcon" class="w-full h-full flex items-center justify-center text-2xl font-bold mealog-character-m">M</div>
                             </button>
                             <button id="generateCommentBtn" onclick="window.generateInsightComment()" class="insight-comment-trigger w-[75px] rounded-xl font-semibold py-1.5 transition-colors">
                                 분석하기
@@ -669,7 +669,7 @@
                             <div id="insightBubble" class="insight-bubble relative">
                                 <div class="insight-bubble-header flex items-center justify-between gap-3">
                                     <span id="insightCharacterName" class="insight-character-name"></span>
-                                    <button id="shareInsightBtn" onclick="window.openShareInsightModal()" class="insight-share-btn flex-shrink-0 hidden">
+                                    <button id="shareInsightBtn" onclick="window.openShareInsightModal()" class="insight-share-btn insight-share-btn--default flex-shrink-0 hidden">
                                         <i class="fa-solid fa-share text-xs mr-1"></i>공유
                                     </button>
                                 </div>

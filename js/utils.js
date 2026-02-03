@@ -160,6 +160,42 @@ export function compressImageToBlob(file) {
     });
 }
 
+/** 캐릭터 이미지용: PNG 투명 배경 보존 (JPEG 변환 시 투명 영역이 검은색으로 나오는 문제 방지) */
+export function compressImageToBlobPreserveTransparency(file) {
+    return new Promise((resolve, reject) => {
+        if (!file.type.startsWith('image/')) {
+            reject(new Error('이미지 파일이 아닙니다'));
+            return;
+        }
+        const img = new Image();
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const maxWidth = 512;
+                let width = img.width;
+                let height = img.height;
+                if (width > maxWidth) {
+                    height = (height / width) * maxWidth;
+                    width = maxWidth;
+                }
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+                canvas.toBlob((blob) => {
+                    if (!blob) reject(new Error('이미지 변환 실패'));
+                    else resolve(blob);
+                }, file.type === 'image/png' ? 'image/png' : 'image/jpeg', file.type === 'image/png' ? 0.9 : 0.85);
+            };
+            img.onerror = () => reject(new Error('이미지 로드 실패'));
+            img.src = e.target.result;
+        };
+        reader.onerror = () => reject(new Error('파일 읽기 실패'));
+        reader.readAsDataURL(file);
+    });
+}
+
 /** 밀톡용: 최대 용량 제한 압축 (장당 500KB 이하). 초과 시 에러 throw */
 export function compressImageToBlobMaxSize(file, maxSizeKB = 500) {
     return new Promise((resolve, reject) => {
@@ -322,6 +358,24 @@ export function compressBase64ToBlob(base64DataUrl) {
         
         img.src = base64DataUrl;
     });
+}
+
+/** 캐릭터 이미지 업로드: PNG 투명 배경 보존 */
+export async function uploadPersonaImageToStorage(file, userId, characterId) {
+    try {
+        const compressedBlob = await compressImageToBlobPreserveTransparency(file);
+        const ext = file.type === 'image/png' ? 'png' : 'jpg';
+        const timestamp = Date.now();
+        const randomStr = Math.random().toString(36).substring(2, 9);
+        const fileName = `${timestamp}_${randomStr}.${ext}`;
+        const path = `users/${userId}/persona/${characterId || 'temp'}/${fileName}`;
+        const storageRef = ref(storage, path);
+        await uploadBytes(storageRef, compressedBlob);
+        return await getDownloadURL(storageRef);
+    } catch (error) {
+        console.error('캐릭터 이미지 업로드 실패:', error);
+        throw error;
+    }
 }
 
 // Firebase Storage에 이미지 업로드
