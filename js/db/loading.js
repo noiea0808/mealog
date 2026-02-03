@@ -1,11 +1,26 @@
 // 데이터 로딩 관련 함수들
 import { db, appId } from '../firebase.js';
-import { collection, query, where, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, query, where, orderBy, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { toLocalDateString, uploadBase64ToStorage } from '../utils.js';
 import { showToast } from '../ui.js';
 
+/** 연도별 stats 로드 (config/stats/years/{year}) - 대시보드에서 과거 연도 조회 시 */
+export async function loadStatsForYears(years) {
+    if (!window.currentUser || !years?.length) return;
+    const uid = window.currentUser.uid;
+    const yearsToLoad = [...new Set(years.map(y => String(y)))];
+    for (const year of yearsToLoad) {
+        const snap = await getDoc(doc(db, 'artifacts', appId, 'users', uid, 'config', 'stats', 'years', year));
+        if (snap.exists() && snap.data().daily) {
+            window.dailyStats = window.dailyStats || {};
+            Object.assign(window.dailyStats, snap.data().daily);
+        }
+    }
+}
+
 // 더보기 함수: 추가 기간의 데이터 로드
-export async function loadMoreMeals(monthsToLoad = 1) {
+// monthsToLoad: 개월 수 (기본 1), unit: 'month' | 'week' (기본 'month')
+export async function loadMoreMeals(amount = 1, unit = 'month') {
     if (!window.currentUser) {
         console.error("로그인이 필요합니다.");
         return 0;
@@ -19,9 +34,13 @@ export async function loadMoreMeals(monthsToLoad = 1) {
         }
         
         // 추가로 로드할 시작 날짜 계산
-        const newStartDate = new Date(currentStart);
-        newStartDate.setMonth(newStartDate.getMonth() - monthsToLoad);
-        const newStartStr = newStartDate.toISOString().split('T')[0];
+        const newStartDate = new Date(currentStart + 'T00:00:00');
+        if (unit === 'week') {
+            newStartDate.setDate(newStartDate.getDate() - 7 * amount);
+        } else {
+            newStartDate.setMonth(newStartDate.getMonth() - amount);
+        }
+        const newStartStr = `${newStartDate.getFullYear()}-${String(newStartDate.getMonth() + 1).padStart(2, '0')}-${String(newStartDate.getDate()).padStart(2, '0')}`;
         
         const q = query(
             collection(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals'),

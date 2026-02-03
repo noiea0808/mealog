@@ -13,6 +13,7 @@ export const appState = {
     // 리스너 관리
     dataUnsubscribe: null,
     settingsUnsubscribe: null,
+    statsUnsubscribe: null,
     sharedPhotosUnsubscribe: null,
     tempSettings: null,
     
@@ -61,6 +62,7 @@ export const appState = {
         sharedPhotos: [], // 공유된 사진 목록 (전역)
         loadedDates: [],
         loadedMealsDateRange: null,
+        dailyStats: null, // 트래커·대시보드용 일별 집계 (users/{uid}/config/stats)
     },
     
     // 인증 상태
@@ -116,6 +118,12 @@ Object.defineProperty(window, 'emailAuthMode', {
 Object.defineProperty(window, 'loadedMealsDateRange', {
     get: () => appState._data.loadedMealsDateRange,
     set: (value) => { appState._data.loadedMealsDateRange = value; },
+    configurable: true
+});
+
+Object.defineProperty(window, 'dailyStats', {
+    get: () => appState._data.dailyStats,
+    set: (value) => { appState._data.dailyStats = value; },
     configurable: true
 });
 

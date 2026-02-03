@@ -43,7 +43,8 @@ export const callableFunctions = {
     unsharePhotos: httpsCallable(functions, 'unsharePhotos'),
     createDailyShare: httpsCallable(functions, 'createDailyShare'),
     createBestShare: httpsCallable(functions, 'createBestShare'),
-    createInsightShare: httpsCallable(functions, 'createInsightShare')
+    createInsightShare: httpsCallable(functions, 'createInsightShare'),
+    backfillUserStats: httpsCallable(functions, 'backfillUserStats')
 };
 
 // App Check 초기화 (reCAPTCHA v3 사용)

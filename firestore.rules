@@ -65,6 +65,15 @@ service cloud.firestore {
         allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
         allow create, update, delete: if request.auth != null && request.auth.uid == userId;
       }
+      // stats 연도별 서브컬렉션 (config/stats/years/{year}) - Cloud Functions만 쓰기
+      match /config/stats {
+        allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
+        allow write: if false;
+        match /years/{year} {
+          allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
+          allow write: if false;
+        }
+      }
     }
     
     // ============================================

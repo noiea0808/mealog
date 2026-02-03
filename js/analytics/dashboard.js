@@ -1,12 +1,58 @@
 // 대시보드 메인 로직
 import { SLOTS } from '../constants.js';
 import { appState } from '../state.js';
-import { loadMealsForDateRange } from '../db.js';
+import { loadMealsForDateRange, loadStatsForYears } from '../db.js';
 import { renderProportionChart } from './charts.js';
 import { updateInsightComment, setupInsightBubbleClick, getCurrentCharacter, getInsightCharacters, updateShareButtonStatus } from './insight.js';
 import { getWeekRange, getCurrentWeekInMonth, getWeeksInMonth, formatDateWithDay } from './date-utils.js';
 import { renderBestMeals } from './best-share.js';
 import { toLocalDateString } from '../utils.js';
+
+const MEAL_SLOTS = ['morning', 'lunch', 'dinner'];
+const SNACK_SLOTS = ['pre_morning', 'snack1', 'snack2', 'night'];
+
+/** dailyStats에서 기간별 merged 데이터를 가상 record 배열로 변환 (차트용) + mainCount, snackCount */
+function statsToFilteredData(dailyStats, startStr, endStr) {
+    if (!dailyStats || typeof dailyStats !== 'object') return { records: [], mainCount: 0, snackCount: 0 };
+    const records = [];
+    let mainCount = 0;
+    let snackCount = 0;
+    const sumCounts = (counts) => Object.values(counts || {}).reduce((a, c) => a + (typeof c === 'number' ? c : parseInt(c, 10) || 0), 0);
+    const expand = (counts, slotId, fieldKey) => {
+        if (!counts || typeof counts !== 'object') return;
+        Object.entries(counts).forEach(([k, c]) => {
+            const kTrimmed = (k == null ? '' : String(k)).trim();
+            if (!kTrimmed) return; // 빈 문자열/공백 키는 스킵 (미입력 중복 집계 방지)
+            const n = typeof c === 'number' ? c : parseInt(c, 10) || 0;
+            for (let i = 0; i < n; i++) {
+                const r = { slotId };
+                r[fieldKey] = kTrimmed;
+                records.push(r);
+            }
+        });
+    };
+    const dates = Object.keys(dailyStats).filter(d => d >= startStr && d <= endStr).sort();
+    dates.forEach(dateStr => {
+        const day = dailyStats[dateStr];
+        if (!day) return;
+        if (day.main) {
+            const n = (day.mainCount != null ? day.mainCount : sumCounts(day.main.withWhom) || sumCounts(day.main.mealType) || sumCounts(day.main.category) || 0);
+            mainCount += n;
+            if (day.main.mealType) expand(day.main.mealType, 'morning', 'mealType');
+            if (day.main.category) expand(day.main.category, 'morning', 'category');
+            if (day.main.withWhom) expand(day.main.withWhom, 'morning', 'withWhom');
+            if (day.main.rating) expand(day.main.rating, 'morning', 'rating');
+            if (day.main.satiety) expand(day.main.satiety, 'morning', 'satiety');
+        }
+        if (day.snack) {
+            snackCount += (day.snackCount != null ? day.snackCount : sumCounts(day.snack.snackType) || sumCounts(day.snack.place) || 0);
+            if (day.snack.place) expand(day.snack.place, 'snack1', 'place');
+            if (day.snack.snackType) expand(day.snack.snackType, 'snack1', 'snackType');
+            if (day.snack.rating) expand(day.snack.rating, 'snack1', 'rating');
+        }
+    });
+    return { records, mainCount, snackCount };
+}
 
 export function getDashboardData() {
     const state = appState;
@@ -60,10 +106,27 @@ export function getDashboardData() {
     
     const startStr = toLocalDateString(startDate);
     const endStr = toLocalDateString(endDate);
-    const filteredData = window.mealHistory.filter(m => m.date >= startStr && m.date <= endStr);
     const daysDiff = Math.max(1, Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1);
+    // 차트용: mealHistory가 있으면 우선 사용 (식사당 1개 레코드로 정확한 집계, stats expand는 필드별 별도 레코드 생성으로 중복/미입력 발생 가능)
+    const mealFiltered = (window.mealHistory || []).filter(m => m.date >= startStr && m.date <= endStr);
+    const statsHasData = (window.dailyStats && Object.keys(window.dailyStats).length > 0);
+    const r = statsHasData ? statsToFilteredData(window.dailyStats, startStr, endStr) : null;
+    let filteredData, statsMainCount, statsSnackCount;
+    if (mealFiltered.length > 0) {
+        filteredData = mealFiltered;
+        statsMainCount = r?.mainCount ?? null;
+        statsSnackCount = r?.snackCount ?? null;
+    } else if (r && r.records.length > 0) {
+        filteredData = r.records;
+        statsMainCount = r.mainCount;
+        statsSnackCount = r.snackCount;
+    } else {
+        filteredData = mealFiltered;
+        statsMainCount = null;
+        statsSnackCount = null;
+    }
     
-    return { filteredData, dateRangeText: label, days: daysDiff };
+    return { filteredData, mealRecordsForTable: mealFiltered, dateRangeText: label, days: daysDiff, statsMainCount, statsSnackCount };
 }
 
 export async function updateDashboard() {
@@ -111,10 +174,54 @@ export async function updateDashboard() {
         // 에러가 발생해도 기존 데이터로 계속 진행
     }
     
+    // 연도별 stats: 리스너는 현재/이전 연도만 구독 → 과거 연도는 on-demand 로드
+    try {
+        const { startStr, endStr } = (() => {
+            const s = appState;
+            const today = new Date();
+            let startDate, endDate;
+            if (s.dashboardMode === '7d') {
+                const start = s.recentWeekStartDate || (() => { const d = new Date(today); d.setDate(d.getDate() - 6); return d; })();
+                startDate = new Date(start);
+                endDate = new Date(today);
+            } else if (s.dashboardMode === 'month') {
+                const [y, m] = s.selectedMonth.split('-').map(Number);
+                startDate = new Date(y, m - 1, 1);
+                endDate = new Date(y, m, 0);
+            } else if (s.dashboardMode === 'week') {
+                const { start, end } = getWeekRange(s.selectedYear, s.selectedMonthForWeek, s.selectedWeek);
+                startDate = new Date(start);
+                endDate = new Date(end);
+            } else if (s.dashboardMode === 'year') {
+                const year = s.selectedYearForYear || today.getFullYear();
+                startDate = new Date(year, 0, 1);
+                endDate = new Date(year, 11, 31);
+            } else if (s.dashboardMode === 'custom') {
+                startDate = new Date(s.customStartDate);
+                endDate = new Date(s.customEndDate);
+            } else {
+                return {};
+            }
+            return { startStr: toLocalDateString(startDate), endStr: toLocalDateString(endDate) };
+        })();
+        if (startStr && endStr) {
+            const startYear = parseInt(startStr.split('-')[0], 10);
+            const endYear = parseInt(endStr.split('-')[0], 10);
+            const currentYear = new Date().getFullYear();
+            const yearsToLoad = [];
+            for (let y = startYear; y <= endYear; y++) {
+                if (y < currentYear - 1) yearsToLoad.push(y);
+            }
+            if (yearsToLoad.length > 0) await loadStatsForYears(yearsToLoad);
+        }
+    } catch (e) {
+        console.warn('stats 연도 로드 실패:', e);
+    }
+    
     // 분석 타입 UI 업데이트
     updateAnalysisTypeUI();
     
-    const { filteredData, dateRangeText, days } = getDashboardData();
+    const { filteredData, dateRangeText, days, statsMainCount, statsSnackCount } = getDashboardData();
     
     const periodNavigator = document.getElementById('periodNavigator');
     const periodDisplay = document.getElementById('periodDisplay');
@@ -221,16 +328,16 @@ export async function updateDashboard() {
         return slot && slot.type === 'snack';
     });
     
-    // 식사 분석 차트
-    renderProportionChart('propChartContainer', mainMealsOnly, 'mealType');
-    renderProportionChart('categoryChartContainer', filteredData.filter(m => m.category), 'category');
-    renderProportionChart('mateChartContainer', filteredData.filter(m => m.withWhom), 'withWhom');
+    // 식사 분석 차트 (메인태그만 사용 - 상세입력항목 아님)
+    renderProportionChart('propChartContainer', mainMealsOnly.filter(m => m.mealType), 'mealType');
+    renderProportionChart('categoryChartContainer', mainMealsOnly.filter(m => m.category), 'category');
+    renderProportionChart('mateChartContainer', mainMealsOnly.filter(m => m.withWhom), 'withWhom');
     renderProportionChart('ratingChartContainer', mainMealsOnly.filter(m => m.rating), 'rating');
     renderProportionChart('satietyChartContainer', filteredData.filter(m => m.satiety), 'satiety');
     
-    // 간식 분석 차트 (어디서 → 무엇을 순)
-    renderProportionChart('snackPlaceChartContainer', snacksOnly.filter(m => m.place), 'snackPlace');
-    renderProportionChart('snackTypeChartContainer', snacksOnly.filter(m => m.snackType), 'snackType');
+    // 간식 분석 차트 (어디서 → 무엇을 순) - place/snackType 없는 건도 미입력으로 포함
+    renderProportionChart('snackPlaceChartContainer', snacksOnly, 'snackPlace');
+    renderProportionChart('snackTypeChartContainer', snacksOnly, 'snackType');
     renderProportionChart('snackRatingChartContainer', snacksOnly.filter(m => m.rating), 'rating');
     
     let targetDays = days;
@@ -247,32 +354,31 @@ export async function updateDashboard() {
     }
     
     // 식사 기록 통계 계산 (간식 제외, 식사만 계산)
-    // 하루 3끼 식사 기준으로 전체 식사 기록 수 계산
+    // mealHistory 기반 filteredData(날짜 있음)는 직접 카운트. stats 기반(날짜 없음)은 mainCount/snackCount 사용
     const totalRec = Math.max(0, targetDays * 3);
-    // 식사 기록만 필터링 (slot.type === 'main'이고 mealType !== 'Skip'인 것만)
-    const recCount = filteredData.filter(m => {
+    const hasMealHistoryData = filteredData.some(m => m.date);
+    const recCount = (hasMealHistoryData ? null : statsMainCount) ?? filteredData.filter(m => {
         const slot = SLOTS.find(s => s.id === m.slotId && s.type === 'main');
         return slot && m.mealType !== 'Skip';
     }).length;
     const mealPercent = totalRec > 0 ? Math.round((recCount / totalRec) * 100) : 0;
     
-    // 간식 기록 통계 계산 (식사와 별도로 계산)
-    const snackCount = filteredData.filter(m => {
+    const snackCount = (hasMealHistoryData ? null : statsSnackCount) ?? filteredData.filter(m => {
         const slot = SLOTS.find(s => s.id === m.slotId && s.type === 'snack');
         return slot && m.snackType;
     }).length;
     
-    // 식사 기록 표시
+    // 식사 기록 표시 (undefined 방지)
     const mealRecordCountEl = document.getElementById('mealRecordCount');
     const mealRecordPercentEl = document.getElementById('mealRecordPercent');
     const mealRecordTotalEl = document.getElementById('mealRecordTotal');
-    if (mealRecordCountEl) mealRecordCountEl.textContent = recCount;
+    if (mealRecordCountEl) mealRecordCountEl.textContent = String(recCount ?? 0);
     if (mealRecordPercentEl) mealRecordPercentEl.textContent = `(${mealPercent}%)`;
     if (mealRecordTotalEl) mealRecordTotalEl.textContent = `/${totalRec}`;
     
     // 간식 기록 표시
     const snackRecordCountEl = document.getElementById('snackRecordCount');
-    if (snackRecordCountEl) snackRecordCountEl.textContent = snackCount;
+    if (snackRecordCountEl) snackRecordCountEl.textContent = String(snackCount ?? 0);
     
     // 인사이트 코멘트는 처음 로드 시 기본 코멘트를 표시하고, 이후에는 COMMENT 버튼을 눌렀을 때만 업데이트됨
     // 처음 로드 시에만 기본 코멘트 표시 (이미 코멘트가 있으면 표시하지 않음)

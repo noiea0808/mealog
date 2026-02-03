@@ -2,7 +2,8 @@ const { initializeApp } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
-const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
+const { getMealDelta, mergeDeltaIntoDay, sanitizeDayEntry, computeStatsFromMeals } = require('./mealStats.js');
 const { logger } = require('firebase-functions');
 
 // Firebase Admin 초기화
@@ -1173,6 +1174,97 @@ exports.unsharePhotos = onCall({ region: REGION }, async (request) => {
 });
 
 /**
+ * 식사 기록(meals) 변경 시 stats 집계 문서 업데이트 (연도별 서브컬렉션)
+ * config/stats/years/{year} - 1년 단위로 분리하여 문서 크기 제한(1MB) 회피
+ */
+exports.onMealWritten = onDocumentWritten(
+  {
+    document: 'artifacts/' + APP_ID + '/users/{userId}/meals/{mealId}',
+    region: REGION
+  },
+  async (event) => {
+    const change = event.data;
+    if (!change) return;
+    const before = change.before;
+    const after = change.after;
+    const userId = event.params.userId;
+    if (!userId) return;
+
+    const datesToUpdate = new Set();
+
+    // 삭제/수정: 이전 데이터에서 -1 delta 적용
+    if (before && before.exists) {
+      const oldData = before.data();
+      const d = getMealDelta(oldData, -1);
+      if (d) datesToUpdate.add(d.date);
+    }
+
+    // 생성/수정: 새 데이터에서 +1 delta 적용
+    if (after && after.exists) {
+      const newData = after.data();
+      const d = getMealDelta(newData, +1);
+      if (d) datesToUpdate.add(d.date);
+    }
+
+    if (datesToUpdate.size === 0) return;
+
+    // 날짜별 연도 그룹화
+    const datesByYear = new Map();
+    datesToUpdate.forEach((dateStr) => {
+      const year = dateStr.split('-')[0];
+      if (!datesByYear.has(year)) datesByYear.set(year, new Set());
+      datesByYear.get(year).add(dateStr);
+    });
+
+    const basePath = db.collection('artifacts').doc(APP_ID)
+      .collection('users').doc(userId)
+      .collection('config').doc('stats')
+      .collection('years');
+
+    const emptyDayTemplate = { count: 0, mainCount: 0, snackCount: 0, main: { mealType: {}, category: {}, withWhom: {}, rating: {}, satiety: {} }, snack: { place: {}, snackType: {}, rating: {} } };
+
+    try {
+      await db.runTransaction(async (tx) => {
+        for (const [year, dates] of datesByYear) {
+          const yearRef = basePath.doc(year);
+          const yearSnap = await tx.get(yearRef);
+          const daily = yearSnap.exists ? { ...(yearSnap.data().daily || {}) } : {};
+
+          const applyDelta = (mealData, increment) => {
+            if (!mealData || !mealData.date) return;
+            const delta = getMealDelta(mealData, increment);
+            if (!delta) return;
+            const dateStr = mealData.date;
+            const day = daily[dateStr] ? JSON.parse(JSON.stringify(daily[dateStr])) : JSON.parse(JSON.stringify(emptyDayTemplate));
+            if (!day.main) day.main = emptyDayTemplate.main;
+            if (!day.snack) day.snack = emptyDayTemplate.snack;
+            mergeDeltaIntoDay(day, delta);
+            const sanitized = sanitizeDayEntry(day);
+            if (sanitized) daily[dateStr] = sanitized;
+            else delete daily[dateStr];
+          };
+
+          if (before && before.exists) {
+            const d = before.data().date;
+            if (d && year === d.split('-')[0]) applyDelta(before.data(), -1);
+          }
+          if (after && after.exists) {
+            const d = after.data().date;
+            if (d && year === d.split('-')[0]) applyDelta(after.data(), +1);
+          }
+
+          tx.set(yearRef, { daily, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        }
+      });
+      logger.info('onMealWritten: stats updated', { userId, dates: Array.from(datesToUpdate), years: Array.from(datesByYear.keys()) });
+    } catch (err) {
+      logger.error('onMealWritten: stats update failed', { userId, err: err.message });
+      throw err;
+    }
+  }
+);
+
+/**
  * 관리자 사용자 삭제 요청 처리 (Firestore 문서 생성 시 트리거)
  * deleteUserRequests/{requestId} 문서가 생성되면 requestedBy가 관리자인지 확인 후 Auth 사용자 삭제
  */
@@ -1215,6 +1307,51 @@ exports.onDeleteUserRequest = onDocumentCreated(
     }
     await snap.ref.delete();
   }
+);
+
+/**
+ * 기존 meals 데이터로 stats 집계 문서 생성/갱신 (Callable) - 연도별 서브컬렉션
+ * config/stats/years/{year} 에 연도별로 저장
+ */
+exports.backfillUserStats = onCall(
+  { region: REGION },
+  wrapFunction('backfillUserStats', async (request) => {
+    const auth = request.auth;
+    if (!auth || !auth.uid) {
+      throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    }
+    const userId = auth.uid;
+    const mealsRef = db.collection('artifacts').doc(APP_ID)
+      .collection('users').doc(userId)
+      .collection('meals');
+    const statsYearsRef = db.collection('artifacts').doc(APP_ID)
+      .collection('users').doc(userId)
+      .collection('config').doc('stats')
+      .collection('years');
+
+    const snapshot = await mealsRef.get();
+    const meals = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    const daily = computeStatsFromMeals(meals);
+
+    // 연도별로 그룹화
+    const dailyByYear = {};
+    Object.entries(daily).forEach(([dateStr, dayData]) => {
+      const year = dateStr.split('-')[0];
+      if (!dailyByYear[year]) dailyByYear[year] = {};
+      dailyByYear[year][dateStr] = dayData;
+    });
+
+    const batch = db.batch();
+    Object.entries(dailyByYear).forEach(([year, yearDaily]) => {
+      const yearRef = statsYearsRef.doc(year);
+      batch.set(yearRef, { daily: yearDaily, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    });
+    await batch.commit();
+
+    const totalDays = Object.keys(daily).length;
+    logger.info('backfillUserStats: completed', { userId, mealCount: meals.length, dayCount: totalDays, years: Object.keys(dailyByYear) });
+    return { success: true, mealCount: meals.length, dayCount: totalDays, years: Object.keys(dailyByYear) };
+  })
 );
 
 /**

@@ -483,7 +483,7 @@ export function setupListeners(userId, callbacks) {
         });
     }
     
-    // 최근 7일만 초기 로드 (로그인 후 첫 화면 속도 단축, 더 오래된 건 '더보기'로 로드)
+    // 최근 7일만 초기 로드 (로그인 후 첫 화면 속도 단축, 스크롤/더보기로 추가 로드)
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - 7);
     const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
@@ -563,7 +563,54 @@ export function setupListeners(userId, callbacks) {
         });
     });
     
-    return { settingsUnsubscribe, dataUnsubscribe };
+    // Stats 리스너 (연도별 서브컬렉션: config/stats/years/{year})
+    // 현재 연도 + 이전 연도 구독 (연말/연초 경계 대비)
+    let statsBackfillRequested = false;
+    const statsYearData = {};
+    const statsYearsToListen = [
+        String(new Date().getFullYear()),
+        String(new Date().getFullYear() - 1)
+    ];
+    const mergeStatsIntoDaily = () => {
+        const merged = {};
+        Object.values(statsYearData).forEach((yearDaily) => {
+            if (yearDaily && typeof yearDaily === 'object') {
+                Object.assign(merged, yearDaily);
+            }
+        });
+        window.dailyStats = merged;
+    };
+    const onStatsYearSnapshot = (year) => (snap) => {
+        if (window.currentUser && userId !== window.currentUser.uid) return;
+        if (snap.exists() && snap.data().daily) {
+            statsYearData[year] = snap.data().daily;
+        } else {
+            statsYearData[year] = null;
+        }
+        mergeStatsIntoDaily();
+        const hasAnyData = Object.values(statsYearData).some(v => v && Object.keys(v).length > 0);
+        if (!hasAnyData && !statsBackfillRequested && window.currentUser && !window.currentUser.isAnonymous) {
+            statsBackfillRequested = true;
+            import('../firebase.js').then(({ callableFunctions }) => {
+                callableFunctions.backfillUserStats().then(() => {
+                    console.log('✅ stats backfill 완료');
+                }).catch(e => {
+                    console.warn('stats backfill 실패:', e);
+                });
+            }).catch(() => {});
+        }
+        if (onDataUpdate) onDataUpdate();
+    };
+    const statsUnsubscribes = statsYearsToListen.map(year =>
+        onSnapshot(doc(db, 'artifacts', appId, 'users', userId, 'config', 'stats', 'years', year), onStatsYearSnapshot(year), (err) => {
+            console.warn('Stats year listener error:', year, err);
+            statsYearData[year] = null;
+            mergeStatsIntoDaily();
+        })
+    );
+    const statsUnsubscribe = () => statsUnsubscribes.forEach(fn => fn());
+    
+    return { settingsUnsubscribe, dataUnsubscribe, statsUnsubscribe };
 }
 
 export function setupSharedPhotosListener(callback) {

@@ -7,7 +7,8 @@ window.moduleLoading = true;
 import { appState, getState } from './state.js';
 import { auth, db, appId } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { dbOps, setupListeners, setupSharedPhotosListener, loadMoreMeals, postInteractions, boardOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
+import { dbOps, setupListeners, setupSharedPhotosListener, loadMoreMeals, loadMealsForDateRange, postInteractions, boardOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
+import { callableFunctions } from './firebase.js';
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
@@ -31,6 +32,10 @@ window.cleanupFirestoreListeners = () => {
         if (appState.dataUnsubscribe) {
             appState.dataUnsubscribe();
             appState.dataUnsubscribe = null;
+        }
+        if (appState.statsUnsubscribe) {
+            appState.statsUnsubscribe();
+            appState.statsUnsubscribe = null;
         }
         if (appState.sharedPhotosUnsubscribe) {
             appState.sharedPhotosUnsubscribe();
@@ -274,6 +279,28 @@ window.requestLogin = () => {
     }
 };
 window.Mealog.requestLogin = window.requestLogin;
+
+/** stats 집계 문서 재생성 (콘솔에서 window.backfillUserStats() 호출) */
+window.backfillUserStats = async () => {
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast('로그인이 필요합니다.', 'error');
+        return;
+    }
+    try {
+        showToast('통계 재계산 중...', 'info');
+        const result = await callableFunctions.backfillUserStats();
+        const { mealCount, dayCount } = result.data || {};
+        showToast(`통계 재계산 완료 (${mealCount}건, ${dayCount}일)`, 'success');
+        if (appState.currentTab === 'timeline') { renderTimeline(); renderMiniCalendar(); }
+        if (appState.currentTab === 'dashboard') updateDashboard();
+        return result.data;
+    } catch (e) {
+        console.error('backfillUserStats 실패:', e);
+        showToast(e?.message || '통계 재계산 실패', 'error');
+        throw e;
+    }
+};
+window.Mealog.backfillUserStats = window.backfillUserStats;
 
 // 좋아요 토글 함수
 window.toggleLike = async (postId) => {
@@ -1505,10 +1532,26 @@ window.setViewMode = (m) => {
     renderMiniCalendar();
 };
 
-window.jumpToDate = (iso) => {
+window.jumpToDate = async (iso) => {
     // 날짜를 명확하게 설정 (시간대 문제 방지)
     const targetDate = new Date(iso + 'T00:00:00');
     appState.pageDate = targetDate;
+    
+    // 선택한 날짜가 로드된 범위 밖이면 먼저 데이터 로드
+    const range = window.loadedMealsDateRange;
+    if (range && iso < range.start) {
+        try {
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+            await loadMealsForDateRange(iso, range.start);
+        } catch (e) {
+            console.warn('날짜 이동 시 데이터 로드 실패:', e);
+            showToast('기록을 불러오는 중 오류가 발생했습니다.', 'error');
+        } finally {
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            if (loadingOverlay) loadingOverlay.classList.add('hidden');
+        }
+    }
     
     if (appState.viewMode === 'list') {
         const today = new Date();
@@ -2061,6 +2104,10 @@ initAuth(async (user) => {
                 appState.dataUnsubscribe();
                 appState.dataUnsubscribe = null;
             }
+            if (appState.statsUnsubscribe) {
+                appState.statsUnsubscribe();
+                appState.statsUnsubscribe = null;
+            }
             if (appState.sharedPhotosUnsubscribe) {
                 appState.sharedPhotosUnsubscribe();
                 appState.sharedPhotosUnsubscribe = null;
@@ -2069,6 +2116,7 @@ initAuth(async (user) => {
             // 전역 상태 초기화
             window.userSettings = null;
             window.mealHistory = null;
+            window.dailyStats = null;
             window.sharedPhotos = null;
             window._duplicateCleanupDone = false;
             authFlowManager.hasCompleted = false;
@@ -2133,6 +2181,10 @@ initAuth(async (user) => {
                 appState.dataUnsubscribe();
                 appState.dataUnsubscribe = null;
             }
+            if (appState.statsUnsubscribe) {
+                appState.statsUnsubscribe();
+                appState.statsUnsubscribe = null;
+            }
 
             if (appState.sharedPhotosUnsubscribe) {
                 appState.sharedPhotosUnsubscribe();
@@ -2155,7 +2207,7 @@ initAuth(async (user) => {
         } else {
             // 리스너 설정 (이전 리스너는 setupListeners 내부에서 해제됨)
             let dataUpdateTimer = null; // 공유 시 meals 이중 리스너 방지용 디바운스
-            const { settingsUnsubscribe, dataUnsubscribe } = setupListeners(user.uid, {
+            const { settingsUnsubscribe, dataUnsubscribe, statsUnsubscribe } = setupListeners(user.uid, {
                 onSettingsUpdate: () => {
                     // 헤더 UI 업데이트 (디바운싱됨)
                     updateHeaderUI();
@@ -2177,8 +2229,13 @@ initAuth(async (user) => {
                     // onSettingsUpdate에서 약관 모달을 닫으면 타이밍 이슈로 인해 모달이 잠깐 표시되었다가 사라질 수 있음
                 },
                 onDataUpdate: () => {
+                    const tab = appState.currentTab;
+                    if (tab === 'dashboard') {
+                        updateDashboard();
+                        return;
+                    }
                     // 타임라인 탭이 보일 때만 재렌더. 다른 탭(앨범/분석/피드)에서는 스킵해 프리즈·고CPU 방지.
-                    if (appState.currentTab !== 'timeline') return;
+                    if (tab !== 'timeline') return;
                     // 저장 직후 800ms 동안은 재렌더 스킵 (낙관 반영 + jumpToDate·스크롤이 리스너 재렌더에 덮이지 않게)
                     if (window._timelineRerenderFreezeUntil && Date.now() < window._timelineRerenderFreezeUntil) return;
                     if (dataUpdateTimer) clearTimeout(dataUpdateTimer);
@@ -2203,6 +2260,7 @@ initAuth(async (user) => {
             });
             appState.settingsUnsubscribe = settingsUnsubscribe;
             appState.dataUnsubscribe = dataUnsubscribe;
+            appState.statsUnsubscribe = statsUnsubscribe;
             
             // 공유 사진 리스너 설정
             if (appState.sharedPhotosUnsubscribe) {
@@ -2329,6 +2387,10 @@ initAuth(async (user) => {
             appState.dataUnsubscribe();
             appState.dataUnsubscribe = null;
         }
+        if (appState.statsUnsubscribe) {
+            appState.statsUnsubscribe();
+            appState.statsUnsubscribe = null;
+        }
         if (appState.sharedPhotosUnsubscribe) {
             appState.sharedPhotosUnsubscribe();
             appState.sharedPhotosUnsubscribe = null;
@@ -2337,18 +2399,35 @@ initAuth(async (user) => {
     }
 });
 
-// 스크롤 이벤트 리스너
+// 스크롤 이벤트 리스너 (타임라인 하단 근처에서 더 오래된 기록 자동 로드)
 let scrollTimeout;
 window.addEventListener('scroll', () => { 
     const state = appState;
-    if (state.viewMode === 'list' && window.currentUser && 
-        (window.innerHeight + window.scrollY) >= document.body.offsetHeight - 400) {
-        // 디바운싱: 연속 호출 방지
-        clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => {
-            renderTimeline();
-        }, 100);
-    }
+    if (state.currentTab !== 'timeline' || state.viewMode !== 'list' || !window.currentUser) return;
+    if ((window.innerHeight + window.scrollY) < document.body.offsetHeight - 400) return;
+    // 디바운싱: 연속 호출 방지
+    clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(async () => {
+        if (appState.currentTab !== 'timeline') return;
+        const range = window.loadedMealsDateRange;
+        if (range) {
+            const today = new Date();
+            const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+            const pastLoadedCount = (window.loadedDates || []).filter(d => d < todayStr).length;
+            const nextOldest = new Date(today);
+            nextOldest.setDate(nextOldest.getDate() - (pastLoadedCount + 5));
+            const nextOldestStr = `${nextOldest.getFullYear()}-${String(nextOldest.getMonth() + 1).padStart(2, '0')}-${String(nextOldest.getDate()).padStart(2, '0')}`;
+            if (nextOldestStr < range.start) {
+                try {
+                    await loadMoreMeals(1, 'week'); // 스크롤 시 1주일씩 로드
+                } catch (e) {
+                    console.warn('스크롤 시 추가 로드 실패:', e);
+                }
+            }
+        }
+        renderTimeline();
+        renderMiniCalendar();
+    }, 100);
 });
 
 // 키보드 이벤트 리스너 (주간/월간 모드에서 좌우 방향키로 이동)

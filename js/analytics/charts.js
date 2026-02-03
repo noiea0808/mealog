@@ -8,21 +8,21 @@ const MEAL_SLOTS = ['morning', 'lunch', 'dinner'];
 const SNACK_SLOTS = ['pre_morning', 'snack1', 'snack2', 'night'];
 import { getDayName } from './date-utils.js';
 
-/** filteredData에서 장소/메뉴/사람별 빈도 집계 후 상위 10개 반환. options.menuSlotsOnly: 'meal' | 'snack' 이면 메뉴는 해당 슬롯만 집계 */
-function getTop10Rankings(filteredData, options = {}) {
+/** meal 기록에서 사용자 설정 태그(상세) 분석 - 테이블용. options.menuSlotsOnly: 'meal' | 'snack' */
+function getTop10RankingsFromMeals(mealRecords, options = {}) {
     const { menuSlotsOnly } = options;
     const dataForMenu = menuSlotsOnly === 'meal'
-        ? filteredData.filter(m => MEAL_SLOTS.includes(m.slotId))
+        ? mealRecords.filter(m => MEAL_SLOTS.includes(m.slotId))
         : menuSlotsOnly === 'snack'
-            ? filteredData.filter(m => SNACK_SLOTS.includes(m.slotId))
-            : filteredData;
+            ? mealRecords.filter(m => SNACK_SLOTS.includes(m.slotId))
+            : mealRecords;
     const placeCounts = {};
     const menuCounts = {};
     const peopleCounts = {};
-    filteredData.forEach(m => {
+    mealRecords.forEach(m => {
         const place = (m.place || '').trim();
         if (place) placeCounts[place] = (placeCounts[place] || 0) + 1;
-        const peopleRaw = (m.withWhomDetail || '').trim();
+        const peopleRaw = (m.withWhomDetail || m.withWhom || '').trim();
         if (peopleRaw) {
             peopleRaw.split(',').forEach(v => {
                 const vv = v.trim();
@@ -33,7 +33,7 @@ function getTop10Rankings(filteredData, options = {}) {
         }
     });
     dataForMenu.forEach(m => {
-        const menuRaw = (m.menuDetail || '').trim();
+        const menuRaw = (m.menuDetail || (menuSlotsOnly === 'snack' ? m.snackType : m.category) || '').trim();
         if (menuRaw) {
             menuRaw.split(',').forEach(v => {
                 const vv = v.trim();
@@ -53,8 +53,9 @@ function getTop10Rankings(filteredData, options = {}) {
     };
 }
 
-/** 세부 통계 탭 HTML 생성: key에 따라 테이블 형태로 1~10위 표시. 식사 무엇을=식사 메뉴만, 간식 무엇을=간식 메뉴만 */
-function buildDetailRankTabHtml(filteredData, key) {
+/** 상세모달 테이블: meal 기록에서 사용자 설정 태그(상세) 분석 */
+function buildDetailRankTabHtml(mealRecords, key) {
+    if (!mealRecords || !Array.isArray(mealRecords)) return '';
     const renderTable = (items, emptyLabel, colLabel) => {
         if (!items.length) {
             return `<p class="text-slate-400 text-xs py-2">${emptyLabel}</p>`;
@@ -71,24 +72,26 @@ function buildDetailRankTabHtml(filteredData, key) {
         </table>`;
     };
     if (key === 'mealType') {
-        const { place } = getTop10Rankings(filteredData);
+        const mealOnly = mealRecords.filter(m => MEAL_SLOTS.includes(m.slotId));
+        const { place } = getTop10RankingsFromMeals(mealOnly);
         return renderTable(place, '입력된 장소가 없습니다.', '어디서');
     }
     if (key === 'snackPlace') {
-        const snackOnly = filteredData.filter(m => SNACK_SLOTS.includes(m.slotId));
-        const { place } = getTop10Rankings(snackOnly);
+        const snackOnly = mealRecords.filter(m => SNACK_SLOTS.includes(m.slotId));
+        const { place } = getTop10RankingsFromMeals(snackOnly);
         return renderTable(place, '입력된 장소가 없습니다.', '어디서');
     }
     if (key === 'category') {
-        const { menu } = getTop10Rankings(filteredData, { menuSlotsOnly: 'meal' });
+        const { menu } = getTop10RankingsFromMeals(mealRecords, { menuSlotsOnly: 'meal' });
         return renderTable(menu, '입력된 메뉴가 없습니다.', '메뉴');
     }
     if (key === 'withWhom') {
-        const { people } = getTop10Rankings(filteredData);
+        const mealOnly = mealRecords.filter(m => MEAL_SLOTS.includes(m.slotId));
+        const { people } = getTop10RankingsFromMeals(mealOnly);
         return renderTable(people, '입력된 사람이 없습니다.', '누구와');
     }
     if (key === 'snackType') {
-        const { menu } = getTop10Rankings(filteredData, { menuSlotsOnly: 'snack' });
+        const { menu } = getTop10RankingsFromMeals(mealRecords, { menuSlotsOnly: 'snack' });
         return renderTable(menu, '입력된 메뉴가 없습니다.', '메뉴');
     }
     return '';
@@ -125,17 +128,16 @@ export function renderProportionChart(containerId, data, key) {
     // rating과 satiety는 숫자 값이므로 태그 필터링 불필요
     
     const counts = {};
+    const getVal = (m) => {
+        if (key === 'snackPlace') return String(m.place ?? '').trim() || '미입력';
+        return String(m[key] ?? '').trim() || '미입력';
+    };
     data.forEach(m => {
-        let val = (key === 'snackPlace' ? (m.place || '').trim() : m[key]) || '미입력';
-        
-        // 태그 필터링: 사용자가 설정한 태그만 표시
-        if (allowedTags && val !== '미입력') {
-            if (!allowedTags.has(val)) {
-                // 설정된 태그에 없으면 "미입력"으로 처리
-                val = '미입력';
-            }
+        let val = getVal(m);
+        // 차트는 메인태그만 표시 - 입력창 값(사용자설정태그)은 제외
+        if (allowedTags && val !== '미입력' && !allowedTags.has(val)) {
+            val = '미입력';
         }
-        
         counts[val] = (counts[val] || 0) + 1;
     });
     
@@ -152,13 +154,8 @@ export function renderProportionChart(containerId, data, key) {
         const tagEntries = tagOrder
             .filter(tag => counts[tag] > 0)
             .map(tag => [tag, counts[tag]])
-            .sort((a, b) => b[1] - a[1]); // 개수 내림차순
-        
-        // 미입력 항목이 있으면 마지막에 추가
-        if (counts['미입력'] > 0) {
-            tagEntries.push(['미입력', counts['미입력']]);
-        }
-        
+            .sort((a, b) => b[1] - a[1]);
+        if (counts['미입력'] > 0) tagEntries.push(['미입력', counts['미입력']]);
         sorted = tagEntries;
     } else {
         const entries = Object.entries(counts);
@@ -295,7 +292,7 @@ export function openDetailModal(key, title) {
         return;
     }
     
-    const { filteredData } = window.getDashboardData();
+    const { filteredData, mealRecordsForTable } = window.getDashboardData();
     
     // 사용자 설정 태그 목록 가져오기
     const userTags = window.userSettings?.tags || {};
@@ -326,7 +323,7 @@ export function openDetailModal(key, title) {
     
     const getValue = (m) => {
         if (key === 'snackPlace') {
-            return (m.place || '').trim() || '미입력';
+            return String(m.place ?? '').trim() || '미입력';
         }
         if (key === 'satiety') {
             const satietyNum = parseInt(m.satiety);
@@ -394,19 +391,11 @@ export function openDetailModal(key, title) {
             return;
         }
         
-        // 해당 슬롯의 값별 카운트
+        // 해당 슬롯의 값별 카운트 (메인태그만)
         const counts = {};
         slotData.forEach(m => {
             let val = getValue(m);
-            
-            // 태그 필터링: 사용자가 설정한 태그만 표시
-            if (allowedTags && val !== '미입력') {
-                if (!allowedTags.has(val)) {
-                    // 설정된 태그에 없으면 "미입력"으로 처리
-                    val = '미입력';
-                }
-            }
-            
+            if (allowedTags && val !== '미입력' && !allowedTags.has(val)) val = '미입력';
             counts[val] = (counts[val] || 0) + 1;
         });
         
@@ -419,13 +408,8 @@ export function openDetailModal(key, title) {
             const tagEntries = tagOrder
                 .filter(tag => counts[tag] > 0)
                 .map(tag => [tag, counts[tag]])
-                .sort((a, b) => b[1] - a[1]); // 개수 내림차순
-            
-            // 미입력 항목이 있으면 마지막에 추가
-            if (counts['미입력'] > 0) {
-                tagEntries.push(['미입력', counts['미입력']]);
-            }
-            
+                .sort((a, b) => b[1] - a[1]);
+            if (counts['미입력'] > 0) tagEntries.push(['미입력', counts['미입력']]);
             sorted = tagEntries;
         } else {
             const entries = Object.entries(counts);
@@ -542,7 +526,7 @@ export function openDetailModal(key, title) {
     const rankTabLabel = RANK_TAB_LABELS[key] || title;
     if (useTabs) {
         if (headerEl) headerEl.classList.add('hidden');
-        const rankHtml = buildDetailRankTabHtml(filteredData, key);
+        const rankHtml = buildDetailRankTabHtml(mealRecordsForTable || [], key);
         container.innerHTML = `
             <div class="flex items-center border-b border-slate-200 mb-4 -mx-1 flex-shrink-0">
                 <div class="flex flex-1">

@@ -5,4 +5,4 @@ export { dbOps } from './db/ops.js';
 export { setupListeners, setupSharedPhotosListener } from './db/listeners.js';
 export { postInteractions, getUserReportForPost, submitReport, withdrawReport, getReportsAggregateByGroupKeys } from './db/social.js';
 export { boardOperations, noticeOperations, deleteBoardPostByAdmin, setBoardPostHidden } from './db/board.js';
-export { loadMoreMeals, loadMealsForDateRange, migrateBase64ImagesToStorage } from './db/loading.js';
+export { loadMoreMeals, loadMealsForDateRange, loadStatsForYears, migrateBase64ImagesToStorage } from './db/loading.js';
