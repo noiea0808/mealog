@@ -311,6 +311,14 @@ header .mealog-title {
     margin-top: 14px; 
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
 }
+/* 식사기록·간식기록 박스 중간 구분선: 흰색 */
+.sticker-badge-divider {
+    width: 1px;
+    background: #ffffff;
+    margin: 0;
+    align-self: stretch;
+    flex-shrink: 0;
+}
 /* 인사이트 박스 내 식사/간식 기록: 외부 초록 박스와 동일 배경, 기간 영역과 동일 보더 */
 #dashboardView .sticker-badge {
     background: #059669;
@@ -943,29 +951,29 @@ header .mealog-title {
     letter-spacing: -0.01em;
 }
 .insight-share-btn {
-    padding: 0.375rem 0.75rem;
+    padding: 0.25rem 0.5rem;
     font-size: 11px;
     font-weight: 600;
     border: none;
-    border-radius: 9999px;
-    transition: background 0.15s, color 0.15s;
+    background: transparent;
+    transition: opacity 0.15s;
 }
-/* 밀당 말풍선 내 공유 버튼: 흰 배경으로 배경색(#047857)과 구분 */
+/* 밀당 말풍선 내 공유 버튼: 박스 없이 텍스트만 흰색 */
 .insight-share-btn.insight-share-btn--default {
-    background: #ffffff;
-    color: #047857;
+    background: transparent;
+    color: #ffffff;
 }
 .insight-share-btn.insight-share-btn--default:hover {
-    background: #f0fdf4;
-    color: #065f46;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.9);
 }
 .insight-share-btn.insight-share-btn--shared {
-    background: #ffffff;
-    color: #059669;
+    background: transparent;
+    color: #ffffff;
 }
 .insight-share-btn.insight-share-btn--shared:hover {
-    background: #ecfdf5;
-    color: #047857;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.9);
 }
 /* insight-share-btn 기본값 (다른 곳에서 클래스만 사용할 때) */
 .insight-share-btn:not(.insight-share-btn--default):not(.insight-share-btn--shared) {
@@ -981,7 +989,7 @@ header .mealog-title {
 #insightTextContent.insight-text-content,
 .insight-text-content {
     line-height: 1.55;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 400;
     color: #ffffff;
     word-wrap: break-word;
@@ -995,16 +1003,21 @@ header .mealog-title {
     display: block;
 }
 .insight-character-btn {
-    background: #ffffff;
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+/* 밀로그(MEALOG) 선택 시에만 흰색 보더 */
+.insight-character-btn:has(#insightCharacterIcon.mealog-character-m) {
+    border: 1px solid #ffffff;
 }
 .insight-character-btn #insightCharacterIcon {
     color: #047857;
 }
-/* MEALOG M: Fredoka 폰트 */
+/* MEALOG M: Fredoka 폰트, 흰색 텍스트 */
 .insight-character-btn #insightCharacterIcon.mealog-character-m {
     font-family: 'Fredoka', sans-serif;
+    color: #ffffff;
 }
 /* 캐릭터 이미지: 창 전체를 채우고 모서리 둥글게 */
 .insight-character-btn #insightCharacterIcon img {
@@ -1016,6 +1029,7 @@ header .mealog-title {
 }
 .insight-comment-trigger {
     font-size: 12px;
+    padding: 0.1875rem 0.5rem;
     color: #1e293b;
     background: #ffca2c;
     border: 1px solid rgba(0, 0, 0, 0.08);
