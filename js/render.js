@@ -318,7 +318,7 @@ function setupLongPressDrag(item) {
             const targetIndex = parseInt(closestItem.dataset.index);
             const rect = closestItem.getBoundingClientRect();
             const itemCenterX = rect.left + rect.width / 2;
-            const swapThreshold = rect.width * 0.35; // 아이템 너비의 35% 이상 넘어가야 스왑 (민감도 완화)
+            const swapThreshold = rect.width * 0.22; // 아이템 너비의 22% 넘어가면 스왑 (부드러운 반응)
             
             if (draggedIndex !== null && draggedIndex !== targetIndex) {
                 // 스왑 임계값: 터치가 대상 아이템 중심을 충분히 넘어갔을 때만 스왑
@@ -1785,7 +1785,7 @@ export async function renderGallery() {
                     </div>
                 </div>
                 <div class="relative overflow-hidden ${(isDailyShare || isInsightShare) ? 'bg-white' : 'bg-slate-100'}">
-                    <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
+                    <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gallery-photo-scroll" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
                         ${photosHtml}
                     </div>
                     ${photoCount > 1 ? `
@@ -1867,8 +1867,38 @@ export async function renderGallery() {
         const scrollContainers = container.querySelectorAll('.flex.overflow-x-auto');
         scrollContainers.forEach((scrollContainer, idx) => {
             const counter = scrollContainer.parentElement.querySelector('.photo-counter-current');
-            if (counter && sortedGroups[idx] && sortedGroups[idx].length > 1) {
-                const photos = scrollContainer.querySelectorAll('div');
+            const photos = scrollContainer.querySelectorAll('div');
+            const photoCount = sortedGroups[idx]?.length || 0;
+            // 스크롤 종료 시 가장 가까운 사진으로 스냅 (한장한장 구분감)
+            if (photoCount > 1) {
+                const snapToNearest = () => {
+                    const cw = scrollContainer.clientWidth;
+                    const sl = scrollContainer.scrollLeft;
+                    const pw = photos[0]?.offsetWidth || cw;
+                    const nearest = Math.round(sl / pw);
+                    const target = Math.max(0, Math.min(nearest, photoCount - 1)) * pw;
+                    if (Math.abs(sl - target) > 2) {
+                        scrollContainer.scrollTo({ left: target, behavior: 'auto' });
+                    }
+                };
+                let snapTimeout = null;
+                const onScrollEnd = () => {
+                    clearTimeout(snapTimeout);
+                    snapTimeout = setTimeout(snapToNearest, 150);
+                };
+                scrollContainer.addEventListener('scroll', onScrollEnd, { passive: true });
+                if ('onscrollend' in scrollContainer) {
+                    scrollContainer.addEventListener('scrollend', snapToNearest);
+                }
+                if (abortSignal) {
+                    abortSignal.addEventListener('abort', () => {
+                        clearTimeout(snapTimeout);
+                        scrollContainer.removeEventListener('scroll', onScrollEnd);
+                        scrollContainer.removeEventListener('scrollend', snapToNearest);
+                    });
+                }
+            }
+            if (counter && photoCount > 1) {
                 const updateCounter = () => {
                     const containerWidth = scrollContainer.clientWidth;
                     const scrollLeft = scrollContainer.scrollLeft;
@@ -2430,7 +2460,7 @@ export function renderFeed() {
                     </div>
                 </div>
                 <div class="relative overflow-hidden ${(isDailyShare || isInsightShare) ? 'bg-white' : 'bg-slate-100'}">
-                    <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
+                    <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gallery-photo-scroll" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
                         ${photosHtml}
                     </div>
                     ${photoCount > 1 ? `
@@ -2468,8 +2498,30 @@ export function renderFeed() {
         const scrollContainers = container.querySelectorAll('.flex.overflow-x-auto');
         scrollContainers.forEach((scrollContainer, idx) => {
             const counter = scrollContainer.parentElement.querySelector('.photo-counter-current');
-            if (counter && sortedGroups[idx].length > 1) {
-                const photos = scrollContainer.querySelectorAll('div');
+            const photos = scrollContainer.querySelectorAll('div');
+            const photoCount = sortedGroups[idx]?.length || 0;
+            // 스크롤 종료 시 가장 가까운 사진으로 스냅 (한장한장 구분감)
+            if (photoCount > 1) {
+                const snapToNearest = () => {
+                    const sl = scrollContainer.scrollLeft;
+                    const pw = photos[0]?.offsetWidth || scrollContainer.clientWidth;
+                    const nearest = Math.round(sl / pw);
+                    const target = Math.max(0, Math.min(nearest, photoCount - 1)) * pw;
+                    if (Math.abs(sl - target) > 2) {
+                        scrollContainer.scrollTo({ left: target, behavior: 'auto' });
+                    }
+                };
+                let snapTimeout = null;
+                const onScrollEnd = () => {
+                    clearTimeout(snapTimeout);
+                    snapTimeout = setTimeout(snapToNearest, 150);
+                };
+                scrollContainer.addEventListener('scroll', onScrollEnd, { passive: true });
+                if ('onscrollend' in scrollContainer) {
+                    scrollContainer.addEventListener('scrollend', snapToNearest);
+                }
+            }
+            if (counter && photoCount > 1) {
                 const updateCounter = () => {
                     const containerWidth = scrollContainer.clientWidth;
                     const scrollLeft = scrollContainer.scrollLeft;

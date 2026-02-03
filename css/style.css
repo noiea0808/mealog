@@ -728,6 +728,12 @@ header .mealog-title {
 .scrollbar-hide::-webkit-scrollbar {
     display: none;
 }
+/* 모먼트/밀톡 사진 스와이프: 한장한장 구분감 (미끄러짐 감소) */
+.gallery-photo-scroll {
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scroll-snap-stop: always;
+}
 /* Comment 줄바꿈 및 제한 스타일 */
 .line-clamp-2 {
     display: -webkit-box;
