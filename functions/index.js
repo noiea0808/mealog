@@ -1,6 +1,7 @@
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
+const { getStorage } = require('firebase-admin/storage');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { getMealDelta, mergeDeltaIntoDay, sanitizeDayEntry, computeStatsFromMeals } = require('./mealStats.js');
@@ -1093,6 +1094,59 @@ exports.createInsightShare = onCall({ region: REGION }, async (request) => {
     entryId: null,
     comment: comment || ''
   };
+});
+
+/**
+ * Firebase Storage 이미지를 base64로 변환 (CORS 우회용)
+ * 밀당 공유 캡처 시 캐릭터 이미지가 포함되도록 서버에서 다운로드
+ */
+exports.getStorageImageAsBase64 = onCall({ region: REGION }, async (request) => {
+  const { auth, data } = request;
+
+  if (!auth || !auth.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+
+  const { imageUrl } = data;
+  if (!imageUrl || typeof imageUrl !== 'string') {
+    throw new HttpsError('invalid-argument', 'imageUrl이 필요합니다.');
+  }
+
+  // Firebase Storage URL에서 경로 추출
+  // 형식: https://firebasestorage.googleapis.com/v0/b/{bucket}/o/{encodedPath}?alt=media&token=...
+  if (!imageUrl.includes('firebasestorage.googleapis.com')) {
+    throw new HttpsError('invalid-argument', 'Firebase Storage URL만 지원합니다.');
+  }
+
+  let storagePath;
+  try {
+    const url = new URL(imageUrl);
+    const pathMatch = url.pathname.match(/\/o\/(.+)$/);
+    if (!pathMatch) throw new Error('Invalid path');
+    storagePath = decodeURIComponent(pathMatch[1]);
+  } catch (e) {
+    throw new HttpsError('invalid-argument', '유효하지 않은 Storage URL입니다.');
+  }
+
+  // 본인 또는 공개 경로만 허용 (users/{uid}/... 형태)
+  const pathParts = storagePath.split('/');
+  if (pathParts[0] === 'users' && pathParts[1] !== auth.uid) {
+    throw new HttpsError('permission-denied', '다른 사용자의 이미지에 접근할 수 없습니다.');
+  }
+
+  try {
+    const storage = getStorage();
+    const bucket = storage.bucket('mealog-r0.firebasestorage.app');
+    const file = bucket.file(storagePath);
+    const [contents] = await file.download();
+    const ext = storagePath.split('.').pop()?.toLowerCase() || 'png';
+    const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : 'image/png';
+    const base64 = contents.toString('base64');
+    return { dataUrl: `data:${mime};base64,${base64}` };
+  } catch (e) {
+    logger.error('getStorageImageAsBase64 실패:', e);
+    throw new HttpsError('internal', '이미지 다운로드에 실패했습니다.');
+  }
 });
 
 /**

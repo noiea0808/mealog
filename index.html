@@ -721,8 +721,8 @@
                                     <h3 class="ui-section-label">BEST 기간</h3>
                                     <span id="bestPeriodLabel" class="text-xs text-slate-300"></span>
                                 </div>
-                                <button id="shareBestBtn" onclick="window.openShareBestModal()" class="hidden text-xs font-bold px-3 py-1.5 active:opacity-70 transition-colors ml-2 text-blue-600">
-                                    <i class="fa-solid fa-share text-[10px] mr-1"></i>공유하기
+                                <button id="shareBestBtn" onclick="window.openShareBestModal()" class="hidden text-xs font-bold px-3 py-1.5 active:opacity-70 transition-colors ml-2 text-slate-700">
+                                    <i class="fa-solid fa-share text-[12px] mr-1"></i>공유하기
                                 </button>
                             </div>
                             <div id="bestMealsContainer" class="space-y-2"></div>
@@ -1140,14 +1140,18 @@
                 </div>
             </div>
             <div class="p-6 border-t">
-                <button id="bestShareSubmitBtn" onclick="window.shareBestToFeed()" class="w-full py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all">공유하기</button>
+                <button id="bestShareSubmitBtn" onclick="window.shareBestToFeed()" class="w-full py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all">공유하기</button>
             </div>
         </div>
     </div>
 
     <!-- Insight Share Modal -->
     <div id="insightShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-end">
-        <div class="w-full max-w-md mx-auto bg-white rounded-t-[2rem] flex flex-col max-h-[92vh]">
+        <div class="relative w-full max-w-md mx-auto bg-white rounded-t-[2rem] flex flex-col max-h-[92vh]">
+            <div id="insightShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-t-[2rem] flex flex-col items-center justify-center z-20">
+                <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>
+                <p class="text-slate-600 font-bold">공유 중...</p>
+            </div>
             <div class="p-6 border-b flex justify-between items-center">
                 <h2 class="text-lg font-bold text-slate-800 tracking-tight">밀당(MEAL-DANG)들의 참견 공유하기</h2>
                 <button onclick="window.closeShareInsightModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
@@ -1160,7 +1164,7 @@
                 </div>
             </div>
             <div class="p-6 border-t">
-                <button id="insightShareSubmitBtn" onclick="window.shareInsightToFeed()" class="w-full py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all">공유하기</button>
+                <button id="insightShareSubmitBtn" onclick="window.shareInsightToFeed()" class="w-full py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all">공유하기</button>
             </div>
         </div>
     </div>

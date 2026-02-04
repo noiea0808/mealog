@@ -271,11 +271,11 @@ export function renderBestMeals() {
             
             // 버튼 텍스트 및 스타일 업데이트 (베스트는 초록색 배경)
             if (isShared) {
-                shareBtn.innerHTML = `<i class="fa-solid fa-share text-[10px] mr-1"></i>공유됨`;
-                shareBtn.className = 'text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 bg-emerald-600 text-white rounded-lg';
+                shareBtn.innerHTML = `<i class="fa-solid fa-share text-[12px] mr-1"></i>공유됨`;
+                shareBtn.className = 'text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 bg-slate-800 text-white rounded-lg';
             } else {
-                shareBtn.innerHTML = `<i class="fa-solid fa-share text-[10px] mr-1"></i>공유하기`;
-                shareBtn.className = 'text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 text-emerald-600 rounded-lg';
+                shareBtn.innerHTML = `<i class="fa-solid fa-share text-[12px] mr-1"></i>공유하기`;
+                shareBtn.className = 'text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 text-slate-700 rounded-lg';
             }
         } else {
             shareBtn.classList.add('hidden');
@@ -683,7 +683,8 @@ export async function openShareBestModal() {
     const photoAreaEmptyBg = '#e2e8f0';
     const screenshotHtml = `
         <div id="bestScreenshotContainer" style="width: 420px; max-width: 420px; margin: 0 auto; border: 1px solid ${borderOuterGray}; border-radius: 20px; overflow: hidden; font-family: Pretendard, sans-serif; background: #f1f5f9;">
-            <div style="background: #ffffff; padding: 16px; border-bottom: 1px solid ${borderLightGray};">
+            <!-- 헤더 (패딩 6/16/16으로 텍스트 10px 상향) -->
+            <div style="background: #ffffff; padding: 6px 16px 16px; border-bottom: 1px solid ${borderLightGray};">
                 <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 8px;">
                     <span style="font-size: 28.8px; font-weight: 600; color: #eab308; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
                     <span style="font-size: 12px; font-weight: 400; color: #64748b; flex-shrink: 0;">${periodText}</span>
@@ -730,7 +731,7 @@ export async function openShareBestModal() {
                 return `
                     <div style="display: flex; margin: 4px 8px; margin-bottom: 7px; border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; background: rgba(255, 255, 255, 0.9); box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-height: 130px;">
                         <div style="width: 130px; min-height: 130px; ${photoBoxBg} ${photoBoxBorder} display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0; border-radius: 12px 0 0 12px; overflow: hidden;">
-                            ${photoUrl ? `<img src="${photoUrl}" style="width: 100%; height: 100%; min-height: 130px; object-fit: cover;">` : `<div style="font-size: 28px;">🍽️</div>`}
+                            ${photoUrl ? `<img src="${photoUrl}" style="width: 100%; height: 100%; min-height: 130px; object-fit: cover;">` : `<i class="fa-solid fa-utensils" style="font-size: 24px; color: #94a3b8;"></i>`}
                             <div style="position: absolute; top: 10px; left: 10px; width: 28px; height: 28px; border-radius: 50%; background: ${rankBg}; color: ${rankText}; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; line-height: 1; box-shadow: 0 2px 4px rgba(0,0,0,0.15); padding: 0; margin: 0;">
                                 <span style="display: inline-block; line-height: 1; vertical-align: middle; margin: 0; padding: 0;">${index + 1}</span>
                             </div>
@@ -742,16 +743,16 @@ export async function openShareBestModal() {
                                 <span style="color: #cbd5e1; margin: 0 4px;">·</span>
                                 <span style="color: #94a3b8;">${formattedDate}</span>
                             </div>
-                            <div style="font-size: 15px; font-weight: 700; color: #1e293b; margin-bottom: 6px; line-height: 1.3; word-break: break-word;">
+                            <div style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 6px; line-height: 1.3; word-break: break-word;">
                                 ${safeMenuDetail}
                             </div>
                             ${comment ? `<div style="font-size: 11px; color: #94a3b8; margin-bottom: 8px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic; padding-bottom: 2px;">
                                 "${safeComment}"
                             </div>` : ''}
                             <div style="display: flex; align-items: center; justify-content: flex-start; gap: 4px; margin-top: auto; padding-top: 4px;">
-                                <span style="font-size: 11px; color: #ca8a04; font-weight: 900; background: #fefce8; padding: 4px 10px; border-radius: 999px; border: 1px solid #fde047; display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 24px; white-space: nowrap;">
-                                    <span style="font-size: 13px; line-height: 1; display: inline-flex; align-items: center;">⭐</span>
-                                    <span style="font-size: 12px; font-weight: 900; line-height: 1; display: inline-flex; align-items: center;">${rating}</span>
+                                <span style="font-size: 10px; color: #ca8a04; font-weight: 900; background: #fefce8; padding: 3px 8px; border-radius: 999px; border: 1px solid #fde047; display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-height: 20px; white-space: nowrap; box-sizing: border-box;">
+                                    <span style="font-size: 11px; line-height: 1;">⭐</span>
+                                    <span style="font-size: 11px; font-weight: 900; line-height: 1;">${rating}</span>
                                 </span>
                             </div>
                         </div>
@@ -790,7 +791,7 @@ export async function openShareBestModal() {
             submitBtn.className = 'w-full py-4 bg-red-600 text-white rounded-xl font-bold active:bg-red-700 shadow-lg transition-all';
         } else {
             submitBtn.textContent = '공유하기';
-            submitBtn.className = 'w-full py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all';
+            submitBtn.className = 'w-full py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all';
         }
     }
 }
@@ -859,7 +860,7 @@ export async function openEditBestShareModal(photoUrl) {
     const submitBtn = document.getElementById('bestShareSubmitBtn');
     if (submitBtn) {
         submitBtn.textContent = '수정 완료';
-        submitBtn.className = 'w-full py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all';
+        submitBtn.className = 'w-full py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all';
         // 수정 모드임을 표시하기 위한 데이터 속성 추가
         submitBtn.setAttribute('data-edit-mode', 'true');
         submitBtn.setAttribute('data-photo-url', photoUrl);
@@ -1007,24 +1008,38 @@ export async function shareBestToFeed() {
     await new Promise(r => setTimeout(r, 50));
 
     try {
-        // html2canvas가 전역에 있는지 확인 (window.html2canvas 또는 전역 html2canvas)
         const html2canvasFunc = (typeof window !== 'undefined' && window.html2canvas) || (typeof html2canvas !== 'undefined' ? html2canvas : null);
-        
         if (!html2canvasFunc) {
             throw new Error('html2canvas를 찾을 수 없습니다. HTML에 html2canvas 라이브러리가 로드되었는지 확인하세요.');
         }
         
-        // 스크린샷 생성 시 bestScreenshotContainer를 직접 찾아서 사용
         const screenshotContainer = preview.querySelector('#bestScreenshotContainer');
         const targetElement = screenshotContainer || preview;
         
-        // 스크린샷 생성
+        await document.fonts.ready;
+        let fontCSS = '';
+        try {
+            const [fredokaRes, nanumRes] = await Promise.all([
+                fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap'),
+                fetch('https://fonts.googleapis.com/earlyaccess/nanumsquareround.css')
+            ]);
+            fontCSS = (await fredokaRes.text()) + (await nanumRes.text());
+        } catch (e) { console.warn('폰트 CSS 로드 실패:', e); }
+        
         const canvas = await html2canvasFunc(targetElement, {
             backgroundColor: '#ffffff',
-            scale: 2,
+            scale: 3,
             logging: false,
             useCORS: true,
-            allowTaint: true
+            allowTaint: true,
+            fontEmbedCSS: true,
+            onclone: (clonedDoc) => {
+                if (fontCSS) {
+                    const style = clonedDoc.createElement('style');
+                    style.textContent = fontCSS;
+                    clonedDoc.head.appendChild(style);
+                }
+            }
         });
         
         // Canvas를 Blob으로 변환
@@ -1033,7 +1048,7 @@ export async function shareBestToFeed() {
         // Firebase Storage에 업로드
         const base64Image = canvas.toDataURL('image/png');
         const { uploadBase64ToStorage } = await import('../utils.js');
-        const photoUrl = await uploadBase64ToStorage(base64Image, window.currentUser.uid, `best_${periodType}_${periodText.replace(/\s+/g, '_')}`);
+        const photoUrl = await uploadBase64ToStorage(base64Image, window.currentUser.uid, `best_${periodType}_${periodText.replace(/\s+/g, '_')}`, 1024);
         
         const userProfile = window.userSettings?.profile || {};
         

@@ -299,7 +299,8 @@ export function base64ToBlob(base64DataUrl) {
 }
 
 // base64 이미지를 압축하여 Blob으로 변환 (마이그레이션용) - 뷰포트 기반
-export function compressBase64ToBlob(base64DataUrl) {
+// maxSizeKB: 목표 최대 용량(KB). 캡쳐3종은 1024(1MB), initialQuality 0.9로 선명도 향상
+export function compressBase64ToBlob(base64DataUrl, maxSizeKB = 500, initialQuality = 0.7) {
     return new Promise((resolve, reject) => {
         const img = new Image();
         
@@ -307,9 +308,10 @@ export function compressBase64ToBlob(base64DataUrl) {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             
-            const targetSizeKB = 500;
+            const targetSizeKB = maxSizeKB;
             const targetSizeBytes = targetSizeKB * 1024;
-            const maxInitialWidth = getViewportMaxWidth();
+            // 캡쳐3종(1MB): scale 3 출력(1260px) 보존. 그 외: 뷰포트 기반
+            const maxInitialWidth = maxSizeKB >= 1024 ? 1260 : getViewportMaxWidth();
             const minWidth = getViewportMinWidth();
             
             let width = img.width;
@@ -324,7 +326,7 @@ export function compressBase64ToBlob(base64DataUrl) {
             canvas.height = height;
             ctx.drawImage(img, 0, 0, width, height);
             
-            let quality = 0.7;
+            let quality = initialQuality;
             
             const compress = () => {
                 canvas.toBlob((blob) => {
@@ -410,10 +412,11 @@ export async function uploadImageToStorage(file, userId, entryId = null) {
 }
 
 // base64 이미지를 Storage에 업로드 (마이그레이션용)
-export async function uploadBase64ToStorage(base64DataUrl, userId, entryId) {
+// maxSizeKB: 압축 목표 최대 용량(KB). 캡쳐3종은 1024(1MB), initialQuality 0.9로 선명도 향상
+export async function uploadBase64ToStorage(base64DataUrl, userId, entryId, maxSizeKB = 500) {
     try {
-        // base64를 압축된 Blob으로 변환
-        const compressedBlob = await compressBase64ToBlob(base64DataUrl);
+        const initialQuality = maxSizeKB >= 1024 ? 0.9 : 0.7;
+        const compressedBlob = await compressBase64ToBlob(base64DataUrl, maxSizeKB, initialQuality);
         
         // 파일명 생성 (타임스탬프 + 랜덤 문자열)
         const timestamp = Date.now();

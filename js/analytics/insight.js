@@ -1284,12 +1284,12 @@ export async function updateShareButtonStatus() {
         
         if (isShared) {
             // 공유됨 상태: 흰 배경으로 구분감
-            shareBtn.innerHTML = '<i class="fa-solid fa-share text-[10px] mr-1"></i>공유됨';
-            shareBtn.className = 'insight-share-btn insight-share-btn--shared flex-shrink-0 rounded-lg font-bold text-[10px] py-1 px-2';
+            shareBtn.innerHTML = '<i class="fa-solid fa-share text-[12px] mr-1"></i>공유됨';
+            shareBtn.className = 'insight-share-btn insight-share-btn--shared flex-shrink-0 rounded-lg font-bold text-[12px] py-1 px-2';
         } else {
             // 공유 안 됨 상태: 흰 배경으로 구분감
-            shareBtn.innerHTML = '<i class="fa-solid fa-share text-[10px] mr-1"></i>공유하기';
-            shareBtn.className = 'insight-share-btn insight-share-btn--default flex-shrink-0 rounded-lg font-bold text-[10px] py-1 px-2';
+            shareBtn.innerHTML = '<i class="fa-solid fa-share text-[12px] mr-1"></i>공유하기';
+            shareBtn.className = 'insight-share-btn insight-share-btn--default flex-shrink-0 rounded-lg font-bold text-[12px] py-1 px-2';
         }
     }
 }
@@ -1335,61 +1335,64 @@ export async function openShareInsightModal() {
     const insightText = insightTextContent.innerHTML || insightTextContent.textContent || '';
     const characterNameText = insightCharacterName ? insightCharacterName.textContent : '';
     
-    // 캐릭터 아이콘 HTML 가져오기
+    // 캐릭터 아이콘 HTML 가져오기 (실제 DOM에서 가져와서 정확히 표시)
     let characterIconHtml = '';
     if (insightCharacterIcon) {
-        if (character.image) {
-            characterIconHtml = `<img src="${escapeHtml(character.image)}" alt="${escapeHtml(characterName)}" style="width: 100%; height: 100%; object-fit: contain;">`;
-        } else if (character.id === 'mealog') {
-            characterIconHtml = `<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 900; color: white;">M</div>`;
+        const img = insightCharacterIcon.querySelector('img');
+        if (img && img.src) {
+            characterIconHtml = `<img src="${escapeHtml(img.src)}" alt="" style="width: 100%; height: 100%; object-fit: contain;">`;
         } else {
-            characterIconHtml = `<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 32px;">${escapeHtml(characterIcon)}</div>`;
+            const content = (insightCharacterIcon.innerHTML || insightCharacterIcon.textContent || '').trim();
+            if (content) {
+                const isMealog = insightCharacterIcon.classList.contains('mealog-character-m');
+                characterIconHtml = `<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: ${isMealog ? '24px' : '32px'}; font-weight: 900; color: white; font-family: ${isMealog ? "'Fredoka', sans-serif" : 'inherit'};">${content}</div>`;
+            } else if (character) {
+                // 폴백: character 객체 사용
+                if (character.id === 'mealog') {
+                    characterIconHtml = `<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 900; color: white; font-family: 'Fredoka', sans-serif;">M</div>`;
+                } else if (character.icon) {
+                    characterIconHtml = `<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 32px;">${escapeHtml(character.icon)}</div>`;
+                }
+            }
         }
     }
     
-    // 스크린샷용 HTML 생성 (실제 화면과 동일한 구조 및 색상)
+    // 스크린샷용 HTML 생성 (베스트/하루소감과 동일 포맷: 흰 헤더+초록 타이틀+회색 보더, 본문 연회색, 말풍선 녹색 유지)
+    const borderLightGray = '#e2e8f0';
+    const borderOuterGray = '#cbd5e1';
     const screenshotHtml = `
-        <div id="insightScreenshotContainer" style="width: 420px; max-width: 420px; margin: 0 auto; background: #f8fafc; border-radius: 8px; overflow: hidden; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-            <!-- 헤더 (밀로그 그린 배경) -->
-            <div style="background: #059669; padding: 16px; border-bottom: 1px solid #047857;">
-                <!-- 상단: MEALOG와 기간 -->
+        <div id="insightScreenshotContainer" style="width: 420px; max-width: 420px; margin: 0 auto; border: 1px solid ${borderOuterGray}; border-radius: 20px; overflow: hidden; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f1f5f9;">
+            <!-- 헤더: 흰 배경, 초록 타이틀 (패딩 6/16/16으로 텍스트 10px 상향, html2canvas 호환) -->
+            <div style="background: #ffffff; padding: 6px 16px 16px; border-bottom: 1px solid ${borderLightGray};">
                 <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 8px;">
-                    <span style="font-size: 28.8px; font-weight: 600; color: #ffffff; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
-                    <span style="font-size: 12px; font-weight: 400; color: #d1fae5; flex-shrink: 0;">${escapeHtml(dateRangeText || '')}</span>
+                    <span style="font-size: 28.8px; font-weight: 600; color: #059669; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
+                    <span style="font-size: 12px; font-weight: 400; color: #64748b; flex-shrink: 0;">${escapeHtml(dateRangeText || '')}</span>
                 </div>
-                <!-- 하단: 밀당(MEAL-DANG)들의 참견 -->
                 <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="font-size: 16px;">${escapeHtml(characterIcon)}</span>
-                    <span style="font-size: 15px; font-weight: 700; color: #ffffff; font-family: 'NanumSquareRound', sans-serif;">${escapeHtml(userNickname)}님에 대한 밀당(MEAL黨)들의 참견</span>
+                    <span style="font-size: 16px;">💬</span>
+                    <span style="font-size: 15px; font-weight: 700; color: #1e293b; font-family: 'NanumSquareRound', sans-serif;">${escapeHtml(userNickname)}에 대한 밀당의 참견</span>
                 </div>
             </div>
-            
-            <!-- 인사이트 섹션 (초록색 배경, 투명도 20%) -->
-            <div style="background: rgba(5, 150, 105, 0.8); padding: 12px 16px; border-top: 1px solid #ffffff;">
-                <!-- 캐릭터와 말풍선 영역 -->
-                <div style="display: flex; gap: 12px; align-items: flex-start;">
-                    <!-- 밀당 캐릭터 선택 창 -->
-                    <div style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; width: 75px;">
-                        <div style="width: 75px; height: 164px; background: rgba(255, 255, 255, 0.2); border-radius: 16px; border: 2px solid rgba(255, 255, 255, 0.3); display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden;">
-                            ${characterIconHtml}
-                        </div>
-                        <div style="width: 75px; height: auto; background: #ffca2c; border-radius: 12px; padding: 4px; text-align: center; font-size: 12px; font-weight: 700; color: #1e293b; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                            분석하기
-                        </div>
+            <!-- 본문: 연회색 배경, 캐릭터+말풍선 (패딩 2/16/16으로 10px 상향) -->
+            <div style="display: flex; gap: 12px; align-items: flex-start; padding: 2px 16px 16px 16px; background: #f1f5f9; border-bottom-left-radius: 19px; border-bottom-right-radius: 19px;">
+                <!-- 밀당 캐릭터 (배경 없음) -->
+                <div style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; width: 75px;">
+                    <div style="width: 75px; height: 132px; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden;">
+                        ${characterIconHtml}
                     </div>
-                    
-                    <!-- 말풍선 -->
-                    <div style="flex: 1; min-width: 0;">
-                        <div style="background: rgba(254, 252, 232, 0.9); border: 2px solid white; padding: 12px; border-radius: 0.5rem 1.25rem 1.25rem 0.5rem; min-height: 164px;">
-                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                                ${characterNameText ? `<div style="font-size: 14px; font-weight: 800; color: #065f46;">${escapeHtml(characterNameText)}</div>` : '<div></div>'}
-                                <div style="flex-shrink: 0; background: #059669; border-radius: 8px; padding: 4px 8px; font-size: 10px; font-weight: 700; color: white; border: 1px solid #047857; box-shadow: 0 1px 3px rgba(0,0,0,0.1);" class="insight-share-button">
-                                    <i class="fa-solid fa-share" style="font-size: 10px; margin-right: 4px;"></i>공유
-                                </div>
-                            </div>
-                            <div style="font-size: 14px; line-height: 1.6; color: #1e293b; font-weight: 400; white-space: pre-line; word-wrap: break-word; overflow-wrap: break-word;">
-                                ${insightText}
-                            </div>
+                    <div style="width: 75px; background: #ffca2c; border-radius: 12px; padding: 6px 4px; text-align: center; font-size: 12px; font-weight: 700; color: #1e293b; border: 1px solid rgba(0,0,0,0.08);">
+                        분석하기
+                    </div>
+                </div>
+                <!-- 말풍선 (초록 보더, 흰 배경, 어두운 텍스트) -->
+                <div style="flex: 1; min-width: 0;">
+                    <div style="background: #ffffff; border: 1px solid #047857; padding: 8px 20px 12px 20px; border-radius: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); min-height: 132px; display: flex; flex-direction: column;">
+                        <div style="margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                            ${characterNameText ? `<span style="font-size: 15px; font-weight: 700; color: #1e293b; letter-spacing: -0.01em;">${escapeHtml(characterNameText)}</span>` : '<span></span>'}
+                            <span class="insight-share-button" style="font-size: 12px; font-weight: 600; color: #64748b; flex-shrink: 0;">공유</span>
+                        </div>
+                        <div style="font-size: 13px; line-height: 1.55; color: #1e293b; font-weight: 400; white-space: pre-line; word-wrap: break-word; overflow-wrap: break-word; flex: 1;">
+                            ${insightText}
                         </div>
                     </div>
                 </div>
@@ -1421,7 +1424,7 @@ export async function openShareInsightModal() {
             submitBtn.className = 'w-full py-4 bg-red-600 text-white rounded-xl font-bold active:bg-red-700 shadow-lg transition-all';
         } else {
             submitBtn.textContent = '공유하기';
-            submitBtn.className = 'w-full py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all';
+            submitBtn.className = 'w-full py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all';
         }
     }
 }
@@ -1472,7 +1475,7 @@ export async function openEditInsightShareModal(photoUrl) {
     const submitBtn = document.getElementById('insightShareSubmitBtn');
     if (submitBtn) {
         submitBtn.textContent = '수정 완료';
-        submitBtn.className = 'w-full py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all';
+        submitBtn.className = 'w-full py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all';
         // 수정 모드임을 표시하기 위한 데이터 속성 추가
         submitBtn.setAttribute('data-edit-mode', 'true');
         submitBtn.setAttribute('data-photo-url', photoUrl);
@@ -1612,12 +1615,16 @@ export async function shareInsightToFeed() {
     }
     
     // 공유되지 않은 경우: 공유하기
-    // 로딩 상태
+    const insightShareModal = document.getElementById('insightShareModal');
+    const insightShareSpinner = insightShareModal?.querySelector('#insightShareLoadingOverlay');
+    if (insightShareSpinner) insightShareSpinner.classList.remove('hidden');
     if (submitBtn) {
         submitBtn.disabled = true;
-        submitBtn.textContent = '공유 중...';
+        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>공유 중...';
     }
-    
+    await new Promise(r => requestAnimationFrame(r));
+    await new Promise(r => setTimeout(r, 50));
+
     try {
         // html2canvas가 전역에 있는지 확인
         const html2canvasFunc = (typeof window !== 'undefined' && window.html2canvas) || (typeof html2canvas !== 'undefined' ? html2canvas : null);
@@ -1626,19 +1633,80 @@ export async function shareInsightToFeed() {
             throw new Error('html2canvas를 찾을 수 없습니다. HTML에 html2canvas 라이브러리가 로드되었는지 확인하세요.');
         }
         
-        // 스크린샷 생성
-        const canvas = await html2canvasFunc(preview, {
+        // 스크린샷 생성 시 insightScreenshotContainer를 직접 사용
+        const screenshotContainer = preview.querySelector('#insightScreenshotContainer');
+        const targetElement = screenshotContainer || preview;
+        
+        // 외부 이미지(Firebase Storage)를 base64로 변환 (CORS 우회: Cloud Function 사용)
+        const imgs = targetElement.querySelectorAll('img[src^="http"]');
+        const loadPromises = [];
+        for (const img of imgs) {
+            try {
+                if (img.src.includes('firebasestorage.googleapis.com')) {
+                    const { callableFunctions } = await import('../firebase.js');
+                    const result = await callableFunctions.getStorageImageAsBase64({ imageUrl: img.src });
+                    const dataUrl = result?.data?.dataUrl;
+                    if (dataUrl) {
+                        const loadP = new Promise((resolve, reject) => {
+                            img.onload = () => resolve();
+                            img.onerror = () => reject(new Error('이미지 로드 실패'));
+                            img.src = dataUrl;
+                            if (img.complete && img.naturalWidth > 0) resolve();
+                        });
+                        loadPromises.push(loadP);
+                    } else {
+                        console.warn('getStorageImageAsBase64 반환값 없음:', result);
+                    }
+                } else {
+                    const res = await fetch(img.src, { mode: 'cors' });
+                    const blob = await res.blob();
+                    const dataUrl = await new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result);
+                        reader.readAsDataURL(blob);
+                    });
+                    const loadP = new Promise((resolve, reject) => {
+                        img.onload = () => resolve();
+                        img.onerror = () => reject(new Error('이미지 로드 실패'));
+                        img.src = dataUrl;
+                        if (img.complete && img.naturalWidth > 0) resolve();
+                    });
+                    loadPromises.push(loadP);
+                }
+            } catch (e) {
+                console.warn('캐릭터 이미지 base64 변환 실패:', e);
+            }
+        }
+        await Promise.all(loadPromises).catch(() => {});
+        await document.fonts.ready;
+        await new Promise(r => setTimeout(r, 150)); // 페인트 대기
+        
+        // 폰트 CSS (html2canvas 클론에서 폰트 로드용 - 미리보기/캡처 위치 일치)
+        let fontCSS = '';
+        try {
+            const [fredokaRes, nanumRes] = await Promise.all([
+                fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap'),
+                fetch('https://fonts.googleapis.com/earlyaccess/nanumsquareround.css')
+            ]);
+            fontCSS = (await fredokaRes.text()) + (await nanumRes.text());
+        } catch (e) { console.warn('폰트 CSS 로드 실패:', e); }
+        
+        // 스크린샷 생성 (scale 3: 해상도 향상)
+        const canvas = await html2canvasFunc(targetElement, {
             backgroundColor: '#ffffff',
-            scale: 2,
+            scale: 3,
             logging: false,
             useCORS: true,
             allowTaint: true,
+            fontEmbedCSS: true,
             onclone: (clonedDoc) => {
-                // 공유 버튼 숨기기
-                const shareBtn = clonedDoc.querySelector('.insight-share-button');
-                if (shareBtn) {
-                    shareBtn.style.display = 'none';
+                if (fontCSS) {
+                    const style = clonedDoc.createElement('style');
+                    style.textContent = fontCSS;
+                    clonedDoc.head.appendChild(style);
                 }
+                const shareBtn = clonedDoc.querySelector('.insight-share-button');
+                if (shareBtn) shareBtn.style.display = 'none';
             }
         });
         
@@ -1648,7 +1716,7 @@ export async function shareInsightToFeed() {
         // Firebase Storage에 업로드
         const base64Image = canvas.toDataURL('image/png');
         const { uploadBase64ToStorage } = await import('../utils.js');
-        const photoUrl = await uploadBase64ToStorage(base64Image, window.currentUser.uid, `insight_${dateRangeText.replace(/\s+/g, '_')}`);
+        const photoUrl = await uploadBase64ToStorage(base64Image, window.currentUser.uid, `insight_${dateRangeText.replace(/\s+/g, '_')}`, 1024);
         
         const userProfile = window.userSettings?.profile || {};
         
@@ -1714,6 +1782,9 @@ export async function shareInsightToFeed() {
         const errorMessage = e.message || e.details || '공유 중 오류가 발생했습니다.';
         showToast(errorMessage, 'error');
     } finally {
+        const modal = document.getElementById('insightShareModal');
+        const spinner = modal?.querySelector('#insightShareLoadingOverlay');
+        if (spinner) spinner.classList.add('hidden');
         if (submitBtn) {
             submitBtn.disabled = false;
             submitBtn.textContent = '공유하기';

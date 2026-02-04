@@ -44,6 +44,7 @@ export const callableFunctions = {
     createDailyShare: httpsCallable(functions, 'createDailyShare'),
     createBestShare: httpsCallable(functions, 'createBestShare'),
     createInsightShare: httpsCallable(functions, 'createInsightShare'),
+    getStorageImageAsBase64: httpsCallable(functions, 'getStorageImageAsBase64'),
     backfillUserStats: httpsCallable(functions, 'backfillUserStats')
 };
 

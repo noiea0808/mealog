@@ -952,7 +952,7 @@ header .mealog-title {
 }
 .insight-share-btn {
     padding: 0.25rem 0.5rem;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     border: none;
     background: transparent;
@@ -1088,13 +1088,30 @@ header .mealog-title {
 }
 .post-like-icon.fa-regular,
 .post-bookmark-icon.fa-regular,
-.post-comment-btn .fa-comment,
+.post-comment-btn .fa-comment.fa-regular,
+.post-comment-icon.fa-regular,
 .board-post-like-btn .fa-heart.fa-regular,
 .board-post-bookmark-btn .fa-bookmark.fa-regular,
 .board-list-card .fa-heart,
-.board-list-card .fa-comment,
+.board-list-card .fa-comment.fa-regular,
 .board-list-card .fa-bookmark {
     -webkit-text-stroke: 0.5px #ffffff;   /* white - 카드 배경 */
+}
+
+/* 댓글 단 게시물: 채워진 댓글 아이콘 (stroke 제거) */
+.post-comment-icon.fa-solid,
+.board-list-card .fa-comment.fa-solid {
+    -webkit-text-stroke: 0;
+}
+
+/* 본문·댓글 없을 때 공유 게시글 본문 영역 숨김 */
+.post-no-body .comment-section.comments-empty {
+    display: none;
+}
+.post-no-body .comment-section.comments-empty.comment-input-open {
+    display: block;
+    padding-top: 0;
+    margin-top: 0;
 }
 
 /* 좋아요, 북마크 버튼 애니메이션 */

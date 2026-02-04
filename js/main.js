@@ -977,7 +977,7 @@ window.openDailySharePreviewModal = (dateStr) => {
                 <button onclick="window.closeDailySharePreviewModal()" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm">
                     취소
                 </button>
-                <button onclick="window.confirmDailyShare('${dateStr}')" class="flex-1 py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all">
+                <button onclick="window.confirmDailyShare('${dateStr}')" class="flex-1 py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all">
                     공유
                 </button>
             </div>
@@ -1080,10 +1080,10 @@ window.confirmDailyShare = async (dateStr) => {
 
         actualHeight = Math.ceil(actualHeight);
 
-        // 미리보기 카드를 그대로 캡쳐
+        // 미리보기 카드를 그대로 캡쳐 (scale 3: 해상도 향상)
         const canvas = await html2canvas(innerContent, {
             backgroundColor: '#ffffff',
-            scale: 2,
+            scale: 3,
             logging: false,
             useCORS: true,
             width: 420,
@@ -1132,7 +1132,7 @@ window.confirmDailyShare = async (dateStr) => {
 
         const base64Image = canvas.toDataURL('image/png');
         const { uploadBase64ToStorage } = await import('./utils.js');
-        const photoUrl = await uploadBase64ToStorage(base64Image, window.currentUser.uid, `daily_${dateStr}`);
+        const photoUrl = await uploadBase64ToStorage(base64Image, window.currentUser.uid, `daily_${dateStr}`, 1024);
 
         const userProfile = window.userSettings?.profile || {};
 
