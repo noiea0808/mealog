@@ -12,7 +12,7 @@ import { callableFunctions } from './firebase.js';
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
-import { getDisplayProfile, uploadBoardImages } from './utils.js';
+import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy } from './utils.js';
 import { 
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
@@ -956,11 +956,11 @@ window.openDailySharePreviewModal = (dateStr) => {
 
     const modal = document.createElement('div');
     modal.id = 'dailySharePreviewModal';
-    modal.className = 'fixed inset-0 z-[500] flex items-end bg-black/50';
+    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/50';
 
     modal.innerHTML = `
-        <div class="relative w-full max-w-md mx-auto bg-white rounded-t-[2rem] flex flex-col max-h-[92vh] shadow-2xl">
-            <div id="dailyShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-t-[2rem] flex flex-col items-center justify-center z-20">
+        <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl">
+            <div id="dailyShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center z-20">
                 <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>
                 <p class="text-slate-600 font-bold">공유 중...</p>
             </div>
@@ -1057,52 +1057,43 @@ window.confirmDailyShare = async (dateStr) => {
             }
         }
         
-        // 이미지 로드 확인 (이미 로드된 이미지는 즉시 스킵)
+        // 이미지 로드 확인 (img + background-image용 data-photo-url)
         const images = previewCard.querySelectorAll('img');
         const imageLoadPromises = Array.from(images).map(img => {
-            if (img.complete && img.naturalWidth > 0) {
-                return Promise.resolve(); // 이미 로드된 이미지
-            }
+            if (img.complete && img.naturalWidth > 0) return Promise.resolve();
             return new Promise((resolve) => {
                 img.onload = resolve;
                 img.onerror = resolve;
                 setTimeout(resolve, 400);
             });
         });
-        await Promise.all(imageLoadPromises);
+        const bgDivs = previewCard.querySelectorAll('[data-photo-url]');
+        const bgLoadPromises = Array.from(bgDivs).map(div => {
+            const url = div.getAttribute('data-photo-url');
+            if (!url) return Promise.resolve();
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = resolve;
+                img.onerror = resolve;
+                img.src = url;
+                if (img.complete) resolve();
+            });
+        });
+        await Promise.all([...imageLoadPromises, ...bgLoadPromises]);
 
         const innerContent = previewCard.querySelector('div[style*="width: 420px"]') || previewCard;
-        let actualHeight = innerContent.offsetHeight || innerContent.scrollHeight;
-        if (!actualHeight || actualHeight < 100) {
-            await new Promise(resolve => setTimeout(resolve, 50));
-            actualHeight = innerContent.offsetHeight || innerContent.scrollHeight;
-        }
 
-        actualHeight = Math.ceil(actualHeight);
-
-        // 미리보기 카드를 그대로 캡쳐 (scale 3: 해상도 향상)
-        const canvas = await html2canvas(innerContent, {
-            backgroundColor: '#ffffff',
-            scale: 3,
-            logging: false,
-            useCORS: true,
-            width: 420,
-            height: actualHeight,
-            x: 0,
-            y: 0,
-            scrollX: 0,
-            scrollY: 0,
+        // 유령 캡처: 화면 밖(-10000px)에 복제본을 만들어 모달/transform/Flex 간섭 없이 정사이즈 캡처
+        const canvas = await captureWithGhostStrategy(innerContent, {
+            captureWidth: 420,
             allowTaint: false,
             foreignObjectRendering: false,
-            fontEmbedCSS: true,
             onclone: (clonedDoc) => {
-                // 복제된 문서에 Fredoka 폰트 CSS를 직접 주입
                 if (fredokaFontCSS) {
                     const clonedStyle = clonedDoc.createElement('style');
                     clonedStyle.textContent = fredokaFontCSS;
                     clonedDoc.head.appendChild(clonedStyle);
                 } else {
-                    // 폴백: 직접 @font-face 정의
                     const clonedStyle = clonedDoc.createElement('style');
                     clonedStyle.textContent = `
                         @font-face {
@@ -1116,8 +1107,6 @@ window.confirmDailyShare = async (dateStr) => {
                     `;
                     clonedDoc.head.appendChild(clonedStyle);
                 }
-                
-                // 복제된 문서의 모든 MEALOG 텍스트에 Fredoka 폰트 강제 적용
                 const allSpans = clonedDoc.querySelectorAll('span');
                 allSpans.forEach(el => {
                     const style = el.getAttribute('style') || '';
@@ -1126,6 +1115,13 @@ window.confirmDailyShare = async (dateStr) => {
                         el.style.fontFamily = "'Fredoka', sans-serif";
                         el.style.fontWeight = '700';
                     }
+                });
+                // Ghost Hack: 별점 배지들만 캡처본에서 margin-top으로 살짝 내려서 베이스라인 정렬 보정
+                const badges = clonedDoc.querySelectorAll('span[style*="fefce8"]');
+                badges.forEach(el => {
+                    el.style.marginTop = '-5px';
+                    el.style.display = 'flex';
+                    el.style.alignItems = 'center';
                 });
             }
         });

@@ -74,3 +74,42 @@ export function formatDateWithDay(date) {
     return `${date.getMonth() + 1}.${date.getDate()}(${getDayName(date)})`;
 }
 
+// 주 시작일(일요일)이 해당 달의 몇 번째 주인지 계산 (표시 라벨용 - 월 경계 중복 방지)
+export function getWeekNumberForDate(date) {
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const firstDay = new Date(year, month - 1, 1);
+    const firstDayOfWeek = firstDay.getDay();
+
+    let firstSunday = new Date(firstDay);
+    if (firstDayOfWeek !== 0) {
+        firstSunday.setDate(1 - firstDayOfWeek);
+    }
+
+    const dateTime = date.getTime();
+    for (let w = 1; w <= 6; w++) {
+        const weekStart = new Date(firstSunday);
+        weekStart.setDate(firstSunday.getDate() + (w - 1) * 7);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+        if (dateTime >= weekStart.getTime() && dateTime <= weekEnd.getTime()) {
+            return w;
+        }
+    }
+    return 1;
+}
+
+// 주 범위(start, end)에 대한 표시 라벨 - 주 시작일(일요일) 기준으로 월/주차 표시 (동일 기간이 1월 6주/2월 1주 등으로 중복 표시되는 문제 방지)
+export function getWeekDisplayLabel(start, end) {
+    const { year, month, week } = getWeekInfoFromDate(start);
+    return `${year}년 ${month}월 ${week}주`;
+}
+
+// 주 시작일로부터 (year, month, week) 정보 반환 - periodKey 등 통일용
+export function getWeekInfoFromDate(start) {
+    const year = start.getFullYear();
+    const month = start.getMonth() + 1;
+    const week = getWeekNumberForDate(start);
+    return { year, month, week };
+}
+

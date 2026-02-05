@@ -223,6 +223,12 @@ header .mealog-title {
     color: white; 
     border-color: var(--color-primary); 
 }
+/* 태그 관리 화면: 메인태그 선택 시 검은색 */
+#favoriteTagsSection .chip.active { 
+    background: #1e293b; 
+    color: white; 
+    border-color: #1e293b; 
+}
 .sub-chip { 
     display: inline-flex; 
     align-items: center; 
@@ -968,12 +974,14 @@ header .mealog-title {
     color: rgba(255, 255, 255, 0.9);
 }
 .insight-share-btn.insight-share-btn--shared {
-    background: transparent;
-    color: #ffffff;
+    background: #ffffff;
+    color: #059669;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
 }
 .insight-share-btn.insight-share-btn--shared:hover {
-    background: transparent;
-    color: rgba(255, 255, 255, 0.9);
+    background: #f8fafc;
+    color: #047857;
 }
 /* insight-share-btn 기본값 (다른 곳에서 클래스만 사용할 때) */
 .insight-share-btn:not(.insight-share-btn--default):not(.insight-share-btn--shared) {
@@ -1112,6 +1120,21 @@ header .mealog-title {
     display: block;
     padding-top: 0;
     margin-top: 0;
+}
+/* 본문 없을 때: 버튼 행 아래 보더·여백 제거하여 빈 영역 없음 */
+.post-no-body .feed-post-actions {
+    padding-bottom: 0;
+}
+.post-no-body .feed-post-buttons {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+/* 댓글 입력창 열렸을 때는 구분선 복원 */
+.post-no-body .feed-post-actions:has(.comment-input-open) .feed-post-buttons {
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #e2e8f0;
 }
 
 /* 좋아요, 북마크 버튼 애니메이션 */

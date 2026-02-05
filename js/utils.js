@@ -298,6 +298,48 @@ export function base64ToBlob(base64DataUrl) {
     });
 }
 
+/**
+ * 유령 캡처(Ghost Capture): 화면 밖에 복제본을 만들어 부모 간섭(모달, transform, Flex/Grid) 없이 캡처
+ * @param {HTMLElement} originalElement - 캡처할 원본 요소
+ * @param {Object} options - html2canvas 옵션 + captureWidth
+ * @param {number} [options.captureWidth=420] - 캡처 가로 크기 (정사이즈 고정)
+ * @returns {Promise<HTMLCanvasElement>}
+ */
+export async function captureWithGhostStrategy(originalElement, options = {}) {
+    const { captureWidth = 420, ...html2canvasOptions } = options;
+    const html2canvasFunc = (typeof window !== 'undefined' && window.html2canvas) || (typeof html2canvas !== 'undefined' ? html2canvas : null);
+    if (!html2canvasFunc) throw new Error('html2canvas를 찾을 수 없습니다. HTML에 html2canvas 라이브러리가 로드되었는지 확인하세요.');
+
+    const ghostNode = originalElement.cloneNode(true);
+    ghostNode.style.position = 'fixed';
+    ghostNode.style.top = '-10000px';
+    ghostNode.style.left = '-10000px';
+    ghostNode.style.width = `${captureWidth}px`;
+    ghostNode.style.height = 'auto';
+    ghostNode.style.zIndex = '-1';
+    ghostNode.style.transform = 'none';
+    ghostNode.style.margin = '0';
+
+    document.body.appendChild(ghostNode);
+
+    try {
+        await document.fonts.ready;
+        const canvas = await html2canvasFunc(ghostNode, {
+            scale: 3,
+            useCORS: true,
+            backgroundColor: '#ffffff',
+            logging: false,
+            windowWidth: captureWidth,
+            allowTaint: true,
+            fontEmbedCSS: true,
+            ...html2canvasOptions,
+        });
+        return canvas;
+    } finally {
+        document.body.removeChild(ghostNode);
+    }
+}
+
 // base64 이미지를 압축하여 Blob으로 변환 (마이그레이션용) - 뷰포트 기반
 // maxSizeKB: 목표 최대 용량(KB). 캡쳐3종은 1024(1MB), initialQuality 0.9로 선명도 향상
 export function compressBase64ToBlob(base64DataUrl, maxSizeKB = 500, initialQuality = 0.7) {

@@ -5,6 +5,7 @@ import { dbOps } from '../db.js';
 import { GEMINI_API_KEY as DEFAULT_API_KEY } from '../config.default.js';
 import { db, appId } from '../firebase.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { captureWithGhostStrategy } from '../utils.js';
 
 // escapeHtml 함수 (필요한 경우)
 function escapeHtml(text) {
@@ -1626,17 +1627,10 @@ export async function shareInsightToFeed() {
     await new Promise(r => setTimeout(r, 50));
 
     try {
-        // html2canvas가 전역에 있는지 확인
-        const html2canvasFunc = (typeof window !== 'undefined' && window.html2canvas) || (typeof html2canvas !== 'undefined' ? html2canvas : null);
-        
-        if (!html2canvasFunc) {
-            throw new Error('html2canvas를 찾을 수 없습니다. HTML에 html2canvas 라이브러리가 로드되었는지 확인하세요.');
-        }
-        
-        // 스크린샷 생성 시 insightScreenshotContainer를 직접 사용
+        // 스크린샷 생성 시 insightScreenshotContainer 사용
         const screenshotContainer = preview.querySelector('#insightScreenshotContainer');
         const targetElement = screenshotContainer || preview;
-        
+
         // 외부 이미지(Firebase Storage)를 base64로 변환 (CORS 우회: Cloud Function 사용)
         const imgs = targetElement.querySelectorAll('img[src^="http"]');
         const loadPromises = [];
@@ -1680,8 +1674,8 @@ export async function shareInsightToFeed() {
         await Promise.all(loadPromises).catch(() => {});
         await document.fonts.ready;
         await new Promise(r => setTimeout(r, 150)); // 페인트 대기
-        
-        // 폰트 CSS (html2canvas 클론에서 폰트 로드용 - 미리보기/캡처 위치 일치)
+
+        // 폰트 CSS (html2canvas 클론에서 폰트 로드용)
         let fontCSS = '';
         try {
             const [fredokaRes, nanumRes] = await Promise.all([
@@ -1690,15 +1684,10 @@ export async function shareInsightToFeed() {
             ]);
             fontCSS = (await fredokaRes.text()) + (await nanumRes.text());
         } catch (e) { console.warn('폰트 CSS 로드 실패:', e); }
-        
-        // 스크린샷 생성 (scale 3: 해상도 향상)
-        const canvas = await html2canvasFunc(targetElement, {
-            backgroundColor: '#ffffff',
-            scale: 3,
-            logging: false,
-            useCORS: true,
-            allowTaint: true,
-            fontEmbedCSS: true,
+
+        // 유령 캡처: 화면 밖에 복제본을 만들어 모달/transform 간섭 없이 정사이즈 캡처
+        const canvas = await captureWithGhostStrategy(targetElement, {
+            captureWidth: 420,
             onclone: (clonedDoc) => {
                 if (fontCSS) {
                     const style = clonedDoc.createElement('style');

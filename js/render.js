@@ -138,7 +138,7 @@ export function renderEntryChips() {
                     : 'border border-slate-400 text-slate-600 font-bold text-xs';
                 return `<span class="sub-chip-wrapper relative inline-block mr-1 mb-1 group">
                     <button onclick="window.selectTag('${inputId}', '${text}', this, false, '${subTagKey}', '${id}')" class="sub-chip ${isActive} ${tagClass} ${canDelete ? 'pr-7' : ''}">${text}${isMyTag ? ' <i class="fa-solid fa-star text-[9px] text-emerald-600"></i>' : ''}</button>
-                    ${canDelete ? `<button onclick="event.stopPropagation(); window.deleteSubTag('${subTagKey}', '${text}', '${id}', '${inputId}', '${parentFilter}')" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-300 hover:text-red-500 w-4 h-4 flex items-center justify-center rounded-full active:bg-slate-200 transition-colors">
+                    ${canDelete ? `<button onclick="event.stopPropagation(); window.deleteSubTag('${subTagKey}', '${text}', '${id}', '${inputId}', '${parentFilter}')" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-600 hover:text-red-500 w-4 h-4 flex items-center justify-center rounded-full active:bg-slate-200 transition-colors">
                         <i class="fa-solid fa-xmark"></i>
                     </button>` : ''}
                 </span>`;
@@ -1815,9 +1815,9 @@ export async function renderGallery() {
                     ${caption}
                 </div>
                 ` : ''}
-                <div class="px-6 py-3">
+                <div class="feed-post-actions px-6 py-3">
                     <!-- 좋아요, 댓글, 북마크 버튼 (아래 보더로 본문과 구분, 좌우 길이 통일을 위해 -mx-6 px-6) -->
-                    <div class="flex items-center justify-between mb-2 pb-2 -mx-6 px-6 border-b border-slate-200">
+                    <div class="feed-post-buttons flex items-center justify-between mb-2 pb-2 -mx-6 px-6 border-b border-slate-200">
                         <div class="flex items-center gap-4">
                             <button onclick="window.toggleLike('${postId}')" class="post-like-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
                                 <i class="fa-regular fa-heart text-2xl text-slate-800 post-like-icon"></i>
@@ -3674,14 +3674,14 @@ export function createDailyShareCard(dateStr, forPreview = false) {
         <div style="width: 420px; max-width: 420px; margin: 0 auto; border: 1px solid ${borderOuterGray}; border-radius: 20px; overflow: hidden; background: #f1f5f9;">
             <!-- 헤더 (패딩 6/16/16으로 텍스트 10px 상향) -->
             <div style="background: #ffffff; padding: 6px 16px 16px; border-bottom: 1px solid ${borderLightGray};">
-                <!-- 상단: mealog(파란색)와 날짜 -->
-                <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 8px;">
+                <!-- 상단: mealog(파란색)와 날짜 (html2canvas 베이스라인 정렬: flex + align-items: center) -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                     <span style="font-size: 28.8px; font-weight: 600; color: ${blue}; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
                     <span style="font-size: 12px; font-weight: 400; color: #64748b; flex-shrink: 0;">${formattedDate}</span>
                 </div>
-                <!-- 하단: 닉네임의 하루소감 -->
+                <!-- 하단: 닉네임의 하루소감 (html2canvas 베이스라인 정렬: flex + align-items: center) -->
                 <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="font-size: 16px;">📅</span>
+                    <span style="font-size: 16px; display: flex; align-items: center;">📅</span>
                     <span style="font-size: 15px; font-weight: 700; color: #1e293b; font-family: 'NanumSquareRound', sans-serif;">${escapeHtml(userNickname)}의 하루소감</span>
                 </div>
             </div>
@@ -3719,10 +3719,12 @@ export function createDailyShareCard(dateStr, forPreview = false) {
                     
                     if (r.photos && Array.isArray(r.photos) && r.photos[0]) {
                         iconBoxStyle = 'border-right: 1px solid #e2e8f0;';
-                        iconHtml = `<img src="${r.photos[0]}" style="width: 100%; height: 100%; min-height: 130px; object-fit: cover;">`;
+                        const photoUrl = String(r.photos[0]).replace(/'/g, "%27");
+                        iconHtml = `<div style="width: 100%; height: 100%; min-height: 130px; background-image: url('${photoUrl}'); background-size: cover; background-position: center;" data-photo-url="${escapeHtml(r.photos[0])}"></div>`;
                     } else if (r.photos && !Array.isArray(r.photos)) {
                         iconBoxStyle = 'border-right: 1px solid #e2e8f0;';
-                        iconHtml = `<img src="${r.photos}" style="width: 100%; height: 100%; min-height: 130px; object-fit: cover;">`;
+                        const photoUrl = String(r.photos).replace(/'/g, "%27");
+                        iconHtml = `<div style="width: 100%; height: 100%; min-height: 130px; background-image: url('${photoUrl}'); background-size: cover; background-position: center;" data-photo-url="${escapeHtml(r.photos)}"></div>`;
                     } else {
                         iconBoxStyle = `background: ${photoAreaEmptyBg}; border-right: 1px solid #e2e8f0;`;
                         iconHtml = `<i class="fa-solid fa-utensils" style="font-size: 24px; color: #94a3b8;"></i>`;
@@ -3744,11 +3746,11 @@ export function createDailyShareCard(dateStr, forPreview = false) {
                         <div style="width: 130px; min-height: 130px; ${iconBoxStyle} display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; border-radius: 12px 0 0 12px;">
                             ${iconHtml}
                         </div>
-                        <div style="flex: 1; padding: 10px 12px 12px 12px; display: flex; flex-direction: column; justify-content: flex-start; min-width: 0; min-height: 130px;">
-                            <div style="font-size: 11px; color: #64748b; margin-bottom: 6px; line-height: 1.4;">
+                        <div style="flex: 1; padding: 10px 12px 12px 12px; display: flex; flex-direction: column; justify-content: center; min-width: 0; min-height: 130px;">
+                            <div style="font-size: 11px; color: #64748b; margin-bottom: 6px; line-height: 1.4; display: flex; align-items: center; flex-wrap: wrap; gap: 0 4px;">
                                 <span style="font-weight: 700; color: ${iconTextColor};">${escapeHtml(slot.label)}</span>
-                                ${r && r.place ? ` <span style="color: #94a3b8; font-weight: 700;">@ ${escapeHtml(r.place)}</span>` : ''}
-                                <span style="color: #cbd5e1; margin: 0 4px;">·</span>
+                                ${r && r.place ? `<span style="color: #94a3b8; font-weight: 700;">@ ${escapeHtml(r.place)}</span>` : ''}
+                                <span style="color: #cbd5e1;">·</span>
                                 <span style="color: #94a3b8;">${formattedDateForCard}</span>
                             </div>
                             ${titleLine2 ? `<div style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 6px; line-height: 1.3; word-break: break-word;">
@@ -3758,7 +3760,7 @@ export function createDailyShareCard(dateStr, forPreview = false) {
                                 "${escapeHtml(r.comment)}"
                             </div>` : ''}
                             ${r && r.rating ? `<div style="display: flex; align-items: center; justify-content: flex-start; gap: 4px; margin-top: auto; padding-top: 4px;">
-                                <span style="font-size: 10px; color: #ca8a04; font-weight: 900; background: #fefce8; padding: 3px 8px; border-radius: 999px; border: 1px solid #fde047; display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-height: 20px; white-space: nowrap; box-sizing: border-box;">
+                                <span style="font-size: 10px; color: #ca8a04; font-weight: 900; display: flex; align-items: center; gap: 3px; white-space: nowrap;">
                                     <span style="font-size: 11px; line-height: 1;">⭐</span>
                                     <span style="font-size: 11px; font-weight: 900; line-height: 1;">${r.rating}</span>
                                 </span>
@@ -3768,15 +3770,15 @@ export function createDailyShareCard(dateStr, forPreview = false) {
                 </div>
             `;
         } else {
-            // 간식 슬롯 (기록이 없어도 공간은 만들어줌)
+            // 간식 슬롯 (html2canvas 베이스라인 정렬: flex + align-items: center)
             html += `
                 <div style="display: flex; align-items: center; margin-bottom: 6px; padding: 4px 8px; min-height: 32px; gap: 12px;">
                     <span style="font-size: 12px; font-weight: 900; color: #1e293b; text-transform: uppercase; flex-shrink: 0; padding: 0 8px; white-space: nowrap;">${escapeHtml(slot.label)}</span>
                     <div style="flex: 1; min-width: 0; display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; justify-content: center; overflow-x: auto;">
                         ${records.length > 0 ? records.map(r => `
-                            <div style="display: inline-flex; align-items: center; padding: 2.5px 5px; background: #f1f5f9; border-radius: 8px; border: 1px solid #e2e8f0; flex-shrink: 0; box-sizing: border-box;">
+                            <div style="display: flex; align-items: center; padding: 2.5px 5px; background: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0; flex-shrink: 0; box-sizing: border-box; gap: 6px;">
                                 <span style="font-size: 12px; font-weight: 600; color: #334155; word-wrap: break-word; overflow-wrap: break-word; white-space: nowrap;">${escapeHtml(r.menuDetail || r.snackType || '간식')}</span>
-                                ${r.rating ? `<span style="font-size: 10px; font-weight: 900; color: #ca8a04; background: #fefce8; padding: 2px 6px; border-radius: 999px; border: 1px solid #fde047; margin-left: 6px; display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; white-space: nowrap; box-sizing: border-box;">
+                                ${r.rating ? `<span style="font-size: 10px; font-weight: 900; color: #ca8a04; display: flex; align-items: center; gap: 2px; flex-shrink: 0; white-space: nowrap;">
                                     <span style="font-size: 10px; line-height: 1;">⭐</span>
                                     <span style="font-size: 10px; font-weight: 900; line-height: 1;">${r.rating}</span>
                                 </span>` : ''}

@@ -3,9 +3,9 @@ import { SLOTS, SLOT_STYLES, SATIETY_DATA } from '../constants.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { dbOps } from '../db.js';
-import { getWeekRange, getCurrentWeekInMonth, getWeeksInMonth, getDayName, formatDateWithDay } from './date-utils.js';
+import { getWeekRange, getCurrentWeekInMonth, getWeeksInMonth, getDayName, formatDateWithDay, getWeekDisplayLabel, getWeekInfoFromDate } from './date-utils.js';
 import { renderGallery } from '../render/index.js';
-import { toLocalDateString } from '../utils.js';
+import { toLocalDateString, captureWithGhostStrategy } from '../utils.js';
 
 // HTML 이스케이프 함수 (XSS 방지)
 function escapeHtml(text) {
@@ -54,7 +54,10 @@ function getMonthBestMeals(year, month) {
     
     for (let week = 1; week <= totalWeeks; week++) {
         // 각 주간의 베스트 가져오기 (사용자가 설정한 순서 포함)
-        const weekKey = `week_${year}_${month}_${week}`;
+        // weekKey는 주 시작일 기준으로 통일 (1월 6주/2월 1주 등 동일 기간 중복 방지)
+        const { start } = getWeekRange(year, month, week);
+        const { year: wkYear, month: wkMonth, week: wkNum } = getWeekInfoFromDate(start);
+        const weekKey = `week_${wkYear}_${wkMonth}_${wkNum}`;
         const savedWeekOrder = (window.userSettings && window.userSettings.bestMeals ? window.userSettings.bestMeals[weekKey] : null) || [];
         const weekBest = getWeekBestMeals(year, month, week);
         
@@ -163,7 +166,9 @@ function getBestPeriodKey() {
         const currentWeek = getCurrentWeekInMonth(currentYear, currentMonth);
         return `week_${currentYear}_${currentMonth}_${currentWeek}`;
     } else if (state.dashboardMode === 'week') {
-        return `week_${state.selectedYear}_${state.selectedMonthForWeek}_${state.selectedWeek}`;
+        const { start } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
+        const { year, month, week } = getWeekInfoFromDate(start);
+        return `week_${year}_${month}_${week}`;
     } else if (state.dashboardMode === 'month') {
         return `month_${state.selectedMonth}`;
     } else if (state.dashboardMode === 'year') {
@@ -202,9 +207,11 @@ export function renderBestMeals() {
         periodLabel = `${formatDateWithDay(start)} ~ ${formatDateWithDay(end)} (주간 BEST를 표시합니다)`;
     } else if (state.dashboardMode === 'week') {
         // 주간 모드: 해당 기간의 만족도 4~5개 리스트
+        const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
         meals = getWeekBestMeals(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
-        periodKey = `week_${state.selectedYear}_${state.selectedMonthForWeek}_${state.selectedWeek}`;
-        periodLabel = `${state.selectedYear}년 ${state.selectedMonthForWeek}월 ${state.selectedWeek}주`;
+        const { year, month, week } = getWeekInfoFromDate(start);
+        periodKey = `week_${year}_${month}_${week}`;
+        periodLabel = getWeekDisplayLabel(start, end);
     } else if (state.dashboardMode === 'month') {
         // 월간 모드: 각 주간에서 1~5위
         const [y, m] = state.selectedMonth.split('-').map(Number);
@@ -251,7 +258,8 @@ export function renderBestMeals() {
             
             if (state.dashboardMode === 'week') {
                 periodType = '주간';
-                periodText = `${state.selectedYear}년 ${state.selectedMonthForWeek}월 ${state.selectedWeek}주`;
+                const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
+                periodText = getWeekDisplayLabel(start, end);
             } else if (state.dashboardMode === 'month') {
                 periodType = '월간';
                 const [y, m] = state.selectedMonth.split('-').map(Number);
@@ -272,7 +280,7 @@ export function renderBestMeals() {
             // 버튼 텍스트 및 스타일 업데이트 (베스트는 초록색 배경)
             if (isShared) {
                 shareBtn.innerHTML = `<i class="fa-solid fa-share text-[12px] mr-1"></i>공유됨`;
-                shareBtn.className = 'text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 bg-slate-800 text-white rounded-lg';
+                shareBtn.className = 'text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 bg-slate-800 text-white rounded-lg border-2 border-slate-600';
             } else {
                 shareBtn.innerHTML = `<i class="fa-solid fa-share text-[12px] mr-1"></i>공유하기`;
                 shareBtn.className = 'text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 text-slate-700 rounded-lg';
@@ -649,7 +657,7 @@ export async function openShareBestModal() {
         meals = getWeekBestMeals(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
         periodType = '주간';
         const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
-        periodText = `${state.selectedYear}년 ${state.selectedMonthForWeek}월 ${state.selectedWeek}주`;
+        periodText = getWeekDisplayLabel(start, end);
     } else if (state.dashboardMode === 'month') {
         const [y, m] = state.selectedMonth.split('-').map(Number);
         meals = getMonthBestMeals(y, m);
@@ -963,7 +971,7 @@ export async function shareBestToFeed() {
     if (state.dashboardMode === 'week') {
         periodType = '주간';
         const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
-        periodText = `${state.selectedYear}년 ${state.selectedMonthForWeek}월 ${state.selectedWeek}주`;
+        periodText = getWeekDisplayLabel(start, end);
     } else if (state.dashboardMode === 'month') {
         periodType = '월간';
         const [y, m] = state.selectedMonth.split('-').map(Number);
@@ -1008,14 +1016,9 @@ export async function shareBestToFeed() {
     await new Promise(r => setTimeout(r, 50));
 
     try {
-        const html2canvasFunc = (typeof window !== 'undefined' && window.html2canvas) || (typeof html2canvas !== 'undefined' ? html2canvas : null);
-        if (!html2canvasFunc) {
-            throw new Error('html2canvas를 찾을 수 없습니다. HTML에 html2canvas 라이브러리가 로드되었는지 확인하세요.');
-        }
-        
         const screenshotContainer = preview.querySelector('#bestScreenshotContainer');
         const targetElement = screenshotContainer || preview;
-        
+
         await document.fonts.ready;
         let fontCSS = '';
         try {
@@ -1025,14 +1028,10 @@ export async function shareBestToFeed() {
             ]);
             fontCSS = (await fredokaRes.text()) + (await nanumRes.text());
         } catch (e) { console.warn('폰트 CSS 로드 실패:', e); }
-        
-        const canvas = await html2canvasFunc(targetElement, {
-            backgroundColor: '#ffffff',
-            scale: 3,
-            logging: false,
-            useCORS: true,
-            allowTaint: true,
-            fontEmbedCSS: true,
+
+        // 유령 캡처: 화면 밖에 복제본을 만들어 모달/transform 간섭 없이 정사이즈 캡처
+        const canvas = await captureWithGhostStrategy(targetElement, {
+            captureWidth: 420,
             onclone: (clonedDoc) => {
                 if (fontCSS) {
                     const style = clonedDoc.createElement('style');

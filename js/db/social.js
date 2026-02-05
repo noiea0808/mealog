@@ -263,7 +263,25 @@ export const postInteractions = {
             const byEntryUserId = {};
             const byDocId = {};
             const byEntryId = {};
+            const byGroupKey = {}; // 캡처 3종세트: postId가 groupKey 형식일 때 (daily_*, best_*, insight_*)
             const momentLabel = (data) => {
+                // 캡처 3종세트: 공유 게시물 내 제목(기간포함)으로 표시
+                const shareType = (data.type || '').trim();
+                if (shareType === 'daily' && data.date) {
+                    const d = new Date(data.date + 'T00:00:00');
+                    const y = d.getFullYear();
+                    const m = d.getMonth() + 1;
+                    const day = d.getDate();
+                    return `${y}년 ${m}월 ${day}일 하루소감`;
+                }
+                if (shareType === 'best' && data.periodText) {
+                    const pt = (data.periodType || '주간').trim();
+                    return `${data.periodText} ${pt} Best`;
+                }
+                if (shareType === 'insight' && data.dateRangeText) {
+                    return `${data.dateRangeText} 밀당 참견`;
+                }
+                // 일반 식사 게시물
                 const place = (data.place || '').trim();
                 const menuDetail = (data.menuDetail || '').trim();
                 if (menuDetail && place) return `${menuDetail} @ ${place}`;
@@ -291,6 +309,18 @@ export const postInteractions = {
                     const key = `${entryId}_${docUserId}`;
                     if (!byEntryUserId[key] || (typeof byEntryUserId[key].photoIndex === 'number' && photoIndex < byEntryUserId[key].photoIndex))
                         byEntryUserId[key] = { photoUrl, photoIndex, label };
+                }
+                // 캡처 3종세트: groupKey 형식으로도 저장 (알림 postId와 매칭)
+                const shareType = (data.type || '').trim();
+                if (shareType === 'daily' && data.date) {
+                    const gk = `daily_${data.date}_${docUserId}`;
+                    byGroupKey[gk] = { photoUrl, label };
+                } else if (shareType === 'best') {
+                    const gk = `best_${docId}_${docUserId}`;
+                    byGroupKey[gk] = { photoUrl, label };
+                } else if (shareType === 'insight' && data.dateRangeText) {
+                    const gk = `insight_${String(data.dateRangeText).replace(/\s/g, '_')}_${docUserId}`;
+                    byGroupKey[gk] = { photoUrl, label };
                 }
             }
 
@@ -327,8 +357,9 @@ export const postInteractions = {
                 const entry = byEntryUserId[item.postId];
                 const docEntry = byDocId[item.postId];
                 const entryOnly = byEntryId[item.postId];
-                item.thumbnailUrl = (entry && entry.photoUrl) || (docEntry && docEntry.photoUrl) || (entryOnly && entryOnly.photoUrl) || null;
-                item.momentLabel = (entry && entry.label) || (docEntry && docEntry.label) || (entryOnly && entryOnly.label) || '해당 게시물';
+                const groupEntry = byGroupKey[item.postId];
+                item.thumbnailUrl = (entry && entry.photoUrl) || (docEntry && docEntry.photoUrl) || (groupEntry && groupEntry.photoUrl) || (entryOnly && entryOnly.photoUrl) || null;
+                item.momentLabel = (entry && entry.label) || (docEntry && docEntry.label) || (groupEntry && groupEntry.label) || (entryOnly && entryOnly.label) || '해당 게시물';
             });
             return list.sort((a, b) => b.lastCommentAt - a.lastCommentAt);
         } catch (e) {

@@ -4,7 +4,7 @@ import { appState } from '../state.js';
 import { loadMealsForDateRange, loadStatsForYears } from '../db.js';
 import { renderProportionChart } from './charts.js';
 import { updateInsightComment, setupInsightBubbleClick, getCurrentCharacter, getInsightCharacters, updateShareButtonStatus } from './insight.js';
-import { getWeekRange, getCurrentWeekInMonth, getWeeksInMonth, formatDateWithDay } from './date-utils.js';
+import { getWeekRange, getCurrentWeekInMonth, getWeeksInMonth, formatDateWithDay, getWeekDisplayLabel } from './date-utils.js';
 import { renderBestMeals } from './best-share.js';
 import { toLocalDateString } from '../utils.js';
 
@@ -88,7 +88,7 @@ export function getDashboardData() {
         endDate = new Date(end);
         startDate.setHours(0, 0, 0, 0);
         endDate.setHours(23, 59, 59, 999);
-        label = `${state.selectedYear}년 ${state.selectedMonthForWeek}월 ${state.selectedWeek}주`;
+        label = getWeekDisplayLabel(start, end);
     } else if (state.dashboardMode === 'year') {
         const year = state.selectedYearForYear || today.getFullYear();
         startDate = new Date(year, 0, 1);
@@ -290,7 +290,7 @@ export async function updateDashboard() {
                         const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
                         const startStr = formatDateWithDay(start);
                         const endStr = formatDateWithDay(end);
-                        periodDisplay.innerHTML = `${state.selectedYear}년 ${state.selectedMonthForWeek}월 ${state.selectedWeek}주 <span class="text-xs opacity-75">(${startStr}~${endStr})</span>`;
+                        periodDisplay.innerHTML = `${getWeekDisplayLabel(start, end)} <span class="text-xs opacity-75">(${startStr}~${endStr})</span>`;
                     } else if (state.dashboardMode === 'month') {
                         const [y, m] = state.selectedMonth.split('-');
                         periodDisplay.innerText = `${y}년 ${parseInt(m)}월`;
