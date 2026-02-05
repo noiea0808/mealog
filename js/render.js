@@ -981,6 +981,9 @@ async function loadPostInteractions(postEl, postId) {
             const commentSection = postEl.querySelector(`#comment-section-${postId}`);
             if (comments.length > 0) {
                 if (commentSection) commentSection.classList.remove('comments-empty');
+                // 댓글 작성자들의 최신 프로필 로드
+                const commentAuthorIds = [...new Set(comments.map(c => c.userId || c.authorId).filter(Boolean))];
+                await fetchUserProfiles(commentAuthorIds);
                 // 댓글 목록은 흰색 배경 유지 (앨범 스타일)
                 const displayComments = comments.slice(0, 2);
                 commentsListEl.innerHTML = displayComments.map(c => {
@@ -1078,6 +1081,29 @@ async function getUserSettings(userId) {
     return null;
 }
 
+/** 다른 사용자들의 최신 프로필을 Firestore에서 가져와 userProfileCache에 저장 (다른 사용자가 볼 때 최신 프로필 표시용) */
+export async function fetchUserProfiles(userIds) {
+    if (!userIds || userIds.length === 0) return;
+    const currentUid = window.currentUser?.uid;
+    const toFetch = [...new Set(userIds)].filter(id => id && id !== currentUid);
+    if (toFetch.length === 0) return;
+    if (!window.userProfileCache) window.userProfileCache = new Map();
+    const uncached = toFetch.filter(id => !window.userProfileCache.has(id));
+    if (uncached.length === 0) return;
+    try {
+        const results = await Promise.all(uncached.map(async (userId) => {
+            const settings = await getUserSettings(userId);
+            const p = settings?.profile;
+            return { userId, profile: p ? { nickname: p.nickname || '익명', icon: p.icon ?? '🐻', photoUrl: p.photoUrl || null } : null };
+        }));
+        results.forEach(({ userId, profile }) => {
+            if (profile) window.userProfileCache.set(userId, profile);
+        });
+    } catch (e) {
+        console.warn('프로필 일괄 로드 실패:', e);
+    }
+}
+
 export async function renderGallery() {
     // 중복 실행 방지
     if (isRenderingGallery) {
@@ -1167,6 +1193,7 @@ export async function renderGallery() {
     // 필터링된 사용자 정보 표시 (상단) — 프로필+소개+모먼트/밀톡 탭
     let userProfileHeader = '';
     if (filterUserId) {
+        await fetchUserProfiles([filterUserId]);
         const filteredUserPhoto = photosToRender[0] || null;
         const initialDisplay = filteredUserPhoto
             ? getDisplayProfile(filteredUserPhoto.userId, { nickname: filteredUserPhoto.userNickname, icon: filteredUserPhoto.userIcon, photoUrl: filteredUserPhoto.userPhotoUrl })
@@ -1283,7 +1310,7 @@ export async function renderGallery() {
                         </div>
                     `;
                 } else {
-                    _renderBoardList(listEl, posts, likedPostIds, bookmarkedPostIds, null, postIdsCommentedByUser);
+                    await _renderBoardList(listEl, posts, likedPostIds, bookmarkedPostIds, null, postIdsCommentedByUser);
                 }
             } catch (e) {
                 console.warn('getPostsByAuthor 실패:', e);
@@ -1355,6 +1382,10 @@ export async function renderGallery() {
         }
         groupedPhotos[groupKey].push(photo);
     });
+    
+    // 다른 사용자들의 최신 프로필 미리 로드 (프로필 변경 시 다른 사용자도 최신 설정으로 표시)
+    const galleryUserIds = [...new Set(uniquePhotos.map(p => p.userId).filter(Boolean))];
+    await fetchUserProfiles(galleryUserIds);
     
     // mealHistoryMap: renderPostGroup에서 댓글 등 meal 정보 조회용 (사진 순서 정렬에는 사용하지 않음)
     let mealHistoryMap = new Map();
@@ -1734,22 +1765,23 @@ export async function renderGallery() {
                 caption = photo.comment;
             }
         } else if (isSnack) {
-            // 간식인 경우: snackType과 menuDetail 조합
-            if (photo.snackType && photo.menuDetail) {
-                caption = `${photo.snackType} | ${photo.menuDetail}`;
-            } else if (photo.snackType) {
-                caption = photo.snackType;
-            } else if (photo.menuDetail) {
-                caption = photo.menuDetail;
+            // 간식인 경우: "메뉴 @ 장소" 형식 (장소만 있으면 "@ 장소")
+            const menu = photo.menuDetail || photo.snackType;
+            if (photo.place && menu) {
+                caption = `<span>${escapeHtml(menu)}</span> @ <span>${escapeHtml(photo.place)}</span>`;
             } else if (photo.place) {
-                caption = photo.place;
+                caption = `@ <span>${escapeHtml(photo.place)}</span>`;
+            } else if (menu) {
+                caption = `<span>${escapeHtml(menu)}</span>`;
+            } else {
+                caption = escapeHtml('간식');
             }
         } else {
             // 일반 식사인 경우: "메뉴 @ 장소" 형식 (앨범 캡션은 .gallery-caption-menu-place에서 크기·굵기 적용)
             if (photo.place && photo.menuDetail) {
                 caption = `<span>${escapeHtml(photo.menuDetail)}</span> @ <span>${escapeHtml(photo.place)}</span>`;
             } else if (photo.place) {
-                caption = `<span>${escapeHtml(photo.place)}</span>`;
+                caption = `@ <span>${escapeHtml(photo.place)}</span>`;
             } else if (photo.menuDetail) {
                 caption = `<span>${escapeHtml(photo.menuDetail)}</span>`;
             } else if (photo.mealType) {
@@ -2211,7 +2243,7 @@ export function switchGalleryFilterTab(tab) {
     if (window.syncBottomNavForGalleryFilter) window.syncBottomNavForGalleryFilter();
 }
 
-export function renderFeed() {
+export async function renderFeed() {
     const container = document.getElementById('feedContent');
     if (!container) return;
     if (!window.sharedPhotos) {
@@ -2275,6 +2307,10 @@ export function renderFeed() {
         }
         groupedPhotos[groupKey].push(photo);
     });
+    
+    // 다른 사용자들의 최신 프로필 미리 로드 (프로필 변경 시 다른 사용자도 최신 설정으로 표시)
+    const feedUserIds = [...new Set(uniquePhotos.map(p => p.userId).filter(Boolean))];
+    await fetchUserProfiles(feedUserIds);
     
     // 각 그룹 내 사진을 Firestore photoIndex 기준으로만 정렬 (글쓴이/다른 사용자 동일 순서 보장)
     const photoSortTieBreakerSimple = (a, b) => {
@@ -2409,22 +2445,23 @@ export function renderFeed() {
                 caption = photo.comment;
             }
         } else if (isSnack) {
-            // 간식인 경우: snackType과 menuDetail 조합
-            if (photo.snackType && photo.menuDetail) {
-                caption = `${photo.snackType} | ${photo.menuDetail}`;
-            } else if (photo.snackType) {
-                caption = photo.snackType;
-            } else if (photo.menuDetail) {
-                caption = photo.menuDetail;
+            // 간식인 경우: "메뉴 @ 장소" 형식 (장소만 있으면 "@ 장소")
+            const menu = photo.menuDetail || photo.snackType;
+            if (photo.place && menu) {
+                caption = `${menu} @ ${photo.place}`;
             } else if (photo.place) {
-                caption = photo.place;
+                caption = `@ ${photo.place}`;
+            } else if (menu) {
+                caption = menu;
+            } else {
+                caption = '간식';
             }
         } else {
             // 일반 식사인 경우: "메뉴 @ 장소" 형식
             if (photo.place && photo.menuDetail) {
                 caption = `${photo.menuDetail} @ ${photo.place}`;
             } else if (photo.place) {
-                caption = photo.place;
+                caption = `@ ${photo.place}`;
             } else if (photo.menuDetail) {
                 caption = photo.menuDetail;
             } else if (photo.mealType) {
@@ -3080,14 +3117,14 @@ export async function renderBoard(category = 'all', optimisticPost = null, optio
         const bookmarkedPostIds = new Set();
         let filteredPosts = [optWithTimestamp];
         const tracePostIds = null;
-        _renderBoardList(container, filteredPosts, likedPostIds, bookmarkedPostIds, tracePostIds);
+        await _renderBoardList(container, filteredPosts, likedPostIds, bookmarkedPostIds, tracePostIds);
         Promise.all([
             tracePromise,
             window.boardOperations.getPosts(category, 'latest', 50),
             window.currentUser && !window.currentUser.isAnonymous ? window.boardOperations.getPostIdsLikedByUser(window.currentUser.uid) : Promise.resolve([]),
             window.currentUser && !window.currentUser.isAnonymous ? window.boardOperations.getPostIdsBookmarkedByUser(window.currentUser.uid) : Promise.resolve([]),
             window.currentUser && !window.currentUser.isAnonymous ? window.boardOperations.getPostIdsCommentedByUser(window.currentUser.uid) : Promise.resolve([])
-        ]).then(([traceList, posts, liked, bookmarked, commented]) => {
+        ]).then(async ([traceList, posts, liked, bookmarked, commented]) => {
             const tracePostIds2 = traceList ? new Set(traceList) : null;
             const likedPostIds2 = new Set(liked || []);
             const bookmarkedPostIds2 = new Set(bookmarked || []);
@@ -3096,7 +3133,7 @@ export async function renderBoard(category = 'all', optimisticPost = null, optio
             merged = tracePostIds2 ? merged.filter(p => tracePostIds2.has(p.id)) : merged;
             merged.sort((a, b) => (new Date(b.timestamp || 0).getTime()) - (new Date(a.timestamp || 0).getTime()));
             window._boardPostsCache = merged;
-            _renderBoardList(container, merged, likedPostIds2, bookmarkedPostIds2, tracePostIds2, postIdsCommentedByUser);
+            await _renderBoardList(container, merged, likedPostIds2, bookmarkedPostIds2, tracePostIds2, postIdsCommentedByUser);
         }).catch(() => {});
         return;
     }
@@ -3107,14 +3144,14 @@ export async function renderBoard(category = 'all', optimisticPost = null, optio
         const likedPostIds = new Set();
         const bookmarkedPostIds = new Set();
         const tracePostIds = null;
-        _renderBoardList(container, filteredPosts, likedPostIds, bookmarkedPostIds, tracePostIds);
+        await _renderBoardList(container, filteredPosts, likedPostIds, bookmarkedPostIds, tracePostIds);
         Promise.all([
             tracePromise,
             window.boardOperations.getPosts(category, 'latest', 50),
             window.currentUser && !window.currentUser.isAnonymous ? window.boardOperations.getPostIdsLikedByUser(window.currentUser.uid) : Promise.resolve([]),
             window.currentUser && !window.currentUser.isAnonymous ? window.boardOperations.getPostIdsBookmarkedByUser(window.currentUser.uid) : Promise.resolve([]),
             window.currentUser && !window.currentUser.isAnonymous ? window.boardOperations.getPostIdsCommentedByUser(window.currentUser.uid) : Promise.resolve([])
-        ]).then(([traceList, posts, liked, bookmarked, commented]) => {
+        ]).then(async ([traceList, posts, liked, bookmarked, commented]) => {
             const tracePostIds2 = traceList ? new Set(traceList) : null;
             const likedPostIds2 = new Set(liked || []);
             const bookmarkedPostIds2 = new Set(bookmarked || []);
@@ -3123,7 +3160,7 @@ export async function renderBoard(category = 'all', optimisticPost = null, optio
             merged = merged.filter(p => p.isHidden !== true);
             merged = merged.filter(p => p.id !== excludePostId);
             window._boardPostsCache = merged;
-            _renderBoardList(container, merged, likedPostIds2, bookmarkedPostIds2, tracePostIds2, postIdsCommentedByUser);
+            await _renderBoardList(container, merged, likedPostIds2, bookmarkedPostIds2, tracePostIds2, postIdsCommentedByUser);
         }).catch(() => {});
         return;
     }
@@ -3165,7 +3202,7 @@ export async function renderBoard(category = 'all', optimisticPost = null, optio
             return getTimestamp(b) - getTimestamp(a);
         });
         window._boardPostsCache = filteredPosts;
-        _renderBoardList(container, filteredPosts, likedPostIds, bookmarkedPostIds, tracePostIds, postIdsCommentedByUser);
+        await _renderBoardList(container, filteredPosts, likedPostIds, bookmarkedPostIds, tracePostIds, postIdsCommentedByUser);
     } catch (error) {
         console.error("게시판 로드 오류:", error);
         container.innerHTML = `
@@ -3178,8 +3215,11 @@ export async function renderBoard(category = 'all', optimisticPost = null, optio
     }
 }
 
-function _renderBoardList(container, filteredPosts, likedPostIds, bookmarkedPostIds, tracePostIds, postIdsCommentedByUser = new Set()) {
+async function _renderBoardList(container, filteredPosts, likedPostIds, bookmarkedPostIds, tracePostIds, postIdsCommentedByUser = new Set()) {
     if (!container) return;
+    // 다른 사용자들의 최신 프로필 미리 로드 (프로필 변경 시 다른 사용자도 최신 설정으로 표시)
+    const authorIds = [...new Set((filteredPosts || []).map(p => p.authorId).filter(Boolean))];
+    await fetchUserProfiles(authorIds);
     if (filteredPosts.length === 0) {
         const traceEmptyLabels = { like: '좋아요한', comment: '댓글 단', bookmark: '북마크한' };
         const traceEmptyMsg = tracePostIds
@@ -3378,6 +3418,10 @@ export async function renderBoardDetail(postId) {
             window.currentUser && window.boardOperations.isBookmarked ? window.boardOperations.isBookmarked(postId, window.currentUser.uid) : Promise.resolve(false),
             window.boardOperations.getComments(postId)
         ]);
+        
+        // 게시글·댓글 작성자들의 최신 프로필 로드
+        const detailAuthorIds = [post.authorId, ...(comments || []).map(c => c.authorId).filter(Boolean)];
+        await fetchUserProfiles(detailAuthorIds);
         
         container.innerHTML = `
             <div class="board-post-card space-y-4">

@@ -43,10 +43,11 @@ export function normalizeUrl(url) {
 }
 
 /**
- * 표시용 프로필 반환: 작성자가 현재 로그인 사용자이면 현재 프로필(닉네임/아이콘/사진)을 사용하고,
- * 그렇지 않으면 저장된 값을 사용합니다. (프로필 변경 시 과거 게시물도 현재 프로필로 표시)
+ * 표시용 프로필 반환: 작성자가 현재 로그인 사용자이면 현재 프로필을 사용하고,
+ * 다른 사용자이면 프로필 캐시(최신) 또는 저장된 값을 사용합니다.
+ * (다른 사용자 프로필은 fetchUserProfiles로 미리 로드해 두면 최신 설정으로 표시됨)
  * @param {string} authorId - 작성자 userId
- * @param {{ nickname?: string, icon?: string, photoUrl?: string }} stored - 게시물에 저장된 프로필
+ * @param {{ nickname?: string, icon?: string, photoUrl?: string }} stored - 게시물에 저장된 프로필 (캐시 없을 때 fallback)
  * @returns {{ nickname: string, icon: string, photoUrl: string|null }}
  */
 export function getDisplayProfile(authorId, stored = {}) {
@@ -57,6 +58,15 @@ export function getDisplayProfile(authorId, stored = {}) {
             nickname: profile.nickname || stored.nickname || '익명',
             icon: profile.icon ?? stored.icon ?? '🐻',
             photoUrl: profile.photoUrl ?? stored.photoUrl ?? null
+        };
+    }
+    // 다른 사용자: 프로필 캐시에 최신 데이터가 있으면 사용 (없으면 저장된 값 fallback)
+    const cached = typeof window !== 'undefined' && window.userProfileCache?.get?.(authorId);
+    if (cached) {
+        return {
+            nickname: cached.nickname || stored.nickname || '익명',
+            icon: cached.icon ?? stored.icon ?? '🐻',
+            photoUrl: cached.photoUrl ?? stored.photoUrl ?? null
         };
     }
     return {

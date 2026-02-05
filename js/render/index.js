@@ -18,5 +18,6 @@ export {
     createDailyShareCard,
     filterGalleryByUser,
     clearGalleryFilter,
-    switchGalleryFilterTab
+    switchGalleryFilterTab,
+    fetchUserProfiles
 } from '../render.js';
