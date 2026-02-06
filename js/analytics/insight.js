@@ -1,4 +1,5 @@
 // 인사이트 코멘트 관련 함수들
+import { SLOTS, SATIETY_DATA } from '../constants.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { dbOps } from '../db.js';
@@ -627,7 +628,7 @@ export async function generateInsightComment() {
     
     if (btn) {
         btn.disabled = true;
-        const originalText = btn.textContent || '분석하기';
+        const originalText = btn.textContent || '코멘트';
         
         // 로딩 애니메이션 시작 (분석중... 점 애니메이션)
         loadingInterval = setInterval(() => {
@@ -663,7 +664,7 @@ export async function generateInsightComment() {
         // 버튼 활성화 및 원래 텍스트로 복원
         if (btn) {
             btn.disabled = false;
-            btn.textContent = '분석하기';
+            btn.textContent = '코멘트';
         }
         
         // 분석 중 메시지도 제거 (에러 발생 시에도)
@@ -673,67 +674,159 @@ export async function generateInsightComment() {
     }
 }
 
-// 데이터 분석 및 요약 정보 생성
+// 점수별 횟수 집계 (만족도 1~5점)
+function countByScore(records, field) {
+    const count = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    records.forEach(m => {
+        const v = parseInt(m[field] || 0);
+        if (v >= 1 && v <= 5) count[v]++;
+    });
+    return Object.entries(count)
+        .filter(([, n]) => n > 0)
+        .sort((a, b) => b[1] - a[1])
+        .map(([score, n]) => `${score}점 ${n}회`)
+        .join(', ') || '없음';
+}
+
+// 포만감 점수별 횟수 (1=배고픔~5=과식 라벨 포함)
+function countSatietyByScore(records) {
+    const count = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    records.forEach(m => {
+        const v = parseInt(m.satiety || 0);
+        if (v >= 1 && v <= 5) count[v]++;
+    });
+    const labelMap = Object.fromEntries(SATIETY_DATA.map(d => [d.val, d.label]));
+    return Object.entries(count)
+        .filter(([, n]) => n > 0)
+        .sort((a, b) => b[1] - a[1])
+        .map(([score, n]) => `${score}점(${labelMap[score] || ''}) ${n}회`)
+        .join(', ') || '없음';
+}
+
+// 데이터 분석 및 요약 정보 생성 (본식/간식 분리)
 function analyzeMealData(filteredData, dateRangeText) {
     if (!filteredData || filteredData.length === 0) {
         return null;
     }
     
-    // 식사 방식 분석
+    const mainMeals = filteredData.filter(m => {
+        const slot = SLOTS.find(s => s.id === m.slotId && s.type === 'main');
+        return slot;
+    });
+    const snacks = filteredData.filter(m => {
+        const slot = SLOTS.find(s => s.id === m.slotId && s.type === 'snack');
+        return slot;
+    });
+    
+    // 본식 분석
     const mealTypeCount = {};
-    filteredData.forEach(meal => {
+    const categoryCount = {};
+    const menuDetails = [];
+    const withWhomCount = {};
+    mainMeals.forEach(meal => {
         if (meal.mealType && meal.mealType !== 'Skip') {
             mealTypeCount[meal.mealType] = (mealTypeCount[meal.mealType] || 0) + 1;
         }
-    });
-    const mealTypes = Object.entries(mealTypeCount)
-        .sort((a, b) => b[1] - a[1])
-        .map(([type, count]) => `${type} ${count}회`)
-        .join(', ');
-    
-    // 메뉴 정보 분석
-    const categoryCount = {};
-    const menuDetails = [];
-    filteredData.forEach(meal => {
         if (meal.category) {
             categoryCount[meal.category] = (categoryCount[meal.category] || 0) + 1;
         }
-        if (meal.menuDetail) {
-            menuDetails.push(meal.menuDetail);
-        }
-    });
-    const categories = Object.entries(categoryCount)
-        .sort((a, b) => b[1] - a[1])
-        .map(([cat, count]) => `${cat} ${count}회`)
-        .join(', ');
-    
-    // 같이 먹은 사람 분석
-    const withWhomCount = {};
-    filteredData.forEach(meal => {
+        if (meal.menuDetail) menuDetails.push(meal.menuDetail);
         const companion = meal.withWhomDetail || meal.withWhom;
         if (companion && companion !== '혼자') {
             withWhomCount[companion] = (withWhomCount[companion] || 0) + 1;
         }
     });
-    const companions = Object.entries(withWhomCount)
-        .sort((a, b) => b[1] - a[1])
-        .map(([person, count]) => `${person} ${count}회`)
-        .join(', ');
     
-    // 만족도 평균
-    const ratings = filteredData.filter(m => m.rating).map(m => parseInt(m.rating || 0));
-    const avgRating = ratings.length > 0 
-        ? (ratings.reduce((sum, r) => sum + r, 0) / ratings.length).toFixed(1)
-        : null;
+    const main = {
+        count: mainMeals.length,
+        mealTypes: Object.entries(mealTypeCount).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}회`).join(', ') || '없음',
+        categories: Object.entries(categoryCount).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${c} ${n}회`).join(', ') || '없음',
+        menuDetails: [...new Set(menuDetails)].slice(0, 10),
+        companions: Object.entries(withWhomCount).sort((a, b) => b[1] - a[1]).map(([p, n]) => `${p} ${n}회`).join(', ') || '대부분 혼자',
+        ratingByScore: countByScore(mainMeals, 'rating'),
+        satietyByScore: countSatietyByScore(mainMeals),
+        avgRating: null,
+        avgSatiety: null
+    };
+    const mainRatings = mainMeals.filter(m => m.rating).map(m => parseInt(m.rating || 0));
+    const mainSatiety = mainMeals.filter(m => m.satiety).map(m => parseInt(m.satiety || 0));
+    if (mainRatings.length) main.avgRating = (mainRatings.reduce((a, b) => a + b, 0) / mainRatings.length).toFixed(1);
+    if (mainSatiety.length) main.avgSatiety = (mainSatiety.reduce((a, b) => a + b, 0) / mainSatiety.length).toFixed(1);
+    
+    // 간식 분석
+    const snackTypeCount = {};
+    const snackPlaceCount = {};
+    snacks.forEach(meal => {
+        const st = meal.snackType || meal.category;
+        if (st) snackTypeCount[st] = (snackTypeCount[st] || 0) + 1;
+        const pl = meal.place;
+        if (pl) snackPlaceCount[pl] = (snackPlaceCount[pl] || 0) + 1;
+    });
+    
+    const snack = {
+        count: snacks.length,
+        snackTypes: Object.entries(snackTypeCount).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}회`).join(', ') || '없음',
+        places: Object.entries(snackPlaceCount).sort((a, b) => b[1] - a[1]).map(([p, n]) => `${p} ${n}회`).join(', ') || '없음',
+        ratingByScore: countByScore(snacks, 'rating'),
+        satietyByScore: countSatietyByScore(snacks),
+        avgRating: null,
+        avgSatiety: null
+    };
+    const snackRatings = snacks.filter(m => m.rating).map(m => parseInt(m.rating || 0));
+    const snackSatiety = snacks.filter(m => m.satiety).map(m => parseInt(m.satiety || 0));
+    if (snackRatings.length) snack.avgRating = (snackRatings.reduce((a, b) => a + b, 0) / snackRatings.length).toFixed(1);
+    if (snackSatiety.length) snack.avgSatiety = (snackSatiety.reduce((a, b) => a + b, 0) / snackSatiety.length).toFixed(1);
+    
+    // 시간대별 분석 (아침/점심/저녁, 아침전간식/오전간식/오후간식/야식)
+    const slotLabelMap = Object.fromEntries(SLOTS.map(s => [s.id, s.label]));
+    const bySlot = {};
+    SLOTS.forEach(slot => {
+        const recs = filteredData.filter(m => m.slotId === slot.id);
+        if (recs.length === 0) return;
+        const isMain = slot.type === 'main';
+        const mealTypeCountS = {};
+        const categoryCountS = {};
+        const snackTypeCountS = {};
+        const placeCountS = {};
+        const menuDetailsS = [];
+        const withWhomCountS = {};
+        recs.forEach(meal => {
+            if (isMain) {
+                if (meal.mealType && meal.mealType !== 'Skip') mealTypeCountS[meal.mealType] = (mealTypeCountS[meal.mealType] || 0) + 1;
+                if (meal.category) categoryCountS[meal.category] = (categoryCountS[meal.category] || 0) + 1;
+                if (meal.menuDetail) menuDetailsS.push(meal.menuDetail);
+                const c = meal.withWhomDetail || meal.withWhom;
+                if (c && c !== '혼자') withWhomCountS[c] = (withWhomCountS[c] || 0) + 1;
+            } else {
+                const st = meal.snackType || meal.category;
+                if (st) snackTypeCountS[st] = (snackTypeCountS[st] || 0) + 1;
+                if (meal.place) placeCountS[meal.place] = (placeCountS[meal.place] || 0) + 1;
+            }
+        });
+        const entry = {
+            count: recs.length,
+            label: slotLabelMap[slot.id] || slot.id
+        };
+        if (isMain) {
+            entry.mealTypes = Object.entries(mealTypeCountS).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}회`).join(', ') || '없음';
+            entry.categories = Object.entries(categoryCountS).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${c} ${n}회`).join(', ') || '없음';
+            entry.menuDetails = [...new Set(menuDetailsS)].slice(0, 5);
+            entry.companions = Object.keys(withWhomCountS).length ? Object.entries(withWhomCountS).sort((a, b) => b[1] - a[1]).map(([p, n]) => `${p} ${n}회`).join(', ') : '대부분 혼자';
+        } else {
+            entry.snackTypes = Object.entries(snackTypeCountS).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}회`).join(', ') || '없음';
+            entry.places = Object.entries(placeCountS).sort((a, b) => b[1] - a[1]).map(([p, n]) => `${p} ${n}회`).join(', ') || '없음';
+        }
+        entry.ratingByScore = countByScore(recs, 'rating');
+        entry.satietyByScore = countSatietyByScore(recs);
+        bySlot[slot.id] = entry;
+    });
     
     return {
         period: dateRangeText,
         totalMeals: filteredData.length,
-        mealTypes,
-        categories,
-        menuDetails: [...new Set(menuDetails)].slice(0, 10), // 중복 제거 후 최대 10개
-        companions,
-        avgRating
+        main,
+        snack,
+        bySlot
     };
 }
 
@@ -848,22 +941,27 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
             return character ? `${character.icon} 기록을 분석할 수 없습니다.` : "기록을 분석할 수 없습니다.";
         }
         
+        // 본식 기록 비율 (밀당 박스 기준: 본식만, days*3 대비)
+        const dashData = typeof window.getDashboardData === 'function' ? window.getDashboardData() : null;
+        const days = dashData?.days ?? 1;
+        const targetDays = Math.max(1, days);
+        const totalMainSlots = targetDays * 3;
+        const mainMealCount = filteredData.filter(m => {
+            const slot = SLOTS.find(s => s.id === m.slotId && s.type === 'main');
+            return slot && m.mealType !== 'Skip';
+        }).length;
+        const mealRecordPercent = totalMainSlots > 0 ? Math.round((mainMealCount / totalMainSlots) * 100) : 0;
+        
         // 공통 페르소나 가져오기
         const commonPersona = await getCommonPersona();
         
         // 밀당 메모 가져오기 (AI 분석 참고용)
         const userShortcuts = window.userSettings?.shortcuts || '';
         
-        // 프롬프트 생성 (재미있고 캐릭터 성격 중심, 핵심만)
-        const menuSummary = analysis.menuDetails.length > 0 
-            ? analysis.menuDetails.slice(0, 5).join(', ') 
-            : '없음';
-        
         // 프롬프트 구성 (간결하고 명확하게)
         let prompt = '';
         
-        // 공통 페르소나는 systemInstruction에 포함되므로 프롬프트에는 제외
-        // 밀당 메모 (AI 분석 참고용)
+        // 공통 페르소나는 systemInstruction에 포함, 밀당 메모는 프롬프트에 포함 (둘 다 분석 요청에 사용됨)
         if (userShortcuts && userShortcuts.trim()) {
             prompt += `[밀당 메모 - 반드시 참고]\n${userShortcuts.trim()}\n\n`;
         }
@@ -874,14 +972,21 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
             prompt += `${character.systemPrompt}\n`;
         }
         
-        // 식사 데이터
+        // 식사 데이터 (시간대별로만 전송 - 본식/간식 통합, 중복 제거)
         prompt += `\n[식사 데이터]\n`;
-        prompt += `- 총 ${analysis.totalMeals}회 기록\n`;
-        prompt += `- 어떻게: ${analysis.mealTypes || '없음'}\n`;
-        prompt += `- 주요 메뉴: ${menuSummary}\n`;
-        prompt += `- 누구와: ${analysis.companions || '대부분 혼자'}\n`;
-        if (analysis.avgRating) {
-            prompt += `- 만족도 평균: ${analysis.avgRating}/5\n`;
+        prompt += `- 본식 기록 비율: ${mainMealCount}회 / ${totalMainSlots}회 (${mealRecordPercent}%)\n`;
+        if (analysis.bySlot && Object.keys(analysis.bySlot).length > 0) {
+            const slotOrder = ['pre_morning', 'morning', 'snack1', 'lunch', 'snack2', 'dinner', 'night'];
+            slotOrder.forEach(slotId => {
+                const s = analysis.bySlot[slotId];
+                if (!s) return;
+                prompt += `\n- ${s.label} (${s.count}회)\n`;
+                if (s.mealTypes) prompt += `  식사방식: ${s.mealTypes}, 메뉴분류: ${s.categories}\n`;
+                if (s.menuDetails && s.menuDetails.length) prompt += `  메뉴: ${s.menuDetails.slice(0, 3).join(', ')}\n`;
+                if (s.companions) prompt += `  누구와: ${s.companions}\n`;
+                if (s.snackTypes) prompt += `  간식종류: ${s.snackTypes}, 장소: ${s.places}\n`;
+                prompt += `  만족도: ${s.ratingByScore}, 포만감: ${s.satietyByScore}\n`;
+            });
         }
         
         // 작성 지침 (간결하게)
@@ -894,18 +999,25 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         }
         prompt += `- 캐릭터 고유의 말투와 성격 드러내기\n`;
         prompt += `- 식사 패턴의 재미있는 점 우선 언급\n`;
+        prompt += `- 시간대별 데이터를 활용해 아침/점심/저녁·간식 시간대별 패턴 분석 가능\n`;
         prompt += `- 자기 소개/기간 언급 금지\n`;
         prompt += `- 이모지 최대 2개, 한국어만 사용\n`;
         
-        // 간소화된 프롬프트 정보 로그 (개발 모드에서만 상세 로그)
+        // Gemini 전송 데이터 확인용 로그 (F12 콘솔에서 확인, 배포 환경에서는 콘솔에 window.DEBUG_GEMINI=true 입력 후 코멘트 버튼 클릭)
         const isDevMode = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        if (isDevMode) {
-            console.log('📝 프롬프트 생성:', {
-                공통페르소나: !!(commonPersona && commonPersona.trim()),
-                밀당메모: !!(userShortcuts && userShortcuts.trim()),
-                프롬프트길이: prompt.length + '자',
-                프롬프트줄수: prompt.split('\n').length + '줄'
+        const showDebugLog = isDevMode || window.DEBUG_GEMINI;
+        if (showDebugLog) {
+            console.group('📤 Gemini 분석 요청 데이터');
+            console.log('분석 요약:', {
+                본식: `${analysis.main.count}회`,
+                간식: `${analysis.snack.count}회`,
+                본식기록비율: `${mainMealCount}회 / ${totalMainSlots}회 (${mealRecordPercent}%)`,
+                공통페르소나: !!(commonPersona && commonPersona.trim()) ? 'systemInstruction으로 전송됨' : '없음',
+                밀당메모: !!(userShortcuts && userShortcuts.trim()) ? '프롬프트에 포함됨' : '없음'
             });
+            console.log('전체 프롬프트:', prompt);
+            console.log('원본 filteredData 건수:', filteredData.length);
+            console.groupEnd();
         }
         
         // v1beta API만 사용 (v1은 이 모델들을 지원하지 않음)
@@ -1014,6 +1126,15 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                 const responseData = await response.json();
                 if (isDevMode) {
                     console.log(`✅ API 성공: ${model}`);
+                }
+                // 토큰 사용량 로그 (usageMetadata)
+                const usage = responseData?.usageMetadata;
+                if (usage && (isDevMode || window.DEBUG_GEMINI)) {
+                    console.log('📊 토큰 사용량:', {
+                        입력: usage.promptTokenCount ?? usage.prompt_token_count ?? '-',
+                        출력: usage.candidatesTokenCount ?? usage.candidates_token_count ?? '-',
+                        총합: usage.totalTokenCount ?? usage.total_token_count ?? '-'
+                    });
                 }
                 
                 // 응답 검증 (안전 필터 및 응답 구조 처리)
@@ -1382,7 +1503,7 @@ export async function openShareInsightModal() {
                         ${characterIconHtml}
                     </div>
                     <div style="width: 75px; background: #ffca2c; border-radius: 12px; padding: 6px 4px; text-align: center; font-size: 12px; font-weight: 700; color: #1e293b; border: 1px solid rgba(0,0,0,0.08);">
-                        분석하기
+                        코멘트
                     </div>
                 </div>
                 <!-- 말풍선 (초록 보더, 흰 배경, 어두운 텍스트) -->

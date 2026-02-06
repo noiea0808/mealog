@@ -912,7 +912,7 @@ window.switchContentSidebar = function(section) {
     if (section === 'mealog') {
         loadMealogComments();
     } else if (section === 'characters') {
-        renderPersonaCharacters();
+        showCharacterListView();
     } else if (section === 'terms') {
         loadTermsContent();
         // 약관관리 탭이 기본이므로 약관이력은 나중에 로드
@@ -4454,9 +4454,11 @@ async function renderPersonaCharacters() {
         
         if (charactersSnap.exists()) {
             const data = charactersSnap.data();
-            // Firebase에서 추가된 캐릭터들 추가 (기본 캐릭터와 중복되지 않는 것만)
-            Object.entries(data).forEach(([id, charData]) => {
-                if (!DEFAULT_CHARACTERS.find(c => c.id === id)) {
+            // Firebase에서 추가된 캐릭터들 추가 (기본 캐릭터와 중복되지 않는 것만, id 순 정렬)
+            Object.entries(data)
+                .filter(([id]) => !DEFAULT_CHARACTERS.find(c => c.id === id))
+                .sort(([a], [b]) => a.localeCompare(b))
+                .forEach(([id, charData]) => {
                     allCharacters.push({
                         id,
                         name: charData.name || id,
@@ -4465,8 +4467,7 @@ async function renderPersonaCharacters() {
                         persona: charData.persona || '',
                         systemPrompt: ''
                     });
-                }
-            });
+                });
         }
         
         // 각 캐릭터의 개별 설정 문서에서 상세 정보 가져오기
@@ -4509,64 +4510,60 @@ async function renderPersonaCharacters() {
             console.error('공통 페르소나 로드 실패:', e);
         }
         
-        // 공통 + 다른 캐릭터들
+        // 공통 + 다른 캐릭터들 (순서: 공통 → 기본 → Firebase)
         const allCharactersWithCommon = [commonCharacter, ...allCharacters];
         
-        // 캐릭터 목록 렌더링 (가로)
-        listContainer.innerHTML = allCharactersWithCommon.map(char => {
-            const isSelected = char.id === currentEditingCharacterId;
+        // 캐릭터 목록 렌더링 (세로)
+        listContainer.innerHTML = allCharactersWithCommon.map((char, index) => {
             const isCommon = char.id === 'common';
             return `
-                <div class="flex-shrink-0 w-32">
-                    <button onclick="window.selectCharacterForEdit('${char.id}')" 
-                            class="w-full text-center px-3 py-3 rounded-xl transition-colors ${isSelected ? 'bg-emerald-50 border-2 border-emerald-500' : 'bg-slate-50 border border-slate-200 hover:bg-slate-100'}">
-                        <div class="flex flex-col items-center gap-2">
-                            ${char.image ? `
-                                <img src="${escapeHtml(char.image)}" alt="${escapeHtml(char.name || '')}" class="w-12 h-12 object-cover rounded-lg" onerror="this.style.display='none'">
-                            ` : ''}
-                            ${!char.image && char.icon ? `
-                                <div class="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center text-2xl">${escapeHtml(char.icon)}</div>
-                            ` : ''}
-                            <div class="w-full">
-                                <div class="text-xs font-bold text-slate-800">${escapeHtml(char.name || char.id || '')}</div>
-                            </div>
-                        </div>
+                <div class="flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <button type="button" onclick="window.selectCharacterForEdit('${String(char.id).replace(/'/g, "\\'")}')" 
+                            data-character-id="${escapeHtml(char.id)}"
+                            class="flex-1 flex items-center gap-3 text-left min-w-0">
+                        <span class="text-sm font-bold text-slate-500 w-6">${index + 1}</span>
+                        ${char.image ? `
+                            <img src="${escapeHtml(char.image)}" alt="${escapeHtml(char.name || '')}" class="w-10 h-10 object-cover rounded-lg flex-shrink-0" onerror="this.style.display='none'">
+                        ` : ''}
+                        ${!char.image && char.icon ? `
+                            <div class="w-10 h-10 rounded-lg bg-slate-200 flex items-center justify-center text-xl flex-shrink-0">${escapeHtml(char.icon)}</div>
+                        ` : ''}
+                        <span class="text-sm font-bold text-slate-800 truncate">${escapeHtml(char.name || char.id || '')}</span>
                     </button>
                     ${!isCommon ? `
-                        <button onclick="window.deleteCharacter('${char.id}')" 
-                                class="w-full mt-2 px-2 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-bold hover:bg-red-200 transition-colors">
+                        <button type="button" onclick="window.deleteCharacter('${String(char.id).replace(/'/g, "\\'")}')" 
+                                class="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-bold hover:bg-red-200 transition-colors flex-shrink-0">
                             <i class="fa-solid fa-trash mr-1"></i>삭제
                         </button>
                     ` : ''}
                 </div>
             `;
         }).join('');
-        
-        // 첫 번째 캐릭터(공통)를 기본으로 선택
-        if (!currentEditingCharacterId) {
-            selectCharacterForEdit('common');
-        }
     } catch (e) {
         console.error("페르소나 캐릭터 렌더링 실패:", e);
         listContainer.innerHTML = '<div class="text-center py-4 text-red-400"><i class="fa-solid fa-exclamation-triangle text-xl mb-2"></i><p class="text-xs">캐릭터를 불러오는 중 오류가 발생했습니다.</p></div>';
     }
 }
 
-// 캐릭터 선택 (편집용)
+// 캐릭터 목록 뷰 표시
+window.showCharacterListView = function() {
+    const listView = document.getElementById('characters-list-view');
+    const editView = document.getElementById('character-edit-view');
+    if (listView) listView.classList.remove('hidden');
+    if (editView) editView.classList.add('hidden');
+    currentEditingCharacterId = null;
+    renderPersonaCharacters();
+};
+
+// 캐릭터 선택 (편집용) - 편집 뷰로 전환
 window.selectCharacterForEdit = async function(characterId) {
     currentEditingCharacterId = characterId;
     
-    // 목록 UI 업데이트
-    document.querySelectorAll('#personaCharactersList button').forEach(btn => {
-        btn.classList.remove('bg-emerald-50', 'border-emerald-500', 'border-2');
-        btn.classList.add('bg-slate-50', 'border-slate-200', 'border');
-    });
-    
-    const selectedBtn = document.querySelector(`#personaCharactersList button[onclick*="'${characterId}'"]`);
-    if (selectedBtn) {
-        selectedBtn.classList.remove('bg-slate-50', 'border-slate-200', 'border');
-        selectedBtn.classList.add('bg-emerald-50', 'border-emerald-500', 'border-2');
-    }
+    // 목록 뷰 숨기고 편집 뷰 표시
+    const listView = document.getElementById('characters-list-view');
+    const editView = document.getElementById('character-edit-view');
+    if (listView) listView.classList.add('hidden');
+    if (editView) editView.classList.remove('hidden');
     
     // 편집 폼 로드
     await loadCharacterEditor(characterId);
@@ -4663,17 +4660,18 @@ function renderCommonPersonaForm(commonData) {
                 </div>
             </div>
             
-            <!-- 공통 페르소나 (구글 AI 스튜디오용) -->
+            <!-- 공통 페르소나: 입력 텍스트만큼 창 자동 확장 -->
             <div>
                 <label class="block text-sm font-bold text-slate-700 mb-2">
                     <i class="fa-solid fa-robot mr-2"></i>공통 페르소나 (구글 AI 스튜디오에 발송할 프롬프트)
                 </label>
                 <textarea id="commonSystemPrompt" 
-                          class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[200px]"
+                          class="persona-auto-resize w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 min-h-[200px] resize-none overflow-hidden"
                           placeholder="모든 캐릭터에 공통으로 적용될 페르소나를 입력하세요. 예: '항상 친근하고 따뜻한 톤으로 대화하며, 사용자의 식사 기록을 긍정적으로 분석합니다.'">${escapeHtml(commonData.systemPrompt || '')}</textarea>
             </div>
         </div>
     `;
+    attachPersonaAutoResize();
 }
 
 // 캐릭터 편집 폼 렌더링
@@ -4683,93 +4681,110 @@ function renderCharacterEditorForm(characterData) {
     
     editorContent.innerHTML = `
         <div class="space-y-6">
-            <!-- 이미지 업로드 -->
+            <!-- 이미지: 좌(미리보기) | 우(선택+경로, 이미지 높이에 맞춤) -->
             <div>
                 <label class="block text-sm font-bold text-slate-700 mb-2">
-                    <i class="fa-solid fa-image mr-2"></i>캐릭터 이미지 <span class="text-slate-500 font-normal">(75px × 132px)</span>
+                    <i class="fa-solid fa-image mr-2"></i>캐릭터 이미지 <span class="text-slate-500 font-normal">(75×132)</span>
                 </label>
-                <div class="space-y-3">
-                    <input type="file" id="characterImageFile" accept="image/*" 
-                           onchange="window.handleCharacterImageUpload(event)"
-                           class="hidden">
-                    <button type="button" onclick="document.getElementById('characterImageFile').click()" 
-                            class="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2">
-                        <i class="fa-solid fa-upload"></i>
-                        <span>이미지 선택</span>
-                    </button>
-                    <input type="text" id="characterImage" value="${escapeHtml(characterData.image || '')}" 
-                           placeholder="또는 이미지 URL 직접 입력"
-                           onchange="window.updateCharacterImageFromUrl(this.value)"
-                           class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500">
-                    <div id="characterImagePreview" class="mt-2">
+                <div class="flex gap-3 items-stretch">
+                    <div id="characterImagePreview" class="relative flex-shrink-0 w-[75px] h-[132px] rounded-xl border border-slate-200 bg-slate-100 flex items-center justify-center overflow-hidden">
                         ${characterData.image ? `
-                            <div class="relative inline-block">
-                                <img src="${escapeHtml(characterData.image)}" alt="미리보기" class="w-32 h-32 object-cover rounded-xl border border-slate-200" onerror="this.style.display='none'">
-                                <button type="button" onclick="window.removeCharacterImage()" 
-                                        class="absolute top-1 right-1 px-2 py-1 bg-red-500 text-white rounded text-xs font-bold hover:bg-red-600">
-                                    <i class="fa-solid fa-times"></i>
-                                </button>
-                            </div>
-                        ` : ''}
+                            <img src="${escapeHtml(characterData.image)}" alt="미리보기" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML='<span class=\\'text-slate-400 text-2xl\\'>👤</span>'">
+                            <button type="button" onclick="window.removeCharacterImage()" 
+                                    class="absolute top-0.5 right-0.5 px-1.5 py-0.5 bg-red-500 text-white rounded text-xs font-bold hover:bg-red-600">
+                                <i class="fa-solid fa-times"></i>
+                            </button>
+                        ` : '<span class="text-slate-400 text-2xl">👤</span>'}
+                    </div>
+                    <div class="flex flex-col gap-2 justify-center min-w-0">
+                        <input type="file" id="characterImageFile" accept="image/*" 
+                               onchange="window.handleCharacterImageUpload(event)"
+                               class="hidden">
+                        <button type="button" onclick="document.getElementById('characterImageFile').click()" 
+                                class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-upload"></i>
+                            <span>이미지 선택</span>
+                        </button>
+                        <input type="text" id="characterImage" value="${escapeHtml(characterData.image || '')}" 
+                               placeholder="또는 이미지 URL 직접 입력"
+                               onchange="window.updateCharacterImageFromUrl(this.value)"
+                               class="w-full min-w-[160px] px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500">
                     </div>
                 </div>
             </div>
             
-            <!-- 캐릭터 이름 -->
-            <div>
-                <label class="block text-sm font-bold text-slate-700 mb-2">
+            <!-- 캐릭터 이름: 타이틀 오른쪽에 입력 -->
+            <div class="flex gap-4 items-center">
+                <label class="flex-shrink-0 text-sm font-bold text-slate-700 w-28">
                     <i class="fa-solid fa-tag mr-2"></i>캐릭터 이름
                 </label>
                 <input type="text" id="characterName" value="${escapeHtml(characterData.name || '')}" 
                        placeholder="예: 엄격한 트레이너"
-                       class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500">
+                       class="flex-1 min-w-0 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500">
             </div>
             
-            <!-- 기본 멘트 -->
-            <div>
-                <label class="block text-sm font-bold text-slate-700 mb-2">
-                    <i class="fa-solid fa-comment mr-2"></i>기본 멘트 (COMMENT 버튼 클릭 시 표시)
+            <!-- 기본 멘트: 타이틀 오른쪽에 입력 -->
+            <div class="flex gap-4 items-start">
+                <label class="flex-shrink-0 text-sm font-bold text-slate-700 w-28 pt-2">
+                    <i class="fa-solid fa-comment mr-2"></i>기본 멘트
                 </label>
-                <p class="text-xs text-slate-500 mb-2">여러 개의 멘트를 입력하면 랜덤으로 표시됩니다.</p>
-                <div id="characterDefaultCommentsContainer" class="space-y-3">
-                    ${characterData.defaultComments && characterData.defaultComments.length > 0 ? characterData.defaultComments.map((comment, index) => `
-                        <div class="flex gap-2 items-start" data-comment-index="${index}">
-                            <textarea onchange="window.updateCharacterDefaultComment(${index}, this.value)"
-                                      class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px]"
-                                      placeholder="기본 멘트를 입력하세요">${escapeHtml(comment || '')}</textarea>
-                            <button onclick="window.removeCharacterDefaultComment(${index})" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors flex-shrink-0">
-                                <i class="fa-solid fa-trash"></i>
-                            </button>
-                        </div>
-                    `).join('') : ''}
+                <div class="flex-1 min-w-0">
+                    <p class="text-xs text-slate-500 mb-2">COMMENT 버튼 클릭 시 표시. 여러 개 입력 시 랜덤 표시.</p>
+                    <div id="characterDefaultCommentsContainer" class="space-y-3">
+                        ${characterData.defaultComments && characterData.defaultComments.length > 0 ? characterData.defaultComments.map((comment, index) => `
+                            <div class="flex gap-2 items-start" data-comment-index="${index}">
+                                <textarea onchange="window.updateCharacterDefaultComment(${index}, this.value)"
+                                          class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px] overflow-hidden"
+                                          placeholder="기본 멘트를 입력하세요">${escapeHtml(comment || '')}</textarea>
+                                <button onclick="window.removeCharacterDefaultComment(${index})" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors flex-shrink-0">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
+                        `).join('') : ''}
+                    </div>
+                    <button onclick="window.addCharacterDefaultComment()" class="mt-2 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
+                        <i class="fa-solid fa-plus mr-2"></i>멘트 추가
+                    </button>
                 </div>
-                <button onclick="window.addCharacterDefaultComment()" class="mt-2 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                    <i class="fa-solid fa-plus mr-2"></i>멘트 추가
-                </button>
             </div>
             
-            <!-- 로딩 멘트 -->
-            <div>
-                <label class="block text-sm font-bold text-slate-700 mb-2">
-                    <i class="fa-solid fa-spinner mr-2"></i>로딩 멘트 (AI 분석 중 표시)
+            <!-- 로딩 멘트: 타이틀 오른쪽에 입력 -->
+            <div class="flex gap-4 items-start">
+                <label class="flex-shrink-0 text-sm font-bold text-slate-700 w-28 pt-2">
+                    <i class="fa-solid fa-spinner mr-2"></i>로딩 멘트
                 </label>
-                <p class="text-xs text-slate-500 mb-2">AI 코멘트 생성 중에 표시될 기본 멘트입니다. (AI를 사용하지 않은 일반 텍스트)</p>
-                <textarea id="characterLoadingMessage" 
-                          class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px]"
-                          placeholder="예: 분석중입니다">${escapeHtml(characterData.loadingMessage || '')}</textarea>
+                <div class="flex-1 min-w-0">
+                    <p class="text-xs text-slate-500 mb-2">AI 코멘트 생성 중 표시 (일반 텍스트)</p>
+                    <textarea id="characterLoadingMessage" 
+                              class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px] overflow-hidden"
+                              placeholder="예: 분석중입니다">${escapeHtml(characterData.loadingMessage || '')}</textarea>
+                </div>
             </div>
             
-            <!-- 페르소나 (구글 AI 스튜디오용) -->
+            <!-- 페르소나: 입력 텍스트만큼 창 자동 확장 -->
             <div>
                 <label class="block text-sm font-bold text-slate-700 mb-2">
                     <i class="fa-solid fa-robot mr-2"></i>페르소나 (구글 AI 스튜디오에 발송할 프롬프트)
                 </label>
                 <textarea id="characterSystemPrompt" 
-                          class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[200px]"
+                          class="persona-auto-resize w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 min-h-[200px] resize-none overflow-hidden"
                           placeholder="캐릭터의 성격, 말투, 분석 스타일 등을 정의하는 프롬프트를 입력하세요">${escapeHtml(characterData.systemPrompt || '')}</textarea>
             </div>
         </div>
     `;
+    attachPersonaAutoResize();
+}
+
+// 페르소나 입력창: 입력 텍스트만큼 자동 확장 (스크롤 없음)
+function attachPersonaAutoResize() {
+    const resize = (ta) => {
+        ta.style.height = 'auto';
+        ta.style.height = Math.max(200, ta.scrollHeight) + 'px';
+    };
+    document.querySelectorAll('.persona-auto-resize').forEach(ta => {
+        resize(ta);
+        ta.addEventListener('input', () => resize(ta));
+    });
 }
 
 // 기본 멘트 추가
@@ -4783,7 +4798,7 @@ window.addCharacterDefaultComment = function() {
     newCommentDiv.setAttribute('data-comment-index', index);
     newCommentDiv.innerHTML = `
         <textarea onchange="window.updateCharacterDefaultComment(${index}, this.value)"
-                  class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px]"
+                  class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px] overflow-hidden"
                   placeholder="기본 멘트를 입력하세요"></textarea>
         <button onclick="window.removeCharacterDefaultComment(${index})" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors flex-shrink-0">
             <i class="fa-solid fa-trash"></i>
@@ -4878,16 +4893,14 @@ function updateCharacterImagePreview(imageUrl) {
     
     if (imageUrl) {
         previewContainer.innerHTML = `
-            <div class="relative inline-block">
-                <img src="${escapeHtml(imageUrl)}" alt="미리보기" class="w-32 h-32 object-cover rounded-xl border border-slate-200" onerror="this.style.display='none'">
-                <button type="button" onclick="window.removeCharacterImage()" 
-                        class="absolute top-1 right-1 px-2 py-1 bg-red-500 text-white rounded text-xs font-bold hover:bg-red-600">
-                    <i class="fa-solid fa-times"></i>
-                </button>
-            </div>
+            <img src="${escapeHtml(imageUrl)}" alt="미리보기" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML='<span class=\\'text-slate-400 text-2xl\\'>👤</span>'">
+            <button type="button" onclick="window.removeCharacterImage()" 
+                    class="absolute top-0.5 right-0.5 px-1.5 py-0.5 bg-red-500 text-white rounded text-xs font-bold hover:bg-red-600">
+                <i class="fa-solid fa-times"></i>
+            </button>
         `;
     } else {
-        previewContainer.innerHTML = '';
+        previewContainer.innerHTML = '<span class="text-slate-400 text-2xl">👤</span>';
     }
 }
 
@@ -4910,28 +4923,11 @@ window.addNewCharacter = function() {
     const newId = 'character_' + Date.now();
     currentEditingCharacterId = newId;
     
-    // 목록에 새 캐릭터 추가 (임시)
-    const listContainer = document.getElementById('personaCharactersList');
-    if (listContainer) {
-        const newCharDiv = document.createElement('div');
-        newCharDiv.className = 'flex-shrink-0 w-32';
-        newCharDiv.innerHTML = `
-            <button onclick="window.selectCharacterForEdit('${newId}')" 
-                    class="w-full text-center px-3 py-3 rounded-xl transition-colors bg-emerald-50 border-2 border-emerald-500">
-                <div class="flex flex-col items-center gap-2">
-                    <div class="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center text-2xl">👤</div>
-                    <div class="w-full">
-                        <div class="text-xs font-bold text-slate-800">새 캐릭터</div>
-                    </div>
-                </div>
-            </button>
-            <button onclick="window.deleteCharacter('${newId}')" 
-                    class="w-full mt-2 px-2 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-bold hover:bg-red-200 transition-colors">
-                <i class="fa-solid fa-trash mr-1"></i>삭제
-            </button>
-        `;
-        listContainer.appendChild(newCharDiv);
-    }
+    // 편집 뷰로 전환
+    const listView = document.getElementById('characters-list-view');
+    const editView = document.getElementById('character-edit-view');
+    if (listView) listView.classList.add('hidden');
+    if (editView) editView.classList.remove('hidden');
     
     // 편집 폼 로드
     loadCharacterEditor(newId);
@@ -4961,9 +4957,10 @@ window.deleteCharacter = async function(characterId) {
         const personaDocRef = doc(db, 'artifacts', appId, 'persona', characterId);
         await deleteDoc(personaDocRef);
         
-        // 현재 선택된 캐릭터가 삭제된 경우 첫 번째 캐릭터 선택
+        // 현재 선택된 캐릭터가 삭제된 경우 목록 뷰로 전환
         if (currentEditingCharacterId === characterId) {
             currentEditingCharacterId = null;
+            showCharacterListView();
         }
         
         // 목록 새로고침
