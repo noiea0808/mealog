@@ -7,10 +7,11 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPasswor
 // Firestore 규칙·Callable은 기본 Auth만 인식하므로 관리자도 기본 Auth 사용 (admin 페이지는 별도 URL)
 const adminAuth = getAuth(app);
 import { collection, getDocs, query, orderBy, limit, doc, deleteDoc, getDoc, setDoc, where, writeBatch, addDoc, serverTimestamp, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { uploadImageToStorage, uploadPersonaImageToStorage } from './utils.js';
-import { getReportsAggregateByGroupKeys, deleteBoardPostByAdmin, setBoardPostHidden } from './db.js';
+import { uploadImageToStorage, uploadPersonaImageToStorage, uploadNoticeImages } from './utils.js';
+import { getReportsAggregateByGroupKeys, deleteBoardPostByAdmin, setBoardPostHidden, getAdminDisplayName, invalidateAdminDisplayNameCache } from './db.js';
 import { REPORT_REASONS } from './constants.js';
 import { getCurrentTermsVersion, invalidateTermsVersionCache } from './utils-terms.js';
+import { sanitizeFormattedText, renderFormattedContent, stripDangerousTagsOnly } from './render/utils.js';
 
 let currentDeletePhotoId = null;
 
@@ -753,6 +754,60 @@ function initAdminPage() {
         console.log('✅ 로그인 버튼 이벤트 리스너 등록됨');
     } else {
         console.error('❌ loginBtn을 찾을 수 없음');
+    }
+    
+    // 공지 내용 포맷 툴바 (Bold, 취소선, 밑줄)
+    document.querySelectorAll('.notice-format-toolbar-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const contentEl = document.getElementById('noticeContent');
+            if (!contentEl) return;
+            contentEl.focus();
+            const cmd = btn.getAttribute('data-format');
+            if (cmd) document.execCommand(cmd, false, null);
+        });
+    });
+    const noticeAddPhotosBtn = document.getElementById('noticeAddPhotosBtn');
+    const noticeImagesInput = document.getElementById('noticeImages');
+    if (noticeAddPhotosBtn && noticeImagesInput) {
+        noticeAddPhotosBtn.addEventListener('click', () => noticeImagesInput.click());
+    }
+    if (noticeImagesInput) {
+        noticeImagesInput.addEventListener('change', (e) => {
+            const existing = (window.noticeExistingUrls || []).length;
+            const filesCount = (window.noticeFiles || []).length;
+            const total = existing + filesCount;
+            const canAdd = Math.max(0, 3 - total);
+            const files = Array.from(e.target.files || []).slice(0, canAdd);
+            if (files.length === 0) {
+                if ((e.target.files || []).length > canAdd && canAdd === 0) alert('사진은 최대 3장까지 추가할 수 있습니다.');
+                e.target.value = '';
+                return;
+            }
+            if (!window.noticeFiles) window.noticeFiles = [];
+            if (!window.noticeObjectUrls) window.noticeObjectUrls = [];
+            files.forEach(f => {
+                if (!f.type.startsWith('image/')) return;
+                window.noticeFiles.push(f);
+                window.noticeObjectUrls.push(URL.createObjectURL(f));
+            });
+            renderNoticeImagePreviews();
+            e.target.value = '';
+        });
+    }
+    const noticeContentEl = document.getElementById('noticeContent');
+    if (noticeContentEl) {
+        const syncPlaceholder = () => {
+            const isEmpty = !(noticeContentEl.innerText || '').trim();
+            noticeContentEl.classList.toggle('format-editor-empty', isEmpty);
+        };
+        noticeContentEl.addEventListener('input', syncPlaceholder);
+        noticeContentEl.addEventListener('blur', syncPlaceholder);
+        noticeContentEl.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const text = (e.clipboardData || window.clipboardData)?.getData('text/plain') || '';
+            document.execCommand('insertText', false, text);
+        });
     }
     
     // Enter 키로 로그인
@@ -2334,7 +2389,12 @@ async function renderNoticeDetailInAdmin(noticeId) {
                 </div>
                 <h2 class="text-lg font-bold text-slate-800 mb-2">${escapeHtml(notice.title || '제목 없음')}</h2>
                 <div class="text-xs text-slate-400 mb-4">${date}</div>
-                <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4">${escapeHtml(notice.content || '').replace(/\n/g, '<br>')}</div>
+                ${Array.isArray(notice.imageUrls) && notice.imageUrls.length > 0 ? `
+                <div class="flex flex-wrap gap-2 mb-4">
+                    ${notice.imageUrls.map(url => `<img src="${url}" alt="공지 사진" class="max-w-full h-auto rounded-xl border border-slate-200 object-cover" style="max-height: 200px;" loading="lazy">`).join('')}
+                </div>
+                ` : ''}
+                <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4">${renderFormattedContent(notice.content || '')}</div>
                 <div class="pt-2 border-t border-slate-200">
                     <p class="text-xs text-slate-500 mb-2">작업</p>
                     <div class="flex gap-2 flex-wrap">
@@ -2401,7 +2461,19 @@ window.openNoticeWriteModal = function(noticeId = null) {
     
     // 초기화
     if (titleInput) titleInput.value = '';
-    if (contentInput) contentInput.value = '';
+    if (contentInput) {
+        contentInput.innerHTML = '';
+        contentInput.classList.add('format-editor-empty');
+    }
+    window.noticeExistingUrls = [];
+    window.noticeFiles = [];
+    if (window.noticeObjectUrls?.length) {
+        window.noticeObjectUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch (_) {} });
+    }
+    window.noticeObjectUrls = [];
+    const noticeImagesInput = document.getElementById('noticeImages');
+    if (noticeImagesInput) noticeImagesInput.value = '';
+    renderNoticeImagePreviews();
     if (typeSelect) typeSelect.value = 'important';
     if (pinnedCheckbox) pinnedCheckbox.checked = false;
     if (hiddenCheckbox) hiddenCheckbox.checked = false;
@@ -2417,7 +2489,19 @@ window.openNoticeWriteModal = function(noticeId = null) {
             if (snap.exists()) {
                 const noticeData = snap.data();
                 if (titleInput) titleInput.value = noticeData.title || '';
-                if (contentInput) contentInput.value = noticeData.content || '';
+                if (contentInput) {
+                    contentInput.innerHTML = (noticeData.content || '').replace(/\n/g, '<br>');
+                    contentInput.classList.remove('format-editor-empty');
+                }
+                window.noticeExistingUrls = Array.isArray(noticeData.imageUrls) ? [...noticeData.imageUrls] : [];
+                window.noticeFiles = [];
+                if (window.noticeObjectUrls?.length) {
+                    window.noticeObjectUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch (_) {} });
+                }
+                window.noticeObjectUrls = [];
+                const noticeImagesInput = document.getElementById('noticeImages');
+                if (noticeImagesInput) noticeImagesInput.value = '';
+                renderNoticeImagePreviews();
                 if (typeSelect) typeSelect.value = noticeData.type || 'important';
                 if (pinnedCheckbox) pinnedCheckbox.checked = Boolean(noticeData.isPinned === true);
                 if (hiddenCheckbox) hiddenCheckbox.checked = Boolean(noticeData.hidden === true);
@@ -2433,6 +2517,53 @@ window.openNoticeWriteModal = function(noticeId = null) {
     
     modal.classList.remove('hidden');
 };
+
+// 공지 사진 미리보기 렌더
+function renderNoticeImagePreviews() {
+    const container = document.getElementById('noticeImagePreviews');
+    if (!container) return;
+    const existing = window.noticeExistingUrls || [];
+    const files = window.noticeFiles || [];
+    container.innerHTML = '';
+    existing.forEach((url, i) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0';
+        wrap.innerHTML = `
+            <img src="${url}" alt="미리보기" class="w-full h-full object-cover">
+            <button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl hover:bg-red-600" data-type="url" data-index="${i}" aria-label="삭제">
+                <i class="fa-solid fa-times"></i>
+            </button>
+        `;
+        wrap.querySelector('button').addEventListener('click', (e) => {
+            e.preventDefault();
+            window.noticeExistingUrls.splice(i, 1);
+            renderNoticeImagePreviews();
+        });
+        container.appendChild(wrap);
+    });
+    files.forEach((file, i) => {
+        const objectUrl = window.noticeObjectUrls && window.noticeObjectUrls[i];
+        if (!objectUrl) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0';
+        wrap.innerHTML = `
+            <img src="${objectUrl}" alt="미리보기" class="w-full h-full object-cover">
+            <button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl hover:bg-red-600" data-type="file" data-index="${i}" aria-label="삭제">
+                <i class="fa-solid fa-times"></i>
+            </button>
+        `;
+        wrap.querySelector('button').addEventListener('click', (e) => {
+            e.preventDefault();
+            if (window.noticeObjectUrls && window.noticeObjectUrls[i]) {
+                try { URL.revokeObjectURL(window.noticeObjectUrls[i]); } catch (_) {}
+                window.noticeObjectUrls.splice(i, 1);
+            }
+            window.noticeFiles.splice(i, 1);
+            renderNoticeImagePreviews();
+        });
+        container.appendChild(wrap);
+    });
+}
 
 // 공지 작성 모달 닫기
 window.closeNoticeModal = function() {
@@ -2453,10 +2584,20 @@ window.submitNotice = async function() {
     if (!titleInput || !contentInput) return;
     
     const title = titleInput.value.trim();
-    const content = contentInput.value.trim();
+    const rawContent = contentInput.innerHTML || '';
+    let content = sanitizeFormattedText(rawContent).trim();
     const type = typeSelect ? typeSelect.value : 'important';
     const isPinned = pinnedCheckbox ? Boolean(pinnedCheckbox.checked) : false;
     const hidden = hiddenCheckbox ? Boolean(hiddenCheckbox.checked) : false;
+    
+    // sanitize 결과가 비었으나 rawContent에 내용이 있으면 위험 태그만 제거하여 서식 보존
+    if (!content && rawContent.trim()) {
+        content = stripDangerousTagsOnly(rawContent).trim();
+    }
+    if (!content) {
+        const plainText = (contentInput.innerText || '').trim();
+        if (plainText) content = plainText.replace(/\n/g, '<br>');
+    }
     
     if (!title) {
         alert('제목을 입력해주세요.');
@@ -2474,14 +2615,29 @@ window.submitNotice = async function() {
     }
     
     try {
+        const existingUrls = window.noticeExistingUrls || [];
+        const newFiles = window.noticeFiles || [];
+        let imageUrls = [...existingUrls];
+        if (newFiles.length > 0) {
+            const uid = adminAuth.currentUser?.uid;
+            if (!uid) {
+                alert('로그인이 필요합니다.');
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = currentEditingNoticeId ? '수정' : '등록'; }
+                return;
+            }
+            const newUrls = await uploadNoticeImages(newFiles, uid);
+            imageUrls = [...existingUrls, ...newUrls];
+        }
+        
         const noticeData = {
             title: title,
             content: content,
             type: type,
             isPinned: isPinned,
             hidden: hidden,
+            imageUrls: imageUrls,
             timestamp: new Date().toISOString(),
-            authorDisplayName: getAdminDisplayName()
+            authorDisplayName: await getAdminDisplayName()
         };
         
         if (currentEditingNoticeId) {
@@ -2584,16 +2740,13 @@ window.saveAdminDisplayName = async function() {
         const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
         await setDoc(configRef, { displayName: value }, { merge: true });
         cachedAdminDisplayName = value;
+        invalidateAdminDisplayNameCache();
         alert('저장되었습니다.');
     } catch (e) {
         console.error('관리자 표시 이름 저장 실패:', e);
         alert('저장에 실패했습니다: ' + (e?.message || e));
     }
 };
-
-function getAdminDisplayName() {
-    return cachedAdminDisplayName || '관리자';
-}
 
 // 게시판 게시물 렌더링 (기본 구현)
 let currentAdminBoardCategory = 'all';
@@ -2770,7 +2923,10 @@ async function renderBoardPostDetail(postId) {
             <div class="text-xs text-slate-400 mb-3">${escapeHtml(post.authorNickname || '익명')} · ${dateStr} · 조회 ${post.views || 0}</div>
             <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(post.content || '').replace(/\n/g, '<br>')}</div>
         `;
-        const comments = await boardOperations.getComments(postId);
+        const [comments, adminDisplayName] = await Promise.all([
+            boardOperations.getComments(postId),
+            getAdminDisplayName()
+        ]);
         if (commentsContainer) {
             if (comments.length === 0) {
                 commentsContainer.innerHTML = '<p class="text-slate-400 text-sm py-2">댓글이 없습니다.</p>';
@@ -2779,8 +2935,9 @@ async function renderBoardPostDetail(postId) {
                     const ct = c.timestamp;
                     const cd = ct ? (typeof ct?.toDate === 'function' ? ct.toDate() : new Date(ct)) : null;
                     const timeStr = cd && Number.isFinite(cd.getTime()) ? cd.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
+                    const displayName = c.isAdminComment === true ? adminDisplayName : (c.authorNickname || '익명');
                     return `<div class="flex gap-2 p-2 bg-white rounded-lg border border-slate-100">
-                        <span class="font-bold text-slate-700 text-sm">${escapeHtml(c.authorNickname || '익명')}</span>
+                        <span class="font-bold text-slate-700 text-sm">${escapeHtml(displayName)}</span>
                         <span class="text-slate-500 text-xs">${timeStr}</span>
                         <p class="text-slate-600 text-sm flex-1">${escapeHtml(c.content || '')}</p>
                     </div>`;
@@ -2806,7 +2963,7 @@ window.submitBoardCommentAsAdmin = async function() {
         const result = await callableFunctions.addBoardCommentAsAdmin({
             postId,
             content,
-            displayName: getAdminDisplayName()
+            displayName: await getAdminDisplayName()
         });
         if (result?.data) {
             inputEl.value = '';

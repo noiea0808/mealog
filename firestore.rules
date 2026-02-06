@@ -98,9 +98,10 @@ service cloud.firestore {
       allow write: if false;
     }
     
-    // 관리자 설정 (공지·댓글 표시 이름 등) - 관리자만 읽기/쓰기
+    // 관리자 설정 (공지·댓글 표시 이름 등) - 읽기는 인증 사용자, 쓰기는 관리자만
     match /artifacts/{appId}/adminSettings/{docId} {
-      allow read, write: if isAdmin();
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
     }
     
     // 사용자 제재 (공유/글쓰기 금지) - 관리자만 읽기/쓰기

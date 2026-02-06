@@ -1262,6 +1262,21 @@ header .mealog-title {
     background-color: #047857 !important;
 }
 
+/* 밀톡/공지 내용 에디터: placeholder (format-editor-empty 클래스 시 표시) */
+#boardWriteContent,
+#noticeContent {
+    position: relative;
+}
+#boardWriteContent.format-editor-empty::before,
+#noticeContent.format-editor-empty::before {
+    content: attr(data-placeholder);
+    color: #94a3b8;
+    position: absolute;
+    top: 0.75rem;
+    left: 0.75rem;
+    pointer-events: none;
+}
+
 /* 카테고리 필터: 보조 (chip) */
 .board-category-btn {
     padding: 0.375rem 0.75rem;

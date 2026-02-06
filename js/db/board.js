@@ -644,6 +644,34 @@ export const boardOperations = {
     }
 };
 
+// 관리자 표시 이름 (캐시, 공지·관리자 댓글 표시용)
+let cachedAdminDisplayName = null;
+let cachedAdminDisplayNameAt = 0;
+const ADMIN_DISPLAY_NAME_CACHE_MS = 60000; // 1분 캐시
+
+export function invalidateAdminDisplayNameCache() {
+    cachedAdminDisplayName = null;
+    cachedAdminDisplayNameAt = 0;
+}
+
+export async function getAdminDisplayName() {
+    const now = Date.now();
+    if (cachedAdminDisplayName !== null && (now - cachedAdminDisplayNameAt) < ADMIN_DISPLAY_NAME_CACHE_MS) {
+        return cachedAdminDisplayName;
+    }
+    try {
+        const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
+        const snap = await getDoc(configRef);
+        const name = snap.exists() && snap.data().displayName ? String(snap.data().displayName).trim() : '관리자';
+        cachedAdminDisplayName = name || '관리자';
+        cachedAdminDisplayNameAt = now;
+        return cachedAdminDisplayName;
+    } catch (e) {
+        console.warn('관리자 표시 이름 로드 실패:', e);
+        return cachedAdminDisplayName || '관리자';
+    }
+}
+
 // 공지 관련 함수 (본문 조회, 좋아요/싫어요 - noticeInteractions 사용, notice 문서는 관리자만 쓰기 가능)
 export const noticeOperations = {
     async getNotice(noticeId) {

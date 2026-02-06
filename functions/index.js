@@ -498,6 +498,7 @@ exports.addBoardCommentAsAdmin = onCall({ region: REGION }, async (request) => {
     authorNickname: authorNickname || '관리자',
     authorPhotoUrl: null,
     authorIcon: null,
+    isAdminComment: true,
     timestamp: FieldValue.serverTimestamp()
   };
 

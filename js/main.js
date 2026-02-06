@@ -45,7 +45,7 @@ window.cleanupFirestoreListeners = () => {
         console.warn('cleanupFirestoreListeners 실패(무시):', e);
     }
 };
-import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
+import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
@@ -2868,7 +2868,11 @@ window.openBoardWrite = () => {
     
     // 입력 필드 초기화
     document.getElementById('boardWriteTitle').value = '';
-    document.getElementById('boardWriteContent').value = '';
+    const boardWriteContentEl = document.getElementById('boardWriteContent');
+    if (boardWriteContentEl) {
+        boardWriteContentEl.innerHTML = '';
+        boardWriteContentEl.classList.add('format-editor-empty');
+    }
     document.getElementById('boardWriteCategory').value = 'serious';
     if (typeof window.setBoardWriteCategory === 'function') {
         window.setBoardWriteCategory('serious');
@@ -2992,8 +2996,19 @@ window.submitBoardPost = async () => {
     }
     
     const title = document.getElementById('boardWriteTitle').value.trim();
-    const content = document.getElementById('boardWriteContent').value.trim();
+    const boardWriteContentEl = document.getElementById('boardWriteContent');
+    const rawContent = boardWriteContentEl ? boardWriteContentEl.innerHTML : '';
+    let content = sanitizeFormattedText(rawContent).trim();
     const category = document.getElementById('boardWriteCategory').value;
+    
+    // sanitize 결과가 비었으나 rawContent에 내용이 있으면 위험 태그만 제거하여 서식 보존
+    if (!content && rawContent.trim()) {
+        content = stripDangerousTagsOnly(rawContent).trim();
+    }
+    if (!content && boardWriteContentEl) {
+        const plainText = (boardWriteContentEl.innerText || '').trim();
+        if (plainText) content = plainText.replace(/\n/g, '<br>');
+    }
     
     if (!title) {
         showToast("제목을 입력해주세요.", 'error');
@@ -3339,7 +3354,11 @@ window.editBoardPost = async (postId) => {
         
         // 입력 필드에 기존 데이터 채우기
         document.getElementById('boardWriteTitle').value = post.title || '';
-        document.getElementById('boardWriteContent').value = post.content || '';
+        const boardWriteContentEl = document.getElementById('boardWriteContent');
+        if (boardWriteContentEl) {
+            boardWriteContentEl.innerHTML = (post.content || '').replace(/\n/g, '<br>');
+            boardWriteContentEl.classList.remove('format-editor-empty');
+        }
         document.getElementById('boardWriteCategory').value = post.category || 'serious';
         if (typeof window.setBoardWriteCategory === 'function') {
             window.setBoardWriteCategory(post.category || 'serious');
@@ -3847,6 +3866,31 @@ function initEventListeners() {
     const boardWriteBtn = document.getElementById('boardWriteBtn');
     if (boardWriteBtn) {
         boardWriteBtn.addEventListener('click', window.openBoardWrite);
+    }
+    // 밀톡 내용 포맷 툴바 (Bold, 취소선, 밑줄)
+    document.querySelectorAll('#boardWriteView .format-toolbar-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const contentEl = document.getElementById('boardWriteContent');
+            if (!contentEl) return;
+            contentEl.focus();
+            const cmd = btn.getAttribute('data-format');
+            if (cmd) document.execCommand(cmd, false, null);
+        });
+    });
+    const boardWriteContentEl = document.getElementById('boardWriteContent');
+    if (boardWriteContentEl) {
+        const syncPlaceholder = () => {
+            const isEmpty = !(boardWriteContentEl.innerText || '').trim();
+            boardWriteContentEl.classList.toggle('format-editor-empty', isEmpty);
+        };
+        boardWriteContentEl.addEventListener('input', syncPlaceholder);
+        boardWriteContentEl.addEventListener('blur', syncPlaceholder);
+        boardWriteContentEl.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const text = (e.clipboardData || window.clipboardData)?.getData('text/plain') || '';
+            document.execCommand('insertText', false, text);
+        });
     }
     const boardWriteImagesInput = document.getElementById('boardWriteImages');
     const boardWriteAddPhotosBtn = document.getElementById('boardWriteAddPhotosBtn');
