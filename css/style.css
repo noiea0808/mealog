@@ -12,6 +12,80 @@ body {
     overflow-x: hidden; 
     padding-bottom: calc(80px + var(--safe-bottom)); 
 }
+
+/* =========================
+   UI Hierarchy (Main Screen)
+   main > sub > sub1 > content
+   ========================= */
+.ui-section-label {
+    font-size: 0.75rem;          /* 12px (text-xs) */
+    font-weight: 900;            /* font-black */
+    color: #64748b;              /* slate-500 */
+    text-transform: uppercase;
+    letter-spacing: 0.12em;      /* tracking-widest 느낌 */
+}
+.ui-section-action {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #475569;              /* slate-600 */
+}
+.ui-kpi-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;      /* tracking-tighter 대신 일정한 리듬 */
+    opacity: 0.75;
+}
+.ui-kpi-label--inverse {
+    color: #fff;
+}
+/* 분석 카드 내 식사기록/간식기록 라벨·숫자 흰색 */
+#dashboardView .sticker-badge .ui-kpi-label--inverse,
+#dashboardView .sticker-badge #insightStats,
+#dashboardView .sticker-badge #snackStats {
+    color: #fff;
+}
+#dashboardView .sticker-badge #insightStats span,
+#dashboardView .sticker-badge #snackStats span {
+    color: #fff;
+    opacity: 1;
+}
+#dashboardView .sticker-badge #insightStats .opacity-60,
+#dashboardView .sticker-badge #snackStats .opacity-60 {
+    opacity: 0.85;
+}
+.ui-card-pad-lg { padding: 0.75rem 1rem; }     /* py-3 px-4 */
+.ui-card-pad { padding: 0.625rem 1rem; }       /* py-2.5 px-4 */
+.ui-card-pad-compact { padding: 0.5rem 1rem; } /* py-2 px-4 */
+.ui-card-pad-chip { padding: 0.375rem 1rem; }  /* py-1.5 px-4 */
+.ui-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem; /* mb-2 */
+}
+/* 밀당 분석 카드 전용: 식사/간식 분석 섹션 안에서만 적용 (다른 컨테이너 영향 없음) */
+#mainAnalysisSection .analytics-chart-wrap,
+#snackAnalysisSection .analytics-chart-wrap {
+    padding-left: 2px;
+    padding-right: 2px;
+}
+#mainAnalysisSection .analytics-card-head,
+#snackAnalysisSection .analytics-card-head {
+    padding-left: 12px;
+    padding-right: 22px;
+}
+
+/* Tab layout primitives (main app) */
+.ui-tab-view {
+    min-height: 60vh;
+    padding: 0.75rem 1rem; /* py-3 px-4 */
+}
+.ui-surface-soft { background: #f1f5f9; } /* slate-100 */
+.ui-stack-lg > * + * { margin-top: 1rem; }       /* space-y-4 */
+.ui-stack-md > * + * { margin-top: 0.75rem; }    /* space-y-3 */
+.ui-stack-sm > * + * { margin-top: 0.5rem; }     /* space-y-2 */
+.ui-stack-tight > * + * { margin-top: 0.375rem; }/* space-y-1.5 */
 .mealog-title { 
     font-family: 'Fredoka', sans-serif; 
     font-weight: 600; 
@@ -20,17 +94,52 @@ body {
 header .mealog-title { 
     font-size: 1.8rem; 
 }
+.header-section-label {
+    color: #047857;
+    transition: opacity 0.15s ease;
+}
 /* 서브 타이틀 (INSIGHT, MEAL TALK, 게시글, 글쓰기) – Pretendard, 700, 대문자 */
 .sub-title { 
     font-family: 'Pretendard', sans-serif; 
     font-weight: 700; 
     text-transform: uppercase; 
 }
+/* INSIGHT, MEAL TALK 타이틀 - Fredoka, 얇게, 소문자 */
+.insight-title,
+.meal-talk-title {
+    font-family: 'Fredoka', sans-serif;
+    font-weight: 300;
+    text-transform: lowercase;
+}
 .card { 
     background: white; 
     border-radius: 1.5rem; 
     box-shadow: 0 2px 10px rgba(0,0,0,0.02); 
     border: 1px solid #f1f5f9; 
+}
+
+/* 하루소감·주간베스트 코멘트 입력창: 포커스 시 보더 진한 회색 1px */
+#dailyCommentInput:focus,
+#bestShareComment:focus {
+    outline: none;
+    border-width: 1px;
+    border-color: #475569; /* slate-600, 진한 회색 */
+}
+
+/* 앨범 사진 아래 메뉴@장소 캡션: 나눔손글씨 가람연꽃 (폰트 파일 없으면 Nanum Pen Script 폴백) */
+/* 나눔손글씨 가람연꽃 woff2 파일을 assets/fonts/ 에 넣으면 적용됨 (눈누/네이버에서 다운로드) */
+@font-face {
+    font-family: '나눔손글씨 가람연꽃';
+    src: url('../assets/fonts/NanumGaramYeonkot.woff2') format('woff2'),
+         url('../assets/fonts/NanumGaramYeonkot.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+.gallery-caption-menu-place {
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-size: 1.2rem;
+    font-weight: normal;
 }
 .calendar-scroll { 
     display: flex; 
@@ -64,7 +173,7 @@ header .mealog-title {
 .dot-partial { 
     background: #E5F2DB; 
     color: #059669; 
-    border: 1px solid #10B981; 
+    border: 2px solid #10B981; 
 }
 .dot-selected { 
     transform: scale(1.15); 
@@ -72,7 +181,7 @@ header .mealog-title {
     background: #fff; 
     color: #059669; 
 }
-/* 전체/일간: 연회색 통 하나, active=흰색 팩+녹색 테두리/글자(mealog #059669), inactive=배경 없이 회색 글자만 */
+/* 전체/일간: 연회색 통 하나, active=흰색 팩+#1e293b 테두리/글자, inactive=배경 없이 회색 글자만 */
 .view-tab { 
     padding: 4px 10px; 
     border-radius: 6px; 
@@ -83,8 +192,8 @@ header .mealog-title {
 }
 .view-tab.active { 
     background: #fff; 
-    border-color: #059669; 
-    color: #059669; 
+    border-color: #1e293b; 
+    color: #1e293b; 
 }
 .view-tab.inactive { 
     background: transparent; 
@@ -113,6 +222,12 @@ header .mealog-title {
     background: var(--color-primary); 
     color: white; 
     border-color: var(--color-primary); 
+}
+/* 태그 관리 화면: 메인태그 선택 시 검은색 */
+#favoriteTagsSection .chip.active { 
+    background: #1e293b; 
+    color: white; 
+    border-color: #1e293b; 
 }
 .sub-chip { 
     display: inline-flex; 
@@ -147,7 +262,7 @@ header .mealog-title {
 .snack-tag { 
     display: inline-flex; 
     align-items: center; 
-    padding: 5px 12px; 
+    padding: 5px 8px 5px 12px; 
     background: white; 
     border: 1px solid #e2e8f0; 
     border-radius: 10px; 
@@ -158,18 +273,20 @@ header .mealog-title {
 }
 .bottom-nav { 
     position: fixed; 
-    bottom: 20px; 
+    bottom: 12px; 
     left: 50%; 
     transform: translateX(-50%); 
-    width: 92%; 
-    max-width: 26rem; 
+    width: calc(100vw - 20px); 
+    max-width: 448px; 
+    box-sizing: border-box;
     background: rgba(255, 255, 255, 0.9); 
     backdrop-filter: blur(10px); 
     border: 1px solid #f1f5f9; 
-    border-radius: 2rem; 
+    border-radius: 1.5rem; 
     display: flex; 
     justify-content: space-around; 
-    padding: 8px 0; 
+    align-items: center;
+    padding: 6px 2px; 
     z-index: 50; 
     box-shadow: 0 4px 20px rgba(0,0,0,0.08); 
 }
@@ -198,7 +315,23 @@ header .mealog-title {
     align-items: center; 
     gap: 10px; 
     margin-top: 14px; 
-    border: 1px solid rgba(255,255,255,0.1); 
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+}
+/* 식사기록·간식기록 박스 중간 구분선: 흰색 */
+.sticker-badge-divider {
+    width: 1px;
+    background: #ffffff;
+    margin: 0;
+    align-self: stretch;
+    flex-shrink: 0;
+}
+/* 인사이트 박스 내 식사/간식 기록: 외부 초록 박스와 동일 배경, 기간 영역과 동일 보더 */
+#dashboardView .sticker-badge {
+    background: #059669;
+    backdrop-filter: none;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 6px;
+    box-shadow: none;
 }
 .date-section-header { 
     position: sticky; 
@@ -209,6 +342,13 @@ header .mealog-title {
     padding: 12px 16px; 
     margin-bottom: 8px; 
     scroll-margin-top: 148px; 
+}
+.date-section-header h3 { color: #1e293b; }
+.date-section-header.text-rose-400 h3 { color: #fb7185; }
+/* 타임라인: 식사 카드가 화면 양옆에 꽉 차도록 좌우 패딩 제거 */
+#timelineView {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
 }
 #timelineContainer .card {
     border-radius: 0 !important;
@@ -228,7 +368,16 @@ header .mealog-title {
     width: 100% !important;
     max-width: 100% !important;
 }
-/* 헤더 돋보기 위치: 1) 접힌 상태=돋보기만(오른쪽 정렬) 2) 펼침=왼쪽부터 하트/댓글/북마크/돋보기 */
+/* 앨범 탭 뷰: 패딩 제거 (카드가 직접 px-6 패딩을 가지므로) */
+#galleryView {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+/* 헤더 우측: .header-right = [돋보기] [알림] 순서 flex, 별도 absolute 없음 */
+
+/* 갤러리 트레이스: 접힌 상태=돋보기만, 펼침=하트/댓글/북마크/돋보기 */
 .gallery-trace-panel {
     width: 2rem;
     justify-content: flex-end;
@@ -238,13 +387,32 @@ header .mealog-title {
     justify-content: flex-start;
 }
 
-/* 타임라인 검색: 돋보기 고정·입력창만 왼쪽으로 확장(프로필 밀지 않음), MEALOG 가리지 않음, 닫을 때 창 닫는 모션(왼쪽→오른쪽) */
+/* 모먼트 사용자 프로필: 탭 바 좌우 꽉 채움, 스크롤 시 탭만 상단 고정 */
+.gallery-user-profile-header {
+    box-sizing: border-box;
+}
+.gallery-filter-tabs {
+    width: 100% !important;
+    box-sizing: border-box;
+}
+.gallery-filter-tabs .gallery-filter-tab-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+/* 타임라인 검색: 접힌 상태=돋보기 2rem, 펼치면 입력창 확장 */
 .timeline-search-wrapper {
     width: 2rem;
+    min-width: 2rem;
     height: 2rem;
     flex-shrink: 0;
+    overflow: visible;
 }
-/* 접힌 상태: input이 min-width 등으로 공간을 차지해 돋보기가 오른쪽으로 밀리지 않도록 0으로 */
+.timeline-search-wrapper.expanded {
+    min-width: 2rem;
+    /* 너비는 JS updateTimelineSearchExpandWidth에서 설정 */
+}
 .timeline-search-wrapper:not(.expanded) #searchInput {
     flex: 0 0 0 !important;
     min-width: 0 !important;
@@ -255,19 +423,18 @@ header .mealog-title {
     overflow: hidden;
 }
 .timeline-search-panel {
-    position: absolute;
-    right: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 2rem;
+    display: flex;
+    align-items: center;
+    width: 100%;
     height: 2rem;
-    justify-content: center;   /* 접힌 상태: 돋보기 중앙 */
+    justify-content: center;
     transition: width 0.3s ease-out;
 }
 .timeline-search-wrapper.expanded .timeline-search-panel {
     justify-content: flex-start;
-    /* 상한 170px, MEALOG 안 겹치게 (100vw-300) 이내 */
-    width: max(6rem, min(170px, calc(100vw - 300px)));
+    background: #f1f5f9;
+    border-radius: 9999px;
+    border: 1px solid #94a3b8;
     padding-left: 0.75rem;
 }
 .photo-remove-btn { 
@@ -283,6 +450,27 @@ header .mealog-title {
     align-items: center; 
     justify-content: center; 
     font-size: 10px; 
+    z-index: 10;
+}
+.photo-edit-btn {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    width: 20px;
+    height: 20px;
+    background: rgba(0,0,0,0.6);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    z-index: 10;
+    border: none;
+    cursor: pointer;
+}
+.photo-edit-btn:active {
+    background: rgba(0,0,0,0.8);
 }
 .icon-option { 
     width: 44px; 
@@ -318,6 +506,180 @@ header .mealog-title {
 }
 .settings-tab-content {
     min-height: 100%;
+}
+/* 태그 관리 / 밀당 메모: 좌우 화면 너비에 맞춰 컨테이너 폭 최대 */
+.settings-tab-content-fullwidth {
+    margin-left: -1rem;
+    margin-right: -1rem;
+    width: calc(100% + 2rem);
+    padding-left: 0;
+    padding-right: 0;
+}
+/* 사용자 > 태그 관리 / 밀당 메모: 바깥 컨테이너 영역 표시 */
+.settings-section-container {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    padding: 1rem 0.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+/* 프로필/태그관리/밀당메모 섹션 제목만 왼쪽 10px 여유 */
+.settings-section-container > h3,
+.profile-settings-header,
+.settings-section-container > div:first-child > h3 {
+    padding-left: 10px;
+}
+
+/* 프로필 설정 (트위터 스타일: 리스트형 행 + 얇은 구분선, 박스 최소화) */
+.profile-settings-list {
+    padding: 0;
+}
+/* 로그인 정보(이메일) 박스: 상단 탭과 간격 */
+.profile-account-section {
+    margin-top: 1rem;
+    padding: 0 1rem;
+}
+.profile-account-section:empty {
+    margin-top: 0;
+    padding: 0;
+}
+.profile-settings-header {
+    background: #fff;
+}
+.profile-settings-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: #fff;
+}
+.profile-settings-label {
+    flex: 0 0 100%;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 0.25rem;
+}
+.profile-settings-field {
+    flex: 1 1 100%;
+    min-width: 0;
+}
+.profile-settings-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: #1e293b;
+    background: #f1f5f9;
+    border: none;
+    border-bottom: 2px solid #94a3b8;
+    border-radius: 0;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.profile-settings-input::placeholder {
+    color: #94a3b8;
+}
+.profile-settings-input:focus {
+    background: #f8fafc;
+    border-bottom-color: #475569;
+    box-shadow: 0 2px 0 0 #475569;
+}
+.profile-settings-textarea {
+    min-height: 4rem;
+    resize: vertical;
+    line-height: 1.5;
+}
+.profile-settings-hint {
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+.profile-settings-btn {
+    padding: 0.25rem 0;
+    border-radius: 0.25rem;
+    transition: color 0.15s, background 0.15s;
+}
+.profile-avatar {
+    border: 1px solid #e2e8f0;
+}
+.profile-lifestyle-chip {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #64748b;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 9999px;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.profile-lifestyle-chip:hover,
+.profile-lifestyle-chip:focus {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+}
+/* 라이프스타일 칩: 선택 시 검정으로 표시 (JS가 bg-emerald-600 등 붙여도 여기서 덮어씀) */
+.profile-settings-list .settings-lifestyle-btn.bg-emerald-600,
+.profile-settings-list .profile-lifestyle-chip.bg-emerald-600 {
+    background: #1e293b !important;
+    border-color: #1e293b !important;
+    color: #fff !important;
+}
+.settings-lifestyle-btn.selected,
+.profile-lifestyle-chip.selected {
+    background: #1e293b;
+    border-color: #1e293b;
+    color: #fff;
+}
+.profile-settings-footer {
+    background: #fff;
+}
+.profile-settings-footer-btn {
+    transition: background 0.15s;
+}
+.profile-logout-btn {
+    border-radius: 6px;
+}
+.profile-settings-action {
+    transition: background 0.15s;
+}
+
+/* 사용자 설정 페이지 슬라이드 애니메이션 */
+#settingsPage {
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#settingsPage.settings-open {
+    transform: translateX(0);
+}
+
+#settingsPage.hidden {
+    transform: translateX(100%);
+}
+
+/* 사용자 설정 페이지 스크롤바 스타일 - 얇고 흰색으로 눈에 띄지 않게 */
+#settingsPage ::-webkit-scrollbar {
+    width: 3px;
+}
+
+#settingsPage ::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#settingsPage ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+}
+
+#settingsPage ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* Firefox 스크롤바 스타일 */
+#settingsPage {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 .tag-manage-item { 
     display: inline-flex; 
@@ -380,6 +742,17 @@ header .mealog-title {
 .scrollbar-hide::-webkit-scrollbar {
     display: none;
 }
+/* 모먼트/밀톡 사진 스와이프: 한장한장 구분감 (미끄러짐 감소) */
+.gallery-photo-scroll {
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scroll-snap-stop: always;
+    gap: 2px;
+}
+.gallery-photo-scroll > * {
+    scroll-snap-stop: always;
+    scroll-snap-align: start;
+}
 /* Comment 줄바꿈 및 제한 스타일 */
 .line-clamp-2 {
     display: -webkit-box;
@@ -395,13 +768,96 @@ header .mealog-title {
     align-items: center;
     justify-content: center;
 }
-/* 직접 설정 모드 캘린더 높이 통일 */
-#customDatePicker input {
-    min-height: 1.4rem;
-    padding-top: 0.25rem;
-    padding-bottom: 0.25rem;
+/* 직접 설정: 시작/종료 날짜 (흰색 컨테이너, 기간 탭과 높이 맞춤) */
+.custom-date-range {
+    width: 100%;
+}
+.custom-date-range-inner {
+    display: flex;
+    align-items: stretch;
+    background: #047857;
+    border-radius: 10px;
+    padding: 0.375rem 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    min-height: 30px;
+    height: 30px;
+}
+.custom-date-section {
+    flex: 1;
     display: flex;
     align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    min-width: 0;
+}
+.custom-date-section:first-child {
+    padding-right: 0.5rem;
+}
+.custom-date-section:last-child {
+    padding-left: 0.5rem;
+}
+.custom-date-label {
+    font-size: 0.8125rem;
+    font-weight: 400;
+    color: #fff;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.custom-date-input-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    margin-left: 0.75rem;
+}
+.custom-date-placeholder {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.9);
+    pointer-events: none;
+    display: none;
+}
+.custom-date-input-wrap.is-empty .custom-date-placeholder {
+    display: block;
+}
+.custom-date-input-wrap.is-empty .custom-date-input::-webkit-datetime-edit {
+    color: transparent;
+}
+.custom-date-input-wrap.is-empty .custom-date-input::-webkit-datetime-edit-fields-wrapper {
+    visibility: hidden;
+}
+.custom-date-input {
+    flex: 0 0 auto;
+    width: 7.5rem;
+    min-height: 1.25rem;
+    padding: 0 0.25rem 0 0;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #fff;
+    background: transparent;
+    border: none;
+    outline: none;
+    box-sizing: content-box;
+}
+.custom-date-input::-webkit-datetime-edit {
+    color: #fff;
+}
+.custom-date-input::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    opacity: 0.9;
+    cursor: pointer;
+    margin-left: 0;
+    width: 1.2em;
+    height: 1.2em;
+}
+.custom-date-divider {
+    width: 1px;
+    background: rgba(255, 255, 255, 0.35);
+    flex-shrink: 0;
+    margin: 0.15rem 0;
 }
 /* 분석창 카드 좌우 꽉 차게 */
 #dashboardView .card {
@@ -431,34 +887,167 @@ header .mealog-title {
     margin-right: -1rem !important;
     width: calc(100% + 2rem) !important;
 }
-/* 인사이트 말풍선 스타일 */
-#insightBubble {
-    line-height: 1.6;
-    font-size: 0.875rem;
-    color: #1e293b;
+/* 인사이트 기간 탭: 좌우 꽉 채움, 각진 모양 */
+#dashboardView .insight-period-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 1px;
+    flex-wrap: nowrap;
+    padding: 1px;
+    background: rgb(5, 150, 105);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 6px;
+}
+#dashboardView .insight-period-tabs .insight-period-tab {
+    margin: 0 !important;
+    padding: 0.375rem 0.25rem !important;
+    min-height: 0 !important;
+    flex: 1 1 0;
+    min-width: 0;
+    height: auto;
+    line-height: 1.25;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    box-sizing: border-box;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.85);
+}
+#dashboardView .insight-period-tabs .insight-period-tab:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.12);
+}
+#dashboardView .insight-period-tabs .insight-period-tab--selected {
+    background: #fff;
+    color: #047857;
+    border-color: #fff;
+}
+#dashboardView .insight-period-tabs .insight-period-tab--selected:hover {
+    background: #f0fdf4;
+    color: #047857;
+}
+/* 인사이트 영역 (트위터 스타일: 깔끔한 카드·타이포 위주) */
+#insightBubble.insight-bubble,
+.insight-bubble {
     display: flex;
     flex-direction: column;
     position: relative;
-    font-weight: 400;
-    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    box-sizing: border-box;
+    min-height: fit-content;
+    padding: 0.5rem 1.25rem;
+    background: #047857;
+    border: none;
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     word-wrap: break-word;
     overflow-wrap: break-word;
-    box-sizing: border-box;
-    min-height: fit-content; /* 내용에 맞춰 최소 높이 설정 */
 }
-#insightTextContent {
-    line-height: 1.6;
+.insight-bubble-header {
+    margin-bottom: 0.375rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+}
+#insightCharacterName.insight-character-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: -0.01em;
+}
+.insight-share-btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 12px;
+    font-weight: 600;
+    border: none;
+    background: transparent;
+    transition: opacity 0.15s;
+}
+/* 밀당 말풍선 내 공유 버튼: 박스 없이 텍스트만 흰색 */
+.insight-share-btn.insight-share-btn--default {
+    background: transparent;
+    color: #ffffff;
+}
+.insight-share-btn.insight-share-btn--default:hover {
+    background: transparent;
+    color: rgba(255, 255, 255, 0.9);
+}
+.insight-share-btn.insight-share-btn--shared {
+    background: #ffffff;
+    color: #059669;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+}
+.insight-share-btn.insight-share-btn--shared:hover {
+    background: #f8fafc;
+    color: #047857;
+}
+/* insight-share-btn 기본값 (다른 곳에서 클래스만 사용할 때) */
+.insight-share-btn:not(.insight-share-btn--default):not(.insight-share-btn--shared) {
+    color: #fff;
+    background: #059669;
+}
+.insight-share-btn:not(.insight-share-btn--default):not(.insight-share-btn--shared):hover {
+    background: #047857;
+}
+.insight-share-btn:not(.insight-share-btn--default):not(.insight-share-btn--shared):active {
+    background: #065f46;
+}
+#insightTextContent.insight-text-content,
+.insight-text-content {
+    line-height: 1.55;
+    font-size: 13px;
     font-weight: 400;
-    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    color: #ffffff;
     word-wrap: break-word;
-    word-break: break-word; /* 긴 단어도 박스 안에서 줄바꿈 */
+    word-break: break-word;
     overflow-wrap: break-word;
     max-width: 100%;
     width: 100%;
     box-sizing: border-box;
-    white-space: pre-line; /* 줄바꿈은 유지하되, 긴 줄은 자동 줄바꿈 */
-    overflow: visible; /* 텍스트가 잘리지 않도록 */
+    white-space: pre-line;
+    overflow: visible;
     display: block;
+}
+.insight-character-btn {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+/* 밀로그(MEALOG) 선택 시에만 흰색 보더 */
+.insight-character-btn:has(#insightCharacterIcon.mealog-character-m) {
+    border: 1px solid #ffffff;
+}
+.insight-character-btn #insightCharacterIcon {
+    color: #047857;
+}
+/* MEALOG M: Fredoka 폰트, 흰색 텍스트 */
+.insight-character-btn #insightCharacterIcon.mealog-character-m {
+    font-family: 'Fredoka', sans-serif;
+    color: #ffffff;
+}
+/* 캐릭터 이미지: 창 전체를 채우고 모서리 둥글게 */
+.insight-character-btn #insightCharacterIcon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    border-radius: 1rem;
+}
+.insight-comment-trigger {
+    font-size: 12px;
+    padding: 0.1875rem 0.5rem;
+    color: #1e293b;
+    background: #ffca2c;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+}
+.insight-comment-trigger:hover {
+    background: #e6b828;
+    border-color: rgba(0, 0, 0, 0.12);
+}
+.insight-comment-trigger:active {
+    background: #d4a024;
 }
 .insight-page-dot {
     width: 6px;
@@ -473,10 +1062,7 @@ header .mealog-title {
     width: 8px;
     height: 8px;
 }
-/* 캐릭터 선택 창 */
-#insightCharacterBtn {
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
+
 /* 캐릭터 선택 팝업 */
 .character-popup-item.active {
     background: #ecfdf5 !important;
@@ -487,13 +1073,68 @@ header .mealog-title {
     font-weight: 800;
 }
 
-/* 인스타그램 스타일 포스트 */
+/* 인스타그램 스타일 포스트 (앨범) - 선택 시 scale 효과 제거 */
 .instagram-post {
-    transition: transform 0.2s;
+    /* 클릭 시 작아졌다 커졌다 효과 없음 */
 }
 
-.instagram-post:active {
-    transform: scale(0.98);
+/* 앨범·밀톡 검색 패널: 좋아요/댓글/북마크 아이콘 두께·색상을 돋보기와 동일하게 */
+.gallery-trace-btn .fa-heart,
+.gallery-trace-btn .fa-comment,
+.gallery-trace-btn .fa-bookmark {
+    color: #64748b;                    /* slate-500 - 돋보기와 동일 */
+    -webkit-text-stroke: 0.6px #64748b;  /* 선 두께 돋보기와 비슷하게 */
+}
+.gallery-trace-btn[data-trace="like"]:hover .fa-heart {
+    color: #ef4444;
+    -webkit-text-stroke: 0.6px #ef4444;
+}
+.gallery-trace-btn[data-trace="comment"]:hover .fa-comment,
+.gallery-trace-btn[data-trace="bookmark"]:hover .fa-bookmark {
+    color: #475569;
+    -webkit-text-stroke: 0.6px #475569;
+}
+.post-like-icon.fa-regular,
+.post-bookmark-icon.fa-regular,
+.post-comment-btn .fa-comment.fa-regular,
+.post-comment-icon.fa-regular,
+.board-post-like-btn .fa-heart.fa-regular,
+.board-post-bookmark-btn .fa-bookmark.fa-regular,
+.board-list-card .fa-heart,
+.board-list-card .fa-comment.fa-regular,
+.board-list-card .fa-bookmark {
+    -webkit-text-stroke: 0.5px #ffffff;   /* white - 카드 배경 */
+}
+
+/* 댓글 단 게시물: 채워진 댓글 아이콘 (stroke 제거) */
+.post-comment-icon.fa-solid,
+.board-list-card .fa-comment.fa-solid {
+    -webkit-text-stroke: 0;
+}
+
+/* 본문·댓글 없을 때 공유 게시글 본문 영역 숨김 */
+.post-no-body .comment-section.comments-empty {
+    display: none;
+}
+.post-no-body .comment-section.comments-empty.comment-input-open {
+    display: block;
+    padding-top: 0;
+    margin-top: 0;
+}
+/* 본문 없을 때: 버튼 행 아래 보더·여백 제거하여 빈 영역 없음 */
+.post-no-body .feed-post-actions {
+    padding-bottom: 0;
+}
+.post-no-body .feed-post-buttons {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+/* 댓글 입력창 열렸을 때는 구분선 복원 */
+.post-no-body .feed-post-actions:has(.comment-input-open) .feed-post-buttons {
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #e2e8f0;
 }
 
 /* 좋아요, 북마크 버튼 애니메이션 */
@@ -547,6 +1188,20 @@ header .mealog-title {
 .post-comments-list {
     max-height: 200px;
     overflow-y: auto;
+}
+
+/* 앨범: 댓글이 없을 때 하단 영역 완전 제거 (댓글 입력 열림 시에만 표시) */
+.comment-section.comments-empty {
+    display: none !important;
+}
+.comment-section.comments-empty.comment-input-open {
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+}
+.comment-section.comments-empty .post-comments-list {
+    display: none !important;
 }
 
 .post-comments-list::-webkit-scrollbar {
@@ -611,18 +1266,18 @@ header .mealog-title {
 .board-category-btn {
     padding: 0.375rem 0.75rem;
     font-weight: 600;
-    background-color: #f8fafc !important;
-    color: #64748b !important;
+    background-color: #ffffff !important;
+    color: #334155 !important;
     border: 1px solid #e2e8f0;
 }
 .board-category-btn:hover:not(.active) {
-    background-color: #f1f5f9 !important;
-    color: #475569 !important;
+    background-color: #f8fafc !important;
+    color: #0f172a !important;
 }
 .board-category-btn.active {
-    background-color: #ecfdf5 !important;
-    color: #059669 !important;
-    border-color: #a7f3d0 !important;
+    background-color: #000000 !important;
+    color: #ffffff !important;
+    border-color: #000000 !important;
 }
 
 #board-sort-latest.active,
@@ -637,16 +1292,39 @@ header .mealog-title {
     box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
-/* 게시판 리스트 카드: 흰 배경 + 왼쪽 4px 카테고리 포인트 보더 */
+/* 게시판 리스트 카드: 본문보기와 동일한 보더 */
 .board-list-card {
     background: #fff !important;
-    border: none !important;
-    border-left: 4px solid #94a3b8;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.04);
 }
-.board-list-card--serious { border-left-color: #475569; }
-.board-list-card--chat { border-left-color: #2563eb; }
-.board-list-card--food { border-left-color: #059669; }
-.board-list-card--admin { border-left-color: #ea580c; }
+
+/* 밀톡 게시글 상세: 전체/헤더/본문 간격 25% 수준 */
+#boardDetailView.board-detail-view {
+    padding-top: 0.25rem !important;   /* py-3(0.75rem) → 25% */
+    padding-bottom: 0.25rem !important;
+}
+
+/* 밀톡 본문보기 바탕: 연한 연회색 */
+#boardDetailContent {
+    background: #f8fafc !important; /* slate-50, 연한 연회색 */
+    margin-left: -1rem;
+    margin-right: -1rem;
+    margin-top: 0.125rem !important;  /* 헤더-본문 간격 25% */
+    padding: 0.5rem;
+    border-radius: 0.75rem 0.75rem 0 0;
+}
+
+/* 밀톡 본문보기 카드: 내부 화이트, 위아래 여백 25% 수준 */
+.board-post-card {
+    margin-top: 0.125rem;
+    margin-bottom: 0.25rem;
+    padding: 1.25rem 1rem;
+    border-radius: 1rem;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.04);
+}
 
 /* MEAL TALK 게시글 상세 하단 버튼: 참여(추천/비추천) 왼쪽, 관리(수정/삭제) 오른쪽 */
 .board-detail-actions {
@@ -743,3 +1421,67 @@ header .mealog-title {
 .board-btn-manage--delete:active {
     opacity: 0.8;
 }
+
+/* =========================
+   Admin page layout
+   ========================= */
+#adminPage .admin-header-inner {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+    min-height: 40px;
+    box-sizing: border-box;
+}
+#adminPage .admin-header-compact .admin-tabs-row .admin-tab {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+}
+#adminPage .admin-main-padding {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+}
+/* 사용자 탭: 관리 툴바 (일반 블록, 스크롤 고정 없음) */
+#adminPage .admin-users-toolbar {
+    padding: 0.5rem 1rem;
+    min-height: 40px;
+    box-sizing: border-box;
+    border-bottom: 1px solid #e2e8f0;
+}
+#adminPage .admin-users-toolbar-inner {
+    gap: 0.5rem;
+    align-items: center;
+}
+#adminPage .admin-users-toolbar-inner .admin-users-page-btn,
+#adminPage .admin-users-toolbar-inner button {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+    line-height: 1.25;
+}
+#adminPage .admin-users-toolbar-inner h2 {
+    margin: 0;
+}
+/* 사용자 테이블: 일반 표시 (thead → tbody 순서) */
+#adminPage #adminUsersTable {
+    width: 100%;
+}
+#adminPage .admin-users-thead {
+    background: #f8fafc;
+}
+#adminPage .admin-users-thead th {
+    background: #f8fafc;
+}
+/* 이메일/닉네임/로그인방법 컬럼 간격 축소 (2,3,4번째 컬럼) */
+#adminPage #adminUsersTable th:nth-child(2),
+#adminPage #adminUsersTable th:nth-child(3),
+#adminPage #adminUsersTable th:nth-child(4),
+#adminPage #adminUsersTable td:nth-child(2),
+#adminPage #adminUsersTable td:nth-child(3),
+#adminPage #adminUsersTable td:nth-child(4) {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+}
+#adminPage #adminUsersTable th:nth-child(2) { min-width: 0; max-width: 12rem; }
+#adminPage #adminUsersTable th:nth-child(3) { min-width: 0; max-width: 8rem; }
+#adminPage #adminUsersTable th:nth-child(4) { min-width: 0; max-width: 5rem; }
+#adminPage #adminUsersTable td:nth-child(2) { max-width: 12rem; }
+#adminPage #adminUsersTable td:nth-child(3) { max-width: 8rem; }
+#adminPage #adminUsersTable td:nth-child(4) { max-width: 5rem; }

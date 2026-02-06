@@ -1,6 +1,6 @@
 // 인증 관련 함수들
 import { auth } from './firebase.js';
-import { GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
 import { dbOps } from './db.js';
@@ -16,6 +16,8 @@ export async function handleGoogleLogin() {
             providerId: result.user.providerData[0]?.providerId,
             providerData: result.user.providerData.map(p => p.providerId)
         });
+        window._recordsLoadHidePending = true;
+        showLoading('기록을 불러오고 있어요', { dimBackground: false });
         showToast("구글 로그인 성공!", "success");
         // 로그인 성공 후 로딩 오버레이는 onAuthStateChanged에서 인증 플로우가 완료될 때까지 유지
         // 인증 플로우가 완료되면 processState의 finally에서 hideLoading() 호출됨
@@ -55,9 +57,9 @@ export async function startGuest() {
     }
 }
 
-export function openEmailModal() {
+export function openEmailModal(initialMode = 'login') {
     document.getElementById('emailAuthModal').classList.remove('hidden');
-    window.setEmailAuthMode('login');
+    window.setEmailAuthMode(initialMode);
     const savedEmail = localStorage.getItem('savedEmail');
     if (savedEmail) {
         document.getElementById('emailInput').value = savedEmail;
@@ -68,19 +70,21 @@ export function openEmailModal() {
     }
     document.getElementById('passwordInput').value = '';
     
-    // 비밀번호 입력창에 엔터 키 이벤트 추가
-    const passwordInput = document.getElementById('passwordInput');
-    if (passwordInput) {
-        // 기존 이벤트 리스너 제거 (중복 방지)
-        const newPasswordInput = passwordInput.cloneNode(true);
-        passwordInput.parentNode.replaceChild(newPasswordInput, passwordInput);
-        
-        // 새 이벤트 리스너 추가
-        document.getElementById('passwordInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
+    // 비밀번호 입력창에 엔터 키 이벤트 추가 (이벤트 위임 사용)
+    const emailAuthModal = document.getElementById('emailAuthModal');
+    if (emailAuthModal) {
+        // 모달에 이벤트 위임으로 한 번만 등록 (중복 방지)
+        const handleKeyPress = (e) => {
+            if (e.target.id === 'passwordInput' && e.key === 'Enter') {
+                e.preventDefault();
                 window.handleEmailAuth();
             }
-        });
+        };
+        
+        // 기존 리스너가 있으면 제거 후 재등록
+        emailAuthModal.removeEventListener('keypress', emailAuthModal._passwordKeyHandler);
+        emailAuthModal._passwordKeyHandler = handleKeyPress;
+        emailAuthModal.addEventListener('keypress', handleKeyPress);
     }
 }
 
@@ -109,12 +113,27 @@ export function toggleEmailAuthMode() {
 }
 
 export async function handleEmailAuth() {
-    const email = document.getElementById('emailInput').value;
+    const email = document.getElementById('emailInput').value.trim();
     const password = document.getElementById('passwordInput').value;
+    
     if (!email || !password) {
         showToast("이메일과 비밀번호를 입력해주세요.", "error");
         return;
     }
+    
+    // 이메일 형식 기본 검증
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        showToast("올바른 이메일 형식이 아닙니다.", "error");
+        return;
+    }
+    
+    // 비밀번호 최소 길이 검증
+    if (password.length < 6) {
+        showToast("비밀번호는 6자리 이상이어야 합니다.", "error");
+        return;
+    }
+    
     showLoading();
     try {
         let result;
@@ -126,6 +145,8 @@ export async function handleEmailAuth() {
                 providerId: result.user.providerData[0]?.providerId,
                 providerData: result.user.providerData.map(p => p.providerId)
             });
+            window._recordsLoadHidePending = true;
+            showLoading('기록을 불러오고 있어요', { dimBackground: false });
             showToast("회원가입 성공! 환영합니다.", "success");
         } else {
             result = await signInWithEmailAndPassword(auth, email, password);
@@ -135,6 +156,8 @@ export async function handleEmailAuth() {
                 providerId: result.user.providerData[0]?.providerId,
                 providerData: result.user.providerData.map(p => p.providerId)
             });
+            window._recordsLoadHidePending = true;
+            showLoading('기록을 불러오고 있어요', { dimBackground: false });
             showToast("로그인되었습니다.", "success");
             if (document.getElementById('rememberEmailCheck').checked) {
                 localStorage.setItem('savedEmail', email);
@@ -146,13 +169,69 @@ export async function handleEmailAuth() {
         // 로그인 성공 후 로딩 오버레이는 onAuthStateChanged에서 인증 플로우가 완료될 때까지 유지
         // 인증 플로우가 완료되면 processState의 finally에서 hideLoading() 호출됨
     } catch (error) {
-        let msg = error.message;
-        if (error.code === 'auth/email-already-in-use') msg = "이미 사용 중인 이메일입니다.";
-        if (error.code === 'auth/wrong-password') msg = "비밀번호가 틀렸습니다.";
-        if (error.code === 'auth/user-not-found') msg = "존재하지 않는 계정입니다.";
-        if (error.code === 'auth/weak-password') msg = "비밀번호는 6자리 이상이어야 합니다.";
+        console.error('🔐 이메일 인증 에러:', {
+            code: error.code,
+            message: error.message,
+            error: error
+        });
+        
+        let msg = error.message || '알 수 없는 오류가 발생했습니다.';
+        
+        // Firebase Auth 에러 코드별 메시지 처리
+        if (error.code === 'auth/email-already-in-use') {
+            msg = "이미 사용 중인 이메일입니다.";
+        } else if (error.code === 'auth/wrong-password') {
+            msg = "비밀번호가 틀렸습니다.";
+        } else if (error.code === 'auth/user-not-found') {
+            msg = "존재하지 않는 계정입니다.";
+        } else if (error.code === 'auth/weak-password') {
+            msg = "비밀번호는 6자리 이상이어야 합니다.";
+        } else if (error.code === 'auth/invalid-email') {
+            msg = "올바른 이메일 형식이 아닙니다.";
+        } else if (error.code === 'auth/user-disabled') {
+            msg = "이 계정은 비활성화되었습니다. 관리자에게 문의하세요.";
+        } else if (error.code === 'auth/too-many-requests') {
+            msg = "너무 많은 시도가 있었습니다. 잠시 후 다시 시도해주세요.";
+        } else if (error.code === 'auth/operation-not-allowed') {
+            msg = "이메일/비밀번호 로그인이 비활성화되었습니다.";
+        } else if (error.code === 'auth/invalid-credential') {
+            msg = "이메일 또는 비밀번호가 올바르지 않습니다.";
+        } else if (error.code === 'auth/network-request-failed') {
+            msg = "네트워크 연결을 확인해주세요.";
+        } else if (error.message && error.message.includes('400')) {
+            msg = "로그인 요청이 실패했습니다. 이메일과 비밀번호를 확인해주세요.";
+        }
+        
         showToast("오류: " + msg, "error");
         hideLoading(); // 에러 시에만 즉시 숨김
+    }
+}
+
+/** 비밀번호 재설정 메일 발송 (Firebase sendPasswordResetEmail) */
+export async function requestPasswordReset() {
+    const email = document.getElementById('emailInput')?.value?.trim() || '';
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email) {
+        showToast("이메일을 입력해주세요.", "error");
+        return;
+    }
+    if (!emailRegex.test(email)) {
+        showToast("올바른 이메일 형식이 아닙니다.", "error");
+        return;
+    }
+    showLoading();
+    try {
+        await sendPasswordResetEmail(auth, email);
+        showToast("비밀번호 재설정 메일을 발송했습니다. 이메일을 확인해주세요.", "success");
+        document.getElementById('emailAuthModal')?.classList.add('hidden');
+    } catch (error) {
+        console.error('비밀번호 재설정 메일 발송 실패:', error);
+        let msg = error.message || '발송에 실패했습니다.';
+        if (error.code === 'auth/invalid-email') msg = "올바른 이메일 형식이 아닙니다.";
+        else if (error.code === 'auth/too-many-requests') msg = "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.";
+        showToast(msg, "error");
+    } finally {
+        hideLoading();
     }
 }
 
@@ -184,6 +263,11 @@ export function cancelDeleteAccount() {
 export async function confirmDeleteAccountAction() {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         showToast("로그인이 필요합니다.", "error");
+        return;
+    }
+    
+    // 한 번 더 확인
+    if (!confirm('정말로 탈퇴하시겠어요?\n\n모든 기록과 데이터가 삭제되며 복구할 수 없습니다.')) {
         return;
     }
     
@@ -233,6 +317,11 @@ export function closeDomainModal() {
 export async function switchToLogin() {
     // 게스트 모드에서 로그인 페이지로 전환
     try {
+        // Firestore 리스너가 살아있으면 signOut 시점에 permission-denied가 연쇄로 발생할 수 있으므로 선제 해제
+        if (typeof window.cleanupFirestoreListeners === 'function') {
+            window.cleanupFirestoreListeners();
+        }
+
         // 설정 페이지 닫기
         const settingsPage = document.getElementById('settingsPage');
         if (settingsPage) {
@@ -271,12 +360,25 @@ export async function showTermsModal() {
             try {
                 const currentUser = auth.currentUser;
                 if (currentUser && !currentUser.isAnonymous) {
-                    // 기존 사용자 확인 (meals 데이터 존재 여부)
-                    const { collection, query, limit, getDocs } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-                    const { db, appId } = await import('./firebase.js');
-                    const mealsColl = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meals');
-                    const mealsSnapshot = await getDocs(query(mealsColl, limit(1)));
-                    const isExistingUser = !mealsSnapshot.empty;
+                    // authFlowManager에서 캐시된 기존 사용자 정보 확인 (이미 백그라운드에서 확인됨)
+                    let isExistingUser = false;
+                    try {
+                        const { authFlowManager } = await import('./auth-flow.js');
+                        if (authFlowManager._cachedExistingUser !== undefined) {
+                            isExistingUser = authFlowManager._cachedExistingUser;
+                        } else {
+                            // 캐시가 없으면 약관 모달에서만 확인 (로그인 플로우를 지연시키지 않음)
+                            const { collection, query, limit, getDocs } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                            const { db, appId } = await import('./firebase.js');
+                            const mealsColl = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meals');
+                            const mealsSnapshot = await getDocs(query(mealsColl, limit(1)));
+                            isExistingUser = !mealsSnapshot.empty;
+                            // 캐시에 저장
+                            authFlowManager._cachedExistingUser = isExistingUser;
+                        }
+                    } catch (e) {
+                        console.warn('기존 사용자 확인 실패:', e);
+                    }
                     
                     if (isExistingUser) {
                         // 기존 사용자에게는 약관 업데이트 안내 문구 표시
@@ -362,7 +464,11 @@ export async function confirmTermsAgreement() {
         
         window.userSettings.termsAgreed = true;
         window.userSettings.termsAgreedAt = new Date().toISOString();
-        window.userSettings.termsVersion = CURRENT_TERMS_VERSION;
+        
+        // Firestore에서 현재 약관 버전 가져오기 (동적 import로 안전하게 로드)
+        const { getCurrentTermsVersion } = await import('./utils-terms.js');
+        const currentVersion = await getCurrentTermsVersion();
+        window.userSettings.termsVersion = currentVersion;
         
         // providerId와 email을 현재 사용자 정보로 설정 (없을 때만, 또는 같은 providerId일 때만)
         try {
@@ -434,6 +540,19 @@ export function showProfileSetupModal() {
         if (nicknameInput) {
             nicknameInput.value = '';
         }
+        const birthdateInput = document.getElementById('setupBirthdate');
+        if (birthdateInput) {
+            birthdateInput.value = '';
+        }
+        const lifestyleSelect = document.getElementById('setupLifestyle');
+        if (lifestyleSelect) {
+            lifestyleSelect.value = '';
+        }
+        // 버튼 선택 상태 초기화
+        document.querySelectorAll('.setup-lifestyle-btn').forEach(btn => {
+            btn.classList.remove('bg-emerald-600', 'text-white', 'border-emerald-600');
+            btn.classList.add('bg-slate-50', 'text-slate-600', 'border-slate-200');
+        });
     }
 }
 
@@ -450,7 +569,6 @@ function renderSetupIconSelector() {
     const container = document.getElementById('setupIconSelector');
     if (!container) return;
     
-    const { DEFAULT_ICONS } = require('./constants.js');
     // 동적 import로 변경
     import('./constants.js').then(({ DEFAULT_ICONS }) => {
         container.innerHTML = DEFAULT_ICONS.map(icon => `
@@ -542,6 +660,9 @@ export async function handleSetupPhotoUpload(event) {
 export async function confirmProfileSetup() {
     const nicknameInput = document.getElementById('setupNickname');
     const nickname = nicknameInput?.value.trim() || '';
+
+    const birthdate = (document.getElementById('setupBirthdate')?.value || '').trim();
+    const lifestyle = (document.getElementById('setupLifestyle')?.value || '').trim();
     
     if (!nickname) {
         showToast("닉네임을 입력해주세요.", "error");
@@ -553,15 +674,42 @@ export async function confirmProfileSetup() {
         return;
     }
     
+    const { containsProfanity, isNicknameDuplicate } = await import('./utils/nickname.js');
+    if (containsProfanity(nickname)) {
+        showToast("사용할 수 없는 닉네임입니다. 다른 닉네임을 입력해주세요.", "error");
+        return;
+    }
+    
+    const duplicate = await isNicknameDuplicate(nickname, auth.currentUser?.uid || null);
+    if (duplicate) {
+        showToast("이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.", "error");
+        return;
+    }
+
+    if (!birthdate) {
+        showToast("생년월일을 입력해주세요.", "error");
+        return;
+    }
+
+    // 라이프스타일은 선택 입력 (필수 아님)
+    
     try {
         if (!window.userSettings) {
             window.userSettings = { ...DEFAULT_USER_SETTINGS };
         }
         
         window.userSettings.profile.nickname = nickname;
-        // 기본 아이콘 설정
-        window.userSettings.profile.icon = '🐻';
+        window.userSettings.profile.birthdate = birthdate;
+        window.userSettings.profile.lifestyle = lifestyle;
+        window.userSettings.profile.birthdateChangeCount = 0;
+        window.userSettings.profile.birthdateChangedAt = null;
+        // 초기 가입은 아이콘 설정 없이 텍스트(닉네임 첫 글자) 기본
+        window.userSettings.profile.iconType = 'text';
+        window.userSettings.profile.icon = null;
         window.userSettings.profile.photoUrl = null;
+        // 프로필 완료 플래그 저장 (닉네임 문자열에 의존하지 않기 위함)
+        window.userSettings.profileCompleted = true;
+        window.userSettings.profileCompletedAt = new Date().toISOString();
         
         // providerId와 email을 현재 사용자 정보로 설정 (없을 때만, 또는 같은 providerId일 때만)
         try {

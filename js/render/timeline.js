@@ -12,11 +12,31 @@ function isEntryShared(entryId) {
     return window.sharedPhotos.some(photo => photo.entryId === entryId);
 }
 
+/** 타임라인에서 공유 화살표만 즉시 갱신 (기존 DOM만 업데이트, 풀 렌더 없음) */
+export function updateTimelineShareIndicators() {
+    const state = appState;
+    if (!window.currentUser || state.currentTab !== 'timeline') return;
+    const container = document.getElementById('timelineContainer');
+    if (!container) return;
+    container.querySelectorAll('[data-entry-id]').forEach(el => {
+        const entryId = el.getAttribute('data-entry-id');
+        const arrow = el.querySelector('.timeline-share-arrow');
+        if (arrow) {
+            arrow.style.display = isEntryShared(entryId) ? 'inline' : 'none';
+        }
+    });
+}
+
 export function renderTimeline() {
     const state = appState;
     if (!window.currentUser || state.currentTab !== 'timeline') return;
     const container = document.getElementById('timelineContainer');
     if (!container) return;
+    
+    // mealHistory가 없으면 빈 배열로 초기화
+    if (!window.mealHistory || !Array.isArray(window.mealHistory)) {
+        window.mealHistory = [];
+    }
     
     // 오늘 날짜를 명확하게 계산 (시간대 문제 방지)
     const today = new Date();
@@ -93,8 +113,8 @@ export function renderTimeline() {
                     : null;
                 const isShared = !!dailyShare;
                 
-                const shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-emerald-600 text-white' : 'text-slate-600'}">
-                    <i class="fa-solid fa-share text-[10px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
+                const shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-slate-800 text-white' : 'text-slate-600'}">
+                    <i class="fa-solid fa-share text-[12px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
                 </button>`;
                 
                 const h3El = headerEl.querySelector('h3');
@@ -129,11 +149,11 @@ export function renderTimeline() {
                 : null;
             const isShared = !!dailyShare;
             
-            shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-emerald-600 text-white' : 'text-slate-600'}">
-                <i class="fa-solid fa-share text-[10px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
+            shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-slate-800 text-white' : 'text-slate-600'}">
+                <i class="fa-solid fa-share text-[12px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
             </button>`;
         }
-        let html = `<div class="date-section-header text-sm font-black ${dayColorClass} mb-1.5 px-4 flex items-center justify-between">
+        let html = `<div class="date-section-header text-sm font-black ${dayColorClass} px-4 flex items-center justify-between">
             <h3>${dObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</h3>
             ${shareButton}
         </div>`;
@@ -174,8 +194,8 @@ export function renderTimeline() {
                             if (sData) tags.push(sData.label);
                         }
                         if (tags.length > 0) {
-                            tagsHtml = `<div class="mt-1 flex flex-wrap gap-1">${tags.map(t => 
-                                `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded">#${t}</span>`
+                            tagsHtml = `<div class="mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags.map(t => 
+                                `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${t}</span>`
                             ).join('')}</div>`;
                         }
                     }
@@ -196,27 +216,30 @@ export function renderTimeline() {
                     // photos가 배열이 아닌 경우 (문자열 등) 처리
                     iconHtml = `<img src="${r.photos}" class="w-full h-full object-cover">`;
                 } else if (r.mealType === 'Skip') {
-                    iconHtml = `<i class="fa-solid fa-ban text-2xl"></i>`;
+                    iconHtml = `<i class="fa-solid fa-ban text-2xl text-slate-600"></i>`;
                 } else {
-                    iconHtml = `<i class="fa-solid fa-utensils text-2xl"></i>`;
+                    iconHtml = `<i class="fa-solid fa-utensils text-2xl text-slate-400"></i>`;
                 }
-                html += `<div onclick="window.openModal('${dateStr}', '${slot.id}', ${r ? `'${r.id}'` : null})" class="card mb-1.5 border ${containerClass} cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+                html += `<div onclick="window.openModal('${dateStr}', '${slot.id}', ${r ? `'${r.id}'` : null})" class="card mb-1.5 border ${containerClass} cursor-pointer active:scale-[0.98] transition-all !rounded-none" ${r ? `data-entry-id="${r.id}"` : ''}>
                     <div class="flex">
                         <div class="w-[140px] h-[140px] ${iconBoxClass} flex-shrink-0 flex items-center justify-center overflow-hidden border-r">
                             ${iconHtml}
                         </div>
                         <div class="flex-1 min-w-0 flex flex-col justify-center p-4">
-                            <div class="flex justify-between items-start mb-1">
+                            <div class="flex justify-between items-start">
                                 <div class="flex-1">
-                                    <h4 class="leading-tight mb-0">${titleLine1}</h4>
-                                    ${titleLine2 ? (r ? `<p class="text-sm text-slate-600 font-bold mt-0.5 mb-0">${titleLine2}</p>` : `<p class="mt-0.5 mb-0">${titleLine2}</p>`) : ''}
+                                    <h4 class="leading-tight mb-0 truncate">${titleLine1}</h4>
+                                    ${titleLine2 ? (r ? `<p class="text-sm text-slate-600 font-bold mt-1.5 mb-0 truncate">${titleLine2}</p>` : `<p class="mt-1.5 mb-0 truncate">${titleLine2}</p>`) : ''}
                                 </div>
                                 ${r ? `<div class="flex items-center gap-2 flex-shrink-0 ml-2">
-                                    ${isEntryShared(r.id) ? `<span class="text-xs text-slate-500" title="게시됨"><i class="fa-solid fa-share"></i></span>` : ''}
-                                    <span class="text-xs font-bold text-yellow-600 bg-yellow-50 px-1.5 py-0.5 rounded-md flex items-center gap-0.5"><i class="fa-solid fa-star text-[10px]"></i><span class="text-[11px] font-black">${r.rating || '-'}</span></span>
+                                    <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
+                                    <span class="text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-300 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                        <span class="text-[13px]">⭐</span>
+                                        <span class="text-[12px] font-black">${r.rating || '-'}</span>
+                                    </span>
                                 </div>` : ''}
                             </div>
-                            ${r && r.comment ? `<p class="text-xs text-slate-400 mt-1 mb-0 line-clamp-1 whitespace-pre-line">"${escapeHtml(r.comment).replace(/\n/g, '<br>')}"</p>` : ''}
+                            ${r && r.comment ? `<p class="text-xs text-slate-400 mt-1.5 mb-0 line-clamp-1 whitespace-pre-line">"${escapeHtml(r.comment).replace(/\n/g, '<br>')}"</p>` : ''}
                             ${tagsHtml}
                         </div>
                     </div>
@@ -226,11 +249,13 @@ export function renderTimeline() {
                     <span class="text-xs font-black text-slate-400 uppercase mr-3 flex-shrink-0 px-4">${slot.label}</span>
                     <div class="flex-1 flex flex-wrap gap-2 items-center">
                         ${records.length > 0 ? records.map(r => 
-                            `<div onclick="window.openModal('${dateStr}', '${slot.id}', '${r.id}')" class="snack-tag cursor-pointer active:bg-slate-50">
-                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-2"></span>
+                            `<div onclick="window.openModal('${dateStr}', '${slot.id}', '${r.id}')" class="snack-tag cursor-pointer active:bg-slate-50" data-entry-id="${r.id}">
                                 ${r.menuDetail || r.snackType || '간식'} 
-                                ${isEntryShared(r.id) ? `<i class="fa-solid fa-share text-slate-500 text-[8px] ml-1" title="게시됨"></i>` : ''}
-                                ${r.rating ? `<span class="text-[10px] font-black text-yellow-600 bg-yellow-50 px-1 py-0.5 rounded ml-1.5 flex items-center gap-0.5"><i class="fa-solid fa-star text-[9px]"></i>${r.rating}</span>` : ''}
+                                <span class="timeline-share-arrow" style="display:${isEntryShared(r.id) ? 'inline' : 'none'}"><i class="fa-solid fa-share text-slate-500 text-[8px] ml-1" title="게시됨"></i></span>
+                                ${r.rating ? `<span class="text-[10px] font-black text-yellow-600 bg-yellow-50 border border-yellow-300 px-1 py-0.5 rounded-full ml-1.5 flex items-center gap-0.5">
+                                    <span class="text-[11px]">⭐</span>
+                                    <span class="text-[11px] font-black">${r.rating}</span>
+                                </span>` : ''}
                             </div>`
                         ).join('') : `<span class="text-xs text-slate-400 italic">기록없음</span>`}
                         <button onclick="window.openModal('${dateStr}', '${slot.id}')" class="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-colors">+ 추가</button>
@@ -345,6 +370,9 @@ export function renderMiniCalendar() {
     const state = appState;
     const container = document.getElementById('miniCalendar');
     if (!container || !window.currentUser) return;
+    // 상단 월 표시를 선택된 pageDate 기준으로 즉시 갱신 (전월 선택 시에도 맞게 표시)
+    const titleEl = document.getElementById('trackerTitle');
+    if (titleEl) titleEl.innerText = `${state.pageDate.getFullYear()}년 ${state.pageDate.getMonth() + 1}월`;
     container.innerHTML = "";
     // 로컬 날짜로 변환하여 시간대 문제 방지
     const pageYear = state.pageDate.getFullYear();
@@ -360,12 +388,12 @@ export function renderMiniCalendar() {
         const month = String(d.getMonth() + 1).padStart(2, '0');
         const day = String(d.getDate()).padStart(2, '0');
         const iso = `${year}-${month}-${day}`;
-        const count = window.mealHistory.filter(m => m.date === iso).length;
+        const count = (window.dailyStats && window.dailyStats[iso]?.count) ?? window.mealHistory.filter(m => m.date === iso).length;
         let status = count >= 4 ? "dot-full" : (count > 0 ? "dot-partial" : "dot-none");
         let dayColorClass = (d.getDay() === 0 || d.getDay() === 6) ? "text-rose-400" : "text-slate-400";
         const item = document.createElement('div');
         item.className = "calendar-item flex flex-col items-center gap-1 cursor-pointer flex-shrink-0";
-        item.innerHTML = `<span class="text-[9px] font-bold ${dayColorClass}">${d.toLocaleDateString('ko-KR', { weekday: 'narrow' })}</span>
+        item.innerHTML = `<span class="text-[11px] font-bold ${dayColorClass}">${d.toLocaleDateString('ko-KR', { weekday: 'narrow' })}</span>
             <div id="dot-${iso}" class="calendar-dot ${status} ${iso === activeStr ? 'dot-selected' : ''}">${d.getDate()}</div>`;
         item.onclick = () => window.jumpToDate(iso);
         container.appendChild(item);

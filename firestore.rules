@@ -38,6 +38,11 @@ service cloud.firestore {
       return isAuthenticated() && request.resource.data.authorId == request.auth.uid;
     }
     
+    // App Check 토큰 확인 함수 (향후 사용을 위해 추가)
+    function hasValidAppCheckToken() {
+      return request.appCheck != null && request.appCheck.token != null;
+    }
+    
     // ============================================
     // 사용자 데이터 (users 컬렉션)
     // ============================================
@@ -60,14 +65,25 @@ service cloud.firestore {
         allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
         allow create, update, delete: if request.auth != null && request.auth.uid == userId;
       }
+      // stats 연도별 서브컬렉션 (config/stats/years/{year}) - Cloud Functions만 쓰기
+      match /config/stats {
+        allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
+        allow write: if false;
+        match /years/{year} {
+          allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
+          allow write: if false;
+        }
+      }
     }
     
     // ============================================
     // 공유 사진 (sharedPhotos 컬렉션)
     // ============================================
+    // 보안 강화: create는 Cloud Functions를 통해서만 허용 (레이트 리밋 및 스팸 필터 적용)
     match /artifacts/{appId}/sharedPhotos/{photoId} {
       allow read: if isAuthenticated();
-      allow create: if isOwnerOfRequestResource();
+      // create는 Cloud Functions를 통해서만 허용 (클라이언트 직접 쓰기 차단)
+      allow create: if false;
       allow update: if isAuthenticated() && 
                      resource.data.userId == request.auth.uid && 
                      request.resource.data.userId == request.auth.uid;
@@ -82,13 +98,33 @@ service cloud.firestore {
       allow write: if false;
     }
     
+    // 관리자 설정 (공지·댓글 표시 이름 등) - 관리자만 읽기/쓰기
+    match /artifacts/{appId}/adminSettings/{docId} {
+      allow read, write: if isAdmin();
+    }
+    
+    // 사용자 제재 (공유/글쓰기 금지) - 관리자만 읽기/쓰기
+    match /artifacts/{appId}/userBans/{userId} {
+      allow read, write: if isAdmin();
+    }
+    
+    // 사용자 삭제 요청 (관리자 생성 → Cloud Functions에서 처리 후 삭제)
+    match /artifacts/{appId}/deleteUserRequests/{requestId} {
+      allow create: if isAdmin();
+      allow read, delete: if isAdmin();
+      allow update: if false;
+    }
+    
     // ============================================
     // 게시판 (boardPosts 컬렉션)
     // ============================================
+    // 보안 강화: create는 Cloud Functions를 통해서만 허용 (레이트 리밋 및 스팸 필터 적용)
     match /artifacts/{appId}/boardPosts/{postId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthorOfRequestResource();
+      // create는 Cloud Functions를 통해서만 허용 (클라이언트 직접 쓰기 차단)
+      allow create: if false;
       // 수정/삭제: 관리자 또는 작성자. 조회수(views)·댓글수(comments)만 바꿀 때는 로그인 사용자 허용
+      // (Cloud Functions는 admin SDK로 쓰므로 Rules를 우회하여 업데이트 가능)
       allow update: if isAdmin() || isAuthorOfResource() || (
         isAuthenticated() && (
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views']) ||
@@ -109,11 +145,23 @@ service cloud.firestore {
     }
     
     // ============================================
+    // 게시판 북마크 (boardBookmarks 컬렉션)
+    // ============================================
+    match /artifacts/{appId}/boardBookmarks/{bookmarkId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isOwnerOfRequestResource();
+      allow update: if false;
+      allow delete: if isOwnerOfResource();
+    }
+    
+    // ============================================
     // 게시판 댓글 (boardComments 컬렉션)
     // ============================================
+    // 보안 강화: create는 Cloud Functions를 통해서만 허용 (레이트 리밋 및 스팸 필터 적용)
     match /artifacts/{appId}/boardComments/{commentId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthorOfRequestResource();
+      // create는 Cloud Functions를 통해서만 허용 (클라이언트 직접 쓰기 차단)
+      allow create: if false;
       allow update: if isAuthorOfResource();
       allow delete: if isAdmin() || isAuthorOfResource();
     }
@@ -150,9 +198,11 @@ service cloud.firestore {
     // ============================================
     // 피드 댓글 (postComments 컬렉션)
     // ============================================
+    // 보안 강화: create는 Cloud Functions를 통해서만 허용 (레이트 리밋 및 스팸 필터 적용)
     match /artifacts/{appId}/postComments/{commentId} {
       allow read: if isAuthenticated();
-      allow create: if isOwnerOfRequestResource();
+      // create는 Cloud Functions를 통해서만 허용 (클라이언트 직접 쓰기 차단)
+      allow create: if false;
       allow update: if isOwnerOfResource();
       allow delete: if isOwnerOfResource();
     }
@@ -160,9 +210,11 @@ service cloud.firestore {
     // ============================================
     // 게시물 신고 (postReports 컬렉션)
     // ============================================
+    // 보안 강화: create는 Cloud Functions를 통해서만 허용 (레이트 리밋 및 중복 신고 방지)
     match /artifacts/{appId}/postReports/{reportId} {
       allow read: if isAdmin();
-      allow create: if request.auth != null;
+      // create는 Cloud Functions를 통해서만 허용 (클라이언트 직접 쓰기 차단)
+      allow create: if false;
       allow update, delete: if isAdmin();
     }
     
@@ -175,7 +227,17 @@ service cloud.firestore {
     }
     
     // ============================================
-    // 공지 반응 (noticeInteractions 컬렉션) - 좋아요/싫어요
+    // 공지 북마크 (noticeBookmarks 컬렉션)
+    // ============================================
+    match /artifacts/{appId}/noticeBookmarks/{bookmarkId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isOwnerOfRequestResource();
+      allow update: if false;
+      allow delete: if isOwnerOfResource();
+    }
+    
+    // ============================================
+    // 공지 반응 (noticeInteractions 컬렉션) - 하트(좋아요)
     // ============================================
     match /artifacts/{appId}/noticeInteractions/{interactionId} {
       allow read: if isAuthenticated();
@@ -205,6 +267,14 @@ service cloud.firestore {
     match /artifacts/{appId}/persona/{personaId} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
+    }
+    
+    // ============================================
+    // 에러 로그 (errorLogs 컬렉션) - 관리자만 읽기 가능, 쓰기는 Cloud Functions만
+    // ============================================
+    match /artifacts/{appId}/errorLogs/{errorId} {
+      allow read: if isAdmin();
+      allow write: if false; // Cloud Functions만 쓰기 가능 (admin SDK 사용)
     }
   }
 }

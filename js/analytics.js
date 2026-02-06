@@ -11,6 +11,7 @@ export {
     setDashboardMode, 
     setAnalysisType,
     updateCustomDates,
+    syncCustomDatePlaceholder,
     updateSelectedMonth,
     updateSelectedWeek,
     changeWeek,
@@ -30,7 +31,12 @@ export {
     updateInsightComment,
     generateInsightComment,
     getCurrentCharacter,
-    getInsightCharacters
+    getInsightCharacters,
+    openShareInsightModal,
+    closeShareInsightModal,
+    shareInsightToFeed,
+    updateShareButtonStatus,
+    openEditInsightShareModal
 } from './analytics/insight.js';
 
 // Best Share 관련 함수들

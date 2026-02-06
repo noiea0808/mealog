@@ -9,6 +9,22 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="mealog">
+    
+    <!-- Open Graph / Facebook / 카카오톡 공유 메타 태그 -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://mealog.app/">
+    <meta property="og:title" content="MEALOG - 함께한, 맛있었던 기억">
+    <meta property="og:description" content="우리가 함께한, 맛있었던 기억 - 스마트 식사 타임라인">
+    <meta property="og:image" content="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 630'><rect width='1200' height='630' fill='%23059669'/><text x='50%25' y='50%25' font-size='120' font-family='Arial, sans-serif' font-weight='bold' text-anchor='middle' dominant-baseline='central' fill='white'>MEALOG</text></svg>">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="MEALOG - 함께한, 맛있었던 기억">
+    <meta name="twitter:description" content="우리가 함께한, 맛있었던 기억 - 스마트 식사 타임라인">
+    <meta name="twitter:image" content="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 630'><rect width='1200' height='630' fill='%23059669'/><text x='50%25' y='50%25' font-size='120' font-family='Arial, sans-serif' font-weight='bold' text-anchor='middle' dominant-baseline='central' fill='white'>MEALOG</text></svg>">
+    
     <title>MEALOG-함께한, 맛있었던 기억</title>
     
     <!-- Favicon -->
@@ -22,6 +38,8 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/earlyaccess/nanumsquareround.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/earlyaccess/nanumpenscript.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <link rel="stylesheet" href="css/style.css">
@@ -69,37 +87,78 @@
         
         // 모듈 로드 완료 감지
         const checkModuleLoaded = setInterval(() => {
-            if (window.renderTimeline && typeof window.renderTimeline === 'function') {
-                window.moduleLoaded = true;
+            // window.moduleLoaded가 이미 설정되었거나, renderTimeline 함수가 로드되었는지 확인
+            // 또는 window.moduleLoading이 true인 경우 (모듈이 로드 중임을 의미)
+            if (window.moduleLoaded || window.moduleLoading || (window.renderTimeline && typeof window.renderTimeline === 'function')) {
+                // moduleLoading만 있고 moduleLoaded가 없으면 아직 로드 중이므로 계속 대기
+                if (window.moduleLoaded || (window.renderTimeline && typeof window.renderTimeline === 'function')) {
+                    window.moduleLoaded = true;
+                    clearInterval(checkModuleLoaded);
+                    console.log('✅ JavaScript 모듈 로드 완료');
+                    // 로딩 오버레이 숨기기
+                    const overlay = document.getElementById('loadingOverlay');
+                    if (overlay && !overlay.classList.contains('hidden')) {
+                        overlay.classList.add('hidden');
+                    }
+                }
+            } else if (window.moduleLoadError) {
+                // 스크립트 로드 실패 시 체크 중단, 오버레이 숨기고 안내 표시
                 clearInterval(checkModuleLoaded);
-                console.log('✅ JavaScript 모듈 로드 완료');
-                // 로딩 오버레이 숨기기
                 const overlay = document.getElementById('loadingOverlay');
                 if (overlay && !overlay.classList.contains('hidden')) {
                     overlay.classList.add('hidden');
+                    if (window.moduleLoadError.quicHint) {
+                        alert('스크립트를 불러오지 못했습니다.\n\n콘솔에 ERR_QUIC_PROTOCOL_ERROR가 보인다면:\n1. Chrome 주소창에 chrome://flags/#enable-quic 입력\n2. "Experimental QUIC protocol"을 Disabled로 변경\n3. Chrome 다시 시작 후 이 페이지 새로고침\n\n자세한 내용은 docs/troubleshooting-quic.md 를 참고하세요.');
+                    } else {
+                        alert('JavaScript 모듈을 로드할 수 없습니다.\n\n가능한 원인: 웹 서버 미사용, 네트워크 문제, 경로 오류.\n브라우저 콘솔(F12)에서 오류를 확인하세요.');
+                    }
                 }
-            } else if (window.moduleLoadError) {
-                // 이미 오류가 발생한 경우 체크 중단
-                clearInterval(checkModuleLoaded);
             }
-        }, 100);
+        }, 50); // 100ms에서 50ms로 줄여서 더 빠르게 감지
         
-        // 최대 10초 후 타임아웃
+        // 최대 15초 후 타임아웃 (10초에서 15초로 증가 - 모듈 import 시간 고려)
+        // 단, window.moduleLoading이 true인 경우에는 모듈이 로드 중이므로 타임아웃하지 않음
         setTimeout(() => {
             clearInterval(checkModuleLoaded);
-            if (!window.moduleLoaded && !window.moduleLoadError) {
+            if (!window.moduleLoaded && !window.moduleLoadError && !window.moduleLoading) {
                 console.error('⚠️ JavaScript 모듈 로드 타임아웃');
                 const overlay = document.getElementById('loadingOverlay');
                 if (overlay && !overlay.classList.contains('hidden')) {
                     overlay.classList.add('hidden');
                     const port = window.location.port || '8080';
-                    alert('JavaScript 모듈을 로드할 수 없습니다.\n\n가능한 원인:\n1. 웹 서버를 통해 실행하지 않음 (파일 직접 열기)\n2. 네트워크 연결 문제\n3. JavaScript 파일 경로 오류\n\n브라우저 콘솔(F12)을 열어 정확한 오류를 확인하세요.\n\n현재 URL: ' + window.location.href);
+                    const quicNote = (window.moduleLoadError && window.moduleLoadError.quicHint) ? '\n\nERR_QUIC_PROTOCOL_ERROR가 보이면: chrome://flags/#enable-quic 에서 QUIC을 Disabled로 한 뒤 Chrome 재시작 (docs/troubleshooting-quic.md 참고).' : '';
+                    alert('JavaScript 모듈을 로드할 수 없습니다.\n\n가능한 원인:\n1. 웹 서버를 통해 실행하지 않음 (파일 직접 열기)\n2. 네트워크 연결 문제\n3. JavaScript 파일 경로 오류' + quicNote + '\n\n브라우저 콘솔(F12)을 열어 정확한 오류를 확인하세요.\n\n현재 URL: ' + window.location.href);
                 }
+            } else if (window.moduleLoading && !window.moduleLoaded) {
+                // 모듈이 로드 중이지만 아직 완료되지 않은 경우, 추가 시간을 주기 위해 체크를 계속함
+                console.log('⏳ 모듈 로드 중... 추가 대기 시간 제공');
+                const extendedCheck = setInterval(() => {
+                    if (window.moduleLoaded || (window.renderTimeline && typeof window.renderTimeline === 'function')) {
+                        window.moduleLoaded = true;
+                        clearInterval(extendedCheck);
+                        console.log('✅ JavaScript 모듈 로드 완료 (연장된 대기)');
+                        const overlay = document.getElementById('loadingOverlay');
+                        if (overlay && !overlay.classList.contains('hidden')) {
+                            overlay.classList.add('hidden');
+                        }
+                    }
+                }, 50);
+                // 추가로 10초 더 대기
+                setTimeout(() => {
+                    clearInterval(extendedCheck);
+                    if (!window.moduleLoaded) {
+                        console.error('⚠️ JavaScript 모듈 로드 타임아웃 (연장된 대기 후)');
+                        const overlay = document.getElementById('loadingOverlay');
+                        if (overlay && !overlay.classList.contains('hidden')) {
+                            overlay.classList.add('hidden');
+                        }
+                    }
+                }, 10000);
             }
-        }, 10000);
+        }, 15000); // 10000에서 15000으로 증가
     </script>
     
-    <script type="module" src="js/main.js?v=2" onerror="console.error('❌ main.js 스크립트 태그 로드 실패'); window.moduleLoadError = {message: '스크립트 태그 로드 실패'};"></script>
+    <script type="module" src="js/main.js?v=3" onerror="console.error('❌ main.js 스크립트 태그 로드 실패'); window.moduleLoadError = {message: '스크립트 태그 로드 실패', quicHint: true};"></script>
     
     <script>
         
@@ -165,6 +224,19 @@
                 }
                 console.error('==========================');
                 
+                // 에러 리포팅 (에러 리포팅 시스템이 로드되면 자동 처리)
+                if (window.reportError) {
+                    window.reportError({
+                        message: e.message,
+                        filename: e.filename,
+                        lineno: e.lineno,
+                        colno: e.colno,
+                        error: e.error,
+                        stack: e.error?.stack,
+                        type: 'javascript_error'
+                    });
+                }
+                
                 // 모듈 로드 오류인 경우
                 if (e.filename && (e.filename.includes('main.js') || e.filename.includes('.js') || e.filename.includes('module'))) {
                     window.moduleLoadError = {
@@ -198,6 +270,16 @@
             }
             console.error('============================');
             
+            // 에러 리포팅 (에러 리포팅 시스템이 로드되면 자동 처리)
+            if (window.reportError) {
+                window.reportError({
+                    message: e.reason?.message || String(e.reason) || 'Unhandled promise rejection',
+                    reason: e.reason,
+                    stack: e.reason?.stack,
+                    type: 'promise_rejection'
+                });
+            }
+            
             // 모듈 로드 관련 오류인 경우
             if (e.reason && (
                 e.reason.message && (
@@ -216,8 +298,9 @@
 
     <div id="toastContainer" class="fixed bottom-24 left-1/2 -translate-x-1/2 w-[92%] max-w-[26rem] z-[600] flex flex-col items-center gap-2 pointer-events-none px-4 box-border"></div>
 
-    <div id="loadingOverlay" class="fixed inset-0 bg-white/70 z-[300] flex flex-col items-center justify-center">
-        <div class="w-8 h-8 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin"></div>
+    <div id="loadingOverlay" class="fixed inset-0 bg-white/90 z-[9999] flex flex-col items-center justify-center">
+        <div class="w-10 h-10 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin"></div>
+        <p id="loadingOverlayMessage" class="mt-4 text-base font-bold text-slate-800"></p>
     </div>
 
     <!-- 1. Landing Page -->
@@ -235,15 +318,20 @@
                 <i class="fa-solid fa-envelope text-lg"></i>
                 <span class="font-bold text-sm">이메일로 계속하기</span>
             </button>
-            <button id="guestLoginBtn" class="w-full py-3 text-emerald-100/70 text-xs font-bold underline decoration-emerald-100/50 underline-offset-4">
-                로그인 없이 둘러보기 (게스트)
-            </button>
+            <div class="flex flex-col gap-0.5 pt-0.5">
+                <button type="button" id="emailSignupLink" class="w-full py-2.5 text-emerald-100/70 text-xs font-bold underline decoration-emerald-100/50 underline-offset-4">
+                    이메일로 가입하기
+                </button>
+                <button id="guestLoginBtn" class="w-full py-2.5 text-emerald-100/70 text-xs font-bold underline decoration-emerald-100/50 underline-offset-4">
+                    로그인 없이 둘러보기 (게스트)
+                </button>
+            </div>
         </div>
     </div>
 
     <!-- Email Auth Modal -->
     <div id="emailAuthModal" class="hidden fixed inset-0 z-[400] bg-slate-900/50 flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl">
+        <div class="bg-white rounded-2xl p-6 w-[80%] max-w-[20rem] shadow-2xl">
             <div class="flex justify-between items-center mb-6">
                 <h3 id="emailAuthTitle" class="text-lg font-bold text-slate-800">이메일 로그인</h3>
                 <button id="emailAuthCloseBtn"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
@@ -262,6 +350,9 @@
                     <input type="checkbox" id="rememberEmailCheck" class="mr-2">
                     <label for="rememberEmailCheck" class="text-xs text-slate-500">이메일 기억하기</label>
                 </div>
+                <div class="text-center">
+                    <button type="button" id="emailPasswordResetLink" class="text-xs text-emerald-600 font-medium underline underline-offset-2 hover:text-emerald-700">비밀번호를 잊으셨나요?</button>
+                </div>
             </div>
             <button id="emailAuthBtn" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-md active:bg-emerald-700 transition-colors mb-4">로그인</button>
             <button id="emailAuthToggleBtn" class="w-full text-xs text-slate-500">계정이 없으신가요? <span class="text-emerald-600 font-bold underline">회원가입</span></button>
@@ -270,7 +361,7 @@
 
     <!-- Domain Error Modal -->
     <div id="domainErrorModal" class="hidden fixed inset-0 z-[500] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl border-2 border-red-100 animate-fade">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border-2 border-red-100 animate-fade">
             <div class="flex justify-center mb-4 text-red-500 text-3xl"><i class="fa-solid fa-triangle-exclamation"></i></div>
             <h3 class="text-lg font-bold text-slate-800 text-center mb-2">도메인 등록 필요</h3>
             <p class="text-xs text-slate-500 text-center mb-4 leading-relaxed">
@@ -306,7 +397,7 @@
                             <input type="checkbox" id="termsAgreement" onchange="window.safeCall('updateTermsAgreeButton')" class="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-slate-400">
                             <span class="text-sm font-bold text-slate-800">이용약관 동의 (필수)</span>
                         </label>
-                        <button id="termsDetailBtn" class="text-xs text-slate-600 font-bold">보기</button>
+                        <button id="termsDetailBtn" class="text-xs text-emerald-600 font-bold">보기</button>
                     </div>
                     <div id="termsContent" class="hidden text-xs text-slate-600 leading-relaxed max-h-32 overflow-y-auto mt-2 pl-6">
                         <p>제1조 (목적)<br>본 약관은 MEALOG(이하 "회사")가 제공하는 식사 기록 서비스의 이용과 관련하여 회사와 이용자 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.</p>
@@ -342,7 +433,7 @@
 
     <!-- Profile Setup Modal (First Login) -->
     <div id="profileSetupModal" class="hidden fixed inset-0 z-[500] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
             <h3 class="text-lg font-bold text-slate-800 text-center mb-2">프로필 설정</h3>
             <p class="text-xs text-slate-500 text-center mb-6">서비스를 이용하기 위해 닉네임을 입력해주세요.</p>
             
@@ -353,6 +444,25 @@
                     <input type="text" id="setupNickname" placeholder="닉네임을 입력하세요" maxlength="20" class="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 text-sm outline-none focus:border-slate-400 transition-colors">
                     <p class="text-[10px] text-slate-400 mt-1">한글, 영문, 숫자 조합 최대 20자</p>
                 </div>
+                <!-- 생년월일 -->
+                <div>
+                    <label class="text-sm font-bold text-slate-600 block mb-2">생년월일</label>
+                    <input type="date" id="setupBirthdate" class="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 text-sm outline-none focus:border-slate-400 transition-colors">
+                    <p class="text-[10px] text-slate-400 mt-1">실수로 입력한 경우에만 가입 후 1회 수정 가능합니다</p>
+                </div>
+                <!-- 라이프스타일 -->
+                <div>
+                    <label class="text-sm font-bold text-slate-600 block mb-2">라이프 스타일</label>
+                    <input type="hidden" id="setupLifestyle" value="">
+                    <div class="grid grid-cols-3 gap-2">
+                        <button type="button" class="setup-lifestyle-btn px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 whitespace-nowrap active:bg-slate-100 transition-colors" data-value="학생">학생</button>
+                        <button type="button" class="setup-lifestyle-btn px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 whitespace-nowrap active:bg-slate-100 transition-colors" data-value="주부">주부</button>
+                        <button type="button" class="setup-lifestyle-btn px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 whitespace-nowrap active:bg-slate-100 transition-colors" data-value="직장인">직장인</button>
+                        <button type="button" class="setup-lifestyle-btn px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 whitespace-nowrap active:bg-slate-100 transition-colors" data-value="자영업">자영업</button>
+                        <button type="button" class="setup-lifestyle-btn px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 whitespace-nowrap active:bg-slate-100 transition-colors" data-value="프리랜서">프리랜서</button>
+                        <button type="button" class="setup-lifestyle-btn px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 whitespace-nowrap active:bg-slate-100 transition-colors" data-value="기타">기타</button>
+                    </div>
+                </div>
             </div>
             
             <button id="profileSetupBtn" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-md active:bg-emerald-700 transition-colors">시작하기</button>
@@ -362,45 +472,59 @@
     <!-- 2. Main Application -->
     <div id="mainApp" class="hidden">
         <header class="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-sm max-h-[60px]">
-                <div class="py-2.5 flex justify-between items-center px-6">
-                <h1 class="mealog-title text-2xl text-emerald-600 tracking-tighter">mealog</h1>
-                <div class="flex items-center gap-2">
-                    <!-- 타임라인 탭: 돋보기 클릭 시 왼쪽으로 입력창 확장, 프로필 밀지 않음(고정폭+absolute) -->
-                    <div id="timelineSearchPanel" class="timeline-search-wrapper hidden relative w-8 flex-shrink-0 overflow-visible">
-                        <div class="timeline-search-panel flex items-center overflow-hidden bg-slate-100 rounded-full border border-slate-200">
+            <div class="py-2.5 flex justify-between items-center px-6">
+                <div class="flex items-baseline gap-2 min-w-0">
+                    <h1 id="headerAppTitle" class="mealog-title text-2xl text-emerald-600 tracking-tighter">mealog</h1>
+                    <span id="headerSectionLabel" class="header-section-label text-xs font-semibold tracking-tight">밀로그</span>
+                </div>
+                <!-- 우측: 돋보기(모먼트/밀로그/밀톡만) → 알림(모든 메뉴) 순서 고정 -->
+                <div class="header-right flex items-center gap-2 flex-shrink-0">
+                    <!-- 돋보기: 모먼트(타임라인) = 검색, 밀로그/밀톡 = 하트·댓글·북마크·돋보기 -->
+                    <div id="timelineSearchPanel" class="timeline-search-wrapper hidden relative overflow-visible">
+                        <div class="timeline-search-panel flex items-center overflow-hidden">
                             <input type="text" id="searchInput" placeholder="메뉴, 장소 검색..." class="flex-1 min-w-0 bg-transparent border-0 pl-3 pr-1 py-1.5 text-sm outline-none focus:ring-0" oninput="window.safeCall('handleSearch', this.value)">
-                            <button type="button" onclick="window.toggleSearch()" class="timeline-search-toggle w-8 h-8 flex items-center justify-center flex-shrink-0 text-slate-500 active:bg-slate-200 rounded-full" aria-label="검색">
+                            <button type="button" id="searchTriggerBtn" class="timeline-search-toggle w-8 h-8 flex items-center justify-center flex-shrink-0 text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors" aria-label="검색">
                                 <i class="fa-solid fa-magnifying-glass text-sm"></i>
                             </button>
                         </div>
                     </div>
-                    <!-- 앨범 탭: 돋보기 위치에서 왼쪽으로 확장 (하트/댓글/북마크/돋보기), 4개 통합 배경 -->
-                    <div id="galleryTraceFilterPanel" class="gallery-trace-panel hidden flex items-center gap-0.5 overflow-hidden transition-all duration-300 ease-out flex-shrink-0 bg-slate-100 rounded-full border border-slate-200">
-                        <button type="button" data-trace="like" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-500 hover:bg-slate-200 hover:text-red-500 transition-colors flex-shrink-0">
+                    <div id="galleryTraceFilterPanel" class="gallery-trace-panel hidden flex items-center gap-0.5 overflow-hidden transition-all duration-300 ease-out">
+                        <button type="button" data-trace="like" class="gallery-trace-btn flex items-center justify-center w-8 h-8 text-slate-600 hover:text-red-500 active:opacity-80 transition-colors flex-shrink-0">
                             <i class="fa-regular fa-heart text-sm"></i>
                         </button>
-                        <button type="button" data-trace="comment" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-500 hover:bg-slate-200 hover:text-slate-600 transition-colors flex-shrink-0">
+                        <button type="button" data-trace="comment" class="gallery-trace-btn flex items-center justify-center w-8 h-8 text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors flex-shrink-0">
                             <i class="fa-regular fa-comment text-sm"></i>
                         </button>
-                        <button type="button" data-trace="bookmark" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-500 hover:bg-slate-200 hover:text-slate-600 transition-colors flex-shrink-0">
+                        <button type="button" data-trace="bookmark" class="gallery-trace-btn flex items-center justify-center w-8 h-8 text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors flex-shrink-0">
                             <i class="fa-regular fa-bookmark text-sm"></i>
                         </button>
-                        <button type="button" data-trace="collapse" class="gallery-trace-btn flex items-center justify-center w-8 h-8 rounded-full text-slate-500 hover:bg-slate-200 transition-colors flex-shrink-0">
+                        <button type="button" data-trace="collapse" class="gallery-trace-btn flex items-center justify-center w-8 h-8 text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors flex-shrink-0">
                             <i class="fa-solid fa-magnifying-glass text-sm"></i>
                         </button>
                     </div>
-                    <button id="headerSettingsBtn" class="flex items-center gap-1.5 bg-slate-100 pl-1 pr-2 py-0 rounded-full border border-slate-200 active:bg-slate-200 max-w-[140px] h-9">
-                        <span id="headerIcon" class="w-[34px] h-[34px] rounded-full flex items-center justify-center bg-slate-300 flex-shrink-0 overflow-hidden"></span>
-                        <span id="headerName" class="text-xs font-bold text-slate-700 truncate">게스트</span>
-                    </button>
+                    <!-- 알림: 최우측, 모든 메뉴 -->
+                    <div id="notificationWrap" class="relative hidden">
+                        <button type="button" id="notificationTriggerBtn" class="notification-trigger w-8 h-8 flex items-center justify-center text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors" aria-label="알림">
+                            <i class="fa-regular fa-bell text-lg"></i>
+                            <span id="notificationDot" class="notification-dot absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full hidden" aria-hidden="true"></span>
+                        </button>
+                        <div id="notificationPopup" class="notification-popup absolute right-0 top-full mt-1.5 w-72 max-h-[70vh] overflow-hidden hidden rounded-xl border border-slate-200 bg-white shadow-lg z-[60]">
+                            <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-100">
+                                <span class="font-semibold text-sm text-slate-700">새로운 댓글</span>
+                                <button type="button" id="notificationMarkAllReadBtn" class="text-xs font-medium text-emerald-600 hover:text-emerald-700 active:opacity-80 ml-auto">모두 읽음</button>
+                            </div>
+                            <div id="notificationList" class="overflow-y-auto max-h-[60vh] p-2"></div>
+                            <div id="notificationEmpty" class="p-4 text-center text-slate-400 text-sm hidden">새로운 댓글이 없습니다.</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </header>
 
-        <div id="trackerSection" class="sticky top-[52px] z-40 px-4 py-3 bg-white border-b border-slate-100 shadow-sm">
-            <div id="trackerHeader" class="flex justify-between items-center px-1 mb-2">
+        <div id="trackerSection" class="sticky top-[52px] z-40 px-6 py-3 bg-white border-b border-slate-100 shadow-sm">
+            <div id="trackerHeader" class="flex justify-between items-center mb-2">
                 <span id="trackerTitle" class="text-sm font-black text-slate-800 tracking-tight uppercase">날짜 선택</span>
-                <div id="trackerTabs" class="flex p-1 bg-slate-100 rounded-lg gap-1">
+                <div id="trackerTabs" class="flex p-1 bg-slate-100 rounded-lg gap-1 flex-shrink-0">
                     <button id="btn-view-list" class="view-tab active">전체</button>
                     <button id="btn-view-page" class="view-tab inactive">일간</button>
                 </div>
@@ -409,50 +533,39 @@
         </div>
 
         <main>
-            <div id="timelineView" class="min-h-[60vh]"><div id="timelineContainer" class="space-y-4"></div></div>
-            <div id="galleryView" class="hidden min-h-[60vh]">
-                <div id="galleryContainer" class="space-y-2 bg-slate-100"></div>
+            <div id="timelineView" class="ui-tab-view"><div id="timelineContainer" class="ui-stack-lg"></div></div>
+            <div id="galleryView" class="hidden ui-tab-view">
+                <div id="galleryContainer" class="ui-surface-soft ui-stack-sm"></div>
             </div>
             <!-- 게시판 목록 뷰 -->
-            <div id="boardListView" class="hidden space-y-3 px-4 pt-1.5 pb-3 relative">
+            <div id="boardListView" class="hidden ui-tab-view ui-stack-md relative">
                 <button id="boardWriteBtn" class="board-write-fab" type="button" title="글쓰기" aria-label="글쓰기">
                     <i class="fa-solid fa-pen text-lg"></i>
                 </button>
-                <div class="mb-4">
-                    <h2 class="sub-title text-lg text-emerald-700 tracking-tighter">MEAL TALK</h2>
+                <div class="flex gap-2 mb-4 mt-2 overflow-x-auto scrollbar-hide">
+                    <button id="board-category-all" class="board-category-btn active px-4 py-2 bg-black text-white border border-black rounded-lg text-xs font-bold whitespace-nowrap">전체</button>
+                    <button id="board-category-serious" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">무거운</button>
+                    <button id="board-category-chat" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">가벼운</button>
+                    <button id="board-category-food" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">먹는</button>
+                    <button id="board-category-admin" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">치프에게</button>
                 </div>
-                <div class="flex gap-2 mb-4 overflow-x-auto scrollbar-hide">
-                    <button id="board-category-all" class="board-category-btn active px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold whitespace-nowrap">전체</button>
-                    <button id="board-category-serious" class="board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">무거운</button>
-                    <button id="board-category-chat" class="board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">가벼운</button>
-                    <button id="board-category-food" class="board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">먹는</button>
-                    <button id="board-category-admin" class="board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">치프에게</button>
-                </div>
-                <div id="noticesContainer" class="mb-4 space-y-3">
+                <div id="noticesContainer" class="mb-4 ui-stack-md">
                     <!-- 공지가 여기에 동적으로 추가됨 -->
                 </div>
-                <div id="boardContainer" class="space-y-1.5 bg-slate-100">
+                <div id="boardContainer" class="ui-surface-soft ui-stack-tight">
                     <!-- 게시글 목록이 여기에 동적으로 추가됨 -->
                 </div>
             </div>
             
             <!-- 게시판 상세 뷰 -->
-            <div id="boardDetailView" class="hidden space-y-3 px-4 py-3">
-                <div class="flex items-center gap-3 mb-4">
-                    <button onclick="window.backToBoardList()" class="w-8 h-8 flex items-center justify-center text-slate-400 active:bg-slate-100 rounded-full transition-colors">
-                        <i class="fa-solid fa-arrow-left text-lg"></i>
-                    </button>
-                    <span id="boardDetailViewCategory" class="mr-2 shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full hidden"></span>
-                    <h2 class="sub-title text-lg text-slate-800 tracking-tight flex-1 truncate min-w-0" id="boardDetailViewTitle">게시글</h2>
-                    <span id="boardDetailMyPostLabel" class="hidden shrink-0 text-[10px] text-emerald-600 font-bold">내글</span>
-                </div>
-                <div id="boardDetailContent" class="space-y-3">
+            <div id="boardDetailView" class="hidden ui-tab-view ui-stack-md board-detail-view">
+                <div id="boardDetailContent" class="board-detail-content space-y-1 min-h-[200px]">
                     <!-- 게시글 상세 내용이 여기에 동적으로 추가됨 -->
                 </div>
             </div>
             
             <!-- 게시판 작성 뷰 -->
-            <div id="boardWriteView" class="hidden space-y-3 px-4 py-3">
+            <div id="boardWriteView" class="hidden ui-tab-view ui-stack-md">
                 <div class="flex items-center gap-3 mb-4">
                     <button onclick="window.backToBoardList()" class="w-8 h-8 flex items-center justify-center text-slate-400 active:bg-slate-100 rounded-full transition-colors">
                         <i class="fa-solid fa-arrow-left text-lg"></i>
@@ -462,38 +575,48 @@
                 <div class="space-y-4">
                     <div>
                         <label class="text-sm font-bold text-slate-600 block mb-2">카테고리</label>
-                        <select id="boardWriteCategory" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-slate-400 transition-colors">
-                            <option value="serious">무거운</option>
-                            <option value="chat">가벼운</option>
-                            <option value="food">먹는</option>
-                            <option value="admin">치프에게</option>
-                        </select>
+                        <input type="hidden" id="boardWriteCategory" value="serious">
+                        <div class="flex gap-2 overflow-x-auto scrollbar-hide">
+                            <button type="button" class="board-write-category-btn board-category-btn active px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap" data-value="serious" onclick="window.setBoardWriteCategory('serious')">무거운</button>
+                            <button type="button" class="board-write-category-btn board-category-btn px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap" data-value="chat" onclick="window.setBoardWriteCategory('chat')">가벼운</button>
+                            <button type="button" class="board-write-category-btn board-category-btn px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap" data-value="food" onclick="window.setBoardWriteCategory('food')">먹는</button>
+                            <button type="button" class="board-write-category-btn board-category-btn px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap" data-value="admin" onclick="window.setBoardWriteCategory('admin')">치프에게</button>
+                        </div>
                     </div>
                     <div>
                         <label class="text-sm font-bold text-slate-600 block mb-2">제목</label>
                         <input type="text" id="boardWriteTitle" placeholder="제목을 입력하세요" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-slate-400 transition-colors">
                     </div>
                     <div>
+                        <label class="text-sm font-bold text-slate-600 block mb-2">사진 <span class="text-slate-400 font-normal">(최대 5장, 장당 500KB)</span></label>
+                        <input type="file" id="boardWriteImages" accept="image/*" multiple class="hidden">
+                        <div class="flex items-center gap-2 mb-2">
+                            <button type="button" id="boardWriteAddPhotosBtn" class="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-bold hover:bg-slate-50 active:bg-slate-100 transition-colors">
+                                <i class="fa-solid fa-image mr-1"></i>사진 추가
+                            </button>
+                        </div>
+                        <div id="boardWriteImagePreviews" class="flex flex-wrap gap-2 min-h-0"></div>
+                    </div>
+                    <div>
                         <label class="text-sm font-bold text-slate-600 block mb-2">내용</label>
                         <textarea id="boardWriteContent" placeholder="내용을 입력하세요" rows="15" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-slate-400 transition-colors resize-none"></textarea>
                     </div>
-                    <div class="flex gap-2 pt-4 border-t">
-                        <button onclick="window.backToBoardList()" class="flex-1 py-4 bg-slate-100 text-slate-600 rounded-xl font-bold active:bg-slate-200 transition-colors">취소</button>
-                        <button onclick="window.submitBoardPost()" class="flex-1 py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all">등록</button>
+                    <div class="flex gap-2 pt-3 border-t">
+                        <button onclick="window.backToBoardList()" class="flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors">취소</button>
+                        <button onclick="window.submitBoardPost()" class="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 shadow-md transition-all">등록</button>
                     </div>
                 </div>
             </div>
             <div id="dashboardView" class="hidden space-y-3 px-0 pt-[0.1125rem] pb-3">
                 <!-- Dashboard content remains same -->
-                <div class="card py-3 px-4 bg-emerald-600 text-white relative overflow-hidden">
+                <div class="card ui-card-pad-lg bg-emerald-600 text-white relative overflow-hidden">
                     <div class="flex flex-col mb-4 relative z-10">
-                        <h3 class="sub-title text-lg tracking-tighter flex items-center gap-2"><span>✨</span>INSIGHT</h3>
-                        <div class="flex bg-emerald-700/40 p-1 rounded-xl mt-3 gap-1">
-                            <button id="btn-dash-7d" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">최근 1주</button>
-                            <button id="btn-dash-week" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">주간</button>
-                            <button id="btn-dash-month" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">월간</button>
-                            <button id="btn-dash-year" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">연간</button>
-                            <button id="btn-dash-custom" class="flex-1 py-1 text-[10px] font-bold text-emerald-100 transition-colors">직접 설정</button>
+                        <div id="insightPeriodTabs" class="insight-period-tabs flex gap-1.5 items-center flex-wrap">
+                            <button id="btn-dash-7d" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">최근 1주</button>
+                            <button id="btn-dash-week" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">주간</button>
+                            <button id="btn-dash-month" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">월간</button>
+                            <button id="btn-dash-year" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">연간</button>
+                            <button id="btn-dash-custom" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">직접 설정</button>
                         </div>
                         <div id="periodNavigator" class="hidden mt-3 flex items-center justify-center gap-3">
                             <button id="periodPrevBtn" onclick="window.navigatePeriod(-1)" class="w-7 h-7 rounded-full bg-white/20 text-white flex items-center justify-center active:bg-white/30 transition-colors">
@@ -504,14 +627,23 @@
                                 <i class="fa-solid fa-chevron-right text-sm"></i>
                             </button>
                         </div>
-                        <div id="customDatePicker" class="hidden mt-3 flex gap-4 items-center justify-center">
-                            <div class="flex gap-1 items-center">
-                                <label class="text-xs font-bold text-white/80 whitespace-nowrap">시작</label>
-                                <input type="date" id="customStart" onchange="window.safeCall('updateCustomDates')" class="bg-white/20 text-white text-sm rounded px-2 py-1 border-none outline-none">
-                            </div>
-                            <div class="flex gap-1 items-center">
-                                <label class="text-xs font-bold text-white/80 whitespace-nowrap">종료</label>
-                                <input type="date" id="customEnd" onchange="window.safeCall('updateCustomDates')" class="bg-white/20 text-white text-sm rounded px-2 py-1 border-none outline-none">
+                        <div id="customDatePicker" class="hidden mt-3 custom-date-range">
+                            <div class="custom-date-range-inner">
+                                <div class="custom-date-section">
+                                    <label class="custom-date-label" for="customStart">시작</label>
+                                    <span class="custom-date-input-wrap">
+                                        <span class="custom-date-placeholder" aria-hidden="true">-.-.-</span>
+                                        <input type="date" id="customStart" onchange="window.safeCall('updateCustomDates'); window.syncCustomDatePlaceholder && window.syncCustomDatePlaceholder();" class="custom-date-input">
+                                    </span>
+                                </div>
+                                <div class="custom-date-divider" aria-hidden="true"></div>
+                                <div class="custom-date-section">
+                                    <label class="custom-date-label" for="customEnd">종료</label>
+                                    <span class="custom-date-input-wrap">
+                                        <span class="custom-date-placeholder" aria-hidden="true">-.-.-</span>
+                                        <input type="date" id="customEnd" onchange="window.safeCall('updateCustomDates'); window.syncCustomDatePlaceholder && window.syncCustomDatePlaceholder();" class="custom-date-input">
+                                    </span>
+                                </div>
                             </div>
                         </div>
                         <div id="weekPickerContainer" class="hidden mt-3 flex gap-2">
@@ -524,21 +656,26 @@
                              <input type="month" id="monthInput" onchange="window.safeCall('updateSelectedMonth')" class="w-full bg-white/20 text-white text-sm rounded p-2 border-none outline-none">
                         </div>
                     </div>
-                    <!-- 캐릭터와 말풍선 영역 -->
-                    <div class="flex gap-3 mt-3 relative z-10 items-center">
-                        <!-- 캐릭터 선택 창 -->
-                        <div class="relative flex-shrink-0 flex flex-col gap-2" style="height: 180px;">
-                            <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="w-[75px] flex-1 bg-white/20 rounded-2xl border-2 border-white/30 flex flex-col items-center justify-center transition-colors overflow-hidden">
-                                <div id="insightCharacterIcon" class="w-full h-full flex items-center justify-center text-2xl font-black text-white">M</div>
+                    <!-- 캐릭터와 말풍선 영역 (트위터 스타일) -->
+                    <div class="insight-area flex gap-3 mt-3 relative z-10 items-start">
+                        <!-- 밀당 캐릭터 선택 창 -->
+                        <div class="insight-character-column relative flex-shrink-0 flex flex-col gap-2 w-[75px]">
+                            <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="insight-character-btn w-[75px] h-[132px] rounded-2xl flex flex-col items-center justify-center transition-colors overflow-hidden">
+                                <div id="insightCharacterIcon" class="w-full h-full flex items-center justify-center text-2xl font-bold mealog-character-m">M</div>
                             </button>
-                            <button id="generateCommentBtn" onclick="window.generateInsightComment()" class="w-[75px] bg-yellow-400 rounded-xl font-bold text-[10px] shadow-md active:bg-yellow-500 transition-colors py-1" style="color: #3E2723;">
-                                COMMENT
+                            <button id="generateCommentBtn" onclick="window.generateInsightComment()" class="insight-comment-trigger w-[75px] rounded-xl font-semibold transition-colors">
+                                분석하기
                             </button>
                         </div>
                         <!-- 말풍선 -->
                         <div class="flex-1 relative min-w-0">
-                            <div id="insightBubble" class="bg-yellow-50/90 border-2 border-white py-3 px-3 relative" style="border-radius: 0.5rem 1.25rem 1.25rem 0.5rem;">
-                                <div id="insightCharacterName" class="text-sm font-black text-emerald-800 mb-2"></div>
+                            <div id="insightBubble" class="insight-bubble relative">
+                                <div class="insight-bubble-header flex items-center justify-between gap-3">
+                                    <span id="insightCharacterName" class="insight-character-name"></span>
+                                    <button id="shareInsightBtn" onclick="window.openShareInsightModal()" class="insight-share-btn insight-share-btn--default flex-shrink-0 hidden">
+                                        <i class="fa-solid fa-share text-xs mr-1"></i>공유
+                                    </button>
+                                </div>
                                 <div id="insightTextContent" class="insight-text-content">
                                     <!-- 안내 메시지가 여기에 표시됩니다 -->
                                 </div>
@@ -549,16 +686,17 @@
                         <div id="stickerEmoji" class="text-2xl">🍽️</div>
                         <div class="flex-1 ml-2 flex items-center justify-between">
                             <div class="flex-1">
-                                <div id="stickerTitle" class="text-[10px] font-bold opacity-70 uppercase tracking-tighter">식사 기록</div>
+                                <div id="stickerTitle" class="ui-kpi-label ui-kpi-label--inverse">식사 기록</div>
                                 <div id="insightStats" class="text-lg font-black leading-none mt-0.5">
                                     <span id="mealRecordCount">0</span><span id="mealRecordTotal" class="text-xs font-bold opacity-60 ml-1">/0</span>
                                     <span id="mealRecordPercent" class="text-xs font-bold opacity-60 ml-1">(0%)</span>
                                 </div>
                             </div>
+                            <div class="sticker-badge-divider" aria-hidden="true"></div>
                             <div class="flex-1 ml-4 flex items-start gap-2">
                                 <div class="text-2xl">🍪</div>
                                 <div class="flex-1">
-                                    <div class="text-[10px] font-bold opacity-70 uppercase tracking-tighter">간식 기록</div>
+                                    <div class="ui-kpi-label ui-kpi-label--inverse">간식 기록</div>
                                     <div id="snackStats" class="text-lg font-black leading-none mt-0.5">
                                         <span id="snackRecordCount">0</span><span class="text-xs font-bold opacity-60 ml-1">회</span>
                                     </div>
@@ -569,25 +707,25 @@
                 </div>
                 
                 <!-- 분석 타입 선택 스위치 -->
-                <div class="card py-1.5 px-4 mt-3">
+                <div class="card ui-card-pad-chip mt-3">
                     <div class="flex p-0.5 rounded-xl gap-1">
-                        <button id="btn-analysis-best" class="flex-1 py-1 text-xs font-bold bg-white text-slate-700 rounded-lg shadow-sm transition-all">Best</button>
                         <button id="btn-analysis-main" class="flex-1 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">식사</button>
                         <button id="btn-analysis-snack" class="flex-1 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">간식</button>
+                        <button id="btn-analysis-best" class="flex-1 py-1 text-xs font-bold bg-white text-slate-700 rounded-lg shadow-sm transition-all">Best</button>
                     </div>
                 </div>
                 
                 <!-- Best 분석 섹션 -->
                 <div id="bestAnalysisSection" class="mt-2">
                     <div class="space-y-3">
-                        <div class="card py-2 px-4">
-                            <div class="flex justify-between items-center mb-2">
+                        <div class="card ui-card-pad-compact">
+                            <div class="ui-card-head">
                                 <div class="flex items-center gap-2">
-                                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">BEST 기간</h3>
+                                    <h3 class="ui-section-label">BEST 기간</h3>
                                     <span id="bestPeriodLabel" class="text-xs text-slate-300"></span>
                                 </div>
-                                <button id="shareBestBtn" onclick="window.openShareBestModal()" class="hidden text-xs font-bold px-3 py-1.5 active:opacity-70 transition-colors ml-2 text-blue-600">
-                                    <i class="fa-solid fa-share text-[10px] mr-1"></i>공유하기
+                                <button id="shareBestBtn" onclick="window.openShareBestModal()" class="hidden text-xs font-bold px-3 py-1.5 active:opacity-70 transition-colors ml-2 text-slate-700">
+                                    <i class="fa-solid fa-share text-[12px] mr-1"></i>공유하기
                                 </button>
                             </div>
                             <div id="bestMealsContainer" class="space-y-2"></div>
@@ -598,24 +736,24 @@
                 <!-- 식사 분석 섹션 -->
                 <div id="mainAnalysisSection" class="mt-2 hidden">
                     <div class="space-y-0">
-                        <div class="card py-2.5 px-4">
-                            <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">식사 방식</h3><button onclick="window.openDetailModal('mealType', '식사 방식 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                        <div class="card ui-card-pad">
+                            <div class="ui-card-head analytics-card-head"><h3 class="ui-section-label">어떻게</h3><button onclick="window.openDetailModal('mealType', '어디서 / 시간대')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                             <div id="propChartContainer"></div>
                         </div>
-                <div class="card py-2.5 px-4">
-                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">메뉴 카테고리</h3><button onclick="window.openDetailModal('category', '메뉴 카테고리 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                <div class="card ui-card-pad">
+                    <div class="ui-card-head analytics-card-head"><h3 class="ui-section-label">무엇을</h3><button onclick="window.openDetailModal('category', '자주 먹은 메뉴 / 시간대')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                     <div id="categoryChartContainer"></div>
                 </div>
-                <div class="card py-2.5 px-4">
-                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">함께한 즐거움</h3><button onclick="window.openDetailModal('withWhom', '함께한 사람 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                <div class="card ui-card-pad">
+                    <div class="ui-card-head analytics-card-head"><h3 class="ui-section-label">함께</h3><button onclick="window.openDetailModal('withWhom', '누구와 / 시간대')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                     <div id="mateChartContainer"></div>
                 </div>
-                <div class="card py-2.5 px-4">
-                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">만족도</h3><button onclick="window.openDetailModal('rating', '만족도 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                <div class="card ui-card-pad">
+                    <div class="ui-card-head analytics-card-head"><h3 class="ui-section-label">만족도</h3><button onclick="window.openDetailModal('rating', '만족도 통계')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                     <div id="ratingChartContainer"></div>
                 </div>
-                <div class="card py-2.5 px-4">
-                    <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">포만감</h3><button onclick="window.openDetailModal('satiety', '포만감 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                <div class="card ui-card-pad">
+                    <div class="ui-card-head analytics-card-head"><h3 class="ui-section-label">포만감</h3><button onclick="window.openDetailModal('satiety', '포만감 통계')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                     <div id="satietyChartContainer"></div>
                 </div>
                     </div>
@@ -624,13 +762,140 @@
                 <!-- 간식 분석 섹션 -->
                 <div id="snackAnalysisSection" class="mt-2 hidden">
                     <div class="space-y-0">
-                        <div class="card py-2.5 px-4">
-                            <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">간식 유형</h3><button onclick="window.openDetailModal('snackType', '간식 유형 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                        <div class="card ui-card-pad">
+                            <div class="ui-card-head analytics-card-head"><h3 class="ui-section-label">어디서</h3><button onclick="window.openDetailModal('snackPlace', '어디서 / 시간대')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                            <div id="snackPlaceChartContainer"></div>
+                        </div>
+                        <div class="card ui-card-pad">
+                            <div class="ui-card-head analytics-card-head"><h3 class="ui-section-label">무엇을</h3><button onclick="window.openDetailModal('snackType', '자주 먹은 메뉴 / 시간대')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                             <div id="snackTypeChartContainer"></div>
                         </div>
-                        <div class="card py-2.5 px-4">
-                            <div class="flex justify-between items-center mb-2"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-tighter">만족도</h3><button onclick="window.openDetailModal('snackRating', '간식 만족도 통계')" class="text-xs text-slate-600 font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                        <div class="card ui-card-pad">
+                            <div class="ui-card-head analytics-card-head"><h3 class="ui-section-label">만족도</h3><button onclick="window.openDetailModal('snackRating', '간식 만족도 통계')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                             <div id="snackRatingChartContainer"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 사용자 설정 뷰 (다른 탭과 동일하게 전환) -->
+            <div id="settingsView" class="hidden flex flex-col overflow-hidden min-h-0">
+                <div class="flex px-4 pt-2 pb-0 border-b border-slate-200 flex-shrink-0 bg-white">
+                    <button id="settingsTabProfile" class="settings-tab active px-3 py-2.5 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors">
+                        <i class="fa-solid fa-user mr-2"></i>프로필
+                    </button>
+                    <button id="settingsTabTags" class="settings-tab px-3 py-2.5 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors">
+                        <i class="fa-solid fa-tags mr-2"></i>태그 관리
+                    </button>
+                    <button id="settingsTabShortcuts" class="settings-tab px-3 py-2.5 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors">
+                        <i class="fa-solid fa-keyboard mr-2"></i>밀당 메모
+                    </button>
+                </div>
+                <div class="flex-1 overflow-y-auto min-h-0 px-4 pb-28 settings-view-content">
+                    <!-- 프로필 탭 -->
+                    <div id="settingsTabContentProfile" class="settings-tab-content settings-tab-content-fullwidth profile-settings-list pt-4 pb-8">
+                        <div class="settings-section-container">
+                            <div id="accountSection" class="profile-account-section"></div>
+                            <div class="profile-settings-header flex items-center justify-between py-3 border-b border-slate-100">
+                            <h3 class="text-sm font-bold text-slate-800">프로필</h3>
+                            <div class="flex items-center gap-2">
+                                <button id="editProfileSettingsBtn" class="profile-settings-action px-3 py-1.5 text-sm font-bold text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors">수정</button>
+                                <button id="cancelProfileSettingsBtn" class="hidden px-3 py-1.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-full transition-colors">취소</button>
+                                <button id="saveProfileSettingsBtn" class="hidden px-3 py-1.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-full transition-colors">저장</button>
+                            </div>
+                        </div>
+                        <div class="profile-settings-row border-b border-slate-100">
+                            <div class="profile-settings-label">프로필 사진</div>
+                            <div class="profile-settings-field flex items-center gap-4 py-3">
+                                <div id="textSection">
+                                    <div class="flex items-center gap-4">
+                                        <div id="textPreview" class="profile-avatar w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-base font-bold text-slate-600 flex-shrink-0">?</div>
+                                        <div class="min-w-0">
+                                            <p class="text-sm text-slate-600">닉네임 첫 글자</p>
+                                            <p class="text-xs text-slate-400 mt-0.5">닉네임 변경 시 자동 반영</p>
+                                        </div>
+                                        <button id="textSectionPhotoBtn" type="button" class="profile-settings-btn text-sm font-bold text-slate-700 hover:text-slate-900">사진 설정</button>
+                                    </div>
+                                </div>
+                                <div id="photoSection" class="hidden">
+                                    <div class="flex items-center gap-4">
+                                        <div id="photoPreview" class="profile-avatar w-12 h-12 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center flex-shrink-0">
+                                            <i class="fa-solid fa-camera text-slate-400 text-base"></i>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <button id="photoSelectBtn" type="button" class="profile-settings-btn text-sm font-bold text-slate-700 hover:text-slate-900">사진 선택</button>
+                                            <button id="photoDeleteBtn" type="button" class="hidden text-sm font-bold text-red-500 hover:text-red-600">삭제</button>
+                                        </div>
+                                        <input type="file" id="photoInput" class="hidden" accept="image/*" onchange="window.safeCall('handlePhotoUpload', event)">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="profile-settings-row border-b border-slate-100">
+                            <label class="profile-settings-label" for="settingNickname">닉네임</label>
+                            <div class="profile-settings-field">
+                                <input type="text" id="settingNickname" class="profile-settings-input" placeholder="닉네임을 입력하세요">
+                            </div>
+                        </div>
+                        <div class="profile-settings-row border-b border-slate-100">
+                            <label class="profile-settings-label" for="settingBio">소개</label>
+                            <div class="profile-settings-field">
+                                <textarea id="settingBio" class="profile-settings-input profile-settings-textarea" placeholder="자신을 소개해주세요" maxlength="200" rows="3"></textarea>
+                                <p class="profile-settings-hint text-right mt-1"><span id="bioCharCount">0</span>/200</p>
+                            </div>
+                        </div>
+                        <div class="profile-settings-row border-b border-slate-100">
+                            <label class="profile-settings-label" for="settingBirthdate">생년월일</label>
+                            <div class="profile-settings-field">
+                                <input type="date" id="settingBirthdate" class="profile-settings-input">
+                                <p id="birthdateHint" class="profile-settings-hint mt-1">가입 후 1회만 수정 가능</p>
+                            </div>
+                        </div>
+                        <div class="profile-settings-row border-b border-slate-100">
+                            <div class="profile-settings-label">라이프 스타일</div>
+                            <div class="profile-settings-field py-3">
+                                <input type="hidden" id="settingLifestyle" value="">
+                                <div class="profile-lifestyle-chips flex flex-wrap gap-2">
+                                    <button type="button" class="settings-lifestyle-btn profile-lifestyle-chip" data-value="학생">학생</button>
+                                    <button type="button" class="settings-lifestyle-btn profile-lifestyle-chip" data-value="주부">주부</button>
+                                    <button type="button" class="settings-lifestyle-btn profile-lifestyle-chip" data-value="직장인">직장인</button>
+                                    <button type="button" class="settings-lifestyle-btn profile-lifestyle-chip" data-value="자영업">자영업</button>
+                                    <button type="button" class="settings-lifestyle-btn profile-lifestyle-chip" data-value="프리랜서">프리랜서</button>
+                                    <button type="button" class="settings-lifestyle-btn profile-lifestyle-chip" data-value="기타">기타</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="profile-settings-footer pt-4 space-y-2 border-t border-slate-100">
+                            <div id="logoutBtnArea" class="hidden">
+                                <button onclick="window.confirmLogout()" class="profile-settings-footer-btn profile-logout-btn w-full py-3 text-sm font-bold text-slate-700 bg-slate-100 border border-slate-200 hover:bg-slate-200 transition-colors">로그아웃</button>
+                            </div>
+                            <div id="versionInfo" class="text-center text-xs text-slate-400 space-y-0.5 py-2">
+                                <div>버전 <span id="versionNumber">-</span></div>
+                                <div>배포 <span id="buildDate">-</span></div>
+                            </div>
+                            <div id="deleteAccountBtnArea" class="hidden pt-2">
+                                <button onclick="window.confirmDeleteAccount()" class="w-full py-2 text-xs text-slate-400 hover:text-slate-600 underline">계정 탈퇴</button>
+                            </div>
+                        </div>
+                        </div>
+                    </div>
+                    <div id="settingsTabContentTags" class="settings-tab-content settings-tab-content-fullwidth hidden pt-4 space-y-4 pb-8">
+                        <div class="settings-section-container">
+                            <h3 class="text-xs font-black text-slate-400 mb-4 uppercase tracking-widest">나만의 태그 관리</h3>
+                            <div id="favoriteTagsSection"></div>
+                        </div>
+                    </div>
+                    <div id="settingsTabContentShortcuts" class="settings-tab-content settings-tab-content-fullwidth hidden pt-4 space-y-4 pb-8">
+                        <div class="settings-section-container">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest">밀당 메모</h3>
+                                <button id="saveShortcutsBtn" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-md whitespace-nowrap active:bg-emerald-700 transition-colors">저장</button>
+                            </div>
+                            <div class="bg-slate-50 p-3 rounded-2xl space-y-2">
+                                <p class="text-sm text-slate-500 mb-2">밀당 캐릭터들이 식단을 분석할 때 참고할 정보를 입력해주세요. 예: 메뉴 약어, 본인의 상태, 식습관 등</p>
+                                <textarea id="shortcutsInput" placeholder="예: &#10;- '치밥' = 치킨마요덮밥&#10;- '커피' = 아메리카노&#10;- 다이어트 중&#10;- 채식주의자&#10;- 매운 음식 좋아함" rows="10" class="w-full bg-white p-2.5 rounded-xl border-none outline-none text-sm resize-none focus:ring-2 focus:ring-slate-400"></textarea>
+                                <p class="text-xs text-slate-400">이 정보는 밀당 캐릭터들이 식단을 분석할 때 자동으로 참고됩니다.</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -638,111 +903,19 @@
         </main>
 
         <nav class="bottom-nav">
-            <button id="nav-dashboard" class="text-slate-300 flex justify-center items-center py-1"><i class="fa-solid fa-chart-pie text-xl"></i></button>
-            <button id="nav-timeline" class="text-emerald-600 flex justify-center items-center py-1"><i class="fa-solid fa-list-ul text-xl"></i></button>
-            <button id="nav-gallery" class="text-slate-300 flex justify-center items-center py-1"><i class="fa-solid fa-images text-xl"></i></button>
-            <button id="nav-board" class="text-slate-300 flex justify-center items-center py-1"><i class="fa-solid fa-comments text-xl"></i></button>
+            <button id="nav-dashboard" class="text-slate-300 flex justify-center items-center py-1 flex-1"><i class="fa-solid fa-chart-pie text-xl"></i></button>
+            <button id="nav-gallery" class="text-slate-300 flex justify-center items-center py-1 flex-1"><i class="fa-solid fa-images text-xl"></i></button>
+            <button id="nav-timeline" class="text-slate-600 flex justify-center items-center py-1 flex-1"><i class="fa-solid fa-list-ul text-xl"></i></button>
+            <button id="nav-board" class="text-slate-300 flex justify-center items-center py-1 flex-1"><i class="fa-solid fa-comments text-xl"></i></button>
+            <button id="nav-settings" type="button" class="text-slate-300 flex justify-center items-center py-1 flex-1 rounded-full overflow-hidden">
+                <span id="navProfileIcon" class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-300 flex-shrink-0 overflow-hidden border border-slate-400 text-base font-bold text-slate-600"></span>
+            </button>
         </nav>
     </div>
 
-    <!-- 3. Settings Page (UI 구조 변경) -->
-    <div id="settingsPage" class="hidden fixed inset-0 z-[250] bg-white flex flex-col overflow-hidden">
-        <div class="border-b sticky top-0 bg-white z-10">
-            <div class="p-6 pb-3 flex justify-between items-center">
-                <div class="flex items-center gap-3"><button id="settingsCloseBtn"><i class="fa-solid fa-arrow-left text-xl text-slate-400"></i></button><h2 class="text-lg font-bold text-slate-800 tracking-tight">사용자 설정</h2></div>
-            </div>
-            <!-- 탭 버튼 (바 타입) -->
-            <div class="flex px-6 pb-0 border-b border-slate-200">
-                <button id="settingsTabProfile" class="settings-tab active px-4 py-3 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors">
-                    <i class="fa-solid fa-user mr-2"></i>프로필
-                </button>
-                <button id="settingsTabTags" class="settings-tab px-4 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors">
-                    <i class="fa-solid fa-tags mr-2"></i>태그 관리
-                </button>
-            </div>
-        </div>
-        <div class="flex-1 overflow-y-auto">
-            <!-- 프로필 탭 -->
-            <div id="settingsTabContentProfile" class="settings-tab-content p-6 space-y-8 pb-32">
-                <!-- 계정 연동 섹션 -->
-                <div id="accountSection"></div>
-
-                <div>
-                    <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest">프로필 설정</h3>
-                        <button id="saveProfileSettingsBtn" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-md whitespace-nowrap active:bg-emerald-700 transition-colors">저장</button>
-                    </div>
-                    
-                    <!-- 프로필 타입 선택 -->
-                    <div class="flex gap-2 mb-4">
-                        <button id="profileTypeEmoji" class="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors">
-                            이모지
-                        </button>
-                        <button id="profileTypePhoto" class="flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors">
-                            사진 직접 등록
-                        </button>
-                    </div>
-                    
-                    <!-- 이모지 선택 영역 -->
-                    <div id="emojiSection">
-                        <div id="iconSelector" class="flex gap-3 overflow-x-auto pb-2"></div>
-                    </div>
-                    
-                    <!-- 사진 직접 등록 영역 -->
-                    <div id="photoSection" class="hidden">
-                        <div class="flex flex-col items-center gap-3 mb-4">
-                            <div id="photoPreview" class="w-20 h-20 rounded-full bg-slate-100 border-2 border-slate-200 overflow-hidden flex items-center justify-center">
-                                <i class="fa-solid fa-camera text-slate-400 text-xl"></i>
-                            </div>
-                            <button onclick="document.getElementById('photoInput').click()" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors">
-                                사진 선택
-                            </button>
-                            <input type="file" id="photoInput" class="hidden" accept="image/*" onchange="window.safeCall('handlePhotoUpload', event)">
-                        </div>
-                    </div>
-                    
-                    <div class="bg-slate-50 p-4 rounded-2xl space-y-3 mt-4">
-                        <label class="text-[10px] font-bold text-slate-400 block uppercase">닉네임</label>
-                        <input type="text" id="settingNickname" class="w-full bg-white p-3 rounded-xl border-none outline-none font-bold text-sm">
-                    </div>
-                    
-                    <div class="bg-slate-50 p-4 rounded-2xl space-y-3 mt-4">
-                        <label class="text-[10px] font-bold text-slate-400 block uppercase">소개</label>
-                        <textarea id="settingBio" placeholder="자신을 소개해주세요" maxlength="200" rows="4" class="w-full bg-white p-3 rounded-xl border-none outline-none text-sm resize-none focus:ring-2 focus:ring-slate-400"></textarea>
-                        <p class="text-[10px] text-slate-400 text-right"><span id="bioCharCount">0</span>/200</p>
-                    </div>
-                </div>
-                
-                <div class="space-y-6">
-                    <!-- 로그아웃 버튼 영역 -->
-                    <div id="logoutBtnArea" class="hidden pt-4 border-t border-slate-100 space-y-2">
-                        <button onclick="window.confirmLogout()" class="w-full py-3 bg-slate-100 text-slate-500 rounded-xl text-xs font-bold">로그아웃</button>
-                        <button onclick="window.confirmDeleteAccount()" class="w-full py-2 text-slate-400 text-[10px] underline">계정 탈퇴</button>
-                    </div>
-                    
-                    <!-- 버전 정보 영역 -->
-                    <div class="pt-4 border-t border-slate-100">
-                        <div id="versionInfo" class="text-center text-[10px] text-slate-400 space-y-1">
-                            <div>버전 <span id="versionNumber">-</span></div>
-                            <div>배포 <span id="buildDate">-</span></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- 태그 관리 탭 -->
-            <div id="settingsTabContentTags" class="settings-tab-content hidden p-6 space-y-8 pb-32">
-                <div>
-                    <h3 class="text-xs font-black text-slate-400 mb-4 uppercase tracking-widest">나만의 태그 관리</h3>
-                    <div id="favoriteTagsSection"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
     <!-- Logout Confirm Modal -->
     <div id="logoutConfirmModal" class="hidden fixed inset-0 z-[400] bg-slate-900/40 flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl transform transition-all scale-100">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl transform transition-all scale-100">
             <h3 class="text-lg font-bold text-slate-800 mb-2">로그아웃 하시겠어요?</h3>
             <p class="text-sm text-slate-500 mb-6">기록은 안전하게 저장됩니다.</p>
             <div class="flex gap-3">
@@ -754,7 +927,7 @@
 
     <!-- Delete Account Confirm Modal -->
     <div id="deleteAccountConfirmModal" class="hidden fixed inset-0 z-[400] bg-slate-900/40 flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl transform transition-all scale-100">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl transform transition-all scale-100">
             <h3 class="text-lg font-bold text-slate-800 mb-2">계정을 탈퇴하시겠어요?</h3>
             <p class="text-sm text-slate-500 mb-4">탈퇴 시 모든 기록과 데이터가 영구적으로 삭제되며 복구할 수 없습니다.</p>
             <div class="flex gap-3">
@@ -766,7 +939,7 @@
 
     <!-- Entry Modal -->
     <div id="entryModal" class="hidden fixed inset-0 bg-slate-900/60 z-[300] flex items-end">
-        <div class="w-full bg-white rounded-t-[2.5rem] flex flex-col max-h-[92vh]">
+        <div class="w-full max-w-md mx-auto bg-white rounded-t-[2.5rem] flex flex-col max-h-[92vh]">
             <div class="p-6 border-b flex justify-between items-center">
                 <h2 id="modalTitle" class="text-lg font-bold text-slate-800 tracking-tight">기록하기</h2>
                 <button onclick="window.closeModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
@@ -788,13 +961,13 @@
                     </div>
                     
                     <div class="p-3 bg-orange-50/50 rounded-2xl border border-orange-100 mb-2">
-                        <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">식사 방식</span>
+                        <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">어떻게</span>
                         <div id="typeChips" class="flex flex-wrap gap-2 mb-1.5"></div>
                         <div class="relative">
                             <button id="kakaoSearchBtn" onclick="window.openKakaoPlaceSearch()" class="hidden absolute left-2 top-1/2 -translate-y-1/2 bg-slate-600 text-white rounded-lg p-2 z-10 hover:bg-slate-700 transition-colors">
                                 <i class="fa-solid fa-magnifying-glass text-sm"></i>
                             </button>
-                            <input id="placeInput" type="text" placeholder="식당명이나 장소 (예: 스타벅스)" class="w-full p-3 pl-12 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
+                            <input id="placeInput" type="text" placeholder="어디서 (예: 스타벅스)" class="w-full p-3 pl-12 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
                         </div>
                         <div id="restaurantSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
                     </div>
@@ -854,8 +1027,12 @@
                         <input type="file" id="snackImageInput" class="hidden" accept="image/*" multiple onchange="window.safeCall('handleMultipleImages', event)">
                     </div>
                     <div class="p-3 bg-slate-50 rounded-2xl border border-slate-200 mb-2">
-                        <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">간식 정보</span>
-                        <div id="snackTypeChips" class="flex flex-wrap gap-2 mb-1.5"></div>
+                        <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">어디서</span>
+                        <div id="snackPlaceTypeChips" class="flex flex-wrap gap-2 mb-1.5"></div>
+                        <input id="snackPlaceInput" type="text" placeholder="어디서 (선택)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
+                        <div id="snackPlaceSuggestions" class="flex flex-wrap gap-2 mt-1 mb-1 min-h-[32px] overflow-x-auto pb-0.5 items-center" data-input-id="snackPlaceInput"></div>
+                        <span class="text-sm font-extrabold text-slate-600 mt-2 mb-1.5 block uppercase">무엇을</span>
+                        <div id="snackTypeChips" class="flex flex-wrap gap-2 mb-2"></div>
                         <input id="snackDetailInput" type="text" placeholder="무엇을 드셨나요?" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
                         <div id="snackSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
                     </div>
@@ -880,7 +1057,7 @@
             <div class="p-6 border-t flex gap-2">
                 <button id="btnDelete" onclick="window.deleteEntry()" class="hidden w-14 h-14 bg-red-50 text-red-400 rounded-xl flex items-center justify-center active:bg-red-100 transition-colors"><i class="fa-solid fa-trash-can"></i></button>
                 <div class="flex-1 flex items-center gap-2">
-                    <button onclick="window.saveEntry()" id="btnSave" class="flex-1 py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all">기록 완료</button>
+                    <button onclick="window.saveEntry()" id="btnSave" class="flex-1 py-4 bg-slate-900 text-white rounded-xl font-bold active:bg-slate-800 shadow-lg transition-all">기록 완료</button>
                     <button id="sharePhotoIndicator" onclick="window.toggleSharePhoto()" class="hidden flex items-center justify-center w-14 h-14 rounded-xl border-2 active:scale-95 transition-all">
                         <i class="fa-solid fa-share text-lg"></i>
                     </button>
@@ -889,19 +1066,24 @@
         </div>
     </div>
 
-    <!-- Detail Analysis Modal -->
-    <div id="detailModal" class="hidden fixed inset-0 bg-slate-900/60 z-[350] flex items-end">
-        <div class="w-full bg-white rounded-t-[2rem] p-6 max-h-[80vh] overflow-y-auto">
-            <div class="flex justify-between mb-4"><h2 id="detailModalTitle" class="font-bold">상세 통계</h2><button onclick="window.closeDetailModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            <div id="detailContent"></div>
+    <!-- Detail Analysis Modal (팝업) -->
+    <div id="detailModal" class="hidden fixed inset-0 bg-slate-900/60 z-[350] flex items-center justify-center py-4">
+        <div class="w-full max-w-md mx-[10px] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[85vh]">
+            <div id="detailModalHeader" class="flex justify-between items-center p-4 pb-0 flex-shrink-0">
+                <h2 id="detailModalTitle" class="font-bold text-slate-800">상세 통계</h2>
+            </div>
+            <div id="detailContent" class="flex-1 overflow-y-auto p-4 pt-3 min-h-0"></div>
+            <div class="p-4 pt-0 border-t border-slate-200 flex-shrink-0">
+                <button type="button" onclick="window.closeDetailModal()" class="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-200 active:bg-slate-300 transition-colors">닫기</button>
+            </div>
         </div>
     </div>
 
     <!-- Character Select Modal -->
     <div id="characterSelectModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-end">
-        <div class="w-full bg-white rounded-t-[2rem] flex flex-col max-h-[60vh]">
+        <div class="w-full max-w-md mx-auto bg-white rounded-t-[2rem] flex flex-col max-h-[60vh]">
             <div class="p-6 border-b flex justify-between items-center">
-                <h2 class="text-lg font-bold text-slate-800 tracking-tight">캐릭터 선택</h2>
+                <h2 class="text-lg font-bold text-slate-800 tracking-tight">밀당(MEAL黨) 캐릭터 선택</h2>
                 <button onclick="window.closeCharacterSelectModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
             </div>
             <div class="p-6 overflow-y-auto">
@@ -914,9 +1096,9 @@
 
     <!-- Character Select Popup (Center Modal) -->
     <div id="characterSelectPopup" class="hidden fixed inset-0 bg-slate-900/60 z-[9999] flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 w-full max-w-[320px]">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 w-full max-w-md">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-lg font-bold text-slate-800 tracking-tight">캐릭터 선택</h2>
+                <h2 class="text-lg font-bold text-slate-800 tracking-tight">밀당(MEAL黨) 캐릭터 선택</h2>
                 <button onclick="window.closeCharacterSelectModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
                     <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
@@ -942,22 +1124,90 @@
         </div>
     </div>
 
-    <!-- Best Share Modal -->
-    <div id="bestShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-end">
-        <div class="w-full bg-white rounded-t-[2rem] flex flex-col max-h-[92vh]">
+    <!-- Best Share Modal (팝업: 중앙 정렬, 포지션 간섭 최소화) -->
+    <div id="bestShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center p-4">
+        <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl">
+            <div id="bestShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center z-20">
+                <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>
+                <p class="text-slate-600 font-bold">공유 중...</p>
+            </div>
             <div class="p-6 border-b flex justify-between items-center">
                 <h2 class="text-lg font-bold text-slate-800 tracking-tight">베스트 공유하기</h2>
                 <button onclick="window.closeShareBestModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
             </div>
-            <div class="p-6 space-y-4 overflow-y-auto pb-10">
-                <div id="bestSharePreview" class="bg-slate-50 rounded-2xl p-4"></div>
-                <div>
+            <div class="space-y-4 overflow-y-auto pb-10">
+                <div id="bestSharePreview" class="bg-slate-50 rounded-2xl" style="padding: 3px;"></div>
+                <div class="px-6">
                     <label class="text-sm font-bold text-slate-600 block mb-2">코멘트 (선택사항)</label>
                     <textarea id="bestShareComment" placeholder="이번 주/월의 베스트에 대한 코멘트를 입력하세요..." class="w-full p-3 bg-slate-50 rounded-xl text-sm border border-transparent focus:border-slate-400 transition-all resize-none" rows="3"></textarea>
                 </div>
             </div>
             <div class="p-6 border-t">
-                <button id="bestShareSubmitBtn" onclick="window.shareBestToFeed()" class="w-full py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all">공유하기</button>
+                <button id="bestShareSubmitBtn" onclick="window.shareBestToFeed()" class="w-full py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all">공유하기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Insight Share Modal (팝업: 중앙 정렬, 포지션 간섭 최소화) -->
+    <div id="insightShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center p-4">
+        <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl">
+            <div id="insightShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center z-20">
+                <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>
+                <p class="text-slate-600 font-bold">공유 중...</p>
+            </div>
+            <div class="p-6 border-b flex justify-between items-center">
+                <h2 class="text-lg font-bold text-slate-800 tracking-tight">밀당(MEAL-DANG)들의 참견 공유하기</h2>
+                <button onclick="window.closeShareInsightModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
+            </div>
+            <div class="space-y-4 overflow-y-auto pb-10">
+                <div id="insightSharePreview" class="bg-slate-50 rounded-2xl" style="padding: 3px;"></div>
+                <div class="px-6">
+                    <label class="text-sm font-bold text-slate-600 block mb-2">코멘트 (선택사항)</label>
+                    <textarea id="insightShareComment" placeholder="밀당(MEAL-DANG)들의 참견에 대한 코멘트를 입력하세요..." class="w-full p-3 bg-slate-50 rounded-xl text-sm border border-transparent focus:border-slate-400 transition-all resize-none" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="p-6 border-t">
+                <button id="insightShareSubmitBtn" onclick="window.shareInsightToFeed()" class="w-full py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all">공유하기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Photo Edit Modal -->
+    <div id="photoEditModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center p-4">
+        <div class="w-full max-w-md bg-white rounded-2xl flex flex-col max-h-[90vh]">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h2 class="text-lg font-bold text-slate-800">사진 편집</h2>
+                <button onclick="window.closePhotoEditModal()" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <div class="p-4 flex-1 overflow-hidden flex flex-col">
+                <div id="photoEditCanvasContainer" class="flex-1 bg-slate-100 rounded-xl overflow-hidden relative mb-4" style="min-height: 300px;">
+                    <canvas id="photoEditCanvas" class="w-full h-full"></canvas>
+                    <div id="photoEditCropArea" class="absolute border-2 border-emerald-500 border-dashed pointer-events-none" style="display: none;"></div>
+                </div>
+                <div class="space-y-2">
+                    <div class="text-sm text-slate-600 mb-2">사진을 드래그하여 보이는 영역을 조절하세요</div>
+                    <div class="flex gap-2 mb-2">
+                        <button onclick="window.zoomOutPhotoEdit()" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm">
+                            <i class="fa-solid fa-magnifying-glass-minus"></i> 축소
+                        </button>
+                        <button onclick="window.zoomInPhotoEdit()" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm">
+                            <i class="fa-solid fa-magnifying-glass-plus"></i> 확대
+                        </button>
+                        <button onclick="window.rotatePhotoEdit()" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm">
+                            <i class="fa-solid fa-rotate-right"></i> 회전
+                        </button>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="window.resetPhotoEdit()" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm">
+                            초기화
+                        </button>
+                        <button onclick="window.savePhotoEdit()" class="flex-1 py-2 bg-emerald-600 text-white rounded-xl font-semibold text-sm">
+                            저장
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

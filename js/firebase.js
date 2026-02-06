@@ -1,8 +1,9 @@
 // Firebase 초기화 및 설정
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getAuth, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { getStorage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
+import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyDMhxZHK7CgtiUACy9fOIiT7IDUW1uAWBc",
@@ -16,11 +17,75 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+// 자동 로그인: 브라우저를 닫아도 로그인 상태 유지 (LocalStorage 사용)
+setPersistence(auth, browserLocalPersistence).catch((e) => {
+    console.warn('Auth persistence 설정 실패:', e);
+});
+// 이메일 인증·비밀번호 재설정 메일을 한글로 발송
+auth.languageCode = 'ko';
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+
+// Functions 초기화 (리전 명시: us-central1)
+// 배포된 Functions가 us-central1에 있으므로 해당 리전 사용
+export const functions = getFunctions(app, 'us-central1');
 export const appId = 'mealog-r0';
 export const apiKey = "";
 
+// Callable Functions 참조
+export const callableFunctions = {
+    createBoardPost: httpsCallable(functions, 'createBoardPost'),
+    updateBoardPost: httpsCallable(functions, 'updateBoardPost'),
+    deleteBoardPost: httpsCallable(functions, 'deleteBoardPost'),
+    addBoardComment: httpsCallable(functions, 'addBoardComment'),
+    addBoardCommentAsAdmin: httpsCallable(functions, 'addBoardCommentAsAdmin'),
+    deleteBoardComment: httpsCallable(functions, 'deleteBoardComment'),
+    addPostComment: httpsCallable(functions, 'addPostComment'),
+    deletePostComment: httpsCallable(functions, 'deletePostComment'),
+    submitPostReport: httpsCallable(functions, 'submitPostReport'),
+    sharePhotos: httpsCallable(functions, 'sharePhotos'),
+    unsharePhotos: httpsCallable(functions, 'unsharePhotos'),
+    createDailyShare: httpsCallable(functions, 'createDailyShare'),
+    createBestShare: httpsCallable(functions, 'createBestShare'),
+    createInsightShare: httpsCallable(functions, 'createInsightShare'),
+    getStorageImageAsBase64: httpsCallable(functions, 'getStorageImageAsBase64'),
+    backfillUserStats: httpsCallable(functions, 'backfillUserStats')
+};
 
+// App Check 초기화 (reCAPTCHA v3 사용)
+// 로컬 개발 환경에서는 App Check를 비활성화 (localhost, 127.0.0.1, 0.0.0.0)
+// 에러가 발생해도 앱이 계속 작동하도록 try-catch로 감쌈
+(async () => {
+    try {
+        // 로컬 개발 환경 체크
+        const isLocalhost = window.location.hostname === 'localhost' || 
+                           window.location.hostname === '127.0.0.1' || 
+                           window.location.hostname === '0.0.0.0' ||
+                           window.location.hostname === '';
+        
+        if (isLocalhost) {
+            console.log('🔧 로컬 개발 환경: App Check 비활성화');
+            return;
+        }
+        
+        const { initializeAppCheck, ReCaptchaV3Provider } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js");
+        const appCheck = initializeAppCheck(app, {
+            provider: new ReCaptchaV3Provider('6LdjYVUsAAAAAP7RvrJgOEp-7wvDpmoC8Bll9-Kw'),
+            isTokenAutoRefreshEnabled: true
+        });
+        console.log('✅ App Check 초기화 완료');
+    } catch (e) {
+        console.warn('⚠️ App Check 초기화 실패 (계속 진행):', e);
+        // App Check 실패해도 앱은 계속 작동
+    }
+})();
 
-
+// 에러 리포팅 시스템 초기화
+(async () => {
+    try {
+        const { initErrorReporting } = await import('./error-reporting.js');
+        await initErrorReporting();
+    } catch (e) {
+        console.warn('⚠️ 에러 리포팅 초기화 실패:', e);
+    }
+})();

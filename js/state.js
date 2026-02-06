@@ -13,6 +13,7 @@ export const appState = {
     // 리스너 관리
     dataUnsubscribe: null,
     settingsUnsubscribe: null,
+    statsUnsubscribe: null,
     sharedPhotosUnsubscribe: null,
     tempSettings: null,
     
@@ -21,7 +22,10 @@ export const appState = {
     currentTab: 'timeline',
     pageDate: new Date(),
     galleryFilterUserId: null, // 앨범 탭에서 필터링된 사용자 ID
+    galleryFilterPostId: null,  // 알림에서 클릭 시 해당 게시물만 보기
+    galleryFilterTab: 'moment',  // 사용자 프로필 뷰에서 탭: 'moment' | 'board' (모먼트 | 밀톡)
     galleryTraceFilter: null, // 앨범 흔적 필터: null | 'like' | 'comment' | 'bookmark'
+    boardTraceFilter: null,   // 밀톡 흔적 필터: null | 'like' | 'comment' | 'bookmark'
     
     // 편집 상태 (모달 관련)
     currentEditingId: null,
@@ -58,6 +62,7 @@ export const appState = {
         sharedPhotos: [], // 공유된 사진 목록 (전역)
         loadedDates: [],
         loadedMealsDateRange: null,
+        dailyStats: null, // 트래커·대시보드용 일별 집계 (users/{uid}/config/stats)
     },
     
     // 인증 상태
@@ -113,6 +118,12 @@ Object.defineProperty(window, 'emailAuthMode', {
 Object.defineProperty(window, 'loadedMealsDateRange', {
     get: () => appState._data.loadedMealsDateRange,
     set: (value) => { appState._data.loadedMealsDateRange = value; },
+    configurable: true
+});
+
+Object.defineProperty(window, 'dailyStats', {
+    get: () => appState._data.dailyStats,
+    set: (value) => { appState._data.dailyStats = value; },
     configurable: true
 });
 

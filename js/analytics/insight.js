@@ -1,9 +1,11 @@
 // 인사이트 코멘트 관련 함수들
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
+import { dbOps } from '../db.js';
 import { GEMINI_API_KEY as DEFAULT_API_KEY } from '../config.default.js';
 import { db, appId } from '../firebase.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { captureWithGhostStrategy } from '../utils.js';
 
 // escapeHtml 함수 (필요한 경우)
 function escapeHtml(text) {
@@ -48,12 +50,9 @@ function getApiKey() {
     }
     return GEMINI_API_KEY;
 }
-// 지원 가능한 모델 목록 - 데이터 분석용 추천 모델 3개만 순차적으로 사용
-// 실제 존재하는 모델명만 사용 (404 에러 방지)
+// 지원 가능한 모델 목록 - gemini-2.5-flash-lite만 사용
 const GEMINI_MODELS = [
-    'gemini-2.5-pro',        // 1순위: 깊은 분석, 복잡한 쿼리, 논리적 추론 (고급 분석용)
-    'gemini-2.5-flash-lite', // 2순위: 백업 옵션 (가능하면 사용)
-    'gemini-2.5-flash'       // 3순위: 고빈도 요청, 경량 분석 (66자 응답 가능, 최후의 보루)
+    'gemini-2.5-flash-lite'
 ];
 
 // API URL 생성 함수 (여러 버전 시도)
@@ -120,6 +119,8 @@ async function loadCharactersFromFirebase() {
                             const personaData = personaDoc.data();
                             if (personaData.persona) char.persona = personaData.persona;
                             if (personaData.systemPrompt) char.systemPrompt = personaData.systemPrompt;
+                            if (personaData.name) char.name = personaData.name;
+                            if (personaData.image !== undefined) char.image = personaData.image || null;
                         }
                     } catch (e) {
                         console.error(`캐릭터 ${char.id} 설정 가져오기 실패:`, e);
@@ -191,6 +192,7 @@ function displayInsightText(text, characterName = '') {
     const bubble = document.getElementById('insightBubble');
     const characterNameEl = document.getElementById('insightCharacterName');
     const characterBtn = document.getElementById('insightCharacterBtn');
+    const shareBtn = document.getElementById('shareInsightBtn');
     
     if (!container) {
         console.error('insightTextContent 컨테이너를 찾을 수 없습니다.');
@@ -216,12 +218,19 @@ function displayInsightText(text, characterName = '') {
     
     if (!text) {
         container.innerHTML = '';
+        // 공유 버튼 숨기기
+        if (shareBtn) {
+            shareBtn.classList.add('hidden');
+        }
         return;
     }
     
     // 줄바꿈을 <br>로 변환하고 HTML 이스케이프
     const escapedText = escapeHtml(text).replace(/\n/g, '<br>');
     container.innerHTML = escapedText;
+    
+    // 공유 버튼 상태 업데이트 (공유 상태에 따라 버튼 박스 표시 여부도 결정)
+    updateShareButtonStatus();
     
     // 말풍선 최소 높이 설정 (캐릭터창 + 코멘트창의 합산 높이)
     if (bubble && characterBtn) {
@@ -284,7 +293,7 @@ export function setupInsightBubbleClick() {
     bubble.title = '';
 }
 
-// 캐릭터 선택 팝업 렌더링
+// 밀당 캐릭터 선택 팝업 렌더링
 async function renderCharacterSelectPopup() {
     const popup = document.getElementById('characterSelectPopup');
     if (!popup) return;
@@ -328,7 +337,7 @@ async function renderCharacterSelectPopup() {
     }).join('');
 }
 
-// 캐릭터 선택 팝업 열기/토글
+// 밀당 캐릭터 선택 팝업 열기/토글
 export async function openCharacterSelectModal() {
     const popup = document.getElementById('characterSelectPopup');
     
@@ -364,7 +373,7 @@ function handleOutsideClick(e) {
     }
 }
 
-// 캐릭터 선택 팝업 닫기
+// 밀당 캐릭터 선택 팝업 닫기
 export function closeCharacterSelectModal() {
     const popup = document.getElementById('characterSelectPopup');
     if (popup) {
@@ -373,7 +382,7 @@ export function closeCharacterSelectModal() {
     document.removeEventListener('click', handleOutsideClick, true);
 }
 
-// 캐릭터 선택
+// 밀당 캐릭터 선택
 export function selectInsightCharacter(characterId) {
     const character = INSIGHT_CHARACTERS.find(c => c.id === characterId);
     if (!character) return;
@@ -385,12 +394,12 @@ export function selectInsightCharacter(characterId) {
     if (iconEl) {
         if (character.image) {
             // 이미지가 있으면 이미지 표시
-            iconEl.innerHTML = `<img src="${character.image}" alt="${character.name}" class="w-full h-full object-contain">`;
+            iconEl.innerHTML = `<img src="${character.image}" alt="${character.name}" class="w-full h-full object-cover">`;
             iconEl.className = 'w-full h-full flex items-center justify-center';
         } else if (character.id === 'mealog') {
-            // MEALOG는 텍스트 아이콘
+            // MEALOG는 텍스트 아이콘 (Fredoka 폰트)
             iconEl.textContent = 'M';
-            iconEl.className = 'text-2xl font-black text-white';
+            iconEl.className = 'text-2xl font-black mealog-character-m';
         } else {
             // 기본 이모지 아이콘
             iconEl.textContent = character.icon;
@@ -419,7 +428,28 @@ export function selectInsightCharacter(characterId) {
     }
 }
 
-// AI 캐릭터 기본 코멘트 가져오기 (Firebase에서 가져오기)
+// 캐릭터 로딩 멘트 가져오기 (Firebase에서 가져오기)
+async function getCharacterLoadingMessage(characterId) {
+    try {
+        const personaDocRef = doc(db, 'artifacts', appId, 'persona', characterId);
+        const personaDoc = await getDoc(personaDocRef);
+        
+        if (personaDoc.exists()) {
+            const data = personaDoc.data();
+            const loadingMessage = data.loadingMessage || '';
+            
+            if (loadingMessage && loadingMessage.trim()) {
+                return loadingMessage.trim();
+            }
+        }
+        
+        // 기본값
+        return '분석중입니다';
+    } catch (e) {
+        console.error('캐릭터 로딩 멘트 가져오기 실패:', e);
+        return '분석중입니다';
+    }
+}
 async function getCharacterDefaultComment(characterId) {
     try {
         const personaDocRef = doc(db, 'artifacts', appId, 'persona', characterId);
@@ -496,9 +526,9 @@ async function getMealogComment() {
         return `안녕하세요! MEALOG 사용 방법을
 안내해드릴게요.
 
-📌 캐릭터 선택
+📌 밀당 캐릭터 선택
 왼쪽 캐릭터 아이콘을 클릭하면
-다양한 캐릭터를 선택할 수 있어요.
+다양한 밀당 캐릭터를 선택할 수 있어요.
 각 캐릭터는 서로 다른 스타일로
 식사 기록을 분석해줘요.
 
@@ -524,9 +554,9 @@ Best, 식사, 간식 탭을 눌러서
         return `안녕하세요! MEALOG 사용 방법을
 안내해드릴게요.
 
-📌 캐릭터 선택
+📌 밀당 캐릭터 선택
 왼쪽 캐릭터 아이콘을 클릭하면
-다양한 캐릭터를 선택할 수 있어요.
+다양한 밀당 캐릭터를 선택할 수 있어요.
 각 캐릭터는 서로 다른 스타일로
 식사 기록을 분석해줘요.
 
@@ -589,14 +619,15 @@ export async function generateInsightComment() {
     let loadingInterval = null;
     let dotCount = 0;
     
-    // 분석 시작 전에 "분석중입니다" 표시
+    // 분석 시작 전에 로딩 멘트 표시
     const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
     const characterName = character ? character.name : '';
-    displayInsightText('분석중입니다', characterName);
+    const loadingMessage = await getCharacterLoadingMessage(currentCharacter);
+    displayInsightText(loadingMessage, characterName);
     
     if (btn) {
         btn.disabled = true;
-        const originalText = btn.textContent || 'COMMENT';
+        const originalText = btn.textContent || '분석하기';
         
         // 로딩 애니메이션 시작 (분석중... 점 애니메이션)
         loadingInterval = setInterval(() => {
@@ -615,7 +646,14 @@ export async function generateInsightComment() {
         closeCharacterSelectModal();
     } catch (error) {
         console.error('코멘트 생성 실패:', error);
-        showToast('코멘트 생성 중 오류가 발생했습니다.', 'error');
+        
+        // API 키 관련 에러인 경우 명확한 메시지 표시
+        if (error.message && (error.message.includes('API 키') || error.message.includes('API key'))) {
+            showToast(error.message, 'error');
+            displayInsightText(error.message, characterName);
+        } else {
+            showToast('코멘트 생성 중 오류가 발생했습니다.', 'error');
+        }
     } finally {
         // 로딩 애니메이션 중지
         if (loadingInterval) {
@@ -625,7 +663,7 @@ export async function generateInsightComment() {
         // 버튼 활성화 및 원래 텍스트로 복원
         if (btn) {
             btn.disabled = false;
-            btn.textContent = 'COMMENT';
+            btn.textContent = '분석하기';
         }
         
         // 분석 중 메시지도 제거 (에러 발생 시에도)
@@ -788,6 +826,16 @@ async function getCommonPersona() {
 async function getGeminiComment(filteredData, characterId = currentCharacter, dateRangeText = '') {
     const character = INSIGHT_CHARACTERS.find(c => c.id === characterId);
     
+    // API 키 확인
+    const apiKey = getApiKey();
+    if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE' || apiKey.trim() === '') {
+        console.error('❌ Gemini API 키가 설정되지 않았습니다.');
+        const errorMessage = character 
+            ? `${character.icon} API 키가 설정되지 않았습니다. js/config.js 파일에 GEMINI_API_KEY를 설정해주세요.`
+            : 'API 키가 설정되지 않았습니다. js/config.js 파일에 GEMINI_API_KEY를 설정해주세요.';
+        throw new Error(errorMessage);
+    }
+    
     // 데이터가 없을 때 기본 메시지
     if (!filteredData || filteredData.length === 0) {
         return character ? `${character.icon} 이 기간 동안 아직 식사 기록이 없네요. 맛있는 식사 기록을 시작해보세요!` : "이 기간 동안 아직 식사 기록이 없네요.";
@@ -803,12 +851,8 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         // 공통 페르소나 가져오기
         const commonPersona = await getCommonPersona();
         
-        // 디버깅: 공통 페르소나 로드 확인
-        console.log('공통 페르소나 로드:', {
-            존재: !!commonPersona,
-            길이: commonPersona ? commonPersona.length : 0,
-            내용_미리보기: commonPersona ? commonPersona.substring(0, 100) + '...' : '없음'
-        });
+        // 밀당 메모 가져오기 (AI 분석 참고용)
+        const userShortcuts = window.userSettings?.shortcuts || '';
         
         // 프롬프트 생성 (재미있고 캐릭터 성격 중심, 핵심만)
         const menuSummary = analysis.menuDetails.length > 0 
@@ -818,9 +862,10 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         // 프롬프트 구성 (간결하고 명확하게)
         let prompt = '';
         
-        // 공통 페르소나 (간결하게)
-        if (commonPersona && commonPersona.trim()) {
-            prompt += `[공통 페르소나 - 최우선 적용]\n${commonPersona.trim()}\n\n`;
+        // 공통 페르소나는 systemInstruction에 포함되므로 프롬프트에는 제외
+        // 밀당 메모 (AI 분석 참고용)
+        if (userShortcuts && userShortcuts.trim()) {
+            prompt += `[밀당 메모 - 반드시 참고]\n${userShortcuts.trim()}\n\n`;
         }
         
         // 캐릭터 페르소나
@@ -832,9 +877,9 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         // 식사 데이터
         prompt += `\n[식사 데이터]\n`;
         prompt += `- 총 ${analysis.totalMeals}회 기록\n`;
-        prompt += `- 식사방식: ${analysis.mealTypes || '없음'}\n`;
+        prompt += `- 어떻게: ${analysis.mealTypes || '없음'}\n`;
         prompt += `- 주요 메뉴: ${menuSummary}\n`;
-        prompt += `- 함께한 사람: ${analysis.companions || '대부분 혼자'}\n`;
+        prompt += `- 누구와: ${analysis.companions || '대부분 혼자'}\n`;
         if (analysis.avgRating) {
             prompt += `- 만족도 평균: ${analysis.avgRating}/5\n`;
         }
@@ -844,23 +889,24 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         if (commonPersona && commonPersona.trim()) {
             prompt += `- 공통 페르소나의 모든 지침을 반드시 적용\n`;
         }
+        if (userShortcuts && userShortcuts.trim()) {
+            prompt += `- 밀당 메모를 반드시 참고하여 분석 (예: 메뉴 약어 해석, 사용자 상태 고려)\n`;
+        }
         prompt += `- 캐릭터 고유의 말투와 성격 드러내기\n`;
         prompt += `- 식사 패턴의 재미있는 점 우선 언급\n`;
         prompt += `- 자기 소개/기간 언급 금지\n`;
         prompt += `- 이모지 최대 2개, 한국어만 사용\n`;
         
-        // 최종 프롬프트 로그 (디버깅용)
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('📝 생성된 프롬프트 정보:');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('공통 페르소나 포함:', !!(commonPersona && commonPersona.trim()));
-        console.log('프롬프트 길이:', prompt.length, '자');
-        console.log('프롬프트 줄 수:', prompt.split('\n').length, '줄');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('📄 전체 프롬프트 내용:');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log(prompt);
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        // 간소화된 프롬프트 정보 로그 (개발 모드에서만 상세 로그)
+        const isDevMode = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (isDevMode) {
+            console.log('📝 프롬프트 생성:', {
+                공통페르소나: !!(commonPersona && commonPersona.trim()),
+                밀당메모: !!(userShortcuts && userShortcuts.trim()),
+                프롬프트길이: prompt.length + '자',
+                프롬프트줄수: prompt.split('\n').length + '줄'
+            });
+        }
         
         // v1beta API만 사용 (v1은 이 모델들을 지원하지 않음)
         let lastError = null;
@@ -870,12 +916,16 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         // 지정된 데이터 분석용 추천 모델 3개만 순차적으로 사용
         const models = GEMINI_MODELS;
         
-        console.log('시도할 모델 목록 (순서대로):', models);
+        if (isDevMode) {
+            console.log('시도할 모델 목록:', models);
+        }
         
         for (const model of models) {
             try {
                 const apiUrl = getGeminiApiUrl(model, apiVersion);
-                console.log(`Gemini API 호출 시도: ${apiVersion}/${model}`);
+                if (isDevMode) {
+                    console.log(`🔄 API 호출: ${model}`);
+                }
                 
                 // API 요청 본문 구성
                 const requestBody = {
@@ -902,24 +952,15 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                             text: systemInstructionText
                         }]
                     };
-                    
-                    // 첫 번째 모델에서만 systemInstruction 로그 출력
-                    if (model === models[0]) {
-                        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                        console.log('🔧 System Instruction (공통 페르소나):');
-                        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                        console.log(systemInstructionText);
-                        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                    }
                 }
                 
-                // 첫 번째 모델에서만 전체 요청 본문 로그 출력
-                if (model === models[0]) {
-                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                    console.log('📤 구글 API에 전송할 전체 요청 본문:');
-                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                    console.log(JSON.stringify(requestBody, null, 2));
-                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                // 개발 모드에서만 상세 로그 출력
+                if (isDevMode && model === models[0]) {
+                    console.log('📤 요청 정보:', {
+                        모델: model,
+                        프롬프트길이: prompt.length,
+                        systemInstruction: !!(requestBody.systemInstruction)
+                    });
                 }
                 
                 const response = await fetch(apiUrl, {
@@ -940,18 +981,22 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                     }
                     
                     // 첫 번째 모델에서만 상세 에러 로그
-                    if (model === models[0]) {
-                        console.warn(`첫 모델 시도 실패 (${model}):`, {
+                    if (model === models[0] && isDevMode) {
+                        console.warn(`⚠️ 모델 실패 (${model}):`, {
                             status: response.status,
-                            message: errorData.error?.message,
-                            reason: errorData.error?.details?.[0]?.reason,
-                            전체_에러: errorData
+                            message: errorData.error?.message
                         });
                     }
                     
                     // API 키 관련 에러
                     if (response.status === 400 && errorData.error?.message?.includes('API key')) {
-                        lastError = new Error(`API 키 문제: ${errorData.error.message}`);
+                        const errorMsg = `API 키 문제: ${errorData.error.message}`;
+                        console.error('❌', errorMsg);
+                        lastError = new Error(errorMsg);
+                        // API 키가 유효하지 않으면 다른 모델 시도하지 않고 즉시 중단
+                        if (errorData.error?.message?.includes('invalid') || errorData.error?.message?.includes('Invalid')) {
+                            throw new Error(`API 키가 유효하지 않습니다. js/config.js 파일의 GEMINI_API_KEY를 확인해주세요.`);
+                        }
                         continue;
                     }
                     
@@ -967,7 +1012,9 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                 }
                 
                 const responseData = await response.json();
-                console.log(`Gemini API 성공: ${apiVersion}/${model}`);
+                if (isDevMode) {
+                    console.log(`✅ API 성공: ${model}`);
+                }
                 
                 // 응답 검증 (안전 필터 및 응답 구조 처리)
                 if (responseData?.candidates && responseData.candidates.length > 0) {
@@ -1006,17 +1053,19 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                     
                     // 텍스트 찾기 성공
                     if (testComment) {
-                        console.log('API 응답 확인:', {
-                            모델: model,
-                            finishReason: testFinishReason,
-                            원본_길이: testComment.length,
-                            원본_텍스트_미리보기: testComment.substring(0, 100) + '...'
-                        });
+                        if (isDevMode) {
+                            console.log(`✅ ${model} 응답 확인:`, {
+                                finishReason: testFinishReason,
+                                길이: testComment.length + '자'
+                            });
+                        }
                         
                         // 최소 길이 체크 (50자 이상이거나 MAX_TOKENS인 경우 허용)
                         const minLength = testFinishReason === 'MAX_TOKENS' ? 30 : 50;
                         if (!testComment || testComment.length < minLength) {
-                            console.warn(`응답이 너무 짧습니다 (${testComment.length}자, 최소: ${minLength}자).`);
+                            if (isDevMode) {
+                                console.warn(`⚠️ 응답이 너무 짧음: ${testComment.length}자 (최소: ${minLength}자)`);
+                            }
                             lastError = new Error(`응답이 너무 짧습니다: ${testComment.length}자`);
                             continue;
                         }
@@ -1025,13 +1074,13 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                         data = responseData;
                         break; // 성공하면 반복 중단
                     } else {
-                        // 텍스트를 찾지 못한 경우 - 응답 구조 로깅
-                        console.warn('⚠️ API 응답에서 텍스트를 찾을 수 없습니다:', {
-                            model: model,
-                            candidateKeys: candidate ? Object.keys(candidate) : null,
-                            candidateContent: candidate?.content ? Object.keys(candidate.content) : null,
-                            responseKeys: Object.keys(responseData)
-                        });
+                        // 텍스트를 찾지 못한 경우 - 개발 모드에서만 로깅
+                        if (isDevMode) {
+                            console.warn('⚠️ 응답 구조 불일치:', {
+                                model: model,
+                                candidateKeys: candidate ? Object.keys(candidate) : null
+                            });
+                        }
                         lastError = new Error('응답에 텍스트가 없음 (응답 구조 불일치)');
                         continue;
                     }
@@ -1104,15 +1153,18 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         }
         
         // comment가 있을 때 처리
-        console.log('최종 응답 처리:', {
-            finishReason: finishReason,
-            원본_길이: comment.length,
-            원본_텍스트_전체: comment
-        });
+        if (isDevMode) {
+            console.log('✅ 최종 응답:', {
+                finishReason: finishReason,
+                길이: comment.length + '자'
+            });
+        }
         
         // MAX_TOKENS인 경우 불완전한 마지막 문장 제거
         if (finishReason === 'MAX_TOKENS' && comment.length >= 150) {
-            console.log('MAX_TOKENS이지만 충분히 긴 응답이므로 처리합니다.');
+            if (isDevMode) {
+                console.log('ℹ️ MAX_TOKENS - 불완전한 문장 정리 중');
+            }
             // 불완전한 마지막 문장 제거
             comment = comment.replace(/[^\n가-힣a-zA-Z0-9\s.,!?]*$/, '');
             
@@ -1160,16 +1212,22 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
             comment = `${character.icon} ${comment}`;
         }
         
-        console.log('최종 생성된 코멘트:', {
-            길이: comment.length,
-            줄_수: comment.split('\n').length,
-            미리보기: comment.substring(0, 150) + '...'
-        });
+        if (isDevMode) {
+            console.log('✅ 코멘트 생성 완료:', {
+                길이: comment.length + '자',
+                미리보기: comment.substring(0, 80) + '...'
+            });
+        }
         
         return comment;
         
     } catch (error) {
         console.error('Gemini API 오류:', error);
+        
+        // API 키 관련 에러인 경우 명확한 메시지 표시
+        if (error.message && (error.message.includes('API 키') || error.message.includes('API key'))) {
+            throw error; // 상위로 전달하여 사용자에게 표시
+        }
         
         // 오류 발생 시 기본 메시지 반환
         const fallbackMessage = character 
@@ -1190,3 +1248,536 @@ export async function getInsightCharacters() {
     await loadCharactersFromFirebase();
     return INSIGHT_CHARACTERS;
 }
+
+// 인사이트 공유 상태 확인
+async function checkInsightShareStatus(dateRangeText) {
+    if (!window.currentUser || !window.sharedPhotos) return null;
+    
+    // window.sharedPhotos에서 해당 기간의 인사이트 공유 찾기
+    // 각 기간별로 한 번만 공유 가능하므로 dateRangeText만으로 확인
+    const insightShare = window.sharedPhotos.find(photo => 
+        photo.type === 'insight' && 
+        photo.dateRangeText === dateRangeText
+    );
+    
+    return insightShare || null;
+}
+
+// 공유 버튼 상태 업데이트 함수
+export async function updateShareButtonStatus() {
+    const shareBtn = document.getElementById('shareInsightBtn');
+    if (!shareBtn) return;
+    
+    // MEALOG 캐릭터가 아니고 코멘트가 있을 때만 표시
+    const insightTextContent = document.getElementById('insightTextContent');
+    if (currentCharacter === 'mealog' || !insightTextContent || !insightTextContent.textContent || insightTextContent.textContent.trim() === '') {
+        shareBtn.classList.add('hidden');
+        return;
+    }
+    
+    shareBtn.classList.remove('hidden');
+    
+    // 공유 상태 확인
+    if (window.getDashboardData) {
+        const { dateRangeText } = window.getDashboardData();
+        const existingShare = await checkInsightShareStatus(dateRangeText);
+        const isShared = !!existingShare;
+        
+        if (isShared) {
+            // 공유됨 상태: 흰 배경으로 구분감
+            shareBtn.innerHTML = '<i class="fa-solid fa-share text-[12px] mr-1"></i>공유됨';
+            shareBtn.className = 'insight-share-btn insight-share-btn--shared flex-shrink-0 rounded-lg font-bold text-[12px] py-1 px-2';
+        } else {
+            // 공유 안 됨 상태: 흰 배경으로 구분감
+            shareBtn.innerHTML = '<i class="fa-solid fa-share text-[12px] mr-1"></i>공유하기';
+            shareBtn.className = 'insight-share-btn insight-share-btn--default flex-shrink-0 rounded-lg font-bold text-[12px] py-1 px-2';
+        }
+    }
+}
+
+// 밀당 코멘트 공유 모달 열기
+export async function openShareInsightModal() {
+    const modal = document.getElementById('insightShareModal');
+    const preview = document.getElementById('insightSharePreview');
+    if (!modal || !preview) return;
+    
+    // 코멘트가 있는지 확인
+    const insightTextContent = document.getElementById('insightTextContent');
+    if (!insightTextContent || !insightTextContent.textContent || insightTextContent.textContent.trim() === '') {
+        showToast('공유할 코멘트가 없습니다. COMMENT 버튼을 눌러 코멘트를 생성해주세요.', 'error');
+        return;
+    }
+    
+    // 현재 기간 정보 가져오기
+    if (!window.getDashboardData) {
+        showToast('대시보드 데이터를 가져올 수 없습니다.', 'error');
+        return;
+    }
+    
+    const { dateRangeText } = window.getDashboardData();
+    
+    // 공유 상태 확인
+    const existingShare = await checkInsightShareStatus(dateRangeText);
+    const isShared = !!existingShare;
+    
+    // 사용자 닉네임 및 아이콘 가져오기
+    const userNickname = window.userSettings?.profile?.nickname || '익명';
+    const userIcon = window.userSettings?.profile?.icon || '🐻';
+    
+    // 현재 선택된 캐릭터 정보
+    const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
+    const characterName = character ? character.name : '';
+    const characterIcon = character ? (character.icon || '') : '';
+    
+    // 인사이트 박스 내용 가져오기 (innerHTML 사용하여 줄바꿈 유지)
+    const insightBubble = document.getElementById('insightBubble');
+    const insightCharacterName = document.getElementById('insightCharacterName');
+    const insightCharacterIcon = document.getElementById('insightCharacterIcon');
+    const insightText = insightTextContent.innerHTML || insightTextContent.textContent || '';
+    const characterNameText = insightCharacterName ? insightCharacterName.textContent : '';
+    
+    // 캐릭터 아이콘 HTML 가져오기 (실제 DOM에서 가져와서 정확히 표시)
+    let characterIconHtml = '';
+    if (insightCharacterIcon) {
+        const img = insightCharacterIcon.querySelector('img');
+        if (img && img.src) {
+            characterIconHtml = `<img src="${escapeHtml(img.src)}" alt="" style="width: 100%; height: 100%; object-fit: contain;">`;
+        } else {
+            const content = (insightCharacterIcon.innerHTML || insightCharacterIcon.textContent || '').trim();
+            if (content) {
+                const isMealog = insightCharacterIcon.classList.contains('mealog-character-m');
+                characterIconHtml = `<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: ${isMealog ? '24px' : '32px'}; font-weight: 900; color: white; font-family: ${isMealog ? "'Fredoka', sans-serif" : 'inherit'};">${content}</div>`;
+            } else if (character) {
+                // 폴백: character 객체 사용
+                if (character.id === 'mealog') {
+                    characterIconHtml = `<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 900; color: white; font-family: 'Fredoka', sans-serif;">M</div>`;
+                } else if (character.icon) {
+                    characterIconHtml = `<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 32px;">${escapeHtml(character.icon)}</div>`;
+                }
+            }
+        }
+    }
+    
+    // 스크린샷용 HTML 생성 (베스트/하루소감과 동일 포맷: 흰 헤더+초록 타이틀+회색 보더, 본문 연회색, 말풍선 녹색 유지)
+    const borderLightGray = '#e2e8f0';
+    const borderOuterGray = '#cbd5e1';
+    const screenshotHtml = `
+        <div id="insightScreenshotContainer" style="width: 420px; max-width: 420px; margin: 0 auto; border: 1px solid ${borderOuterGray}; border-radius: 20px; overflow: hidden; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f1f5f9;">
+            <!-- 헤더: 흰 배경, 초록 타이틀 (패딩 6/16/16으로 텍스트 10px 상향, html2canvas 호환) -->
+            <div style="background: #ffffff; padding: 6px 16px 16px; border-bottom: 1px solid ${borderLightGray};">
+                <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 8px;">
+                    <span style="font-size: 28.8px; font-weight: 600; color: #059669; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
+                    <span style="font-size: 12px; font-weight: 400; color: #64748b; flex-shrink: 0;">${escapeHtml(dateRangeText || '')}</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 16px;">💬</span>
+                    <span style="font-size: 15px; font-weight: 700; color: #1e293b; font-family: 'NanumSquareRound', sans-serif;">${escapeHtml(userNickname)}에 대한 밀당의 참견</span>
+                </div>
+            </div>
+            <!-- 본문: 연회색 배경, 캐릭터+말풍선 (패딩 2/16/16으로 10px 상향) -->
+            <div style="display: flex; gap: 12px; align-items: flex-start; padding: 2px 16px 16px 16px; background: #f1f5f9; border-bottom-left-radius: 19px; border-bottom-right-radius: 19px;">
+                <!-- 밀당 캐릭터 (배경 없음) -->
+                <div style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; width: 75px;">
+                    <div style="width: 75px; height: 132px; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden;">
+                        ${characterIconHtml}
+                    </div>
+                    <div style="width: 75px; background: #ffca2c; border-radius: 12px; padding: 6px 4px; text-align: center; font-size: 12px; font-weight: 700; color: #1e293b; border: 1px solid rgba(0,0,0,0.08);">
+                        분석하기
+                    </div>
+                </div>
+                <!-- 말풍선 (초록 보더, 흰 배경, 어두운 텍스트) -->
+                <div style="flex: 1; min-width: 0;">
+                    <div style="background: #ffffff; border: 1px solid #047857; padding: 8px 20px 12px 20px; border-radius: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); min-height: 132px; display: flex; flex-direction: column;">
+                        <div style="margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                            ${characterNameText ? `<span style="font-size: 15px; font-weight: 700; color: #1e293b; letter-spacing: -0.01em;">${escapeHtml(characterNameText)}</span>` : '<span></span>'}
+                            <span class="insight-share-button" style="font-size: 12px; font-weight: 600; color: #64748b; flex-shrink: 0;">공유</span>
+                        </div>
+                        <div style="font-size: 13px; line-height: 1.55; color: #1e293b; font-weight: 400; white-space: pre-line; word-wrap: break-word; overflow-wrap: break-word; flex: 1;">
+                            ${insightText}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // 미리보기 영역에 HTML 표시
+    preview.innerHTML = screenshotHtml;
+    
+    // 모달 열기
+    modal.classList.remove('hidden');
+    
+    // Comment 초기화 또는 기존 코멘트 표시
+    const commentInput = document.getElementById('insightShareComment');
+    if (commentInput) {
+        if (isShared && existingShare.comment) {
+            commentInput.value = existingShare.comment;
+        } else {
+            commentInput.value = '';
+        }
+    }
+    
+    // 공유 버튼 텍스트 업데이트
+    const submitBtn = document.getElementById('insightShareSubmitBtn');
+    if (submitBtn) {
+        if (isShared) {
+            submitBtn.textContent = '공유 취소';
+            submitBtn.className = 'w-full py-4 bg-red-600 text-white rounded-xl font-bold active:bg-red-700 shadow-lg transition-all';
+        } else {
+            submitBtn.textContent = '공유하기';
+            submitBtn.className = 'w-full py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all';
+        }
+    }
+}
+
+// 밀당 코멘트 공유 수정 모달 열기 (photoUrl로 찾기)
+export async function openEditInsightShareModal(photoUrl) {
+    if (!photoUrl || !window.sharedPhotos) {
+        showToast('밀당 코멘트 공유를 찾을 수 없습니다.', 'error');
+        return;
+    }
+    
+    // window.sharedPhotos에서 해당 photoUrl의 인사이트 공유 찾기
+    const insightShare = window.sharedPhotos.find(photo => 
+        photo.type === 'insight' && 
+        (photo.photoUrl === photoUrl || photo.photoUrl?.includes(photoUrl) || photoUrl?.includes(photo.photoUrl))
+    );
+    
+    if (!insightShare) {
+        showToast('밀당 코멘트 공유를 찾을 수 없습니다.', 'error');
+        return;
+    }
+    
+    const modal = document.getElementById('insightShareModal');
+    const preview = document.getElementById('insightSharePreview');
+    if (!modal || !preview) return;
+    
+    // 기존 이미지 사용
+    const existingImageHtml = insightShare.photoUrl ? `
+        <div id="insightScreenshotContainer" style="width: 420px; max-width: 420px; margin: 0 auto; background: #f8fafc; border-radius: 8px; overflow: hidden; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+            <div style="text-align: center;">
+                <img src="${insightShare.photoUrl}" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" alt="밀당 코멘트 공유 이미지">
+            </div>
+        </div>
+    ` : '<div style="text-align: center; padding: 40px; color: #94a3b8;">이미지를 불러올 수 없습니다.</div>';
+    
+    preview.innerHTML = existingImageHtml;
+    
+    // 모달 열기
+    modal.classList.remove('hidden');
+    
+    // Comment 초기화 또는 기존 코멘트 표시
+    const commentInput = document.getElementById('insightShareComment');
+    if (commentInput) {
+        commentInput.value = insightShare.comment || '';
+    }
+    
+    // 공유 버튼 텍스트 업데이트 (수정 모드)
+    const submitBtn = document.getElementById('insightShareSubmitBtn');
+    if (submitBtn) {
+        submitBtn.textContent = '수정 완료';
+        submitBtn.className = 'w-full py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all';
+        // 수정 모드임을 표시하기 위한 데이터 속성 추가
+        submitBtn.setAttribute('data-edit-mode', 'true');
+        submitBtn.setAttribute('data-photo-url', photoUrl);
+    }
+}
+
+// 밀당 코멘트 공유 모달 닫기
+export function closeShareInsightModal() {
+    const modal = document.getElementById('insightShareModal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
+// 밀당 코멘트를 피드에 공유하기
+export async function shareInsightToFeed() {
+    const preview = document.getElementById('insightScreenshotContainer');
+    const commentInput = document.getElementById('insightShareComment');
+    const submitBtn = document.getElementById('insightShareSubmitBtn');
+    
+    if (!commentInput || !preview) return;
+    
+    const comment = commentInput.value.trim();
+    
+    // 수정 모드 확인
+    const isEditMode = submitBtn && submitBtn.getAttribute('data-edit-mode') === 'true';
+    const editPhotoUrl = isEditMode ? submitBtn.getAttribute('data-photo-url') : null;
+    
+    // 현재 기간 정보 가져오기
+    if (!window.getDashboardData) {
+        showToast('대시보드 데이터를 가져올 수 없습니다.', 'error');
+        return;
+    }
+    
+    const { dateRangeText } = window.getDashboardData();
+    
+    // 공유 상태 확인
+    const existingShare = await checkInsightShareStatus(dateRangeText);
+    
+    if (isEditMode && editPhotoUrl) {
+        // 수정 모드: 코멘트만 업데이트
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = '수정 중...';
+        }
+        
+        try {
+            // Firestore에서 해당 인사이트 공유 문서 찾아서 업데이트
+            const { collection, query, where, getDocs, updateDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+            const { db: firestoreDb, appId } = await import('../firebase.js');
+            const sharedColl = collection(firestoreDb, 'artifacts', appId, 'sharedPhotos');
+            
+            // photoUrl로 문서 찾기 (유연한 매칭)
+            const q = query(sharedColl, where('userId', '==', window.currentUser.uid), where('type', '==', 'insight'));
+            const querySnapshot = await getDocs(q);
+            
+            let foundDoc = null;
+            for (const docSnap of querySnapshot.docs) {
+                const data = docSnap.data();
+                const docPhotoUrl = data.photoUrl || '';
+                if (docPhotoUrl === editPhotoUrl || docPhotoUrl.includes(editPhotoUrl) || editPhotoUrl.includes(docPhotoUrl)) {
+                    foundDoc = docSnap;
+                    break;
+                }
+            }
+            
+            if (foundDoc) {
+                await updateDoc(doc(sharedColl, foundDoc.id), {
+                    comment: comment
+                });
+                
+                // window.sharedPhotos 업데이트
+                if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+                    const shareIndex = window.sharedPhotos.findIndex(photo => 
+                        photo.type === 'insight' && 
+                        (photo.photoUrl === editPhotoUrl || photo.photoUrl?.includes(editPhotoUrl) || editPhotoUrl?.includes(photo.photoUrl))
+                    );
+                    if (shareIndex !== -1) {
+                        window.sharedPhotos[shareIndex].comment = comment;
+                    }
+                }
+                
+                showToast('밀당 코멘트 공유가 수정되었습니다!', 'success');
+                closeShareInsightModal();
+                
+                // 갤러리/피드 새로고침
+                if (appState.currentTab === 'gallery') {
+                    const { renderGallery } = await import('../render/index.js');
+                    renderGallery();
+                } else if (appState.currentTab === 'feed') {
+                    const { renderFeed } = await import('../render/index.js');
+                    renderFeed();
+                }
+            } else {
+                showToast('밀당 코멘트 공유를 찾을 수 없습니다.', 'error');
+            }
+        } catch (e) {
+            console.error('인사이트 공유 수정 실패:', e);
+            showToast('인사이트 공유 수정 중 오류가 발생했습니다.', 'error');
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '수정 완료';
+                submitBtn.removeAttribute('data-edit-mode');
+                submitBtn.removeAttribute('data-photo-url');
+            }
+        }
+        return;
+    }
+    
+    if (existingShare) {
+        const photoUrlToRemove = existingShare.photoUrl;
+        const prevShared = window.sharedPhotos ? [...window.sharedPhotos] : [];
+        if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+            window.sharedPhotos = window.sharedPhotos.filter(p =>
+                !(p.type === 'insight' && p.dateRangeText === dateRangeText && p.userId === window.currentUser.uid)
+            );
+        }
+        closeShareInsightModal();
+        showToast('공유가 취소되었습니다.', 'success');
+        updateShareButtonStatus();
+        if (appState.currentTab === 'gallery') {
+            import('../render/index.js').then(({ renderGallery }) => renderGallery());
+        } else if (appState.currentTab === 'feed') {
+            import('../render/index.js').then(({ renderFeed }) => renderFeed());
+        }
+        dbOps.unsharePhotos([photoUrlToRemove], null, false, true).catch(() => {
+            if (window.sharedPhotos) window.sharedPhotos = prevShared;
+            updateShareButtonStatus();
+            if (appState.currentTab === 'gallery') {
+                import('../render/index.js').then(({ renderGallery }) => renderGallery());
+            } else if (appState.currentTab === 'feed') {
+                import('../render/index.js').then(({ renderFeed }) => renderFeed());
+            }
+        });
+        return;
+    }
+    
+    // 공유되지 않은 경우: 공유하기
+    const insightShareModal = document.getElementById('insightShareModal');
+    const insightShareSpinner = insightShareModal?.querySelector('#insightShareLoadingOverlay');
+    if (insightShareSpinner) insightShareSpinner.classList.remove('hidden');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>공유 중...';
+    }
+    await new Promise(r => requestAnimationFrame(r));
+    await new Promise(r => setTimeout(r, 50));
+
+    try {
+        // 스크린샷 생성 시 insightScreenshotContainer 사용
+        const screenshotContainer = preview.querySelector('#insightScreenshotContainer');
+        const targetElement = screenshotContainer || preview;
+
+        // 외부 이미지(Firebase Storage)를 base64로 변환 (CORS 우회: Cloud Function 사용)
+        const imgs = targetElement.querySelectorAll('img[src^="http"]');
+        const loadPromises = [];
+        for (const img of imgs) {
+            try {
+                if (img.src.includes('firebasestorage.googleapis.com')) {
+                    const { callableFunctions } = await import('../firebase.js');
+                    const result = await callableFunctions.getStorageImageAsBase64({ imageUrl: img.src });
+                    const dataUrl = result?.data?.dataUrl;
+                    if (dataUrl) {
+                        const loadP = new Promise((resolve, reject) => {
+                            img.onload = () => resolve();
+                            img.onerror = () => reject(new Error('이미지 로드 실패'));
+                            img.src = dataUrl;
+                            if (img.complete && img.naturalWidth > 0) resolve();
+                        });
+                        loadPromises.push(loadP);
+                    } else {
+                        console.warn('getStorageImageAsBase64 반환값 없음:', result);
+                    }
+                } else {
+                    const res = await fetch(img.src, { mode: 'cors' });
+                    const blob = await res.blob();
+                    const dataUrl = await new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result);
+                        reader.readAsDataURL(blob);
+                    });
+                    const loadP = new Promise((resolve, reject) => {
+                        img.onload = () => resolve();
+                        img.onerror = () => reject(new Error('이미지 로드 실패'));
+                        img.src = dataUrl;
+                        if (img.complete && img.naturalWidth > 0) resolve();
+                    });
+                    loadPromises.push(loadP);
+                }
+            } catch (e) {
+                console.warn('캐릭터 이미지 base64 변환 실패:', e);
+            }
+        }
+        await Promise.all(loadPromises).catch(() => {});
+        await document.fonts.ready;
+        await new Promise(r => setTimeout(r, 150)); // 페인트 대기
+
+        // 폰트 CSS (html2canvas 클론에서 폰트 로드용)
+        let fontCSS = '';
+        try {
+            const [fredokaRes, nanumRes] = await Promise.all([
+                fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap'),
+                fetch('https://fonts.googleapis.com/earlyaccess/nanumsquareround.css')
+            ]);
+            fontCSS = (await fredokaRes.text()) + (await nanumRes.text());
+        } catch (e) { console.warn('폰트 CSS 로드 실패:', e); }
+
+        // 유령 캡처: 화면 밖에 복제본을 만들어 모달/transform 간섭 없이 정사이즈 캡처
+        const canvas = await captureWithGhostStrategy(targetElement, {
+            captureWidth: 420,
+            onclone: (clonedDoc) => {
+                if (fontCSS) {
+                    const style = clonedDoc.createElement('style');
+                    style.textContent = fontCSS;
+                    clonedDoc.head.appendChild(style);
+                }
+                const shareBtn = clonedDoc.querySelector('.insight-share-button');
+                if (shareBtn) shareBtn.style.display = 'none';
+            }
+        });
+        
+        // Canvas를 Blob으로 변환
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png', 0.95));
+        
+        // Firebase Storage에 업로드
+        const base64Image = canvas.toDataURL('image/png');
+        const { uploadBase64ToStorage } = await import('../utils.js');
+        const photoUrl = await uploadBase64ToStorage(base64Image, window.currentUser.uid, `insight_${dateRangeText.replace(/\s+/g, '_')}`, 1024);
+        
+        const userProfile = window.userSettings?.profile || {};
+        
+        const insightShareData = {
+            id: 'pending-' + Date.now(),
+            photoUrl,
+            userId: window.currentUser.uid,
+            userNickname: userProfile.nickname || '익명',
+            userIcon: userProfile.icon || '🐻',
+            userPhotoUrl: userProfile.photoUrl || null,
+            type: 'insight',
+            dateRangeText,
+            timestamp: new Date().toISOString(),
+            entryId: null,
+            comment: comment || ''
+        };
+
+        if (!window.sharedPhotos) window.sharedPhotos = [];
+        window.sharedPhotos = window.sharedPhotos.filter(p =>
+            !(p.type === 'insight' && p.dateRangeText === dateRangeText && p.userId === window.currentUser.uid)
+        );
+        window.sharedPhotos.push(insightShareData);
+        window.sharedPhotos.sort((a, b) => (new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
+
+        showToast('밀당(MEAL-DANG)들의 참견이 피드에 공유되었습니다!', 'success');
+        closeShareInsightModal();
+        updateShareButtonStatus();
+        if (appState.currentTab === 'gallery') {
+            const { renderGallery } = await import('../render/index.js');
+            renderGallery();
+        } else if (appState.currentTab === 'feed') {
+            const { renderFeed } = await import('../render/index.js');
+            renderFeed();
+        }
+
+        const { callableFunctions } = await import('../firebase.js');
+        callableFunctions.createInsightShare({
+            photoUrl,
+            dateRangeText,
+            comment
+        }).then((result) => {
+            const serverData = result.data;
+            const idx = window.sharedPhotos?.findIndex(p => p.id === insightShareData.id || (p.type === 'insight' && p.dateRangeText === dateRangeText && p.userId === window.currentUser.uid && p.photoUrl === photoUrl));
+            if (idx !== undefined && idx !== -1 && window.sharedPhotos) {
+                window.sharedPhotos[idx] = serverData;
+                if (appState.currentTab === 'gallery') import('../render/index.js').then(({ renderGallery }) => renderGallery());
+                if (appState.currentTab === 'feed') import('../render/index.js').then(({ renderFeed }) => renderFeed());
+            }
+        }).catch((e) => {
+            console.error('인사이트 공유 서버 반영 실패:', e);
+            if (window.sharedPhotos) {
+                window.sharedPhotos = window.sharedPhotos.filter(p =>
+                    !(p.type === 'insight' && p.dateRangeText === dateRangeText && p.userId === window.currentUser.uid)
+                );
+                updateShareButtonStatus();
+                if (appState.currentTab === 'gallery') import('../render/index.js').then(({ renderGallery }) => renderGallery());
+                if (appState.currentTab === 'feed') import('../render/index.js').then(({ renderFeed }) => renderFeed());
+            }
+            showToast(e?.message || e?.details || '공유 반영에 실패했습니다. 다시 시도해 주세요.', 'error');
+        });
+    } catch (e) {
+        console.error('인사이트 공유 실패:', e);
+        const errorMessage = e.message || e.details || '공유 중 오류가 발생했습니다.';
+        showToast(errorMessage, 'error');
+    } finally {
+        const modal = document.getElementById('insightShareModal');
+        const spinner = modal?.querySelector('#insightShareLoadingOverlay');
+        if (spinner) spinner.classList.add('hidden');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = '공유하기';
+        }
+    }
+}
+

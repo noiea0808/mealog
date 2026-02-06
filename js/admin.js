@@ -1,15 +1,164 @@
 // ADMIN 관리자 페이지 관련 함수들
-import { app, db, appId } from './firebase.js';
+import { app, db, appId, functions, callableFunctions } from './firebase.js';
+import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js';
+import { boardOperations } from './db/board.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-// 관리자 화면 전용 Auth 인스턴스 생성 (사용자 화면과 분리하여 인증 상태 공유 방지)
-const adminAuth = getAuth(app, 'admin');
-import { collection, getDocs, query, orderBy, limit, doc, deleteDoc, getDoc, setDoc, where, writeBatch, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { uploadImageToStorage } from './utils.js';
+// Firestore 규칙·Callable은 기본 Auth만 인식하므로 관리자도 기본 Auth 사용 (admin 페이지는 별도 URL)
+const adminAuth = getAuth(app);
+import { collection, getDocs, query, orderBy, limit, doc, deleteDoc, getDoc, setDoc, where, writeBatch, addDoc, serverTimestamp, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { uploadImageToStorage, uploadPersonaImageToStorage } from './utils.js';
 import { getReportsAggregateByGroupKeys, deleteBoardPostByAdmin, setBoardPostHidden } from './db.js';
 import { REPORT_REASONS } from './constants.js';
+import { getCurrentTermsVersion, invalidateTermsVersionCache } from './utils-terms.js';
 
 let currentDeletePhotoId = null;
+
+// 사용자 테이블 정렬 상태/캐시
+let usersCache = null; // 마지막으로 로드된 사용자 목록 (정렬 전 원본)
+let usersSortState = { key: 'nickname', dir: 'asc' };
+
+const USERS_SORT_DEFAULT_DIR = {
+    loginMethod: 'asc',
+    email: 'asc',
+    nickname: 'asc',
+    terms: 'desc',
+    timelineCount: 'desc',
+    albumShareCount: 'desc',
+    talkCount: 'desc',
+    userId: 'asc',
+    createdAt: 'desc',
+    lastLoginAt: 'desc'
+};
+
+function normalizeString(v) {
+    return (v === undefined || v === null) ? '' : String(v);
+}
+
+function normalizeNumber(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeDateValue(v) {
+    if (!v) return null;
+    if (v instanceof Date) return v.getTime();
+    if (typeof v === 'string') {
+        const t = new Date(v).getTime();
+        return Number.isFinite(t) ? t : null;
+    }
+    // Firestore Timestamp 대응
+    if (typeof v === 'object' && typeof v.toDate === 'function') {
+        try {
+            return v.toDate().getTime();
+        } catch {
+            return null;
+        }
+    }
+    return null;
+}
+
+function compareWithNullsLast(a, b, dir) {
+    const aNull = a === null || a === undefined || (typeof a === 'number' && !Number.isFinite(a));
+    const bNull = b === null || b === undefined || (typeof b === 'number' && !Number.isFinite(b));
+    if (aNull && bNull) return 0;
+    if (aNull) return 1;
+    if (bNull) return -1;
+    
+    if (typeof a === 'number' && typeof b === 'number') {
+        return dir === 'asc' ? a - b : b - a;
+    }
+    const aStr = normalizeString(a);
+    const bStr = normalizeString(b);
+    const cmp = aStr.localeCompare(bStr, 'ko');
+    return dir === 'asc' ? cmp : -cmp;
+}
+
+function getTermsRank(user, currentVersion) {
+    // 2: 최신 동의(또는 앱에서 재동의를 요구하지 않는 기존 사용자), 1: 구버전 동의(재동의 필요), 0: 미동의
+    const agreed = user?.termsAgreed === true;
+    if (!agreed) return 0;
+    // termsVersion 없음 = 앱과 동일하게 기존 사용자로 간주 → 동의함
+    const ver = user?.termsVersion;
+    if (ver === null || ver === undefined || String(ver).trim() === '') return 2;
+    if (currentVersion && ver === currentVersion) return 2;
+    // 앱 정책: 식사 기록이 있는 사용자(기존 사용자)는 약관 버전을 검사하지 않고 동의한 것으로 처리 → 관리자 표시 일치
+    if ((user?.timelineCount ?? 0) > 0) return 2;
+    return 1;
+}
+
+function sortUsersForTable(users, currentVersion) {
+    const { key, dir } = usersSortState;
+    const sorted = [...users];
+    sorted.sort((a, b) => {
+        let av;
+        let bv;
+        switch (key) {
+            case 'timelineCount':
+            case 'albumShareCount':
+            case 'talkCount':
+                av = normalizeNumber(a?.[key]);
+                bv = normalizeNumber(b?.[key]);
+                return compareWithNullsLast(av, bv, dir);
+            case 'createdAt':
+            case 'lastLoginAt':
+                av = normalizeDateValue(a?.[key]);
+                bv = normalizeDateValue(b?.[key]);
+                return compareWithNullsLast(av, bv, dir);
+            case 'terms':
+                av = getTermsRank(a, currentVersion);
+                bv = getTermsRank(b, currentVersion);
+                return compareWithNullsLast(av, bv, dir);
+            default:
+                av = normalizeString(a?.[key]);
+                bv = normalizeString(b?.[key]);
+                return compareWithNullsLast(av, bv, dir);
+        }
+    });
+    return sorted;
+}
+
+function updateUsersSortHeaderUI() {
+    const buttons = document.querySelectorAll('.admin-users-sort');
+    buttons.forEach(btn => {
+        const key = btn.getAttribute('data-sort-key');
+        const indicator = btn.querySelector('.admin-users-sort-indicator');
+        if (!indicator) return;
+        if (key === usersSortState.key) {
+            indicator.textContent = usersSortState.dir === 'asc' ? '▲' : '▼';
+            indicator.classList.remove('text-slate-400');
+            indicator.classList.add('text-slate-700');
+        } else {
+            indicator.textContent = '↕';
+            indicator.classList.remove('text-slate-700');
+            indicator.classList.add('text-slate-400');
+        }
+    });
+}
+
+function initUsersSortHandlers() {
+    const buttons = document.querySelectorAll('.admin-users-sort');
+    if (!buttons || buttons.length === 0) return;
+    
+    buttons.forEach(btn => {
+        if (btn.dataset.sortBound === '1') return;
+        btn.dataset.sortBound = '1';
+        btn.addEventListener('click', () => {
+            const key = btn.getAttribute('data-sort-key');
+            if (!key) return;
+            if (usersSortState.key === key) {
+                usersSortState.dir = usersSortState.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                usersSortState.key = key;
+                usersSortState.dir = USERS_SORT_DEFAULT_DIR[key] || 'asc';
+            }
+            updateUsersSortHeaderUI();
+            // 캐시를 재정렬하여 즉시 반영 (재조회 없음)
+            renderUsers({ useCacheOnly: true });
+        });
+    });
+    updateUsersSortHeaderUI();
+}
 
 // ADMIN 권한 확인
 async function checkAdminStatus(userId) {
@@ -331,6 +480,7 @@ async function renderSharedPhotos() {
                                     <span class="font-bold text-slate-800">${photo.userNickname || '익명'}</span>
                                     ${photo.type === 'best' ? '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">베스트</span>' : ''}
                                     ${photo.type === 'daily' ? '<span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded">일간</span>' : ''}
+                                    <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">관리번호: ${photo.id}</span>
                                 </div>
                                 <button onclick="window.openDeleteModal('${photo.id}')" class="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 transition-colors">
                                     <i class="fa-solid fa-trash mr-1"></i>삭제
@@ -459,6 +609,7 @@ window.switchAdminTab = function(tab) {
     } else if (tab === 'monitoring') {
         switchMonitoringSidebar('feed'); // 기본으로 피드 관리 표시
         renderFeedManagement();
+        loadAdminSettings(); // 공지·댓글 표시 이름 캐시 로드
     } else if (tab === 'persona') {
         // 페르소나 탭은 더 이상 사용하지 않음
     } else if (tab === 'users') {
@@ -669,6 +820,8 @@ window.switchMonitoringSidebar = function(section) {
         renderBoardPosts(currentAdminBoardCategory);
     } else if (section === 'notice') {
         renderNotices();
+    } else if (section === 'settings') {
+        loadAdminSettings();
     }
 };
 
@@ -715,10 +868,16 @@ window.switchContentSidebar = function(section) {
 
 // 약관 콘텐츠 로드
 async function loadTermsContent() {
+    const termsDisplay = document.getElementById('termsContentDisplay');
     const termsEditor = document.getElementById('termsContentEditor');
+    const termsTextarea = document.getElementById('termsContentTextarea');
+    const privacyDisplay = document.getElementById('privacyContentDisplay');
     const privacyEditor = document.getElementById('privacyContentEditor');
+    const privacyTextarea = document.getElementById('privacyContentTextarea');
+    const termsUpdatedAt = document.getElementById('termsUpdatedAt');
+    const privacyUpdatedAt = document.getElementById('privacyUpdatedAt');
     
-    if (!termsEditor || !privacyEditor) return;
+    if (!termsDisplay || !termsEditor || !termsTextarea || !privacyDisplay || !privacyEditor || !privacyTextarea) return;
     
     try {
         // Firestore에서 약관 데이터 가져오기
@@ -726,115 +885,146 @@ async function loadTermsContent() {
         const termsSnap = await getDoc(termsDoc);
         
         let termsData = {
-            terms: [
-                { title: '제1조 (목적)', content: '본 약관은 MEALOG(이하 "회사")가 제공하는 식사 기록 서비스의 이용과 관련하여 회사와 이용자 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.' },
-                { title: '제2조 (정의)', content: '1. "서비스"란 회사가 제공하는 식사 기록 및 관리 서비스를 의미합니다.<br>2. "이용자"란 본 약관에 동의하고 회사가 제공하는 서비스를 이용하는 자를 의미합니다.' },
-                { title: '제3조 (서비스의 제공)', content: '회사는 다음과 같은 서비스를 제공합니다: 식사 기록, 통계 분석, 사진 공유 등' },
-                { title: '제4조 (이용자의 의무)', content: '이용자는 서비스를 이용함에 있어 관련 법령을 준수해야 합니다.' }
-            ],
-            privacy: [
-                { title: '제1조 (개인정보의 수집 및 이용 목적)', content: '회사는 다음의 목적을 위하여 개인정보를 처리합니다:<br>1. 서비스 제공 및 계약의 이행<br>2. 회원 관리 및 본인 확인<br>3. 서비스 개선 및 신규 서비스 개발' },
-                { title: '제2조 (수집하는 개인정보의 항목)', content: '회사는 다음과 같은 개인정보를 수집합니다:<br>1. 필수항목: 이메일, 닉네임, 프로필 아이콘<br>2. 선택항목: 위치 정보 (카카오 지도 이용 시)' },
-                { title: '제3조 (개인정보의 보유 및 이용기간)', content: '회원 탈퇴 시까지 보유하며, 탈퇴 후 즉시 파기합니다.' }
-            ]
+            terms: '본 약관은 MEALOG(이하 "회사")가 제공하는 식사 기록 서비스의 이용과 관련하여 회사와 이용자 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.\n\n제1조 (정의)\n1. "서비스"란 회사가 제공하는 식사 기록 및 관리 서비스를 의미합니다.\n2. "이용자"란 본 약관에 동의하고 회사가 제공하는 서비스를 이용하는 자를 의미합니다.\n\n제2조 (서비스의 제공)\n회사는 다음과 같은 서비스를 제공합니다: 식사 기록, 통계 분석, 사진 공유 등\n\n제3조 (이용자의 의무)\n이용자는 서비스를 이용함에 있어 관련 법령을 준수해야 합니다.',
+            privacy: '회사는 다음의 목적을 위하여 개인정보를 처리합니다:\n1. 서비스 제공 및 계약의 이행\n2. 회원 관리 및 본인 확인\n3. 서비스 개선 및 신규 서비스 개발\n\n제1조 (수집하는 개인정보의 항목)\n회사는 다음과 같은 개인정보를 수집합니다:\n1. 필수항목: 이메일, 닉네임, 프로필 아이콘\n2. 선택항목: 위치 정보 (카카오 지도 이용 시)\n\n제2조 (개인정보의 보유 및 이용기간)\n회원 탈퇴 시까지 보유하며, 탈퇴 후 즉시 파기합니다.',
+            updatedAt: null
         };
         
         if (termsSnap.exists()) {
             const data = termsSnap.data();
-            if (data.terms) termsData.terms = data.terms;
-            if (data.privacy) termsData.privacy = data.privacy;
+            // 기존 배열 형식에서 단일 텍스트로 변환
+            if (data.terms) {
+                if (Array.isArray(data.terms)) {
+                    // 배열 형식인 경우 통합
+                    termsData.terms = data.terms.map(item => {
+                        const title = item.title || '';
+                        const content = item.content || '';
+                        return title ? `${title}\n${content}` : content;
+                    }).join('\n\n');
+                } else {
+                    // 이미 단일 텍스트인 경우
+                    termsData.terms = data.terms;
+                }
+            }
+            if (data.privacy) {
+                if (Array.isArray(data.privacy)) {
+                    // 배열 형식인 경우 통합
+                    termsData.privacy = data.privacy.map(item => {
+                        const title = item.title || '';
+                        const content = item.content || '';
+                        return title ? `${title}\n${content}` : content;
+                    }).join('\n\n');
+                } else {
+                    // 이미 단일 텍스트인 경우
+                    termsData.privacy = data.privacy;
+                }
+            }
+            if (data.updatedAt) {
+                termsData.updatedAt = data.updatedAt;
+            }
         }
         
-        // 약관 렌더링
-        renderTermsItems('terms', termsData.terms);
-        renderTermsItems('privacy', termsData.privacy);
+        // 약관 렌더링 (읽기 모드)
+        renderTermsContent('terms', termsData.terms, termsData.updatedAt);
+        renderTermsContent('privacy', termsData.privacy, termsData.updatedAt);
         
     } catch (e) {
         console.error('약관 콘텐츠 로드 실패:', e);
         // 기본값으로 렌더링
-        renderTermsItems('terms', termsData.terms);
-        renderTermsItems('privacy', termsData.privacy);
+        renderTermsContent('terms', termsData.terms, null);
+        renderTermsContent('privacy', termsData.privacy, null);
     }
 }
 
-// 약관 항목 렌더링
-function renderTermsItems(type, items) {
+// 약관 내용 렌더링 (읽기 모드)
+function renderTermsContent(type, content, updatedAt) {
+    const display = document.getElementById(`${type}ContentDisplay`);
     const editor = document.getElementById(`${type}ContentEditor`);
-    if (!editor) return;
+    const textarea = document.getElementById(`${type}ContentTextarea`);
+    const updatedAtEl = document.getElementById(`${type}UpdatedAt`);
     
-    editor.innerHTML = items.map((item, index) => `
-        <div class="bg-white rounded-xl p-4 border border-slate-200" data-index="${index}">
-            <div class="flex items-start justify-between mb-3">
-                <input type="text" value="${escapeHtml(item.title || '')}" 
-                       onchange="window.updateTermsItem('${type}', ${index}, 'title', this.value)"
-                       class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-800 outline-none focus:border-emerald-500"
-                       placeholder="항목 제목 (예: 제1조 (목적))">
-                <button onclick="window.removeTermsItem('${type}', ${index})" class="ml-2 px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors">
-                    <i class="fa-solid fa-trash"></i>
-                </button>
-            </div>
-            <textarea onchange="window.updateTermsItem('${type}', ${index}, 'content', this.value)"
-                      class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[100px]"
-                      placeholder="항목 내용">${escapeHtml(item.content || '')}</textarea>
-        </div>
-    `).join('');
-}
-
-// 약관 항목 추가
-window.addTermsItem = function(type) {
-    const editor = document.getElementById(`${type}ContentEditor`);
-    if (!editor) return;
+    if (!display || !editor || !textarea) return;
     
-    const newItem = {
-        title: '',
-        content: ''
-    };
+    // 읽기 모드로 전환
+    display.classList.remove('hidden');
+    editor.classList.add('hidden');
     
-    const items = getCurrentTermsItems(type);
-    items.push(newItem);
+    // 내용 표시
+    display.textContent = content || '';
     
-    renderTermsItems(type, items);
-};
-
-// 약관 항목 제거
-window.removeTermsItem = function(type, index) {
-    const items = getCurrentTermsItems(type);
-    if (items.length <= 1) {
-        alert('최소 한 개의 항목이 필요합니다.');
-        return;
+    // textarea에 현재 값 저장 (편집 모드 전환 시 사용)
+    textarea.value = content || '';
+    
+    // 저장 일자 표시
+    if (updatedAtEl) {
+        if (updatedAt) {
+            try {
+                const date = new Date(updatedAt);
+                updatedAtEl.textContent = `최종 저장: ${date.toLocaleString('ko-KR', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                })}`;
+            } catch (e) {
+                updatedAtEl.textContent = '';
+            }
+        } else {
+            updatedAtEl.textContent = '';
+        }
     }
     
-    items.splice(index, 1);
-    renderTermsItems(type, items);
-};
-
-// 약관 항목 업데이트
-window.updateTermsItem = function(type, index, field, value) {
-    const items = getCurrentTermsItems(type);
-    if (items[index]) {
-        items[index][field] = value;
+    // 편집 버튼 상태 초기화
+    const editBtn = document.getElementById(`${type}EditBtn`);
+    if (editBtn) {
+        editBtn.innerHTML = '<i class="fa-solid fa-pencil mr-1"></i>수정';
+        editBtn.onclick = () => window.editTerms(type);
+        editBtn.className = 'px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors';
     }
+}
+
+// 약관 편집 모드 전환
+window.editTerms = function(type) {
+    const display = document.getElementById(`${type}ContentDisplay`);
+    const editor = document.getElementById(`${type}ContentEditor`);
+    const textarea = document.getElementById(`${type}ContentTextarea`);
+    const editBtn = document.getElementById(`${type}EditBtn`);
+    
+    if (!display || !editor || !textarea || !editBtn) return;
+    
+    // 편집 모드로 전환
+    display.classList.add('hidden');
+    editor.classList.remove('hidden');
+    textarea.focus();
+    
+    // 버튼 텍스트 변경
+    editBtn.innerHTML = '<i class="fa-solid fa-times mr-1"></i>취소';
+    editBtn.onclick = () => window.cancelEditTerms(type);
+    editBtn.className = 'px-3 py-1.5 bg-slate-600 text-white rounded-lg text-sm font-bold hover:bg-slate-700 transition-colors';
 };
 
-// 현재 약관 항목 가져오기
-function getCurrentTermsItems(type) {
+// 약관 편집 취소
+window.cancelEditTerms = function(type) {
+    const display = document.getElementById(`${type}ContentDisplay`);
     const editor = document.getElementById(`${type}ContentEditor`);
-    if (!editor) return [];
+    const textarea = document.getElementById(`${type}ContentTextarea`);
+    const editBtn = document.getElementById(`${type}EditBtn`);
     
-    const items = [];
-    editor.querySelectorAll('[data-index]').forEach(itemEl => {
-        const index = parseInt(itemEl.getAttribute('data-index'));
-        const titleInput = itemEl.querySelector('input[type="text"]');
-        const contentTextarea = itemEl.querySelector('textarea');
-        
-        items[index] = {
-            title: titleInput ? titleInput.value : '',
-            content: contentTextarea ? contentTextarea.value : ''
-        };
-    });
+    if (!display || !editor || !textarea || !editBtn) return;
     
-    return items;
-}
+    // 읽기 모드로 전환
+    display.classList.remove('hidden');
+    editor.classList.add('hidden');
+    
+    // textarea 값을 원래 값(display의 내용)으로 복원
+    textarea.value = display.textContent;
+    
+    // 버튼 텍스트 변경
+    editBtn.innerHTML = '<i class="fa-solid fa-pencil mr-1"></i>수정';
+    editBtn.onclick = () => window.editTerms(type);
+    editBtn.className = 'px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors';
+};
 
 // 약관 탭 전환
 window.switchTermsTab = function(tab) {
@@ -902,7 +1092,13 @@ async function loadTermsHistory() {
         // 약관 버전 리스트 렌더링
         historyList.innerHTML = versions.map(v => {
             const date = v.deployedAt ? new Date(v.deployedAt).toLocaleString('ko-KR') : '날짜 없음';
-            const isCurrent = v.version === currentVersion;
+            // 버전 비교 시 숫자로 변환하여 비교 (1.0과 1은 같음)
+            const vVersion = String(v.version).trim();
+            const cVersion = String(currentVersion).trim();
+            const vNum = parseFloat(vVersion);
+            const cNum = parseFloat(cVersion);
+            const isCurrent = !isNaN(vNum) && !isNaN(cNum) && vNum === cNum;
+            
             return `
                 <div class="bg-white rounded-xl p-4 border border-slate-200 hover:border-emerald-300 transition-colors">
                     <div class="flex items-center justify-between">
@@ -914,9 +1110,14 @@ async function loadTermsHistory() {
                             <p class="text-xs text-slate-500">배포일: ${date}</p>
                             <p class="text-xs text-slate-500">배포자: ${v.deployedBy}</p>
                         </div>
-                        <button onclick="window.showTermsVersion('${v.id}')" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors ml-4">
-                            확인
-                        </button>
+                        <div class="flex items-center gap-2">
+                            <button onclick="window.showTermsVersion('${v.id}')" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors">
+                                확인
+                            </button>
+                            ${!isCurrent ? `<button onclick="window.deleteTermsVersion('${v.id}')" class="px-4 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors">
+                                <i class="fa-solid fa-trash mr-1"></i>삭제
+                            </button>` : ''}
+                        </div>
                     </div>
                 </div>
             `;
@@ -925,17 +1126,6 @@ async function loadTermsHistory() {
     } catch (e) {
         console.error('약관 이력 로드 실패:', e);
         historyList.innerHTML = '<div class="text-center py-8 text-red-400"><p class="text-sm">약관 이력 로드 중 오류가 발생했습니다.</p></div>';
-    }
-}
-
-// 현재 적용 중인 약관 버전 가져오기
-async function getCurrentTermsVersion() {
-    try {
-        const { CURRENT_TERMS_VERSION } = await import('./constants.js');
-        return CURRENT_TERMS_VERSION;
-    } catch (e) {
-        console.warn('약관 버전 가져오기 실패:', e);
-        return '1.0';
     }
 }
 
@@ -958,7 +1148,10 @@ window.showTermsVersion = async function(versionId) {
         
         const date = data.deployedAt ? new Date(data.deployedAt).toLocaleString('ko-KR') : '날짜 없음';
         const currentVersion = await getCurrentTermsVersion();
-        const isCurrent = data.version === currentVersion;
+        // 버전 비교 시 숫자로 변환하여 비교 (1.0과 1은 같음)
+        const vNum = parseFloat(String(data.version).trim());
+        const cNum = parseFloat(String(currentVersion).trim());
+        const isCurrent = !isNaN(vNum) && !isNaN(cNum) && vNum === cNum;
         
         versionContent.innerHTML = `
             <div class="mb-4 pb-4 border-b border-slate-200">
@@ -976,13 +1169,12 @@ window.showTermsVersion = async function(versionId) {
                     <i class="fa-solid fa-file-contract text-emerald-600"></i>
                     이용약관
                 </h5>
-                <div class="space-y-3">
-                    ${(data.terms || []).map(item => `
-                        <div class="bg-white rounded-lg p-3 border border-slate-200">
-                            <div class="text-xs font-bold text-slate-800 mb-2">${escapeHtml(item.title || '')}</div>
-                            <div class="text-xs text-slate-600 leading-relaxed">${(item.content || '').replace(/\n/g, '<br>')}</div>
-                        </div>
-                    `).join('')}
+                <div class="bg-white rounded-lg p-3 border border-slate-200 text-xs text-slate-600 leading-relaxed whitespace-pre-line">
+                    ${escapeHtml(Array.isArray(data.terms) ? data.terms.map(item => {
+                        const title = item.title || '';
+                        const content = item.content || '';
+                        return title ? `${title}\n${content}` : content;
+                    }).join('\n\n') : (data.terms || ''))}
                 </div>
             </div>
             
@@ -992,13 +1184,12 @@ window.showTermsVersion = async function(versionId) {
                     <i class="fa-solid fa-shield-halved text-blue-600"></i>
                     개인정보 처리방침
                 </h5>
-                <div class="space-y-3">
-                    ${(data.privacy || []).map(item => `
-                        <div class="bg-white rounded-lg p-3 border border-slate-200">
-                            <div class="text-xs font-bold text-slate-800 mb-2">${escapeHtml(item.title || '')}</div>
-                            <div class="text-xs text-slate-600 leading-relaxed">${(item.content || '').replace(/\n/g, '<br>')}</div>
-                        </div>
-                    `).join('')}
+                <div class="bg-white rounded-lg p-3 border border-slate-200 text-xs text-slate-600 leading-relaxed whitespace-pre-line">
+                    ${escapeHtml(Array.isArray(data.privacy) ? data.privacy.map(item => {
+                        const title = item.title || '';
+                        const content = item.content || '';
+                        return title ? `${title}\n${content}` : content;
+                    }).join('\n\n') : (data.privacy || ''))}
                 </div>
             </div>
         `;
@@ -1018,32 +1209,74 @@ window.closeTermsVersionModal = function() {
     }
 };
 
-// 약관 배포
+// 약관 버전 삭제
+window.deleteTermsVersion = async function(versionId) {
+    if (!confirm('이 약관 버전을 삭제하시겠습니까?\n\n삭제된 버전은 복구할 수 없습니다.')) {
+        return;
+    }
+    
+    try {
+        const versionDoc = doc(db, 'artifacts', appId, 'content', 'terms', 'versions', versionId);
+        await deleteDoc(versionDoc);
+        
+        alert('약관 버전이 삭제되었습니다.');
+        
+        // 약관이력 새로고침
+        await loadTermsHistory();
+    } catch (e) {
+        console.error('약관 버전 삭제 실패:', e);
+        alert('약관 버전 삭제 중 오류가 발생했습니다: ' + e.message);
+    }
+};
 window.deployTerms = async function() {
     if (!confirm('약관을 배포하시겠습니까?\n\n배포하면 모든 사용자에게 재동의를 요청하게 됩니다.')) {
         return;
     }
     
     try {
-        // 현재 수정 중인 약관 가져오기
-        const termsItems = getCurrentTermsItems('terms');
-        const privacyItems = getCurrentTermsItems('privacy');
+        // 현재 표시된 약관 내용 가져오기
+        const termsDisplay = document.getElementById('termsContentDisplay');
+        const privacyDisplay = document.getElementById('privacyContentDisplay');
+        const termsTextarea = document.getElementById('termsContentTextarea');
+        const privacyTextarea = document.getElementById('privacyContentTextarea');
+        const termsEditor = document.getElementById('termsContentEditor');
+        const privacyEditor = document.getElementById('privacyContentEditor');
         
-        if (!termsItems || termsItems.length === 0 || !privacyItems || privacyItems.length === 0) {
+        let termsContent = '';
+        let privacyContent = '';
+        
+        // 편집 모드인지 확인하고, 편집 모드의 내용을 가져오기
+        if (termsEditor && !termsEditor.classList.contains('hidden')) {
+            // 편집 모드이므로 textarea의 값을 가져옴
+            termsContent = termsTextarea ? termsTextarea.value : '';
+        } else {
+            // 읽기 모드이므로 display의 내용을 가져옴
+            termsContent = termsDisplay ? termsDisplay.textContent : '';
+        }
+        
+        if (privacyEditor && !privacyEditor.classList.contains('hidden')) {
+            // 편집 모드이므로 textarea의 값을 가져옴
+            privacyContent = privacyTextarea ? privacyTextarea.value : '';
+        } else {
+            // 읽기 모드이므로 display의 내용을 가져옴
+            privacyContent = privacyDisplay ? privacyDisplay.textContent : '';
+        }
+        
+        if (!termsContent || !privacyContent) {
             alert('약관 내용을 입력해주세요.');
             return;
         }
         
-        // 현재 약관 버전 가져오기
-        const { CURRENT_TERMS_VERSION } = await import('./constants.js');
-        const currentVersion = parseFloat(CURRENT_TERMS_VERSION);
-        const newVersion = (currentVersion + 0.1).toFixed(1); // 버전 0.1씩 증가
+        // 현재 약관 버전 가져오기 (Firestore 우선, 없으면 constants.js 기본값)
+        const currentVersion = await getCurrentTermsVersion();
+        const baseVersion = parseFloat(currentVersion);
+        const newVersion = (baseVersion + 0.1).toFixed(1); // 버전 0.1씩 증가
         
-        // 약관 버전 데이터 저장
+        // 약관 버전 데이터 저장 (배열 형식으로 변환하여 저장 - 기존 호환성 유지)
         const versionData = {
             version: newVersion,
-            terms: termsItems,
-            privacy: privacyItems,
+            terms: [{ title: '이용약관', content: termsContent }],
+            privacy: [{ title: '개인정보 처리방침', content: privacyContent }],
             deployedAt: new Date().toISOString(),
             deployedBy: adminAuth.currentUser?.email || '관리자'
         };
@@ -1052,23 +1285,31 @@ window.deployTerms = async function() {
         const versionsColl = collection(db, 'artifacts', appId, 'content', 'terms', 'versions');
         await addDoc(versionsColl, versionData);
         
-        // 현재 약관도 업데이트 (수정 중인 약관 유지)
+        // 현재 약관도 업데이트 (단일 텍스트 형식으로 저장)
         const termsDoc = doc(db, 'artifacts', appId, 'content', 'terms');
         await setDoc(termsDoc, {
-            terms: termsItems,
-            privacy: privacyItems,
+            terms: termsContent,
+            privacy: privacyContent,
             updatedAt: new Date().toISOString(),
-            currentVersion: newVersion
+            currentVersion: newVersion  // Firestore에 현재 버전 저장
         }, { merge: true });
         
-        // CURRENT_TERMS_VERSION 업데이트는 constants.js 파일을 수동으로 수정해야 함
-        alert(`약관 버전 ${newVersion}이 배포되었습니다.\n\n주의: constants.js의 CURRENT_TERMS_VERSION을 ${newVersion}으로 수동으로 업데이트해야 합니다.`);
-        console.log(`⚠️ constants.js의 CURRENT_TERMS_VERSION을 ${newVersion}으로 수동으로 업데이트하세요.`);
+        // 약관 버전 캐시 무효화
+        invalidateTermsVersionCache();
+        
+        alert(`약관 버전 ${newVersion}이 배포되었습니다.\n\n버전이 자동으로 업데이트되었습니다.`);
+        console.log(`✅ 약관 버전 ${newVersion} 배포 완료. Firestore에 currentVersion 저장됨.`);
         
         // 약관이력 탭이면 새로고침
         const historySection = document.getElementById('termsHistorySection');
         if (historySection && !historySection.classList.contains('hidden')) {
             loadTermsHistory();
+        }
+        
+        // 약관 관리 탭이면 내용 새로고침
+        const manageSection = document.getElementById('termsManageSection');
+        if (manageSection && !manageSection.classList.contains('hidden')) {
+            await loadTermsContent();
         }
         
     } catch (e) {
@@ -1080,12 +1321,41 @@ window.deployTerms = async function() {
 // 약관 저장
 window.saveTerms = async function() {
     try {
-        const termsItems = getCurrentTermsItems('terms');
-        const privacyItems = getCurrentTermsItems('privacy');
+        const termsTextarea = document.getElementById('termsContentTextarea');
+        const privacyTextarea = document.getElementById('privacyContentTextarea');
+        const termsDisplay = document.getElementById('termsContentDisplay');
+        const termsEditor = document.getElementById('termsContentEditor');
+        const privacyDisplay = document.getElementById('privacyContentDisplay');
+        const privacyEditor = document.getElementById('privacyContentEditor');
+        
+        if (!termsTextarea || !privacyTextarea) {
+            alert('약관 데이터를 찾을 수 없습니다.');
+            return;
+        }
+        
+        // 편집 모드인지 확인하고, 편집 모드의 내용을 가져오기
+        let termsContent = '';
+        let privacyContent = '';
+        
+        if (termsEditor && !termsEditor.classList.contains('hidden')) {
+            // 편집 모드이므로 textarea의 값을 가져옴
+            termsContent = termsTextarea.value || '';
+        } else {
+            // 읽기 모드이므로 display의 내용을 가져옴
+            termsContent = termsDisplay ? termsDisplay.textContent : '';
+        }
+        
+        if (privacyEditor && !privacyEditor.classList.contains('hidden')) {
+            // 편집 모드이므로 textarea의 값을 가져옴
+            privacyContent = privacyTextarea.value || '';
+        } else {
+            // 읽기 모드이므로 display의 내용을 가져옴
+            privacyContent = privacyDisplay ? privacyDisplay.textContent : '';
+        }
         
         const termsData = {
-            terms: termsItems,
-            privacy: privacyItems,
+            terms: termsContent,
+            privacy: privacyContent,
             updatedAt: new Date().toISOString()
         };
         
@@ -1094,6 +1364,10 @@ window.saveTerms = async function() {
         
         alert('약관이 저장되었습니다.');
         console.log('약관 저장 완료:', termsData);
+        
+        // 저장 후 다시 로드하여 최종 저장 일자 업데이트 및 편집 모드 해제
+        await loadTermsContent();
+        
     } catch (e) {
         console.error('약관 저장 실패:', e);
         alert('약관 저장 중 오류가 발생했습니다: ' + e.message);
@@ -1112,7 +1386,8 @@ async function loadTagsContent() {
             mealType: ['집밥', '외식', '회식/술자리', '배달/포장', '구내식당', '기타', '건너뜀'],
             withWhom: ['혼자', '가족', '연인', '친구', '직장동료', '학교친구', '모임', '기타'],
             category: ['한식', '양식', '일식', '중식', '분식', '카페'],
-            snackType: ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타']
+            snackType: ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타'],
+            subTagsPlaceSnack: ['집', '사무실', '카페']
         };
         
         if (tagsSnap.exists()) {
@@ -1121,6 +1396,7 @@ async function loadTagsContent() {
             if (data.withWhom) tagsData.withWhom = data.withWhom;
             if (data.category) tagsData.category = data.category;
             if (data.snackType) tagsData.snackType = data.snackType;
+            if (data.subTagsPlaceSnack && Array.isArray(data.subTagsPlaceSnack)) tagsData.subTagsPlaceSnack = data.subTagsPlaceSnack;
         }
         
         // 태그 렌더링
@@ -1128,6 +1404,7 @@ async function loadTagsContent() {
         renderTags('withWhom', tagsData.withWhom);
         renderTags('category', tagsData.category);
         renderTags('snackType', tagsData.snackType);
+        renderTags('subTagsPlaceSnack', tagsData.subTagsPlaceSnack);
         
     } catch (e) {
         console.error('태그 콘텐츠 로드 실패:', e);
@@ -1136,12 +1413,14 @@ async function loadTagsContent() {
             mealType: ['집밥', '외식', '회식/술자리', '배달/포장', '구내식당', '기타', '건너뜀'],
             withWhom: ['혼자', '가족', '연인', '친구', '직장동료', '학교친구', '모임', '기타'],
             category: ['한식', '양식', '일식', '중식', '분식', '카페'],
-            snackType: ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타']
+            snackType: ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타'],
+            subTagsPlaceSnack: ['집', '사무실', '카페']
         };
         renderTags('mealType', defaultTags.mealType);
         renderTags('withWhom', defaultTags.withWhom);
         renderTags('category', defaultTags.category);
         renderTags('snackType', defaultTags.snackType);
+        renderTags('subTagsPlaceSnack', defaultTags.subTagsPlaceSnack);
     }
 }
 
@@ -1308,10 +1587,15 @@ window.saveTags = async function() {
         const withWhom = getCurrentTags('withWhom');
         const category = getCurrentTags('category');
         const snackType = getCurrentTags('snackType');
+        const subTagsPlaceSnack = getCurrentTags('subTagsPlaceSnack');
         
         // 빈 태그가 있는지 확인
         if (mealType.length === 0 || withWhom.length === 0 || category.length === 0 || snackType.length === 0) {
             alert('각 카테고리마다 최소 한 개의 태그가 필요합니다.');
+            return;
+        }
+        if (subTagsPlaceSnack.length === 0) {
+            alert('간식 장소는 최소 한 개의 태그가 필요합니다.');
             return;
         }
         
@@ -1320,6 +1604,7 @@ window.saveTags = async function() {
             withWhom: withWhom,
             category: category,
             snackType: snackType,
+            subTagsPlaceSnack: subTagsPlaceSnack,
             updatedAt: new Date().toISOString()
         };
         
@@ -1342,69 +1627,61 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// 사용자 목록 가져오기
+// 사용자 목록 가져오기 (병렬·일괄 조회로 로딩 시간 단축)
 async function getUsers() {
     try {
-        // 1. config/settings 문서가 있는 모든 사용자 찾기
-        // 주의: collectionGroup은 인덱스가 필요하므로 사용하지 않음
-        // 대신 users 컬렉션의 각 사용자에 대해 settings 문서 확인 (나중에 최적화 가능)
-        let userIdsFromSettings = new Set();
-        // collectionGroup은 인덱스가 필요하고 400 에러를 발생시킬 수 있으므로 비활성화
-        // users 컬렉션에서 사용자를 찾은 후 각 사용자의 settings를 확인하는 방식으로 변경
-
-        // 2. users 컬렉션에서 사용자 ID 가져오기 (약관 동의한 모든 사용자 포함)
-        // 주의: users 컬렉션은 자동 생성되므로 모든 사용자가 포함될 수 있음
-        let userIdsFromUsers = new Set();
-        try {
-            const usersColl = collection(db, 'artifacts', appId, 'users');
-            const usersSnapshot = await getDocs(usersColl);
-            usersSnapshot.docs.forEach(userDoc => {
-                userIdsFromUsers.add(userDoc.id);
-            });
-            console.log('👥 users 컬렉션에서 발견된 사용자:', userIdsFromUsers.size, '명');
-        } catch (e) {
-            console.warn('⚠️ users 컬렉션 조회 실패:', e);
-        }
-        
-        // users 컬렉션의 각 사용자에 대해 settings 문서 확인하여 실제 사용자만 필터링
-        // (settings가 없거나 약관 동의하지 않은 사용자는 제외하지 않음 - 관리자가 확인할 수 있도록)
-
-        // 3. 공유 게시물에서 사용자 ID 추출 (보조 정보로 사용)
+        const usersColl = collection(db, 'artifacts', appId, 'users');
         const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-        const sharedSnapshot = await getDocs(sharedColl);
+        const userBansColl = collection(db, 'artifacts', appId, 'userBans');
+        const boardPostsColl = collection(db, 'artifacts', appId, 'boardPosts');
+        const deleteRequestsColl = collection(db, 'artifacts', appId, 'deleteUserRequests');
+
+        // 1) users, sharedPhotos, userBans, boardPosts, deleteUserRequests 한 번에 조회
+        const [usersSnapshot, sharedSnapshot, userBansSnapshot, boardPostsSnapshot, deleteRequestsSnapshot] = await Promise.all([
+            getDocs(usersColl),
+            getDocs(sharedColl),
+            getDocs(userBansColl),
+            getDocs(boardPostsColl),
+            getDocs(deleteRequestsColl)
+        ]);
+
+        const userIdsFromUsers = new Set(usersSnapshot.docs.map(d => d.id));
         const userIdsFromShared = new Set();
-        
-        sharedSnapshot.forEach(doc => {
-            const data = doc.data();
-            if (data.userId) {
-                userIdsFromShared.add(data.userId);
-            }
+        sharedSnapshot.docs.forEach(d => {
+            const uid = d.data().userId;
+            if (uid) userIdsFromShared.add(uid);
         });
-        
-        console.log('📸 공유 게시물에서 발견된 사용자:', userIdsFromShared.size, '명');
+        const userIdsToCheck = Array.from(new Set([...userIdsFromUsers, ...userIdsFromShared]));
 
-        // 모든 소스에서 사용자 ID 수집 (중복 제거)
-        // 통계와 일치시키기 위해 users 컬렉션과 sharedPhotos를 우선 사용
-        const userIdsToCheck = new Set([...userIdsFromUsers, ...userIdsFromShared, ...userIdsFromSettings]);
-        console.log(`총 ${userIdsToCheck.size}명의 사용자 처리 시작...`);
-        console.log('  - users 컬렉션:', userIdsFromUsers.size, '명');
-        console.log('  - sharedPhotos:', userIdsFromShared.size, '명');
-        console.log('  - config/settings:', userIdsFromSettings.size, '명');
+        // 2) userBans Map, 앨범 공유 수 Map, 토크 수 Map (이미 조회한 스냅으로 집계)
+        const userBansMap = new Map();
+        userBansSnapshot.docs.forEach(d => {
+            const data = d.data();
+            userBansMap.set(d.id, {
+                bannedShare: data.bannedShare === true,
+                bannedWrite: data.bannedWrite === true
+            });
+        });
+        const albumShareCountMap = new Map();
+        sharedSnapshot.docs.forEach(d => {
+            const uid = d.data().userId;
+            if (uid) albumShareCountMap.set(uid, (albumShareCountMap.get(uid) || 0) + 1);
+        });
+        const talkCountMap = new Map();
+        boardPostsSnapshot.docs.forEach(d => {
+            const aid = d.data().authorId;
+            if (aid) talkCountMap.set(aid, (talkCountMap.get(aid) || 0) + 1);
+        });
+        const deleteRequestedUserIds = new Set();
+        deleteRequestsSnapshot.docs.forEach(d => {
+            const uid = d.data().userId;
+            if (uid) deleteRequestedUserIds.add(uid);
+        });
 
-        // 디버깅: 각 소스별 사용자 ID 목록
-        if (userIdsFromUsers.size > 0) {
-            console.log('  - users 컬렉션에서:', Array.from(userIdsFromUsers));
-        }
-        if (userIdsFromShared.size > 0) {
-            console.log('  - sharedPhotos에서:', Array.from(userIdsFromShared));
-        }
-
-        const users = [];
-        
-        // 공유 게시물에서 사용자 정보 추출 (닉네임, 아이콘 등)
+        // 공유에서 닉네임/아이콘 (첫 번째만)
         const sharedUserMap = new Map();
-        sharedSnapshot.forEach(doc => {
-            const data = doc.data();
+        sharedSnapshot.docs.forEach(d => {
+            const data = d.data();
             if (data.userId && !sharedUserMap.has(data.userId)) {
                 sharedUserMap.set(data.userId, {
                     nickname: data.userNickname || null,
@@ -1413,160 +1690,93 @@ async function getUsers() {
             }
         });
 
-        for (const userId of userIdsToCheck) {
-            // 사용자 설정 가져오기 (settings는 별도 문서로 저장됨)
-            let settings = {};
+        // 3) 모든 사용자에 대해 user 문서, settings, meals 개수 병렬 조회 (meals는 실패 시 0으로 처리)
+        const [userDocs, settingsDocs, mealCountSettled] = await Promise.all([
+            Promise.all(userIdsToCheck.map(id => getDoc(doc(db, 'artifacts', appId, 'users', id)))),
+            Promise.all(userIdsToCheck.map(id => getDoc(doc(db, 'artifacts', appId, 'users', id, 'config', 'settings')))),
+            Promise.allSettled(userIdsToCheck.map(id => getCountFromServer(collection(db, 'artifacts', appId, 'users', id, 'meals'))))
+        ]);
+        const mealCounts = mealCountSettled.map(s => s.status === 'fulfilled' ? s.value : null);
+
+        const users = [];
+        for (let i = 0; i < userIdsToCheck.length; i++) {
+            const userId = userIdsToCheck[i];
             let nickname = '익명';
             let icon = '🐻';
+            let birthdate = '';
+            let lifestyle = '';
             let email = null;
             let termsAgreed = false;
             let termsAgreedAt = null;
             let termsVersion = null;
             let providerId = null;
-
-            // 공유 게시물에서 가져온 정보로 초기값 설정
-            if (sharedUserMap.has(userId)) {
-                const sharedInfo = sharedUserMap.get(userId);
-                if (sharedInfo.nickname) nickname = sharedInfo.nickname;
-                if (sharedInfo.icon) icon = sharedInfo.icon;
-            }
-
-            // users/{userId} 문서에서 가입일과 마지막 로그인 날짜, providerId 가져오기
             let createdAt = null;
             let lastLoginAt = null;
-            let userDocProviderId = null;
-            let userDocEmail = null;
-            try {
-                const userDocRef = doc(db, 'artifacts', appId, 'users', userId);
-                const userDocSnap = await getDoc(userDocRef);
-                if (userDocSnap.exists()) {
-                    const userData = userDocSnap.data();
-                    // Firestore Timestamp를 Date로 변환
-                    if (userData.createdAt) {
-                        createdAt = userData.createdAt.toDate ? userData.createdAt.toDate() : new Date(userData.createdAt);
-                    }
-                    if (userData.lastLoginAt) {
-                        lastLoginAt = userData.lastLoginAt.toDate ? userData.lastLoginAt.toDate() : new Date(userData.lastLoginAt);
-                    }
-                    // users/{userId} 문서에서 providerId와 email 가져오기 (우선순위 높음)
-                    if (userData.providerId) {
-                        userDocProviderId = userData.providerId;
-                    }
-                    if (userData.email) {
-                        userDocEmail = userData.email;
-                    }
-                }
-            } catch (e) {
-                console.warn(`사용자 ${userId}의 기본 정보를 가져오는 중 오류:`, e);
+
+            if (sharedUserMap.has(userId)) {
+                const s = sharedUserMap.get(userId);
+                if (s.nickname) nickname = s.nickname;
+                if (s.icon) icon = s.icon;
             }
 
-            try {
-                // settings 문서에서 직접 가져오기 (실제 Firestore 구조)
-                const settingsDoc = doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings');
-                const settingsSnap = await getDoc(settingsDoc);
-                if (settingsSnap.exists()) {
-                    settings = settingsSnap.data();
-                    console.log(`📋 사용자 ${userId} 설정 로드:`, {
-                        hasProfile: !!settings.profile,
-                        profileNickname: settings.profile?.nickname,
-                        currentNickname: nickname
-                    });
-                    if (settings.profile) {
-                        // nickname이 명시적으로 있고 빈 문자열이 아니면 사용
-                        const profileNickname = settings.profile.nickname;
-                        if (profileNickname !== undefined && profileNickname !== null && profileNickname !== '') {
-                            nickname = profileNickname;
-                            console.log(`✅ 닉네임 설정: ${nickname}`);
+            const userDocSnap = userDocs[i];
+            if (userDocSnap?.exists()) {
+                const userData = userDocSnap.data();
+                if (userData.createdAt) {
+                    createdAt = userData.createdAt.toDate ? userData.createdAt.toDate() : new Date(userData.createdAt);
+                }
+                if (userData.lastLoginAt) {
+                    lastLoginAt = userData.lastLoginAt.toDate ? userData.lastLoginAt.toDate() : new Date(userData.lastLoginAt);
+                }
+                if (userData.providerId) providerId = userData.providerId;
+                if (userData.email) email = userData.email;
+            }
+
+            const settingsSnap = settingsDocs[i];
+            if (settingsSnap?.exists()) {
+                const settings = settingsSnap.data();
+                if (settings.profile) {
+                    if (settings.profileCompleted === true) {
+                        const pn = settings.profile.nickname;
+                        if (pn !== undefined && pn !== null && String(pn).trim() !== '' && pn !== '게스트') {
+                            nickname = pn;
                         } else {
-                            console.warn(`⚠️ 프로필 닉네임이 유효하지 않음:`, profileNickname);
-                        }
-                        if (settings.profile.icon) {
-                            icon = settings.profile.icon;
+                            nickname = '미설정';
                         }
                     } else {
-                        console.warn(`⚠️ 사용자 ${userId}의 settings에 profile이 없습니다.`);
+                        nickname = '미설정';
                     }
-                    termsAgreed = settings.termsAgreed === true;
-                    termsAgreedAt = settings.termsAgreedAt || null;
-                    termsVersion = settings.termsVersion || null;
-                    email = settings.email || null;
-                    providerId = settings.providerId || null;
+                    if (settings.profile.icon) icon = settings.profile.icon;
+                    if (settings.profile.birthdate) birthdate = String(settings.profile.birthdate).trim();
+                    if (settings.profile.lifestyle) lifestyle = String(settings.profile.lifestyle).trim();
                 } else {
-                    console.warn(`사용자 ${userId}의 settings 문서가 존재하지 않습니다.`);
+                    nickname = '미설정';
                 }
-            } catch (e) {
-                console.warn(`사용자 ${userId}의 설정을 가져오는 중 오류:`, e);
-            }
-            
-            // 디버깅: 닉네임이 '익명'으로 남아있는 경우 로그 출력
-            if (nickname === '익명' && userId === 'SLHnlOOAtfe7j7g8MAdbTxfRgeQ2') {
-                console.error(`❌ 사용자 ${userId}의 닉네임이 '익명'으로 표시됨:`, {
-                    settings: settings,
-                    profile: settings?.profile,
-                    profileNickname: settings?.profile?.nickname,
-                    profileNicknameType: typeof settings?.profile?.nickname,
-                    sharedInfo: sharedUserMap.has(userId) ? sharedUserMap.get(userId) : null,
-                    finalNickname: nickname
-                });
+                termsAgreed = settings.termsAgreed === true;
+                termsAgreedAt = settings.termsAgreedAt || null;
+                termsVersion = settings.termsVersion || null;
+                if (settings.email) email = settings.email;
+                if (settings.providerId) providerId = settings.providerId;
             }
 
-            // providerId와 email은 users/{userId} 문서에서 우선, 없으면 settings에서 사용
-            if (!providerId && userDocProviderId) {
-                providerId = userDocProviderId;
-            }
-            if (!email && userDocEmail) {
-                email = userDocEmail;
-            }
-
-            // 게시글 수 가져오기 (타임라인, 앨범 공유, 토크 별로)
-            let timelineCount = 0;
-            let albumShareCount = 0;
-            let talkCount = 0;
-            
-            // 타임라인 게시물 수
-            try {
-                const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
-                const mealsSnapshot = await getDocs(mealsColl);
-                timelineCount = mealsSnapshot.size;
-            } catch (e) {
-                console.warn(`사용자 ${userId}의 타임라인 게시글 수를 가져오는 중 오류:`, e);
-            }
-            
-            // 앨범 공유 수 (sharedPhotos에서 userId로 필터링)
-            try {
-                const sharedPhotosColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-                const sharedQuery = query(sharedPhotosColl, where('userId', '==', userId));
-                const sharedUserSnapshot = await getDocs(sharedQuery);
-                albumShareCount = sharedUserSnapshot.size;
-            } catch (e) {
-                console.warn(`사용자 ${userId}의 앨범 공유 수를 가져오는 중 오류:`, e);
-            }
-            
-            // 토크 게시물 수 (boardPosts에서 authorId로 필터링)
-            try {
-                const boardPostsColl = collection(db, 'artifacts', appId, 'boardPosts');
-                const boardQuery = query(boardPostsColl, where('authorId', '==', userId));
-                const boardSnapshot = await getDocs(boardQuery);
-                talkCount = boardSnapshot.size;
-            } catch (e) {
-                console.warn(`사용자 ${userId}의 토크 게시글 수를 가져오는 중 오류:`, e);
-            }
-            
-            // 가입일과 마지막 로그인 날짜는 users/{userId} 문서에서 가져온 값을 그대로 사용
-            // DB에 값이 없으면 그대로 null로 유지 (보정하지 않음)
-            
-            // 로그인 방법 판단
             let loginMethod = '게스트';
-            if (providerId === 'google.com') {
-                loginMethod = '구글';
-            } else if (email) {
-                loginMethod = '이메일';
-            }
+            if (providerId === 'google.com') loginMethod = '구글';
+            else if (email) loginMethod = '이메일';
+
+            const ban = userBansMap.get(userId);
+            const bannedShare = ban?.bannedShare ?? false;
+            const bannedWrite = ban?.bannedWrite ?? false;
+            const deleteRequested = deleteRequestedUserIds.has(userId);
+            const timelineCount = (mealCounts[i] && typeof mealCounts[i].data === 'function') ? mealCounts[i].data().count : 0;
+            const albumShareCount = albumShareCountMap.get(userId) ?? 0;
+            const talkCount = talkCountMap.get(userId) ?? 0;
 
             users.push({
                 userId,
                 nickname,
                 icon,
+                birthdate,
+                lifestyle,
                 email,
                 loginMethod,
                 termsAgreed,
@@ -1576,57 +1786,79 @@ async function getUsers() {
                 albumShareCount,
                 talkCount,
                 createdAt,
-                lastLoginAt
+                lastLoginAt,
+                bannedShare,
+                bannedWrite,
+                deleteRequested
             });
         }
-
-        console.log('✅ 사용자 목록 생성 완료:', users.length, '명');
-
-        // 닉네임으로 정렬
-        users.sort((a, b) => {
-            if (a.nickname < b.nickname) return -1;
-            if (a.nickname > b.nickname) return 1;
-            return 0;
-        });
 
         return users;
     } catch (e) {
         console.error("Get users error:", e);
-        console.error("에러 상세:", e.message, e.stack);
         throw e;
     }
 }
 
 // 사용자 목록 렌더링
-async function renderUsers() {
+async function renderUsers(options = {}) {
     const container = document.getElementById('usersContainer');
     if (!container) {
         console.error('usersContainer를 찾을 수 없습니다.');
         return;
     }
     
-        container.innerHTML = '<tr><td colspan="10" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
+        container.innerHTML = '<tr><td colspan="12" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
     
     try {
         console.log('renderUsers 시작');
-        const users = await getUsers();
+        // 헤더 정렬 핸들러는 한 번만 바인딩
+        initUsersSortHandlers();
+        
+        let users;
+        const useCacheOnly = options?.useCacheOnly === true;
+        if (usersCache && Array.isArray(usersCache)) {
+            users = usersCache;
+        } else if (useCacheOnly) {
+            users = [];
+        } else {
+            users = await getUsers();
+            usersCache = users;
+            adminUsersListPage = 1;
+        }
         console.log('getUsers 결과:', users);
         
         if (users.length === 0) {
             console.log('사용자가 없습니다.');
-            container.innerHTML = '<tr><td colspan="10" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
+            container.innerHTML = '<tr><td colspan="12" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
+            try { applyAdminUsersPageVisibility(adminUsersCurrentPage); } catch (_) {}
             return;
         }
         
         // 최신 약관 버전 가져오기
-        const { CURRENT_TERMS_VERSION } = await import('./constants.js');
+        const currentVersion = await getCurrentTermsVersion();
         
-        console.log(`${users.length}명의 사용자를 렌더링합니다.`);
-        container.innerHTML = users.map(user => {
-            // 약관 동의 상태 확인: termsAgreed가 true이고 termsVersion이 최신 버전과 일치해야 함
-            const hasAgreedToLatest = user.termsAgreed && user.termsVersion === CURRENT_TERMS_VERSION;
-            const hasAgreedToOld = user.termsAgreed && user.termsVersion !== CURRENT_TERMS_VERSION;
-            
+        // 정렬 적용
+        const sortedUsers = sortUsersForTable(users, currentVersion);
+        updateUsersSortHeaderUI();
+        
+        const totalListPages = Math.max(1, Math.ceil(sortedUsers.length / USERS_PER_PAGE));
+        if (typeof adminUsersListPage === 'undefined' || adminUsersListPage < 1) adminUsersListPage = 1;
+        if (adminUsersListPage > totalListPages) adminUsersListPage = totalListPages;
+        const start = (adminUsersListPage - 1) * USERS_PER_PAGE;
+        const usersToShow = sortedUsers.slice(start, start + USERS_PER_PAGE);
+        
+        updateAdminUsersListPagination(sortedUsers.length, totalListPages);
+        
+        console.log(`${usersToShow.length}명 표시 (${start + 1}-${start + usersToShow.length} / ${sortedUsers.length}명).`);
+        container.innerHTML = usersToShow.map(user => {
+            // 약관 동의 상태: 앱(auth-flow)과 동일 기준 — termsVersion 없으면 기존 사용자로 간주하여 동의함
+            // 앱은 식사 기록이 있는 사용자(기존 사용자)는 약관 버전을 검사하지 않으므로, 여기서도 timelineCount > 0 이면 재동의 필요로 표시하지 않음
+            const hasVersion = user.termsVersion != null && String(user.termsVersion).trim() !== '';
+            const isExistingUserByMeals = (user.timelineCount ?? 0) > 0;
+            const hasAgreedToLatest = user.termsAgreed && (!hasVersion || user.termsVersion === currentVersion || isExistingUserByMeals);
+            const hasAgreedToOld = user.termsAgreed && hasVersion && user.termsVersion !== currentVersion && !isExistingUserByMeals;
+
             let termsAgreedText;
             if (hasAgreedToLatest) {
                 termsAgreedText = `<span class="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">동의함</span>`;
@@ -1639,26 +1871,15 @@ async function renderUsers() {
             const termsAgreedDate = user.termsAgreedAt ? 
                 new Date(user.termsAgreedAt).toLocaleDateString('ko-KR') : '-';
             
-            // createdAt과 lastLoginAt은 이미 Date 객체로 변환되어 있음
-            const createdAtDate = user.createdAt ? 
-                (user.createdAt instanceof Date ? user.createdAt : new Date(user.createdAt)).toLocaleString('ko-KR', { 
-                    year: 'numeric', 
-                    month: '2-digit', 
-                    day: '2-digit', 
-                    hour: '2-digit', 
-                    minute: '2-digit',
-                    timeZone: 'Asia/Seoul'
-                }) : '-';
-            
-            const lastLoginDate = user.lastLoginAt ? 
-                (user.lastLoginAt instanceof Date ? user.lastLoginAt : new Date(user.lastLoginAt)).toLocaleString('ko-KR', { 
-                    year: 'numeric', 
-                    month: '2-digit', 
-                    day: '2-digit', 
-                    hour: '2-digit', 
-                    minute: '2-digit',
-                    timeZone: 'Asia/Seoul'
-                }) : '-';
+            const createdDt = user.createdAt ? (user.createdAt instanceof Date ? user.createdAt : new Date(user.createdAt)) : null;
+            const lastLoginDt = user.lastLoginAt ? (user.lastLoginAt instanceof Date ? user.lastLoginAt : new Date(user.lastLoginAt)) : null;
+            const opts = { timeZone: 'Asia/Seoul' };
+            const createdAtDate = createdDt
+                ? createdDt.toLocaleDateString('ko-KR', opts) + '<br>' + createdDt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', ...opts })
+                : '-';
+            const lastLoginDate = lastLoginDt
+                ? lastLoginDt.toLocaleDateString('ko-KR', opts) + '<br>' + lastLoginDt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', ...opts })
+                : '-';
             
             let loginMethodBadge = 'bg-slate-100 text-slate-700';
             if (user.loginMethod === '구글') {
@@ -1667,64 +1888,374 @@ async function renderUsers() {
                 loginMethodBadge = 'bg-blue-100 text-blue-700';
             }
             
+            const shareBanBadge = user.bannedShare
+                ? '<span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded">금지</span>'
+                : '<span class="text-slate-400 text-xs">-</span>';
+            const writeBanBadge = user.bannedWrite
+                ? '<span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded">금지</span>'
+                : '<span class="text-slate-400 text-xs">-</span>';
+            const deleteRequestedBadge = user.deleteRequested
+                ? '<span class="px-2 py-0.5 bg-slate-200 text-slate-600 text-xs font-bold rounded">삭제 요청됨</span>'
+                : '';
+            const rowClass = user.deleteRequested
+                ? 'bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors'
+                : 'hover:bg-slate-50 transition-colors';
+            const userIdAttr = String(user.userId).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\&quot;');
+            const emailUserIdCell = `<span class="text-sm text-slate-600 block">${escapeHtml(user.email || '-')}</span>
+                        <button onclick="navigator.clipboard.writeText('${userIdAttr}').then(() => alert('사용자 ID가 복사되었습니다.')).catch(() => alert('복사 실패'))" 
+                                class="text-xs text-slate-500 hover:text-slate-700 font-mono cursor-pointer hover:underline mt-0.5 block text-left" 
+                                title="클릭하여 복사">${escapeHtml(user.userId)}</button>`;
             return `
-                <tr class="hover:bg-slate-50 transition-colors">
-                    <td class="px-4 py-3">
-                        <span class="px-2 py-1 ${loginMethodBadge} text-xs font-bold rounded">${user.loginMethod || '게스트'}</span>
+                <tr class="${rowClass}">
+                    <td data-page="1 2" class="px-2 py-3">
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" class="admin-user-checkbox rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" data-user-id="${escapeHtml(user.userId)}" title="선택" ${user.deleteRequested ? 'disabled' : ''}>
+                        </label>
                     </td>
-                    <td class="px-4 py-3">
-                        <span class="text-sm text-slate-600">${user.email || '-'}</span>
-                    </td>
-                    <td class="px-4 py-3">
-                        <div class="flex items-center gap-2">
-                            <span class="text-xl">${user.icon || '🐻'}</span>
-                            <span class="font-bold text-slate-800">${user.nickname || '익명'}</span>
+                    <td data-page="1 2" class="px-4 py-3 align-top">${emailUserIdCell}</td>
+                    <td data-page="1 2" class="px-4 py-3">
+                        <div class="flex flex-col gap-0.5">
+                            <div class="flex items-center gap-2 whitespace-nowrap">
+                                <span class="text-xl">${user.icon || '🐻'}</span>
+                                <span class="font-bold text-slate-800">${user.nickname || '익명'}</span>
+                            </div>
+                            ${deleteRequestedBadge ? `<div class="mt-0.5">${deleteRequestedBadge}</div>` : ''}
                         </div>
                     </td>
-                    <td class="px-4 py-3">
+                    <td data-page="1" class="px-4 py-3">
+                        <span class="px-2 py-1 ${loginMethodBadge} text-xs font-bold rounded">${user.loginMethod || '게스트'}</span>
+                    </td>
+                    <td data-page="1" class="px-2 py-3">${writeBanBadge}</td>
+                    <td data-page="1" class="px-2 py-3">${shareBanBadge}</td>
+                    <td data-page="1" class="px-4 py-3">
                         <div class="flex flex-col gap-1">
                             ${termsAgreedText}
                             ${user.termsAgreedAt ? `<span class="text-xs text-slate-500">${termsAgreedDate}</span>` : ''}
                         </div>
                     </td>
-                    <td class="px-4 py-3">
-                        <span class="font-bold text-slate-800">${user.timelineCount || 0}</span>
-                    </td>
-                    <td class="px-4 py-3">
-                        <span class="font-bold text-slate-800">${user.albumShareCount || 0}</span>
-                    </td>
-                    <td class="px-4 py-3">
-                        <span class="font-bold text-slate-800">${user.talkCount || 0}</span>
-                    </td>
-                    <td class="px-4 py-3">
-                        <button onclick="navigator.clipboard.writeText('${user.userId}').then(() => alert('사용자 ID가 복사되었습니다.')).catch(() => alert('복사 실패'))" 
-                                class="text-xs text-slate-600 hover:text-slate-800 font-mono cursor-pointer hover:underline" 
-                                title="클릭하여 복사">
-                            ${user.userId.substring(0, 8)}...
-                        </button>
-                    </td>
-                    <td class="px-4 py-3">
+                    <td data-page="1" class="px-4 py-3">
                         <span class="text-sm text-slate-600">${user.loginMethod === '게스트' ? '-' : createdAtDate}</span>
                     </td>
-                    <td class="px-4 py-3">
+                    <td data-page="1" class="px-4 py-3">
                         <span class="text-sm text-slate-600">${lastLoginDate}</span>
+                    </td>
+                    <td data-page="2" class="px-4 py-3">
+                        <span class="font-bold text-slate-800">${user.timelineCount || 0}</span>
+                    </td>
+                    <td data-page="2" class="px-4 py-3">
+                        <span class="font-bold text-slate-800">${user.albumShareCount || 0}</span>
+                    </td>
+                    <td data-page="2" class="px-4 py-3">
+                        <span class="font-bold text-slate-800">${user.talkCount || 0}</span>
                     </td>
                 </tr>
             `;
         }).join('');
+        initAdminUsersSelectAll();
+        applyAdminUsersPageVisibility(typeof adminUsersCurrentPage !== 'undefined' ? adminUsersCurrentPage : 1);
     } catch (e) {
         console.error("사용자 목록 렌더링 실패:", e);
-        container.innerHTML = '<tr><td colspan="10" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p></td></tr>';
+        const errMsg = (e && (e.message || e.code || String(e))) || '알 수 없는 오류';
+        container.innerHTML = '<tr><td colspan="12" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
     }
 }
 
+let adminUsersCurrentPage = 1;
+let adminUsersListPage = 1;
+
+const USERS_PER_PAGE = 50;
+
+function updateAdminUsersListPagination(totalCount, totalPages) {
+    const infoEl = document.getElementById('adminUsersListPaginationInfo');
+    const navEl = document.getElementById('adminUsersListPagination');
+    if (!infoEl || !navEl) return;
+    const start = (adminUsersListPage - 1) * USERS_PER_PAGE + 1;
+    const end = Math.min(adminUsersListPage * USERS_PER_PAGE, totalCount);
+    infoEl.textContent = totalCount === 0 ? '0명' : `${start}-${end} / ${totalCount}명`;
+    navEl.innerHTML = '';
+    if (totalPages <= 1) return;
+    const prevBtn = document.createElement('button');
+    prevBtn.type = 'button';
+    prevBtn.className = 'px-2 py-1 rounded text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed';
+    prevBtn.textContent = '이전';
+    prevBtn.disabled = adminUsersListPage <= 1;
+    prevBtn.onclick = () => { adminUsersListPage = Math.max(1, adminUsersListPage - 1); renderUsers({ useCacheOnly: true }); };
+    navEl.appendChild(prevBtn);
+    const maxButtons = 7;
+    let from = Math.max(1, adminUsersListPage - Math.floor(maxButtons / 2));
+    let to = Math.min(totalPages, from + maxButtons - 1);
+    if (to - from + 1 < maxButtons) from = Math.max(1, to - maxButtons + 1);
+    for (let p = from; p <= to; p++) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'admin-users-list-page-btn min-w-[1.75rem] px-2 py-1 rounded text-xs font-bold transition-colors ' + (p === adminUsersListPage ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600 hover:bg-slate-200');
+        btn.textContent = String(p);
+        btn.onclick = () => { adminUsersListPage = p; renderUsers({ useCacheOnly: true }); };
+        navEl.appendChild(btn);
+    }
+    const nextBtn = document.createElement('button');
+    nextBtn.type = 'button';
+    nextBtn.className = 'px-2 py-1 rounded text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed';
+    nextBtn.textContent = '다음';
+    nextBtn.disabled = adminUsersListPage >= totalPages;
+    nextBtn.onclick = () => { adminUsersListPage = Math.min(totalPages, adminUsersListPage + 1); renderUsers({ useCacheOnly: true }); };
+    navEl.appendChild(nextBtn);
+}
+
+function applyAdminUsersPageVisibility(pageNum) {
+    try {
+        const table = document.getElementById('adminUsersTable');
+        if (!table) return;
+        const sel = pageNum === 1 ? '[data-page="1"], [data-page="1 2"]' : '[data-page="2"], [data-page="1 2"]';
+        const hide = pageNum === 1 ? '[data-page="2"]' : '[data-page="1"]';
+        table.querySelectorAll('th' + hide).forEach(el => { el.style.display = 'none'; });
+        table.querySelectorAll('th' + sel).forEach(el => { el.style.display = ''; });
+        table.querySelectorAll('tbody td' + hide).forEach(el => { el.style.display = 'none'; });
+        table.querySelectorAll('tbody td' + sel).forEach(el => { el.style.display = ''; });
+    } catch (e) {
+        console.warn('applyAdminUsersPageVisibility:', e);
+    }
+}
+
+window.switchAdminUsersPage = function (pageNum) {
+    if (pageNum !== 1 && pageNum !== 2) return;
+    adminUsersCurrentPage = pageNum;
+    applyAdminUsersPageVisibility(pageNum);
+    const btn1 = document.getElementById('adminUsersPage1');
+    const btn2 = document.getElementById('adminUsersPage2');
+    if (btn1 && btn2) {
+        if (pageNum === 1) {
+            btn1.classList.add('bg-emerald-100', 'text-emerald-800');
+            btn1.classList.remove('bg-transparent', 'text-slate-600');
+            btn1.setAttribute('aria-pressed', 'true');
+            btn2.classList.add('bg-transparent', 'text-slate-600');
+            btn2.classList.remove('bg-emerald-100', 'text-emerald-800');
+            btn2.setAttribute('aria-pressed', 'false');
+        } else {
+            btn2.classList.add('bg-emerald-100', 'text-emerald-800');
+            btn2.classList.remove('bg-transparent', 'text-slate-600');
+            btn2.setAttribute('aria-pressed', 'true');
+            btn1.classList.add('bg-transparent', 'text-slate-600');
+            btn1.classList.remove('bg-emerald-100', 'text-emerald-800');
+            btn1.setAttribute('aria-pressed', 'false');
+        }
+    }
+};
+
+window.switchAdminUsersListPage = function (pageNum) {
+    if (pageNum < 1) return;
+    adminUsersListPage = pageNum;
+    renderUsers({ useCacheOnly: true });
+};
+
+function _applyAdminUsersPageBtnState() {
+    const btn1 = document.getElementById('adminUsersPage1');
+    const btn2 = document.getElementById('adminUsersPage2');
+    if (btn1 && btn2) {
+        if (adminUsersCurrentPage === 1) {
+            btn1.classList.add('bg-emerald-100', 'text-emerald-800');
+            btn1.classList.remove('bg-transparent', 'text-slate-600');
+            btn2.classList.add('bg-transparent', 'text-slate-600');
+            btn2.classList.remove('bg-emerald-100', 'text-emerald-800');
+        } else {
+            btn2.classList.add('bg-emerald-100', 'text-emerald-800');
+            btn2.classList.remove('bg-transparent', 'text-slate-600');
+            btn2.setAttribute('aria-pressed', 'true');
+            btn1.classList.add('bg-transparent', 'text-slate-600');
+            btn1.classList.remove('bg-emerald-100', 'text-emerald-800');
+            btn1.setAttribute('aria-pressed', 'false');
+        }
+    }
+};
+
+// 사용자 테이블 전체 선택 체크박스
+function initAdminUsersSelectAll() {
+    const selectAll = document.getElementById('adminUsersSelectAll');
+    const checkboxes = document.querySelectorAll('.admin-user-checkbox');
+    if (!selectAll) return;
+    selectAll.checked = false;
+    selectAll.indeterminate = false;
+    selectAll.onchange = function () {
+        checkboxes.forEach(cb => { cb.checked = selectAll.checked; });
+        selectAll.indeterminate = false;
+    };
+    checkboxes.forEach(cb => {
+        cb.onchange = function () {
+            const checked = document.querySelectorAll('.admin-user-checkbox:checked').length;
+            selectAll.checked = checked === checkboxes.length;
+            selectAll.indeterminate = checked > 0 && checked < checkboxes.length;
+        };
+    });
+}
+
+// 선택된 사용자 ID 목록
+function getSelectedUserIds() {
+    return Array.from(document.querySelectorAll('.admin-user-checkbox:checked'))
+        .map(cb => cb.getAttribute('data-user-id'))
+        .filter(Boolean);
+}
+
+// 대기 중인 삭제 요청 수동 처리 (트리거가 동작하지 않을 때 사용)
+window.processDeleteUserRequests = async function () {
+    const uid = adminAuth.currentUser?.uid;
+    if (!uid) {
+        alert('관리자 로그인이 필요합니다.');
+        return;
+    }
+    try {
+        const processDeleteUserRequestsFn = httpsCallable(functions, 'processDeleteUserRequests');
+        const result = await processDeleteUserRequestsFn();
+        const data = result?.data || {};
+        const { processed = 0, failed = 0, total = 0, errors } = data;
+        if (total === 0) {
+            alert('처리할 삭제 요청이 없습니다.');
+        } else {
+            let msg = `삭제 요청 처리: ${processed}명 삭제됨`;
+            if (failed > 0) {
+                msg += `, ${failed}명 실패.\n실패한 요청은 회색으로 유지되며, 새로고침 후 다시 "삭제 요청 처리"를 시도할 수 있습니다.`;
+                if (errors && errors.length) msg += '\n\n실패 사유:\n' + errors.slice(0, 8).join('\n');
+            }
+            alert(msg);
+        }
+        usersCache = null;
+        renderUsers();
+    } catch (e) {
+        console.error('삭제 요청 처리 실패:', e);
+        alert('삭제 요청 처리 중 오류가 발생했습니다: ' + (e.message || e));
+    }
+};
+
+// 선택 삭제: deleteUserRequests에 문서 생성 후 즉시 processDeleteUserRequests 호출
+window.adminUserDeleteSelected = async function () {
+    let ids = getSelectedUserIds();
+    if (ids.length === 0) {
+        alert('삭제할 사용자를 선택해 주세요.');
+        return;
+    }
+    ids = [...new Set(ids)];
+    if (!confirm(`선택한 ${ids.length}명의 사용자를 삭제하시겠습니까?\n삭제 후 해당 계정으로 로그인할 수 없습니다.`)) {
+        return;
+    }
+    const uid = adminAuth.currentUser?.uid;
+    if (!uid) {
+        alert('관리자 로그인이 필요합니다.');
+        return;
+    }
+    try {
+        const coll = collection(db, 'artifacts', appId, 'deleteUserRequests');
+        for (const userId of ids) {
+            await addDoc(coll, { userId, requestedBy: uid, timestamp: serverTimestamp() });
+        }
+        usersCache = null;
+        try {
+            const processDeleteUserRequestsFn = httpsCallable(functions, 'processDeleteUserRequests');
+            const result = await processDeleteUserRequestsFn();
+            const data = result?.data || {};
+            const { processed = 0, failed = 0, total = 0, errors } = data;
+            let msg = total === 0
+                ? '처리할 삭제 요청이 없습니다.'
+                : `${processed}명 삭제됨`;
+            if (failed > 0) {
+                msg += `, ${failed}명 실패.`;
+                if (errors && errors.length) msg += '\n\n실패: ' + errors.slice(0, 5).join('\n');
+            }
+            alert(msg);
+        } catch (e) {
+            console.error('삭제 요청 처리 실패:', e);
+            alert('삭제 요청은 접수되었으나 즉시 처리에 실패했습니다.\n"삭제 요청 처리" 버튼을 눌러 다시 시도해 주세요.\n\n' + (e.message || e));
+        }
+        renderUsers();
+    } catch (e) {
+        console.error('삭제 요청 실패:', e);
+        alert('삭제 요청 중 오류가 발생했습니다: ' + (e.message || e));
+    }
+};
+
+// 공유 금지 설정/해제
+window.adminUserBanShare = async function (value) {
+    const ids = getSelectedUserIds();
+    if (ids.length === 0) {
+        alert('대상을 선택해 주세요.');
+        return;
+    }
+    const uid = adminAuth.currentUser?.uid;
+    if (!uid) {
+        alert('관리자 로그인이 필요합니다.');
+        return;
+    }
+    try {
+        for (const userId of ids) {
+            const ref = doc(db, 'artifacts', appId, 'userBans', userId);
+            const snap = await getDoc(ref);
+            const current = snap.exists() ? snap.data() : {};
+            await setDoc(ref, {
+                ...current,
+                bannedShare: !!value,
+                updatedAt: new Date().toISOString(),
+                updatedBy: uid
+            }, { merge: true });
+        }
+        alert(value ? `선택한 ${ids.length}명에게 공유 금지를 적용했습니다.` : `선택한 ${ids.length}명의 공유 금지를 해제했습니다.`);
+        usersCache = null;
+        renderUsers();
+    } catch (e) {
+        console.error('공유 금지 설정 실패:', e);
+        alert('설정 중 오류가 발생했습니다: ' + (e.message || e));
+    }
+};
+
+// 글쓰기(댓글 포함) 금지 설정/해제
+window.adminUserBanWrite = async function (value) {
+    const ids = getSelectedUserIds();
+    if (ids.length === 0) {
+        alert('대상을 선택해 주세요.');
+        return;
+    }
+    const uid = adminAuth.currentUser?.uid;
+    if (!uid) {
+        alert('관리자 로그인이 필요합니다.');
+        return;
+    }
+    try {
+        for (const userId of ids) {
+            const ref = doc(db, 'artifacts', appId, 'userBans', userId);
+            const snap = await getDoc(ref);
+            const current = snap.exists() ? snap.data() : {};
+            await setDoc(ref, {
+                ...current,
+                bannedWrite: !!value,
+                updatedAt: new Date().toISOString(),
+                updatedBy: uid
+            }, { merge: true });
+        }
+        alert(value ? `선택한 ${ids.length}명에게 글쓰기(댓글) 금지를 적용했습니다.` : `선택한 ${ids.length}명의 글쓰기 금지를 해제했습니다.`);
+        usersCache = null;
+        renderUsers();
+    } catch (e) {
+        console.error('글쓰기 금지 설정 실패:', e);
+        alert('설정 중 오류가 발생했습니다: ' + (e.message || e));
+    }
+};
+
 // 사용자 목록 새로고침
 window.refreshUsers = function() {
+    usersCache = null;
     renderUsers();
 }
 
-// 공지 렌더링
+// 공지 렌더링 (관리자: 글목록 + 선택 시 본문)
 let currentEditingNoticeId = null;
+let currentSelectedNoticeId = null;
+
+const NOTICE_TYPE_LABELS = { important: '중요', notice: '알림', light: '가벼운' };
+const NOTICE_TYPE_CLASSES = { important: 'bg-red-100 text-red-700', notice: 'bg-blue-100 text-blue-700', light: 'bg-slate-100 text-slate-700' };
+
+function formatNoticeDate(notice) {
+    const ts = notice.timestamp;
+    if (!ts) return '-';
+    const d = typeof ts?.toDate === 'function' ? ts.toDate() : new Date(ts);
+    return Number.isFinite(d.getTime()) ? d.toLocaleDateString('ko-KR') : '-';
+}
 
 async function renderNotices() {
     const container = document.getElementById('noticesContainer');
@@ -1735,41 +2266,124 @@ async function renderNotices() {
         const noticesSnapshot = await getDocs(query(noticesColl, orderBy('timestamp', 'desc')));
         
         if (noticesSnapshot.empty) {
-            container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-bullhorn text-2xl mb-2"></i><p>공지가 없습니다.</p></div>';
+            container.innerHTML = '<div class="text-center py-8 text-slate-400 px-4"><i class="fa-solid fa-bullhorn text-2xl mb-2"></i><p>공지가 없습니다.</p></div>';
+            document.getElementById('noticeDetailContainer').innerHTML = '목록에서 공지를 선택하면 본문이 표시됩니다.';
             return;
         }
         
-        container.innerHTML = noticesSnapshot.docs.map(doc => {
-            const notice = doc.data();
-            const date = notice.timestamp ? new Date(notice.timestamp).toLocaleDateString('ko-KR') : '-';
+        container.innerHTML = noticesSnapshot.docs.map(d => {
+            const notice = d.data();
+            const noticeId = d.id;
+            const date = formatNoticeDate(notice);
+            const type = notice.type || notice.noticeType || 'notice';
+            const typeLabel = NOTICE_TYPE_LABELS[type] || '알림';
+            const typeClass = NOTICE_TYPE_CLASSES[type] || NOTICE_TYPE_CLASSES.notice;
+            const isSelected = currentSelectedNoticeId === noticeId;
             return `
-                <div class="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow">
-                    <div class="flex items-start justify-between">
-                        <div class="flex-1">
-                            <div class="flex items-center gap-2 mb-2">
-                                <h3 class="font-bold text-slate-800">${escapeHtml(notice.title || '')}</h3>
-                                ${notice.isPinned ? '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">고정</span>' : ''}
-                            </div>
-                            <p class="text-sm text-slate-600 whitespace-pre-wrap">${escapeHtml(notice.content || '')}</p>
-                            <div class="text-xs text-slate-400 mt-2">${date}</div>
-                        </div>
-                        <div class="flex gap-2 ml-4">
-                            <button onclick="window.editNotice('${doc.id}')" class="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors">
-                                <i class="fa-solid fa-pencil mr-1"></i>수정
-                            </button>
-                            <button onclick="window.deleteNotice('${doc.id}')" class="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 transition-colors">
-                                <i class="fa-solid fa-trash mr-1"></i>삭제
-                            </button>
-                        </div>
+                <div data-notice-id="${noticeId}" onclick="window.selectAdminNotice('${noticeId}')" class="admin-notice-row px-4 py-3 border-b border-slate-100 last:border-b-0 cursor-pointer hover:bg-slate-50 transition-colors ${isSelected ? 'bg-emerald-50 border-l-4 border-l-emerald-500' : ''}">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="px-2 py-0.5 text-xs font-bold rounded ${typeClass}">${escapeHtml(typeLabel)}</span>
+                        ${notice.isPinned === true ? '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">고정</span>' : ''}
+                        ${notice.hidden === true ? '<span class="px-2 py-0.5 bg-slate-200 text-slate-600 text-xs font-bold rounded">숨김</span>' : ''}
                     </div>
+                    <h3 class="font-bold text-slate-800 truncate mt-1">${escapeHtml(notice.title || '제목 없음')}</h3>
+                    <div class="text-xs text-slate-400 mt-1">${date}</div>
                 </div>
             `;
         }).join('');
+        
+        const listPage = document.getElementById('noticeListPage');
+        const detailPage = document.getElementById('noticeDetailPage');
+        if (listPage) listPage.classList.remove('hidden');
+        if (detailPage) detailPage.classList.add('hidden');
     } catch (e) {
         console.error("공지 렌더링 실패:", e);
-        container.innerHTML = '<div class="text-center py-8 text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>공지를 불러오는 중 오류가 발생했습니다.</p></div>';
+        container.innerHTML = '<div class="text-center py-8 text-red-400 px-4"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>공지를 불러오는 중 오류가 발생했습니다.</p></div>';
     }
 }
+
+// 관리자 공지 본문 표시
+async function renderNoticeDetailInAdmin(noticeId) {
+    const container = document.getElementById('noticeDetailContainer');
+    if (!container) return;
+    
+    if (!noticeId) {
+        container.innerHTML = '';
+        return;
+    }
+    
+    try {
+        const noticeDoc = doc(db, 'artifacts', appId, 'notices', noticeId);
+        const snap = await getDoc(noticeDoc);
+        if (!snap.exists()) {
+            container.innerHTML = '<p class="text-red-400">공지를 찾을 수 없습니다.</p>';
+            return;
+        }
+        const notice = snap.data();
+        const date = formatNoticeDate(notice);
+        const type = notice.type || notice.noticeType || 'notice';
+        const typeLabel = NOTICE_TYPE_LABELS[type] || '알림';
+        const typeClass = NOTICE_TYPE_CLASSES[type] || NOTICE_TYPE_CLASSES.notice;
+        
+        container.innerHTML = `
+            <div class="bg-white rounded-xl p-4 border border-slate-200">
+                <div class="flex items-center gap-2 flex-wrap mb-2">
+                    <span class="px-2 py-0.5 text-xs font-bold rounded ${typeClass}">${escapeHtml(typeLabel)}</span>
+                    ${notice.isPinned === true ? '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">고정</span>' : ''}
+                    ${notice.hidden === true ? '<span class="px-2 py-0.5 bg-slate-200 text-slate-600 text-xs font-bold rounded">숨김</span>' : ''}
+                </div>
+                <h2 class="text-lg font-bold text-slate-800 mb-2">${escapeHtml(notice.title || '제목 없음')}</h2>
+                <div class="text-xs text-slate-400 mb-4">${date}</div>
+                <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4">${escapeHtml(notice.content || '').replace(/\n/g, '<br>')}</div>
+                <div class="pt-2 border-t border-slate-200">
+                    <p class="text-xs text-slate-500 mb-2">작업</p>
+                    <div class="flex gap-2 flex-wrap">
+                        <button type="button" onclick="window.toggleNoticeHidden('${noticeId}')" class="px-4 py-2 ${notice.hidden === true ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-500 text-white hover:bg-slate-600'} rounded-lg text-sm font-bold transition-colors">
+                            <i class="fa-solid fa-eye${notice.hidden === true ? '-slash' : ''} mr-1.5"></i>${notice.hidden === true ? '숨김 해제' : '숨김'}
+                        </button>
+                        <button type="button" onclick="window.editNotice('${noticeId}')" class="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors">
+                            <i class="fa-solid fa-pencil mr-1"></i>수정
+                        </button>
+                        <button type="button" onclick="window.deleteNotice('${noticeId}')" class="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 transition-colors">
+                            <i class="fa-solid fa-trash mr-1"></i>삭제
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    } catch (e) {
+        console.error("공지 본문 로드 실패:", e);
+        container.innerHTML = '<p class="text-red-400">본문을 불러오는 중 오류가 발생했습니다.</p>';
+    }
+}
+
+// 관리자 공지 목록에서 항목 선택 → 글본문 페이지로 전환
+window.selectAdminNotice = function(noticeId) {
+    currentSelectedNoticeId = noticeId;
+    const listPage = document.getElementById('noticeListPage');
+    const detailPage = document.getElementById('noticeDetailPage');
+    if (listPage) listPage.classList.add('hidden');
+    if (detailPage) detailPage.classList.remove('hidden');
+    renderNoticeDetailInAdmin(noticeId);
+    document.querySelectorAll('.admin-notice-row').forEach(row => {
+        const id = row.getAttribute('data-notice-id');
+        if (id === noticeId) {
+            row.classList.add('bg-emerald-50', 'border-l-4', 'border-l-emerald-500');
+            row.classList.remove('border-l-0');
+        } else {
+            row.classList.remove('bg-emerald-50', 'border-l-4', 'border-l-emerald-500');
+        }
+    });
+};
+
+// 관리자 공지 글본문 → 글목록 페이지로 돌아가기
+window.backToNoticeList = function() {
+    currentSelectedNoticeId = null;
+    const listPage = document.getElementById('noticeListPage');
+    const detailPage = document.getElementById('noticeDetailPage');
+    if (listPage) listPage.classList.remove('hidden');
+    if (detailPage) detailPage.classList.add('hidden');
+};
 
 // 공지 작성 모달 열기
 window.openNoticeWriteModal = function(noticeId = null) {
@@ -1781,6 +2395,7 @@ window.openNoticeWriteModal = function(noticeId = null) {
     const contentInput = document.getElementById('noticeContent');
     const typeSelect = document.getElementById('noticeType');
     const pinnedCheckbox = document.getElementById('noticeIsPinned');
+    const hiddenCheckbox = document.getElementById('noticeHidden');
     
     if (!modal) return;
     
@@ -1789,6 +2404,7 @@ window.openNoticeWriteModal = function(noticeId = null) {
     if (contentInput) contentInput.value = '';
     if (typeSelect) typeSelect.value = 'important';
     if (pinnedCheckbox) pinnedCheckbox.checked = false;
+    if (hiddenCheckbox) hiddenCheckbox.checked = false;
     
     // 수정 모드인 경우
     if (noticeId) {
@@ -1803,7 +2419,8 @@ window.openNoticeWriteModal = function(noticeId = null) {
                 if (titleInput) titleInput.value = noticeData.title || '';
                 if (contentInput) contentInput.value = noticeData.content || '';
                 if (typeSelect) typeSelect.value = noticeData.type || 'important';
-                if (pinnedCheckbox) pinnedCheckbox.checked = noticeData.isPinned === true;
+                if (pinnedCheckbox) pinnedCheckbox.checked = Boolean(noticeData.isPinned === true);
+                if (hiddenCheckbox) hiddenCheckbox.checked = Boolean(noticeData.hidden === true);
             }
         }).catch(e => {
             console.error("공지 로드 실패:", e);
@@ -1830,6 +2447,7 @@ window.submitNotice = async function() {
     const contentInput = document.getElementById('noticeContent');
     const typeSelect = document.getElementById('noticeType');
     const pinnedCheckbox = document.getElementById('noticeIsPinned');
+    const hiddenCheckbox = document.getElementById('noticeHidden');
     const submitBtn = document.getElementById('noticeSubmitBtn');
     
     if (!titleInput || !contentInput) return;
@@ -1837,7 +2455,8 @@ window.submitNotice = async function() {
     const title = titleInput.value.trim();
     const content = contentInput.value.trim();
     const type = typeSelect ? typeSelect.value : 'important';
-    const isPinned = pinnedCheckbox ? pinnedCheckbox.checked : false;
+    const isPinned = pinnedCheckbox ? Boolean(pinnedCheckbox.checked) : false;
+    const hidden = hiddenCheckbox ? Boolean(hiddenCheckbox.checked) : false;
     
     if (!title) {
         alert('제목을 입력해주세요.');
@@ -1860,13 +2479,15 @@ window.submitNotice = async function() {
             content: content,
             type: type,
             isPinned: isPinned,
-            timestamp: new Date().toISOString()
+            hidden: hidden,
+            timestamp: new Date().toISOString(),
+            authorDisplayName: getAdminDisplayName()
         };
         
         if (currentEditingNoticeId) {
-            // 수정
+            // 수정 (isPinned, hidden 명시적 저장 - 체크 해제 시 false로 반영)
             const noticeDoc = doc(db, 'artifacts', appId, 'notices', currentEditingNoticeId);
-            await setDoc(noticeDoc, noticeData, { merge: true });
+            await setDoc(noticeDoc, { ...noticeData, isPinned: isPinned, hidden: hidden }, { merge: true });
             alert('공지가 수정되었습니다.');
         } else {
             // 작성
@@ -1877,6 +2498,14 @@ window.submitNotice = async function() {
         
         window.closeNoticeModal();
         await renderNotices();
+        // 수정한 공지를 보고 있었으면 글본문 페이지 유지 후 본문 갱신
+        if (currentSelectedNoticeId) {
+            const listPage = document.getElementById('noticeListPage');
+            const detailPage = document.getElementById('noticeDetailPage');
+            if (listPage) listPage.classList.add('hidden');
+            if (detailPage) detailPage.classList.remove('hidden');
+            await renderNoticeDetailInAdmin(currentSelectedNoticeId);
+        }
     } catch (e) {
         console.error("공지 저장 실패:", e);
         alert("공지 저장 중 오류가 발생했습니다: " + e.message);
@@ -1893,11 +2522,32 @@ window.editNotice = function(noticeId) {
     window.openNoticeWriteModal(noticeId);
 };
 
+// 공지 숨김/숨김 해제 토글 (글본문 페이지에서 바로)
+window.toggleNoticeHidden = async function(noticeId) {
+    if (!noticeId) return;
+    try {
+        const noticeDoc = doc(db, 'artifacts', appId, 'notices', noticeId);
+        const snap = await getDoc(noticeDoc);
+        if (!snap.exists()) {
+            alert('공지를 찾을 수 없습니다.');
+            return;
+        }
+        const current = Boolean(snap.data().hidden === true);
+        await setDoc(noticeDoc, { hidden: !current }, { merge: true });
+        await renderNoticeDetailInAdmin(noticeId);
+        await renderNotices();
+    } catch (e) {
+        console.error("공지 숨김 토글 실패:", e);
+        alert("처리 중 오류가 발생했습니다: " + e.message);
+    }
+};
+
 // 공지 삭제
 window.deleteNotice = async function(noticeId) {
     if (!confirm('정말 삭제하시겠습니까?')) return;
     
     try {
+        if (noticeId === currentSelectedNoticeId) currentSelectedNoticeId = null;
         const noticeDoc = doc(db, 'artifacts', appId, 'notices', noticeId);
         await deleteDoc(noticeDoc);
         alert('공지가 삭제되었습니다.');
@@ -1907,6 +2557,43 @@ window.deleteNotice = async function(noticeId) {
         alert("공지 삭제 중 오류가 발생했습니다: " + e.message);
     }
 };
+
+// 관리자 표시 이름 캐시 (공지·댓글 작성 시 사용)
+let cachedAdminDisplayName = '관리자';
+
+async function loadAdminSettings() {
+    const inputEl = document.getElementById('adminDisplayNameInput');
+    if (!inputEl) return;
+    try {
+        const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
+        const snap = await getDoc(configRef);
+        const displayName = snap.exists() && snap.data().displayName ? String(snap.data().displayName).trim() : '관리자';
+        cachedAdminDisplayName = displayName || '관리자';
+        inputEl.value = cachedAdminDisplayName;
+    } catch (e) {
+        console.warn('관리자 설정 로드 실패:', e);
+        inputEl.value = cachedAdminDisplayName;
+    }
+}
+
+window.saveAdminDisplayName = async function() {
+    const inputEl = document.getElementById('adminDisplayNameInput');
+    if (!inputEl) return;
+    const value = inputEl.value.trim() || '관리자';
+    try {
+        const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
+        await setDoc(configRef, { displayName: value }, { merge: true });
+        cachedAdminDisplayName = value;
+        alert('저장되었습니다.');
+    } catch (e) {
+        console.error('관리자 표시 이름 저장 실패:', e);
+        alert('저장에 실패했습니다: ' + (e?.message || e));
+    }
+};
+
+function getAdminDisplayName() {
+    return cachedAdminDisplayName || '관리자';
+}
 
 // 게시판 게시물 렌더링 (기본 구현)
 let currentAdminBoardCategory = 'all';
@@ -1941,7 +2628,11 @@ async function renderBoardPosts(category = 'all') {
         container.innerHTML = postsSnapshot.docs.map(d => {
             const post = d.data();
             const postId = d.id;
-            const date = post.timestamp ? new Date(post.timestamp).toLocaleDateString('ko-KR') : '-';
+            const ts = post.timestamp;
+            const date = ts ? (() => {
+                const d = typeof ts?.toDate === 'function' ? ts.toDate() : new Date(ts);
+                return Number.isFinite(d.getTime()) ? d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
+            })() : '-';
             const reportInfo = reportsMap['board_' + postId];
             if (reportInfo && reportInfo.count > 0) {
                 window._feedReportDetails['board_' + postId] = reportInfo.byReason;
@@ -1951,9 +2642,9 @@ async function renderBoardPosts(category = 'all') {
                 : '';
             const isHidden = post.isHidden === true;
             return `
-                <div class="border border-slate-200 rounded-xl p-4 ${isHidden ? 'bg-slate-50 opacity-90' : ''}">
+                <div class="border border-slate-200 rounded-xl p-4 ${isHidden ? 'bg-slate-50 opacity-90' : ''} board-list-row cursor-pointer hover:bg-slate-50 transition-colors" data-post-id="${postId}" onclick="window.selectBoardPost('${String(postId).replace(/'/g, "\\'")}')">
                     <div class="flex items-start gap-4">
-                        <div class="flex-shrink-0 pt-0.5">
+                        <div class="flex-shrink-0 pt-0.5" onclick="event.stopPropagation()">
                             <input type="checkbox" class="board-item-checkbox w-4 h-4 rounded border-slate-300" data-post-id="${postId}" title="선택">
                         </div>
                         <div class="flex-1 min-w-0">
@@ -2028,6 +2719,103 @@ window.adminBoardBulkDelete = async function() {
 // 게시판 게시물 새로고침
 window.refreshBoardPosts = function() {
     renderBoardPosts(currentAdminBoardCategory);
+}
+
+// 게시판 글 선택 → 상세(본문+댓글) 보기
+let currentSelectedBoardPostId = null;
+window.selectBoardPost = async function(postId) {
+    currentSelectedBoardPostId = postId;
+    const listPage = document.getElementById('boardListPage');
+    const detailPage = document.getElementById('boardDetailPage');
+    if (listPage) listPage.classList.add('hidden');
+    if (detailPage) detailPage.classList.remove('hidden');
+    const inputEl = document.getElementById('boardDetailCommentInput');
+    if (inputEl) inputEl.value = '';
+    await renderBoardPostDetail(postId);
+}
+
+window.backToBoardList = function() {
+    currentSelectedBoardPostId = null;
+    const listPage = document.getElementById('boardListPage');
+    const detailPage = document.getElementById('boardDetailPage');
+    if (listPage) listPage.classList.remove('hidden');
+    if (detailPage) detailPage.classList.add('hidden');
+}
+
+async function renderBoardPostDetail(postId) {
+    const container = document.getElementById('boardDetailContainer');
+    const commentsContainer = document.getElementById('boardDetailCommentsList');
+    if (!container || !postId) return;
+    container.innerHTML = '<div class="text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>로딩 중...</div>';
+    if (commentsContainer) commentsContainer.innerHTML = '';
+    try {
+        const postRef = doc(db, 'artifacts', appId, 'boardPosts', postId);
+        const postSnap = await getDoc(postRef);
+        if (!postSnap.exists()) {
+            container.innerHTML = '<p class="text-red-400">게시글을 찾을 수 없습니다.</p>';
+            return;
+        }
+        const post = postSnap.data();
+        const ts = post.timestamp;
+        const dateStr = ts ? (() => {
+            const d = typeof ts?.toDate === 'function' ? ts.toDate() : new Date(ts);
+            return Number.isFinite(d.getTime()) ? d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
+        })() : '-';
+        container.innerHTML = `
+            <div class="mb-2">
+                <span class="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-bold rounded">${escapeHtml(post.category || '')}</span>
+                ${post.isHidden === true ? '<span class="px-2 py-0.5 bg-slate-300 text-slate-600 text-xs font-bold rounded ml-1">가려짐</span>' : ''}
+            </div>
+            <h2 class="text-lg font-bold text-slate-800 mb-2">${escapeHtml(post.title || '제목 없음')}</h2>
+            <div class="text-xs text-slate-400 mb-3">${escapeHtml(post.authorNickname || '익명')} · ${dateStr} · 조회 ${post.views || 0}</div>
+            <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(post.content || '').replace(/\n/g, '<br>')}</div>
+        `;
+        const comments = await boardOperations.getComments(postId);
+        if (commentsContainer) {
+            if (comments.length === 0) {
+                commentsContainer.innerHTML = '<p class="text-slate-400 text-sm py-2">댓글이 없습니다.</p>';
+            } else {
+                commentsContainer.innerHTML = comments.map(c => {
+                    const ct = c.timestamp;
+                    const cd = ct ? (typeof ct?.toDate === 'function' ? ct.toDate() : new Date(ct)) : null;
+                    const timeStr = cd && Number.isFinite(cd.getTime()) ? cd.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
+                    return `<div class="flex gap-2 p-2 bg-white rounded-lg border border-slate-100">
+                        <span class="font-bold text-slate-700 text-sm">${escapeHtml(c.authorNickname || '익명')}</span>
+                        <span class="text-slate-500 text-xs">${timeStr}</span>
+                        <p class="text-slate-600 text-sm flex-1">${escapeHtml(c.content || '')}</p>
+                    </div>`;
+                }).join('');
+            }
+        }
+    } catch (e) {
+        console.error('게시글 상세 로드 실패:', e);
+        container.innerHTML = '<p class="text-red-400">본문을 불러오는 중 오류가 발생했습니다.</p>';
+    }
+}
+
+window.submitBoardCommentAsAdmin = async function() {
+    const postId = currentSelectedBoardPostId;
+    const inputEl = document.getElementById('boardDetailCommentInput');
+    if (!postId || !inputEl) return;
+    const content = inputEl.value.trim();
+    if (!content) {
+        alert('댓글 내용을 입력해주세요.');
+        return;
+    }
+    try {
+        const result = await callableFunctions.addBoardCommentAsAdmin({
+            postId,
+            content,
+            displayName: getAdminDisplayName()
+        });
+        if (result?.data) {
+            inputEl.value = '';
+            await renderBoardPostDetail(postId);
+        }
+    } catch (e) {
+        console.error('관리자 댓글 등록 실패:', e);
+        alert('댓글 등록에 실패했습니다: ' + (e?.message || e));
+    }
 }
 
 // 게시판 카테고리 설정
@@ -2124,10 +2912,11 @@ async function renderFeedManagement() {
         
         console.log(`📊 총 ${allMeals.length}개의 게시물 발견`);
         
-        // sharedPhotos 컬렉션에서 실제 공유된 게시물 확인 및 베스트 공유, 일간보기 공유 게시물 추가
+        // sharedPhotos 컬렉션에서 실제 공유된 게시물 확인 및 베스트 공유, 일간보기 공유, 인사이트 공유 게시물 추가
         const sharedPhotosMap = new Map(); // entryId -> true (실제로 sharedPhotos 컬렉션에 존재하는지)
         const bestShares = []; // 베스트 공유 게시물 목록
         const dailyShares = []; // 일간보기 공유 게시물 목록
+        const insightShares = []; // 인사이트 공유 게시물 목록
         try {
             const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
             const sharedSnapshot = await getDocs(sharedColl);
@@ -2167,17 +2956,33 @@ async function renderFeedManagement() {
                         isDailyShare: true // 일간보기 공유 표시
                     });
                 }
+                // 인사이트 공유 게시물 추가
+                if (data.type === 'insight') {
+                    insightShares.push({
+                        id: doc.id,
+                        userId: data.userId || '',
+                        type: 'insight',
+                        dateRangeText: data.dateRangeText || '',
+                        comment: data.comment || '',
+                        photoUrl: data.photoUrl || '',
+                        timestamp: data.timestamp || '',
+                        userNickname: data.userNickname || '익명',
+                        userIcon: data.userIcon || '🐻',
+                        isInsightShare: true // 인사이트 공유 표시
+                    });
+                }
             });
             console.log(`📸 sharedPhotos 컬렉션에서 ${sharedPhotosMap.size}개의 entryId 발견`);
             console.log(`🏆 베스트 공유 게시물: ${bestShares.length}개 발견`);
             console.log(`📅 일간보기 공유 게시물: ${dailyShares.length}개 발견`);
+            console.log(`💡 인사이트 공유 게시물: ${insightShares.length}개 발견`);
         } catch (e) {
             console.warn('⚠️ sharedPhotos 컬렉션 조회 실패:', e);
         }
         
-        // 베스트 공유 및 일간보기 공유 게시물을 allMeals에 추가
-        allMeals = [...allMeals, ...bestShares, ...dailyShares];
-        console.log(`📊 베스트 공유 및 일간보기 공유 포함 총 ${allMeals.length}개의 게시물`);
+        // 베스트 공유, 일간보기 공유, 인사이트 공유 게시물을 allMeals에 추가
+        allMeals = [...allMeals, ...bestShares, ...dailyShares, ...insightShares];
+        console.log(`📊 베스트 공유, 일간보기 공유, 인사이트 공유 포함 총 ${allMeals.length}개의 게시물`);
         
         // 데이터 불일치 항목 자동 동기화
         const mismatchedMeals = allMeals.filter(meal => {
@@ -2239,6 +3044,20 @@ async function renderFeedManagement() {
                 if (feedFilters.hasPhotos === 'no') return false;
                 
                 // 금지 여부 필터: 일간보기 공유는 금지 기능 없음
+                if (feedFilters.banned === 'yes') return false;
+                
+                return true;
+            }
+            
+            // 인사이트 공유 게시물은 항상 공유된 상태
+            if (meal.isInsightShare) {
+                // 공유 여부 필터: 인사이트 공유는 항상 공유됨
+                if (feedFilters.shared === 'no') return false;
+                
+                // 사진 여부 필터: 인사이트 공유는 항상 이미지가 있음
+                if (feedFilters.hasPhotos === 'no') return false;
+                
+                // 금지 여부 필터: 인사이트 공유는 금지 기능 없음
                 if (feedFilters.banned === 'yes') return false;
                 
                 return true;
@@ -2328,8 +3147,8 @@ async function renderFeedManagement() {
         const userInfoMap = new Map();
         for (const meal of paginatedMeals) {
             if (!userInfoMap.has(meal.userId)) {
-                // 베스트 공유 및 일간보기 공유 게시물은 이미 사용자 정보가 있음
-                if (meal.isBestShare || meal.isDailyShare) {
+                // 베스트 공유, 일간보기 공유, 인사이트 공유 게시물은 이미 사용자 정보가 있음
+                if (meal.isBestShare || meal.isDailyShare || meal.isInsightShare) {
                     userInfoMap.set(meal.userId, {
                         nickname: meal.userNickname || '익명',
                         icon: meal.userIcon || '🐻'
@@ -2362,7 +3181,7 @@ async function renderFeedManagement() {
         window._feedReportDetails = {};
         
         container.innerHTML = paginatedMeals.map(meal => {
-            const targetGroupKey = meal.isBestShare ? `best_${meal.id}` : meal.isDailyShare ? `daily_${meal.date || ''}_${meal.userId}` : `entry_${meal.id}_${meal.userId}`;
+            const targetGroupKey = meal.isBestShare ? `best_${meal.id}` : meal.isDailyShare ? `daily_${meal.date || ''}_${meal.userId}` : meal.isInsightShare ? `insight_${meal.dateRangeText || ''}_${meal.userId}` : `entry_${meal.id}_${meal.userId}`;
             const reportInfo = reportsMap[targetGroupKey];
             if (reportInfo && reportInfo.count > 0) { window._feedReportDetails[targetGroupKey] = reportInfo.byReason; }
             const reportBadgeHtml = (reportInfo && reportInfo.count > 0) ? `<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded cursor-pointer hover:bg-red-200" onclick="window.showReportDetailPopup('${String(targetGroupKey).replace(/'/g, "\\'")}')">🚩 신고 ${reportInfo.count}</span>` : '';
@@ -2399,6 +3218,7 @@ async function renderFeedManagement() {
                                         <span class="text-lg">${userInfo.icon}</span>
                                         <span class="font-bold text-slate-800">${userInfo.nickname}</span>
                                         <span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">🏆 베스트 공유</span>
+                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">관리번호: ${meal.id}</span>
                                         <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">${meal.periodType || ''} ${meal.periodText || ''}</span>
                                         <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">공유됨</span>
                                         ${reportBadgeHtml}
@@ -2463,6 +3283,7 @@ async function renderFeedManagement() {
                                         <span class="text-lg">${userInfo.icon}</span>
                                         <span class="font-bold text-slate-800">${userInfo.nickname}</span>
                                         <span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded">📅 일간보기 공유</span>
+                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">관리번호: ${meal.id}</span>
                                         <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">${dateDisplay}</span>
                                         <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">공유됨</span>
                                         ${reportBadgeHtml}
@@ -2471,6 +3292,56 @@ async function renderFeedManagement() {
                                 ${meal.photoUrl ? `
                                     <div class="mb-2">
                                         <img src="${meal.photoUrl}" alt="일간보기 공유 이미지" class="max-w-full h-auto rounded-xl border border-slate-200" style="max-height: 300px;">
+                                    </div>
+                                ` : ''}
+                                ${meal.comment ? `<div class="mt-2 text-sm text-slate-700 bg-slate-50 p-2 rounded whitespace-pre-line">${escapeHtml(meal.comment)}</div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // 인사이트 공유 게시물인 경우
+            if (meal.isInsightShare) {
+                const userInfo = { nickname: meal.userNickname || '익명', icon: meal.userIcon || '🐻' };
+                let dateTimeStr = '-';
+                if (meal.timestamp) {
+                    try {
+                        const dateObj = new Date(meal.timestamp);
+                        dateTimeStr = dateObj.toLocaleString('ko-KR', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                    } catch (e) {
+                        dateTimeStr = meal.timestamp;
+                    }
+                }
+                
+                return `
+                    <div class="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow bg-purple-50/30">
+                        <div class="flex gap-4">
+                            <div class="flex-shrink-0 flex items-start pt-1">
+                                <input type="checkbox" class="feed-item-checkbox" data-meal-id="${meal.id}" data-user-id="${meal.userId}" data-is-insight="true">
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-xs text-slate-500 font-bold mb-2">${dateTimeStr}</div>
+                                <div class="flex items-start justify-between mb-2">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <span class="text-lg">${userInfo.icon}</span>
+                                        <span class="font-bold text-slate-800">${userInfo.nickname}</span>
+                                        <span class="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-bold rounded">💡 인사이트 공유</span>
+                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">관리번호: ${meal.id}</span>
+                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">${meal.dateRangeText || ''}</span>
+                                        <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">공유됨</span>
+                                        ${reportBadgeHtml}
+                                    </div>
+                                </div>
+                                ${meal.photoUrl ? `
+                                    <div class="mb-2">
+                                        <img src="${meal.photoUrl}" alt="인사이트 공유 이미지" class="max-w-full h-auto rounded-xl border border-slate-200" style="max-height: 300px;">
                                     </div>
                                 ` : ''}
                                 ${meal.comment ? `<div class="mt-2 text-sm text-slate-700 bg-slate-50 p-2 rounded whitespace-pre-line">${escapeHtml(meal.comment)}</div>` : ''}
@@ -2711,6 +3582,7 @@ window.bulkUnsharePosts = async function() {
             const userId = checkbox.dataset.userId;
             const isBest = checkbox.dataset.isBest === 'true';
             const isDaily = checkbox.dataset.isDaily === 'true';
+            const isInsight = checkbox.dataset.isInsight === 'true';
             
             if (!mealId || !userId) continue;
             
@@ -2739,6 +3611,20 @@ window.bulkUnsharePosts = async function() {
                         count++;
                     } catch (e) {
                         console.error(`일간보기 공유 게시물 ${mealId} 삭제 실패:`, e);
+                    }
+                    continue;
+                }
+                
+                // 인사이트 공유 게시물인 경우
+                if (isInsight) {
+                    // sharedPhotos 컬렉션에서 해당 문서 직접 삭제
+                    try {
+                        const sharedDocRef = doc(db, 'artifacts', appId, 'sharedPhotos', mealId);
+                        batch.delete(sharedDocRef);
+                        sharedPhotosDeleteCount++;
+                        count++;
+                    } catch (e) {
+                        console.error(`인사이트 공유 게시물 ${mealId} 삭제 실패:`, e);
                     }
                     continue;
                 }
@@ -2815,19 +3701,21 @@ window.bulkBanPosts = async function() {
             const userId = checkbox.dataset.userId;
             const isBest = checkbox.dataset.isBest === 'true';
             const isDaily = checkbox.dataset.isDaily === 'true';
+            const isInsight = checkbox.dataset.isInsight === 'true';
             
             if (!mealId || !userId) continue;
             
             try {
-                // 베스트 공유 또는 일간보기 공유는 sharedPhotos 컬렉션에서만 삭제
-                if (isBest || isDaily) {
+                // 베스트 공유 또는 일간보기 공유 또는 인사이트 공유는 sharedPhotos 컬렉션에서만 삭제
+                if (isBest || isDaily || isInsight) {
                     try {
                         const sharedDocRef = doc(db, 'artifacts', appId, 'sharedPhotos', mealId);
                         batch.delete(sharedDocRef);
                         sharedPhotosDeleteCount++;
                         count++;
                     } catch (e) {
-                        console.error(`${isBest ? '베스트' : '일간보기'} 공유 게시물 ${mealId} 삭제 실패:`, e);
+                        const typeName = isBest ? '베스트' : isDaily ? '일간보기' : '인사이트';
+                        console.error(`${typeName} 공유 게시물 ${mealId} 삭제 실패:`, e);
                     }
                     continue;
                 }
@@ -3588,6 +4476,11 @@ async function loadCharacterEditor(characterId) {
             characterData.defaultComments = [];
         }
         
+        // 로딩 멘트가 없으면 기본값 설정
+        if (!characterData.loadingMessage) {
+            characterData.loadingMessage = '분석중입니다';
+        }
+        
         // 편집 폼 렌더링
         renderCharacterEditorForm(characterData);
     } catch (e) {
@@ -3636,7 +4529,7 @@ function renderCharacterEditorForm(characterData) {
             <!-- 이미지 업로드 -->
             <div>
                 <label class="block text-sm font-bold text-slate-700 mb-2">
-                    <i class="fa-solid fa-image mr-2"></i>캐릭터 이미지
+                    <i class="fa-solid fa-image mr-2"></i>캐릭터 이미지 <span class="text-slate-500 font-normal">(75px × 132px)</span>
                 </label>
                 <div class="space-y-3">
                     <input type="file" id="characterImageFile" accept="image/*" 
@@ -3696,6 +4589,17 @@ function renderCharacterEditorForm(characterData) {
                 <button onclick="window.addCharacterDefaultComment()" class="mt-2 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
                     <i class="fa-solid fa-plus mr-2"></i>멘트 추가
                 </button>
+            </div>
+            
+            <!-- 로딩 멘트 -->
+            <div>
+                <label class="block text-sm font-bold text-slate-700 mb-2">
+                    <i class="fa-solid fa-spinner mr-2"></i>로딩 멘트 (AI 분석 중 표시)
+                </label>
+                <p class="text-xs text-slate-500 mb-2">AI 코멘트 생성 중에 표시될 기본 멘트입니다. (AI를 사용하지 않은 일반 텍스트)</p>
+                <textarea id="characterLoadingMessage" 
+                          class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px]"
+                          placeholder="예: 분석중입니다">${escapeHtml(characterData.loadingMessage || '')}</textarea>
             </div>
             
             <!-- 페르소나 (구글 AI 스튜디오용) -->
@@ -3787,8 +4691,8 @@ window.handleCharacterImageUpload = async function(event) {
             return;
         }
         
-        // Firebase Storage에 업로드
-        const imageUrl = await uploadImageToStorage(file, user.uid, `persona/${currentEditingCharacterId || 'temp'}`);
+        // Firebase Storage에 업로드 (PNG 투명 배경 보존)
+        const imageUrl = await uploadPersonaImageToStorage(file, user.uid, currentEditingCharacterId || 'temp');
         
         // 이미지 URL 필드에 설정
         const imageInput = document.getElementById('characterImage');
@@ -3949,6 +4853,7 @@ window.saveCharacter = async function() {
         const imageInput = document.getElementById('characterImage');
         const nameInput = document.getElementById('characterName');
         const systemPromptInput = document.getElementById('characterSystemPrompt');
+        const loadingMessageInput = document.getElementById('characterLoadingMessage');
         const commentsContainer = document.getElementById('characterDefaultCommentsContainer');
         
         if (!imageInput || !nameInput || !systemPromptInput) {
@@ -3959,6 +4864,7 @@ window.saveCharacter = async function() {
         const image = imageInput.value.trim();
         const name = nameInput.value.trim();
         const systemPrompt = systemPromptInput.value.trim();
+        const loadingMessage = loadingMessageInput ? loadingMessageInput.value.trim() : '';
         
         if (!name) {
             alert('캐릭터 이름을 입력해주세요.');
@@ -3998,6 +4904,7 @@ window.saveCharacter = async function() {
             persona: name, // 간단한 설명으로 이름 사용
             systemPrompt: systemPrompt,
             defaultComments: defaultComments,
+            loadingMessage: loadingMessage || '분석중입니다', // 기본값
             image: image || null,
             name: name,
             updatedAt: new Date().toISOString()
@@ -4312,3 +5219,4 @@ window.setRestaurantFilter = function(filter) {
 window.refreshRestaurantData = function() {
     renderRestaurantData(currentRestaurantFilter);
 };
+

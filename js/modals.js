@@ -5,7 +5,7 @@ import { setVal, compressImage, getInputIdFromContainer, normalizeUrl } from './
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from './render/index.js';
 import { dbOps } from './db.js';
 import { showToast } from './ui.js';
-import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed } from './render/index.js';
+import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed } from './render/index.js';
 import { getDashboardData } from './analytics.js';
 
 // 설정 저장 디바운싱을 위한 타이머
@@ -164,7 +164,7 @@ export function openModal(date, slotId, entryId = null) {
         const shareIndicator = document.getElementById('sharePhotoIndicator');
         if (shareIndicator) shareIndicator.classList.add('hidden');
         
-        ['placeInput', 'menuDetailInput', 'withWhomInput', 'snackDetailInput', 'generalCommentInput', 'snackCommentInput'].forEach(id => {
+        ['placeInput', 'menuDetailInput', 'withWhomInput', 'snackDetailInput', 'snackPlaceInput', 'generalCommentInput', 'snackCommentInput'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
@@ -228,6 +228,10 @@ export function openModal(date, slotId, entryId = null) {
         document.getElementById('mainMealFields')?.classList.toggle('hidden', isS);
         document.getElementById('snackFields')?.classList.toggle('hidden', !isS);
         
+        if (isS) {
+            appState.selectedSnackPlaceMainTag = null;
+        }
+        
         // 필드 활성화 상태 초기화 (Skip이 아닌 경우 활성화)
         if (!isS) {
             toggleFieldsForSkip(false);
@@ -244,7 +248,7 @@ export function openModal(date, slotId, entryId = null) {
             } else {
                 // 일반 모드: 버튼 활성화 및 텍스트 설정
                 btnSave.disabled = false;
-                btnSave.className = 'flex-1 py-4 bg-emerald-600 text-white rounded-xl font-bold active:bg-emerald-700 shadow-lg transition-all';
+                btnSave.className = 'flex-1 py-4 bg-slate-900 text-white rounded-xl font-bold active:bg-slate-800 shadow-lg transition-all';
                 btnSave.innerText = entryId ? '수정 완료' : '기록 완료';
             }
         }
@@ -286,6 +290,7 @@ export function openModal(date, slotId, entryId = null) {
                 setVal('menuDetailInput', r.menuDetail || "");
                 setVal('withWhomInput', r.withWhomDetail || "");
                 setVal('snackDetailInput', r.menuDetail || "");
+                setVal('snackPlaceInput', r.place || "");
                 setVal('generalCommentInput', r.comment || "");
                 setVal('snackCommentInput', r.comment || "");
                 
@@ -345,7 +350,33 @@ export function openModal(date, slotId, entryId = null) {
                         }
                     }
                     
-                    // 장소 (place) - sub-chip
+                    // 간식 어디서 (snackPlace): 메인칩 선택 시 개별 추천 표시
+                    if (isS && r.place) {
+                        const snackPlaceMain = window.userSettings?.tags?.snackPlaceMain || ['집', '사무실', '카페'];
+                        if (snackPlaceMain.includes(r.place.trim())) {
+                            appState.selectedSnackPlaceMainTag = r.place.trim();
+                            const subTags = window.userSettings?.subTags?.place || [];
+                            window.renderSecondary('snackPlaceSuggestions', subTags, 'snackPlaceInput', r.place.trim(), 'place');
+                        }
+                        const snackPlaceTypeChips = document.getElementById('snackPlaceTypeChips');
+                        if (snackPlaceTypeChips) {
+                            snackPlaceTypeChips.querySelectorAll('button.chip').forEach(ch => {
+                                if (ch.innerText.trim() === r.place.trim()) {
+                                    ch.classList.add('active');
+                                }
+                            });
+                        }
+                        const snackPlaceSuggestions = document.getElementById('snackPlaceSuggestions');
+                        if (snackPlaceSuggestions) {
+                            snackPlaceSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
+                                if (ch.innerText.trim().replace(/\s*★\s*$/, '') === r.place.trim()) {
+                                    ch.classList.add('active');
+                                }
+                            });
+                        }
+                    }
+                    
+                    // 장소 (place) - sub-chip (본식)
                     if (r.place) {
                         const restaurantSuggestions = document.getElementById('restaurantSuggestions');
                         if (restaurantSuggestions) {
@@ -357,15 +388,28 @@ export function openModal(date, slotId, entryId = null) {
                         }
                     }
                     
-                    // 메뉴 상세 (menuDetail) - sub-chip
+                    // 메뉴 상세 (menuDetail) - sub-chip (다중 선택 가능, 쉼표로 구분)
                     if (r.menuDetail) {
                         const menuSuggestions = document.getElementById('menuSuggestions');
-                        if (menuSuggestions) {
+                        const menuDetailInput = document.getElementById('menuDetailInput');
+                        if (menuSuggestions && menuDetailInput) {
+                            // 쉼표로 구분된 여러 값 처리
+                            const detailValues = r.menuDetail.split(',').map(v => v.trim()).filter(v => v);
+                            const activeValues = [];
                             menuSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
-                                if (ch.innerText.trim() === r.menuDetail.trim()) {
+                                const chipText = ch.innerText.trim();
+                                if (detailValues.includes(chipText)) {
                                     ch.classList.add('active');
+                                    activeValues.push(chipText);
                                 }
                             });
+                            // input에 선택된 값들 저장
+                            if (activeValues.length > 0) {
+                                menuDetailInput.value = activeValues.join(', ');
+                            } else {
+                                // 자주 사용한 태그에 없는 경우 입력값 그대로 표시
+                                menuDetailInput.value = r.menuDetail;
+                            }
                         }
                     }
                     
@@ -444,6 +488,15 @@ export function openModal(date, slotId, entryId = null) {
                 if (isS && r.snackType) {
                     const subTags = window.userSettings.subTags.snack || [];
                     window.renderSecondary('snackSuggestions', subTags, 'snackDetailInput', r.snackType, 'snack');
+                }
+                // 간식 어디서: place가 메인태그에 있으면 선택 상태로 추천 표시
+                if (isS && r.place) {
+                    const snackPlaceMain = window.userSettings?.tags?.snackPlaceMain || ['집', '사무실', '카페'];
+                    if (snackPlaceMain.includes(r.place.trim())) {
+                        appState.selectedSnackPlaceMainTag = r.place.trim();
+                        const subTags = window.userSettings?.subTags?.place || [];
+                        window.renderSecondary('snackPlaceSuggestions', subTags, 'snackPlaceInput', r.place.trim(), 'place');
+                    }
                 }
                 
                 document.getElementById('btnDelete')?.classList.remove('hidden');
@@ -559,6 +612,7 @@ export async function saveEntry() {
         // 간식 입력값 가져오기 (hidden 상태여도 값을 가져올 수 있음)
         const snackDetailInput = document.getElementById('snackDetailInput');
         const snackInputVal = snackDetailInput ? snackDetailInput.value.trim() : '';
+        const snackPlaceInputVal = document.getElementById('snackPlaceInput')?.value?.trim() || '';
         
         // 디버깅: 간식 입력값 확인
         if (isS) {
@@ -585,9 +639,20 @@ export async function saveEntry() {
             newSettings.subTags.place.push({ text: placeInputVal, parent: mealType });
             tagsChanged = true;
         }
-        if (menuInputVal && !newSettings.subTags.menu.find(t => (t.text || t) === menuInputVal)) {
-            newSettings.subTags.menu.push({ text: menuInputVal, parent: getT('categoryChips') });
+        const selectedSnackPlaceMain = appState.selectedSnackPlaceMainTag || null;
+        if (isS && snackPlaceInputVal && !newSettings.subTags.place.find(t => (t.text || t) === snackPlaceInputVal)) {
+            newSettings.subTags.place.push({ text: snackPlaceInputVal, parent: selectedSnackPlaceMain || snackPlaceInputVal });
             tagsChanged = true;
+        }
+        // 메뉴 상세 태그는 다중 선택 가능 (쉼표로 구분)
+        if (menuInputVal) {
+            const menuValues = menuInputVal.split(',').map(v => v.trim()).filter(v => v);
+            menuValues.forEach(val => {
+                if (!newSettings.subTags.menu.find(t => (t.text || t) === val)) {
+                    newSettings.subTags.menu.push({ text: val, parent: getT('categoryChips') });
+                    tagsChanged = true;
+                }
+            });
         }
         // 함께한 사람 상세 태그는 다중 선택 가능 (쉼표로 구분)
         if (withInputVal) {
@@ -645,7 +710,7 @@ export async function saveEntry() {
             snackType: getT('snackTypeChips'),
             photos: state.currentPhotos,
             menuDetail: isSk ? '' : (isS ? snackInputVal : menuInputVal),
-            place: isSk ? '' : placeInputVal,
+            place: isSk ? '' : (isS ? (snackPlaceInputVal || appState.selectedSnackPlaceMainTag || '') : placeInputVal),
             comment: isSk ? '' : (isS ? (document.getElementById('snackCommentInput')?.value || '') : (document.getElementById('generalCommentInput')?.value || '')),
             rating: (isSk) ? null : state.currentRating,
             satiety: (isSk || isS) ? null : state.currentSatiety,
@@ -711,6 +776,11 @@ export async function saveEntry() {
         const currentTab = state.currentTab;
         const editingDate = state.currentEditingDate;
         
+        // 공유 상태 변경 여부 추적 변수 (함수 스코프)
+        // 상태 초기화 전에 originalSharedPhotos 확인
+        const hadSharedPhotos = state.originalSharedPhotos && state.originalSharedPhotos.length > 0;
+        let sharedPhotosUpdated = false;
+        
         // 상태 초기화 (모달 닫기 직후)
         state.currentEditingId = null;
         state.currentPhotos = [];
@@ -728,20 +798,51 @@ export async function saveEntry() {
                 console.log('새 레코드 ID 확보:', savedId);
             }
             console.log('저장 완료');
+            // 낙관적 반영: 리스너 도착 전에 mealHistory에 즉시 반영해 스크롤·렌더가 최신 데이터 기준으로 동작
+            if (record.id && window.mealHistory && Array.isArray(window.mealHistory)) {
+                const idx = window.mealHistory.findIndex(m => m.id === record.id);
+                const merged = { ...record };
+                if (idx >= 0) {
+                    window.mealHistory[idx] = merged;
+                } else {
+                    window.mealHistory.push(merged);
+                }
+                window.mealHistory.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''));
+            }
+            // 저장 직후 잠깐 타임라인 전체 재렌더를 막아, jumpToDate·스크롤이 리스너 재렌더에 덮이지 않게 함
+            window._timelineRerenderFreezeUntil = Date.now() + 800;
             
-            // 공유 처리 (ID 확보 후 실행)
+            // 공유 처리 (ID 확보 후 실행, 비동기로 떼어 두어 체감 속도 개선)
             // sharePhotos 함수가 기존 문서 삭제 + 새 문서 추가 + record.sharedPhotos 필드 업데이트를 모두 처리
+            // 공유 상태가 변경되었을 때만 호출 (공유 설정 또는 공유 해제)
             if (record.id) {
-                try {
-                    await dbOps.sharePhotos(photosToShare, record);
-                    console.log('공유 처리 완료:', {
-                        공유사진수: photosToShare.length,
-                        recordId: record.id
+                // 현재 공유할 사진이 있는지 확인
+                const hasPhotosToShare = photosToShare && photosToShare.length > 0;
+                
+                // 공유 상태가 변경된 경우에만 호출
+                // 1. 공유할 사진이 있는 경우 (공유 설정)
+                // 2. 기존에 공유된 사진이 있었는데 지금은 없는 경우 (공유 해제)
+                if (hasPhotosToShare || hadSharedPhotos) {
+                    sharedPhotosUpdated = true;
+                    // 공유 화살표는 먼저 낙관 반영하고, sharePhotos는 백그라운드로 보내서 체감 지연 감소
+                    if (record.id) {
+                        if (hasPhotosToShare && photosToShare?.length) {
+                            if (!window.sharedPhotos) window.sharedPhotos = [];
+                            const newEntries = photosToShare.map(url => ({ entryId: record.id, photoUrl: url, userId: window.currentUser?.uid }));
+                            window.sharedPhotos = (window.sharedPhotos || []).filter(p => p.entryId !== record.id).concat(newEntries);
+                        } else if (hadSharedPhotos && !hasPhotosToShare) {
+                            if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+                                window.sharedPhotos = window.sharedPhotos.filter(p => p.entryId !== record.id);
+                            }
+                        }
+                        updateTimelineShareIndicators();
+                    }
+                    dbOps.sharePhotos(photosToShare, record).then(() => {
+                        console.log('공유 처리 완료:', { recordId: record.id, 공유설정: hasPhotosToShare });
+                    }).catch((e) => {
+                        console.error("공유 처리 실패:", e);
+                        showToast("사진 공유 처리 중 오류가 발생했습니다.", 'error');
                     });
-                } catch (e) {
-                    console.error("공유 처리 실패:", e);
-                    showToast("사진 공유 처리 중 오류가 발생했습니다.", 'error');
-                    // 공유 실패 시에도 기록은 이미 저장되었으므로 계속 진행
                 }
             }
         } catch (saveError) {
@@ -751,102 +852,90 @@ export async function saveEntry() {
             return; // 저장 실패 시 여기서 종료
         }
         
-        // 탭에 따라 적절한 뷰 업데이트 (데이터가 Firestore 리스너를 통해 업데이트되므로 약간의 지연 후 렌더링)
+        // 탭에 따라 적절한 뷰 업데이트 (setTimeout 0으로 지연 없이 다음 틱에서 실행)
         setTimeout(() => {
-            if (currentTab === 'timeline' && editingDate) {
-                // 타임라인 탭: 저장된 항목의 날짜로 이동
+            const tabNow = appState.currentTab;
+            if (tabNow === 'timeline' && editingDate) {
+                // 타임라인 탭: 날짜 이동·렌더 후 수정한 날짜 섹션이 상단(트래커 아래)에 오도록 한 번만 스크롤
+                const wasScrolling = window.isScrolling;
                 try {
-                    const wasScrolling = window.isScrolling;
                     if (window.isScrolling !== undefined) {
-                        window.isScrolling = true; // jumpToDate의 자동 스크롤 방지
+                        window.isScrolling = true; // jumpToDate 내부 스크롤 방지
                     }
                     if (window.jumpToDate) {
                         window.jumpToDate(editingDate);
                     }
-                    
-                    // 타임라인 상단으로 스크롤하여 새로 추가된 항목이 트래커 아래에 보이도록
-                    setTimeout(() => {
-                        try {
-                            // 트래커 섹션과 헤더 높이 계산
-                            const trackerSection = document.getElementById('trackerSection');
-                            const trackerHeight = trackerSection ? trackerSection.offsetHeight : 0;
-                            const headerHeight = 73; // 헤더 높이 (top-[73px])
-                            const totalOffset = headerHeight + trackerHeight;
-                            
-                            // 날짜 섹션이 렌더링된 후 해당 섹션으로 스크롤 (트래커 높이만큼 오프셋)
-                            setTimeout(() => {
-                                try {
-                                    const dateSection = document.getElementById(`date-${editingDate}`);
-                                    if (dateSection) {
-                                        // 섹션의 위치를 계산하여 트래커 아래에 보이도록 스크롤
-                                        const elementTop = dateSection.getBoundingClientRect().top + window.pageYOffset;
-                                        const offsetPosition = elementTop - totalOffset - 16; // 16px 여유 공간
-                                        window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'smooth' });
-                                        if (window.isScrolling !== undefined) {
-                                            window.isScrolling = wasScrolling; // 원래 상태 복원
-                                        }
-                                    } else {
-                                        // 섹션이 아직 렌더링되지 않았으면 다시 시도
-                                        setTimeout(() => {
-                                            try {
-                                                const dateSection2 = document.getElementById(`date-${editingDate}`);
-                                                if (dateSection2) {
-                                                    const elementTop = dateSection2.getBoundingClientRect().top + window.pageYOffset;
-                                                    const offsetPosition = elementTop - totalOffset - 16;
-                                                    window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'smooth' });
-                                                }
-                                                if (window.isScrolling !== undefined) {
-                                                    window.isScrolling = wasScrolling; // 원래 상태 복원
-                                                }
-                                            } catch (scrollError) {
-                                                console.error('스크롤 오류:', scrollError);
-                                            }
-                                        }, 200);
-                                    }
-                                } catch (scrollError) {
-                                    console.error('스크롤 오류:', scrollError);
-                                }
-                            }, 400);
-                        } catch (scrollError) {
-                            console.error('스크롤 오류:', scrollError);
+                    updateTimelineShareIndicators();
+                    // 렌더·이미지 로딩·레이아웃 확정 후, 브라우저가 그린 직후(rAF) 정확한 좌표로 한 번만 스크롤
+                    const scrollEditedDateToTop = () => {
+                        const dateSection = document.getElementById(`date-${editingDate}`);
+                        const trackerSection = document.getElementById('trackerSection');
+                        if (!dateSection || !trackerSection) {
+                            if (window.isScrolling !== undefined) window.isScrolling = wasScrolling;
+                            return;
                         }
-                    }, 200);
+                        const tr = trackerSection.getBoundingClientRect();
+                        const ds = dateSection.getBoundingClientRect();
+                        const goalY = tr.bottom + 16;
+                        const scrollDelta = ds.top - goalY;
+                        const top = Math.max(0, window.scrollY + scrollDelta);
+                        window.scrollTo({ top, behavior: 'instant' });
+                        if (window.isScrolling !== undefined) window.isScrolling = wasScrolling;
+                    };
+                    const imgs = document.querySelectorAll(`#date-${editingDate} img`);
+                    const imageLoadPromise = imgs.length === 0 ? Promise.resolve() : Promise.race([
+                        Promise.all(Array.from(imgs).map(img =>
+                            img.complete ? Promise.resolve() : new Promise(r => { img.onload = r; img.onerror = r; })
+                        )),
+                        new Promise(r => setTimeout(r, 400))
+                    ]);
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            imageLoadPromise.then(() => {
+                                requestAnimationFrame(() => {
+                                    requestAnimationFrame(scrollEditedDateToTop);
+                                });
+                            });
+                        });
+                    });
                 } catch (scrollError) {
                     console.error('날짜 이동 오류:', scrollError);
+                    if (window.isScrolling !== undefined) {
+                        window.isScrolling = wasScrolling;
+                    }
                 }
-            } else if (currentTab === 'gallery') {
+            } else if (tabNow === 'gallery') {
                 // 갤러리 탭: 갤러리 다시 렌더링 (데이터가 업데이트되었으므로)
-                try {
-                    renderGallery();
-                    // 피드도 함께 렌더링 (피드가 갤러리 안에 있을 수 있음)
-                    const feedContent = document.getElementById('feedContent');
-                    if (feedContent) {
-                        renderFeed();
-                    }
-                } catch (e) {
-                    console.error('갤러리/피드 렌더링 오류:', e);
-                }
-            } else {
-                // 피드가 별도 탭이거나 갤러리와 함께 표시되는 경우
-                const feedContent = document.getElementById('feedContent');
-                if (feedContent) {
-                    try {
-                        renderFeed();
-                    } catch (e) {
-                        console.error('피드 렌더링 오류:', e);
-                    }
-                }
-                // 갤러리도 함께 확인
-                const galleryView = document.getElementById('galleryView');
-                if (galleryView && !galleryView.classList.contains('hidden')) {
+                // 리스너가 업데이트될 시간을 주기 위해 약간의 지연 후 렌더링
+                setTimeout(() => {
+                    if (appState.currentTab !== 'gallery') return; // 대기 중 탭 바뀌면 스킵
                     try {
                         renderGallery();
+                        const feedContent = document.getElementById('feedContent');
+                        if (feedContent) renderFeed();
                     } catch (e) {
-                        console.error('갤러리 렌더링 오류:', e);
+                        console.error('갤러리/피드 렌더링 오류:', e);
                     }
+                }, 500);
+            } else if (tabNow === 'dashboard') {
+                // 분석 탭: 리스너가 타임라인/갤러리만 갱신하므로 여기서 추가 작업 없음. 탭 전환 시 최신 데이터 반영됨.
+            } else if (tabNow === 'feed') {
+                const feedContent = document.getElementById('feedContent');
+                if (feedContent) {
+                    try { renderFeed(); } catch (e) { console.error('피드 렌더링 오류:', e); }
+                }
+            } else {
+                // 기타: 보이는 뷰만 갱신 (피드/갤러리 노출 시)
+                const feedContent = document.getElementById('feedContent');
+                if (feedContent) {
+                    try { renderFeed(); } catch (e) { console.error('피드 렌더링 오류:', e); }
+                }
+                const galleryView = document.getElementById('galleryView');
+                if (galleryView && !galleryView.classList.contains('hidden')) {
+                    try { renderGallery(); } catch (e) { console.error('갤러리 렌더링 오류:', e); }
                 }
             }
-        }, 100);
+        }, 0);
     } catch (e) {
         console.error('saveEntry 오류:', e);
         console.error('오류 스택:', e.stack);
@@ -1027,16 +1116,18 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
                 placeInput.placeholder = '돋보기 버튼을 선택하여 식당을 검색해보세요';
             } else {
                 kakaoSearchBtn.classList.add('hidden');
-                placeInput.placeholder = '식당명이나 장소 (예: 스타벅스)';
+                placeInput.placeholder = '어디서 (예: 스타벅스)';
             }
         }
     }
     
     if (isPrimary && subTagKey && subContainerId) {
+        if (subContainerId === 'snackPlaceSuggestions') {
+            appState.selectedSnackPlaceMainTag = selectedValue;
+        }
         const subTags = window.userSettings.subTags[subTagKey] || [];
-        // 함께한 사람의 경우 inputId를 'withWhomInput'으로 설정 (메인 태그 선택 시 자동 입력 방지)
         const inputIdForSecondary = (subTagKey === 'people') ? 'withWhomInput' : 
-            (document.getElementById(subContainerId).getAttribute('data-input-id') || getInputIdFromContainer(subContainerId));
+            (document.getElementById(subContainerId)?.getAttribute('data-input-id') || getInputIdFromContainer(subContainerId));
         window.renderSecondary(subContainerId, subTags, inputIdForSecondary, selectedValue, subTagKey);
     }
 }
@@ -1177,59 +1268,79 @@ export function openSettings() {
     const state = appState;
     if (!window.currentUser) return;
     
+    // 편집 취소를 위한 스냅샷 보관
+    state._profileSettingsSnapshot = JSON.parse(JSON.stringify(window.userSettings || {}));
+    state.isProfileEditing = false;
+
     state.tempSettings = JSON.parse(JSON.stringify(window.userSettings));
     
-    const ic = document.getElementById('iconSelector');
-    if (ic) {
-        ic.innerHTML = DEFAULT_ICONS.map(i => 
-            `<div onclick="window.selectIcon('${i}')" class="icon-option ${state.tempSettings.profile.icon === i ? 'selected' : ''}">${i}</div>`
-        ).join('');
-    }
-    
-    // 프로필 타입 초기화
-    const profileType = state.tempSettings.profile.photoUrl ? 'photo' : 'emoji';
-    window.settingsProfileType = profileType;
-    
-    // 프로필 타입 버튼 초기화
-    const emojiBtn = document.getElementById('profileTypeEmoji');
-    const photoBtn = document.getElementById('profileTypePhoto');
-    const emojiSection = document.getElementById('emojiSection');
-    const photoSection = document.getElementById('photoSection');
-    
-    if (profileType === 'emoji') {
-        if (emojiBtn) {
-            emojiBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
-        }
-        if (photoBtn) {
-            photoBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
-        }
-        if (emojiSection) emojiSection.classList.remove('hidden');
-        if (photoSection) photoSection.classList.add('hidden');
-    } else {
-        if (emojiBtn) {
-            emojiBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
-        }
-        if (photoBtn) {
-            photoBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
-        }
-        if (emojiSection) emojiSection.classList.add('hidden');
-        if (photoSection) photoSection.classList.remove('hidden');
-    }
+    // 프로필 타입 초기화 (text | photo)
+    const inferredType = state.tempSettings?.profile?.photoUrl ? 'photo' : 'text';
+    const profileType = state.tempSettings?.profile?.iconType || inferredType;
+    // 이모지 타입이면 text로 변환
+    window.settingsProfileType = profileType === 'emoji' ? 'text' : profileType;
+    setSettingsProfileType(window.settingsProfileType);
     
     // 사진 미리보기 설정
     const photoPreview = document.getElementById('photoPreview');
+    const photoDeleteBtn = document.getElementById('photoDeleteBtn');
     if (photoPreview && state.tempSettings.profile.photoUrl) {
         photoPreview.style.backgroundImage = `url(${state.tempSettings.profile.photoUrl})`;
         photoPreview.style.backgroundSize = 'cover';
         photoPreview.style.backgroundPosition = 'center';
         photoPreview.innerHTML = '';
+        if (photoDeleteBtn) {
+            photoDeleteBtn.classList.toggle('hidden', !state.isProfileEditing);
+        }
     } else if (photoPreview) {
         photoPreview.innerHTML = '<i class="fa-solid fa-camera text-slate-400 text-xl"></i>';
         photoPreview.style.backgroundImage = '';
+        if (photoDeleteBtn) {
+            photoDeleteBtn.classList.add('hidden');
+        }
     }
     
-    document.getElementById('settingNickname').value = state.tempSettings.profile.nickname || '';
+    const nicknameInput = document.getElementById('settingNickname');
+    if (nicknameInput) {
+        nicknameInput.value = state.tempSettings.profile.nickname || '';
+        // 닉네임 입력 시 텍스트 미리보기 즉시 반영 (중복 리스너 방지)
+        nicknameInput.removeEventListener('input', nicknameInput._profileNicknameHandler);
+        nicknameInput._profileNicknameHandler = () => {
+            if (window.settingsProfileType === 'text') {
+                setSettingsProfileType('text');
+            }
+        };
+        nicknameInput.addEventListener('input', nicknameInput._profileNicknameHandler);
+    }
     const bioInput = document.getElementById('settingBio');
+    // 생년월일 / 라이프스타일 초기화
+    const birthdateInput = document.getElementById('settingBirthdate');
+    if (birthdateInput) {
+        birthdateInput.value = state.tempSettings?.profile?.birthdate || '';
+    }
+    const lifestyleInput = document.getElementById('settingLifestyle');
+    if (lifestyleInput) {
+        lifestyleInput.value = state.tempSettings?.profile?.lifestyle || '';
+    }
+    // 라이프스타일 버튼 선택 상태 복원
+    const selectedLifestyle = (state.tempSettings?.profile?.lifestyle || '').trim();
+    document.querySelectorAll('.settings-lifestyle-btn').forEach(btn => {
+        const v = btn.getAttribute('data-value') || '';
+        const active = v === selectedLifestyle;
+        btn.classList.toggle('bg-emerald-600', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('border-emerald-600', active);
+        btn.classList.toggle('bg-white', !active);
+        btn.classList.toggle('text-slate-600', !active);
+        btn.classList.toggle('border-slate-200', !active);
+    });
+
+    // 생년월일 힌트 업데이트 (이미 1회 수정했으면 안내)
+    const birthdateHint = document.getElementById('birthdateHint');
+    const changeCount = Number(state.tempSettings?.profile?.birthdateChangeCount || 0);
+    if (birthdateHint) {
+        birthdateHint.textContent = changeCount >= 1 ? '이미 1회 수정 완료 (추가 변경 불가)' : '가입 후 1회만 수정 가능';
+    }
     if (bioInput) {
         bioInput.value = state.tempSettings.profile.bio || '';
         const bioCharCount = document.getElementById('bioCharCount');
@@ -1245,6 +1356,30 @@ export function openSettings() {
         });
     }
     
+    // 밀당 메모 입력 필드 초기화
+    const shortcutsInput = document.getElementById('shortcutsInput');
+    if (shortcutsInput) {
+        shortcutsInput.value = state.tempSettings.shortcuts || '';
+    }
+    
+    // 밀당 메모 저장 버튼 이벤트 리스너
+    const saveShortcutsBtn = document.getElementById('saveShortcutsBtn');
+    if (saveShortcutsBtn) {
+        saveShortcutsBtn.onclick = async () => {
+            if (shortcutsInput) {
+                state.tempSettings.shortcuts = shortcutsInput.value.trim();
+                window.userSettings = JSON.parse(JSON.stringify(state.tempSettings));
+                try {
+                    await dbOps.saveSettings(window.userSettings);
+                    showToast("밀당 메모가 저장되었습니다.", 'success');
+                } catch (e) {
+                    console.error('밀당 메모 저장 실패:', e);
+                    showToast("밀당 메모 저장 중 오류가 발생했습니다.", 'error');
+                }
+            }
+        };
+    }
+    
     // 자주 사용하는 태그 초기화 (없으면 빈 객체로)
     if (!state.tempSettings.favoriteSubTags) {
         state.tempSettings.favoriteSubTags = {
@@ -1255,14 +1390,66 @@ export function openSettings() {
         };
     }
     
-        // 자주 사용하는 태그 편집 UI 렌더링
-        renderFavoriteTagsEditor();
-        
-        // 버전 정보 로드 및 표시
-        loadVersionInfo();
-        
+    // 자주 사용하는 태그 편집 UI 렌더링
+    renderFavoriteTagsEditor();
+    
+    // 사진 선택 및 삭제 버튼 이벤트 리스너 설정 (이미 선언된 photoDeleteBtn 재사용)
+    const photoSelectBtn = document.getElementById('photoSelectBtn');
+    const photoInput = document.getElementById('photoInput');
+    const textSectionPhotoBtn = document.getElementById('textSectionPhotoBtn');
+    
+    // 텍스트 섹션의 사진 설정 버튼
+    if (textSectionPhotoBtn && photoInput) {
+        textSectionPhotoBtn.onclick = () => {
+            if (appState.isProfileEditing) {
+                photoInput.click();
+            } else {
+                showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+            }
+        };
+    }
+    
+    // 사진 섹션의 사진 선택 버튼
+    if (photoSelectBtn && photoInput) {
+        photoSelectBtn.onclick = () => {
+            if (appState.isProfileEditing) {
+                photoInput.click();
+            } else {
+                showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+            }
+        };
+    }
+    
+    if (photoDeleteBtn) {
+        photoDeleteBtn.onclick = () => {
+            handlePhotoDelete();
+        };
+    }
+    
+    // 버전 정보 로드 및 표시
+    loadVersionInfo();
+    
+    // 게스트 모드일 때 태그 관리 및 밀당 메모 탭 숨기기
+    const tagsTab = document.getElementById('settingsTabTags');
+    const shortcutsTab = document.getElementById('settingsTabShortcuts');
+    const profileSettingsSection = document.querySelector('#settingsTabContentProfile .space-y-3');
+    
+    if (window.currentUser && window.currentUser.isAnonymous) {
+        // 게스트 모드일 때 태그 관리 및 밀당 메모 탭 숨기기
+        if (tagsTab) tagsTab.classList.add('hidden');
+        if (shortcutsTab) shortcutsTab.classList.add('hidden');
+        // 게스트 모드일 때 프로필 설정 섹션 숨기기
+        if (profileSettingsSection) profileSettingsSection.classList.add('hidden');
+    } else {
+        // 일반 사용자일 때 모든 탭 표시
+        if (tagsTab) tagsTab.classList.remove('hidden');
+        if (shortcutsTab) shortcutsTab.classList.remove('hidden');
+        if (profileSettingsSection) profileSettingsSection.classList.remove('hidden');
         // 기본 탭을 프로필로 설정
         switchSettingsTab('profile');
+        // 최초 진입은 '보기' 모드로 (수정 버튼을 눌러야 편집 가능)
+        setProfileSettingsEditMode(false);
+    }
         
         const accountSection = document.getElementById('accountSection');
     if (accountSection) {
@@ -1283,6 +1470,8 @@ export function openSettings() {
                 </button>
             </div>`;
             document.getElementById('logoutBtnArea').classList.add('hidden');
+            const deleteArea = document.getElementById('deleteAccountBtnArea');
+            if (deleteArea) deleteArea.classList.add('hidden');
         } else {
             const email = window.currentUser.email || 'Google 계정';
             const providerIcon = window.currentUser.providerData[0]?.providerId === 'google.com' ? 
@@ -1292,6 +1481,8 @@ export function openSettings() {
                 <div class="flex items-center gap-2 text-emerald-700 font-bold text-sm">${providerIcon} ${email}</div>
             </div>`;
             document.getElementById('logoutBtnArea').classList.remove('hidden');
+            const deleteArea = document.getElementById('deleteAccountBtnArea');
+            if (deleteArea) deleteArea.classList.remove('hidden');
         }
         accountSection.innerHTML = accountHtml;
         
@@ -1321,7 +1512,10 @@ export function openSettings() {
         }
     }
     
-    document.getElementById('settingsPage').classList.remove('hidden');
+    // 사용자 설정을 탭으로 전환 (밀려오는 방식 없이 다른 탭과 동일하게)
+    if (typeof window.switchMainTab === 'function') {
+        window.switchMainTab('settings');
+    }
 }
 
 // 버전 정보 로드 함수
@@ -1383,15 +1577,32 @@ async function loadVersionInfo() {
 }
 
 export function closeSettings() {
-    document.getElementById('settingsPage').classList.add('hidden');
+    // 설정 탭일 때는 타임라인 탭으로 전환
+    if (typeof appState !== 'undefined' && appState.currentTab === 'settings' && typeof window.switchMainTab === 'function') {
+        window.switchMainTab('timeline');
+    }
 }
 
 // 설정 페이지 탭 전환 함수 (바 타입)
 export function switchSettingsTab(tab) {
     const profileTab = document.getElementById('settingsTabProfile');
     const tagsTab = document.getElementById('settingsTabTags');
+    const shortcutsTab = document.getElementById('settingsTabShortcuts');
     const profileContent = document.getElementById('settingsTabContentProfile');
     const tagsContent = document.getElementById('settingsTabContentTags');
+    const shortcutsContent = document.getElementById('settingsTabContentShortcuts');
+    
+    // 모든 탭 비활성화
+    [profileTab, tagsTab, shortcutsTab].forEach(t => {
+        if (t) {
+            t.className = 'settings-tab px-4 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors';
+        }
+    });
+    
+    // 모든 콘텐츠 숨기기
+    [profileContent, tagsContent, shortcutsContent].forEach(c => {
+        if (c) c.classList.add('hidden');
+    });
     
     if (tab === 'profile') {
         // 프로필 탭 활성화
@@ -1399,59 +1610,183 @@ export function switchSettingsTab(tab) {
             profileTab.className = 'settings-tab active px-4 py-3 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
             profileTab.innerHTML = '<i class="fa-solid fa-user mr-2"></i>프로필';
         }
-        if (tagsTab) {
-            tagsTab.className = 'settings-tab px-4 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors';
-            tagsTab.innerHTML = '<i class="fa-solid fa-tags mr-2"></i>태그 관리';
-        }
         if (profileContent) profileContent.classList.remove('hidden');
-        if (tagsContent) tagsContent.classList.add('hidden');
     } else if (tab === 'tags') {
         // 태그 관리 탭 활성화
         if (tagsTab) {
             tagsTab.className = 'settings-tab active px-4 py-3 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
             tagsTab.innerHTML = '<i class="fa-solid fa-tags mr-2"></i>태그 관리';
         }
-        if (profileTab) {
-            profileTab.className = 'settings-tab px-4 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors';
-            profileTab.innerHTML = '<i class="fa-solid fa-user mr-2"></i>프로필';
-        }
         if (tagsContent) tagsContent.classList.remove('hidden');
-        if (profileContent) profileContent.classList.add('hidden');
+    } else if (tab === 'shortcuts') {
+        // 밀당 메모 탭 활성화
+        if (shortcutsTab) {
+            shortcutsTab.className = 'settings-tab active px-4 py-3 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
+            shortcutsTab.innerHTML = '<i class="fa-solid fa-keyboard mr-2"></i>밀당 메모';
+        }
+        if (shortcutsContent) shortcutsContent.classList.remove('hidden');
     }
 }
+
+function setProfileSettingsEditMode(isEditing) {
+    const state = appState;
+    state.isProfileEditing = !!isEditing;
+
+    const editBtn = document.getElementById('editProfileSettingsBtn');
+    const cancelBtn = document.getElementById('cancelProfileSettingsBtn');
+    const saveBtn = document.getElementById('saveProfileSettingsBtn');
+    if (editBtn) editBtn.classList.toggle('hidden', isEditing);
+    if (cancelBtn) cancelBtn.classList.toggle('hidden', !isEditing);
+    if (saveBtn) saveBtn.classList.toggle('hidden', !isEditing);
+
+    const nicknameInput = document.getElementById('settingNickname');
+    const bioInput = document.getElementById('settingBio');
+    const birthdateInput = document.getElementById('settingBirthdate');
+    const lifestyleInput = document.getElementById('settingLifestyle');
+    if (nicknameInput) nicknameInput.disabled = !isEditing;
+    if (bioInput) bioInput.disabled = !isEditing;
+    if (birthdateInput) birthdateInput.disabled = !isEditing;
+    if (lifestyleInput) lifestyleInput.disabled = !isEditing;
+
+    /* 프로필 사진: 수정 모드일 때만 사진 설정/사진 선택/삭제 버튼 표시 */
+    const photoSelectBtn = document.getElementById('photoSelectBtn');
+    const textSectionPhotoBtn = document.getElementById('textSectionPhotoBtn');
+    const photoDeleteBtn = document.getElementById('photoDeleteBtn');
+    if (photoSelectBtn) {
+        photoSelectBtn.disabled = !isEditing;
+        photoSelectBtn.classList.toggle('hidden', !isEditing);
+    }
+    if (textSectionPhotoBtn) {
+        textSectionPhotoBtn.disabled = !isEditing;
+        textSectionPhotoBtn.classList.toggle('hidden', !isEditing);
+    }
+    if (photoDeleteBtn) {
+        photoDeleteBtn.disabled = !isEditing;
+        photoDeleteBtn.classList.toggle('hidden', !isEditing);
+    }
+
+    // 라이프스타일 버튼 비활성화
+    document.querySelectorAll('.settings-lifestyle-btn').forEach(btn => {
+        btn.disabled = !isEditing;
+        btn.classList.toggle('opacity-60', !isEditing);
+        btn.classList.toggle('cursor-not-allowed', !isEditing);
+    });
+}
+
+window.startProfileSettingsEdit = () => setProfileSettingsEditMode(true);
+
+window.cancelProfileSettingsEdit = () => {
+    const state = appState;
+    // snapshot으로 원복
+    if (state._profileSettingsSnapshot) {
+        state.tempSettings = JSON.parse(JSON.stringify(state._profileSettingsSnapshot));
+        window.userSettings = JSON.parse(JSON.stringify(state._profileSettingsSnapshot));
+    }
+
+    // 편집 중 선택한 사진(미저장) 상태 초기화
+    window.settingsPhotoFile = null;
+    window.settingsPhotoUrl = null;
+    const photoInput = document.getElementById('photoInput');
+    if (photoInput) photoInput.value = '';
+
+    // UI 재적용
+    const inferredType = state.tempSettings?.profile?.photoUrl ? 'photo' : 'text';
+    const profileType = state.tempSettings?.profile?.iconType || inferredType;
+    // 이모지 타입이면 text로 변환
+    window.settingsProfileType = profileType === 'emoji' ? 'text' : profileType;
+    setSettingsProfileType(window.settingsProfileType);
+
+    const nicknameInput = document.getElementById('settingNickname');
+    if (nicknameInput) nicknameInput.value = state.tempSettings?.profile?.nickname || '';
+    const bioInput = document.getElementById('settingBio');
+    if (bioInput) bioInput.value = state.tempSettings?.profile?.bio || '';
+
+    const photoPreview = document.getElementById('photoPreview');
+    const photoDeleteBtn = document.getElementById('photoDeleteBtn');
+    if (photoPreview && state.tempSettings?.profile?.photoUrl) {
+        photoPreview.style.backgroundImage = `url(${state.tempSettings.profile.photoUrl})`;
+        photoPreview.style.backgroundSize = 'cover';
+        photoPreview.style.backgroundPosition = 'center';
+        photoPreview.innerHTML = '';
+        if (photoDeleteBtn) {
+            photoDeleteBtn.classList.toggle('hidden', !state.isProfileEditing);
+        }
+    } else if (photoPreview) {
+        photoPreview.innerHTML = '<i class="fa-solid fa-camera text-slate-400 text-xl"></i>';
+        photoPreview.style.backgroundImage = '';
+        if (photoDeleteBtn) {
+            photoDeleteBtn.classList.add('hidden');
+        }
+    }
+
+    setProfileSettingsEditMode(false);
+};
 
 // 설정 페이지 프로필 타입 설정
 export function setSettingsProfileType(type) {
+    // 이모지 타입이면 text로 변환
+    if (type === 'emoji') {
+        type = 'text';
+    }
     window.settingsProfileType = type;
     
-    const emojiBtn = document.getElementById('profileTypeEmoji');
-    const photoBtn = document.getElementById('profileTypePhoto');
-    const emojiSection = document.getElementById('emojiSection');
-    const photoSection = document.getElementById('photoSection');
+    // tempSettings에도 iconType 반영 (취소/저장에 사용)
+    if (appState?.tempSettings?.profile) {
+        appState.tempSettings.profile.iconType = type;
+    }
     
-    if (type === 'emoji') {
-        if (emojiBtn) {
-            emojiBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
+    const textSection = document.getElementById('textSection');
+    const photoSection = document.getElementById('photoSection');
+    const photoPreview = document.getElementById('photoPreview');
+    const photoDeleteBtn = document.getElementById('photoDeleteBtn');
+
+    if (textSection) textSection.classList.toggle('hidden', type !== 'text');
+    if (photoSection) photoSection.classList.toggle('hidden', type !== 'photo');
+
+    // 텍스트 미리보기 업데이트
+    const textPreview = document.getElementById('textPreview');
+    const nicknameVal = (
+        document.getElementById('settingNickname')?.value ||
+        appState?.tempSettings?.profile?.nickname ||
+        window.userSettings?.profile?.nickname ||
+        ''
+    ).trim();
+    if (textPreview) {
+        const initial = Array.from(nicknameVal || '?')[0] || '?';
+        textPreview.textContent = initial;
+    }
+
+    // 사진 미리보기 및 삭제 버튼 업데이트 (수정 모드일 때만 삭제 버튼 표시)
+    if (type === 'photo' && photoPreview) {
+        const photoUrl = appState?.tempSettings?.profile?.photoUrl || window.settingsPhotoUrl || window.userSettings?.profile?.photoUrl;
+        if (photoUrl) {
+            photoPreview.style.backgroundImage = `url(${photoUrl})`;
+            photoPreview.style.backgroundSize = 'cover';
+            photoPreview.style.backgroundPosition = 'center';
+            photoPreview.innerHTML = '';
+            if (photoDeleteBtn) {
+                photoDeleteBtn.classList.toggle('hidden', !appState.isProfileEditing);
+            }
+        } else {
+            photoPreview.innerHTML = '<i class="fa-solid fa-camera text-slate-400 text-xl"></i>';
+            photoPreview.style.backgroundImage = '';
+            if (photoDeleteBtn) {
+                photoDeleteBtn.classList.add('hidden');
+            }
         }
-        if (photoBtn) {
-            photoBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
-        }
-        if (emojiSection) emojiSection.classList.remove('hidden');
-        if (photoSection) photoSection.classList.add('hidden');
-    } else {
-        if (emojiBtn) {
-            emojiBtn.className = 'flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors';
-        }
-        if (photoBtn) {
-            photoBtn.className = 'flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 transition-colors';
-        }
-        if (emojiSection) emojiSection.classList.add('hidden');
-        if (photoSection) photoSection.classList.remove('hidden');
     }
 }
 
-// 설정 페이지 사진 업로드 처리
+// 전역 노출 (탭 클릭용)
+window.setSettingsProfileType = setSettingsProfileType;
+
+// 설정 페이지 사진 업로드 처리 (선택 → 편집 모달 → 저장 시 미리보기 반영)
 export async function handlePhotoUpload(event) {
+    if (!appState.isProfileEditing) {
+        showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+        if (event?.target) event.target.value = '';
+        return;
+    }
     const file = event.target.files[0];
     if (!file) return;
     
@@ -1461,26 +1796,35 @@ export async function handlePhotoUpload(event) {
     }
     
     try {
-        // 이미지 압축 및 미리보기
         const { compressImageToBlob } = await import('./utils.js');
         const compressedBlob = await compressImageToBlob(file);
         const photoUrl = URL.createObjectURL(compressedBlob);
         
-        window.settingsPhotoUrl = photoUrl;
-        window.settingsPhotoFile = compressedBlob;
-        
-        // 사진을 선택하면 자동으로 프로필 타입을 'photo'로 변경
         if (window.settingsProfileType !== 'photo') {
             setSettingsProfileType('photo');
         }
         
         // 미리보기 업데이트
         const photoPreview = document.getElementById('photoPreview');
+        const photoDeleteBtn = document.getElementById('photoDeleteBtn');
         if (photoPreview) {
             photoPreview.style.backgroundImage = `url(${photoUrl})`;
             photoPreview.style.backgroundSize = 'cover';
             photoPreview.style.backgroundPosition = 'center';
             photoPreview.innerHTML = '';
+            if (photoDeleteBtn) {
+                photoDeleteBtn.classList.remove('hidden');
+            }
+        }
+        
+        window.settingsPhotoUrl = photoUrl;
+        window.settingsPhotoFile = compressedBlob;
+        
+        if (typeof window.openProfilePhotoEdit === 'function') {
+            window.openProfilePhotoEdit(photoUrl);
+        } else {
+            // 편집 기능이 없으면 바로 저장 가능하도록 설정
+            appState.tempSettings.profile.photoUrl = photoUrl;
         }
     } catch (e) {
         console.error("사진 업로드 처리 실패:", e);
@@ -1488,46 +1832,156 @@ export async function handlePhotoUpload(event) {
     }
 }
 
+// 사진 삭제 처리
+export function handlePhotoDelete() {
+    const state = appState;
+    if (!state.isProfileEditing) {
+        showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+        return;
+    }
+    
+    // 사진 관련 변수 초기화
+    state.tempSettings.profile.photoUrl = null;
+    window.settingsPhotoFile = null;
+    window.settingsPhotoUrl = null;
+    
+    // 텍스트 모드로 전환
+    setSettingsProfileType('text');
+    
+    // 파일 입력 초기화
+    const photoInput = document.getElementById('photoInput');
+    if (photoInput) photoInput.value = '';
+    
+    showToast("사진이 삭제되었습니다.", "success");
+}
+
 export async function saveProfileSettings() {
     const state = appState;
     try {
-        state.tempSettings.profile.nickname = document.getElementById('settingNickname').value;
-        state.tempSettings.profile.bio = document.getElementById('settingBio').value.trim() || '';
+        if (!state.isProfileEditing) {
+            showToast("수정 버튼을 누른 뒤 저장할 수 있습니다.", "info");
+            return;
+        }
+        // 생년월일 / 라이프스타일 (선택사항)
+        const newBirthdate = (document.getElementById('settingBirthdate')?.value || '').trim();
+        const newLifestyle = (document.getElementById('settingLifestyle')?.value || '').trim();
+
+        const newNickname = (document.getElementById('settingNickname')?.value || '').trim();
+        const existingNickname = (window.userSettings?.profile?.nickname || '').trim();
+        const nicknameChanged = newNickname !== existingNickname;
         
-        // 프로필 타입에 따라 icon 또는 photoUrl 저장
-        // 사진 파일이 있으면 무조건 사진으로 저장
-        if (window.settingsPhotoFile) {
-            // 사진을 Firebase Storage에 업로드 (기존 Storage 규칙에 맞는 경로 사용)
-            const { storage } = await import('./firebase.js');
-            const { ref, uploadBytes, getDownloadURL } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js");
-            const timestamp = Date.now();
-            const fileName = `photo_${timestamp}.jpg`;
-            const photoRef = ref(storage, `users/${window.currentUser.uid}/profile/${fileName}`);
-            
-            await uploadBytes(photoRef, window.settingsPhotoFile);
-            const photoUrl = await getDownloadURL(photoRef);
-            
-            state.tempSettings.profile.photoUrl = photoUrl;
-            state.tempSettings.profile.icon = null; // 이모지 제거
-            
-            // 업로드 후 변수 초기화
-            window.settingsPhotoFile = null;
-            window.settingsPhotoUrl = null;
-        } else if (window.settingsProfileType === 'photo' && state.tempSettings.profile.photoUrl) {
-            // 사진 파일은 없지만 기존에 사진이 있는 경우 유지
-            // icon은 null로 유지
+        if (nicknameChanged) {
+            if (!newNickname) {
+                showToast("닉네임을 입력해주세요.", "error");
+                return;
+            }
+            if (newNickname.length > 20) {
+                showToast("닉네임은 20자 이하로 입력해주세요.", "error");
+                return;
+            }
+            const { containsProfanity, isNicknameDuplicate, canChangeNickname, updateNicknameChangeDate } = await import('./utils/nickname.js');
+            if (containsProfanity(newNickname)) {
+                showToast("사용할 수 없는 닉네임입니다. 다른 닉네임을 입력해주세요.", "error");
+                return;
+            }
+            const duplicate = await isNicknameDuplicate(newNickname, window.currentUser?.uid || null);
+            if (duplicate) {
+                showToast("이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.", "error");
+                return;
+            }
+            const { canChange, daysUntilNextChange } = await canChangeNickname(window.currentUser?.uid || null);
+            if (!canChange) {
+                showToast(`닉네임은 한 달에 한 번만 변경할 수 있습니다. ${daysUntilNextChange}일 후에 다시 시도해주세요.`, "error");
+                return;
+            }
+        }
+        
+        state.tempSettings.profile.nickname = newNickname || existingNickname || '게스트';
+        state.tempSettings.profile.bio = document.getElementById('settingBio').value.trim() || '';
+
+        // 생년월일 변경 1회 제한 (값이 입력된 경우에만 체크)
+        const existingBirthdate = (window.userSettings?.profile?.birthdate || '').trim();
+        const existingLifestyle = (window.userSettings?.profile?.lifestyle || '').trim();
+        const existingCount = Number(window.userSettings?.profile?.birthdateChangeCount || 0);
+        
+        // 생년월일: 값이 입력된 경우에만 저장 및 변경 체크
+        if (newBirthdate) {
+            const isBirthdateChanged = existingBirthdate && newBirthdate && existingBirthdate !== newBirthdate;
+            if (isBirthdateChanged) {
+                if (existingCount >= 1) {
+                    showToast("생년월일은 가입 후 1회만 변경할 수 있습니다.", "error");
+                    return;
+                }
+                state.tempSettings.profile.birthdateChangeCount = existingCount + 1;
+                state.tempSettings.profile.birthdateChangedAt = new Date().toISOString();
+            } else {
+                // 기존 값 유지 (또는 최초 설정이면 0 유지)
+                state.tempSettings.profile.birthdateChangeCount = Number(state.tempSettings.profile.birthdateChangeCount || existingCount || 0);
+                state.tempSettings.profile.birthdateChangedAt = state.tempSettings.profile.birthdateChangedAt || window.userSettings?.profile?.birthdateChangedAt || null;
+            }
+            state.tempSettings.profile.birthdate = newBirthdate;
+        } else {
+            // 값이 없으면 기존 값 유지
+            state.tempSettings.profile.birthdate = existingBirthdate || '';
+            state.tempSettings.profile.birthdateChangeCount = Number(state.tempSettings.profile.birthdateChangeCount || existingCount || 0);
+            state.tempSettings.profile.birthdateChangedAt = state.tempSettings.profile.birthdateChangedAt || window.userSettings?.profile?.birthdateChangedAt || null;
+        }
+        
+        // 라이프스타일: 값이 입력된 경우에만 저장, 없으면 기존 값 유지
+        state.tempSettings.profile.lifestyle = newLifestyle || existingLifestyle || '';
+        
+        // 프로필 완료 플래그: 닉네임이 실제 값이면 완료로 처리
+        const finalNickname = (state.tempSettings.profile.nickname || '').trim();
+        if (finalNickname && finalNickname !== '게스트') {
+            state.tempSettings.profileCompleted = true;
+            state.tempSettings.profileCompletedAt = state.tempSettings.profileCompletedAt || new Date().toISOString();
+        }
+        
+        // 아이콘 타입 저장 (text | photo)
+        state.tempSettings.profile.iconType = window.settingsProfileType || 'text';
+
+        // 프로필 타입에 따라 photoUrl 저장
+        if (window.settingsProfileType === 'photo') {
+            // 사진 파일이 있으면 업로드, 없으면 기존 photoUrl 유지
+            if (window.settingsPhotoFile) {
+                const { storage } = await import('./firebase.js');
+                const { ref, uploadBytes, getDownloadURL } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js");
+                const timestamp = Date.now();
+                const fileName = `photo_${timestamp}.jpg`;
+                const photoRef = ref(storage, `users/${window.currentUser.uid}/profile/${fileName}`);
+                
+                await uploadBytes(photoRef, window.settingsPhotoFile);
+                const photoUrl = await getDownloadURL(photoRef);
+                
+                state.tempSettings.profile.photoUrl = photoUrl;
+                // 업로드 후 변수 초기화
+                window.settingsPhotoFile = null;
+                window.settingsPhotoUrl = null;
+            }
+            // icon은 항상 null (사진 또는 닉네임 첫글자만 사용)
             state.tempSettings.profile.icon = null;
         } else {
-            // 이모지 선택 시 icon만 저장
-            state.tempSettings.profile.icon = state.tempSettings.profile.icon || '🐻';
-            state.tempSettings.profile.photoUrl = null; // 사진 URL 제거
+            // text: 닉네임 첫 글자 표시 (저장은 nickname만으로 충분)
+            state.tempSettings.profile.icon = null;
+            state.tempSettings.profile.photoUrl = null;
+            state.tempSettings.profile.iconType = 'text';
+            window.settingsPhotoFile = null;
+            window.settingsPhotoUrl = null;
         }
         
         await dbOps.saveSettings(state.tempSettings);
+        if (nicknameChanged && window.currentUser?.uid) {
+            const { updateNicknameChangeDate } = await import('./utils/nickname.js');
+            await updateNicknameChangeDate(window.currentUser.uid);
+        }
         showToast("설정이 저장되었습니다.", 'success');
         
         // 헤더 업데이트
         updateHeaderUI();
+
+        // 저장 후 보기 모드로 전환 및 스냅샷 갱신
+        state._profileSettingsSnapshot = JSON.parse(JSON.stringify(state.tempSettings));
+        setProfileSettingsEditMode(false);
     } catch (e) {
         console.error('프로필 저장 실패:', e);
         showToast("설정 저장 중 오류가 발생했습니다: " + (e.message || e), 'error');
@@ -1541,8 +1995,14 @@ export async function saveSettings() {
 
 export function selectIcon(i) {
     const state = appState;
+    if (!state.isProfileEditing) {
+        showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+        return;
+    }
     state.tempSettings.profile.icon = i;
     document.querySelectorAll('.icon-option').forEach(el => el.classList.toggle('selected', el.innerText === i));
+    const emojiPreview = document.getElementById('emojiPreview');
+    if (emojiPreview) emojiPreview.textContent = i;
 }
 
 export function addTag(k, isSub) {
@@ -1582,43 +2042,47 @@ function renderFavoriteTagsEditor() {
     }
     
     const tagConfigs = {
-        mealType: { label: '식사 방식', subTagKey: 'place', mainTags: state.tempSettings.tags?.mealType || [] },
-        category: { label: '메뉴 카테고리', subTagKey: 'menu', mainTags: state.tempSettings.tags?.category || [] },
-        withWhom: { label: '함께한 사람', subTagKey: 'people', mainTags: state.tempSettings.tags?.withWhom || [] },
-        snackType: { label: '간식 유형', subTagKey: 'snack', mainTags: state.tempSettings.tags?.snackType || [] }
+        mealType: { prefix: '본식: ', label: '어떻게', subTagKey: 'place', mainTags: state.tempSettings.tags?.mealType || [] },
+        category: { prefix: '본식: ', label: '무엇을', subTagKey: 'menu', mainTags: state.tempSettings.tags?.category || [] },
+        withWhom: { prefix: '본식: ', label: '누구와', subTagKey: 'people', mainTags: state.tempSettings.tags?.withWhom || [] },
+        snackType: { prefix: '간식: ', label: '무엇을', subTagKey: 'snack', mainTags: state.tempSettings.tags?.snackType || [] },
+        snackPlace: { prefix: '간식: ', label: '어디서', subTagKey: 'place', mainTags: state.tempSettings.tags?.snackPlaceMain || ['집', '사무실', '카페'] }
     };
     
     let html = '';
-    Object.entries(tagConfigs).forEach(([mainTagKey, config]) => {
-        const favoritesByMainTag = state.tempSettings.favoriteSubTags[mainTagKey] || {};
-        const selectedMainTag = state.selectedFavoriteMainTag[mainTagKey] || null;
+    Object.entries(tagConfigs).forEach(([sectionId, config]) => {
+        const sectionKey = config.sectionKey || sectionId;
+        const storageKey = config.storageKey || sectionId;
+        const favoritesByMainTag = state.tempSettings.favoriteSubTags[storageKey] || {};
+        const selectedMainTag = state.selectedFavoriteMainTag[sectionKey] || null;
         const selectedFavorites = selectedMainTag ? (favoritesByMainTag[selectedMainTag] || []) : [];
+        const sectionTitle = (config.prefix || '') + config.label;
         
         html += `<div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-6">
-            <div class="text-xs font-bold text-slate-600 mb-3 uppercase">${config.label}</div>
-            <div id="favoriteMainTags-${mainTagKey}" class="flex flex-wrap gap-2 mb-3">
+            <div class="text-xs font-bold text-slate-600 mb-3 uppercase">${sectionTitle}</div>
+            <div id="favoriteMainTags-${sectionKey}" class="flex flex-wrap gap-2 mb-3">
                 ${config.mainTags.map(mainTag => {
                     const isSelected = selectedMainTag === mainTag;
                     const favorites = favoritesByMainTag[mainTag] || [];
-                    return `<button onclick="window.selectFavoriteMainTag('${mainTagKey}', '${mainTag.replace(/'/g, "\\'")}')" 
+                    return `<button onclick="window.selectFavoriteMainTag('${sectionKey}', '${mainTag.replace(/'/g, "\\'")}')" 
                         class="chip ${isSelected ? 'active' : ''}">
                         <span class="font-bold">${mainTag}</span> <span class="text-[10px] opacity-70">(${favorites.length}/5)</span>
                     </button>`;
                 }).join('')}
             </div>
             <div class="flex gap-2 mb-3">
-                <input type="text" id="newFavoriteTag-${mainTagKey}-${selectedMainTag || 'none'}" class="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-slate-400" placeholder="태그 입력" onkeypress="if(event.key==='Enter' && window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${mainTagKey}']) window.addFavoriteTag('${mainTagKey}', window.selectedFavoriteMainTag['${mainTagKey}'])">
-                <button onclick="if(window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${mainTagKey}']) window.addFavoriteTag('${mainTagKey}', window.selectedFavoriteMainTag['${mainTagKey}'])" class="bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold ${selectedMainTag ? '' : 'opacity-50 cursor-not-allowed'}" ${selectedMainTag ? '' : 'disabled'}>추가</button>
+                <input type="text" id="newFavoriteTag-${sectionKey}-${selectedMainTag || 'none'}" class="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-slate-400" placeholder="태그 입력" onkeypress="if(event.key==='Enter' && window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${sectionKey}']) window.addFavoriteTag('${storageKey}', window.selectedFavoriteMainTag['${sectionKey}'])">
+                <button onclick="if(window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${sectionKey}']) window.addFavoriteTag('${storageKey}', window.selectedFavoriteMainTag['${sectionKey}'])" class="bg-slate-800 text-white px-4 py-1.5 rounded-lg text-xs font-bold ${selectedMainTag ? '' : 'opacity-50 cursor-not-allowed'}" ${selectedMainTag ? '' : 'disabled'}>추가</button>
             </div>
             ${selectedMainTag ? `
                 ${selectedFavorites.length >= 5 ? '<div class="text-[10px] text-slate-500 mb-3">최대 5개까지 입력 가능합니다</div>' : ''}
                 <div class="mt-3">
                     <div class="text-[10px] text-slate-400 mb-2">나만의 태그 (최대 5개)</div>
-                    <div class="flex flex-wrap gap-2" id="favoriteTags-${mainTagKey}-${selectedMainTag}">
+                    <div class="flex flex-wrap gap-2" id="favoriteTags-${sectionKey}-${selectedMainTag}">
                         ${selectedFavorites.map((text, idx) => `
                             <div class="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold">
                                 <span>${text}</span>
-                                <button onclick="window.removeFavoriteTag('${mainTagKey}', '${selectedMainTag.replace(/'/g, "\\'")}', ${idx})" class="ml-1 hover:bg-emerald-700 rounded-full w-4 h-4 flex items-center justify-center transition-colors">
+                                <button onclick="window.removeFavoriteTag('${storageKey}', '${selectedMainTag.replace(/'/g, "\\'")}', ${idx})" class="ml-1 hover:bg-emerald-700 rounded-full w-4 h-4 flex items-center justify-center transition-colors">
                                     <i class="fa-solid fa-xmark text-[8px]"></i>
                                 </button>
                             </div>
@@ -1705,9 +2169,11 @@ export async function addFavoriteTag(mainTagKey, mainTag) {
     input.value = '';
     renderFavoriteTagsEditor();
     
-    // 즉시 저장
+    // 즉시 저장 후 화면(기록 모달 등)에서 쓰는 userSettings에도 반영
     try {
         await dbOps.saveSettings(state.tempSettings);
+        if (!window.userSettings) window.userSettings = {};
+        window.userSettings.favoriteSubTags = JSON.parse(JSON.stringify(state.tempSettings.favoriteSubTags || {}));
         showToast("태그가 저장되었습니다.", 'success');
     } catch (e) {
         console.error('태그 저장 실패:', e);
@@ -1728,9 +2194,11 @@ export async function removeFavoriteTag(mainTagKey, mainTag, index) {
         favorites.splice(index, 1);
         renderFavoriteTagsEditor();
         
-        // 즉시 저장
+        // 즉시 저장 후 화면(기록 모달 등)에서 쓰는 userSettings에도 반영
         try {
             await dbOps.saveSettings(state.tempSettings);
+            if (!window.userSettings) window.userSettings = {};
+            window.userSettings.favoriteSubTags = JSON.parse(JSON.stringify(state.tempSettings.favoriteSubTags || {}));
             showToast("태그가 삭제되었습니다.", 'success');
         } catch (e) {
             console.error('태그 삭제 저장 실패:', e);
@@ -1981,14 +2449,34 @@ export function searchKakaoPlaces() {
     // 장소 검색 객체 생성
     const ps = new kakao.maps.services.Places();
     
-    // 키워드로 장소 검색
+    // 키워드로 장소 검색 (카테고리 제한 없이 검색하여 더 많은 결과 포함)
     ps.keywordSearch(keyword, (data, status) => {
         if (status === kakao.maps.services.Status.OK) {
-            // 음식점만 필터링 (카테고리 코드: FD6 - 음식점)
+            // 음식점 필터링 (더 포괄적인 카테고리 체크)
             const restaurants = data.filter(place => {
                 const category = place.category_name || '';
-                return category.includes('음식점') || category.includes('식당') || category.includes('카페') || 
-                       category.includes('레스토랑') || category.includes('맛집');
+                const categoryGroup = place.category_group_code || '';
+                
+                // 카테고리 그룹 코드로 필터링 (FD6: 음식점)
+                if (categoryGroup === 'FD6') {
+                    return true;
+                }
+                
+                // 카테고리명으로 필터링 (더 포괄적으로)
+                const categoryLower = category.toLowerCase();
+                return categoryLower.includes('음식점') || 
+                       categoryLower.includes('식당') || 
+                       categoryLower.includes('카페') || 
+                       categoryLower.includes('레스토랑') || 
+                       categoryLower.includes('맛집') ||
+                       categoryLower.includes('요리') ||
+                       categoryLower.includes('식음료') ||
+                       categoryLower.includes('제과') ||
+                       categoryLower.includes('베이커리') ||
+                       categoryLower.includes('술집') ||
+                       categoryLower.includes('바') ||
+                       (categoryLower.includes('펜션') && categoryLower.includes('식당')) ||
+                       (categoryLower.includes('호텔') && categoryLower.includes('레스토랑'));
             });
             
             if (restaurants.length === 0) {
@@ -2053,8 +2541,6 @@ export function searchKakaoPlaces() {
             resultsContainer.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">검색 중 오류가 발생했습니다.</div>';
             console.error('카카오 장소 검색 오류:', status);
         }
-    }, {
-        category_group_code: 'FD6' // 음식점 카테고리
     });
 }
 

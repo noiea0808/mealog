@@ -1,23 +1,52 @@
 // 메인 애플리케이션 로직
 console.log('📦 main.js 모듈 로드 시작');
 
+// 모듈 로드 시작 플래그 설정 (index.html의 체크가 감지할 수 있도록)
+window.moduleLoading = true;
+
 import { appState, getState } from './state.js';
 import { auth, db, appId } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { dbOps, setupListeners, setupSharedPhotosListener, loadMoreMeals, postInteractions, boardOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
+import { dbOps, setupListeners, setupSharedPhotosListener, loadMoreMeals, loadMealsForDateRange, postInteractions, boardOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
+import { callableFunctions } from './firebase.js';
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
+import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy } from './utils.js';
 import { 
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
-    setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, confirmLogout, confirmLogoutAction,
+    setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
     copyDomain, closeDomainModal, switchToLogin, showTermsModal, closeTermsModal, cancelTermsAgreement, confirmTermsAgreement,
     showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup, setProfileType, handleSetupPhotoUpload,
     confirmDeleteAccount, cancelDeleteAccount, confirmDeleteAccountAction
 } from './auth.js';
 import { authFlowManager } from './auth-flow.js';
-import { renderTimeline, renderMiniCalendar, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, filterGalleryByUser, clearGalleryFilter } from './render/index.js';
-import { updateDashboard, setDashboardMode, updateCustomDates, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment } from './analytics.js';
+
+// 전역 리스너 정리 함수 (게스트→로그인 이동 등에서 사용)
+window.cleanupFirestoreListeners = () => {
+    try {
+        if (appState.settingsUnsubscribe) {
+            appState.settingsUnsubscribe();
+            appState.settingsUnsubscribe = null;
+        }
+        if (appState.dataUnsubscribe) {
+            appState.dataUnsubscribe();
+            appState.dataUnsubscribe = null;
+        }
+        if (appState.statsUnsubscribe) {
+            appState.statsUnsubscribe();
+            appState.statsUnsubscribe = null;
+        }
+        if (appState.sharedPhotosUnsubscribe) {
+            appState.sharedPhotosUnsubscribe();
+            appState.sharedPhotosUnsubscribe = null;
+        }
+    } catch (e) {
+        console.warn('cleanupFirestoreListeners 실패(무시):', e);
+    }
+};
+import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
+import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
@@ -28,90 +57,216 @@ import {
 import { DEFAULT_SUB_TAGS, REPORT_REASONS } from './constants.js';
 import { normalizeUrl } from './utils.js';
 
+// 전역 네임스페이스 객체 생성 (하위 호환성 유지)
+window.Mealog = window.Mealog || {};
+
 // 전역 객체에 함수들 할당 (HTML에서 접근 가능하도록)
+// 하위 호환성을 위해 window.*에도 유지하고, window.Mealog에도 할당
 window.dbOps = dbOps;
+window.Mealog.dbOps = dbOps;
 window.postInteractions = postInteractions;
+window.Mealog.postInteractions = postInteractions;
 window.removeDuplicateMeals = () => dbOps.removeDuplicateMeals();
+window.Mealog.removeDuplicateMeals = window.removeDuplicateMeals;
 window.showToast = showToast;
+window.Mealog.showToast = showToast;
 window.renderTimeline = renderTimeline;
+window.Mealog.renderTimeline = renderTimeline;
+window.updateTimelineShareIndicators = updateTimelineShareIndicators;
+window.Mealog.updateTimelineShareIndicators = updateTimelineShareIndicators;
 window.renderGallery = renderGallery;
+window.Mealog.renderGallery = renderGallery;
 window.filterGalleryByUser = filterGalleryByUser;
+window.Mealog.filterGalleryByUser = filterGalleryByUser;
 window.clearGalleryFilter = clearGalleryFilter;
+window.Mealog.clearGalleryFilter = clearGalleryFilter;
+window.switchGalleryFilterTab = switchGalleryFilterTab;
+window.Mealog.switchGalleryFilterTab = switchGalleryFilterTab;
+// 밀톡에서 작성자 클릭 시 사용자 프로필 화면(모먼트와 동일)으로 이동, 밀톡 탭 선택 상태로 표시. 뒤로가기 시 밀톡으로 복귀하기 위해 진입 탭 저장
+window.openUserProfileFromBoard = (userId) => {
+    if (!userId) return;
+    appState.galleryFilterEntryTab = 'board'; // 뒤로가기 시 밀톡 탭으로 나가기 위함
+    appState.galleryFilterTab = 'board';
+    filterGalleryByUser(userId, '사용자');
+    switchMainTab('gallery');
+};
+window.Mealog.openUserProfileFromBoard = window.openUserProfileFromBoard;
+
+// 사용자 프로필 뷰 내 모먼트/밀톡 탭 전환 시 하단 탭 표시 동기화 (render.js에서 호출)
+window.syncBottomNavForGalleryFilter = () => {
+    const navGallery = document.getElementById('nav-gallery');
+    const navBoard = document.getElementById('nav-board');
+    if (!navGallery || !navBoard) return;
+    if (appState.currentTab === 'gallery' && appState.galleryFilterUserId && appState.galleryFilterTab === 'board') {
+        navGallery.className = 'text-slate-300 flex justify-center items-center py-1';
+        navBoard.className = 'text-slate-600 flex justify-center items-center py-1';
+    } else if (appState.currentTab === 'gallery') {
+        navGallery.className = 'text-slate-600 flex justify-center items-center py-1';
+        navBoard.className = 'text-slate-300 flex justify-center items-center py-1';
+    }
+};
+window.Mealog.syncBottomNavForGalleryFilter = window.syncBottomNavForGalleryFilter;
 window.updateHeaderUI = updateHeaderUI;
+window.Mealog.updateHeaderUI = updateHeaderUI;
 window.copyDomain = copyDomain;
+window.Mealog.copyDomain = copyDomain;
 window.closeDomainModal = closeDomainModal;
+window.Mealog.closeDomainModal = closeDomainModal;
 window.handleGoogleLogin = handleGoogleLogin;
+window.Mealog.handleGoogleLogin = handleGoogleLogin;
 window.startGuest = startGuest;
+window.Mealog.startGuest = startGuest;
 window.openEmailModal = openEmailModal;
+window.Mealog.openEmailModal = openEmailModal;
 window.closeEmailModal = closeEmailModal;
+window.Mealog.closeEmailModal = closeEmailModal;
 window.setEmailAuthMode = setEmailAuthMode;
+window.Mealog.setEmailAuthMode = setEmailAuthMode;
 window.toggleEmailAuthMode = toggleEmailAuthMode;
+window.Mealog.toggleEmailAuthMode = toggleEmailAuthMode;
 window.handleEmailAuth = handleEmailAuth;
+window.Mealog.handleEmailAuth = handleEmailAuth;
+window.requestPasswordReset = requestPasswordReset;
+window.Mealog.requestPasswordReset = requestPasswordReset;
 window.confirmLogout = confirmLogout;
+window.Mealog.confirmLogout = confirmLogout;
 window.confirmLogoutAction = confirmLogoutAction;
+window.Mealog.confirmLogoutAction = confirmLogoutAction;
 window.confirmDeleteAccount = confirmDeleteAccount;
+window.Mealog.confirmDeleteAccount = confirmDeleteAccount;
 window.switchToLogin = switchToLogin;
+window.Mealog.switchToLogin = switchToLogin;
 window.showTermsModal = showTermsModal;
+window.Mealog.showTermsModal = showTermsModal;
 window.closeTermsModal = closeTermsModal;
+window.Mealog.closeTermsModal = closeTermsModal;
 window.cancelTermsAgreement = cancelTermsAgreement;
+window.Mealog.cancelTermsAgreement = cancelTermsAgreement;
 window.confirmTermsAgreement = confirmTermsAgreement;
+window.Mealog.confirmTermsAgreement = confirmTermsAgreement;
 window.showTermsDetail = showTermsDetail;
+window.Mealog.showTermsDetail = showTermsDetail;
 window.updateTermsAgreeButton = updateTermsAgreeButton;
+window.Mealog.updateTermsAgreeButton = updateTermsAgreeButton;
 window.selectSetupIcon = selectSetupIcon;
+window.Mealog.selectSetupIcon = selectSetupIcon;
 window.confirmProfileSetup = confirmProfileSetup;
+window.Mealog.confirmProfileSetup = confirmProfileSetup;
 window.setProfileType = setProfileType;
+window.Mealog.setProfileType = setProfileType;
 window.handleSetupPhotoUpload = handleSetupPhotoUpload;
+window.Mealog.handleSetupPhotoUpload = handleSetupPhotoUpload;
 window.openModal = openModal;
+window.Mealog.openModal = openModal;
 window.closeModal = closeModal;
+window.Mealog.closeModal = closeModal;
 window.saveEntry = saveEntry;
+window.Mealog.saveEntry = saveEntry;
 window.deleteEntry = deleteEntry;
+window.Mealog.deleteEntry = deleteEntry;
 window.setRating = setRating;
+window.Mealog.setRating = setRating;
 window.setSatiety = setSatiety;
+window.Mealog.setSatiety = setSatiety;
 window.selectTag = selectTag;
+window.Mealog.selectTag = selectTag;
 window.handleMultipleImages = handleMultipleImages;
+window.Mealog.handleMultipleImages = handleMultipleImages;
 window.removePhoto = removePhoto;
+window.Mealog.removePhoto = removePhoto;
 window.updateShareIndicator = updateShareIndicator;
+window.Mealog.updateShareIndicator = updateShareIndicator;
 window.toggleSharePhoto = toggleSharePhoto;
+window.Mealog.toggleSharePhoto = toggleSharePhoto;
 window.openSettings = openSettings;
+window.Mealog.openSettings = openSettings;
 window.closeSettings = closeSettings;
+window.Mealog.closeSettings = closeSettings;
 window.switchSettingsTab = switchSettingsTab;
+window.Mealog.switchSettingsTab = switchSettingsTab;
 window.saveSettings = saveSettings;
+window.Mealog.saveSettings = saveSettings;
 window.saveProfileSettings = saveProfileSettings;
+window.Mealog.saveProfileSettings = saveProfileSettings;
 window.selectIcon = selectIcon;
+window.Mealog.selectIcon = selectIcon;
 window.setSettingsProfileType = setSettingsProfileType;
+window.Mealog.setSettingsProfileType = setSettingsProfileType;
 window.handlePhotoUpload = handlePhotoUpload;
+window.Mealog.handlePhotoUpload = handlePhotoUpload;
 window.addTag = addTag;
+window.Mealog.addTag = addTag;
 window.removeTag = removeTag;
+window.Mealog.removeTag = removeTag;
 window.deleteSubTag = deleteSubTag;
+window.Mealog.deleteSubTag = deleteSubTag;
 window.addFavoriteTag = addFavoriteTag;
+window.Mealog.addFavoriteTag = addFavoriteTag;
 window.removeFavoriteTag = removeFavoriteTag;
+window.Mealog.removeFavoriteTag = removeFavoriteTag;
 window.selectFavoriteMainTag = selectFavoriteMainTag;
+window.Mealog.selectFavoriteMainTag = selectFavoriteMainTag;
 window.setDashboardMode = setDashboardMode;
+window.Mealog.setDashboardMode = setDashboardMode;
 window.updateCustomDates = updateCustomDates;
+window.syncCustomDatePlaceholder = syncCustomDatePlaceholder;
+window.Mealog.updateCustomDates = updateCustomDates;
 window.updateSelectedMonth = updateSelectedMonth;
+window.Mealog.updateSelectedMonth = updateSelectedMonth;
 window.updateSelectedWeek = updateSelectedWeek;
+window.Mealog.updateSelectedWeek = updateSelectedWeek;
 window.navigatePeriod = navigatePeriod;
+window.Mealog.navigatePeriod = navigatePeriod;
 window.openDetailModal = openDetailModal;
+window.Mealog.openDetailModal = openDetailModal;
 window.openCharacterSelectModal = openCharacterSelectModal;
+window.Mealog.openCharacterSelectModal = openCharacterSelectModal;
 window.closeCharacterSelectModal = closeCharacterSelectModal;
+window.Mealog.closeCharacterSelectModal = closeCharacterSelectModal;
 window.selectInsightCharacter = selectInsightCharacter;
+window.Mealog.selectInsightCharacter = selectInsightCharacter;
 window.generateInsightComment = generateInsightComment;
+window.Mealog.generateInsightComment = generateInsightComment;
+window.openShareInsightModal = openShareInsightModal;
+window.Mealog.openShareInsightModal = openShareInsightModal;
+window.closeShareInsightModal = closeShareInsightModal;
+window.Mealog.closeShareInsightModal = closeShareInsightModal;
+window.shareInsightToFeed = shareInsightToFeed;
+window.Mealog.shareInsightToFeed = shareInsightToFeed;
 window.closeDetailModal = closeDetailModal;
+window.Mealog.closeDetailModal = closeDetailModal;
 window.setAnalysisType = setAnalysisType;
+window.Mealog.setAnalysisType = setAnalysisType;
 window.openShareBestModal = openShareBestModal;
+window.Mealog.openShareBestModal = openShareBestModal;
 window.closeShareBestModal = closeShareBestModal;
+window.Mealog.closeShareBestModal = closeShareBestModal;
 window.shareBestToFeed = shareBestToFeed;
+window.Mealog.shareBestToFeed = shareBestToFeed;
 window.editBestShare = openEditBestShareModal;
+window.Mealog.editBestShare = openEditBestShareModal;
+window.editInsightShare = openEditInsightShareModal;
+window.Mealog.editInsightShare = openEditInsightShareModal;
 window.toggleComment = toggleComment;
+window.Mealog.toggleComment = toggleComment;
 window.toggleFeedComment = toggleFeedComment;
+window.Mealog.toggleFeedComment = toggleFeedComment;
 window.openKakaoPlaceSearch = openKakaoPlaceSearch;
+window.Mealog.openKakaoPlaceSearch = openKakaoPlaceSearch;
 window.searchKakaoPlaces = searchKakaoPlaces;
+window.Mealog.searchKakaoPlaces = searchKakaoPlaces;
 window.selectKakaoPlace = selectKakaoPlace;
+window.Mealog.selectKakaoPlace = selectKakaoPlace;
 window.boardOperations = boardOperations;
+window.Mealog.boardOperations = boardOperations;
 window.noticeOperations = noticeOperations;
+window.Mealog.noticeOperations = noticeOperations;
 window.renderBoard = renderBoard;
+window.Mealog.renderBoard = renderBoard;
 window.renderBoardDetail = renderBoardDetail;
+window.Mealog.renderBoardDetail = renderBoardDetail;
 window.renderNoticeDetail = renderNoticeDetail;
+window.Mealog.renderNoticeDetail = renderNoticeDetail;
 
 // 로그인 요청 함수
 window.requestLogin = () => {
@@ -123,6 +278,29 @@ window.requestLogin = () => {
         }, 500);
     }
 };
+window.Mealog.requestLogin = window.requestLogin;
+
+/** stats 집계 문서 재생성 (콘솔에서 window.backfillUserStats() 호출) */
+window.backfillUserStats = async () => {
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast('로그인이 필요합니다.', 'error');
+        return;
+    }
+    try {
+        showToast('통계 재계산 중...', 'info');
+        const result = await callableFunctions.backfillUserStats();
+        const { mealCount, dayCount } = result.data || {};
+        showToast(`통계 재계산 완료 (${mealCount}건, ${dayCount}일)`, 'success');
+        if (appState.currentTab === 'timeline') { renderTimeline(); renderMiniCalendar(); }
+        if (appState.currentTab === 'dashboard') updateDashboard();
+        return result.data;
+    } catch (e) {
+        console.error('backfillUserStats 실패:', e);
+        showToast(e?.message || '통계 재계산 실패', 'error');
+        throw e;
+    }
+};
+window.Mealog.backfillUserStats = window.backfillUserStats;
 
 // 좋아요 토글 함수
 window.toggleLike = async (postId) => {
@@ -159,6 +337,7 @@ window.toggleLike = async (postId) => {
         showToast("좋아요 처리 중 오류가 발생했습니다.", 'error');
     }
 };
+window.Mealog.toggleLike = window.toggleLike;
 
 // 북마크 토글 함수
 window.toggleBookmark = async (postId) => {
@@ -189,6 +368,7 @@ window.toggleBookmark = async (postId) => {
         showToast("북마크 처리 중 오류가 발생했습니다.", 'error');
     }
 };
+window.Mealog.toggleBookmark = window.toggleBookmark;
 
 // 댓글 추가 함수
 window.addCommentToPost = async (postId) => {
@@ -205,81 +385,112 @@ window.addCommentToPost = async (postId) => {
     if (!commentText) return;
     
     const submitBtn = document.querySelector(`.post-comment-submit-btn[data-post-id="${postId}"]`);
+    const commentCountEl = document.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
+    const commentsListEl = document.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
+    const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
+    
     if (submitBtn) {
         submitBtn.disabled = true;
         submitBtn.textContent = '게시 중...';
     }
     
+    // 낙관적 업데이트: 즉시 UI에 반영
+    const userProfile = window.userSettings?.profile || {};
+    const userNickname = userProfile.nickname || window.userSettings?.nickname || '익명';
+    const tempCommentId = `temp-${Date.now()}`;
+    
+    // 댓글 개수 즉시 증가
+    if (commentCountEl) {
+        const currentCount = parseInt(commentCountEl.textContent) || 0;
+        commentCountEl.textContent = currentCount + 1;
+    }
+    
+    // 댓글 목록에 즉시 추가
+    if (commentsListEl) {
+        const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
+        const existingComments = commentsListEl.querySelectorAll('.mb-1.text-sm');
+        const currentCommentCount = existingComments.length;
+        
+        // 기존 댓글이 2개 미만이면 새 댓글 추가
+        if (currentCommentCount < 2) {
+            commentsListEl.classList.add('bg-slate-50');
+            const tempCommentHtml = `
+                <div class="mb-1 text-sm" data-temp-comment-id="${tempCommentId}">
+                    <span class="font-bold text-slate-800">${escapeHtml(userNickname)}</span>
+                    <span class="text-slate-800">${escapeHtml(commentText)}</span>
+                    ${isLoggedIn ? `<button onclick="window.deleteCommentFromPost('${tempCommentId}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
+                </div>
+            `;
+            commentsListEl.insertAdjacentHTML('beforeend', tempCommentHtml);
+        }
+        
+        // "댓글 모두 보기" 버튼 표시
+        if (viewCommentsBtn) {
+            const newCount = (parseInt(commentCountEl?.textContent) || 0);
+            if (newCount > 2) {
+                viewCommentsBtn.textContent = `댓글 ${newCount}개 모두 보기`;
+                viewCommentsBtn.classList.remove('hidden');
+            }
+        }
+    }
+    
+    // 입력 필드 초기화
+    inputEl.value = '';
+    
     try {
         if (!postId || postId === 'undefined' || postId === 'null') {
             showToast("잘못된 포스트 ID입니다.", 'error');
+            // 낙관적 업데이트 롤백
+            if (commentCountEl) {
+                const currentCount = parseInt(commentCountEl.textContent) || 0;
+                commentCountEl.textContent = currentCount > 0 ? currentCount - 1 : '';
+            }
+            if (commentsListEl) {
+                const tempComment = commentsListEl.querySelector(`[data-temp-comment-id="${tempCommentId}"]`);
+                if (tempComment) tempComment.remove();
+            }
             return;
         }
         
-        const userProfile = window.userSettings?.profile || {};
         const newComment = await postInteractions.addComment(postId, window.currentUser.uid, commentText, userProfile);
         
         if (!newComment) {
             showToast("댓글 추가에 실패했습니다.", 'error');
+            // 낙관적 업데이트 롤백
+            if (commentCountEl) {
+                const currentCount = parseInt(commentCountEl.textContent) || 0;
+                commentCountEl.textContent = currentCount > 0 ? currentCount - 1 : '';
+            }
+            if (commentsListEl) {
+                const tempComment = commentsListEl.querySelector(`[data-temp-comment-id="${tempCommentId}"]`);
+                if (tempComment) tempComment.remove();
+            }
             return;
         }
         
-        // 입력 필드 초기화
-        inputEl.value = '';
-        
-        // 약간의 지연 후 댓글 목록 다시 로드 (Firestore 인덱싱 반영 시간)
-        setTimeout(async () => {
-            // 댓글 개수 업데이트
-            const commentCountEl = document.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
-            if (commentCountEl) {
-                const comments = await postInteractions.getComments(postId);
-                commentCountEl.textContent = comments.length > 0 ? comments.length : '';
+        // 서버 응답으로 임시 댓글만 실제 id로 갱신 (getComments 제거 → 체감 속도 개선)
+        if (commentsListEl && newComment.id) {
+            const tempComment = commentsListEl.querySelector(`[data-temp-comment-id="${tempCommentId}"]`);
+            if (tempComment) {
+                tempComment.removeAttribute('data-temp-comment-id');
+                tempComment.setAttribute('data-comment-id', newComment.id);
+                const delBtn = tempComment.querySelector('button[onclick*="deleteCommentFromPost"]');
+                if (delBtn) delBtn.setAttribute('onclick', `window.deleteCommentFromPost('${String(newComment.id).replace(/'/g, "\\'")}', '${postId}')`);
             }
-            
-            // 댓글 목록에 추가
-            const commentsListEl = document.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
-            if (commentsListEl) {
-                const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
-                
-                // 모든 댓글 다시 로드
-                const comments = await postInteractions.getComments(postId);
-                
-                if (comments.length > 0) {
-                    commentsListEl.classList.add('bg-slate-50');
-                    const displayComments = comments.slice(0, 2);
-                    const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
-                    commentsListEl.innerHTML = displayComments.map(c => `
-                        <div class="mb-1 text-sm">
-                            <span class="font-bold text-slate-800">${c.userNickname || '익명'}</span>
-                            <span class="text-slate-800">${escapeHtml(c.comment)}</span>
-                            ${isLoggedIn && c.userId === window.currentUser?.uid ? `<button onclick="window.deleteCommentFromPost('${c.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
-                        </div>
-                    `).join('');
-                    
-                    if (comments.length > 2) {
-                        if (viewCommentsBtn) {
-                            viewCommentsBtn.textContent = `댓글 ${comments.length}개 모두 보기`;
-                            viewCommentsBtn.classList.remove('hidden');
-                        }
-                    } else {
-                        if (viewCommentsBtn) {
-                            viewCommentsBtn.classList.add('hidden');
-                        }
-                    }
-                } else {
-                    commentsListEl.innerHTML = '';
-                    commentsListEl.classList.remove('bg-slate-50');
-                    if (viewCommentsBtn) {
-                        viewCommentsBtn.classList.add('hidden');
-                    }
-                }
-            }
-        }, 500);
-        
-        showToast("댓글이 추가되었습니다.", 'success');
+        }
     } catch (e) {
         console.error("댓글 추가 실패:", e);
         showToast("댓글 추가 중 오류가 발생했습니다: " + (e.message || e), 'error');
+        
+        // 낙관적 업데이트 롤백
+        if (commentCountEl) {
+            const currentCount = parseInt(commentCountEl.textContent) || 0;
+            commentCountEl.textContent = currentCount > 0 ? currentCount - 1 : '';
+        }
+        if (commentsListEl) {
+            const tempComment = commentsListEl.querySelector(`[data-temp-comment-id="${tempCommentId}"]`);
+            if (tempComment) tempComment.remove();
+        }
     } finally {
         if (submitBtn) {
             submitBtn.disabled = false;
@@ -287,6 +498,8 @@ window.addCommentToPost = async (postId) => {
         }
     }
 };
+
+window.Mealog.addCommentToPost = window.addCommentToPost;
 
 // 댓글 삭제 함수
 window.deleteCommentFromPost = async (commentId, postId) => {
@@ -300,75 +513,173 @@ window.deleteCommentFromPost = async (commentId, postId) => {
     
     if (!confirm("댓글을 삭제하시겠습니까?")) return;
     
+    const commentsListEl = document.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
+    const commentCountEl = document.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
+    const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
+    
+    // 낙관적 업데이트: 즉시 UI에서 제거
+    const commentEl = commentsListEl?.querySelector(`[onclick*="deleteCommentFromPost('${commentId}'"]`)?.closest('.mb-1.text-sm');
+    let wasVisible = false;
+    if (commentEl) {
+        wasVisible = true;
+        commentEl.remove();
+    }
+    
+    // 댓글 개수 즉시 감소
+    if (commentCountEl) {
+        const currentCount = parseInt(commentCountEl.textContent) || 0;
+        commentCountEl.textContent = currentCount > 0 ? currentCount - 1 : '';
+    }
+    
+    // 댓글 목록이 비어있으면 스타일 제거
+    if (commentsListEl) {
+        const remainingComments = commentsListEl.querySelectorAll('.mb-1.text-sm');
+        if (remainingComments.length === 0) {
+            commentsListEl.innerHTML = '';
+            commentsListEl.classList.remove('bg-slate-50');
+            if (viewCommentsBtn) viewCommentsBtn.classList.add('hidden');
+        } else {
+            // 댓글 개수 업데이트
+            const newCount = parseInt(commentCountEl?.textContent) || 0;
+            if (newCount <= 2 && viewCommentsBtn) {
+                viewCommentsBtn.classList.add('hidden');
+            } else if (viewCommentsBtn) {
+                viewCommentsBtn.textContent = `댓글 ${newCount}개 모두 보기`;
+            }
+        }
+    }
+    
     try {
         const success = await postInteractions.deleteComment(commentId, window.currentUser.uid);
         if (success) {
-            // 댓글 다시 로드
-            const comments = await postInteractions.getComments(postId);
-            const commentsListEl = document.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
-            const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
-            
-            // 댓글 개수 업데이트
-            const commentCountEl = document.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
-            if (commentCountEl) {
-                commentCountEl.textContent = comments.length > 0 ? comments.length : '';
-            }
-            
-            if (commentsListEl) {
-                if (comments.length === 0) {
-                    commentsListEl.innerHTML = '';
-                    commentsListEl.classList.remove('bg-slate-50');
-                    if (viewCommentsBtn) viewCommentsBtn.classList.add('hidden');
-                } else {
-                    commentsListEl.classList.add('bg-slate-50');
-                    const displayComments = comments.slice(0, 2);
-                    const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
-                    commentsListEl.innerHTML = displayComments.map(c => `
-                        <div class="mb-1 text-sm">
-                            <span class="font-bold text-slate-800">${c.userNickname || '익명'}</span>
-                            <span class="text-slate-800">${escapeHtml(c.comment)}</span>
-                            ${isLoggedIn && c.userId === window.currentUser?.uid ? `<button onclick="window.deleteCommentFromPost('${c.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
-                        </div>
-                    `).join('');
+            // 서버 응답 후 실제 데이터로 업데이트
+            setTimeout(async () => {
+                try {
+                    const alternates = getAlternatePostIdsForPost(postId);
+                    const comments = await postInteractions.getComments(postId, alternates);
                     
-                    if (comments.length > 2) {
-                        if (viewCommentsBtn) {
-                            viewCommentsBtn.textContent = `댓글 ${comments.length}개 모두 보기`;
-                            viewCommentsBtn.classList.remove('hidden');
-                        }
-                    } else {
-                        if (viewCommentsBtn) viewCommentsBtn.classList.add('hidden');
+                    // 댓글 개수 업데이트
+                    if (commentCountEl) {
+                        commentCountEl.textContent = comments.length > 0 ? comments.length : '';
                     }
+                    
+                    // 댓글 목록 업데이트
+                    if (commentsListEl) {
+                        if (comments.length === 0) {
+                            commentsListEl.innerHTML = '';
+                            commentsListEl.classList.remove('bg-slate-50');
+                            if (viewCommentsBtn) viewCommentsBtn.classList.add('hidden');
+                        } else {
+                            commentsListEl.classList.add('bg-slate-50');
+                            const displayComments = comments.slice(0, 2);
+                            const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
+                            commentsListEl.innerHTML = displayComments.map(c => {
+                                const commentDisplay = getDisplayProfile(c.userId, { nickname: c.userNickname });
+                                return `
+                                <div class="mb-1 text-sm">
+                                    <span class="font-bold text-slate-800">${commentDisplay.nickname}</span>
+                                    <span class="text-slate-800">${escapeHtml(c.comment)}</span>
+                                    ${isLoggedIn && c.userId === window.currentUser?.uid ? `<button onclick="window.deleteCommentFromPost('${c.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
+                                </div>
+                            `;
+                            }).join('');
+                            
+                            if (comments.length > 2) {
+                                if (viewCommentsBtn) {
+                                    viewCommentsBtn.textContent = `댓글 ${comments.length}개 모두 보기`;
+                                    viewCommentsBtn.classList.remove('hidden');
+                                }
+                            } else {
+                                if (viewCommentsBtn) viewCommentsBtn.classList.add('hidden');
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error("댓글 목록 업데이트 실패:", e);
+                    // 에러가 발생해도 낙관적 업데이트는 유지
                 }
-            }
+            }, 200);
+            
             showToast("댓글이 삭제되었습니다.", 'success');
         } else {
+            // 실패 시 롤백
+            if (wasVisible && commentEl && commentsListEl) {
+                commentsListEl.insertAdjacentElement('beforeend', commentEl);
+            }
+            if (commentCountEl) {
+                const currentCount = parseInt(commentCountEl.textContent) || 0;
+                commentCountEl.textContent = currentCount + 1;
+            }
             showToast("댓글을 삭제할 수 없습니다.", 'error');
         }
     } catch (e) {
         console.error("댓글 삭제 실패:", e);
+        // 실패 시 롤백
+        if (wasVisible && commentEl && commentsListEl) {
+            commentsListEl.insertAdjacentElement('beforeend', commentEl);
+        }
+        if (commentCountEl) {
+            const currentCount = parseInt(commentCountEl.textContent) || 0;
+            commentCountEl.textContent = currentCount + 1;
+        }
         showToast("댓글 삭제 중 오류가 발생했습니다.", 'error');
     }
 };
 
+window.Mealog.deleteCommentFromPost = window.deleteCommentFromPost;
+
+// 앨범 카드의 구 postId(문서 id) 목록 — 댓글 조회 시 canonical id + 이 목록으로 함께 조회해 작성자/댓글 작성자 동일하게 표시
+function getAlternatePostIdsForPost(postId) {
+    const el = document.querySelector(`.instagram-post[data-post-id="${postId}"]`);
+    if (!el) return [];
+    const attr = el.getAttribute('data-post-id-alternates');
+    return attr ? attr.split(',').filter(Boolean) : [];
+}
+
 // 댓글 모두 보기 함수
-window.showAllComments = async (postId) => {
+window.viewAllComments = async (postId) => {
     try {
-        const comments = await postInteractions.getComments(postId);
+        const alternates = getAlternatePostIdsForPost(postId);
+        const comments = await postInteractions.getComments(postId, alternates);
         const commentsListEl = document.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
         const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
         
         if (commentsListEl) {
             if (comments.length > 0) {
                 commentsListEl.classList.add('bg-slate-50');
+                const commentAuthorIds = [...new Set(comments.map(c => c.userId).filter(Boolean))];
+                await fetchUserProfiles(commentAuthorIds);
                 const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
-                commentsListEl.innerHTML = comments.map(c => `
-                    <div class="mb-1 text-sm">
-                        <span class="font-bold text-slate-800">${c.userNickname || '익명'}</span>
-                        <span class="text-slate-800">${escapeHtml(c.comment)}</span>
-                        ${isLoggedIn && c.userId === window.currentUser?.uid ? `<button onclick="window.deleteCommentFromPost('${c.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
-                    </div>
-                `).join('');
+                commentsListEl.innerHTML = comments.map(comment => {
+                    // timestamp가 유효한지 확인
+                    let dateStr = '';
+                    let timeStr = '';
+                    if (comment.timestamp) {
+                        try {
+                            const commentDate = comment.timestamp instanceof Date 
+                                ? comment.timestamp 
+                                : (comment.timestamp.toDate ? comment.timestamp.toDate() : new Date(comment.timestamp));
+                            
+                            if (!isNaN(commentDate.getTime())) {
+                                dateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+                                timeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                            }
+                        } catch (e) {
+                            console.warn('댓글 날짜 파싱 실패:', comment.timestamp, e);
+                        }
+                    }
+                    
+                    const isMyComment = isLoggedIn && comment.userId === window.currentUser.uid;
+                    const commentDisplay = getDisplayProfile(comment.userId, { nickname: comment.userNickname });
+                    return `
+                        <div class="mb-1 text-sm">
+                            <span class="font-bold text-slate-800">${escapeHtml(commentDisplay.nickname)}</span>
+                            <span class="text-slate-800 ml-2">${escapeHtml(comment.comment || '')}</span>
+                            ${dateStr && timeStr ? `<span class="text-xs text-slate-400 ml-2">${dateStr} ${timeStr}</span>` : ''}
+                            ${isMyComment ? `<button onclick="window.deleteCommentFromPost('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
+                        </div>
+                    `;
+                }).join('');
             } else {
                 commentsListEl.innerHTML = '';
                 commentsListEl.classList.remove('bg-slate-50');
@@ -383,18 +694,207 @@ window.showAllComments = async (postId) => {
         showToast("댓글을 불러오는 중 오류가 발생했습니다.", 'error');
     }
 };
+window.Mealog.viewAllComments = window.viewAllComments;
 
-// 댓글 입력 필드 토글 (더블클릭으로 댓글 입력창 포커스)
+// 댓글 모두 보기 함수 (기존 함수명 유지)
+window.showAllComments = window.viewAllComments;
+
+// 댓글 입력 필드 토글 (댓글 버튼 클릭 시)
 window.toggleCommentInput = (postId) => {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         window.requestLogin();
         return;
     }
     const inputEl = document.getElementById(`comment-input-${postId}`);
+    const commentSection = document.getElementById(`comment-section-${postId}`);
     if (inputEl) {
-        inputEl.focus();
+        const isHidden = inputEl.classList.contains('hidden');
+        if (isHidden) {
+            inputEl.classList.remove('hidden');
+            if (commentSection) commentSection.classList.add('comment-input-open');
+            const textInput = document.getElementById(`comment-text-${postId}`);
+            if (textInput) {
+                textInput.focus();
+            }
+        } else {
+            inputEl.classList.add('hidden');
+            if (commentSection) commentSection.classList.remove('comment-input-open');
+        }
     }
 };
+
+// 피드 댓글 작성 함수 (앨범/밀톡 공통)
+window.submitComment = async (postId) => {
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast("로그인이 필요합니다.", 'error');
+        window.requestLogin();
+        return;
+    }
+    
+    const inputEl = document.getElementById(`comment-text-${postId}`);
+    if (!inputEl) return;
+    
+    const commentText = inputEl.value.trim();
+    if (!commentText) {
+        showToast("댓글을 입력해주세요.", 'error');
+        return;
+    }
+    
+    const commentsListEl = document.getElementById(`comments-list-${postId}`);
+    const commentCountEl = document.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
+    const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
+    const userProfile = window.userSettings?.profile || {};
+    const userNickname = userProfile?.nickname || '익명';
+    const tempId = `temp-${Date.now()}`;
+    
+    // 입력 필드 비활성화 + 즉시 비우기 (더블 탭 방지)
+    inputEl.disabled = true;
+    inputEl.value = '';
+    
+    // 낙관적 업데이트: 댓글 한 줄 즉시 표시
+    if (commentsListEl) {
+        commentsListEl.classList.add('bg-slate-50');
+        commentsListEl.insertAdjacentHTML('beforeend',
+            `<div class="mb-1 text-sm" data-temp-comment-id="${tempId}">
+                <span class="font-bold text-slate-800">${escapeHtml(userNickname)}</span>
+                <span class="text-slate-800 ml-2">${escapeHtml(commentText)}</span>
+            </div>`);
+        const commentSection = document.getElementById(`comment-section-${postId}`);
+        if (commentSection) commentSection.classList.remove('comments-empty');
+    }
+    if (commentCountEl) {
+        const n = (parseInt(commentCountEl.textContent || '0', 10) || 0) + 1;
+        commentCountEl.textContent = n;
+        if (viewCommentsBtn && n > 2) {
+            viewCommentsBtn.classList.remove('hidden');
+            viewCommentsBtn.textContent = `댓글 ${n}개 모두 보기`;
+        }
+    }
+    
+    try {
+        const result = await postInteractions.addComment(postId, window.currentUser.uid, commentText, userProfile);
+        if (!result || !result.id) {
+            throw new Error('댓글 등록 결과가 없습니다.');
+        }
+        // 임시 줄을 실제 id가 반영된 한 줄로 교체 (loadPostComments 호출 제거로 체감 속도 개선)
+        if (commentsListEl) {
+            const tempRow = commentsListEl.querySelector(`[data-temp-comment-id="${tempId}"]`);
+            if (tempRow) {
+                let dateStr = '', timeStr = '';
+                if (result.timestamp) {
+                    try {
+                        const d = new Date(result.timestamp);
+                        if (!isNaN(d.getTime())) {
+                            dateStr = d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+                            timeStr = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                        }
+                    } catch (_) {}
+                }
+                const safeId = String(result.id).replace(/'/g, "\\'");
+                const commentDisplay = getDisplayProfile(window.currentUser?.uid, { nickname: result.userNickname });
+                tempRow.outerHTML = `
+                    <div class="mb-1 text-sm">
+                        <span class="font-bold text-slate-800">${escapeHtml(commentDisplay.nickname)}</span>
+                        <span class="text-slate-800 ml-2">${escapeHtml(result.comment || '')}</span>
+                        ${dateStr && timeStr ? `<span class="text-xs text-slate-400 ml-2">${dateStr} ${timeStr}</span>` : ''}
+                        <button onclick="window.deleteCommentFromPost('${safeId}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>
+                    </div>`;
+            }
+        }
+    } catch (e) {
+        console.error("[submitComment] 에러:", e);
+        const errorMessage = e.message || e.details || e.code || "댓글 작성에 실패했습니다.";
+        showToast(errorMessage, 'error');
+        // 낙관적 업데이트 롤백
+        if (commentsListEl) {
+            const tempRow = commentsListEl.querySelector(`[data-temp-comment-id="${tempId}"]`);
+            if (tempRow) tempRow.remove();
+            const left = commentsListEl.querySelectorAll('.mb-1.text-sm').length;
+            if (left === 0) commentsListEl.classList.remove('bg-slate-50');
+        }
+        if (commentCountEl) {
+            const n = Math.max(0, (parseInt(commentCountEl.textContent || '0', 10) || 0) - 1);
+            commentCountEl.textContent = n || '';
+            if (viewCommentsBtn && n <= 2) viewCommentsBtn.classList.add('hidden');
+            else if (viewCommentsBtn && n > 2) viewCommentsBtn.textContent = `댓글 ${n}개 모두 보기`;
+        }
+    } finally {
+        inputEl.disabled = false;
+    }
+};
+
+// 포스트 댓글 로드 함수
+async function loadPostComments(postId) {
+    try {
+        const alternates = getAlternatePostIdsForPost(postId);
+        const comments = await postInteractions.getComments(postId, alternates);
+        const commentsListEl = document.getElementById(`comments-list-${postId}`);
+        const commentCountEl = document.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
+        
+        if (commentCountEl) {
+            commentCountEl.textContent = comments.length > 0 ? comments.length : '';
+        }
+        
+        if (commentsListEl) {
+            if (comments.length === 0) {
+                commentsListEl.innerHTML = '';
+                commentsListEl.classList.remove('bg-slate-50');
+            } else {
+                commentsListEl.classList.add('bg-slate-50');
+                const displayComments = comments.slice(0, 2);
+                commentsListEl.innerHTML = displayComments.map(comment => {
+                    // timestamp가 유효한지 확인
+                    let dateStr = '';
+                    let timeStr = '';
+                    if (comment.timestamp) {
+                        try {
+                            const commentDate = comment.timestamp instanceof Date 
+                                ? comment.timestamp 
+                                : (comment.timestamp.toDate ? comment.timestamp.toDate() : new Date(comment.timestamp));
+                            
+                            if (!isNaN(commentDate.getTime())) {
+                                dateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+                                timeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                            }
+                        } catch (e) {
+                            console.warn('댓글 날짜 파싱 실패:', comment.timestamp, e);
+                        }
+                    }
+                    
+                    const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
+                    const isMyComment = isLoggedIn && comment.userId === window.currentUser.uid;
+                    const commentDisplay = getDisplayProfile(comment.userId, { nickname: comment.userNickname });
+                    return `
+                        <div class="mb-1 text-sm">
+                            <span class="font-bold text-slate-800">${escapeHtml(commentDisplay.nickname)}</span>
+                            <span class="text-slate-800 ml-2">${escapeHtml(comment.comment || '')}</span>
+                            ${dateStr && timeStr ? `<span class="text-xs text-slate-400 ml-2">${dateStr} ${timeStr}</span>` : ''}
+                            ${isMyComment ? `<button onclick="window.deleteCommentFromPost('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
+                        </div>
+                    `;
+                }).join('');
+                
+                // 댓글이 2개보다 많으면 "댓글 모두 보기" 버튼 표시
+                if (comments.length > 2) {
+                    const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
+                    if (viewCommentsBtn) {
+                        viewCommentsBtn.classList.remove('hidden');
+                        viewCommentsBtn.textContent = `댓글 ${comments.length}개 모두 보기`;
+                    }
+                } else {
+                    const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
+                    if (viewCommentsBtn) {
+                        viewCommentsBtn.classList.add('hidden');
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.error("댓글 로드 실패:", e);
+    }
+}
+window.loadPostComments = loadPostComments;
+window.Mealog.loadPostComments = loadPostComments;
 
 // 포스트 캡션 토글 (더 보기/접기)
 window.togglePostCaption = (idx) => {
@@ -428,21 +928,21 @@ window.shareDailySummary = async (dateStr) => {
         : null;
 
     if (existingShare) {
-        const loadingOverlay = document.getElementById('loadingOverlay');
-        if (loadingOverlay) loadingOverlay.classList.remove('hidden');
-        try {
-            await dbOps.unsharePhotos([existingShare.photoUrl], null, false, true);
-            if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                window.sharedPhotos = window.sharedPhotos.filter(p =>
-                    !(p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid)
-                );
-            }
-            showToast('공유가 해제되었습니다.', 'success');
+        const photoUrlToRemove = existingShare.photoUrl;
+        const prevShared = window.sharedPhotos ? [...window.sharedPhotos] : [];
+        if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+            window.sharedPhotos = window.sharedPhotos.filter(p =>
+                !(p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid)
+            );
+        }
+        if (appState.currentTab === 'timeline') renderTimeline();
+        if (appState.currentTab === 'gallery') renderGallery();
+        showToast('공유가 해제되었습니다.', 'success');
+        dbOps.unsharePhotos([photoUrlToRemove], null, false, true).catch(() => {
+            if (window.sharedPhotos) window.sharedPhotos = prevShared;
             if (appState.currentTab === 'timeline') renderTimeline();
             if (appState.currentTab === 'gallery') renderGallery();
-        } finally {
-            if (loadingOverlay) loadingOverlay.classList.add('hidden');
-        }
+        });
         return;
     }
 
@@ -458,24 +958,28 @@ window.openDailySharePreviewModal = (dateStr) => {
 
     const modal = document.createElement('div');
     modal.id = 'dailySharePreviewModal';
-    modal.className = 'fixed inset-0 z-[500] flex items-end bg-black/50';
+    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/50';
 
     modal.innerHTML = `
-        <div class="w-full bg-white rounded-t-[2rem] flex flex-col max-h-[92vh] shadow-2xl">
+        <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl">
+            <div id="dailyShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center z-20">
+                <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>
+                <p class="text-slate-600 font-bold">공유 중...</p>
+            </div>
             <div class="flex justify-between items-center p-4 border-b border-slate-100 flex-shrink-0">
                 <h3 class="text-lg font-black text-slate-800">일간 식단 공유 미리보기</h3>
                 <button onclick="window.closeDailySharePreviewModal()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-full">
                     <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
             </div>
-            <div id="dailySharePreviewScroll" class="flex-1 overflow-y-auto overflow-x-hidden flex justify-center bg-slate-50 py-4 min-h-0">
+            <div id="dailySharePreviewScroll" class="flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 py-0 min-h-0" style="padding: 3px;">
                 <!-- createDailyShareCard(forPreview) 결과가 여기 들어감 -->
             </div>
             <div class="flex gap-3 p-4 border-t border-slate-100 flex-shrink-0">
                 <button onclick="window.closeDailySharePreviewModal()" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm">
                     취소
                 </button>
-                <button onclick="window.confirmDailyShare('${dateStr}')" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm">
+                <button onclick="window.confirmDailyShare('${dateStr}')" class="flex-1 py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all">
                     공유
                 </button>
             </div>
@@ -484,7 +988,13 @@ window.openDailySharePreviewModal = (dateStr) => {
 
     document.body.appendChild(modal);
     const scrollEl = document.getElementById('dailySharePreviewScroll');
-    if (scrollEl && previewCard) scrollEl.appendChild(previewCard);
+    if (scrollEl && previewCard) {
+        scrollEl.appendChild(previewCard);
+        // 처음부터 화면 안쪽을 꽉 채워서 보여주기 위해 스크롤을 상단으로
+        setTimeout(() => {
+            scrollEl.scrollTop = 0;
+        }, 0);
+    }
 
     modal.addEventListener('click', (e) => {
         if (e.target === modal) window.closeDailySharePreviewModal();
@@ -497,32 +1007,130 @@ window.closeDailySharePreviewModal = () => {
     if (modal) modal.remove();
 };
 
-// 미리보기에서 공유 확정: 모달 닫고 실제 공유 실행
-window.confirmDailyShare = (dateStr) => {
-    window.closeDailySharePreviewModal();
-    window.executeDailyShare(dateStr);
-};
+// 미리보기에서 공유 확정: 미리보기 화면을 그대로 캡쳐해서 공유
+window.confirmDailyShare = async (dateStr) => {
+    const previewModal = document.getElementById('dailySharePreviewModal');
+    const inModalSpinner = previewModal?.querySelector('#dailyShareLoadingOverlay');
+    if (inModalSpinner) inModalSpinner.classList.remove('hidden');
 
-// 일간보기 실제 공유 실행 (캡처 → 업로드 → Firestore)
-window.executeDailyShare = async (dateStr) => {
-    const loadingOverlay = document.getElementById('loadingOverlay');
-    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    const shareBtn = event?.target || document.querySelector(`button[onclick*="confirmDailyShare('${dateStr}')"]`);
+    if (shareBtn) {
+        shareBtn.disabled = true;
+        shareBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        shareBtn.textContent = '공유 중...';
+    }
+    // 스피너가 실제로 화면에 그려진 뒤 무거운 작업 진행 (두 프레임 양보로 페인트 확실히 반영)
+    await new Promise(r => requestAnimationFrame(r));
+    await new Promise(r => setTimeout(r, 50));
 
     try {
-        const shareCard = createDailyShareCard(dateStr);
+        if (!previewModal) {
+            throw new Error('미리보기 모달을 찾을 수 없습니다.');
+        }
 
-        const canvas = await html2canvas(shareCard, {
-            backgroundColor: '#ffffff',
-            scale: 2,
-            logging: false,
-            useCORS: true,
-            width: 375,
-            height: shareCard.scrollHeight
+        const previewCard = previewModal.querySelector('#dailyShareCardContainer');
+        if (!previewCard) {
+            throw new Error('미리보기 카드를 찾을 수 없습니다.');
+        }
+
+        // Fredoka 폰트 CSS를 미리 가져와서 실제 @font-face URL 추출
+        let fredokaFontCSS = '';
+        // 폰트가 이미 로드되어 있는지 먼저 확인
+        const fontAlreadyLoaded = document.fonts.check('1em Fredoka');
+        
+        if (!fontAlreadyLoaded) {
+            try {
+                const fontCSSResponse = await fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&display=swap');
+                fredokaFontCSS = await fontCSSResponse.text();
+                // CSS를 스타일 태그로 추가하여 폰트 로드
+                const styleTag = document.createElement('style');
+                styleTag.textContent = fredokaFontCSS;
+                document.head.appendChild(styleTag);
+                
+                await document.fonts.ready;
+                let attempts = 0;
+                while (attempts < 10) {
+                    if (document.fonts.check('1em Fredoka')) break;
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    attempts++;
+                }
+            } catch (e) {
+                console.warn('Fredoka 폰트 CSS 로드 실패:', e);
+            }
+        }
+        
+        // 이미지 로드 확인 (img + background-image용 data-photo-url)
+        const images = previewCard.querySelectorAll('img');
+        const imageLoadPromises = Array.from(images).map(img => {
+            if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+            return new Promise((resolve) => {
+                img.onload = resolve;
+                img.onerror = resolve;
+                setTimeout(resolve, 400);
+            });
+        });
+        const bgDivs = previewCard.querySelectorAll('[data-photo-url]');
+        const bgLoadPromises = Array.from(bgDivs).map(div => {
+            const url = div.getAttribute('data-photo-url');
+            if (!url) return Promise.resolve();
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = resolve;
+                img.onerror = resolve;
+                img.src = url;
+                if (img.complete) resolve();
+            });
+        });
+        await Promise.all([...imageLoadPromises, ...bgLoadPromises]);
+
+        const innerContent = previewCard.querySelector('div[style*="width: 420px"]') || previewCard;
+
+        // 유령 캡처: 화면 밖(-10000px)에 복제본을 만들어 모달/transform/Flex 간섭 없이 정사이즈 캡처
+        const canvas = await captureWithGhostStrategy(innerContent, {
+            captureWidth: 420,
+            allowTaint: false,
+            foreignObjectRendering: false,
+            onclone: (clonedDoc) => {
+                if (fredokaFontCSS) {
+                    const clonedStyle = clonedDoc.createElement('style');
+                    clonedStyle.textContent = fredokaFontCSS;
+                    clonedDoc.head.appendChild(clonedStyle);
+                } else {
+                    const clonedStyle = clonedDoc.createElement('style');
+                    clonedStyle.textContent = `
+                        @font-face {
+                            font-family: 'Fredoka';
+                            font-style: normal;
+                            font-weight: 700;
+                            font-display: swap;
+                            src: url('https://fonts.gstatic.com/s/fredoka/v14/X7nP4b87HvSqjb_WIi2yDCRwoQ_k7367_DWs89XyHw.woff2') format('woff2');
+                            unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+                        }
+                    `;
+                    clonedDoc.head.appendChild(clonedStyle);
+                }
+                const allSpans = clonedDoc.querySelectorAll('span');
+                allSpans.forEach(el => {
+                    const style = el.getAttribute('style') || '';
+                    const text = el.textContent.trim();
+                    if (style.includes('MEALOG') || text === 'MEALOG' || (style.includes('font-family') && style.includes('Fredoka'))) {
+                        el.style.fontFamily = "'Fredoka', sans-serif";
+                        el.style.fontWeight = '700';
+                    }
+                });
+                // Ghost Hack: 별점 배지들만 캡처본에서 margin-top으로 살짝 내려서 베이스라인 정렬 보정
+                const badges = clonedDoc.querySelectorAll('span[style*="fefce8"]');
+                badges.forEach(el => {
+                    el.style.marginTop = '-5px';
+                    el.style.display = 'flex';
+                    el.style.alignItems = 'center';
+                });
+            }
         });
 
         const base64Image = canvas.toDataURL('image/png');
         const { uploadBase64ToStorage } = await import('./utils.js');
-        const photoUrl = await uploadBase64ToStorage(base64Image, window.currentUser.uid, `daily_${dateStr}`);
+        const photoUrl = await uploadBase64ToStorage(base64Image, window.currentUser.uid, `daily_${dateStr}`, 1024);
 
         const userProfile = window.userSettings?.profile || {};
 
@@ -537,7 +1145,9 @@ window.executeDailyShare = async (dateStr) => {
             console.warn('getDailyComment 호출 실패:', e);
         }
 
+        // 낙관적 UI: 클라이언트 데이터로 즉시 반영 후 서버는 백그라운드 호출
         const dailyShareData = {
+            id: 'pending-' + Date.now(),
             photoUrl,
             userId: window.currentUser.uid,
             userNickname: userProfile.nickname || '익명',
@@ -547,35 +1157,70 @@ window.executeDailyShare = async (dateStr) => {
             date: dateStr,
             timestamp: new Date().toISOString(),
             entryId: null,
-            comment: dailyComment
+            comment: dailyComment || ''
         };
-
-        const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-        const { db, appId } = await import('./firebase.js');
-        const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-        const docRef = await addDoc(sharedColl, dailyShareData);
 
         if (!window.sharedPhotos) window.sharedPhotos = [];
         window.sharedPhotos = window.sharedPhotos.filter(p =>
             !(p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid)
         );
-        window.sharedPhotos.push({ id: docRef.id, ...dailyShareData });
+        window.sharedPhotos.push(dailyShareData);
         window.sharedPhotos.sort((a, b) => (new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
 
-        shareCard.remove();
+        window.closeDailySharePreviewModal();
         showToast('하루 기록이 피드에 공유되었습니다!', 'success');
-
         if (appState.currentTab === 'timeline') renderTimeline();
         if (appState.currentTab === 'gallery') renderGallery();
+
+        const { callableFunctions } = await import('./firebase.js');
+        callableFunctions.createDailyShare({
+            photoUrl,
+            date: dateStr,
+            comment: dailyComment
+        }).then((result) => {
+            const serverData = result.data;
+            const idx = window.sharedPhotos?.findIndex(p => p.id === dailyShareData.id || (p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid && p.photoUrl === photoUrl));
+            if (idx !== undefined && idx !== -1 && window.sharedPhotos) {
+                window.sharedPhotos[idx] = serverData;
+                if (appState.currentTab === 'timeline') renderTimeline();
+                if (appState.currentTab === 'gallery') renderGallery();
+            }
+        }).catch((e) => {
+            console.error('일간보기 공유 서버 반영 실패:', e);
+            if (window.sharedPhotos) {
+                window.sharedPhotos = window.sharedPhotos.filter(p =>
+                    !(p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid)
+                );
+                if (appState.currentTab === 'timeline') renderTimeline();
+                if (appState.currentTab === 'gallery') renderGallery();
+            }
+            showToast(e?.message || e?.details || '공유 반영에 실패했습니다. 다시 시도해 주세요.', 'error');
+        });
     } catch (e) {
         console.error('일간보기 공유 실패:', e);
-        showToast('공유 중 오류가 발생했습니다.', 'error');
-        const shareCard = document.getElementById('dailyShareCardContainer');
-        if (shareCard) shareCard.remove();
+        const errorMessage = e.message || e.details || '공유 중 오류가 발생했습니다.';
+        showToast(errorMessage, 'error');
+        window.closeDailySharePreviewModal();
     } finally {
-        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+        const modal = document.getElementById('dailySharePreviewModal');
+        const spinner = modal?.querySelector('#dailyShareLoadingOverlay');
+        if (spinner) spinner.classList.add('hidden');
+        // 버튼 상태 복원 (모달이 아직 DOM에 있을 때만)
+        const shareBtn = document.querySelector(`button[onclick*="confirmDailyShare('${dateStr}')"]`);
+        if (shareBtn) {
+            shareBtn.disabled = false;
+            shareBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            shareBtn.textContent = '공유';
+        }
     }
 };
+
+// 일간보기 실제 공유 실행 (캡처 → 업로드 → Firestore) - 사용하지 않음 (confirmDailyShare에서 직접 처리)
+/*
+window.executeDailyShare = async (dateStr) => {
+    // 이 함수는 더 이상 사용하지 않습니다. confirmDailyShare에서 미리보기 화면을 직접 캡쳐합니다.
+};
+*/
 
 // 일간보기 하루 전체 Comment 저장 함수
 window.saveDailyComment = async (date) => {
@@ -716,11 +1361,29 @@ window.saveDailyCommentFromModal = async (dateStr) => {
 // (함수들이 정의되기 전에 renderFeed가 호출될 수 있으므로)
 
 // 탭 및 뷰 모드 전환
+const HEADER_SECTION_BY_TAB = { dashboard: '밀당', timeline: '밀로그', gallery: '모먼트', board: '밀톡', settings: '사용자' };
+
+function updateHeaderSectionLabel(tab) {
+    const el = document.getElementById('headerSectionLabel');
+    if (!el) return;
+    el.textContent = HEADER_SECTION_BY_TAB[tab] ?? '밀로그';
+}
+
 window.switchMainTab = (tab) => {
-    appState.currentTab = tab;
+    try {
+        console.log('[탭전환] 시작:', { 이전탭: appState.currentTab, 새탭: tab });
+        appState.currentTab = tab;
+        // 사용자별 보기에서 다른 탭으로 나가면 최상단 헤더 다시 표시
+        if (tab !== 'gallery') {
+            const mainHeader = document.querySelector('#mainApp > header');
+            if (mainHeader) mainHeader.classList.remove('hidden');
+        }
+    updateHeaderSectionLabel(tab);
     document.getElementById('timelineView').classList.toggle('hidden', tab !== 'timeline');
     document.getElementById('galleryView').classList.toggle('hidden', tab !== 'gallery');
     document.getElementById('dashboardView').classList.toggle('hidden', tab !== 'dashboard');
+    const settingsView = document.getElementById('settingsView');
+    if (settingsView) settingsView.classList.toggle('hidden', tab !== 'settings');
     
     // 게시판 관련 뷰 관리
     const boardListView = document.getElementById('boardListView');
@@ -733,7 +1396,7 @@ window.switchMainTab = (tab) => {
         if (boardDetailView) boardDetailView.classList.add('hidden');
         if (boardWriteView) boardWriteView.classList.add('hidden');
         
-        // 게시글 목록 로드
+        if (typeof window.updateGalleryTraceFilterBarUI === 'function') window.updateGalleryTraceFilterBarUI();
         const category = window.currentBoardCategory || 'all';
         renderBoard(category);
         setTimeout(() => {
@@ -748,21 +1411,46 @@ window.switchMainTab = (tab) => {
     
     document.getElementById('trackerSection').classList.toggle('hidden', tab !== 'timeline');
     document.getElementById('nav-timeline').className = tab === 'timeline' ? 
-        'text-emerald-600 flex justify-center items-center py-1' : 
-        'text-slate-300 flex justify-center items-center py-1';
+        'text-slate-600 flex justify-center items-center py-1 flex-1' : 
+        'text-slate-300 flex justify-center items-center py-1 flex-1';
     document.getElementById('nav-gallery').className = tab === 'gallery' ? 
-        'text-emerald-600 flex justify-center items-center py-1' : 
-        'text-slate-300 flex justify-center items-center py-1';
+        'text-slate-600 flex justify-center items-center py-1 flex-1' : 
+        'text-slate-300 flex justify-center items-center py-1 flex-1';
     document.getElementById('nav-dashboard').className = tab === 'dashboard' ? 
-        'text-emerald-600 flex justify-center items-center py-1' : 
-        'text-slate-300 flex justify-center items-center py-1';
+        'text-slate-600 flex justify-center items-center py-1 flex-1' : 
+        'text-slate-300 flex justify-center items-center py-1 flex-1';
     document.getElementById('nav-board').className = tab === 'board' ? 
-        'text-emerald-600 flex justify-center items-center py-1' : 
-        'text-slate-300 flex justify-center items-center py-1';
+        'text-slate-600 flex justify-center items-center py-1 flex-1' : 
+        'text-slate-300 flex justify-center items-center py-1 flex-1';
+    const navSettings = document.getElementById('nav-settings');
+    if (navSettings) navSettings.className = tab === 'settings' ? 
+        'text-slate-600 flex justify-center items-center py-1 flex-1 rounded-full overflow-hidden' : 
+        'text-slate-300 flex justify-center items-center py-1 flex-1 rounded-full overflow-hidden';
+    
+    // 사용자 프로필 뷰에서 밀톡 탭 선택 시: 하단 탭도 밀톡이 선택된 것처럼 표시
+    if (tab === 'gallery' && appState.galleryFilterUserId && appState.galleryFilterTab === 'board') {
+        const navGallery = document.getElementById('nav-gallery');
+        const navBoard = document.getElementById('nav-board');
+        if (navGallery) navGallery.className = 'text-slate-300 flex justify-center items-center py-1';
+        if (navBoard) navBoard.className = 'text-slate-600 flex justify-center items-center py-1';
+    }
     
     const searchBtn = document.getElementById('searchTriggerBtn');
     const tracePanel = document.getElementById('galleryTraceFilterPanel');
     const timelineSearchPanel = document.getElementById('timelineSearchPanel');
+    const notificationWrap = document.getElementById('notificationWrap');
+    const showNotification = window.currentUser && !window.currentUser.isAnonymous;
+    if (notificationWrap) {
+        if (showNotification) {
+            notificationWrap.classList.remove('hidden');
+            if (typeof window.updateNotificationDot === 'function') window.updateNotificationDot();
+            const popup = document.getElementById('notificationPopup');
+            if (popup && !popup.classList.contains('hidden') && typeof window.loadNotificationList === 'function') window.loadNotificationList();
+        } else {
+            notificationWrap.classList.add('hidden');
+            if (typeof window.closeNotificationPopup === 'function') window.closeNotificationPopup();
+        }
+    }
     if (searchBtn) searchBtn.style.display = (tab === 'timeline') ? 'flex' : 'none';
     if (timelineSearchPanel) {
         if (tab === 'timeline') {
@@ -773,7 +1461,7 @@ window.switchMainTab = (tab) => {
         }
     }
     if (tracePanel) {
-        if (tab === 'gallery') {
+        if (tab === 'gallery' || tab === 'board') {
             tracePanel.classList.remove('hidden');
         } else {
             tracePanel.classList.add('hidden');
@@ -783,12 +1471,24 @@ window.switchMainTab = (tab) => {
     
     if (tab === 'dashboard') {
         updateDashboard();
+    } else if (tab === 'settings') {
+        // 설정 탭 전환 시 폼 채우기는 nav-settings 클릭 시 openSettings()에서 수행
     } else if (tab === 'gallery') {
-        renderGallery();
-        // 갤러리 탭으로 전환 시 맨 위로 스크롤
+        // 리스너가 업데이트될 시간을 주기 위해 약간의 지연 후 렌더링
         setTimeout(() => {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }, 100);
+            renderGallery();
+            // 사용자 프로필 + 밀톡 탭이면 하단 탭도 밀톡 선택 상태 유지
+            if (appState.galleryFilterUserId && appState.galleryFilterTab === 'board') {
+                const navGallery = document.getElementById('nav-gallery');
+                const navBoard = document.getElementById('nav-board');
+                if (navGallery) navGallery.className = 'text-slate-300 flex justify-center items-center py-1';
+                if (navBoard) navBoard.className = 'text-slate-600 flex justify-center items-center py-1';
+            }
+            // 갤러리 탭으로 전환 시 맨 위로 스크롤
+            setTimeout(() => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }, 100);
+        }, 200);
     } else if (tab !== 'board') {
         // 타임라인 탭으로 전환 시 오늘 날짜로 초기화
         if (appState.viewMode === 'list') {
@@ -802,6 +1502,13 @@ window.switchMainTab = (tab) => {
         if (c) c.innerHTML = "";
         renderTimeline();
         renderMiniCalendar();
+    }
+    console.log('[탭전환] 완료:', { 현재탭: appState.currentTab });
+    } catch (error) {
+        console.error('[탭전환] 오류 발생:', error);
+        console.error('[탭전환] 스택:', error.stack);
+        // 오류 발생 시에도 기본 탭 상태는 유지
+        showToast('탭 전환 중 오류가 발생했습니다.', 'error');
     }
 };
 
@@ -823,10 +1530,26 @@ window.setViewMode = (m) => {
     renderMiniCalendar();
 };
 
-window.jumpToDate = (iso) => {
+window.jumpToDate = async (iso) => {
     // 날짜를 명확하게 설정 (시간대 문제 방지)
     const targetDate = new Date(iso + 'T00:00:00');
     appState.pageDate = targetDate;
+    
+    // 선택한 날짜가 로드된 범위 밖이면 먼저 데이터 로드
+    const range = window.loadedMealsDateRange;
+    if (range && iso < range.start) {
+        try {
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+            await loadMealsForDateRange(iso, range.start);
+        } catch (e) {
+            console.warn('날짜 이동 시 데이터 로드 실패:', e);
+            showToast('기록을 불러오는 중 오류가 발생했습니다.', 'error');
+        } finally {
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            if (loadingOverlay) loadingOverlay.classList.add('hidden');
+        }
+    }
     
     if (appState.viewMode === 'list') {
         const today = new Date();
@@ -888,8 +1611,26 @@ window.toggleGalleryTracePanel = () => {
     if (typeof window.updateGalleryTraceFilterBarUI === 'function') window.updateGalleryTraceFilterBarUI();
 };
 
+/** 타임라인 검색 확장 너비: 타이틀(MEALOG) 오른쪽에서 20px 거리까지 (화면 크기 무관). 접힌 상태에서는 영역 없음 */
+function updateTimelineSearchExpandWidth() {
+    const title = document.querySelector('header .mealog-title');
+    const wrapper = document.getElementById('timelineSearchPanel');
+    const panel = wrapper?.querySelector('.timeline-search-panel');
+    if (!title || !wrapper || !panel) return;
+    if (!wrapper.classList.contains('expanded')) {
+        panel.style.width = '';
+        wrapper.style.width = '';
+        return;
+    }
+    const titleRight = title.getBoundingClientRect().right;
+    const headerRight = wrapper.parentElement?.getBoundingClientRect().right ?? titleRight + 200;
+    let w = headerRight - titleRight - 20;
+    w = Math.max(96, w);
+    wrapper.style.width = `${w}px`;
+}
+
 window.toggleSearch = () => {
-    if (appState.currentTab === 'gallery') {
+    if (appState.currentTab === 'gallery' || appState.currentTab === 'board') {
         window.toggleGalleryTracePanel();
         return;
     }
@@ -899,12 +1640,19 @@ window.toggleSearch = () => {
         window.closeSearch();
     } else {
         panel.classList.add('expanded');
+        requestAnimationFrame(updateTimelineSearchExpandWidth);
         document.getElementById('searchInput')?.focus();
     }
 };
 
 window.closeSearch = () => {
-    document.getElementById('timelineSearchPanel')?.classList.remove('expanded');
+    const wrapper = document.getElementById('timelineSearchPanel');
+    if (wrapper) {
+        wrapper.classList.remove('expanded');
+        const panel = wrapper.querySelector('.timeline-search-panel');
+        if (panel) panel.style.width = '';
+        wrapper.style.width = '';
+    }
     document.getElementById('searchInput')?.blur();
     const inp = document.getElementById('searchInput');
     if (inp) inp.value = '';
@@ -914,11 +1662,208 @@ window.closeSearch = () => {
     renderTimeline();
 };
 
-// 앨범 흔적 필터 패널 버튼 상태 갱신
+const NOTIFICATION_LAST_OPENED_KEY = 'mealog_notification_last_opened';
+const NOTIFICATION_READ_POST_IDS_KEY = 'mealog_notification_read_post_ids';
+
+/** 읽음 상태: { "type:postId": { lastCommentAt, commentCount } }. 같은 글에 새 댓글이 달리면 lastCommentAt이 커져서 다시 미확인으로 표시됨 */
+function getNotificationReadState() {
+    try {
+        const raw = localStorage.getItem(NOTIFICATION_READ_POST_IDS_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+            const obj = {};
+            parsed.forEach(key => { obj[key] = { lastCommentAt: Infinity, commentCount: Infinity }; });
+            return obj;
+        }
+        if (parsed && typeof parsed === 'object') return parsed;
+        return {};
+    } catch (_) { return {}; }
+}
+
+function setNotificationReadState(state) {
+    try { localStorage.setItem(NOTIFICATION_READ_POST_IDS_KEY, JSON.stringify(state)); } catch (_) {}
+}
+
+window.toggleNotificationPopup = () => {
+    const popup = document.getElementById('notificationPopup');
+    if (!popup) return;
+    const isOpen = !popup.classList.contains('hidden');
+    if (isOpen) {
+        window.closeNotificationPopup();
+        return;
+    }
+    popup.classList.remove('hidden');
+    try { localStorage.setItem(NOTIFICATION_LAST_OPENED_KEY, String(Date.now())); } catch (_) {}
+    if (typeof window.updateNotificationDot === 'function') window.updateNotificationDot();
+    window.loadNotificationList();
+};
+
+window.closeNotificationPopup = () => {
+    const popup = document.getElementById('notificationPopup');
+    if (popup) popup.classList.add('hidden');
+};
+
+function getNotificationReadPostIds() {
+    const state = getNotificationReadState();
+    return new Set(Object.keys(state));
+}
+
+function markNotificationAsRead(notificationKey, lastCommentAt, commentCount) {
+    const state = getNotificationReadState();
+    state[notificationKey] = { lastCommentAt: lastCommentAt ?? 0, commentCount: commentCount ?? 0 };
+    setNotificationReadState(state);
+}
+
+/** 같은 글에 새 댓글이 달리면( lastCommentAt이 커지면) 미확인으로 표시 */
+function isNotificationRead(item, readState) {
+    const key = `${item.type}:${item.postId}`;
+    const legacyKey = item.type === 'moment' ? item.postId : null;
+    const stored = readState[key] || (legacyKey ? readState[legacyKey] : null);
+    if (!stored) return false;
+    const lastAt = Number(stored.lastCommentAt);
+    const count = Number(stored.commentCount);
+    if (Number.isNaN(lastAt)) return false;
+    if (item.lastCommentAt > lastAt) return false;
+    if (!Number.isNaN(count) && item.commentCount > count) return false;
+    return true;
+}
+
+window.loadNotificationList = async () => {
+    const listEl = document.getElementById('notificationList');
+    const emptyEl = document.getElementById('notificationEmpty');
+    if (!listEl || !emptyEl) return;
+    listEl.innerHTML = '<div class="p-4 text-center text-slate-400 text-sm">불러오는 중...</div>';
+    emptyEl.classList.add('hidden');
+    if (!window.currentUser || window.currentUser.isAnonymous || !window.postInteractions) {
+        listEl.innerHTML = '';
+        emptyEl.classList.remove('hidden');
+        return;
+    }
+    try {
+        const [momentItems, boardItems] = await Promise.all([
+            postInteractions.getPostsWithCommentsForUser(window.currentUser.uid),
+            window.boardOperations && typeof window.boardOperations.getBoardPostsWithCommentsForUser === 'function'
+                ? window.boardOperations.getBoardPostsWithCommentsForUser(window.currentUser.uid)
+                : Promise.resolve([])
+        ]);
+        const merged = [...momentItems, ...boardItems].sort((a, b) => b.lastCommentAt - a.lastCommentAt);
+        const readState = getNotificationReadState();
+        const unread = merged.filter(item => !isNotificationRead(item, readState));
+        listEl.innerHTML = '';
+        const markAllReadBtn = document.getElementById('notificationMarkAllReadBtn');
+        if (markAllReadBtn) {
+            if (unread.length === 0) {
+                markAllReadBtn.classList.add('invisible');
+                markAllReadBtn.onclick = null;
+            } else {
+                markAllReadBtn.classList.remove('invisible');
+                markAllReadBtn.onclick = () => {
+                    const state = getNotificationReadState();
+                    unread.forEach(item => {
+                        const key = `${item.type}:${item.postId}`;
+                        state[key] = { lastCommentAt: item.lastCommentAt, commentCount: item.commentCount };
+                    });
+                    setNotificationReadState(state);
+                    window.loadNotificationList();
+                    window.updateNotificationDot();
+                };
+            }
+        }
+        if (unread.length === 0) {
+            emptyEl.classList.remove('hidden');
+            emptyEl.textContent = '새로운 댓글이 없습니다.';
+            return;
+        }
+        emptyEl.classList.add('hidden');
+        unread.forEach((item) => {
+            const { postId, type, lastCommentAt, commentCount, thumbnailUrl, title, momentLabel } = item;
+            const notificationKey = `${type}:${postId}`;
+            const d = new Date(lastCommentAt);
+            const timeStr = d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }) + ' ' + d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+            const row = document.createElement('button');
+            row.type = 'button';
+            row.className = 'w-full text-left px-3 py-2.5 rounded-lg hover:bg-slate-50 active:bg-slate-100 transition-colors border-b border-slate-50 last:border-0 flex items-center gap-3';
+            const label = type === 'board' ? (title ? escapeHtml(title) : '해당 게시물') : (momentLabel ? escapeHtml(momentLabel) : '해당 게시물');
+            const thumbHtml = type === 'moment' && thumbnailUrl
+                ? `<div class="flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden bg-slate-100 border border-slate-200"><img src="${escapeHtml(thumbnailUrl)}" alt="" class="w-full h-full object-cover" loading="lazy"></div>`
+                : '';
+            row.innerHTML = `${thumbHtml}<div class="flex-1 min-w-0"><span class="text-slate-700 text-sm font-medium block truncate">${label}</span><span class="text-slate-500 text-xs">댓글 ${commentCount}개 · ${timeStr}</span></div>`;
+            row.addEventListener('click', () => {
+                markNotificationAsRead(notificationKey, lastCommentAt, commentCount);
+                window.closeNotificationPopup();
+                if (type === 'board') {
+                    if (typeof window.switchMainTab === 'function') window.switchMainTab('board');
+                    if (typeof window.openBoardDetail === 'function') window.openBoardDetail(postId);
+                } else {
+                    window.navigateToNotificationPost(postId);
+                }
+                window.updateNotificationDot();
+            });
+            listEl.appendChild(row);
+        });
+    } catch (e) {
+        console.error('알림 목록 로드 실패:', e);
+        listEl.innerHTML = '';
+        emptyEl.textContent = '목록을 불러올 수 없습니다.';
+        emptyEl.classList.remove('hidden');
+    }
+};
+
+window.updateNotificationDot = async () => {
+    const dotEl = document.getElementById('notificationDot');
+    if (!dotEl) return;
+    if (!window.currentUser || window.currentUser.isAnonymous || !window.postInteractions) {
+        dotEl.classList.add('hidden');
+        return;
+    }
+    try {
+        const [momentItems, boardItems] = await Promise.all([
+            postInteractions.getPostsWithCommentsForUser(window.currentUser.uid),
+            window.boardOperations && typeof window.boardOperations.getBoardPostsWithCommentsForUser === 'function'
+                ? window.boardOperations.getBoardPostsWithCommentsForUser(window.currentUser.uid)
+                : Promise.resolve([])
+        ]);
+        const merged = [...momentItems, ...boardItems];
+        const readState = getNotificationReadState();
+        const unread = merged.filter(item => !isNotificationRead(item, readState));
+        if (unread.length > 0) dotEl.classList.remove('hidden'); else dotEl.classList.add('hidden');
+    } catch (_) {
+        dotEl.classList.add('hidden');
+    }
+};
+
+window.navigateToNotificationPost = (postId) => {
+    if (!postId) return;
+    appState.currentTab = 'gallery';
+    appState.galleryFilterUserId = null;
+    appState.galleryFilterPostId = postId;
+    appState.galleryFilterTab = 'moment';
+    if (typeof window.switchMainTab === 'function') window.switchMainTab('gallery');
+    setTimeout(() => renderGallery(), 100);
+};
+
+window.clearGalleryFilterPostId = () => {
+    appState.galleryFilterPostId = null;
+    renderGallery();
+};
+
+window.addEventListener('resize', updateTimelineSearchExpandWidth);
+
+// 앱 탭으로 돌아올 때 알림(빨간 점·목록) 갱신
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && window.currentUser && !window.currentUser.isAnonymous) {
+        if (typeof window.updateNotificationDot === 'function') window.updateNotificationDot();
+        const popup = document.getElementById('notificationPopup');
+        if (popup && !popup.classList.contains('hidden') && typeof window.loadNotificationList === 'function') window.loadNotificationList();
+    }
+});
+
+// 앨범/밀톡 흔적 필터 패널 버튼 상태 갱신
 window.updateGalleryTraceFilterBarUI = () => {
     const panel = document.getElementById('galleryTraceFilterPanel');
     if (!panel) return;
-    const f = appState.galleryTraceFilter;
+    const f = appState.currentTab === 'board' ? appState.boardTraceFilter : appState.galleryTraceFilter;
     ['like', 'comment', 'bookmark'].forEach((trace) => {
         const btn = panel.querySelector(`[data-trace="${trace}"]`);
         if (!btn) return;
@@ -943,7 +1888,7 @@ window.updateGalleryTraceFilterBarUI = () => {
     });
 };
 
-// 앨범 흔적 필터 설정 및 갤러리 다시 렌더 (같은 필터 재클릭 시 해제)
+// 앨범/밀톡 흔적 필터 설정 및 다시 렌더 (같은 필터 재클릭 시 해제)
 window.setGalleryTraceFilter = (value) => {
     if (!value || value === 'collapse') return;
     const v = value === '' || value == null ? null : value;
@@ -952,10 +1897,19 @@ window.setGalleryTraceFilter = (value) => {
         window.requestLogin();
         return;
     }
-    // 이미 선택된 필터를 다시 클릭하면 해제
-    appState.galleryTraceFilter = (appState.galleryTraceFilter === v) ? null : v;
+    if (appState.currentTab === 'board') {
+        appState.boardTraceFilter = (appState.boardTraceFilter === v) ? null : v;
+    } else {
+        appState.galleryTraceFilter = (appState.galleryTraceFilter === v) ? null : v;
+    }
     if (typeof window.updateGalleryTraceFilterBarUI === 'function') window.updateGalleryTraceFilterBarUI();
-    renderGallery();
+    
+    if (appState.currentTab === 'gallery') {
+        renderGallery();
+    } else if (appState.currentTab === 'board') {
+        const category = window.currentBoardCategory || 'all';
+        renderBoard(category);
+    }
 };
 
 window.handleSearch = (k) => {
@@ -1148,6 +2102,10 @@ initAuth(async (user) => {
                 appState.dataUnsubscribe();
                 appState.dataUnsubscribe = null;
             }
+            if (appState.statsUnsubscribe) {
+                appState.statsUnsubscribe();
+                appState.statsUnsubscribe = null;
+            }
             if (appState.sharedPhotosUnsubscribe) {
                 appState.sharedPhotosUnsubscribe();
                 appState.sharedPhotosUnsubscribe = null;
@@ -1156,6 +2114,7 @@ initAuth(async (user) => {
             // 전역 상태 초기화
             window.userSettings = null;
             window.mealHistory = null;
+            window.dailyStats = null;
             window.sharedPhotos = null;
             window._duplicateCleanupDone = false;
             authFlowManager.hasCompleted = false;
@@ -1175,13 +2134,26 @@ initAuth(async (user) => {
         });
         
         // 사용자 문서 업데이트 (가입일, 마지막 로그인 날짜)
-        await updateUserDocument(user);
+        // 로그인 플로우를 지연시키지 않기 위해 비동기로 나중에 실행
+        updateUserDocument(user).catch(e => {
+            console.warn('사용자 문서 업데이트 실패 (무시):', e);
+        });
         
-        // 이미 메인 화면이 표시되어 있으면 추가 처리 없이 리턴
+        // 이미 메인 화면이 표시되어 있으면 보통은 추가 처리 없이 리턴.
+        // 단, 게스트 → 이메일/구글 로그인처럼 "메인 화면 위에서" 인증이 바뀌는 경우,
+        // 약관/프로필 플로우 및 리스너 설정이 반드시 필요하므로 여기서 종료하면 안 됨.
         const mainApp = document.getElementById('mainApp');
         const landingPage = document.getElementById('landingPage');
         if (mainApp && !mainApp.classList.contains('hidden') && landingPage && landingPage.style.display === 'none') {
-            return;
+            const sameUser = lastProcessedUserId === user.uid;
+            const readyToSkip =
+                sameUser &&
+                !user.isAnonymous &&
+                !!window.userSettings &&
+                authFlowManager.hasCompleted;
+            if (readyToSkip) {
+                return;
+            }
         }
         
                 // 중요: providerId와 email은 처음 로그인 시 약관 동의 또는 프로필 설정 시에만 설정됩니다.
@@ -1195,71 +2167,170 @@ initAuth(async (user) => {
             }, 2000);
         }
         
-        // 리스너 설정 (이전 리스너는 setupListeners 내부에서 해제됨)
-        const { settingsUnsubscribe, dataUnsubscribe } = setupListeners(user.uid, {
-            onSettingsUpdate: () => {
-                // 헤더 UI 업데이트 (디바운싱됨)
-                updateHeaderUI();
-                const entryModal = document.getElementById('entryModal');
-                if (!entryModal || entryModal.classList.contains('hidden')) {
-                    renderEntryChips();
-                }
+        // ✅ 게스트(익명) 모드:
+        // - 내 meals/settings는 굳이 리스너를 붙이지 않음(기록/설정 기능도 제한됨)
+        // - 대신 앨범(공유 피드)은 보여야 하므로 sharedPhotos 리스너는 유지
+        if (user.isAnonymous) {
+            if (appState.settingsUnsubscribe) {
+                appState.settingsUnsubscribe();
+                appState.settingsUnsubscribe = null;
+            }
+            if (appState.dataUnsubscribe) {
+                appState.dataUnsubscribe();
+                appState.dataUnsubscribe = null;
+            }
+            if (appState.statsUnsubscribe) {
+                appState.statsUnsubscribe();
+                appState.statsUnsubscribe = null;
+            }
+
+            if (appState.sharedPhotosUnsubscribe) {
+                appState.sharedPhotosUnsubscribe();
+            }
+            appState.sharedPhotosUnsubscribe = setupSharedPhotosListener((sharedPhotos) => {
+                window.sharedPhotos = sharedPhotos;
                 
-                // 설정이 완전히 로드된 후 인증 플로우 실행
-                // 단, 이미 완료되었거나 처리 중인 경우는 건너뛰기
-                if (!authFlowManager.hasCompleted && !authFlowManager.isProcessing && window.userSettings) {
-                    console.log('✅ 설정 업데이트 완료. 인증 플로우 실행...');
-                    authFlowManager.handleAuthState(user).catch(e => {
-                        console.error('❌ 인증 플로우 처리 실패:', e);
+                // 현재 탭에서만 렌더링 (다른 탭에서는 렌더링하지 않음 - 프리즈 방지)
+                const currentTab = appState.currentTab;
+                if (currentTab === 'gallery') {
+                    renderGallery();
+                } else if (currentTab === 'timeline') {
+                    renderTimeline();
+                }
+                // analytics, dashboard 등 다른 탭에서는 렌더링하지 않음
+            });
+            
+            // 게스트 모드일 때 헤더 UI 업데이트
+            updateHeaderUI();
+        } else {
+            // 리스너 설정 (이전 리스너는 setupListeners 내부에서 해제됨)
+            let dataUpdateTimer = null; // 공유 시 meals 이중 리스너 방지용 디바운스
+            const { settingsUnsubscribe, dataUnsubscribe, statsUnsubscribe } = setupListeners(user.uid, {
+                onSettingsUpdate: () => {
+                    // 헤더 UI 업데이트 (디바운싱됨)
+                    updateHeaderUI();
+                    const entryModal = document.getElementById('entryModal');
+                    if (!entryModal || entryModal.classList.contains('hidden')) {
+                        renderEntryChips();
+                    }
+                    
+                    // 설정이 완전히 로드된 후 인증 플로우 실행
+                    // 단, 이미 완료되었거나 처리 중인 경우는 건너뛰기
+                    if (!authFlowManager.hasCompleted && !authFlowManager.isProcessing && window.userSettings) {
+                        console.log('✅ 설정 업데이트 완료. 인증 플로우 실행...');
+                        authFlowManager.handleAuthState(user).catch(e => {
+                            console.error('❌ 인증 플로우 처리 실패:', e);
+                            hideLoading();
+                        });
+                    }
+                    // 약관 모달은 auth-flow.js에서만 관리하므로 여기서는 닫지 않음
+                    // onSettingsUpdate에서 약관 모달을 닫으면 타이밍 이슈로 인해 모달이 잠깐 표시되었다가 사라질 수 있음
+                },
+                onDataUpdate: () => {
+                    const tab = appState.currentTab;
+                    if (tab === 'dashboard') {
+                        updateDashboard();
+                        if (window._recordsLoadHidePending && window.loadedMealsDateRange) {
+                            window._recordsLoadHidePending = false;
+                            hideLoading();
+                        }
+                        return;
+                    }
+                    // 타임라인 탭이 보일 때만 재렌더. 다른 탭(앨범/분석/피드)에서는 스킵해 프리즈·고CPU 방지.
+                    if (tab !== 'timeline') return;
+                    // 밀로그 메인 화면에서 기록(meals) 첫 수신 시에만 로딩 오버레이 숨김 (loadedMealsDateRange는 meals 리스너에서만 설정됨)
+                    if (window._recordsLoadHidePending && window.loadedMealsDateRange) {
+                        window._recordsLoadHidePending = false;
                         hideLoading();
-                    });
-                } else if (authFlowManager.hasCompleted) {
-                    // 이미 완료된 경우 약관 모달이 열려있으면 닫기
-                    const termsModal = document.getElementById('termsModal');
-                    if (termsModal && !termsModal.classList.contains('hidden')) {
-                        console.log('✅ 인증 플로우 완료됨. 약관 모달 닫기');
-                        if (window.closeTermsModal) {
-                            window.closeTermsModal();
+                    }
+                    // 저장 직후 800ms 동안은 재렌더 스킵 (낙관 반영 + jumpToDate·스크롤이 리스너 재렌더에 덮이지 않게)
+                    if (window._timelineRerenderFreezeUntil && Date.now() < window._timelineRerenderFreezeUntil) return;
+                    if (dataUpdateTimer) clearTimeout(dataUpdateTimer);
+                    dataUpdateTimer = setTimeout(() => {
+                        dataUpdateTimer = null;
+                        if (appState.currentTab !== 'timeline') return; // 대기 중 탭 바뀌면 스킵
+                        if (appState.viewMode === 'list') {
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            appState.pageDate = today;
+                        }
+                        window.loadedDates = [];
+                        window.hasScrolledToToday = false;
+                        const container = document.getElementById('timelineContainer');
+                        if (container) container.innerHTML = "";
+                        renderTimeline();
+                        renderMiniCalendar();
+                    }, 120);
+                },
+                settingsUnsubscribe: appState.settingsUnsubscribe,
+                dataUnsubscribe: appState.dataUnsubscribe
+            });
+            appState.settingsUnsubscribe = settingsUnsubscribe;
+            appState.dataUnsubscribe = dataUnsubscribe;
+            appState.statsUnsubscribe = statsUnsubscribe;
+            
+            // 공유 사진 리스너 설정
+            if (appState.sharedPhotosUnsubscribe) {
+                appState.sharedPhotosUnsubscribe();
+            }
+            
+            // 리스너 콜백 디바운싱을 위한 타이머
+            let sharedPhotosUpdateTimer = null;
+            let isInitialSharedPhotosLoad = true; // 초기 로드 플래그
+            
+            appState.sharedPhotosUnsubscribe = setupSharedPhotosListener((sharedPhotos) => {
+                // 전체 배열 로깅 제거: 공유 시마다 대용량 객체 직렬화로 CPU/메모리 부담·프리징 악화
+                // 필요 시: console.log('[리스너] 공유 사진:', sharedPhotos?.length, appState.currentTab);
+                
+                // 초기 로드는 즉시 처리 (디바운싱 없음)
+                if (isInitialSharedPhotosLoad) {
+                    isInitialSharedPhotosLoad = false;
+                    window.sharedPhotos = sharedPhotos;
+                    
+                    // 현재 탭에서만 렌더링 (다른 탭에서는 렌더링하지 않음 - 프리즈 방지)
+                    const currentTab = appState.currentTab;
+                    if (currentTab === 'timeline') {
+                        renderTimeline();
+                        updateTimelineShareIndicators();
+                    } else if (currentTab === 'gallery') {
+                        console.log('[리스너] 초기 로드: 갤러리 탭에서 renderGallery 호출');
+                        renderGallery();
+                    } else if (currentTab === 'feed') {
+                        const feedContent = document.getElementById('feedContent');
+                        if (feedContent && !feedContent.classList.contains('hidden')) {
+                            renderFeed();
                         }
                     }
+                    // analytics, dashboard 등 다른 탭에서는 렌더링하지 않음
+                    return; // 초기 로드 후 즉시 반환
                 }
-            },
-            onDataUpdate: () => {
-                if (appState.viewMode === 'list') {
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    appState.pageDate = today;
+                
+                // 타임라인 탭이면 공유 화살표를 즉시 갱신 (디바운싱 없음)
+                const currentTab = appState.currentTab;
+                if (currentTab === 'timeline') {
+                    window.sharedPhotos = sharedPhotos;
+                    updateTimelineShareIndicators();
+                    return;
                 }
-                window.loadedDates = [];
-                window.hasScrolledToToday = false;
-                const container = document.getElementById('timelineContainer');
-                if (container) container.innerHTML = "";
-                renderTimeline();
-                renderMiniCalendar();
-            },
-            settingsUnsubscribe: appState.settingsUnsubscribe,
-            dataUnsubscribe: appState.dataUnsubscribe
-        });
-        appState.settingsUnsubscribe = settingsUnsubscribe;
-        appState.dataUnsubscribe = dataUnsubscribe;
-        
-        // 공유 사진 리스너 설정
-        if (appState.sharedPhotosUnsubscribe) {
-            appState.sharedPhotosUnsubscribe();
+                
+                // 그 외 탭은 디바운싱 적용 (빠른 연속 업데이트 방지)
+                if (sharedPhotosUpdateTimer) {
+                    clearTimeout(sharedPhotosUpdateTimer);
+                }
+                sharedPhotosUpdateTimer = setTimeout(() => {
+                    window.sharedPhotos = sharedPhotos;
+                    if (currentTab === 'gallery') {
+                        console.log('[리스너] 갤러리 탭에서 renderGallery 호출');
+                        renderGallery();
+                    } else if (currentTab === 'feed') {
+                        const feedContent = document.getElementById('feedContent');
+                        if (feedContent && !feedContent.classList.contains('hidden')) {
+                            renderFeed();
+                        }
+                    }
+                }, 500); // 500ms 디바운싱 (공유 처리 후 빠른 연속 업데이트 방지)
+            });
         }
-        appState.sharedPhotosUnsubscribe = setupSharedPhotosListener((sharedPhotos) => {
-            window.sharedPhotos = sharedPhotos;
-            if (appState.currentTab === 'timeline') {
-                renderTimeline();
-            }
-            if (appState.currentTab === 'gallery') {
-                renderGallery();
-            }
-            const feedContent = document.getElementById('feedContent');
-            if (feedContent && !feedContent.classList.contains('hidden')) {
-                renderFeed();
-            }
-        });
         
         // 초기 로드 시 오늘 날짜로 설정
         if (appState.viewMode === 'list') {
@@ -1291,7 +2362,12 @@ initAuth(async (user) => {
     } else {
         // 로그아웃 상태
         // 추가 안전장치: 이전에 로그인된 사용자가 있었는데 갑자기 로그아웃되는 경우 무시
-        if (lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
+        // 단, 명시적 로그아웃(게스트→로그인 이동 포함)은 반드시 처리해야 함
+        const isExplicitLogout = sessionStorage.getItem('explicitLogout') === 'true';
+        if (isExplicitLogout) {
+            sessionStorage.removeItem('explicitLogout');
+        }
+        if (!isExplicitLogout && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
             console.log('⚠️ 로그아웃 처리 중 이전 사용자 감지 - 무시 (관리자 페이지 영향 가능):', {
                 previousUserId: lastProcessedUserId,
                 previousEmail: window.currentUser.email
@@ -1301,10 +2377,7 @@ initAuth(async (user) => {
         
         const mainApp = document.getElementById('mainApp');
         const landingPage = document.getElementById('landingPage');
-        if (mainApp && !mainApp.classList.contains('hidden') && landingPage && landingPage.style.display === 'none') {
-            return;
-        }
-        
+        // 이미 랜딩 화면이면 추가 처리 없이 종료
         if (landingPage && landingPage.style.display === 'flex' && mainApp && mainApp.classList.contains('hidden')) {
             return;
         }
@@ -1321,6 +2394,10 @@ initAuth(async (user) => {
             appState.dataUnsubscribe();
             appState.dataUnsubscribe = null;
         }
+        if (appState.statsUnsubscribe) {
+            appState.statsUnsubscribe();
+            appState.statsUnsubscribe = null;
+        }
         if (appState.sharedPhotosUnsubscribe) {
             appState.sharedPhotosUnsubscribe();
             appState.sharedPhotosUnsubscribe = null;
@@ -1329,18 +2406,35 @@ initAuth(async (user) => {
     }
 });
 
-// 스크롤 이벤트 리스너
+// 스크롤 이벤트 리스너 (타임라인 하단 근처에서 더 오래된 기록 자동 로드)
 let scrollTimeout;
 window.addEventListener('scroll', () => { 
     const state = appState;
-    if (state.viewMode === 'list' && window.currentUser && 
-        (window.innerHeight + window.scrollY) >= document.body.offsetHeight - 400) {
-        // 디바운싱: 연속 호출 방지
-        clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => {
-            renderTimeline();
-        }, 100);
-    }
+    if (state.currentTab !== 'timeline' || state.viewMode !== 'list' || !window.currentUser) return;
+    if ((window.innerHeight + window.scrollY) < document.body.offsetHeight - 400) return;
+    // 디바운싱: 연속 호출 방지
+    clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(async () => {
+        if (appState.currentTab !== 'timeline') return;
+        const range = window.loadedMealsDateRange;
+        if (range) {
+            const today = new Date();
+            const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+            const pastLoadedCount = (window.loadedDates || []).filter(d => d < todayStr).length;
+            const nextOldest = new Date(today);
+            nextOldest.setDate(nextOldest.getDate() - (pastLoadedCount + 5));
+            const nextOldestStr = `${nextOldest.getFullYear()}-${String(nextOldest.getMonth() + 1).padStart(2, '0')}-${String(nextOldest.getDate()).padStart(2, '0')}`;
+            if (nextOldestStr < range.start) {
+                try {
+                    await loadMoreMeals(1, 'week'); // 스크롤 시 1주일씩 로드
+                } catch (e) {
+                    console.warn('스크롤 시 추가 로드 실패:', e);
+                }
+            }
+        }
+        renderTimeline();
+        renderMiniCalendar();
+    }, 100);
 });
 
 // 키보드 이벤트 리스너 (주간/월간 모드에서 좌우 방향키로 이동)
@@ -1407,7 +2501,7 @@ window.onload = () => {
 };
 
 // 피드 옵션 관련 함수
-window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '', photoSlotId = '', isDailyShare = false, postId = '', authorUserId = '') => {
+window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '', photoSlotId = '', isDailyShare = false, postId = '', authorUserId = '', isInsightShare = false, dateRangeText = '') => {
     const existingMenu = document.getElementById('feedOptionsMenu');
     if (existingMenu) existingMenu.remove();
     
@@ -1416,7 +2510,7 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
     menu.className = 'fixed inset-0 z-[450]';
     
     const isMyPost = window.currentUser && authorUserId && window.currentUser.uid === authorUserId;
-    const deleteButtonText = '게시 취소';
+    const deleteButtonText = '공유 취소';
     const deleteButtonIcon = 'fa-share';
     
     const bg = document.createElement('div');
@@ -1424,7 +2518,7 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
     bg.onclick = () => menu.remove();
     
     const menuContainer = document.createElement('div');
-    menuContainer.className = 'fixed bottom-0 left-0 right-0 w-full bg-white rounded-t-3xl p-4 pb-8 animate-fade-up z-[451]';
+    menuContainer.className = 'fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white rounded-t-3xl p-4 pb-8 animate-fade-up z-[451]';
     
     const handlebar = document.createElement('div');
     handlebar.className = 'w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4';
@@ -1448,6 +2542,10 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
                 } else if (isDailyShare) {
                     if (photoDate) window.openDailyCommentModal(photoDate);
                     else showToast("수정할 일간보기 공유를 찾을 수 없습니다.", 'error');
+                } else if (isInsightShare) {
+                    const photoUrlArray = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(url => url.trim()).filter(url => url) : [];
+                    if (photoUrlArray.length > 0) window.editInsightShare(photoUrlArray[0]);
+                    else showToast("수정할 밀당 코멘트 공유를 찾을 수 없습니다.", 'error');
                 } else {
                     if (entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined') {
                         window.editFeedPost(entryId);
@@ -1462,14 +2560,14 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
         editBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-pencil text-emerald-600 text-lg"></i><span class="font-bold text-slate-800">수정하기</span></div>';
         buttonContainer.appendChild(editBtn);
         
-        // 게시 취소
+        // 공유 취소
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
         deleteBtn.type = 'button';
         deleteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             menu.remove();
-            setTimeout(() => window.deleteFeedPost(entryId || '', photoUrls || '', isBestShare), 100);
+            window.deleteFeedPost(entryId || '', photoUrls || '', isBestShare, isDailyShare, isInsightShare);
         });
         deleteBtn.innerHTML = `<div class="flex items-center gap-3"><i class="fa-solid ${deleteButtonIcon} text-red-500 text-lg"></i><span class="font-bold text-red-500">${deleteButtonText}</span></div>`;
         buttonContainer.appendChild(deleteBtn);
@@ -1481,7 +2579,7 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
         reportBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             menu.remove();
-            const targetGroupKey = isBestShare ? `best_${postId || 'unknown'}` : isDailyShare ? `daily_${photoDate || 'nodate'}_${authorUserId || 'unknown'}` : `entry_${entryId || 'none'}_${authorUserId || 'unknown'}`;
+            const targetGroupKey = isBestShare ? `best_${postId || 'unknown'}` : isDailyShare ? `daily_${photoDate || 'nodate'}_${authorUserId || 'unknown'}` : isInsightShare ? `insight_${dateRangeText || 'no-range'}_${authorUserId || 'unknown'}` : `entry_${entryId || 'none'}_${authorUserId || 'unknown'}`;
             setTimeout(() => window.showReportModal(targetGroupKey), 100);
         });
         reportBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-flag text-amber-600 text-lg"></i><span class="font-bold text-slate-800">신고하기</span></div>';
@@ -1637,133 +2735,101 @@ window.editFeedPost = (entryId) => {
     openModal(record.date, record.slotId, entryId);
 };
 
-window.deleteFeedPost = async (entryId, photoUrls, isBestShare = false) => {
-    // 피드에서는 항상 게시 취소
-    if (!confirm("정말 게시를 취소하시겠습니까?")) {
+window.deleteFeedPost = async (entryId, photoUrls, isBestShare = false, isDailyShare = false, isInsightShare = false) => {
+    // 피드에서는 항상 공유 취소
+    if (!confirm("정말 공유를 취소하시겠습니까?")) {
         return;
     }
     
-    const loadingOverlay = document.getElementById('loadingOverlay');
-    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    const photoUrlArray = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(url => url.trim()).filter(url => url) : [];
+    if (photoUrlArray.length === 0) return;
     
-    try {
-        // 공유된 사진 삭제
-        const photoUrlArray = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(url => url.trim()).filter(url => url) : [];
-        if (photoUrlArray.length > 0) {
-            const validEntryId = (entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined') ? entryId : null;
-            
-            // photoUrl 정규화 (쿼리 파라미터 제거하여 비교) - utils.js의 normalizeUrl 사용
-            const normalizedPhotoUrls = photoUrlArray.map(normalizeUrl);
-            
-            await dbOps.unsharePhotos(photoUrlArray, validEntryId, isBestShare);
-            
-            // window.sharedPhotos에서 삭제된 사진들 즉시 제거 (URL 정규화하여 비교)
-            if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                window.sharedPhotos = window.sharedPhotos.filter(photo => {
-                    const photoUrlNormalized = normalizeUrl(photo.photoUrl);
-                    const isMatched = normalizedPhotoUrls.some(normalizedUrl => 
-                        normalizedUrl === photoUrlNormalized || photo.photoUrl === normalizedUrl
-                    );
-                    
-                    if (!isMatched) return true;
-                    
-                    // 베스트 공유인 경우 type='best'인 것만 제거
-                    if (isBestShare) {
-                        return !(photo.type === 'best');
-                    } else {
-                        // 일반 공유인 경우: entryId 조건 확인
-                        if (validEntryId) {
-                            // entryId가 제공된 경우: entryId가 일치하거나 photo의 entryId가 없으면 제거
-                            return !(photo.entryId === validEntryId || !photo.entryId || photo.entryId === null);
-                        } else {
-                            // entryId가 없으면 photoUrl만 일치하면 제거
-                            return false;
-                        }
-                    }
+    const validEntryId = (entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined') ? entryId : null;
+    const normalizedPhotoUrls = photoUrlArray.map(normalizeUrl);
+    
+    // 롤백용 이전 상태 저장
+    const prevSharedPhotos = window.sharedPhotos && Array.isArray(window.sharedPhotos) ? [...window.sharedPhotos] : [];
+    let record = null;
+    let prevRecordSharedPhotos = null;
+    if (entryId && entryId !== '' && entryId !== 'null' && window.mealHistory) {
+        record = window.mealHistory.find(m => m.id === entryId);
+        if (record && record.sharedPhotos && Array.isArray(record.sharedPhotos)) {
+            prevRecordSharedPhotos = [...record.sharedPhotos];
+        }
+    }
+    
+    // 공유 제거 판별 헬퍼
+    const shouldRemovePhoto = (photo) => {
+        const photoUrlNormalized = normalizeUrl(photo.photoUrl);
+        const isMatched = normalizedPhotoUrls.some(normalizedUrl =>
+            normalizedUrl === photoUrlNormalized || photo.photoUrl === normalizedUrl
+        );
+        if (!isMatched) return false;
+        if (isBestShare) return photo.type === 'best';
+        if (isDailyShare) return photo.type === 'daily';
+        if (isInsightShare) return photo.type === 'insight';
+        if (validEntryId) return photo.entryId === validEntryId || !photo.entryId || photo.entryId === null;
+        return true;
+    };
+    
+    // 낙관적 업데이트: UI 즉시 반영
+    if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+        window.sharedPhotos = window.sharedPhotos.filter(photo => !shouldRemovePhoto(photo));
+    }
+    if (record && record.sharedPhotos && Array.isArray(record.sharedPhotos)) {
+        record.sharedPhotos = record.sharedPhotos.filter(url => {
+            if (photoUrlArray.includes(url)) return false;
+            const urlBase = url.split('?')[0];
+            const urlFileName = urlBase.split('/').pop();
+            return !photoUrlArray.some(photoUrl => {
+                const photoUrlBase = photoUrl.split('?')[0];
+                const photoUrlFileName = photoUrlBase.split('/').pop();
+                return urlFileName === photoUrlFileName && urlFileName !== '';
+            });
+        });
+        if (record.sharedPhotos.length === 0) record.sharedPhotos = [];
+    }
+    if (appState.currentTab === 'timeline') {
+        updateTimelineShareIndicators();
+        renderTimeline();
+    }
+    if (appState.currentTab === 'gallery') {
+        // 일반 식사 기록: 해당 카드만 DOM에서 제거 (전체 renderGallery 호출 없이 즉시 반영)
+        const uid = window.currentUser?.uid;
+        if (!isBestShare && !isDailyShare && !isInsightShare && validEntryId && uid) {
+            const groupKey = `${validEntryId}_${uid}`;
+            const container = document.getElementById('galleryContainer');
+            const postEl = container?.querySelector(`[data-group-key="${groupKey}"]`);
+            if (postEl) postEl.remove();
+        } else {
+            renderGallery();
+        }
+    }
+    if (!window._feedPostDeleteInProgress) {
+        window._feedPostDeleteInProgress = true;
+        showToast("공유가 취소되었습니다.", 'success');
+        setTimeout(() => { window._feedPostDeleteInProgress = false; }, 1000);
+    }
+    
+    // 서버는 백그라운드에서 호출
+    dbOps.unsharePhotos(photoUrlArray, validEntryId, isBestShare, isDailyShare, isInsightShare)
+        .then(() => {
+            if (record && prevRecordSharedPhotos !== null) {
+                dbOps.save(record, true).catch((e) => {
+                    console.error("sharedPhotos 필드 업데이트 실패:", e);
+                    showToast("공유 취소는 되었으나 기록 반영에 실패했습니다.", 'error');
                 });
             }
-        }
-        
-        // 게시 취소 시 mealHistory의 sharedPhotos 필드 업데이트 (기록은 삭제하지 않음)
-        if (entryId && entryId !== '' && entryId !== 'null' && window.mealHistory) {
-            const record = window.mealHistory.find(m => m.id === entryId);
-            if (record) {
-                // sharedPhotos 필드에서 해당 사진들 제거 (유연한 URL 매칭)
-                if (record.sharedPhotos && Array.isArray(record.sharedPhotos)) {
-                    record.sharedPhotos = record.sharedPhotos.filter(url => {
-                        // 정확히 일치하는 경우 제외
-                        if (photoUrlArray.includes(url)) return false;
-                        // URL의 파일명 부분만 비교 (쿼리 파라미터 제거)
-                        const urlBase = url.split('?')[0];
-                        const urlFileName = urlBase.split('/').pop();
-                        return !photoUrlArray.some(photoUrl => {
-                            const photoUrlBase = photoUrl.split('?')[0];
-                            const photoUrlFileName = photoUrlBase.split('/').pop();
-                            return urlFileName === photoUrlFileName && urlFileName !== '';
-                        });
-                    });
-                    // sharedPhotos가 비어있으면 빈 배열로 설정
-                    if (record.sharedPhotos.length === 0) {
-                        record.sharedPhotos = [];
-                    }
-                    // 데이터베이스에 업데이트 (토스트 표시하지 않음 - 게시 취소 토스트만 표시)
-                    try {
-                        await dbOps.save(record, true); // silent = true
-                    } catch (e) {
-                        console.error("sharedPhotos 필드 업데이트 실패:", e);
-                    }
-                }
+        })
+        .catch(() => {
+            if (window.sharedPhotos) window.sharedPhotos = prevSharedPhotos;
+            if (record && prevRecordSharedPhotos !== null) record.sharedPhotos = prevRecordSharedPhotos;
+            if (appState.currentTab === 'timeline') {
+                updateTimelineShareIndicators();
+                renderTimeline();
             }
-        }
-        
-        // 게시 취소 성공 토스트 표시 (한 번만)
-        // sharedPhotos 리스너가 업데이트를 트리거할 수 있으므로 여기서만 토스트 표시
-        if (!window._feedPostDeleteInProgress) {
-            window._feedPostDeleteInProgress = true;
-            showToast("게시가 취소되었습니다.", 'success');
-            setTimeout(() => {
-                window._feedPostDeleteInProgress = false;
-            }, 1000);
-        }
-        
-        // 타임라인과 갤러리 즉시 다시 렌더링
-        if (appState.currentTab === 'timeline') {
-            // 타임라인을 완전히 다시 렌더링하기 위해 loadedDates 초기화 및 컨테이너 비우기
-            const timelineContainer = document.getElementById('timelineContainer');
-            if (timelineContainer) {
-                timelineContainer.innerHTML = '';
-            }
-            window.loadedDates = [];
-            renderTimeline();
-            renderMiniCalendar();
-        }
-        // 갤러리(피드) 항상 렌더링하여 피드 업데이트
-        renderGallery();
-        
-        // 피드 탭이 있으면 renderFeed도 호출
-        const feedContent = document.getElementById('feedContent');
-        if (feedContent && !feedContent.classList.contains('hidden')) {
-            renderFeed();
-        }
-        
-        // 대시보드가 열려있으면 업데이트
-        if (appState.currentTab === 'dashboard') {
-            updateDashboard();
-        }
-        
-        // sharedPhotos 리스너가 업데이트될 때까지 대기 후 한 번 더 렌더링 (확실하게)
-        setTimeout(() => {
-            renderGallery();
-            if (feedContent && !feedContent.classList.contains('hidden')) {
-                renderFeed();
-            }
-        }, 800);
-    } catch (e) {
-        console.error("게시 취소 실패:", e);
-        showToast("게시 취소 중 오류가 발생했습니다.", 'error');
-    } finally {
-        if (loadingOverlay) loadingOverlay.classList.add('hidden');
-    }
+            if (appState.currentTab === 'gallery') renderGallery();
+        });
 };
 
 // 게시판 관련 함수들
@@ -1789,10 +2855,24 @@ window.openBoardWrite = () => {
     // 수정 모드 초기화
     window.currentEditingPostId = null;
     
+    // 사진 미리보기 초기화
+    if (window.boardWriteObjectUrls?.length) {
+        window.boardWriteObjectUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch (_) {} });
+    }
+    window.boardWriteFiles = [];
+    window.boardWriteExistingUrls = [];
+    window.boardWriteObjectUrls = [];
+    const boardWriteImagesEl = document.getElementById('boardWriteImages');
+    if (boardWriteImagesEl) boardWriteImagesEl.value = '';
+    if (typeof window.renderBoardWritePreviews === 'function') window.renderBoardWritePreviews();
+    
     // 입력 필드 초기화
     document.getElementById('boardWriteTitle').value = '';
     document.getElementById('boardWriteContent').value = '';
     document.getElementById('boardWriteCategory').value = 'serious';
+    if (typeof window.setBoardWriteCategory === 'function') {
+        window.setBoardWriteCategory('serious');
+    }
     
     // 제목 및 버튼 초기화
     const titleEl = document.querySelector('#boardWriteView h2');
@@ -1806,14 +2886,16 @@ window.openBoardWrite = () => {
     }, 100);
 };
 
-window.backToBoardList = () => {
+window.backToBoardList = (optimisticPost = null, options = null) => {
     const boardListView = document.getElementById('boardListView');
     const boardDetailView = document.getElementById('boardDetailView');
     const boardWriteView = document.getElementById('boardWriteView');
+    const tracePanel = document.getElementById('galleryTraceFilterPanel');
     
     if (boardListView) boardListView.classList.remove('hidden');
     if (boardDetailView) boardDetailView.classList.add('hidden');
     if (boardWriteView) boardWriteView.classList.add('hidden');
+    if (tracePanel && appState.currentTab === 'board') tracePanel.classList.remove('hidden');
     
     window.currentBoardPostId = null;
     window.currentEditingPostId = null;
@@ -1824,13 +2906,83 @@ window.backToBoardList = () => {
     const submitBtn = boardWriteView?.querySelector('button[onclick="window.submitBoardPost()"]');
     if (submitBtn) submitBtn.textContent = '등록';
     
-    // 게시판 목록 새로고침
     const category = window.currentBoardCategory || 'all';
-    renderBoard(category);
+    renderBoard(category, optimisticPost, options);
     
     setTimeout(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 100);
+    }, 50);
+};
+
+// 밀톡 작성: 사진 미리보기 렌더 (기존 URL + 새 파일)
+window.renderBoardWritePreviews = () => {
+    const container = document.getElementById('boardWriteImagePreviews');
+    if (!container) return;
+    const existing = window.boardWriteExistingUrls || [];
+    const files = window.boardWriteFiles || [];
+    container.innerHTML = '';
+    existing.forEach((url, i) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0';
+        wrap.innerHTML = `
+            <img src="${url}" alt="미리보기" class="w-full h-full object-cover">
+            <button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl hover:bg-red-600" data-type="url" data-index="${i}" aria-label="삭제">
+                <i class="fa-solid fa-times"></i>
+            </button>
+        `;
+        wrap.querySelector('button').addEventListener('click', () => {
+            window.boardWriteExistingUrls.splice(i, 1);
+            window.renderBoardWritePreviews();
+        });
+        container.appendChild(wrap);
+    });
+    files.forEach((file, i) => {
+        const objectUrl = window.boardWriteObjectUrls && window.boardWriteObjectUrls[i];
+        if (!objectUrl) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0';
+        wrap.innerHTML = `
+            <img src="${objectUrl}" alt="미리보기" class="w-full h-full object-cover">
+            <button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl hover:bg-red-600" data-type="file" data-index="${i}" aria-label="삭제">
+                <i class="fa-solid fa-times"></i>
+            </button>
+        `;
+        wrap.querySelector('button').addEventListener('click', () => {
+            if (window.boardWriteObjectUrls && window.boardWriteObjectUrls[i]) {
+                try { URL.revokeObjectURL(window.boardWriteObjectUrls[i]); } catch (_) {}
+                window.boardWriteObjectUrls.splice(i, 1);
+            }
+            window.boardWriteFiles.splice(i, 1);
+            window.renderBoardWritePreviews();
+        });
+        container.appendChild(wrap);
+    });
+};
+
+// 밀톡 작성: 미리보기에서 항목 제거 (버튼용 래퍼는 위에서 직접 바인딩)
+window.removeBoardWritePreview = (type, index) => {
+    if (type === 'url') (window.boardWriteExistingUrls || []).splice(index, 1);
+    else if (type === 'file') {
+        if (window.boardWriteObjectUrls && window.boardWriteObjectUrls[index]) {
+            try { URL.revokeObjectURL(window.boardWriteObjectUrls[index]); } catch (_) {}
+            window.boardWriteObjectUrls.splice(index, 1);
+        }
+        (window.boardWriteFiles || []).splice(index, 1);
+    }
+    window.renderBoardWritePreviews();
+};
+
+// 게시판 글쓰기 카테고리 선택 (버튼 UI)
+window.setBoardWriteCategory = (category) => {
+    const input = document.getElementById('boardWriteCategory');
+    if (input) input.value = category;
+    
+    document.querySelectorAll('.board-write-category-btn').forEach(btn => {
+        const value = btn.getAttribute('data-value');
+        const active = value === category;
+        btn.classList.toggle('active', active);
+        // 기본 스타일은 css/style.css (.board-category-btn / .active)가 강제함
+    });
 };
 
 window.submitBoardPost = async () => {
@@ -1852,19 +3004,70 @@ window.submitBoardPost = async () => {
         return;
     }
     
-    try {
-        // 수정 모드인 경우
-        if (window.currentEditingPostId) {
-            await boardOperations.updatePost(window.currentEditingPostId, { title, content, category });
-            window.currentEditingPostId = null;
-        } else {
-            // 새 게시글 작성
-            await boardOperations.createPost({ title, content, category });
-        }
+    const listCategory = window.currentBoardCategory || 'all';
+    
+    if (window.currentEditingPostId) {
+        const postId = window.currentEditingPostId;
+        window.currentEditingPostId = null;
         window.backToBoardList();
-    } catch (e) {
-        console.error("게시글 처리 오류:", e);
+        const existingUrls = window.boardWriteExistingUrls || [];
+        const newFiles = window.boardWriteFiles || [];
+        let finalImageUrls = [...existingUrls];
+        if (newFiles.length > 0) {
+            try {
+                showToast('사진 업로드 중...', 'info');
+                const newUrls = await uploadBoardImages(newFiles, window.currentUser.uid);
+                finalImageUrls = [...existingUrls, ...newUrls];
+            } catch (e) {
+                console.error("[submitBoardPost] 사진 업로드 에러:", e);
+                showToast(e?.message || "사진 업로드에 실패했습니다.", 'error');
+                return;
+            }
+        }
+        boardOperations.updatePost(postId, { title, content, category, imageUrls: finalImageUrls })
+            .then(() => renderBoard(listCategory))
+            .catch((e) => {
+                console.error("[submitBoardPost] 수정 에러:", e);
+            });
+        return;
     }
+    
+    const newFiles = window.boardWriteFiles || [];
+    let imageUrls = [];
+    if (newFiles.length > 0) {
+        try {
+            showToast('사진 업로드 중...', 'info');
+            imageUrls = await uploadBoardImages(newFiles, window.currentUser.uid);
+        } catch (e) {
+            console.error("[submitBoardPost] 사진 업로드 에러:", e);
+            showToast(e?.message || "사진 업로드에 실패했습니다.", 'error');
+            return;
+        }
+    }
+    const optimisticPost = {
+        id: 'pending-' + Date.now(),
+        title,
+        content,
+        category: category || 'serious',
+        imageUrls: imageUrls.length ? imageUrls : undefined,
+        authorId: window.currentUser.uid,
+        authorNickname: window.userSettings?.profile?.nickname || '익명',
+        authorPhotoUrl: window.userSettings?.profile?.photoUrl || null,
+        authorIcon: window.userSettings?.profile?.icon || null,
+        likes: 0,
+        dislikes: 0,
+        views: 0,
+        comments: 0,
+        timestamp: new Date().toISOString()
+    };
+    window.backToBoardList(optimisticPost);
+    boardOperations.createPost({ title, content, category, imageUrls })
+        .then((result) => {
+            if (result?.id) renderBoard(listCategory);
+        })
+        .catch(() => {
+            renderBoard(listCategory);
+        });
 };
 
 window.openBoardDetail = async (postId) => {
@@ -1875,10 +3078,12 @@ window.openBoardDetail = async (postId) => {
     const boardListView = document.getElementById('boardListView');
     const boardDetailView = document.getElementById('boardDetailView');
     const boardWriteView = document.getElementById('boardWriteView');
+    const tracePanel = document.getElementById('galleryTraceFilterPanel');
     
     if (boardListView) boardListView.classList.add('hidden');
     if (boardDetailView) boardDetailView.classList.remove('hidden');
     if (boardWriteView) boardWriteView.classList.add('hidden');
+    if (tracePanel) tracePanel.classList.add('hidden');
     
     await renderBoardDetail(postId);
     
@@ -1894,10 +3099,12 @@ window.openNoticeDetail = async (noticeId) => {
     const boardListView = document.getElementById('boardListView');
     const boardDetailView = document.getElementById('boardDetailView');
     const boardWriteView = document.getElementById('boardWriteView');
+    const tracePanel = document.getElementById('galleryTraceFilterPanel');
     
     if (boardListView) boardListView.classList.add('hidden');
     if (boardDetailView) boardDetailView.classList.remove('hidden');
     if (boardWriteView) boardWriteView.classList.add('hidden');
+    if (tracePanel) tracePanel.classList.add('hidden');
     
     await renderNoticeDetail(noticeId);
     
@@ -1911,13 +3118,13 @@ window.setBoardCategory = (category) => {
     
     // 버튼 상태 업데이트
     document.querySelectorAll('.board-category-btn').forEach(btn => {
-        btn.classList.remove('active', 'bg-emerald-600', 'text-white');
-        btn.classList.add('bg-slate-100', 'text-slate-600');
+        btn.classList.remove('active', 'bg-black', 'text-white', 'border-black');
+        btn.classList.add('bg-white', 'text-slate-700', 'border', 'border-slate-200');
     });
     const activeBtn = document.getElementById(`board-category-${category}`);
     if (activeBtn) {
-        activeBtn.classList.add('active', 'bg-emerald-600', 'text-white');
-        activeBtn.classList.remove('bg-slate-100', 'text-slate-600');
+        activeBtn.classList.add('active', 'bg-black', 'text-white', 'border', 'border-black');
+        activeBtn.classList.remove('bg-white', 'text-slate-700', 'border-slate-200');
     }
     
     // 게시글 목록 새로고침
@@ -1932,28 +3139,173 @@ window.toggleBoardLike = async (postId, isLike) => {
         return;
     }
     
+    const likeBtns = document.querySelectorAll(`.board-post-like-btn[data-post-id="${postId}"]`);
+    const firstBtn = likeBtns[0];
+    const likeIcon = firstBtn?.querySelector('.fa-heart');
+    const likeCountEl = firstBtn?.querySelector('span.text-xs');
+    const wasLiked = likeIcon?.classList.contains('fa-solid');
+    
     try {
         await boardOperations.toggleLike(postId, isLike);
-        // 게시글 상세 새로고침
-        await renderBoardDetail(postId);
+        likeBtns.forEach(btn => {
+            const icon = btn.querySelector('.fa-heart');
+            const countEl = btn.querySelector('span.text-xs');
+            if (icon) {
+                icon.classList.remove('fa-regular', 'fa-solid', 'text-red-500', 'text-slate-800');
+                icon.classList.add(wasLiked ? 'fa-regular' : 'fa-solid', 'fa-heart', wasLiked ? 'text-slate-800' : 'text-red-500');
+            }
+            if (countEl) {
+                const current = parseInt(countEl.textContent || '0', 10);
+                countEl.textContent = wasLiked ? Math.max(0, current - 1) : current + 1;
+            }
+        });
     } catch (e) {
-        console.error("추천/비추천 오류:", e);
+        console.error("좋아요 오류:", e);
         showToast("처리 중 오류가 발생했습니다.", 'error');
     }
 };
 
-window.toggleNoticeLike = async (noticeId, isLike) => {
+window.toggleBoardBookmark = async (postId) => {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         showToast("로그인이 필요합니다.", 'error');
         window.requestLogin();
         return;
     }
     
+    const bookmarkBtns = document.querySelectorAll(`.board-post-bookmark-btn[data-post-id="${postId}"]`);
+    
+    try {
+        const result = await boardOperations.toggleBookmark(postId);
+        bookmarkBtns.forEach(btn => {
+            const icon = btn.querySelector('.fa-bookmark');
+            if (icon) {
+                icon.classList.remove('fa-regular', 'fa-solid');
+                icon.classList.add(result?.bookmarked ? 'fa-solid' : 'fa-regular', 'fa-bookmark');
+            }
+        });
+    } catch (e) {
+        console.error("북마크 오류:", e);
+        showToast("처리 중 오류가 발생했습니다.", 'error');
+    }
+};
+
+// 밀톡 게시글 점3개 메뉴 (내글: 수정/삭제, 타인글: 신고)
+window.showBoardPostOptions = (postId, isAuthor) => {
+    const existingMenu = document.getElementById('boardPostOptionsMenu');
+    if (existingMenu) existingMenu.remove();
+    
+    const menu = document.createElement('div');
+    menu.id = 'boardPostOptionsMenu';
+    menu.className = 'fixed inset-0 z-[450]';
+    
+    const bg = document.createElement('div');
+    bg.className = 'fixed inset-0 bg-black/40';
+    bg.onclick = () => menu.remove();
+    
+    const menuContainer = document.createElement('div');
+    menuContainer.className = 'fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white rounded-t-3xl p-4 pb-8 animate-fade-up z-[451]';
+    
+    const handlebar = document.createElement('div');
+    handlebar.className = 'w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4';
+    
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'space-y-2';
+    
+    if (isAuthor) {
+        const editBtn = document.createElement('button');
+        editBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        editBtn.type = 'button';
+        editBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            menu.remove();
+            setTimeout(() => window.editBoardPost(postId), 100);
+        });
+        editBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-pencil text-emerald-600 text-lg"></i><span class="font-bold text-slate-800">수정하기</span></div>';
+        buttonContainer.appendChild(editBtn);
+        
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        deleteBtn.type = 'button';
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            menu.remove();
+            setTimeout(() => window.deleteBoardPost(postId), 100);
+        });
+        deleteBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-trash text-red-500 text-lg"></i><span class="font-bold text-red-500">삭제하기</span></div>';
+        buttonContainer.appendChild(deleteBtn);
+    } else {
+        const reportBtn = document.createElement('button');
+        reportBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        reportBtn.type = 'button';
+        reportBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            menu.remove();
+            setTimeout(() => window.showReportModal && window.showReportModal(`board_${postId}`), 100);
+        });
+        reportBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-flag text-amber-600 text-lg"></i><span class="font-bold text-slate-800">신고하기</span></div>';
+        buttonContainer.appendChild(reportBtn);
+    }
+    
+    menuContainer.addEventListener('click', (e) => e.stopPropagation());
+    menuContainer.appendChild(handlebar);
+    menuContainer.appendChild(buttonContainer);
+    menu.appendChild(bg);
+    menu.appendChild(menuContainer);
+    document.body.appendChild(menu);
+};
+
+window.toggleNoticeLike = async (noticeId, isLike = true) => {
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast("로그인이 필요합니다.", 'error');
+        window.requestLogin();
+        return;
+    }
+    
+    const likeBtns = document.querySelectorAll(`.board-post-like-btn[data-notice-id="${noticeId}"]`);
+    const firstBtn = likeBtns[0];
+    const likeIcon = firstBtn?.querySelector('.fa-heart');
+    const wasLiked = likeIcon?.classList.contains('fa-solid');
+    
     try {
         await noticeOperations.toggleNoticeLike(noticeId, isLike);
-        await renderNoticeDetail(noticeId);
+        likeBtns.forEach(btn => {
+            const icon = btn.querySelector('.fa-heart');
+            const countEl = btn.querySelector('span.text-xs');
+            if (icon) {
+                icon.classList.remove('fa-regular', 'fa-solid', 'text-red-500', 'text-slate-800');
+                icon.classList.add(wasLiked ? 'fa-regular' : 'fa-solid', 'fa-heart', wasLiked ? 'text-slate-800' : 'text-red-500');
+            }
+            if (countEl) {
+                const current = parseInt(countEl.textContent || '0', 10);
+                countEl.textContent = wasLiked ? Math.max(0, current - 1) : current + 1;
+            }
+        });
     } catch (e) {
-        console.error("공지 추천/비추천 오류:", e);
+        console.error("공지 하트 오류:", e);
+        showToast("처리 중 오류가 발생했습니다.", 'error');
+    }
+};
+
+window.toggleNoticeBookmark = async (noticeId) => {
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast("로그인이 필요합니다.", 'error');
+        window.requestLogin();
+        return;
+    }
+    
+    const bookmarkBtns = document.querySelectorAll(`.board-post-bookmark-btn[data-notice-id="${noticeId}"]`);
+    
+    try {
+        const result = await noticeOperations.toggleNoticeBookmark(noticeId);
+        bookmarkBtns.forEach(btn => {
+            const icon = btn.querySelector('.fa-bookmark');
+            if (icon) {
+                icon.classList.remove('fa-regular', 'fa-solid');
+                icon.classList.add(result?.bookmarked ? 'fa-solid' : 'fa-regular', 'fa-bookmark');
+            }
+        });
+    } catch (e) {
+        console.error("공지 북마크 오류:", e);
         showToast("처리 중 오류가 발생했습니다.", 'error');
     }
 };
@@ -1989,6 +3341,19 @@ window.editBoardPost = async (postId) => {
         document.getElementById('boardWriteTitle').value = post.title || '';
         document.getElementById('boardWriteContent').value = post.content || '';
         document.getElementById('boardWriteCategory').value = post.category || 'serious';
+        if (typeof window.setBoardWriteCategory === 'function') {
+            window.setBoardWriteCategory(post.category || 'serious');
+        }
+        // 기존 사진 미리보기
+        window.boardWriteExistingUrls = Array.isArray(post.imageUrls) ? [...post.imageUrls] : [];
+        window.boardWriteFiles = [];
+        if (window.boardWriteObjectUrls?.length) {
+            window.boardWriteObjectUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch (_) {} });
+        }
+        window.boardWriteObjectUrls = [];
+        const boardWriteImagesInput = document.getElementById('boardWriteImages');
+        if (boardWriteImagesInput) boardWriteImagesInput.value = '';
+        if (typeof window.renderBoardWritePreviews === 'function') window.renderBoardWritePreviews();
         
         // 수정 모드 표시를 위한 플래그 저장
         window.currentEditingPostId = postId;
@@ -2010,15 +3375,15 @@ window.editBoardPost = async (postId) => {
     }
 };
 
-window.deleteBoardPost = async (postId) => {
+window.deleteBoardPost = (postId) => {
     if (!confirm("정말 삭제하시겠습니까?")) return;
     
-    try {
-        await boardOperations.deletePost(postId);
-        window.backToBoardList();
-    } catch (e) {
+    window.backToBoardList(null, { excludePostId: postId });
+    boardOperations.deletePost(postId).catch((e) => {
         console.error("게시글 삭제 오류:", e);
-    }
+        const category = window.currentBoardCategory || 'all';
+        renderBoard(category);
+    });
 };
 
 window.addBoardComment = async (postId) => {
@@ -2037,182 +3402,167 @@ window.addBoardComment = async (postId) => {
         return;
     }
     
-    // 입력 필드 비활성화
+    const commentsListEl = document.getElementById('boardCommentsList');
+    const commentsCountEl = document.getElementById('boardCommentsCount');
+    const authorNickname = (window.userSettings && window.userSettings.profile && window.userSettings.profile.nickname) || '익명';
+    const tempCommentId = `temp-${Date.now()}`;
+    
+    // 낙관적 반영: 목록과 같은 포맷으로 바로 표시 (이전 포맷→변환 현상 제거)
+    const commentDate = new Date();
+    const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+    const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const rowHtml = `
+        <div class="mb-1 text-sm" data-comment-id="${tempCommentId}">
+            <span class="font-bold text-slate-800">${escapeHtml(authorNickname)}</span>
+            <span class="text-slate-800 ml-2">${escapeHtml(content)}</span>
+            <span class="text-xs text-slate-400 ml-2">${commentDateStr} ${commentTimeStr}</span>
+            <button onclick="window.deleteBoardComment('${tempCommentId}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>
+        </div>
+    `;
+    if (commentsListEl) {
+        commentsListEl.insertAdjacentHTML('beforeend', rowHtml);
+        const last = commentsListEl.lastElementChild;
+        if (last) last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    if (commentsCountEl) {
+        const n = (parseInt(commentsCountEl.textContent, 10) || 0) + 1;
+        commentsCountEl.textContent = n;
+    }
+    input.value = '';
     input.disabled = true;
-    const submitBtn = input.nextElementSibling;
-    if (submitBtn) submitBtn.disabled = true;
     
     try {
-        // 사용자 닉네임 가져오기
-        const authorNickname = (window.userSettings && window.userSettings.profile && window.userSettings.profile.nickname) || '익명';
-        
-        const commentsListEl = document.getElementById('boardCommentsList');
-        const commentsCountEl = document.getElementById('boardCommentsCount');
-        
-        // 댓글 추가 (데이터베이스에 저장)
-        await boardOperations.addComment(postId, content);
-        
-        input.value = '';
-        
-        if (commentsListEl && commentsCountEl) {
-            // 현재 댓글 수 가져오기
-            const currentCount = parseInt(commentsCountEl.textContent) || 0;
-            const newCount = currentCount + 1;
-            
-            // 댓글 수 업데이트
-            commentsCountEl.textContent = newCount;
-            
-            // 임시 댓글을 화면에 추가 (즉시 표시)
-            const commentDate = new Date();
-            const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
-            const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-            const tempCommentId = `temp-${Date.now()}`;
-            
-            // 댓글이 없는 경우 메시지 제거
-            if (commentsListEl.innerHTML.includes('댓글이 없습니다')) {
-                commentsListEl.innerHTML = '';
+        const result = await boardOperations.addComment(postId, content);
+        const realId = (result && (result.commentId ?? result.id)) || null;
+        if (realId && commentsListEl) {
+            const tempRow = commentsListEl.querySelector(`[data-comment-id="${tempCommentId}"]`);
+            if (tempRow) {
+                tempRow.setAttribute('data-comment-id', realId);
+                const btn = tempRow.querySelector('button[onclick*="deleteBoardComment"]');
+                if (btn) btn.setAttribute('onclick', `window.deleteBoardComment('${realId}', '${postId}')`);
             }
-            
-            const newCommentHtml = `
-                <div class="bg-white border border-slate-200 rounded-xl p-4 mb-3" data-comment-id="${tempCommentId}">
-                    <div class="flex items-center justify-between mb-2">
-                        <div class="flex items-center gap-2">
-                            <div class="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold text-slate-600">${authorNickname.charAt(0)}</div>
-                            <div>
-                                <div class="text-xs font-bold text-slate-700">${escapeHtml(authorNickname)}</div>
-                                <div class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</div>
-                            </div>
-                        </div>
-                        <button onclick="window.deleteBoardComment('${tempCommentId}', '${postId}')" class="text-xs text-red-500 font-bold px-2 py-1 rounded-lg hover:bg-red-50 active:opacity-70 transition-colors hidden">
-                            삭제
-                        </button>
-                    </div>
-                    <p class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed pl-8">${escapeHtml(content)}</p>
-                </div>
-            `;
-            
-            commentsListEl.insertAdjacentHTML('beforeend', newCommentHtml);
-            
-            // 새 댓글로 스크롤
-            setTimeout(() => {
-                const lastComment = commentsListEl.lastElementChild;
-                if (lastComment) {
-                    lastComment.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                }
-            }, 100);
-            
-            // 실제 댓글 목록 다시 가져오기 (Firestore 인덱싱 반영 후)
-            setTimeout(async () => {
-                try {
-                    const comments = await boardOperations.getComments(postId);
-                    if (commentsListEl && commentsCountEl && comments.length > 0) {
-                        commentsCountEl.textContent = comments.length;
-                        
-                        // 댓글 목록 다시 렌더링 (실제 데이터로 업데이트)
-                        commentsListEl.innerHTML = comments.map(comment => {
-                            const commentDate = new Date(comment.timestamp);
-                            const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
-                            const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-                            const isCommentAuthor = window.currentUser && comment.authorId === window.currentUser.uid;
-                            const commentAuthorNickname = comment.authorNickname || comment.anonymousId || '익명';
-                            
-                            return `
-                                <div class="bg-white border border-slate-200 rounded-xl p-4 mb-3" data-comment-id="${comment.id}">
-                                    <div class="flex items-center justify-between mb-2">
-                                        <div class="flex items-center gap-2">
-                                            <div class="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold text-slate-600">${commentAuthorNickname.charAt(0)}</div>
-                                            <div class="flex items-center gap-2">
-                                                <span class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</span>
-                                                <span class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</span>
-                                            </div>
-                                        </div>
-                                        ${isCommentAuthor ? `
-                                            <button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="text-xs text-red-500 font-bold px-2 py-1 rounded-lg hover:bg-red-50 active:opacity-70 transition-colors">
-                                                삭제
-                                            </button>
-                                        ` : ''}
-                                    </div>
-                                    <p class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed pl-8">${escapeHtml(comment.content)}</p>
-                                </div>
-                            `;
-                        }).join('');
-                    }
-                } catch (e) {
-                    console.error("댓글 목록 새로고침 오류:", e);
-                    // 에러가 발생해도 임시 댓글은 그대로 유지
-                }
-            }, 1000); // Firestore 인덱싱 반영 시간 고려
         }
-        
-        showToast("댓글이 등록되었습니다.", 'success');
     } catch (e) {
         console.error("댓글 작성 오류:", e);
         showToast("댓글 작성에 실패했습니다.", 'error');
+        if (commentsListEl) {
+            const tempRow = commentsListEl.querySelector(`[data-comment-id="${tempCommentId}"]`);
+            if (tempRow) tempRow.remove();
+        }
+        if (commentsCountEl) {
+            const n = Math.max(0, (parseInt(commentsCountEl.textContent, 10) || 0) - 1);
+            commentsCountEl.textContent = n || '';
+        }
     } finally {
-        // 입력 필드 다시 활성화
         input.disabled = false;
-        if (submitBtn) submitBtn.disabled = false;
     }
 };
 
 window.deleteBoardComment = async (commentId, postId) => {
     if (!confirm("댓글을 삭제하시겠습니까?")) return;
     
+    const commentsListEl = document.getElementById('boardCommentsList');
+    const commentsCountEl = document.getElementById('boardCommentsCount');
+    const row = commentsListEl?.querySelector(`[data-comment-id="${commentId}"]`);
+    const prevCount = commentsCountEl ? (parseInt(commentsCountEl.textContent, 10) || 0) : 0;
+    if (row) {
+        row.remove();
+        if (commentsCountEl) commentsCountEl.textContent = Math.max(0, prevCount - 1);
+    }
+    
     try {
         await boardOperations.deleteComment(commentId, postId);
         showToast("댓글이 삭제되었습니다.", 'success');
-        
-        // 댓글 목록 다시 로드
-        setTimeout(async () => {
+    } catch (e) {
+        console.error("댓글 삭제 오류:", e);
+        showToast("댓글 삭제에 실패했습니다.", 'error');
+        try {
             const comments = await boardOperations.getComments(postId);
-            const commentsListEl = document.getElementById('boardCommentsList');
-            const commentsCountEl = document.getElementById('boardCommentsCount');
-            
             if (commentsListEl && commentsCountEl) {
-                // 댓글 수 업데이트
                 commentsCountEl.textContent = comments.length;
-                
-                // 댓글 목록 다시 렌더링
                 if (comments.length > 0) {
                     commentsListEl.innerHTML = comments.map(comment => {
-                        const commentDate = new Date(comment.timestamp);
+                        let commentDate;
+                        if (!comment.timestamp) commentDate = new Date();
+                        else if (comment.timestamp.toDate && typeof comment.timestamp.toDate === 'function') commentDate = comment.timestamp.toDate();
+                        else if (typeof comment.timestamp === 'string') commentDate = new Date(comment.timestamp);
+                        else if (comment.timestamp instanceof Date) commentDate = comment.timestamp;
+                        else commentDate = new Date(comment.timestamp || 0);
+                        if (isNaN(commentDate.getTime())) commentDate = new Date();
                         const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
                         const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
                         const isCommentAuthor = window.currentUser && comment.authorId === window.currentUser.uid;
-                        const commentAuthorNickname = comment.authorNickname || comment.anonymousId || '익명';
-                        
-                        return `
-                            <div class="bg-white border border-slate-200 rounded-xl p-4 mb-3" data-comment-id="${comment.id}">
-                                    <div class="flex items-center justify-between mb-2">
-                                        <div class="flex items-center gap-2">
-                                            <div class="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold text-slate-600">${commentAuthorNickname.charAt(0)}</div>
-                                            <div class="flex items-center gap-2">
-                                                <span class="text-xs font-bold text-slate-700">${escapeHtml(commentAuthorNickname)}</span>
-                                                <span class="text-[10px] text-slate-400">${commentDateStr} ${commentTimeStr}</span>
-                                            </div>
-                                        </div>
-                                        ${isCommentAuthor ? `
-                                        <button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="text-xs text-red-500 font-bold px-2 py-1 rounded-lg hover:bg-red-50 active:opacity-70 transition-colors">
-                                            삭제
-                                        </button>
-                                    ` : ''}
-                                </div>
-                                <p class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed pl-8">${escapeHtml(comment.content)}</p>
-                            </div>
-                        `;
+                        const commentDisplay = getDisplayProfile(comment.authorId, { nickname: comment.authorNickname || comment.anonymousId });
+                        const commentBody = comment.content ?? comment.text ?? '';
+                        return `<div class="mb-1 text-sm" data-comment-id="${comment.id}"><span class="font-bold text-slate-800">${escapeHtml(commentDisplay.nickname)}</span><span class="text-slate-800 ml-2">${escapeHtml(commentBody)}</span><span class="text-xs text-slate-400 ml-2">${commentDateStr} ${commentTimeStr}</span>${isCommentAuthor ? `<button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}</div>`;
                     }).join('');
                 } else {
                     commentsListEl.innerHTML = '';
                 }
             }
-        }, 300);
-    } catch (e) {
-        console.error("댓글 삭제 오류:", e);
-        showToast("댓글 삭제에 실패했습니다.", 'error');
+        } catch (err) {
+            console.error("댓글 목록 새로고침 오류:", err);
+        }
     }
 };
 
 // 이벤트 리스너 초기화 함수
+// 이벤트 리스너 관리 유틸리티 (중복 등록 방지 및 정리)
+const eventListenerManager = {
+    listeners: new Map(), // element -> Map<eventType, handler>
+    
+    // 이벤트 리스너 등록 (중복 방지)
+    add(element, eventType, handler, options = false) {
+        if (!element) return;
+        
+        const key = `${eventType}_${options ? JSON.stringify(options) : 'default'}`;
+        
+        // 기존 리스너가 있으면 제거
+        if (this.listeners.has(element)) {
+            const elementListeners = this.listeners.get(element);
+            if (elementListeners.has(key)) {
+                const oldHandler = elementListeners.get(key);
+                element.removeEventListener(eventType, oldHandler, options);
+            }
+        } else {
+            this.listeners.set(element, new Map());
+        }
+        
+        // 새 리스너 등록
+        this.listeners.get(element).set(key, handler);
+        element.addEventListener(eventType, handler, options);
+    },
+    
+    // 특정 요소의 모든 리스너 제거
+    removeAll(element) {
+        if (!element || !this.listeners.has(element)) return;
+        
+        const elementListeners = this.listeners.get(element);
+        elementListeners.forEach((handler, key) => {
+            const [eventType, optionsStr] = key.split('_');
+            const options = optionsStr !== 'default' ? JSON.parse(optionsStr) : false;
+            element.removeEventListener(eventType, handler, options);
+        });
+        
+        this.listeners.delete(element);
+    },
+    
+    // 모든 리스너 제거
+    clear() {
+        this.listeners.forEach((elementListeners, element) => {
+            elementListeners.forEach((handler, key) => {
+                const [eventType, optionsStr] = key.split('_');
+                const options = optionsStr !== 'default' ? JSON.parse(optionsStr) : false;
+                element.removeEventListener(eventType, handler, options);
+            });
+        });
+        this.listeners.clear();
+    }
+};
+
+// 전역 이벤트 리스너 관리자 노출 (디버깅용)
+window.Mealog.eventListenerManager = eventListenerManager;
+
 function initEventListeners() {
     // 랜딩 페이지 버튼들
     const googleLoginBtn = document.getElementById('googleLoginBtn');
@@ -2222,14 +3572,17 @@ function initEventListeners() {
     
     const emailLoginBtn = document.getElementById('emailLoginBtn');
     if (emailLoginBtn) {
-        emailLoginBtn.addEventListener('click', openEmailModal);
+        emailLoginBtn.addEventListener('click', () => openEmailModal());
+    }
+    const emailSignupLink = document.getElementById('emailSignupLink');
+    if (emailSignupLink) {
+        emailSignupLink.addEventListener('click', () => openEmailModal('signup'));
     }
     
     const guestLoginBtn = document.getElementById('guestLoginBtn');
     if (guestLoginBtn) {
         guestLoginBtn.addEventListener('click', startGuest);
     }
-    
     // 이메일 인증 모달 버튼들
     const emailAuthCloseBtn = document.getElementById('emailAuthCloseBtn');
     if (emailAuthCloseBtn) {
@@ -2239,6 +3592,10 @@ function initEventListeners() {
     const emailAuthBtn = document.getElementById('emailAuthBtn');
     if (emailAuthBtn) {
         emailAuthBtn.addEventListener('click', handleEmailAuth);
+    }
+    const emailPasswordResetLink = document.getElementById('emailPasswordResetLink');
+    if (emailPasswordResetLink) {
+        emailPasswordResetLink.addEventListener('click', requestPasswordReset);
     }
     
     const emailAuthToggleBtn = document.getElementById('emailAuthToggleBtn');
@@ -2313,6 +3670,24 @@ function initEventListeners() {
     if (profileSetupBtn) {
         profileSetupBtn.addEventListener('click', confirmProfileSetup);
     }
+
+    // 초기 가입: 라이프스타일 버튼
+    document.querySelectorAll('.setup-lifestyle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const v = btn.getAttribute('data-value') || '';
+            const hidden = document.getElementById('setupLifestyle');
+            if (hidden) hidden.value = v;
+            document.querySelectorAll('.setup-lifestyle-btn').forEach(b => {
+                const active = b === btn;
+                b.classList.toggle('bg-emerald-600', active);
+                b.classList.toggle('text-white', active);
+                b.classList.toggle('border-emerald-600', active);
+                b.classList.toggle('bg-slate-50', !active);
+                b.classList.toggle('text-slate-600', !active);
+                b.classList.toggle('border-slate-200', !active);
+            });
+        });
+    });
     
     // 헤더 및 검색
     const searchTriggerBtn = document.getElementById('searchTriggerBtn');
@@ -2320,9 +3695,20 @@ function initEventListeners() {
         searchTriggerBtn.addEventListener('click', window.toggleSearch);
     }
     
-    const headerSettingsBtn = document.getElementById('headerSettingsBtn');
-    if (headerSettingsBtn) {
-        headerSettingsBtn.addEventListener('click', openSettings);
+    // 알림: 클릭 시 팝업, 바깥 클릭 시 닫기
+    const notificationTriggerBtn = document.getElementById('notificationTriggerBtn');
+    if (notificationTriggerBtn) {
+        notificationTriggerBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            window.toggleNotificationPopup();
+        });
+    }
+    document.addEventListener('click', () => {
+        if (typeof window.closeNotificationPopup === 'function') window.closeNotificationPopup();
+    });
+    const notificationPopup = document.getElementById('notificationPopup');
+    if (notificationPopup) {
+        notificationPopup.addEventListener('click', (e) => e.stopPropagation());
     }
     
     const galleryTraceFilterPanel = document.getElementById('galleryTraceFilterPanel');
@@ -2371,10 +3757,12 @@ function initEventListeners() {
         navBoard.addEventListener('click', () => window.switchMainTab('board'));
     }
     
-    // 설정 페이지
-    const settingsCloseBtn = document.getElementById('settingsCloseBtn');
-    if (settingsCloseBtn) {
-        settingsCloseBtn.addEventListener('click', closeSettings);
+    const navSettings = document.getElementById('nav-settings');
+    if (navSettings) {
+        navSettings.addEventListener('click', () => {
+            if (typeof openSettings === 'function') openSettings();
+            else if (typeof window.switchMainTab === 'function') window.switchMainTab('settings');
+        });
     }
     
     const settingsTabProfile = document.getElementById('settingsTabProfile');
@@ -2387,9 +3775,24 @@ function initEventListeners() {
         settingsTabTags.addEventListener('click', () => window.switchSettingsTab('tags'));
     }
     
+    const settingsTabShortcuts = document.getElementById('settingsTabShortcuts');
+    if (settingsTabShortcuts) {
+        settingsTabShortcuts.addEventListener('click', () => window.switchSettingsTab('shortcuts'));
+    }
+    
     const saveProfileSettingsBtn = document.getElementById('saveProfileSettingsBtn');
     if (saveProfileSettingsBtn) {
         saveProfileSettingsBtn.addEventListener('click', saveProfileSettings);
+    }
+
+    const editProfileSettingsBtn = document.getElementById('editProfileSettingsBtn');
+    if (editProfileSettingsBtn) {
+        editProfileSettingsBtn.addEventListener('click', () => window.startProfileSettingsEdit?.());
+    }
+
+    const cancelProfileSettingsBtn = document.getElementById('cancelProfileSettingsBtn');
+    if (cancelProfileSettingsBtn) {
+        cancelProfileSettingsBtn.addEventListener('click', () => window.cancelProfileSettingsEdit?.());
     }
     
     const profileTypeEmoji = document.getElementById('profileTypeEmoji');
@@ -2401,11 +3804,77 @@ function initEventListeners() {
     if (profileTypePhoto) {
         profileTypePhoto.addEventListener('click', () => window.setSettingsProfileType('photo'));
     }
+
+    const profileTypeText = document.getElementById('profileTypeText');
+    if (profileTypeText) {
+        profileTypeText.addEventListener('click', () => window.setSettingsProfileType('text'));
+    }
+
+    const photoSelectBtn = document.getElementById('photoSelectBtn');
+    if (photoSelectBtn) {
+        photoSelectBtn.addEventListener('click', () => {
+            if (!appState.isProfileEditing) {
+                showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+                return;
+            }
+            document.getElementById('photoInput')?.click();
+        });
+    }
+
+    // 설정: 라이프스타일 버튼
+    document.querySelectorAll('.settings-lifestyle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (!appState.isProfileEditing) {
+                showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+                return;
+            }
+            const v = btn.getAttribute('data-value') || '';
+            const hidden = document.getElementById('settingLifestyle');
+            if (hidden) hidden.value = v;
+            document.querySelectorAll('.settings-lifestyle-btn').forEach(b => {
+                const active = b === btn;
+                b.classList.toggle('bg-emerald-600', active);
+                b.classList.toggle('text-white', active);
+                b.classList.toggle('border-emerald-600', active);
+                b.classList.toggle('bg-white', !active);
+                b.classList.toggle('text-slate-600', !active);
+                b.classList.toggle('border-slate-200', !active);
+            });
+        });
+    });
     
     // 게시판
     const boardWriteBtn = document.getElementById('boardWriteBtn');
     if (boardWriteBtn) {
         boardWriteBtn.addEventListener('click', window.openBoardWrite);
+    }
+    const boardWriteImagesInput = document.getElementById('boardWriteImages');
+    const boardWriteAddPhotosBtn = document.getElementById('boardWriteAddPhotosBtn');
+    if (boardWriteAddPhotosBtn && boardWriteImagesInput) {
+        boardWriteAddPhotosBtn.addEventListener('click', () => boardWriteImagesInput.click());
+    }
+    if (boardWriteImagesInput) {
+        boardWriteImagesInput.addEventListener('change', (e) => {
+            const existing = (window.boardWriteExistingUrls || []).length;
+            const filesCount = (window.boardWriteFiles || []).length;
+            const total = existing + filesCount;
+            const canAdd = Math.max(0, 5 - total);
+            const files = Array.from(e.target.files || []).slice(0, canAdd);
+            if (files.length === 0) {
+                if ((e.target.files || []).length > canAdd && canAdd === 0) showToast('사진은 최대 5장까지 추가할 수 있습니다.', 'info');
+                e.target.value = '';
+                return;
+            }
+            if (!window.boardWriteFiles) window.boardWriteFiles = [];
+            if (!window.boardWriteObjectUrls) window.boardWriteObjectUrls = [];
+            files.forEach(f => {
+                if (!f.type.startsWith('image/')) return;
+                window.boardWriteFiles.push(f);
+                window.boardWriteObjectUrls.push(URL.createObjectURL(f));
+            });
+            if (typeof window.renderBoardWritePreviews === 'function') window.renderBoardWritePreviews();
+            e.target.value = '';
+        });
     }
     
     // 게시판 카테고리 버튼들

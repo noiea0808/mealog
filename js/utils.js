@@ -2,6 +2,35 @@
 import { storage } from './firebase.js';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
+// 프로덕션 환경 감지 (localhost 또는 127.0.0.1이 아니면 프로덕션)
+const isProduction = () => {
+    const hostname = window.location.hostname;
+    return hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.includes('192.168.');
+};
+
+// 프로덕션에서 console.log 제거를 위한 래퍼 함수
+export const logger = {
+    log: (...args) => {
+        if (!isProduction()) {
+            console.log(...args);
+        }
+    },
+    warn: (...args) => {
+        if (!isProduction()) {
+            console.warn(...args);
+        }
+    },
+    error: (...args) => {
+        // error는 프로덕션에서도 표시 (중요한 에러 추적)
+        console.error(...args);
+    },
+    info: (...args) => {
+        if (!isProduction()) {
+            console.info(...args);
+        }
+    }
+};
+
 export function setVal(id, value) {
     const el = document.getElementById(id);
     if (el) el.value = value;
@@ -13,6 +42,40 @@ export function normalizeUrl(url) {
     return url.split('?')[0];
 }
 
+/**
+ * 표시용 프로필 반환: 작성자가 현재 로그인 사용자이면 현재 프로필을 사용하고,
+ * 다른 사용자이면 프로필 캐시(최신) 또는 저장된 값을 사용합니다.
+ * (다른 사용자 프로필은 fetchUserProfiles로 미리 로드해 두면 최신 설정으로 표시됨)
+ * @param {string} authorId - 작성자 userId
+ * @param {{ nickname?: string, icon?: string, photoUrl?: string }} stored - 게시물에 저장된 프로필 (캐시 없을 때 fallback)
+ * @returns {{ nickname: string, icon: string, photoUrl: string|null }}
+ */
+export function getDisplayProfile(authorId, stored = {}) {
+    const isCurrentUser = typeof window !== 'undefined' && window.currentUser && authorId === window.currentUser.uid;
+    const profile = window?.userSettings?.profile;
+    if (isCurrentUser && profile) {
+        return {
+            nickname: profile.nickname || stored.nickname || '익명',
+            icon: profile.icon ?? stored.icon ?? '🐻',
+            photoUrl: profile.photoUrl ?? stored.photoUrl ?? null
+        };
+    }
+    // 다른 사용자: 프로필 캐시에 최신 데이터가 있으면 사용 (없으면 저장된 값 fallback)
+    const cached = typeof window !== 'undefined' && window.userProfileCache?.get?.(authorId);
+    if (cached) {
+        return {
+            nickname: cached.nickname || stored.nickname || '익명',
+            icon: cached.icon ?? stored.icon ?? '🐻',
+            photoUrl: cached.photoUrl ?? stored.photoUrl ?? null
+        };
+    }
+    return {
+        nickname: stored.nickname || '익명',
+        icon: stored.icon ?? '🐻',
+        photoUrl: stored.photoUrl ?? null
+    };
+}
+
 export function getInputIdFromContainer(containerId) {
     const container = document.getElementById(containerId);
     if (!container) return null;
@@ -20,10 +83,21 @@ export function getInputIdFromContainer(containerId) {
     if (containerId === 'menuSuggestions') return 'menuDetailInput';
     if (containerId === 'peopleSuggestions') return 'withWhomInput';
     if (containerId === 'snackSuggestions') return 'snackDetailInput';
+    if (containerId === 'snackPlaceSuggestions') return 'snackPlaceInput';
     return null;
 }
 
-// 이미지를 압축하여 Blob으로 변환 (Storage 업로드용) - 최적화 버전
+// 뷰포트 기반 최대/최소 너비 (레티나 2배, 상한 1200px)
+function getViewportMaxWidth() {
+    const vw = typeof window !== 'undefined' ? (window.innerWidth || 390) : 390;
+    return Math.min(1200, vw * 2);
+}
+function getViewportMinWidth() {
+    const vw = typeof window !== 'undefined' ? (window.innerWidth || 390) : 390;
+    return Math.max(400, vw);
+}
+
+// 이미지를 압축하여 Blob으로 변환 (Storage 업로드용) - 뷰포트 기반 최적화
 export function compressImageToBlob(file) {
     return new Promise((resolve, reject) => {
         const img = new Image();
@@ -34,16 +108,14 @@ export function compressImageToBlob(file) {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
-                // 이미지당 최대 400KB로 제한 (더 빠른 업로드를 위해 약간 줄임)
                 const targetSizeKB = 400;
                 const targetSizeBytes = targetSizeKB * 1024;
+                const maxInitialWidth = getViewportMaxWidth();
+                const minWidth = getViewportMinWidth();
                 
-                // 원본 비율 유지하면서 리사이즈
                 let width = img.width;
                 let height = img.height;
                 
-                // 초기 리사이즈 (최대 1000px로 줄여서 더 빠르게)
-                const maxInitialWidth = 1000;
                 if (width > maxInitialWidth) {
                     height = (height / width) * maxInitialWidth;
                     width = maxInitialWidth;
@@ -53,10 +125,9 @@ export function compressImageToBlob(file) {
                 canvas.height = height;
                 ctx.drawImage(img, 0, 0, width, height);
                 
-                // 품질을 0.6부터 시작 (더 공격적인 압축으로 반복 횟수 줄임)
                 let quality = 0.6;
                 let attempts = 0;
-                const maxAttempts = 8; // 최대 반복 횟수 제한
+                const maxAttempts = 8;
                 
                 const compress = () => {
                     attempts++;
@@ -65,25 +136,18 @@ export function compressImageToBlob(file) {
                             reject(new Error('이미지 압축 실패'));
                             return;
                         }
-                        
-                        // 400KB 이하가 되거나 최대 시도 횟수에 도달하면 완료
                         if (blob.size <= targetSizeBytes || attempts >= maxAttempts) {
                             resolve(blob);
                             return;
                         }
-                        
-                        // 품질을 더 빠르게 낮춤 (0.1씩이 아닌 0.15씩)
                         quality = Math.max(0.2, quality - 0.15);
-                        
-                        // 해상도도 더 빠르게 줄임
-                        if (width > 500 && blob.size > targetSizeBytes * 1.2) {
-                            width = Math.max(500, Math.floor(width * 0.85));
+                        if (width > minWidth && blob.size > targetSizeBytes * 1.2) {
+                            width = Math.max(minWidth, Math.floor(width * 0.85));
                             height = Math.floor((height / canvas.width) * width);
                             canvas.width = width;
                             canvas.height = height;
                             ctx.drawImage(img, 0, 0, width, height);
                         }
-                        
                         compress();
                     }, 'image/jpeg', quality);
                 };
@@ -102,6 +166,111 @@ export function compressImageToBlob(file) {
             reject(new Error('파일 읽기 실패'));
         };
         
+        reader.readAsDataURL(file);
+    });
+}
+
+/** 캐릭터 이미지용: PNG 투명 배경 보존 (JPEG 변환 시 투명 영역이 검은색으로 나오는 문제 방지) */
+export function compressImageToBlobPreserveTransparency(file) {
+    return new Promise((resolve, reject) => {
+        if (!file.type.startsWith('image/')) {
+            reject(new Error('이미지 파일이 아닙니다'));
+            return;
+        }
+        const img = new Image();
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const maxWidth = 512;
+                let width = img.width;
+                let height = img.height;
+                if (width > maxWidth) {
+                    height = (height / width) * maxWidth;
+                    width = maxWidth;
+                }
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+                canvas.toBlob((blob) => {
+                    if (!blob) reject(new Error('이미지 변환 실패'));
+                    else resolve(blob);
+                }, file.type === 'image/png' ? 'image/png' : 'image/jpeg', file.type === 'image/png' ? 0.9 : 0.85);
+            };
+            img.onerror = () => reject(new Error('이미지 로드 실패'));
+            img.src = e.target.result;
+        };
+        reader.onerror = () => reject(new Error('파일 읽기 실패'));
+        reader.readAsDataURL(file);
+    });
+}
+
+/** 밀톡용: 최대 용량 제한 압축 (장당 500KB 이하). 초과 시 에러 throw */
+export function compressImageToBlobMaxSize(file, maxSizeKB = 500) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        const reader = new FileReader();
+        const targetSizeBytes = maxSizeKB * 1024;
+
+        reader.onload = (e) => {
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const maxInitialWidth = getViewportMaxWidth();
+                const minWidth = getViewportMinWidth();
+
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxInitialWidth) {
+                    height = (height / width) * maxInitialWidth;
+                    width = maxInitialWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+
+                let quality = 0.6;
+                let attempts = 0;
+                const maxAttempts = 12;
+
+                const compress = () => {
+                    attempts++;
+                    canvas.toBlob((blob) => {
+                        if (!blob) {
+                            reject(new Error('이미지 압축 실패'));
+                            return;
+                        }
+                        if (blob.size <= targetSizeBytes || attempts >= maxAttempts) {
+                            if (blob.size > targetSizeBytes) {
+                                reject(new Error(`이미지 용량이 ${maxSizeKB}KB를 초과합니다. 다른 사진을 선택해 주세요.`));
+                                return;
+                            }
+                            resolve(blob);
+                            return;
+                        }
+                        quality = Math.max(0.15, quality - 0.1);
+                        if (width > minWidth && blob.size > targetSizeBytes * 1.1) {
+                            width = Math.max(minWidth, Math.floor(width * 0.85));
+                            height = Math.floor((height / canvas.width) * width);
+                            canvas.width = width;
+                            canvas.height = height;
+                            ctx.drawImage(img, 0, 0, width, height);
+                        }
+                        compress();
+                    }, 'image/jpeg', quality);
+                };
+
+                compress();
+            };
+
+            img.onerror = () => reject(new Error('이미지 로드 실패'));
+            img.src = e.target.result;
+        };
+
+        reader.onerror = () => reject(new Error('파일 읽기 실패'));
         reader.readAsDataURL(file);
     });
 }
@@ -139,8 +308,51 @@ export function base64ToBlob(base64DataUrl) {
     });
 }
 
-// base64 이미지를 압축하여 Blob으로 변환 (마이그레이션용)
-export function compressBase64ToBlob(base64DataUrl) {
+/**
+ * 유령 캡처(Ghost Capture): 화면 밖에 복제본을 만들어 부모 간섭(모달, transform, Flex/Grid) 없이 캡처
+ * @param {HTMLElement} originalElement - 캡처할 원본 요소
+ * @param {Object} options - html2canvas 옵션 + captureWidth
+ * @param {number} [options.captureWidth=420] - 캡처 가로 크기 (정사이즈 고정)
+ * @returns {Promise<HTMLCanvasElement>}
+ */
+export async function captureWithGhostStrategy(originalElement, options = {}) {
+    const { captureWidth = 420, ...html2canvasOptions } = options;
+    const html2canvasFunc = (typeof window !== 'undefined' && window.html2canvas) || (typeof html2canvas !== 'undefined' ? html2canvas : null);
+    if (!html2canvasFunc) throw new Error('html2canvas를 찾을 수 없습니다. HTML에 html2canvas 라이브러리가 로드되었는지 확인하세요.');
+
+    const ghostNode = originalElement.cloneNode(true);
+    ghostNode.style.position = 'fixed';
+    ghostNode.style.top = '-10000px';
+    ghostNode.style.left = '-10000px';
+    ghostNode.style.width = `${captureWidth}px`;
+    ghostNode.style.height = 'auto';
+    ghostNode.style.zIndex = '-1';
+    ghostNode.style.transform = 'none';
+    ghostNode.style.margin = '0';
+
+    document.body.appendChild(ghostNode);
+
+    try {
+        await document.fonts.ready;
+        const canvas = await html2canvasFunc(ghostNode, {
+            scale: 3,
+            useCORS: true,
+            backgroundColor: '#ffffff',
+            logging: false,
+            windowWidth: captureWidth,
+            allowTaint: true,
+            fontEmbedCSS: true,
+            ...html2canvasOptions,
+        });
+        return canvas;
+    } finally {
+        document.body.removeChild(ghostNode);
+    }
+}
+
+// base64 이미지를 압축하여 Blob으로 변환 (마이그레이션용) - 뷰포트 기반
+// maxSizeKB: 목표 최대 용량(KB). 캡쳐3종은 1024(1MB), initialQuality 0.9로 선명도 향상
+export function compressBase64ToBlob(base64DataUrl, maxSizeKB = 500, initialQuality = 0.7) {
     return new Promise((resolve, reject) => {
         const img = new Image();
         
@@ -148,16 +360,15 @@ export function compressBase64ToBlob(base64DataUrl) {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             
-            // 이미지당 최대 500KB로 제한
-            const targetSizeKB = 500;
+            const targetSizeKB = maxSizeKB;
             const targetSizeBytes = targetSizeKB * 1024;
+            // 캡쳐3종(1MB): scale 3 출력(1260px) 보존. 그 외: 뷰포트 기반
+            const maxInitialWidth = maxSizeKB >= 1024 ? 1260 : getViewportMaxWidth();
+            const minWidth = getViewportMinWidth();
             
-            // 원본 비율 유지하면서 리사이즈
             let width = img.width;
             let height = img.height;
             
-            // 초기 리사이즈 (최대 1200px)
-            const maxInitialWidth = 1200;
             if (width > maxInitialWidth) {
                 height = (height / width) * maxInitialWidth;
                 width = maxInitialWidth;
@@ -167,8 +378,7 @@ export function compressBase64ToBlob(base64DataUrl) {
             canvas.height = height;
             ctx.drawImage(img, 0, 0, width, height);
             
-            // 품질 0.7부터 시작
-            let quality = 0.7;
+            let quality = initialQuality;
             
             const compress = () => {
                 canvas.toBlob((blob) => {
@@ -176,21 +386,16 @@ export function compressBase64ToBlob(base64DataUrl) {
                         reject(new Error('이미지 압축 실패'));
                         return;
                     }
-                    
-                    // 500KB 이하가 될 때까지 품질을 낮춰가며 반복 압축
                     if (blob.size > targetSizeBytes && quality > 0.1) {
                         quality -= 0.1;
                         if (quality < 0.1) quality = 0.1;
-                        
-                        // 해상도도 줄임
-                        if (width > 600 && blob.size > targetSizeBytes) {
-                            width = Math.max(600, Math.floor(width * 0.9));
+                        if (width > minWidth && blob.size > targetSizeBytes) {
+                            width = Math.max(minWidth, Math.floor(width * 0.9));
                             height = Math.floor((height / canvas.width) * width);
                             canvas.width = width;
                             canvas.height = height;
                             ctx.drawImage(img, 0, 0, width, height);
                         }
-                        
                         compress();
                     } else {
                         resolve(blob);
@@ -207,6 +412,24 @@ export function compressBase64ToBlob(base64DataUrl) {
         
         img.src = base64DataUrl;
     });
+}
+
+/** 캐릭터 이미지 업로드: PNG 투명 배경 보존 */
+export async function uploadPersonaImageToStorage(file, userId, characterId) {
+    try {
+        const compressedBlob = await compressImageToBlobPreserveTransparency(file);
+        const ext = file.type === 'image/png' ? 'png' : 'jpg';
+        const timestamp = Date.now();
+        const randomStr = Math.random().toString(36).substring(2, 9);
+        const fileName = `${timestamp}_${randomStr}.${ext}`;
+        const path = `users/${userId}/persona/${characterId || 'temp'}/${fileName}`;
+        const storageRef = ref(storage, path);
+        await uploadBytes(storageRef, compressedBlob);
+        return await getDownloadURL(storageRef);
+    } catch (error) {
+        console.error('캐릭터 이미지 업로드 실패:', error);
+        throw error;
+    }
 }
 
 // Firebase Storage에 이미지 업로드
@@ -241,10 +464,11 @@ export async function uploadImageToStorage(file, userId, entryId = null) {
 }
 
 // base64 이미지를 Storage에 업로드 (마이그레이션용)
-export async function uploadBase64ToStorage(base64DataUrl, userId, entryId) {
+// maxSizeKB: 압축 목표 최대 용량(KB). 캡쳐3종은 1024(1MB), initialQuality 0.9로 선명도 향상
+export async function uploadBase64ToStorage(base64DataUrl, userId, entryId, maxSizeKB = 500) {
     try {
-        // base64를 압축된 Blob으로 변환
-        const compressedBlob = await compressBase64ToBlob(base64DataUrl);
+        const initialQuality = maxSizeKB >= 1024 ? 0.9 : 0.7;
+        const compressedBlob = await compressBase64ToBlob(base64DataUrl, maxSizeKB, initialQuality);
         
         // 파일명 생성 (타임스탬프 + 랜덤 문자열)
         const timestamp = Date.now();
@@ -315,6 +539,27 @@ export async function uploadMultipleImages(files, userId, entryId = null, progre
     return Promise.all(uploadPromises);
 }
 
+/** 밀톡 게시글용 이미지 업로드: 최대 5장, 장당 500KB 이하 압축 후 users/{userId}/board/ 에 저장 */
+export async function uploadBoardImages(files, userId) {
+    if (!files || files.length === 0) return [];
+    const list = Array.from(files).slice(0, 5);
+
+    const compressPromises = list.map(file => compressImageToBlobMaxSize(file, 500));
+    const compressedBlobs = await Promise.all(compressPromises);
+
+    const uploadPromises = compressedBlobs.map(async (blob, index) => {
+        const timestamp = Date.now();
+        const randomStr = Math.random().toString(36).substring(2, 9);
+        const fileName = `${timestamp}_${randomStr}_${index}.jpg`;
+        const path = `users/${userId}/board/${fileName}`;
+        const storageRef = ref(storage, path);
+        await uploadBytes(storageRef, blob);
+        return getDownloadURL(storageRef);
+    });
+
+    return Promise.all(uploadPromises);
+}
+
 // Storage에서 이미지 삭제
 export async function deleteImageFromStorage(imageUrl) {
     if (!imageUrl || typeof imageUrl !== 'string') {
@@ -375,7 +620,7 @@ export async function deleteMultipleImagesFromStorage(imageUrls) {
     await Promise.allSettled(deletePromises);
 }
 
-// 기존 base64 압축 함수 (하위 호환성을 위해 유지)
+// base64 압축 (모달 미리보기/저장용) - 뷰포트 기반, 200KB 이하
 export function compressImage(base64) {
     return new Promise((resolve) => {
         const img = new Image();
@@ -383,16 +628,14 @@ export function compressImage(base64) {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             
-            // 이미지당 200KB 이하로 제한 (base64 문자열 크기 기준)
             const targetSizeKB = 200;
             const targetSizeBytes = targetSizeKB * 1024;
+            const maxInitialWidth = getViewportMaxWidth();
+            const minWidth = Math.max(300, Math.floor((typeof window !== 'undefined' ? (window.innerWidth || 390) : 390) * 0.8));
             
-            // 원본 비율 유지하면서 리사이즈
             let width = img.width;
             let height = img.height;
             
-            // 초기 리사이즈 (최대 800px)
-            const maxInitialWidth = 800;
             if (width > maxInitialWidth) {
                 height = (height / width) * maxInitialWidth;
                 width = maxInitialWidth;
@@ -402,37 +645,27 @@ export function compressImage(base64) {
             canvas.height = height;
             ctx.drawImage(img, 0, 0, width, height);
             
-            // 품질 0.45부터 시작
             let quality = 0.45;
             let dataUrl = canvas.toDataURL('image/jpeg', quality);
             
-            // base64 문자열 크기 계산 (실제로는 base64가 약 33% 더 크지만, 문자열 길이로 계산)
-            // base64 문자열의 바이트 크기 = (문자열 길이 * 3) / 4 (대략)
-            // 하지만 더 정확하게는 실제 base64 데이터 부분만 계산
             const getBase64Size = (dataUrl) => {
                 const base64Data = dataUrl.split(',')[1] || dataUrl;
-                // base64는 패딩을 제외하고 실제 데이터 크기 = (문자열 길이 * 3) / 4
-                // 패딩 문자(=)는 제외하고 계산
                 const paddingCount = (base64Data.match(/=/g) || []).length;
                 const actualLength = base64Data.length - paddingCount;
                 return (actualLength * 3) / 4;
             };
             
             let currentSizeBytes = getBase64Size(dataUrl);
-            
-            // 200KB 이하가 될 때까지 품질을 낮춰가며 반복 압축
             let attempts = 0;
             const maxAttempts = 15;
             
             while (currentSizeBytes > targetSizeBytes && quality > 0.1 && attempts < maxAttempts) {
                 if (attempts < 5) {
-                    // 처음 5번은 품질만 조정
                     quality -= 0.05;
                     if (quality < 0.1) quality = 0.1;
                 } else {
-                    // 이후에는 해상도도 줄임
-                    if (width > 300) {
-                        width = Math.max(300, Math.floor(width * 0.9));
+                    if (width > minWidth) {
+                        width = Math.max(minWidth, Math.floor(width * 0.9));
                         height = Math.floor((height / canvas.width) * width);
                         canvas.width = width;
                         canvas.height = height;
@@ -441,7 +674,6 @@ export function compressImage(base64) {
                     quality -= 0.03;
                     if (quality < 0.1) quality = 0.1;
                 }
-                
                 dataUrl = canvas.toDataURL('image/jpeg', quality);
                 currentSizeBytes = getBase64Size(dataUrl);
                 attempts++;
