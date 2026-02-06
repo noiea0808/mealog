@@ -284,7 +284,18 @@ export class AuthFlowManager {
         switchScreen(true);
         if (landingPage) landingPage.style.display = 'none';
         if (switchMainTab) switchMainTab('timeline');
-        hideLoading();
+        // 밀로그 메인 화면에서 기록 로드 중 메시지 표시 (onDataUpdate에서 meals 로드 시 hideLoading)
+        if (!window._recordsLoadHidePending) {
+            window._recordsLoadHidePending = true;
+            showLoading('기록을 불러오고 있어요', { dimBackground: false });
+            // 데이터가 이미 로드된 경우(레이스) 즉시 숨김
+            queueMicrotask(() => {
+                if (window._recordsLoadHidePending && window.loadedMealsDateRange) {
+                    window._recordsLoadHidePending = false;
+                    hideLoading();
+                }
+            });
+        }
         
         // 백그라운드에서 약관과 프로필 확인 (블로킹하지 않음)
         this.checkTermsAndProfileInBackground(user).catch(e => {
@@ -459,8 +470,10 @@ export class AuthFlowManager {
             // 약관이 필요하면 약관 모달 표시
             if (!readiness.termsAgreed) {
                 console.log('📋 약관 동의 필요: 모달 표시');
+                window._recordsLoadHidePending = false;
                 switchScreen(false);
                 showTermsModal();
+                hideLoading();
                 // 약관 모달이 표시되면 여기서 종료 (약관 완료 후 프로필 확인)
                 return;
             }
@@ -468,7 +481,9 @@ export class AuthFlowManager {
             // 약관은 완료되었고, 프로필이 필요하면 프로필 모달 표시
             if (!readiness.hasProfile) {
                 console.log('📋 프로필 설정 필요: 모달 표시');
+                window._recordsLoadHidePending = false;
                 switchScreen(false);
+                hideLoading();
                 if (window.showProfileSetupModal) {
                     window.showProfileSetupModal();
                 } else {
@@ -581,13 +596,16 @@ export class AuthFlowManager {
         } finally {
             this.isProcessing = false;
             // 모달/화면 전환이 끝났으면 로딩 오버레이는 내려야 함
+            // 단, READY 상태에서 _recordsLoadHidePending이면 기록 로드 대기 중이므로 hideLoading 건너뜀
             if (
                 this.currentState === AuthState.READY ||
                 this.currentState === AuthState.GUEST ||
                 this.currentState === AuthState.NEEDS_TERMS ||
                 this.currentState === AuthState.NEEDS_PROFILE
             ) {
-                hideLoading();
+                if (!(this.currentState === AuthState.READY && window._recordsLoadHidePending)) {
+                    hideLoading();
+                }
             }
         }
     }

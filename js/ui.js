@@ -2,11 +2,25 @@
 
 // 로딩 오버레이 중앙 관리
 let loadingOverlayTimeout = null;
+let loadingHideTimeout = null; // hideLoading 지연용
+let loadingShownAt = 0; // 메시지 표시 시 최소 표시 시간용
 
-export function showLoading() {
+export function showLoading(message = '', options = {}) {
+    const { dimBackground = true } = options;
     const overlay = document.getElementById('loadingOverlay');
+    const messageEl = document.getElementById('loadingOverlayMessage');
     if (overlay) {
         overlay.classList.remove('hidden');
+        overlay.classList.toggle('bg-white/90', dimBackground);
+        overlay.classList.toggle('bg-transparent', !dimBackground);
+        overlay.classList.toggle('pointer-events-none', !dimBackground);
+        if (messageEl) {
+            messageEl.textContent = message || '';
+            messageEl.style.display = message ? 'block' : 'none';
+            messageEl.style.visibility = message ? 'visible' : 'hidden';
+            messageEl.classList.toggle('hidden', !message);
+        }
+        if (message) loadingShownAt = Date.now();
         // 10초 타임아웃 (무한 대기 방지)
         if (loadingOverlayTimeout) clearTimeout(loadingOverlayTimeout);
         loadingOverlayTimeout = setTimeout(() => {
@@ -18,12 +32,35 @@ export function showLoading() {
 
 export function hideLoading() {
     const overlay = document.getElementById('loadingOverlay');
-    if (overlay) {
+    const messageEl = document.getElementById('loadingOverlayMessage');
+    if (!overlay) return;
+    if (loadingHideTimeout) {
+        clearTimeout(loadingHideTimeout);
+        loadingHideTimeout = null;
+    }
+    const doHide = () => {
         overlay.classList.add('hidden');
+        overlay.classList.add('bg-white/90');
+        overlay.classList.remove('bg-transparent');
+        overlay.classList.remove('pointer-events-none');
+        if (messageEl) {
+            messageEl.textContent = '';
+            messageEl.style.display = 'none';
+        }
         if (loadingOverlayTimeout) {
             clearTimeout(loadingOverlayTimeout);
             loadingOverlayTimeout = null;
         }
+        loadingHideTimeout = null;
+    };
+    // 메시지가 표시된 경우 최소 500ms 보여주기 (너무 빠른 로드 시 사용자가 못 봄)
+    const minShowMs = 500;
+    const elapsed = Date.now() - loadingShownAt;
+    const delay = loadingShownAt && elapsed < minShowMs ? minShowMs - elapsed : 0;
+    if (delay > 0) {
+        loadingHideTimeout = setTimeout(doHide, delay);
+    } else {
+        doHide();
     }
 }
 

@@ -2230,10 +2230,19 @@ initAuth(async (user) => {
                     const tab = appState.currentTab;
                     if (tab === 'dashboard') {
                         updateDashboard();
+                        if (window._recordsLoadHidePending && window.loadedMealsDateRange) {
+                            window._recordsLoadHidePending = false;
+                            hideLoading();
+                        }
                         return;
                     }
                     // 타임라인 탭이 보일 때만 재렌더. 다른 탭(앨범/분석/피드)에서는 스킵해 프리즈·고CPU 방지.
                     if (tab !== 'timeline') return;
+                    // 밀로그 메인 화면에서 기록(meals) 첫 수신 시에만 로딩 오버레이 숨김 (loadedMealsDateRange는 meals 리스너에서만 설정됨)
+                    if (window._recordsLoadHidePending && window.loadedMealsDateRange) {
+                        window._recordsLoadHidePending = false;
+                        hideLoading();
+                    }
                     // 저장 직후 800ms 동안은 재렌더 스킵 (낙관 반영 + jumpToDate·스크롤이 리스너 재렌더에 덮이지 않게)
                     if (window._timelineRerenderFreezeUntil && Date.now() < window._timelineRerenderFreezeUntil) return;
                     if (dataUpdateTimer) clearTimeout(dataUpdateTimer);

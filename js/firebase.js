@@ -1,6 +1,6 @@
 // Firebase 초기화 및 설정
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getAuth, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { getStorage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js";
@@ -17,6 +17,10 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+// 자동 로그인: 브라우저를 닫아도 로그인 상태 유지 (LocalStorage 사용)
+setPersistence(auth, browserLocalPersistence).catch((e) => {
+    console.warn('Auth persistence 설정 실패:', e);
+});
 // 이메일 인증·비밀번호 재설정 메일을 한글로 발송
 auth.languageCode = 'ko';
 export const db = getFirestore(app);

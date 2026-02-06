@@ -16,6 +16,8 @@ export async function handleGoogleLogin() {
             providerId: result.user.providerData[0]?.providerId,
             providerData: result.user.providerData.map(p => p.providerId)
         });
+        window._recordsLoadHidePending = true;
+        showLoading('기록을 불러오고 있어요', { dimBackground: false });
         showToast("구글 로그인 성공!", "success");
         // 로그인 성공 후 로딩 오버레이는 onAuthStateChanged에서 인증 플로우가 완료될 때까지 유지
         // 인증 플로우가 완료되면 processState의 finally에서 hideLoading() 호출됨
@@ -143,6 +145,8 @@ export async function handleEmailAuth() {
                 providerId: result.user.providerData[0]?.providerId,
                 providerData: result.user.providerData.map(p => p.providerId)
             });
+            window._recordsLoadHidePending = true;
+            showLoading('기록을 불러오고 있어요', { dimBackground: false });
             showToast("회원가입 성공! 환영합니다.", "success");
         } else {
             result = await signInWithEmailAndPassword(auth, email, password);
@@ -152,6 +156,8 @@ export async function handleEmailAuth() {
                 providerId: result.user.providerData[0]?.providerId,
                 providerData: result.user.providerData.map(p => p.providerId)
             });
+            window._recordsLoadHidePending = true;
+            showLoading('기록을 불러오고 있어요', { dimBackground: false });
             showToast("로그인되었습니다.", "success");
             if (document.getElementById('rememberEmailCheck').checked) {
                 localStorage.setItem('savedEmail', email);
