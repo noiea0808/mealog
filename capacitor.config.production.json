@@ -5,5 +5,10 @@
   "server": {
     "androidScheme": "https",
     "url": "https://www.mealog.net"
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "disable"
+    }
   }
 }

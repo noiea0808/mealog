@@ -2,9 +2,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&display=swap');
 @import url('https://cdn.jsdelivr.net/gh/leetaewook/gmarket-sans-dynamic-subset/GmarketSans.css');
 :root { 
-    /* Android WebView에서 env()가 0 반환 시 fallback 사용 (상태바~28px, 제스처네비~48px) */
-    --safe-top: env(safe-area-inset-top, 28px); 
-    --safe-bottom: env(safe-area-inset-bottom, 48px); 
+    /* env()가 0 반환해도 최소값 보장 (상태바~28px, 제스처네비~48px) */
+    --safe-top: max(env(safe-area-inset-top, 28px), 28px); 
+    --safe-bottom: max(env(safe-area-inset-bottom, 48px), 48px); 
     --color-primary: #059669; /* 그린: CTA·선택·활성만 사용 */
 }
 body { 

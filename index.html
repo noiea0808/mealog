@@ -163,6 +163,15 @@
         document.addEventListener('DOMContentLoaded', function() {
             var el = document.getElementById('headerStagingLabel');
             if (el && window.APP_ENV === 'staging') el.classList.remove('hidden');
+            // Capacitor 앱에서 safe-area 폴백 (env가 0일 때)
+            try {
+                if (window.Capacitor?.isNativePlatform?.()) {
+                    var st = getComputedStyle(document.documentElement).getPropertyValue('--safe-top').trim();
+                    var sb = getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom').trim();
+                    if (!st || st === '0px' || parseFloat(st) < 20) document.documentElement.style.setProperty('--safe-top', '28px');
+                    if (!sb || sb === '0px' || parseFloat(sb) < 20) document.documentElement.style.setProperty('--safe-bottom', '48px');
+                }
+            } catch (e) {}
         });
     </script>
     <script type="module" src="js/main.js?v=3" onerror="console.error('❌ main.js 스크립트 태그 로드 실패'); window.moduleLoadError = {message: '스크립트 태그 로드 실패', quicHint: true};"></script>
