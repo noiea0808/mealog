@@ -49,7 +49,9 @@ export const callableFunctions = {
     createBestShare: httpsCallable(functions, 'createBestShare'),
     createInsightShare: httpsCallable(functions, 'createInsightShare'),
     getStorageImageAsBase64: httpsCallable(functions, 'getStorageImageAsBase64'),
-    backfillUserStats: httpsCallable(functions, 'backfillUserStats')
+    backfillUserStats: httpsCallable(functions, 'backfillUserStats'),
+    callGemini: httpsCallable(functions, 'callGemini'),
+    searchKakaoPlaces: httpsCallable(functions, 'searchKakaoPlaces')
 };
 
 // App Check 초기화 (reCAPTCHA v3 사용)

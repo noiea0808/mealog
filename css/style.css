@@ -279,9 +279,12 @@ header .mealog-title {
 
 /* 스크롤 시 헤더 숨김 (인스타/페이스북 스타일) */
 #mainAppHeader.header-scroll-hidden { transform: translateY(-100%); }
-/* 헤더 숨김 시 트래커는 상단(safe-top)에 고정, 헤더 있을 땐 헤더 아래에 고정 */
+/* 헤더 숨김 시 트래커는 상태바 아래에 고정 (padding으로 상태바 영역 확보) */
 #trackerSection { transition: top 0.3s ease-out; }
-#trackerSection.tracker-header-hidden { top: var(--safe-top) !important; }
+#trackerSection.tracker-header-hidden {
+    top: 0 !important;
+    padding-top: var(--safe-top) !important;
+}
 .bottom-nav { 
     position: fixed; 
     bottom: calc(12px + var(--safe-bottom)); 
@@ -345,14 +348,10 @@ header .mealog-title {
     box-shadow: none;
 }
 .date-section-header { 
-    position: sticky; 
-    top: calc(var(--safe-top) + 148px); 
-    z-index: 20; 
+    position: relative; 
     background: rgba(248, 250, 252, 0.95); 
-    backdrop-filter: blur(8px); 
     padding: 12px 16px; 
     margin-bottom: 8px; 
-    scroll-margin-top: calc(var(--safe-top) + 148px); 
 }
 .date-section-header h3 { color: #1e293b; }
 .date-section-header.text-rose-400 h3 { color: #fb7185; }

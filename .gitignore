@@ -1,6 +1,10 @@
 # Gemini API Key 설정 파일 (민감한 정보)
 js/config.js
 
+# Firebase Functions 환경 변수 (민감한 정보)
+functions/.env
+functions/.env.*
+
 # Node modules (프로젝트에 사용되지 않지만 일반적으로 제외)
 node_modules/
 www/

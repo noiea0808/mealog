@@ -1410,6 +1410,91 @@ exports.backfillUserStats = onCall(
 );
 
 /**
+ * Gemini API 프록시 (WebView 차단 우회)
+ * 클라이언트에서 직접 호출 대신 서버에서 Gemini API 호출
+ */
+exports.callGemini = onCall({ region: REGION }, wrapFunction('callGemini', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const { requestBody, model, apiVersion } = request.data || {};
+  if (!requestBody || !model) {
+    throw new HttpsError('invalid-argument', 'requestBody와 model이 필요합니다.');
+  }
+  const apiKey = process.env.GEMINI_API_KEY || '';
+  if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
+    throw new HttpsError('failed-precondition', 'GEMINI_API_KEY가 설정되지 않았습니다. Firebase 함수 환경 변수를 확인하세요.');
+  }
+  const version = apiVersion || 'v1beta';
+  const url = `https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent?key=${apiKey}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      // 서버 요청은 Referer가 비어 있어 HTTP referrer 제한이 있는 API 키에서 403 발생
+      // API 키에 "애플리케이션 제한사항" 없음 또는 IP 주소 제한 사용 권장
+      'Referer': 'https://mealog-r0.web.app/'
+    },
+    body: JSON.stringify(requestBody)
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data?.error?.message || await res.text();
+    throw new HttpsError('internal', `Gemini API 오류: ${res.status} - ${msg}`);
+  }
+  // Callable의 result.data로 전달되므로 Gemini 응답을 그대로 반환
+  return data;
+}));
+
+/**
+ * 카카오 장소 검색 프록시 (WebView 차단 우회)
+ * Kakao Local REST API 사용
+ */
+exports.searchKakaoPlaces = onCall({ region: REGION }, wrapFunction('searchKakaoPlaces', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const { keyword } = request.data || {};
+  if (!keyword || typeof keyword !== 'string' || !keyword.trim()) {
+    throw new HttpsError('invalid-argument', '검색어를 입력해주세요.');
+  }
+  const apiKey = process.env.KAKAO_REST_API_KEY || '';
+  if (!apiKey) {
+    throw new HttpsError('failed-precondition', 'KAKAO_REST_API_KEY가 설정되지 않았습니다. Firebase 함수 환경 변수를 확인하세요.');
+  }
+  const query = encodeURIComponent(keyword.trim());
+  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${query}&category_group_code=FD6&size=15`;
+  // KA 헤더: os 또는 origin 필수 (형식 미공개 - 여러 형식 시도)
+  const kaPayload = { os: 'server', origin: 'https://mealog-r0.web.app' };
+  const kaBase64 = Buffer.from(JSON.stringify(kaPayload)).toString('base64');
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `KakaoAK ${apiKey}`,
+      'KA': kaBase64,
+      'Origin': 'https://mealog-r0.web.app'
+    }
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data?.message || data?.errorType || await res.text();
+    throw new HttpsError('internal', `카카오 API 오류: ${res.status} - ${msg}`);
+  }
+  // REST API 응답 구조: documents, meta. documents를 그대로 반환 (클라이언트와 호환)
+  const documents = data?.documents || [];
+  const restaurants = documents.filter((place) => {
+    const cat = (place.category_name || '').toLowerCase();
+    const code = place.category_group_code || '';
+    if (code === 'FD6') return true;
+    return cat.includes('음식점') || cat.includes('식당') || cat.includes('카페') ||
+      cat.includes('레스토랑') || cat.includes('맛집') || cat.includes('요리') ||
+      cat.includes('식음료') || cat.includes('제과') || cat.includes('베이커리') ||
+      cat.includes('술집') || cat.includes('바');
+  });
+  return { documents: restaurants.slice(0, 10) };
+}));
+
+/**
  * 대기 중인 삭제 요청 수동 처리 (Callable)
  * 트리거가 동작하지 않을 때 관리자가 호출해 남아 있는 deleteUserRequests 문서를 처리
  */

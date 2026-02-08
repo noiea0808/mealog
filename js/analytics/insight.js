@@ -4,7 +4,7 @@ import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { dbOps } from '../db.js';
 import { GEMINI_API_KEY as DEFAULT_API_KEY } from '../config.default.js';
-import { db, appId } from '../firebase.js';
+import { db, appId, callableFunctions } from '../firebase.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { captureWithGhostStrategy } from '../utils.js';
 
@@ -1034,9 +1034,8 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         
         for (const model of models) {
             try {
-                const apiUrl = getGeminiApiUrl(model, apiVersion);
                 if (isDevMode) {
-                    console.log(`🔄 API 호출: ${model}`);
+                    console.log(`🔄 API 호출 (프록시): ${model}`);
                 }
                 
                 // API 요청 본문 구성
@@ -1075,60 +1074,37 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                     });
                 }
                 
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(requestBody)
-                });
-                
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    let errorData;
-                    try {
-                        errorData = JSON.parse(errorText);
-                    } catch (e) {
-                        errorData = { error: { message: errorText } };
-                    }
-                    
-                    // 첫 번째 모델에서만 상세 에러 로그
+                // 백엔드 프록시 사용 (WebView/앱에서 API 차단 우회)
+                let responseData;
+                try {
+                    const result = await callableFunctions.callGemini({ requestBody, model, apiVersion });
+                    responseData = result?.data;
+                } catch (callableErr) {
+                    const errMsg = callableErr?.message || String(callableErr);
                     if (model === models[0] && isDevMode) {
-                        console.warn(`⚠️ 모델 실패 (${model}):`, {
-                            status: response.status,
-                            message: errorData.error?.message
-                        });
+                        console.warn(`⚠️ callGemini 실패 (${model}):`, errMsg);
                     }
-                    
-                    // API 키 관련 에러
-                    if (response.status === 400 && errorData.error?.message?.includes('API key')) {
-                        const errorMsg = `API 키 문제: ${errorData.error.message}`;
-                        console.error('❌', errorMsg);
-                        lastError = new Error(errorMsg);
-                        // API 키가 유효하지 않으면 다른 모델 시도하지 않고 즉시 중단
-                        if (errorData.error?.message?.includes('invalid') || errorData.error?.message?.includes('Invalid')) {
-                            throw new Error(`API 키가 유효하지 않습니다. js/config.js 파일의 GEMINI_API_KEY를 확인해주세요.`);
-                        }
-                        continue;
+                    if (errMsg.includes('API 키') || errMsg.includes('GEMINI_API_KEY')) {
+                        throw new Error(`API 키가 유효하지 않습니다. Firebase 함수 환경 변수 GEMINI_API_KEY를 확인해주세요.`);
                     }
-                    
-                    // 404 (모델 없음), 429 (쿼터 초과)는 조용히 처리
-                    if (response.status === 404 || response.status === 429) {
-                        lastError = new Error(`API 요청 실패 (${apiVersion}/${model}): ${response.status}`);
-                        continue;
+                    if (errMsg.includes('로그인이 필요')) {
+                        throw new Error('로그인이 필요합니다. 밀당 분석을 사용하려면 로그인해주세요.');
                     }
-                    
-                    // 기타 에러
-                    lastError = new Error(`API 요청 실패 (${apiVersion}/${model}): ${response.status} - ${errorData.error?.message || errorText}`);
-                    continue; // 다음 모델 시도
+                    lastError = new Error(errMsg);
+                    continue;
                 }
                 
-                const responseData = await response.json();
+                if (!responseData) {
+                    lastError = new Error('Gemini API 응답이 없습니다.');
+                    continue;
+                }
+                // Callable이 { data }로 감쌀 수 있음: result.data -> { data: geminiResponse }
+                const geminiResponse = responseData?.data ?? responseData;
                 if (isDevMode) {
                     console.log(`✅ API 성공: ${model}`);
                 }
                 // 토큰 사용량 로그 (usageMetadata)
-                const usage = responseData?.usageMetadata;
+                const usage = geminiResponse?.usageMetadata;
                 if (usage && (isDevMode || window.DEBUG_GEMINI)) {
                     console.log('📊 토큰 사용량:', {
                         입력: usage.promptTokenCount ?? usage.prompt_token_count ?? '-',
@@ -1138,12 +1114,12 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                 }
                 
                 // 응답 검증 (안전 필터 및 응답 구조 처리)
-                if (responseData?.candidates && responseData.candidates.length > 0) {
-                    const candidate = responseData.candidates[0];
+                if (geminiResponse?.candidates && geminiResponse.candidates.length > 0) {
+                    const candidate = geminiResponse.candidates[0];
                     
                     // 안전 필터 확인
-                    if (responseData.promptFeedback) {
-                        console.warn('⚠️ 안전 필터 작동:', responseData.promptFeedback);
+                    if (geminiResponse.promptFeedback) {
+                        console.warn('⚠️ 안전 필터 작동:', geminiResponse.promptFeedback);
                         lastError = new Error('안전 필터로 인해 응답이 차단됨');
                         continue; // 다음 모델 시도
                     }
@@ -1192,7 +1168,7 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                         }
                         
                         // 응답이 충분하면 이 모델 사용
-                        data = responseData;
+                        data = geminiResponse;
                         break; // 성공하면 반복 중단
                     } else {
                         // 텍스트를 찾지 못한 경우 - 개발 모드에서만 로깅
@@ -1207,9 +1183,9 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                     }
                 } else {
                     // candidates가 없거나 비어있는 경우
-                    console.warn('⚠️ API 응답에 candidates가 없습니다 (안전 필터 작동 가능성):', responseData);
+                    console.warn('⚠️ API 응답에 candidates가 없습니다 (안전 필터 작동 가능성):', geminiResponse);
                     
-                    if (responseData.promptFeedback) {
+                    if (geminiResponse.promptFeedback) {
                         lastError = new Error('안전 필터로 인해 응답이 차단됨');
                     } else {
                         lastError = new Error('응답 형식 오류 (candidates 없음)');
