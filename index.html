@@ -178,8 +178,8 @@
     
     <script>
         
-        // PWA Service Worker 등록
-        if ('serviceWorker' in navigator) {
+        // PWA Service Worker 등록 (Capacitor 앱에서는 비활성화 - 삼성 브라우저 등 WebView 충돌 방지)
+        if ('serviceWorker' in navigator && !window.Capacitor?.isNativePlatform?.()) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./sw.js')
                     .then((registration) => {
