@@ -320,6 +320,11 @@ header .mealog-title {
     font-weight: 800; 
     color: white; 
 }
+
+/* 끼니 등록 모달: 하단 버튼 영역이 네비/시스템 UI에 가려지지 않도록 */
+#entryModal > div > div:last-child {
+    padding-bottom: calc(1.5rem + var(--safe-bottom));
+}
 .sticker-badge { 
     background: rgba(255,255,255,0.12); 
     backdrop-filter: blur(8px); 
@@ -1255,10 +1260,10 @@ header .mealog-title {
 }
 
 /* 게시판 스타일 */
-/* 글쓰기 버튼: 플로팅 FAB – 하단 탭 메뉴 우상단에 정렬, 좌상단으로 약간 이동 */
+/* 글쓰기 버튼: 플로팅 FAB – 하단 네비 위에 배치 (safe-area 고려) */
 #boardWriteBtn.board-write-fab {
     position: fixed;
-    bottom: 5.75rem;
+    bottom: calc(72px + var(--safe-bottom));
     right: calc(50% - min(46vw, 13rem) + 1.25rem);
     z-index: 40;
     width: 48px;
@@ -1279,6 +1284,11 @@ header .mealog-title {
 }
 #boardWriteBtn.board-write-fab:active {
     background-color: #047857 !important;
+}
+
+/* 밀톡 글쓰기: 하단 취소/등록 버튼이 네비에 가려지지 않도록 */
+#boardWriteView {
+    padding-bottom: calc(80px + var(--safe-bottom));
 }
 
 /* 밀톡/공지 내용 에디터: placeholder (format-editor-empty 클래스 시 표시) */
