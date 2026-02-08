@@ -2,8 +2,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&display=swap');
 @import url('https://cdn.jsdelivr.net/gh/leetaewook/gmarket-sans-dynamic-subset/GmarketSans.css');
 :root { 
-    --safe-top: env(safe-area-inset-top, 24px); 
-    --safe-bottom: env(safe-area-inset-bottom, 24px); 
+    /* Android WebView에서 env()가 0 반환 시 fallback 사용 (상태바~28px, 제스처네비~48px) */
+    --safe-top: env(safe-area-inset-top, 28px); 
+    --safe-bottom: env(safe-area-inset-bottom, 48px); 
     --color-primary: #059669; /* 그린: CTA·선택·활성만 사용 */
 }
 body { 
@@ -287,7 +288,7 @@ header .mealog-title {
 }
 .bottom-nav { 
     position: fixed; 
-    bottom: calc(12px + var(--safe-bottom)); 
+    bottom: calc(16px + var(--safe-bottom)); 
     left: 50%; 
     transform: translateX(-50%); 
     width: calc(100vw - 20px); 
