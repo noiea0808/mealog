@@ -111,10 +111,10 @@ firebase deploy --only functions
 - 카카오 플랫폼 "사이트 도메인"에 앱 도메인(capacitor://localhost 등) 미등록
 - WebView에서 외부 스크립트(dapi.kakao.com) 차단
 
-**해결:** 앱에서는 **Firebase Callable**을 우선 사용합니다 (SDK 없이 서버에서 REST API 호출).
+**해결:** 앱/스테이징에서는 **Firebase Callable**을 우선 사용합니다 (SDK 없이 서버에서 REST API 호출).
 
 1. **호출 허용 IP 주소**: 비워두세요. Firebase Functions는 동적 IP를 사용하므로 등록 불가. 비어 있으면 모든 IP 허용.
-2. **Firebase Functions 환경 변수**: `KAKAO_REST_API_KEY`가 배포되어 있는지 확인.
-   - `.env` 파일만으로는 배포 시 자동 반영되지 않을 수 있음
-   - [Google Cloud Console](https://console.cloud.google.com) → 해당 프로젝트 → 함수 → 함수 선택 → 수정 → 환경 변수에 `KAKAO_REST_API_KEY` 추가 후 재배포
-3. **재배포:** `firebase deploy --only functions`로 Functions 재배포
+2. **Firebase Functions 환경 변수**: `functions/.env`에 `KAKAO_REST_API_KEY` 설정 후 `firebase deploy --only functions` 실행.
+   - 배포 시 "Loaded environment variables from .env" 메시지 확인
+   - 여전히 안 되면 [Google Cloud Console](https://console.cloud.google.com) → Cloud Functions → 함수 선택 → 수정 → 환경 변수에 `KAKAO_REST_API_KEY` 추가
+3. **재배포:** 코드 변경 후 `firebase deploy --only functions` 필수

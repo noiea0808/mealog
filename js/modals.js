@@ -2355,13 +2355,15 @@ function renderKakaoSearchResults(restaurants) {
     }).join('');
 }
 
-// Capacitor/WebView 앱 환경 여부 (앱에서는 SDK 로드 불안정 → Callable 우선)
-function isCapacitorApp() {
-    return !!(window.Capacitor?.isNativePlatform?.());
+// Callable 사용 대상: 앱(Capacitor) 또는 스테이징 (카카오 도메인/WebView 이슈 회피)
+function shouldUseKakaoCallable() {
+    if (window.Capacitor?.isNativePlatform?.()) return true;
+    if (window.APP_ENV === 'staging') return true;
+    return false;
 }
 
 // 카카오 장소 검색 실행
-// 웹: SDK 사용 (KA 헤더 자동 추가) / 앱: callable 우선 (WebView에서 SDK 불안정)
+// 앱/스테이징: Callable / 로컬웹: SDK 또는 Callable fallback
 export async function searchKakaoPlaces() {
     const searchInput = document.getElementById('kakaoSearchInput');
     const resultsContainer = document.getElementById('kakaoSearchResults');
@@ -2379,7 +2381,7 @@ export async function searchKakaoPlaces() {
     
     try {
         let restaurants = [];
-        const useCallable = isCapacitorApp();
+        const useCallable = shouldUseKakaoCallable();
         
         if (!useCallable) {
             // 웹: SDK 로딩 중이면 최대 3초 대기

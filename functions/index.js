@@ -1464,20 +1464,20 @@ exports.searchKakaoPlaces = onCall({ region: REGION }, wrapFunction('searchKakao
   }
   const query = encodeURIComponent(keyword.trim());
   const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${query}&category_group_code=FD6&size=15`;
-  // KA 헤더: os 또는 origin 필수 (형식 미공개 - 여러 형식 시도)
-  const kaPayload = { os: 'server', origin: 'https://mealog-r0.web.app' };
-  const kaBase64 = Buffer.from(JSON.stringify(kaPayload)).toString('base64');
+  // 카카오 로컬 API: Authorization 헤더만 필수 (공식 문서 기준, KA 헤더 생략)
   const res = await fetch(url, {
     method: 'GET',
     headers: {
-      'Authorization': `KakaoAK ${apiKey}`,
-      'KA': kaBase64,
-      'Origin': 'https://mealog-r0.web.app'
+      'Authorization': `KakaoAK ${apiKey}`
     }
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const msg = data?.message || data?.errorType || await res.text();
+    const msg = data?.message || data?.errorType || data?.msg || JSON.stringify(data) || String(res.status);
+    logger.error('searchKakaoPlaces 카카오 API 오류', { status: res.status, msg, keyword });
+    if (res.status === 401) {
+      throw new HttpsError('failed-precondition', '카카오 API 인증 실패. REST API 키와 호출 허용 IP 설정을 확인하세요.');
+    }
     throw new HttpsError('internal', `카카오 API 오류: ${res.status} - ${msg}`);
   }
   // REST API 응답 구조: documents, meta. documents를 그대로 반환 (클라이언트와 호환)
