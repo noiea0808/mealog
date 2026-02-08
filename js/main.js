@@ -1611,20 +1611,26 @@ window.toggleGalleryTracePanel = () => {
     if (typeof window.updateGalleryTraceFilterBarUI === 'function') window.updateGalleryTraceFilterBarUI();
 };
 
-/** 타임라인 검색 확장 너비: 타이틀(MEALOG) 오른쪽에서 20px 거리까지 (화면 크기 무관). 접힌 상태에서는 영역 없음 */
+/** 타임라인 검색 확장 너비: 'mealog 밀로그' 블록 오른쪽 끝 + 20px까지만 확장. 접힌 상태에서는 영역 없음 */
 function updateTimelineSearchExpandWidth() {
-    const title = document.querySelector('header .mealog-title');
+    const leftBlock = document.querySelector('header .mealog-title')?.parentElement;
     const wrapper = document.getElementById('timelineSearchPanel');
     const panel = wrapper?.querySelector('.timeline-search-panel');
-    if (!title || !wrapper || !panel) return;
+    const header = document.querySelector('#mainApp header');
+    if (!leftBlock || !wrapper || !panel || !header) return;
     if (!wrapper.classList.contains('expanded')) {
         panel.style.width = '';
         wrapper.style.width = '';
         return;
     }
-    const titleRight = title.getBoundingClientRect().right;
-    const headerRight = wrapper.parentElement?.getBoundingClientRect().right ?? titleRight + 200;
-    let w = headerRight - titleRight - 20;
+    const leftBlockRight = leftBlock.getBoundingClientRect().right;
+    const headerRect = header.getBoundingClientRect();
+    const headerRight = headerRect.right - 24; /* px-6 */
+    const notificationWrap = document.getElementById('notificationWrap');
+    const notificationWidth = (notificationWrap && !notificationWrap.classList.contains('hidden'))
+        ? notificationWrap.getBoundingClientRect().width : 0;
+    const gap = 8; /* gap-2 */
+    let w = headerRight - leftBlockRight - 20 - notificationWidth - gap;
     w = Math.max(96, w);
     wrapper.style.width = `${w}px`;
 }

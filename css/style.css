@@ -376,6 +376,14 @@ header .mealog-title {
     padding-bottom: 0 !important;
 }
 /* 헤더 우측: .header-right = [돋보기] [알림] 순서 flex, 별도 absolute 없음 */
+/* 헤더 우측 아이콘: 기존 대비 20% 확대 (text-sm 14px→16.8px, text-lg 18px→21.6px) */
+.header-right .timeline-search-toggle i,
+.header-right .gallery-trace-btn i {
+    font-size: 1.05rem !important;
+}
+.header-right .notification-trigger .fa-bell {
+    font-size: 1.35rem !important;
+}
 
 /* 갤러리 트레이스: 접힌 상태=돋보기만, 펼침=하트/댓글/북마크/돋보기 */
 .gallery-trace-panel {
@@ -401,13 +409,14 @@ header .mealog-title {
     box-sizing: border-box;
 }
 
-/* 타임라인 검색: 접힌 상태=돋보기 2rem, 펼치면 입력창 확장 */
+/* 타임라인 검색: 접힌 상태=돋보기 2rem, 펼치면 입력창 확장 (애니메이션) */
 .timeline-search-wrapper {
     width: 2rem;
     min-width: 2rem;
     height: 2rem;
     flex-shrink: 0;
     overflow: visible;
+    transition: width 0.3s ease-out;
 }
 .timeline-search-wrapper.expanded {
     min-width: 2rem;
