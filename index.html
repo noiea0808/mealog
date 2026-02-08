@@ -158,6 +158,13 @@
         }, 15000); // 10000에서 15000으로 증가
     </script>
     
+    <script src="js/env.js" onerror="window.APP_ENV='production';"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var el = document.getElementById('headerStagingLabel');
+            if (el && window.APP_ENV === 'staging') el.classList.remove('hidden');
+        });
+    </script>
     <script type="module" src="js/main.js?v=3" onerror="console.error('❌ main.js 스크립트 태그 로드 실패'); window.moduleLoadError = {message: '스크립트 태그 로드 실패', quicHint: true};"></script>
     
     <script>
@@ -476,7 +483,10 @@
             <div class="py-2.5 flex justify-between items-center px-6">
                 <div class="flex items-baseline gap-2 min-w-0 flex-shrink-0">
                     <h1 id="headerAppTitle" class="mealog-title text-2xl text-emerald-600 tracking-tighter">mealog</h1>
-                    <span id="headerSectionLabel" class="header-section-label text-xs font-semibold tracking-tight">밀로그</span>
+                    <div class="relative">
+                        <span id="headerStagingLabel" class="absolute bottom-full left-0 mb-0.5 text-[10px] font-bold text-amber-600 uppercase tracking-widest hidden whitespace-nowrap">스테이징</span>
+                        <span id="headerSectionLabel" class="header-section-label text-xs font-semibold tracking-tight">밀로그</span>
+                    </div>
                 </div>
                 <!-- 우측: 돋보기(모먼트/밀로그/밀톡만) → 알림(모든 메뉴) 순서 고정 -->
                 <div class="header-right flex items-center gap-2 flex-shrink-0">

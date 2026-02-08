@@ -1,6 +1,6 @@
 {
-  "appId": "com.mealog.app",
-  "appName": "MEALOG",
+  "appId": "com.mealog.app.staging",
+  "appName": "MEALOG (스테이징)",
   "webDir": "www",
   "server": {
     "androidScheme": "https"

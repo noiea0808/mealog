@@ -1,4 +1,4 @@
-package com.mealog.app;
+package com.mealog.app.staging;
 
 import com.getcapacitor.BridgeActivity;
 
