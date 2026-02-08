@@ -276,6 +276,12 @@ header .mealog-title {
 /* 앱 모드: 상단/하단 시스템 UI(상태바·네비바) 여백 */
 #mainApp header.safe-area-top { top: var(--safe-top); }
 #mainApp .safe-area-tracker { top: calc(var(--safe-top) + 52px); }
+
+/* 스크롤 시 헤더 숨김 (인스타/페이스북 스타일) */
+#mainAppHeader.header-scroll-hidden { transform: translateY(-100%); }
+/* 헤더 숨김 시 트래커는 상단(safe-top)에 고정, 헤더 있을 땐 헤더 아래에 고정 */
+#trackerSection { transition: top 0.3s ease-out; }
+#trackerSection.tracker-header-hidden { top: var(--safe-top) !important; }
 .bottom-nav { 
     position: fixed; 
     bottom: calc(12px + var(--safe-bottom)); 

@@ -313,7 +313,6 @@
     <!-- 1. Landing Page -->
     <div id="landingPage">
         <div class="mb-12 text-center">
-            <p class="text-emerald-200/90 text-xs font-bold uppercase tracking-widest mb-3">스테이징</p>
             <h1 class="mealog-title text-5xl text-white tracking-tighter mb-4">mealog</h1>
             <p class="text-emerald-100 text-sm font-bold opacity-90 tracking-wide">우리가 함께한, 맛있었던 기억</p>
         </div>
@@ -479,12 +478,14 @@
 
     <!-- 2. Main Application -->
     <div id="mainApp" class="hidden">
-        <header class="sticky z-50 bg-white/95 backdrop-blur-md shadow-sm max-h-[60px] safe-area-top">
+        <!-- 상태바 영역 흰색 오버레이 (스크롤 시 콘텐츠 투과 방지) -->
+        <div id="statusBarOverlay" class="fixed top-0 left-0 right-0 h-[var(--safe-top)] bg-white z-[100] pointer-events-none" aria-hidden="true"></div>
+        <header id="mainAppHeader" class="sticky z-50 bg-white/95 backdrop-blur-md shadow-sm max-h-[60px] safe-area-top transition-transform duration-300 ease-out">
             <div class="py-2.5 flex justify-between items-center px-6">
                 <div class="flex items-baseline gap-2 min-w-0 flex-shrink-0">
                     <h1 id="headerAppTitle" class="mealog-title text-2xl text-emerald-600 tracking-tighter">mealog</h1>
-                    <div class="relative">
-                        <span id="headerStagingLabel" class="absolute bottom-full left-0 mb-0.5 text-[10px] font-bold text-amber-600 uppercase tracking-widest hidden whitespace-nowrap">스테이징</span>
+                    <div class="relative overflow-visible">
+                        <span id="headerStagingLabel" class="pointer-events-none absolute left-0 -top-3 text-[10px] font-bold text-amber-600 uppercase tracking-widest hidden whitespace-nowrap">스테이징</span>
                         <span id="headerSectionLabel" class="header-section-label text-xs font-semibold tracking-tight">밀로그</span>
                     </div>
                 </div>

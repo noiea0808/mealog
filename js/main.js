@@ -2412,6 +2412,32 @@ initAuth(async (user) => {
     }
 });
 
+// 스크롤 방향에 따른 헤더 숨김·표시 (인스타/페이스북 스타일)
+// 헤더가 사라질 때까지 트래커는 스크롤되다가, 헤더 숨김 후에는 트래커가 상단에 고정
+let _lastScrollY = 0;
+let _headerScrollRaf = null;
+window.addEventListener('scroll', () => {
+    const mainApp = document.getElementById('mainApp');
+    if (!mainApp || mainApp.classList.contains('hidden')) return;
+    const header = document.getElementById('mainAppHeader');
+    const tracker = document.getElementById('trackerSection');
+    if (!header || !tracker) return;
+    const y = window.scrollY;
+    if (_headerScrollRaf) cancelAnimationFrame(_headerScrollRaf);
+    _headerScrollRaf = requestAnimationFrame(() => {
+        const delta = y - _lastScrollY;
+        if (delta > 8) {
+            header.classList.add('header-scroll-hidden');
+            tracker.classList.add('tracker-header-hidden');
+        } else if (delta < -8) {
+            header.classList.remove('header-scroll-hidden');
+            tracker.classList.remove('tracker-header-hidden');
+        }
+        _lastScrollY = y;
+        _headerScrollRaf = null;
+    });
+}, { passive: true });
+
 // 스크롤 이벤트 리스너 (타임라인 하단 근처에서 더 오래된 기록 자동 로드)
 let scrollTimeout;
 window.addEventListener('scroll', () => { 
