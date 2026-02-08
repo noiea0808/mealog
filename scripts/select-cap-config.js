@@ -1,0 +1,22 @@
+/**
+ * 스테이징/프로덕션에 맞는 capacitor.config.json 선택
+ * 사용: node scripts/select-cap-config.js [staging|production]
+ */
+const fs = require('fs');
+const path = require('path');
+
+const root = path.join(__dirname, '..');
+const env = (process.argv[2] || 'staging').toLowerCase();
+const valid = ['staging', 'production'];
+if (!valid.includes(env)) {
+  console.error('Usage: node select-cap-config.js [staging|production]');
+  process.exit(1);
+}
+const srcFile = path.join(root, `capacitor.config.${env}.json`);
+const destFile = path.join(root, 'capacitor.config.json');
+if (!fs.existsSync(srcFile)) {
+  console.error(`❌ ${srcFile} not found`);
+  process.exit(1);
+}
+fs.copyFileSync(srcFile, destFile);
+console.log(`✓ capacitor.config.json → ${env} (${env === 'staging' ? 'staging-mealog.vercel.app' : 'mealog.net'})`);
