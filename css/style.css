@@ -2,7 +2,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&display=swap');
 @import url('https://cdn.jsdelivr.net/gh/leetaewook/gmarket-sans-dynamic-subset/GmarketSans.css');
 :root { 
-    --safe-bottom: env(safe-area-inset-bottom, 0px); 
+    --safe-top: env(safe-area-inset-top, 24px); 
+    --safe-bottom: env(safe-area-inset-bottom, 24px); 
     --color-primary: #059669; /* 그린: CTA·선택·활성만 사용 */
 }
 body { 
@@ -10,6 +11,7 @@ body {
     background-color: #f8fafc; 
     color: #1e293b; 
     overflow-x: hidden; 
+    padding-top: var(--safe-top); 
     padding-bottom: calc(80px + var(--safe-bottom)); 
 }
 
@@ -271,9 +273,12 @@ header .mealog-title {
     color: #475569; 
     white-space: nowrap; 
 }
+/* 앱 모드: 상단/하단 시스템 UI(상태바·네비바) 여백 */
+#mainApp header.safe-area-top { top: var(--safe-top); }
+#mainApp .safe-area-tracker { top: calc(var(--safe-top) + 52px); }
 .bottom-nav { 
     position: fixed; 
-    bottom: 12px; 
+    bottom: calc(12px + var(--safe-bottom)); 
     left: 50%; 
     transform: translateX(-50%); 
     width: calc(100vw - 20px); 
@@ -335,13 +340,13 @@ header .mealog-title {
 }
 .date-section-header { 
     position: sticky; 
-    top: 148px; 
+    top: calc(var(--safe-top) + 148px); 
     z-index: 20; 
     background: rgba(248, 250, 252, 0.95); 
     backdrop-filter: blur(8px); 
     padding: 12px 16px; 
     margin-bottom: 8px; 
-    scroll-margin-top: 148px; 
+    scroll-margin-top: calc(var(--safe-top) + 148px); 
 }
 .date-section-header h3 { color: #1e293b; }
 .date-section-header.text-rose-400 h3 { color: #fb7185; }

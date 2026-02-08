@@ -3,6 +3,7 @@ js/config.js
 
 # Node modules (프로젝트에 사용되지 않지만 일반적으로 제외)
 node_modules/
+www/
 functions/node_modules/
 
 # 로그 파일

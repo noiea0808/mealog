@@ -1,0 +1,16 @@
+{
+  "name": "mealog",
+  "version": "1.0.0",
+  "description": "우리가 함께한, 맛있었던 기억 - 스마트 식사 타임라인",
+  "scripts": {
+    "build": "node scripts/build-config.js",
+    "copy:www": "node scripts/copy-to-www.js",
+    "cap:sync": "npm run copy:www && npx cap sync android",
+    "cap:open": "npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.2",
+    "@capacitor/cli": "^8.0.2",
+    "@capacitor/core": "^8.0.2"
+  }
+}
