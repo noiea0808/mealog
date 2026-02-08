@@ -2355,8 +2355,13 @@ function renderKakaoSearchResults(restaurants) {
     }).join('');
 }
 
+// Capacitor/WebView 앱 환경 여부 (앱에서는 SDK 로드 불안정 → Callable 우선)
+function isCapacitorApp() {
+    return !!(window.Capacitor?.isNativePlatform?.());
+}
+
 // 카카오 장소 검색 실행
-// 웹: SDK 사용 (KA 헤더 자동 추가, 401 없음) / 앱: callable 사용 (KA 형식 미공개로 401 가능)
+// 웹: SDK 사용 (KA 헤더 자동 추가) / 앱: callable 우선 (WebView에서 SDK 불안정)
 export async function searchKakaoPlaces() {
     const searchInput = document.getElementById('kakaoSearchInput');
     const resultsContainer = document.getElementById('kakaoSearchResults');
@@ -2374,23 +2379,31 @@ export async function searchKakaoPlaces() {
     
     try {
         let restaurants = [];
+        const useCallable = isCapacitorApp();
         
-        // SDK 로딩 중이면 최대 3초 대기 (웹에서 SDK가 KA 헤더 추가해 401 없음)
-        if (window.kakaoSDKLoading && !window.kakaoSDKLoaded) {
-            await new Promise((resolve) => {
-                let waited = 0;
-                const iv = setInterval(() => {
-                    waited += 200;
-                    if (window.kakaoSDKLoaded || waited >= 3000) {
-                        clearInterval(iv);
-                        resolve();
-                    }
-                }, 200);
-            });
+        if (!useCallable) {
+            // 웹: SDK 로딩 중이면 최대 3초 대기
+            if (window.kakaoSDKLoading && !window.kakaoSDKLoaded) {
+                await new Promise((resolve) => {
+                    let waited = 0;
+                    const iv = setInterval(() => {
+                        waited += 200;
+                        if (window.kakaoSDKLoaded || waited >= 3000) {
+                            clearInterval(iv);
+                            resolve();
+                        }
+                    }, 200);
+                });
+            }
         }
         
-        // 1) 웹 + SDK 로드됨: SDK 사용 (브라우저에서 KA 헤더 자동 추가됨)
-        if (window.kakaoSDKLoaded && typeof kakao !== 'undefined' && kakao?.maps?.services?.Places) {
+        // 1) 앱: Callable 즉시 사용 (WebView에서 SDK 불안정·도메인 제한 회피)
+        if (useCallable) {
+            const result = await callableFunctions.searchKakaoPlaces({ keyword });
+            restaurants = result?.data?.documents || [];
+        }
+        // 2) 웹 + SDK 로드됨: SDK 사용
+        else if (window.kakaoSDKLoaded && typeof kakao !== 'undefined' && kakao?.maps?.services?.Places) {
             const ps = new kakao.maps.services.Places();
             restaurants = await new Promise((resolve) => {
                 ps.keywordSearch(keyword, (data, status) => {
@@ -2402,9 +2415,8 @@ export async function searchKakaoPlaces() {
                 }, { category_group_code: 'FD6', size: 15 });
             });
         }
-        
-        // 2) SDK 없음(앱 등): callable 사용 (KA 헤더 401 이슈 있음)
-        if (!window.kakaoSDKLoaded) {
+        // 3) 웹 + SDK 없음: Callable fallback
+        else {
             const result = await callableFunctions.searchKakaoPlaces({ keyword });
             restaurants = result?.data?.documents || [];
         }

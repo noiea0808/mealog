@@ -102,3 +102,19 @@ firebase deploy --only functions
 1. [카카오 데브톡](https://devtalk.kakao.com) → "KA Header" 또는 "로컬 API 401" 검색
 2. [카카오 개발자 1:1 문의](https://developers.kakao.com/support) → KA 헤더 정확한 형식 문의
 3. 카카오맵 API [사용 설정](https://developers.kakao.com/console/app) → 카카오맵 > 사용 설정 ON 확인
+
+---
+
+### 카카오맵 "로컬에서는 되는데 스테이징 앱에서는 안 됨"
+
+**원인:** Capacitor 앱(WebView)에서는 카카오 JavaScript SDK가 다음 이유로 불안정합니다.
+- 카카오 플랫폼 "사이트 도메인"에 앱 도메인(capacitor://localhost 등) 미등록
+- WebView에서 외부 스크립트(dapi.kakao.com) 차단
+
+**해결:** 앱에서는 **Firebase Callable**을 우선 사용합니다 (SDK 없이 서버에서 REST API 호출).
+
+1. **호출 허용 IP 주소**: 비워두세요. Firebase Functions는 동적 IP를 사용하므로 등록 불가. 비어 있으면 모든 IP 허용.
+2. **Firebase Functions 환경 변수**: `KAKAO_REST_API_KEY`가 배포되어 있는지 확인.
+   - `.env` 파일만으로는 배포 시 자동 반영되지 않을 수 있음
+   - [Google Cloud Console](https://console.cloud.google.com) → 해당 프로젝트 → 함수 → 함수 선택 → 수정 → 환경 변수에 `KAKAO_REST_API_KEY` 추가 후 재배포
+3. **재배포:** `firebase deploy --only functions`로 Functions 재배포

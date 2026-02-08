@@ -7,9 +7,9 @@ const path = require('path');
 
 const root = path.join(__dirname, '..');
 const env = (process.argv[2] || 'staging').toLowerCase();
-const valid = ['staging', 'production'];
+const valid = ['staging', 'production', 'staging.bundled'];
 if (!valid.includes(env)) {
-  console.error('Usage: node select-cap-config.js [staging|production]');
+  console.error('Usage: node select-cap-config.js [staging|production|staging.bundled]');
   process.exit(1);
 }
 const srcFile = path.join(root, `capacitor.config.${env}.json`);
@@ -19,4 +19,5 @@ if (!fs.existsSync(srcFile)) {
   process.exit(1);
 }
 fs.copyFileSync(srcFile, destFile);
-console.log(`✓ capacitor.config.json → ${env} (${env === 'staging' ? 'staging-mealog.vercel.app' : 'mealog.net'})`);
+const urlLabel = env === 'staging' ? 'staging-mealog.vercel.app' : env === 'staging.bundled' ? 'www번들' : 'mealog.net';
+console.log(`✓ capacitor.config.json → ${env} (${urlLabel})`);
