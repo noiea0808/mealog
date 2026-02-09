@@ -112,4 +112,3 @@ export function getWeekInfoFromDate(start) {
     const week = getWeekNumberForDate(start);
     return { year, month, week };
 }
-
