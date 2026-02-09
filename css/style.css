@@ -325,6 +325,10 @@ header .mealog-title {
 #entryModal > div > div:last-child {
     padding-bottom: calc(1.5rem + var(--safe-bottom));
 }
+/* 키보드 열림 시: 네비바가 보이지 않으므로 safe-bottom 여백 제거 */
+#entryModal.keyboard-open > div > div:last-child {
+    padding-bottom: 1.5rem !important;
+}
 .sticker-badge { 
     background: rgba(255,255,255,0.12); 
     backdrop-filter: blur(8px); 

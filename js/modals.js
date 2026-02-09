@@ -12,6 +12,22 @@ import { callableFunctions } from './firebase.js';
 // 설정 저장 디바운싱을 위한 타이머
 let settingsSaveTimeout = null;
 
+/** 끼니 등록 모달: 키보드 열림 시 네비바 여백 제거 (keyboard-open 클래스 토글) */
+function initEntryModalKeyboardHandling(entryModal) {
+    if (!entryModal || entryModal._keyboardHandlingInit) return;
+    entryModal._keyboardHandlingInit = true;
+    entryModal.addEventListener('focusin', (e) => {
+        if (e.target.matches('input, textarea')) entryModal.classList.add('keyboard-open');
+    });
+    entryModal.addEventListener('focusout', (e) => {
+        if (e.target.matches('input, textarea')) {
+            setTimeout(() => {
+                if (!entryModal.contains(document.activeElement)) entryModal.classList.remove('keyboard-open');
+            }, 100);
+        }
+    });
+}
+
 // 카카오 SDK 로드 함수
 function loadKakaoSDK() {
     // 이미 로드 중이거나 로드 완료된 경우 스킵
@@ -538,6 +554,7 @@ export function openModal(date, slotId, entryId = null) {
         const entryModal = document.getElementById('entryModal');
         if (entryModal) {
             entryModal.classList.remove('hidden');
+            initEntryModalKeyboardHandling(entryModal);
         } else {
             console.error('entryModal 요소를 찾을 수 없습니다.');
         }
@@ -551,6 +568,7 @@ export function openModal(date, slotId, entryId = null) {
 export function closeModal() {
     const entryModal = document.getElementById('entryModal');
     if (entryModal) {
+        entryModal.classList.remove('keyboard-open');
         entryModal.classList.add('hidden');
     }
     // 모달을 닫을 때 로딩 오버레이도 숨김
