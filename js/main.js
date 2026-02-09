@@ -3604,6 +3604,32 @@ const eventListenerManager = {
 // 전역 이벤트 리스너 관리자 노출 (디버깅용)
 window.Mealog.eventListenerManager = eventListenerManager;
 
+/** 앱 전체: 키보드 열림 시 하단 네비 숨김 + 닫힘 시 복귀 (viewport 기반 keyboard-closed) */
+function initMainAppKeyboardHandling() {
+    const mainApp = document.getElementById('mainApp');
+    if (!mainApp) return;
+
+    const setKeyboardClosed = (closed) => {
+        document.body.classList.toggle('keyboard-closed', closed);
+    };
+
+    const checkViewport = () => {
+        const vh = window.visualViewport?.height ?? window.innerHeight;
+        const threshold = window.innerHeight * 0.85;
+        setKeyboardClosed(vh >= threshold);
+    };
+
+    if (window.visualViewport) {
+        const run = () => {
+            [0, 100, 250, 400].forEach(ms => setTimeout(checkViewport, ms));
+        };
+        window.visualViewport.addEventListener('resize', run);
+        window.visualViewport.addEventListener('scroll', run);
+    }
+    window.addEventListener('resize', checkViewport);
+    checkViewport();
+}
+
 function initEventListeners() {
     // 랜딩 페이지 버튼들
     const googleLoginBtn = document.getElementById('googleLoginBtn');
@@ -3777,6 +3803,9 @@ function initEventListeners() {
         btnViewPage.addEventListener('click', () => window.setViewMode('page'));
     }
     
+    // 모먼트/밀톡: 키보드 열림 시 하단 네비 숨김 + 키보드 상단 네비바 영역 제거
+    initMainAppKeyboardHandling();
+
     // 하단 네비게이션
     const navDashboard = document.getElementById('nav-dashboard');
     if (navDashboard) {

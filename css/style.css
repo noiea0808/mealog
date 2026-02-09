@@ -15,7 +15,30 @@ body {
     padding-top: var(--safe-top); 
     padding-bottom: calc(80px + var(--safe-bottom)); 
 }
-
+/* 앱 전체 키보드 열림 시: 하단 네비 숨김 + 키보드 상단 네비바 영역 제거 (CSS :focus-within) */
+body:focus-within .bottom-nav,
+body:focus-within #navigationBarOverlay {
+    display: none !important;
+}
+body:focus-within {
+    padding-bottom: 0 !important;
+}
+body:focus-within #boardWriteView {
+    padding-bottom: 1rem !important;
+}
+/* 키보드 닫혔을 때: viewport 복원 시 네비 강제 표시 (뒤로가기로 닫아도 포커스가 남아있는 경우) */
+body.keyboard-closed .bottom-nav {
+    display: flex !important;
+}
+body.keyboard-closed #navigationBarOverlay {
+    display: block !important;
+}
+body.keyboard-closed {
+    padding-bottom: calc(80px + var(--safe-bottom)) !important;
+}
+body.keyboard-closed #boardWriteView {
+    padding-bottom: calc(80px + var(--safe-bottom)) !important;
+}
 /* =========================
    UI Hierarchy (Main Screen)
    main > sub > sub1 > content
@@ -321,23 +344,23 @@ header .mealog-title {
     color: white; 
 }
 
-/* 끼니 등록 모달: 네비게이션 바 영역 확보 (키보드 닫힘 시) */
+/* 끼니 등록 모달: 네비게이션 바 영역 (키보드 닫힘 시) - 흰색 배경 */
 #entryModal {
-    padding-bottom: var(--safe-bottom);
+    padding-bottom: 0;
 }
-#entryModal.keyboard-open {
-    padding-bottom: 0; /* 키보드가 네비바 영역 대체 */
+#entryModal > div {
+    background: white;
 }
-/* 하단 버튼 영역 패딩 */
+/* 기록완료 버튼 컨테이너: 상하단 패딩 2px */
 #entryModal > div > div:last-child {
-    padding-bottom: 1.5rem;
+    padding-top: 2px !important;
+    padding-bottom: calc(2px + var(--safe-bottom)) !important;
 }
-/* 키보드 열림 시: 버튼과 키보드 사이 2px 여유 */
 #entryModal.keyboard-open > div > div:last-child {
-    padding-bottom: 2px !important;
+    padding-bottom: 2px !important; /* 키보드 열림 시 2px만 */
 }
 #entryModal.keyboard-open #modalScrollArea {
-    padding-bottom: 0.5rem !important;
+    padding-bottom: 0 !important;
 }
 /* 캡쳐 3종세트 모달: 좌우 마진 2px, 가로 스크롤 방지 */
 #bestShareModal,

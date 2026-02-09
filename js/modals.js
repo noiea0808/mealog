@@ -12,38 +12,75 @@ import { callableFunctions } from './firebase.js';
 // 설정 저장 디바운싱을 위한 타이머
 let settingsSaveTimeout = null;
 
-/** 끼니 등록 모달: 키보드 열림 시 네비바 여백 제거 (keyboard-open 클래스 토글) */
+/** 끼니 등록 모달: 키보드 열림 시 모달 높이를 viewport에 맞추고, 닫힘 시 네비바 영역 복원 */
 function initEntryModalKeyboardHandling(entryModal) {
     if (!entryModal || entryModal._keyboardHandlingInit) return;
     entryModal._keyboardHandlingInit = true;
+    let baselineHeight = 0; // 모달 열릴 때 viewport 높이 (키보드 없음)
     const setKeyboardOpen = (open) => {
-        if (open) entryModal.classList.add('keyboard-open');
-        else entryModal.classList.remove('keyboard-open');
+        if (open) {
+            entryModal.classList.add('keyboard-open');
+            const vv = window.visualViewport;
+            const vh = vv?.height ?? window.innerHeight;
+            const vtop = vv?.offsetTop ?? 0;
+            entryModal.style.height = vh + 'px';
+            entryModal.style.top = vtop + 'px';
+        } else {
+            entryModal.classList.remove('keyboard-open');
+            entryModal.style.height = '';
+            entryModal.style.top = '';
+        }
     };
+    // 모달 열릴 때 baseline 저장 (openModal에서 호출)
+    const saveBaseline = () => {
+        baselineHeight = Math.max(window.visualViewport?.height ?? window.innerHeight, window.innerHeight * 0.5);
+    };
+    entryModal.setKeyboardBaseline = saveBaseline;
     entryModal.addEventListener('focusin', (e) => {
         if (e.target.matches('input, textarea')) setKeyboardOpen(true);
     });
     entryModal.addEventListener('focusout', (e) => {
         if (e.target.matches('input, textarea')) {
-            setTimeout(() => {
-                if (!entryModal.contains(document.activeElement)) setKeyboardOpen(false);
-            }, 150);
+            [100, 300, 500].forEach(ms => setTimeout(() => {
+                if (entryModal.classList.contains('hidden')) return;
+                const vh = window.visualViewport?.height ?? window.innerHeight;
+                const threshold = (baselineHeight || window.innerHeight) * 0.85;
+                if (vh >= threshold) setKeyboardOpen(false);
+            }, ms));
         }
     });
-    // 모바일: visualViewport 변화로 키보드 열림/닫힘 감지
     if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', () => {
+        const checkViewport = () => {
+            if (entryModal.classList.contains('hidden')) return;
+            const vh = window.visualViewport.height;
             const active = document.activeElement;
-            const isInputFocused = active && (active.matches('input, textarea') || active.isContentEditable);
-            const inModal = entryModal.contains(active);
-            const viewportSmall = window.visualViewport.height < window.innerHeight * 0.8;
-            if (inModal && isInputFocused && viewportSmall) {
+            const isInputFocused = active && entryModal.contains(active) && (active.matches('input, textarea') || active.isContentEditable);
+            const threshold = (baselineHeight || window.innerHeight) * 0.85;
+            const viewportRestored = vh >= threshold;
+            if (viewportRestored) {
+                setKeyboardOpen(false);
+            } else if (isInputFocused) {
                 setKeyboardOpen(true);
-            } else if (!inModal || !isInputFocused || !viewportSmall) {
+                const vtop = window.visualViewport?.offsetTop ?? 0;
+                entryModal.style.height = vh + 'px';
+                entryModal.style.top = vtop + 'px';
+            } else {
                 setKeyboardOpen(false);
             }
-        });
+        };
+        const runCheck = () => {
+            [0, 100, 250, 400].forEach(ms => setTimeout(checkViewport, ms));
+        };
+        window.visualViewport.addEventListener('resize', runCheck);
+        window.visualViewport.addEventListener('scroll', runCheck);
     }
+    window.addEventListener('resize', () => {
+        if (!entryModal.classList.contains('hidden') && entryModal.classList.contains('keyboard-open')) {
+            const vh = window.visualViewport?.height ?? window.innerHeight;
+            const threshold = (baselineHeight || window.innerHeight) * 0.85;
+            if (vh >= threshold) setKeyboardOpen(false);
+        }
+    });
 }
 
 // 카카오 SDK 로드 함수
@@ -572,7 +609,13 @@ export function openModal(date, slotId, entryId = null) {
         const entryModal = document.getElementById('entryModal');
         if (entryModal) {
             entryModal.classList.remove('hidden');
+            entryModal.classList.remove('keyboard-open');
+            entryModal.style.height = '';
+            entryModal.style.top = '';
             initEntryModalKeyboardHandling(entryModal);
+            if (typeof entryModal.setKeyboardBaseline === 'function') {
+                entryModal.setKeyboardBaseline();
+            }
         } else {
             console.error('entryModal 요소를 찾을 수 없습니다.');
         }
@@ -587,6 +630,8 @@ export function closeModal() {
     const entryModal = document.getElementById('entryModal');
     if (entryModal) {
         entryModal.classList.remove('keyboard-open');
+        entryModal.style.height = '';
+        entryModal.style.top = '';
         entryModal.classList.add('hidden');
     }
     // 모달을 닫을 때 로딩 오버레이도 숨김
