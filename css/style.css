@@ -329,6 +329,23 @@ header .mealog-title {
 #entryModal.keyboard-open > div > div:last-child {
     padding-bottom: 0 !important;
 }
+#entryModal.keyboard-open #modalScrollArea {
+    padding-bottom: 0.5rem !important;
+}
+/* 캡쳐 3종세트 모달: 좌우 마진 2px, 가로 스크롤 방지 */
+#bestShareModal,
+#insightShareModal,
+#dailySharePreviewModal,
+.capture-share-modal {
+    padding-left: 2px !important;
+    padding-right: 2px !important;
+    overflow-x: hidden;
+}
+.capture-share-modal > div {
+    max-width: min(448px, calc(100vw - 4px));
+    box-sizing: border-box;
+}
+
 .sticker-badge { 
     background: rgba(255,255,255,0.12); 
     backdrop-filter: blur(8px); 

@@ -16,16 +16,33 @@ let settingsSaveTimeout = null;
 function initEntryModalKeyboardHandling(entryModal) {
     if (!entryModal || entryModal._keyboardHandlingInit) return;
     entryModal._keyboardHandlingInit = true;
+    const setKeyboardOpen = (open) => {
+        if (open) entryModal.classList.add('keyboard-open');
+        else entryModal.classList.remove('keyboard-open');
+    };
     entryModal.addEventListener('focusin', (e) => {
-        if (e.target.matches('input, textarea')) entryModal.classList.add('keyboard-open');
+        if (e.target.matches('input, textarea')) setKeyboardOpen(true);
     });
     entryModal.addEventListener('focusout', (e) => {
         if (e.target.matches('input, textarea')) {
             setTimeout(() => {
-                if (!entryModal.contains(document.activeElement)) entryModal.classList.remove('keyboard-open');
-            }, 100);
+                if (!entryModal.contains(document.activeElement)) setKeyboardOpen(false);
+            }, 150);
         }
     });
+    // 모바일: visualViewport 축소 시 키보드 열림으로 간주
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', () => {
+            const active = document.activeElement;
+            const isInputFocused = active && (active.matches('input, textarea') || active.isContentEditable);
+            const inModal = entryModal.contains(active);
+            if (inModal && isInputFocused && window.visualViewport.height < window.innerHeight * 0.8) {
+                setKeyboardOpen(true);
+            } else if (!inModal || !isInputFocused) {
+                setKeyboardOpen(false);
+            }
+        });
+    }
 }
 
 // 카카오 SDK 로드 함수
