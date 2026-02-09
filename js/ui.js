@@ -65,6 +65,7 @@ export function hideLoading() {
 }
 
 export function showToast(message, type = 'info') {
+    if (window.userSettings?.showToast !== true) return;
     const container = document.getElementById('toastContainer');
     if (!container) return;
     const toast = document.createElement('div');

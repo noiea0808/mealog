@@ -30,15 +30,16 @@ function initEntryModalKeyboardHandling(entryModal) {
             }, 150);
         }
     });
-    // 모바일: visualViewport 축소 시 키보드 열림으로 간주
+    // 모바일: visualViewport 변화로 키보드 열림/닫힘 감지
     if (window.visualViewport) {
         window.visualViewport.addEventListener('resize', () => {
             const active = document.activeElement;
             const isInputFocused = active && (active.matches('input, textarea') || active.isContentEditable);
             const inModal = entryModal.contains(active);
-            if (inModal && isInputFocused && window.visualViewport.height < window.innerHeight * 0.8) {
+            const viewportSmall = window.visualViewport.height < window.innerHeight * 0.8;
+            if (inModal && isInputFocused && viewportSmall) {
                 setKeyboardOpen(true);
-            } else if (!inModal || !isInputFocused) {
+            } else if (!inModal || !isInputFocused || !viewportSmall) {
                 setKeyboardOpen(false);
             }
         });
