@@ -1,15 +1,27 @@
 // 인증 관련 함수들
 import { auth } from './firebase.js';
-import { GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
 import { dbOps } from './db.js';
+
+function isNativePlatform() {
+    return typeof window.Capacitor !== 'undefined' && window.Capacitor?.isNativePlatform?.();
+}
 
 export async function handleGoogleLogin() {
     showLoading();
     const provider = new GoogleAuthProvider();
     try {
-        const result = await signInWithPopup(auth, provider);
+        let result;
+        if (isNativePlatform()) {
+            // Capacitor/앱 환경: Redirect 사용 (브라우저 팝업 대신 WebView 내 리다이렉트)
+            await signInWithRedirect(auth, provider);
+            return; // 리다이렉트 발생, 복귀 시 getRedirectResult에서 처리
+        } else {
+            // 브라우저 환경: Popup 사용
+            result = await signInWithPopup(auth, provider);
+        }
         console.log('🔐 구글 로그인 성공:', {
             uid: result.user.uid,
             email: result.user.email,
@@ -20,29 +32,27 @@ export async function handleGoogleLogin() {
         showLoading('기록을 불러오고 있어요', { dimBackground: false });
         showToast("구글 로그인 성공!", "success");
         // 로그인 성공 후 로딩 오버레이는 onAuthStateChanged에서 인증 플로우가 완료될 때까지 유지
-        // 인증 플로우가 완료되면 processState의 finally에서 hideLoading() 호출됨
-        } catch (error) {
-            if (error.code === 'auth/unauthorized-domain' || error.message.includes('unauthorized-domain')) {
-                const domainTextEl = document.getElementById('domainText');
-                if (domainTextEl) {
-                    // localhost나 127.0.0.1이 아닌 경우에만 도메인 표시
-                    const host = window.location.hostname;
-                    if (host === 'localhost' || host === '127.0.0.1') {
-                        domainTextEl.innerText = 'localhost or 127.0.0.1 (should work by default)';
-                    } else {
-                        domainTextEl.innerText = host;
-                    }
-                    domainTextEl.style.display = 'none';
-                    domainTextEl.offsetHeight;
-                    domainTextEl.style.display = 'block';
+    } catch (error) {
+        if (error.code === 'auth/unauthorized-domain' || error.message.includes('unauthorized-domain')) {
+            const domainTextEl = document.getElementById('domainText');
+            if (domainTextEl) {
+                const host = window.location.hostname;
+                if (host === 'localhost' || host === '127.0.0.1') {
+                    domainTextEl.innerText = 'localhost or 127.0.0.1 (should work by default)';
+                } else {
+                    domainTextEl.innerText = host;
                 }
-                document.getElementById('domainErrorModal').classList.remove('hidden');
-                hideLoading(); // 도메인 에러 시 숨김
-            } else {
-                showToast("로그인 실패: " + error.message, "error");
-                hideLoading(); // 에러 시 숨김
+                domainTextEl.style.display = 'none';
+                domainTextEl.offsetHeight;
+                domainTextEl.style.display = 'block';
             }
+            document.getElementById('domainErrorModal').classList.remove('hidden');
+            hideLoading();
+        } else if (error.code !== 'auth/cancelled-popup-request') {
+            showToast("로그인 실패: " + error.message, "error");
+            hideLoading();
         }
+    }
 }
 
 export async function startGuest() {
@@ -340,7 +350,23 @@ export async function switchToLogin() {
     }
 }
 
-export function initAuth(onAuthStateChangedCallback) {
+export async function initAuth(onAuthStateChangedCallback) {
+    // Redirect 로그인 복귀 시 결과 처리 (앱/Capacitor에서 구글 로그인 후 돌아올 때)
+    if (isNativePlatform()) {
+        try {
+            const result = await getRedirectResult(auth);
+            if (result?.user) {
+                console.log('🔐 구글 Redirect 로그인 성공:', result.user.uid);
+                window._recordsLoadHidePending = true;
+                showLoading('기록을 불러오고 있어요', { dimBackground: false });
+                showToast("구글 로그인 성공!", "success");
+            }
+        } catch (error) {
+            if (error.code !== 'auth/operation-not-allowed' && !error.message?.includes('redirect')) {
+                showToast("로그인 실패: " + (error.message || '알 수 없는 오류'), "error");
+            }
+        }
+    }
     onAuthStateChanged(auth, onAuthStateChangedCallback);
 }
 
