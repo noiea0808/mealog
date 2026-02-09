@@ -15,7 +15,30 @@ body {
     padding-top: var(--safe-top); 
     padding-bottom: calc(80px + var(--safe-bottom)); 
 }
-
+/* 앱 전체 키보드 열림 시: 하단 네비 숨김 + 키보드 상단 네비바 영역 제거 (CSS :focus-within) */
+body:focus-within .bottom-nav,
+body:focus-within #navigationBarOverlay {
+    display: none !important;
+}
+body:focus-within {
+    padding-bottom: 0 !important;
+}
+body:focus-within #boardWriteView {
+    padding-bottom: 1rem !important;
+}
+/* 키보드 닫혔을 때: viewport 복원 시 네비 강제 표시 (뒤로가기로 닫아도 포커스가 남아있는 경우) */
+body.keyboard-closed .bottom-nav {
+    display: flex !important;
+}
+body.keyboard-closed #navigationBarOverlay {
+    display: block !important;
+}
+body.keyboard-closed {
+    padding-bottom: calc(80px + var(--safe-bottom)) !important;
+}
+body.keyboard-closed #boardWriteView {
+    padding-bottom: calc(80px + var(--safe-bottom)) !important;
+}
 /* =========================
    UI Hierarchy (Main Screen)
    main > sub > sub1 > content
@@ -288,14 +311,13 @@ header .mealog-title {
 }
 .bottom-nav { 
     position: fixed; 
-    bottom: calc(16px + var(--safe-bottom)); 
+    bottom: calc(8px + var(--safe-bottom)); 
     left: 50%; 
     transform: translateX(-50%); 
     width: calc(100vw - 20px); 
     max-width: 448px; 
     box-sizing: border-box;
-    background: rgba(255, 255, 255, 0.9); 
-    backdrop-filter: blur(10px); 
+    background: #ffffff; 
     border: 1px solid #f1f5f9; 
     border-radius: 1.5rem; 
     display: flex; 
@@ -322,10 +344,38 @@ header .mealog-title {
     color: white; 
 }
 
-/* 끼니 등록 모달: 하단 버튼 영역이 네비/시스템 UI에 가려지지 않도록 */
-#entryModal > div > div:last-child {
-    padding-bottom: calc(1.5rem + var(--safe-bottom));
+/* 끼니 등록 모달: 네비게이션 바 영역 (키보드 닫힘 시) - 흰색 배경 */
+#entryModal {
+    padding-bottom: 0;
 }
+#entryModal > div {
+    background: white;
+}
+/* 기록완료 버튼 컨테이너: 상하단 패딩 2px */
+#entryModal > div > div:last-child {
+    padding-top: 2px !important;
+    padding-bottom: calc(2px + var(--safe-bottom)) !important;
+}
+#entryModal.keyboard-open > div > div:last-child {
+    padding-bottom: 2px !important; /* 키보드 열림 시 2px만 */
+}
+#entryModal.keyboard-open #modalScrollArea {
+    padding-bottom: 0 !important;
+}
+/* 캡쳐 3종세트 모달: 좌우 마진 2px, 가로 스크롤 방지 */
+#bestShareModal,
+#insightShareModal,
+#dailySharePreviewModal,
+.capture-share-modal {
+    padding-left: 2px !important;
+    padding-right: 2px !important;
+    overflow-x: hidden;
+}
+.capture-share-modal > div {
+    max-width: min(448px, calc(100vw - 4px));
+    box-sizing: border-box;
+}
+
 .sticker-badge { 
     background: rgba(255,255,255,0.12); 
     backdrop-filter: blur(8px); 

@@ -79,7 +79,9 @@ export const DEFAULT_USER_SETTINGS = {
     termsAgreedAt: null,
     termsVersion: null, // 동의한 약관 버전
     isFirstLogin: true,
-    onboardingCompleted: false
+    onboardingCompleted: false,
+    // 토스트 메시지: 기본적으로 표시하지 않음
+    showToast: false
 };
 
 // 게시물 신고 사유 (id는 Firestore에 저장, label은 UI 표시)

@@ -958,7 +958,7 @@ window.openDailySharePreviewModal = (dateStr) => {
 
     const modal = document.createElement('div');
     modal.id = 'dailySharePreviewModal';
-    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/50';
+    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center py-4 bg-black/50 capture-share-modal';
 
     modal.innerHTML = `
         <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl">
@@ -2023,18 +2023,8 @@ async function updateUserDocument(user) {
 
 // 인증 상태 변경 리스너 - 단순화된 버전
 let lastProcessedUserId = null; // 마지막으로 처리한 사용자 ID
-let isFirstLoad = true; // 첫 로드 여부
 
 initAuth(async (user) => {
-    // 페이지 로드 시 자동으로 로그아웃 (테스트를 위한 설정)
-    if (isFirstLoad && user && !user.isAnonymous) {
-        isFirstLoad = false;
-        console.log('🔄 페이지 로드 시 자동 로그아웃 실행');
-        await signOut(auth);
-        // 로그아웃 후 리턴 (다음 onAuthStateChanged에서 null user로 다시 호출됨)
-        return;
-    }
-    isFirstLoad = false;
     // 1. 관리자 페이지가 열려있는지 확인 (현재 탭이 관리자 페이지인 경우)
     if (window.location.pathname.includes('admin.html') || window.location.href.includes('admin.html')) {
         console.log('⚠️ 관리자 페이지에서 인증 상태 변경 무시');
@@ -3614,6 +3604,32 @@ const eventListenerManager = {
 // 전역 이벤트 리스너 관리자 노출 (디버깅용)
 window.Mealog.eventListenerManager = eventListenerManager;
 
+/** 앱 전체: 키보드 열림 시 하단 네비 숨김 + 닫힘 시 복귀 (viewport 기반 keyboard-closed) */
+function initMainAppKeyboardHandling() {
+    const mainApp = document.getElementById('mainApp');
+    if (!mainApp) return;
+
+    const setKeyboardClosed = (closed) => {
+        document.body.classList.toggle('keyboard-closed', closed);
+    };
+
+    const checkViewport = () => {
+        const vh = window.visualViewport?.height ?? window.innerHeight;
+        const threshold = window.innerHeight * 0.85;
+        setKeyboardClosed(vh >= threshold);
+    };
+
+    if (window.visualViewport) {
+        const run = () => {
+            [0, 100, 250, 400].forEach(ms => setTimeout(checkViewport, ms));
+        };
+        window.visualViewport.addEventListener('resize', run);
+        window.visualViewport.addEventListener('scroll', run);
+    }
+    window.addEventListener('resize', checkViewport);
+    checkViewport();
+}
+
 function initEventListeners() {
     // 랜딩 페이지 버튼들
     const googleLoginBtn = document.getElementById('googleLoginBtn');
@@ -3787,6 +3803,9 @@ function initEventListeners() {
         btnViewPage.addEventListener('click', () => window.setViewMode('page'));
     }
     
+    // 모먼트/밀톡: 키보드 열림 시 하단 네비 숨김 + 키보드 상단 네비바 영역 제거
+    initMainAppKeyboardHandling();
+
     // 하단 네비게이션
     const navDashboard = document.getElementById('nav-dashboard');
     if (navDashboard) {

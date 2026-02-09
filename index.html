@@ -489,6 +489,8 @@
     <div id="mainApp" class="hidden">
         <!-- 상태바 영역 흰색 오버레이 (스크롤 시 콘텐츠 투과 방지) -->
         <div id="statusBarOverlay" class="fixed top-0 left-0 right-0 h-[var(--safe-top)] bg-white z-[100] pointer-events-none" aria-hidden="true"></div>
+        <!-- 네비게이션 바 영역 흰색 오버레이 (Android 15+ edge-to-edge 투명 방지) -->
+        <div id="navigationBarOverlay" class="fixed bottom-0 left-0 right-0 h-[var(--safe-bottom)] bg-white z-[100] pointer-events-none" aria-hidden="true"></div>
         <header id="mainAppHeader" class="sticky z-50 bg-white/95 backdrop-blur-md shadow-sm max-h-[60px] safe-area-top transition-transform duration-300 ease-out">
             <div class="py-2.5 flex justify-between items-center px-6">
                 <div class="flex items-baseline gap-2 min-w-0 flex-shrink-0">
@@ -970,7 +972,7 @@
                 <h2 id="modalTitle" class="text-lg font-bold text-slate-800 tracking-tight">기록하기</h2>
                 <button onclick="window.closeModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
             </div>
-            <div id="modalScrollArea" class="p-4 space-y-2 overflow-y-auto pb-10">
+            <div id="modalScrollArea" class="p-4 space-y-2 overflow-y-auto pb-2">
                 <div id="mainMealFields">
                     <div class="mb-2">
                         <div class="flex items-center justify-between mb-1.5">
@@ -1151,7 +1153,7 @@
     </div>
 
     <!-- Best Share Modal (팝업: 중앙 정렬, 포지션 간섭 최소화) -->
-    <div id="bestShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center p-4">
+    <div id="bestShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center py-4 capture-share-modal">
         <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl">
             <div id="bestShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center z-20">
                 <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>
@@ -1175,7 +1177,7 @@
     </div>
 
     <!-- Insight Share Modal (팝업: 중앙 정렬, 포지션 간섭 최소화) -->
-    <div id="insightShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center p-4">
+    <div id="insightShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center py-4 capture-share-modal">
         <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl">
             <div id="insightShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center z-20">
                 <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>
