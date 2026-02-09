@@ -15,25 +15,36 @@ body {
     padding-top: var(--safe-top); 
     padding-bottom: calc(80px + var(--safe-bottom)); 
 }
-/* 앱 전체 키보드 열림 시: 하단 네비 숨김 + 키보드 상단 네비바 영역 제거 (CSS :focus-within) */
-body:focus-within .bottom-nav,
-body:focus-within #navigationBarOverlay {
+/* 앱 전체 키보드 열림 시: 헤더·상태바·트래커·하단 네비·핸폰 네비 영역 모두 숨김 (input/textarea/contenteditable 포커스 시) */
+body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) .bottom-nav,
+body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #navigationBarOverlay,
+body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #mainAppHeader,
+body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #statusBarOverlay,
+body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #trackerSection {
     display: none !important;
 }
-body:focus-within {
+body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) {
+    padding-top: 0 !important;
     padding-bottom: 0 !important;
 }
-body:focus-within #boardWriteView {
+body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #boardWriteView {
     padding-bottom: 1rem !important;
 }
-/* 키보드 닫혔을 때: viewport 복원 시 네비 강제 표시 (뒤로가기로 닫아도 포커스가 남아있는 경우) */
+/* 키보드 닫혔을 때: viewport 복원 시 모든 UI 복원 (뒤로가기로 닫아도 포커스가 남아있는 경우) */
 body.keyboard-closed .bottom-nav {
     display: flex !important;
 }
-body.keyboard-closed #navigationBarOverlay {
+body.keyboard-closed #navigationBarOverlay,
+body.keyboard-closed #mainAppHeader,
+body.keyboard-closed #statusBarOverlay {
+    display: block !important;
+}
+/* trackerSection: 탭이 timeline일 때만 표시 (hidden이 아닐 때만 복원) */
+body.keyboard-closed #trackerSection:not(.hidden) {
     display: block !important;
 }
 body.keyboard-closed {
+    padding-top: var(--safe-top) !important;
     padding-bottom: calc(80px + var(--safe-bottom)) !important;
 }
 body.keyboard-closed #boardWriteView {

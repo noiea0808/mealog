@@ -3619,15 +3619,55 @@ function initMainAppKeyboardHandling() {
         setKeyboardClosed(vh >= threshold);
     };
 
+    const isInputLike = (el) => el && (el.matches?.('input, textarea') || el.getAttribute?.('contenteditable') === 'true');
+
     if (window.visualViewport) {
         const run = () => {
-            [0, 100, 250, 400].forEach(ms => setTimeout(checkViewport, ms));
+            [0, 100, 250, 400, 600, 1000].forEach(ms => setTimeout(checkViewport, ms));
         };
         window.visualViewport.addEventListener('resize', run);
         window.visualViewport.addEventListener('scroll', run);
     }
     window.addEventListener('resize', checkViewport);
     checkViewport();
+
+    /* 뒤로가기로 키보드 내렸을 때: viewport 이벤트가 늦게 오거나 안 올 수 있어, 포커스 중에는 주기적으로 체크 */
+    let keyboardCheckInterval = null;
+    document.addEventListener('focusin', (e) => {
+        if (!isInputLike(e.target)) return;
+        if (keyboardCheckInterval) clearInterval(keyboardCheckInterval);
+        const start = Date.now();
+        keyboardCheckInterval = setInterval(() => {
+            checkViewport();
+            const vh = window.visualViewport?.height ?? window.innerHeight;
+            if (vh >= window.innerHeight * 0.85 || Date.now() - start > 10000) {
+                clearInterval(keyboardCheckInterval);
+                keyboardCheckInterval = null;
+            }
+        }, 150);
+    });
+    document.addEventListener('focusout', (e) => {
+        if (!isInputLike(e.target)) return;
+        if (keyboardCheckInterval) { clearInterval(keyboardCheckInterval); keyboardCheckInterval = null; }
+        [100, 300, 500, 800].forEach(ms => setTimeout(checkViewport, ms));
+    });
+
+    /* Capacitor: 뒤로가기로 키보드 내렸을 때 네비 복원 (viewport가 갱신되지 않는 WebView에서 확실히 동작) */
+    if (window.Capacitor?.isNativePlatform?.()) {
+        import('@capacitor/app').then(({ App }) => {
+            App.addListener('backButton', ({ canGoBack }) => {
+                const active = document.activeElement;
+                if (isInputLike(active)) {
+                    active.blur();
+                    setKeyboardClosed(true);
+                } else if (canGoBack) {
+                    window.history.back();
+                } else {
+                    App.exitApp();
+                }
+            });
+        }).catch(() => {});
+    }
 }
 
 function initEventListeners() {

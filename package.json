@@ -11,11 +11,13 @@
     "cap:build:production": "npm run cap:sync:production && node scripts/build-android.js assembleProductionDebug",
     "cap:open": "npx cap open android",
     "cap:sync:bundled": "node scripts/select-cap-config.js staging.bundled && npm run copy:www && npx cap sync android",
-    "cap:build:bundled": "npm run cap:sync:bundled && node scripts/build-android.js assembleStagingDebug"
+    "cap:build:bundled": "npm run cap:sync:bundled && node scripts/build-android.js assembleStagingDebug",
+    "postinstall": "node scripts/patch-safe-area.js"
   },
   "dependencies": {
     "@capacitor-community/safe-area": "^8.0.1",
     "@capacitor/android": "^8.0.2",
+    "@capacitor/app": "^8.0.0",
     "@capacitor/cli": "^8.0.2",
     "@capacitor/core": "^8.0.2"
   }

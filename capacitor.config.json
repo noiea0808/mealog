@@ -3,8 +3,7 @@
   "appName": "MEALOG (스테이징)",
   "webDir": "www",
   "server": {
-    "androidScheme": "https",
-    "url": "https://staging-mealog.vercel.app"
+    "androidScheme": "https"
   },
   "plugins": {
     "SystemBars": {
