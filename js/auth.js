@@ -362,12 +362,22 @@ export async function initAuth(onAuthStateChangedCallback) {
                 showToast("구글 로그인 성공!", "success");
             }
         } catch (error) {
-            if (error.code !== 'auth/operation-not-allowed' && !error.message?.includes('redirect')) {
-                showToast("로그인 실패: " + (error.message || '알 수 없는 오류'), "error");
+            console.warn('구글 Redirect 로그인 처리:', error?.code, error?.message);
+            if (error?.code !== 'auth/operation-not-allowed' && !error?.message?.includes('redirect')) {
+                showToast("로그인 실패: " + (error?.message || '알 수 없는 오류'), "error");
             }
+            hideLoading();
         }
     }
-    onAuthStateChanged(auth, onAuthStateChangedCallback);
+    onAuthStateChanged(auth, (user) => {
+        try {
+            onAuthStateChangedCallback(user);
+        } catch (e) {
+            console.error('인증 상태 처리 중 오류:', e);
+            hideLoading();
+            showToast("잠시 후 다시 시도해 주세요.", "error");
+        }
+    });
 }
 
 // 약관 동의 모달 표시

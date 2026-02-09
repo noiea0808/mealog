@@ -2023,18 +2023,8 @@ async function updateUserDocument(user) {
 
 // 인증 상태 변경 리스너 - 단순화된 버전
 let lastProcessedUserId = null; // 마지막으로 처리한 사용자 ID
-let isFirstLoad = true; // 첫 로드 여부
 
 initAuth(async (user) => {
-    // 페이지 로드 시 자동으로 로그아웃 (테스트를 위한 설정)
-    if (isFirstLoad && user && !user.isAnonymous) {
-        isFirstLoad = false;
-        console.log('🔄 페이지 로드 시 자동 로그아웃 실행');
-        await signOut(auth);
-        // 로그아웃 후 리턴 (다음 onAuthStateChanged에서 null user로 다시 호출됨)
-        return;
-    }
-    isFirstLoad = false;
     // 1. 관리자 페이지가 열려있는지 확인 (현재 탭이 관리자 페이지인 경우)
     if (window.location.pathname.includes('admin.html') || window.location.href.includes('admin.html')) {
         console.log('⚠️ 관리자 페이지에서 인증 상태 변경 무시');

@@ -321,13 +321,20 @@ header .mealog-title {
     color: white; 
 }
 
-/* 끼니 등록 모달: 하단 버튼 영역이 네비/시스템 UI에 가려지지 않도록 */
-#entryModal > div > div:last-child {
-    padding-bottom: calc(1.5rem + var(--safe-bottom));
+/* 끼니 등록 모달: 네비게이션 바 영역 확보 (키보드 닫힘 시) */
+#entryModal {
+    padding-bottom: var(--safe-bottom);
 }
-/* 키보드 열림 시: 네비바가 보이지 않으므로 하단 여백 제거 */
+#entryModal.keyboard-open {
+    padding-bottom: 0; /* 키보드가 네비바 영역 대체 */
+}
+/* 하단 버튼 영역 패딩 */
+#entryModal > div > div:last-child {
+    padding-bottom: 1.5rem;
+}
+/* 키보드 열림 시: 버튼과 키보드 사이 2px 여유 */
 #entryModal.keyboard-open > div > div:last-child {
-    padding-bottom: 0 !important;
+    padding-bottom: 2px !important;
 }
 #entryModal.keyboard-open #modalScrollArea {
     padding-bottom: 0.5rem !important;
