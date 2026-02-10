@@ -106,11 +106,16 @@ export function getDashboardData() {
     
     const startStr = toLocalDateString(startDate);
     const endStr = toLocalDateString(endDate);
+    // 주간·연간·직접설정: 분석 끼니 모수는 경과한 날짜(오늘 포함)만 사용
+    const todayStr = toLocalDateString(today);
+    const useElapsedOnly = (state.dashboardMode === 'week' || state.dashboardMode === 'year' || state.dashboardMode === 'custom');
+    const effectiveEndStr = useElapsedOnly && endStr > todayStr ? todayStr : endStr;
+
     const daysDiff = Math.max(1, Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1);
     // 차트용: mealHistory가 있으면 우선 사용 (식사당 1개 레코드로 정확한 집계, stats expand는 필드별 별도 레코드 생성으로 중복/미입력 발생 가능)
-    const mealFiltered = (window.mealHistory || []).filter(m => m.date >= startStr && m.date <= endStr);
+    const mealFiltered = (window.mealHistory || []).filter(m => m.date >= startStr && m.date <= effectiveEndStr);
     const statsHasData = (window.dailyStats && Object.keys(window.dailyStats).length > 0);
-    const r = statsHasData ? statsToFilteredData(window.dailyStats, startStr, endStr) : null;
+    const r = statsHasData ? statsToFilteredData(window.dailyStats, startStr, effectiveEndStr) : null;
     let filteredData, statsMainCount, statsSnackCount;
     if (mealFiltered.length > 0) {
         filteredData = mealFiltered;
@@ -141,18 +146,11 @@ export async function updateDashboard() {
             const yearEnd = `${year}-12-31`;
             await loadMealsForDateRange(yearStart, yearEnd);
         } else if (state.dashboardMode === 'month') {
+            // 선택한 월 데이터를 항상 로드 (리스너는 최근 7일만 있어서, 월간 첫 진입 시 부분만 보이다가 다른 기간 갔다 오면 29회로 바뀌는 현상 방지)
             const [y, m] = state.selectedMonth.split('-').map(Number);
-            const selectedDate = new Date(y, m - 1, 1);
-            const oneMonthAgo = new Date();
-            oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-            oneMonthAgo.setDate(1);
-            
-            // 선택한 월이 1개월 이전이면 추가 로드
-            if (selectedDate < oneMonthAgo) {
-                const monthStart = `${y}-${String(m).padStart(2, '0')}-01`;
-                const monthEnd = new Date(y, m, 0).toISOString().split('T')[0];
-                await loadMealsForDateRange(monthStart, monthEnd);
-            }
+            const monthStart = `${y}-${String(m).padStart(2, '0')}-01`;
+            const monthEnd = new Date(y, m, 0).toISOString().split('T')[0];
+            await loadMealsForDateRange(monthStart, monthEnd);
         } else if (state.dashboardMode === 'custom') {
             const startStr = toLocalDateString(state.customStartDate);
             const endStr = toLocalDateString(state.customEndDate);
@@ -340,17 +338,37 @@ export async function updateDashboard() {
     renderProportionChart('snackTypeChartContainer', snacksOnly, 'snackType');
     renderProportionChart('snackRatingChartContainer', snacksOnly.filter(m => m.rating), 'rating');
     
+    // 식사 기록 모수 분모: 주간·연간·직접설정은 경과한 날짜(오늘 포함)만 사용
+    const today = new Date();
+    const todayStr = toLocalDateString(today);
     let targetDays = days;
     if (state.dashboardMode === 'month') {
-        const today = new Date();
         const [selY, selM] = state.selectedMonth.split('-').map(Number);
         if (today.getFullYear() === selY && (today.getMonth() + 1) === selM) {
             targetDays = today.getDate();
         } else if (new Date(selY, selM - 1, 1) > today) {
             targetDays = 0;
         }
-    } else if (state.dashboardMode === 'week') {
-        targetDays = 7;
+    } else if (state.dashboardMode === 'week' || state.dashboardMode === 'year' || state.dashboardMode === 'custom') {
+        let rangeStart, rangeEnd;
+        if (state.dashboardMode === 'week') {
+            const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
+            rangeStart = new Date(start);
+            rangeEnd = new Date(end);
+        } else if (state.dashboardMode === 'year') {
+            const y = state.selectedYearForYear || today.getFullYear();
+            rangeStart = new Date(y, 0, 1);
+            rangeEnd = new Date(y, 11, 31);
+        } else {
+            rangeStart = new Date(state.customStartDate);
+            rangeEnd = new Date(state.customEndDate);
+        }
+        const effectiveEnd = rangeEnd > today ? today : rangeEnd;
+        if (effectiveEnd < rangeStart) {
+            targetDays = 0;
+        } else {
+            targetDays = Math.floor((effectiveEnd - rangeStart) / (1000 * 60 * 60 * 24)) + 1;
+        }
     }
     
     // 식사 기록 통계 계산 (간식 제외, 식사만 계산)

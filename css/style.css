@@ -1100,6 +1100,7 @@ header .mealog-title {
     background: transparent;
     border: none;
     box-shadow: none;
+    overflow: visible;
 }
 /* 밀로그(MEALOG) 선택 시에만 흰색 보더 */
 .insight-character-btn:has(#insightCharacterIcon.mealog-character-m) {
@@ -1107,19 +1108,28 @@ header .mealog-title {
 }
 .insight-character-btn #insightCharacterIcon {
     color: #047857;
+    overflow: visible;
 }
 /* MEALOG M: Fredoka 폰트, 흰색 텍스트 */
 .insight-character-btn #insightCharacterIcon.mealog-character-m {
     font-family: 'Fredoka', sans-serif;
     color: #ffffff;
 }
-/* 캐릭터 이미지: 창 전체를 채우고 모서리 둥글게 */
+/* 캐릭터 이미지: 창 전체를 채우고 모서리 둥글게. PNG 투명 영역 제외, 캐릭터 실루엣만 얇은 흰색 윤곽 (1px) */
 .insight-character-btn #insightCharacterIcon img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
     border-radius: 1rem;
+    filter: drop-shadow(1px 0 0 #fff)
+            drop-shadow(-1px 0 0 #fff)
+            drop-shadow(0 1px 0 #fff)
+            drop-shadow(0 -1px 0 #fff)
+            drop-shadow(1px 1px 0 #fff)
+            drop-shadow(-1px 1px 0 #fff)
+            drop-shadow(1px -1px 0 #fff)
+            drop-shadow(-1px -1px 0 #fff);
 }
 .insight-comment-trigger {
     font-size: 12px;
