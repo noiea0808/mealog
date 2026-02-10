@@ -19,6 +19,7 @@
     "@capacitor/android": "^8.0.2",
     "@capacitor/app": "^8.0.0",
     "@capacitor/cli": "^8.0.2",
-    "@capacitor/core": "^8.0.2"
+    "@capacitor/core": "^8.0.2",
+    "@capgo/capacitor-social-login": "^8.2.23"
   }
 }

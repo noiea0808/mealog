@@ -159,6 +159,10 @@
     </script>
     
     <script src="js/env.js" onerror="window.APP_ENV='production';"></script>
+    <!-- 앱에서 구글 네이티브 로그인: npm 모듈 해석 불가하므로 스크립트로 로드 -->
+    <script src="js/capacitor.js"></script>
+    <script>window.Capacitor=window.Capacitor||(window.capacitorExports&&window.capacitorExports.Capacitor);</script>
+    <script src="js/capacitor-social-login-plugin.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             var el = document.getElementById('headerStagingLabel');

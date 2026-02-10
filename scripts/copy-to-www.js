@@ -50,6 +50,18 @@ if (!fs.existsSync(configSrc) && fs.existsSync(path.join(root, 'js', 'config.def
   console.log('✓ js/config.js (from config.default.js)');
 }
 
+// Capacitor core + SocialLogin 플러그인 (앱에서 npm 모듈 해석 불가 → 스크립트로 로드)
+const capacitorCore = path.join(root, 'node_modules', '@capacitor', 'core', 'dist', 'capacitor.js');
+const socialLoginPlugin = path.join(root, 'node_modules', '@capgo', 'capacitor-social-login', 'dist', 'plugin.js');
+if (fs.existsSync(capacitorCore)) {
+  fs.copyFileSync(capacitorCore, path.join(www, 'js', 'capacitor.js'));
+  console.log('✓ js/capacitor.js');
+}
+if (fs.existsSync(socialLoginPlugin)) {
+  fs.copyFileSync(socialLoginPlugin, path.join(www, 'js', 'capacitor-social-login-plugin.js'));
+  console.log('✓ js/capacitor-social-login-plugin.js');
+}
+
 // capacitor.config.json에서 appId 읽어 env.js 생성 (스테이징 여부 판별)
 const capConfigPath = path.join(root, 'capacitor.config.json');
 if (fs.existsSync(capConfigPath)) {

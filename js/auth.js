@@ -1,6 +1,6 @@
 // 인증 관련 함수들
 import { auth } from './firebase.js';
-import { GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { GoogleAuthProvider, signInWithPopup, getRedirectResult, signInWithCredential, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
 import { dbOps } from './db.js';
@@ -9,17 +9,57 @@ function isNativePlatform() {
     return typeof window.Capacitor !== 'undefined' && window.Capacitor?.isNativePlatform?.();
 }
 
+async function getGoogleWebClientId() {
+    try {
+        const config = await import('./config.js');
+        if (config.GOOGLE_WEB_CLIENT_ID) return config.GOOGLE_WEB_CLIENT_ID;
+    } catch (_) {}
+    const { GOOGLE_WEB_CLIENT_ID } = await import('./config.default.js');
+    return GOOGLE_WEB_CLIENT_ID || '';
+}
+
 export async function handleGoogleLogin() {
     showLoading();
-    const provider = new GoogleAuthProvider();
     try {
         let result;
         if (isNativePlatform()) {
-            // Capacitor/앱 환경: Redirect 사용 (브라우저 팝업 대신 WebView 내 리다이렉트)
-            await signInWithRedirect(auth, provider);
-            return; // 리다이렉트 발생, 복귀 시 getRedirectResult에서 처리
+            const webClientId = await getGoogleWebClientId();
+            if (!webClientId) {
+                showToast('구글 로그인 설정이 필요합니다. config.js에 GOOGLE_WEB_CLIENT_ID를 설정해주세요.', 'error');
+                hideLoading();
+                return;
+            }
+            const SocialLogin = window.Capacitor?.Plugins?.SocialLogin;
+            if (!SocialLogin) {
+                console.warn('[구글 로그인] SocialLogin 플러그인을 찾을 수 없습니다. capacitor.js / capacitor-social-login-plugin.js 로드 여부 확인.');
+                showToast('구글 로그인을 사용할 수 없습니다.', 'error');
+                hideLoading();
+                return;
+            }
+            await SocialLogin.initialize({
+                google: { webClientId, mode: 'online' }
+            });
+            // 스코프를 명시하지 않으면 플러그인 기본값 사용 (OAuth 동의 화면 미수정 시 에러 방지)
+            const response = await SocialLogin.login({
+                provider: 'google',
+                options: {}
+            });
+            // Android 등에서 idToken이 result 바로 아래 또는 authentication 안에 올 수 있음
+            const idToken = response.result?.idToken ?? response.result?.authentication?.idToken ?? null;
+            const isOnline = response.result?.responseType === 'online';
+            if (!isOnline || !idToken) {
+                const errMsg = response.result?.responseType === 'offline'
+                    ? '오프라인 모드는 지원하지 않습니다.'
+                    : '구글 로그인에서 ID 토큰을 받지 못했습니다.';
+                console.warn('[구글 로그인] 응답:', response?.result);
+                showToast(errMsg, 'error');
+                hideLoading();
+                return;
+            }
+            const credential = GoogleAuthProvider.credential(idToken);
+            result = await signInWithCredential(auth, credential);
         } else {
-            // 브라우저 환경: Popup 사용
+            const provider = new GoogleAuthProvider();
             result = await signInWithPopup(auth, provider);
         }
         console.log('🔐 구글 로그인 성공:', {
@@ -31,9 +71,9 @@ export async function handleGoogleLogin() {
         window._recordsLoadHidePending = true;
         showLoading('기록을 불러오고 있어요', { dimBackground: false });
         showToast("구글 로그인 성공!", "success");
-        // 로그인 성공 후 로딩 오버레이는 onAuthStateChanged에서 인증 플로우가 완료될 때까지 유지
     } catch (error) {
-        if (error.code === 'auth/unauthorized-domain' || error.message.includes('unauthorized-domain')) {
+        console.warn('[구글 로그인] 오류:', error?.code, error?.message, error);
+        if (error?.code === 'auth/unauthorized-domain' || error?.message?.includes('unauthorized-domain')) {
             const domainTextEl = document.getElementById('domainText');
             if (domainTextEl) {
                 const host = window.location.hostname;
@@ -48,8 +88,11 @@ export async function handleGoogleLogin() {
             }
             document.getElementById('domainErrorModal').classList.remove('hidden');
             hideLoading();
-        } else if (error.code !== 'auth/cancelled-popup-request') {
-            showToast("로그인 실패: " + error.message, "error");
+        } else if (error?.code !== 'auth/cancelled-popup-request' && error?.message !== 'User cancelled flow') {
+            const msg = error?.message || error?.error?.message || String(error);
+            showToast("로그인 실패: " + (msg.length > 50 ? msg.slice(0, 50) + '…' : msg), "error");
+            hideLoading();
+        } else {
             hideLoading();
         }
     }
@@ -351,7 +394,7 @@ export async function switchToLogin() {
 }
 
 export async function initAuth(onAuthStateChangedCallback) {
-    // Redirect 로그인 복귀 시 결과 처리 (앱/Capacitor에서 구글 로그인 후 돌아올 때)
+    // Redirect 로그인 복귀 시 결과 처리 (웹에서만 사용, 네이티브는 SocialLogin 사용)
     if (isNativePlatform()) {
         try {
             const result = await getRedirectResult(auth);
@@ -362,10 +405,8 @@ export async function initAuth(onAuthStateChangedCallback) {
                 showToast("구글 로그인 성공!", "success");
             }
         } catch (error) {
-            console.warn('구글 Redirect 로그인 처리:', error?.code, error?.message);
-            if (error?.code !== 'auth/operation-not-allowed' && !error?.message?.includes('redirect')) {
-                showToast("로그인 실패: " + (error?.message || '알 수 없는 오류'), "error");
-            }
+            // 네이티브에서는 리다이렉트 미사용 → 에러는 무시(콘솔만), 사용자에게 토스트 안 띄움
+            console.warn('getRedirectResult (네이티브 무시 가능):', error?.code, error?.message);
             hideLoading();
         }
     }
