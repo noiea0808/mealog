@@ -126,9 +126,8 @@ function loadKakaoSDK() {
         // 중요: JavaScript SDK는 반드시 JavaScript 키를 사용해야 함 (REST API 키 아님)
         const appkey = '42dce12f04991c35775f3ce1081a3c76';
         
-        // localhost는 HTTP 사용 (HTTPS는 인증서 문제로 실패할 수 있음)
-        // 실제 배포 환경에서는 HTTPS 사용 권장
-        const protocol = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http:' : 'https:';
+        // 페이지와 동일한 프로토콜 사용 (Mixed Content 방지: HTTPS 페이지에서 HTTP 스크립트 차단됨)
+        const protocol = window.location.protocol || 'https:';
         const scriptUrl = protocol + '//dapi.kakao.com/v2/maps/sdk.js?appkey=' + appkey + '&libraries=services&autoload=false';
         script.src = scriptUrl;
         script.async = true;
