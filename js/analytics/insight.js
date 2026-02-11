@@ -6,7 +6,8 @@ import { dbOps } from '../db.js';
 import { GEMINI_API_KEY as DEFAULT_API_KEY } from '../config.default.js';
 import { db, appId, callableFunctions } from '../firebase.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { captureWithGhostStrategy } from '../utils.js';
+import { captureWithGhostStrategy, toLocalDateString } from '../utils.js';
+import { getWeekRange } from './date-utils.js';
 
 // escapeHtml 함수 (필요한 경우)
 function escapeHtml(text) {
@@ -95,10 +96,11 @@ async function loadCharactersFromFirebase() {
             const charactersData = charactersDoc.data();
             const loadedCharacters = [...DEFAULT_CHARACTERS];
             
-            // Firebase에서 추가된 캐릭터들 추가 (기본 캐릭터와 중복되지 않는 것만)
-            Object.entries(charactersData).forEach(([id, charData]) => {
-                if (!DEFAULT_CHARACTERS.find(c => c.id === id)) {
-                    // 각 캐릭터의 개별 설정 문서에서 persona와 systemPrompt 가져오기
+            // Firebase에서 추가된 캐릭터들 추가 (기본 캐릭터와 중복되지 않는 것만, 관리자 화면과 동일하게 id 순 정렬)
+            Object.entries(charactersData)
+                .filter(([id]) => !DEFAULT_CHARACTERS.find(c => c.id === id))
+                .sort(([a], [b]) => a.localeCompare(b))
+                .forEach(([id, charData]) => {
                     loadedCharacters.push({
                         id,
                         name: charData.name || id,
@@ -107,8 +109,7 @@ async function loadCharactersFromFirebase() {
                         persona: '', // 나중에 개별 문서에서 가져올 예정
                         systemPrompt: '' // 나중에 개별 문서에서 가져올 예정
                     });
-                }
-            });
+                });
             
             // 각 캐릭터의 개별 설정 문서에서 persona와 systemPrompt 가져오기
             for (const char of loadedCharacters) {
@@ -639,6 +640,16 @@ export async function generateInsightComment() {
     }
     
     try {
+        // 기간 경과/기록 부족 시 AI 호출 없이 관리자 설정 멘트 표시
+        const reason = !filteredData || filteredData.length === 0 ? 'insufficient_records' : getInsufficientReason(filteredData);
+        if (reason) {
+            const fallback = await getInsightFallbackMessages(currentCharacter);
+            const text = reason === 'insufficient_period' ? fallback.insufficientPeriod : fallback.insufficientRecords;
+            displayInsightText(text || "멋진 식사 기록이 쌓이고 있어요! ✨", characterName);
+            closeCharacterSelectModal();
+            return;
+        }
+
         // AI 코멘트 생성 및 업데이트
         const comment = await getGeminiComment(filteredData, currentCharacter, dateRangeText);
         displayInsightText(comment || "멋진 식사 기록이 쌓이고 있어요! ✨", characterName);
@@ -915,6 +926,99 @@ async function getCommonPersona() {
     return '';
 }
 
+/** 기간 경과/기록 부족 여부 판정. 'insufficient_period' | 'insufficient_records' | null */
+function getInsufficientReason(filteredData) {
+    const state = appState;
+    const mode = state.dashboardMode;
+    const today = new Date();
+    const todayStr = toLocalDateString(today);
+
+    let rangeStart, rangeEnd, elapsedDays, totalPeriodDays;
+    if (mode === '7d') {
+        const start = state.recentWeekStartDate || (() => { const d = new Date(today); d.setDate(d.getDate() - 6); return d; })();
+        rangeStart = new Date(start);
+        rangeEnd = new Date(today);
+        rangeStart.setHours(0, 0, 0, 0);
+        rangeEnd.setHours(23, 59, 59, 999);
+        totalPeriodDays = 7;
+        elapsedDays = Math.floor((rangeEnd - rangeStart) / 86400000) + 1;
+        // 최근 1주: 기간 경과 부족 해당 없음
+    } else if (mode === 'week') {
+        const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
+        rangeStart = new Date(start);
+        rangeEnd = new Date(end);
+        const effectiveEnd = rangeEnd > today ? today : rangeEnd;
+        totalPeriodDays = 7;
+        elapsedDays = effectiveEnd < rangeStart ? 0 : Math.floor((effectiveEnd - rangeStart) / 86400000) + 1;
+        if (elapsedDays < 4) return 'insufficient_period';
+    } else if (mode === 'month') {
+        const [y, m] = state.selectedMonth.split('-').map(Number);
+        rangeStart = new Date(y, m - 1, 1);
+        rangeEnd = new Date(y, m, 0);
+        const effectiveEnd = rangeEnd > today ? today : rangeEnd;
+        totalPeriodDays = rangeEnd.getDate();
+        elapsedDays = effectiveEnd < rangeStart ? 0 : Math.floor((effectiveEnd - rangeStart) / 86400000) + 1;
+        if (elapsedDays < 10) return 'insufficient_period';
+    } else if (mode === 'year') {
+        const year = state.selectedYearForYear || today.getFullYear();
+        rangeStart = new Date(year, 0, 1);
+        rangeEnd = new Date(year, 11, 31);
+        const effectiveEnd = rangeEnd > today ? today : rangeEnd;
+        const aprilFirst = new Date(year, 3, 1);
+        if (effectiveEnd < aprilFirst) return 'insufficient_period';
+        totalPeriodDays = 365 + (new Date(year, 1, 29).getMonth() === 1 ? 1 : 0);
+        elapsedDays = Math.floor((effectiveEnd - rangeStart) / 86400000) + 1;
+    } else if (mode === 'custom') {
+        rangeStart = new Date(state.customStartDate);
+        rangeEnd = new Date(state.customEndDate);
+        const effectiveEnd = rangeEnd > today ? today : rangeEnd;
+        totalPeriodDays = Math.floor((rangeEnd - rangeStart) / 86400000) + 1;
+        elapsedDays = effectiveEnd < rangeStart ? 0 : Math.floor((effectiveEnd - rangeStart) / 86400000) + 1;
+        if (totalPeriodDays > 0 && elapsedDays / totalPeriodDays < 0.5) return 'insufficient_period';
+    } else {
+        return null;
+    }
+
+    // 기록 부족: 경과 기간의 본식 슬롯 대비 50% 미만 기록 (간식 제외)
+    const mainMealCount = (filteredData || []).filter(m => {
+        const slot = SLOTS.find(s => s.id === m.slotId && s.type === 'main');
+        return slot && m.mealType !== 'Skip';
+    }).length;
+    const elapsedMainSlots = Math.max(1, elapsedDays) * 3;
+    if (mainMealCount / elapsedMainSlots < 0.5) return 'insufficient_records';
+    return null;
+}
+
+/** 관리자 설정 밀당 안내 멘트 (캐릭터별, 기간 경과 부족 / 기록 부족) */
+const DEFAULT_INSIGHT_MESSAGE_INSUFFICIENT_PERIOD = '아직 이 기간이 충분히 경과하지 않았어요. 조금 더 지나면 더 의미 있는 코멘트를 드릴 수 있어요.';
+const DEFAULT_INSIGHT_MESSAGE_INSUFFICIENT_RECORDS = '이 기간의 식사 기록이 아직 충분하지 않아요. 조금 더 기록해 보시면 더 재미있는 코멘트를 드릴 수 있어요.';
+
+async function getInsightFallbackMessages(characterId) {
+    if (!characterId) {
+        return {
+            insufficientPeriod: DEFAULT_INSIGHT_MESSAGE_INSUFFICIENT_PERIOD,
+            insufficientRecords: DEFAULT_INSIGHT_MESSAGE_INSUFFICIENT_RECORDS
+        };
+    }
+    try {
+        const personaDocRef = doc(db, 'artifacts', appId, 'persona', characterId);
+        const personaDoc = await getDoc(personaDocRef);
+        if (personaDoc.exists()) {
+            const data = personaDoc.data();
+            return {
+                insufficientPeriod: (data.insightMessageInsufficientPeriod || '').trim() || DEFAULT_INSIGHT_MESSAGE_INSUFFICIENT_PERIOD,
+                insufficientRecords: (data.insightMessageInsufficientRecords || '').trim() || DEFAULT_INSIGHT_MESSAGE_INSUFFICIENT_RECORDS
+            };
+        }
+    } catch (e) {
+        console.error('밀당 안내 멘트 가져오기 실패:', e);
+    }
+    return {
+        insufficientPeriod: DEFAULT_INSIGHT_MESSAGE_INSUFFICIENT_PERIOD,
+        insufficientRecords: DEFAULT_INSIGHT_MESSAGE_INSUFFICIENT_RECORDS
+    };
+}
+
 // Gemini API를 사용하여 코멘트 생성
 async function getGeminiComment(filteredData, characterId = currentCharacter, dateRangeText = '') {
     const character = INSIGHT_CHARACTERS.find(c => c.id === characterId);
@@ -957,9 +1061,13 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         
         // 밀당 메모 가져오기 (AI 분석 참고용)
         const userShortcuts = window.userSettings?.shortcuts || '';
+        const userNickname = (window.userSettings?.profile?.nickname || '').trim() || '사용자';
         
         // 프롬프트 구성 (간결하고 명확하게)
         let prompt = '';
+        
+        // 사용자 닉네임 (코멘트에서 사용자 부를 때 사용)
+        prompt += `[대상 사용자]\n이름(닉네임): ${userNickname.replace(/\n/g, ' ')}\n\n`;
         
         // 공통 페르소나는 systemInstruction에 포함, 밀당 메모는 프롬프트에 포함 (둘 다 분석 요청에 사용됨)
         if (userShortcuts && userShortcuts.trim()) {
@@ -998,6 +1106,7 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
             prompt += `- 밀당 메모를 반드시 참고하여 분석 (예: 메뉴 약어 해석, 사용자 상태 고려)\n`;
         }
         prompt += `- 캐릭터 고유의 말투와 성격 드러내기\n`;
+        prompt += `- 대상 사용자(위 [대상 사용자]의 이름)를 자연스럽게 부르기 (예: "OO님", "OO야" 등)\n`;
         prompt += `- 식사 패턴의 재미있는 점 우선 언급\n`;
         prompt += `- 시간대별 데이터를 활용해 아침/점심/저녁·간식 시간대별 패턴 분석 가능\n`;
         prompt += `- 자기 소개/기간 언급 금지\n`;

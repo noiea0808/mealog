@@ -796,6 +796,41 @@ header .mealog-title {
 .animate-toast { 
     animation: toastSlideUp 0.3s ease-out forwards; 
 }
+
+/* 로딩 오버레이: 음식 아이콘 순차 전환 (배민 스타일) */
+@keyframes loadingFoodCycle {
+    0% { opacity: 1; transform: scale(1); }
+    15% { opacity: 1; transform: scale(1.1); }
+    20% { opacity: 0; transform: scale(0.9); }
+    100% { opacity: 0; transform: scale(0.9); }
+}
+.loading-food-icons {
+    overflow: hidden;
+}
+.loading-food-icon {
+    animation: loadingFoodCycle 1s ease-in-out infinite;
+    opacity: 0;
+    background: transparent;
+    /* 이모지 주변 1px 검정 윤곽 (text-stroke는 이모지에서 미지원이라 text-shadow로 구현) */
+    text-shadow:
+        1px 0 0 #000,
+        -1px 0 0 #000,
+        0 1px 0 #000,
+        0 -1px 0 #000,
+        1px 1px 0 #000,
+        -1px 1px 0 #000,
+        1px -1px 0 #000,
+        -1px -1px 0 #000;
+    line-height: 1;
+}
+.loading-food-icon:first-child {
+    animation-delay: 0s;
+}
+.loading-food-icon:nth-child(2) { animation-delay: 0.2s; }
+.loading-food-icon:nth-child(3) { animation-delay: 0.4s; }
+.loading-food-icon:nth-child(4) { animation-delay: 0.6s; }
+.loading-food-icon:nth-child(5) { animation-delay: 0.8s; }
+
 #landingPage { 
     position: fixed; 
     top: 0; 

@@ -4760,6 +4760,27 @@ function renderCharacterEditorForm(characterData) {
                               placeholder="예: 분석중입니다">${escapeHtml(characterData.loadingMessage || '')}</textarea>
                 </div>
             </div>
+
+            <div class="border-t border-slate-200 pt-4 space-y-4">
+                <div class="flex gap-4 items-start">
+                    <label class="flex-shrink-0 text-sm font-bold text-slate-700 w-28 pt-2">기간 경과 부족 시</label>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs text-slate-500 mb-2">주간 4일 미만, 월간 10일 미만, 연간 3월 미만, 직접설정 50% 미만 경과 시</p>
+                        <textarea id="characterInsightMessageInsufficientPeriod" rows="2"
+                                  class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px] overflow-hidden"
+                                  placeholder="아직 이 기간이 충분히 경과하지 않았어요. 조금 더 지나면 더 의미 있는 코멘트를 드릴 수 있어요.">${escapeHtml(characterData.insightMessageInsufficientPeriod || '')}</textarea>
+                    </div>
+                </div>
+                <div class="flex gap-4 items-start">
+                    <label class="flex-shrink-0 text-sm font-bold text-slate-700 w-28 pt-2">기록 부족 시</label>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs text-slate-500 mb-2">경과 기간의 본식(아침/점심/저녁) 50% 미만 기록 시</p>
+                        <textarea id="characterInsightMessageInsufficientRecords" rows="2"
+                                  class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px] overflow-hidden"
+                                  placeholder="이 기간의 식사 기록이 아직 충분하지 않아요. 조금 더 기록해 보시면 더 재미있는 코멘트를 드릴 수 있어요.">${escapeHtml(characterData.insightMessageInsufficientRecords || '')}</textarea>
+                    </div>
+                </div>
+            </div>
             
             <!-- 페르소나: 입력 텍스트만큼 창 자동 확장 -->
             <div>
@@ -4988,12 +5009,9 @@ window.saveCharacter = async function() {
                 alert('폼을 불러오는 중입니다. 잠시 후 다시 시도해주세요.');
                 return;
             }
-            
-            const systemPrompt = commonSystemPromptInput.value.trim();
-            
             const commonDocRef = doc(db, 'artifacts', appId, 'persona', 'common');
             await setDoc(commonDocRef, {
-                systemPrompt: systemPrompt,
+                systemPrompt: commonSystemPromptInput.value.trim(),
                 updatedAt: new Date().toISOString()
             }, { merge: true });
             
@@ -5008,6 +5026,8 @@ window.saveCharacter = async function() {
         const nameInput = document.getElementById('characterName');
         const systemPromptInput = document.getElementById('characterSystemPrompt');
         const loadingMessageInput = document.getElementById('characterLoadingMessage');
+        const insightPeriodEl = document.getElementById('characterInsightMessageInsufficientPeriod');
+        const insightRecordsEl = document.getElementById('characterInsightMessageInsufficientRecords');
         const commentsContainer = document.getElementById('characterDefaultCommentsContainer');
         
         if (!imageInput || !nameInput || !systemPromptInput) {
@@ -5059,6 +5079,8 @@ window.saveCharacter = async function() {
             systemPrompt: systemPrompt,
             defaultComments: defaultComments,
             loadingMessage: loadingMessage || '분석중입니다', // 기본값
+            insightMessageInsufficientPeriod: (insightPeriodEl && insightPeriodEl.value) ? insightPeriodEl.value.trim() : '',
+            insightMessageInsufficientRecords: (insightRecordsEl && insightRecordsEl.value) ? insightRecordsEl.value.trim() : '',
             image: image || null,
             name: name,
             updatedAt: new Date().toISOString()

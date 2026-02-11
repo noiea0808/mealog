@@ -319,8 +319,16 @@
     <div id="toastContainer" class="fixed bottom-24 left-1/2 -translate-x-1/2 w-[92%] max-w-[26rem] z-[600] flex flex-col items-center gap-2 pointer-events-none px-4 box-border"></div>
 
     <div id="loadingOverlay" class="fixed inset-0 bg-white/90 z-[9999] flex flex-col items-center justify-center">
-        <div class="w-10 h-10 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin"></div>
-        <p id="loadingOverlayMessage" class="mt-4 text-base font-bold text-slate-800"></p>
+        <div id="loadingOverlayBox" class="flex flex-col items-center justify-center px-6 py-5 bg-white rounded-2xl shadow-lg border border-slate-100">
+            <div class="loading-food-icons relative w-10 h-10 flex items-center justify-center text-3xl">
+                <span class="loading-food-icon absolute" aria-hidden="true">🍴</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍔</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍕</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍎</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍦</span>
+            </div>
+            <p id="loadingOverlayMessage" class="mt-4 text-base font-bold text-slate-800 whitespace-nowrap"></p>
+        </div>
     </div>
 
     <!-- 1. Landing Page -->

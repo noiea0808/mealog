@@ -388,8 +388,10 @@ export function renderMiniCalendar() {
         const month = String(d.getMonth() + 1).padStart(2, '0');
         const day = String(d.getDate()).padStart(2, '0');
         const iso = `${year}-${month}-${day}`;
-        const count = (window.dailyStats && window.dailyStats[iso]?.count) ?? window.mealHistory.filter(m => m.date === iso).length;
-        let status = count >= 4 ? "dot-full" : (count > 0 ? "dot-partial" : "dot-none");
+        const statsCount = (window.dailyStats && window.dailyStats[iso]?.count) ?? 0;
+        const historyCount = (window.mealHistory && Array.isArray(window.mealHistory)) ? window.mealHistory.filter(m => m.date === iso).length : 0;
+        const count = Math.max(statsCount, historyCount);
+        let status = count >= 3 ? "dot-full" : (count > 0 ? "dot-partial" : "dot-none");
         let dayColorClass = (d.getDay() === 0 || d.getDay() === 6) ? "text-rose-400" : "text-slate-400";
         const item = document.createElement('div');
         item.className = "calendar-item flex flex-col items-center gap-1 cursor-pointer flex-shrink-0";
