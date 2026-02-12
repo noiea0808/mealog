@@ -19,6 +19,11 @@ functions/*.log
 .DS_Store
 Thumbs.db
 
+# Android Release 서명 (민감한 정보)
+android/keystore.properties
+android/*.keystore
+android/*.jks
+
 # Firebase
 .firebase/
 firebase-debug.log
