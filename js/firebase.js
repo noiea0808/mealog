@@ -65,7 +65,9 @@ export const callableFunctions = {
     getStorageImageAsBase64: httpsCallable(functions, 'getStorageImageAsBase64'),
     backfillUserStats: httpsCallable(functions, 'backfillUserStats'),
     callGemini: httpsCallable(functions, 'callGemini'),
-    searchKakaoPlaces: httpsCallable(functions, 'searchKakaoPlaces')
+    searchKakaoPlaces: httpsCallable(functions, 'searchKakaoPlaces'),
+    getApkUploadUrl: httpsCallable(functions, 'getApkUploadUrl'),
+    confirmApkUpload: httpsCallable(functions, 'confirmApkUpload')
 };
 
 // App Check 초기화 (reCAPTCHA v3 사용)

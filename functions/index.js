@@ -1500,6 +1500,78 @@ exports.searchKakaoPlaces = onCall({ region: REGION }, wrapFunction('searchKakao
 }));
 
 /**
+ * APK 업로드용 서명 URL 발급 (관리자 전용)
+ */
+exports.getApkUploadUrl = onCall({ region: REGION }, wrapFunction('getApkUploadUrl', async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const isAdmin = await isAdminByUid(callerUid);
+  if (!isAdmin) {
+    throw new HttpsError('permission-denied', '관리자만 APK를 업로드할 수 있습니다.');
+  }
+  const { fileName, version } = request.data || {};
+  if (!fileName || typeof fileName !== 'string' || !fileName.trim()) {
+    throw new HttpsError('invalid-argument', 'fileName이 필요합니다.');
+  }
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  if (!safeName.endsWith('.apk')) {
+    throw new HttpsError('invalid-argument', 'APK 파일만 업로드할 수 있습니다.');
+  }
+  const storage = getStorage();
+  const bucket = storage.bucket('mealog-r0.firebasestorage.app');
+  const path = `artifacts/${APP_ID}/apk/${safeName}`;
+  const file = bucket.file(path);
+  const [url] = await file.getSignedUrl({
+    version: 'v4',
+    action: 'write',
+    expires: Date.now() + 15 * 60 * 1000,
+    contentType: 'application/vnd.android.package-archive'
+  });
+  return { uploadUrl: url, fileName: safeName, path };
+}));
+
+/**
+ * APK 업로드 완료 후 Firestore 메타데이터 저장 (관리자 전용)
+ */
+exports.confirmApkUpload = onCall({ region: REGION }, wrapFunction('confirmApkUpload', async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const isAdmin = await isAdminByUid(callerUid);
+  if (!isAdmin) {
+    throw new HttpsError('permission-denied', '관리자만 APK를 등록할 수 있습니다.');
+  }
+  const { fileName, version, fileSize } = request.data || {};
+  if (!fileName || typeof fileName !== 'string' || !fileName.trim()) {
+    throw new HttpsError('invalid-argument', 'fileName이 필요합니다.');
+  }
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const storage = getStorage();
+  const bucket = storage.bucket('mealog-r0.firebasestorage.app');
+  const path = `artifacts/${APP_ID}/apk/${safeName}`;
+  const file = bucket.file(path);
+  const [exists] = await file.exists();
+  if (!exists) {
+    throw new HttpsError('failed-precondition', '파일이 아직 업로드되지 않았습니다. 먼저 APK 파일을 업로드해주세요.');
+  }
+  const encodedPath = encodeURIComponent(path);
+  const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/mealog-r0.firebasestorage.app/o/${encodedPath}?alt=media`;
+  const apkRef = db.collection('artifacts').doc(APP_ID).collection('content').doc('apk');
+  await apkRef.set({
+    downloadUrl,
+    fileName: safeName,
+    version: version || '',
+    fileSize: fileSize || 0,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: callerUid
+  }, { merge: true });
+  return { success: true, downloadUrl };
+}));
+
+/**
  * 대기 중인 삭제 요청 수동 처리 (Callable)
  * 트리거가 동작하지 않을 때 관리자가 호출해 남아 있는 deleteUserRequests 문서를 처리
  */

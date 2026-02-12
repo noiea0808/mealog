@@ -918,8 +918,133 @@ window.switchContentSidebar = function(section) {
         // 약관관리 탭이 기본이므로 약관이력은 나중에 로드
     } else if (section === 'tags') {
         loadTagsContent();
+    } else if (section === 'apk') {
+        bindApkFileInput();
+        loadApkContent();
     }
 };
+
+// APK 배포 콘텐츠 로드
+async function loadApkContent() {
+    const container = document.getElementById('apkCurrentInfo');
+    const linkEl = document.getElementById('apkDownloadPageLink');
+    if (!container) return;
+    try {
+        const apkDoc = doc(db, 'artifacts', appId, 'content', 'apk');
+        const apkSnap = await getDoc(apkDoc);
+        if (apkSnap.exists()) {
+            const d = apkSnap.data();
+            const updatedAt = d.updatedAt?.toDate?.();
+            const sizeMb = d.fileSize ? (d.fileSize / (1024 * 1024)).toFixed(2) : '-';
+            container.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <span class="text-emerald-600 font-bold">${d.fileName || '-'}</span>
+                    ${d.version ? `<span class="px-2 py-0.5 bg-slate-200 rounded text-xs">v${d.version}</span>` : ''}
+                </div>
+                <p class="text-sm text-slate-600">용량: ${sizeMb} MB</p>
+                <p class="text-sm text-slate-500">등록일: ${updatedAt ? updatedAt.toLocaleString('ko-KR') : '-'}</p>
+                <a href="${d.downloadUrl}" target="_blank" class="inline-flex items-center gap-2 mt-2 px-3 py-2 bg-emerald-100 text-emerald-700 rounded-lg text-sm font-bold hover:bg-emerald-200 transition-colors">
+                    <i class="fa-solid fa-download"></i> 다운로드 링크
+                </a>
+            `;
+        } else {
+            container.innerHTML = '<p class="text-sm text-slate-500">등록된 APK가 없습니다. 위에서 APK 파일을 업로드해주세요.</p>';
+        }
+        if (linkEl) linkEl.href = new URL('./download.html', window.location.href).href;
+    } catch (e) {
+        console.error('APK 정보 로드 실패:', e);
+        container.innerHTML = '<p class="text-sm text-red-500">로드 실패</p>';
+    }
+}
+
+// APK 파일 업로드
+window.uploadApkFile = async function() {
+    const input = document.getElementById('apkFileInput');
+    const uploadBtn = document.getElementById('apkUploadBtn');
+    const statusEl = document.getElementById('apkUploadStatus');
+    const versionInput = document.getElementById('apkVersionInput');
+    if (!input?.files?.length) {
+        if (typeof showToast === 'function') showToast('APK 파일을 선택해주세요.');
+        return;
+    }
+    const file = input.files[0];
+    if (!file.name.toLowerCase().endsWith('.apk')) {
+        if (typeof showToast === 'function') showToast('APK 파일만 업로드할 수 있습니다.');
+        return;
+    }
+    if (file.size > 100 * 1024 * 1024) {
+        if (typeof showToast === 'function') showToast('파일 크기는 100MB 이하여야 합니다.');
+        return;
+    }
+    try {
+        uploadBtn.disabled = true;
+        if (statusEl) {
+            statusEl.className = 'mt-2 text-sm text-slate-600';
+            statusEl.textContent = '업로드 URL 요청 중...';
+            statusEl.classList.remove('hidden');
+        }
+        const { uploadUrl, fileName } = await callableFunctions.getApkUploadUrl({
+            fileName: file.name,
+            version: (versionInput?.value || '').trim()
+        }).then(r => r.data);
+        if (statusEl) statusEl.textContent = '파일 업로드 중...';
+        const res = await fetch(uploadUrl, {
+            method: 'PUT',
+            body: file,
+            headers: { 'Content-Type': 'application/vnd.android.package-archive' }
+        });
+        if (!res.ok) {
+            throw new Error(`업로드 실패: ${res.status}`);
+        }
+        if (statusEl) statusEl.textContent = '메타데이터 저장 중...';
+        await callableFunctions.confirmApkUpload({
+            fileName,
+            version: (versionInput?.value || '').trim(),
+            fileSize: file.size
+        });
+        if (statusEl) {
+            statusEl.className = 'mt-2 text-sm text-emerald-600';
+            statusEl.textContent = '업로드 완료!';
+        }
+        if (typeof showToast === 'function') showToast('APK 업로드가 완료되었습니다.');
+        loadApkContent();
+        input.value = '';
+        document.getElementById('apkFileInfo')?.classList.add('hidden');
+    } catch (e) {
+        console.error('APK 업로드 실패:', e);
+        if (statusEl) {
+            statusEl.className = 'mt-2 text-sm text-red-600';
+            statusEl.textContent = '업로드 실패: ' + (e.message || '알 수 없는 오류');
+            statusEl.classList.remove('hidden');
+        }
+        if (typeof showToast === 'function') showToast('업로드 실패: ' + (e.message || '알 수 없는 오류'));
+    } finally {
+        uploadBtn.disabled = false;
+    }
+};
+
+// APK 파일 선택 시 UI 업데이트 (한 번만 바인딩)
+let apkFileInputBound = false;
+function bindApkFileInput() {
+    if (apkFileInputBound) return;
+    const apkInput = document.getElementById('apkFileInput');
+    const apkInfo = document.getElementById('apkFileInfo');
+    const apkUploadBtn = document.getElementById('apkUploadBtn');
+    if (apkInput && apkInfo && apkUploadBtn) {
+        apkInput.addEventListener('change', (e) => {
+            const f = e.target.files?.[0];
+            if (f) {
+                apkInfo.textContent = `${f.name} (${(f.size / (1024 * 1024)).toFixed(2)} MB)`;
+                apkInfo.classList.remove('hidden');
+                apkUploadBtn.disabled = false;
+            } else {
+                apkInfo.classList.add('hidden');
+                apkUploadBtn.disabled = true;
+            }
+        });
+        apkFileInputBound = true;
+    }
+}
 
 // 약관 콘텐츠 로드
 async function loadTermsContent() {

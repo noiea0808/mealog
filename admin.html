@@ -556,6 +556,9 @@
                                 <button onclick="window.switchContentSidebar('tags')" id="content-sidebar-tags" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
                                     <i class="fa-solid fa-tags mr-2"></i>태그관리
                                 </button>
+                                <button onclick="window.switchContentSidebar('apk')" id="content-sidebar-apk" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-mobile-screen mr-2"></i>APK 배포
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -821,6 +824,56 @@
                                         <button onclick="window.addTagItem('subTagsPlaceSnack')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
                                             <i class="fa-solid fa-plus mr-2"></i>태그 추가
                                         </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- APK 배포 -->
+                        <div id="content-main-apk" class="content-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div class="flex justify-between items-center">
+                                        <div>
+                                            <h2 class="text-lg font-black text-slate-800">APK 배포</h2>
+                                            <p class="text-xs text-slate-500 mt-0.5">밀로그 앱 APK를 업로드하여 웹 다운로드 페이지에서 배포할 수 있습니다.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="p-6 space-y-6">
+                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                        <h3 class="text-base font-black text-slate-800 mb-2 flex items-center gap-2">
+                                            <i class="fa-solid fa-mobile-screen text-emerald-600"></i>
+                                            APK 파일 업로드
+                                        </h3>
+                                        <p class="text-sm text-slate-500 mb-4">APK 파일을 선택하면 Cloud Storage에 업로드됩니다. (최대 100MB)</p>
+                                        <div class="flex flex-wrap gap-4 items-end">
+                                            <div class="flex-1 min-w-[200px]">
+                                                <label class="text-sm font-bold text-slate-600 block mb-2">버전(선택)</label>
+                                                <input type="text" id="apkVersionInput" placeholder="예: 1.0.0" class="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500">
+                                            </div>
+                                            <div class="flex gap-2">
+                                                <input type="file" id="apkFileInput" accept=".apk" class="hidden">
+                                                <button type="button" onclick="document.getElementById('apkFileInput').click()" id="apkSelectBtn" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-300 transition-colors">
+                                                    <i class="fa-solid fa-file mr-2"></i>파일 선택
+                                                </button>
+                                                <button type="button" onclick="window.uploadApkFile()" id="apkUploadBtn" disabled class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                                    <i class="fa-solid fa-cloud-arrow-up mr-2"></i>업로드
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <p id="apkFileInfo" class="mt-2 text-sm text-slate-500 hidden"></p>
+                                        <p id="apkUploadStatus" class="mt-2 text-sm hidden"></p>
+                                    </div>
+                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                        <h3 class="text-base font-black text-slate-800 mb-2 flex items-center gap-2">
+                                            <i class="fa-solid fa-download text-blue-600"></i>
+                                            현재 배포 중인 APK
+                                        </h3>
+                                        <div id="apkCurrentInfo" class="space-y-2">
+                                            <p class="text-sm text-slate-500">로딩 중...</p>
+                                        </div>
+                                        <p class="text-xs text-slate-500 mt-3">다운로드 페이지: <a id="apkDownloadPageLink" href="./download.html" target="_blank" class="text-emerald-600 hover:underline">./download.html</a></p>
                                     </div>
                                 </div>
                             </div>
