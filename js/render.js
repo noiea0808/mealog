@@ -979,7 +979,7 @@ async function loadPostInteractions(postEl, postId) {
         // 댓글 표시 (최대 2개) — 등록 시간 포함
         const commentsListEl = postEl.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
         if (commentsListEl) {
-            const commentSection = postEl.querySelector(`#comment-section-${postId}`);
+            const commentSection = postEl.querySelector(`#comment-section-${CSS.escape(postId)}`);
             if (comments.length > 0) {
                 if (commentSection) commentSection.classList.remove('comments-empty');
                 // 댓글 작성자들의 최신 프로필 로드
@@ -1013,27 +1013,27 @@ async function loadPostInteractions(postEl, postId) {
                 
                 // 댓글이 2개보다 많으면 "댓글 모두 보기" 버튼 표시
                 if (comments.length > 2) {
-                    const viewCommentsBtn = postEl.querySelector(`#view-comments-${postId}`);
+                    const viewCommentsBtn = postEl.querySelector(`#view-comments-${CSS.escape(postId)}`);
                     if (viewCommentsBtn) {
                         viewCommentsBtn.classList.remove('hidden');
                         viewCommentsBtn.textContent = `댓글 ${comments.length}개 모두 보기`;
                     }
                 } else {
-                    const viewCommentsBtn = postEl.querySelector(`#view-comments-${postId}`);
+                    const viewCommentsBtn = postEl.querySelector(`#view-comments-${CSS.escape(postId)}`);
                     if (viewCommentsBtn) {
                         viewCommentsBtn.classList.add('hidden');
                     }
                 }
             } else {
                 commentsListEl.innerHTML = '';
-                const viewCommentsBtn = postEl.querySelector(`#view-comments-${postId}`);
+                const viewCommentsBtn = postEl.querySelector(`#view-comments-${CSS.escape(postId)}`);
                 if (viewCommentsBtn) {
                     viewCommentsBtn.classList.add('hidden');
                 }
                 if (commentSection) commentSection.classList.add('comments-empty');
             }
         } else {
-            const commentSection = postEl.querySelector(`#comment-section-${postId}`);
+            const commentSection = postEl.querySelector(`#comment-section-${CSS.escape(postId)}`);
             if (commentSection) commentSection.classList.add('comments-empty');
         }
     } catch (err) {
