@@ -3671,6 +3671,12 @@ function initMainAppKeyboardHandling() {
 }
 
 function initEventListeners() {
+    // APK 다운로드 링크: 웹에서만 표시, 앱(Capacitor)에서는 숨김
+    const apkDownloadSection = document.getElementById('apkDownloadSection');
+    if (apkDownloadSection && window.Capacitor?.isNativePlatform?.()) {
+        apkDownloadSection.style.display = 'none';
+    }
+
     // 랜딩 페이지 버튼들
     const googleLoginBtn = document.getElementById('googleLoginBtn');
     if (googleLoginBtn) {
