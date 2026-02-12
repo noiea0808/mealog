@@ -2,6 +2,29 @@
 
 ## 배포 전 확인사항
 
+### API 키 설정 (Gemini 인사이트, 카카오 장소 검색 등)
+
+Firebase Functions params 방식을 사용합니다. **functions/.env** 파일에 API 키를 설정하세요.
+
+```bash
+cd functions
+cp .env.example .env
+# .env 파일을 편집하여 GEMINI_API_KEY, KAKAO_REST_API_KEY 값을 입력
+```
+
+또는 프로젝트별로 **.env.mealog-r0** 파일을 만들어 사용할 수 있습니다.
+
+```bash
+# functions/.env 또는 functions/.env.mealog-r0
+GEMINI_API_KEY=AIzaSy...
+KAKAO_REST_API_KEY=카카오_REST_API_키
+```
+
+설정 후 배포: `firebase deploy --only functions`  
+(값이 없으면 배포 시 CLI가 입력을 요청합니다)
+
+---
+
 1. ✅ Node.js 설치 확인
    ```bash
    node --version

@@ -2,17 +2,63 @@
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&display=swap');
 @import url('https://cdn.jsdelivr.net/gh/leetaewook/gmarket-sans-dynamic-subset/GmarketSans.css');
 :root { 
-    --safe-bottom: env(safe-area-inset-bottom, 0px); 
+    /* env()가 0 반환해도 최소값 보장 (상태바~28px, 제스처네비~48px) */
+    --safe-top: max(env(safe-area-inset-top, 28px), 28px); 
+    --safe-bottom: max(env(safe-area-inset-bottom, 48px), 48px); 
     --color-primary: #059669; /* 그린: CTA·선택·활성만 사용 */
 }
-body { 
+/* 레이아웃 시프트 방지 */
+html {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow-x: clip;
+    overflow-y: auto;
+}
+body {
+    width: 100%;
     font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif; 
     background-color: #f8fafc; 
     color: #1e293b; 
-    overflow-x: hidden; 
+    overflow-x: clip; 
+    padding-top: var(--safe-top); 
     padding-bottom: calc(80px + var(--safe-bottom)); 
 }
-
+/* 앱 전체 키보드 열림 시: 헤더·상태바·트래커·하단 네비·핸폰 네비 영역 모두 숨김 (input/textarea/contenteditable 포커스 시) */
+body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) .bottom-nav,
+body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #navigationBarOverlay,
+body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #mainAppHeader,
+body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #statusBarOverlay,
+body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #trackerSection {
+    display: none !important;
+}
+body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #boardWriteView {
+    padding-bottom: 1rem !important;
+}
+/* 키보드 닫혔을 때: viewport 복원 시 모든 UI 복원 (뒤로가기로 닫아도 포커스가 남아있는 경우) */
+body.keyboard-closed .bottom-nav {
+    display: flex !important;
+}
+body.keyboard-closed #navigationBarOverlay,
+body.keyboard-closed #mainAppHeader,
+body.keyboard-closed #statusBarOverlay {
+    display: block !important;
+}
+/* trackerSection: 탭이 timeline일 때만 표시 (hidden이 아닐 때만 복원) */
+body.keyboard-closed #trackerSection:not(.hidden) {
+    display: block !important;
+}
+body.keyboard-closed {
+    padding-top: var(--safe-top) !important;
+    padding-bottom: calc(80px + var(--safe-bottom)) !important;
+}
+body.keyboard-closed #boardWriteView {
+    padding-bottom: calc(80px + var(--safe-bottom)) !important;
+}
 /* =========================
    UI Hierarchy (Main Screen)
    main > sub > sub1 > content
@@ -271,16 +317,27 @@ header .mealog-title {
     color: #475569; 
     white-space: nowrap; 
 }
+/* 앱 모드: 상단/하단 시스템 UI(상태바·네비바) 여백 */
+#mainApp header.safe-area-top { top: var(--safe-top); }
+#mainApp .safe-area-tracker { top: calc(var(--safe-top) + 52px); }
+
+/* 스크롤 시 헤더 숨김 (인스타/페이스북 스타일) */
+#mainAppHeader.header-scroll-hidden { transform: translateY(-100%); }
+/* 헤더 숨김 시 트래커는 상태바 아래에 고정 (padding으로 상태바 영역 확보) */
+#trackerSection { transition: top 0.3s ease-out; }
+#trackerSection.tracker-header-hidden {
+    top: 0 !important;
+    padding-top: var(--safe-top) !important;
+}
 .bottom-nav { 
     position: fixed; 
-    bottom: 12px; 
+    bottom: calc(8px + var(--safe-bottom)); 
     left: 50%; 
     transform: translateX(-50%); 
     width: calc(100vw - 20px); 
     max-width: 448px; 
     box-sizing: border-box;
-    background: rgba(255, 255, 255, 0.9); 
-    backdrop-filter: blur(10px); 
+    background: #ffffff; 
     border: 1px solid #f1f5f9; 
     border-radius: 1.5rem; 
     display: flex; 
@@ -306,6 +363,39 @@ header .mealog-title {
     font-weight: 800; 
     color: white; 
 }
+
+/* 끼니 등록 모달: 네비게이션 바 영역 (키보드 닫힘 시) - 흰색 배경 */
+#entryModal {
+    padding-bottom: 0;
+}
+#entryModal > div {
+    background: white;
+}
+/* 기록완료 버튼 컨테이너: 상하단 패딩 2px */
+#entryModal > div > div:last-child {
+    padding-top: 2px !important;
+    padding-bottom: calc(2px + var(--safe-bottom)) !important;
+}
+#entryModal.keyboard-open > div > div:last-child {
+    padding-bottom: 2px !important; /* 키보드 열림 시 2px만 */
+}
+#entryModal.keyboard-open #modalScrollArea {
+    padding-bottom: 0 !important;
+}
+/* 캡쳐 3종세트 모달: 좌우 마진 2px, 가로 스크롤 방지 */
+#bestShareModal,
+#insightShareModal,
+#dailySharePreviewModal,
+.capture-share-modal {
+    padding-left: 2px !important;
+    padding-right: 2px !important;
+    overflow-x: hidden;
+}
+.capture-share-modal > div {
+    max-width: min(448px, calc(100vw - 4px));
+    box-sizing: border-box;
+}
+
 .sticker-badge { 
     background: rgba(255,255,255,0.12); 
     backdrop-filter: blur(8px); 
@@ -334,14 +424,10 @@ header .mealog-title {
     box-shadow: none;
 }
 .date-section-header { 
-    position: sticky; 
-    top: 148px; 
-    z-index: 20; 
+    position: relative; 
     background: rgba(248, 250, 252, 0.95); 
-    backdrop-filter: blur(8px); 
     padding: 12px 16px; 
     margin-bottom: 8px; 
-    scroll-margin-top: 148px; 
 }
 .date-section-header h3 { color: #1e293b; }
 .date-section-header.text-rose-400 h3 { color: #fb7185; }
@@ -376,6 +462,14 @@ header .mealog-title {
     padding-bottom: 0 !important;
 }
 /* 헤더 우측: .header-right = [돋보기] [알림] 순서 flex, 별도 absolute 없음 */
+/* 헤더 우측 아이콘: 기존 대비 20% 확대 (text-sm 14px→16.8px, text-lg 18px→21.6px) */
+.header-right .timeline-search-toggle i,
+.header-right .gallery-trace-btn i {
+    font-size: 1.05rem !important;
+}
+.header-right .notification-trigger .fa-bell {
+    font-size: 1.35rem !important;
+}
 
 /* 갤러리 트레이스: 접힌 상태=돋보기만, 펼침=하트/댓글/북마크/돋보기 */
 .gallery-trace-panel {
@@ -401,13 +495,14 @@ header .mealog-title {
     box-sizing: border-box;
 }
 
-/* 타임라인 검색: 접힌 상태=돋보기 2rem, 펼치면 입력창 확장 */
+/* 타임라인 검색: 접힌 상태=돋보기 2rem, 펼치면 입력창 확장 (애니메이션) */
 .timeline-search-wrapper {
     width: 2rem;
     min-width: 2rem;
     height: 2rem;
     flex-shrink: 0;
     overflow: visible;
+    transition: width 0.3s ease-out;
 }
 .timeline-search-wrapper.expanded {
     min-width: 2rem;
@@ -710,6 +805,41 @@ header .mealog-title {
 .animate-toast { 
     animation: toastSlideUp 0.3s ease-out forwards; 
 }
+
+/* 로딩 오버레이: 음식 아이콘 순차 전환 (배민 스타일) */
+@keyframes loadingFoodCycle {
+    0% { opacity: 1; transform: scale(1); }
+    15% { opacity: 1; transform: scale(1.1); }
+    20% { opacity: 0; transform: scale(0.9); }
+    100% { opacity: 0; transform: scale(0.9); }
+}
+.loading-food-icons {
+    overflow: hidden;
+}
+.loading-food-icon {
+    animation: loadingFoodCycle 1s ease-in-out infinite;
+    opacity: 0;
+    background: transparent;
+    /* 이모지 주변 1px 검정 윤곽 (text-stroke는 이모지에서 미지원이라 text-shadow로 구현) */
+    text-shadow:
+        1px 0 0 #000,
+        -1px 0 0 #000,
+        0 1px 0 #000,
+        0 -1px 0 #000,
+        1px 1px 0 #000,
+        -1px 1px 0 #000,
+        1px -1px 0 #000,
+        -1px -1px 0 #000;
+    line-height: 1;
+}
+.loading-food-icon:first-child {
+    animation-delay: 0s;
+}
+.loading-food-icon:nth-child(2) { animation-delay: 0.2s; }
+.loading-food-icon:nth-child(3) { animation-delay: 0.4s; }
+.loading-food-icon:nth-child(4) { animation-delay: 0.6s; }
+.loading-food-icon:nth-child(5) { animation-delay: 0.8s; }
+
 #landingPage { 
     position: fixed; 
     top: 0; 
@@ -1014,6 +1144,7 @@ header .mealog-title {
     background: transparent;
     border: none;
     box-shadow: none;
+    overflow: visible;
 }
 /* 밀로그(MEALOG) 선택 시에만 흰색 보더 */
 .insight-character-btn:has(#insightCharacterIcon.mealog-character-m) {
@@ -1021,19 +1152,28 @@ header .mealog-title {
 }
 .insight-character-btn #insightCharacterIcon {
     color: #047857;
+    overflow: visible;
 }
 /* MEALOG M: Fredoka 폰트, 흰색 텍스트 */
 .insight-character-btn #insightCharacterIcon.mealog-character-m {
     font-family: 'Fredoka', sans-serif;
     color: #ffffff;
 }
-/* 캐릭터 이미지: 창 전체를 채우고 모서리 둥글게 */
+/* 캐릭터 이미지: 창 전체를 채우고 모서리 둥글게. PNG 투명 영역 제외, 캐릭터 실루엣만 얇은 흰색 윤곽 (1px) */
 .insight-character-btn #insightCharacterIcon img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
     border-radius: 1rem;
+    filter: drop-shadow(1px 0 0 #fff)
+            drop-shadow(-1px 0 0 #fff)
+            drop-shadow(0 1px 0 #fff)
+            drop-shadow(0 -1px 0 #fff)
+            drop-shadow(1px 1px 0 #fff)
+            drop-shadow(-1px 1px 0 #fff)
+            drop-shadow(1px -1px 0 #fff)
+            drop-shadow(-1px -1px 0 #fff);
 }
 .insight-comment-trigger {
     font-size: 12px;
@@ -1236,10 +1376,10 @@ header .mealog-title {
 }
 
 /* 게시판 스타일 */
-/* 글쓰기 버튼: 플로팅 FAB – 하단 탭 메뉴 우상단에 정렬, 좌상단으로 약간 이동 */
+/* 글쓰기 버튼: 플로팅 FAB – 하단 네비 위에 배치 (safe-area 고려) */
 #boardWriteBtn.board-write-fab {
     position: fixed;
-    bottom: 5.75rem;
+    bottom: calc(72px + var(--safe-bottom));
     right: calc(50% - min(46vw, 13rem) + 1.25rem);
     z-index: 40;
     width: 48px;
@@ -1260,6 +1400,26 @@ header .mealog-title {
 }
 #boardWriteBtn.board-write-fab:active {
     background-color: #047857 !important;
+}
+
+/* 밀톡 글쓰기: 하단 취소/등록 버튼이 네비에 가려지지 않도록 */
+#boardWriteView {
+    padding-bottom: calc(80px + var(--safe-bottom));
+}
+
+/* 밀톡/공지 내용 에디터: placeholder (format-editor-empty 클래스 시 표시) */
+#boardWriteContent,
+#noticeContent {
+    position: relative;
+}
+#boardWriteContent.format-editor-empty::before,
+#noticeContent.format-editor-empty::before {
+    content: attr(data-placeholder);
+    color: #94a3b8;
+    position: absolute;
+    top: 0.75rem;
+    left: 0.75rem;
+    pointer-events: none;
 }
 
 /* 카테고리 필터: 보조 (chip) */

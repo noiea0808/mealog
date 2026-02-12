@@ -79,9 +79,7 @@ export function getWeekNumberForDate(date) {
     const year = date.getFullYear();
     const month = date.getMonth() + 1;
     const firstDay = new Date(year, month - 1, 1);
-    const firstDayOfWeek = firstDay.getDay();
-
-    let firstSunday = new Date(firstDay);
+    const firstDayOfWeek = firstDay.getDay();    let firstSunday = new Date(firstDay);
     if (firstDayOfWeek !== 0) {
         firstSunday.setDate(1 - firstDayOfWeek);
     }
@@ -112,4 +110,3 @@ export function getWeekInfoFromDate(start) {
     const week = getWeekNumberForDate(start);
     return { year, month, week };
 }
-

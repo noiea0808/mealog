@@ -65,6 +65,9 @@ export function hideLoading() {
 }
 
 export function showToast(message, type = 'info') {
+    // 로그인 전 등 userSettings 없을 때도 에러/성공 메시지는 표시 (로그인 실패 등)
+    const forceShow = type === 'error' || type === 'success' || !window.userSettings;
+    if (!forceShow && window.userSettings?.showToast !== true) return;
     const container = document.getElementById('toastContainer');
     if (!container) return;
     const toast = document.createElement('div');

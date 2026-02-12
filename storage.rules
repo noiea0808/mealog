@@ -1,6 +1,16 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    // APK 배포: Cloud Functions가 업로드, 누구나 다운로드 가능
+    match /artifacts/{appId}/apk/{fileName} {
+      allow read: if true;
+      allow write: if false;
+    }
+    // 공지 사진: 관리자가 업로드, 모든 인증 사용자 읽기 가능
+    match /users/{userId}/admin-notices/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
     // 사용자별 폴더: meals, temp, migrated, board, profile 등
     // 인증된 사용자만 자신의 경로(users/{userId}/**)에 읽기/쓰기 가능
     match /users/{userId}/{allPaths=**} {

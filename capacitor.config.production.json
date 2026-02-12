@@ -1,0 +1,14 @@
+{
+  "appId": "com.mealog.app",
+  "appName": "MEALOG",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "url": "https://www.mealog.net"
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "disable"
+    }
+  }
+}

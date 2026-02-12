@@ -1,6 +1,6 @@
 // Firebase 초기화 및 설정
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getAuth, initializeAuth, setPersistence, browserLocalPersistence, indexedDBLocalPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { getStorage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js";
@@ -16,11 +16,25 @@ const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-// 자동 로그인: 브라우저를 닫아도 로그인 상태 유지 (LocalStorage 사용)
-setPersistence(auth, browserLocalPersistence).catch((e) => {
-    console.warn('Auth persistence 설정 실패:', e);
-});
+
+// Capacitor 네이티브에서는 getAuth 사용 시 인증이 멈출 수 있음 → initializeAuth + IndexedDB 사용
+function getAuthInstance() {
+    if (typeof window.Capacitor !== 'undefined' && window.Capacitor?.isNativePlatform?.()) {
+        try {
+            return initializeAuth(app, { persistence: indexedDBLocalPersistence });
+        } catch (e) {
+            console.warn('Firebase initializeAuth(IndexedDB) 실패, getAuth 사용:', e?.message || e);
+            return getAuth(app);
+        }
+    }
+    return getAuth(app);
+}
+export const auth = getAuthInstance();
+if (!(typeof window.Capacitor !== 'undefined' && window.Capacitor?.isNativePlatform?.())) {
+    setPersistence(auth, browserLocalPersistence).catch((e) => {
+        console.warn('Auth persistence 설정 실패:', e);
+    });
+}
 // 이메일 인증·비밀번호 재설정 메일을 한글로 발송
 auth.languageCode = 'ko';
 export const db = getFirestore(app);
@@ -49,7 +63,11 @@ export const callableFunctions = {
     createBestShare: httpsCallable(functions, 'createBestShare'),
     createInsightShare: httpsCallable(functions, 'createInsightShare'),
     getStorageImageAsBase64: httpsCallable(functions, 'getStorageImageAsBase64'),
-    backfillUserStats: httpsCallable(functions, 'backfillUserStats')
+    backfillUserStats: httpsCallable(functions, 'backfillUserStats'),
+    callGemini: httpsCallable(functions, 'callGemini'),
+    searchKakaoPlaces: httpsCallable(functions, 'searchKakaoPlaces'),
+    getApkUploadUrl: httpsCallable(functions, 'getApkUploadUrl'),
+    confirmApkUpload: httpsCallable(functions, 'confirmApkUpload')
 };
 
 // App Check 초기화 (reCAPTCHA v3 사용)

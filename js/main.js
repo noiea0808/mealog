@@ -45,7 +45,7 @@ window.cleanupFirestoreListeners = () => {
         console.warn('cleanupFirestoreListeners 실패(무시):', e);
     }
 };
-import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
+import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
@@ -958,7 +958,7 @@ window.openDailySharePreviewModal = (dateStr) => {
 
     const modal = document.createElement('div');
     modal.id = 'dailySharePreviewModal';
-    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/50';
+    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center py-4 bg-black/50 capture-share-modal';
 
     modal.innerHTML = `
         <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl">
@@ -1611,20 +1611,26 @@ window.toggleGalleryTracePanel = () => {
     if (typeof window.updateGalleryTraceFilterBarUI === 'function') window.updateGalleryTraceFilterBarUI();
 };
 
-/** 타임라인 검색 확장 너비: 타이틀(MEALOG) 오른쪽에서 20px 거리까지 (화면 크기 무관). 접힌 상태에서는 영역 없음 */
+/** 타임라인 검색 확장 너비: 'mealog 밀로그' 블록 오른쪽 끝 + 20px까지만 확장. 접힌 상태에서는 영역 없음 */
 function updateTimelineSearchExpandWidth() {
-    const title = document.querySelector('header .mealog-title');
+    const leftBlock = document.querySelector('header .mealog-title')?.parentElement;
     const wrapper = document.getElementById('timelineSearchPanel');
     const panel = wrapper?.querySelector('.timeline-search-panel');
-    if (!title || !wrapper || !panel) return;
+    const header = document.querySelector('#mainApp header');
+    if (!leftBlock || !wrapper || !panel || !header) return;
     if (!wrapper.classList.contains('expanded')) {
         panel.style.width = '';
         wrapper.style.width = '';
         return;
     }
-    const titleRight = title.getBoundingClientRect().right;
-    const headerRight = wrapper.parentElement?.getBoundingClientRect().right ?? titleRight + 200;
-    let w = headerRight - titleRight - 20;
+    const leftBlockRight = leftBlock.getBoundingClientRect().right;
+    const headerRect = header.getBoundingClientRect();
+    const headerRight = headerRect.right - 24; /* px-6 */
+    const notificationWrap = document.getElementById('notificationWrap');
+    const notificationWidth = (notificationWrap && !notificationWrap.classList.contains('hidden'))
+        ? notificationWrap.getBoundingClientRect().width : 0;
+    const gap = 8; /* gap-2 */
+    let w = headerRight - leftBlockRight - 20 - notificationWidth - gap;
     w = Math.max(96, w);
     wrapper.style.width = `${w}px`;
 }
@@ -2017,18 +2023,8 @@ async function updateUserDocument(user) {
 
 // 인증 상태 변경 리스너 - 단순화된 버전
 let lastProcessedUserId = null; // 마지막으로 처리한 사용자 ID
-let isFirstLoad = true; // 첫 로드 여부
 
 initAuth(async (user) => {
-    // 페이지 로드 시 자동으로 로그아웃 (테스트를 위한 설정)
-    if (isFirstLoad && user && !user.isAnonymous) {
-        isFirstLoad = false;
-        console.log('🔄 페이지 로드 시 자동 로그아웃 실행');
-        await signOut(auth);
-        // 로그아웃 후 리턴 (다음 onAuthStateChanged에서 null user로 다시 호출됨)
-        return;
-    }
-    isFirstLoad = false;
     // 1. 관리자 페이지가 열려있는지 확인 (현재 탭이 관리자 페이지인 경우)
     if (window.location.pathname.includes('admin.html') || window.location.href.includes('admin.html')) {
         console.log('⚠️ 관리자 페이지에서 인증 상태 변경 무시');
@@ -2405,6 +2401,32 @@ initAuth(async (user) => {
         hideLoading();
     }
 });
+
+// 스크롤 방향에 따른 헤더 숨김·표시 (인스타/페이스북 스타일)
+// 헤더가 사라질 때까지 트래커는 스크롤되다가, 헤더 숨김 후에는 트래커가 상단에 고정
+let _lastScrollY = 0;
+let _headerScrollRaf = null;
+window.addEventListener('scroll', () => {
+    const mainApp = document.getElementById('mainApp');
+    if (!mainApp || mainApp.classList.contains('hidden')) return;
+    const header = document.getElementById('mainAppHeader');
+    const tracker = document.getElementById('trackerSection');
+    if (!header || !tracker) return;
+    const y = window.scrollY;
+    if (_headerScrollRaf) cancelAnimationFrame(_headerScrollRaf);
+    _headerScrollRaf = requestAnimationFrame(() => {
+        const delta = y - _lastScrollY;
+        if (delta > 8) {
+            header.classList.add('header-scroll-hidden');
+            tracker.classList.add('tracker-header-hidden');
+        } else if (delta < -8) {
+            header.classList.remove('header-scroll-hidden');
+            tracker.classList.remove('tracker-header-hidden');
+        }
+        _lastScrollY = y;
+        _headerScrollRaf = null;
+    });
+}, { passive: true });
 
 // 스크롤 이벤트 리스너 (타임라인 하단 근처에서 더 오래된 기록 자동 로드)
 let scrollTimeout;
@@ -2868,7 +2890,11 @@ window.openBoardWrite = () => {
     
     // 입력 필드 초기화
     document.getElementById('boardWriteTitle').value = '';
-    document.getElementById('boardWriteContent').value = '';
+    const boardWriteContentEl = document.getElementById('boardWriteContent');
+    if (boardWriteContentEl) {
+        boardWriteContentEl.innerHTML = '';
+        boardWriteContentEl.classList.add('format-editor-empty');
+    }
     document.getElementById('boardWriteCategory').value = 'serious';
     if (typeof window.setBoardWriteCategory === 'function') {
         window.setBoardWriteCategory('serious');
@@ -2992,8 +3018,19 @@ window.submitBoardPost = async () => {
     }
     
     const title = document.getElementById('boardWriteTitle').value.trim();
-    const content = document.getElementById('boardWriteContent').value.trim();
+    const boardWriteContentEl = document.getElementById('boardWriteContent');
+    const rawContent = boardWriteContentEl ? boardWriteContentEl.innerHTML : '';
+    let content = sanitizeFormattedText(rawContent).trim();
     const category = document.getElementById('boardWriteCategory').value;
+    
+    // sanitize 결과가 비었으나 rawContent에 내용이 있으면 위험 태그만 제거하여 서식 보존
+    if (!content && rawContent.trim()) {
+        content = stripDangerousTagsOnly(rawContent).trim();
+    }
+    if (!content && boardWriteContentEl) {
+        const plainText = (boardWriteContentEl.innerText || '').trim();
+        if (plainText) content = plainText.replace(/\n/g, '<br>');
+    }
     
     if (!title) {
         showToast("제목을 입력해주세요.", 'error');
@@ -3339,7 +3376,11 @@ window.editBoardPost = async (postId) => {
         
         // 입력 필드에 기존 데이터 채우기
         document.getElementById('boardWriteTitle').value = post.title || '';
-        document.getElementById('boardWriteContent').value = post.content || '';
+        const boardWriteContentEl = document.getElementById('boardWriteContent');
+        if (boardWriteContentEl) {
+            boardWriteContentEl.innerHTML = (post.content || '').replace(/\n/g, '<br>');
+            boardWriteContentEl.classList.remove('format-editor-empty');
+        }
         document.getElementById('boardWriteCategory').value = post.category || 'serious';
         if (typeof window.setBoardWriteCategory === 'function') {
             window.setBoardWriteCategory(post.category || 'serious');
@@ -3563,7 +3604,79 @@ const eventListenerManager = {
 // 전역 이벤트 리스너 관리자 노출 (디버깅용)
 window.Mealog.eventListenerManager = eventListenerManager;
 
+/** 앱 전체: 키보드 열림 시 하단 네비 숨김 + 닫힘 시 복귀 (viewport 기반 keyboard-closed) */
+function initMainAppKeyboardHandling() {
+    const mainApp = document.getElementById('mainApp');
+    if (!mainApp) return;
+
+    const setKeyboardClosed = (closed) => {
+        document.body.classList.toggle('keyboard-closed', closed);
+    };
+
+    const checkViewport = () => {
+        const vh = window.visualViewport?.height ?? window.innerHeight;
+        const threshold = window.innerHeight * 0.85;
+        setKeyboardClosed(vh >= threshold);
+    };
+
+    const isInputLike = (el) => el && (el.matches?.('input, textarea') || el.getAttribute?.('contenteditable') === 'true');
+
+    if (window.visualViewport) {
+        const run = () => {
+            [0, 100, 250, 400, 600, 1000].forEach(ms => setTimeout(checkViewport, ms));
+        };
+        window.visualViewport.addEventListener('resize', run);
+        window.visualViewport.addEventListener('scroll', run);
+    }
+    window.addEventListener('resize', checkViewport);
+    checkViewport();
+
+    /* 뒤로가기로 키보드 내렸을 때: viewport 이벤트가 늦게 오거나 안 올 수 있어, 포커스 중에는 주기적으로 체크 */
+    let keyboardCheckInterval = null;
+    document.addEventListener('focusin', (e) => {
+        if (!isInputLike(e.target)) return;
+        if (keyboardCheckInterval) clearInterval(keyboardCheckInterval);
+        const start = Date.now();
+        keyboardCheckInterval = setInterval(() => {
+            checkViewport();
+            const vh = window.visualViewport?.height ?? window.innerHeight;
+            if (vh >= window.innerHeight * 0.85 || Date.now() - start > 10000) {
+                clearInterval(keyboardCheckInterval);
+                keyboardCheckInterval = null;
+            }
+        }, 150);
+    });
+    document.addEventListener('focusout', (e) => {
+        if (!isInputLike(e.target)) return;
+        if (keyboardCheckInterval) { clearInterval(keyboardCheckInterval); keyboardCheckInterval = null; }
+        [100, 300, 500, 800].forEach(ms => setTimeout(checkViewport, ms));
+    });
+
+    /* Capacitor: 뒤로가기로 키보드 내렸을 때 네비 복원 (viewport가 갱신되지 않는 WebView에서 확실히 동작) */
+    if (window.Capacitor?.isNativePlatform?.()) {
+        import('@capacitor/app').then(({ App }) => {
+            App.addListener('backButton', ({ canGoBack }) => {
+                const active = document.activeElement;
+                if (isInputLike(active)) {
+                    active.blur();
+                    setKeyboardClosed(true);
+                } else if (canGoBack) {
+                    window.history.back();
+                } else {
+                    App.exitApp();
+                }
+            });
+        }).catch(() => {});
+    }
+}
+
 function initEventListeners() {
+    // APK 다운로드 링크: 웹에서만 표시, 앱(Capacitor)에서는 숨김
+    const apkDownloadSection = document.getElementById('apkDownloadSection');
+    if (apkDownloadSection && window.Capacitor?.isNativePlatform?.()) {
+        apkDownloadSection.style.display = 'none';
+    }
+
     // 랜딩 페이지 버튼들
     const googleLoginBtn = document.getElementById('googleLoginBtn');
     if (googleLoginBtn) {
@@ -3736,6 +3849,9 @@ function initEventListeners() {
         btnViewPage.addEventListener('click', () => window.setViewMode('page'));
     }
     
+    // 모먼트/밀톡: 키보드 열림 시 하단 네비 숨김 + 키보드 상단 네비바 영역 제거
+    initMainAppKeyboardHandling();
+
     // 하단 네비게이션
     const navDashboard = document.getElementById('nav-dashboard');
     if (navDashboard) {
@@ -3847,6 +3963,31 @@ function initEventListeners() {
     const boardWriteBtn = document.getElementById('boardWriteBtn');
     if (boardWriteBtn) {
         boardWriteBtn.addEventListener('click', window.openBoardWrite);
+    }
+    // 밀톡 내용 포맷 툴바 (Bold, 취소선, 밑줄)
+    document.querySelectorAll('#boardWriteView .format-toolbar-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const contentEl = document.getElementById('boardWriteContent');
+            if (!contentEl) return;
+            contentEl.focus();
+            const cmd = btn.getAttribute('data-format');
+            if (cmd) document.execCommand(cmd, false, null);
+        });
+    });
+    const boardWriteContentEl = document.getElementById('boardWriteContent');
+    if (boardWriteContentEl) {
+        const syncPlaceholder = () => {
+            const isEmpty = !(boardWriteContentEl.innerText || '').trim();
+            boardWriteContentEl.classList.toggle('format-editor-empty', isEmpty);
+        };
+        boardWriteContentEl.addEventListener('input', syncPlaceholder);
+        boardWriteContentEl.addEventListener('blur', syncPlaceholder);
+        boardWriteContentEl.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const text = (e.clipboardData || window.clipboardData)?.getData('text/plain') || '';
+            document.execCommand('insertText', false, text);
+        });
     }
     const boardWriteImagesInput = document.getElementById('boardWriteImages');
     const boardWriteAddPhotosBtn = document.getElementById('boardWriteAddPhotosBtn');

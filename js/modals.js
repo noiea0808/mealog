@@ -7,9 +7,81 @@ import { dbOps } from './db.js';
 import { showToast } from './ui.js';
 import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed } from './render/index.js';
 import { getDashboardData } from './analytics.js';
+import { callableFunctions } from './firebase.js';
 
 // 설정 저장 디바운싱을 위한 타이머
 let settingsSaveTimeout = null;
+
+/** 끼니 등록 모달: 키보드 열림 시 모달 높이를 viewport에 맞추고, 닫힘 시 네비바 영역 복원 */
+function initEntryModalKeyboardHandling(entryModal) {
+    if (!entryModal || entryModal._keyboardHandlingInit) return;
+    entryModal._keyboardHandlingInit = true;
+    let baselineHeight = 0; // 모달 열릴 때 viewport 높이 (키보드 없음)
+    const setKeyboardOpen = (open) => {
+        if (open) {
+            entryModal.classList.add('keyboard-open');
+            const vv = window.visualViewport;
+            const vh = vv?.height ?? window.innerHeight;
+            const vtop = vv?.offsetTop ?? 0;
+            entryModal.style.height = vh + 'px';
+            entryModal.style.top = vtop + 'px';
+        } else {
+            entryModal.classList.remove('keyboard-open');
+            entryModal.style.height = '';
+            entryModal.style.top = '';
+        }
+    };
+    // 모달 열릴 때 baseline 저장 (openModal에서 호출)
+    const saveBaseline = () => {
+        baselineHeight = Math.max(window.visualViewport?.height ?? window.innerHeight, window.innerHeight * 0.5);
+    };
+    entryModal.setKeyboardBaseline = saveBaseline;
+    entryModal.addEventListener('focusin', (e) => {
+        if (e.target.matches('input, textarea')) setKeyboardOpen(true);
+    });
+    entryModal.addEventListener('focusout', (e) => {
+        if (e.target.matches('input, textarea')) {
+            [100, 300, 500].forEach(ms => setTimeout(() => {
+                if (entryModal.classList.contains('hidden')) return;
+                const vh = window.visualViewport?.height ?? window.innerHeight;
+                const threshold = (baselineHeight || window.innerHeight) * 0.85;
+                if (vh >= threshold) setKeyboardOpen(false);
+            }, ms));
+        }
+    });
+    if (window.visualViewport) {
+        const checkViewport = () => {
+            if (entryModal.classList.contains('hidden')) return;
+            const vh = window.visualViewport.height;
+            const active = document.activeElement;
+            const isInputFocused = active && entryModal.contains(active) && (active.matches('input, textarea') || active.isContentEditable);
+            const threshold = (baselineHeight || window.innerHeight) * 0.85;
+            const viewportRestored = vh >= threshold;
+            if (viewportRestored) {
+                setKeyboardOpen(false);
+            } else if (isInputFocused) {
+                setKeyboardOpen(true);
+                const vtop = window.visualViewport?.offsetTop ?? 0;
+                entryModal.style.height = vh + 'px';
+                entryModal.style.top = vtop + 'px';
+            } else {
+                setKeyboardOpen(false);
+            }
+        };
+        const runCheck = () => {
+            [0, 100, 250, 400].forEach(ms => setTimeout(checkViewport, ms));
+        };
+        window.visualViewport.addEventListener('resize', runCheck);
+        window.visualViewport.addEventListener('scroll', runCheck);
+    }
+    window.addEventListener('resize', () => {
+        if (!entryModal.classList.contains('hidden') && entryModal.classList.contains('keyboard-open')) {
+            const vh = window.visualViewport?.height ?? window.innerHeight;
+            const threshold = (baselineHeight || window.innerHeight) * 0.85;
+            if (vh >= threshold) setKeyboardOpen(false);
+        }
+    });
+}
 
 // 카카오 SDK 로드 함수
 function loadKakaoSDK() {
@@ -54,9 +126,8 @@ function loadKakaoSDK() {
         // 중요: JavaScript SDK는 반드시 JavaScript 키를 사용해야 함 (REST API 키 아님)
         const appkey = '42dce12f04991c35775f3ce1081a3c76';
         
-        // localhost는 HTTP 사용 (HTTPS는 인증서 문제로 실패할 수 있음)
-        // 실제 배포 환경에서는 HTTPS 사용 권장
-        const protocol = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http:' : 'https:';
+        // 페이지와 동일한 프로토콜 사용 (Mixed Content 방지: HTTPS 페이지에서 HTTP 스크립트 차단됨)
+        const protocol = window.location.protocol || 'https:';
         const scriptUrl = protocol + '//dapi.kakao.com/v2/maps/sdk.js?appkey=' + appkey + '&libraries=services&autoload=false';
         script.src = scriptUrl;
         script.async = true;
@@ -537,6 +608,13 @@ export function openModal(date, slotId, entryId = null) {
         const entryModal = document.getElementById('entryModal');
         if (entryModal) {
             entryModal.classList.remove('hidden');
+            entryModal.classList.remove('keyboard-open');
+            entryModal.style.height = '';
+            entryModal.style.top = '';
+            initEntryModalKeyboardHandling(entryModal);
+            if (typeof entryModal.setKeyboardBaseline === 'function') {
+                entryModal.setKeyboardBaseline();
+            }
         } else {
             console.error('entryModal 요소를 찾을 수 없습니다.');
         }
@@ -550,6 +628,9 @@ export function openModal(date, slotId, entryId = null) {
 export function closeModal() {
     const entryModal = document.getElementById('entryModal');
     if (entryModal) {
+        entryModal.classList.remove('keyboard-open');
+        entryModal.style.height = '';
+        entryModal.style.top = '';
         entryModal.classList.add('hidden');
     }
     // 모달을 닫을 때 로딩 오버레이도 숨김
@@ -2229,121 +2310,9 @@ export async function deleteSubTag(key, text, containerId, inputId, parentFilter
     }
 }
 
-// 카카오 장소 검색 함수
+// 카카오 장소 검색 함수 (백엔드 프록시 사용 - SDK 불필요)
 export function openKakaoPlaceSearch() {
-    console.log('카카오 장소 검색 함수 호출');
-    console.log('현재 상태:', {
-        kakao: typeof kakao,
-        windowKakaoSDKLoaded: window.kakaoSDKLoaded,
-        location: window.location.href
-    });
-    
-    // 카카오 API 로드 확인 및 대기
-    const checkKakaoAPI = () => {
-        try {
-            const isReady = typeof kakao !== 'undefined' && 
-                           kakao.maps && 
-                           kakao.maps.services &&
-                           typeof kakao.maps.services.Places !== 'undefined';
-            if (isReady) {
-                console.log('✅ 카카오 API 준비 완료');
-            }
-            return isReady;
-        } catch (e) {
-            console.log('카카오 API 체크 중 에러:', e);
-            return false;
-        }
-    };
-    
-    // 즉시 확인
-    if (checkKakaoAPI()) {
-        createKakaoSearchModal();
-        return;
-    }
-    
-    // 로딩 표시
-    showToast("카카오 지도 API를 불러오는 중...", 'info');
-    
-    // 아직 로드되지 않았으면 대기 (최대 5초)
-    let attempts = 0;
-    const maxAttempts = 50; // 5초 (100ms * 50)
-    
-    const waitForKakao = setInterval(() => {
-        attempts++;
-        
-        try {
-            if (checkKakaoAPI()) {
-                clearInterval(waitForKakao);
-                createKakaoSearchModal();
-                return;
-            }
-        } catch (e) {
-            // kakao가 정의되지 않았을 때 에러 무시
-        }
-        
-        if (attempts >= maxAttempts) {
-            clearInterval(waitForKakao);
-            console.error('카카오 API 로드 실패: kakao 객체가 정의되지 않았습니다.');
-            
-            // 안전하게 상태 확인
-            let statusInfo = {
-                windowKakaoSDKLoaded: window.kakaoSDKLoaded,
-                kakaoDefined: typeof kakao !== 'undefined'
-            };
-            
-            try {
-                if (typeof kakao !== 'undefined') {
-                    statusInfo.maps = typeof kakao.maps;
-                    statusInfo.services = typeof kakao.maps?.services;
-                }
-            } catch (e) {
-                statusInfo.error = 'kakao 객체 접근 불가';
-            }
-            
-            console.error('═══════════════════════════════════════');
-            console.error('현재 상태:', statusInfo);
-            console.error('현재 URL:', window.location.href);
-            console.error('현재 호스트명:', window.location.hostname);
-            console.error('═══════════════════════════════════════');
-            console.error('');
-            console.error('💡 카카오 디벨로퍼스에서 다음을 확인하세요:');
-            console.error('');
-            console.error('1️⃣ JavaScript 키 확인 (중요!)');
-            console.error('   - 앱 설정 > 앱 키 > JavaScript 키 사용');
-            console.error('   - 현재 사용 중인 키: 42dce12f04991c35775f3ce1081a3c76');
-            console.error('   - ⚠️ REST API 키가 아닌 JavaScript 키여야 함!');
-            console.error('');
-            console.error('2️⃣ 플랫폼 등록 확인');
-            console.error('   - 앱 설정 > 플랫폼 > Web 플랫폼 추가');
-            console.error('   - 사이트 도메인에 현재 도메인 등록 필요');
-            console.error('');
-            console.error('3️⃣ 도메인 등록 확인');
-            console.error('   - Web 플랫폼 > 사이트 도메인에 추가:');
-            console.error('     * ' + window.location.hostname);
-            console.error('     * ' + window.location.host);
-            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                console.error('     * localhost');
-                console.error('     * 127.0.0.1');
-            }
-            console.error('');
-            console.error('4️⃣ 카카오맵 사용 설정 확인');
-            console.error('   - 앱 설정 > 제품 설정 > 카카오맵 > 사용 설정 ON');
-            console.error('   - 링크: https://developers.kakao.com/console/app/1366360/product/kakao-map');
-            console.error('');
-            console.error('5️⃣ 브라우저 네트워크 확인');
-            console.error('   - F12 > Network 탭 > "dapi.kakao.com" 검색');
-            console.error('   - 요청의 Status Code 확인 (403, 401 등)');
-            console.error('   - Response 탭에서 에러 메시지 확인');
-            console.error('');
-            console.error('🔗 빠른 링크:');
-            console.error('   - 앱 설정: https://developers.kakao.com/console/app/1366360');
-            console.error('   - 플랫폼 설정: https://developers.kakao.com/console/app/1366360/platform');
-            console.error('   - 카카오맵 설정: https://developers.kakao.com/console/app/1366360/product/kakao-map');
-            console.error('═══════════════════════════════════════');
-            
-            showToast("카카오 지도 API를 불러올 수 없습니다. 브라우저 콘솔(F12)을 확인해주세요.", 'error');
-        }
-    }, 100);
+    createKakaoSearchModal();
 }
 
 // 카카오 검색 모달 생성 함수
@@ -2424,8 +2393,58 @@ function createKakaoSearchModal() {
     }
 }
 
+// 카카오 장소 검색 결과를 리스트로 렌더링 (SDK/callable 공통)
+function renderKakaoSearchResults(restaurants) {
+    const resultsContainer = document.getElementById('kakaoSearchResults');
+    if (!resultsContainer) return;
+    
+    if (restaurants.length === 0) {
+        resultsContainer.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">검색 결과가 없습니다.</div>';
+        return;
+    }
+    
+    resultsContainer.innerHTML = restaurants.map((place) => {
+        const placeName = place.place_name || '';
+        const address = place.address_name || '';
+        const roadAddress = place.road_address_name || '';
+        const placeId = place.id || '';
+        const category = place.category_name || '';
+        
+        const escapeForAttr = (str) => {
+            if (!str) return '';
+            return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, ' ').replace(/\r/g, '');
+        };
+        
+        const safePlaceName = escapeForAttr(placeName);
+        const safeAddress = escapeForAttr(roadAddress || address);
+        const safePlaceId = escapeForAttr(placeId);
+        
+        const placeDataObj = { id: placeId, name: placeName, address: roadAddress || address, roadAddress: roadAddress, category: category };
+        let placeDataB64 = '';
+        try {
+            placeDataB64 = btoa(unescape(encodeURIComponent(JSON.stringify(placeDataObj)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        } catch (e) {}
+        
+        return `
+            <button onclick="window.selectKakaoPlace('${safePlaceName}', '${safeAddress}', '${safePlaceId}', '${placeDataB64}')" 
+                class="w-full p-4 bg-white border border-slate-200 rounded-xl text-left hover:bg-slate-50 active:bg-slate-100 transition-colors">
+                <div class="font-bold text-slate-800 mb-1">${placeName}</div>
+                <div class="text-xs text-slate-500">${roadAddress || address}</div>
+            </button>
+        `;
+    }).join('');
+}
+
+// Callable 사용 대상: 앱(Capacitor) 또는 스테이징 (카카오 도메인/WebView 이슈 회피)
+function shouldUseKakaoCallable() {
+    if (window.Capacitor?.isNativePlatform?.()) return true;
+    if (window.APP_ENV === 'staging') return true;
+    return false;
+}
+
 // 카카오 장소 검색 실행
-export function searchKakaoPlaces() {
+// 앱/스테이징: Callable / 로컬웹: SDK 또는 Callable fallback
+export async function searchKakaoPlaces() {
     const searchInput = document.getElementById('kakaoSearchInput');
     const resultsContainer = document.getElementById('kakaoSearchResults');
     
@@ -2437,111 +2456,66 @@ export function searchKakaoPlaces() {
         return;
     }
     
-    if (typeof kakao === 'undefined' || !kakao.maps || !kakao.maps.services) {
-        showToast("카카오 지도 API를 불러올 수 없습니다. 브라우저 콘솔을 확인해주세요.", 'error');
-        console.error('카카오 API 로드 실패');
-        return;
-    }
-    
     // 로딩 표시
     resultsContainer.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">검색 중...</div>';
     
-    // 장소 검색 객체 생성
-    const ps = new kakao.maps.services.Places();
-    
-    // 키워드로 장소 검색 (카테고리 제한 없이 검색하여 더 많은 결과 포함)
-    ps.keywordSearch(keyword, (data, status) => {
-        if (status === kakao.maps.services.Status.OK) {
-            // 음식점 필터링 (더 포괄적인 카테고리 체크)
-            const restaurants = data.filter(place => {
-                const category = place.category_name || '';
-                const categoryGroup = place.category_group_code || '';
-                
-                // 카테고리 그룹 코드로 필터링 (FD6: 음식점)
-                if (categoryGroup === 'FD6') {
-                    return true;
-                }
-                
-                // 카테고리명으로 필터링 (더 포괄적으로)
-                const categoryLower = category.toLowerCase();
-                return categoryLower.includes('음식점') || 
-                       categoryLower.includes('식당') || 
-                       categoryLower.includes('카페') || 
-                       categoryLower.includes('레스토랑') || 
-                       categoryLower.includes('맛집') ||
-                       categoryLower.includes('요리') ||
-                       categoryLower.includes('식음료') ||
-                       categoryLower.includes('제과') ||
-                       categoryLower.includes('베이커리') ||
-                       categoryLower.includes('술집') ||
-                       categoryLower.includes('바') ||
-                       (categoryLower.includes('펜션') && categoryLower.includes('식당')) ||
-                       (categoryLower.includes('호텔') && categoryLower.includes('레스토랑'));
-            });
-            
-            if (restaurants.length === 0) {
-                resultsContainer.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">검색 결과가 없습니다.</div>';
-                return;
+    try {
+        let restaurants = [];
+        const useCallable = shouldUseKakaoCallable();
+        
+        if (!useCallable) {
+            // 웹: SDK 로딩 중이면 최대 3초 대기
+            if (window.kakaoSDKLoading && !window.kakaoSDKLoaded) {
+                await new Promise((resolve) => {
+                    let waited = 0;
+                    const iv = setInterval(() => {
+                        waited += 200;
+                        if (window.kakaoSDKLoaded || waited >= 3000) {
+                            clearInterval(iv);
+                            resolve();
+                        }
+                    }, 200);
+                });
             }
-            
-            // 결과 표시
-            resultsContainer.innerHTML = restaurants.slice(0, 10).map((place, index) => {
-                const placeName = place.place_name || '';
-                const address = place.address_name || '';
-                const roadAddress = place.road_address_name || '';
-                const placeId = place.id || '';
-                const category = place.category_name || '';
-                
-                // 안전한 이스케이프 함수 (따옴표와 백슬래시 처리)
-                const escapeForAttr = (str) => {
-                    if (!str) return '';
-                    return String(str)
-                        .replace(/\\/g, '\\\\')
-                        .replace(/'/g, "\\'")
-                        .replace(/"/g, '&quot;')
-                        .replace(/\n/g, ' ')
-                        .replace(/\r/g, '');
-                };
-                
-                const safePlaceName = escapeForAttr(placeName);
-                const safeAddress = escapeForAttr(roadAddress || address);
-                const safePlaceId = escapeForAttr(placeId);
-                const safeCategory = escapeForAttr(category);
-                
-                // data 속성에 저장할 JSON 데이터 (Base64 인코딩)
-                const placeDataObj = {
-                    id: placeId,
-                    name: placeName,
-                    address: roadAddress || address,
-                    roadAddress: roadAddress,
-                    category: category
-                };
-                
-                let placeDataB64 = '';
-                try {
-                    placeDataB64 = btoa(unescape(encodeURIComponent(JSON.stringify(placeDataObj))))
-                        .replace(/\+/g, '-')
-                        .replace(/\//g, '_')
-                        .replace(/=/g, '');
-                } catch (e) {
-                    console.warn('placeData 인코딩 실패:', e);
-                }
-                
-                return `
-                    <button onclick="window.selectKakaoPlace('${safePlaceName}', '${safeAddress}', '${safePlaceId}', '${placeDataB64}')" 
-                        class="w-full p-4 bg-white border border-slate-200 rounded-xl text-left hover:bg-slate-50 active:bg-slate-100 transition-colors">
-                        <div class="font-bold text-slate-800 mb-1">${placeName}</div>
-                        <div class="text-xs text-slate-500">${roadAddress || address}</div>
-                    </button>
-                `;
-            }).join('');
-        } else if (status === kakao.maps.services.Status.ZERO_RESULT) {
-            resultsContainer.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">검색 결과가 없습니다.</div>';
-        } else {
-            resultsContainer.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">검색 중 오류가 발생했습니다.</div>';
-            console.error('카카오 장소 검색 오류:', status);
         }
-    });
+        
+        // 1) 앱: Callable 즉시 사용 (WebView에서 SDK 불안정·도메인 제한 회피)
+        if (useCallable) {
+            const result = await callableFunctions.searchKakaoPlaces({ keyword });
+            restaurants = result?.data?.documents || [];
+        }
+        // 2) 웹 + SDK 로드됨: SDK 사용
+        else if (window.kakaoSDKLoaded && typeof kakao !== 'undefined' && kakao?.maps?.services?.Places) {
+            const ps = new kakao.maps.services.Places();
+            restaurants = await new Promise((resolve) => {
+                ps.keywordSearch(keyword, (data, status) => {
+                    if (status === kakao.maps.services.Status.OK) {
+                        resolve(data || []);
+                    } else {
+                        resolve([]);
+                    }
+                }, { category_group_code: 'FD6', size: 15 });
+            });
+        }
+        // 3) 웹 + SDK 없음: Callable fallback
+        else {
+            const result = await callableFunctions.searchKakaoPlaces({ keyword });
+            restaurants = result?.data?.documents || [];
+        }
+        
+        renderKakaoSearchResults(restaurants);
+    } catch (err) {
+        const msg = err?.message || String(err);
+        if (msg.includes('로그인이 필요')) {
+            showToast('장소 검색을 사용하려면 로그인해주세요.', 'error');
+        } else if (msg.includes('KAKAO_REST_API_KEY')) {
+            showToast('장소 검색 서비스를 준비 중입니다.', 'error');
+        } else {
+            showToast('검색 중 오류가 발생했습니다.', 'error');
+        }
+        resultsContainer.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">검색 중 오류가 발생했습니다.</div>';
+        console.error('카카오 장소 검색 오류:', err);
+    }
 }
 
 // 카카오 장소 선택

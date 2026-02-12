@@ -1,0 +1,14 @@
+{
+  "appId": "com.mealog.app.staging",
+  "appName": "MEALOG (스테이징)",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "url": "https://staging-mealog.vercel.app"
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "disable"
+    }
+  }
+}

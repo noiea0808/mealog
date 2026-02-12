@@ -158,12 +158,32 @@
         }, 15000); // 10000에서 15000으로 증가
     </script>
     
+    <script src="js/env.js" onerror="window.APP_ENV='production';"></script>
+    <!-- 앱에서 구글 네이티브 로그인: npm 모듈 해석 불가하므로 스크립트로 로드 -->
+    <script src="js/capacitor.js"></script>
+    <script>window.Capacitor=window.Capacitor||(window.capacitorExports&&window.capacitorExports.Capacitor);</script>
+    <script src="js/capacitor-social-login-plugin.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var el = document.getElementById('headerStagingLabel');
+            if (el && window.APP_ENV === 'staging') el.classList.remove('hidden');
+            // Capacitor 앱에서 safe-area 폴백 (env가 0일 때)
+            try {
+                if (window.Capacitor?.isNativePlatform?.()) {
+                    var st = getComputedStyle(document.documentElement).getPropertyValue('--safe-top').trim();
+                    var sb = getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom').trim();
+                    if (!st || st === '0px' || parseFloat(st) < 20) document.documentElement.style.setProperty('--safe-top', '28px');
+                    if (!sb || sb === '0px' || parseFloat(sb) < 20) document.documentElement.style.setProperty('--safe-bottom', '48px');
+                }
+            } catch (e) {}
+        });
+    </script>
     <script type="module" src="js/main.js?v=3" onerror="console.error('❌ main.js 스크립트 태그 로드 실패'); window.moduleLoadError = {message: '스크립트 태그 로드 실패', quicHint: true};"></script>
     
     <script>
         
-        // PWA Service Worker 등록
-        if ('serviceWorker' in navigator) {
+        // PWA Service Worker 등록 (Capacitor 앱에서는 비활성화 - 삼성 브라우저 등 WebView 충돌 방지)
+        if ('serviceWorker' in navigator && !window.Capacitor?.isNativePlatform?.()) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./sw.js')
                     .then((registration) => {
@@ -299,17 +319,26 @@
     <div id="toastContainer" class="fixed bottom-24 left-1/2 -translate-x-1/2 w-[92%] max-w-[26rem] z-[600] flex flex-col items-center gap-2 pointer-events-none px-4 box-border"></div>
 
     <div id="loadingOverlay" class="fixed inset-0 bg-white/90 z-[9999] flex flex-col items-center justify-center">
-        <div class="w-10 h-10 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin"></div>
-        <p id="loadingOverlayMessage" class="mt-4 text-base font-bold text-slate-800"></p>
+        <div id="loadingOverlayBox" class="flex flex-col items-center justify-center px-6 py-5 bg-white rounded-2xl shadow-lg border border-slate-100">
+            <div class="loading-food-icons relative w-10 h-10 flex items-center justify-center text-3xl">
+                <span class="loading-food-icon absolute" aria-hidden="true">🍴</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍔</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍕</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍎</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍦</span>
+            </div>
+            <p id="loadingOverlayMessage" class="mt-4 text-base font-bold text-slate-800 whitespace-nowrap"></p>
+        </div>
     </div>
 
     <!-- 1. Landing Page -->
-    <div id="landingPage">
-        <div class="mb-12 text-center">
-            <h1 class="mealog-title text-5xl text-white tracking-tighter mb-4">mealog</h1>
-            <p class="text-emerald-100 text-sm font-bold opacity-90 tracking-wide">우리가 함께한, 맛있었던 기억</p>
-        </div>
-        <div class="w-full max-w-xs px-8 space-y-3">
+    <div id="landingPage" class="flex flex-col min-h-screen">
+        <div class="flex-1 flex flex-col justify-center w-full">
+            <div class="mb-12 text-center">
+                <h1 class="mealog-title text-5xl text-white tracking-tighter mb-4">mealog</h1>
+                <p class="text-emerald-100 text-sm font-bold opacity-90 tracking-wide">우리가 함께한, 맛있었던 기억</p>
+            </div>
+            <div class="w-[85vw] min-w-[280px] max-w-[360px] sm:max-w-[320px] mx-auto px-6 sm:px-8 space-y-3">
             <button id="googleLoginBtn" class="w-full py-3.5 bg-white text-slate-800 rounded-2xl flex items-center justify-center shadow-lg active:scale-[0.98] transition-transform gap-2">
                 <i class="fa-brands fa-google text-lg"></i>
                 <span class="font-bold text-sm">구글로 계속하기</span>
@@ -326,6 +355,14 @@
                     로그인 없이 둘러보기 (게스트)
                 </button>
             </div>
+        </div>
+        </div>
+        <!-- 웹에서만 표시: 화면 하단 고정 영역, 좌우 전체 사용 (Capacitor 네이티브에서는 숨김) -->
+        <div id="apkDownloadSection" class="mt-auto w-full pt-4 pb-[max(4rem,calc(env(safe-area-inset-bottom)+2rem))] px-4 sm:px-6 border-t border-emerald-200/40 bg-emerald-900/30">
+            <a href="./download.html" id="apkDownloadLink" class="flex items-center justify-center gap-2 w-full py-3 text-emerald-100 text-sm font-bold rounded-xl border border-emerald-200/50 hover:bg-emerald-800/40 hover:text-white transition-colors">
+                <i class="fa-solid fa-mobile-screen mr-1"></i>
+                <span>밀로그 앱 다운로드</span>
+            </a>
         </div>
     </div>
 
@@ -471,11 +508,18 @@
 
     <!-- 2. Main Application -->
     <div id="mainApp" class="hidden">
-        <header class="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-sm max-h-[60px]">
+        <!-- 상태바 영역 흰색 오버레이 (스크롤 시 콘텐츠 투과 방지) -->
+        <div id="statusBarOverlay" class="fixed top-0 left-0 right-0 h-[var(--safe-top)] bg-white z-[100] pointer-events-none" aria-hidden="true"></div>
+        <!-- 네비게이션 바 영역 흰색 오버레이 (Android 15+ edge-to-edge 투명 방지) -->
+        <div id="navigationBarOverlay" class="fixed bottom-0 left-0 right-0 h-[var(--safe-bottom)] bg-white z-[100] pointer-events-none" aria-hidden="true"></div>
+        <header id="mainAppHeader" class="sticky z-50 bg-white/95 backdrop-blur-md shadow-sm max-h-[60px] safe-area-top transition-transform duration-300 ease-out">
             <div class="py-2.5 flex justify-between items-center px-6">
-                <div class="flex items-baseline gap-2 min-w-0">
+                <div class="flex items-baseline gap-2 min-w-0 flex-shrink-0">
                     <h1 id="headerAppTitle" class="mealog-title text-2xl text-emerald-600 tracking-tighter">mealog</h1>
-                    <span id="headerSectionLabel" class="header-section-label text-xs font-semibold tracking-tight">밀로그</span>
+                    <div class="relative overflow-visible">
+                        <span id="headerStagingLabel" class="pointer-events-none absolute left-0 -top-3 text-[10px] font-bold text-amber-600 uppercase tracking-widest hidden whitespace-nowrap">스테이징</span>
+                        <span id="headerSectionLabel" class="header-section-label text-xs font-semibold tracking-tight">밀로그</span>
+                    </div>
                 </div>
                 <!-- 우측: 돋보기(모먼트/밀로그/밀톡만) → 알림(모든 메뉴) 순서 고정 -->
                 <div class="header-right flex items-center gap-2 flex-shrink-0">
@@ -521,7 +565,7 @@
             </div>
         </header>
 
-        <div id="trackerSection" class="sticky top-[52px] z-40 px-6 py-3 bg-white border-b border-slate-100 shadow-sm">
+        <div id="trackerSection" class="sticky z-40 px-6 py-3 bg-white border-b border-slate-100 shadow-sm safe-area-tracker">
             <div id="trackerHeader" class="flex justify-between items-center mb-2">
                 <span id="trackerTitle" class="text-sm font-black text-slate-800 tracking-tight uppercase">날짜 선택</span>
                 <div id="trackerTabs" class="flex p-1 bg-slate-100 rounded-lg gap-1 flex-shrink-0">
@@ -599,7 +643,12 @@
                     </div>
                     <div>
                         <label class="text-sm font-bold text-slate-600 block mb-2">내용</label>
-                        <textarea id="boardWriteContent" placeholder="내용을 입력하세요" rows="15" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-slate-400 transition-colors resize-none"></textarea>
+                        <div class="flex gap-1 mb-2 p-1.5 bg-slate-100 rounded-lg w-fit">
+                            <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors" aria-label="굵게" data-format="bold"><i class="fa-solid fa-bold"></i></button>
+                            <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors" aria-label="취소선" data-format="strikeThrough"><i class="fa-solid fa-strikethrough"></i></button>
+                            <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors" aria-label="밑줄" data-format="underline"><i class="fa-solid fa-underline"></i></button>
+                        </div>
+                        <div id="boardWriteContent" contenteditable="true" data-placeholder="내용을 입력하세요" class="w-full min-h-[200px] p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-slate-400 transition-colors overflow-y-auto" style="max-height: 40vh;"></div>
                     </div>
                     <div class="flex gap-2 pt-3 border-t">
                         <button onclick="window.backToBoardList()" class="flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors">취소</button>
@@ -660,11 +709,11 @@
                     <div class="insight-area flex gap-3 mt-3 relative z-10 items-start">
                         <!-- 밀당 캐릭터 선택 창 -->
                         <div class="insight-character-column relative flex-shrink-0 flex flex-col gap-2 w-[75px]">
-                            <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="insight-character-btn w-[75px] h-[132px] rounded-2xl flex flex-col items-center justify-center transition-colors overflow-hidden">
+                            <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="insight-character-btn w-[75px] h-[132px] rounded-2xl flex flex-col items-center justify-center transition-colors">
                                 <div id="insightCharacterIcon" class="w-full h-full flex items-center justify-center text-2xl font-bold mealog-character-m">M</div>
                             </button>
                             <button id="generateCommentBtn" onclick="window.generateInsightComment()" class="insight-comment-trigger w-[75px] rounded-xl font-semibold transition-colors">
-                                분석하기
+                                코멘트
                             </button>
                         </div>
                         <!-- 말풍선 -->
@@ -944,7 +993,7 @@
                 <h2 id="modalTitle" class="text-lg font-bold text-slate-800 tracking-tight">기록하기</h2>
                 <button onclick="window.closeModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
             </div>
-            <div id="modalScrollArea" class="p-4 space-y-2 overflow-y-auto pb-10">
+            <div id="modalScrollArea" class="p-4 space-y-2 overflow-y-auto pb-2">
                 <div id="mainMealFields">
                     <div class="mb-2">
                         <div class="flex items-center justify-between mb-1.5">
@@ -1125,7 +1174,7 @@
     </div>
 
     <!-- Best Share Modal (팝업: 중앙 정렬, 포지션 간섭 최소화) -->
-    <div id="bestShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center p-4">
+    <div id="bestShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center py-4 capture-share-modal">
         <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl">
             <div id="bestShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center z-20">
                 <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>
@@ -1149,7 +1198,7 @@
     </div>
 
     <!-- Insight Share Modal (팝업: 중앙 정렬, 포지션 간섭 최소화) -->
-    <div id="insightShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center p-4">
+    <div id="insightShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center py-4 capture-share-modal">
         <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl">
             <div id="insightShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center z-20">
                 <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>

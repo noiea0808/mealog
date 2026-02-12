@@ -1,15 +1,67 @@
 // 인증 관련 함수들
 import { auth } from './firebase.js';
-import { GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { GoogleAuthProvider, signInWithPopup, getRedirectResult, signInWithCredential, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
 import { dbOps } from './db.js';
 
+function isNativePlatform() {
+    return typeof window.Capacitor !== 'undefined' && window.Capacitor?.isNativePlatform?.();
+}
+
+async function getGoogleWebClientId() {
+    try {
+        const config = await import('./config.js');
+        if (config.GOOGLE_WEB_CLIENT_ID) return config.GOOGLE_WEB_CLIENT_ID;
+    } catch (_) {}
+    const { GOOGLE_WEB_CLIENT_ID } = await import('./config.default.js');
+    return GOOGLE_WEB_CLIENT_ID || '';
+}
+
 export async function handleGoogleLogin() {
     showLoading();
-    const provider = new GoogleAuthProvider();
     try {
-        const result = await signInWithPopup(auth, provider);
+        let result;
+        if (isNativePlatform()) {
+            const webClientId = await getGoogleWebClientId();
+            if (!webClientId) {
+                showToast('구글 로그인 설정이 필요합니다. config.js에 GOOGLE_WEB_CLIENT_ID를 설정해주세요.', 'error');
+                hideLoading();
+                return;
+            }
+            const SocialLogin = window.Capacitor?.Plugins?.SocialLogin;
+            if (!SocialLogin) {
+                console.warn('[구글 로그인] SocialLogin 플러그인을 찾을 수 없습니다. capacitor.js / capacitor-social-login-plugin.js 로드 여부 확인.');
+                showToast('구글 로그인을 사용할 수 없습니다.', 'error');
+                hideLoading();
+                return;
+            }
+            await SocialLogin.initialize({
+                google: { webClientId, mode: 'online' }
+            });
+            // 스코프를 명시하지 않으면 플러그인 기본값 사용 (OAuth 동의 화면 미수정 시 에러 방지)
+            const response = await SocialLogin.login({
+                provider: 'google',
+                options: {}
+            });
+            // Android 등에서 idToken이 result 바로 아래 또는 authentication 안에 올 수 있음
+            const idToken = response.result?.idToken ?? response.result?.authentication?.idToken ?? null;
+            const isOnline = response.result?.responseType === 'online';
+            if (!isOnline || !idToken) {
+                const errMsg = response.result?.responseType === 'offline'
+                    ? '오프라인 모드는 지원하지 않습니다.'
+                    : '구글 로그인에서 ID 토큰을 받지 못했습니다.';
+                console.warn('[구글 로그인] 응답:', response?.result);
+                showToast(errMsg, 'error');
+                hideLoading();
+                return;
+            }
+            const credential = GoogleAuthProvider.credential(idToken);
+            result = await signInWithCredential(auth, credential);
+        } else {
+            const provider = new GoogleAuthProvider();
+            result = await signInWithPopup(auth, provider);
+        }
         console.log('🔐 구글 로그인 성공:', {
             uid: result.user.uid,
             email: result.user.email,
@@ -19,30 +71,31 @@ export async function handleGoogleLogin() {
         window._recordsLoadHidePending = true;
         showLoading('기록을 불러오고 있어요', { dimBackground: false });
         showToast("구글 로그인 성공!", "success");
-        // 로그인 성공 후 로딩 오버레이는 onAuthStateChanged에서 인증 플로우가 완료될 때까지 유지
-        // 인증 플로우가 완료되면 processState의 finally에서 hideLoading() 호출됨
-        } catch (error) {
-            if (error.code === 'auth/unauthorized-domain' || error.message.includes('unauthorized-domain')) {
-                const domainTextEl = document.getElementById('domainText');
-                if (domainTextEl) {
-                    // localhost나 127.0.0.1이 아닌 경우에만 도메인 표시
-                    const host = window.location.hostname;
-                    if (host === 'localhost' || host === '127.0.0.1') {
-                        domainTextEl.innerText = 'localhost or 127.0.0.1 (should work by default)';
-                    } else {
-                        domainTextEl.innerText = host;
-                    }
-                    domainTextEl.style.display = 'none';
-                    domainTextEl.offsetHeight;
-                    domainTextEl.style.display = 'block';
+    } catch (error) {
+        console.warn('[구글 로그인] 오류:', error?.code, error?.message, error);
+        if (error?.code === 'auth/unauthorized-domain' || error?.message?.includes('unauthorized-domain')) {
+            const domainTextEl = document.getElementById('domainText');
+            if (domainTextEl) {
+                const host = window.location.hostname;
+                if (host === 'localhost' || host === '127.0.0.1') {
+                    domainTextEl.innerText = 'localhost or 127.0.0.1 (should work by default)';
+                } else {
+                    domainTextEl.innerText = host;
                 }
-                document.getElementById('domainErrorModal').classList.remove('hidden');
-                hideLoading(); // 도메인 에러 시 숨김
-            } else {
-                showToast("로그인 실패: " + error.message, "error");
-                hideLoading(); // 에러 시 숨김
+                domainTextEl.style.display = 'none';
+                domainTextEl.offsetHeight;
+                domainTextEl.style.display = 'block';
             }
+            document.getElementById('domainErrorModal').classList.remove('hidden');
+            hideLoading();
+        } else if (error?.code !== 'auth/cancelled-popup-request' && error?.message !== 'User cancelled flow') {
+            const msg = error?.message || error?.error?.message || String(error);
+            showToast("로그인 실패: " + (msg.length > 50 ? msg.slice(0, 50) + '…' : msg), "error");
+            hideLoading();
+        } else {
+            hideLoading();
         }
+    }
 }
 
 export async function startGuest() {
@@ -340,8 +393,32 @@ export async function switchToLogin() {
     }
 }
 
-export function initAuth(onAuthStateChangedCallback) {
-    onAuthStateChanged(auth, onAuthStateChangedCallback);
+export async function initAuth(onAuthStateChangedCallback) {
+    // Redirect 로그인 복귀 시 결과 처리 (웹에서만 사용, 네이티브는 SocialLogin 사용)
+    if (isNativePlatform()) {
+        try {
+            const result = await getRedirectResult(auth);
+            if (result?.user) {
+                console.log('🔐 구글 Redirect 로그인 성공:', result.user.uid);
+                window._recordsLoadHidePending = true;
+                showLoading('기록을 불러오고 있어요', { dimBackground: false });
+                showToast("구글 로그인 성공!", "success");
+            }
+        } catch (error) {
+            // 네이티브에서는 리다이렉트 미사용 → 에러는 무시(콘솔만), 사용자에게 토스트 안 띄움
+            console.warn('getRedirectResult (네이티브 무시 가능):', error?.code, error?.message);
+            hideLoading();
+        }
+    }
+    onAuthStateChanged(auth, (user) => {
+        try {
+            onAuthStateChangedCallback(user);
+        } catch (e) {
+            console.error('인증 상태 처리 중 오류:', e);
+            hideLoading();
+            showToast("잠시 후 다시 시도해 주세요.", "error");
+        }
+    });
 }
 
 // 약관 동의 모달 표시

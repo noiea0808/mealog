@@ -7,10 +7,11 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPasswor
 // Firestore 규칙·Callable은 기본 Auth만 인식하므로 관리자도 기본 Auth 사용 (admin 페이지는 별도 URL)
 const adminAuth = getAuth(app);
 import { collection, getDocs, query, orderBy, limit, doc, deleteDoc, getDoc, setDoc, where, writeBatch, addDoc, serverTimestamp, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { uploadImageToStorage, uploadPersonaImageToStorage } from './utils.js';
-import { getReportsAggregateByGroupKeys, deleteBoardPostByAdmin, setBoardPostHidden } from './db.js';
+import { uploadImageToStorage, uploadPersonaImageToStorage, uploadNoticeImages } from './utils.js';
+import { getReportsAggregateByGroupKeys, deleteBoardPostByAdmin, setBoardPostHidden, getAdminDisplayName, invalidateAdminDisplayNameCache } from './db.js';
 import { REPORT_REASONS } from './constants.js';
 import { getCurrentTermsVersion, invalidateTermsVersionCache } from './utils-terms.js';
+import { sanitizeFormattedText, renderFormattedContent, stripDangerousTagsOnly } from './render/utils.js';
 
 let currentDeletePhotoId = null;
 
@@ -755,6 +756,60 @@ function initAdminPage() {
         console.error('❌ loginBtn을 찾을 수 없음');
     }
     
+    // 공지 내용 포맷 툴바 (Bold, 취소선, 밑줄)
+    document.querySelectorAll('.notice-format-toolbar-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const contentEl = document.getElementById('noticeContent');
+            if (!contentEl) return;
+            contentEl.focus();
+            const cmd = btn.getAttribute('data-format');
+            if (cmd) document.execCommand(cmd, false, null);
+        });
+    });
+    const noticeAddPhotosBtn = document.getElementById('noticeAddPhotosBtn');
+    const noticeImagesInput = document.getElementById('noticeImages');
+    if (noticeAddPhotosBtn && noticeImagesInput) {
+        noticeAddPhotosBtn.addEventListener('click', () => noticeImagesInput.click());
+    }
+    if (noticeImagesInput) {
+        noticeImagesInput.addEventListener('change', (e) => {
+            const existing = (window.noticeExistingUrls || []).length;
+            const filesCount = (window.noticeFiles || []).length;
+            const total = existing + filesCount;
+            const canAdd = Math.max(0, 3 - total);
+            const files = Array.from(e.target.files || []).slice(0, canAdd);
+            if (files.length === 0) {
+                if ((e.target.files || []).length > canAdd && canAdd === 0) alert('사진은 최대 3장까지 추가할 수 있습니다.');
+                e.target.value = '';
+                return;
+            }
+            if (!window.noticeFiles) window.noticeFiles = [];
+            if (!window.noticeObjectUrls) window.noticeObjectUrls = [];
+            files.forEach(f => {
+                if (!f.type.startsWith('image/')) return;
+                window.noticeFiles.push(f);
+                window.noticeObjectUrls.push(URL.createObjectURL(f));
+            });
+            renderNoticeImagePreviews();
+            e.target.value = '';
+        });
+    }
+    const noticeContentEl = document.getElementById('noticeContent');
+    if (noticeContentEl) {
+        const syncPlaceholder = () => {
+            const isEmpty = !(noticeContentEl.innerText || '').trim();
+            noticeContentEl.classList.toggle('format-editor-empty', isEmpty);
+        };
+        noticeContentEl.addEventListener('input', syncPlaceholder);
+        noticeContentEl.addEventListener('blur', syncPlaceholder);
+        noticeContentEl.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const text = (e.clipboardData || window.clipboardData)?.getData('text/plain') || '';
+            document.execCommand('insertText', false, text);
+        });
+    }
+    
     // Enter 키로 로그인
     const passwordInput = document.getElementById('adminPassword');
     if (passwordInput) {
@@ -857,14 +912,139 @@ window.switchContentSidebar = function(section) {
     if (section === 'mealog') {
         loadMealogComments();
     } else if (section === 'characters') {
-        renderPersonaCharacters();
+        showCharacterListView();
     } else if (section === 'terms') {
         loadTermsContent();
         // 약관관리 탭이 기본이므로 약관이력은 나중에 로드
     } else if (section === 'tags') {
         loadTagsContent();
+    } else if (section === 'apk') {
+        bindApkFileInput();
+        loadApkContent();
     }
 };
+
+// APK 배포 콘텐츠 로드
+async function loadApkContent() {
+    const container = document.getElementById('apkCurrentInfo');
+    const linkEl = document.getElementById('apkDownloadPageLink');
+    if (!container) return;
+    try {
+        const apkDoc = doc(db, 'artifacts', appId, 'content', 'apk');
+        const apkSnap = await getDoc(apkDoc);
+        if (apkSnap.exists()) {
+            const d = apkSnap.data();
+            const updatedAt = d.updatedAt?.toDate?.();
+            const sizeMb = d.fileSize ? (d.fileSize / (1024 * 1024)).toFixed(2) : '-';
+            container.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <span class="text-emerald-600 font-bold">${d.fileName || '-'}</span>
+                    ${d.version ? `<span class="px-2 py-0.5 bg-slate-200 rounded text-xs">v${d.version}</span>` : ''}
+                </div>
+                <p class="text-sm text-slate-600">용량: ${sizeMb} MB</p>
+                <p class="text-sm text-slate-500">등록일: ${updatedAt ? updatedAt.toLocaleString('ko-KR') : '-'}</p>
+                <a href="${d.downloadUrl}" target="_blank" class="inline-flex items-center gap-2 mt-2 px-3 py-2 bg-emerald-100 text-emerald-700 rounded-lg text-sm font-bold hover:bg-emerald-200 transition-colors">
+                    <i class="fa-solid fa-download"></i> 다운로드 링크
+                </a>
+            `;
+        } else {
+            container.innerHTML = '<p class="text-sm text-slate-500">등록된 APK가 없습니다. 위에서 APK 파일을 업로드해주세요.</p>';
+        }
+        if (linkEl) linkEl.href = new URL('./download.html', window.location.href).href;
+    } catch (e) {
+        console.error('APK 정보 로드 실패:', e);
+        container.innerHTML = '<p class="text-sm text-red-500">로드 실패</p>';
+    }
+}
+
+// APK 파일 업로드
+window.uploadApkFile = async function() {
+    const input = document.getElementById('apkFileInput');
+    const uploadBtn = document.getElementById('apkUploadBtn');
+    const statusEl = document.getElementById('apkUploadStatus');
+    const versionInput = document.getElementById('apkVersionInput');
+    if (!input?.files?.length) {
+        if (typeof showToast === 'function') showToast('APK 파일을 선택해주세요.');
+        return;
+    }
+    const file = input.files[0];
+    if (!file.name.toLowerCase().endsWith('.apk')) {
+        if (typeof showToast === 'function') showToast('APK 파일만 업로드할 수 있습니다.');
+        return;
+    }
+    if (file.size > 100 * 1024 * 1024) {
+        if (typeof showToast === 'function') showToast('파일 크기는 100MB 이하여야 합니다.');
+        return;
+    }
+    try {
+        uploadBtn.disabled = true;
+        if (statusEl) {
+            statusEl.className = 'mt-2 text-sm text-slate-600';
+            statusEl.textContent = '업로드 URL 요청 중...';
+            statusEl.classList.remove('hidden');
+        }
+        const { uploadUrl, fileName } = await callableFunctions.getApkUploadUrl({
+            fileName: file.name,
+            version: (versionInput?.value || '').trim()
+        }).then(r => r.data);
+        if (statusEl) statusEl.textContent = '파일 업로드 중...';
+        const res = await fetch(uploadUrl, {
+            method: 'PUT',
+            body: file,
+            headers: { 'Content-Type': 'application/vnd.android.package-archive' }
+        });
+        if (!res.ok) {
+            throw new Error(`업로드 실패: ${res.status}`);
+        }
+        if (statusEl) statusEl.textContent = '메타데이터 저장 중...';
+        await callableFunctions.confirmApkUpload({
+            fileName,
+            version: (versionInput?.value || '').trim(),
+            fileSize: file.size
+        });
+        if (statusEl) {
+            statusEl.className = 'mt-2 text-sm text-emerald-600';
+            statusEl.textContent = '업로드 완료!';
+        }
+        if (typeof showToast === 'function') showToast('APK 업로드가 완료되었습니다.');
+        loadApkContent();
+        input.value = '';
+        document.getElementById('apkFileInfo')?.classList.add('hidden');
+    } catch (e) {
+        console.error('APK 업로드 실패:', e);
+        if (statusEl) {
+            statusEl.className = 'mt-2 text-sm text-red-600';
+            statusEl.textContent = '업로드 실패: ' + (e.message || '알 수 없는 오류');
+            statusEl.classList.remove('hidden');
+        }
+        if (typeof showToast === 'function') showToast('업로드 실패: ' + (e.message || '알 수 없는 오류'));
+    } finally {
+        uploadBtn.disabled = false;
+    }
+};
+
+// APK 파일 선택 시 UI 업데이트 (한 번만 바인딩)
+let apkFileInputBound = false;
+function bindApkFileInput() {
+    if (apkFileInputBound) return;
+    const apkInput = document.getElementById('apkFileInput');
+    const apkInfo = document.getElementById('apkFileInfo');
+    const apkUploadBtn = document.getElementById('apkUploadBtn');
+    if (apkInput && apkInfo && apkUploadBtn) {
+        apkInput.addEventListener('change', (e) => {
+            const f = e.target.files?.[0];
+            if (f) {
+                apkInfo.textContent = `${f.name} (${(f.size / (1024 * 1024)).toFixed(2)} MB)`;
+                apkInfo.classList.remove('hidden');
+                apkUploadBtn.disabled = false;
+            } else {
+                apkInfo.classList.add('hidden');
+                apkUploadBtn.disabled = true;
+            }
+        });
+        apkFileInputBound = true;
+    }
+}
 
 // 약관 콘텐츠 로드
 async function loadTermsContent() {
@@ -2334,7 +2514,12 @@ async function renderNoticeDetailInAdmin(noticeId) {
                 </div>
                 <h2 class="text-lg font-bold text-slate-800 mb-2">${escapeHtml(notice.title || '제목 없음')}</h2>
                 <div class="text-xs text-slate-400 mb-4">${date}</div>
-                <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4">${escapeHtml(notice.content || '').replace(/\n/g, '<br>')}</div>
+                ${Array.isArray(notice.imageUrls) && notice.imageUrls.length > 0 ? `
+                <div class="flex flex-wrap gap-2 mb-4">
+                    ${notice.imageUrls.map(url => `<img src="${url}" alt="공지 사진" class="max-w-full h-auto rounded-xl border border-slate-200 object-cover" style="max-height: 200px;" loading="lazy">`).join('')}
+                </div>
+                ` : ''}
+                <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4">${renderFormattedContent(notice.content || '')}</div>
                 <div class="pt-2 border-t border-slate-200">
                     <p class="text-xs text-slate-500 mb-2">작업</p>
                     <div class="flex gap-2 flex-wrap">
@@ -2401,7 +2586,19 @@ window.openNoticeWriteModal = function(noticeId = null) {
     
     // 초기화
     if (titleInput) titleInput.value = '';
-    if (contentInput) contentInput.value = '';
+    if (contentInput) {
+        contentInput.innerHTML = '';
+        contentInput.classList.add('format-editor-empty');
+    }
+    window.noticeExistingUrls = [];
+    window.noticeFiles = [];
+    if (window.noticeObjectUrls?.length) {
+        window.noticeObjectUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch (_) {} });
+    }
+    window.noticeObjectUrls = [];
+    const noticeImagesInput = document.getElementById('noticeImages');
+    if (noticeImagesInput) noticeImagesInput.value = '';
+    renderNoticeImagePreviews();
     if (typeSelect) typeSelect.value = 'important';
     if (pinnedCheckbox) pinnedCheckbox.checked = false;
     if (hiddenCheckbox) hiddenCheckbox.checked = false;
@@ -2417,7 +2614,19 @@ window.openNoticeWriteModal = function(noticeId = null) {
             if (snap.exists()) {
                 const noticeData = snap.data();
                 if (titleInput) titleInput.value = noticeData.title || '';
-                if (contentInput) contentInput.value = noticeData.content || '';
+                if (contentInput) {
+                    contentInput.innerHTML = (noticeData.content || '').replace(/\n/g, '<br>');
+                    contentInput.classList.remove('format-editor-empty');
+                }
+                window.noticeExistingUrls = Array.isArray(noticeData.imageUrls) ? [...noticeData.imageUrls] : [];
+                window.noticeFiles = [];
+                if (window.noticeObjectUrls?.length) {
+                    window.noticeObjectUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch (_) {} });
+                }
+                window.noticeObjectUrls = [];
+                const noticeImagesInput = document.getElementById('noticeImages');
+                if (noticeImagesInput) noticeImagesInput.value = '';
+                renderNoticeImagePreviews();
                 if (typeSelect) typeSelect.value = noticeData.type || 'important';
                 if (pinnedCheckbox) pinnedCheckbox.checked = Boolean(noticeData.isPinned === true);
                 if (hiddenCheckbox) hiddenCheckbox.checked = Boolean(noticeData.hidden === true);
@@ -2433,6 +2642,53 @@ window.openNoticeWriteModal = function(noticeId = null) {
     
     modal.classList.remove('hidden');
 };
+
+// 공지 사진 미리보기 렌더
+function renderNoticeImagePreviews() {
+    const container = document.getElementById('noticeImagePreviews');
+    if (!container) return;
+    const existing = window.noticeExistingUrls || [];
+    const files = window.noticeFiles || [];
+    container.innerHTML = '';
+    existing.forEach((url, i) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0';
+        wrap.innerHTML = `
+            <img src="${url}" alt="미리보기" class="w-full h-full object-cover">
+            <button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl hover:bg-red-600" data-type="url" data-index="${i}" aria-label="삭제">
+                <i class="fa-solid fa-times"></i>
+            </button>
+        `;
+        wrap.querySelector('button').addEventListener('click', (e) => {
+            e.preventDefault();
+            window.noticeExistingUrls.splice(i, 1);
+            renderNoticeImagePreviews();
+        });
+        container.appendChild(wrap);
+    });
+    files.forEach((file, i) => {
+        const objectUrl = window.noticeObjectUrls && window.noticeObjectUrls[i];
+        if (!objectUrl) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0';
+        wrap.innerHTML = `
+            <img src="${objectUrl}" alt="미리보기" class="w-full h-full object-cover">
+            <button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl hover:bg-red-600" data-type="file" data-index="${i}" aria-label="삭제">
+                <i class="fa-solid fa-times"></i>
+            </button>
+        `;
+        wrap.querySelector('button').addEventListener('click', (e) => {
+            e.preventDefault();
+            if (window.noticeObjectUrls && window.noticeObjectUrls[i]) {
+                try { URL.revokeObjectURL(window.noticeObjectUrls[i]); } catch (_) {}
+                window.noticeObjectUrls.splice(i, 1);
+            }
+            window.noticeFiles.splice(i, 1);
+            renderNoticeImagePreviews();
+        });
+        container.appendChild(wrap);
+    });
+}
 
 // 공지 작성 모달 닫기
 window.closeNoticeModal = function() {
@@ -2453,10 +2709,20 @@ window.submitNotice = async function() {
     if (!titleInput || !contentInput) return;
     
     const title = titleInput.value.trim();
-    const content = contentInput.value.trim();
+    const rawContent = contentInput.innerHTML || '';
+    let content = sanitizeFormattedText(rawContent).trim();
     const type = typeSelect ? typeSelect.value : 'important';
     const isPinned = pinnedCheckbox ? Boolean(pinnedCheckbox.checked) : false;
     const hidden = hiddenCheckbox ? Boolean(hiddenCheckbox.checked) : false;
+    
+    // sanitize 결과가 비었으나 rawContent에 내용이 있으면 위험 태그만 제거하여 서식 보존
+    if (!content && rawContent.trim()) {
+        content = stripDangerousTagsOnly(rawContent).trim();
+    }
+    if (!content) {
+        const plainText = (contentInput.innerText || '').trim();
+        if (plainText) content = plainText.replace(/\n/g, '<br>');
+    }
     
     if (!title) {
         alert('제목을 입력해주세요.');
@@ -2474,14 +2740,29 @@ window.submitNotice = async function() {
     }
     
     try {
+        const existingUrls = window.noticeExistingUrls || [];
+        const newFiles = window.noticeFiles || [];
+        let imageUrls = [...existingUrls];
+        if (newFiles.length > 0) {
+            const uid = adminAuth.currentUser?.uid;
+            if (!uid) {
+                alert('로그인이 필요합니다.');
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = currentEditingNoticeId ? '수정' : '등록'; }
+                return;
+            }
+            const newUrls = await uploadNoticeImages(newFiles, uid);
+            imageUrls = [...existingUrls, ...newUrls];
+        }
+        
         const noticeData = {
             title: title,
             content: content,
             type: type,
             isPinned: isPinned,
             hidden: hidden,
+            imageUrls: imageUrls,
             timestamp: new Date().toISOString(),
-            authorDisplayName: getAdminDisplayName()
+            authorDisplayName: await getAdminDisplayName()
         };
         
         if (currentEditingNoticeId) {
@@ -2584,16 +2865,13 @@ window.saveAdminDisplayName = async function() {
         const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
         await setDoc(configRef, { displayName: value }, { merge: true });
         cachedAdminDisplayName = value;
+        invalidateAdminDisplayNameCache();
         alert('저장되었습니다.');
     } catch (e) {
         console.error('관리자 표시 이름 저장 실패:', e);
         alert('저장에 실패했습니다: ' + (e?.message || e));
     }
 };
-
-function getAdminDisplayName() {
-    return cachedAdminDisplayName || '관리자';
-}
 
 // 게시판 게시물 렌더링 (기본 구현)
 let currentAdminBoardCategory = 'all';
@@ -2770,7 +3048,10 @@ async function renderBoardPostDetail(postId) {
             <div class="text-xs text-slate-400 mb-3">${escapeHtml(post.authorNickname || '익명')} · ${dateStr} · 조회 ${post.views || 0}</div>
             <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(post.content || '').replace(/\n/g, '<br>')}</div>
         `;
-        const comments = await boardOperations.getComments(postId);
+        const [comments, adminDisplayName] = await Promise.all([
+            boardOperations.getComments(postId),
+            getAdminDisplayName()
+        ]);
         if (commentsContainer) {
             if (comments.length === 0) {
                 commentsContainer.innerHTML = '<p class="text-slate-400 text-sm py-2">댓글이 없습니다.</p>';
@@ -2779,8 +3060,9 @@ async function renderBoardPostDetail(postId) {
                     const ct = c.timestamp;
                     const cd = ct ? (typeof ct?.toDate === 'function' ? ct.toDate() : new Date(ct)) : null;
                     const timeStr = cd && Number.isFinite(cd.getTime()) ? cd.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
+                    const displayName = c.isAdminComment === true ? adminDisplayName : (c.authorNickname || '익명');
                     return `<div class="flex gap-2 p-2 bg-white rounded-lg border border-slate-100">
-                        <span class="font-bold text-slate-700 text-sm">${escapeHtml(c.authorNickname || '익명')}</span>
+                        <span class="font-bold text-slate-700 text-sm">${escapeHtml(displayName)}</span>
                         <span class="text-slate-500 text-xs">${timeStr}</span>
                         <p class="text-slate-600 text-sm flex-1">${escapeHtml(c.content || '')}</p>
                     </div>`;
@@ -2806,7 +3088,7 @@ window.submitBoardCommentAsAdmin = async function() {
         const result = await callableFunctions.addBoardCommentAsAdmin({
             postId,
             content,
-            displayName: getAdminDisplayName()
+            displayName: await getAdminDisplayName()
         });
         if (result?.data) {
             inputEl.value = '';
@@ -4297,9 +4579,11 @@ async function renderPersonaCharacters() {
         
         if (charactersSnap.exists()) {
             const data = charactersSnap.data();
-            // Firebase에서 추가된 캐릭터들 추가 (기본 캐릭터와 중복되지 않는 것만)
-            Object.entries(data).forEach(([id, charData]) => {
-                if (!DEFAULT_CHARACTERS.find(c => c.id === id)) {
+            // Firebase에서 추가된 캐릭터들 추가 (기본 캐릭터와 중복되지 않는 것만, id 순 정렬)
+            Object.entries(data)
+                .filter(([id]) => !DEFAULT_CHARACTERS.find(c => c.id === id))
+                .sort(([a], [b]) => a.localeCompare(b))
+                .forEach(([id, charData]) => {
                     allCharacters.push({
                         id,
                         name: charData.name || id,
@@ -4308,8 +4592,7 @@ async function renderPersonaCharacters() {
                         persona: charData.persona || '',
                         systemPrompt: ''
                     });
-                }
-            });
+                });
         }
         
         // 각 캐릭터의 개별 설정 문서에서 상세 정보 가져오기
@@ -4352,64 +4635,60 @@ async function renderPersonaCharacters() {
             console.error('공통 페르소나 로드 실패:', e);
         }
         
-        // 공통 + 다른 캐릭터들
+        // 공통 + 다른 캐릭터들 (순서: 공통 → 기본 → Firebase)
         const allCharactersWithCommon = [commonCharacter, ...allCharacters];
         
-        // 캐릭터 목록 렌더링 (가로)
-        listContainer.innerHTML = allCharactersWithCommon.map(char => {
-            const isSelected = char.id === currentEditingCharacterId;
+        // 캐릭터 목록 렌더링 (세로)
+        listContainer.innerHTML = allCharactersWithCommon.map((char, index) => {
             const isCommon = char.id === 'common';
             return `
-                <div class="flex-shrink-0 w-32">
-                    <button onclick="window.selectCharacterForEdit('${char.id}')" 
-                            class="w-full text-center px-3 py-3 rounded-xl transition-colors ${isSelected ? 'bg-emerald-50 border-2 border-emerald-500' : 'bg-slate-50 border border-slate-200 hover:bg-slate-100'}">
-                        <div class="flex flex-col items-center gap-2">
-                            ${char.image ? `
-                                <img src="${escapeHtml(char.image)}" alt="${escapeHtml(char.name || '')}" class="w-12 h-12 object-cover rounded-lg" onerror="this.style.display='none'">
-                            ` : ''}
-                            ${!char.image && char.icon ? `
-                                <div class="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center text-2xl">${escapeHtml(char.icon)}</div>
-                            ` : ''}
-                            <div class="w-full">
-                                <div class="text-xs font-bold text-slate-800">${escapeHtml(char.name || char.id || '')}</div>
-                            </div>
-                        </div>
+                <div class="flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <button type="button" onclick="window.selectCharacterForEdit('${String(char.id).replace(/'/g, "\\'")}')" 
+                            data-character-id="${escapeHtml(char.id)}"
+                            class="flex-1 flex items-center gap-3 text-left min-w-0">
+                        <span class="text-sm font-bold text-slate-500 w-6">${index + 1}</span>
+                        ${char.image ? `
+                            <img src="${escapeHtml(char.image)}" alt="${escapeHtml(char.name || '')}" class="w-10 h-10 object-cover rounded-lg flex-shrink-0" onerror="this.style.display='none'">
+                        ` : ''}
+                        ${!char.image && char.icon ? `
+                            <div class="w-10 h-10 rounded-lg bg-slate-200 flex items-center justify-center text-xl flex-shrink-0">${escapeHtml(char.icon)}</div>
+                        ` : ''}
+                        <span class="text-sm font-bold text-slate-800 truncate">${escapeHtml(char.name || char.id || '')}</span>
                     </button>
                     ${!isCommon ? `
-                        <button onclick="window.deleteCharacter('${char.id}')" 
-                                class="w-full mt-2 px-2 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-bold hover:bg-red-200 transition-colors">
+                        <button type="button" onclick="window.deleteCharacter('${String(char.id).replace(/'/g, "\\'")}')" 
+                                class="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-bold hover:bg-red-200 transition-colors flex-shrink-0">
                             <i class="fa-solid fa-trash mr-1"></i>삭제
                         </button>
                     ` : ''}
                 </div>
             `;
         }).join('');
-        
-        // 첫 번째 캐릭터(공통)를 기본으로 선택
-        if (!currentEditingCharacterId) {
-            selectCharacterForEdit('common');
-        }
     } catch (e) {
         console.error("페르소나 캐릭터 렌더링 실패:", e);
         listContainer.innerHTML = '<div class="text-center py-4 text-red-400"><i class="fa-solid fa-exclamation-triangle text-xl mb-2"></i><p class="text-xs">캐릭터를 불러오는 중 오류가 발생했습니다.</p></div>';
     }
 }
 
-// 캐릭터 선택 (편집용)
+// 캐릭터 목록 뷰 표시
+window.showCharacterListView = function() {
+    const listView = document.getElementById('characters-list-view');
+    const editView = document.getElementById('character-edit-view');
+    if (listView) listView.classList.remove('hidden');
+    if (editView) editView.classList.add('hidden');
+    currentEditingCharacterId = null;
+    renderPersonaCharacters();
+};
+
+// 캐릭터 선택 (편집용) - 편집 뷰로 전환
 window.selectCharacterForEdit = async function(characterId) {
     currentEditingCharacterId = characterId;
     
-    // 목록 UI 업데이트
-    document.querySelectorAll('#personaCharactersList button').forEach(btn => {
-        btn.classList.remove('bg-emerald-50', 'border-emerald-500', 'border-2');
-        btn.classList.add('bg-slate-50', 'border-slate-200', 'border');
-    });
-    
-    const selectedBtn = document.querySelector(`#personaCharactersList button[onclick*="'${characterId}'"]`);
-    if (selectedBtn) {
-        selectedBtn.classList.remove('bg-slate-50', 'border-slate-200', 'border');
-        selectedBtn.classList.add('bg-emerald-50', 'border-emerald-500', 'border-2');
-    }
+    // 목록 뷰 숨기고 편집 뷰 표시
+    const listView = document.getElementById('characters-list-view');
+    const editView = document.getElementById('character-edit-view');
+    if (listView) listView.classList.add('hidden');
+    if (editView) editView.classList.remove('hidden');
     
     // 편집 폼 로드
     await loadCharacterEditor(characterId);
@@ -4506,17 +4785,18 @@ function renderCommonPersonaForm(commonData) {
                 </div>
             </div>
             
-            <!-- 공통 페르소나 (구글 AI 스튜디오용) -->
+            <!-- 공통 페르소나: 입력 텍스트만큼 창 자동 확장 -->
             <div>
                 <label class="block text-sm font-bold text-slate-700 mb-2">
                     <i class="fa-solid fa-robot mr-2"></i>공통 페르소나 (구글 AI 스튜디오에 발송할 프롬프트)
                 </label>
                 <textarea id="commonSystemPrompt" 
-                          class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[200px]"
+                          class="persona-auto-resize w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 min-h-[200px] resize-none overflow-hidden"
                           placeholder="모든 캐릭터에 공통으로 적용될 페르소나를 입력하세요. 예: '항상 친근하고 따뜻한 톤으로 대화하며, 사용자의 식사 기록을 긍정적으로 분석합니다.'">${escapeHtml(commonData.systemPrompt || '')}</textarea>
             </div>
         </div>
     `;
+    attachPersonaAutoResize();
 }
 
 // 캐릭터 편집 폼 렌더링
@@ -4526,93 +4806,131 @@ function renderCharacterEditorForm(characterData) {
     
     editorContent.innerHTML = `
         <div class="space-y-6">
-            <!-- 이미지 업로드 -->
+            <!-- 이미지: 좌(미리보기) | 우(선택+경로, 이미지 높이에 맞춤) -->
             <div>
                 <label class="block text-sm font-bold text-slate-700 mb-2">
-                    <i class="fa-solid fa-image mr-2"></i>캐릭터 이미지 <span class="text-slate-500 font-normal">(75px × 132px)</span>
+                    <i class="fa-solid fa-image mr-2"></i>캐릭터 이미지 <span class="text-slate-500 font-normal">(75×132)</span>
                 </label>
-                <div class="space-y-3">
-                    <input type="file" id="characterImageFile" accept="image/*" 
-                           onchange="window.handleCharacterImageUpload(event)"
-                           class="hidden">
-                    <button type="button" onclick="document.getElementById('characterImageFile').click()" 
-                            class="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2">
-                        <i class="fa-solid fa-upload"></i>
-                        <span>이미지 선택</span>
-                    </button>
-                    <input type="text" id="characterImage" value="${escapeHtml(characterData.image || '')}" 
-                           placeholder="또는 이미지 URL 직접 입력"
-                           onchange="window.updateCharacterImageFromUrl(this.value)"
-                           class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500">
-                    <div id="characterImagePreview" class="mt-2">
+                <div class="flex gap-3 items-stretch">
+                    <div id="characterImagePreview" class="relative flex-shrink-0 w-[75px] h-[132px] rounded-xl border border-slate-200 bg-slate-100 flex items-center justify-center overflow-hidden">
                         ${characterData.image ? `
-                            <div class="relative inline-block">
-                                <img src="${escapeHtml(characterData.image)}" alt="미리보기" class="w-32 h-32 object-cover rounded-xl border border-slate-200" onerror="this.style.display='none'">
-                                <button type="button" onclick="window.removeCharacterImage()" 
-                                        class="absolute top-1 right-1 px-2 py-1 bg-red-500 text-white rounded text-xs font-bold hover:bg-red-600">
-                                    <i class="fa-solid fa-times"></i>
-                                </button>
-                            </div>
-                        ` : ''}
+                            <img src="${escapeHtml(characterData.image)}" alt="미리보기" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML='<span class=\\'text-slate-400 text-2xl\\'>👤</span>'">
+                            <button type="button" onclick="window.removeCharacterImage()" 
+                                    class="absolute top-0.5 right-0.5 px-1.5 py-0.5 bg-red-500 text-white rounded text-xs font-bold hover:bg-red-600">
+                                <i class="fa-solid fa-times"></i>
+                            </button>
+                        ` : '<span class="text-slate-400 text-2xl">👤</span>'}
+                    </div>
+                    <div class="flex flex-col gap-2 justify-center min-w-0">
+                        <input type="file" id="characterImageFile" accept="image/*" 
+                               onchange="window.handleCharacterImageUpload(event)"
+                               class="hidden">
+                        <button type="button" onclick="document.getElementById('characterImageFile').click()" 
+                                class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-upload"></i>
+                            <span>이미지 선택</span>
+                        </button>
+                        <input type="text" id="characterImage" value="${escapeHtml(characterData.image || '')}" 
+                               placeholder="또는 이미지 URL 직접 입력"
+                               onchange="window.updateCharacterImageFromUrl(this.value)"
+                               class="w-full min-w-[160px] px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500">
                     </div>
                 </div>
             </div>
             
-            <!-- 캐릭터 이름 -->
-            <div>
-                <label class="block text-sm font-bold text-slate-700 mb-2">
+            <!-- 캐릭터 이름: 타이틀 오른쪽에 입력 -->
+            <div class="flex gap-4 items-center">
+                <label class="flex-shrink-0 text-sm font-bold text-slate-700 w-28">
                     <i class="fa-solid fa-tag mr-2"></i>캐릭터 이름
                 </label>
                 <input type="text" id="characterName" value="${escapeHtml(characterData.name || '')}" 
                        placeholder="예: 엄격한 트레이너"
-                       class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500">
+                       class="flex-1 min-w-0 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500">
             </div>
             
-            <!-- 기본 멘트 -->
-            <div>
-                <label class="block text-sm font-bold text-slate-700 mb-2">
-                    <i class="fa-solid fa-comment mr-2"></i>기본 멘트 (COMMENT 버튼 클릭 시 표시)
+            <!-- 기본 멘트: 타이틀 오른쪽에 입력 -->
+            <div class="flex gap-4 items-start">
+                <label class="flex-shrink-0 text-sm font-bold text-slate-700 w-28 pt-2">
+                    <i class="fa-solid fa-comment mr-2"></i>기본 멘트
                 </label>
-                <p class="text-xs text-slate-500 mb-2">여러 개의 멘트를 입력하면 랜덤으로 표시됩니다.</p>
-                <div id="characterDefaultCommentsContainer" class="space-y-3">
-                    ${characterData.defaultComments && characterData.defaultComments.length > 0 ? characterData.defaultComments.map((comment, index) => `
-                        <div class="flex gap-2 items-start" data-comment-index="${index}">
-                            <textarea onchange="window.updateCharacterDefaultComment(${index}, this.value)"
-                                      class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px]"
-                                      placeholder="기본 멘트를 입력하세요">${escapeHtml(comment || '')}</textarea>
-                            <button onclick="window.removeCharacterDefaultComment(${index})" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors flex-shrink-0">
-                                <i class="fa-solid fa-trash"></i>
-                            </button>
-                        </div>
-                    `).join('') : ''}
+                <div class="flex-1 min-w-0">
+                    <p class="text-xs text-slate-500 mb-2">COMMENT 버튼 클릭 시 표시. 여러 개 입력 시 랜덤 표시.</p>
+                    <div id="characterDefaultCommentsContainer" class="space-y-3">
+                        ${characterData.defaultComments && characterData.defaultComments.length > 0 ? characterData.defaultComments.map((comment, index) => `
+                            <div class="flex gap-2 items-start" data-comment-index="${index}">
+                                <textarea onchange="window.updateCharacterDefaultComment(${index}, this.value)"
+                                          class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px] overflow-hidden"
+                                          placeholder="기본 멘트를 입력하세요">${escapeHtml(comment || '')}</textarea>
+                                <button onclick="window.removeCharacterDefaultComment(${index})" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors flex-shrink-0">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
+                        `).join('') : ''}
+                    </div>
+                    <button onclick="window.addCharacterDefaultComment()" class="mt-2 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
+                        <i class="fa-solid fa-plus mr-2"></i>멘트 추가
+                    </button>
                 </div>
-                <button onclick="window.addCharacterDefaultComment()" class="mt-2 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                    <i class="fa-solid fa-plus mr-2"></i>멘트 추가
-                </button>
             </div>
             
-            <!-- 로딩 멘트 -->
-            <div>
-                <label class="block text-sm font-bold text-slate-700 mb-2">
-                    <i class="fa-solid fa-spinner mr-2"></i>로딩 멘트 (AI 분석 중 표시)
+            <!-- 로딩 멘트: 타이틀 오른쪽에 입력 -->
+            <div class="flex gap-4 items-start">
+                <label class="flex-shrink-0 text-sm font-bold text-slate-700 w-28 pt-2">
+                    <i class="fa-solid fa-spinner mr-2"></i>로딩 멘트
                 </label>
-                <p class="text-xs text-slate-500 mb-2">AI 코멘트 생성 중에 표시될 기본 멘트입니다. (AI를 사용하지 않은 일반 텍스트)</p>
-                <textarea id="characterLoadingMessage" 
-                          class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px]"
-                          placeholder="예: 분석중입니다">${escapeHtml(characterData.loadingMessage || '')}</textarea>
+                <div class="flex-1 min-w-0">
+                    <p class="text-xs text-slate-500 mb-2">AI 코멘트 생성 중 표시 (일반 텍스트)</p>
+                    <textarea id="characterLoadingMessage" 
+                              class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px] overflow-hidden"
+                              placeholder="예: 분석중입니다">${escapeHtml(characterData.loadingMessage || '')}</textarea>
+                </div>
+            </div>
+
+            <div class="border-t border-slate-200 pt-4 space-y-4">
+                <div class="flex gap-4 items-start">
+                    <label class="flex-shrink-0 text-sm font-bold text-slate-700 w-28 pt-2">기간 경과 부족 시</label>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs text-slate-500 mb-2">주간 4일 미만, 월간 10일 미만, 연간 3월 미만, 직접설정 50% 미만 경과 시</p>
+                        <textarea id="characterInsightMessageInsufficientPeriod" rows="2"
+                                  class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px] overflow-hidden"
+                                  placeholder="아직 이 기간이 충분히 경과하지 않았어요. 조금 더 지나면 더 의미 있는 코멘트를 드릴 수 있어요.">${escapeHtml(characterData.insightMessageInsufficientPeriod || '')}</textarea>
+                    </div>
+                </div>
+                <div class="flex gap-4 items-start">
+                    <label class="flex-shrink-0 text-sm font-bold text-slate-700 w-28 pt-2">기록 부족 시</label>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs text-slate-500 mb-2">경과 기간의 본식(아침/점심/저녁) 50% 미만 기록 시</p>
+                        <textarea id="characterInsightMessageInsufficientRecords" rows="2"
+                                  class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px] overflow-hidden"
+                                  placeholder="이 기간의 식사 기록이 아직 충분하지 않아요. 조금 더 기록해 보시면 더 재미있는 코멘트를 드릴 수 있어요.">${escapeHtml(characterData.insightMessageInsufficientRecords || '')}</textarea>
+                    </div>
+                </div>
             </div>
             
-            <!-- 페르소나 (구글 AI 스튜디오용) -->
+            <!-- 페르소나: 입력 텍스트만큼 창 자동 확장 -->
             <div>
                 <label class="block text-sm font-bold text-slate-700 mb-2">
                     <i class="fa-solid fa-robot mr-2"></i>페르소나 (구글 AI 스튜디오에 발송할 프롬프트)
                 </label>
                 <textarea id="characterSystemPrompt" 
-                          class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[200px]"
+                          class="persona-auto-resize w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 min-h-[200px] resize-none overflow-hidden"
                           placeholder="캐릭터의 성격, 말투, 분석 스타일 등을 정의하는 프롬프트를 입력하세요">${escapeHtml(characterData.systemPrompt || '')}</textarea>
             </div>
         </div>
     `;
+    attachPersonaAutoResize();
+}
+
+// 페르소나 입력창: 입력 텍스트만큼 자동 확장 (스크롤 없음)
+function attachPersonaAutoResize() {
+    const resize = (ta) => {
+        ta.style.height = 'auto';
+        ta.style.height = Math.max(200, ta.scrollHeight) + 'px';
+    };
+    document.querySelectorAll('.persona-auto-resize').forEach(ta => {
+        resize(ta);
+        ta.addEventListener('input', () => resize(ta));
+    });
 }
 
 // 기본 멘트 추가
@@ -4626,7 +4944,7 @@ window.addCharacterDefaultComment = function() {
     newCommentDiv.setAttribute('data-comment-index', index);
     newCommentDiv.innerHTML = `
         <textarea onchange="window.updateCharacterDefaultComment(${index}, this.value)"
-                  class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px]"
+                  class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px] overflow-hidden"
                   placeholder="기본 멘트를 입력하세요"></textarea>
         <button onclick="window.removeCharacterDefaultComment(${index})" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors flex-shrink-0">
             <i class="fa-solid fa-trash"></i>
@@ -4721,16 +5039,14 @@ function updateCharacterImagePreview(imageUrl) {
     
     if (imageUrl) {
         previewContainer.innerHTML = `
-            <div class="relative inline-block">
-                <img src="${escapeHtml(imageUrl)}" alt="미리보기" class="w-32 h-32 object-cover rounded-xl border border-slate-200" onerror="this.style.display='none'">
-                <button type="button" onclick="window.removeCharacterImage()" 
-                        class="absolute top-1 right-1 px-2 py-1 bg-red-500 text-white rounded text-xs font-bold hover:bg-red-600">
-                    <i class="fa-solid fa-times"></i>
-                </button>
-            </div>
+            <img src="${escapeHtml(imageUrl)}" alt="미리보기" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML='<span class=\\'text-slate-400 text-2xl\\'>👤</span>'">
+            <button type="button" onclick="window.removeCharacterImage()" 
+                    class="absolute top-0.5 right-0.5 px-1.5 py-0.5 bg-red-500 text-white rounded text-xs font-bold hover:bg-red-600">
+                <i class="fa-solid fa-times"></i>
+            </button>
         `;
     } else {
-        previewContainer.innerHTML = '';
+        previewContainer.innerHTML = '<span class="text-slate-400 text-2xl">👤</span>';
     }
 }
 
@@ -4753,28 +5069,11 @@ window.addNewCharacter = function() {
     const newId = 'character_' + Date.now();
     currentEditingCharacterId = newId;
     
-    // 목록에 새 캐릭터 추가 (임시)
-    const listContainer = document.getElementById('personaCharactersList');
-    if (listContainer) {
-        const newCharDiv = document.createElement('div');
-        newCharDiv.className = 'flex-shrink-0 w-32';
-        newCharDiv.innerHTML = `
-            <button onclick="window.selectCharacterForEdit('${newId}')" 
-                    class="w-full text-center px-3 py-3 rounded-xl transition-colors bg-emerald-50 border-2 border-emerald-500">
-                <div class="flex flex-col items-center gap-2">
-                    <div class="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center text-2xl">👤</div>
-                    <div class="w-full">
-                        <div class="text-xs font-bold text-slate-800">새 캐릭터</div>
-                    </div>
-                </div>
-            </button>
-            <button onclick="window.deleteCharacter('${newId}')" 
-                    class="w-full mt-2 px-2 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-bold hover:bg-red-200 transition-colors">
-                <i class="fa-solid fa-trash mr-1"></i>삭제
-            </button>
-        `;
-        listContainer.appendChild(newCharDiv);
-    }
+    // 편집 뷰로 전환
+    const listView = document.getElementById('characters-list-view');
+    const editView = document.getElementById('character-edit-view');
+    if (listView) listView.classList.add('hidden');
+    if (editView) editView.classList.remove('hidden');
     
     // 편집 폼 로드
     loadCharacterEditor(newId);
@@ -4804,9 +5103,10 @@ window.deleteCharacter = async function(characterId) {
         const personaDocRef = doc(db, 'artifacts', appId, 'persona', characterId);
         await deleteDoc(personaDocRef);
         
-        // 현재 선택된 캐릭터가 삭제된 경우 첫 번째 캐릭터 선택
+        // 현재 선택된 캐릭터가 삭제된 경우 목록 뷰로 전환
         if (currentEditingCharacterId === characterId) {
             currentEditingCharacterId = null;
+            showCharacterListView();
         }
         
         // 목록 새로고침
@@ -4834,12 +5134,9 @@ window.saveCharacter = async function() {
                 alert('폼을 불러오는 중입니다. 잠시 후 다시 시도해주세요.');
                 return;
             }
-            
-            const systemPrompt = commonSystemPromptInput.value.trim();
-            
             const commonDocRef = doc(db, 'artifacts', appId, 'persona', 'common');
             await setDoc(commonDocRef, {
-                systemPrompt: systemPrompt,
+                systemPrompt: commonSystemPromptInput.value.trim(),
                 updatedAt: new Date().toISOString()
             }, { merge: true });
             
@@ -4854,6 +5151,8 @@ window.saveCharacter = async function() {
         const nameInput = document.getElementById('characterName');
         const systemPromptInput = document.getElementById('characterSystemPrompt');
         const loadingMessageInput = document.getElementById('characterLoadingMessage');
+        const insightPeriodEl = document.getElementById('characterInsightMessageInsufficientPeriod');
+        const insightRecordsEl = document.getElementById('characterInsightMessageInsufficientRecords');
         const commentsContainer = document.getElementById('characterDefaultCommentsContainer');
         
         if (!imageInput || !nameInput || !systemPromptInput) {
@@ -4905,6 +5204,8 @@ window.saveCharacter = async function() {
             systemPrompt: systemPrompt,
             defaultComments: defaultComments,
             loadingMessage: loadingMessage || '분석중입니다', // 기본값
+            insightMessageInsufficientPeriod: (insightPeriodEl && insightPeriodEl.value) ? insightPeriodEl.value.trim() : '',
+            insightMessageInsufficientRecords: (insightRecordsEl && insightRecordsEl.value) ? insightRecordsEl.value.trim() : '',
             image: image || null,
             name: name,
             updatedAt: new Date().toISOString()

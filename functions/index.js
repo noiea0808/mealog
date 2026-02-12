@@ -3,6 +3,7 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const { getStorage } = require('firebase-admin/storage');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { defineString } = require('firebase-functions/params');
 const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { getMealDelta, mergeDeltaIntoDay, sanitizeDayEntry, computeStatsFromMeals } = require('./mealStats.js');
 const { logger } = require('firebase-functions');
@@ -16,6 +17,10 @@ const APP_ID = 'mealog-r0';
 
 // Functions 리전 설정 (us-central1로 변경 - 배포된 리전과 일치)
 const REGION = 'us-central1';
+
+// API 키 (params: .env 또는 배포 시 입력)
+const geminiApiKey = defineString('GEMINI_API_KEY');
+const kakaoRestApiKey = defineString('KAKAO_REST_API_KEY');
 
 // 레이트 리밋 설정 (사용자당)
 const RATE_LIMITS = {
@@ -498,6 +503,7 @@ exports.addBoardCommentAsAdmin = onCall({ region: REGION }, async (request) => {
     authorNickname: authorNickname || '관리자',
     authorPhotoUrl: null,
     authorIcon: null,
+    isAdminComment: true,
     timestamp: FieldValue.serverTimestamp()
   };
 
@@ -1407,6 +1413,163 @@ exports.backfillUserStats = onCall(
     return { success: true, mealCount: meals.length, dayCount: totalDays, years: Object.keys(dailyByYear) };
   })
 );
+
+/**
+ * Gemini API 프록시 (WebView 차단 우회)
+ * 클라이언트에서 직접 호출 대신 서버에서 Gemini API 호출
+ */
+exports.callGemini = onCall({ region: REGION }, wrapFunction('callGemini', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const { requestBody, model, apiVersion } = request.data || {};
+  if (!requestBody || !model) {
+    throw new HttpsError('invalid-argument', 'requestBody와 model이 필요합니다.');
+  }
+  const apiKey = geminiApiKey.value();
+  if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
+    throw new HttpsError('failed-precondition', 'GEMINI_API_KEY가 설정되지 않았습니다. functions/.env 파일에 GEMINI_API_KEY를 추가하거나, 배포 시 입력 후 재배포하세요.');
+  }
+  const version = apiVersion || 'v1beta';
+  const url = `https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent?key=${apiKey}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      // 서버 요청은 Referer가 비어 있어 HTTP referrer 제한이 있는 API 키에서 403 발생
+      // API 키에 "애플리케이션 제한사항" 없음 또는 IP 주소 제한 사용 권장
+      'Referer': 'https://mealog-r0.web.app/'
+    },
+    body: JSON.stringify(requestBody)
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data?.error?.message || await res.text();
+    throw new HttpsError('internal', `Gemini API 오류: ${res.status} - ${msg}`);
+  }
+  // Callable의 result.data로 전달되므로 Gemini 응답을 그대로 반환
+  return data;
+}));
+
+/**
+ * 카카오 장소 검색 프록시 (WebView 차단 우회)
+ * Kakao Local REST API 사용
+ */
+exports.searchKakaoPlaces = onCall({ region: REGION }, wrapFunction('searchKakaoPlaces', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const { keyword } = request.data || {};
+  if (!keyword || typeof keyword !== 'string' || !keyword.trim()) {
+    throw new HttpsError('invalid-argument', '검색어를 입력해주세요.');
+  }
+  const apiKey = kakaoRestApiKey.value();
+  if (!apiKey) {
+    throw new HttpsError('failed-precondition', 'KAKAO_REST_API_KEY가 설정되지 않았습니다. functions/.env 파일에 KAKAO_REST_API_KEY를 추가하거나, 배포 시 입력 후 재배포하세요.');
+  }
+  const query = encodeURIComponent(keyword.trim());
+  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${query}&category_group_code=FD6&size=15`;
+  // 카카오 로컬 API: Authorization 헤더만 필수 (공식 문서 기준, KA 헤더 생략)
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `KakaoAK ${apiKey}`
+    }
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data?.message || data?.errorType || data?.msg || JSON.stringify(data) || String(res.status);
+    logger.error('searchKakaoPlaces 카카오 API 오류', { status: res.status, msg, keyword });
+    if (res.status === 401) {
+      throw new HttpsError('failed-precondition', '카카오 API 인증 실패. REST API 키와 호출 허용 IP 설정을 확인하세요.');
+    }
+    throw new HttpsError('internal', `카카오 API 오류: ${res.status} - ${msg}`);
+  }
+  // REST API 응답 구조: documents, meta. documents를 그대로 반환 (클라이언트와 호환)
+  const documents = data?.documents || [];
+  const restaurants = documents.filter((place) => {
+    const cat = (place.category_name || '').toLowerCase();
+    const code = place.category_group_code || '';
+    if (code === 'FD6') return true;
+    return cat.includes('음식점') || cat.includes('식당') || cat.includes('카페') ||
+      cat.includes('레스토랑') || cat.includes('맛집') || cat.includes('요리') ||
+      cat.includes('식음료') || cat.includes('제과') || cat.includes('베이커리') ||
+      cat.includes('술집') || cat.includes('바');
+  });
+  return { documents: restaurants.slice(0, 10) };
+}));
+
+/**
+ * APK 업로드용 서명 URL 발급 (관리자 전용)
+ */
+exports.getApkUploadUrl = onCall({ region: REGION }, wrapFunction('getApkUploadUrl', async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const isAdmin = await isAdminByUid(callerUid);
+  if (!isAdmin) {
+    throw new HttpsError('permission-denied', '관리자만 APK를 업로드할 수 있습니다.');
+  }
+  const { fileName, version } = request.data || {};
+  if (!fileName || typeof fileName !== 'string' || !fileName.trim()) {
+    throw new HttpsError('invalid-argument', 'fileName이 필요합니다.');
+  }
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  if (!safeName.endsWith('.apk')) {
+    throw new HttpsError('invalid-argument', 'APK 파일만 업로드할 수 있습니다.');
+  }
+  const storage = getStorage();
+  const bucket = storage.bucket('mealog-r0.firebasestorage.app');
+  const path = `artifacts/${APP_ID}/apk/${safeName}`;
+  const file = bucket.file(path);
+  const [url] = await file.getSignedUrl({
+    version: 'v4',
+    action: 'write',
+    expires: Date.now() + 15 * 60 * 1000,
+    contentType: 'application/vnd.android.package-archive'
+  });
+  return { uploadUrl: url, fileName: safeName, path };
+}));
+
+/**
+ * APK 업로드 완료 후 Firestore 메타데이터 저장 (관리자 전용)
+ */
+exports.confirmApkUpload = onCall({ region: REGION }, wrapFunction('confirmApkUpload', async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const isAdmin = await isAdminByUid(callerUid);
+  if (!isAdmin) {
+    throw new HttpsError('permission-denied', '관리자만 APK를 등록할 수 있습니다.');
+  }
+  const { fileName, version, fileSize } = request.data || {};
+  if (!fileName || typeof fileName !== 'string' || !fileName.trim()) {
+    throw new HttpsError('invalid-argument', 'fileName이 필요합니다.');
+  }
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const storage = getStorage();
+  const bucket = storage.bucket('mealog-r0.firebasestorage.app');
+  const path = `artifacts/${APP_ID}/apk/${safeName}`;
+  const file = bucket.file(path);
+  const [exists] = await file.exists();
+  if (!exists) {
+    throw new HttpsError('failed-precondition', '파일이 아직 업로드되지 않았습니다. 먼저 APK 파일을 업로드해주세요.');
+  }
+  const encodedPath = encodeURIComponent(path);
+  const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/mealog-r0.firebasestorage.app/o/${encodedPath}?alt=media`;
+  const apkRef = db.collection('artifacts').doc(APP_ID).collection('content').doc('apk');
+  await apkRef.set({
+    downloadUrl,
+    fileName: safeName,
+    version: version || '',
+    fileSize: fileSize || 0,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: callerUid
+  }, { merge: true });
+  return { success: true, downloadUrl };
+}));
 
 /**
  * 대기 중인 삭제 요청 수동 처리 (Callable)

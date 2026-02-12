@@ -1,8 +1,9 @@
 // 렌더링 관련 함수들
 import { SLOTS, SLOT_STYLES, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS } from './constants.js';
 import { appState } from './state.js';
-import { escapeHtml } from './render/utils.js';
+import { escapeHtml, renderFormattedContent, getPlainTextPreview } from './render/utils.js';
 import { normalizeUrl, getDisplayProfile } from './utils.js';
+import { getAdminDisplayName } from './db.js';
 
 // renderGallery 실행 중 플래그 및 이벤트 리스너 관리
 let isRenderingGallery = false;
@@ -978,7 +979,7 @@ async function loadPostInteractions(postEl, postId) {
         // 댓글 표시 (최대 2개) — 등록 시간 포함
         const commentsListEl = postEl.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
         if (commentsListEl) {
-            const commentSection = postEl.querySelector(`#comment-section-${postId}`);
+            const commentSection = postEl.querySelector(`#comment-section-${CSS.escape(postId)}`);
             if (comments.length > 0) {
                 if (commentSection) commentSection.classList.remove('comments-empty');
                 // 댓글 작성자들의 최신 프로필 로드
@@ -1012,27 +1013,27 @@ async function loadPostInteractions(postEl, postId) {
                 
                 // 댓글이 2개보다 많으면 "댓글 모두 보기" 버튼 표시
                 if (comments.length > 2) {
-                    const viewCommentsBtn = postEl.querySelector(`#view-comments-${postId}`);
+                    const viewCommentsBtn = postEl.querySelector(`#view-comments-${CSS.escape(postId)}`);
                     if (viewCommentsBtn) {
                         viewCommentsBtn.classList.remove('hidden');
                         viewCommentsBtn.textContent = `댓글 ${comments.length}개 모두 보기`;
                     }
                 } else {
-                    const viewCommentsBtn = postEl.querySelector(`#view-comments-${postId}`);
+                    const viewCommentsBtn = postEl.querySelector(`#view-comments-${CSS.escape(postId)}`);
                     if (viewCommentsBtn) {
                         viewCommentsBtn.classList.add('hidden');
                     }
                 }
             } else {
                 commentsListEl.innerHTML = '';
-                const viewCommentsBtn = postEl.querySelector(`#view-comments-${postId}`);
+                const viewCommentsBtn = postEl.querySelector(`#view-comments-${CSS.escape(postId)}`);
                 if (viewCommentsBtn) {
                     viewCommentsBtn.classList.add('hidden');
                 }
                 if (commentSection) commentSection.classList.add('comments-empty');
             }
         } else {
-            const commentSection = postEl.querySelector(`#comment-section-${postId}`);
+            const commentSection = postEl.querySelector(`#comment-section-${CSS.escape(postId)}`);
             if (commentSection) commentSection.classList.add('comments-empty');
         }
     } catch (err) {
@@ -3011,6 +3012,7 @@ async function renderNotices() {
             return { noticeId: n.id, likes: 0, dislikes: 0 };
         }));
         const reactionMap = new Map(reactionCounts.map(r => [r.noticeId, r]));
+        const adminDisplayName = await getAdminDisplayName();
         
         noticesContainer.innerHTML = sortedNotices.map((notice, index) => {
             let date = notice.timestamp ? (() => {
@@ -3035,7 +3037,7 @@ async function renderNotices() {
             const dateStr = date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
             const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
             const noticeContent = notice.content || '';
-            const escapedContent = escapeHtml(noticeContent).replace(/\n/g, ' ');
+            const formattedPreview = escapeHtml(getPlainTextPreview(noticeContent));
             const noticeType = notice.type || notice.noticeType || 'notice';
             const typeLabel = noticeTypeLabels[noticeType] || '알림';
             const typeColor = noticeTypeColors[noticeType] || noticeTypeColors.notice;
@@ -3048,15 +3050,16 @@ async function renderNotices() {
             const isBookmarked = bookmarkedNoticeIds.has(notice.id);
             
             return `
-                <div onclick="window.openNoticeDetail('${notice.id}')" class="board-list-card rounded-2xl pt-5 px-5 pb-1.5 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all mb-2 ${typeBorder}">
-                    <div class="flex items-start gap-3 mb-3">
+                <div onclick="window.openNoticeDetail('${notice.id}')" class="board-list-card rounded-2xl pt-4 px-5 pb-1.5 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all mb-2 ${typeBorder}">
+                    <div class="flex items-start gap-3 mb-1.5">
                         <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-2 mb-2 flex-wrap">
+                            <div class="flex items-center gap-2 mb-3 flex-wrap">
                                 ${notice.isPinned === true ? `<i class="fa-solid fa-thumbtack text-black text-xs"></i>` : ''}
                                 <span class="text-[10px] font-bold px-2.5 py-1 rounded-lg ${typeColor} whitespace-nowrap shrink-0">${typeLabel}</span>
-                                <h3 class="text-base font-bold text-slate-800 truncate flex-1 min-w-0 leading-tight">${escapeHtml(notice.title || '제목 없음')}</h3>
+                                <h3 class="text-base font-bold text-slate-800 line-clamp-2 flex-1 min-w-0 leading-tight">${escapeHtml(notice.title || '제목 없음')}</h3>
+                                ${Array.isArray(notice.imageUrls) && notice.imageUrls.length > 0 ? '<span class="text-slate-400 shrink-0" title="사진 포함"><i class="fa-solid fa-image text-sm"></i></span>' : ''}
                             </div>
-                            <p class="text-sm text-slate-600 line-clamp-2 mb-3 leading-relaxed">${escapedContent}</p>
+                            <p class="text-sm text-slate-600 line-clamp-2 mb-1.5 leading-relaxed">${formattedPreview}</p>
                         </div>
                     </div>
                     <div class="flex items-center justify-between pt-3 border-t border-slate-200">
@@ -3065,7 +3068,7 @@ async function renderNotices() {
                                 <i class="fa-solid fa-bullhorn text-slate-500 text-xs"></i>
                             </div>
                             <div>
-                                <div class="text-xs font-bold text-slate-800">관리자</div>
+                                <div class="text-xs font-bold text-slate-800">${escapeHtml(adminDisplayName)}</div>
                                 <div class="text-[10px] text-slate-400">${dateStr} ${timeStr} · 조회 ${viewCount}</div>
                             </div>
                         </div>
@@ -3288,15 +3291,15 @@ async function _renderBoardList(container, filteredPosts, likedPostIds, bookmark
                 
                 const hasImages = Array.isArray(post.imageUrls) && post.imageUrls.length > 0;
                 return `
-                    <div onclick="window.openBoardDetail('${post.id}')" class="board-list-card rounded-2xl pt-5 px-5 pb-1.5 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all mb-2">
-                        <div class="flex items-start gap-3 mb-3">
+                    <div onclick="window.openBoardDetail('${post.id}')" class="board-list-card rounded-2xl pt-4 px-5 pb-1.5 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all mb-2">
+                        <div class="flex items-start gap-3 mb-1.5">
                             <div class="flex-1 min-w-0">
-                                <div class="flex items-center gap-2 mb-2 min-w-0">
+                                <div class="flex items-center gap-2 mb-3 min-w-0">
                                     <span class="text-[10px] font-bold px-2.5 py-1 rounded-lg ${categoryColors[post.category] || categoryColors.serious} whitespace-nowrap shrink-0">${categoryLabels[post.category] || '무거운'}</span>
-                                    ${shouldHideContent ? '<h3 class="text-base font-bold text-slate-400 truncate flex-1 min-w-0 leading-tight">비공개 게시물</h3>' : `<h3 class="text-base font-bold text-slate-800 truncate flex-1 min-w-0 leading-tight">${escapeHtml(post.title)}</h3>`}
+                                    ${shouldHideContent ? '<h3 class="text-base font-bold text-slate-400 line-clamp-2 flex-1 min-w-0 leading-tight">비공개 게시물</h3>' : `<h3 class="text-base font-bold text-slate-800 line-clamp-2 flex-1 min-w-0 leading-tight">${escapeHtml(post.title)}</h3>`}
                                     ${hasImages ? '<span class="text-slate-400 shrink-0" title="사진 포함"><i class="fa-solid fa-image text-sm"></i></span>' : ''}
                                 </div>
-                                ${shouldHideContent ? '<p class="text-sm text-slate-400 line-clamp-2 mb-3 leading-relaxed">이 게시물은 작성자만 볼 수 있습니다.</p>' : `<p class="text-sm text-slate-600 line-clamp-2 mb-3 leading-relaxed">${escapeHtml(post.content)}</p>`}
+                                ${shouldHideContent ? '<p class="text-sm text-slate-400 line-clamp-2 mb-1.5 leading-relaxed">이 게시물은 작성자만 볼 수 있습니다.</p>' : `<p class="text-sm text-slate-600 line-clamp-2 mb-1.5 leading-relaxed">${renderFormattedContent(post.content)}</p>`}
                             </div>
                         </div>
                         <div class="flex items-center justify-between pt-3 border-t border-slate-200">
@@ -3412,11 +3415,12 @@ export async function renderBoardDetail(postId) {
             return;
         }
         
-        // 사용자의 반응(좋아요), 북마크 확인과 댓글 목록을 병렬로 가져오기
-        const [userReaction, isBookmarked, comments] = await Promise.all([
+        // 사용자의 반응(좋아요), 북마크 확인과 댓글 목록을 병렬로 가져오기 (관리자 댓글 표시명 포함)
+        const [userReaction, isBookmarked, comments, adminDisplayName] = await Promise.all([
             window.currentUser ? window.boardOperations.getUserReaction(postId, window.currentUser.uid) : Promise.resolve(null),
             window.currentUser && window.boardOperations.isBookmarked ? window.boardOperations.isBookmarked(postId, window.currentUser.uid) : Promise.resolve(false),
-            window.boardOperations.getComments(postId)
+            window.boardOperations.getComments(postId),
+            getAdminDisplayName()
         ]);
         
         // 게시글·댓글 작성자들의 최신 프로필 로드
@@ -3431,7 +3435,7 @@ export async function renderBoardDetail(postId) {
                         <i class="fa-solid fa-arrow-left text-lg"></i>
                     </button>
                     <span class="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${categoryColors[post.category] || categoryColors.serious}">${categoryLabels[post.category] || '무거운'}</span>
-                    <h2 class="sub-title text-base text-slate-800 tracking-tight flex-1 truncate min-w-0">${escapeHtml(post.title || '게시글')}</h2>
+                    <h2 class="sub-title text-base text-slate-800 tracking-tight flex-1 line-clamp-2 min-w-0">${escapeHtml(post.title || '게시글')}</h2>
                     ${isAuthor ? '<span class="shrink-0 text-[10px] text-emerald-600 font-bold">내글</span>' : ''}
                     <button type="button" onclick="window.showBoardPostOptions && window.showBoardPostOptions('${postId}', ${isAuthor})" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors flex-shrink-0">
                         <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
@@ -3446,7 +3450,7 @@ export async function renderBoardDetail(postId) {
                 ` : ''}
                 
                 <!-- 게시글 내용 -->
-                <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4 -mx-2 px-2">${escapeHtml(post.content).replace(/\n/g, '<br>')}</div>
+                <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4 -mx-2 px-2">${renderFormattedContent(post.content)}</div>
                 
                 <!-- 하단: 작성자/일자/조회수(왼쪽) | 좋아요·북마크(오른쪽) -->
                 ${(() => {
@@ -3511,12 +3515,12 @@ export async function renderBoardDetail(postId) {
                             const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
                             const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
                             const isCommentAuthor = window.currentUser && comment.authorId === window.currentUser.uid;
-                            const commentDisplay = getDisplayProfile(comment.authorId, { nickname: comment.authorNickname || comment.anonymousId });
+                            const commentNickname = comment.isAdminComment === true ? adminDisplayName : getDisplayProfile(comment.authorId, { nickname: comment.authorNickname || comment.anonymousId }).nickname;
                             const commentBody = comment.content ?? comment.text ?? '';
                             
                             return `
                                 <div class="mb-1 text-sm" data-comment-id="${comment.id}">
-                                    <span class="font-bold text-slate-800">${escapeHtml(commentDisplay.nickname)}</span>
+                                    <span class="font-bold text-slate-800">${escapeHtml(commentNickname)}</span>
                                     <span class="text-slate-800 ml-2">${escapeHtml(commentBody)}</span>
                                     ${commentDateStr && commentTimeStr ? `<span class="text-xs text-slate-400 ml-2">${commentDateStr} ${commentTimeStr}</span>` : ''}
                                     ${isCommentAuthor ? `<button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
@@ -3564,11 +3568,12 @@ export async function renderNoticeDetail(noticeId) {
     `;
     
     try {
-        const [notice, counts, userReaction, isBookmarked] = await Promise.all([
+        const [notice, counts, userReaction, isBookmarked, adminDisplayName] = await Promise.all([
             window.noticeOperations.getNotice(noticeId),
             window.noticeOperations.getNoticeReactionCounts(noticeId),
             window.currentUser ? window.noticeOperations.getNoticeUserReaction(noticeId, window.currentUser.uid) : Promise.resolve(null),
-            window.currentUser && window.noticeOperations.isNoticeBookmarked ? window.noticeOperations.isNoticeBookmarked(noticeId, window.currentUser.uid) : Promise.resolve(false)
+            window.currentUser && window.noticeOperations.isNoticeBookmarked ? window.noticeOperations.isNoticeBookmarked(noticeId, window.currentUser.uid) : Promise.resolve(false),
+            getAdminDisplayName()
         ]);
         
         if (!notice) {
@@ -3621,12 +3626,18 @@ export async function renderNoticeDetail(noticeId) {
                         <i class="fa-solid fa-arrow-left text-lg"></i>
                     </button>
                     <span class="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${typeColor}">${typeLabel}</span>
-                    <h2 class="sub-title text-base text-slate-800 tracking-tight flex-1 truncate min-w-0">${escapeHtml(notice.title || '공지')}</h2>
+                    <h2 class="sub-title text-base text-slate-800 tracking-tight flex-1 line-clamp-2 min-w-0">${escapeHtml(notice.title || '공지')}</h2>
                     ${notice.isPinned === true ? '<span class="shrink-0 text-[10px] text-emerald-600 font-bold">고정</span>' : ''}
                 </div>
                 
+                ${Array.isArray(notice.imageUrls) && notice.imageUrls.length > 0 ? `
+                <div class="flex flex-wrap justify-center items-center gap-2 mb-4 -mx-4 px-1">
+                    ${notice.imageUrls.map(url => `<img src="${url}" alt="공지 사진" class="max-w-full h-auto rounded-xl border border-slate-200 object-cover" style="max-height: 320px;" loading="lazy">`).join('')}
+                </div>
+                ` : ''}
+                
                 <!-- 게시글 내용 -->
-                <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4 -mx-2 px-2">${escapeHtml(notice.content || '').replace(/\n/g, '<br>')}</div>
+                <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4 -mx-2 px-2">${renderFormattedContent(notice.content || '')}</div>
                 
                 <!-- 하단: 작성자/일자/조회수(왼쪽) | 하트·북마크(오른쪽) -->
                 <div class="flex items-center justify-between pt-3 border-t border-slate-200">
@@ -3635,7 +3646,7 @@ export async function renderNoticeDetail(noticeId) {
                             <i class="fa-solid fa-bullhorn text-slate-500 text-xs"></i>
                         </div>
                         <div>
-                            <div class="text-xs font-bold text-slate-800">관리자</div>
+                            <div class="text-xs font-bold text-slate-800">${escapeHtml(adminDisplayName)}</div>
                             <div class="text-[10px] text-slate-400">${dateStr} ${timeStr} · 조회 ${viewCount}</div>
                         </div>
                     </div>
