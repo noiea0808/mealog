@@ -3,6 +3,7 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const { getStorage } = require('firebase-admin/storage');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { defineString } = require('firebase-functions/params');
 const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { getMealDelta, mergeDeltaIntoDay, sanitizeDayEntry, computeStatsFromMeals } = require('./mealStats.js');
 const { logger } = require('firebase-functions');
@@ -16,6 +17,10 @@ const APP_ID = 'mealog-r0';
 
 // Functions 리전 설정 (us-central1로 변경 - 배포된 리전과 일치)
 const REGION = 'us-central1';
+
+// API 키 (params: .env 또는 배포 시 입력)
+const geminiApiKey = defineString('GEMINI_API_KEY');
+const kakaoRestApiKey = defineString('KAKAO_REST_API_KEY');
 
 // 레이트 리밋 설정 (사용자당)
 const RATE_LIMITS = {
@@ -1421,9 +1426,9 @@ exports.callGemini = onCall({ region: REGION }, wrapFunction('callGemini', async
   if (!requestBody || !model) {
     throw new HttpsError('invalid-argument', 'requestBody와 model이 필요합니다.');
   }
-  const apiKey = process.env.GEMINI_API_KEY || '';
+  const apiKey = geminiApiKey.value();
   if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
-    throw new HttpsError('failed-precondition', 'GEMINI_API_KEY가 설정되지 않았습니다. Firebase 함수 환경 변수를 확인하세요.');
+    throw new HttpsError('failed-precondition', 'GEMINI_API_KEY가 설정되지 않았습니다. functions/.env 파일에 GEMINI_API_KEY를 추가하거나, 배포 시 입력 후 재배포하세요.');
   }
   const version = apiVersion || 'v1beta';
   const url = `https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent?key=${apiKey}`;
@@ -1458,9 +1463,9 @@ exports.searchKakaoPlaces = onCall({ region: REGION }, wrapFunction('searchKakao
   if (!keyword || typeof keyword !== 'string' || !keyword.trim()) {
     throw new HttpsError('invalid-argument', '검색어를 입력해주세요.');
   }
-  const apiKey = process.env.KAKAO_REST_API_KEY || '';
+  const apiKey = kakaoRestApiKey.value();
   if (!apiKey) {
-    throw new HttpsError('failed-precondition', 'KAKAO_REST_API_KEY가 설정되지 않았습니다. Firebase 함수 환경 변수를 확인하세요.');
+    throw new HttpsError('failed-precondition', 'KAKAO_REST_API_KEY가 설정되지 않았습니다. functions/.env 파일에 KAKAO_REST_API_KEY를 추가하거나, 배포 시 입력 후 재배포하세요.');
   }
   const query = encodeURIComponent(keyword.trim());
   const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${query}&category_group_code=FD6&size=15`;
