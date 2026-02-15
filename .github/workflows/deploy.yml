@@ -31,7 +31,8 @@ jobs:
           echo "// API 설정 - GitHub Actions에서 자동 생성" > js/config.js
           echo "// GEMINI_API_KEY, GOOGLE_WEB_CLIENT_ID는 GitHub Secrets에서 가져옵니다." >> js/config.js
           echo "export const GEMINI_API_KEY = '${{ secrets.GEMINI_API_KEY }}';" >> js/config.js
-          echo "export const GOOGLE_WEB_CLIENT_ID = '${{ secrets.GOOGLE_WEB_CLIENT_ID || '' }}';" >> js/config.js
+          # GOOGLE_WEB_CLIENT_ID: Repository 또는 github-pages 환경 시크릿에 추가 필요
+          echo "export const GOOGLE_WEB_CLIENT_ID = '${{ secrets.GOOGLE_WEB_CLIENT_ID }}';" >> js/config.js
           echo "생성된 config.js 파일 확인:" >> $GITHUB_STEP_SUMMARY
           cat js/config.js | sed 's/AIzaSy[^'"'"']*/AIzaSy***/' | sed 's/[0-9]*-[a-zA-Z0-9_-]*\.apps\.googleusercontent\.com/***.apps.googleusercontent.com/' >> $GITHUB_STEP_SUMMARY
         shell: bash
@@ -51,6 +52,9 @@ jobs:
           echo ""
           echo "📄 config.js 내용 (API 키 마스킹):"
           cat js/config.js | sed 's/AIzaSy[^'"'"']*/AIzaSy***/'
+          if grep -q "GOOGLE_WEB_CLIENT_ID = ''" js/config.js 2>/dev/null; then
+            echo "::warning::GOOGLE_WEB_CLIENT_ID가 비어 있습니다. Settings → Secrets and variables → Actions에서 GOOGLE_WEB_CLIENT_ID 시크릿을 추가하세요. (Environments 사용 시 github-pages 환경의 Environment secrets에도 추가)"
+          fi
         shell: bash
 
       - name: Verify required files
