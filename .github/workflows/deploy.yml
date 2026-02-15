@@ -28,12 +28,12 @@ jobs:
 
       - name: Create config.js from Secrets
         run: |
-          echo "// Gemini API 설정" > js/config.js
-          echo "// 이 파일은 GitHub Actions에서 자동으로 생성됩니다." >> js/config.js
-          echo "// API 키는 GitHub Secrets에서 가져옵니다." >> js/config.js
+          echo "// API 설정 - GitHub Actions에서 자동 생성" > js/config.js
+          echo "// GEMINI_API_KEY, GOOGLE_WEB_CLIENT_ID는 GitHub Secrets에서 가져옵니다." >> js/config.js
           echo "export const GEMINI_API_KEY = '${{ secrets.GEMINI_API_KEY }}';" >> js/config.js
+          echo "export const GOOGLE_WEB_CLIENT_ID = '${{ secrets.GOOGLE_WEB_CLIENT_ID || '' }}';" >> js/config.js
           echo "생성된 config.js 파일 확인:" >> $GITHUB_STEP_SUMMARY
-          cat js/config.js | sed 's/AIzaSy[^'"'"']*/AIzaSy***/' >> $GITHUB_STEP_SUMMARY
+          cat js/config.js | sed 's/AIzaSy[^'"'"']*/AIzaSy***/' | sed 's/[0-9]*-[a-zA-Z0-9_-]*\.apps\.googleusercontent\.com/***.apps.googleusercontent.com/' >> $GITHUB_STEP_SUMMARY
         shell: bash
 
       - name: Verify config.js exists

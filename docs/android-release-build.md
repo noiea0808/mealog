@@ -2,6 +2,8 @@
 
 디버그가 아닌 **서명된 Release APK**를 빌드하는 방법입니다.
 
+**전체 체크리스트(버전, Keystore, AAB, Play 스토어)**는 [프로덕션 릴리즈 체크리스트](./production-release-checklist.md)를 참고하세요.
+
 ## 1. Keystore 생성 (최초 1회)
 
 아직 keystore가 없다면 생성합니다. **비밀번호는 반드시 영문+숫자만** 사용하세요.

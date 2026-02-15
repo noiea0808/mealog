@@ -40,10 +40,20 @@ export const GOOGLE_WEB_CLIENT_ID = '여기에_복사한_Web_client_ID';
 
 Firebase Auth는 네이티브에서 **IndexedDB persistence**로 초기화되도록 `js/firebase.js`를 수정해 두었습니다 (Capacitor에서 `getAuth`만 쓰면 인증이 멈출 수 있는 이슈 대응).
 
-## 4. 문제 해결
+## 4. 운영(프로덕션) 배포 시
+
+운영 웹은 배포 시점에 `config.js`를 자동 생성하므로, **로컬 config.js가 배포에 포함되지 않습니다.**
+
+- **GitHub Pages**: 저장소 **Settings** → **Secrets and variables** → **Actions**에서 `GOOGLE_WEB_CLIENT_ID` 시크릿을 추가하세요. 다음 배포부터 적용됩니다.
+- **Vercel**: 프로젝트 **Environment Variables**에 `GOOGLE_WEB_CLIENT_ID`를 추가한 뒤 재배포하세요.
+
+자세한 단계는 [프로덕션 릴리즈 체크리스트](./production-release-checklist.md#0-운영-웹앱-공통-구글-로그인-web-client-id)를 참고하세요.
+
+## 5. 문제 해결
 
 - **"구글 로그인 설정이 필요합니다"**  
-  → `js/config.js`에 `GOOGLE_WEB_CLIENT_ID`가 설정돼 있는지 확인.  
+  → 로컬/스테이징: `js/config.js`에 `GOOGLE_WEB_CLIENT_ID`가 설정돼 있는지 확인.  
+  → 운영 웹: 위 "4. 운영(프로덕션) 배포 시"대로 GitHub Secrets 또는 Vercel 환경 변수에 `GOOGLE_WEB_CLIENT_ID`가 설정돼 있는지 확인.  
 - **로그인 시 멈추거나 실패**  
   → Firebase Console에서 Google Sign-in method 활성화, Web client ID가 맞는지 확인.  
   → Android 앱에 SHA-1이 등록돼 있는지 확인.  
