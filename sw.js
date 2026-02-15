@@ -1,5 +1,5 @@
 // Service Worker for MEALOG
-const CACHE_NAME = 'mealog-v2';
+const CACHE_NAME = 'mealog-v3';
 // 상대 경로 사용 (서브디렉토리 배포 대응)
 const basePath = self.location.pathname.replace(/\/sw\.js$/, '') || '/';
 const urlsToCache = [
@@ -60,7 +60,16 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') {
     return;
   }
-  
+
+  // config.js는 항상 네트워크에서 로드 (배포 시 시크릿 반영을 위해 캐시하지 않음)
+  try {
+    const url = new URL(event.request.url);
+    if (url.pathname.endsWith('/config.js') || url.pathname.endsWith('config.js')) {
+      event.respondWith(fetch(event.request));
+      return;
+    }
+  } catch (_) {}
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {
