@@ -1,19 +1,20 @@
 {
   "name": "mealog",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "우리가 함께한, 맛있었던 기억 - 스마트 식사 타임라인",
   "scripts": {
     "build": "node scripts/build-config.js",
     "copy:www": "node scripts/copy-to-www.js",
     "cap:sync": "node scripts/select-cap-config.js staging && npm run copy:www && npx cap sync android",
-    "cap:sync:production": "node scripts/select-cap-config.js production && npm run copy:www && npx cap sync android",
+    "cap:sync:production": "node scripts/ensure-icons.js && node scripts/select-cap-config.js production && npm run copy:www && npx cap sync android",
     "cap:build:staging": "npm run cap:sync:bundled && node scripts/build-android.js assembleStagingDebug",
     "cap:build:production": "npm run cap:sync:production && node scripts/build-android.js assembleProductionDebug",
     "cap:open": "npx cap open android",
     "cap:sync:bundled": "node scripts/ensure-icons.js && node scripts/select-cap-config.js staging.bundled && npm run copy:www && npx cap sync android",
     "cap:build:bundled": "npm run cap:sync:bundled && node scripts/build-android.js assembleStagingDebug",
     "postinstall": "node scripts/patch-safe-area.js",
-    "cap:build:production:release": "npm run cap:sync:production && node scripts/build-android.js assembleProductionRelease",
+    "cap:build:production:release": "node scripts/ensure-keystore.js && npm run cap:sync:production && node scripts/build-android.js assembleProductionRelease",
+    "cap:build:production:aab": "node scripts/ensure-keystore.js && npm run cap:sync:production && node scripts/build-android.js bundleProductionRelease",
     "icons:generate": "capacitor-assets generate --android"
   },
   "dependencies": {
