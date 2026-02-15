@@ -90,7 +90,11 @@ export async function handleGoogleLogin() {
             hideLoading();
         } else if (error?.code !== 'auth/cancelled-popup-request' && error?.message !== 'User cancelled flow') {
             const msg = error?.message || error?.error?.message || String(error);
-            showToast("로그인 실패: " + (msg.length > 50 ? msg.slice(0, 50) + '…' : msg), "error");
+            const isReauth = /reauth|re-auth/i.test(msg);
+            const toastMsg = isReauth
+                ? '구글 로그인 실패. Firebase에 앱 릴리즈 SHA-1이 등록돼 있는지 확인해 주세요.'
+                : "로그인 실패: " + (msg.length > 50 ? msg.slice(0, 50) + '…' : msg);
+            showToast(toastMsg, "error");
             hideLoading();
         } else {
             hideLoading();

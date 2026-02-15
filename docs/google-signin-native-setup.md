@@ -54,8 +54,14 @@ Firebase Auth는 네이티브에서 **IndexedDB persistence**로 초기화되도
 - **"구글 로그인 설정이 필요합니다"**  
   → 로컬/스테이징: `js/config.js`에 `GOOGLE_WEB_CLIENT_ID`가 설정돼 있는지 확인.  
   → 운영 웹: 위 "4. 운영(프로덕션) 배포 시"대로 GitHub Secrets 또는 Vercel 환경 변수에 `GOOGLE_WEB_CLIENT_ID`가 설정돼 있는지 확인.  
+- **"account reauth is failed"** (프로덕션 앱에서 구글 로그인 시)  
+  → **프로덕션(릴리즈) 빌드의 SHA-1**이 Firebase에 없을 때 자주 발생합니다.  
+  → Firebase Console → **Project settings** → **Your apps** → Android 앱 **com.mealog.app**  
+  → **Add fingerprint**로 **릴리즈 키스토어 SHA-1** 추가.  
+  → Play 스토어에 올린 앱이라면: Play Console → **설정** → **앱 무결성** (또는 앱 서명)에서 **앱 서명 키 인증서** SHA-1을 복사해 Firebase에 등록.  
+  → 로컬에서 서명한 APK/AAB라면: `cd android && ./gradlew signInReport` (또는 `gradlew.bat signInReport`) 실행 후 **release** 키스토어의 SHA-1을 등록.  
 - **로그인 시 멈추거나 실패**  
   → Firebase Console에서 Google Sign-in method 활성화, Web client ID가 맞는지 확인.  
-  → Android 앱에 SHA-1이 등록돼 있는지 확인.  
+  → Android 앱에 **debug + release** SHA-1이 각각 등록돼 있는지 확인.  
 - **idToken / audience 오류**  
   → 사용 중인 Web client ID가 Firebase 프로젝트의 **Web** 클라이언트와 동일한지 확인 (Google Cloud Console > APIs & Services > Credentials에서도 확인 가능).
