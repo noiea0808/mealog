@@ -28,12 +28,19 @@ jobs:
 
       - name: Create config.js from Secrets
         run: |
+          # 시크릿 적용 여부 확인 (값 노출 없이 길이만 출력)
+          WCID="${{ secrets.GOOGLE_WEB_CLIENT_ID }}"
+          if [ -z "$WCID" ]; then
+            echo "::warning::GOOGLE_WEB_CLIENT_ID 시크릿이 비어 있습니다. Repository Secrets 또는 Environments → github-pages → Environment secrets에 추가하세요."
+            echo "GOOGLE_WEB_CLIENT_ID: (비어 있음)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "GOOGLE_WEB_CLIENT_ID: 설정됨 (길이 ${#WCID})" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "// API 설정 - GitHub Actions에서 자동 생성" > js/config.js
           echo "// GEMINI_API_KEY, GOOGLE_WEB_CLIENT_ID는 GitHub Secrets에서 가져옵니다." >> js/config.js
           echo "export const GEMINI_API_KEY = '${{ secrets.GEMINI_API_KEY }}';" >> js/config.js
-          # GOOGLE_WEB_CLIENT_ID: Repository 또는 github-pages 환경 시크릿에 추가 필요
           echo "export const GOOGLE_WEB_CLIENT_ID = '${{ secrets.GOOGLE_WEB_CLIENT_ID }}';" >> js/config.js
-          echo "생성된 config.js 파일 확인:" >> $GITHUB_STEP_SUMMARY
+          echo "생성된 config.js 내용 (마스킹):" >> $GITHUB_STEP_SUMMARY
           cat js/config.js | sed 's/AIzaSy[^'"'"']*/AIzaSy***/' | sed 's/[0-9]*-[a-zA-Z0-9_-]*\.apps\.googleusercontent\.com/***.apps.googleusercontent.com/' >> $GITHUB_STEP_SUMMARY
         shell: bash
 
