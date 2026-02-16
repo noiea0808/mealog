@@ -3091,7 +3091,8 @@ window.submitBoardPost = async () => {
         showToast("로그인이 필요합니다.", 'error');
         return;
     }
-    
+    // 키보드가 열린 상태에서 등록 시 즉시 포커스 해제(키보드 닫기)
+    document.activeElement?.blur?.();
     const title = document.getElementById('boardWriteTitle').value.trim();
     const boardWriteContentEl = document.getElementById('boardWriteContent');
     const rawContent = boardWriteContentEl ? boardWriteContentEl.innerHTML : '';

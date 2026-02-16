@@ -652,7 +652,7 @@
                     </div>
                     <div class="flex gap-2 pt-3 border-t">
                         <button onclick="window.backToBoardList()" class="flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors">취소</button>
-                        <button onclick="window.submitBoardPost()" class="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 shadow-md transition-all">등록</button>
+                        <button type="button" ontouchstart="event.preventDefault(); window.submitBoardPost();" onclick="window.submitBoardPost()" class="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 shadow-md transition-all">등록</button>
                     </div>
                 </div>
             </div>

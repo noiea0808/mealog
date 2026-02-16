@@ -337,14 +337,14 @@ export function renderBestMeals() {
         }
     }
     
-    // 월간/연간 모드에서는 만족도 5점 음식만 필터링
+    // 월간/연간 모드에서는 만족도 5점만 표시, 주간은 4점 이상
     const isMonthOrYearMode = state.dashboardMode === 'month' || state.dashboardMode === 'year' || state.dashboardMode === 'custom';
-    const filteredMeals = isMonthOrYearMode 
+    const filteredMeals = isMonthOrYearMode
         ? meals.filter(m => m && m.rating && parseInt(m.rating) === 5)
         : meals.filter(m => m && m.rating);
     
     if (filteredMeals.length === 0) {
-        const message = isMonthOrYearMode 
+        const message = isMonthOrYearMode
             ? '만족도 5점인 기록이 없습니다.'
             : '만족도 4점 이상인 기록이 없습니다.';
         container.innerHTML = `<div class="text-center py-8 text-slate-400 text-sm">${message}</div>`;
@@ -731,8 +731,35 @@ export async function openShareBestModal() {
     const existingShare = await checkBestShareStatus(periodType, periodText);
     const isShared = !!existingShare;
     
-    // 1~3위만 필터링
-    const top3Meals = meals.filter(m => m && m.rating).slice(0, 3);
+    // 베스트 탭과 동일한 필터·정렬 적용 후 1~3위만 사용 (미리보기와 화면 목록 일치)
+    const periodKey = getBestPeriodKey();
+    const isMonthOrYearMode = state.dashboardMode === 'month' || state.dashboardMode === 'year' || state.dashboardMode === 'custom';
+    const filteredForShare = isMonthOrYearMode
+        ? meals.filter(m => m && m.rating && parseInt(m.rating) === 5)
+        : meals.filter(m => m && m.rating);
+    const savedOrder = (window.userSettings && window.userSettings.bestMeals ? window.userSettings.bestMeals[periodKey] : null) || [];
+    const sortedForShare = [...filteredForShare].sort((a, b) => {
+        const aRating = a.rating ? parseInt(a.rating) : 0;
+        const bRating = b.rating ? parseInt(b.rating) : 0;
+        const aIndex = savedOrder.indexOf(a.id);
+        const bIndex = savedOrder.indexOf(b.id);
+        const isWeekMode = state.dashboardMode === '7d' || state.dashboardMode === 'week';
+        if (isWeekMode) {
+            if (aRating !== bRating) return bRating - aRating;
+            if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+            if (aIndex !== -1) return -1;
+            if (bIndex !== -1) return 1;
+            if (a.date && b.date) return b.date.localeCompare(a.date);
+            return 0;
+        }
+        if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+        if (aIndex !== -1) return -1;
+        if (bIndex !== -1) return 1;
+        if (bRating !== aRating) return bRating - aRating;
+        if (a.date && b.date) return b.date.localeCompare(a.date);
+        return 0;
+    });
+    const top3Meals = sortedForShare.slice(0, 3);
     
     if (top3Meals.length === 0 && !isShared) {
         showToast('공유할 베스트 메뉴가 없습니다.', 'error');

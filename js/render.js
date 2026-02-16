@@ -3,7 +3,7 @@ import { SLOTS, SLOT_STYLES, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS } fro
 import { appState } from './state.js';
 import { escapeHtml, renderFormattedContent, getPlainTextPreview } from './render/utils.js';
 import { normalizeUrl, getDisplayProfile } from './utils.js';
-import { getAdminDisplayName } from './db.js';
+import { getAdminDisplayName, getSharedPhotosByUser } from './db.js';
 
 // renderGallery 실행 중 플래그 및 이벤트 리스너 관리
 let isRenderingGallery = false;
@@ -1174,10 +1174,12 @@ export async function renderGallery() {
     // 사용자 필터링 적용
     const filterUserId = appState.galleryFilterUserId;
     const galleryFilterTab = appState.galleryFilterTab || 'moment';
-    let photosToRender = window.sharedPhotos;
-    
+    let photosToRender;
     if (filterUserId) {
-        photosToRender = window.sharedPhotos.filter(photo => photo.userId === filterUserId);
+        // 특정 사용자 갤러리: 해당 사용자 공유만 전용 쿼리로 조회 (전체 50건 제한에 묻히지 않도록)
+        photosToRender = await getSharedPhotosByUser(filterUserId);
+    } else {
+        photosToRender = window.sharedPhotos || [];
     }
     
     // 사용자 프로필 뷰일 때 최상단 앱 헤더 숨김
