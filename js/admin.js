@@ -4890,7 +4890,8 @@ function renderCharacterEditorForm(characterData) {
                 <div class="flex gap-4 items-start">
                     <label class="flex-shrink-0 text-sm font-bold text-slate-700 w-28 pt-2">기간 경과 부족 시</label>
                     <div class="flex-1 min-w-0">
-                        <p class="text-xs text-slate-500 mb-2">주간 4일 미만, 월간 10일 미만, 연간 3월 미만, 직접설정 50% 미만 경과 시</p>
+                        <p class="text-xs text-slate-500 mb-1">표시 조건: 주간 4일 미만, 월간 10일 미만, 연간 3월 미만, 직접설정 50% 미만 경과 시</p>
+                        <p class="text-xs text-emerald-700 mb-2">분석 가능 시점: 주간 4일 경과 후 · 월간 10일 경과 후 · 연간 4월 1일 이후 · 직접설정은 선택 기간의 50% 이상 경과 후</p>
                         <textarea id="characterInsightMessageInsufficientPeriod" rows="2"
                                   class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px] overflow-hidden"
                                   placeholder="아직 이 기간이 충분히 경과하지 않았어요. 조금 더 지나면 더 의미 있는 코멘트를 드릴 수 있어요.">${escapeHtml(characterData.insightMessageInsufficientPeriod || '')}</textarea>
@@ -4899,7 +4900,8 @@ function renderCharacterEditorForm(characterData) {
                 <div class="flex gap-4 items-start">
                     <label class="flex-shrink-0 text-sm font-bold text-slate-700 w-28 pt-2">기록 부족 시</label>
                     <div class="flex-1 min-w-0">
-                        <p class="text-xs text-slate-500 mb-2">경과 기간의 본식(아침/점심/저녁) 50% 미만 기록 시</p>
+                        <p class="text-xs text-slate-500 mb-1">표시 조건: 경과한 일수 × 3(아침/점심/저녁) 대비 본식 기록이 50% 미만일 때</p>
+                        <p class="text-xs text-emerald-700 mb-2">분석 가능 시점: 경과 일수의 본식 슬롯 수의 50% 이상 기록 시 (예: 7일 경과 시 11회 이상, 10일 경과 시 15회 이상)</p>
                         <textarea id="characterInsightMessageInsufficientRecords" rows="2"
                                   class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px] overflow-hidden"
                                   placeholder="이 기간의 식사 기록이 아직 충분하지 않아요. 조금 더 기록해 보시면 더 재미있는 코멘트를 드릴 수 있어요.">${escapeHtml(characterData.insightMessageInsufficientRecords || '')}</textarea>

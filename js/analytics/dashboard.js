@@ -399,7 +399,7 @@ export async function updateDashboard() {
     if (snackRecordCountEl) snackRecordCountEl.textContent = String(snackCount ?? 0);
     
     // 인사이트 코멘트는 처음 로드 시 기본 코멘트를 표시하고, 이후에는 COMMENT 버튼을 눌렀을 때만 업데이트됨
-    // 처음 로드 시에만 기본 코멘트 표시 (이미 코멘트가 있으면 표시하지 않음)
+    // 처음 로드 시에만 기본 코멘트 표시 (이미 코멘트가 있으면 표시하지 않음). 표시 내용은 관리자 화면에서 수기 설정.
     const insightTextContent = document.getElementById('insightTextContent');
     if (insightTextContent && (!insightTextContent.textContent || insightTextContent.textContent.trim() === '')) {
         if (window.getDashboardData) {
