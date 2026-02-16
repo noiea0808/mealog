@@ -46,7 +46,7 @@ window.cleanupFirestoreListeners = () => {
     }
 };
 import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
-import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
+import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
@@ -241,6 +241,7 @@ window.openShareBestModal = openShareBestModal;
 window.Mealog.openShareBestModal = openShareBestModal;
 window.closeShareBestModal = closeShareBestModal;
 window.Mealog.closeShareBestModal = closeShareBestModal;
+window.closeBestSharePeriodNotice = closeBestSharePeriodNotice;
 window.shareBestToFeed = shareBestToFeed;
 window.Mealog.shareBestToFeed = shareBestToFeed;
 window.editBestShare = openEditBestShareModal;
@@ -2024,6 +2025,9 @@ async function updateUserDocument(user) {
 // 인증 상태 변경 리스너 - 단순화된 버전
 let lastProcessedUserId = null; // 마지막으로 처리한 사용자 ID
 
+// 첫 화면에서 자동 로그인 확인 중임을 표시 (로그인 버튼을 누르기 전에 기다리도록)
+showLoading('로그인 상태 확인 중...');
+
 initAuth(async (user) => {
     // 1. 관리자 페이지가 열려있는지 확인 (현재 탭이 관리자 페이지인 경우)
     if (window.location.pathname.includes('admin.html') || window.location.href.includes('admin.html')) {
@@ -3042,6 +3046,19 @@ window.submitBoardPost = async () => {
     }
     
     const listCategory = window.currentBoardCategory || 'all';
+    const boardWriteView = document.getElementById('boardWriteView');
+    const submitBtn = boardWriteView?.querySelector('button[onclick="window.submitBoardPost()"]');
+    const isEdit = !!window.currentEditingPostId;
+    const restoreSubmitBtn = () => {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = isEdit ? '수정' : '등록';
+        }
+    };
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '등록 중...';
+    }
     
     if (window.currentEditingPostId) {
         const postId = window.currentEditingPostId;
@@ -3058,35 +3075,30 @@ window.submitBoardPost = async () => {
             } catch (e) {
                 console.error("[submitBoardPost] 사진 업로드 에러:", e);
                 showToast(e?.message || "사진 업로드에 실패했습니다.", 'error');
+                restoreSubmitBtn();
                 return;
             }
         }
         boardOperations.updatePost(postId, { title, content, category, imageUrls: finalImageUrls })
-            .then(() => renderBoard(listCategory))
+            .then(() => {
+                renderBoard(listCategory);
+                restoreSubmitBtn();
+            })
             .catch((e) => {
                 console.error("[submitBoardPost] 수정 에러:", e);
+                restoreSubmitBtn();
             });
         return;
     }
     
     const newFiles = window.boardWriteFiles || [];
-    let imageUrls = [];
-    if (newFiles.length > 0) {
-        try {
-            showToast('사진 업로드 중...', 'info');
-            imageUrls = await uploadBoardImages(newFiles, window.currentUser.uid);
-        } catch (e) {
-            console.error("[submitBoardPost] 사진 업로드 에러:", e);
-            showToast(e?.message || "사진 업로드에 실패했습니다.", 'error');
-            return;
-        }
-    }
+    // 낙관적 UI: 먼저 목록에 새 글 표시한 뒤, 이미지 업로드·등록은 백그라운드에서 처리 (체감 속도 개선)
     const optimisticPost = {
         id: 'pending-' + Date.now(),
         title,
         content,
         category: category || 'serious',
-        imageUrls: imageUrls.length ? imageUrls : undefined,
+        imageUrls: [], // 업로드 완료 후 서버에서 받은 글로 갱신됨
         authorId: window.currentUser.uid,
         authorNickname: window.userSettings?.profile?.nickname || '익명',
         authorPhotoUrl: window.userSettings?.profile?.photoUrl || null,
@@ -3098,13 +3110,28 @@ window.submitBoardPost = async () => {
         timestamp: new Date().toISOString()
     };
     window.backToBoardList(optimisticPost);
-    boardOperations.createPost({ title, content, category, imageUrls })
-        .then((result) => {
+    (async () => {
+        let imageUrls = [];
+        if (newFiles.length > 0) {
+            try {
+                imageUrls = await uploadBoardImages(newFiles, window.currentUser.uid);
+            } catch (e) {
+                console.error("[submitBoardPost] 사진 업로드 에러:", e);
+                showToast(e?.message || "사진 업로드에 실패했습니다.", 'error');
+                renderBoard(listCategory);
+                restoreSubmitBtn();
+                return;
+            }
+        }
+        try {
+            const result = await boardOperations.createPost({ title, content, category, imageUrls });
             if (result?.id) renderBoard(listCategory);
-        })
-        .catch(() => {
+        } catch (e) {
             renderBoard(listCategory);
-        });
+        } finally {
+            restoreSubmitBtn();
+        }
+    })();
 };
 
 window.openBoardDetail = async (postId) => {

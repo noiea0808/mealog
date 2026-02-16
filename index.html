@@ -327,7 +327,7 @@
                 <span class="loading-food-icon absolute" aria-hidden="true">🍎</span>
                 <span class="loading-food-icon absolute" aria-hidden="true">🍦</span>
             </div>
-            <p id="loadingOverlayMessage" class="mt-4 text-base font-bold text-slate-800 whitespace-nowrap"></p>
+            <p id="loadingOverlayMessage" class="mt-4 text-base font-bold text-slate-800 whitespace-nowrap">로그인 상태 확인 중...</p>
         </div>
     </div>
 
@@ -1218,6 +1218,15 @@
             <div class="p-6 border-t">
                 <button id="insightShareSubmitBtn" onclick="window.shareInsightToFeed()" class="w-full py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all">공유하기</button>
             </div>
+        </div>
+    </div>
+
+    <!-- 베스트 공유 기간 안내 팝업 (토스트 대신 확인 버튼으로 닫기) -->
+    <div id="bestSharePeriodNoticeModal" class="hidden fixed inset-0 bg-slate-900/60 z-[410] flex items-center justify-center p-4" onclick="if(event.target === this) window.closeBestSharePeriodNotice()">
+        <div class="w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 flex flex-col items-stretch gap-4">
+            <h3 class="text-lg font-bold text-slate-800 text-center">베스트 공유 안내</h3>
+            <p id="bestSharePeriodNoticeMessage" class="text-sm text-slate-600 text-center leading-relaxed"></p>
+            <button type="button" onclick="window.closeBestSharePeriodNotice()" class="w-full py-3 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900">확인</button>
         </div>
     </div>
 

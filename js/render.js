@@ -3442,10 +3442,10 @@ export async function renderBoardDetail(postId) {
                     </button>
                 </div>
                 
-                <!-- 사진 (본문 상단, 중앙 정렬, 좌우 여백 축소로 크게 표시) -->
+                <!-- 사진 (본문 상단, 좌우 폭 꽉 차게 표시, 전체 비율 유지·잘림 없음) -->
                 ${Array.isArray(post.imageUrls) && post.imageUrls.length > 0 ? `
-                <div class="flex flex-wrap justify-center items-center gap-2 mb-4 -mx-4 px-1">
-                    ${post.imageUrls.map(url => `<img src="${url}" alt="게시글 사진" class="max-w-full h-auto rounded-xl border border-slate-200 object-cover" style="max-height: 320px;" loading="lazy">`).join('')}
+                <div class="flex flex-col gap-2 mb-4 -mx-4 px-2">
+                    ${post.imageUrls.map(url => `<img src="${url}" alt="게시글 사진" class="w-full h-auto rounded-xl border border-slate-200 object-contain" loading="lazy">`).join('')}
                 </div>
                 ` : ''}
                 
@@ -3631,8 +3631,8 @@ export async function renderNoticeDetail(noticeId) {
                 </div>
                 
                 ${Array.isArray(notice.imageUrls) && notice.imageUrls.length > 0 ? `
-                <div class="flex flex-wrap justify-center items-center gap-2 mb-4 -mx-4 px-1">
-                    ${notice.imageUrls.map(url => `<img src="${url}" alt="공지 사진" class="max-w-full h-auto rounded-xl border border-slate-200 object-cover" style="max-height: 320px;" loading="lazy">`).join('')}
+                <div class="flex flex-col gap-2 mb-4 -mx-4 px-2">
+                    ${notice.imageUrls.map(url => `<img src="${url}" alt="공지 사진" class="w-full h-auto rounded-xl border border-slate-200 object-contain" loading="lazy">`).join('')}
                 </div>
                 ` : ''}
                 

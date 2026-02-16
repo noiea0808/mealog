@@ -145,6 +145,8 @@ async function loadCharactersFromFirebase() {
 
 // 현재 선택된 캐릭터 (기본값: MEALOG)
 let currentCharacter = 'mealog';
+// 현재 말풍선 텍스트가 COMMENT 분석 결과인지 (캐릭터만 선택한 기본/안내 문구가 아님)
+let currentInsightIsAnalysisResult = false;
 
 // MEALOG 코멘트 순차 선택을 위한 인덱스
 let mealogCommentIndex = 0;
@@ -231,7 +233,7 @@ function displayInsightText(text, characterName = '') {
     const escapedText = escapeHtml(text).replace(/\n/g, '<br>');
     container.innerHTML = escapedText;
     
-    // 공유 버튼 상태 업데이트 (공유 상태에 따라 버튼 박스 표시 여부도 결정)
+    // 공유 버튼은 분석 결과일 때만 표시 (displayInsightText 호출 전에 currentInsightIsAnalysisResult 설정됨)
     updateShareButtonStatus();
     
     // 말풍선 최소 높이 설정 (캐릭터창 + 코멘트창의 합산 높이)
@@ -586,6 +588,9 @@ export async function updateInsightComment(filteredData, dateRangeText = '') {
     const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
     const characterName = character ? character.name : '';
     
+    // 캐릭터 선택/기본 문구는 분석 결과가 아니므로 공유 버튼 숨김
+    currentInsightIsAnalysisResult = false;
+    
     // MEALOG 캐릭터일 때는 사용 안내 텍스트 표시 (AI 호출 안 함)
     if (currentCharacter === 'mealog') {
         const commentText = await getMealogComment();
@@ -609,6 +614,7 @@ export async function generateInsightComment() {
     
     // MEALOG 캐릭터일 때는 사용 안내만 표시 (AI 호출 안 함)
     if (currentCharacter === 'mealog') {
+        currentInsightIsAnalysisResult = false;
         const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
         const characterName = character ? character.name : '';
         const commentText = await getMealogComment();
@@ -621,7 +627,8 @@ export async function generateInsightComment() {
     let loadingInterval = null;
     let dotCount = 0;
     
-    // 분석 시작 전에 로딩 멘트 표시
+    // 분석 시작 전에 로딩 멘트 표시 (분석 결과 아님)
+    currentInsightIsAnalysisResult = false;
     const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
     const characterName = character ? character.name : '';
     const loadingMessage = await getCharacterLoadingMessage(currentCharacter);
@@ -640,9 +647,10 @@ export async function generateInsightComment() {
     }
     
     try {
-        // 기간 경과/기록 부족 시 AI 호출 없이 관리자 설정 멘트 표시
+        // 기간 경과/기록 부족 시 AI 호출 없이 관리자 설정 멘트 표시 (분석 결과가 아니므로 공유 버튼 숨김)
         const reason = !filteredData || filteredData.length === 0 ? 'insufficient_records' : getInsufficientReason(filteredData);
         if (reason) {
+            currentInsightIsAnalysisResult = false;
             const fallback = await getInsightFallbackMessages(currentCharacter);
             const text = reason === 'insufficient_period' ? fallback.insufficientPeriod : fallback.insufficientRecords;
             displayInsightText(text || "멋진 식사 기록이 쌓이고 있어요! ✨", characterName);
@@ -650,7 +658,8 @@ export async function generateInsightComment() {
             return;
         }
 
-        // AI 코멘트 생성 및 업데이트
+        // AI 코멘트 생성 및 업데이트 (분석 결과이므로 공유 버튼 표시)
+        currentInsightIsAnalysisResult = true;
         const comment = await getGeminiComment(filteredData, currentCharacter, dateRangeText);
         displayInsightText(comment || "멋진 식사 기록이 쌓이고 있어요! ✨", characterName);
         
@@ -658,7 +667,7 @@ export async function generateInsightComment() {
         closeCharacterSelectModal();
     } catch (error) {
         console.error('코멘트 생성 실패:', error);
-        
+        currentInsightIsAnalysisResult = false;
         // API 키 관련 에러인 경우 명확한 메시지 표시
         if (error.message && (error.message.includes('API 키') || error.message.includes('API key'))) {
             showToast(error.message, 'error');
@@ -1474,9 +1483,9 @@ export async function updateShareButtonStatus() {
     const shareBtn = document.getElementById('shareInsightBtn');
     if (!shareBtn) return;
     
-    // MEALOG 캐릭터가 아니고 코멘트가 있을 때만 표시
+    // 분석 결과가 나온 경우에만 공유 버튼 표시 (캐릭터만 선택한 기본/안내 문구일 때는 숨김)
     const insightTextContent = document.getElementById('insightTextContent');
-    if (currentCharacter === 'mealog' || !insightTextContent || !insightTextContent.textContent || insightTextContent.textContent.trim() === '') {
+    if (!currentInsightIsAnalysisResult || currentCharacter === 'mealog' || !insightTextContent || !insightTextContent.textContent || insightTextContent.textContent.trim() === '') {
         shareBtn.classList.add('hidden');
         return;
     }

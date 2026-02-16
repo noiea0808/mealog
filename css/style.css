@@ -39,6 +39,11 @@ body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) {
 body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #boardWriteView {
     padding-bottom: 1rem !important;
 }
+/* iOS Safari: 입력 텍스트가 바로 안 보이는 버그 수정 (GPU compositing으로 리페인트 강제) */
+input, textarea, [contenteditable="true"] {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+}
 /* 키보드 닫혔을 때: viewport 복원 시 모든 UI 복원 (뒤로가기로 닫아도 포커스가 남아있는 경우) */
 body.keyboard-closed .bottom-nav {
     display: flex !important;
