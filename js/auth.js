@@ -303,6 +303,9 @@ export function confirmLogout() {
 
 export async function confirmLogoutAction() {
     document.getElementById('logoutConfirmModal').classList.add('hidden');
+    if (typeof window.clearNotificationReadStateCache === 'function') {
+        window.clearNotificationReadStateCache();
+    }
     // 명시적 로그아웃 플래그 설정 (페이지 리로드 후에도 유지)
     sessionStorage.setItem('explicitLogout', 'true');
     await signOut(auth);
@@ -377,6 +380,9 @@ export async function switchToLogin() {
         // Firestore 리스너가 살아있으면 signOut 시점에 permission-denied가 연쇄로 발생할 수 있으므로 선제 해제
         if (typeof window.cleanupFirestoreListeners === 'function') {
             window.cleanupFirestoreListeners();
+        }
+        if (typeof window.clearNotificationReadStateCache === 'function') {
+            window.clearNotificationReadStateCache();
         }
 
         // 설정 페이지 닫기

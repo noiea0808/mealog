@@ -1671,9 +1671,15 @@ window.closeSearch = () => {
 
 const NOTIFICATION_LAST_OPENED_KEY = 'mealog_notification_last_opened';
 const NOTIFICATION_READ_POST_IDS_KEY = 'mealog_notification_read_post_ids';
+const NOTIFICATION_READ_FIRESTORE_DOC = 'notificationRead';
 
-/** 읽음 상태: { "type:postId": { lastCommentAt, commentCount } }. 같은 글에 새 댓글이 달리면 lastCommentAt이 커져서 다시 미확인으로 표시됨 */
-function getNotificationReadState() {
+/** 메모리 캐시( Firestore와 동기화 ). null이면 아직 로드 전 */
+let notificationReadStateCache = null;
+/** 캐시가 어떤 사용자 것인지 (사용자 전환 시 캐시 무효화) */
+let notificationReadStateCacheUid = null;
+
+/** localStorage 파싱만 (마이그레이션용). 반환: { "type:postId": { lastCommentAt, commentCount } } */
+function parseLocalNotificationReadState() {
     try {
         const raw = localStorage.getItem(NOTIFICATION_READ_POST_IDS_KEY);
         if (!raw) return {};
@@ -1688,8 +1694,71 @@ function getNotificationReadState() {
     } catch (_) { return {}; }
 }
 
-function setNotificationReadState(state) {
-    try { localStorage.setItem(NOTIFICATION_READ_POST_IDS_KEY, JSON.stringify(state)); } catch (_) {}
+/** Firestore에서 알림 읽음 상태 로드 후 캐시에 반영. 기존 localStorage 있으면 병합 후 Firestore에 저장하고 localStorage 삭제 */
+async function ensureNotificationReadStateLoaded() {
+    const user = window.currentUser;
+    if (user && !user.isAnonymous && notificationReadStateCacheUid !== user.uid) {
+        notificationReadStateCache = null;
+        notificationReadStateCacheUid = null;
+    }
+    if (notificationReadStateCache !== null) return;
+    if (!user || user.isAnonymous) {
+        notificationReadStateCache = {};
+        notificationReadStateCacheUid = null;
+        return;
+    }
+    try {
+        const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'config', NOTIFICATION_READ_FIRESTORE_DOC);
+        const snap = await getDoc(ref);
+        let state = {};
+        if (snap.exists() && snap.data().data) {
+            try {
+                state = typeof snap.data().data === 'string' ? JSON.parse(snap.data().data) : { ...snap.data().data };
+            } catch (_) {}
+        }
+        const local = parseLocalNotificationReadState();
+        if (Object.keys(local).length > 0) {
+            state = { ...state, ...local };
+            await setDoc(ref, { data: JSON.stringify(state) }, { merge: true });
+            try { localStorage.removeItem(NOTIFICATION_READ_POST_IDS_KEY); } catch (_) {}
+        }
+        if (Array.isArray(state)) {
+            const obj = {};
+            state.forEach(key => { obj[key] = { lastCommentAt: Infinity, commentCount: Infinity }; });
+            state = obj;
+        }
+        notificationReadStateCache = state && typeof state === 'object' ? state : {};
+        notificationReadStateCacheUid = user.uid;
+    } catch (e) {
+        console.warn('알림 읽음 상태 Firestore 로드 실패:', e);
+        notificationReadStateCache = parseLocalNotificationReadState();
+        notificationReadStateCacheUid = user.uid;
+    }
+}
+
+/** 로그아웃 등 사용자 전환 시 알림 읽음 캐시 초기화 (auth에서 호출) */
+window.clearNotificationReadStateCache = () => {
+    notificationReadStateCache = null;
+    notificationReadStateCacheUid = null;
+};
+
+/** 읽음 상태: { "type:postId": { lastCommentAt, commentCount } }. 캐시가 없으면 빈 객체(ensureNotificationReadStateLoaded 호출 후 사용) */
+function getNotificationReadState() {
+    if (notificationReadStateCache === null) return {};
+    return notificationReadStateCache;
+}
+
+/** 읽음 상태 저장: 메모리 캐시 + Firestore (필드명 제한으로 data는 JSON 문자열로 저장) */
+async function setNotificationReadState(state) {
+    notificationReadStateCache = state;
+    const user = window.currentUser;
+    if (!user || user.isAnonymous) return;
+    try {
+        const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'config', NOTIFICATION_READ_FIRESTORE_DOC);
+        await setDoc(ref, { data: JSON.stringify(state) }, { merge: true });
+    } catch (e) {
+        console.warn('알림 읽음 상태 Firestore 저장 실패:', e);
+    }
 }
 
 window.toggleNotificationPopup = () => {
@@ -1748,6 +1817,7 @@ window.loadNotificationList = async () => {
         return;
     }
     try {
+        await ensureNotificationReadStateLoaded();
         const [momentItems, boardItems] = await Promise.all([
             postInteractions.getPostsWithCommentsForUser(window.currentUser.uid),
             window.boardOperations && typeof window.boardOperations.getBoardPostsWithCommentsForUser === 'function'
@@ -1825,6 +1895,7 @@ window.updateNotificationDot = async () => {
         return;
     }
     try {
+        await ensureNotificationReadStateLoaded();
         const [momentItems, boardItems] = await Promise.all([
             postInteractions.getPostsWithCommentsForUser(window.currentUser.uid),
             window.boardOperations && typeof window.boardOperations.getBoardPostsWithCommentsForUser === 'function'

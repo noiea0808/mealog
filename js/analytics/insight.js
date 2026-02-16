@@ -1577,26 +1577,26 @@ export async function openShareInsightModal() {
     const borderLightGray = '#e2e8f0';
     const borderOuterGray = '#cbd5e1';
     const screenshotHtml = `
-        <div id="insightScreenshotContainer" style="width: 420px; max-width: 420px; margin: 0 auto; border: 1px solid ${borderOuterGray}; border-radius: 20px; overflow: hidden; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f1f5f9;">
+        <div id="insightScreenshotContainer" style="width: 100%; max-width: 420px; margin: 0 auto; border: 1px solid ${borderOuterGray}; border-radius: 20px; overflow: hidden; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f1f5f9; box-sizing: border-box;">
             <!-- 헤더: 흰 배경, 초록 타이틀 (패딩 6/16/16으로 텍스트 10px 상향, html2canvas 호환) -->
             <div style="background: #ffffff; padding: 6px 16px 16px; border-bottom: 1px solid ${borderLightGray};">
-                <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 8px;">
-                    <span style="font-size: 28.8px; font-weight: 600; color: #059669; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
+                <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 8px; gap: 8px; min-width: 0;">
+                    <span style="font-size: 28.8px; font-weight: 600; color: #059669; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase; min-width: 0; overflow: hidden; text-overflow: ellipsis;">mealog</span>
                     <span style="font-size: 12px; font-weight: 400; color: #64748b; flex-shrink: 0;">${escapeHtml(dateRangeText || '')}</span>
                 </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="font-size: 16px;">💬</span>
-                    <span style="font-size: 15px; font-weight: 700; color: #1e293b; font-family: 'NanumSquareRound', sans-serif;">${escapeHtml(userNickname)}에 대한 밀당의 참견</span>
+                <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
+                    <span style="font-size: 16px; flex-shrink: 0;">💬</span>
+                    <span style="font-size: 15px; font-weight: 700; color: #1e293b; font-family: 'NanumSquareRound', sans-serif; min-width: 0; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(userNickname)}에 대한 밀당의 참견</span>
                 </div>
             </div>
-            <!-- 본문: 연회색 배경, 캐릭터+말풍선 (패딩 2/16/16으로 10px 상향) -->
-            <div style="display: flex; gap: 12px; align-items: flex-start; padding: 2px 16px 16px 16px; background: #f1f5f9; border-bottom-left-radius: 19px; border-bottom-right-radius: 19px;">
-                <!-- 밀당 캐릭터 (배경 없음) -->
-                <div style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; width: 75px;">
-                    <div style="width: 75px; height: 132px; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden;">
+            <!-- 본문: 연회색 배경, 캐릭터+말풍선 (패딩 2/16/16으로 10px 상향), 좁은 기기에서도 잘리지 않도록 min-width: 0 -->
+            <div style="display: flex; gap: 12px; align-items: flex-start; padding: 2px 16px 16px 16px; background: #f1f5f9; border-bottom-left-radius: 19px; border-bottom-right-radius: 19px; min-width: 0;">
+                <!-- 밀당 캐릭터 (배경 없음, 좁은 화면에서도 보이도록 flex-shrink: 0 유지) -->
+                <div style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; width: 75px; min-width: 60px;">
+                    <div style="width: 100%; max-width: 75px; height: 132px; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; box-sizing: border-box;">
                         ${characterIconHtml}
                     </div>
-                    <div style="width: 75px; background: #ffca2c; border-radius: 12px; padding: 6px 4px; text-align: center; font-size: 12px; font-weight: 700; color: #1e293b; border: 1px solid rgba(0,0,0,0.08);">
+                    <div style="width: 100%; max-width: 75px; background: #ffca2c; border-radius: 12px; padding: 6px 4px; text-align: center; font-size: 12px; font-weight: 700; color: #1e293b; border: 1px solid rgba(0,0,0,0.08); box-sizing: border-box;">
                         코멘트
                     </div>
                 </div>
@@ -1669,7 +1669,7 @@ export async function openEditInsightShareModal(photoUrl) {
     
     // 기존 이미지 사용
     const existingImageHtml = insightShare.photoUrl ? `
-        <div id="insightScreenshotContainer" style="width: 420px; max-width: 420px; margin: 0 auto; background: #f8fafc; border-radius: 8px; overflow: hidden; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+        <div id="insightScreenshotContainer" style="width: 100%; max-width: 420px; margin: 0 auto; background: #f8fafc; border-radius: 8px; overflow: hidden; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; box-sizing: border-box;">
             <div style="text-align: center;">
                 <img src="${insightShare.photoUrl}" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" alt="밀당 코멘트 공유 이미지">
             </div>

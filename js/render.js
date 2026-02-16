@@ -3290,12 +3290,14 @@ async function _renderBoardList(container, filteredPosts, likedPostIds, bookmark
                 const authorDisplay = getDisplayProfile(post.authorId, { nickname: post.authorNickname, icon: post.authorIcon, photoUrl: post.authorPhotoUrl });
                 
                 const hasImages = Array.isArray(post.imageUrls) && post.imageUrls.length > 0;
+                const isPendingPost = post.id && String(post.id).startsWith('pending-');
                 return `
-                    <div onclick="window.openBoardDetail('${post.id}')" class="board-list-card rounded-2xl pt-4 px-5 pb-1.5 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all mb-2">
+                    <div onclick="${isPendingPost ? '' : "window.openBoardDetail('" + post.id + "')"}" class="board-list-card rounded-2xl pt-4 px-5 pb-1.5 shadow-sm hover:shadow-md ${isPendingPost ? 'cursor-default' : 'cursor-pointer'} active:scale-[0.98] transition-all mb-2 ${isPendingPost ? 'ring-2 ring-amber-200 bg-amber-50/50' : ''}">
                         <div class="flex items-start gap-3 mb-1.5">
                             <div class="flex-1 min-w-0">
-                                <div class="flex items-center gap-2 mb-3 min-w-0">
+                                <div class="flex items-center gap-2 mb-3 min-w-0 flex-wrap">
                                     <span class="text-[10px] font-bold px-2.5 py-1 rounded-lg ${categoryColors[post.category] || categoryColors.serious} whitespace-nowrap shrink-0">${categoryLabels[post.category] || '무거운'}</span>
+                                    ${isPendingPost ? '<span class="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-amber-200 text-amber-800 whitespace-nowrap shrink-0"><i class="fa-solid fa-spinner fa-spin mr-1"></i>등록 중...</span>' : ''}
                                     ${shouldHideContent ? '<h3 class="text-base font-bold text-slate-400 line-clamp-2 flex-1 min-w-0 leading-tight">비공개 게시물</h3>' : `<h3 class="text-base font-bold text-slate-800 line-clamp-2 flex-1 min-w-0 leading-tight">${escapeHtml(post.title)}</h3>`}
                                     ${hasImages ? '<span class="text-slate-400 shrink-0" title="사진 포함"><i class="fa-solid fa-image text-sm"></i></span>' : ''}
                                 </div>

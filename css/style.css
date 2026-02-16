@@ -387,18 +387,28 @@ header .mealog-title {
 #entryModal.keyboard-open #modalScrollArea {
     padding-bottom: 0 !important;
 }
-/* 캡쳐 3종세트 모달: 좌우 마진 2px, 가로 스크롤 방지 */
+/* 캡쳐 3종세트 모달: 좌우 여백 확보(좁은 기기에서 캐릭터·입력창 잘림 방지), 가로 스크롤 방지 */
 #bestShareModal,
 #insightShareModal,
 #dailySharePreviewModal,
 .capture-share-modal {
-    padding-left: 2px !important;
-    padding-right: 2px !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
     overflow-x: hidden;
 }
 .capture-share-modal > div {
-    max-width: min(448px, calc(100vw - 4px));
+    max-width: min(448px, calc(100vw - 24px));
     box-sizing: border-box;
+}
+/* 인사이트 공유 모달: 좁은 기기에서 제목·미리보기 잘림 방지 */
+#insightShareModal .border-b h2 {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+#insightSharePreview {
+    min-width: 0;
 }
 
 .sticker-badge { 
