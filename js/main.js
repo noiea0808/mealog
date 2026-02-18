@@ -3009,7 +3009,7 @@ window.openBoardWrite = () => {
     // 제목 및 버튼 초기화
     const titleEl = document.querySelector('#boardWriteView h2');
     if (titleEl) titleEl.textContent = '글쓰기';
-    const submitBtn = boardWriteView?.querySelector('button[onclick="window.submitBoardPost()"]');
+    const submitBtn = boardWriteView?.querySelector('#boardWriteSubmitBtn');
     if (submitBtn) submitBtn.textContent = '등록';
     
     // 스크롤 맨 위로
@@ -3035,7 +3035,7 @@ window.backToBoardList = (optimisticPost = null, options = null) => {
     // 작성 뷰 제목 및 버튼 초기화
     const titleEl = document.querySelector('#boardWriteView h2');
     if (titleEl) titleEl.textContent = '글쓰기';
-    const submitBtn = boardWriteView?.querySelector('button[onclick="window.submitBoardPost()"]');
+    const submitBtn = boardWriteView?.querySelector('#boardWriteSubmitBtn');
     if (submitBtn) submitBtn.textContent = '등록';
     
     const category = window.currentBoardCategory || 'all';
@@ -3122,15 +3122,14 @@ window.submitBoardPost = async () => {
         showToast("로그인이 필요합니다.", 'error');
         return;
     }
-    // 키보드가 열린 상태에서 등록 시 즉시 포커스 해제(키보드 닫기)
-    document.activeElement?.blur?.();
-    const title = document.getElementById('boardWriteTitle').value.trim();
+    // 키보드가 열린 상태에서도 한 번에 등록되도록: 값 읽기를 blur보다 먼저 수행
+    const titleEl = document.getElementById('boardWriteTitle');
     const boardWriteContentEl = document.getElementById('boardWriteContent');
+    const title = (titleEl && titleEl.value) ? titleEl.value.trim() : '';
     const rawContent = boardWriteContentEl ? boardWriteContentEl.innerHTML : '';
     let content = sanitizeFormattedText(rawContent).trim();
-    const category = document.getElementById('boardWriteCategory').value;
-    
-    // sanitize 결과가 비었으나 rawContent에 내용이 있으면 위험 태그만 제거하여 서식 보존
+    const categoryEl = document.getElementById('boardWriteCategory');
+    const category = categoryEl ? categoryEl.value : '';
     if (!content && rawContent.trim()) {
         content = stripDangerousTagsOnly(rawContent).trim();
     }
@@ -3138,7 +3137,6 @@ window.submitBoardPost = async () => {
         const plainText = (boardWriteContentEl.innerText || '').trim();
         if (plainText) content = plainText.replace(/\n/g, '<br>');
     }
-    
     if (!title) {
         showToast("제목을 입력해주세요.", 'error');
         return;
@@ -3147,10 +3145,11 @@ window.submitBoardPost = async () => {
         showToast("내용을 입력해주세요.", 'error');
         return;
     }
+    document.activeElement?.blur?.();
     
     const listCategory = window.currentBoardCategory || 'all';
     const boardWriteView = document.getElementById('boardWriteView');
-    const submitBtn = boardWriteView?.querySelector('button[onclick="window.submitBoardPost()"]');
+    const submitBtn = boardWriteView?.querySelector('#boardWriteSubmitBtn');
     const isEdit = !!window.currentEditingPostId;
     const restoreSubmitBtn = () => {
         if (submitBtn) {
@@ -3534,7 +3533,7 @@ window.editBoardPost = async (postId) => {
         if (titleEl) titleEl.textContent = '글 수정';
         
         // 등록 버튼 텍스트 변경
-        const submitBtn = boardWriteView.querySelector('button[onclick="window.submitBoardPost()"]');
+        const submitBtn = boardWriteView.querySelector('#boardWriteSubmitBtn');
         if (submitBtn) submitBtn.textContent = '수정';
         
         setTimeout(() => {
@@ -3981,6 +3980,44 @@ function initEventListeners() {
     
     // 모먼트/밀톡: 키보드 열림 시 하단 네비 숨김 + 키보드 상단 네비바 영역 제거
     initMainAppKeyboardHandling();
+
+    // 기록 완료·등록 버튼: 키보드 열린 상태에서 한 번에 실행되도록 touchstart/mousedown에서 먼저 실행
+    (function initSubmitButtonFirstTap() {
+        const SUBMIT_DEBOUNCE_MS = 500;
+        let lastRun = 0;
+        const runOnce = (fn) => {
+            const now = Date.now();
+            if (now - lastRun < SUBMIT_DEBOUNCE_MS) return;
+            lastRun = now;
+            fn();
+        };
+        const btnSave = document.getElementById('btnSave');
+        if (btnSave) {
+            btnSave.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                runOnce(() => window.saveEntry());
+            }, { passive: false });
+            btnSave.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                runOnce(() => window.saveEntry());
+            });
+        }
+        const boardSubmitBtn = document.getElementById('boardWriteSubmitBtn') || document.querySelector('#boardWriteView button[id="boardWriteSubmitBtn"]');
+        if (boardSubmitBtn) {
+            boardSubmitBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                runOnce(() => window.submitBoardPost());
+            }, { passive: false });
+            boardSubmitBtn.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                runOnce(() => window.submitBoardPost());
+            });
+            boardSubmitBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                runOnce(() => window.submitBoardPost());
+            });
+        }
+    })();
 
     // 하단 네비게이션
     const navDashboard = document.getElementById('nav-dashboard');
