@@ -44,7 +44,8 @@ export {
     renderBestMeals,
     openShareBestModal,
     closeShareBestModal,
-    shareBestToFeed
+    shareBestToFeed,
+    closeBestSharePeriodNotice
 } from './analytics/best-share.js';
 
 // Date utils 관련 함수들 (필요한 경우 export)

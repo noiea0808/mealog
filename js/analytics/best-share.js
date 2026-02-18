@@ -156,6 +156,49 @@ function isPeriodEnded() {
     return false;
 }
 
+/** 베스트 공유 가능 기간 충족 여부. 주간 4일 이상, 월간 10일 이상, 연간 4월 1일 이후 */
+function getBestSharePeriodAllowance() {
+    const state = appState;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (state.dashboardMode === 'week') {
+        const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
+        const rangeStart = new Date(start);
+        const rangeEnd = new Date(end);
+        const effectiveEnd = rangeEnd > today ? today : rangeEnd;
+        const elapsedDays = effectiveEnd < rangeStart ? 0 : Math.floor((effectiveEnd - rangeStart) / 86400000) + 1;
+        if (elapsedDays < 4) {
+            return { allowed: false, message: '주간 베스트 공유는 해당 주가 4일 이상 경과된 후에 가능해요.' };
+        }
+        return { allowed: true };
+    }
+    if (state.dashboardMode === 'month') {
+        const [y, m] = state.selectedMonth.split('-').map(Number);
+        const rangeStart = new Date(y, m - 1, 1);
+        const rangeEnd = new Date(y, m, 0);
+        const effectiveEnd = rangeEnd > today ? today : rangeEnd;
+        const elapsedDays = effectiveEnd < rangeStart ? 0 : Math.floor((effectiveEnd - rangeStart) / 86400000) + 1;
+        if (elapsedDays < 10) {
+            return { allowed: false, message: '월간 베스트 공유는 해당 월이 10일 이상 경과된 후에 가능해요.' };
+        }
+        return { allowed: true };
+    }
+    if (state.dashboardMode === 'year') {
+        const year = state.selectedYearForYear || today.getFullYear();
+        const effectiveEnd = new Date(year, today.getMonth(), today.getDate());
+        if (year < today.getFullYear()) {
+            return { allowed: true };
+        }
+        const aprilFirst = new Date(year, 3, 1); // 4월 1일
+        if (effectiveEnd < aprilFirst) {
+            return { allowed: false, message: '연간 베스트 공유는 해당 연도가 4월 1일 이후에 가능해요.' };
+        }
+        return { allowed: true };
+    }
+    return { allowed: true };
+}
+
 function getBestPeriodKey() {
     const state = appState;
     if (state.dashboardMode === '7d') {
@@ -238,17 +281,17 @@ export function renderBestMeals() {
         periodLabelEl.textContent = periodLabel;
     }
     
-    // 공유 버튼 표시 여부 및 상태 확인
+    // 공유 버튼 표시: 주간/월간에서 베스트 메뉴가 1개 이상이면 항상 표시 (기간 충족 여부는 클릭 시 안내)
     const shareBtn = document.getElementById('shareBestBtn');
     if (shareBtn) {
-        const periodEnded = isPeriodEnded();
         const hasTop3Meals = () => {
             // 1~3위 메뉴가 있는지 확인 (필터링 전 meals 사용)
             const top3 = meals.filter(m => m && m.rating).slice(0, 3);
             return top3.length >= 1; // 최소 1개 이상이면 공유 가능
         };
-        
-        if (periodEnded && hasTop3Meals()) {
+        const isShareableMode = state.dashboardMode === 'week' || state.dashboardMode === 'month' || state.dashboardMode === 'year';
+
+        if (isShareableMode && hasTop3Meals()) {
             shareBtn.classList.remove('hidden');
             
             // 공유 상태 확인 및 버튼 텍스트 업데이트
@@ -264,6 +307,10 @@ export function renderBestMeals() {
                 periodType = '월간';
                 const [y, m] = state.selectedMonth.split('-').map(Number);
                 periodText = `${y}년 ${m}월`;
+            } else if (state.dashboardMode === 'year') {
+                periodType = '연간';
+                const year = state.selectedYearForYear || new Date().getFullYear();
+                periodText = `${year}년`;
             }
             
             // window.sharedPhotos에서 해당 기간의 베스트 공유 찾기
@@ -290,14 +337,14 @@ export function renderBestMeals() {
         }
     }
     
-    // 월간/연간 모드에서는 만족도 5점 음식만 필터링
+    // 월간/연간 모드에서는 만족도 5점만 표시, 주간은 4점 이상
     const isMonthOrYearMode = state.dashboardMode === 'month' || state.dashboardMode === 'year' || state.dashboardMode === 'custom';
-    const filteredMeals = isMonthOrYearMode 
+    const filteredMeals = isMonthOrYearMode
         ? meals.filter(m => m && m.rating && parseInt(m.rating) === 5)
         : meals.filter(m => m && m.rating);
     
     if (filteredMeals.length === 0) {
-        const message = isMonthOrYearMode 
+        const message = isMonthOrYearMode
             ? '만족도 5점인 기록이 없습니다.'
             : '만족도 4점 이상인 기록이 없습니다.';
         container.innerHTML = `<div class="text-center py-8 text-slate-400 text-sm">${message}</div>`;
@@ -663,8 +710,20 @@ export async function openShareBestModal() {
         meals = getMonthBestMeals(y, m);
         periodType = '월간';
         periodText = `${y}년 ${m}월`;
+    } else if (state.dashboardMode === 'year') {
+        const year = state.selectedYearForYear || new Date().getFullYear();
+        meals = getYearBestMeals(year);
+        periodType = '연간';
+        periodText = `${year}년`;
     } else {
-        showToast('주간 또는 월간 모드에서만 공유할 수 있습니다.', 'error');
+        showToast('주간, 월간, 연간 모드에서만 공유할 수 있습니다.', 'error');
+        return;
+    }
+
+    // 기간 경과 조건 미충족 시 안내 팝업 표시 후 종료 (주간 4일 이상, 월간 10일 이상, 연간 4월 1일 이후)
+    const periodAllowance = getBestSharePeriodAllowance();
+    if (!periodAllowance.allowed) {
+        showBestSharePeriodNotice(periodAllowance.message || '해당 기간이 더 경과된 후에 베스트 공유가 가능해요.');
         return;
     }
     
@@ -672,8 +731,35 @@ export async function openShareBestModal() {
     const existingShare = await checkBestShareStatus(periodType, periodText);
     const isShared = !!existingShare;
     
-    // 1~3위만 필터링
-    const top3Meals = meals.filter(m => m && m.rating).slice(0, 3);
+    // 베스트 탭과 동일한 필터·정렬 적용 후 1~3위만 사용 (미리보기와 화면 목록 일치)
+    const periodKey = getBestPeriodKey();
+    const isMonthOrYearMode = state.dashboardMode === 'month' || state.dashboardMode === 'year' || state.dashboardMode === 'custom';
+    const filteredForShare = isMonthOrYearMode
+        ? meals.filter(m => m && m.rating && parseInt(m.rating) === 5)
+        : meals.filter(m => m && m.rating);
+    const savedOrder = (window.userSettings && window.userSettings.bestMeals ? window.userSettings.bestMeals[periodKey] : null) || [];
+    const sortedForShare = [...filteredForShare].sort((a, b) => {
+        const aRating = a.rating ? parseInt(a.rating) : 0;
+        const bRating = b.rating ? parseInt(b.rating) : 0;
+        const aIndex = savedOrder.indexOf(a.id);
+        const bIndex = savedOrder.indexOf(b.id);
+        const isWeekMode = state.dashboardMode === '7d' || state.dashboardMode === 'week';
+        if (isWeekMode) {
+            if (aRating !== bRating) return bRating - aRating;
+            if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+            if (aIndex !== -1) return -1;
+            if (bIndex !== -1) return 1;
+            if (a.date && b.date) return b.date.localeCompare(a.date);
+            return 0;
+        }
+        if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+        if (aIndex !== -1) return -1;
+        if (bIndex !== -1) return 1;
+        if (bRating !== aRating) return bRating - aRating;
+        if (a.date && b.date) return b.date.localeCompare(a.date);
+        return 0;
+    });
+    const top3Meals = sortedForShare.slice(0, 3);
     
     if (top3Meals.length === 0 && !isShared) {
         showToast('공유할 베스트 메뉴가 없습니다.', 'error');
@@ -807,6 +893,24 @@ export async function openShareBestModal() {
 // 베스트 공유 모달 닫기
 export function closeShareBestModal() {
     const modal = document.getElementById('bestShareModal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
+// 베스트 공유 기간 안내 팝업 표시 (토스트 대신 확인 버튼 팝업)
+export function showBestSharePeriodNotice(message) {
+    const modal = document.getElementById('bestSharePeriodNoticeModal');
+    const messageEl = document.getElementById('bestSharePeriodNoticeMessage');
+    if (modal && messageEl) {
+        messageEl.textContent = message || '해당 기간이 더 경과된 후에 베스트 공유가 가능해요.';
+        modal.classList.remove('hidden');
+    }
+}
+
+// 베스트 공유 기간 안내 팝업 닫기
+export function closeBestSharePeriodNotice() {
+    const modal = document.getElementById('bestSharePeriodNoticeModal');
     if (modal) {
         modal.classList.add('hidden');
     }
@@ -976,6 +1080,10 @@ export async function shareBestToFeed() {
         periodType = '월간';
         const [y, m] = state.selectedMonth.split('-').map(Number);
         periodText = `${y}년 ${m}월`;
+    } else if (state.dashboardMode === 'year') {
+        periodType = '연간';
+        const year = state.selectedYearForYear || new Date().getFullYear();
+        periodText = `${year}년`;
     }
     
     // 공유 상태 확인

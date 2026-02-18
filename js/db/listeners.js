@@ -1,7 +1,7 @@
 // Firestore 리스너 설정 (읽기 비용 절감: user/tags는 세션당 1회만, meals 기간 축소, sharedPhotos limit 축소)
 import { db, appId } from '../firebase.js';
 import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { DEFAULT_SUB_TAGS } from '../constants.js';
+import { DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from '../constants.js';
 import { dbOps } from './ops.js';
 
 /** 세션당 1회만 실행 (Firestore 읽기 절감) */
@@ -97,11 +97,11 @@ export function setupListeners(userId, callbacks) {
                         const userDocRef = doc(db, 'artifacts', appId, 'users', userId);
                         const userDocSnap = await getDoc(userDocRef);
                         if (!userDocSnap.exists()) {
+                            // 가입 완료(createdAt)는 프로필 설정 후에만 등록. main.js updateUserDocument/ensureUserRegistered에서 처리
                             await setDoc(userDocRef, {
-                                createdAt: new Date().toISOString(),
                                 lastLoginAt: new Date().toISOString()
                             }, { merge: true });
-                            console.log('✅ users/{userId} 문서 생성 완료:', userId);
+                            console.log('✅ users/{userId} 문서 생성 (가입일은 프로필 설정 후 등록):', userId);
                         }
                         userDocEnsureDoneForUid = userId;
                     } catch (e) {
@@ -374,10 +374,11 @@ export function setupListeners(userId, callbacks) {
                 if (onSettingsUpdate) onSettingsUpdate();
             }
         } else {
-            // snap.exists()=false: 캐시 미스일 수 있음. 약관 동의된 사용자가 모달이 잠깐 뜨는 현상 방지를 위해 서버에서 재확인.
+            // snap.exists()=false: 신규 사용자(설정 문서 없음) 또는 캐시 미스. 서버에서 먼저 확인해 한 번만 올바른 데이터로 onSettingsUpdate 호출.
             const settingsRef = doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings');
             try {
                 const serverSnap = await getDoc(settingsRef, { source: 'server' });
+                if (window.currentUser && userId !== window.currentUser.uid) return;
                 if (serverSnap.exists()) {
                     window.userSettings = serverSnap.data();
                     if (!window.userSettings.subTags) window.userSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
@@ -389,39 +390,10 @@ export function setupListeners(userId, callbacks) {
             } catch (e) {
                 console.warn('설정 서버 재확인 실패, 기본값 사용:', e);
             }
-            // 서버에도 없음: 기본값 사용 (providerId와 email 포함)
-            console.log('📥 설정이 없음. 기본값 로드 시작...');
-            import('../constants.js').then(async ({ DEFAULT_USER_SETTINGS }) => {
-                window.userSettings = JSON.parse(JSON.stringify(DEFAULT_USER_SETTINGS));
-                
-                // 기존 사용자인지 확인 (meals 데이터가 있으면 기존 사용자)
-                let isExistingUser = false;
-                try {
-                    const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
-                    const mealsSnapshot = await getDocs(query(mealsColl, limit(1)));
-                    isExistingUser = !mealsSnapshot.empty;
-                    console.log('기존 사용자 여부 확인:', { userId, isExistingUser, hasMeals: !mealsSnapshot.empty });
-                } catch (e) {
-                    console.warn('기존 사용자 확인 실패:', e);
-                }
-                
-                // 기존 사용자라면 약관 동의를 true로 설정
-                if (isExistingUser) {
-                    window.userSettings.termsAgreed = true;
-                    window.userSettings.termsAgreedAt = new Date().toISOString();
-                    console.log('✅ 기존 사용자로 확인되어 약관 동의 자동 설정');
-                }
-                
-                // 중요: providerId와 email은 약관 동의나 프로필 설정 시에만 설정됩니다.
-                // 설정 로드 시에는 설정하지 않습니다. (고정 항목이므로)
-                
-                console.log('✅ 기본 설정 로드 완료. onSettingsUpdate 호출');
-                if (onSettingsUpdate) onSettingsUpdate();
-            }).catch(e => {
-                console.error('기본 설정 로드 실패:', e);
-                // 에러 발생 시에도 콜백 호출 (빈 설정으로라도)
-                if (onSettingsUpdate) onSettingsUpdate();
-            });
+            if (window.currentUser && userId !== window.currentUser.uid) return;
+            window.userSettings = JSON.parse(JSON.stringify(DEFAULT_USER_SETTINGS));
+            console.log('📥 설정 문서 없음. 기본값으로 인증 플로우 진행.');
+            if (onSettingsUpdate) onSettingsUpdate();
         }
     }, async (error) => {
         console.error("Settings Listener Error:", error);
@@ -638,4 +610,26 @@ export function setupSharedPhotosListener(callback) {
     });
     
     return unsubscribe;
+}
+
+/** 특정 사용자의 공유 사진만 조회 (갤러리 사용자 필터 시 전체 목록 표시용, limit 50 회피) */
+export async function getSharedPhotosByUser(userId) {
+    if (!userId) return [];
+    const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+    const q = query(
+        sharedColl,
+        where('userId', '==', userId),
+        orderBy('timestamp', 'desc'),
+        limit(100)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => {
+        const data = d.data();
+        if (data.timestamp && data.timestamp.toDate) {
+            data.timestamp = data.timestamp.toDate().toISOString();
+        } else if (data.timestamp && typeof data.timestamp === 'object' && data.timestamp.seconds) {
+            data.timestamp = new Date(data.timestamp.seconds * 1000).toISOString();
+        }
+        return { id: d.id, ...data };
+    });
 }

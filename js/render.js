@@ -3,7 +3,7 @@ import { SLOTS, SLOT_STYLES, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS } fro
 import { appState } from './state.js';
 import { escapeHtml, renderFormattedContent, getPlainTextPreview } from './render/utils.js';
 import { normalizeUrl, getDisplayProfile } from './utils.js';
-import { getAdminDisplayName } from './db.js';
+import { getAdminDisplayName, getSharedPhotosByUser } from './db.js';
 
 // renderGallery 실행 중 플래그 및 이벤트 리스너 관리
 let isRenderingGallery = false;
@@ -53,10 +53,11 @@ export function renderEntryChips() {
         const el = document.getElementById(id);
         if (!el) return;
         let filteredList = list || [];
+        // 메인 태그가 선택된 경우, 해당 메인 태그 아래에서만 사용한 서브 태그만 표시 (parent가 없는 항목은 제외)
         if (parentFilter) {
             filteredList = filteredList.filter(item => {
                 const parent = typeof item === 'string' ? null : item.parent;
-                return !parent || parent === parentFilter;
+                return parent === parentFilter;
             });
         }
         
@@ -1174,10 +1175,12 @@ export async function renderGallery() {
     // 사용자 필터링 적용
     const filterUserId = appState.galleryFilterUserId;
     const galleryFilterTab = appState.galleryFilterTab || 'moment';
-    let photosToRender = window.sharedPhotos;
-    
+    let photosToRender;
     if (filterUserId) {
-        photosToRender = window.sharedPhotos.filter(photo => photo.userId === filterUserId);
+        // 특정 사용자 갤러리: 해당 사용자 공유만 전용 쿼리로 조회 (전체 50건 제한에 묻히지 않도록)
+        photosToRender = await getSharedPhotosByUser(filterUserId);
+    } else {
+        photosToRender = window.sharedPhotos || [];
     }
     
     // 사용자 프로필 뷰일 때 최상단 앱 헤더 숨김
@@ -1901,7 +1904,7 @@ export async function renderGallery() {
                         <div id="comment-input-${postId}" class="hidden mt-1 py-3 -mx-6 px-6">
                             <div class="relative">
                                 <input type="text" id="comment-text-${postId}" placeholder="댓글을 입력하세요..." class="w-full px-3 py-2 pr-16 border border-slate-300 rounded-lg text-sm focus:outline-none bg-slate-100" onkeypress="if(event.key === 'Enter') window.submitComment('${postId}')">
-                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold cursor-pointer hover:text-emerald-700" onclick="window.submitComment('${postId}')">게시</span>
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold cursor-pointer hover:text-emerald-700" ontouchstart="event.preventDefault(); window.submitComment('${postId}')" onclick="window.submitComment('${postId}')">게시</span>
                             </div>
                         </div>
                     </div>
@@ -2898,8 +2901,8 @@ export function renderTagManager(key, isSub = false, tempSettings) {
     let labelText = "";
     if (!isSub) {
         if (key === 'mealType') labelText = '어떻게 (대분류)';
-        else if (key === 'withWhom') labelText = '함께한 사람 (대분류)';
-        else if (key === 'category') labelText = '메뉴 정보 (대분류)';
+        else if (key === 'withWhom') labelText = '누구와 (대분류)';
+        else if (key === 'category') labelText = '무엇을 (대분류)';
         else if (key === 'snackType') labelText = '간식 구분 (대분류)';
     }
     
@@ -3290,12 +3293,14 @@ async function _renderBoardList(container, filteredPosts, likedPostIds, bookmark
                 const authorDisplay = getDisplayProfile(post.authorId, { nickname: post.authorNickname, icon: post.authorIcon, photoUrl: post.authorPhotoUrl });
                 
                 const hasImages = Array.isArray(post.imageUrls) && post.imageUrls.length > 0;
+                const isPendingPost = post.id && String(post.id).startsWith('pending-');
                 return `
-                    <div onclick="window.openBoardDetail('${post.id}')" class="board-list-card rounded-2xl pt-4 px-5 pb-1.5 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all mb-2">
+                    <div onclick="${isPendingPost ? '' : "window.openBoardDetail('" + post.id + "')"}" class="board-list-card rounded-2xl pt-4 px-5 pb-1.5 shadow-sm hover:shadow-md ${isPendingPost ? 'cursor-default' : 'cursor-pointer'} active:scale-[0.98] transition-all mb-2 ${isPendingPost ? 'ring-2 ring-amber-200 bg-amber-50/50' : ''}">
                         <div class="flex items-start gap-3 mb-1.5">
                             <div class="flex-1 min-w-0">
-                                <div class="flex items-center gap-2 mb-3 min-w-0">
+                                <div class="flex items-center gap-2 mb-3 min-w-0 flex-wrap">
                                     <span class="text-[10px] font-bold px-2.5 py-1 rounded-lg ${categoryColors[post.category] || categoryColors.serious} whitespace-nowrap shrink-0">${categoryLabels[post.category] || '무거운'}</span>
+                                    ${isPendingPost ? '<span class="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-amber-200 text-amber-800 whitespace-nowrap shrink-0"><i class="fa-solid fa-spinner fa-spin mr-1"></i>등록 중...</span>' : ''}
                                     ${shouldHideContent ? '<h3 class="text-base font-bold text-slate-400 line-clamp-2 flex-1 min-w-0 leading-tight">비공개 게시물</h3>' : `<h3 class="text-base font-bold text-slate-800 line-clamp-2 flex-1 min-w-0 leading-tight">${escapeHtml(post.title)}</h3>`}
                                     ${hasImages ? '<span class="text-slate-400 shrink-0" title="사진 포함"><i class="fa-solid fa-image text-sm"></i></span>' : ''}
                                 </div>
@@ -3442,10 +3447,10 @@ export async function renderBoardDetail(postId) {
                     </button>
                 </div>
                 
-                <!-- 사진 (본문 상단, 중앙 정렬, 좌우 여백 축소로 크게 표시) -->
+                <!-- 사진 (본문 상단, 좌우 폭 꽉 차게 표시, 전체 비율 유지·잘림 없음) -->
                 ${Array.isArray(post.imageUrls) && post.imageUrls.length > 0 ? `
-                <div class="flex flex-wrap justify-center items-center gap-2 mb-4 -mx-4 px-1">
-                    ${post.imageUrls.map(url => `<img src="${url}" alt="게시글 사진" class="max-w-full h-auto rounded-xl border border-slate-200 object-cover" style="max-height: 320px;" loading="lazy">`).join('')}
+                <div class="flex flex-col gap-2 mb-4 -mx-4 px-2">
+                    ${post.imageUrls.map(url => `<img src="${url}" alt="게시글 사진" class="w-full h-auto rounded-xl border border-slate-200 object-contain" loading="lazy">`).join('')}
                 </div>
                 ` : ''}
                 
@@ -3631,8 +3636,8 @@ export async function renderNoticeDetail(noticeId) {
                 </div>
                 
                 ${Array.isArray(notice.imageUrls) && notice.imageUrls.length > 0 ? `
-                <div class="flex flex-wrap justify-center items-center gap-2 mb-4 -mx-4 px-1">
-                    ${notice.imageUrls.map(url => `<img src="${url}" alt="공지 사진" class="max-w-full h-auto rounded-xl border border-slate-200 object-cover" style="max-height: 320px;" loading="lazy">`).join('')}
+                <div class="flex flex-col gap-2 mb-4 -mx-4 px-2">
+                    ${notice.imageUrls.map(url => `<img src="${url}" alt="공지 사진" class="w-full h-auto rounded-xl border border-slate-200 object-contain" loading="lazy">`).join('')}
                 </div>
                 ` : ''}
                 

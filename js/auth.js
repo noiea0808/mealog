@@ -90,7 +90,14 @@ export async function handleGoogleLogin() {
             hideLoading();
         } else if (error?.code !== 'auth/cancelled-popup-request' && error?.message !== 'User cancelled flow') {
             const msg = error?.message || error?.error?.message || String(error);
-            showToast("로그인 실패: " + (msg.length > 50 ? msg.slice(0, 50) + '…' : msg), "error");
+            const isReauth = /reauth|re-auth|sha|fingerprint|credential/i.test(msg);
+            const isStaging = isNativePlatform() && (window.Capacitor?.config?.appId === 'com.mealog.app.staging');
+            const toastMsg = isReauth
+                ? (isStaging
+                    ? '스테이징: 이 PC의 디버그 키 SHA-1을 Firebase Android 앱(스테이징)에 추가하세요. android 폴더에서 gradlew signingReport 실행 후 표시된 SHA-1을 Firebase 프로젝트 설정에 등록하세요.'
+                    : '구글 로그인 실패. Firebase에 해당 빌드(디버그/릴리즈)의 SHA-1이 등록돼 있는지 확인해 주세요.')
+                : "로그인 실패: " + (msg.length > 50 ? msg.slice(0, 50) + '…' : msg);
+            showToast(toastMsg, "error");
             hideLoading();
         } else {
             hideLoading();
@@ -299,6 +306,9 @@ export function confirmLogout() {
 
 export async function confirmLogoutAction() {
     document.getElementById('logoutConfirmModal').classList.add('hidden');
+    if (typeof window.clearNotificationReadStateCache === 'function') {
+        window.clearNotificationReadStateCache();
+    }
     // 명시적 로그아웃 플래그 설정 (페이지 리로드 후에도 유지)
     sessionStorage.setItem('explicitLogout', 'true');
     await signOut(auth);
@@ -373,6 +383,9 @@ export async function switchToLogin() {
         // Firestore 리스너가 살아있으면 signOut 시점에 permission-denied가 연쇄로 발생할 수 있으므로 선제 해제
         if (typeof window.cleanupFirestoreListeners === 'function') {
             window.cleanupFirestoreListeners();
+        }
+        if (typeof window.clearNotificationReadStateCache === 'function') {
+            window.clearNotificationReadStateCache();
         }
 
         // 설정 페이지 닫기
@@ -630,6 +643,12 @@ export function showProfileSetupModal() {
             btn.classList.remove('bg-emerald-600', 'text-white', 'border-emerald-600');
             btn.classList.add('bg-slate-50', 'text-slate-600', 'border-slate-200');
         });
+        const setupGenderHidden = document.getElementById('setupGender');
+        if (setupGenderHidden) setupGenderHidden.value = '';
+        document.querySelectorAll('.setup-gender-btn').forEach(btn => {
+            btn.classList.remove('bg-emerald-600', 'text-white');
+            btn.classList.add('bg-slate-50', 'text-slate-600');
+        });
     }
 }
 
@@ -638,6 +657,23 @@ export function closeProfileSetupModal() {
     const modal = document.getElementById('profileSetupModal');
     if (modal) {
         modal.classList.add('hidden');
+    }
+}
+
+/** 프로필 설정을 건너뛰고 게스트로 둘러보기 */
+export async function continueAsGuestFromProfileSetup() {
+    closeProfileSetupModal();
+    try {
+        sessionStorage.setItem('guestFromProfileSetup', 'true');
+        showLoading('게스트로 시작하는 중...');
+        await signOut(auth);
+        await signInAnonymously(auth);
+        showToast("게스트 모드로 둘러보기를 시작합니다.", "info");
+    } catch (e) {
+        sessionStorage.removeItem('guestFromProfileSetup');
+        console.error("게스트 전환 실패:", e);
+        showToast("게스트로 시작할 수 없습니다. 다시 시도해주세요.", "error");
+        hideLoading();
     }
 }
 
@@ -740,6 +776,7 @@ export async function confirmProfileSetup() {
 
     const birthdate = (document.getElementById('setupBirthdate')?.value || '').trim();
     const lifestyle = (document.getElementById('setupLifestyle')?.value || '').trim();
+    const gender = (document.getElementById('setupGender')?.value || '').trim() || null;
     
     if (!nickname) {
         showToast("닉네임을 입력해주세요.", "error");
@@ -778,6 +815,7 @@ export async function confirmProfileSetup() {
         window.userSettings.profile.nickname = nickname;
         window.userSettings.profile.birthdate = birthdate;
         window.userSettings.profile.lifestyle = lifestyle;
+        window.userSettings.profile.gender = (gender === 'male' || gender === 'female') ? gender : null;
         window.userSettings.profile.birthdateChangeCount = 0;
         window.userSettings.profile.birthdateChangedAt = null;
         // 초기 가입은 아이콘 설정 없이 텍스트(닉네임 첫 글자) 기본
@@ -822,6 +860,11 @@ export async function confirmProfileSetup() {
         
         const { dbOps } = await import('./db.js');
         await dbOps.saveSettings(window.userSettings);
+        
+        // 가입 완료(프로필 설정 후) 사용자 문서에 createdAt 등록
+        if (typeof window.ensureUserRegistered === 'function') {
+            await window.ensureUserRegistered();
+        }
         
         // 헤더 업데이트
         const { updateHeaderUI } = await import('./ui.js');

@@ -17,7 +17,7 @@ import {
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
     copyDomain, closeDomainModal, switchToLogin, showTermsModal, closeTermsModal, cancelTermsAgreement, confirmTermsAgreement,
-    showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup, setProfileType, handleSetupPhotoUpload,
+    showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup, continueAsGuestFromProfileSetup, setProfileType, handleSetupPhotoUpload,
     confirmDeleteAccount, cancelDeleteAccount, confirmDeleteAccountAction
 } from './auth.js';
 import { authFlowManager } from './auth-flow.js';
@@ -46,7 +46,7 @@ window.cleanupFirestoreListeners = () => {
     }
 };
 import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
-import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
+import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
@@ -241,6 +241,7 @@ window.openShareBestModal = openShareBestModal;
 window.Mealog.openShareBestModal = openShareBestModal;
 window.closeShareBestModal = closeShareBestModal;
 window.Mealog.closeShareBestModal = closeShareBestModal;
+window.closeBestSharePeriodNotice = closeBestSharePeriodNotice;
 window.shareBestToFeed = shareBestToFeed;
 window.Mealog.shareBestToFeed = shareBestToFeed;
 window.editBestShare = openEditBestShareModal;
@@ -1399,6 +1400,7 @@ window.switchMainTab = (tab) => {
         if (typeof window.updateGalleryTraceFilterBarUI === 'function') window.updateGalleryTraceFilterBarUI();
         const category = window.currentBoardCategory || 'all';
         renderBoard(category);
+        document.body.classList.remove('bottom-nav-scroll-hidden');
         setTimeout(() => {
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }, 100);
@@ -1475,6 +1477,7 @@ window.switchMainTab = (tab) => {
         // 설정 탭 전환 시 폼 채우기는 nav-settings 클릭 시 openSettings()에서 수행
     } else if (tab === 'gallery') {
         // 리스너가 업데이트될 시간을 주기 위해 약간의 지연 후 렌더링
+        document.body.classList.remove('bottom-nav-scroll-hidden');
         setTimeout(() => {
             renderGallery();
             // 사용자 프로필 + 밀톡 탭이면 하단 탭도 밀톡 선택 상태 유지
@@ -1670,9 +1673,15 @@ window.closeSearch = () => {
 
 const NOTIFICATION_LAST_OPENED_KEY = 'mealog_notification_last_opened';
 const NOTIFICATION_READ_POST_IDS_KEY = 'mealog_notification_read_post_ids';
+const NOTIFICATION_READ_FIRESTORE_DOC = 'notificationRead';
 
-/** 읽음 상태: { "type:postId": { lastCommentAt, commentCount } }. 같은 글에 새 댓글이 달리면 lastCommentAt이 커져서 다시 미확인으로 표시됨 */
-function getNotificationReadState() {
+/** 메모리 캐시( Firestore와 동기화 ). null이면 아직 로드 전 */
+let notificationReadStateCache = null;
+/** 캐시가 어떤 사용자 것인지 (사용자 전환 시 캐시 무효화) */
+let notificationReadStateCacheUid = null;
+
+/** localStorage 파싱만 (마이그레이션용). 반환: { "type:postId": { lastCommentAt, commentCount } } */
+function parseLocalNotificationReadState() {
     try {
         const raw = localStorage.getItem(NOTIFICATION_READ_POST_IDS_KEY);
         if (!raw) return {};
@@ -1687,8 +1696,71 @@ function getNotificationReadState() {
     } catch (_) { return {}; }
 }
 
-function setNotificationReadState(state) {
-    try { localStorage.setItem(NOTIFICATION_READ_POST_IDS_KEY, JSON.stringify(state)); } catch (_) {}
+/** Firestore에서 알림 읽음 상태 로드 후 캐시에 반영. 기존 localStorage 있으면 병합 후 Firestore에 저장하고 localStorage 삭제 */
+async function ensureNotificationReadStateLoaded() {
+    const user = window.currentUser;
+    if (user && !user.isAnonymous && notificationReadStateCacheUid !== user.uid) {
+        notificationReadStateCache = null;
+        notificationReadStateCacheUid = null;
+    }
+    if (notificationReadStateCache !== null) return;
+    if (!user || user.isAnonymous) {
+        notificationReadStateCache = {};
+        notificationReadStateCacheUid = null;
+        return;
+    }
+    try {
+        const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'config', NOTIFICATION_READ_FIRESTORE_DOC);
+        const snap = await getDoc(ref);
+        let state = {};
+        if (snap.exists() && snap.data().data) {
+            try {
+                state = typeof snap.data().data === 'string' ? JSON.parse(snap.data().data) : { ...snap.data().data };
+            } catch (_) {}
+        }
+        const local = parseLocalNotificationReadState();
+        if (Object.keys(local).length > 0) {
+            state = { ...state, ...local };
+            await setDoc(ref, { data: JSON.stringify(state) }, { merge: true });
+            try { localStorage.removeItem(NOTIFICATION_READ_POST_IDS_KEY); } catch (_) {}
+        }
+        if (Array.isArray(state)) {
+            const obj = {};
+            state.forEach(key => { obj[key] = { lastCommentAt: Infinity, commentCount: Infinity }; });
+            state = obj;
+        }
+        notificationReadStateCache = state && typeof state === 'object' ? state : {};
+        notificationReadStateCacheUid = user.uid;
+    } catch (e) {
+        console.warn('알림 읽음 상태 Firestore 로드 실패:', e);
+        notificationReadStateCache = parseLocalNotificationReadState();
+        notificationReadStateCacheUid = user.uid;
+    }
+}
+
+/** 로그아웃 등 사용자 전환 시 알림 읽음 캐시 초기화 (auth에서 호출) */
+window.clearNotificationReadStateCache = () => {
+    notificationReadStateCache = null;
+    notificationReadStateCacheUid = null;
+};
+
+/** 읽음 상태: { "type:postId": { lastCommentAt, commentCount } }. 캐시가 없으면 빈 객체(ensureNotificationReadStateLoaded 호출 후 사용) */
+function getNotificationReadState() {
+    if (notificationReadStateCache === null) return {};
+    return notificationReadStateCache;
+}
+
+/** 읽음 상태 저장: 메모리 캐시 + Firestore (필드명 제한으로 data는 JSON 문자열로 저장) */
+async function setNotificationReadState(state) {
+    notificationReadStateCache = state;
+    const user = window.currentUser;
+    if (!user || user.isAnonymous) return;
+    try {
+        const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'config', NOTIFICATION_READ_FIRESTORE_DOC);
+        await setDoc(ref, { data: JSON.stringify(state) }, { merge: true });
+    } catch (e) {
+        console.warn('알림 읽음 상태 Firestore 저장 실패:', e);
+    }
 }
 
 window.toggleNotificationPopup = () => {
@@ -1747,6 +1819,7 @@ window.loadNotificationList = async () => {
         return;
     }
     try {
+        await ensureNotificationReadStateLoaded();
         const [momentItems, boardItems] = await Promise.all([
             postInteractions.getPostsWithCommentsForUser(window.currentUser.uid),
             window.boardOperations && typeof window.boardOperations.getBoardPostsWithCommentsForUser === 'function'
@@ -1824,6 +1897,7 @@ window.updateNotificationDot = async () => {
         return;
     }
     try {
+        await ensureNotificationReadStateLoaded();
         const [momentItems, boardItems] = await Promise.all([
             postInteractions.getPostsWithCommentsForUser(window.currentUser.uid),
             window.boardOperations && typeof window.boardOperations.getBoardPostsWithCommentsForUser === 'function'
@@ -1983,35 +2057,31 @@ async function updateUserDocument(user) {
         };
         
         if (!userDocSnap.exists()) {
-            // 신규 사용자: createdAt, providerId, email 모두 설정
-            updateData.createdAt = serverTimestamp();
-            
-            // providerId와 email은 처음 한 번만 설정
+            // 신규 사용자: 가입 완료(createdAt)는 프로필 설정 후에만 등록
+            // providerId, email, lastLoginAt만 먼저 저장
             if (user.providerData && user.providerData.length > 0) {
                 updateData.providerId = user.providerData[0].providerId;
             }
             if (user.email) {
                 updateData.email = user.email;
             }
-            
-            console.log('✅ 신규 사용자 문서 생성:', { 
-                userId: user.uid,
-                providerId: updateData.providerId,
-                email: updateData.email
-            });
+            console.log('✅ 신규 사용자 문서 생성 (프로필 설정 후 가입 완료):', { userId: user.uid });
         } else {
-            // 기존 사용자: providerId와 email이 없을 때만 설정 (한 번만)
             const existingData = userDocSnap.data();
+            // 프로필 설정 완료 시점에 가입 완료(createdAt) 등록
+            if (!existingData.createdAt && window.userSettings?.profileCompleted === true) {
+                updateData.createdAt = serverTimestamp();
+                console.log('✅ 가입 완료(프로필 설정 후) 사용자 등록:', user.uid);
+            }
             if (!existingData.providerId && user.providerData && user.providerData.length > 0) {
                 updateData.providerId = user.providerData[0].providerId;
-                console.log('✅ providerId 초기 설정:', updateData.providerId);
             }
             if (!existingData.email && user.email) {
                 updateData.email = user.email;
-                console.log('✅ email 초기 설정:', updateData.email);
             }
-            
-            console.log('✅ 사용자 문서 업데이트 (마지막 로그인):', { userId: user.uid });
+            if (!existingData.createdAt && !updateData.createdAt) {
+                console.log('✅ 사용자 문서 업데이트 (마지막 로그인):', { userId: user.uid });
+            }
         }
         
         await setDoc(userDocRef, updateData, { merge: true });
@@ -2021,19 +2091,50 @@ async function updateUserDocument(user) {
     }
 }
 
+/** 프로필 설정 완료 시 가입 완료(createdAt) 등록. auth.js confirmProfileSetup에서 호출 */
+window.ensureUserRegistered = async function () {
+    const user = auth.currentUser;
+    if (!user || user.isAnonymous) return;
+    if (!window.userSettings?.profileCompleted) return;
+    try {
+        const userDocRef = doc(db, 'artifacts', appId, 'users', user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (!userDocSnap.exists()) return;
+        const data = userDocSnap.data();
+        if (data.createdAt) return;
+        await setDoc(userDocRef, { createdAt: serverTimestamp() }, { merge: true });
+        console.log('✅ 가입 완료(프로필 설정 후) 사용자 등록:', user.uid);
+    } catch (e) {
+        console.warn('ensureUserRegistered 실패:', e);
+    }
+};
+
 // 인증 상태 변경 리스너 - 단순화된 버전
 let lastProcessedUserId = null; // 마지막으로 처리한 사용자 ID
+let authCheckShowOptionsTimeout = null; // 로그인 옵션 표시 지연 타이머 (자동 로그인 시 타이틀만 보이도록)
+
+// 첫 화면에서 자동 로그인 확인 중임을 표시 (로그인 버튼을 누르기 전에 기다리도록)
+showLoading('로그인 상태 확인 중...');
 
 initAuth(async (user) => {
+    // 로그아웃 시 로그인 옵션 즉시 표시 여부 (명시적 로그아웃이면 true). 아래에서 제거하므로 먼저 저장
+    const wasExplicitLogout = sessionStorage.getItem('explicitLogout') === 'true';
+    
     // 1. 관리자 페이지가 열려있는지 확인 (현재 탭이 관리자 페이지인 경우)
     if (window.location.pathname.includes('admin.html') || window.location.href.includes('admin.html')) {
         console.log('⚠️ 관리자 페이지에서 인증 상태 변경 무시');
         return;
     }
     
+    // 1.5. 프로필 설정에서 "게스트로 둘러보기" 선택 시: user=null이면 아무것도 하지 않고 익명 로그인 콜백 대기
+    if (!user && sessionStorage.getItem('guestFromProfileSetup') === 'true') {
+        return;
+    }
+    
     // 2. 갑작스러운 게스트 전환 방지: 이전에 로그인된 사용자가 있었는데 갑자기 게스트로 전환되는 경우
-    // 하지만 Firestore 규칙은 request.auth를 확인하므로, 실제 인증 상태를 확인해야 함
-    if ((!user || user.isAnonymous) && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
+    // 단, 프로필 설정에서 "게스트로 둘러보기"를 선택한 경우는 허용 (메인 화면으로 이동)
+    const isGuestFromProfileSetup = sessionStorage.getItem('guestFromProfileSetup') === 'true';
+    if (!isGuestFromProfileSetup && (!user || user.isAnonymous) && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
         // 실제 auth.currentUser를 확인하여 관리자 페이지 영향인지 확인
         const actualCurrentUser = auth.currentUser;
         
@@ -2056,9 +2157,9 @@ initAuth(async (user) => {
     }
     
     // 3. 로그아웃 시에도 이전 사용자가 있었으면 무시 (관리자 페이지 영향 가능)
-    // 단, 명시적 로그아웃인 경우는 허용 (sessionStorage에서 확인)
+    // 단, 명시적 로그아웃(또는 게스트로 둘러보기)인 경우는 허용
     const isExplicitLogout = sessionStorage.getItem('explicitLogout') === 'true';
-    if (!user && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous && !isExplicitLogout) {
+    if (!user && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous && !isExplicitLogout && !isGuestFromProfileSetup) {
         // 실제 auth.currentUser를 확인
         const actualCurrentUser = auth.currentUser;
         
@@ -2080,6 +2181,11 @@ initAuth(async (user) => {
     }
     
     if (user) {
+        // 자동 로그인으로 전환될 때 로그인 옵션 표시 타이머 취소 (타이틀만 보다가 메인으로 이동)
+        if (authCheckShowOptionsTimeout) {
+            clearTimeout(authCheckShowOptionsTimeout);
+            authCheckShowOptionsTimeout = null;
+        }
         // 사용자 변경 감지: 다른 사용자로 로그인한 경우 이전 리스너 완전히 해제
         if (lastProcessedUserId && lastProcessedUserId !== user.uid) {
             console.log('⚠️ 사용자 변경 감지:', { 
@@ -2338,6 +2444,7 @@ initAuth(async (user) => {
         // Phase 1-1: 인증 플로우를 한 곳에서만 호출 (단일 진입점)
         // 게스트는 즉시 처리, 일반 사용자는 onSettingsUpdate에서 처리
         if (user.isAnonymous) {
+            sessionStorage.removeItem('guestFromProfileSetup');
             // 게스트는 설정 없이 즉시 처리
             authFlowManager.handleAuthState(user).catch(e => {
                 console.error('❌ 게스트 인증 플로우 처리 실패:', e);
@@ -2352,6 +2459,9 @@ initAuth(async (user) => {
                     console.error('❌ 인증 플로우 처리 실패:', e);
                     hideLoading();
                 });
+            } else {
+                // 설정 대기 중 (게스트→이메일 로그인 등): 로딩 표시해 타임아웃처럼 보이지 않게
+                showLoading('로그인 처리 중...', { dimBackground: false });
             }
             // 설정이 없으면 onSettingsUpdate 콜백에서 처리됨
         }
@@ -2378,8 +2488,24 @@ initAuth(async (user) => {
             return;
         }
         
-        // 로그아웃 처리 전에 lastProcessedUserId 초기화
+        // 로그아웃 처리: 다음 로그인에서 인증 플로우가 새로 돌 수 있도록 초기화
         lastProcessedUserId = null;
+        authFlowManager.hasCompleted = false;
+        authFlowManager.lastProcessedUserId = null;
+        window.userSettings = null;
+        
+        // 명시적 로그아웃이면 즉시 로그인 옵션 표시, 아니면 짧은 대기 후 표시 (자동 로그인 시 타이틀만 노출)
+        const showOptionsNow = wasExplicitLogout;
+        if (showOptionsNow) {
+            document.getElementById('landingLoginOptions')?.classList.remove('hidden');
+        } else {
+            authCheckShowOptionsTimeout = setTimeout(() => {
+                if (auth.currentUser === null) {
+                    document.getElementById('landingLoginOptions')?.classList.remove('hidden');
+                }
+                authCheckShowOptionsTimeout = null;
+            }, 400);
+        }
         
         switchScreen(false);
         if (appState.settingsUnsubscribe) {
@@ -2402,8 +2528,8 @@ initAuth(async (user) => {
     }
 });
 
-// 스크롤 방향에 따른 헤더 숨김·표시 (인스타/페이스북 스타일)
-// 헤더가 사라질 때까지 트래커는 스크롤되다가, 헤더 숨김 후에는 트래커가 상단에 고정
+// 스크롤 방향에 따른 헤더·하단 네비 숨김·표시 (트위터/인스타 스타일)
+// 아래로 스크롤 시 헤더·하단 네비 숨김, 위로 스크롤 시 다시 표시
 let _lastScrollY = 0;
 let _headerScrollRaf = null;
 window.addEventListener('scroll', () => {
@@ -2416,12 +2542,19 @@ window.addEventListener('scroll', () => {
     if (_headerScrollRaf) cancelAnimationFrame(_headerScrollRaf);
     _headerScrollRaf = requestAnimationFrame(() => {
         const delta = y - _lastScrollY;
-        if (delta > 8) {
+        const scrollThreshold = 8;
+        const topThreshold = 24;
+        const isScrollingDown = delta > scrollThreshold;
+        const isScrollingUp = delta < -scrollThreshold;
+        const atTop = y <= topThreshold;
+        if (isScrollingDown && !atTop) {
             header.classList.add('header-scroll-hidden');
             tracker.classList.add('tracker-header-hidden');
-        } else if (delta < -8) {
+            document.body.classList.add('bottom-nav-scroll-hidden');
+        } else if (isScrollingUp || atTop) {
             header.classList.remove('header-scroll-hidden');
             tracker.classList.remove('tracker-header-hidden');
+            document.body.classList.remove('bottom-nav-scroll-hidden');
         }
         _lastScrollY = y;
         _headerScrollRaf = null;
@@ -2903,7 +3036,7 @@ window.openBoardWrite = () => {
     // 제목 및 버튼 초기화
     const titleEl = document.querySelector('#boardWriteView h2');
     if (titleEl) titleEl.textContent = '글쓰기';
-    const submitBtn = boardWriteView?.querySelector('button[onclick="window.submitBoardPost()"]');
+    const submitBtn = boardWriteView?.querySelector('#boardWriteSubmitBtn');
     if (submitBtn) submitBtn.textContent = '등록';
     
     // 스크롤 맨 위로
@@ -2929,7 +3062,7 @@ window.backToBoardList = (optimisticPost = null, options = null) => {
     // 작성 뷰 제목 및 버튼 초기화
     const titleEl = document.querySelector('#boardWriteView h2');
     if (titleEl) titleEl.textContent = '글쓰기';
-    const submitBtn = boardWriteView?.querySelector('button[onclick="window.submitBoardPost()"]');
+    const submitBtn = boardWriteView?.querySelector('#boardWriteSubmitBtn');
     if (submitBtn) submitBtn.textContent = '등록';
     
     const category = window.currentBoardCategory || 'all';
@@ -3016,14 +3149,14 @@ window.submitBoardPost = async () => {
         showToast("로그인이 필요합니다.", 'error');
         return;
     }
-    
-    const title = document.getElementById('boardWriteTitle').value.trim();
+    // 키보드가 열린 상태에서도 한 번에 등록되도록: 값 읽기를 blur보다 먼저 수행
+    const titleEl = document.getElementById('boardWriteTitle');
     const boardWriteContentEl = document.getElementById('boardWriteContent');
+    const title = (titleEl && titleEl.value) ? titleEl.value.trim() : '';
     const rawContent = boardWriteContentEl ? boardWriteContentEl.innerHTML : '';
     let content = sanitizeFormattedText(rawContent).trim();
-    const category = document.getElementById('boardWriteCategory').value;
-    
-    // sanitize 결과가 비었으나 rawContent에 내용이 있으면 위험 태그만 제거하여 서식 보존
+    const categoryEl = document.getElementById('boardWriteCategory');
+    const category = categoryEl ? categoryEl.value : '';
     if (!content && rawContent.trim()) {
         content = stripDangerousTagsOnly(rawContent).trim();
     }
@@ -3031,7 +3164,6 @@ window.submitBoardPost = async () => {
         const plainText = (boardWriteContentEl.innerText || '').trim();
         if (plainText) content = plainText.replace(/\n/g, '<br>');
     }
-    
     if (!title) {
         showToast("제목을 입력해주세요.", 'error');
         return;
@@ -3040,8 +3172,22 @@ window.submitBoardPost = async () => {
         showToast("내용을 입력해주세요.", 'error');
         return;
     }
+    document.activeElement?.blur?.();
     
     const listCategory = window.currentBoardCategory || 'all';
+    const boardWriteView = document.getElementById('boardWriteView');
+    const submitBtn = boardWriteView?.querySelector('#boardWriteSubmitBtn');
+    const isEdit = !!window.currentEditingPostId;
+    const restoreSubmitBtn = () => {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = isEdit ? '수정' : '등록';
+        }
+    };
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '등록 중...';
+    }
     
     if (window.currentEditingPostId) {
         const postId = window.currentEditingPostId;
@@ -3058,35 +3204,30 @@ window.submitBoardPost = async () => {
             } catch (e) {
                 console.error("[submitBoardPost] 사진 업로드 에러:", e);
                 showToast(e?.message || "사진 업로드에 실패했습니다.", 'error');
+                restoreSubmitBtn();
                 return;
             }
         }
         boardOperations.updatePost(postId, { title, content, category, imageUrls: finalImageUrls })
-            .then(() => renderBoard(listCategory))
+            .then(() => {
+                renderBoard(listCategory);
+                restoreSubmitBtn();
+            })
             .catch((e) => {
                 console.error("[submitBoardPost] 수정 에러:", e);
+                restoreSubmitBtn();
             });
         return;
     }
     
     const newFiles = window.boardWriteFiles || [];
-    let imageUrls = [];
-    if (newFiles.length > 0) {
-        try {
-            showToast('사진 업로드 중...', 'info');
-            imageUrls = await uploadBoardImages(newFiles, window.currentUser.uid);
-        } catch (e) {
-            console.error("[submitBoardPost] 사진 업로드 에러:", e);
-            showToast(e?.message || "사진 업로드에 실패했습니다.", 'error');
-            return;
-        }
-    }
+    // 낙관적 UI: 먼저 목록에 새 글 표시한 뒤, 이미지 업로드·등록은 백그라운드에서 처리 (체감 속도 개선)
     const optimisticPost = {
         id: 'pending-' + Date.now(),
         title,
         content,
         category: category || 'serious',
-        imageUrls: imageUrls.length ? imageUrls : undefined,
+        imageUrls: [], // 업로드 완료 후 서버에서 받은 글로 갱신됨
         authorId: window.currentUser.uid,
         authorNickname: window.userSettings?.profile?.nickname || '익명',
         authorPhotoUrl: window.userSettings?.profile?.photoUrl || null,
@@ -3098,13 +3239,28 @@ window.submitBoardPost = async () => {
         timestamp: new Date().toISOString()
     };
     window.backToBoardList(optimisticPost);
-    boardOperations.createPost({ title, content, category, imageUrls })
-        .then((result) => {
+    (async () => {
+        let imageUrls = [];
+        if (newFiles.length > 0) {
+            try {
+                imageUrls = await uploadBoardImages(newFiles, window.currentUser.uid);
+            } catch (e) {
+                console.error("[submitBoardPost] 사진 업로드 에러:", e);
+                showToast(e?.message || "사진 업로드에 실패했습니다.", 'error');
+                renderBoard(listCategory);
+                restoreSubmitBtn();
+                return;
+            }
+        }
+        try {
+            const result = await boardOperations.createPost({ title, content, category, imageUrls });
             if (result?.id) renderBoard(listCategory);
-        })
-        .catch(() => {
+        } catch (e) {
             renderBoard(listCategory);
-        });
+        } finally {
+            restoreSubmitBtn();
+        }
+    })();
 };
 
 window.openBoardDetail = async (postId) => {
@@ -3404,7 +3560,7 @@ window.editBoardPost = async (postId) => {
         if (titleEl) titleEl.textContent = '글 수정';
         
         // 등록 버튼 텍스트 변경
-        const submitBtn = boardWriteView.querySelector('button[onclick="window.submitBoardPost()"]');
+        const submitBtn = boardWriteView.querySelector('#boardWriteSubmitBtn');
         if (submitBtn) submitBtn.textContent = '수정';
         
         setTimeout(() => {
@@ -3783,6 +3939,10 @@ function initEventListeners() {
     if (profileSetupBtn) {
         profileSetupBtn.addEventListener('click', confirmProfileSetup);
     }
+    const profileSetupGuestBtn = document.getElementById('profileSetupGuestBtn');
+    if (profileSetupGuestBtn) {
+        profileSetupGuestBtn.addEventListener('click', continueAsGuestFromProfileSetup);
+    }
 
     // 초기 가입: 라이프스타일 버튼
     document.querySelectorAll('.setup-lifestyle-btn').forEach(btn => {
@@ -3798,6 +3958,22 @@ function initEventListeners() {
                 b.classList.toggle('bg-slate-50', !active);
                 b.classList.toggle('text-slate-600', !active);
                 b.classList.toggle('border-slate-200', !active);
+            });
+        });
+    });
+
+    // 초기 가입: 성별 스위치 (남/여)
+    document.querySelectorAll('.setup-gender-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const v = btn.getAttribute('data-value') || '';
+            const hidden = document.getElementById('setupGender');
+            if (hidden) hidden.value = v;
+            document.querySelectorAll('.setup-gender-btn').forEach(b => {
+                const active = b === btn;
+                b.classList.toggle('bg-emerald-600', active);
+                b.classList.toggle('text-white', active);
+                b.classList.toggle('bg-slate-50', !active);
+                b.classList.toggle('text-slate-600', !active);
             });
         });
     });
@@ -3851,6 +4027,44 @@ function initEventListeners() {
     
     // 모먼트/밀톡: 키보드 열림 시 하단 네비 숨김 + 키보드 상단 네비바 영역 제거
     initMainAppKeyboardHandling();
+
+    // 기록 완료·등록 버튼: 키보드 열린 상태에서 한 번에 실행되도록 touchstart/mousedown에서 먼저 실행
+    (function initSubmitButtonFirstTap() {
+        const SUBMIT_DEBOUNCE_MS = 500;
+        let lastRun = 0;
+        const runOnce = (fn) => {
+            const now = Date.now();
+            if (now - lastRun < SUBMIT_DEBOUNCE_MS) return;
+            lastRun = now;
+            fn();
+        };
+        const btnSave = document.getElementById('btnSave');
+        if (btnSave) {
+            btnSave.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                runOnce(() => window.saveEntry());
+            }, { passive: false });
+            btnSave.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                runOnce(() => window.saveEntry());
+            });
+        }
+        const boardSubmitBtn = document.getElementById('boardWriteSubmitBtn') || document.querySelector('#boardWriteView button[id="boardWriteSubmitBtn"]');
+        if (boardSubmitBtn) {
+            boardSubmitBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                runOnce(() => window.submitBoardPost());
+            }, { passive: false });
+            boardSubmitBtn.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                runOnce(() => window.submitBoardPost());
+            });
+            boardSubmitBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                runOnce(() => window.submitBoardPost());
+            });
+        }
+    })();
 
     // 하단 네비게이션
     const navDashboard = document.getElementById('nav-dashboard');
@@ -3955,6 +4169,25 @@ function initEventListeners() {
                 b.classList.toggle('bg-white', !active);
                 b.classList.toggle('text-slate-600', !active);
                 b.classList.toggle('border-slate-200', !active);
+            });
+        });
+    });
+    // 설정: 성별 스위치 (남/여, 우측 끝)
+    document.querySelectorAll('.setting-gender-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (!appState.isProfileEditing) {
+                showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+                return;
+            }
+            const v = btn.getAttribute('data-value') || '';
+            const hidden = document.getElementById('settingGender');
+            if (hidden) hidden.value = v;
+            document.querySelectorAll('.setting-gender-btn').forEach(b => {
+                const active = b === btn;
+                b.classList.toggle('bg-emerald-600', active);
+                b.classList.toggle('text-white', active);
+                b.classList.toggle('bg-slate-50', !active);
+                b.classList.toggle('text-slate-600', !active);
             });
         });
     });

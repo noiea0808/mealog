@@ -8,7 +8,7 @@ const ONBOARDING_SLIDES = [
     {
         icon: '📝',
         title: '식사 기록하기',
-        description: '매일 먹은 식사와 간식을 기록해보세요.\n사진, 메뉴, 장소, 함께한 사람 등을 기록할 수 있어요.'
+        description: '매일 먹은 식사와 간식을 기록해보세요.\n사진, 메뉴, 장소, 누구와 등을 기록할 수 있어요.'
     },
     {
         icon: '📊',

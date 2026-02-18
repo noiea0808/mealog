@@ -6,4 +6,3 @@ export const GEMINI_API_KEY = 'YOUR_GEMINI_API_KEY_HERE';
 
 // 네이티브 구글 로그인용 (Firebase Console > Authentication > Sign-in method > Google > Web SDK configuration > Web client ID)
 export const GOOGLE_WEB_CLIENT_ID = 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com';
-

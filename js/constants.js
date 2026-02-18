@@ -1,4 +1,7 @@
 // 상수 정의
+/** 스마트폰 앱 아이콘(assets/icon-only.png) - 밀당 참견 등에서 MEALOG 캐릭터 아이콘으로 사용 */
+export const MEALOG_ICON_URL = 'assets/icon-only.png';
+
 export const DEFAULT_ICONS = ['🐻', '🐰', '🐱', '🐶', '🦊', '🦁', '🐼', '🐨'];
 
 export const SLOTS = [
@@ -21,15 +24,15 @@ export const SLOT_STYLES = {
 export const VIBRANT_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'];
 /** 분석 탭 누적 막대(식사방식/메뉴/함께한 즐거움) 좌→우 빈도순 그라데이션: 빨강→주황(1개)→호박→녹색→청록→남색 */
 export const CUMULATIVE_BAR_GRADIENT = ['#F06292', '#FF9800', '#FFC107', '#9CCC65', '#66BB6A', '#26C6DA', '#5C6BC0'];
-/** 만족도·포만감 5단계용: 1→5 순서로 남색→청록→녹색→호박→핑크 (배고픔/1점=남색, 과식/5점=핑크) */
+/** 만족도·포만감 5단계용: 1→5 순서로 남색→청록→녹색→호박→핑크 (한입만/1점=남색, 과식/5점=핑크) */
 export const RATING_SATIETY_GRADIENT = ['#5C6BC0', '#26C6DA', '#66BB6A', '#FFC107', '#F06292'];
 export const RATING_GRADIENT = RATING_SATIETY_GRADIENT;
 
 export const SATIETY_DATA = [
-    { val: 1, icon: 'fa-face-dizzy', label: '배고픔', color: 'text-slate-400', chartColor: '#5C6BC0' },
-    { val: 2, icon: 'fa-face-frown-open', label: '약간 허기', color: 'text-blue-400', chartColor: '#26C6DA' },
-    { val: 3, icon: 'fa-face-smile', label: '적당함', color: 'text-emerald-500', chartColor: '#66BB6A' },
-    { val: 4, icon: 'fa-face-grin', label: '배부름', color: 'text-orange-400', chartColor: '#FFC107' },
+    { val: 1, icon: 'fa-cookie-bite', label: '한입만', color: 'text-slate-400', chartColor: '#5C6BC0' },
+    { val: 2, icon: 'fa-face-smile-wink', label: '가볍게', color: 'text-blue-400', chartColor: '#26C6DA' },
+    { val: 3, icon: 'fa-face-smile', label: '적당히', color: 'text-emerald-500', chartColor: '#66BB6A' },
+    { val: 4, icon: 'fa-face-grin', label: '든든하게', color: 'text-orange-400', chartColor: '#FFC107' },
     { val: 5, icon: 'fa-face-grin-beam-sweat', label: '과식', color: 'text-red-400', chartColor: '#F06292' }
 ];
 
@@ -47,6 +50,8 @@ export const DEFAULT_USER_SETTINGS = {
         // 신규 가입 시 필수 입력
         birthdate: '',
         lifestyle: '',
+        /** 성별: 'male' | 'female' | null (선택 입력, 기가입자 강제 아님) */
+        gender: null,
         // 생년월일 변경 제한 (가입 후 1회만 변경 가능)
         birthdateChangeCount: 0,
         birthdateChangedAt: null

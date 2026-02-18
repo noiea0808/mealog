@@ -1,5 +1,5 @@
 // 모달 및 입력 처리 관련 함수들
-import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS } from './constants.js';
+import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from './constants.js';
 import { appState } from './state.js';
 import { setVal, compressImage, getInputIdFromContainer, normalizeUrl } from './utils.js';
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from './render/index.js';
@@ -1349,11 +1349,11 @@ export function openSettings() {
     const state = appState;
     if (!window.currentUser) return;
     
-    // 편집 취소를 위한 스냅샷 보관
-    state._profileSettingsSnapshot = JSON.parse(JSON.stringify(window.userSettings || {}));
+    // 게스트(익명)는 userSettings가 없을 수 있음 → 기본값 사용해 설정 모달은 열고, 로그인하기 노출
+    const sourceSettings = window.userSettings || DEFAULT_USER_SETTINGS;
+    state._profileSettingsSnapshot = JSON.parse(JSON.stringify(sourceSettings));
     state.isProfileEditing = false;
-
-    state.tempSettings = JSON.parse(JSON.stringify(window.userSettings));
+    state.tempSettings = JSON.parse(JSON.stringify(sourceSettings));
     
     // 프로필 타입 초기화 (text | photo)
     const inferredType = state.tempSettings?.profile?.photoUrl ? 'photo' : 'text';
@@ -1365,7 +1365,7 @@ export function openSettings() {
     // 사진 미리보기 설정
     const photoPreview = document.getElementById('photoPreview');
     const photoDeleteBtn = document.getElementById('photoDeleteBtn');
-    if (photoPreview && state.tempSettings.profile.photoUrl) {
+    if (photoPreview && state.tempSettings?.profile?.photoUrl) {
         photoPreview.style.backgroundImage = `url(${state.tempSettings.profile.photoUrl})`;
         photoPreview.style.backgroundSize = 'cover';
         photoPreview.style.backgroundPosition = 'center';
@@ -1414,6 +1414,18 @@ export function openSettings() {
         btn.classList.toggle('bg-white', !active);
         btn.classList.toggle('text-slate-600', !active);
         btn.classList.toggle('border-slate-200', !active);
+    });
+    // 성별 선택 상태 복원
+    const selectedGender = (state.tempSettings?.profile?.gender || '').trim();
+    const settingGenderEl = document.getElementById('settingGender');
+    if (settingGenderEl) settingGenderEl.value = selectedGender;
+    document.querySelectorAll('.setting-gender-btn').forEach(btn => {
+        const v = btn.getAttribute('data-value') || '';
+        const active = v === selectedGender;
+        btn.classList.toggle('bg-emerald-600', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('bg-slate-50', !active);
+        btn.classList.toggle('text-slate-600', !active);
     });
 
     // 생년월일 힌트 업데이트 (이미 1회 수정했으면 안내)
@@ -1519,16 +1531,15 @@ export function openSettings() {
         // 게스트 모드일 때 태그 관리 및 밀당 메모 탭 숨기기
         if (tagsTab) tagsTab.classList.add('hidden');
         if (shortcutsTab) shortcutsTab.classList.add('hidden');
-        // 게스트 모드일 때 프로필 설정 섹션 숨기기
+        // 게스트 모드일 때 프로필 설정 폼만 숨기기 (계정/로그인하기는 프로필 탭에 표시)
         if (profileSettingsSection) profileSettingsSection.classList.add('hidden');
+        switchSettingsTab('profile'); // 프로필 탭으로 이동해 '로그인하기' 노출
     } else {
         // 일반 사용자일 때 모든 탭 표시
         if (tagsTab) tagsTab.classList.remove('hidden');
         if (shortcutsTab) shortcutsTab.classList.remove('hidden');
         if (profileSettingsSection) profileSettingsSection.classList.remove('hidden');
-        // 기본 탭을 프로필로 설정
         switchSettingsTab('profile');
-        // 최초 진입은 '보기' 모드로 (수정 버튼을 눌러야 편집 가능)
         setProfileSettingsEditMode(false);
     }
         
@@ -1946,6 +1957,8 @@ export async function saveProfileSettings() {
         // 생년월일 / 라이프스타일 (선택사항)
         const newBirthdate = (document.getElementById('settingBirthdate')?.value || '').trim();
         const newLifestyle = (document.getElementById('settingLifestyle')?.value || '').trim();
+        const newGenderRaw = (document.getElementById('settingGender')?.value || '').trim();
+        const newGender = (newGenderRaw === 'male' || newGenderRaw === 'female') ? newGenderRaw : null;
 
         const newNickname = (document.getElementById('settingNickname')?.value || '').trim();
         const existingNickname = (window.userSettings?.profile?.nickname || '').trim();
@@ -2010,6 +2023,8 @@ export async function saveProfileSettings() {
         
         // 라이프스타일: 값이 입력된 경우에만 저장, 없으면 기존 값 유지
         state.tempSettings.profile.lifestyle = newLifestyle || existingLifestyle || '';
+        // 성별: 선택 입력, 기가입자 강제 아님
+        state.tempSettings.profile.gender = newGender;
         
         // 프로필 완료 플래그: 닉네임이 실제 값이면 완료로 처리
         const finalNickname = (state.tempSettings.profile.nickname || '').trim();
