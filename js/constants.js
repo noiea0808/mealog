@@ -1,4 +1,7 @@
 // 상수 정의
+/** 스마트폰 앱 아이콘(assets/icon-only.png) - 밀당 참견 등에서 MEALOG 캐릭터 아이콘으로 사용 */
+export const MEALOG_ICON_URL = 'assets/icon-only.png';
+
 export const DEFAULT_ICONS = ['🐻', '🐰', '🐱', '🐶', '🦊', '🦁', '🐼', '🐨'];
 
 export const SLOTS = [

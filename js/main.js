@@ -1400,6 +1400,7 @@ window.switchMainTab = (tab) => {
         if (typeof window.updateGalleryTraceFilterBarUI === 'function') window.updateGalleryTraceFilterBarUI();
         const category = window.currentBoardCategory || 'all';
         renderBoard(category);
+        document.body.classList.remove('bottom-nav-scroll-hidden');
         setTimeout(() => {
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }, 100);
@@ -1476,6 +1477,7 @@ window.switchMainTab = (tab) => {
         // 설정 탭 전환 시 폼 채우기는 nav-settings 클릭 시 openSettings()에서 수행
     } else if (tab === 'gallery') {
         // 리스너가 업데이트될 시간을 주기 위해 약간의 지연 후 렌더링
+        document.body.classList.remove('bottom-nav-scroll-hidden');
         setTimeout(() => {
             renderGallery();
             // 사용자 프로필 + 밀톡 탭이면 하단 탭도 밀톡 선택 상태 유지
@@ -2095,11 +2097,15 @@ async function updateUserDocument(user) {
 
 // 인증 상태 변경 리스너 - 단순화된 버전
 let lastProcessedUserId = null; // 마지막으로 처리한 사용자 ID
+let authCheckShowOptionsTimeout = null; // 로그인 옵션 표시 지연 타이머 (자동 로그인 시 타이틀만 보이도록)
 
 // 첫 화면에서 자동 로그인 확인 중임을 표시 (로그인 버튼을 누르기 전에 기다리도록)
 showLoading('로그인 상태 확인 중...');
 
 initAuth(async (user) => {
+    // 로그아웃 시 로그인 옵션 즉시 표시 여부 (명시적 로그아웃이면 true). 아래에서 제거하므로 먼저 저장
+    const wasExplicitLogout = sessionStorage.getItem('explicitLogout') === 'true';
+    
     // 1. 관리자 페이지가 열려있는지 확인 (현재 탭이 관리자 페이지인 경우)
     if (window.location.pathname.includes('admin.html') || window.location.href.includes('admin.html')) {
         console.log('⚠️ 관리자 페이지에서 인증 상태 변경 무시');
@@ -2155,6 +2161,11 @@ initAuth(async (user) => {
     }
     
     if (user) {
+        // 자동 로그인으로 전환될 때 로그인 옵션 표시 타이머 취소 (타이틀만 보다가 메인으로 이동)
+        if (authCheckShowOptionsTimeout) {
+            clearTimeout(authCheckShowOptionsTimeout);
+            authCheckShowOptionsTimeout = null;
+        }
         // 사용자 변경 감지: 다른 사용자로 로그인한 경우 이전 리스너 완전히 해제
         if (lastProcessedUserId && lastProcessedUserId !== user.uid) {
             console.log('⚠️ 사용자 변경 감지:', { 
@@ -2456,6 +2467,19 @@ initAuth(async (user) => {
         // 로그아웃 처리 전에 lastProcessedUserId 초기화
         lastProcessedUserId = null;
         
+        // 명시적 로그아웃이면 즉시 로그인 옵션 표시, 아니면 짧은 대기 후 표시 (자동 로그인 시 타이틀만 노출)
+        const showOptionsNow = wasExplicitLogout;
+        if (showOptionsNow) {
+            document.getElementById('landingLoginOptions')?.classList.remove('hidden');
+        } else {
+            authCheckShowOptionsTimeout = setTimeout(() => {
+                if (auth.currentUser === null) {
+                    document.getElementById('landingLoginOptions')?.classList.remove('hidden');
+                }
+                authCheckShowOptionsTimeout = null;
+            }, 400);
+        }
+        
         switchScreen(false);
         if (appState.settingsUnsubscribe) {
             appState.settingsUnsubscribe();
@@ -2477,8 +2501,8 @@ initAuth(async (user) => {
     }
 });
 
-// 스크롤 방향에 따른 헤더 숨김·표시 (인스타/페이스북 스타일)
-// 헤더가 사라질 때까지 트래커는 스크롤되다가, 헤더 숨김 후에는 트래커가 상단에 고정
+// 스크롤 방향에 따른 헤더·하단 네비 숨김·표시 (트위터/인스타 스타일)
+// 아래로 스크롤 시 헤더·하단 네비 숨김, 위로 스크롤 시 다시 표시
 let _lastScrollY = 0;
 let _headerScrollRaf = null;
 window.addEventListener('scroll', () => {
@@ -2491,12 +2515,19 @@ window.addEventListener('scroll', () => {
     if (_headerScrollRaf) cancelAnimationFrame(_headerScrollRaf);
     _headerScrollRaf = requestAnimationFrame(() => {
         const delta = y - _lastScrollY;
-        if (delta > 8) {
+        const scrollThreshold = 8;
+        const topThreshold = 24;
+        const isScrollingDown = delta > scrollThreshold;
+        const isScrollingUp = delta < -scrollThreshold;
+        const atTop = y <= topThreshold;
+        if (isScrollingDown && !atTop) {
             header.classList.add('header-scroll-hidden');
             tracker.classList.add('tracker-header-hidden');
-        } else if (delta < -8) {
+            document.body.classList.add('bottom-nav-scroll-hidden');
+        } else if (isScrollingUp || atTop) {
             header.classList.remove('header-scroll-hidden');
             tracker.classList.remove('tracker-header-hidden');
+            document.body.classList.remove('bottom-nav-scroll-hidden');
         }
         _lastScrollY = y;
         _headerScrollRaf = null;

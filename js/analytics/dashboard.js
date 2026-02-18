@@ -1,5 +1,5 @@
 // 대시보드 메인 로직
-import { SLOTS } from '../constants.js';
+import { SLOTS, MEALOG_ICON_URL } from '../constants.js';
 import { appState } from '../state.js';
 import { loadMealsForDateRange, loadStatsForYears } from '../db.js';
 import { renderProportionChart } from './charts.js';
@@ -400,9 +400,9 @@ export async function updateDashboard() {
                     characterIconEl.innerHTML = `<img src="${character.image}" alt="${character.name}" class="w-full h-full object-cover">`;
                     characterIconEl.className = 'w-full h-full flex items-center justify-center';
                 } else if (character.id === 'mealog') {
-                    // MEALOG는 텍스트 아이콘 (Fredoka 폰트)
-                    characterIconEl.textContent = 'M';
-                    characterIconEl.className = 'text-2xl font-black mealog-character-m';
+                    // MEALOG는 스마트폰용 밀로그 아이콘 이미지 (70x70 정사각형)
+                    characterIconEl.innerHTML = `<div class="insight-character-icon-box w-[70px] h-[70px] flex items-center justify-center overflow-hidden rounded-2xl flex-shrink-0"><img src="${MEALOG_ICON_URL}" alt="MEALOG" class="w-full h-full object-contain" onerror="this.style.display='none';this.nextElementSibling?.classList.remove('hidden');"><span class="hidden text-2xl font-black mealog-character-m text-white">M</span></div>`;
+                    characterIconEl.className = 'w-full h-full flex items-center justify-center mealog-character-m';
                 } else {
                     // 기본 이모지 아이콘
                     characterIconEl.textContent = character.icon;

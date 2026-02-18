@@ -53,10 +53,11 @@ export function renderEntryChips() {
         const el = document.getElementById(id);
         if (!el) return;
         let filteredList = list || [];
+        // 메인 태그가 선택된 경우, 해당 메인 태그 아래에서만 사용한 서브 태그만 표시 (parent가 없는 항목은 제외)
         if (parentFilter) {
             filteredList = filteredList.filter(item => {
                 const parent = typeof item === 'string' ? null : item.parent;
-                return !parent || parent === parentFilter;
+                return parent === parentFilter;
             });
         }
         
