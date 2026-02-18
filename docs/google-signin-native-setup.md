@@ -30,6 +30,21 @@ export const GOOGLE_WEB_CLIENT_ID = '여기에_복사한_Web_client_ID';
 
 이미 같은 패키지로 Android 앱을 등록하고 SHA-1을 넣었다면 이 단계는 건너뛰어도 됩니다.
 
+### SHA-1이 왜 다르게 나오나요? (스테이징 vs 프로덕션, PC마다 다른 이유)
+
+| 빌드 | 서명에 쓰는 키 | SHA-1 특성 |
+|------|----------------|------------|
+| **스테이징** (stagingDebug) | **디버그 키** (`~/.android/debug.keystore`) | **PC마다 다름**. 이 키는 Android/Gradle이 각 개발 PC에 처음 빌드할 때 자동 생성합니다. 다른 PC에서 빌드하면 다른 SHA-1이 나옵니다. |
+| **프로덕션** (productionRelease) | **릴리즈 키** (`mealog-release.keystore` 등) | **한 keystore 파일을 같이 쓰면 동일**. 프로젝트에서 한 번 만든 keystore를 계속 쓰므로, 같은 파일로 서명하는 한 SHA-1은 항상 같습니다. |
+
+- **스테이징 SHA-1 ≠ 프로덕션 SHA-1**인 이유  
+  스테이징은 디버그 키로, 프로덕션은 릴리즈 키로 서명하기 때문에 **서로 다른 키**라서 SHA-1도 당연히 다릅니다. Firebase에서는 **스테이징 앱**(com.mealog.app.staging)에 스테이징용 SHA-1을, **프로덕션 앱**(com.mealog.app)에 프로덕션용 SHA-1을 각각 등록하면 됩니다.
+
+- **이미 등록했는데 또 다르게 나오는 이유**  
+  - 스테이징 APK를 **다른 PC**에서 빌드했을 때 → 그 PC의 디버그 키 SHA-1을 새로 등록해야 합니다.  
+  - **Android Studio**로 빌드한 경우, Studio가 쓰는 디버그 키와 터미널 `gradlew`가 쓰는 디버그 키가 같은 경로(`~/.android/debug.keystore`)를 쓰지만, PC가 다르거나 키를 한 번 지웠다가 다시 만들었으면 새 SHA-1이 됩니다.  
+  - 한 앱에 **여러 SHA-1**을 등록해 두는 것은 가능합니다. 스테이징 앱에 “A PC 디버그”, “B PC 디버그” 이렇게 여러 개 넣어 두면, 그 키들로 빌드한 APK는 모두 구글 로그인 가능합니다.
+
 ## 3. 동작 방식
 
 - **웹**: 기존과 동일하게 `signInWithPopup(auth, GoogleAuthProvider)` 사용.  
@@ -54,6 +69,11 @@ Firebase Auth는 네이티브에서 **IndexedDB persistence**로 초기화되도
 - **"구글 로그인 설정이 필요합니다"**  
   → 로컬/스테이징: `js/config.js`에 `GOOGLE_WEB_CLIENT_ID`가 설정돼 있는지 확인.  
   → 운영 웹: 위 "4. 운영(프로덕션) 배포 시"대로 GitHub Secrets 또는 Vercel 환경 변수에 `GOOGLE_WEB_CLIENT_ID`가 설정돼 있는지 확인.  
+- **스테이징 앱에서 "SHA-1이 등록되어 있냐고" / "account reauth is failed"**  
+  → **스테이징(디버그) 빌드는 이 PC의 디버그 키로 서명**됩니다. PC마다 디버그 키가 달라서, **빌드한 PC의 디버그 SHA-1**을 Firebase에 넣어야 합니다.  
+  → **해결**: 터미널에서 `cd android` 후 `./gradlew signingReport`(Windows: `gradlew.bat signingReport`) 실행 → 출력에서 **Variant: stagingDebug** (또는 debug)의 **SHA-1**을 복사.  
+  → Firebase Console → **Project settings** → **Your apps** → Android 앱 **com.mealog.app.staging** → **Add fingerprint** → 위 SHA-1 붙여넣기.  
+  → 다른 PC에서 빌드하거나, Android Studio로 빌드한 경우 그 PC/키의 SHA-1을 다시 등록해야 할 수 있습니다.  
 - **"account reauth is failed"** (프로덕션 앱에서 구글 로그인 시)  
   → **프로덕션(릴리즈) 빌드의 SHA-1**이 Firebase에 없을 때 자주 발생합니다.  
   → Firebase Console → **Project settings** → **Your apps** → Android 앱 **com.mealog.app**  

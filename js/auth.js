@@ -90,9 +90,12 @@ export async function handleGoogleLogin() {
             hideLoading();
         } else if (error?.code !== 'auth/cancelled-popup-request' && error?.message !== 'User cancelled flow') {
             const msg = error?.message || error?.error?.message || String(error);
-            const isReauth = /reauth|re-auth/i.test(msg);
+            const isReauth = /reauth|re-auth|sha|fingerprint|credential/i.test(msg);
+            const isStaging = isNativePlatform() && (window.Capacitor?.config?.appId === 'com.mealog.app.staging');
             const toastMsg = isReauth
-                ? '구글 로그인 실패. Firebase에 앱 릴리즈 SHA-1이 등록돼 있는지 확인해 주세요.'
+                ? (isStaging
+                    ? '스테이징: 이 PC의 디버그 키 SHA-1을 Firebase Android 앱(스테이징)에 추가하세요. android 폴더에서 gradlew signingReport 실행 후 표시된 SHA-1을 Firebase 프로젝트 설정에 등록하세요.'
+                    : '구글 로그인 실패. Firebase에 해당 빌드(디버그/릴리즈)의 SHA-1이 등록돼 있는지 확인해 주세요.')
                 : "로그인 실패: " + (msg.length > 50 ? msg.slice(0, 50) + '…' : msg);
             showToast(toastMsg, "error");
             hideLoading();
