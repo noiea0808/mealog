@@ -639,3 +639,25 @@ export function setupSharedPhotosListener(callback) {
     
     return unsubscribe;
 }
+
+/** 특정 사용자의 공유 사진만 조회 (갤러리 사용자 필터 시 전체 목록 표시용, limit 50 회피) */
+export async function getSharedPhotosByUser(userId) {
+    if (!userId) return [];
+    const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+    const q = query(
+        sharedColl,
+        where('userId', '==', userId),
+        orderBy('timestamp', 'desc'),
+        limit(100)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => {
+        const data = d.data();
+        if (data.timestamp && data.timestamp.toDate) {
+            data.timestamp = data.timestamp.toDate().toISOString();
+        } else if (data.timestamp && typeof data.timestamp === 'object' && data.timestamp.seconds) {
+            data.timestamp = new Date(data.timestamp.seconds * 1000).toISOString();
+        }
+        return { id: d.id, ...data };
+    });
+}

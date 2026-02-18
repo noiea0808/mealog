@@ -39,6 +39,11 @@ body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) {
 body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #boardWriteView {
     padding-bottom: 1rem !important;
 }
+/* iOS Safari: 입력 텍스트가 바로 안 보이는 버그 수정 (GPU compositing으로 리페인트 강제) */
+input, textarea, [contenteditable="true"] {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+}
 /* 키보드 닫혔을 때: viewport 복원 시 모든 UI 복원 (뒤로가기로 닫아도 포커스가 남아있는 경우) */
 body.keyboard-closed .bottom-nav {
     display: flex !important;
@@ -345,7 +350,18 @@ header .mealog-title {
     align-items: center;
     padding: 6px 2px; 
     z-index: 50; 
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08); 
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    transition: transform 0.25s ease-out;
+}
+/* 스크롤 아래로: 하단 네비·하단 오버레이 화면 밖으로 숨김 (트위터 스타일) */
+#navigationBarOverlay {
+    transition: transform 0.25s ease-out;
+}
+body.bottom-nav-scroll-hidden .bottom-nav {
+    transform: translateX(-50%) translateY(calc(100% + 8px + var(--safe-bottom)));
+}
+body.bottom-nav-scroll-hidden #navigationBarOverlay {
+    transform: translateY(100%);
 }
 .prop-bar-container { 
     height: 28px; 
@@ -382,18 +398,28 @@ header .mealog-title {
 #entryModal.keyboard-open #modalScrollArea {
     padding-bottom: 0 !important;
 }
-/* 캡쳐 3종세트 모달: 좌우 마진 2px, 가로 스크롤 방지 */
+/* 캡쳐 3종세트 모달: 좌우 여백 확보(좁은 기기에서 캐릭터·입력창 잘림 방지), 가로 스크롤 방지 */
 #bestShareModal,
 #insightShareModal,
 #dailySharePreviewModal,
 .capture-share-modal {
-    padding-left: 2px !important;
-    padding-right: 2px !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
     overflow-x: hidden;
 }
 .capture-share-modal > div {
-    max-width: min(448px, calc(100vw - 4px));
+    max-width: min(448px, calc(100vw - 24px));
     box-sizing: border-box;
+}
+/* 인사이트 공유 모달: 좁은 기기에서 제목·미리보기 잘림 방지 */
+#insightShareModal .border-b h2 {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+#insightSharePreview {
+    min-width: 0;
 }
 
 .sticker-badge { 
@@ -1146,9 +1172,14 @@ header .mealog-title {
     box-shadow: none;
     overflow: visible;
 }
-/* 밀로그(MEALOG) 선택 시에만 흰색 보더 */
+/* 밀로그(MEALOG) 선택 시: 캐릭터 창 크기를 아이콘 박스에 맞춤 */
 .insight-character-btn:has(#insightCharacterIcon.mealog-character-m) {
-    border: 1px solid #ffffff;
+    width: 70px;
+    height: 70px;
+    min-width: 70px;
+    min-height: 70px;
+    border: none;
+    box-sizing: border-box;
 }
 .insight-character-btn #insightCharacterIcon {
     color: #047857;
@@ -1159,11 +1190,23 @@ header .mealog-title {
     font-family: 'Fredoka', sans-serif;
     color: #ffffff;
 }
-/* 캐릭터 이미지: 창 전체를 채우고 모서리 둥글게. PNG 투명 영역 제외, 캐릭터 실루엣만 얇은 흰색 윤곽 (1px) */
+/* 캐릭터 아이콘: 밀로그 정사각형 70x70px 박스 */
+.insight-character-icon-box {
+    width: 70px;
+    height: 70px;
+}
+/* 밀로그 선택 시: 보더는 아이콘 박스 주변에만 2px 흰색 적용 (아이콘이 보더를 가리지 않음) */
+.insight-character-btn:has(#insightCharacterIcon.mealog-character-m) .insight-character-icon-box {
+    border: 2px solid #ffffff;
+    border-radius: 1rem;
+    box-sizing: border-box;
+    width: 70px;
+    height: 70px;
+}
 .insight-character-btn #insightCharacterIcon img {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
     display: block;
     border-radius: 1rem;
     filter: drop-shadow(1px 0 0 #fff)

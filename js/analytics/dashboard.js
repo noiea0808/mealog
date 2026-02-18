@@ -1,5 +1,5 @@
 // 대시보드 메인 로직
-import { SLOTS } from '../constants.js';
+import { SLOTS, MEALOG_ICON_URL } from '../constants.js';
 import { appState } from '../state.js';
 import { loadMealsForDateRange, loadStatsForYears } from '../db.js';
 import { renderProportionChart } from './charts.js';
@@ -134,46 +134,113 @@ export function getDashboardData() {
     return { filteredData, mealRecordsForTable: mealFiltered, dateRangeText: label, days: daysDiff, statsMainCount, statsSnackCount };
 }
 
+/** 기간 탭·날짜 표시 등 기간 UI 즉시 업데이트 (데이터 로드 전 호출하여 체감 반응 속도 개선) */
+function updatePeriodUI(state) {
+    const periodNavigator = document.getElementById('periodNavigator');
+    const periodDisplay = document.getElementById('periodDisplay');
+    const tabBase = "insight-period-tab flex-1 text-xs font-bold transition-colors";
+
+    if (state.dashboardMode === '7d') {
+        const startDate = state.recentWeekStartDate || (() => {
+            const d = new Date();
+            d.setDate(d.getDate() - 6);
+            d.setHours(0, 0, 0, 0);
+            return d;
+        })();
+        const endDate = new Date();
+        endDate.setHours(23, 59, 59, 999);
+        const startStr = formatDateWithDay(startDate);
+        const endStr = formatDateWithDay(endDate);
+        if (periodNavigator) {
+            periodNavigator.classList.remove('hidden');
+            if (periodDisplay) periodDisplay.innerHTML = `${startStr} ~ ${endStr}`;
+            const periodPrevBtn = document.getElementById('periodPrevBtn');
+            const periodNextBtn = document.getElementById('periodNextBtn');
+            if (periodPrevBtn) periodPrevBtn.classList.add('hidden');
+            if (periodNextBtn) periodNextBtn.classList.add('hidden');
+        }
+        const customDatePicker = document.getElementById('customDatePicker');
+        if (customDatePicker) customDatePicker.classList.add('hidden');
+    } else if (state.dashboardMode === 'custom') {
+        const customDatePicker = document.getElementById('customDatePicker');
+        if (customDatePicker) {
+            customDatePicker.classList.remove('hidden');
+            const startInput = document.getElementById('customStart');
+            const endInput = document.getElementById('customEnd');
+            if (startInput && endInput) {
+                const startDate = state.customStartDate || new Date();
+                const endDate = state.customEndDate || new Date();
+                startInput.value = startDate.toISOString().split('T')[0];
+                endInput.value = endDate.toISOString().split('T')[0];
+            }
+            if (typeof syncCustomDatePlaceholder === 'function') syncCustomDatePlaceholder();
+        }
+        if (periodNavigator) periodNavigator.classList.add('hidden');
+    } else {
+        const customDatePicker = document.getElementById('customDatePicker');
+        if (customDatePicker) customDatePicker.classList.add('hidden');
+        if (periodNavigator) {
+            if (state.dashboardMode === 'week' || state.dashboardMode === 'month' || state.dashboardMode === 'year') {
+                periodNavigator.classList.remove('hidden');
+                const periodPrevBtn = document.getElementById('periodPrevBtn');
+                const periodNextBtn = document.getElementById('periodNextBtn');
+                if (periodPrevBtn) periodPrevBtn.classList.remove('hidden');
+                if (periodNextBtn) periodNextBtn.classList.remove('hidden');
+                if (periodDisplay) {
+                    if (state.dashboardMode === 'week') {
+                        const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
+                        periodDisplay.innerHTML = `${getWeekDisplayLabel(start, end)} <span class="text-xs opacity-75">(${formatDateWithDay(start)}~${formatDateWithDay(end)})</span>`;
+                    } else if (state.dashboardMode === 'month') {
+                        const [y, m] = state.selectedMonth.split('-');
+                        periodDisplay.innerText = `${y}년 ${parseInt(m)}월`;
+                    } else if (state.dashboardMode === 'year') {
+                        periodDisplay.innerText = `${state.selectedYearForYear || new Date().getFullYear()}년`;
+                    }
+                }
+            } else {
+                periodNavigator.classList.add('hidden');
+            }
+        }
+    }
+
+    ['7d', 'week', 'month', 'year', 'custom'].forEach(mode => {
+        const btn = document.getElementById(`btn-dash-${mode}`);
+        if (btn) {
+            btn.className = state.dashboardMode === mode ? `${tabBase} insight-period-tab--selected` : tabBase;
+        }
+    });
+}
+
 export async function updateDashboard() {
     const state = appState;
     if (!window.currentUser) return;
-    
-    // 연간/과거 월간 모드일 때만 추가 데이터 로드
+
+    // 1) 기간 탭·날짜 표시 즉시 업데이트 (탭 전환 체감 반응 개선)
+    updatePeriodUI(state);
+    updateAnalysisTypeUI();
+
+    // 2) 데이터 로드: meals + stats 병렬 실행 (순차 대비 체감 속도 개선)
+    const loadPromises = [];
     try {
         if (state.dashboardMode === 'year') {
             const year = state.selectedYearForYear || new Date().getFullYear();
-            const yearStart = `${year}-01-01`;
-            const yearEnd = `${year}-12-31`;
-            await loadMealsForDateRange(yearStart, yearEnd);
+            loadPromises.push(loadMealsForDateRange(`${year}-01-01`, `${year}-12-31`));
         } else if (state.dashboardMode === 'month') {
-            // 선택한 월 데이터를 항상 로드 (리스너는 최근 7일만 있어서, 월간 첫 진입 시 부분만 보이다가 다른 기간 갔다 오면 29회로 바뀌는 현상 방지)
             const [y, m] = state.selectedMonth.split('-').map(Number);
             const monthStart = `${y}-${String(m).padStart(2, '0')}-01`;
             const monthEnd = new Date(y, m, 0).toISOString().split('T')[0];
-            await loadMealsForDateRange(monthStart, monthEnd);
+            loadPromises.push(loadMealsForDateRange(monthStart, monthEnd));
         } else if (state.dashboardMode === 'custom') {
-            const startStr = toLocalDateString(state.customStartDate);
-            const endStr = toLocalDateString(state.customEndDate);
-            await loadMealsForDateRange(startStr, endStr);
+            loadPromises.push(loadMealsForDateRange(toLocalDateString(state.customStartDate), toLocalDateString(state.customEndDate)));
         } else if (state.dashboardMode === 'week') {
-            // 주간 모드: 선택한 주의 데이터 확인
             const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
-            const startStr = toLocalDateString(start);
-            const endStr = toLocalDateString(end);
             const oneMonthAgo = new Date();
             oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-            
             if (start < oneMonthAgo) {
-                await loadMealsForDateRange(startStr, endStr);
+                loadPromises.push(loadMealsForDateRange(toLocalDateString(start), toLocalDateString(end)));
             }
         }
-    } catch (e) {
-        console.error("대시보드 데이터 로드 실패:", e);
-        // 에러가 발생해도 기존 데이터로 계속 진행
-    }
-    
-    // 연도별 stats: 리스너는 현재/이전 연도만 구독 → 과거 연도는 on-demand 로드
-    try {
+
         const { startStr, endStr } = (() => {
             const s = appState;
             const today = new Date();
@@ -183,9 +250,9 @@ export async function updateDashboard() {
                 startDate = new Date(start);
                 endDate = new Date(today);
             } else if (s.dashboardMode === 'month') {
-                const [y, m] = s.selectedMonth.split('-').map(Number);
-                startDate = new Date(y, m - 1, 1);
-                endDate = new Date(y, m, 0);
+                const [ym, mm] = s.selectedMonth.split('-').map(Number);
+                startDate = new Date(ym, mm - 1, 1);
+                endDate = new Date(ym, mm, 0);
             } else if (s.dashboardMode === 'week') {
                 const { start, end } = getWeekRange(s.selectedYear, s.selectedMonthForWeek, s.selectedWeek);
                 startDate = new Date(start);
@@ -210,111 +277,17 @@ export async function updateDashboard() {
             for (let y = startYear; y <= endYear; y++) {
                 if (y < currentYear - 1) yearsToLoad.push(y);
             }
-            if (yearsToLoad.length > 0) await loadStatsForYears(yearsToLoad);
+            if (yearsToLoad.length > 0) loadPromises.push(loadStatsForYears(yearsToLoad));
         }
+
+        await Promise.all(loadPromises);
     } catch (e) {
-        console.warn('stats 연도 로드 실패:', e);
+        console.error("대시보드 데이터 로드 실패:", e);
     }
-    
-    // 분석 타입 UI 업데이트
-    updateAnalysisTypeUI();
+
     
     const { filteredData, dateRangeText, days, statsMainCount, statsSnackCount } = getDashboardData();
-    
-    const periodNavigator = document.getElementById('periodNavigator');
-    const periodDisplay = document.getElementById('periodDisplay');
-    
-    // 최근1주 모드일 때도 다른 기간처럼 날짜 표시 (화살표 버튼은 숨김)
-    if (state.dashboardMode === '7d') {
-        const startDate = state.recentWeekStartDate || (() => {
-            const d = new Date();
-            d.setDate(d.getDate() - 6);
-            d.setHours(0, 0, 0, 0);
-            return d;
-        })();
-        const endDate = new Date();
-        endDate.setHours(23, 59, 59, 999);
-        const startStr = formatDateWithDay(startDate);
-        const endStr = formatDateWithDay(endDate);
-        
-        if (periodNavigator) {
-            periodNavigator.classList.remove('hidden');
-            if (periodDisplay) {
-                periodDisplay.innerHTML = `${startStr} ~ ${endStr}`;
-            }
-            // 화살표 버튼 숨기기
-            const periodPrevBtn = document.getElementById('periodPrevBtn');
-            const periodNextBtn = document.getElementById('periodNextBtn');
-            if (periodPrevBtn) periodPrevBtn.classList.add('hidden');
-            if (periodNextBtn) periodNextBtn.classList.add('hidden');
-        }
-        const customDatePicker = document.getElementById('customDatePicker');
-        if (customDatePicker) {
-            customDatePicker.classList.add('hidden');
-        }
-    } else if (state.dashboardMode === 'custom') {
-        // 직접 설정 모드일 때는 날짜 선택 UI 표시
-        const customDatePicker = document.getElementById('customDatePicker');
-        if (customDatePicker) {
-            customDatePicker.classList.remove('hidden');
-            const startInput = document.getElementById('customStart');
-            const endInput = document.getElementById('customEnd');
-            if (startInput && endInput) {
-                const startDate = state.customStartDate || new Date();
-                const endDate = state.customEndDate || new Date();
-                startInput.value = startDate.toISOString().split('T')[0];
-                endInput.value = endDate.toISOString().split('T')[0];
-            }
-            if (typeof syncCustomDatePlaceholder === 'function') syncCustomDatePlaceholder();
-        }
-        if (periodNavigator) {
-            periodNavigator.classList.add('hidden');
-        }
-    } else {
-        const customDatePicker = document.getElementById('customDatePicker');
-        if (customDatePicker) {
-            customDatePicker.classList.add('hidden');
-        }
-        if (periodNavigator) {
-            if (state.dashboardMode === 'week' || state.dashboardMode === 'month' || state.dashboardMode === 'year') {
-                periodNavigator.classList.remove('hidden');
-                // 화살표 버튼 표시 (다른 모드에서는 사용)
-                const periodPrevBtn = document.getElementById('periodPrevBtn');
-                const periodNextBtn = document.getElementById('periodNextBtn');
-                if (periodPrevBtn) periodPrevBtn.classList.remove('hidden');
-                if (periodNextBtn) periodNextBtn.classList.remove('hidden');
-                if (periodDisplay) {
-                    if (state.dashboardMode === 'week') {
-                        const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
-                        const startStr = formatDateWithDay(start);
-                        const endStr = formatDateWithDay(end);
-                        periodDisplay.innerHTML = `${getWeekDisplayLabel(start, end)} <span class="text-xs opacity-75">(${startStr}~${endStr})</span>`;
-                    } else if (state.dashboardMode === 'month') {
-                        const [y, m] = state.selectedMonth.split('-');
-                        periodDisplay.innerText = `${y}년 ${parseInt(m)}월`;
-                    } else if (state.dashboardMode === 'year') {
-                        const year = state.selectedYearForYear || new Date().getFullYear();
-                        periodDisplay.innerText = `${year}년`;
-                    }
-                }
-            } else {
-                periodNavigator.classList.add('hidden');
-            }
-        }
-    }
-    
-    // 버튼 스타일 업데이트 (선택 탭: 흰색 필, 비선택: 텍스트만, 좌우 균등 배치)
-    const tabBase = "insight-period-tab flex-1 text-xs font-bold transition-colors";
-    ['7d', 'week', 'month', 'year', 'custom'].forEach(mode => {
-        const btn = document.getElementById(`btn-dash-${mode}`);
-        if (btn) {
-            const isSelected = state.dashboardMode === mode;
-            btn.className = isSelected
-                ? `${tabBase} insight-period-tab--selected`
-                : tabBase;
-        }
-    });
-    
+
     // 식사/간식 데이터 분리
     const mainMealsOnly = filteredData.filter(m => {
         const slot = SLOTS.find(s => s.id === m.slotId);
@@ -399,7 +372,7 @@ export async function updateDashboard() {
     if (snackRecordCountEl) snackRecordCountEl.textContent = String(snackCount ?? 0);
     
     // 인사이트 코멘트는 처음 로드 시 기본 코멘트를 표시하고, 이후에는 COMMENT 버튼을 눌렀을 때만 업데이트됨
-    // 처음 로드 시에만 기본 코멘트 표시 (이미 코멘트가 있으면 표시하지 않음)
+    // 처음 로드 시에만 기본 코멘트 표시 (이미 코멘트가 있으면 표시하지 않음). 표시 내용은 관리자 화면에서 수기 설정.
     const insightTextContent = document.getElementById('insightTextContent');
     if (insightTextContent && (!insightTextContent.textContent || insightTextContent.textContent.trim() === '')) {
         if (window.getDashboardData) {
@@ -427,9 +400,9 @@ export async function updateDashboard() {
                     characterIconEl.innerHTML = `<img src="${character.image}" alt="${character.name}" class="w-full h-full object-cover">`;
                     characterIconEl.className = 'w-full h-full flex items-center justify-center';
                 } else if (character.id === 'mealog') {
-                    // MEALOG는 텍스트 아이콘 (Fredoka 폰트)
-                    characterIconEl.textContent = 'M';
-                    characterIconEl.className = 'text-2xl font-black mealog-character-m';
+                    // MEALOG는 스마트폰용 밀로그 아이콘 이미지 (70x70 정사각형)
+                    characterIconEl.innerHTML = `<div class="insight-character-icon-box w-[70px] h-[70px] flex items-center justify-center overflow-hidden rounded-2xl flex-shrink-0"><img src="${MEALOG_ICON_URL}" alt="MEALOG" class="w-full h-full object-contain" onerror="this.style.display='none';this.nextElementSibling?.classList.remove('hidden');"><span class="hidden text-2xl font-black mealog-character-m text-white">M</span></div>`;
+                    characterIconEl.className = 'w-full h-full flex items-center justify-center mealog-character-m';
                 } else {
                     // 기본 이모지 아이콘
                     characterIconEl.textContent = character.icon;

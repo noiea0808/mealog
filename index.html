@@ -327,7 +327,7 @@
                 <span class="loading-food-icon absolute" aria-hidden="true">🍎</span>
                 <span class="loading-food-icon absolute" aria-hidden="true">🍦</span>
             </div>
-            <p id="loadingOverlayMessage" class="mt-4 text-base font-bold text-slate-800 whitespace-nowrap"></p>
+            <p id="loadingOverlayMessage" class="mt-4 text-base font-bold text-slate-800 whitespace-nowrap">로그인 상태 확인 중...</p>
         </div>
     </div>
 
@@ -338,7 +338,8 @@
                 <h1 class="mealog-title text-5xl text-white tracking-tighter mb-4">mealog</h1>
                 <p class="text-emerald-100 text-sm font-bold opacity-90 tracking-wide">우리가 함께한, 맛있었던 기억</p>
             </div>
-            <div class="w-[85vw] min-w-[280px] max-w-[360px] sm:max-w-[320px] mx-auto px-6 sm:px-8 space-y-3">
+            <!-- 로그인 옵션: 처음 방문/로그아웃 시에만 표시. 자동 로그인 대기 중에는 타이틀만 표시 -->
+            <div id="landingLoginOptions" class="hidden w-[85vw] min-w-[280px] max-w-[360px] sm:max-w-[320px] mx-auto px-6 sm:px-8 space-y-3">
             <button id="googleLoginBtn" class="w-full py-3.5 bg-white text-slate-800 rounded-2xl flex items-center justify-center shadow-lg active:scale-[0.98] transition-transform gap-2">
                 <i class="fa-brands fa-google text-lg"></i>
                 <span class="font-bold text-sm">구글로 계속하기</span>
@@ -355,7 +356,7 @@
                     로그인 없이 둘러보기 (게스트)
                 </button>
             </div>
-        </div>
+            </div>
         </div>
         <!-- 웹에서만 표시: 화면 하단 고정 영역, 좌우 전체 사용 (Capacitor 네이티브에서는 숨김) -->
         <div id="apkDownloadSection" class="mt-auto w-full pt-4 pb-[max(4rem,calc(env(safe-area-inset-bottom)+2rem))] px-4 sm:px-6 border-t border-emerald-200/40 bg-emerald-900/30">
@@ -652,7 +653,7 @@
                     </div>
                     <div class="flex gap-2 pt-3 border-t">
                         <button onclick="window.backToBoardList()" class="flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors">취소</button>
-                        <button onclick="window.submitBoardPost()" class="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 shadow-md transition-all">등록</button>
+                        <button type="button" id="boardWriteSubmitBtn" class="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 shadow-md transition-all">등록</button>
                     </div>
                 </div>
             </div>
@@ -708,9 +709,9 @@
                     <!-- 캐릭터와 말풍선 영역 (트위터 스타일) -->
                     <div class="insight-area flex gap-3 mt-3 relative z-10 items-start">
                         <!-- 밀당 캐릭터 선택 창 -->
-                        <div class="insight-character-column relative flex-shrink-0 flex flex-col gap-2 w-[75px]">
+                        <div class="insight-character-column relative flex-shrink-0 flex flex-col gap-2 w-[75px] items-center">
                             <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="insight-character-btn w-[75px] h-[132px] rounded-2xl flex flex-col items-center justify-center transition-colors">
-                                <div id="insightCharacterIcon" class="w-full h-full flex items-center justify-center text-2xl font-bold mealog-character-m">M</div>
+                                <div id="insightCharacterIcon" class="w-full h-full flex items-center justify-center mealog-character-m"><div class="insight-character-icon-box w-[70px] h-[70px] flex items-center justify-center overflow-hidden rounded-2xl flex-shrink-0"><img src="assets/icon-only.png" alt="MEALOG" class="w-full h-full object-contain" onerror="this.style.display='none';this.nextElementSibling&&this.nextElementSibling.classList.remove('hidden');"><span class="hidden text-2xl font-black mealog-character-m text-white">M</span></div></div>
                             </button>
                             <button id="generateCommentBtn" onclick="window.generateInsightComment()" class="insight-comment-trigger w-[75px] rounded-xl font-semibold transition-colors">
                                 코멘트
@@ -1154,7 +1155,7 @@
             </div>
             <div class="flex flex-col gap-3">
                 <div class="character-popup-item active flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-colors hover:bg-slate-50" data-character-id="mealog" onclick="window.selectInsightCharacter('mealog')">
-                    <div class="w-12 h-12 rounded-xl bg-slate-200 flex items-center justify-center text-slate-700 font-black text-lg flex-shrink-0">M</div>
+                    <div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0"><img src="assets/icon-only.png" alt="MEALOG" class="w-full h-full object-contain" onerror="this.style.display='none';this.nextElementSibling&&(this.nextElementSibling.textContent='M',this.nextElementSibling.classList.add('text-slate-700','font-black','text-lg'));"><span class="hidden"></span></div>
                     <div class="flex-1">
                         <div class="text-sm font-bold text-slate-800">MEALOG</div>
                         <div class="text-xs text-slate-500 mt-0.5">친근한 친구</div>
@@ -1218,6 +1219,15 @@
             <div class="p-6 border-t">
                 <button id="insightShareSubmitBtn" onclick="window.shareInsightToFeed()" class="w-full py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all">공유하기</button>
             </div>
+        </div>
+    </div>
+
+    <!-- 베스트 공유 기간 안내 팝업 (토스트 대신 확인 버튼으로 닫기) -->
+    <div id="bestSharePeriodNoticeModal" class="hidden fixed inset-0 bg-slate-900/60 z-[410] flex items-center justify-center p-4" onclick="if(event.target === this) window.closeBestSharePeriodNotice()">
+        <div class="w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 flex flex-col items-stretch gap-4">
+            <h3 class="text-lg font-bold text-slate-800 text-center">베스트 공유 안내</h3>
+            <p id="bestSharePeriodNoticeMessage" class="text-sm text-slate-600 text-center leading-relaxed"></p>
+            <button type="button" onclick="window.closeBestSharePeriodNotice()" class="w-full py-3 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900">확인</button>
         </div>
     </div>
 

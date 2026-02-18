@@ -71,6 +71,14 @@
         { "fieldPath": "userId", "order": "ASCENDING" },
         { "fieldPath": "isLike", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "sharedPhotos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

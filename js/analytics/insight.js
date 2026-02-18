@@ -1,5 +1,5 @@
 // 인사이트 코멘트 관련 함수들
-import { SLOTS, SATIETY_DATA } from '../constants.js';
+import { SLOTS, SATIETY_DATA, MEALOG_ICON_URL } from '../constants.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { dbOps } from '../db.js';
@@ -145,6 +145,8 @@ async function loadCharactersFromFirebase() {
 
 // 현재 선택된 캐릭터 (기본값: MEALOG)
 let currentCharacter = 'mealog';
+// 현재 말풍선 텍스트가 COMMENT 분석 결과인지 (캐릭터만 선택한 기본/안내 문구가 아님)
+let currentInsightIsAnalysisResult = false;
 
 // MEALOG 코멘트 순차 선택을 위한 인덱스
 let mealogCommentIndex = 0;
@@ -231,7 +233,7 @@ function displayInsightText(text, characterName = '') {
     const escapedText = escapeHtml(text).replace(/\n/g, '<br>');
     container.innerHTML = escapedText;
     
-    // 공유 버튼 상태 업데이트 (공유 상태에 따라 버튼 박스 표시 여부도 결정)
+    // 공유 버튼은 분석 결과일 때만 표시 (displayInsightText 호출 전에 currentInsightIsAnalysisResult 설정됨)
     updateShareButtonStatus();
     
     // 말풍선 최소 높이 설정 (캐릭터창 + 코멘트창의 합산 높이)
@@ -320,8 +322,8 @@ async function renderCharacterSelectPopup() {
                 <img src="${escapeHtml(char.image)}" alt="${escapeHtml(char.name)}" class="w-full h-full object-contain">
             </div>`;
         } else if (char.id === 'mealog') {
-            // MEALOG 텍스트 아이콘
-            iconHtml = `<div class="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700 font-black text-lg flex-shrink-0">M</div>`;
+            // MEALOG 스마트폰용 밀로그 아이콘
+            iconHtml = `<div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0"><img src="${MEALOG_ICON_URL}" alt="MEALOG" class="w-full h-full object-contain" onerror="this.style.display='none';this.nextElementSibling?.classList.remove('hidden');"><span class="hidden text-emerald-700 font-black text-lg">M</span></div>`;
         } else {
             // 이모지 아이콘
             iconHtml = `<div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-2xl flex-shrink-0">${escapeHtml(char.icon)}</div>`;
@@ -399,9 +401,9 @@ export function selectInsightCharacter(characterId) {
             iconEl.innerHTML = `<img src="${character.image}" alt="${character.name}" class="w-full h-full object-cover">`;
             iconEl.className = 'w-full h-full flex items-center justify-center';
         } else if (character.id === 'mealog') {
-            // MEALOG는 텍스트 아이콘 (Fredoka 폰트)
-            iconEl.textContent = 'M';
-            iconEl.className = 'text-2xl font-black mealog-character-m';
+            // MEALOG는 스마트폰용 밀로그 아이콘 이미지 (70x70 정사각형)
+            iconEl.innerHTML = `<div class="insight-character-icon-box w-[70px] h-[70px] flex items-center justify-center overflow-hidden rounded-2xl flex-shrink-0"><img src="${MEALOG_ICON_URL}" alt="MEALOG" class="w-full h-full object-contain" onerror="this.style.display='none';this.nextElementSibling?.classList.remove('hidden');"><span class="hidden text-2xl font-black mealog-character-m text-white">M</span></div>`;
+            iconEl.className = 'w-full h-full flex items-center justify-center mealog-character-m';
         } else {
             // 기본 이모지 아이콘
             iconEl.textContent = character.icon;
@@ -586,6 +588,9 @@ export async function updateInsightComment(filteredData, dateRangeText = '') {
     const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
     const characterName = character ? character.name : '';
     
+    // 캐릭터 선택/기본 문구는 분석 결과가 아니므로 공유 버튼 숨김
+    currentInsightIsAnalysisResult = false;
+    
     // MEALOG 캐릭터일 때는 사용 안내 텍스트 표시 (AI 호출 안 함)
     if (currentCharacter === 'mealog') {
         const commentText = await getMealogComment();
@@ -609,6 +614,7 @@ export async function generateInsightComment() {
     
     // MEALOG 캐릭터일 때는 사용 안내만 표시 (AI 호출 안 함)
     if (currentCharacter === 'mealog') {
+        currentInsightIsAnalysisResult = false;
         const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
         const characterName = character ? character.name : '';
         const commentText = await getMealogComment();
@@ -621,7 +627,8 @@ export async function generateInsightComment() {
     let loadingInterval = null;
     let dotCount = 0;
     
-    // 분석 시작 전에 로딩 멘트 표시
+    // 분석 시작 전에 로딩 멘트 표시 (분석 결과 아님)
+    currentInsightIsAnalysisResult = false;
     const character = INSIGHT_CHARACTERS.find(c => c.id === currentCharacter);
     const characterName = character ? character.name : '';
     const loadingMessage = await getCharacterLoadingMessage(currentCharacter);
@@ -640,9 +647,10 @@ export async function generateInsightComment() {
     }
     
     try {
-        // 기간 경과/기록 부족 시 AI 호출 없이 관리자 설정 멘트 표시
+        // 기간 경과/기록 부족 시 AI 호출 없이 관리자 설정 멘트 표시 (분석 결과가 아니므로 공유 버튼 숨김)
         const reason = !filteredData || filteredData.length === 0 ? 'insufficient_records' : getInsufficientReason(filteredData);
         if (reason) {
+            currentInsightIsAnalysisResult = false;
             const fallback = await getInsightFallbackMessages(currentCharacter);
             const text = reason === 'insufficient_period' ? fallback.insufficientPeriod : fallback.insufficientRecords;
             displayInsightText(text || "멋진 식사 기록이 쌓이고 있어요! ✨", characterName);
@@ -650,7 +658,8 @@ export async function generateInsightComment() {
             return;
         }
 
-        // AI 코멘트 생성 및 업데이트
+        // AI 코멘트 생성 및 업데이트 (분석 결과이므로 공유 버튼 표시)
+        currentInsightIsAnalysisResult = true;
         const comment = await getGeminiComment(filteredData, currentCharacter, dateRangeText);
         displayInsightText(comment || "멋진 식사 기록이 쌓이고 있어요! ✨", characterName);
         
@@ -658,7 +667,7 @@ export async function generateInsightComment() {
         closeCharacterSelectModal();
     } catch (error) {
         console.error('코멘트 생성 실패:', error);
-        
+        currentInsightIsAnalysisResult = false;
         // API 키 관련 에러인 경우 명확한 메시지 표시
         if (error.message && (error.message.includes('API 키') || error.message.includes('API key'))) {
             showToast(error.message, 'error');
@@ -1474,9 +1483,9 @@ export async function updateShareButtonStatus() {
     const shareBtn = document.getElementById('shareInsightBtn');
     if (!shareBtn) return;
     
-    // MEALOG 캐릭터가 아니고 코멘트가 있을 때만 표시
+    // 분석 결과가 나온 경우에만 공유 버튼 표시 (캐릭터만 선택한 기본/안내 문구일 때는 숨김)
     const insightTextContent = document.getElementById('insightTextContent');
-    if (currentCharacter === 'mealog' || !insightTextContent || !insightTextContent.textContent || insightTextContent.textContent.trim() === '') {
+    if (!currentInsightIsAnalysisResult || currentCharacter === 'mealog' || !insightTextContent || !insightTextContent.textContent || insightTextContent.textContent.trim() === '') {
         shareBtn.classList.add('hidden');
         return;
     }
@@ -1547,7 +1556,7 @@ export async function openShareInsightModal() {
     if (insightCharacterIcon) {
         const img = insightCharacterIcon.querySelector('img');
         if (img && img.src) {
-            characterIconHtml = `<img src="${escapeHtml(img.src)}" alt="" style="width: 100%; height: 100%; object-fit: contain;">`;
+            characterIconHtml = `<div style="width: 70px; height: 70px; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;"><img src="${escapeHtml(img.src)}" alt="" style="width: 100%; height: 100%; object-fit: contain;"></div>`;
         } else {
             const content = (insightCharacterIcon.innerHTML || insightCharacterIcon.textContent || '').trim();
             if (content) {
@@ -1556,7 +1565,7 @@ export async function openShareInsightModal() {
             } else if (character) {
                 // 폴백: character 객체 사용
                 if (character.id === 'mealog') {
-                    characterIconHtml = `<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 900; color: white; font-family: 'Fredoka', sans-serif;">M</div>`;
+                    characterIconHtml = `<div style="width: 70px; height: 70px; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;"><img src="${MEALOG_ICON_URL}" alt="" style="width: 100%; height: 100%; object-fit: contain;"></div>`;
                 } else if (character.icon) {
                     characterIconHtml = `<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 32px;">${escapeHtml(character.icon)}</div>`;
                 }
@@ -1568,26 +1577,26 @@ export async function openShareInsightModal() {
     const borderLightGray = '#e2e8f0';
     const borderOuterGray = '#cbd5e1';
     const screenshotHtml = `
-        <div id="insightScreenshotContainer" style="width: 420px; max-width: 420px; margin: 0 auto; border: 1px solid ${borderOuterGray}; border-radius: 20px; overflow: hidden; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f1f5f9;">
+        <div id="insightScreenshotContainer" style="width: 100%; max-width: 420px; margin: 0 auto; border: 1px solid ${borderOuterGray}; border-radius: 20px; overflow: hidden; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f1f5f9; box-sizing: border-box;">
             <!-- 헤더: 흰 배경, 초록 타이틀 (패딩 6/16/16으로 텍스트 10px 상향, html2canvas 호환) -->
             <div style="background: #ffffff; padding: 6px 16px 16px; border-bottom: 1px solid ${borderLightGray};">
-                <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 8px;">
-                    <span style="font-size: 28.8px; font-weight: 600; color: #059669; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
+                <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 8px; gap: 8px; min-width: 0;">
+                    <span style="font-size: 28.8px; font-weight: 600; color: #059669; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase; min-width: 0; overflow: hidden; text-overflow: ellipsis;">mealog</span>
                     <span style="font-size: 12px; font-weight: 400; color: #64748b; flex-shrink: 0;">${escapeHtml(dateRangeText || '')}</span>
                 </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="font-size: 16px;">💬</span>
-                    <span style="font-size: 15px; font-weight: 700; color: #1e293b; font-family: 'NanumSquareRound', sans-serif;">${escapeHtml(userNickname)}에 대한 밀당의 참견</span>
+                <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
+                    <span style="font-size: 16px; flex-shrink: 0;">💬</span>
+                    <span style="font-size: 15px; font-weight: 700; color: #1e293b; font-family: 'NanumSquareRound', sans-serif; min-width: 0; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(userNickname)}에 대한 밀당의 참견</span>
                 </div>
             </div>
-            <!-- 본문: 연회색 배경, 캐릭터+말풍선 (패딩 2/16/16으로 10px 상향) -->
-            <div style="display: flex; gap: 12px; align-items: flex-start; padding: 2px 16px 16px 16px; background: #f1f5f9; border-bottom-left-radius: 19px; border-bottom-right-radius: 19px;">
-                <!-- 밀당 캐릭터 (배경 없음) -->
-                <div style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; width: 75px;">
-                    <div style="width: 75px; height: 132px; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden;">
+            <!-- 본문: 연회색 배경, 캐릭터+말풍선 (패딩 2/16/16으로 10px 상향), 좁은 기기에서도 잘리지 않도록 min-width: 0 -->
+            <div style="display: flex; gap: 12px; align-items: flex-start; padding: 2px 16px 16px 16px; background: #f1f5f9; border-bottom-left-radius: 19px; border-bottom-right-radius: 19px; min-width: 0;">
+                <!-- 밀당 캐릭터 (배경 없음, 좁은 화면에서도 보이도록 flex-shrink: 0 유지) -->
+                <div style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; width: 75px; min-width: 60px;">
+                    <div style="width: 70px; height: 70px; display: flex; align-items: center; justify-content: center; overflow: hidden; box-sizing: border-box; flex-shrink: 0;">
                         ${characterIconHtml}
                     </div>
-                    <div style="width: 75px; background: #ffca2c; border-radius: 12px; padding: 6px 4px; text-align: center; font-size: 12px; font-weight: 700; color: #1e293b; border: 1px solid rgba(0,0,0,0.08);">
+                    <div style="width: 100%; max-width: 75px; background: #ffca2c; border-radius: 12px; padding: 6px 4px; text-align: center; font-size: 12px; font-weight: 700; color: #1e293b; border: 1px solid rgba(0,0,0,0.08); box-sizing: border-box;">
                         코멘트
                     </div>
                 </div>
@@ -1660,7 +1669,7 @@ export async function openEditInsightShareModal(photoUrl) {
     
     // 기존 이미지 사용
     const existingImageHtml = insightShare.photoUrl ? `
-        <div id="insightScreenshotContainer" style="width: 420px; max-width: 420px; margin: 0 auto; background: #f8fafc; border-radius: 8px; overflow: hidden; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+        <div id="insightScreenshotContainer" style="width: 100%; max-width: 420px; margin: 0 auto; background: #f8fafc; border-radius: 8px; overflow: hidden; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; box-sizing: border-box;">
             <div style="text-align: center;">
                 <img src="${insightShare.photoUrl}" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" alt="밀당 코멘트 공유 이미지">
             </div>
