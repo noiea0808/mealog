@@ -482,10 +482,19 @@
                     <input type="text" id="setupNickname" placeholder="닉네임을 입력하세요" maxlength="20" class="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 text-sm outline-none focus:border-slate-400 transition-colors">
                     <p class="text-[10px] text-slate-400 mt-1">한글, 영문, 숫자 조합 최대 20자</p>
                 </div>
-                <!-- 생년월일 -->
+                <!-- 생년월일 / 성별 스위치 -->
                 <div>
                     <label class="text-sm font-bold text-slate-600 block mb-2">생년월일</label>
-                    <input type="date" id="setupBirthdate" class="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 text-sm outline-none focus:border-slate-400 transition-colors">
+                    <div class="flex gap-3 items-center">
+                        <div class="flex-1 min-w-0">
+                            <input type="date" id="setupBirthdate" class="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 text-sm outline-none focus:border-slate-400 transition-colors">
+                        </div>
+                        <div id="setupGenderSwitch" class="setup-gender-switch flex-shrink-0 inline-flex rounded-xl overflow-hidden border border-slate-200 bg-slate-50" role="group" aria-label="성별">
+                            <button type="button" id="setupGenderMale" class="setup-gender-btn py-3 px-4 text-sm font-bold transition-colors rounded-l-[10px] bg-slate-50 text-slate-600 border-0" data-value="male">남</button>
+                            <button type="button" id="setupGenderFemale" class="setup-gender-btn py-3 px-4 text-sm font-bold transition-colors rounded-r-[10px] bg-slate-50 text-slate-600 border-0" data-value="female">여</button>
+                            <input type="hidden" id="setupGender" value="">
+                        </div>
+                    </div>
                     <p class="text-[10px] text-slate-400 mt-1">실수로 입력한 경우에만 가입 후 1회 수정 가능합니다</p>
                 </div>
                 <!-- 라이프스타일 -->
@@ -504,6 +513,7 @@
             </div>
             
             <button id="profileSetupBtn" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-md active:bg-emerald-700 transition-colors">시작하기</button>
+            <button type="button" id="profileSetupGuestBtn" class="w-full mt-3 py-2.5 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm active:bg-slate-200 transition-colors">게스트로 둘러보기</button>
         </div>
     </div>
 
@@ -896,9 +906,16 @@
                         </div>
                         <div class="profile-settings-row border-b border-slate-100">
                             <label class="profile-settings-label" for="settingBirthdate">생년월일</label>
-                            <div class="profile-settings-field">
-                                <input type="date" id="settingBirthdate" class="profile-settings-input">
+                            <div class="profile-settings-field w-full min-w-0">
+                                <div class="profile-settings-birthdate-row">
+                                    <input type="date" id="settingBirthdate" class="profile-settings-input profile-settings-birthdate-input">
+                                    <div class="setting-gender-switch inline-flex rounded-lg overflow-hidden border border-slate-300 bg-white/90 shadow-sm" role="group" aria-label="성별">
+                                        <button type="button" id="settingGenderMale" class="setting-gender-btn py-2 px-3 rounded-l-[8px] text-sm font-bold border-0 transition-colors bg-slate-50 text-slate-600" data-value="male">남</button>
+                                        <button type="button" id="settingGenderFemale" class="setting-gender-btn py-2 px-3 rounded-r-[8px] text-sm font-bold border-0 transition-colors bg-slate-50 text-slate-600" data-value="female">여</button>
+                                    </div>
+                                </div>
                                 <p id="birthdateHint" class="profile-settings-hint mt-1">가입 후 1회만 수정 가능</p>
+                                <input type="hidden" id="settingGender" value="">
                             </div>
                         </div>
                         <div class="profile-settings-row border-b border-slate-100">
@@ -1024,14 +1041,14 @@
                     
                     <div id="optionalFields" class="space-y-2">
                         <div class="p-3 bg-slate-50 rounded-2xl border border-slate-200">
-                            <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">메뉴 정보</span>
+                            <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">무엇을</span>
                             <div id="categoryChips" class="flex flex-wrap gap-2 mb-1.5"></div>
                             <input id="menuDetailInput" type="text" placeholder="드신 메뉴 명 (예: 아이스 아메리카노)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
                             <div id="menuSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
                         </div>
                         
                         <div class="p-3 bg-blue-50/50 rounded-2xl border border-blue-100">
-                            <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">함께한 사람</span>
+                            <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">누구와</span>
                             <div id="withChips" class="flex flex-wrap gap-2 mb-1.5"></div>
                             <input id="withWhomInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
                             <div id="peopleSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>

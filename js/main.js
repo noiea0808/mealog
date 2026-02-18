@@ -17,7 +17,7 @@ import {
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
     copyDomain, closeDomainModal, switchToLogin, showTermsModal, closeTermsModal, cancelTermsAgreement, confirmTermsAgreement,
-    showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup, setProfileType, handleSetupPhotoUpload,
+    showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup, continueAsGuestFromProfileSetup, setProfileType, handleSetupPhotoUpload,
     confirmDeleteAccount, cancelDeleteAccount, confirmDeleteAccountAction
 } from './auth.js';
 import { authFlowManager } from './auth-flow.js';
@@ -2057,35 +2057,31 @@ async function updateUserDocument(user) {
         };
         
         if (!userDocSnap.exists()) {
-            // 신규 사용자: createdAt, providerId, email 모두 설정
-            updateData.createdAt = serverTimestamp();
-            
-            // providerId와 email은 처음 한 번만 설정
+            // 신규 사용자: 가입 완료(createdAt)는 프로필 설정 후에만 등록
+            // providerId, email, lastLoginAt만 먼저 저장
             if (user.providerData && user.providerData.length > 0) {
                 updateData.providerId = user.providerData[0].providerId;
             }
             if (user.email) {
                 updateData.email = user.email;
             }
-            
-            console.log('✅ 신규 사용자 문서 생성:', { 
-                userId: user.uid,
-                providerId: updateData.providerId,
-                email: updateData.email
-            });
+            console.log('✅ 신규 사용자 문서 생성 (프로필 설정 후 가입 완료):', { userId: user.uid });
         } else {
-            // 기존 사용자: providerId와 email이 없을 때만 설정 (한 번만)
             const existingData = userDocSnap.data();
+            // 프로필 설정 완료 시점에 가입 완료(createdAt) 등록
+            if (!existingData.createdAt && window.userSettings?.profileCompleted === true) {
+                updateData.createdAt = serverTimestamp();
+                console.log('✅ 가입 완료(프로필 설정 후) 사용자 등록:', user.uid);
+            }
             if (!existingData.providerId && user.providerData && user.providerData.length > 0) {
                 updateData.providerId = user.providerData[0].providerId;
-                console.log('✅ providerId 초기 설정:', updateData.providerId);
             }
             if (!existingData.email && user.email) {
                 updateData.email = user.email;
-                console.log('✅ email 초기 설정:', updateData.email);
             }
-            
-            console.log('✅ 사용자 문서 업데이트 (마지막 로그인):', { userId: user.uid });
+            if (!existingData.createdAt && !updateData.createdAt) {
+                console.log('✅ 사용자 문서 업데이트 (마지막 로그인):', { userId: user.uid });
+            }
         }
         
         await setDoc(userDocRef, updateData, { merge: true });
@@ -2094,6 +2090,24 @@ async function updateUserDocument(user) {
         // 에러가 발생해도 계속 진행 (비중요한 정보이므로)
     }
 }
+
+/** 프로필 설정 완료 시 가입 완료(createdAt) 등록. auth.js confirmProfileSetup에서 호출 */
+window.ensureUserRegistered = async function () {
+    const user = auth.currentUser;
+    if (!user || user.isAnonymous) return;
+    if (!window.userSettings?.profileCompleted) return;
+    try {
+        const userDocRef = doc(db, 'artifacts', appId, 'users', user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (!userDocSnap.exists()) return;
+        const data = userDocSnap.data();
+        if (data.createdAt) return;
+        await setDoc(userDocRef, { createdAt: serverTimestamp() }, { merge: true });
+        console.log('✅ 가입 완료(프로필 설정 후) 사용자 등록:', user.uid);
+    } catch (e) {
+        console.warn('ensureUserRegistered 실패:', e);
+    }
+};
 
 // 인증 상태 변경 리스너 - 단순화된 버전
 let lastProcessedUserId = null; // 마지막으로 처리한 사용자 ID
@@ -2112,9 +2126,15 @@ initAuth(async (user) => {
         return;
     }
     
+    // 1.5. 프로필 설정에서 "게스트로 둘러보기" 선택 시: user=null이면 아무것도 하지 않고 익명 로그인 콜백 대기
+    if (!user && sessionStorage.getItem('guestFromProfileSetup') === 'true') {
+        return;
+    }
+    
     // 2. 갑작스러운 게스트 전환 방지: 이전에 로그인된 사용자가 있었는데 갑자기 게스트로 전환되는 경우
-    // 하지만 Firestore 규칙은 request.auth를 확인하므로, 실제 인증 상태를 확인해야 함
-    if ((!user || user.isAnonymous) && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
+    // 단, 프로필 설정에서 "게스트로 둘러보기"를 선택한 경우는 허용 (메인 화면으로 이동)
+    const isGuestFromProfileSetup = sessionStorage.getItem('guestFromProfileSetup') === 'true';
+    if (!isGuestFromProfileSetup && (!user || user.isAnonymous) && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
         // 실제 auth.currentUser를 확인하여 관리자 페이지 영향인지 확인
         const actualCurrentUser = auth.currentUser;
         
@@ -2137,9 +2157,9 @@ initAuth(async (user) => {
     }
     
     // 3. 로그아웃 시에도 이전 사용자가 있었으면 무시 (관리자 페이지 영향 가능)
-    // 단, 명시적 로그아웃인 경우는 허용 (sessionStorage에서 확인)
+    // 단, 명시적 로그아웃(또는 게스트로 둘러보기)인 경우는 허용
     const isExplicitLogout = sessionStorage.getItem('explicitLogout') === 'true';
-    if (!user && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous && !isExplicitLogout) {
+    if (!user && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous && !isExplicitLogout && !isGuestFromProfileSetup) {
         // 실제 auth.currentUser를 확인
         const actualCurrentUser = auth.currentUser;
         
@@ -2424,6 +2444,7 @@ initAuth(async (user) => {
         // Phase 1-1: 인증 플로우를 한 곳에서만 호출 (단일 진입점)
         // 게스트는 즉시 처리, 일반 사용자는 onSettingsUpdate에서 처리
         if (user.isAnonymous) {
+            sessionStorage.removeItem('guestFromProfileSetup');
             // 게스트는 설정 없이 즉시 처리
             authFlowManager.handleAuthState(user).catch(e => {
                 console.error('❌ 게스트 인증 플로우 처리 실패:', e);
@@ -2438,6 +2459,9 @@ initAuth(async (user) => {
                     console.error('❌ 인증 플로우 처리 실패:', e);
                     hideLoading();
                 });
+            } else {
+                // 설정 대기 중 (게스트→이메일 로그인 등): 로딩 표시해 타임아웃처럼 보이지 않게
+                showLoading('로그인 처리 중...', { dimBackground: false });
             }
             // 설정이 없으면 onSettingsUpdate 콜백에서 처리됨
         }
@@ -2464,8 +2488,11 @@ initAuth(async (user) => {
             return;
         }
         
-        // 로그아웃 처리 전에 lastProcessedUserId 초기화
+        // 로그아웃 처리: 다음 로그인에서 인증 플로우가 새로 돌 수 있도록 초기화
         lastProcessedUserId = null;
+        authFlowManager.hasCompleted = false;
+        authFlowManager.lastProcessedUserId = null;
+        window.userSettings = null;
         
         // 명시적 로그아웃이면 즉시 로그인 옵션 표시, 아니면 짧은 대기 후 표시 (자동 로그인 시 타이틀만 노출)
         const showOptionsNow = wasExplicitLogout;
@@ -3912,6 +3939,10 @@ function initEventListeners() {
     if (profileSetupBtn) {
         profileSetupBtn.addEventListener('click', confirmProfileSetup);
     }
+    const profileSetupGuestBtn = document.getElementById('profileSetupGuestBtn');
+    if (profileSetupGuestBtn) {
+        profileSetupGuestBtn.addEventListener('click', continueAsGuestFromProfileSetup);
+    }
 
     // 초기 가입: 라이프스타일 버튼
     document.querySelectorAll('.setup-lifestyle-btn').forEach(btn => {
@@ -3927,6 +3958,22 @@ function initEventListeners() {
                 b.classList.toggle('bg-slate-50', !active);
                 b.classList.toggle('text-slate-600', !active);
                 b.classList.toggle('border-slate-200', !active);
+            });
+        });
+    });
+
+    // 초기 가입: 성별 스위치 (남/여)
+    document.querySelectorAll('.setup-gender-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const v = btn.getAttribute('data-value') || '';
+            const hidden = document.getElementById('setupGender');
+            if (hidden) hidden.value = v;
+            document.querySelectorAll('.setup-gender-btn').forEach(b => {
+                const active = b === btn;
+                b.classList.toggle('bg-emerald-600', active);
+                b.classList.toggle('text-white', active);
+                b.classList.toggle('bg-slate-50', !active);
+                b.classList.toggle('text-slate-600', !active);
             });
         });
     });
@@ -4122,6 +4169,25 @@ function initEventListeners() {
                 b.classList.toggle('bg-white', !active);
                 b.classList.toggle('text-slate-600', !active);
                 b.classList.toggle('border-slate-200', !active);
+            });
+        });
+    });
+    // 설정: 성별 스위치 (남/여, 우측 끝)
+    document.querySelectorAll('.setting-gender-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (!appState.isProfileEditing) {
+                showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+                return;
+            }
+            const v = btn.getAttribute('data-value') || '';
+            const hidden = document.getElementById('settingGender');
+            if (hidden) hidden.value = v;
+            document.querySelectorAll('.setting-gender-btn').forEach(b => {
+                const active = b === btn;
+                b.classList.toggle('bg-emerald-600', active);
+                b.classList.toggle('text-white', active);
+                b.classList.toggle('bg-slate-50', !active);
+                b.classList.toggle('text-slate-600', !active);
             });
         });
     });

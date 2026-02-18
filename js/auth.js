@@ -643,6 +643,12 @@ export function showProfileSetupModal() {
             btn.classList.remove('bg-emerald-600', 'text-white', 'border-emerald-600');
             btn.classList.add('bg-slate-50', 'text-slate-600', 'border-slate-200');
         });
+        const setupGenderHidden = document.getElementById('setupGender');
+        if (setupGenderHidden) setupGenderHidden.value = '';
+        document.querySelectorAll('.setup-gender-btn').forEach(btn => {
+            btn.classList.remove('bg-emerald-600', 'text-white');
+            btn.classList.add('bg-slate-50', 'text-slate-600');
+        });
     }
 }
 
@@ -651,6 +657,23 @@ export function closeProfileSetupModal() {
     const modal = document.getElementById('profileSetupModal');
     if (modal) {
         modal.classList.add('hidden');
+    }
+}
+
+/** 프로필 설정을 건너뛰고 게스트로 둘러보기 */
+export async function continueAsGuestFromProfileSetup() {
+    closeProfileSetupModal();
+    try {
+        sessionStorage.setItem('guestFromProfileSetup', 'true');
+        showLoading('게스트로 시작하는 중...');
+        await signOut(auth);
+        await signInAnonymously(auth);
+        showToast("게스트 모드로 둘러보기를 시작합니다.", "info");
+    } catch (e) {
+        sessionStorage.removeItem('guestFromProfileSetup');
+        console.error("게스트 전환 실패:", e);
+        showToast("게스트로 시작할 수 없습니다. 다시 시도해주세요.", "error");
+        hideLoading();
     }
 }
 
@@ -753,6 +776,7 @@ export async function confirmProfileSetup() {
 
     const birthdate = (document.getElementById('setupBirthdate')?.value || '').trim();
     const lifestyle = (document.getElementById('setupLifestyle')?.value || '').trim();
+    const gender = (document.getElementById('setupGender')?.value || '').trim() || null;
     
     if (!nickname) {
         showToast("닉네임을 입력해주세요.", "error");
@@ -791,6 +815,7 @@ export async function confirmProfileSetup() {
         window.userSettings.profile.nickname = nickname;
         window.userSettings.profile.birthdate = birthdate;
         window.userSettings.profile.lifestyle = lifestyle;
+        window.userSettings.profile.gender = (gender === 'male' || gender === 'female') ? gender : null;
         window.userSettings.profile.birthdateChangeCount = 0;
         window.userSettings.profile.birthdateChangedAt = null;
         // 초기 가입은 아이콘 설정 없이 텍스트(닉네임 첫 글자) 기본
@@ -835,6 +860,11 @@ export async function confirmProfileSetup() {
         
         const { dbOps } = await import('./db.js');
         await dbOps.saveSettings(window.userSettings);
+        
+        // 가입 완료(프로필 설정 후) 사용자 문서에 createdAt 등록
+        if (typeof window.ensureUserRegistered === 'function') {
+            await window.ensureUserRegistered();
+        }
         
         // 헤더 업데이트
         const { updateHeaderUI } = await import('./ui.js');

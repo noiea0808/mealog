@@ -2901,8 +2901,8 @@ export function renderTagManager(key, isSub = false, tempSettings) {
     let labelText = "";
     if (!isSub) {
         if (key === 'mealType') labelText = '어떻게 (대분류)';
-        else if (key === 'withWhom') labelText = '함께한 사람 (대분류)';
-        else if (key === 'category') labelText = '메뉴 정보 (대분류)';
+        else if (key === 'withWhom') labelText = '누구와 (대분류)';
+        else if (key === 'category') labelText = '무엇을 (대분류)';
         else if (key === 'snackType') labelText = '간식 구분 (대분류)';
     }
     

@@ -254,6 +254,10 @@ export class AuthFlowManager {
         if (!user || user.isAnonymous) {
             console.log('👤 게스트 모드로 처리');
             this.currentState = AuthState.GUEST;
+            closeTermsModal();
+            // 프로필 설정 모달도 닫기 (게스트로 둘러보기 후 뒤에 남아 있을 수 있음)
+            const profileSetupModal = document.getElementById('profileSetupModal');
+            if (profileSetupModal) profileSetupModal.classList.add('hidden');
             switchScreen(true);
             // 랜딩 페이지 명시적으로 숨김
             const landingPage = document.getElementById('landingPage');
