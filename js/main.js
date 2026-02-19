@@ -4039,7 +4039,7 @@ function initEventListeners() {
     // 모먼트/밀톡: 키보드 열림 시 하단 네비 숨김 + 키보드 상단 네비바 영역 제거
     initMainAppKeyboardHandling();
 
-    // 기록 완료·등록 버튼: 눌렀다 뗄 때(click) 실행
+    // 기록 완료·등록 버튼: 눌렀다 뗄 때 실행, 키보드 유지(touchstart preventDefault)
     (function initSubmitButtonFirstTap() {
         const SUBMIT_DEBOUNCE_MS = 500;
         let lastRun = 0;
@@ -4049,20 +4049,14 @@ function initEventListeners() {
             lastRun = now;
             fn();
         };
-        const btnSave = document.getElementById('btnSave');
-        if (btnSave) {
-            btnSave.addEventListener('click', (e) => {
-                e.preventDefault();
-                runOnce(() => window.saveEntry());
-            });
-        }
-        const boardSubmitBtn = document.getElementById('boardWriteSubmitBtn') || document.querySelector('#boardWriteView button[id="boardWriteSubmitBtn"]');
-        if (boardSubmitBtn) {
-            boardSubmitBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                runOnce(() => window.submitBoardPost());
-            });
-        }
+        const addSubmitHandlers = (el, fn) => {
+            if (!el) return;
+            el.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+            el.addEventListener('touchend', (e) => { e.preventDefault(); runOnce(fn); }, { passive: false });
+            el.addEventListener('click', (e) => { e.preventDefault(); runOnce(fn); });
+        };
+        addSubmitHandlers(document.getElementById('btnSave'), () => window.saveEntry());
+        addSubmitHandlers(document.getElementById('boardWriteSubmitBtn') || document.querySelector('#boardWriteView button[id="boardWriteSubmitBtn"]'), () => window.submitBoardPost());
     })();
 
     // 하단 네비게이션
