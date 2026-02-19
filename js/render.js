@@ -1904,7 +1904,7 @@ export async function renderGallery() {
                         <div id="comment-input-${postId}" class="hidden mt-1 py-3 -mx-6 px-6">
                             <div class="relative">
                                 <input type="text" id="comment-text-${postId}" placeholder="댓글을 입력하세요..." class="w-full px-3 py-2 pr-16 border border-slate-300 rounded-lg text-sm focus:outline-none bg-slate-100" onkeypress="if(event.key === 'Enter') window.submitComment('${postId}')">
-                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold cursor-pointer hover:text-emerald-700" ontouchstart="event.preventDefault(); window.submitComment('${postId}')" onclick="window.submitComment('${postId}')">게시</span>
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold cursor-pointer hover:text-emerald-700" ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); window.submitComment('${postId}')" onclick="window.submitComment('${postId}')">게시</span>
                             </div>
                         </div>
                     </div>
@@ -2926,7 +2926,7 @@ export function renderTagManager(key, isSub = false, tempSettings) {
     if (!isNonEditable) {
         html += `<div class="flex gap-2">
             <input type="text" id="newTag-${isSub ? 'sub-' : ''}${key}" class="flex-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-slate-400" placeholder="태그 추가">
-            <button onmousedown="event.preventDefault(); window.addTag('${key}', ${isSub})" ontouchstart="event.preventDefault(); window.addTag('${key}', ${isSub})" class="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-lg text-xs font-bold border border-emerald-100">추가</button>
+            <button ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); window.addTag('${key}', ${isSub})" onclick="window.addTag('${key}', ${isSub})" class="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-lg text-xs font-bold border border-emerald-100">추가</button>
         </div>`;
     }
     
@@ -3541,7 +3541,7 @@ export async function renderBoardDetail(postId) {
                                    class="w-full px-3 py-2 pr-16 border border-slate-300 rounded-lg text-sm focus:outline-none bg-slate-100"
                                    ${!window.currentUser ? 'disabled' : ''}
                                    onkeypress="if(event.key === 'Enter' && window.currentUser && !event.shiftKey) { event.preventDefault(); window.addBoardComment('${postId}'); }">
-                            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold cursor-pointer hover:text-emerald-700" onclick="if(window.currentUser) window.addBoardComment('${postId}')">게시</span>
+                            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold cursor-pointer hover:text-emerald-700" ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); if(window.currentUser) window.addBoardComment('${postId}')" onclick="if(window.currentUser) window.addBoardComment('${postId}')">게시</span>
                         </div>
                     </div>
                 </div>
