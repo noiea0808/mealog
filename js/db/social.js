@@ -216,10 +216,17 @@ export const postInteractions = {
                 if (!byId.has(data.id)) byId.set(data.id, data);
             });
             const comments = [...byId.values()];
+            const getCommentTimestamp = (c) => {
+                if (!c.timestamp) return 0;
+                if (c.timestamp.toDate && typeof c.timestamp.toDate === 'function') return c.timestamp.toDate().getTime();
+                if (typeof c.timestamp === 'string') return new Date(c.timestamp).getTime();
+                if (c.timestamp instanceof Date) return c.timestamp.getTime();
+                return new Date(c.timestamp || 0).getTime();
+            };
             comments.sort((a, b) => {
-                const timeA = new Date(a.timestamp || 0).getTime();
-                const timeB = new Date(b.timestamp || 0).getTime();
-                return timeA - timeB;
+                const tA = getCommentTimestamp(a);
+                const tB = getCommentTimestamp(b);
+                return tA - tB || (String(a.id || '')).localeCompare(String(b.id || ''));
             });
             return comments;
         } catch (e) {
