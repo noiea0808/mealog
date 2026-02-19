@@ -9,6 +9,7 @@ const www = path.join(root, 'www');
 
 const toCopy = [
   'index.html',
+  'privacy.html',
   'manifest.json',
   'sw.js',
   'version.json',
