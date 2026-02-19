@@ -1885,6 +1885,7 @@ async function getUsers() {
             let icon = '🐻';
             let birthdate = '';
             let lifestyle = '';
+            let gender = null;
             let email = null;
             let termsAgreed = false;
             let termsAgreedAt = null;
@@ -1929,6 +1930,7 @@ async function getUsers() {
                     if (settings.profile.icon) icon = settings.profile.icon;
                     if (settings.profile.birthdate) birthdate = String(settings.profile.birthdate).trim();
                     if (settings.profile.lifestyle) lifestyle = String(settings.profile.lifestyle).trim();
+                    if (settings.profile.gender === 'male' || settings.profile.gender === 'female') gender = settings.profile.gender;
                 } else {
                     nickname = '미설정';
                 }
@@ -1957,6 +1959,7 @@ async function getUsers() {
                 icon,
                 birthdate,
                 lifestyle,
+                gender,
                 email,
                 loginMethod,
                 termsAgreed,
@@ -1988,7 +1991,7 @@ async function renderUsers(options = {}) {
         return;
     }
     
-        container.innerHTML = '<tr><td colspan="12" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
+        container.innerHTML = '<tr><td colspan="13" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
     
     try {
         console.log('renderUsers 시작');
@@ -2010,7 +2013,7 @@ async function renderUsers(options = {}) {
         
         if (users.length === 0) {
             console.log('사용자가 없습니다.');
-            container.innerHTML = '<tr><td colspan="12" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
+            container.innerHTML = '<tr><td colspan="13" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
             try { applyAdminUsersPageVisibility(adminUsersCurrentPage); } catch (_) {}
             return;
         }
@@ -2102,6 +2105,9 @@ async function renderUsers(options = {}) {
                             ${deleteRequestedBadge ? `<div class="mt-0.5">${deleteRequestedBadge}</div>` : ''}
                         </div>
                     </td>
+                    <td data-page="1 2" class="px-2 py-3 text-center">
+                        <span class="text-sm text-slate-600">${user.gender === 'male' ? '남' : user.gender === 'female' ? '여' : '-'}</span>
+                    </td>
                     <td data-page="1" class="px-4 py-3">
                         <span class="px-2 py-1 ${loginMethodBadge} text-xs font-bold rounded">${user.loginMethod || '게스트'}</span>
                     </td>
@@ -2136,7 +2142,7 @@ async function renderUsers(options = {}) {
     } catch (e) {
         console.error("사용자 목록 렌더링 실패:", e);
         const errMsg = (e && (e.message || e.code || String(e))) || '알 수 없는 오류';
-        container.innerHTML = '<tr><td colspan="12" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
+        container.innerHTML = '<tr><td colspan="13" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
     }
 }
 
@@ -2919,15 +2925,16 @@ async function renderBoardPosts(category = 'all') {
                 ? `<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded cursor-pointer hover:bg-red-200" onclick="window.showReportDetailPopup('board_${String(postId).replace(/'/g, "\\'")}')">🚩 신고 ${reportInfo.count}</span>`
                 : '';
             const isHidden = post.isHidden === true;
+            const safePostId = String(postId).replace(/'/g, "\\'");
             return `
-                <div class="border border-slate-200 rounded-xl p-4 ${isHidden ? 'bg-slate-50 opacity-90' : ''} board-list-row cursor-pointer hover:bg-slate-50 transition-colors" data-post-id="${postId}" onclick="window.selectBoardPost('${String(postId).replace(/'/g, "\\'")}')">
+                <div class="border border-slate-200 rounded-xl p-4 ${isHidden ? 'bg-slate-50 opacity-90' : ''} board-list-row hover:bg-slate-50 transition-colors" data-post-id="${postId}">
                     <div class="flex items-start gap-4">
-                        <div class="flex-shrink-0 pt-0.5" onclick="event.stopPropagation()">
+                        <div class="flex-shrink-0 pt-0.5">
                             <input type="checkbox" class="board-item-checkbox w-4 h-4 rounded border-slate-300" data-post-id="${postId}" title="선택">
                         </div>
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center gap-2 mb-2 flex-wrap">
-                                <h3 class="font-bold text-slate-800">${escapeHtml(post.title || '')}</h3>
+                                <h3 class="font-bold text-slate-800"><span class="board-post-title-link cursor-pointer hover:underline" onclick="event.stopPropagation(); window.selectBoardPost('${safePostId}')">${escapeHtml(post.title || '')}</span></h3>
                                 <span class="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-bold rounded">${escapeHtml(post.category || '')}</span>
                                 ${isHidden ? '<span class="px-2 py-0.5 bg-slate-300 text-slate-600 text-xs font-bold rounded">가려짐</span>' : ''}
                                 ${reportBadgeHtml}

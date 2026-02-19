@@ -82,9 +82,7 @@ export function getWeekNumberForDate(date) {
     const firstDayOfWeek = firstDay.getDay();    let firstSunday = new Date(firstDay);
     if (firstDayOfWeek !== 0) {
         firstSunday.setDate(1 - firstDayOfWeek);
-    }
-
-    const dateTime = date.getTime();
+    }    const dateTime = date.getTime();
     for (let w = 1; w <= 6; w++) {
         const weekStart = new Date(firstSunday);
         weekStart.setDate(firstSunday.getDate() + (w - 1) * 7);

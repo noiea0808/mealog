@@ -430,6 +430,7 @@
                                                 닉네임 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
                                             </button>
                                         </th>
+                                        <th data-page="1 2" class="px-2 py-3 text-left text-xs font-bold text-slate-600 uppercase whitespace-nowrap min-w-[2.5rem]">성별</th>
                                         <th data-page="1" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase min-w-[2.5rem] leading-tight">
                                             <button type="button" class="admin-users-sort hover:text-slate-800 transition-colors text-left" data-sort-key="loginMethod">
                                                 로그인<br>방법 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
@@ -471,7 +472,7 @@
                                 </thead>
                                 <tbody id="usersContainer" class="divide-y divide-slate-100">
                                     <tr>
-                                        <td colspan="12" class="px-4 py-8 text-center text-slate-400">
+                                        <td colspan="13" class="px-4 py-8 text-center text-slate-400">
                                             <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
                                             <p>로딩 중...</p>
                                         </td>
@@ -769,11 +770,11 @@
                                         </button>
                                     </div>
                                     
-                                    <!-- 함께한 사람 (withWhom) -->
+                                    <!-- 누구와 (withWhom) -->
                                     <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
                                         <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
                                             <i class="fa-solid fa-users text-blue-600"></i>
-                                            함께한 사람 (withWhom)
+                                            누구와 (withWhom)
                                         </h3>
                                         <div id="tags-withWhom" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                                             <!-- 태그들이 동적으로 추가됩니다 -->

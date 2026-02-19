@@ -50,6 +50,8 @@ export const DEFAULT_USER_SETTINGS = {
         // 신규 가입 시 필수 입력
         birthdate: '',
         lifestyle: '',
+        /** 성별: 'male' | 'female' | null (선택 입력, 기가입자 강제 아님) */
+        gender: null,
         // 생년월일 변경 제한 (가입 후 1회만 변경 가능)
         birthdateChangeCount: 0,
         birthdateChangedAt: null

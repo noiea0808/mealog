@@ -11,6 +11,7 @@ const toCopy = [
   'index.html',
   'manifest.json',
   'sw.js',
+  'version.json',
   'css',
   'js',
   'assets',

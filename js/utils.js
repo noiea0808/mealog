@@ -36,6 +36,34 @@ export function setVal(id, value) {
     if (el) el.value = value;
 }
 
+/**
+ * 한글 등 IME 조합 중일 때 input 핸들러 실행을 지연시킵니다.
+ * 모바일에서 조합 중 DOM 업데이트가 텍스트 미표시 문제를 일으키는 것을 방지합니다.
+ * @param {HTMLInputElement|HTMLTextAreaElement|HTMLElement} el - input/textarea/contenteditable 요소
+ * @param {() => void} handler - input 시 실행할 핸들러 (조합 중에는 실행 안 함)
+ */
+export function addCompositionAwareInput(el, handler) {
+    if (!el) return;
+    let isComposing = false;
+    let pendingUpdate = false;
+    const runHandler = () => {
+        if (isComposing) {
+            pendingUpdate = true;
+            return;
+        }
+        handler();
+    };
+    el.addEventListener('compositionstart', () => { isComposing = true; });
+    el.addEventListener('compositionend', () => {
+        isComposing = false;
+        if (pendingUpdate) {
+            pendingUpdate = false;
+            handler();
+        }
+    });
+    el.addEventListener('input', runHandler);
+}
+
 // URL 정규화 함수 (쿼리 파라미터 제거) - 중복 제거
 export function normalizeUrl(url) {
     if (!url || typeof url !== 'string') return '';

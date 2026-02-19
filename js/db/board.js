@@ -519,7 +519,7 @@ export const boardOperations = {
             comments.sort((a, b) => {
                 const tA = getCommentTimestamp(a);
                 const tB = getCommentTimestamp(b);
-                return tA - tB;
+                return tA - tB || (String(a.id || '')).localeCompare(String(b.id || ''));
             });
             return comments;
         } catch (e) {
