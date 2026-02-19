@@ -4039,7 +4039,7 @@ function initEventListeners() {
     // 모먼트/밀톡: 키보드 열림 시 하단 네비 숨김 + 키보드 상단 네비바 영역 제거
     initMainAppKeyboardHandling();
 
-    // 기록 완료·등록 버튼: 키보드 열린 상태에서 한 번에 실행되도록 touchstart/mousedown에서 먼저 실행
+    // 기록 완료·등록 버튼: 눌렀다 뗄 때(click) 실행
     (function initSubmitButtonFirstTap() {
         const SUBMIT_DEBOUNCE_MS = 500;
         let lastRun = 0;
@@ -4051,25 +4051,13 @@ function initEventListeners() {
         };
         const btnSave = document.getElementById('btnSave');
         if (btnSave) {
-            btnSave.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                runOnce(() => window.saveEntry());
-            }, { passive: false });
-            btnSave.addEventListener('mousedown', (e) => {
+            btnSave.addEventListener('click', (e) => {
                 e.preventDefault();
                 runOnce(() => window.saveEntry());
             });
         }
         const boardSubmitBtn = document.getElementById('boardWriteSubmitBtn') || document.querySelector('#boardWriteView button[id="boardWriteSubmitBtn"]');
         if (boardSubmitBtn) {
-            boardSubmitBtn.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                runOnce(() => window.submitBoardPost());
-            }, { passive: false });
-            boardSubmitBtn.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                runOnce(() => window.submitBoardPost());
-            });
             boardSubmitBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 runOnce(() => window.submitBoardPost());
