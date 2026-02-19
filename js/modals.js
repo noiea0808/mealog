@@ -1,7 +1,7 @@
 // 모달 및 입력 처리 관련 함수들
 import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from './constants.js';
 import { appState } from './state.js';
-import { setVal, compressImage, getInputIdFromContainer, normalizeUrl } from './utils.js';
+import { setVal, compressImage, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput } from './utils.js';
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from './render/index.js';
 import { dbOps } from './db.js';
 import { showToast } from './ui.js';
@@ -247,7 +247,7 @@ export function openModal(date, slotId, entryId = null) {
             kakaoSearchBtn.classList.add('hidden');
         }
         if (placeInput) {
-            placeInput.placeholder = '식당명이나 장소 (예: 스타벅스)';
+            placeInput.placeholder = '어디에서 드셨나요? (예: 스타벅스, 김밥천국)';
             // 이전 모달 사용에서 남은 카카오 장소 정보 제거 (카카오 미선택인데 잘못된 주소·카카오맵 분류로 들어가는 것 방지)
             placeInput.removeAttribute('data-kakao-place-id');
             placeInput.removeAttribute('data-kakao-place-address');
@@ -586,23 +586,20 @@ export function openModal(date, slotId, entryId = null) {
         }
         
         // 입력 필드에 이벤트 리스너 추가 (간식 입력 시 추천 태그 업데이트)
-        // 이벤트 리스너는 한 번만 추가하도록 개선
+        // 조합(composition) 중에는 DOM 업데이트 지연 → 한글 IME 모바일 텍스트 미표시 이슈 방지
         const snackDetailInput = document.getElementById('snackDetailInput');
         if (snackDetailInput) {
-            // 기존 핸들러 제거 (없어도 에러 안남)
-            if (snackDetailInput._snackInputHandler) {
-                snackDetailInput.removeEventListener('input', snackDetailInput._snackInputHandler);
+            if (snackDetailInput._snackCompositionInit) {
+                // 이미 초기화됨 (모달 재오픈 시 중복 방지)
+            } else {
+                const updateSnackSuggestions = () => {
+                    const subTags = window.userSettings.subTags.snack || [];
+                    const snackType = document.querySelector('#snackTypeChips button.active')?.innerText;
+                    window.renderSecondary('snackSuggestions', subTags, 'snackDetailInput', snackType || null, 'snack');
+                };
+                addCompositionAwareInput(snackDetailInput, updateSnackSuggestions);
+                snackDetailInput._snackCompositionInit = true;
             }
-            
-            // 새 핸들러 생성 및 저장
-            const updateSnackSuggestions = () => {
-                const subTags = window.userSettings.subTags.snack || [];
-                const snackType = document.querySelector('#snackTypeChips button.active')?.innerText;
-                window.renderSecondary('snackSuggestions', subTags, 'snackDetailInput', snackType || null, 'snack');
-            };
-            
-            snackDetailInput._snackInputHandler = updateSnackSuggestions;
-            snackDetailInput.addEventListener('input', updateSnackSuggestions);
         }
         
         const entryModal = document.getElementById('entryModal');
@@ -1197,7 +1194,7 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
                 placeInput.placeholder = '돋보기 버튼을 선택하여 식당을 검색해보세요';
             } else {
                 kakaoSearchBtn.classList.add('hidden');
-                placeInput.placeholder = '어디서 (예: 스타벅스)';
+                placeInput.placeholder = '어디에서 드셨나요? (예: 스타벅스, 김밥천국)';
             }
         }
     }
@@ -1384,14 +1381,13 @@ export function openSettings() {
     const nicknameInput = document.getElementById('settingNickname');
     if (nicknameInput) {
         nicknameInput.value = state.tempSettings.profile.nickname || '';
-        // 닉네임 입력 시 텍스트 미리보기 즉시 반영 (중복 리스너 방지)
-        nicknameInput.removeEventListener('input', nicknameInput._profileNicknameHandler);
-        nicknameInput._profileNicknameHandler = () => {
-            if (window.settingsProfileType === 'text') {
-                setSettingsProfileType('text');
-            }
-        };
-        nicknameInput.addEventListener('input', nicknameInput._profileNicknameHandler);
+        // 닉네임 입력 시 텍스트 미리보기 즉시 반영 (조합 중 지연 → 한글 IME 이슈 방지)
+        if (!nicknameInput._nicknameCompositionInit) {
+            addCompositionAwareInput(nicknameInput, () => {
+                if (window.settingsProfileType === 'text') setSettingsProfileType('text');
+            });
+            nicknameInput._nicknameCompositionInit = true;
+        }
     }
     const bioInput = document.getElementById('settingBio');
     // 생년월일 / 라이프스타일 초기화
@@ -1440,13 +1436,14 @@ export function openSettings() {
         if (bioCharCount) {
             bioCharCount.textContent = (state.tempSettings.profile.bio || '').length;
         }
-        // 글자 수 카운터 업데이트 이벤트
-        bioInput.addEventListener('input', function() {
-            const count = this.value.length;
-            if (bioCharCount) {
-                bioCharCount.textContent = count;
-            }
-        });
+        // 글자 수 카운터 업데이트 (조합 중 지연 → 한글 IME 이슈 방지)
+        if (!bioInput._bioCompositionInit) {
+            addCompositionAwareInput(bioInput, () => {
+                const count = bioInput.value.length;
+                if (bioCharCount) bioCharCount.textContent = count;
+            });
+            bioInput._bioCompositionInit = true;
+        }
     }
     
     // 밀당 메모 입력 필드 초기화
@@ -1611,6 +1608,16 @@ export function openSettings() {
 }
 
 // 버전 정보 로드 함수
+// - 프로덕션(1.0.0): 배포일자만 표시 (2026.02.19)
+// - 스테이징(1.0.0_1): 기준일 (배포일) 형식 (2026.02.18 (2026.02.19))
+function formatVersionDate(isoStr) {
+    const d = new Date(isoStr);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}.${m}.${day}`;
+}
+
 async function loadVersionInfo() {
     try {
         const response = await fetch('/version.json?t=' + Date.now());
@@ -1618,53 +1625,30 @@ async function loadVersionInfo() {
             const data = await response.json();
             const versionNumberEl = document.getElementById('versionNumber');
             const buildDateEl = document.getElementById('buildDate');
-            
+
             if (versionNumberEl && data.version) {
                 versionNumberEl.textContent = data.version;
             }
-            
-            // index.html 파일의 최종 수정 시간 가져오기
-            try {
-                const htmlResponse = await fetch('/index.html?t=' + Date.now());
-                if (htmlResponse.ok) {
-                    const lastModified = htmlResponse.headers.get('Last-Modified');
-                    if (lastModified) {
-                        const modifiedDate = new Date(lastModified);
-                        const dateText = modifiedDate.toLocaleString('ko-KR', { 
-                            year: 'numeric',
-                            month: '2-digit', 
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                        });
-                        
-                        if (buildDateEl) {
-                            buildDateEl.textContent = dateText;
-                            buildDateEl.title = modifiedDate.toLocaleString('ko-KR');
-                        }
-                    }
-                }
-            } catch (e) {
-                console.debug('최종 수정 시간 로드 실패 (무시):', e);
-                // Last-Modified 헤더가 없으면 buildDate 사용 (fallback)
-                if (buildDateEl && data.buildDate) {
-                    const buildDate = new Date(data.buildDate);
-                    const dateText = buildDate.toLocaleString('ko-KR', { 
-                        year: 'numeric',
-                        month: '2-digit', 
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                    });
-                    
-                    buildDateEl.textContent = dateText;
+
+            if (buildDateEl && data.buildDate) {
+                const buildDate = new Date(data.buildDate);
+                const isStaging = /_\d+$/.test(String(data.version || ''));
+
+                if (isStaging && data.baseBuildDate) {
+                    // 스테이징: 기준일 (배포일) 형식
+                    const baseStr = formatVersionDate(data.baseBuildDate);
+                    const deployStr = formatVersionDate(data.buildDate);
+                    buildDateEl.textContent = `${baseStr} (${deployStr})`;
+                    buildDateEl.title = `기준: ${new Date(data.baseBuildDate).toLocaleString('ko-KR')} / 배포: ${buildDate.toLocaleString('ko-KR')}`;
+                } else {
+                    // 프로덕션: 배포일자만
+                    buildDateEl.textContent = formatVersionDate(data.buildDate);
                     buildDateEl.title = buildDate.toLocaleString('ko-KR');
                 }
             }
         }
     } catch (e) {
         console.debug('버전 정보 로드 실패 (무시):', e);
-        // 버전 정보는 선택적이므로 실패해도 계속 진행
     }
 }
 
@@ -2113,6 +2097,9 @@ export function addTag(k, isSub) {
         }
         renderTagManager(k, isSub, state.tempSettings);
         i.value = '';
+        requestAnimationFrame(() => {
+            document.getElementById(inputId)?.focus();
+        });
     }
 }
 
@@ -2168,7 +2155,7 @@ function renderFavoriteTagsEditor() {
             </div>
             <div class="flex gap-2 mb-3">
                 <input type="text" id="newFavoriteTag-${sectionKey}-${selectedMainTag || 'none'}" class="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-slate-400" placeholder="태그 입력" onkeypress="if(event.key==='Enter' && window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${sectionKey}']) window.addFavoriteTag('${storageKey}', window.selectedFavoriteMainTag['${sectionKey}'])">
-                <button onclick="if(window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${sectionKey}']) window.addFavoriteTag('${storageKey}', window.selectedFavoriteMainTag['${sectionKey}'])" class="bg-slate-800 text-white px-4 py-1.5 rounded-lg text-xs font-bold ${selectedMainTag ? '' : 'opacity-50 cursor-not-allowed'}" ${selectedMainTag ? '' : 'disabled'}>추가</button>
+                <button onmousedown="event.preventDefault(); if(window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${sectionKey}']) window.addFavoriteTag('${storageKey}', window.selectedFavoriteMainTag['${sectionKey}'])" ontouchstart="event.preventDefault(); if(window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${sectionKey}']) window.addFavoriteTag('${storageKey}', window.selectedFavoriteMainTag['${sectionKey}'])" class="bg-slate-800 text-white px-4 py-1.5 rounded-lg text-xs font-bold ${selectedMainTag ? '' : 'opacity-50 cursor-not-allowed'}" ${selectedMainTag ? '' : 'disabled'}>추가</button>
             </div>
             ${selectedMainTag ? `
                 ${selectedFavorites.length >= 5 ? '<div class="text-[10px] text-slate-500 mb-3">최대 5개까지 입력 가능합니다</div>' : ''}
@@ -2264,6 +2251,9 @@ export async function addFavoriteTag(mainTagKey, mainTag) {
     favorites.push(text);
     input.value = '';
     renderFavoriteTagsEditor();
+    requestAnimationFrame(() => {
+        document.getElementById(`newFavoriteTag-${mainTagKey}-${mainTag}`)?.focus();
+    });
     
     // 즉시 저장 후 화면(기록 모달 등)에서 쓰는 userSettings에도 반영
     try {
@@ -2379,30 +2369,21 @@ function createKakaoSearchModal() {
             }
         });
         
-        // 자동완성 (입력 중 실시간 검색) - 디바운싱 적용
+        // 자동완성 (입력 중 실시간 검색) - 디바운싱 + 조합 이벤트 처리
         let searchTimeout = null;
-        searchInput.addEventListener('input', (e) => {
-            const keyword = e.target.value.trim();
-            
-            // 이전 타이머 취소
-            if (searchTimeout) {
-                clearTimeout(searchTimeout);
-            }
-            
-            // 빈 문자열이면 결과 초기화
-            if (!keyword) {
-                const resultsContainer = document.getElementById('kakaoSearchResults');
-                if (resultsContainer) {
-                    resultsContainer.innerHTML = '';
+        if (!searchInput._kakaoSearchCompositionInit) {
+            const resultsContainer = document.getElementById('kakaoSearchResults');
+            addCompositionAwareInput(searchInput, () => {
+                const keyword = searchInput.value.trim();
+                if (searchTimeout) clearTimeout(searchTimeout);
+                if (!keyword) {
+                    if (resultsContainer) resultsContainer.innerHTML = '';
+                    return;
                 }
-                return;
-            }
-            
-            // 500ms 후 자동 검색 실행 (디바운싱)
-            searchTimeout = setTimeout(() => {
-                window.searchKakaoPlaces();
-            }, 500);
-        });
+                searchTimeout = setTimeout(() => window.searchKakaoPlaces(), 500);
+            });
+            searchInput._kakaoSearchCompositionInit = true;
+        }
         
         searchInput.focus();
     }

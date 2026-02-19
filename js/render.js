@@ -2926,7 +2926,7 @@ export function renderTagManager(key, isSub = false, tempSettings) {
     if (!isNonEditable) {
         html += `<div class="flex gap-2">
             <input type="text" id="newTag-${isSub ? 'sub-' : ''}${key}" class="flex-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-slate-400" placeholder="태그 추가">
-            <button onclick="window.addTag('${key}', ${isSub})" class="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-lg text-xs font-bold border border-emerald-100">추가</button>
+            <button onmousedown="event.preventDefault(); window.addTag('${key}', ${isSub})" ontouchstart="event.preventDefault(); window.addTag('${key}', ${isSub})" class="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-lg text-xs font-bold border border-emerald-100">추가</button>
         </div>`;
     }
     

@@ -537,7 +537,7 @@
                     <!-- 돋보기: 모먼트(타임라인) = 검색, 밀로그/밀톡 = 하트·댓글·북마크·돋보기 -->
                     <div id="timelineSearchPanel" class="timeline-search-wrapper hidden relative overflow-visible">
                         <div class="timeline-search-panel flex items-center overflow-hidden">
-                            <input type="text" id="searchInput" placeholder="메뉴, 장소 검색..." class="flex-1 min-w-0 bg-transparent border-0 pl-3 pr-1 py-1.5 text-sm outline-none focus:ring-0" oninput="window.safeCall('handleSearch', this.value)">
+                            <input type="text" id="searchInput" placeholder="메뉴, 장소 검색..." class="flex-1 min-w-0 bg-transparent border-0 pl-3 pr-1 py-1.5 text-sm outline-none focus:ring-0">
                             <button type="button" id="searchTriggerBtn" class="timeline-search-toggle w-8 h-8 flex items-center justify-center flex-shrink-0 text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors" aria-label="검색">
                                 <i class="fa-solid fa-magnifying-glass text-sm"></i>
                             </button>
@@ -1034,7 +1034,7 @@
                             <button id="kakaoSearchBtn" onclick="window.openKakaoPlaceSearch()" class="hidden absolute left-2 top-1/2 -translate-y-1/2 bg-slate-600 text-white rounded-lg p-2 z-10 hover:bg-slate-700 transition-colors">
                                 <i class="fa-solid fa-magnifying-glass text-sm"></i>
                             </button>
-                            <input id="placeInput" type="text" placeholder="어디서 (예: 스타벅스)" class="w-full p-3 pl-12 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
+                            <input id="placeInput" type="text" placeholder="어디에서 드셨나요? (예: 스타벅스, 김밥천국)" class="w-full p-3 pl-12 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
                         </div>
                         <div id="restaurantSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
                     </div>
@@ -1043,7 +1043,7 @@
                         <div class="p-3 bg-slate-50 rounded-2xl border border-slate-200">
                             <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">무엇을</span>
                             <div id="categoryChips" class="flex flex-wrap gap-2 mb-1.5"></div>
-                            <input id="menuDetailInput" type="text" placeholder="드신 메뉴 명 (예: 아이스 아메리카노)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
+                            <input id="menuDetailInput" type="text" placeholder="무엇을 드셨나요? (예: 파스타, 된장찌개)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
                             <div id="menuSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
                         </div>
                         

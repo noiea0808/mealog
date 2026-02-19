@@ -12,7 +12,7 @@ import { callableFunctions } from './firebase.js';
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
-import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy } from './utils.js';
+import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput } from './utils.js';
 import { 
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
@@ -725,6 +725,7 @@ window.toggleCommentInput = (postId) => {
 };
 
 // 피드 댓글 작성 함수 (앨범/밀톡 공통)
+const _commentSubmitting = {};
 window.submitComment = async (postId) => {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         showToast("로그인이 필요합니다.", 'error');
@@ -740,6 +741,8 @@ window.submitComment = async (postId) => {
         showToast("댓글을 입력해주세요.", 'error');
         return;
     }
+    if (_commentSubmitting[postId]) return;
+    _commentSubmitting[postId] = true;
     
     const commentsListEl = document.getElementById(`comments-list-${postId}`);
     const commentCountEl = document.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
@@ -748,8 +751,7 @@ window.submitComment = async (postId) => {
     const userNickname = userProfile?.nickname || '익명';
     const tempId = `temp-${Date.now()}`;
     
-    // 입력 필드 비활성화 + 즉시 비우기 (더블 탭 방지)
-    inputEl.disabled = true;
+    // 즉시 비우기 (disabled 대신 플래그로 더블 탭 방지 → 키보드 유지)
     inputEl.value = '';
     
     // 낙관적 업데이트: 댓글 한 줄 즉시 표시
@@ -820,7 +822,7 @@ window.submitComment = async (postId) => {
             else if (viewCommentsBtn && n > 2) viewCommentsBtn.textContent = `댓글 ${n}개 모두 보기`;
         }
     } finally {
-        inputEl.disabled = false;
+        _commentSubmitting[postId] = false;
     }
 };
 
@@ -3172,7 +3174,7 @@ window.submitBoardPost = async () => {
         showToast("내용을 입력해주세요.", 'error');
         return;
     }
-    document.activeElement?.blur?.();
+    // 키보드는 사용자가 포커스를 옮길 때만 내림 (등록 시 강제 숨기지 않음)
     
     const listCategory = window.currentBoardCategory || 'all';
     const boardWriteView = document.getElementById('boardWriteView');
@@ -3583,6 +3585,7 @@ window.deleteBoardPost = (postId) => {
     });
 };
 
+const _boardCommentSubmitting = {};
 window.addBoardComment = async (postId) => {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         showToast("로그인이 필요합니다.", 'error');
@@ -3598,6 +3601,8 @@ window.addBoardComment = async (postId) => {
         showToast("댓글을 입력해주세요.", 'error');
         return;
     }
+    if (_boardCommentSubmitting[postId]) return;
+    _boardCommentSubmitting[postId] = true;
     
     const commentsListEl = document.getElementById('boardCommentsList');
     const commentsCountEl = document.getElementById('boardCommentsCount');
@@ -3626,7 +3631,6 @@ window.addBoardComment = async (postId) => {
         commentsCountEl.textContent = n;
     }
     input.value = '';
-    input.disabled = true;
     
     try {
         const result = await boardOperations.addComment(postId, content);
@@ -3651,7 +3655,7 @@ window.addBoardComment = async (postId) => {
             commentsCountEl.textContent = n || '';
         }
     } finally {
-        input.disabled = false;
+        _boardCommentSubmitting[postId] = false;
     }
 };
 
@@ -3983,6 +3987,13 @@ function initEventListeners() {
     if (searchTriggerBtn) {
         searchTriggerBtn.addEventListener('click', window.toggleSearch);
     }
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput && !searchInput._searchCompositionInit) {
+        addCompositionAwareInput(searchInput, () => {
+            window.handleSearch(searchInput.value);
+        });
+        searchInput._searchCompositionInit = true;
+    }
     
     // 알림: 클릭 시 팝업, 바깥 클릭 시 닫기
     const notificationTriggerBtn = document.getElementById('notificationTriggerBtn');
@@ -4214,7 +4225,7 @@ function initEventListeners() {
             const isEmpty = !(boardWriteContentEl.innerText || '').trim();
             boardWriteContentEl.classList.toggle('format-editor-empty', isEmpty);
         };
-        boardWriteContentEl.addEventListener('input', syncPlaceholder);
+        addCompositionAwareInput(boardWriteContentEl, syncPlaceholder);
         boardWriteContentEl.addEventListener('blur', syncPlaceholder);
         boardWriteContentEl.addEventListener('paste', (e) => {
             e.preventDefault();
