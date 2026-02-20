@@ -8,5 +8,9 @@
   },
   "storage": {
     "rules": "storage.rules"
+  },
+  "hosting": {
+    "public": ".",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**", "android/**", "scripts/**", "functions/**"]
   }
 }
