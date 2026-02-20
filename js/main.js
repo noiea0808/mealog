@@ -2704,10 +2704,16 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
                     if (photoUrlArray.length > 0) window.editInsightShare(photoUrlArray[0]);
                     else showToast("수정할 밀당 코멘트 공유를 찾을 수 없습니다.", 'error');
                 } else {
-                    if (entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined') {
-                        window.editFeedPost(entryId);
+                    let idToEdit = (entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined') ? entryId : null;
+                    if (!idToEdit && photoDate && photoSlotId && window.mealHistory?.length > 0) {
+                        // entryId 없을 때: 같은 날짜·슬롯의 기존 기록 찾아서 수정 (중복 생성 방지)
+                        const found = window.mealHistory.find(m => m.date === photoDate && m.slotId === photoSlotId);
+                        if (found) idToEdit = found.id;
+                    }
+                    if (idToEdit) {
+                        window.editFeedPost(idToEdit);
                     } else if (photoDate && photoSlotId) {
-                        window.openModal(photoDate, photoSlotId, null);
+                        showToast("수정할 기록을 찾을 수 없습니다.", 'error');
                     } else {
                         showToast("수정할 기록을 찾을 수 없습니다.", 'error');
                     }

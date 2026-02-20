@@ -348,10 +348,18 @@ export async function updateDashboard() {
     // mealHistory 기반 filteredData(날짜 있음)는 직접 카운트. stats 기반(날짜 없음)은 mainCount/snackCount 사용
     const totalRec = Math.max(0, targetDays * 3);
     const hasMealHistoryData = filteredData.some(m => m.date);
-    const recCount = (hasMealHistoryData ? null : statsMainCount) ?? filteredData.filter(m => {
-        const slot = SLOTS.find(s => s.id === m.slotId && s.type === 'main');
-        return slot && m.mealType !== 'Skip';
-    }).length;
+    // 동일 날짜+슬롯에 여러 meal 문서가 있을 수 있으므로, (date, slotId) 기준 유니크 카운트 (총 끼니수 초과 방지)
+    const recCount = (hasMealHistoryData ? null : statsMainCount) ?? (() => {
+        const seen = new Set();
+        return filteredData.filter(m => {
+            const slot = SLOTS.find(s => s.id === m.slotId && s.type === 'main');
+            if (!slot || m.mealType === 'Skip') return false;
+            const key = `${m.date}|${m.slotId}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        }).length;
+    })();
     const mealPercent = totalRec > 0 ? Math.round((recCount / totalRec) * 100) : 0;
     
     const snackCount = (hasMealHistoryData ? null : statsSnackCount) ?? filteredData.filter(m => {

@@ -65,21 +65,8 @@ export function hideLoading() {
 }
 
 export function showToast(message, type = 'info') {
-    // 로그인 전 등 userSettings 없을 때도 에러/성공 메시지는 표시 (로그인 실패 등)
-    const forceShow = type === 'error' || type === 'success' || !window.userSettings;
-    if (!forceShow && window.userSettings?.showToast !== true) return;
-    const container = document.getElementById('toastContainer');
-    if (!container) return;
-    const toast = document.createElement('div');
-    let bgClass = type === 'success' ? 'bg-emerald-600' : (type === 'error' ? 'bg-red-500' : 'bg-slate-800');
-    toast.className = `${bgClass} text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 text-sm font-bold animate-toast mb-2 w-full max-w-xs`;
-    toast.innerHTML = `<i class="fa-solid ${type === 'success' ? 'fa-check' : (type === 'error' ? 'fa-circle-exclamation' : 'fa-info-circle')}"></i><span>${message}</span>`;
-    container.appendChild(toast);
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.transform = 'translateY(10px)';
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
+    // 토스트 팝업 비활성화 (전무 없음)
+    return;
 }
 
 export function switchScreen(isLoggedIn) {

@@ -762,8 +762,18 @@ export async function saveEntry() {
             }, 1000);
         }
         
+        // main 끼니: 동일 (date, slotId)에 이미 기록이 있으면 수정 모드로 전환 (중복 방지)
+        let idToUse = state.currentEditingId;
+        if (!idToUse && !isS && state.currentEditingDate && state.currentEditingSlotId && window.mealHistory?.length > 0) {
+            const existing = window.mealHistory.find(m =>
+                m.date === state.currentEditingDate &&
+                m.slotId === state.currentEditingSlotId &&
+                ['morning', 'lunch', 'dinner'].includes(m.slotId)
+            );
+            if (existing) idToUse = existing.id;
+        }
         // 기존 기록에서 shareBanned 필드 가져오기 (수정 시 유지)
-        const existingRecord = state.currentEditingId ? window.mealHistory.find(m => m.id === state.currentEditingId) : null;
+        const existingRecord = idToUse ? window.mealHistory.find(m => m.id === idToUse) : null;
         const shareBanned = existingRecord?.shareBanned === true;
         
         // 카카오맵 API로 입력된 식당 정보 확인
@@ -777,7 +787,7 @@ export async function saveEntry() {
         const shouldUseKakaoFields = kakaoPlaceId && !isSk && nameMatches;
 
         const record = {
-            id: state.currentEditingId,
+            id: idToUse,
             date: state.currentEditingDate,
             slotId: state.currentEditingSlotId,
             mealType,

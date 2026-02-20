@@ -64,6 +64,7 @@ export const callableFunctions = {
     createInsightShare: httpsCallable(functions, 'createInsightShare'),
     getStorageImageAsBase64: httpsCallable(functions, 'getStorageImageAsBase64'),
     backfillUserStats: httpsCallable(functions, 'backfillUserStats'),
+    removeDuplicateMeals: httpsCallable(functions, 'removeDuplicateMeals'),
     callGemini: httpsCallable(functions, 'callGemini'),
     searchKakaoPlaces: httpsCallable(functions, 'searchKakaoPlaces'),
     getApkUploadUrl: httpsCallable(functions, 'getApkUploadUrl'),
