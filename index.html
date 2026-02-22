@@ -54,12 +54,12 @@
         /* 버튼 표시 시: 타이틀 아래→위로 올라가는 애니메이션, 타이틀·버튼 블록 세로 중앙 */
         @keyframes landingTitleRise { from { transform: translateY(100px); } to { transform: translateY(0); } }
         #landingPage.landing-buttons-visible #landingFlexMain { justify-content: center; padding-top: 0; }
-        #landingPage.landing-buttons-visible #landingSplashTransition { height: 120px; min-height: 120px; transition: height 0.5s ease, min-height 0.5s ease; }
-        #landingSplashTransition { transition: height 0.5s ease, min-height 0.5s ease; }
-        #landingPage.landing-buttons-visible #landingSplashTitleAndTagline { justify-content: flex-start; padding-top: 0; align-items: center; animation: landingTitleRise 0.5s ease forwards; }
+        #landingPage.landing-buttons-visible #landingSplashTransition { height: 120px; min-height: 120px; transition: height 0.6s ease-out, min-height 0.6s ease-out; }
+        #landingSplashTransition { transition: height 0.6s ease-out, min-height 0.6s ease-out; }
+        #landingPage.landing-buttons-visible #landingSplashTitleAndTagline { justify-content: flex-start; padding-top: 0; align-items: center; animation: landingTitleRise 0.6s ease-out forwards; }
         /* 버튼들은 타이틀 바로 아래에서 페이드인 */
         #landingLoginOptions.landing-options-visible { opacity: 1; }
-        #landingLoginOptions { transition: opacity 0.4s ease 0.15s; }
+        #landingLoginOptions { transition: opacity 0.55s ease 0.25s; }
         /* 랜딩 → 메인 전환: 아이콘 화면만 페이드 아웃, 메인은 즉시 표시 (스피너 후 추가 페이드 없음) */
         #landingPage.screen-transition-exit { opacity: 0; transition: opacity 0.3s ease-out; pointer-events: none; }
     </style>

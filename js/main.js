@@ -2499,7 +2499,7 @@ initAuth(async (user) => {
             const landingLoginOptions = document.getElementById('landingLoginOptions');
             const apkSection = document.getElementById('apkDownloadSection');
             if (landingPage) landingPage.classList.add('landing-show-login');
-            // 아이콘↔타이틀 페이드(0.35s) 후, 타이틀 위로 올라가는 애니메이션과 함께 버튼 표시
+            // 아이콘↔타이틀 페이드 이후 버튼 표시를 살짝 늦춰 전환을 부드럽게
             setTimeout(() => {
                 if (landingPage) landingPage.classList.add('landing-buttons-visible');
                 if (landingLoginOptions) {
@@ -2509,7 +2509,7 @@ initAuth(async (user) => {
                     });
                 }
                 if (apkSection) apkSection.classList.remove('hidden');
-            }, 380);
+            }, 520);
         };
         const showOptionsNow = wasExplicitLogout;
         if (showOptionsNow) {
