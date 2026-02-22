@@ -17,6 +17,11 @@ function initEntryModalKeyboardHandling(entryModal) {
     if (!entryModal || entryModal._keyboardHandlingInit) return;
     entryModal._keyboardHandlingInit = true;
     let baselineHeight = 0; // 모달 열릴 때 viewport 높이 (키보드 없음)
+    let imeComposing = false; // 한글 등 IME 조합 중 여부 (조합 중 레이아웃 업데이트 시 텍스트 미표시 방지)
+    entryModal.querySelectorAll('input, textarea').forEach(el => {
+        el.addEventListener('compositionstart', () => { imeComposing = true; });
+        el.addEventListener('compositionend', () => { imeComposing = false; });
+    });
     const setKeyboardOpen = (open) => {
         if (open) {
             entryModal.classList.add('keyboard-open');
@@ -50,9 +55,11 @@ function initEntryModalKeyboardHandling(entryModal) {
         }
     });
     if (window.visualViewport) {
+        let lastVh = 0, lastVtop = 0;
         const checkViewport = () => {
             if (entryModal.classList.contains('hidden')) return;
             const vh = window.visualViewport.height;
+            const vtop = window.visualViewport?.offsetTop ?? 0;
             const active = document.activeElement;
             const isInputFocused = active && entryModal.contains(active) && (active.matches('input, textarea') || active.isContentEditable);
             const threshold = (baselineHeight || window.innerHeight) * 0.85;
@@ -61,7 +68,12 @@ function initEntryModalKeyboardHandling(entryModal) {
                 setKeyboardOpen(false);
             } else if (isInputFocused) {
                 setKeyboardOpen(true);
-                const vtop = window.visualViewport?.offsetTop ?? 0;
+                // 한글 IME 조합 중에는 레이아웃 업데이트 생략 → 조합 텍스트 미표시 이슈 방지
+                if (imeComposing) return;
+                // 값이 실제로 바뀐 경우에만 스타일 업데이트 (불필요한 reflow 감소)
+                if (Math.abs(lastVh - vh) < 1 && Math.abs(lastVtop - vtop) < 1) return;
+                lastVh = vh;
+                lastVtop = vtop;
                 entryModal.style.height = vh + 'px';
                 entryModal.style.top = vtop + 'px';
             } else {
@@ -650,6 +662,14 @@ export async function saveEntry() {
     // 로딩 오버레이 참조를 함수 시작 부분에서 가져옴
     const loadingOverlay = document.getElementById('loadingOverlay');
     const entryModal = document.getElementById('entryModal');
+    
+    // 모바일 IME(한글 등) 조합 중인 텍스트가 input.value에 반영되도록 blur 후 대기
+    // 스페이스/선택 전에 '기록 완료'를 누르면 조합 중인 글자가 누락되는 문제 방지
+    const active = document.activeElement;
+    if (active && entryModal?.contains(active) && (active.matches('input, textarea') || active.isContentEditable)) {
+        active.blur();
+        await new Promise(r => setTimeout(r, 80));
+    }
     
     try {
         const state = appState;

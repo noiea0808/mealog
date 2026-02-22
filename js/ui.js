@@ -6,7 +6,10 @@ let loadingHideTimeout = null; // hideLoading 지연용
 let loadingShownAt = 0; // 메시지 표시 시 최소 표시 시간용
 
 export function showLoading(message = '', options = {}) {
-    const { dimBackground = true } = options;
+    const { dimBackground = true, skipOnLoginScreen = true } = options;
+    const mainApp = document.getElementById('mainApp');
+    const isOnLoginScreen = mainApp && mainApp.classList.contains('hidden');
+    if (skipOnLoginScreen && isOnLoginScreen) return;
     const overlay = document.getElementById('loadingOverlay');
     const messageEl = document.getElementById('loadingOverlayMessage');
     if (overlay) {

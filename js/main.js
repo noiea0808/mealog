@@ -3189,7 +3189,13 @@ window.submitBoardPost = async () => {
         showToast("로그인이 필요합니다.", 'error');
         return;
     }
-    // 키보드가 열린 상태에서도 한 번에 등록되도록: 값 읽기를 blur보다 먼저 수행
+    // 모바일 IME(한글 등) 조합 중인 텍스트가 반영되도록 blur 후 대기
+    const boardWriteView = document.getElementById('boardWriteView');
+    const active = document.activeElement;
+    if (active && boardWriteView?.contains(active) && (active.matches('input, textarea') || active.isContentEditable)) {
+        active.blur();
+        await new Promise(r => setTimeout(r, 80));
+    }
     const titleEl = document.getElementById('boardWriteTitle');
     const boardWriteContentEl = document.getElementById('boardWriteContent');
     const title = (titleEl && titleEl.value) ? titleEl.value.trim() : '';
@@ -3215,7 +3221,6 @@ window.submitBoardPost = async () => {
     // 키보드는 사용자가 포커스를 옮길 때만 내림 (등록 시 강제 숨기지 않음)
     
     const listCategory = window.currentBoardCategory || 'all';
-    const boardWriteView = document.getElementById('boardWriteView');
     const submitBtn = boardWriteView?.querySelector('#boardWriteSubmitBtn');
     const isEdit = !!window.currentEditingPostId;
     const restoreSubmitBtn = () => {
