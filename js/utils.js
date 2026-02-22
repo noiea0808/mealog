@@ -666,7 +666,7 @@ export async function deleteMultipleImagesFromStorage(imageUrls) {
     await Promise.allSettled(deletePromises);
 }
 
-// base64 압축 (모달 미리보기/저장용) - 뷰포트 기반, 200KB 이하
+// base64 압축 (모달 미리보기/저장용) - 뷰포트 기반, 400KB 이하, 화질 우선
 export function compressImage(base64) {
     return new Promise((resolve) => {
         const img = new Image();
@@ -674,7 +674,7 @@ export function compressImage(base64) {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             
-            const targetSizeKB = 200;
+            const targetSizeKB = 400;
             const targetSizeBytes = targetSizeKB * 1024;
             const maxInitialWidth = getViewportMaxWidth();
             const minWidth = Math.max(300, Math.floor((typeof window !== 'undefined' ? (window.innerWidth || 390) : 390) * 0.8));
@@ -691,7 +691,7 @@ export function compressImage(base64) {
             canvas.height = height;
             ctx.drawImage(img, 0, 0, width, height);
             
-            let quality = 0.45;
+            let quality = 0.78;
             let dataUrl = canvas.toDataURL('image/jpeg', quality);
             
             const getBase64Size = (dataUrl) => {
