@@ -69,19 +69,31 @@ export function showToast(message, type = 'info') {
     return;
 }
 
+const LANDING_EXIT_MS = 280;
+
 export function switchScreen(isLoggedIn) {
     const landing = document.getElementById('landingPage');
     const main = document.getElementById('mainApp');
     if (!landing || !main) return;
     
     if (isLoggedIn) {
-        landing.style.display = 'none';
+        // 랜딩만 페이드 아웃, 메인은 즉시 표시 (스피너 끝난 뒤 추가 페이드 없음)
+        landing.classList.add('screen-transition-exit');
         main.style.display = 'block';
         main.classList.remove('hidden');
+        main.style.opacity = '1';
+        
+        setTimeout(() => {
+            landing.style.display = 'none';
+            landing.classList.remove('screen-transition-exit');
+        }, LANDING_EXIT_MS);
     } else {
         landing.style.display = 'flex';
+        landing.classList.remove('screen-transition-exit');
         main.style.display = 'none';
         main.classList.add('hidden');
+        main.classList.remove('screen-transition-enter', 'screen-transition-enter-active');
+        main.style.opacity = '';
     }
     // 로딩 오버레이는 hideLoading()으로 관리 (중앙 관리)
 }

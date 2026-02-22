@@ -60,6 +60,8 @@
         /* 버튼들은 타이틀 바로 아래에서 페이드인 */
         #landingLoginOptions.landing-options-visible { opacity: 1; }
         #landingLoginOptions { transition: opacity 0.4s ease 0.15s; }
+        /* 랜딩 → 메인 전환: 아이콘 화면만 페이드 아웃, 메인은 즉시 표시 (스피너 후 추가 페이드 없음) */
+        #landingPage.screen-transition-exit { opacity: 0; transition: opacity 0.3s ease-out; pointer-events: none; }
     </style>
     <script>
         // 디버깅: 페이지 로드 시작
