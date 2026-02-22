@@ -259,11 +259,6 @@ export class AuthFlowManager {
             const profileSetupModal = document.getElementById('profileSetupModal');
             if (profileSetupModal) profileSetupModal.classList.add('hidden');
             switchScreen(true);
-            // 랜딩 페이지 명시적으로 숨김
-            const landingPage = document.getElementById('landingPage');
-            if (landingPage) {
-                landingPage.style.display = 'none';
-            }
             // ✅ 초기 진입에서도 타임라인 렌더가 되도록 탭을 명시적으로 세팅
             const switchMainTab = window.switchMainTab;
             if (switchMainTab) switchMainTab('timeline');
@@ -283,10 +278,8 @@ export class AuthFlowManager {
         console.log('✅ 메인 화면으로 입장 (약관/프로필은 백그라운드에서 확인)');
         this.currentState = AuthState.READY;
         const switchMainTab = window.switchMainTab;
-        const landingPage = document.getElementById('landingPage');
         closeTermsModal();
         switchScreen(true);
-        if (landingPage) landingPage.style.display = 'none';
         if (switchMainTab) switchMainTab('timeline');
         // 밀로그 메인 화면에서 기록 로드 중 메시지 표시 (onDataUpdate에서 meals 로드 시 hideLoading)
         if (!window._recordsLoadHidePending) {
@@ -525,7 +518,6 @@ export class AuthFlowManager {
         try {
             // Phase 2-3: 에러 처리 강화
             const switchMainTab = window.switchMainTab;
-            const landingPage = document.getElementById('landingPage');
             
             // Phase 2-2: 상태 전이 로직 명확화 - 각 상태별 명확한 처리
             switch (state) {
@@ -568,7 +560,6 @@ export class AuthFlowManager {
                     // 약관 모달이 열려있으면 닫기
                     closeTermsModal();
                     switchScreen(true);
-                    if (landingPage) landingPage.style.display = 'none';
                     if (switchMainTab) switchMainTab('timeline');
                     this.hasCompleted = true;
                     this.lastProcessedUserId = this.user?.uid;
@@ -578,7 +569,6 @@ export class AuthFlowManager {
                 case AuthState.GUEST:
                     // 게스트 모드: 메인 화면으로 전환, 완료 플래그 설정
                     switchScreen(true);
-                    if (landingPage) landingPage.style.display = 'none';
                     if (switchMainTab) switchMainTab('timeline');
                     this.hasCompleted = true;
                     this.lastProcessedUserId = this.user?.uid;

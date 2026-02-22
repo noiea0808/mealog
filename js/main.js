@@ -2115,8 +2115,7 @@ window.ensureUserRegistered = async function () {
 let lastProcessedUserId = null; // 마지막으로 처리한 사용자 ID
 let authCheckShowOptionsTimeout = null; // 로그인 옵션 표시 지연 타이머 (자동 로그인 시 타이틀만 보이도록)
 
-// 첫 화면에서 자동 로그인 확인 중임을 표시 (로그인 버튼을 누르기 전에 기다리도록)
-showLoading('로그인 상태 확인 중...');
+// 로그인 상태 확인 중에는 스피너 표시하지 않음 (스피너는 로그인→메인 전환 시 기록 로드할 때만 표시)
 
 initAuth(async (user) => {
     // 로그아웃 시 로그인 옵션 즉시 표시 여부 (명시적 로그아웃이면 true). 아래에서 제거하므로 먼저 저장
@@ -2461,10 +2460,8 @@ initAuth(async (user) => {
                     console.error('❌ 인증 플로우 처리 실패:', e);
                     hideLoading();
                 });
-            } else {
-                // 설정 대기 중 (게스트→이메일 로그인 등): 로딩 표시해 타임아웃처럼 보이지 않게
-                showLoading('로그인 처리 중...', { dimBackground: false });
             }
+            // 설정 대기 중에는 스피너 표시하지 않음 (스피너는 메인 전환 후 기록 로드할 때만 표시)
             // 설정이 없으면 onSettingsUpdate 콜백에서 처리됨
         }
     } else {
@@ -2496,15 +2493,30 @@ initAuth(async (user) => {
         authFlowManager.lastProcessedUserId = null;
         window.userSettings = null;
         
-        // 명시적 로그아웃이면 즉시 로그인 옵션 표시, 아니면 짧은 대기 후 표시 (자동 로그인 시 타이틀만 노출)
+        // 로그인 필요 시: 아이콘 페이드아웃 → 타이틀 표시 → 타이틀 위로 이동 + 버튼 페이드인
+        const showLoginScreen = () => {
+            const landingPage = document.getElementById('landingPage');
+            const landingLoginOptions = document.getElementById('landingLoginOptions');
+            const apkSection = document.getElementById('apkDownloadSection');
+            if (landingPage) landingPage.classList.add('landing-show-login');
+            // 아이콘↔타이틀 페이드 이후 버튼 표시를 살짝 늦춰 전환을 부드럽게
+            setTimeout(() => {
+                if (landingPage) landingPage.classList.add('landing-buttons-visible');
+                if (landingLoginOptions) {
+                    landingLoginOptions.classList.remove('hidden');
+                    requestAnimationFrame(() => {
+                        landingLoginOptions.classList.add('landing-options-visible');
+                    });
+                }
+                if (apkSection) apkSection.classList.remove('hidden');
+            }, 520);
+        };
         const showOptionsNow = wasExplicitLogout;
         if (showOptionsNow) {
-            document.getElementById('landingLoginOptions')?.classList.remove('hidden');
+            showLoginScreen();
         } else {
             authCheckShowOptionsTimeout = setTimeout(() => {
-                if (auth.currentUser === null) {
-                    document.getElementById('landingLoginOptions')?.classList.remove('hidden');
-                }
+                if (auth.currentUser === null) showLoginScreen();
                 authCheckShowOptionsTimeout = null;
             }, 400);
         }
