@@ -2493,22 +2493,42 @@ initAuth(async (user) => {
         authFlowManager.lastProcessedUserId = null;
         window.userSettings = null;
         
-        // 로그인 필요 시: 아이콘 페이드아웃 → 타이틀 표시 → 타이틀 위로 이동 + 버튼 페이드인
+        // 로그인 필요 시: 아이콘 페이드아웃 → 타이틀 표시 → 타이틀 중앙에서 위로 올라감 → 올라가는 애니메이션 완료 후 버튼 페이드인
         const showLoginScreen = () => {
             const landingPage = document.getElementById('landingPage');
             const landingLoginOptions = document.getElementById('landingLoginOptions');
             const apkSection = document.getElementById('apkDownloadSection');
             if (landingPage) landingPage.classList.add('landing-show-login');
-            // 아이콘↔타이틀 페이드 이후 버튼 표시를 살짝 늦춰 전환을 부드럽게
+            // 아이콘↔타이틀 페이드 이후 타이틀 위로 올라가는 애니메이션 시작
             setTimeout(() => {
-                if (landingPage) landingPage.classList.add('landing-buttons-visible');
-                if (landingLoginOptions) {
-                    landingLoginOptions.classList.remove('hidden');
-                    requestAnimationFrame(() => {
-                        landingLoginOptions.classList.add('landing-options-visible');
-                    });
+                if (!landingPage) return;
+                landingPage.classList.add('landing-buttons-visible');
+                const titleEl = document.getElementById('landingSplashTitleAndTagline');
+                let buttonsShown = false;
+                const showButtons = () => {
+                    if (buttonsShown) return;
+                    buttonsShown = true;
+                    if (landingLoginOptions) {
+                        landingLoginOptions.classList.remove('hidden');
+                        requestAnimationFrame(() => {
+                            landingLoginOptions.classList.add('landing-options-visible');
+                        });
+                    }
+                    if (apkSection) apkSection.classList.remove('hidden');
+                };
+                // transitionend로 애니메이션 완료 후에만 버튼 표시 (점프 방지)
+                if (titleEl) {
+                    const onEnd = (e) => {
+                        if (e.propertyName === 'transform') {
+                            titleEl.removeEventListener('transitionend', onEnd);
+                            requestAnimationFrame(() => requestAnimationFrame(showButtons)); // 2프레임 대기 후 표시
+                        }
+                    };
+                    titleEl.addEventListener('transitionend', onEnd);
+                    setTimeout(showButtons, 950); // 폴백: 0.8s + 여유
+                } else {
+                    setTimeout(showButtons, 800);
                 }
-                if (apkSection) apkSection.classList.remove('hidden');
             }, 520);
         };
         const showOptionsNow = wasExplicitLogout;

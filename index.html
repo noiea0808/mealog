@@ -44,22 +44,22 @@
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <link rel="stylesheet" href="css/style.css">
     <style>
+        /* 스플래시→웹 전환 시 깜박임 방지: 초기 배경을 흰색으로 */
+        html { background-color: #ffffff; }
         /* 랜딩: 아이콘 ↔ 타이틀 전환 페이드 */
         #landingSplashTransition { min-height: 200px; }
         #landingSplashIconOnly,
         #landingSplashTitleAndTagline { transition: opacity 0.35s ease; }
         #landingPage.landing-show-login #landingSplashIconOnly { opacity: 0; pointer-events: none; }
         #landingPage.landing-show-login #landingSplashTitleAndTagline { opacity: 1; pointer-events: auto; }
-        #landingSplashTitleAndTagline { transition: opacity 0.35s ease; }
-        /* 버튼 표시 시: 타이틀 아래→위로 올라가는 애니메이션, 타이틀·버튼 블록 세로 중앙 */
-        @keyframes landingTitleRise { from { transform: translateY(100px); } to { transform: translateY(0); } }
+        #landingSplashTitleAndTagline { transition: opacity 0.35s ease, transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94); }
+        /* 타이틀 위로 올라가기: will-change로 레이어 분리, transition으로 부드럽게 */
         #landingPage.landing-buttons-visible #landingFlexMain { justify-content: center; padding-top: 0; }
-        #landingPage.landing-buttons-visible #landingSplashTransition { height: 120px; min-height: 120px; transition: height 0.6s ease-out, min-height 0.6s ease-out; }
-        #landingSplashTransition { transition: height 0.6s ease-out, min-height 0.6s ease-out; }
-        #landingPage.landing-buttons-visible #landingSplashTitleAndTagline { justify-content: flex-start; padding-top: 0; align-items: center; animation: landingTitleRise 0.6s ease-out forwards; }
-        /* 버튼들은 타이틀 바로 아래에서 페이드인 */
+        #landingPage.landing-buttons-visible #landingSplashTitleAndTagline { transform: translateY(-70px); will-change: transform; }
+        /* 버튼: absolute 배치. transitionend 후에만 표시하여 타이틀 점프 방지 */
+        #landingPage.landing-buttons-visible #landingLoginOptions { position: absolute; left: 50%; transform: translateX(-50%); bottom: max(11rem, calc(env(safe-area-inset-bottom) + 9rem)); }
         #landingLoginOptions.landing-options-visible { opacity: 1; }
-        #landingLoginOptions { transition: opacity 0.55s ease 0.25s; }
+        #landingLoginOptions { transition: opacity 0.4s ease; }
         /* 랜딩 → 메인 전환: 아이콘 화면만 페이드 아웃, 메인은 즉시 표시 (스피너 후 추가 페이드 없음) */
         #landingPage.screen-transition-exit { opacity: 0; transition: opacity 0.3s ease-out; pointer-events: none; }
     </style>
@@ -181,6 +181,7 @@
     <!-- 앱에서 구글 네이티브 로그인: npm 모듈 해석 불가하므로 스크립트로 로드 -->
     <script src="js/capacitor.js"></script>
     <script>window.Capacitor=window.Capacitor||(window.capacitorExports&&window.capacitorExports.Capacitor);</script>
+    <script src="js/capacitor-splash-screen-plugin.js"></script>
     <script src="js/capacitor-social-login-plugin.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -193,6 +194,13 @@
                     var sb = getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom').trim();
                     if (!st || st === '0px' || parseFloat(st) < 20) document.documentElement.style.setProperty('--safe-top', '28px');
                     if (!sb || sb === '0px' || parseFloat(sb) < 20) document.documentElement.style.setProperty('--safe-bottom', '48px');
+                    // 스플래시 깜박임 방지: 랜딩 화면이 그려진 후 네이티브 스플래시 숨김
+                    requestAnimationFrame(function() {
+                        requestAnimationFrame(function() {
+                            var Splash = window.Capacitor?.Plugins?.SplashScreen;
+                            if (Splash) Splash.hide().catch(function() {});
+                        });
+                    });
                 }
             } catch (e) {}
         });
@@ -365,7 +373,7 @@
                     <p class="text-emerald-100 text-sm font-bold opacity-90 tracking-wide">우리가 함께한, 맛있었던 기억</p>
                 </div>
             </div>
-            <!-- 로그인 옵션: 로그인 정보 입력이 필요할 때만 표시 (구글/이메일 로그인 등) -->
+            <!-- 로그인 옵션: 로그인 정보 입력이 필요할 때만 표시 -->
             <div id="landingLoginOptions" class="hidden opacity-0 w-[85vw] min-w-[280px] max-w-[360px] sm:max-w-[320px] mx-auto px-6 sm:px-8 space-y-3 mt-0">
             <button id="googleLoginBtn" class="w-full py-3.5 bg-white text-slate-800 rounded-2xl flex items-center justify-center shadow-lg active:scale-[0.98] transition-transform gap-2">
                 <i class="fa-brands fa-google text-lg"></i>
