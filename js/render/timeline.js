@@ -226,8 +226,8 @@ export function renderTimeline() {
                             ${iconHtml}
                         </div>
                         <div class="flex-1 min-w-0 flex flex-col justify-center p-4">
-                            <div class="flex justify-between items-start">
-                                <div class="flex-1">
+                            <div class="flex justify-between items-start gap-2">
+                                <div class="flex-1 min-w-0 overflow-hidden">
                                     <h4 class="leading-tight mb-0 truncate">${titleLine1}</h4>
                                     ${titleLine2 ? (r ? `<p class="text-sm text-slate-600 font-bold mt-1.5 mb-0 truncate">${titleLine2}</p>` : `<p class="mt-1.5 mb-0 truncate">${titleLine2}</p>`) : ''}
                                 </div>
