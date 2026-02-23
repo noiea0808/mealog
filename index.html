@@ -52,12 +52,13 @@
         #landingSplashTitleAndTagline { transition: opacity 0.35s ease; }
         #landingPage.landing-show-login #landingSplashIconOnly { opacity: 0; pointer-events: none; }
         #landingPage.landing-show-login #landingSplashTitleAndTagline { opacity: 1; pointer-events: auto; }
-        #landingSplashTitleAndTagline { transition: opacity 0.35s ease, transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94); }
-        /* 타이틀 위로 올라가기: will-change로 레이어 분리, transition으로 부드럽게 */
-        #landingPage.landing-buttons-visible #landingFlexMain { justify-content: center; padding-top: 0; }
-        #landingPage.landing-buttons-visible #landingSplashTitleAndTagline { transform: translateY(-70px); will-change: transform; }
-        /* 버튼: absolute 배치. transitionend 후에만 표시하여 타이틀 점프 방지 */
-        #landingPage.landing-buttons-visible #landingLoginOptions { position: absolute; left: 50%; transform: translateX(-50%); bottom: max(11rem, calc(env(safe-area-inset-bottom) + 9rem)); }
+        #landingSplashTitleAndTagline { transition: opacity 0.35s ease; }
+        /* 로그인 화면: 상대 좌표(%)로 단순 배치. 타이틀 35%, 버튼은 65% 또는 타이틀+최소간격(10rem) 중 큰 값 */
+        #landingPage.landing-buttons-visible #landingFlexMain { justify-content: flex-start; padding-top: 0; padding-bottom: 0; }
+        #landingPage.landing-buttons-visible #landingSplashTransition { position: static; min-height: 0; height: 0; overflow: visible; }
+        #landingPage.landing-buttons-visible #landingSplashTitleAndTagline { position: absolute; left: 50%; right: auto; bottom: auto; transform: translate(-50%, -50%); animation: landingTitleSlideUp 0.5s ease-out forwards; }
+        @keyframes landingTitleSlideUp { from { top: 50%; } to { top: 35%; } }
+        #landingPage.landing-buttons-visible #landingLoginOptions { position: absolute; left: 50%; top: max(65%, calc(35% + 10rem)); transform: translate(-50%, -50%); }
         #landingLoginOptions.landing-options-visible { opacity: 1; }
         #landingLoginOptions { transition: opacity 0.4s ease; }
         /* 랜딩 → 메인 전환: 아이콘 화면만 페이드 아웃, 메인은 즉시 표시 (스피너 후 추가 페이드 없음) */
@@ -1159,7 +1160,7 @@
             <div class="p-6 border-t flex gap-2">
                 <button id="btnDelete" onclick="window.deleteEntry()" class="hidden w-14 h-14 bg-red-50 text-red-400 rounded-xl flex items-center justify-center active:bg-red-100 transition-colors"><i class="fa-solid fa-trash-can"></i></button>
                 <div class="flex-1 flex items-center gap-2">
-                    <button onclick="window.saveEntry()" id="btnSave" class="flex-1 py-4 bg-slate-900 text-white rounded-xl font-bold active:bg-slate-800 shadow-lg transition-all">기록 완료</button>
+                    <button type="button" id="btnSave" class="flex-1 py-4 bg-slate-900 text-white rounded-xl font-bold active:bg-slate-800 shadow-lg transition-all">기록 완료</button>
                     <button id="sharePhotoIndicator" onclick="window.toggleSharePhoto()" class="hidden flex items-center justify-center w-14 h-14 rounded-xl border-2 active:scale-95 transition-all">
                         <i class="fa-solid fa-share text-lg"></i>
                     </button>
