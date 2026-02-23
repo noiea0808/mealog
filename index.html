@@ -1067,10 +1067,10 @@
                         <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">어떻게</span>
                         <div id="typeChips" class="flex flex-wrap gap-2 mb-1.5"></div>
                         <div class="relative">
-                            <button id="kakaoSearchBtn" onclick="window.openKakaoPlaceSearch()" class="hidden absolute left-2 top-1/2 -translate-y-1/2 bg-slate-600 text-white rounded-lg p-2 z-10 hover:bg-slate-700 transition-colors">
+                            <button id="kakaoSearchBtn" onclick="window.openKakaoPlaceSearch()" class="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center bg-slate-600 text-white rounded-lg z-10 hover:bg-slate-700 transition-colors">
                                 <i class="fa-solid fa-magnifying-glass text-sm"></i>
                             </button>
-                            <input id="placeInput" type="text" placeholder="어디에서 드셨나요? (예: 스타벅스, 김밥천국)" class="w-full p-3 pl-12 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
+                            <input id="placeInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full p-3 pl-12 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
                         </div>
                         <div id="restaurantSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
                     </div>
@@ -1132,7 +1132,12 @@
                     <div class="p-3 bg-slate-50 rounded-2xl border border-slate-200 mb-2">
                         <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">어디서</span>
                         <div id="snackPlaceTypeChips" class="flex flex-wrap gap-2 mb-1.5"></div>
-                        <input id="snackPlaceInput" type="text" placeholder="어디서 (선택)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
+                        <div class="relative">
+                            <button id="snackKakaoSearchBtn" onclick="window.openKakaoPlaceSearch('snack')" class="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center bg-slate-600 text-white rounded-lg z-10 hover:bg-slate-700 transition-colors">
+                                <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                            </button>
+                            <input id="snackPlaceInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full p-3 pl-12 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
+                        </div>
                         <div id="snackPlaceSuggestions" class="flex flex-wrap gap-2 mt-1 mb-1 min-h-[32px] overflow-x-auto pb-0.5 items-center" data-input-id="snackPlaceInput"></div>
                         <span class="text-sm font-extrabold text-slate-600 mt-2 mb-1.5 block uppercase">무엇을</span>
                         <div id="snackTypeChips" class="flex flex-wrap gap-2 mb-2"></div>
