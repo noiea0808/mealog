@@ -37,6 +37,22 @@ export function setVal(id, value) {
 }
 
 /**
+ * 앱 첫 기동 시 한글 IME가 준비되지 않아 텍스트가 보이지 않는 현상을 완화합니다.
+ * Capacitor 네이티브 앱에서만 실행하며, 숨겨진 input에 잠시 포커스했다 blur하여 IME를 워밍업합니다.
+ */
+export function warmUpIME() {
+    if (typeof window === 'undefined' || !window.Capacitor?.isNativePlatform?.()) return;
+    const el = document.getElementById('imeWarmupInput');
+    if (!el) return;
+    try {
+        el.focus();
+        setTimeout(() => {
+            el.blur();
+        }, 80);
+    } catch (_) { /* 무시 */ }
+}
+
+/**
  * 한글 등 IME 조합 중일 때 input 핸들러 실행을 지연시킵니다.
  * 모바일에서 조합 중 DOM 업데이트가 텍스트 미표시 문제를 일으키는 것을 방지합니다.
  * @param {HTMLInputElement|HTMLTextAreaElement|HTMLElement} el - input/textarea/contenteditable 요소
@@ -666,7 +682,7 @@ export async function deleteMultipleImagesFromStorage(imageUrls) {
     await Promise.allSettled(deletePromises);
 }
 
-// base64 압축 (모달 미리보기/저장용) - 뷰포트 기반, 200KB 이하
+// base64 압축 (모달 미리보기/저장용) - 뷰포트 기반, 400KB 이하, 화질 우선
 export function compressImage(base64) {
     return new Promise((resolve) => {
         const img = new Image();
@@ -674,7 +690,7 @@ export function compressImage(base64) {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             
-            const targetSizeKB = 200;
+            const targetSizeKB = 400;
             const targetSizeBytes = targetSizeKB * 1024;
             const maxInitialWidth = getViewportMaxWidth();
             const minWidth = Math.max(300, Math.floor((typeof window !== 'undefined' ? (window.innerWidth || 390) : 390) * 0.8));
@@ -691,7 +707,7 @@ export function compressImage(base64) {
             canvas.height = height;
             ctx.drawImage(img, 0, 0, width, height);
             
-            let quality = 0.45;
+            let quality = 0.78;
             let dataUrl = canvas.toDataURL('image/jpeg', quality);
             
             const getBase64Size = (dataUrl) => {

@@ -323,5 +323,23 @@ export const dbOps = {
             console.error("Delete All User Data Error:", e);
             throw e;
         }
+    },
+
+    /** main 끼니 중복 문서 정리 (Callable 호출) */
+    async removeDuplicateMeals() {
+        const currentUser = auth.currentUser || window.currentUser;
+        if (!currentUser || currentUser.isAnonymous) return { deletedCount: 0 };
+        try {
+            const result = await callableFunctions.removeDuplicateMeals();
+            const data = result?.data;
+            const deletedCount = data?.deletedCount ?? 0;
+            if (deletedCount > 0) {
+                logger.log('removeDuplicateMeals 완료:', { deletedCount });
+            }
+            return data || { success: true, deletedCount: 0 };
+        } catch (e) {
+            console.error("removeDuplicateMeals Error:", e);
+            return { success: false, deletedCount: 0 };
+        }
     }
 };

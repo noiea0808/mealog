@@ -12,7 +12,7 @@ import { callableFunctions } from './firebase.js';
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
-import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput } from './utils.js';
+import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput, warmUpIME } from './utils.js';
 import { 
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
@@ -2115,8 +2115,7 @@ window.ensureUserRegistered = async function () {
 let lastProcessedUserId = null; // 마지막으로 처리한 사용자 ID
 let authCheckShowOptionsTimeout = null; // 로그인 옵션 표시 지연 타이머 (자동 로그인 시 타이틀만 보이도록)
 
-// 첫 화면에서 자동 로그인 확인 중임을 표시 (로그인 버튼을 누르기 전에 기다리도록)
-showLoading('로그인 상태 확인 중...');
+// 로그인 상태 확인 중에는 스피너 표시하지 않음 (스피너는 로그인→메인 전환 시 기록 로드할 때만 표시)
 
 initAuth(async (user) => {
     // 로그아웃 시 로그인 옵션 즉시 표시 여부 (명시적 로그아웃이면 true). 아래에서 제거하므로 먼저 저장
@@ -2461,10 +2460,8 @@ initAuth(async (user) => {
                     console.error('❌ 인증 플로우 처리 실패:', e);
                     hideLoading();
                 });
-            } else {
-                // 설정 대기 중 (게스트→이메일 로그인 등): 로딩 표시해 타임아웃처럼 보이지 않게
-                showLoading('로그인 처리 중...', { dimBackground: false });
             }
+            // 설정 대기 중에는 스피너 표시하지 않음 (스피너는 메인 전환 후 기록 로드할 때만 표시)
             // 설정이 없으면 onSettingsUpdate 콜백에서 처리됨
         }
     } else {
@@ -2496,15 +2493,50 @@ initAuth(async (user) => {
         authFlowManager.lastProcessedUserId = null;
         window.userSettings = null;
         
-        // 명시적 로그아웃이면 즉시 로그인 옵션 표시, 아니면 짧은 대기 후 표시 (자동 로그인 시 타이틀만 노출)
+        // 로그인 필요 시: 아이콘 페이드아웃 → 타이틀 표시 → 타이틀 중앙에서 위로 올라감 → 올라가는 애니메이션 완료 후 버튼 페이드인
+        const showLoginScreen = () => {
+            const landingPage = document.getElementById('landingPage');
+            const landingLoginOptions = document.getElementById('landingLoginOptions');
+            const apkSection = document.getElementById('apkDownloadSection');
+            if (landingPage) landingPage.classList.add('landing-show-login');
+            // 아이콘↔타이틀 페이드 이후 타이틀 위로 올라가는 애니메이션 시작
+            setTimeout(() => {
+                if (!landingPage) return;
+                landingPage.classList.add('landing-buttons-visible');
+                const titleEl = document.getElementById('landingSplashTitleAndTagline');
+                let buttonsShown = false;
+                const showButtons = () => {
+                    if (buttonsShown) return;
+                    buttonsShown = true;
+                    if (landingLoginOptions) {
+                        landingLoginOptions.classList.remove('hidden');
+                        requestAnimationFrame(() => {
+                            landingLoginOptions.classList.add('landing-options-visible');
+                        });
+                    }
+                    if (apkSection) apkSection.classList.remove('hidden');
+                };
+                // transitionend로 애니메이션 완료 후에만 버튼 표시 (점프 방지)
+                if (titleEl) {
+                    const onEnd = (e) => {
+                        if (e.propertyName === 'transform') {
+                            titleEl.removeEventListener('transitionend', onEnd);
+                            requestAnimationFrame(() => requestAnimationFrame(showButtons)); // 2프레임 대기 후 표시
+                        }
+                    };
+                    titleEl.addEventListener('transitionend', onEnd);
+                    setTimeout(showButtons, 950); // 폴백: 0.8s + 여유
+                } else {
+                    setTimeout(showButtons, 800);
+                }
+            }, 520);
+        };
         const showOptionsNow = wasExplicitLogout;
         if (showOptionsNow) {
-            document.getElementById('landingLoginOptions')?.classList.remove('hidden');
+            showLoginScreen();
         } else {
             authCheckShowOptionsTimeout = setTimeout(() => {
-                if (auth.currentUser === null) {
-                    document.getElementById('landingLoginOptions')?.classList.remove('hidden');
-                }
+                if (auth.currentUser === null) showLoginScreen();
                 authCheckShowOptionsTimeout = null;
             }, 400);
         }
@@ -2704,10 +2736,16 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
                     if (photoUrlArray.length > 0) window.editInsightShare(photoUrlArray[0]);
                     else showToast("수정할 밀당 코멘트 공유를 찾을 수 없습니다.", 'error');
                 } else {
-                    if (entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined') {
-                        window.editFeedPost(entryId);
+                    let idToEdit = (entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined') ? entryId : null;
+                    if (!idToEdit && photoDate && photoSlotId && window.mealHistory?.length > 0) {
+                        // entryId 없을 때: 같은 날짜·슬롯의 기존 기록 찾아서 수정 (중복 생성 방지)
+                        const found = window.mealHistory.find(m => m.date === photoDate && m.slotId === photoSlotId);
+                        if (found) idToEdit = found.id;
+                    }
+                    if (idToEdit) {
+                        window.editFeedPost(idToEdit);
                     } else if (photoDate && photoSlotId) {
-                        window.openModal(photoDate, photoSlotId, null);
+                        showToast("수정할 기록을 찾을 수 없습니다.", 'error');
                     } else {
                         showToast("수정할 기록을 찾을 수 없습니다.", 'error');
                     }
@@ -3151,7 +3189,13 @@ window.submitBoardPost = async () => {
         showToast("로그인이 필요합니다.", 'error');
         return;
     }
-    // 키보드가 열린 상태에서도 한 번에 등록되도록: 값 읽기를 blur보다 먼저 수행
+    // 모바일 IME(한글 등) 조합 중인 텍스트가 반영되도록 blur 후 대기
+    const boardWriteView = document.getElementById('boardWriteView');
+    const active = document.activeElement;
+    if (active && boardWriteView?.contains(active) && (active.matches('input, textarea') || active.isContentEditable)) {
+        active.blur();
+        await new Promise(r => setTimeout(r, 80));
+    }
     const titleEl = document.getElementById('boardWriteTitle');
     const boardWriteContentEl = document.getElementById('boardWriteContent');
     const title = (titleEl && titleEl.value) ? titleEl.value.trim() : '';
@@ -3177,7 +3221,6 @@ window.submitBoardPost = async () => {
     // 키보드는 사용자가 포커스를 옮길 때만 내림 (등록 시 강제 숨기지 않음)
     
     const listCategory = window.currentBoardCategory || 'all';
-    const boardWriteView = document.getElementById('boardWriteView');
     const submitBtn = boardWriteView?.querySelector('#boardWriteSubmitBtn');
     const isEdit = !!window.currentEditingPostId;
     const restoreSubmitBtn = () => {
@@ -4305,6 +4348,11 @@ if (document.readyState === 'loading') {
 window.moduleLoaded = true;
 console.log('✅ main.js 모듈 로드 완료');
 console.log('✅ window.renderTimeline 함수 확인:', typeof window.renderTimeline);
+
+// 앱 첫 기동 시 한글 IME 워밍업 (Capacitor 네이티브만): 첫 입력 시 텍스트 미표시 현상 완화
+setTimeout(() => {
+    warmUpIME();
+}, 500);
 
 // 에러 핸들링
 window.addEventListener('error', (e) => {

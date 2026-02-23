@@ -69,7 +69,7 @@ export async function handleGoogleLogin() {
             providerData: result.user.providerData.map(p => p.providerId)
         });
         window._recordsLoadHidePending = true;
-        showLoading('기록을 불러오고 있어요', { dimBackground: false });
+        showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: true });
         showToast("구글 로그인 성공!", "success");
     } catch (error) {
         console.warn('[구글 로그인] 오류:', error?.code, error?.message, error);
@@ -206,7 +206,7 @@ export async function handleEmailAuth() {
                 providerData: result.user.providerData.map(p => p.providerId)
             });
             window._recordsLoadHidePending = true;
-            showLoading('기록을 불러오고 있어요', { dimBackground: false });
+            showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: true });
             showToast("회원가입 성공! 환영합니다.", "success");
         } else {
             result = await signInWithEmailAndPassword(auth, email, password);
@@ -217,7 +217,7 @@ export async function handleEmailAuth() {
                 providerData: result.user.providerData.map(p => p.providerId)
             });
             window._recordsLoadHidePending = true;
-            showLoading('기록을 불러오고 있어요', { dimBackground: false });
+            showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: true });
             showToast("로그인되었습니다.", "success");
             if (document.getElementById('rememberEmailCheck').checked) {
                 localStorage.setItem('savedEmail', email);
@@ -414,7 +414,7 @@ export async function initAuth(onAuthStateChangedCallback) {
             if (result?.user) {
                 console.log('🔐 구글 Redirect 로그인 성공:', result.user.uid);
                 window._recordsLoadHidePending = true;
-                showLoading('기록을 불러오고 있어요', { dimBackground: false });
+                showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: true });
                 showToast("구글 로그인 성공!", "success");
             }
         } catch (error) {

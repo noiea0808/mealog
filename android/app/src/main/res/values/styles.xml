@@ -24,6 +24,8 @@
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <!-- 배경이 흰색이므로 코너 라운드 마스크 애니메이션 비활성화 -->
+        <item name="windowSplashScreenAnimationDuration">0</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
         <item name="android:navigationBarColor">@android:color/white</item>
         <item name="android:windowTranslucentNavigation">false</item>

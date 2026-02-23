@@ -124,10 +124,20 @@ function sanitizeDayEntry(dayEntry) {
 
 /**
  * meals 배열에서 전체 daily stats 계산 (backfill용)
+ * main 끼니(아침/점심/저녁)는 동일 (date, slotId)당 1개만 집계 (중복 방지)
  */
 function computeStatsFromMeals(meals) {
   const daily = {};
-  (meals || []).forEach(m => {
+  const mainSeen = new Set();
+  const deduped = (meals || []).filter(m => {
+    if (!m?.date || !m?.slotId) return true;
+    if (!isMainSlot(m.slotId)) return true;
+    const key = `${m.date}|${m.slotId}`;
+    if (mainSeen.has(key)) return false;
+    mainSeen.add(key);
+    return true;
+  });
+  deduped.forEach(m => {
     const delta = getMealDelta(m, 1);
     if (!delta) return;
     const dateStr = delta.date;

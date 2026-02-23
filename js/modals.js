@@ -17,6 +17,11 @@ function initEntryModalKeyboardHandling(entryModal) {
     if (!entryModal || entryModal._keyboardHandlingInit) return;
     entryModal._keyboardHandlingInit = true;
     let baselineHeight = 0; // 모달 열릴 때 viewport 높이 (키보드 없음)
+    let imeComposing = false; // 한글 등 IME 조합 중 여부 (조합 중 레이아웃 업데이트 시 텍스트 미표시 방지)
+    entryModal.querySelectorAll('input, textarea').forEach(el => {
+        el.addEventListener('compositionstart', () => { imeComposing = true; });
+        el.addEventListener('compositionend', () => { imeComposing = false; });
+    });
     const setKeyboardOpen = (open) => {
         if (open) {
             entryModal.classList.add('keyboard-open');
@@ -50,9 +55,11 @@ function initEntryModalKeyboardHandling(entryModal) {
         }
     });
     if (window.visualViewport) {
+        let lastVh = 0, lastVtop = 0;
         const checkViewport = () => {
             if (entryModal.classList.contains('hidden')) return;
             const vh = window.visualViewport.height;
+            const vtop = window.visualViewport?.offsetTop ?? 0;
             const active = document.activeElement;
             const isInputFocused = active && entryModal.contains(active) && (active.matches('input, textarea') || active.isContentEditable);
             const threshold = (baselineHeight || window.innerHeight) * 0.85;
@@ -61,7 +68,12 @@ function initEntryModalKeyboardHandling(entryModal) {
                 setKeyboardOpen(false);
             } else if (isInputFocused) {
                 setKeyboardOpen(true);
-                const vtop = window.visualViewport?.offsetTop ?? 0;
+                // 한글 IME 조합 중에는 레이아웃 업데이트 생략 → 조합 텍스트 미표시 이슈 방지
+                if (imeComposing) return;
+                // 값이 실제로 바뀐 경우에만 스타일 업데이트 (불필요한 reflow 감소)
+                if (Math.abs(lastVh - vh) < 1 && Math.abs(lastVtop - vtop) < 1) return;
+                lastVh = vh;
+                lastVtop = vtop;
                 entryModal.style.height = vh + 'px';
                 entryModal.style.top = vtop + 'px';
             } else {
@@ -240,19 +252,22 @@ export function openModal(date, slotId, entryId = null) {
             if (el) el.value = '';
         });
         
-        // 카카오 검색 버튼 초기화 (숨김) 및 placeholder 초기화
-        const kakaoSearchBtn = document.getElementById('kakaoSearchBtn');
+        // 카카오 검색 버튼 및 placeholder 초기화
         const placeInput = document.getElementById('placeInput');
-        if (kakaoSearchBtn) {
-            kakaoSearchBtn.classList.add('hidden');
-        }
+        const snackPlaceInput = document.getElementById('snackPlaceInput');
         if (placeInput) {
-            placeInput.placeholder = '어디에서 드셨나요? (예: 스타벅스, 김밥천국)';
-            // 이전 모달 사용에서 남은 카카오 장소 정보 제거 (카카오 미선택인데 잘못된 주소·카카오맵 분류로 들어가는 것 방지)
+            placeInput.placeholder = '돋보기 버튼으로 장소 검색 또는 직접 입력';
             placeInput.removeAttribute('data-kakao-place-id');
             placeInput.removeAttribute('data-kakao-place-address');
             placeInput.removeAttribute('data-kakao-place-data');
             placeInput.removeAttribute('data-kakao-place-name');
+        }
+        if (snackPlaceInput) {
+            snackPlaceInput.placeholder = '돋보기 버튼으로 장소 검색 또는 직접 입력';
+            snackPlaceInput.removeAttribute('data-kakao-place-id');
+            snackPlaceInput.removeAttribute('data-kakao-place-address');
+            snackPlaceInput.removeAttribute('data-kakao-place-data');
+            snackPlaceInput.removeAttribute('data-kakao-place-name');
         }
         
         const mainPhotoContainer = document.getElementById('photoPreviewContainer');
@@ -362,6 +377,14 @@ export function openModal(date, slotId, entryId = null) {
                 setVal('withWhomInput', r.withWhomDetail || "");
                 setVal('snackDetailInput', r.menuDetail || "");
                 setVal('snackPlaceInput', r.place || "");
+                // 간식 수정 시 카카오맵 정보가 있으면 snackPlaceInput에 복원
+                const _spi = document.getElementById('snackPlaceInput');
+                if (isS && _spi && (r.placeId || r.placeAddress || r.placeData)) {
+                    if (r.placeId) _spi.setAttribute('data-kakao-place-id', r.placeId);
+                    _spi.setAttribute('data-kakao-place-address', (r.placeAddress != null && r.placeAddress !== undefined) ? String(r.placeAddress) : '');
+                    if (r.placeData && typeof r.placeData === 'object') _spi.setAttribute('data-kakao-place-data', JSON.stringify(r.placeData));
+                    _spi.setAttribute('data-kakao-place-name', (r.placeData && r.placeData.name) || r.place || '');
+                }
                 setVal('generalCommentInput', r.comment || "");
                 setVal('snackCommentInput', r.comment || "");
                 
@@ -541,20 +564,6 @@ export function openModal(date, slotId, entryId = null) {
                     }, 100);
                 }
                 
-                // 외식 또는 회식/술자리 선택 시 카카오 검색 버튼 표시 및 placeholder 변경
-                if (r.mealType === '외식' || r.mealType === '회식/술자리') {
-                    setTimeout(() => {
-                        const kakaoSearchBtn = document.getElementById('kakaoSearchBtn');
-                        const placeInput = document.getElementById('placeInput');
-                        if (kakaoSearchBtn) {
-                            kakaoSearchBtn.classList.remove('hidden');
-                        }
-                        if (placeInput) {
-                            placeInput.placeholder = '돋보기 버튼을 선택하여 식당을 검색해보세요';
-                        }
-                    }, 200);
-                }
-                
                 // 간식 타입 선택 시 추천 태그 업데이트
                 if (isS && r.snackType) {
                     const subTags = window.userSettings.subTags.snack || [];
@@ -650,6 +659,14 @@ export async function saveEntry() {
     // 로딩 오버레이 참조를 함수 시작 부분에서 가져옴
     const loadingOverlay = document.getElementById('loadingOverlay');
     const entryModal = document.getElementById('entryModal');
+    
+    // 모바일 IME(한글 등) 조합 중인 텍스트가 input.value에 반영되도록 blur 후 대기
+    // 스페이스/선택 전에 '기록 완료'를 누르면 조합 중인 글자가 누락되는 문제 방지
+    const active = document.activeElement;
+    if (active && entryModal?.contains(active) && (active.matches('input, textarea') || active.isContentEditable)) {
+        active.blur();
+        await new Promise(r => setTimeout(r, 80));
+    }
     
     try {
         const state = appState;
@@ -762,22 +779,35 @@ export async function saveEntry() {
             }, 1000);
         }
         
+        // main 끼니: 동일 (date, slotId)에 이미 기록이 있으면 수정 모드로 전환 (중복 방지)
+        let idToUse = state.currentEditingId;
+        if (!idToUse && !isS && state.currentEditingDate && state.currentEditingSlotId && window.mealHistory?.length > 0) {
+            const existing = window.mealHistory.find(m =>
+                m.date === state.currentEditingDate &&
+                m.slotId === state.currentEditingSlotId &&
+                ['morning', 'lunch', 'dinner'].includes(m.slotId)
+            );
+            if (existing) idToUse = existing.id;
+        }
         // 기존 기록에서 shareBanned 필드 가져오기 (수정 시 유지)
-        const existingRecord = state.currentEditingId ? window.mealHistory.find(m => m.id === state.currentEditingId) : null;
+        const existingRecord = idToUse ? window.mealHistory.find(m => m.id === idToUse) : null;
         const shareBanned = existingRecord?.shareBanned === true;
         
-        // 카카오맵 API로 입력된 식당 정보 확인
+        // 카카오맵 API로 입력된 장소 정보 확인 (식사: placeInput, 간식: snackPlaceInput)
         const placeInput = document.getElementById('placeInput');
-        const kakaoPlaceId = placeInput?.getAttribute('data-kakao-place-id');
-        const kakaoPlaceAddress = placeInput?.getAttribute('data-kakao-place-address');
-        const kakaoPlaceData = placeInput?.getAttribute('data-kakao-place-data');
-        const kakaoPlaceName = placeInput?.getAttribute('data-kakao-place-name') || '';
+        const snackPlaceInput = document.getElementById('snackPlaceInput');
+        const kakaoSourceInput = isS ? snackPlaceInput : placeInput;
+        const kakaoPlaceId = kakaoSourceInput?.getAttribute('data-kakao-place-id');
+        const kakaoPlaceAddress = kakaoSourceInput?.getAttribute('data-kakao-place-address');
+        const kakaoPlaceData = kakaoSourceInput?.getAttribute('data-kakao-place-data');
+        const kakaoPlaceName = kakaoSourceInput?.getAttribute('data-kakao-place-name') || '';
+        const placeValForKakao = isS ? snackPlaceInputVal : placeInputVal;
         // 카카오에서 선택한 장소명을 수정한 경우: 주소·placeId를 저장하지 않음 (잘못된 주소 매칭 방지)
-        const nameMatches = !kakaoPlaceName || (String(placeInputVal || '').trim() === String(kakaoPlaceName).trim());
+        const nameMatches = !kakaoPlaceName || (String(placeValForKakao || '').trim() === String(kakaoPlaceName).trim());
         const shouldUseKakaoFields = kakaoPlaceId && !isSk && nameMatches;
 
         const record = {
-            id: state.currentEditingId,
+            id: idToUse,
             date: state.currentEditingDate,
             slotId: state.currentEditingSlotId,
             mealType,
@@ -1185,18 +1215,6 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
         const isSkip = (selectedValue === 'Skip' || selectedValue === '건너뜀');
         toggleFieldsForSkip(isSkip);
         
-        // 외식 또는 회식/술자리 선택 시 카카오 검색 버튼 표시 및 placeholder 변경
-        const kakaoSearchBtn = document.getElementById('kakaoSearchBtn');
-        const placeInput = document.getElementById('placeInput');
-        if (kakaoSearchBtn && placeInput) {
-            if (selectedValue === '외식' || selectedValue === '회식/술자리') {
-                kakaoSearchBtn.classList.remove('hidden');
-                placeInput.placeholder = '돋보기 버튼을 선택하여 식당을 검색해보세요';
-            } else {
-                kakaoSearchBtn.classList.add('hidden');
-                placeInput.placeholder = '어디에서 드셨나요? (예: 스타벅스, 김밥천국)';
-            }
-        }
     }
     
     if (isPrimary && subTagKey && subContainerId) {
@@ -2316,15 +2334,20 @@ export async function deleteSubTag(key, text, containerId, inputId, parentFilter
 }
 
 // 카카오 장소 검색 함수 (백엔드 프록시 사용 - SDK 불필요)
-export function openKakaoPlaceSearch() {
+// mode: 'meal' | 'snack' - 식사 어디서 vs 간식 어디서
+export function openKakaoPlaceSearch(mode = 'meal') {
+    const targetId = mode === 'snack' ? 'snackPlaceInput' : 'placeInput';
+    const targetInput = document.getElementById(targetId);
+    if (!targetInput) return;
+    window._kakaoPlaceSearchTarget = targetId;
     createKakaoSearchModal();
 }
 
 // 카카오 검색 모달 생성 함수
 function createKakaoSearchModal() {
-    
-    const placeInput = document.getElementById('placeInput');
-    if (!placeInput) return;
+    const targetId = window._kakaoPlaceSearchTarget || 'placeInput';
+    const targetInput = document.getElementById(targetId);
+    if (!targetInput) return;
     
     // 기존 모달이 있으면 제거
     const existingModal = document.getElementById('kakaoPlaceSearchModal');
@@ -2346,7 +2369,7 @@ function createKakaoSearchModal() {
             </div>
             <div class="p-4">
                 <div class="relative mb-4">
-                    <button onclick="window.searchKakaoPlaces()" class="absolute left-2 top-1/2 -translate-y-1/2 bg-emerald-600 text-white rounded-lg p-2 z-10 hover:bg-emerald-700 transition-colors">
+                    <button onclick="window.searchKakaoPlaces()" class="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center bg-emerald-600 text-white rounded-lg z-10 hover:bg-emerald-700 transition-colors">
                         <i class="fa-solid fa-magnifying-glass text-sm"></i>
                     </button>
                     <input type="text" id="kakaoSearchInput" placeholder="음식점 이름을 입력하세요" 
@@ -2516,12 +2539,13 @@ export async function searchKakaoPlaces() {
 
 // 카카오 장소 선택
 export function selectKakaoPlace(placeName, address, placeId = null, placeDataB64 = null) {
-    const placeInput = document.getElementById('placeInput');
+    const targetId = window._kakaoPlaceSearchTarget || 'placeInput';
+    const placeInput = document.getElementById(targetId);
     if (placeInput) {
         placeInput.value = placeName;
     }
     
-    // 카카오맵 API로 입력된 식당임을 표시하기 위해 데이터 속성에 저장
+    // 카카오맵 API로 입력된 장소임을 표시하기 위해 데이터 속성에 저장
     // data-kakao-place-name: 저장 시 '장소명 수정' 여부 검사용 (다르면 주소·placeId 미적용)
     if (placeInput && placeId) {
         placeInput.setAttribute('data-kakao-place-id', placeId);

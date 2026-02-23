@@ -6,7 +6,10 @@ let loadingHideTimeout = null; // hideLoading 지연용
 let loadingShownAt = 0; // 메시지 표시 시 최소 표시 시간용
 
 export function showLoading(message = '', options = {}) {
-    const { dimBackground = true } = options;
+    const { dimBackground = true, skipOnLoginScreen = true } = options;
+    const mainApp = document.getElementById('mainApp');
+    const isOnLoginScreen = mainApp && mainApp.classList.contains('hidden');
+    if (skipOnLoginScreen && isOnLoginScreen) return;
     const overlay = document.getElementById('loadingOverlay');
     const messageEl = document.getElementById('loadingOverlayMessage');
     if (overlay) {
@@ -65,22 +68,11 @@ export function hideLoading() {
 }
 
 export function showToast(message, type = 'info') {
-    // 로그인 전 등 userSettings 없을 때도 에러/성공 메시지는 표시 (로그인 실패 등)
-    const forceShow = type === 'error' || type === 'success' || !window.userSettings;
-    if (!forceShow && window.userSettings?.showToast !== true) return;
-    const container = document.getElementById('toastContainer');
-    if (!container) return;
-    const toast = document.createElement('div');
-    let bgClass = type === 'success' ? 'bg-emerald-600' : (type === 'error' ? 'bg-red-500' : 'bg-slate-800');
-    toast.className = `${bgClass} text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 text-sm font-bold animate-toast mb-2 w-full max-w-xs`;
-    toast.innerHTML = `<i class="fa-solid ${type === 'success' ? 'fa-check' : (type === 'error' ? 'fa-circle-exclamation' : 'fa-info-circle')}"></i><span>${message}</span>`;
-    container.appendChild(toast);
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.transform = 'translateY(10px)';
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
+    // 토스트 팝업 비활성화 (전무 없음)
+    return;
 }
+
+const LANDING_EXIT_MS = 280;
 
 export function switchScreen(isLoggedIn) {
     const landing = document.getElementById('landingPage');
@@ -88,13 +80,23 @@ export function switchScreen(isLoggedIn) {
     if (!landing || !main) return;
     
     if (isLoggedIn) {
-        landing.style.display = 'none';
+        // 랜딩만 페이드 아웃, 메인은 즉시 표시 (스피너 끝난 뒤 추가 페이드 없음)
+        landing.classList.add('screen-transition-exit');
         main.style.display = 'block';
         main.classList.remove('hidden');
+        main.style.opacity = '1';
+        
+        setTimeout(() => {
+            landing.style.display = 'none';
+            landing.classList.remove('screen-transition-exit');
+        }, LANDING_EXIT_MS);
     } else {
         landing.style.display = 'flex';
+        landing.classList.remove('screen-transition-exit');
         main.style.display = 'none';
         main.classList.add('hidden');
+        main.classList.remove('screen-transition-enter', 'screen-transition-enter-active');
+        main.style.opacity = '';
     }
     // 로딩 오버레이는 hideLoading()으로 관리 (중앙 관리)
 }
