@@ -12,7 +12,7 @@ import { callableFunctions } from './firebase.js';
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
-import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput } from './utils.js';
+import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput, warmUpIME } from './utils.js';
 import { 
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
@@ -4348,6 +4348,11 @@ if (document.readyState === 'loading') {
 window.moduleLoaded = true;
 console.log('✅ main.js 모듈 로드 완료');
 console.log('✅ window.renderTimeline 함수 확인:', typeof window.renderTimeline);
+
+// 앱 첫 기동 시 한글 IME 워밍업 (Capacitor 네이티브만): 첫 입력 시 텍스트 미표시 현상 완화
+setTimeout(() => {
+    warmUpIME();
+}, 500);
 
 // 에러 핸들링
 window.addEventListener('error', (e) => {

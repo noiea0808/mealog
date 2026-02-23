@@ -343,6 +343,8 @@
     </script>
 </head>
 <body class="max-w-md mx-auto min-h-screen relative">
+    <!-- IME 워밍업용 숨김 input: 앱 첫 기동 시 한글 입력 미표시 현상 완화 -->
+    <input type="text" id="imeWarmupInput" aria-hidden="true" tabindex="-1" class="absolute -left-[9999px] w-1 h-1 opacity-0 pointer-events-none" autocomplete="off">
 
     <div id="toastContainer" class="fixed bottom-24 left-1/2 -translate-x-1/2 w-[92%] max-w-[26rem] z-[600] flex flex-col items-center gap-2 pointer-events-none px-4 box-border"></div>
 
@@ -699,7 +701,7 @@
                     </div>
                     <div class="flex gap-2 pt-3 border-t">
                         <button onclick="window.backToBoardList()" class="flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors">취소</button>
-                        <button type="button" id="boardWriteSubmitBtn" class="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold active:bg-emerald-700 shadow-md transition-all">등록</button>
+                        <button type="button" id="boardWriteSubmitBtn" class="flex-1 py-2.5 bg-slate-900 text-white rounded-xl text-sm font-bold active:bg-slate-800 shadow-md transition-all">등록</button>
                     </div>
                 </div>
             </div>

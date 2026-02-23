@@ -37,6 +37,22 @@ export function setVal(id, value) {
 }
 
 /**
+ * 앱 첫 기동 시 한글 IME가 준비되지 않아 텍스트가 보이지 않는 현상을 완화합니다.
+ * Capacitor 네이티브 앱에서만 실행하며, 숨겨진 input에 잠시 포커스했다 blur하여 IME를 워밍업합니다.
+ */
+export function warmUpIME() {
+    if (typeof window === 'undefined' || !window.Capacitor?.isNativePlatform?.()) return;
+    const el = document.getElementById('imeWarmupInput');
+    if (!el) return;
+    try {
+        el.focus();
+        setTimeout(() => {
+            el.blur();
+        }, 80);
+    } catch (_) { /* 무시 */ }
+}
+
+/**
  * 한글 등 IME 조합 중일 때 input 핸들러 실행을 지연시킵니다.
  * 모바일에서 조합 중 DOM 업데이트가 텍스트 미표시 문제를 일으키는 것을 방지합니다.
  * @param {HTMLInputElement|HTMLTextAreaElement|HTMLElement} el - input/textarea/contenteditable 요소
