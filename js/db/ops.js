@@ -14,6 +14,20 @@ export const dbOps = {
         }
         try {
             const dataToSave = { ...record };
+            const sanitizePhotoArray = (arr) => {
+                if (!Array.isArray(arr)) return [];
+                return arr.filter((photo) => {
+                    if (typeof photo !== 'string' || !photo) return false;
+                    // Firestore 문서 크기 초과 방지를 위해 data URL(base64) 저장 금지
+                    return !photo.startsWith('data:image');
+                });
+            };
+            if (Object.prototype.hasOwnProperty.call(dataToSave, 'photos')) {
+                dataToSave.photos = sanitizePhotoArray(dataToSave.photos);
+            }
+            if (Object.prototype.hasOwnProperty.call(dataToSave, 'sharedPhotos')) {
+                dataToSave.sharedPhotos = sanitizePhotoArray(dataToSave.sharedPhotos);
+            }
             const docId = dataToSave.id;
             delete dataToSave.id;
             const coll = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meals');

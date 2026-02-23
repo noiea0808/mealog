@@ -1,7 +1,7 @@
 // 모달 및 입력 처리 관련 함수들
 import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from './constants.js';
 import { appState } from './state.js';
-import { setVal, compressImage, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput } from './utils.js';
+import { setVal, compressImage, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage } from './utils.js';
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from './render/index.js';
 import { dbOps } from './db.js';
 import { showToast } from './ui.js';
@@ -806,6 +806,10 @@ export async function saveEntry() {
         const nameMatches = !kakaoPlaceName || (String(placeValForKakao || '').trim() === String(kakaoPlaceName).trim());
         const shouldUseKakaoFields = kakaoPlaceId && !isSk && nameMatches;
 
+        const sourcePhotos = Array.isArray(state.currentPhotos) ? [...state.currentPhotos] : [];
+        const isBase64Photo = (photo) => typeof photo === 'string' && photo.startsWith('data:image');
+        const existingPhotoUrls = sourcePhotos.filter(photo => typeof photo === 'string' && photo && !isBase64Photo(photo));
+
         const record = {
             id: idToUse,
             date: state.currentEditingDate,
@@ -816,7 +820,8 @@ export async function saveEntry() {
             category: getT('categoryChips'),
             placeType: '',
             snackType: getT('snackTypeChips'),
-            photos: state.currentPhotos,
+            // Firestore에는 URL만 저장하고, base64는 저장 직후 Storage로 업로드 후 치환한다.
+            photos: existingPhotoUrls,
             menuDetail: isSk ? '' : (isS ? snackInputVal : menuInputVal),
             place: isSk ? '' : (isS ? (snackPlaceInputVal || appState.selectedSnackPlaceMainTag || '') : placeInputVal),
             comment: isSk ? '' : (isS ? (document.getElementById('snackCommentInput')?.value || '') : (document.getElementById('generalCommentInput')?.value || '')),
@@ -856,15 +861,12 @@ export async function saveEntry() {
         const isShareBanned = record.id ? (window.mealHistory.find(m => m.id === record.id)?.shareBanned === true) : false;
         
         // 공유할 사진 목록 결정 (단순화: wantsToShare와 currentPhotos만 사용)
-        const photosToShare = (!isShareBanned && state.wantsToShare && state.currentPhotos.length > 0)
-            ? [...state.currentPhotos]  // 공유 활성화: 현재 사진 전체
+        let photosToShare = (!isShareBanned && state.wantsToShare && existingPhotoUrls.length > 0)
+            ? [...existingPhotoUrls]    // 공유 활성화: 현재 URL 사진 전체
             : [];                        // 공유 비활성화 또는 금지: 빈 배열
         
         // record에 sharedPhotos 필드 추가
         record.sharedPhotos = photosToShare;
-        
-        // 공유 관련 정보를 미리 저장 (상태 초기화 전에)
-        const currentPhotos = [...state.currentPhotos];
         
         console.log('저장 시작:', record);
         
@@ -905,6 +907,46 @@ export async function saveEntry() {
                 record.id = savedId;
                 console.log('새 레코드 ID 확보:', savedId);
             }
+
+            // 새로 추가한 base64 사진은 문서 ID 확보 후 Storage 업로드 -> URL로 record.photos 치환
+            const base64Photos = sourcePhotos.filter(isBase64Photo);
+            if (base64Photos.length > 0 && record.id && window.currentUser?.uid) {
+                try {
+                    const uploadedUrls = await Promise.all(
+                        base64Photos.map((photo) => uploadBase64ToStorage(photo, window.currentUser.uid, record.id))
+                    );
+                    let uploadedIndex = 0;
+                    const finalPhotoUrls = sourcePhotos.reduce((acc, photo) => {
+                        if (isBase64Photo(photo)) {
+                            const uploaded = uploadedUrls[uploadedIndex++];
+                            if (uploaded) acc.push(uploaded);
+                            return acc;
+                        }
+                        if (typeof photo === 'string' && photo) acc.push(photo);
+                        return acc;
+                    }, []);
+
+                    record.photos = finalPhotoUrls;
+                    photosToShare = (!isShareBanned && state.wantsToShare && finalPhotoUrls.length > 0)
+                        ? [...finalPhotoUrls]
+                        : [];
+                    record.sharedPhotos = photosToShare;
+
+                    // 1차 저장 후 URL 기준으로 조용히 한 번 더 저장해 base64 잔존을 방지
+                    await dbOps.save(record, true);
+                } catch (uploadError) {
+                    console.error('사진 업로드 실패:', uploadError);
+                    showToast("사진 업로드 중 오류가 발생해 일부 사진이 저장되지 않았습니다.", 'error');
+                    // 업로드 실패 시 기존 URL 사진만 유지하여 저장
+                    record.photos = existingPhotoUrls;
+                    photosToShare = (!isShareBanned && state.wantsToShare && existingPhotoUrls.length > 0)
+                        ? [...existingPhotoUrls]
+                        : [];
+                    record.sharedPhotos = photosToShare;
+                    await dbOps.save(record, true);
+                }
+            }
+
             console.log('저장 완료');
             // 낙관적 반영: 리스너 도착 전에 mealHistory에 즉시 반영해 스크롤·렌더가 최신 데이터 기준으로 동작
             if (record.id && window.mealHistory && Array.isArray(window.mealHistory)) {
