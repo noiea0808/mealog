@@ -2665,73 +2665,154 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-// 터치 제스처 초기화 (일간 스와이프 시 카드 슬라이드 애니메이션)
-window.onload = () => {
+// 터치 제스처 초기화 (일간 스와이프: 좌<->우 전환 방향 고정)
+function initDailySwipeGesture() {
+    if (window.__dailySwipeGestureInitialized) return;
     const tv = document.getElementById('timelineView');
-    const tc = document.getElementById('timelineContainer');
-    if (!tv || !tc) return;
+    if (!tv) return;
 
-    let touchStartX = 0;
-    let touchStartY = 0;
+    const getTimelineContainer = () => document.getElementById('timelineContainer');
+    const SWIPE_TRIGGER_PX = 56;
+    const AXIS_LOCK_PX = 10;
+    let startX = 0;
+    let startY = 0;
+    let lastX = 0;
+    let tracking = false;
+    let horizontalLocked = null; // null: 미결정, true: 가로, false: 세로
+    let isAnimating = false;
 
-    tv.addEventListener('touchstart', e => {
-        if (e.touches.length) {
-            touchStartX = e.touches[0].screenX;
-            touchStartY = e.touches[0].screenY;
-        }
-    }, { passive: true });
+    const resetTransform = () => {
+        const tc = getTimelineContainer();
+        if (!tc) return;
+        tc.style.transition = 'transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+        tc.style.transform = 'translate3d(0, 0, 0)';
+        tc.style.willChange = '';
+    };
 
-    tv.addEventListener('touchmove', e => {
-        if (appState.viewMode !== 'page' || !e.touches.length) return;
-        const deltaX = e.touches[0].screenX - touchStartX;
-        // 수평 스와이프만 반응 (세로 스크롤과 구분)
-        if (Math.abs(deltaX) > 20) {
+    const animateToDate = async (dayDelta) => {
+        if (isAnimating) return;
+        const tc = getTimelineContainer();
+        if (!tc) return;
+
+        isAnimating = true;
+        const viewportWidth = tv.clientWidth || window.innerWidth || 360;
+        const outgoingX = dayDelta > 0 ? -viewportWidth : viewportWidth;
+        const incomingStartX = -outgoingX;
+
+        const targetDate = new Date(appState.pageDate);
+        targetDate.setDate(targetDate.getDate() + dayDelta);
+        const year = targetDate.getFullYear();
+        const month = String(targetDate.getMonth() + 1).padStart(2, '0');
+        const day = String(targetDate.getDate()).padStart(2, '0');
+        const targetIso = `${year}-${month}-${day}`;
+
+        tc.style.willChange = 'transform';
+        tc.style.transition = 'transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+        tc.style.transform = `translate3d(${outgoingX}px, 0, 0)`;
+
+        const onSlideOutEnd = async (ev) => {
+            if (ev.target !== tc || (ev.propertyName && ev.propertyName !== 'transform')) return;
+            tc.removeEventListener('transitionend', onSlideOutEnd);
+
             tc.style.transition = 'none';
-            tc.style.transform = `translateX(${deltaX}px)`;
-        }
+            tc.style.transform = `translate3d(${incomingStartX}px, 0, 0)`;
+
+            try {
+                await window.jumpToDate(targetIso);
+            } catch (error) {
+                console.warn('스와이프 날짜 이동 실패:', error);
+            }
+
+            requestAnimationFrame(() => {
+                const newTc = getTimelineContainer();
+                if (!newTc) {
+                    isAnimating = false;
+                    return;
+                }
+                newTc.style.willChange = 'transform';
+                newTc.style.transition = 'transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+                newTc.style.transform = 'translate3d(0, 0, 0)';
+
+                const onSlideInEnd = (slideInEv) => {
+                    if (slideInEv.target !== newTc || (slideInEv.propertyName && slideInEv.propertyName !== 'transform')) return;
+                    newTc.removeEventListener('transitionend', onSlideInEnd);
+                    newTc.style.willChange = '';
+                    isAnimating = false;
+                };
+                newTc.addEventListener('transitionend', onSlideInEnd);
+            });
+        };
+        tc.addEventListener('transitionend', onSlideOutEnd);
+    };
+
+    tv.addEventListener('touchstart', (e) => {
+        if (appState.viewMode !== 'page' || isAnimating || e.touches.length !== 1) return;
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        lastX = startX;
+        tracking = true;
+        horizontalLocked = null;
     }, { passive: true });
 
-    tv.addEventListener('touchend', e => {
-        const touchEndX = e.changedTouches[0]?.screenX ?? touchStartX;
-        const deltaX = touchEndX - touchStartX;
-        const state = appState;
+    tv.addEventListener('touchmove', (e) => {
+        if (!tracking || appState.viewMode !== 'page' || isAnimating || e.touches.length !== 1) return;
 
-        if (state.viewMode !== 'page') return;
+        const touch = e.touches[0];
+        const deltaX = touch.clientX - startX;
+        const deltaY = touch.clientY - startY;
+        lastX = touch.clientX;
 
-        tc.style.transition = 'transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
-
-        if (Math.abs(deltaX) > 50) {
-            const isNextDay = deltaX < 0;
-            // slideOut: 손가락 방향과 일치 (튕김 방지). 오른쪽 스와이프→오른쪽으로 밀려나감, 왼쪽 스와이프→왼쪽으로
-            const slideOut = isNextDay ? '-100%' : '100%';
-            const newContentStart = isNextDay ? '100%' : '-100%';  // 왼쪽 밀면 오른쪽에서, 오른쪽 밀면 왼쪽에서
-            tc.style.transform = `translateX(${slideOut})`;
-
-            const onSlideOutEnd = (ev) => {
-                if (ev.target !== tc || (ev.propertyName && ev.propertyName !== 'transform')) return;
-                tc.removeEventListener('transitionend', onSlideOutEnd);
-                let d = new Date(state.pageDate);
-                d.setDate(d.getDate() + (isNextDay ? 1 : -1));
-                const year = d.getFullYear();
-                const month = String(d.getMonth() + 1).padStart(2, '0');
-                const day = String(d.getDate()).padStart(2, '0');
-                const targetIso = `${year}-${month}-${day}`;
-
-                tc.style.transition = 'none';
-                tc.style.transform = `translateX(${newContentStart})`;
-                window.jumpToDate(targetIso).then(() => {
-                    requestAnimationFrame(() => {
-                        tc.style.transition = 'transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
-                        tc.style.transform = 'translateX(0)';
-                    });
-                });
-            };
-            tc.addEventListener('transitionend', onSlideOutEnd);
-        } else {
-            tc.style.transform = 'translateX(0)';
+        if (horizontalLocked === null) {
+            if (Math.abs(deltaX) < AXIS_LOCK_PX && Math.abs(deltaY) < AXIS_LOCK_PX) return;
+            horizontalLocked = Math.abs(deltaX) > Math.abs(deltaY);
+            if (!horizontalLocked) {
+                tracking = false;
+                return;
+            }
         }
+
+        if (!horizontalLocked) return;
+
+        const tc = getTimelineContainer();
+        if (!tc) return;
+        e.preventDefault();
+        tc.style.willChange = 'transform';
+        tc.style.transition = 'none';
+        tc.style.transform = `translate3d(${deltaX}px, 0, 0)`;
+    }, { passive: false });
+
+    tv.addEventListener('touchend', () => {
+        if (!tracking || appState.viewMode !== 'page' || isAnimating) return;
+        tracking = false;
+
+        const deltaX = lastX - startX;
+        if (horizontalLocked !== true) return;
+
+        if (Math.abs(deltaX) < SWIPE_TRIGGER_PX) {
+            resetTransform();
+            return;
+        }
+
+        // 왼쪽 스와이프(deltaX<0): 다음날(dayDelta=+1)이 오른쪽에서 진입
+        // 오른쪽 스와이프(deltaX>0): 전날(dayDelta=-1)이 왼쪽에서 진입
+        const dayDelta = deltaX < 0 ? 1 : -1;
+        animateToDate(dayDelta);
     }, { passive: true });
-};
+
+    tv.addEventListener('touchcancel', () => {
+        if (!tracking || isAnimating) return;
+        tracking = false;
+        resetTransform();
+    }, { passive: true });
+
+    window.__dailySwipeGestureInitialized = true;
+}
+
+if (document.readyState === 'loading') {
+    window.addEventListener('load', initDailySwipeGesture, { once: true });
+} else {
+    initDailySwipeGesture();
+}
 
 // 피드 옵션 관련 함수
 window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '', photoSlotId = '', isDailyShare = false, postId = '', authorUserId = '', isInsightShare = false, dateRangeText = '') => {
