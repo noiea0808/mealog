@@ -2702,9 +2702,9 @@ window.onload = () => {
 
         if (Math.abs(deltaX) > 50) {
             const isNextDay = deltaX < 0;
-            // slideOut 반전: 왼쪽 스와이프 시 현재 콘텐츠가 오른쪽으로 밀려나가고, 새 콘텐츠가 오른쪽에서 들어옴
-            const slideOut = isNextDay ? '100%' : '-100%';
-            const newContentStart = isNextDay ? '100%' : '-100%';
+            // slideOut: 손가락 방향과 일치 (튕김 방지). 오른쪽 스와이프→오른쪽으로 밀려나감, 왼쪽 스와이프→왼쪽으로
+            const slideOut = isNextDay ? '-100%' : '100%';
+            const newContentStart = isNextDay ? '100%' : '-100%';  // 왼쪽 밀면 오른쪽에서, 오른쪽 밀면 왼쪽에서
             tc.style.transform = `translateX(${slideOut})`;
 
             const onSlideOutEnd = (ev) => {
