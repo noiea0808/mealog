@@ -2665,7 +2665,7 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-// 터치 제스처 초기화
+// 터치 제스처 초기화 (일간 스와이프 시 부드러운 애니메이션)
 window.onload = () => {
     const tv = document.getElementById('timelineView');
     if (tv) {
@@ -2679,11 +2679,20 @@ window.onload = () => {
             if (state.viewMode === 'page' && Math.abs(state.touchStartX - state.touchEndX) > 50) {
                 let d = new Date(state.pageDate);
                 d.setDate(d.getDate() + (state.touchStartX - state.touchEndX > 0 ? 1 : -1));
-                // 로컬 날짜로 변환하여 시간대 문제 방지
                 const year = d.getFullYear();
                 const month = String(d.getMonth() + 1).padStart(2, '0');
                 const day = String(d.getDate()).padStart(2, '0');
-                window.jumpToDate(`${year}-${month}-${day}`); 
+                const targetIso = `${year}-${month}-${day}`;
+                // 페이드 아웃 → 날짜 변경 → 페이드 인
+                tv.style.transition = 'opacity 0.2s ease';
+                tv.style.opacity = '0';
+                setTimeout(() => {
+                    window.jumpToDate(targetIso).then(() => {
+                        requestAnimationFrame(() => {
+                            tv.style.opacity = '1';
+                        });
+                    });
+                }, 200);
             } 
         }, { passive: true });
     }

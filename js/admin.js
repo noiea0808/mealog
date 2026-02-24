@@ -2804,9 +2804,181 @@ window.submitNotice = async function() {
     }
 };
 
-// 공지 수정
-window.editNotice = function(noticeId) {
-    window.openNoticeWriteModal(noticeId);
+// 공지 수정 (팝업 대신 해당 페이지에서 인라인 편집)
+window.editNotice = async function(noticeId) {
+    const container = document.getElementById('noticeDetailContainer');
+    if (!container) return;
+    try {
+        const noticeDoc = doc(db, 'artifacts', appId, 'notices', noticeId);
+        const snap = await getDoc(noticeDoc);
+        if (!snap.exists()) {
+            alert('공지를 찾을 수 없습니다.');
+            return;
+        }
+        const notice = snap.data();
+        currentEditingNoticeId = noticeId;
+        window.noticeExistingUrls = Array.isArray(notice.imageUrls) ? [...notice.imageUrls] : [];
+        window.noticeFiles = [];
+        if (window.noticeObjectUrls?.length) {
+            window.noticeObjectUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch (_) {} });
+        }
+        window.noticeObjectUrls = [];
+
+        container.innerHTML = `
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm font-bold text-slate-600 block mb-2">제목</label>
+                    <input type="text" id="noticeInlineTitle" value="${escapeHtml(notice.title || '')}" placeholder="공지 제목" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500">
+                </div>
+                <div>
+                    <label class="text-sm font-bold text-slate-600 block mb-2">사진 <span class="text-slate-400 font-normal">(최대 3장)</span></label>
+                    <input type="file" id="noticeInlineImages" accept="image/*" multiple class="hidden">
+                    <button type="button" onclick="document.getElementById('noticeInlineImages').click()" class="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-bold hover:bg-slate-50">사진 추가</button>
+                    <div id="noticeInlineImagePreviews" class="flex flex-wrap gap-2 mt-2 min-h-0"></div>
+                </div>
+                <div>
+                    <label class="text-sm font-bold text-slate-600 block mb-2">내용</label>
+                    <div class="flex gap-1 mb-2 p-1.5 bg-slate-100 rounded-lg w-fit">
+                        <button type="button" class="notice-inline-format-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200" data-format="bold"><i class="fa-solid fa-bold"></i></button>
+                        <button type="button" class="notice-inline-format-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200" data-format="strikeThrough"><i class="fa-solid fa-strikethrough"></i></button>
+                        <button type="button" class="notice-inline-format-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200" data-format="underline"><i class="fa-solid fa-underline"></i></button>
+                    </div>
+                    <div id="noticeInlineContent" contenteditable="true" class="w-full min-h-[200px] p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 overflow-y-auto">${notice.content || ''}</div>
+                </div>
+                <div>
+                    <label class="text-sm font-bold text-slate-600 block mb-2">구분</label>
+                    <select id="noticeInlineType" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500">
+                        <option value="important" ${(notice.type || '') === 'important' ? 'selected' : ''}>중요</option>
+                        <option value="notice" ${(notice.type || '') === 'notice' ? 'selected' : ''}>알림</option>
+                        <option value="light" ${(notice.type || '') === 'light' ? 'selected' : ''}>가벼운</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="noticeInlinePinned" ${notice.isPinned === true ? 'checked' : ''} class="w-4 h-4">
+                    <label for="noticeInlinePinned" class="text-sm text-slate-600">상단 고정</label>
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="noticeInlineHidden" ${notice.hidden === true ? 'checked' : ''} class="w-4 h-4">
+                    <label for="noticeInlineHidden" class="text-sm text-slate-600">숨김</label>
+                </div>
+                <div class="flex gap-3 pt-2">
+                    <button type="button" onclick="window.cancelNoticeEdit('${noticeId}')" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm">취소</button>
+                    <button type="button" onclick="window.submitNoticeFromInline('${noticeId}')" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm">저장</button>
+                </div>
+            </div>
+        `;
+
+        renderNoticeInlineImagePreviews();
+        document.querySelectorAll('.notice-inline-format-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const el = document.getElementById('noticeInlineContent');
+                if (el) { el.focus(); document.execCommand(btn.getAttribute('data-format'), false, null); }
+            });
+        });
+        document.getElementById('noticeInlineImages').addEventListener('change', (e) => {
+            const existing = (window.noticeExistingUrls || []).length;
+            const filesCount = (window.noticeFiles || []).length;
+            const canAdd = Math.max(0, 3 - existing - filesCount);
+            const files = Array.from(e.target.files || []).slice(0, canAdd);
+            if (files.length > 0) {
+                if (!window.noticeFiles) window.noticeFiles = [];
+                if (!window.noticeObjectUrls) window.noticeObjectUrls = [];
+                files.forEach(f => {
+                    if (f.type.startsWith('image/')) {
+                        window.noticeFiles.push(f);
+                        window.noticeObjectUrls.push(URL.createObjectURL(f));
+                    }
+                });
+                renderNoticeInlineImagePreviews();
+            }
+            e.target.value = '';
+        });
+    } catch (e) {
+        console.error("공지 로드 실패:", e);
+        alert("공지를 불러오는 중 오류가 발생했습니다.");
+    }
+};
+
+function renderNoticeInlineImagePreviews() {
+    const container = document.getElementById('noticeInlineImagePreviews');
+    if (!container) return;
+    const existing = window.noticeExistingUrls || [];
+    const files = window.noticeFiles || [];
+    container.innerHTML = '';
+    existing.forEach((url, i) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0';
+        wrap.innerHTML = `<img src="${url}" alt="미리보기" class="w-full h-full object-cover"><button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl" data-type="url" data-index="${i}"><i class="fa-solid fa-times"></i></button>`;
+        wrap.querySelector('button').onclick = () => { window.noticeExistingUrls.splice(i, 1); renderNoticeInlineImagePreviews(); };
+        container.appendChild(wrap);
+    });
+    files.forEach((_, i) => {
+        const url = (window.noticeObjectUrls || [])[i];
+        if (!url) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0';
+        wrap.innerHTML = `<img src="${url}" alt="미리보기" class="w-full h-full object-cover"><button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl"><i class="fa-solid fa-times"></i></button>`;
+        wrap.querySelector('button').onclick = () => {
+            window.noticeFiles.splice(i, 1);
+            window.noticeObjectUrls.splice(i, 1);
+            renderNoticeInlineImagePreviews();
+        };
+        container.appendChild(wrap);
+    });
+}
+
+window.cancelNoticeEdit = function(noticeId) {
+    currentEditingNoticeId = null;
+    renderNoticeDetailInAdmin(noticeId);
+};
+
+window.submitNoticeFromInline = async function(noticeId) {
+    const titleInput = document.getElementById('noticeInlineTitle');
+    const contentInput = document.getElementById('noticeInlineContent');
+    const typeSelect = document.getElementById('noticeInlineType');
+    const pinnedCheckbox = document.getElementById('noticeInlinePinned');
+    const hiddenCheckbox = document.getElementById('noticeInlineHidden');
+    if (!titleInput || !contentInput) return;
+
+    const title = titleInput.value.trim();
+    const rawContent = contentInput.innerHTML || '';
+    let content = sanitizeFormattedText(rawContent).trim();
+    if (!content && rawContent.trim()) content = stripDangerousTagsOnly(rawContent).trim();
+    if (!content) content = (contentInput.innerText || '').trim().replace(/\n/g, '<br>');
+
+    if (!title) { alert('제목을 입력해주세요.'); return; }
+    if (!content) { alert('내용을 입력해주세요.'); return; }
+
+    const type = typeSelect ? typeSelect.value : 'important';
+    const isPinned = pinnedCheckbox ? Boolean(pinnedCheckbox.checked) : false;
+    const hidden = hiddenCheckbox ? Boolean(hiddenCheckbox.checked) : false;
+
+    try {
+        const existingUrls = window.noticeExistingUrls || [];
+        const newFiles = window.noticeFiles || [];
+        let imageUrls = [...existingUrls];
+        if (newFiles.length > 0) {
+            const uid = adminAuth.currentUser?.uid;
+            if (!uid) { alert('로그인이 필요합니다.'); return; }
+            const newUrls = await uploadNoticeImages(newFiles, uid);
+            imageUrls = [...existingUrls, ...newUrls];
+        }
+
+        const noticeData = {
+            title, content, type, isPinned, hidden, imageUrls,
+            timestamp: new Date().toISOString(),
+            authorDisplayName: await getAdminDisplayName()
+        };
+        const noticeDoc = doc(db, 'artifacts', appId, 'notices', noticeId);
+        await setDoc(noticeDoc, { ...noticeData, isPinned, hidden }, { merge: true });
+        alert('공지가 수정되었습니다.');
+        currentEditingNoticeId = null;
+        await renderNotices();
+        await renderNoticeDetailInAdmin(noticeId);
+    } catch (e) {
+        console.error("공지 저장 실패:", e);
+        alert("공지 저장 중 오류가 발생했습니다: " + e.message);
+    }
 };
 
 // 공지 숨김/숨김 해제 토글 (글본문 페이지에서 바로)
@@ -5283,20 +5455,25 @@ window.switchDataSidebar = function(section) {
     
     // 섹션별 데이터 로드
     if (section === 'restaurants') {
-        renderRestaurantData(currentRestaurantFilter || 'all');
+        renderRestaurantData(currentRestaurantFilter || 'all', currentRestaurantSlotFilter || 'all');
     }
 };
 
 // 식당정보 필터 상태
 let currentRestaurantFilter = 'all'; // 'all', 'kakao', 'manual'
+let currentRestaurantSlotFilter = 'all'; // 'all', 'meal', 'snack'
+
+const MEAL_SLOTS = ['morning', 'lunch', 'dinner'];
+const SNACK_SLOTS = ['pre_morning', 'snack1', 'snack2', 'night'];
 
 // 식당정보 데이터 렌더링
-window.renderRestaurantData = async function(filter = 'all') {
+window.renderRestaurantData = async function(filter = 'all', slotFilter = 'all') {
     const container = document.getElementById('restaurantsContainer');
     if (!container) return;
     
     currentRestaurantFilter = filter;
-    
+    if (slotFilter === undefined) slotFilter = currentRestaurantSlotFilter;
+
     container.innerHTML = `
         <div class="text-center py-8 text-slate-400">
             <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
@@ -5321,7 +5498,12 @@ window.renderRestaurantData = async function(filter = 'all') {
                 mealsSnapshot.forEach(mealDoc => {
                     const mealData = mealDoc.data();
                     const place = mealData.place;
-                    
+                    const slotId = mealData.slotId || '';
+
+                    // 끼니 구분 필터: 식사(morning/lunch/dinner) vs 간식(pre_morning/snack1/snack2/night)
+                    if (slotFilter === 'meal' && !MEAL_SLOTS.includes(slotId)) return;
+                    if (slotFilter === 'snack' && !SNACK_SLOTS.includes(slotId)) return;
+
                     if (place && place.trim() !== '') {
                         const placeKey = place.trim();
                         
@@ -5429,11 +5611,13 @@ window.renderRestaurantData = async function(filter = 'all') {
         // 정렬 (입력 횟수 내림차순)
         restaurants.sort((a, b) => b.count - a.count);
         
+        const slotLabel = slotFilter === 'all' ? '' : slotFilter === 'meal' ? ' (식사만)' : ' (간식만)';
         if (restaurants.length === 0) {
+            const filterMsg = filter === 'all' ? '등록된 식당 정보가 없습니다.' : filter === 'kakao' ? '카카오맵으로 입력된 식당이 없습니다.' : '수동으로 입력된 식당이 없습니다.';
             container.innerHTML = `
                 <div class="text-center py-12 text-slate-400">
                     <i class="fa-solid fa-utensils text-4xl mb-4"></i>
-                    <p class="text-sm font-bold">${filter === 'all' ? '등록된 식당 정보가 없습니다.' : filter === 'kakao' ? '카카오맵으로 입력된 식당이 없습니다.' : '수동으로 입력된 식당이 없습니다.'}</p>
+                    <p class="text-sm font-bold">${filterMsg}${slotLabel}</p>
                 </div>
             `;
             return;
@@ -5491,6 +5675,7 @@ window.renderRestaurantData = async function(filter = 'all') {
             </div>
             <div class="mt-4 text-sm text-slate-500 text-center">
                 총 ${restaurants.length}개의 식당이 ${filter === 'all' ? '등록' : filter === 'kakao' ? '카카오맵으로 입력' : '수동으로 입력'}되어 있습니다.
+                ${slotLabel}
             </div>
         `;
         
@@ -5506,27 +5691,37 @@ window.renderRestaurantData = async function(filter = 'all') {
     }
 };
 
-// 식당정보 필터 설정
+// 식당정보 필터 설정 (입력 방식: 전체/카카오맵/수동입력)
 window.setRestaurantFilter = function(filter) {
-    // 모든 필터 버튼 비활성화
     document.querySelectorAll('.restaurant-filter-btn').forEach(btn => {
         btn.classList.remove('bg-emerald-600', 'text-white');
         btn.classList.add('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
     });
-    
-    // 선택한 필터 버튼 활성화
     const activeFilterBtn = document.getElementById(`restaurant-filter-${filter}`);
     if (activeFilterBtn) {
         activeFilterBtn.classList.remove('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
         activeFilterBtn.classList.add('bg-emerald-600', 'text-white');
     }
-    
-    // 데이터 다시 렌더링
-    renderRestaurantData(filter);
+    renderRestaurantData(filter, currentRestaurantSlotFilter);
+};
+
+// 식당정보 끼니 구분 필터 설정 (전체/식사/간식)
+window.setRestaurantSlotFilter = function(slotFilter) {
+    currentRestaurantSlotFilter = slotFilter;
+    document.querySelectorAll('.restaurant-slot-filter-btn').forEach(btn => {
+        btn.classList.remove('bg-emerald-600', 'text-white');
+        btn.classList.add('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
+    });
+    const activeBtn = document.getElementById(`restaurant-slot-filter-${slotFilter}`);
+    if (activeBtn) {
+        activeBtn.classList.remove('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
+        activeBtn.classList.add('bg-emerald-600', 'text-white');
+    }
+    renderRestaurantData(currentRestaurantFilter, slotFilter);
 };
 
 // 식당정보 새로고침
 window.refreshRestaurantData = function() {
-    renderRestaurantData(currentRestaurantFilter);
+    renderRestaurantData(currentRestaurantFilter, currentRestaurantSlotFilter);
 };
 
