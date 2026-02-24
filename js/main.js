@@ -2704,7 +2704,7 @@ window.onload = () => {
             const isNextDay = deltaX < 0;
             // 오른쪽으로 밀면(이전날) → 새 콘텐츠는 왼쪽에서, 왼쪽으로 밀면(다음날) → 새 콘텐츠는 오른쪽에서
             const slideOut = isNextDay ? '-100%' : '100%';
-            const newContentStart = isNextDay ? '-100%' : '100%';  // 방향 반대로 적용 (오른쪽 밀면 왼쪽에서, 왼쪽 밀면 오른쪽에서)
+            const newContentStart = isNextDay ? '100%' : '-100%';  // 왼쪽 밀면(다음날) 오른쪽에서, 오른쪽 밀면(이전날) 왼쪽에서
             tc.style.transform = `translateX(${slideOut})`;
 
             const onSlideOutEnd = (ev) => {
