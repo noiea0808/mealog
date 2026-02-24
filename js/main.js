@@ -2697,6 +2697,15 @@ function initDailySwipeGesture() {
         if (!tc) return;
 
         isAnimating = true;
+        let didFinishAnimation = false;
+        const finishAnimation = () => {
+            if (didFinishAnimation) return;
+            didFinishAnimation = true;
+            const activeTc = getTimelineContainer();
+            if (activeTc) activeTc.style.willChange = '';
+            currentDragX = 0;
+            isAnimating = false;
+        };
         const viewportWidth = tv.clientWidth || window.innerWidth || 360;
         // 화면 전체를 밀어내면 빈 영역이 길게 보여서, 전환 거리를 축소해 공백 체감을 줄인다.
         const slideDistance = Math.max(120, Math.round(viewportWidth * 0.42));
@@ -2717,8 +2726,11 @@ function initDailySwipeGesture() {
         tc.style.transition = 'transform 180ms cubic-bezier(0.22, 0.61, 0.36, 1)';
         tc.style.transform = `translate3d(${outgoingX}px, 0, 0)`;
 
+        let slideOutDone = false;
         const onSlideOutEnd = async (ev) => {
+            if (slideOutDone) return;
             if (ev.target !== tc || (ev.propertyName && ev.propertyName !== 'transform')) return;
+            slideOutDone = true;
             tc.removeEventListener('transitionend', onSlideOutEnd);
 
             try {
@@ -2730,7 +2742,7 @@ function initDailySwipeGesture() {
             requestAnimationFrame(() => {
                 const newTc = getTimelineContainer();
                 if (!newTc) {
-                    isAnimating = false;
+                    finishAnimation();
                     return;
                 }
                 // 새 날짜 콘텐츠를 먼저 반대편에 배치한 뒤 중앙으로 슬라이드 인시켜
@@ -2746,14 +2758,22 @@ function initDailySwipeGesture() {
                 const onSlideInEnd = (slideInEv) => {
                     if (slideInEv.target !== newTc || (slideInEv.propertyName && slideInEv.propertyName !== 'transform')) return;
                     newTc.removeEventListener('transitionend', onSlideInEnd);
-                    newTc.style.willChange = '';
-                    currentDragX = 0;
-                    isAnimating = false;
+                    finishAnimation();
                 };
                 newTc.addEventListener('transitionend', onSlideInEnd);
+                // transitionend 누락 대비: 강제 종료
+                setTimeout(() => {
+                    newTc.removeEventListener('transitionend', onSlideInEnd);
+                    finishAnimation();
+                }, 420);
             });
         };
         tc.addEventListener('transitionend', onSlideOutEnd);
+        // transitionend 누락 대비: 강제 종료
+        setTimeout(() => {
+            tc.removeEventListener('transitionend', onSlideOutEnd);
+            finishAnimation();
+        }, 520);
     };
 
     tv.addEventListener('touchstart', (e) => {
