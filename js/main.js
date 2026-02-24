@@ -2698,14 +2698,17 @@ window.onload = () => {
 
         if (state.viewMode !== 'page') return;
 
-        tc.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+        tc.style.transition = 'transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 
         if (Math.abs(deltaX) > 50) {
             const isNextDay = deltaX < 0;
+            // 오른쪽으로 밀면(이전날) → 새 콘텐츠는 왼쪽에서, 왼쪽으로 밀면(다음날) → 새 콘텐츠는 오른쪽에서
             const slideOut = isNextDay ? '-100%' : '100%';
+            const newContentStart = isNextDay ? '100%' : '-100%';  // 오른쪽으로 밀면(이전날) 왼쪽에서(-100%), 왼쪽으로 밀면(다음날) 오른쪽에서(100%)
             tc.style.transform = `translateX(${slideOut})`;
 
-            const onSlideOutEnd = () => {
+            const onSlideOutEnd = (ev) => {
+                if (ev.target !== tc || ev.propertyName !== 'transform') return;
                 tc.removeEventListener('transitionend', onSlideOutEnd);
                 let d = new Date(state.pageDate);
                 d.setDate(d.getDate() + (isNextDay ? 1 : -1));
@@ -2715,10 +2718,10 @@ window.onload = () => {
                 const targetIso = `${year}-${month}-${day}`;
 
                 tc.style.transition = 'none';
-                tc.style.transform = `translateX(${isNextDay ? '100%' : '-100%'})`;
+                tc.style.transform = `translateX(${newContentStart})`;
                 window.jumpToDate(targetIso).then(() => {
                     requestAnimationFrame(() => {
-                        tc.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+                        tc.style.transition = 'transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
                         tc.style.transform = 'translateX(0)';
                     });
                 });

@@ -461,6 +461,7 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
 #timelineView {
     padding-left: 0 !important;
     padding-right: 0 !important;
+    background-color: #f8fafc; /* 스와이프 전환 시 흰 공간 대신 배경색 표시 */
 }
 #timelineContainer .card {
     border-radius: 0 !important;
