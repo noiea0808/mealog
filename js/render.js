@@ -3917,6 +3917,12 @@ function openPhotoEditModalWithImage(photoSrc) {
     photoEditCtx = photoEditCanvas.getContext('2d');
     
     editingPhotoImage = new Image();
+    // Firebase Storage 같은 외부 URL 편집 시 canvas taint로 저장 실패하는 케이스를 줄임
+    const src = String(photoSrc || '');
+    const isLocalLike = src.startsWith('data:') || src.startsWith('blob:');
+    if (!isLocalLike) {
+        editingPhotoImage.crossOrigin = 'anonymous';
+    }
     editingPhotoImage.onload = () => {
         initializePhotoEdit();
     };
@@ -4248,45 +4254,57 @@ export function savePhotoEdit() {
     outputCtx.drawImage(editingPhotoImage, finalOffsetX, finalOffsetY, drawWidth, drawHeight);
     outputCtx.restore();
     
-    outputCanvas.toBlob((blob) => {
-        if (!blob) return;
-        
-        if (photoEditContext === 'profile') {
-            window.settingsPhotoFile = blob;
-            window.settingsPhotoUrl = URL.createObjectURL(blob);
-            if (profilePhotoEditObjectUrl) {
-                URL.revokeObjectURL(profilePhotoEditObjectUrl);
-                profilePhotoEditObjectUrl = null;
-            }
-            const photoPreview = document.getElementById('photoPreview');
-            const photoDeleteBtn = document.getElementById('photoDeleteBtn');
-            if (photoPreview) {
-                photoPreview.style.backgroundImage = `url(${window.settingsPhotoUrl})`;
-                photoPreview.style.backgroundSize = 'cover';
-                photoPreview.style.backgroundPosition = 'center';
-                photoPreview.innerHTML = '';
-                if (photoDeleteBtn) {
-                    photoDeleteBtn.classList.toggle('hidden', !appState.isProfileEditing);
+    try {
+        outputCanvas.toBlob((blob) => {
+            if (!blob) {
+                if (typeof window.showToast === 'function') {
+                    window.showToast('사진 저장에 실패했습니다. 다시 시도해주세요.', 'error');
                 }
+                return;
             }
-            // 프로필 타입을 photo로 설정
-            if (typeof window.setSettingsProfileType === 'function') {
-                window.setSettingsProfileType('photo');
-            }
-            closePhotoEditModal();
-            if (typeof window.showToast === 'function') window.showToast('사진이 적용되었습니다.', 'success');
-            return;
-        }
         
-        if (editingPhotoIndex === null) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-            appState.currentPhotos[editingPhotoIndex] = reader.result;
-            renderPhotoPreviews();
-            closePhotoEditModal();
-        };
-        reader.readAsDataURL(blob);
-    }, 'image/jpeg', 0.9);
+            if (photoEditContext === 'profile') {
+                window.settingsPhotoFile = blob;
+                window.settingsPhotoUrl = URL.createObjectURL(blob);
+                if (profilePhotoEditObjectUrl) {
+                    URL.revokeObjectURL(profilePhotoEditObjectUrl);
+                    profilePhotoEditObjectUrl = null;
+                }
+                const photoPreview = document.getElementById('photoPreview');
+                const photoDeleteBtn = document.getElementById('photoDeleteBtn');
+                if (photoPreview) {
+                    photoPreview.style.backgroundImage = `url(${window.settingsPhotoUrl})`;
+                    photoPreview.style.backgroundSize = 'cover';
+                    photoPreview.style.backgroundPosition = 'center';
+                    photoPreview.innerHTML = '';
+                    if (photoDeleteBtn) {
+                        photoDeleteBtn.classList.toggle('hidden', !appState.isProfileEditing);
+                    }
+                }
+                // 프로필 타입을 photo로 설정
+                if (typeof window.setSettingsProfileType === 'function') {
+                    window.setSettingsProfileType('photo');
+                }
+                closePhotoEditModal();
+                if (typeof window.showToast === 'function') window.showToast('사진이 적용되었습니다.', 'success');
+                return;
+            }
+        
+            if (editingPhotoIndex === null) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                appState.currentPhotos[editingPhotoIndex] = reader.result;
+                renderPhotoPreviews();
+                closePhotoEditModal();
+            };
+            reader.readAsDataURL(blob);
+        }, 'image/jpeg', 0.9);
+    } catch (e) {
+        console.error('사진 편집 저장 실패:', e);
+        if (typeof window.showToast === 'function') {
+            window.showToast('사진 저장 중 오류가 발생했습니다.', 'error');
+        }
+    }
 }
 
 // 사진 편집 모달 닫기

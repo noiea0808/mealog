@@ -494,11 +494,66 @@ export function setupListeners(userId, callbacks) {
                 const docData = { id: change.doc.id, ...change.doc.data() };
                 if (change.type === 'added' || change.type === 'modified') {
                     const index = window.mealHistory.findIndex(m => m.id === docData.id);
+                    const slotKey = `${docData.date || ''}__${docData.slotId || ''}`;
+                    const isPendingUpload = Boolean(
+                        window._pendingPhotoUploadByEntryId?.[docData.id] ||
+                        window._pendingPhotoUploadBySlotKey?.[slotKey]
+                    );
                     if (index >= 0) {
-                        window.mealHistory[index] = docData;
+                        const localRecord = window.mealHistory[index];
+                        const incomingPhotos = Array.isArray(docData.photos)
+                            ? docData.photos
+                            : (docData.photos ? [docData.photos] : []);
+                        const localPhotos = Array.isArray(localRecord?.photos)
+                            ? localRecord.photos
+                            : (localRecord?.photos ? [localRecord.photos] : []);
+                        const hasLocalBase64Preview = localPhotos.some(
+                            (p) => typeof p === 'string' && p.startsWith('data:image')
+                        );
+                        const shouldKeepLocalPreview = isPendingUpload && hasLocalBase64Preview;
+                        
+                        // 낙관 반영 직후 1차 스냅샷(photos 비어있음)으로 미리보기가 사라지는 깜빡임 방지
+                        if (shouldKeepLocalPreview) {
+                            window.mealHistory[index] = { ...docData, photos: [...localPhotos] };
+                        } else {
+                            window.mealHistory[index] = docData;
+                        }
                     } else {
-                        // 새로 추가된 문서 (1개월 범위 내)
-                        window.mealHistory.push(docData);
+                        // 신규 저장 직후: 임시 ID 낙관 레코드(temp_*)를 실제 서버 ID로 치환해 깜빡임/중복 방지
+                        const tempIdx = window.mealHistory.findIndex((m) =>
+                            typeof m?.id === 'string' &&
+                            m.id.startsWith('temp_') &&
+                            m.date === docData.date &&
+                            m.slotId === docData.slotId
+                        );
+                        if (tempIdx >= 0) {
+                            const tempRecord = window.mealHistory[tempIdx];
+                            const incomingPhotos = Array.isArray(docData.photos)
+                                ? docData.photos
+                                : (docData.photos ? [docData.photos] : []);
+                            const tempPhotos = Array.isArray(tempRecord?.photos)
+                                ? tempRecord.photos
+                                : (tempRecord?.photos ? [tempRecord.photos] : []);
+                            const hasTempBase64 = tempPhotos.some(
+                                (p) => typeof p === 'string' && p.startsWith('data:image')
+                            );
+                            const keepTempPreview = (isPendingUpload || Boolean(window._pendingPhotoUploadByEntryId?.[tempRecord.id])) && hasTempBase64;
+                            window.mealHistory[tempIdx] = keepTempPreview
+                                ? { ...docData, photos: [...tempPhotos] }
+                                : docData;
+                            if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+                                window.sharedPhotos = window.sharedPhotos.map((p) => (
+                                    p.entryId === tempRecord.id ? { ...p, entryId: docData.id } : p
+                                ));
+                            }
+                            if (window._pendingPhotoUploadByEntryId?.[tempRecord.id]) {
+                                window._pendingPhotoUploadByEntryId[docData.id] = true;
+                                delete window._pendingPhotoUploadByEntryId[tempRecord.id];
+                            }
+                        } else {
+                            // 새로 추가된 문서 (1개월 범위 내)
+                            window.mealHistory.push(docData);
+                        }
                     }
                     hasChanges = true;
                 } else if (change.type === 'removed') {

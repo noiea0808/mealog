@@ -889,6 +889,79 @@ export async function saveEntry() {
         const currentTab = state.currentTab;
         const editingDate = state.currentEditingDate;
         
+        // 서버 저장 전 UI를 먼저 갱신하기 위한 낙관 반영용 임시 레코드
+        const wasNewRecord = !record.id;
+        const optimisticTempId = wasNewRecord ? `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` : null;
+        const optimisticSlotKey = `${record.date || ''}__${record.slotId || ''}`;
+        const hasPendingBase64Photos = sourcePhotos.some(isBase64Photo);
+        if (!window._pendingPhotoUploadByEntryId) window._pendingPhotoUploadByEntryId = {};
+        if (!window._pendingPhotoUploadBySlotKey) window._pendingPhotoUploadBySlotKey = {};
+        if (hasPendingBase64Photos) {
+            if (record.id || optimisticTempId) window._pendingPhotoUploadByEntryId[record.id || optimisticTempId] = true;
+            window._pendingPhotoUploadBySlotKey[optimisticSlotKey] = true;
+        }
+        const optimisticRecord = {
+            ...record,
+            id: record.id || optimisticTempId,
+            photos: [...sourcePhotos]
+        };
+        const applyOptimisticMealRecord = () => {
+            if (!window.mealHistory || !Array.isArray(window.mealHistory) || !optimisticRecord.id) return;
+            const byId = window.mealHistory.findIndex(m => m.id === optimisticRecord.id);
+            if (byId >= 0) {
+                window.mealHistory[byId] = optimisticRecord;
+            } else if (!record.id && !isS) {
+                // main 끼니 신규 등록은 같은 날짜/슬롯 카드 교체
+                const sameSlot = window.mealHistory.findIndex(m => m.date === optimisticRecord.date && m.slotId === optimisticRecord.slotId);
+                if (sameSlot >= 0) window.mealHistory[sameSlot] = optimisticRecord;
+                else window.mealHistory.push(optimisticRecord);
+            } else {
+                window.mealHistory.push(optimisticRecord);
+            }
+            window.mealHistory.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''));
+        };
+        applyOptimisticMealRecord();
+        // 공유 아이콘도 서버 반영 전에 즉시 낙관 반영
+        if (optimisticRecord.id && !isShareBanned) {
+            if (!window.sharedPhotos || !Array.isArray(window.sharedPhotos)) window.sharedPhotos = [];
+            if (wantsToShare) {
+                const optimisticShared = (sourcePhotos.length > 0 ? sourcePhotos : ['']).map(url => ({
+                    entryId: optimisticRecord.id,
+                    photoUrl: url || '',
+                    userId: window.currentUser?.uid
+                }));
+                window.sharedPhotos = window.sharedPhotos.filter(p => p.entryId !== optimisticRecord.id).concat(optimisticShared);
+            } else {
+                window.sharedPhotos = window.sharedPhotos.filter(p => p.entryId !== optimisticRecord.id);
+            }
+            updateTimelineShareIndicators();
+        }
+        // 리스너 재렌더가 즉시 덮어쓰지 않도록 짧게 프리즈
+        window._timelineRerenderFreezeUntil = Date.now() + 1200;
+        if (currentTab === 'timeline' && editingDate) {
+            try {
+                if (window.jumpToDate) window.jumpToDate(editingDate);
+                updateTimelineShareIndicators();
+            } catch (e) {
+                console.warn('저장 직후 타임라인 낙관 반영 실패:', e);
+            }
+        } else if (currentTab === 'gallery') {
+            try {
+                renderGallery();
+                const feedContent = document.getElementById('feedContent');
+                if (feedContent) renderFeed();
+            } catch (e) {
+                console.warn('저장 직후 갤러리 낙관 반영 실패:', e);
+            }
+        } else if (currentTab === 'feed') {
+            try {
+                const feedContent = document.getElementById('feedContent');
+                if (feedContent) renderFeed();
+            } catch (e) {
+                console.warn('저장 직후 피드 낙관 반영 실패:', e);
+            }
+        }
+        
         // 공유 상태 변경 여부 추적 변수 (함수 스코프)
         // 상태 초기화 전에 originalSharedPhotos 확인
         const hadSharedPhotos = state.originalSharedPhotos && state.originalSharedPhotos.length > 0;
@@ -910,10 +983,44 @@ export async function saveEntry() {
                 record.id = savedId;
                 console.log('새 레코드 ID 확보:', savedId);
             }
+            // 신규 등록 시 임시 ID를 실제 ID로 치환 (이후 URL 반영 merge가 정상 동작하도록)
+            if (wasNewRecord && optimisticTempId && savedId && window.mealHistory && Array.isArray(window.mealHistory)) {
+                const tempIdx = window.mealHistory.findIndex(m => m.id === optimisticTempId);
+                if (tempIdx >= 0) {
+                    window.mealHistory[tempIdx] = { ...window.mealHistory[tempIdx], id: savedId };
+                }
+            }
+            if (hasPendingBase64Photos && wasNewRecord && optimisticTempId && savedId) {
+                window._pendingPhotoUploadByEntryId[savedId] = true;
+                delete window._pendingPhotoUploadByEntryId[optimisticTempId];
+            }
+            if (wasNewRecord && optimisticTempId && savedId && window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+                window.sharedPhotos = window.sharedPhotos.map(p => (
+                    p.entryId === optimisticTempId ? { ...p, entryId: savedId } : p
+                ));
+                updateTimelineShareIndicators();
+            }
 
             // 새로 추가한 base64 사진은 문서 ID 확보 후 Storage 업로드 -> URL로 record.photos 치환
             const base64Photos = sourcePhotos.filter(isBase64Photo);
             if (base64Photos.length > 0 && record.id && window.currentUser?.uid) {
+                const preloadImage = (url, timeoutMs = 1500) => new Promise((resolve) => {
+                    if (!url || typeof url !== 'string') {
+                        resolve(false);
+                        return;
+                    }
+                    const img = new Image();
+                    let done = false;
+                    const finish = (ok) => {
+                        if (done) return;
+                        done = true;
+                        resolve(ok);
+                    };
+                    const timer = setTimeout(() => finish(false), timeoutMs);
+                    img.onload = () => { clearTimeout(timer); finish(true); };
+                    img.onerror = () => { clearTimeout(timer); finish(false); };
+                    img.src = url;
+                });
                 try {
                     const uploadedUrls = await Promise.all(
                         base64Photos.map((photo) => uploadBase64ToStorage(photo, window.currentUser.uid, record.id))
@@ -937,6 +1044,15 @@ export async function saveEntry() {
 
                     // 1차 저장 후 URL 기준으로 조용히 한 번 더 저장해 base64 잔존을 방지
                     await dbOps.save(record, true);
+                    
+                    // URL 이미지가 실제 로드된 뒤에 로컬 카드 사진을 URL로 바꿔 전환 깜빡임을 줄임
+                    await preloadImage(finalPhotoUrls[0]);
+                    if (window.mealHistory && Array.isArray(window.mealHistory)) {
+                        const localIdx = window.mealHistory.findIndex(m => m.id === record.id);
+                        if (localIdx >= 0) {
+                            window.mealHistory[localIdx] = { ...window.mealHistory[localIdx], photos: [...finalPhotoUrls] };
+                        }
+                    }
                 } catch (uploadError) {
                     console.error('사진 업로드 실패:', uploadError);
                     showToast("사진 업로드 중 오류가 발생해 일부 사진이 저장되지 않았습니다.", 'error');
@@ -947,6 +1063,10 @@ export async function saveEntry() {
                         : [];
                     record.sharedPhotos = photosToShare;
                     await dbOps.save(record, true);
+                } finally {
+                    if (record.id) delete window._pendingPhotoUploadByEntryId[record.id];
+                    if (optimisticTempId) delete window._pendingPhotoUploadByEntryId[optimisticTempId];
+                    delete window._pendingPhotoUploadBySlotKey[optimisticSlotKey];
                 }
             }
 
