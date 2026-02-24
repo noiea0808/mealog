@@ -2677,6 +2677,7 @@ function initDailySwipeGesture() {
     let startX = 0;
     let startY = 0;
     let lastX = 0;
+    let currentDragX = 0;
     let tracking = false;
     let horizontalLocked = null; // null: 미결정, true: 가로, false: 세로
     let isAnimating = false;
@@ -2687,9 +2688,10 @@ function initDailySwipeGesture() {
         tc.style.transition = 'transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1)';
         tc.style.transform = 'translate3d(0, 0, 0)';
         tc.style.willChange = '';
+        currentDragX = 0;
     };
 
-    const animateToDate = async (dayDelta) => {
+    const animateToDate = async (dayDelta, releaseX = 0) => {
         if (isAnimating) return;
         const tc = getTimelineContainer();
         if (!tc) return;
@@ -2698,8 +2700,11 @@ function initDailySwipeGesture() {
         const viewportWidth = tv.clientWidth || window.innerWidth || 360;
         // 화면 전체를 밀어내면 빈 영역이 길게 보여서, 전환 거리를 축소해 공백 체감을 줄인다.
         const slideDistance = Math.max(120, Math.round(viewportWidth * 0.42));
-        const outgoingX = dayDelta > 0 ? -slideDistance : slideDistance;
-        const incomingStartX = -outgoingX;
+        const maxOutgoingDistance = Math.max(slideDistance, Math.round(viewportWidth * 0.75));
+        const releaseMagnitude = Math.min(Math.abs(releaseX), maxOutgoingDistance);
+        const outgoingDistance = Math.max(slideDistance, releaseMagnitude);
+        const outgoingX = dayDelta > 0 ? -outgoingDistance : outgoingDistance;
+        const incomingStartX = dayDelta > 0 ? slideDistance : -slideDistance;
 
         const targetDate = new Date(appState.pageDate);
         targetDate.setDate(targetDate.getDate() + dayDelta);
@@ -2742,6 +2747,7 @@ function initDailySwipeGesture() {
                     if (slideInEv.target !== newTc || (slideInEv.propertyName && slideInEv.propertyName !== 'transform')) return;
                     newTc.removeEventListener('transitionend', onSlideInEnd);
                     newTc.style.willChange = '';
+                    currentDragX = 0;
                     isAnimating = false;
                 };
                 newTc.addEventListener('transitionend', onSlideInEnd);
@@ -2755,6 +2761,7 @@ function initDailySwipeGesture() {
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
         lastX = startX;
+        currentDragX = 0;
         tracking = true;
         horizontalLocked = null;
     }, { passive: true });
@@ -2780,17 +2787,21 @@ function initDailySwipeGesture() {
 
         const tc = getTimelineContainer();
         if (!tc) return;
+        const viewportWidth = tv.clientWidth || window.innerWidth || 360;
+        const maxDragDistance = Math.max(120, Math.round(viewportWidth * 0.75));
+        const clampedDeltaX = Math.max(-maxDragDistance, Math.min(maxDragDistance, deltaX));
+        currentDragX = clampedDeltaX;
         e.preventDefault();
         tc.style.willChange = 'transform';
         tc.style.transition = 'none';
-        tc.style.transform = `translate3d(${deltaX}px, 0, 0)`;
+        tc.style.transform = `translate3d(${clampedDeltaX}px, 0, 0)`;
     }, { passive: false });
 
     tv.addEventListener('touchend', () => {
         if (!tracking || appState.viewMode !== 'page' || isAnimating) return;
         tracking = false;
 
-        const deltaX = lastX - startX;
+        const deltaX = currentDragX || (lastX - startX);
         if (horizontalLocked !== true) return;
 
         if (Math.abs(deltaX) < SWIPE_TRIGGER_PX) {
@@ -2801,7 +2812,7 @@ function initDailySwipeGesture() {
         // 왼쪽 스와이프(deltaX<0): 다음날(dayDelta=+1)이 오른쪽에서 진입
         // 오른쪽 스와이프(deltaX>0): 전날(dayDelta=-1)이 왼쪽에서 진입
         const dayDelta = deltaX < 0 ? 1 : -1;
-        animateToDate(dayDelta);
+        animateToDate(dayDelta, deltaX);
     }, { passive: true });
 
     tv.addEventListener('touchcancel', () => {
