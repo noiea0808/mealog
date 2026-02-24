@@ -2672,12 +2672,13 @@ function initDailySwipeGesture() {
     if (!tv) return;
 
     const getTimelineContainer = () => document.getElementById('timelineContainer');
-    const SWIPE_TRIGGER_PX = 56;
+    const SWIPE_TRIGGER_PX = 28;
     const AXIS_LOCK_PX = 10;
     let startX = 0;
     let startY = 0;
     let lastX = 0;
     let tracking = false;
+    let currentDragX = 0;
     let horizontalLocked = null; // null: 미결정, true: 가로, false: 세로
     let isAnimating = false;
 
@@ -2689,17 +2690,22 @@ function initDailySwipeGesture() {
         tc.style.willChange = '';
     };
 
-    const animateToDate = async (dayDelta) => {
+    const animateToDate = async (dayDelta, releaseX = 0) => {
         if (isAnimating) return;
         const tc = getTimelineContainer();
         if (!tc) return;
 
         isAnimating = true;
         const viewportWidth = tv.clientWidth || window.innerWidth || 360;
-        // 화면 전체를 밀어내면 빈 영역이 길게 보여서, 전환 거리를 축소해 공백 체감을 줄인다.
-        const slideDistance = Math.max(120, Math.round(viewportWidth * 0.42));
-        const outgoingX = dayDelta > 0 ? -slideDistance : slideDistance;
-        const incomingStartX = -outgoingX;
+        // 카드 사이 공백을 줄이기 위해 기본 전환 거리를 더 짧게 유지한다.
+        const slideDistance = Math.max(72, Math.round(viewportWidth * 0.24));
+        // 손을 뗀 위치에서 같은 방향으로 자연스럽게 이어서 밀려나가도록 거리 계산
+        const releaseDistance = Math.abs(releaseX);
+        const minCarry = Math.max(12, Math.round(viewportWidth * 0.04));
+        const maxOutgoingDistance = Math.max(slideDistance, Math.round(viewportWidth * 0.5));
+        const outgoingDistance = Math.min(maxOutgoingDistance, Math.max(slideDistance, releaseDistance + minCarry));
+        const outgoingX = dayDelta > 0 ? -outgoingDistance : outgoingDistance;
+        const incomingStartX = dayDelta > 0 ? slideDistance : -slideDistance;
 
         const targetDate = new Date(appState.pageDate);
         targetDate.setDate(targetDate.getDate() + dayDelta);
@@ -2709,7 +2715,7 @@ function initDailySwipeGesture() {
         const targetIso = `${year}-${month}-${day}`;
 
         tc.style.willChange = 'transform';
-        tc.style.transition = 'transform 180ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+        tc.style.transition = 'transform 150ms cubic-bezier(0.22, 0.61, 0.36, 1)';
         tc.style.transform = `translate3d(${outgoingX}px, 0, 0)`;
 
         const onSlideOutEnd = async (ev) => {
@@ -2750,22 +2756,23 @@ function initDailySwipeGesture() {
         tc.addEventListener('transitionend', onSlideOutEnd);
     };
 
-    tv.addEventListener('touchstart', (e) => {
-        if (appState.viewMode !== 'page' || isAnimating || e.touches.length !== 1) return;
-        startX = e.touches[0].clientX;
-        startY = e.touches[0].clientY;
-        lastX = startX;
+    const beginSwipe = (clientX, clientY) => {
+        if (appState.viewMode !== 'page' || isAnimating) return false;
+        startX = clientX;
+        startY = clientY;
+        lastX = clientX;
+        currentDragX = 0;
         tracking = true;
         horizontalLocked = null;
-    }, { passive: true });
+        return true;
+    };
 
-    tv.addEventListener('touchmove', (e) => {
-        if (!tracking || appState.viewMode !== 'page' || isAnimating || e.touches.length !== 1) return;
+    const moveSwipe = (clientX, clientY, shouldPreventDefault = false, rawEvent = null) => {
+        if (!tracking || appState.viewMode !== 'page' || isAnimating) return;
 
-        const touch = e.touches[0];
-        const deltaX = touch.clientX - startX;
-        const deltaY = touch.clientY - startY;
-        lastX = touch.clientX;
+        const deltaX = clientX - startX;
+        const deltaY = clientY - startY;
+        lastX = clientX;
 
         if (horizontalLocked === null) {
             if (Math.abs(deltaX) < AXIS_LOCK_PX && Math.abs(deltaY) < AXIS_LOCK_PX) return;
@@ -2780,17 +2787,18 @@ function initDailySwipeGesture() {
 
         const tc = getTimelineContainer();
         if (!tc) return;
-        e.preventDefault();
+        currentDragX = deltaX;
+        if (shouldPreventDefault && rawEvent) rawEvent.preventDefault();
         tc.style.willChange = 'transform';
         tc.style.transition = 'none';
         tc.style.transform = `translate3d(${deltaX}px, 0, 0)`;
-    }, { passive: false });
+    };
 
-    tv.addEventListener('touchend', () => {
+    const endSwipe = () => {
         if (!tracking || appState.viewMode !== 'page' || isAnimating) return;
         tracking = false;
 
-        const deltaX = lastX - startX;
+        const deltaX = currentDragX || (lastX - startX);
         if (horizontalLocked !== true) return;
 
         if (Math.abs(deltaX) < SWIPE_TRIGGER_PX) {
@@ -2801,14 +2809,66 @@ function initDailySwipeGesture() {
         // 왼쪽 스와이프(deltaX<0): 다음날(dayDelta=+1)이 오른쪽에서 진입
         // 오른쪽 스와이프(deltaX>0): 전날(dayDelta=-1)이 왼쪽에서 진입
         const dayDelta = deltaX < 0 ? 1 : -1;
-        animateToDate(dayDelta);
-    }, { passive: true });
+        if (dayDelta > 0) {
+            const pageDate = new Date(appState.pageDate);
+            pageDate.setHours(0, 0, 0, 0);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (pageDate >= today) {
+                resetTransform();
+                return;
+            }
+        }
+        animateToDate(dayDelta, deltaX);
+    };
 
-    tv.addEventListener('touchcancel', () => {
+    const cancelSwipe = () => {
         if (!tracking || isAnimating) return;
         tracking = false;
         resetTransform();
+    };
+
+    tv.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        beginSwipe(e.touches[0].clientX, e.touches[0].clientY);
     }, { passive: true });
+
+    tv.addEventListener('touchmove', (e) => {
+        if (e.touches.length !== 1) return;
+        moveSwipe(e.touches[0].clientX, e.touches[0].clientY, true, e);
+    }, { passive: false });
+
+    tv.addEventListener('touchend', () => {
+        endSwipe();
+    }, { passive: true });
+
+    tv.addEventListener('touchcancel', () => {
+        cancelSwipe();
+    }, { passive: true });
+
+    // 웹(데스크톱) 테스트용: 마우스 드래그로 스와이프 제스처 시뮬레이션
+    tv.addEventListener('pointerdown', (e) => {
+        if (e.pointerType !== 'mouse' || e.button !== 0) return;
+        if (!beginSwipe(e.clientX, e.clientY)) return;
+        tv.setPointerCapture?.(e.pointerId);
+    });
+
+    tv.addEventListener('pointermove', (e) => {
+        if (e.pointerType !== 'mouse') return;
+        moveSwipe(e.clientX, e.clientY, true, e);
+    });
+
+    tv.addEventListener('pointerup', (e) => {
+        if (e.pointerType !== 'mouse') return;
+        tv.releasePointerCapture?.(e.pointerId);
+        endSwipe();
+    });
+
+    tv.addEventListener('pointercancel', (e) => {
+        if (e.pointerType !== 'mouse') return;
+        tv.releasePointerCapture?.(e.pointerId);
+        cancelSwipe();
+    });
 
     window.__dailySwipeGestureInitialized = true;
 }
