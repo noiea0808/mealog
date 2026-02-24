@@ -2714,9 +2714,6 @@ function initDailySwipeGesture() {
             if (ev.target !== tc || (ev.propertyName && ev.propertyName !== 'transform')) return;
             tc.removeEventListener('transitionend', onSlideOutEnd);
 
-            tc.style.transition = 'none';
-            tc.style.transform = `translate3d(${incomingStartX}px, 0, 0)`;
-
             try {
                 await window.jumpToDate(targetIso);
             } catch (error) {
@@ -2729,9 +2726,15 @@ function initDailySwipeGesture() {
                     isAnimating = false;
                     return;
                 }
+                // 새 날짜 콘텐츠를 먼저 반대편에 배치한 뒤 중앙으로 슬라이드 인시켜
+                // 좌/우 스와이프별 진입 방향이 확실히 보이도록 한다.
+                newTc.style.transition = 'none';
+                newTc.style.transform = `translate3d(${incomingStartX}px, 0, 0)`;
                 newTc.style.willChange = 'transform';
-                newTc.style.transition = 'transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1)';
-                newTc.style.transform = 'translate3d(0, 0, 0)';
+                requestAnimationFrame(() => {
+                    newTc.style.transition = 'transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+                    newTc.style.transform = 'translate3d(0, 0, 0)';
+                });
 
                 const onSlideInEnd = (slideInEv) => {
                     if (slideInEv.target !== newTc || (slideInEv.propertyName && slideInEv.propertyName !== 'transform')) return;
