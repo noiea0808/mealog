@@ -860,8 +860,11 @@ export async function saveEntry() {
         // 공유 금지 체크
         const isShareBanned = record.id ? (window.mealHistory.find(m => m.id === record.id)?.shareBanned === true) : false;
         
+        // 상태 초기화 전에 공유 의사를 보존한다. (수정 저장 + 사진 업로드 시 필요)
+        const wantsToShare = Boolean(state.wantsToShare);
+        
         // 공유할 사진 목록 결정 (단순화: wantsToShare와 currentPhotos만 사용)
-        let photosToShare = (!isShareBanned && state.wantsToShare && existingPhotoUrls.length > 0)
+        let photosToShare = (!isShareBanned && wantsToShare && existingPhotoUrls.length > 0)
             ? [...existingPhotoUrls]    // 공유 활성화: 현재 URL 사진 전체
             : [];                        // 공유 비활성화 또는 금지: 빈 배열
         
@@ -927,7 +930,7 @@ export async function saveEntry() {
                     }, []);
 
                     record.photos = finalPhotoUrls;
-                    photosToShare = (!isShareBanned && state.wantsToShare && finalPhotoUrls.length > 0)
+                    photosToShare = (!isShareBanned && wantsToShare && finalPhotoUrls.length > 0)
                         ? [...finalPhotoUrls]
                         : [];
                     record.sharedPhotos = photosToShare;
@@ -939,7 +942,7 @@ export async function saveEntry() {
                     showToast("사진 업로드 중 오류가 발생해 일부 사진이 저장되지 않았습니다.", 'error');
                     // 업로드 실패 시 기존 URL 사진만 유지하여 저장
                     record.photos = existingPhotoUrls;
-                    photosToShare = (!isShareBanned && state.wantsToShare && existingPhotoUrls.length > 0)
+                    photosToShare = (!isShareBanned && wantsToShare && existingPhotoUrls.length > 0)
                         ? [...existingPhotoUrls]
                         : [];
                     record.sharedPhotos = photosToShare;
@@ -1055,10 +1058,8 @@ export async function saveEntry() {
                     }
                 }
             } else if (tabNow === 'gallery') {
-                // 갤러리 탭: 갤러리 다시 렌더링 (데이터가 업데이트되었으므로)
-                // 리스너가 업데이트될 시간을 주기 위해 약간의 지연 후 렌더링
-                setTimeout(() => {
-                    if (appState.currentTab !== 'gallery') return; // 대기 중 탭 바뀌면 스킵
+                // 갤러리 탭: 낙관 반영을 즉시 보여주고, 리스너 동기화를 위해 한 번 더 갱신
+                const renderGalleryNow = () => {
                     try {
                         renderGallery();
                         const feedContent = document.getElementById('feedContent');
@@ -1066,6 +1067,11 @@ export async function saveEntry() {
                     } catch (e) {
                         console.error('갤러리/피드 렌더링 오류:', e);
                     }
+                };
+                renderGalleryNow();
+                setTimeout(() => {
+                    if (appState.currentTab !== 'gallery') return; // 대기 중 탭 바뀌면 스킵
+                    renderGalleryNow();
                 }, 500);
             } else if (tabNow === 'dashboard') {
                 // 분석 탭: 리스너가 타임라인/갤러리만 갱신하므로 여기서 추가 작업 없음. 탭 전환 시 최신 데이터 반영됨.
