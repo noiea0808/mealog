@@ -2696,7 +2696,9 @@ function initDailySwipeGesture() {
 
         isAnimating = true;
         const viewportWidth = tv.clientWidth || window.innerWidth || 360;
-        const outgoingX = dayDelta > 0 ? -viewportWidth : viewportWidth;
+        // 화면 전체를 밀어내면 빈 영역이 길게 보여서, 전환 거리를 축소해 공백 체감을 줄인다.
+        const slideDistance = Math.max(120, Math.round(viewportWidth * 0.42));
+        const outgoingX = dayDelta > 0 ? -slideDistance : slideDistance;
         const incomingStartX = -outgoingX;
 
         const targetDate = new Date(appState.pageDate);
@@ -2707,7 +2709,7 @@ function initDailySwipeGesture() {
         const targetIso = `${year}-${month}-${day}`;
 
         tc.style.willChange = 'transform';
-        tc.style.transition = 'transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+        tc.style.transition = 'transform 180ms cubic-bezier(0.22, 0.61, 0.36, 1)';
         tc.style.transform = `translate3d(${outgoingX}px, 0, 0)`;
 
         const onSlideOutEnd = async (ev) => {
