@@ -2702,13 +2702,14 @@ window.onload = () => {
 
         if (Math.abs(deltaX) > 50) {
             const isNextDay = deltaX < 0;
-            // 오른쪽으로 밀면(이전날) → 새 콘텐츠는 왼쪽에서, 왼쪽으로 밀면(다음날) → 새 콘텐츠는 오른쪽에서
+            // slideOut: 현재 콘텐츠가 밀려 나가는 방향. newContentStart: 새 콘텐츠가 들어오는 시작 위치
+            // 왼쪽 밀면(다음날) 오른쪽에서, 오른쪽 밀면(이전날) 왼쪽에서
             const slideOut = isNextDay ? '-100%' : '100%';
-            const newContentStart = isNextDay ? '100%' : '-100%';  // 왼쪽 밀면(다음날) 오른쪽에서, 오른쪽 밀면(이전날) 왼쪽에서
+            const newContentStart = isNextDay ? '100%' : '-100%';
             tc.style.transform = `translateX(${slideOut})`;
 
             const onSlideOutEnd = (ev) => {
-                if (ev.target !== tc || ev.propertyName !== 'transform') return;
+                if (ev.target !== tc || (ev.propertyName && ev.propertyName !== 'transform')) return;
                 tc.removeEventListener('transitionend', onSlideOutEnd);
                 let d = new Date(state.pageDate);
                 d.setDate(d.getDate() + (isNextDay ? 1 : -1));
