@@ -2702,9 +2702,8 @@ window.onload = () => {
 
         if (Math.abs(deltaX) > 50) {
             const isNextDay = deltaX < 0;
-            // slideOut: 현재 콘텐츠가 밀려 나가는 방향. newContentStart: 새 콘텐츠가 들어오는 시작 위치
-            // 왼쪽 밀면(다음날) 오른쪽에서, 오른쪽 밀면(이전날) 왼쪽에서
-            const slideOut = isNextDay ? '-100%' : '100%';
+            // slideOut 반전: 왼쪽 스와이프 시 현재 콘텐츠가 오른쪽으로 밀려나가고, 새 콘텐츠가 오른쪽에서 들어옴
+            const slideOut = isNextDay ? '100%' : '-100%';
             const newContentStart = isNextDay ? '100%' : '-100%';
             tc.style.transform = `translateX(${slideOut})`;
 
