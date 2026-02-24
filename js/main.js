@@ -2665,37 +2665,69 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-// 터치 제스처 초기화 (일간 스와이프 시 부드러운 애니메이션)
+// 터치 제스처 초기화 (일간 스와이프 시 카드 슬라이드 애니메이션)
 window.onload = () => {
     const tv = document.getElementById('timelineView');
-    if (tv) {
-        tv.addEventListener('touchstart', e => {
-            appState.touchStartX = e.changedTouches[0].screenX;
-        }, { passive: true });
-        
-        tv.addEventListener('touchend', e => { 
-            appState.touchEndX = e.changedTouches[0].screenX;
-            const state = appState;
-            if (state.viewMode === 'page' && Math.abs(state.touchStartX - state.touchEndX) > 50) {
+    const tc = document.getElementById('timelineContainer');
+    if (!tv || !tc) return;
+
+    let touchStartX = 0;
+    let touchStartY = 0;
+
+    tv.addEventListener('touchstart', e => {
+        if (e.touches.length) {
+            touchStartX = e.touches[0].screenX;
+            touchStartY = e.touches[0].screenY;
+        }
+    }, { passive: true });
+
+    tv.addEventListener('touchmove', e => {
+        if (appState.viewMode !== 'page' || !e.touches.length) return;
+        const deltaX = e.touches[0].screenX - touchStartX;
+        // 수평 스와이프만 반응 (세로 스크롤과 구분)
+        if (Math.abs(deltaX) > 20) {
+            tc.style.transition = 'none';
+            tc.style.transform = `translateX(${deltaX}px)`;
+        }
+    }, { passive: true });
+
+    tv.addEventListener('touchend', e => {
+        const touchEndX = e.changedTouches[0]?.screenX ?? touchStartX;
+        const deltaX = touchEndX - touchStartX;
+        const state = appState;
+
+        if (state.viewMode !== 'page') return;
+
+        tc.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+
+        if (Math.abs(deltaX) > 50) {
+            const isNextDay = deltaX < 0;
+            const slideOut = isNextDay ? '-100%' : '100%';
+            tc.style.transform = `translateX(${slideOut})`;
+
+            const onSlideOutEnd = () => {
+                tc.removeEventListener('transitionend', onSlideOutEnd);
                 let d = new Date(state.pageDate);
-                d.setDate(d.getDate() + (state.touchStartX - state.touchEndX > 0 ? 1 : -1));
+                d.setDate(d.getDate() + (isNextDay ? 1 : -1));
                 const year = d.getFullYear();
                 const month = String(d.getMonth() + 1).padStart(2, '0');
                 const day = String(d.getDate()).padStart(2, '0');
                 const targetIso = `${year}-${month}-${day}`;
-                // 페이드 아웃 → 날짜 변경 → 페이드 인
-                tv.style.transition = 'opacity 0.2s ease';
-                tv.style.opacity = '0';
-                setTimeout(() => {
-                    window.jumpToDate(targetIso).then(() => {
-                        requestAnimationFrame(() => {
-                            tv.style.opacity = '1';
-                        });
+
+                tc.style.transition = 'none';
+                tc.style.transform = `translateX(${isNextDay ? '100%' : '-100%'})`;
+                window.jumpToDate(targetIso).then(() => {
+                    requestAnimationFrame(() => {
+                        tc.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+                        tc.style.transform = 'translateX(0)';
                     });
-                }, 200);
-            } 
-        }, { passive: true });
-    }
+                });
+            };
+            tc.addEventListener('transitionend', onSlideOutEnd);
+        } else {
+            tc.style.transform = 'translateX(0)';
+        }
+    }, { passive: true });
 };
 
 // 피드 옵션 관련 함수
