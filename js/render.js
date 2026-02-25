@@ -360,30 +360,12 @@ function setupLongPressDrag(item) {
         
         if (isLongPressing && originalDragIndex !== null && dropIndex !== null && originalDragIndex !== dropIndex) {
             // 순서 업데이트 (originalDragIndex: 원본 위치, dropIndex: 최종 위치)
-            const container = draggedElement.parentElement;
-            const allItems = Array.from(container.querySelectorAll('.photo-preview-item'));
-            
             const reorderedPhotos = [...appState.currentPhotos];
             const [movedPhoto] = reorderedPhotos.splice(originalDragIndex, 1);
             reorderedPhotos.splice(dropIndex, 0, movedPhoto);
             appState.currentPhotos = reorderedPhotos;
-            
-            // 모든 아이템의 인덱스와 버튼 업데이트
-            allItems.forEach((updatedItem, idx) => {
-                updatedItem.dataset.index = idx;
-                const numberBadge = updatedItem.querySelector('.absolute.bottom-1');
-                if (numberBadge) {
-                    numberBadge.textContent = idx + 1;
-                }
-                const removeBtn = updatedItem.querySelector('.photo-remove-btn');
-                if (removeBtn) {
-                    removeBtn.setAttribute('onclick', `window.removePhoto(${idx})`);
-                }
-                const editBtn = updatedItem.querySelector('.photo-edit-btn');
-                if (editBtn) {
-                    editBtn.setAttribute('onclick', `window.editPhoto(${idx})`);
-                }
-            });
+            // 상태 반영을 위해 전체 재렌더 (DOM·버튼 인덱스 동기화 보장)
+            renderPhotoPreviews();
         }
         
         // 상태 초기화
@@ -470,28 +452,12 @@ function handleDragEnd(e) {
     
     // 드래그가 실제로 끝났을 때 순서 업데이트
     if (draggedIndex !== null && dropIndex !== null && draggedIndex !== dropIndex) {
-        const container = draggedElement.parentElement;
-        const allItems = Array.from(container.querySelectorAll('.photo-preview-item'));
-        
-        // appState.currentPhotos 순서 업데이트
         const reorderedPhotos = [...appState.currentPhotos];
         const [movedPhoto] = reorderedPhotos.splice(draggedIndex, 1);
         reorderedPhotos.splice(dropIndex, 0, movedPhoto);
         appState.currentPhotos = reorderedPhotos;
-        
-        // 모든 아이템의 인덱스와 버튼 업데이트
-        allItems.forEach((item, idx) => {
-            item.dataset.index = idx;
-            const numberBadge = item.querySelector('.absolute.bottom-1');
-            if (numberBadge) {
-                numberBadge.textContent = idx + 1;
-            }
-            // removePhoto 버튼의 인덱스도 업데이트
-            const removeBtn = item.querySelector('.photo-remove-btn');
-            if (removeBtn) {
-                removeBtn.setAttribute('onclick', `window.removePhoto(${idx})`);
-            }
-        });
+        // 상태 반영을 위해 전체 재렌더 (DOM·버튼 인덱스 동기화 보장)
+        renderPhotoPreviews();
     }
     
     draggedIndex = null;
@@ -1384,7 +1350,7 @@ function setupGalleryEventListeners(container, sortedGroups, opts = null) {
 
 /** 더보기 시 새 포스트만 DOM에 추가 (전체 재렌더 없이 깜박임 방지) */
 async function appendGalleryPosts(docs, loadMoreWrap) {
-    if (!docs || docs.length === 0 || !loadMoreWrap) return;
+    if (!docs || docs.length === 0 || !loadMoreWrap || !loadMoreWrap.parentNode) return;
     const container = document.getElementById('galleryContainer');
     if (!container) return;
     const newGroups = processPhotosToGroups(docs);

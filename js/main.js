@@ -1476,34 +1476,58 @@ window.switchMainTab = (tab) => {
         }
     }
     
+    // 모먼트 프리페치: 타임라인/대시보드 진입 시 백그라운드에서 미리 로드 (갤러리 진입 속도 개선)
+    if ((tab === 'timeline' || tab === 'dashboard') && window.currentUser && !window.currentUser.isAnonymous) {
+        const PREFETCH_DELAY_MS = 1500;
+        const CACHE_VALID_MS = 30000;
+        if ((Date.now() - (appState.sharedPhotosFeedPrefetchedAt || 0)) > CACHE_VALID_MS) {
+            setTimeout(() => {
+                if (appState.currentTab !== 'gallery' && window.currentUser) {
+                    loadSharedPhotosPage(10).then(({ docs, lastDoc, hasMore }) => {
+                        window.sharedPhotosFeed = docs;
+                        appState.sharedPhotosFeedLastDoc = lastDoc;
+                        appState.sharedPhotosFeedHasMore = hasMore;
+                        appState.sharedPhotosFeedPrefetchedAt = Date.now();
+                    }).catch(() => {});
+                }
+            }, PREFETCH_DELAY_MS);
+        }
+    }
     if (tab === 'dashboard') {
         updateDashboard();
     } else if (tab === 'settings') {
         // 설정 탭 전환 시 폼 채우기는 nav-settings 클릭 시 openSettings()에서 수행
     } else if (tab === 'gallery') {
         document.body.classList.remove('bottom-nav-scroll-hidden');
-        // 갤러리: 피드 먼저 로드 후 화면 표시, sync는 백그라운드에서 실행 (진입 속도 개선)
+        // 갤러리: 프리페치 캐시 있으면 즉시 표시, 없으면 로드 (진입 속도 개선)
         if (!appState.galleryFilterUserId) {
-            // 진입 시 기존 피드 비우고 서버에서 새로 로드 (캐시된 구식 데이터 표시 방지)
-            window.sharedPhotosFeed = [];
-            appState.sharedPhotosFeedLastDoc = null;
-            appState.sharedPhotosFeedHasMore = false;
-            showLoading('모먼트 불러오는 중...');
-            // 1) 피드 먼저 로드 → 즉시 렌더링 (sync 대기 없음)
-            loadSharedPhotosPage(10)
-                .then(({ docs, lastDoc, hasMore }) => {
-                    window.sharedPhotosFeed = docs;
-                    appState.sharedPhotosFeedLastDoc = lastDoc;
-                    appState.sharedPhotosFeedHasMore = hasMore;
-                    renderGallery();
-                })
-                .catch(e => {
-                    console.error('공유 사진 로드 실패:', e);
-                    renderGallery();
-                })
-                .finally(() => {
-                    hideLoading();
-                });
+            const CACHE_VALID_MS = 30000; // 30초 이내 프리페치면 캐시 사용
+            const hasValidCache = (window.sharedPhotosFeed?.length ?? 0) > 0 &&
+                (Date.now() - (appState.sharedPhotosFeedPrefetchedAt || 0)) < CACHE_VALID_MS;
+            if (hasValidCache) {
+                // 캐시로 즉시 렌더링 (로딩 없음)
+                renderGallery();
+            } else {
+                window.sharedPhotosFeed = [];
+                appState.sharedPhotosFeedLastDoc = null;
+                appState.sharedPhotosFeedHasMore = false;
+                showLoading('모먼트 불러오는 중...');
+                loadSharedPhotosPage(10)
+                    .then(({ docs, lastDoc, hasMore }) => {
+                        window.sharedPhotosFeed = docs;
+                        appState.sharedPhotosFeedLastDoc = lastDoc;
+                        appState.sharedPhotosFeedHasMore = hasMore;
+                        appState.sharedPhotosFeedPrefetchedAt = Date.now();
+                        renderGallery();
+                    })
+                    .catch(e => {
+                        console.error('공유 사진 로드 실패:', e);
+                        renderGallery();
+                    })
+                    .finally(() => {
+                        hideLoading();
+                    });
+            }
             // 2) 고아 공유 동기화는 백그라운드에서 실행 (완료 시 새 항목 있으면 피드 갱신)
             syncOrphanedSharesToMoment().then((synced) => {
                 if (synced > 0) {
@@ -2456,6 +2480,7 @@ initAuth(async (user) => {
             window.sharedPhotosFeed = [];
             appState.sharedPhotosFeedLastDoc = null;
             appState.sharedPhotosFeedHasMore = false;
+            appState.sharedPhotosFeedPrefetchedAt = 0;
         }
         
         // 초기 로드 시 오늘 날짜로 설정
@@ -4277,6 +4302,7 @@ function setupGalleryPullToRefresh() {
                 window.sharedPhotosFeed = docs;
                 appState.sharedPhotosFeedLastDoc = lastDoc;
                 appState.sharedPhotosFeedHasMore = hasMore;
+                appState.sharedPhotosFeedPrefetchedAt = Date.now();
                 renderGallery();
             }
         } catch (e) {

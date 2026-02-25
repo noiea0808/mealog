@@ -17,6 +17,7 @@ export const appState = {
     sharedPhotosUnsubscribe: null,
     sharedPhotosFeedLastDoc: null,
     sharedPhotosFeedHasMore: false,
+    sharedPhotosFeedPrefetchedAt: 0, // 모먼트 프리페치 시각 (ms), 캐시 유효성 판단용
     sharedPhotosFeedByUserLastDoc: null,
     sharedPhotosFeedByUserHasMore: false,
     tempSettings: null,
