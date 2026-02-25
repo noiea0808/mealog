@@ -1488,15 +1488,10 @@ window.switchMainTab = (tab) => {
             window.sharedPhotosFeed = [];
             appState.sharedPhotosFeedLastDoc = null;
             appState.sharedPhotosFeedHasMore = false;
-            // 1) 고아 공유 먼저 동기화 (meal.sharedPhotos 있으나 컬렉션에 없는 경우)
-            syncOrphanedSharesToMoment()
-                .then((synced) => {
-                    if (synced > 0) {
-                        updateTimelineShareIndicators();
-                        showToast('모먼트에 반영되었습니다.', 'success');
-                    }
-                    return loadSharedPhotosPage(25);
-                })
+            // 피드 로드와 동기화를 병렬 실행 → 초기 표시 속도 개선 (sync 대기 없이 바로 표시)
+            const loadPromise = loadSharedPhotosPage(10);
+            const syncPromise = syncOrphanedSharesToMoment();
+            loadPromise
                 .then(({ docs, lastDoc, hasMore }) => {
                     window.sharedPhotosFeed = docs;
                     appState.sharedPhotosFeedLastDoc = lastDoc;
@@ -1507,6 +1502,19 @@ window.switchMainTab = (tab) => {
                     console.error('공유 사진 로드 실패:', e);
                     renderGallery();
                 });
+            syncPromise.then((synced) => {
+                if (synced > 0) {
+                    updateTimelineShareIndicators();
+                    showToast('모먼트에 반영되었습니다.', 'success');
+                    // 동기화로 새 항목 추가됐으면 피드 재로드
+                    loadSharedPhotosPage(10).then(({ docs, lastDoc, hasMore }) => {
+                        window.sharedPhotosFeed = docs;
+                        appState.sharedPhotosFeedLastDoc = lastDoc;
+                        appState.sharedPhotosFeedHasMore = hasMore;
+                        renderGallery();
+                    }).catch(() => {});
+                }
+            }).catch(() => {});
         } else {
             // 사용자 필터 모드: renderGallery가 내부에서 getSharedPhotosByUser 호출
             renderGallery();
@@ -4120,7 +4128,7 @@ window.syncEntryToMoment = async function(entryId, opts = {}) {
         window.sharedPhotos = (window.sharedPhotos || []).filter(p => p.entryId !== m.id).concat(newEntries);
         updateTimelineShareIndicators();
         if (!batch) {
-            const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(25);
+            const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);
             window.sharedPhotosFeed = docs;
             appState.sharedPhotosFeedLastDoc = lastDoc;
             appState.sharedPhotosFeedHasMore = hasMore;
@@ -4148,7 +4156,7 @@ window.syncEntriesToMomentBatch = async function(entryIds) {
         } catch (_) { fail++; }
     }
     if (ok > 0) {
-        const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(25);
+        const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);
         window.sharedPhotosFeed = docs;
         appState.sharedPhotosFeedLastDoc = lastDoc;
         appState.sharedPhotosFeedHasMore = hasMore;
@@ -4264,7 +4272,7 @@ function setupGalleryPullToRefresh() {
                     updateTimelineShareIndicators();
                     showToast('모먼트에 반영되었습니다.', 'success');
                 }
-                const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(25);
+                const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);
                 window.sharedPhotosFeed = docs;
                 appState.sharedPhotosFeedLastDoc = lastDoc;
                 appState.sharedPhotosFeedHasMore = hasMore;

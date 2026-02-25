@@ -393,7 +393,24 @@ export function openModal(date, slotId, entryId = null) {
                 
                 // 공유 인디케이터 표시
                 updateShareIndicator();
-                
+
+                // meal 문서에는 sharedPhotos가 있는데 sharedPhotos 컬렉션(모먼트)에 없으면 동기화 시도
+                if (r.id && r.sharedPhotos && Array.isArray(r.sharedPhotos) && r.sharedPhotos.length > 0 && !r.shareBanned) {
+                    const inSharedColl = window.sharedPhotos?.some?.(p => p.entryId === r.id);
+                    if (!inSharedColl) {
+                        dbOps.sharePhotos(r.sharedPhotos, r).then(() => {
+                            if (!window.sharedPhotos) window.sharedPhotos = [];
+                            const newEntries = r.sharedPhotos.map(url => ({ entryId: r.id, photoUrl: url, userId: window.currentUser?.uid }));
+                            window.sharedPhotos = (window.sharedPhotos || []).filter(p => p.entryId !== r.id).concat(newEntries);
+                            updateTimelineShareIndicators();
+                            if (appState.currentTab === 'gallery') renderGallery();
+                            showToast('모먼트에 반영되었습니다.', 'success');
+                        }).catch((e) => {
+                            console.warn('모먼트 동기화 실패 (무시):', e);
+                        });
+                    }
+                }
+
                 // 태그 활성화 처리 함수
                 const activateTags = () => {
                     // 식사 방식 (mealType)
@@ -1110,12 +1127,42 @@ export async function saveEntry() {
                         }
                         updateTimelineShareIndicators();
                     }
-                    dbOps.sharePhotos(photosToShare, record).then(() => {
+                    try {
+                        await dbOps.sharePhotos(photosToShare, record);
                         console.log('공유 처리 완료:', { recordId: record.id, 공유설정: hasPhotosToShare });
-                    }).catch((e) => {
+                        // 모먼트 피드에 즉시 반영되도록 sharedPhotosFeed 새로고침 (공유/해제 모두)
+                        const { loadSharedPhotosPage } = await import('./db.js');
+                        const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);
+                        let finalDocs = docs;
+                        if (hasPhotosToShare && photosToShare?.length && record?.id) {
+                            // Firestore 전파 지연 시 새 공유가 안 보이는 문제 방지: 낙관적 병합
+                            const hasOurEntry = docs.some(p => p.entryId === record.id);
+                            if (!hasOurEntry) {
+                                const now = new Date().toISOString();
+                                const profile = window.userSettings?.profile || {};
+                                const optimistic = photosToShare.map((url, idx) => ({
+                                    entryId: record.id, photoUrl: url, userId: window.currentUser?.uid,
+                                    userNickname: profile.nickname || '익명', userIcon: profile.icon || '🐻', userPhotoUrl: profile.photoUrl || null,
+                                    date: record.date || '', slotId: record.slotId || '', time: record.time || '',
+                                    timestamp: now, photoIndex: idx
+                                }));
+                                finalDocs = [...optimistic, ...docs];
+                            }
+                        } else if (hadSharedPhotos && !hasPhotosToShare && record?.id) {
+                            // 공유 해제: 전파 지연 시에도 즉시 피드에서 제거
+                            finalDocs = docs.filter(p => p.entryId !== record.id);
+                        }
+                        window.sharedPhotosFeed = finalDocs;
+                        if (typeof appState !== 'undefined') {
+                            appState.sharedPhotosFeedLastDoc = lastDoc;
+                            appState.sharedPhotosFeedHasMore = hasMore;
+                        }
+                        if (appState.currentTab === 'gallery') renderGallery();
+                        if (document.getElementById('feedContent')) renderFeed();
+                    } catch (e) {
                         console.error("공유 처리 실패:", e);
                         showToast("사진 공유 처리 중 오류가 발생했습니다.", 'error');
-                    });
+                    }
                 }
             }
         } catch (saveError) {
@@ -1129,12 +1176,15 @@ export async function saveEntry() {
         setTimeout(() => {
             const tabNow = appState.currentTab;
             if (tabNow === 'timeline' && editingDate) {
-                // 타임라인 탭: 날짜 이동·렌더 후 수정한 날짜 섹션이 상단(트래커 아래)에 오도록 한 번만 스크롤
+                // 타임라인 탭: 등록화면-카드 동기화를 위해 즉시 렌더 후 jumpToDate
                 const wasScrolling = window.isScrolling;
                 try {
                     if (window.isScrolling !== undefined) {
                         window.isScrolling = true; // jumpToDate 내부 스크롤 방지
                     }
+                    // 저장 직후 mealHistory 반영을 위해 먼저 렌더 (list/page 모드 모두)
+                    renderTimeline();
+                    renderMiniCalendar();
                     if (window.jumpToDate) {
                         window.jumpToDate(editingDate);
                     }

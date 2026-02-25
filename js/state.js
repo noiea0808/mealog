@@ -15,6 +15,8 @@ export const appState = {
     settingsUnsubscribe: null,
     statsUnsubscribe: null,
     sharedPhotosUnsubscribe: null,
+    sharedPhotosFeedLastDoc: null,
+    sharedPhotosFeedHasMore: false,
     tempSettings: null,
     
     // UI 상태
@@ -59,7 +61,8 @@ export const appState = {
     // 데이터 상태 (window.* 변수들을 여기로 통합)
     _data: {
         mealHistory: [],
-        sharedPhotos: [], // 공유된 사진 목록 (전역)
+        sharedPhotos: [], // 본인 공유 (타임라인 표시용)
+        sharedPhotosFeed: [], // 갤러리/피드 페이지네이션 (10건씩)
         loadedDates: [],
         loadedMealsDateRange: null,
         dailyStats: null, // 트래커·대시보드용 일별 집계 (users/{uid}/config/stats)
@@ -88,6 +91,12 @@ Object.defineProperty(window, 'mealHistory', {
 Object.defineProperty(window, 'sharedPhotos', {
     get: () => appState._data.sharedPhotos,
     set: (value) => { appState._data.sharedPhotos = value; },
+    configurable: true
+});
+
+Object.defineProperty(window, 'sharedPhotosFeed', {
+    get: () => appState._data.sharedPhotosFeed,
+    set: (value) => { appState._data.sharedPhotosFeed = value; },
     configurable: true
 });
 

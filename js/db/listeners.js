@@ -690,18 +690,16 @@ function toTimestampMs(photo) {
 
 /** 공유 사진 페이지네이션 로드 (갤러리/피드용). 포스트 10건 기준으로 문서 로드
  * 항상 getDocsFromServer 사용 - 캐시로 인해 새 공유가 안 보이는 문제 방지 (읽기 최적화 후 발생)
- * 클라이언트 정렬: timestamp 혼합 타입(문자열/Timestamp) 시 Firestore 정렬 순서가 꼬이는 문제 방지 */
+ * timestamp 마이그레이션 후 Firestore orderBy 정상 동작 → 배치 15건으로 reads 절감 */
 export async function loadSharedPhotosPage(targetPosts = 10, startAfterDoc = null) {
     if (!window.currentUser) return { docs: [], lastDoc: null, hasMore: false };
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-    // Firestore orderBy 시 timestamp 타입 혼합(문자열/Timestamp)이면 정렬 꼬임 → 더 많이 가져와서 클라이언트 정렬로 보정
-    const BATCH_SIZE = startAfterDoc ? 15 : 60;
-    const MAX_DOCS = 120;
+    const BATCH_SIZE = 15;
     let allDocs = [];
     let lastDoc = startAfterDoc;
     let hasMore = true;
 
-    while (hasMore && countPostsFromDocs(allDocs) < targetPosts && allDocs.length < MAX_DOCS) {
+    while (hasMore && countPostsFromDocs(allDocs) < targetPosts) {
         let q = query(sharedColl, orderBy('timestamp', 'desc'), limit(BATCH_SIZE));
         if (lastDoc) q = query(sharedColl, orderBy('timestamp', 'desc'), startAfter(lastDoc), limit(BATCH_SIZE));
         const snap = await getDocsFromServer(q);

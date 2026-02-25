@@ -1108,7 +1108,7 @@ export async function fetchUserProfiles(userIds) {
     }
 }
 
-export async function renderGallery() {
+export async function renderGallery(options = {}) {
     // 중복 실행 방지
     if (isRenderingGallery) {
         console.log('[renderGallery] 이미 실행 중이므로 스킵');
@@ -1630,7 +1630,7 @@ export async function renderGallery() {
                         loadMoreBtn.disabled = false;
                         loadMoreBtn.innerHTML = '<i class="fa-solid fa-chevron-down mr-1.5"></i>더보기';
                         if (!hasMore && loadMoreWrap) loadMoreWrap.remove();
-                        renderGallery();
+                        renderGallery({ skipScrollToTop: true });
                     } catch (e) {
                         console.error('공유 사진 더보기 실패:', e);
                         loadMoreBtn.disabled = false;
@@ -1640,15 +1640,32 @@ export async function renderGallery() {
                 if (loadMoreBtn) {
                     loadMoreBtn.addEventListener('click', doLoadMore);
                     // 스크롤 시 더보기 영역이 보이면 자동 로드 (무한 스크롤)
-                    if (loadMoreWrap && typeof IntersectionObserver !== 'undefined') {
-                        const loadMoreObserver = new IntersectionObserver((entries) => {
-                            entries.forEach(entry => {
-                                if (entry.isIntersecting && appState.sharedPhotosFeedHasMore && !loadMoreBtn.disabled) {
-                                    doLoadMore();
-                                }
-                            });
-                        }, { rootMargin: '200px', threshold: 0.1 });
-                        loadMoreObserver.observe(loadMoreWrap);
+                    if (loadMoreWrap) {
+                        if (typeof IntersectionObserver !== 'undefined') {
+                            const loadMoreObserver = new IntersectionObserver((entries) => {
+                                entries.forEach(entry => {
+                                    if (entry.isIntersecting && appState.sharedPhotosFeedHasMore && !loadMoreBtn.disabled) {
+                                        doLoadMore();
+                                    }
+                                });
+                            }, { root: null, rootMargin: '600px' });
+                            loadMoreObserver.observe(loadMoreWrap);
+                        }
+                        // 스크롤 이벤트 fallback (IntersectionObserver 미동작 시, 웹/모바일 공통)
+                        const onScroll = () => {
+                            if (abortSignal?.aborted || !document.contains(loadMoreWrap)) return;
+                            if (!appState.sharedPhotosFeedHasMore || loadMoreBtn.disabled) return;
+                            const el = document.scrollingElement || document.documentElement;
+                            const scrollTop = el.scrollTop;
+                            const scrollHeight = el.scrollHeight;
+                            if (scrollTop + window.innerHeight >= scrollHeight - 400) {
+                                doLoadMore();
+                            }
+                        };
+                        const opts = { passive: true, signal: abortSignal };
+                        window.addEventListener('scroll', onScroll, opts);
+                        const scrollEl = document.scrollingElement || document.documentElement;
+                        if (scrollEl && scrollEl !== document) scrollEl.addEventListener('scroll', onScroll, opts);
                     }
                 }
             }
@@ -1696,8 +1713,8 @@ export async function renderGallery() {
                     });
                 }, 100);
                 
-                // 갤러리 렌더링 완료 후 항상 맨 위로 스크롤 (AbortSignal 체크)
-                if (!abortSignal.aborted) {
+                // 갤러리 렌더링 완료 후 맨 위로 스크롤 (더보기로 추가 로드한 경우는 스크롤 유지)
+                if (!abortSignal.aborted && !options.skipScrollToTop) {
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                 }
             }, 50);
@@ -2333,7 +2350,7 @@ export async function clearGalleryFilter() {
     // 전체 피드로 복귀 시 첫 페이지 로드 (sharedPhotosFeed 초기화)
     if (window.sharedPhotosFeed.length === 0) {
         const { loadSharedPhotosPage } = await import('./db.js');
-        const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(25);
+        const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);
         window.sharedPhotosFeed = docs;
         appState.sharedPhotosFeedLastDoc = lastDoc;
         appState.sharedPhotosFeedHasMore = hasMore;

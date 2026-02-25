@@ -68,7 +68,8 @@ export const callableFunctions = {
     callGemini: httpsCallable(functions, 'callGemini'),
     searchKakaoPlaces: httpsCallable(functions, 'searchKakaoPlaces'),
     getApkUploadUrl: httpsCallable(functions, 'getApkUploadUrl'),
-    confirmApkUpload: httpsCallable(functions, 'confirmApkUpload')
+    confirmApkUpload: httpsCallable(functions, 'confirmApkUpload'),
+    migrateSharedPhotosTimestamp: httpsCallable(functions, 'migrateSharedPhotosTimestamp')
 };
 
 // App Check 초기화 (reCAPTCHA v3 사용)

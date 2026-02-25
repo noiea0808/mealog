@@ -6,7 +6,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPasswor
 
 // Firestore 규칙·Callable은 기본 Auth만 인식하므로 관리자도 기본 Auth 사용 (admin 페이지는 별도 URL)
 const adminAuth = getAuth(app);
-import { collection, getDocs, query, orderBy, limit, doc, deleteDoc, getDoc, setDoc, where, writeBatch, addDoc, serverTimestamp, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, getDocs, query, orderBy, limit, doc, deleteDoc, getDoc, setDoc, where, writeBatch, addDoc, serverTimestamp, getCountFromServer, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { uploadImageToStorage, uploadPersonaImageToStorage, uploadNoticeImages } from './utils.js';
 import { getReportsAggregateByGroupKeys, deleteBoardPostByAdmin, setBoardPostHidden, getAdminDisplayName, invalidateAdminDisplayNameCache } from './db.js';
 import { REPORT_REASONS } from './constants.js';
@@ -4287,6 +4287,18 @@ async function autoSyncSharedPhotos(mealId, userId) {
             console.warn('기존 문서 삭제 중 오류 (무시하고 계속 진행):', e);
         }
         
+        // meal의 date+time으로 timestamp 생성 (공유 시점 반영, 최신이 위로 오도록)
+        const mealDate = String(mealData.date || '').trim();
+        let mealTime = String(mealData.time || '12:00:00').trim();
+        if (mealTime && mealTime.split(':').length === 2) mealTime += ':00';
+        let mealTimestamp = Timestamp.now();
+        if (mealDate && mealDate.length >= 10) {
+            try {
+                const d = new Date(mealDate + 'T' + (mealTime || '12:00:00'));
+                if (!isNaN(d.getTime())) mealTimestamp = Timestamp.fromDate(d);
+            } catch (_) {}
+        }
+
         // 새로운 사진들을 추가
         sharedPhotos.forEach(photoUrl => {
             const docRef = doc(sharedColl);
@@ -4302,13 +4314,13 @@ async function autoSyncSharedPhotos(mealId, userId) {
                 date: mealData.date || '',
                 slotId: mealData.slotId || '',
                 time: mealData.time || new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }),
-                timestamp: new Date().toISOString(),
+                timestamp: mealTimestamp,
                 entryId: mealId
             });
         });
         
         await batch.commit();
-        console.log(`✅ 자동 동기화 완료: ${mealId} (${newPhotos.length}개 사진 추가)`);
+        console.log(`✅ 자동 동기화 완료: ${mealId} (${sharedPhotos.length}개 사진 추가)`);
         return true;
     } catch (e) {
         console.error(`자동 동기화 오류 (${mealId}):`, e);
@@ -4378,6 +4390,18 @@ window.syncSharedPhotos = async function(mealId, userId) {
             return;
         }
         
+        // meal의 date+time으로 timestamp 생성 (공유 시점 반영)
+        const mealDate = String(mealData.date || '').trim();
+        let mealTime = String(mealData.time || '12:00:00').trim();
+        if (mealTime && mealTime.split(':').length === 2) mealTime += ':00';
+        let mealTimestamp = Timestamp.now();
+        if (mealDate && mealDate.length >= 10) {
+            try {
+                const d = new Date(mealDate + 'T' + (mealTime || '12:00:00'));
+                if (!isNaN(d.getTime())) mealTimestamp = Timestamp.fromDate(d);
+            } catch (_) {}
+        }
+
         // sharedPhotos 컬렉션에 추가
         const batch = writeBatch(db);
         newPhotos.forEach(photoUrl => {
@@ -4394,7 +4418,7 @@ window.syncSharedPhotos = async function(mealId, userId) {
                 date: mealData.date || '',
                 slotId: mealData.slotId || '',
                 time: mealData.time || new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }),
-                timestamp: new Date().toISOString(),
+                timestamp: mealTimestamp,
                 entryId: mealId
             });
         });
@@ -5427,6 +5451,32 @@ window.refreshPersona = function() {
 
 // 데이터 탭 관련 함수들
 
+/** sharedPhotos timestamp 마이그레이션: Cloud Function 호출 (권한 우회) */
+window.migrateSharedPhotosTimestamp = async function() {
+    const btn = document.getElementById('migrateSharedPhotosBtn');
+    const resultEl = document.getElementById('migrationResult');
+    if (!btn || !resultEl) return;
+    if (!confirm('sharedPhotos의 timestamp를 Firestore Timestamp로 정규화합니다. 진행할까요?')) return;
+
+    btn.disabled = true;
+    resultEl.classList.remove('hidden');
+    resultEl.textContent = '마이그레이션 진행 중...';
+
+    try {
+        const { data } = await callableFunctions.migrateSharedPhotosTimestamp();
+        resultEl.textContent = `✅ 완료: ${data.updated}건 변환됨 (전체 ${data.total}건 중)`;
+        resultEl.classList.remove('text-slate-600');
+        resultEl.classList.add('text-emerald-600', 'font-bold');
+    } catch (e) {
+        console.error('마이그레이션 실패:', e);
+        resultEl.textContent = '❌ 실패: ' + (e?.message || e?.details || e);
+        resultEl.classList.remove('text-slate-600');
+        resultEl.classList.add('text-red-600', 'font-bold');
+    } finally {
+        btn.disabled = false;
+    }
+};
+
 // 데이터 사이드바 전환
 window.switchDataSidebar = function(section) {
     // 모든 사이드바 버튼 비활성화
@@ -5456,6 +5506,8 @@ window.switchDataSidebar = function(section) {
     // 섹션별 데이터 로드
     if (section === 'restaurants') {
         renderRestaurantData(currentRestaurantFilter || 'all', currentRestaurantSlotFilter || 'all');
+    } else if (section === 'migration') {
+        document.getElementById('migrationResult')?.classList.add('hidden');
     }
 };
 

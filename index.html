@@ -629,7 +629,13 @@
         <main>
             <div id="timelineView" class="ui-tab-view overflow-x-hidden"><div id="timelineContainer" class="ui-stack-lg"></div></div>
             <div id="galleryView" class="hidden ui-tab-view">
-                <div id="galleryContainer" class="ui-surface-soft ui-stack-sm"></div>
+                <div id="galleryPullWrap">
+                    <div id="galleryPullIndicator" class="gallery-pull-indicator" aria-hidden="true">
+                        <i class="fa-solid fa-arrows-rotate text-emerald-500"></i>
+                        <span>당겨서 새로고침</span>
+                    </div>
+                    <div id="galleryContainer" class="ui-surface-soft ui-stack-sm"></div>
+                </div>
             </div>
             <!-- 게시판 목록 뷰 -->
             <div id="boardListView" class="hidden ui-tab-view ui-stack-md relative">
