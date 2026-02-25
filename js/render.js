@@ -500,12 +500,14 @@ function handleDragEnd(e) {
 }
 
 // entryId가 실제로 공유되었는지 확인하는 헬퍼 함수
-function isEntryShared(entryId) {
-    if (!entryId || !window.sharedPhotos || !Array.isArray(window.sharedPhotos)) {
-        return false;
+// record: meal 문서 (sharedPhotos 필드). sharedPhotos 컬렉션과 meal 문서 불일치 시 meal 문서 우선
+function isEntryShared(entryId, record) {
+    if (!entryId) return false;
+    if (record && record.sharedPhotos && Array.isArray(record.sharedPhotos) && record.sharedPhotos.length > 0) return true;
+    if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+        return window.sharedPhotos.some(photo => photo.entryId === entryId);
     }
-    // window.sharedPhotos에서 해당 entryId를 가진 항목이 있는지 확인
-    return window.sharedPhotos.some(photo => photo.entryId === entryId);
+    return false;
 }
 
 // renderTimeline과 renderMiniCalendar는 render/timeline.js로 이동됨
@@ -706,7 +708,7 @@ function renderTimeline() {
                                     ${titleLine2 ? (r ? `<p class="text-sm text-slate-600 font-bold mt-0.5 mb-0 truncate">${titleLine2}</p>` : `<p class="mt-0.5 mb-0 truncate">${titleLine2}</p>`) : ''}
                                 </div>
                                 ${r ? `<div class="flex items-center gap-2 flex-shrink-0 ml-2">
-                                    ${isEntryShared(r.id) ? `<span class="text-xs text-emerald-600" title="공유됨"><i class="fa-solid fa-share"></i></span>` : ''}
+                                    ${isEntryShared(r.id, r) ? `<span class="text-xs text-emerald-600" title="공유됨"><i class="fa-solid fa-share"></i></span>` : ''}
                                     <span class="text-xs font-bold text-yellow-600 bg-yellow-50 px-1.5 py-0.5 rounded-md flex items-center gap-0.5"><i class="fa-solid fa-star text-[10px]"></i><span class="text-[11px] font-black">${r.rating || '-'}</span></span>
                                 </div>` : ''}
                             </div>
@@ -723,7 +725,7 @@ function renderTimeline() {
                             `<div onclick="window.openModal('${dateStr}', '${slot.id}', '${r.id}')" class="snack-tag cursor-pointer active:bg-slate-50">
                                 <span class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2"></span>
                                 ${r.menuDetail || r.snackType || '간식'} 
-                                ${isEntryShared(r.id) ? `<i class="fa-solid fa-share text-slate-500 text-[8px] ml-1" title="공유됨"></i>` : ''}
+                                ${isEntryShared(r.id, r) ? `<i class="fa-solid fa-share text-slate-500 text-[8px] ml-1" title="공유됨"></i>` : ''}
                                 ${r.rating ? `<span class="text-[10px] font-black text-yellow-600 bg-yellow-50 px-1 py-0.5 rounded ml-1.5 flex items-center gap-0.5"><i class="fa-solid fa-star text-[9px]"></i>${r.rating}</span>` : ''}
                             </div>`
                         ).join('') : `<span class="text-xs text-slate-400 italic">기록없음</span>`}
@@ -823,7 +825,7 @@ function renderTimeline() {
                         class="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold 
                                active:bg-slate-300 transition-colors flex items-center gap-2">
                     <i class="fa-solid fa-chevron-down"></i>
-                    <span>더 오래된 기록 보기</span>
+                    <span>더보기</span>
                 </button>
             `;
             container.appendChild(loadMoreBtn);
@@ -1167,20 +1169,31 @@ export async function renderGallery() {
             delete container._galleryFeedOptionsDelegate;
         }
         
-        if (!window.sharedPhotos) {
-            console.log('[renderGallery] window.sharedPhotos가 없어서 빈 배열로 초기화');
-            window.sharedPhotos = [];
-        }
-    
-    // 사용자 필터링 적용
+        // 사용자 필터링 적용
     const filterUserId = appState.galleryFilterUserId;
     const galleryFilterTab = appState.galleryFilterTab || 'moment';
     let photosToRender;
     if (filterUserId) {
-        // 특정 사용자 갤러리: 해당 사용자 공유만 전용 쿼리로 조회 (전체 50건 제한에 묻히지 않도록)
         photosToRender = await getSharedPhotosByUser(filterUserId);
     } else {
-        photosToRender = window.sharedPhotos || [];
+        photosToRender = window.sharedPhotosFeed || [];
+        // 전체보기: 최신순 정렬 보장 (Firestore 혼합 타입·캐시 등으로 정렬 꼬임 방지)
+        const ts = (p) => {
+            const t = p?.timestamp;
+            if (t != null && t !== '') {
+                if (t?.toDate) return t.toDate().getTime();
+                if (typeof t === 'string') return new Date(t).getTime();
+                if (t?.seconds != null) return t.seconds * 1000 + (t.nanoseconds || 0) / 1e6;
+                if (typeof t === 'number') return t;
+            }
+            const d = p?.date, tm = p?.time || '12:00:00';
+            if (d && typeof d === 'string') {
+                const ms = new Date(d + 'T' + (String(tm).split(':').length === 2 ? tm + ':00' : tm)).getTime();
+                if (!isNaN(ms)) return ms;
+            }
+            return 0;
+        };
+        photosToRender = [...photosToRender].sort((a, b) => ts(b) - ts(a));
     }
     
     // 사용자 프로필 뷰일 때 최상단 앱 헤더 숨김
@@ -1590,6 +1603,56 @@ export async function renderGallery() {
                 container.appendChild(placeholderDiv.firstChild);
             }
             
+            // 페이지네이션: 더보기 (필터 없을 때, 추가 데이터 있을 때만). 스크롤 시 자동 로드
+            if (!filterUserId && appState.sharedPhotosFeedHasMore) {
+                const loadMoreHtml = `
+                    <div id="galleryLoadMoreWrap" class="flex justify-center py-6">
+                        <button id="galleryLoadMoreBtn" type="button" class="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-xl transition-colors">
+                            <i class="fa-solid fa-chevron-down mr-1.5"></i>더보기
+                        </button>
+                    </div>
+                `;
+                const loadMoreDiv = document.createElement('div');
+                loadMoreDiv.innerHTML = loadMoreHtml;
+                container.appendChild(loadMoreDiv.firstChild);
+                const loadMoreWrap = document.getElementById('galleryLoadMoreWrap');
+                const loadMoreBtn = document.getElementById('galleryLoadMoreBtn');
+                const doLoadMore = async () => {
+                    if (!loadMoreBtn || loadMoreBtn.disabled || !appState.sharedPhotosFeedHasMore) return;
+                    loadMoreBtn.disabled = true;
+                    loadMoreBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>로딩 중...';
+                    try {
+                        const { loadSharedPhotosPage } = await import('./db.js');
+                        const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10, appState.sharedPhotosFeedLastDoc);
+                        window.sharedPhotosFeed = [...(window.sharedPhotosFeed || []), ...docs];
+                        appState.sharedPhotosFeedLastDoc = lastDoc;
+                        appState.sharedPhotosFeedHasMore = hasMore;
+                        loadMoreBtn.disabled = false;
+                        loadMoreBtn.innerHTML = '<i class="fa-solid fa-chevron-down mr-1.5"></i>더보기';
+                        if (!hasMore && loadMoreWrap) loadMoreWrap.remove();
+                        renderGallery();
+                    } catch (e) {
+                        console.error('공유 사진 더보기 실패:', e);
+                        loadMoreBtn.disabled = false;
+                        loadMoreBtn.innerHTML = '<i class="fa-solid fa-chevron-down mr-1.5"></i>다시 시도';
+                    }
+                };
+                if (loadMoreBtn) {
+                    loadMoreBtn.addEventListener('click', doLoadMore);
+                    // 스크롤 시 더보기 영역이 보이면 자동 로드 (무한 스크롤)
+                    if (loadMoreWrap && typeof IntersectionObserver !== 'undefined') {
+                        const loadMoreObserver = new IntersectionObserver((entries) => {
+                            entries.forEach(entry => {
+                                if (entry.isIntersecting && appState.sharedPhotosFeedHasMore && !loadMoreBtn.disabled) {
+                                    doLoadMore();
+                                }
+                            });
+                        }, { rootMargin: '200px', threshold: 0.1 });
+                        loadMoreObserver.observe(loadMoreWrap);
+                    }
+                }
+            }
+            
             // 이전 포스트 ID 목록 업데이트 (전체 재렌더링인 경우)
             previousGalleryPostIds = new Set(currentPostIds);
             
@@ -1801,7 +1864,7 @@ export async function renderGallery() {
             const isInsight = p.type === 'insight';
             return `
             <div class="flex-shrink-0 w-full snap-start ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
-                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" class="w-full ${(isBest || isDaily || isInsight) ? 'h-auto' : 'h-auto'} ${(isBest || isDaily || isInsight) ? 'object-contain' : 'object-cover'}" ${(isBest || isDaily || isInsight) ? 'style="display: block; width: 100%; height: auto; vertical-align: top;"' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
+                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full ${(isBest || isDaily || isInsight) ? 'h-auto' : 'h-auto'} ${(isBest || isDaily || isInsight) ? 'object-contain' : 'object-cover'}" ${(isBest || isDaily || isInsight) ? 'style="display: block; width: 100%; height: auto; vertical-align: top;"' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
             </div>
         `;
         }).join('');
@@ -1916,13 +1979,44 @@ export async function renderGallery() {
     // 갤러리 이벤트 리스너 설정 함수
     function setupGalleryEventListeners(container, sortedGroups, abortSignal = null) {
         // 사진 카운터 업데이트를 위한 이벤트 리스너 추가
-        const scrollContainers = container.querySelectorAll('.flex.overflow-x-auto');
+        const scrollContainers = container.querySelectorAll('.gallery-photo-scroll');
         scrollContainers.forEach((scrollContainer, idx) => {
             const counter = scrollContainer.parentElement.querySelector('.photo-counter-current');
             const photos = scrollContainer.querySelectorAll('div');
             const photoCount = sortedGroups[idx]?.length || 0;
             // 스크롤 종료 시 가장 가까운 사진으로 스냅 (한장한장 구분감)
             if (photoCount > 1) {
+                // 웹(데스크톱): 마우스 드래그로 사진 스와이프 (document에 리스너 등록해 빠른 드래그도 포착)
+                let isDragging = false;
+                let startX = 0;
+                let startScrollLeft = 0;
+                scrollContainer.style.cursor = 'grab';
+                const onMouseMove = (e) => {
+                    if (!isDragging) return;
+                    e.preventDefault();
+                    const dx = e.pageX - startX;
+                    scrollContainer.scrollLeft = Math.max(0, Math.min(scrollContainer.scrollWidth - scrollContainer.clientWidth, startScrollLeft - dx));
+                };
+                const endDrag = () => {
+                    if (!isDragging) return;
+                    isDragging = false;
+                    scrollContainer.style.cursor = 'grab';
+                    scrollContainer.style.userSelect = '';
+                    document.removeEventListener('mousemove', onMouseMove, { capture: true });
+                    document.removeEventListener('mouseup', endDrag, { capture: true });
+                };
+                scrollContainer.addEventListener('mousedown', (e) => {
+                    if (e.button !== 0) return;
+                    e.preventDefault();
+                    isDragging = true;
+                    startX = e.pageX;
+                    startScrollLeft = scrollContainer.scrollLeft;
+                    scrollContainer.style.cursor = 'grabbing';
+                    scrollContainer.style.userSelect = 'none';
+                    document.addEventListener('mousemove', onMouseMove, { capture: true, passive: false });
+                    document.addEventListener('mouseup', endDrag, { capture: true });
+                }, { passive: false });
+
                 const snapToNearest = () => {
                     const sl = scrollContainer.scrollLeft;
                     const cw = scrollContainer.clientWidth;
@@ -1935,7 +2029,7 @@ export async function renderGallery() {
                     });
                     const target = photos[nearest]?.offsetLeft ?? 0;
                     if (Math.abs(sl - target) > 2) {
-                        scrollContainer.scrollTo({ left: target, behavior: 'auto' });
+                        scrollContainer.scrollTo({ left: target, behavior: 'smooth' });
                     }
                 };
                 let snapTimeout = null;
@@ -2225,7 +2319,7 @@ export function filterGalleryByUser(userId, userNickname) {
 }
 
 // 갤러리 필터링 해제 함수 (뒤로가기 시 진입했던 탭으로 복귀)
-export function clearGalleryFilter() {
+export async function clearGalleryFilter() {
     const returnTab = appState.galleryFilterEntryTab;
     appState.galleryFilterUserId = null;
     appState.galleryFilterTab = 'moment';
@@ -2235,6 +2329,14 @@ export function clearGalleryFilter() {
     if (returnTab === 'board') {
         if (typeof window.switchMainTab === 'function') window.switchMainTab('board');
         return;
+    }
+    // 전체 피드로 복귀 시 첫 페이지 로드 (sharedPhotosFeed 초기화)
+    if (window.sharedPhotosFeed.length === 0) {
+        const { loadSharedPhotosPage } = await import('./db.js');
+        const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(25);
+        window.sharedPhotosFeed = docs;
+        appState.sharedPhotosFeedLastDoc = lastDoc;
+        appState.sharedPhotosFeedHasMore = hasMore;
     }
     renderGallery();
 }
@@ -2250,11 +2352,9 @@ export function switchGalleryFilterTab(tab) {
 export async function renderFeed() {
     const container = document.getElementById('feedContent');
     if (!container) return;
-    if (!window.sharedPhotos) {
-        window.sharedPhotos = [];
-    }
+    const photosToUse = window.sharedPhotosFeed || [];
     
-    if (window.sharedPhotos.length === 0) {
+    if (photosToUse.length === 0) {
         container.innerHTML = `
             <div class="flex flex-col items-center justify-center py-12 text-center">
                 <i class="fa-solid fa-images text-4xl text-slate-200 mb-3"></i>
@@ -2267,10 +2367,10 @@ export async function renderFeed() {
     
     // 사용자 필터링 적용
     const filterUserId = appState.galleryFilterUserId;
-    let photosToRender = window.sharedPhotos;
+    let photosToRender = photosToUse;
     
     if (filterUserId) {
-        photosToRender = window.sharedPhotos.filter(photo => photo.userId === filterUserId);
+        photosToRender = photosToUse.filter(photo => photo.userId === filterUserId);
     }
     
     // 중복 제거: 같은 photoUrl과 entryId 조합은 하나만 표시
@@ -2482,7 +2582,7 @@ export async function renderFeed() {
             const photoBanned = p.banned === true;
             return `
             <div class="flex-shrink-0 w-full snap-start relative ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
-                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" class="w-full ${(isBest || isDaily || isInsight) ? 'h-auto' : 'h-auto'} ${(isBest || isDaily || isInsight) ? 'object-contain' : 'object-cover'} ${photoBanned ? 'opacity-50' : ''}" ${(isBest || isDaily || isInsight) ? 'style="display: block; width: 100%; height: auto; vertical-align: top;"' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
+                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full ${(isBest || isDaily || isInsight) ? 'h-auto' : 'h-auto'} ${(isBest || isDaily || isInsight) ? 'object-contain' : 'object-cover'} ${photoBanned ? 'opacity-50' : ''}" ${(isBest || isDaily || isInsight) ? 'style="display: block; width: 100%; height: auto; vertical-align: top;"' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
                 ${photoBanned ? `
                     <div class="absolute inset-0 bg-orange-500/20 flex items-center justify-center">
                         <div class="bg-orange-600 text-white px-3 py-1.5 rounded-lg">
@@ -2557,13 +2657,44 @@ export async function renderFeed() {
     
     // 사진 카운터 업데이트를 위한 이벤트 리스너 추가 및 피드 옵션 버튼 이벤트 리스너 추가
     setTimeout(() => {
-        const scrollContainers = container.querySelectorAll('.flex.overflow-x-auto');
+        const scrollContainers = container.querySelectorAll('.gallery-photo-scroll');
         scrollContainers.forEach((scrollContainer, idx) => {
             const counter = scrollContainer.parentElement.querySelector('.photo-counter-current');
             const photos = scrollContainer.querySelectorAll('div');
             const photoCount = sortedGroups[idx]?.length || 0;
             // 스크롤 종료 시 가장 가까운 사진으로 스냅 (한장한장 구분감)
             if (photoCount > 1) {
+                // 웹(데스크톱): 마우스 드래그로 사진 스와이프 (document에 리스너 등록해 빠른 드래그도 포착)
+                let isDragging = false;
+                let startX = 0;
+                let startScrollLeft = 0;
+                scrollContainer.style.cursor = 'grab';
+                const onMouseMove = (e) => {
+                    if (!isDragging) return;
+                    e.preventDefault();
+                    const dx = e.pageX - startX;
+                    scrollContainer.scrollLeft = Math.max(0, Math.min(scrollContainer.scrollWidth - scrollContainer.clientWidth, startScrollLeft - dx));
+                };
+                const endDrag = () => {
+                    if (!isDragging) return;
+                    isDragging = false;
+                    scrollContainer.style.cursor = 'grab';
+                    scrollContainer.style.userSelect = '';
+                    document.removeEventListener('mousemove', onMouseMove, { capture: true });
+                    document.removeEventListener('mouseup', endDrag, { capture: true });
+                };
+                scrollContainer.addEventListener('mousedown', (e) => {
+                    if (e.button !== 0) return;
+                    e.preventDefault();
+                    isDragging = true;
+                    startX = e.pageX;
+                    startScrollLeft = scrollContainer.scrollLeft;
+                    scrollContainer.style.cursor = 'grabbing';
+                    scrollContainer.style.userSelect = 'none';
+                    document.addEventListener('mousemove', onMouseMove, { capture: true, passive: false });
+                    document.addEventListener('mouseup', endDrag, { capture: true });
+                }, { passive: false });
+
                 const snapToNearest = () => {
                     const sl = scrollContainer.scrollLeft;
                     const cw = scrollContainer.clientWidth;
@@ -2576,7 +2707,7 @@ export async function renderFeed() {
                     });
                     const target = photos[nearest]?.offsetLeft ?? 0;
                     if (Math.abs(sl - target) > 2) {
-                        scrollContainer.scrollTo({ left: target, behavior: 'auto' });
+                        scrollContainer.scrollTo({ left: target, behavior: 'smooth' });
                     }
                 };
                 let snapTimeout = null;

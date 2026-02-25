@@ -1,6 +1,6 @@
 // Firestore 리스너 설정 (읽기 비용 절감: user/tags는 세션당 1회만, meals 기간 축소, sharedPhotos limit 축소)
 import { db, appId } from '../firebase.js';
-import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, startAfter, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from '../constants.js';
 import { dbOps } from './ops.js';
 
@@ -455,9 +455,9 @@ export function setupListeners(userId, callbacks) {
         });
     }
     
-    // 최근 7일만 초기 로드 (로그인 후 첫 화면 속도 단축, 스크롤/더보기로 추가 로드)
+    // 최근 14일 초기 로드 (고아 공유 동기화 대상 확대, 스크롤/더보기로 추가 로드)
     const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - 7);
+    cutoffDate.setDate(cutoffDate.getDate() - 14);
     const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
     const todayStr = new Date().toISOString().split('T')[0];
     
@@ -480,7 +480,7 @@ export function setupListeners(userId, callbacks) {
             return;
         }
         if (isInitialLoad) {
-            // 초기 로드: 최근 7일 데이터
+            // 초기 로드: 최근 14일 데이터
             window.mealHistory = snap.docs.map(d => ({ id: d.id, ...d.data() }))
                 .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
             window.loadedMealsDateRange = { start: cutoffDateStr, end: todayStr };
@@ -640,45 +640,138 @@ export function setupListeners(userId, callbacks) {
     return { settingsUnsubscribe, dataUnsubscribe, statsUnsubscribe };
 }
 
+/** Firestore Timestamp를 ISO 문자열로 변환 */
+function normalizeSharedPhotoDoc(docSnap) {
+    const data = docSnap.data();
+    if (data.timestamp && data.timestamp.toDate) {
+        data.timestamp = data.timestamp.toDate().toISOString();
+    } else if (data.timestamp && typeof data.timestamp === 'object' && data.timestamp.seconds) {
+        data.timestamp = new Date(data.timestamp.seconds * 1000).toISOString();
+    }
+    return { id: docSnap.id, ...data };
+}
+
+/** docs를 그룹화했을 때 포스트(그룹) 수 계산 (renderGallery와 동일한 그룹 키 로직) */
+function countPostsFromDocs(docs) {
+    const seen = new Set();
+    (docs || []).forEach(photo => {
+        let groupKey;
+        if (photo.type === 'daily') groupKey = `daily_${photo.date || 'no-date'}_${photo.userId}`;
+        else if (photo.type === 'best') groupKey = `best_${photo.id || 'no-id'}_${photo.userId}`;
+        else if (photo.type === 'insight') groupKey = `insight_${photo.dateRangeText || 'no-range'}_${photo.userId}`;
+        else if (photo.entryId) groupKey = `${photo.entryId}_${photo.userId}`;
+        else groupKey = `no-entry_${photo.userId}`;
+        seen.add(groupKey);
+    });
+    return seen.size;
+}
+
+/** timestamp를 ms로 변환 (Firestore Timestamp, ISO 문자열, seconds 등 혼합 형식 대응)
+ * timestamp 없으면 date+time 조합으로 fallback (일부 문서에 timestamp 누락 시) */
+function toTimestampMs(photo) {
+    const t = photo?.timestamp;
+    if (t != null && t !== '') {
+        if (t.toDate) return t.toDate().getTime();
+        if (typeof t === 'string') return new Date(t).getTime();
+        if (t.seconds != null) return t.seconds * 1000 + (t.nanoseconds || 0) / 1e6;
+        if (t instanceof Date) return t.getTime();
+        if (typeof t === 'number') return t;
+    }
+    // fallback: date + time
+    const d = photo?.date;
+    const tm = photo?.time || '12:00:00';
+    if (d && typeof d === 'string') {
+        const timePart = String(tm).split(':').length === 2 ? tm + ':00' : tm;
+        const ms = new Date(d + 'T' + timePart).getTime();
+        if (!isNaN(ms)) return ms;
+    }
+    return 0;
+}
+
+/** 공유 사진 페이지네이션 로드 (갤러리/피드용). 포스트 10건 기준으로 문서 로드
+ * 항상 getDocsFromServer 사용 - 캐시로 인해 새 공유가 안 보이는 문제 방지 (읽기 최적화 후 발생)
+ * 클라이언트 정렬: timestamp 혼합 타입(문자열/Timestamp) 시 Firestore 정렬 순서가 꼬이는 문제 방지 */
+export async function loadSharedPhotosPage(targetPosts = 10, startAfterDoc = null) {
+    if (!window.currentUser) return { docs: [], lastDoc: null, hasMore: false };
+    const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+    // Firestore orderBy 시 timestamp 타입 혼합(문자열/Timestamp)이면 정렬 꼬임 → 더 많이 가져와서 클라이언트 정렬로 보정
+    const BATCH_SIZE = startAfterDoc ? 15 : 60;
+    const MAX_DOCS = 120;
+    let allDocs = [];
+    let lastDoc = startAfterDoc;
+    let hasMore = true;
+
+    while (hasMore && countPostsFromDocs(allDocs) < targetPosts && allDocs.length < MAX_DOCS) {
+        let q = query(sharedColl, orderBy('timestamp', 'desc'), limit(BATCH_SIZE));
+        if (lastDoc) q = query(sharedColl, orderBy('timestamp', 'desc'), startAfter(lastDoc), limit(BATCH_SIZE));
+        const snap = await getDocsFromServer(q);
+        const batch = snap.docs.map(d => normalizeSharedPhotoDoc(d));
+        allDocs = allDocs.concat(batch);
+        lastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
+        hasMore = snap.docs.length === BATCH_SIZE;
+        if (batch.length < BATCH_SIZE) break;
+    }
+    // timestamp 혼합 타입(문자열 vs Timestamp) 시 Firestore 정렬이 꼬일 수 있음 → 클라이언트에서 최신순 정렬
+    allDocs.sort((a, b) => toTimestampMs(b) - toTimestampMs(a));
+    return { docs: allDocs, lastDoc, hasMore };
+}
+
+/** 본인 공유만 조회 (타임라인 공유 표시, 일간/베스트/인사이트 공유 확인용)
+ * 항상 getDocsFromServer 사용 - 캐시로 인해 sync/표시 불일치 방지 */
+export async function loadMyShares() {
+    if (!window.currentUser || window.currentUser.isAnonymous) return [];
+    const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+    const uid = window.currentUser.uid;
+    try {
+        const q = query(
+            sharedColl,
+            where('userId', '==', uid),
+            orderBy('timestamp', 'desc'),
+            limit(100)
+        );
+        const snap = await getDocsFromServer(q);
+        return snap.docs.map(d => normalizeSharedPhotoDoc(d));
+    } catch (e) {
+        if (e?.code === 'failed-precondition' && /index|indexes/i.test(String(e?.message || ''))) {
+            console.warn('⚠️ loadMyShares 인덱스 필요:', e?.message);
+            if (e?.message && /https:\/\//.test(e.message)) {
+                const linkMatch = e.message.match(/https:\/\/[^\s]+/);
+                if (linkMatch) console.warn('인덱스 생성 링크:', linkMatch[0]);
+            }
+            const qFallback = query(sharedColl, where('userId', '==', uid), limit(100));
+            const snap = await getDocsFromServer(qFallback);
+            const docs = snap.docs.map(d => normalizeSharedPhotoDoc(d));
+            docs.sort((a, b) => {
+                const ta = (a.timestamp && new Date(a.timestamp).getTime()) || 0;
+                const tb = (b.timestamp && new Date(b.timestamp).getTime()) || 0;
+                return tb - ta;
+            });
+            return docs;
+        }
+        throw e;
+    }
+}
+
+/** @deprecated 실시간 리스너 - reads 과다. loadSharedPhotosPage + loadMyShares 사용 권장 */
 export function setupSharedPhotosListener(callback) {
-    // sharedPhotos는 게스트(익명)도 읽을 수 있도록 rules에서 request.auth != null 로 허용됨
-    // (단, 로그아웃 직전에는 반드시 unsubscribe 해줘야 permission-denied 연쇄를 막을 수 있음)
     if (!window.currentUser) return () => {};
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
     const q = query(sharedColl, orderBy('timestamp', 'desc'), limit(50));
-    
     const unsubscribe = onSnapshot(q, (snap) => {
-        const sharedPhotos = snap.docs.map(d => {
-            const data = d.data();
-            // Firestore Timestamp를 Date로 변환
-            if (data.timestamp && data.timestamp.toDate) {
-                data.timestamp = data.timestamp.toDate().toISOString();
-            } else if (data.timestamp && typeof data.timestamp === 'object' && data.timestamp.seconds) {
-                // Timestamp 객체의 seconds 속성이 있는 경우
-                data.timestamp = new Date(data.timestamp.seconds * 1000).toISOString();
-            }
-            return { id: d.id, ...data };
-        });
+        const sharedPhotos = snap.docs.map(d => normalizeSharedPhotoDoc(d));
         if (callback) callback(sharedPhotos);
     }, (error) => {
         console.error("Shared Photos Listener Error:", error);
     });
-    
     return unsubscribe;
 }
 
-/** 특정 사용자의 공유 사진만 조회 (갤러리 사용자 필터 시 전체 목록 표시용, limit 50 회피) */
+/** 특정 사용자의 공유 사진만 조회 (갤러리 사용자 필터 시 전체 목록 표시용, limit 50 회피)
+ * getDocsFromServer 사용 - 캐시로 인해 최신 데이터 미반영 방지 */
 export async function getSharedPhotosByUser(userId) {
     if (!userId) return [];
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-    const q = query(
-        sharedColl,
-        where('userId', '==', userId),
-        orderBy('timestamp', 'desc'),
-        limit(100)
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map(d => {
+    const normalize = (d) => {
         const data = d.data();
         if (data.timestamp && data.timestamp.toDate) {
             data.timestamp = data.timestamp.toDate().toISOString();
@@ -686,5 +779,33 @@ export async function getSharedPhotosByUser(userId) {
             data.timestamp = new Date(data.timestamp.seconds * 1000).toISOString();
         }
         return { id: d.id, ...data };
-    });
+    };
+    try {
+        const q = query(
+            sharedColl,
+            where('userId', '==', userId),
+            orderBy('timestamp', 'desc'),
+            limit(100)
+        );
+        const snap = await getDocsFromServer(q);
+        return snap.docs.map(normalize);
+    } catch (e) {
+        if (e?.code === 'failed-precondition' && /index|indexes/i.test(String(e?.message || ''))) {
+            console.warn('⚠️ getSharedPhotosByUser 인덱스 필요:', e?.message);
+            if (e?.message && /https:\/\//.test(e.message)) {
+                const linkMatch = e.message.match(/https:\/\/[^\s]+/);
+                if (linkMatch) console.warn('인덱스 생성 링크:', linkMatch[0]);
+            }
+            const qFallback = query(sharedColl, where('userId', '==', userId), limit(100));
+            const snap = await getDocsFromServer(qFallback);
+            const docs = snap.docs.map(normalize);
+            docs.sort((a, b) => {
+                const ta = (a.timestamp && new Date(a.timestamp).getTime()) || 0;
+                const tb = (b.timestamp && new Date(b.timestamp).getTime()) || 0;
+                return tb - ta;
+            });
+            return docs;
+        }
+        throw e;
+    }
 }

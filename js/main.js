@@ -7,9 +7,9 @@ window.moduleLoading = true;
 import { appState, getState } from './state.js';
 import { auth, db, appId } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { dbOps, setupListeners, setupSharedPhotosListener, loadMoreMeals, loadMealsForDateRange, postInteractions, boardOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
+import { dbOps, setupListeners, loadSharedPhotosPage, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, boardOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { callableFunctions } from './firebase.js';
-import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, collection, query, where, limit, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
 import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput, warmUpIME } from './utils.js';
@@ -1169,6 +1169,9 @@ window.confirmDailyShare = async (dateStr) => {
         );
         window.sharedPhotos.push(dailyShareData);
         window.sharedPhotos.sort((a, b) => (new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
+        // 갤러리 피드에도 낙관 반영 (맨 앞에 추가)
+        if (!window.sharedPhotosFeed) window.sharedPhotosFeed = [];
+        window.sharedPhotosFeed = [dailyShareData, ...window.sharedPhotosFeed];
 
         window.closeDailySharePreviewModal();
         showToast('하루 기록이 피드에 공유되었습니다!', 'success');
@@ -1478,10 +1481,37 @@ window.switchMainTab = (tab) => {
     } else if (tab === 'settings') {
         // 설정 탭 전환 시 폼 채우기는 nav-settings 클릭 시 openSettings()에서 수행
     } else if (tab === 'gallery') {
-        // 리스너가 업데이트될 시간을 주기 위해 약간의 지연 후 렌더링
         document.body.classList.remove('bottom-nav-scroll-hidden');
-        setTimeout(() => {
+        // 갤러리: 동기화 먼저 수행 후 로드 (레이스: sync 완료 전 load가 덮어쓰는 문제 방지)
+        if (!appState.galleryFilterUserId) {
+            // 진입 시 기존 피드 비우고 서버에서 새로 로드 (캐시된 구식 데이터 표시 방지)
+            window.sharedPhotosFeed = [];
+            appState.sharedPhotosFeedLastDoc = null;
+            appState.sharedPhotosFeedHasMore = false;
+            // 1) 고아 공유 먼저 동기화 (meal.sharedPhotos 있으나 컬렉션에 없는 경우)
+            syncOrphanedSharesToMoment()
+                .then((synced) => {
+                    if (synced > 0) {
+                        updateTimelineShareIndicators();
+                        showToast('모먼트에 반영되었습니다.', 'success');
+                    }
+                    return loadSharedPhotosPage(25);
+                })
+                .then(({ docs, lastDoc, hasMore }) => {
+                    window.sharedPhotosFeed = docs;
+                    appState.sharedPhotosFeedLastDoc = lastDoc;
+                    appState.sharedPhotosFeedHasMore = hasMore;
+                    renderGallery();
+                })
+                .catch(e => {
+                    console.error('공유 사진 로드 실패:', e);
+                    renderGallery();
+                });
+        } else {
+            // 사용자 필터 모드: renderGallery가 내부에서 getSharedPhotosByUser 호출
             renderGallery();
+        }
+        setTimeout(() => {
             // 사용자 프로필 + 밀톡 탭이면 하단 탭도 밀톡 선택 상태 유지
             if (appState.galleryFilterUserId && appState.galleryFilterTab === 'board') {
                 const navGallery = document.getElementById('nav-gallery');
@@ -1494,15 +1524,50 @@ window.switchMainTab = (tab) => {
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             }, 100);
         }, 200);
+    } else if (tab === 'timeline') {
+        // 타임라인: 본인 공유 로드 (공유 화살표 표시용) + 모먼트 동기화
+        loadMyShares().then((myShares) => {
+            window.sharedPhotos = myShares;
+            syncOrphanedSharesToMoment(myShares).then((synced) => {
+                if (synced > 0) {
+                    updateTimelineShareIndicators();
+                    showToast('모먼트에 반영되었습니다.', 'success');
+                }
+            });
+            if (appState.viewMode === 'list') {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                appState.pageDate = today;
+            }
+            window.loadedDates = [];
+            window.hasScrolledToToday = false;
+            const c = document.getElementById('timelineContainer');
+            if (c) c.innerHTML = "";
+            renderTimeline();
+            renderMiniCalendar();
+        }).catch(e => {
+            console.error('본인 공유 로드 실패:', e);
+            window.sharedPhotos = [];
+            if (appState.viewMode === 'list') {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                appState.pageDate = today;
+            }
+            window.loadedDates = [];
+            window.hasScrolledToToday = false;
+            const c = document.getElementById('timelineContainer');
+            if (c) c.innerHTML = "";
+            renderTimeline();
+            renderMiniCalendar();
+        });
     } else if (tab !== 'board') {
-        // 타임라인 탭으로 전환 시 오늘 날짜로 초기화
         if (appState.viewMode === 'list') {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             appState.pageDate = today;
         }
         window.loadedDates = [];
-        window.hasScrolledToToday = false; // 스크롤 플래그 리셋
+        window.hasScrolledToToday = false;
         const c = document.getElementById('timelineContainer');
         if (c) c.innerHTML = "";
         renderTimeline();
@@ -2020,7 +2085,7 @@ window.handleSearch = (k) => {
 window.loadMoreMealsTimeline = async () => {
     const loadingOverlay = document.getElementById('loadingOverlay');
     if (loadingOverlay) loadingOverlay.classList.remove('hidden');
-    
+
     try {
         const count = await loadMoreMeals(1); // 1개월 더 로드
         if (count > 0) {
@@ -2028,6 +2093,13 @@ window.loadMoreMealsTimeline = async () => {
             const container = document.getElementById('timelineContainer');
             if (container) container.innerHTML = "";
             renderTimeline();
+            // 새로 로드된 meal에 공유 표시만 있고 모먼트에 없으면 동기화
+            syncOrphanedSharesToMoment().then((synced) => {
+                if (synced > 0) {
+                    updateTimelineShareIndicators();
+                    showToast('모먼트에 반영되었습니다.', 'success');
+                }
+            }).catch(() => {});
             renderMiniCalendar();
             showToast(`${count}개의 기록을 불러왔습니다.`, 'success');
         } else {
@@ -2219,6 +2291,7 @@ initAuth(async (user) => {
             window.mealHistory = null;
             window.dailyStats = null;
             window.sharedPhotos = null;
+            window.sharedPhotosFeed = [];
             window._duplicateCleanupDone = false;
             authFlowManager.hasCompleted = false;
             authFlowManager.lastProcessedUserId = null;
@@ -2287,21 +2360,13 @@ initAuth(async (user) => {
                 appState.statsUnsubscribe = null;
             }
 
+            // 게스트: sharedPhotos 리스너 대신 탭 진입 시 loadSharedPhotosPage/loadMyShares 사용
             if (appState.sharedPhotosUnsubscribe) {
                 appState.sharedPhotosUnsubscribe();
             }
-            appState.sharedPhotosUnsubscribe = setupSharedPhotosListener((sharedPhotos) => {
-                window.sharedPhotos = sharedPhotos;
-                
-                // 현재 탭에서만 렌더링 (다른 탭에서는 렌더링하지 않음 - 프리즈 방지)
-                const currentTab = appState.currentTab;
-                if (currentTab === 'gallery') {
-                    renderGallery();
-                } else if (currentTab === 'timeline') {
-                    renderTimeline();
-                }
-                // analytics, dashboard 등 다른 탭에서는 렌더링하지 않음
-            });
+            appState.sharedPhotosUnsubscribe = null;
+            window.sharedPhotos = [];
+            window.sharedPhotosFeed = [];
             
             // 게스트 모드일 때 헤더 UI 업데이트
             updateHeaderUI();
@@ -2372,67 +2437,15 @@ initAuth(async (user) => {
             appState.dataUnsubscribe = dataUnsubscribe;
             appState.statsUnsubscribe = statsUnsubscribe;
             
-            // 공유 사진 리스너 설정
+            // 공유 사진: 리스너 제거, 탭 진입 시 loadSharedPhotosPage/loadMyShares로 페이지네이션 적용
             if (appState.sharedPhotosUnsubscribe) {
                 appState.sharedPhotosUnsubscribe();
             }
-            
-            // 리스너 콜백 디바운싱을 위한 타이머
-            let sharedPhotosUpdateTimer = null;
-            let isInitialSharedPhotosLoad = true; // 초기 로드 플래그
-            
-            appState.sharedPhotosUnsubscribe = setupSharedPhotosListener((sharedPhotos) => {
-                // 전체 배열 로깅 제거: 공유 시마다 대용량 객체 직렬화로 CPU/메모리 부담·프리징 악화
-                // 필요 시: console.log('[리스너] 공유 사진:', sharedPhotos?.length, appState.currentTab);
-                
-                // 초기 로드는 즉시 처리 (디바운싱 없음)
-                if (isInitialSharedPhotosLoad) {
-                    isInitialSharedPhotosLoad = false;
-                    window.sharedPhotos = sharedPhotos;
-                    
-                    // 현재 탭에서만 렌더링 (다른 탭에서는 렌더링하지 않음 - 프리즈 방지)
-                    const currentTab = appState.currentTab;
-                    if (currentTab === 'timeline') {
-                        renderTimeline();
-                        updateTimelineShareIndicators();
-                    } else if (currentTab === 'gallery') {
-                        console.log('[리스너] 초기 로드: 갤러리 탭에서 renderGallery 호출');
-                        renderGallery();
-                    } else if (currentTab === 'feed') {
-                        const feedContent = document.getElementById('feedContent');
-                        if (feedContent && !feedContent.classList.contains('hidden')) {
-                            renderFeed();
-                        }
-                    }
-                    // analytics, dashboard 등 다른 탭에서는 렌더링하지 않음
-                    return; // 초기 로드 후 즉시 반환
-                }
-                
-                // 타임라인 탭이면 공유 화살표를 즉시 갱신 (디바운싱 없음)
-                const currentTab = appState.currentTab;
-                if (currentTab === 'timeline') {
-                    window.sharedPhotos = sharedPhotos;
-                    updateTimelineShareIndicators();
-                    return;
-                }
-                
-                // 그 외 탭은 디바운싱 적용 (빠른 연속 업데이트 방지)
-                if (sharedPhotosUpdateTimer) {
-                    clearTimeout(sharedPhotosUpdateTimer);
-                }
-                sharedPhotosUpdateTimer = setTimeout(() => {
-                    window.sharedPhotos = sharedPhotos;
-                    if (currentTab === 'gallery') {
-                        console.log('[리스너] 갤러리 탭에서 renderGallery 호출');
-                        renderGallery();
-                    } else if (currentTab === 'feed') {
-                        const feedContent = document.getElementById('feedContent');
-                        if (feedContent && !feedContent.classList.contains('hidden')) {
-                            renderFeed();
-                        }
-                    }
-                }, 500); // 500ms 디바운싱 (공유 처리 후 빠른 연속 업데이트 방지)
-            });
+            appState.sharedPhotosUnsubscribe = null;
+            window.sharedPhotos = [];
+            window.sharedPhotosFeed = [];
+            appState.sharedPhotosFeedLastDoc = null;
+            appState.sharedPhotosFeedHasMore = false;
         }
         
         // 초기 로드 시 오늘 날짜로 설정
@@ -3099,24 +3112,39 @@ window.showReportModal = async (targetGroupKey) => {
     };
 };
 
-window.editFeedPost = (entryId) => {
+window.editFeedPost = async (entryId) => {
     if (!entryId || entryId === '' || entryId === 'null') {
         showToast("이 게시물은 수정할 수 없습니다.", 'error');
         return;
     }
     
-    if (!window.mealHistory) {
-        showToast("기록 정보를 불러올 수 없습니다.", 'error');
+    const uid = window.currentUser?.uid;
+    if (!uid) {
+        showToast("로그인이 필요합니다.", 'error');
         return;
     }
     
-    const record = window.mealHistory.find(m => m.id === entryId);
+    let record = window.mealHistory?.find(m => m.id === entryId);
     if (!record) {
-        showToast("기록을 찾을 수 없습니다.", 'error');
-        return;
+        // mealHistory에는 최근 7일만 로드됨. 과거 기록은 Firestore에서 직접 조회
+        try {
+            const mealRef = doc(db, 'artifacts', appId, 'users', uid, 'meals', entryId);
+            const mealSnap = await getDoc(mealRef);
+            if (!mealSnap.exists()) {
+                showToast("기록을 찾을 수 없습니다.", 'error');
+                return;
+            }
+            record = { id: mealSnap.id, ...mealSnap.data() };
+            if (!window.mealHistory) window.mealHistory = [];
+            window.mealHistory.push(record);
+            window.mealHistory.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''));
+        } catch (e) {
+            console.error('editFeedPost: meal 조회 실패', e);
+            showToast("기록을 불러오는 중 오류가 발생했습니다.", 'error');
+            return;
+        }
     }
     
-    // 해당 기록의 모달 열기
     openModal(record.date, record.slotId, entryId);
 };
 
@@ -4063,6 +4091,266 @@ function initMainAppKeyboardHandling() {
     }
 }
 
+/** 특정 게시물(entryId)을 모먼트에 동기화. mealHistory에 없어도 Firestore에서 조회 후 동기화.
+ * 사용법: window.syncEntryToMoment('b69XbeFQwsaR8J3MjLFD') - 콘솔에서 호출 가능 */
+window.syncEntryToMoment = async function(entryId, opts = {}) {
+    const { batch = false } = opts;
+    if (!entryId || !window.currentUser || window.currentUser.isAnonymous) {
+        console.warn('syncEntryToMoment: entryId와 로그인이 필요합니다.');
+        return false;
+    }
+    try {
+        const mealRef = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals', entryId);
+        const mealSnap = await getDoc(mealRef);
+        if (!mealSnap.exists()) {
+            console.warn('syncEntryToMoment: 게시물을 찾을 수 없습니다.', entryId);
+            return false;
+        }
+        const m = { id: mealSnap.id, ...mealSnap.data() };
+        if (!m.sharedPhotos || !Array.isArray(m.sharedPhotos) || m.sharedPhotos.length === 0 || m.shareBanned) {
+            console.warn('syncEntryToMoment: 공유할 사진이 없거나 공유 금지된 게시물입니다.');
+            return false;
+        }
+        const validUrls = (url) => typeof url === 'string' && url && !url.startsWith('data:image');
+        const urls = m.sharedPhotos.filter(validUrls);
+        if (urls.length === 0) return false;
+        await dbOps.sharePhotos(urls, m);
+        if (!window.sharedPhotos) window.sharedPhotos = [];
+        const newEntries = urls.map(url => ({ entryId: m.id, photoUrl: url, userId: window.currentUser?.uid }));
+        window.sharedPhotos = (window.sharedPhotos || []).filter(p => p.entryId !== m.id).concat(newEntries);
+        updateTimelineShareIndicators();
+        if (!batch) {
+            const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(25);
+            window.sharedPhotosFeed = docs;
+            appState.sharedPhotosFeedLastDoc = lastDoc;
+            appState.sharedPhotosFeedHasMore = hasMore;
+            if (appState.currentTab === 'gallery') renderGallery();
+            if (document.getElementById('feedContent')) renderFeed();
+            showToast('모먼트에 반영되었습니다.', 'success');
+        }
+        console.log('syncEntryToMoment 완료:', entryId);
+        return true;
+    } catch (e) {
+        console.error('syncEntryToMoment 실패:', entryId, e);
+        if (!batch) showToast('모먼트 동기화에 실패했습니다.', 'error');
+        return false;
+    }
+};
+
+/** 여러 entryId를 한 번에 모먼트에 동기화. 사용법: window.syncEntriesToMomentBatch(['b69XbeFQwsaR8J3MjLFD', ...]) */
+window.syncEntriesToMomentBatch = async function(entryIds) {
+    if (!Array.isArray(entryIds) || entryIds.length === 0) return { ok: 0, fail: 0 };
+    let ok = 0, fail = 0;
+    for (const id of entryIds) {
+        try {
+            const r = await window.syncEntryToMoment(id, { batch: true });
+            if (r) ok++; else fail++;
+        } catch (_) { fail++; }
+    }
+    if (ok > 0) {
+        const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(25);
+        window.sharedPhotosFeed = docs;
+        appState.sharedPhotosFeedLastDoc = lastDoc;
+        appState.sharedPhotosFeedHasMore = hasMore;
+        if (appState.currentTab === 'gallery') renderGallery();
+        if (document.getElementById('feedContent')) renderFeed();
+        showToast(`${ok}건 모먼트에 반영되었습니다.${fail > 0 ? ` (${fail}건 실패)` : ''}`, ok === entryIds.length ? 'success' : 'info');
+    } else if (fail > 0) {
+        showToast('모먼트 동기화에 실패했습니다.', 'error');
+    }
+    return { ok, fail };
+};
+window.Mealog.syncEntryToMoment = window.syncEntryToMoment;
+window.Mealog.syncEntriesToMomentBatch = window.syncEntriesToMomentBatch;
+
+/** sharedPhotos 데이터 구조 진단 (콘솔: Mealog.debugSharedPhotos() 또는 debugSharedPhotos('b69XbeFQwsaR8J3MjLFD')) */
+window.debugSharedPhotos = async function(entryId) {
+    const path = `artifacts/${appId}/sharedPhotos`;
+    console.log('📂 컬렉션 경로:', path);
+    try {
+        const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+        const q = query(sharedColl, limit(5));
+        const snap = await getDocsFromServer(q);
+        const samples = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        console.log('📷 sharedPhotos 샘플(최대 5건):', samples);
+        let entryIdResult = null;
+        if (entryId) {
+            const q2 = query(sharedColl, where('entryId', '==', entryId));
+            const snap2 = await getDocsFromServer(q2);
+            entryIdResult = { count: snap2.size, docs: snap2.docs.map(d => d.data()) };
+            console.log(`entryId "${entryId}" 문서 수:`, snap2.size, entryIdResult.docs);
+        }
+        return { path, samples, entryIdCheck: entryIdResult };
+    } catch (e) {
+        console.error('debugSharedPhotos 실패:', e);
+        throw e;
+    }
+};
+window.Mealog.debugSharedPhotos = window.debugSharedPhotos;
+window.Mealog.loadMyShares = loadMyShares;
+window.Mealog.loadSharedPhotosPage = loadSharedPhotosPage;
+
+/** meal 문서에는 sharedPhotos가 있는데 sharedPhotos 컬렉션에 없으면 동기화 (모먼트 피드 반영)
+ * 2월 등 과거 공유: mealHistory가 14일만 로드되어 고아가 못 찾아지던 문제 → 동기화 전 60일 확보 */
+async function syncOrphanedSharesToMoment(mySharesFromCaller = null) {
+    if (!window.currentUser || window.currentUser.isAnonymous) return 0;
+    // 동기화 대상 확대: 14일 → 60일 (2월 공유 등 과거 고아 게시물 포함)
+    const today = new Date();
+    const sixtyDaysAgo = new Date(today);
+    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+    const endStr = today.toISOString().split('T')[0];
+    const startStr = sixtyDaysAgo.toISOString().split('T')[0];
+    try {
+        await loadMealsForDateRange(startStr, endStr);
+    } catch (e) {
+        console.warn('동기화 전 meal 로드 실패 (계속 진행):', e);
+    }
+    const myShares = mySharesFromCaller ?? await loadMyShares();
+    if (!mySharesFromCaller) window.sharedPhotos = myShares;
+    const mealsToSync = (window.mealHistory || []).filter(m =>
+        m.id && m.sharedPhotos && Array.isArray(m.sharedPhotos) && m.sharedPhotos.length > 0 &&
+        !m.shareBanned && !myShares.some(p => p.entryId === m.id)
+    );
+    const validUrls = (url) => typeof url === 'string' && url && !url.startsWith('data:image');
+    let synced = 0;
+    // 한 번에 최대 30건 동기화 (기존 5건 제한으로 많은 고아 게시물이 누락되던 문제 해결)
+    for (const m of mealsToSync.slice(0, 30)) {
+        const urls = m.sharedPhotos.filter(validUrls);
+        if (urls.length === 0) continue;
+        try {
+            await dbOps.sharePhotos(urls, m);
+            if (!window.sharedPhotos) window.sharedPhotos = [];
+            const newEntries = urls.map(url => ({ entryId: m.id, photoUrl: url, userId: window.currentUser?.uid }));
+            window.sharedPhotos = (window.sharedPhotos || []).filter(p => p.entryId !== m.id).concat(newEntries);
+            synced++;
+        } catch (e) {
+            console.warn('모먼트 동기화 실패:', m.id, e);
+            const msg = e?.message || e?.details || '';
+            if (synced === 0) showToast(msg ? `모먼트 동기화 실패: ${msg}` : '모먼트 동기화에 실패했습니다.', 'error');
+        }
+    }
+    return synced;
+}
+
+/** 갤러리 당겨서 새로고침 설정 */
+function setupGalleryPullToRefresh() {
+    const wrap = document.getElementById('galleryPullWrap');
+    const indicator = document.getElementById('galleryPullIndicator');
+    if (!wrap || !indicator) return;
+
+    const PULL_THRESHOLD = 60;
+    const RESISTANCE = 0.5;
+    let startY = 0;
+    let currentY = 0;
+    let isPulling = false;
+    let isRefreshing = false;
+
+    const doRefresh = async () => {
+        if (isRefreshing) return;
+        isRefreshing = true;
+        indicator.classList.remove('pulling');
+        indicator.classList.add('refreshing');
+        const iconEl = indicator.querySelector('i');
+        const spanEl = indicator.querySelector('span');
+        if (iconEl) iconEl.classList.add('fa-spin');
+        if (spanEl) spanEl.textContent = '새로고침 중...';
+
+        try {
+            if (appState.galleryFilterUserId) {
+                await renderGallery();
+            } else {
+                const synced = await syncOrphanedSharesToMoment();
+                if (synced > 0) {
+                    updateTimelineShareIndicators();
+                    showToast('모먼트에 반영되었습니다.', 'success');
+                }
+                const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(25);
+                window.sharedPhotosFeed = docs;
+                appState.sharedPhotosFeedLastDoc = lastDoc;
+                appState.sharedPhotosFeedHasMore = hasMore;
+                renderGallery();
+            }
+        } catch (e) {
+            console.error('갤러리 새로고침 실패:', e);
+            if (typeof showToast === 'function') showToast('새로고침에 실패했습니다.');
+        } finally {
+            isRefreshing = false;
+            indicator.classList.remove('refreshing');
+            const iconEl = indicator.querySelector('i');
+            const spanEl = indicator.querySelector('span');
+            if (iconEl) iconEl.classList.remove('fa-spin');
+            if (spanEl) spanEl.textContent = '당겨서 새로고침';
+        }
+    };
+
+    wrap.addEventListener('touchstart', (e) => {
+        if (appState.currentTab !== 'gallery' || isRefreshing) return;
+        const galleryView = document.getElementById('galleryView');
+        if (!galleryView || galleryView.classList.contains('hidden')) return;
+        if (window.scrollY <= 10) {
+            startY = e.touches[0].clientY;
+            isPulling = true;
+        }
+    }, { passive: true });
+
+    wrap.addEventListener('touchmove', (e) => {
+        if (!isPulling || isRefreshing) return;
+        currentY = e.touches[0].clientY;
+        const pullDistance = (currentY - startY) * RESISTANCE;
+        if (pullDistance > 0) {
+            indicator.classList.add('pulling');
+            indicator.querySelector('span').textContent = pullDistance > PULL_THRESHOLD ? '놓으면 새로고침' : '당겨서 새로고침';
+        } else {
+            indicator.classList.remove('pulling');
+        }
+    }, { passive: true });
+
+    wrap.addEventListener('touchend', () => {
+        if (!isPulling || isRefreshing) return;
+        isPulling = false;
+        const pullDistance = (currentY - startY) * RESISTANCE;
+        indicator.classList.remove('pulling');
+        if (pullDistance >= PULL_THRESHOLD) {
+            doRefresh();
+        }
+    }, { passive: true });
+
+    // 데스크톱: 마우스 드래그로 당겨서 새로고침
+    wrap.addEventListener('mousedown', (e) => {
+        if (appState.currentTab !== 'gallery' || isRefreshing) return;
+        const galleryView = document.getElementById('galleryView');
+        if (!galleryView || galleryView.classList.contains('hidden')) return;
+        if (window.scrollY <= 10) {
+            startY = e.clientY;
+            isPulling = true;
+        }
+    });
+    wrap.addEventListener('mousemove', (e) => {
+        if (!isPulling || isRefreshing) return;
+        currentY = e.clientY;
+        const pullDistance = (currentY - startY) * RESISTANCE;
+        if (pullDistance > 0) {
+            indicator.classList.add('pulling');
+            indicator.querySelector('span').textContent = pullDistance > PULL_THRESHOLD ? '놓으면 새로고침' : '당겨서 새로고침';
+        }
+    });
+    wrap.addEventListener('mouseup', () => {
+        if (!isPulling || isRefreshing) return;
+        isPulling = false;
+        const pullDistance = (currentY - startY) * RESISTANCE;
+        indicator.classList.remove('pulling');
+        if (pullDistance >= PULL_THRESHOLD) {
+            doRefresh();
+        }
+    });
+    wrap.addEventListener('mouseleave', () => {
+        if (isPulling && !isRefreshing) {
+            isPulling = false;
+            indicator.classList.remove('pulling');
+        }
+    });
+}
+
 function initEventListeners() {
     // APK 다운로드 링크: 웹에서만 표시, 앱(Capacitor)에서는 숨김
     const apkDownloadSection = document.getElementById('apkDownloadSection');
@@ -4307,7 +4595,8 @@ function initEventListeners() {
     if (navGallery) {
         navGallery.addEventListener('click', () => window.switchMainTab('gallery'));
     }
-    
+    setupGalleryPullToRefresh();
+
     const navBoard = document.getElementById('nav-board');
     if (navBoard) {
         navBoard.addEventListener('click', () => window.switchMainTab('board'));
