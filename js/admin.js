@@ -5464,7 +5464,10 @@ window.migrateSharedPhotosTimestamp = async function() {
 
     try {
         const { data } = await callableFunctions.migrateSharedPhotosTimestamp();
-        resultEl.textContent = `✅ 완료: ${data.updated}건 변환됨 (전체 ${data.total}건 중)`;
+        const skipped = data.total - data.updated;
+        let msg = `✅ 완료: 전체 ${data.total}건 중 ${data.updated}건 변환됨`;
+        if (skipped > 0) msg += ` (${skipped}건은 이미 Firestore Timestamp라 스킵됨)`;
+        resultEl.textContent = msg;
         resultEl.classList.remove('text-slate-600');
         resultEl.classList.add('text-emerald-600', 'font-bold');
     } catch (e) {

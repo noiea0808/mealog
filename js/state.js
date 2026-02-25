@@ -17,6 +17,8 @@ export const appState = {
     sharedPhotosUnsubscribe: null,
     sharedPhotosFeedLastDoc: null,
     sharedPhotosFeedHasMore: false,
+    sharedPhotosFeedByUserLastDoc: null,
+    sharedPhotosFeedByUserHasMore: false,
     tempSettings: null,
     
     // UI 상태

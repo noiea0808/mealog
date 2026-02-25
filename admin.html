@@ -552,7 +552,7 @@
                             <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
                                 <div class="p-6 border-b border-slate-100">
                                     <h2 class="text-lg font-black text-slate-800">데이터 마이그레이션</h2>
-                                    <p class="text-sm text-slate-500 mt-1">sharedPhotos timestamp 정규화 (문자열/누락 → Firestore Timestamp)</p>
+                                    <p class="text-sm text-slate-500 mt-1">sharedPhotos timestamp 정규화 (문자열/plain object → Firestore Timestamp). 전체 문서 대상, 이미 Timestamp인 문서는 스킵.</p>
                                 </div>
                                 <div class="p-6 space-y-4">
                                     <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">

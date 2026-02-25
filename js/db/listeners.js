@@ -666,6 +666,28 @@ function countPostsFromDocs(docs) {
     return seen.size;
 }
 
+/** docs에서 첫 N개 포스트에 해당하는 문서만 반환 (countPostsFromDocs와 동일한 그룹 키 로직) */
+function getDocsForFirstNPosts(docs, n) {
+    const seen = new Set();
+    let postCount = 0;
+    const result = [];
+    for (const photo of docs) {
+        let groupKey;
+        if (photo.type === 'daily') groupKey = `daily_${photo.date || 'no-date'}_${photo.userId}`;
+        else if (photo.type === 'best') groupKey = `best_${photo.id || 'no-id'}_${photo.userId}`;
+        else if (photo.type === 'insight') groupKey = `insight_${photo.dateRangeText || 'no-range'}_${photo.userId}`;
+        else if (photo.entryId) groupKey = `${photo.entryId}_${photo.userId}`;
+        else groupKey = `no-entry_${photo.userId}`;
+        if (!seen.has(groupKey)) {
+            if (postCount >= n) break;
+            postCount++;
+            seen.add(groupKey);
+        }
+        result.push(photo);
+    }
+    return result;
+}
+
 /** timestamp를 ms로 변환 (Firestore Timestamp, ISO 문자열, seconds 등 혼합 형식 대응)
  * timestamp 없으면 date+time 조합으로 fallback (일부 문서에 timestamp 누락 시) */
 function toTimestampMs(photo) {
@@ -688,30 +710,53 @@ function toTimestampMs(photo) {
     return 0;
 }
 
-/** 공유 사진 페이지네이션 로드 (갤러리/피드용). 포스트 10건 기준으로 문서 로드
+/** 공유 사진 페이지네이션 로드 (갤러리/피드용). 포스트 targetPosts건만 반환, 나머지는 더보기로 로드
  * 항상 getDocsFromServer 사용 - 캐시로 인해 새 공유가 안 보이는 문제 방지 (읽기 최적화 후 발생)
- * timestamp 마이그레이션 후 Firestore orderBy 정상 동작 → 배치 15건으로 reads 절감 */
+ * 클라이언트 정렬: timestamp 혼합 타입(문자열/Timestamp) 시 Firestore 정렬 순서가 꼬이는 문제 방지 */
 export async function loadSharedPhotosPage(targetPosts = 10, startAfterDoc = null) {
     if (!window.currentUser) return { docs: [], lastDoc: null, hasMore: false };
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-    const BATCH_SIZE = 15;
+    const BATCH_SIZE = startAfterDoc ? 30 : 60; // 페이지네이션 시 30건씩 (포스트 10개 충족용)
+    const MAX_DOCS = 120;
     let allDocs = [];
+    let allDocSnaps = []; // DocumentSnapshot 배열 (startAfter용)
     let lastDoc = startAfterDoc;
     let hasMore = true;
+    let lastBatchFull = false;
 
-    while (hasMore && countPostsFromDocs(allDocs) < targetPosts) {
+    // targetPosts(포스트 수) 충족 시까지 페치 (한 번에 60건 등 가져올 수 있음)
+    while (hasMore && countPostsFromDocs(allDocs) < targetPosts && allDocs.length < MAX_DOCS) {
         let q = query(sharedColl, orderBy('timestamp', 'desc'), limit(BATCH_SIZE));
         if (lastDoc) q = query(sharedColl, orderBy('timestamp', 'desc'), startAfter(lastDoc), limit(BATCH_SIZE));
         const snap = await getDocsFromServer(q);
         const batch = snap.docs.map(d => normalizeSharedPhotoDoc(d));
         allDocs = allDocs.concat(batch);
+        allDocSnaps = allDocSnaps.concat(snap.docs);
         lastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
-        hasMore = snap.docs.length === BATCH_SIZE;
+        lastBatchFull = snap.docs.length === BATCH_SIZE;
+        hasMore = lastBatchFull;
         if (batch.length < BATCH_SIZE) break;
     }
-    // timestamp 혼합 타입(문자열 vs Timestamp) 시 Firestore 정렬이 꼬일 수 있음 → 클라이언트에서 최신순 정렬
-    allDocs.sort((a, b) => toTimestampMs(b) - toTimestampMs(a));
-    return { docs: allDocs, lastDoc, hasMore };
+    // timestamp 혼합 타입 시 Firestore 정렬 꼬임 방지 → 클라이언트에서 최신순 정렬
+    const sorted = [...allDocs].sort((a, b) => toTimestampMs(b) - toTimestampMs(a));
+    // 정렬 후 doc id 순서로 allDocSnaps 재매칭 (정렬과 동일 순서로)
+    const idToSnap = new Map();
+    allDocSnaps.forEach(s => idToSnap.set(s.id, s));
+    const sortedSnaps = sorted.map(d => idToSnap.get(d.id)).filter(Boolean);
+
+    // 첫 targetPosts개 포스트에 해당하는 문서만 반환 (10건씩 끊어서 표시)
+    const docsToReturn = getDocsForFirstNPosts(sorted, targetPosts);
+    const totalPostsFetched = countPostsFromDocs(sorted);
+    const hasMorePosts = totalPostsFetched > targetPosts || lastBatchFull;
+
+    // lastDoc: 반환하는 마지막 문서의 DocumentSnapshot (다음 페이지 startAfter용)
+    let returnLastDoc = null;
+    if (docsToReturn.length > 0) {
+        const lastId = docsToReturn[docsToReturn.length - 1].id;
+        returnLastDoc = sortedSnaps.find(s => s.id === lastId) || null;
+    }
+
+    return { docs: docsToReturn, lastDoc: returnLastDoc, hasMore: hasMorePosts };
 }
 
 /** 본인 공유만 조회 (타임라인 공유 표시, 일간/베스트/인사이트 공유 확인용)

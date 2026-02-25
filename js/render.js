@@ -1069,6 +1069,349 @@ function getPostIdFromPhotoGroup(photoGroup) {
     return `post_${Math.abs(hash)}_${photo.userId || 'unknown'}`;
 }
 
+/** photos 배열을 그룹화·정렬하여 sortedGroups 반환 (appendGalleryPosts에서 재사용) */
+function processPhotosToGroups(photos) {
+    if (!photos || photos.length === 0) return [];
+    const seen = new Set();
+    const uniquePhotos = photos.filter(photo => {
+        const key = `${photo.photoUrl}_${photo.entryId || 'no-entry'}_${photo.userId}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+    const groupedPhotos = {};
+    uniquePhotos.forEach(photo => {
+        let groupKey;
+        if (photo.type === 'daily') groupKey = `daily_${photo.date || 'no-date'}_${photo.userId}`;
+        else if (photo.type === 'best') groupKey = `best_${photo.id || 'no-id'}_${photo.userId}`;
+        else if (photo.type === 'insight') groupKey = `insight_${photo.dateRangeText || 'no-range'}_${photo.userId}`;
+        else if (photo.entryId) groupKey = `${photo.entryId}_${photo.userId}`;
+        else groupKey = `no-entry_${photo.userId}`;
+        if (!groupedPhotos[groupKey]) groupedPhotos[groupKey] = [];
+        groupedPhotos[groupKey].push(photo);
+    });
+    const photoSortTieBreaker = (a, b) => {
+        const aKey = String(a.id ?? normalizeUrl(a.photoUrl) ?? '');
+        const bKey = String(b.id ?? normalizeUrl(b.photoUrl) ?? '');
+        return aKey.localeCompare(bKey, 'en');
+    };
+    Object.keys(groupedPhotos).forEach(groupKey => {
+        const photoGroup = groupedPhotos[groupKey];
+        photoGroup.sort((a, b) => {
+            const ai = a.photoIndex, bi = b.photoIndex;
+            if (typeof ai === 'number' && typeof bi === 'number' && ai !== bi) return ai - bi;
+            const ta = new Date(a.timestamp).getTime(), tb = new Date(b.timestamp).getTime();
+            const cmp = ta - tb;
+            return cmp !== 0 ? cmp : photoSortTieBreaker(a, b);
+        });
+    });
+    const getTimestamp = (photo) => {
+        if (!photo.timestamp) return 0;
+        if (photo.timestamp instanceof Date) return photo.timestamp.getTime();
+        if (typeof photo.timestamp === 'string') return new Date(photo.timestamp).getTime();
+        if (photo.timestamp.toDate) return photo.timestamp.toDate().getTime();
+        if (photo.timestamp.seconds) return photo.timestamp.seconds * 1000;
+        return 0;
+    };
+    return Object.values(groupedPhotos).sort((a, b) => {
+        const cmp = getTimestamp(b[0]) - getTimestamp(a[0]);
+        return cmp !== 0 ? cmp : (getPostIdFromPhotoGroup(a) || '').localeCompare(getPostIdFromPhotoGroup(b) || '', 'en');
+    });
+}
+
+/** 포스트 그룹 HTML 생성 (appendGalleryPosts 및 renderGallery에서 공용) */
+function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
+    const photo = photoGroup[0];
+    const photoCount = photoGroup.length;
+    let entryId = photo.entryId;
+    if (!entryId || entryId === '' || entryId === 'null') {
+        const photoWithEntryId = photoGroup.find(p => p.entryId && p.entryId !== '' && p.entryId !== 'null');
+        if (photoWithEntryId) entryId = photoWithEntryId.entryId;
+    }
+    const isMyPost = window.currentUser && photo.userId === window.currentUser.uid;
+    const isGuestPost = isMyPost && window.currentUser && window.currentUser.isAnonymous;
+    const photoDate = photo.date ? new Date(photo.date + 'T00:00:00') : new Date(photo.timestamp);
+    const dateStr = photoDate.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+    const timeStr = photo.time || new Date(photo.timestamp).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' });
+    let mealLabel = '', mealLabelStyle = '';
+    if (photo.slotId) {
+        const slot = SLOTS.find(s => s.id === photo.slotId);
+        mealLabel = slot ? slot.label : '';
+        if (slot) {
+            const slotStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
+            mealLabelStyle = `${slotStyle.text} ${slotStyle.iconBg}`;
+        }
+    }
+    const isBestShare = photo.type === 'best';
+    const isDailyShare = photo.type === 'daily';
+    const isInsightShare = photo.type === 'insight';
+    const isSnack = photo.slotId && SLOTS.find(s => s.id === photo.slotId)?.type === 'snack';
+    let comment = '';
+    if (!isDailyShare) {
+        if (photo.comment) comment = photo.comment;
+        else if (entryId && mealHistoryMap && mealHistoryMap.has(entryId)) {
+            const mealRecord = mealHistoryMap.get(entryId);
+            if (mealRecord) comment = mealRecord.comment || '';
+        }
+        if (!entryId && window.mealHistory && photo.date && photo.slotId) {
+            const matchingRecord = window.mealHistory.find(m =>
+                m.date === photo.date && m.slotId === photo.slotId && (photo.comment ? (m.comment === photo.comment) : true));
+            if (matchingRecord) {
+                entryId = matchingRecord.id;
+                if (!comment && matchingRecord.comment) comment = matchingRecord.comment;
+            }
+        }
+    }
+    let caption = '';
+    if (isBestShare || isDailyShare || isInsightShare) {
+        if (photo.comment) caption = photo.comment;
+    } else if (isSnack) {
+        const menu = photo.menuDetail || photo.snackType;
+        if (photo.place && menu) caption = `<span>${escapeHtml(menu)}</span> @ <span>${escapeHtml(photo.place)}</span>`;
+        else if (photo.place) caption = `@ <span>${escapeHtml(photo.place)}</span>`;
+        else if (menu) caption = `<span>${escapeHtml(menu)}</span>`;
+        else caption = escapeHtml('간식');
+    } else {
+        if (photo.place && photo.menuDetail) caption = `<span>${escapeHtml(photo.menuDetail)}</span> @ <span>${escapeHtml(photo.place)}</span>`;
+        else if (photo.place) caption = `@ <span>${escapeHtml(photo.place)}</span>`;
+        else if (photo.menuDetail) caption = `<span>${escapeHtml(photo.menuDetail)}</span>`;
+        else if (photo.mealType) caption = escapeHtml(photo.mealType);
+    }
+    const photosHtml = photoGroup.map((p, idx) => {
+        const isBest = p.type === 'best', isDaily = p.type === 'daily', isInsight = p.type === 'insight';
+        return `
+            <div class="flex-shrink-0 w-full snap-start ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
+                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full ${(isBest || isDaily || isInsight) ? 'h-auto' : 'h-auto'} ${(isBest || isDaily || isInsight) ? 'object-contain' : 'object-cover'}" ${(isBest || isDaily || isInsight) ? 'style="display: block; width: 100%; height: auto; vertical-align: top;"' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
+            </div>
+        `;
+    }).join('');
+    const postId = getPostIdFromPhotoGroup(photoGroup);
+    const groupKey = postId;
+    const alternatePostIds = photoGroup.map(p => p.id).filter(Boolean).join(',');
+    const userDisplay = getDisplayProfile(photo.userId, { nickname: photo.userNickname, icon: photo.userIcon, photoUrl: photo.userPhotoUrl });
+    const hasBody = (caption && (isBestShare || isDailyShare || isInsightShare)) || (comment && !isBestShare && !isDailyShare && !isInsightShare);
+    return `
+            <div class="mb-2 bg-white border-b border-slate-200 instagram-post ${!hasBody ? 'post-no-body' : ''}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}">
+                <div class="px-3 py-3 flex items-center gap-1 relative">
+                    ${userDisplay.photoUrl ? `
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${userDisplay.photoUrl}); background-size: cover; background-position: center;">
+                            ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
+                        </div>
+                    ` : `
+                        <div class="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0 border-2 border-slate-300">
+                            ${isGuestPost ? '게' : (userDisplay.icon || '🐻')}
+                        </div>
+                    `}
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm font-bold text-slate-800 cursor-pointer hover:text-slate-600 transition-colors" onclick="window.filterGalleryByUser('${photo.userId}', '${escapeHtml(userDisplay.nickname)}')">${userDisplay.nickname}</div>
+                        <div class="flex items-center gap-2">
+                            <div class="text-xs text-slate-400">${dateStr}</div>
+                            ${mealLabel ? `<div class="text-[10px] font-bold ${mealLabelStyle || 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-full whitespace-nowrap">${mealLabel}</div>` : ''}
+                        </div>
+                    </div>
+                    <div class="relative">
+                        <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-is-insight="${isInsightShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-date-range-text="${photo.dateRangeText || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
+                            <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="relative overflow-hidden ${(isDailyShare || isInsightShare) ? 'bg-white' : 'bg-slate-100'}">
+                    <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gallery-photo-scroll" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
+                        ${photosHtml}
+                    </div>
+                    ${photoCount > 1 ? `
+                        <div class="absolute top-3 right-3 bg-black/60 text-white text-xs font-bold px-2.5 py-1 rounded-full backdrop-blur-sm">
+                            <span class="photo-counter-current">1</span>/${photoCount}
+                        </div>
+                    ` : ''}
+                </div>
+                ${!isBestShare && !isDailyShare && !isInsightShare && caption ? `
+                <div class="gallery-caption-menu-place px-6 py-1 text-white" style="background-color: #047857;">
+                    ${caption}
+                </div>
+                ` : ''}
+                <div class="feed-post-actions px-6 py-3">
+                    <div class="feed-post-buttons flex items-center justify-between mb-2 pb-2 -mx-6 px-6 border-b border-slate-200">
+                        <div class="flex items-center gap-4">
+                            <button onclick="window.toggleLike('${postId}')" class="post-like-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
+                                <i class="fa-regular fa-heart text-2xl text-slate-800 post-like-icon"></i>
+                                <span class="post-like-count text-sm font-bold text-slate-800" data-post-id="${postId}"></span>
+                            </button>
+                            <button onclick="window.toggleCommentInput('${postId}')" class="post-comment-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
+                                <i class="fa-regular fa-comment text-2xl text-slate-800 post-comment-icon"></i>
+                                <span class="post-comment-count text-sm font-bold text-slate-800" data-post-id="${postId}"></span>
+                            </button>
+                        </div>
+                        <button onclick="window.toggleBookmark('${postId}')" class="post-bookmark-btn active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
+                            <i class="fa-regular fa-bookmark text-2xl text-slate-800 post-bookmark-icon"></i>
+                        </button>
+                    </div>
+                    ${caption && (isBestShare || isDailyShare || isInsightShare) ? `<div class="mb-2 text-sm text-slate-800">${caption}</div>` : ''}
+                    ${comment && !isBestShare && !isDailyShare && !isInsightShare ? (() => {
+                        const lineBreaks = (comment.match(/\n/g) || []).length;
+                        const estimatedLines = Math.ceil(comment.length / 30);
+                        const shouldShowToggle = lineBreaks >= 2 || estimatedLines > 2;
+                        const toggleBtnClass = shouldShowToggle ? '' : 'hidden';
+                        return `
+                        <div class="mb-2 text-sm text-slate-800">
+                            <span id="post-caption-collapsed-${groupIdx}" class="whitespace-pre-line line-clamp-2 inline">${escapeHtml(comment).replace(/\n/g, '<br>')}</span>
+                            <button onclick="window.togglePostCaption(${groupIdx})" id="post-caption-toggle-${groupIdx}" class="inline text-xs text-emerald-600 font-bold hover:text-emerald-700 active:text-emerald-800 transition-colors ml-1 ${toggleBtnClass}">더 보기</button>
+                            <div id="post-caption-expanded-${groupIdx}" class="whitespace-pre-line hidden">
+                                ${escapeHtml(comment).replace(/\n/g, '<br>')}
+                                <button onclick="window.togglePostCaption(${groupIdx})" id="post-caption-collapse-${groupIdx}" class="inline text-xs text-emerald-600 font-bold hover:text-emerald-700 active:text-emerald-800 transition-colors ml-1">접기</button>
+                            </div>
+                        </div>
+                    `;
+                    })() : ''}
+                    <div class="comment-section comments-empty ${((caption && (isBestShare || isDailyShare || isInsightShare)) || (comment && !isBestShare && !isDailyShare && !isInsightShare)) ? 'border-t border-slate-200 ' : ''}-mx-6 px-6 pt-1.5 mt-1" id="comment-section-${postId}">
+                        <div class="post-comments-list mb-1 rounded-lg py-2 bg-white" data-post-id="${postId}" id="comments-list-${postId}"></div>
+                        <button id="view-comments-${postId}" class="hidden text-xs text-slate-500 font-bold mb-1 hover:text-slate-700 active:text-slate-900 transition-colors" onclick="window.viewAllComments('${postId}')">댓글 더보기</button>
+                        <div id="comment-input-${postId}" class="hidden mt-1 py-3 -mx-6 px-6">
+                            <div class="relative">
+                                <input type="text" id="comment-text-${postId}" placeholder="댓글을 입력하세요..." class="w-full px-3 py-2 pr-16 border border-slate-300 rounded-lg text-sm focus:outline-none bg-slate-100" onkeypress="if(event.key === 'Enter') window.submitComment('${postId}')">
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold cursor-pointer hover:text-emerald-700" ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); window.submitComment('${postId}')" onclick="window.submitComment('${postId}')">게시</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+}
+
+/** 갤러리 이벤트 리스너 설정 (세 번째 인자: AbortSignal 또는 { abortSignal?, startIndex? }) - appendGalleryPosts에서도 사용 */
+function setupGalleryEventListeners(container, sortedGroups, opts = null) {
+    const abortSignal = opts && typeof opts === 'object' && opts.abortSignal !== undefined ? opts.abortSignal : (opts && typeof opts.addEventListener === 'function' ? opts : null);
+    const startIndex = opts && typeof opts === 'object' && typeof opts.startIndex === 'number' ? opts.startIndex : 0;
+    const scrollContainers = container.querySelectorAll('.gallery-photo-scroll');
+    scrollContainers.forEach((scrollContainer, idx) => {
+        if (idx < startIndex) return;
+        const counter = scrollContainer.parentElement.querySelector('.photo-counter-current');
+        const photos = scrollContainer.querySelectorAll('div');
+        const photoCount = sortedGroups[idx]?.length || 0;
+        if (photoCount > 1) {
+            let isDragging = false;
+            let startX = 0;
+            let startScrollLeft = 0;
+            scrollContainer.style.cursor = 'grab';
+            const onMouseMove = (e) => {
+                if (!isDragging) return;
+                e.preventDefault();
+                const dx = e.pageX - startX;
+                scrollContainer.scrollLeft = Math.max(0, Math.min(scrollContainer.scrollWidth - scrollContainer.clientWidth, startScrollLeft - dx));
+            };
+            const endDrag = () => {
+                if (!isDragging) return;
+                isDragging = false;
+                scrollContainer.style.cursor = 'grab';
+                scrollContainer.style.userSelect = '';
+                document.removeEventListener('mousemove', onMouseMove, { capture: true });
+                document.removeEventListener('mouseup', endDrag, { capture: true });
+            };
+            scrollContainer.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return;
+                e.preventDefault();
+                isDragging = true;
+                startX = e.pageX;
+                startScrollLeft = scrollContainer.scrollLeft;
+                scrollContainer.style.cursor = 'grabbing';
+                scrollContainer.style.userSelect = 'none';
+                document.addEventListener('mousemove', onMouseMove, { capture: true, passive: false });
+                document.addEventListener('mouseup', endDrag, { capture: true });
+            }, { passive: false });
+            const snapToNearest = () => {
+                const sl = scrollContainer.scrollLeft;
+                const cw = scrollContainer.clientWidth;
+                let nearest = 0;
+                let minDist = Infinity;
+                photos.forEach((p, i) => {
+                    const pos = p.offsetLeft + p.offsetWidth / 2;
+                    const d = Math.abs(sl + cw / 2 - pos);
+                    if (d < minDist) { minDist = d; nearest = i; }
+                });
+                const target = photos[nearest]?.offsetLeft ?? 0;
+                if (Math.abs(sl - target) > 2) scrollContainer.scrollTo({ left: target, behavior: 'smooth' });
+            };
+            let snapTimeout = null;
+            const onScrollEnd = () => { clearTimeout(snapTimeout); snapTimeout = setTimeout(snapToNearest, 80); };
+            scrollContainer.addEventListener('scroll', onScrollEnd, { passive: true });
+            if ('onscrollend' in scrollContainer) scrollContainer.addEventListener('scrollend', snapToNearest);
+            if (abortSignal) abortSignal.addEventListener('abort', () => { clearTimeout(snapTimeout); scrollContainer.removeEventListener('scroll', onScrollEnd); scrollContainer.removeEventListener('scrollend', snapToNearest); });
+        }
+        if (counter && photoCount > 1) {
+            const updateCounter = () => {
+                const containerWidth = scrollContainer.clientWidth;
+                const scrollLeft = scrollContainer.scrollLeft;
+                let currentIndex = 1;
+                photos.forEach((photo, photoIdx) => {
+                    const photoCenter = photo.offsetLeft + photo.offsetWidth / 2;
+                    if (photoCenter >= scrollLeft && photoCenter <= scrollLeft + containerWidth) currentIndex = photoIdx + 1;
+                });
+                counter.textContent = currentIndex;
+            };
+            const abortController = new AbortController();
+            scrollContainer.addEventListener('scroll', updateCounter, { signal: abortController.signal });
+            galleryScrollListeners.set(scrollContainer, abortController);
+            updateCounter();
+        }
+    });
+    if (window.showFeedOptions && !container._galleryFeedOptionsDelegate) {
+        const delegateHandler = (e) => {
+            const btn = e.target.closest('.feed-options-btn');
+            if (!btn) return;
+            e.stopPropagation();
+            e.preventDefault();
+            const entryId = btn.getAttribute('data-entry-id') || '';
+            const photoUrls = btn.getAttribute('data-photo-urls') || '';
+            const isBestShare = btn.getAttribute('data-is-best') === 'true';
+            const photoDate = btn.getAttribute('data-photo-date') || '';
+            const photoSlotId = btn.getAttribute('data-photo-slot-id') || '';
+            const isDailyShare = btn.getAttribute('data-is-daily') === 'true';
+            const isInsightShare = btn.getAttribute('data-is-insight') === 'true';
+            const dateRangeText = btn.getAttribute('data-date-range-text') || '';
+            const postId = btn.getAttribute('data-post-id') || '';
+            const authorUserId = btn.getAttribute('data-author-user-id') || '';
+            window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId, isInsightShare, dateRangeText);
+        };
+        container._galleryFeedOptionsDelegate = delegateHandler;
+        container.addEventListener('click', delegateHandler);
+    }
+    const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
+    container.querySelectorAll('[data-requires-login="true"]').forEach(btn => {
+        if (!isLoggedIn) { btn.classList.add('opacity-50', 'cursor-not-allowed'); btn.title = '로그인이 필요합니다'; if (btn.tagName === 'INPUT') { btn.disabled = true; btn.placeholder = '로그인 후 댓글을 달아보세요'; } }
+        else { btn.classList.remove('opacity-50', 'cursor-not-allowed'); btn.title = ''; if (btn.tagName === 'INPUT') { btn.disabled = false; btn.placeholder = '댓글 달기...'; } }
+    });
+}
+
+/** 더보기 시 새 포스트만 DOM에 추가 (전체 재렌더 없이 깜박임 방지) */
+async function appendGalleryPosts(docs, loadMoreWrap) {
+    if (!docs || docs.length === 0 || !loadMoreWrap) return;
+    const container = document.getElementById('galleryContainer');
+    if (!container) return;
+    const newGroups = processPhotosToGroups(docs);
+    if (newGroups.length === 0) return;
+    let mealHistoryMap = new Map();
+    if (window.mealHistory && Array.isArray(window.mealHistory)) {
+        window.mealHistory.forEach(meal => { if (meal.id) mealHistoryMap.set(meal.id, meal); });
+    }
+    const existingCount = container.querySelectorAll('.instagram-post').length;
+    const newPostsHtml = newGroups.map((photoGroup, i) => renderPostGroupHtml(photoGroup, existingCount + i, mealHistoryMap)).join('');
+    const fragment = document.createDocumentFragment();
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = newPostsHtml;
+    while (tempDiv.firstChild) fragment.appendChild(tempDiv.firstChild);
+    loadMoreWrap.parentNode.insertBefore(fragment, loadMoreWrap);
+    const fullSortedGroups = processPhotosToGroups(window.sharedPhotosFeed || []);
+    await fetchUserProfiles([...new Set(docs.map(p => p.userId).filter(Boolean))]);
+    setTimeout(() => {
+        setupGalleryEventListeners(container, fullSortedGroups, { startIndex: existingCount });
+        if (window.postInteractions && intersectionObserver) {
+            container.querySelectorAll('.instagram-post').forEach((post, i) => {
+                if (i >= existingCount && document.contains(post)) intersectionObserver.observe(post);
+            });
+        }
+    }, 50);
+}
+
 // 사용자 설정 가져오기 헬퍼 함수
 async function getUserSettings(userId) {
     try {
@@ -1109,6 +1452,8 @@ export async function fetchUserProfiles(userIds) {
 }
 
 export async function renderGallery(options = {}) {
+    const skipScrollToTop = options.skipScrollToTop === true; // 더보기 시 스크롤 위치 유지
+    const savedScrollY = skipScrollToTop ? window.scrollY : 0; // 더보기 시 복원용
     // 중복 실행 방지
     if (isRenderingGallery) {
         console.log('[renderGallery] 이미 실행 중이므로 스킵');
@@ -1411,6 +1756,7 @@ export async function renderGallery(options = {}) {
             if (meal.id) mealHistoryMap.set(meal.id, meal);
         });
     }
+    const renderPostGroup = (photoGroup, groupIdx) => renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap);
     // 각 그룹 내 사진을 Firestore photoIndex 기준으로만 정렬 (글쓴이/다른 사용자 동일 순서 보장)
     const photoSortTieBreaker = (a, b) => {
         const aKey = String(a.id ?? normalizeUrl(a.photoUrl) ?? '');
@@ -1509,9 +1855,20 @@ export async function renderGallery(options = {}) {
             </div>
         ` : '');
     
+    // 더보기 표시 여부 (타임라인처럼 초기 구조에 포함하여 누락 방지)
+    const canLoadMore = !filterUserId && !appState.galleryFilterPostId &&
+        (appState.sharedPhotosFeedHasMore || (sortedGroups.length >= 10 && appState.sharedPhotosFeedLastDoc));
+    const loadMoreHtml = canLoadMore ? `
+        <div id="galleryLoadMoreWrap" class="flex justify-center py-6">
+            <button id="galleryLoadMoreBtn" type="button" class="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-xl transition-colors">
+                <i class="fa-solid fa-chevron-down mr-1.5"></i>더보기
+            </button>
+        </div>
+    ` : '';
+
     // 변경사항이 크거나 초기 로드면 전체 재렌더링
     if (hasSignificantChanges) {
-        container.innerHTML = headerHtml;
+        container.innerHTML = headerHtml + '<div id="galleryPostsInsertPoint"></div>' + loadMoreHtml;
     } else {
         // 차등 업데이트: 새로 추가된 포스트만 prepend
         const newPostIds = Array.from(currentPostIds).filter(id => !previousGalleryPostIds.has(id));
@@ -1558,8 +1915,8 @@ export async function renderGallery(options = {}) {
                 // 이벤트 리스너만 다시 설정 (전체 재렌더링 없이)
                 setTimeout(() => {
                     if (abortSignal.aborted) return;
-                    setupGalleryEventListeners(container, sortedGroups);
-                    setupIntersectionObserver(container);
+                    setupGalleryEventListeners(container, sortedGroups, { abortSignal });
+                    setupIntersectionObserver(container, abortSignal);
                 }, 50);
                 
                 isRenderingGallery = false;
@@ -1568,14 +1925,55 @@ export async function renderGallery(options = {}) {
         }
         
         // 차등 업데이트 실패 시 전체 재렌더링으로 폴백
-        container.innerHTML = headerHtml;
+        container.innerHTML = headerHtml + '<div id="galleryPostsInsertPoint"></div>' + loadMoreHtml;
     }
-    
-    // 초기 렌더링: 화면에 보일 포스트만 먼저 렌더링 (가상 스크롤링)
-    // 화면 높이 기준으로 예상 포스트 수 계산 (각 포스트 약 600px 높이 가정)
-    const viewportHeight = window.innerHeight;
+
+    // 더보기 이벤트 리스너 (초기 구조에 포함했으므로 여기서 바인딩)
+    const postsInsertPoint = document.getElementById('galleryPostsInsertPoint') || container;
+    if (canLoadMore) {
+        const loadMoreWrap = document.getElementById('galleryLoadMoreWrap');
+        const loadMoreBtn = document.getElementById('galleryLoadMoreBtn');
+        const doLoadMore = async () => {
+            if (!loadMoreBtn || loadMoreBtn.disabled) return;
+            const hasMore = appState.sharedPhotosFeedHasMore || appState.sharedPhotosFeedLastDoc;
+            if (!hasMore) return;
+            loadMoreBtn.disabled = true;
+            loadMoreBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>로딩 중...';
+            try {
+                const { loadSharedPhotosPage } = await import('./db.js');
+                const { docs, lastDoc, hasMore: nextHasMore } = await loadSharedPhotosPage(10, appState.sharedPhotosFeedLastDoc);
+                window.sharedPhotosFeed = [...(window.sharedPhotosFeed || []), ...docs];
+                appState.sharedPhotosFeedLastDoc = lastDoc;
+                appState.sharedPhotosFeedHasMore = nextHasMore;
+                loadMoreBtn.disabled = false;
+                loadMoreBtn.innerHTML = '<i class="fa-solid fa-chevron-down mr-1.5"></i>더보기';
+                if (!nextHasMore && loadMoreWrap) loadMoreWrap.remove();
+                // 전체 재렌더 대신 새 포스트만 추가 (깜박임 방지)
+                appendGalleryPosts(docs, loadMoreWrap);
+            } catch (e) {
+                console.error('공유 사진 더보기 실패:', e);
+                loadMoreBtn.disabled = false;
+                loadMoreBtn.innerHTML = '<i class="fa-solid fa-chevron-down mr-1.5"></i>다시 시도';
+            }
+        };
+        if (loadMoreBtn) {
+            loadMoreBtn.addEventListener('click', doLoadMore);
+            if (loadMoreWrap && typeof IntersectionObserver !== 'undefined') {
+                const loadMoreObserver = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting && (appState.sharedPhotosFeedHasMore || appState.sharedPhotosFeedLastDoc) && !loadMoreBtn.disabled) {
+                            doLoadMore();
+                        }
+                    });
+                }, { rootMargin: '200px', threshold: 0.1 });
+                loadMoreObserver.observe(loadMoreWrap);
+            }
+        }
+    }
+
+    // 초기 렌더링: 최대 10건 먼저 표시, 나머지는 더보기/스크롤로 로드
     const estimatedPostHeight = 600; // 각 포스트의 예상 높이
-    const INITIAL_POSTS_COUNT = Math.max(5, Math.ceil(viewportHeight / estimatedPostHeight) + 2); // 화면에 보일 포스트 + 여유분
+    const INITIAL_POSTS_COUNT = Math.min(10, Math.max(1, sortedGroups.length)); // 10건씩 끊어서 표시
     
     // 초기 포스트만 먼저 렌더링 (비동기 배치 처리로 브라우저 블로킹 방지)
     const initialPosts = sortedGroups.slice(0, INITIAL_POSTS_COUNT);
@@ -1600,76 +1998,10 @@ export async function renderGallery(options = {}) {
                 const placeholderHtml = `<div id="gallery-placeholder" data-remaining="${remainingCount}" data-start-index="${INITIAL_POSTS_COUNT}" style="height: ${remainingCount * estimatedPostHeight}px;"></div>`;
                 const placeholderDiv = document.createElement('div');
                 placeholderDiv.innerHTML = placeholderHtml;
-                container.appendChild(placeholderDiv.firstChild);
+                postsInsertPoint.appendChild(placeholderDiv.firstChild);
             }
-            
-            // 페이지네이션: 더보기 (필터 없을 때, 추가 데이터 있을 때만). 스크롤 시 자동 로드
-            if (!filterUserId && appState.sharedPhotosFeedHasMore) {
-                const loadMoreHtml = `
-                    <div id="galleryLoadMoreWrap" class="flex justify-center py-6">
-                        <button id="galleryLoadMoreBtn" type="button" class="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-xl transition-colors">
-                            <i class="fa-solid fa-chevron-down mr-1.5"></i>더보기
-                        </button>
-                    </div>
-                `;
-                const loadMoreDiv = document.createElement('div');
-                loadMoreDiv.innerHTML = loadMoreHtml;
-                container.appendChild(loadMoreDiv.firstChild);
-                const loadMoreWrap = document.getElementById('galleryLoadMoreWrap');
-                const loadMoreBtn = document.getElementById('galleryLoadMoreBtn');
-                const doLoadMore = async () => {
-                    if (!loadMoreBtn || loadMoreBtn.disabled || !appState.sharedPhotosFeedHasMore) return;
-                    loadMoreBtn.disabled = true;
-                    loadMoreBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>로딩 중...';
-                    try {
-                        const { loadSharedPhotosPage } = await import('./db.js');
-                        const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10, appState.sharedPhotosFeedLastDoc);
-                        window.sharedPhotosFeed = [...(window.sharedPhotosFeed || []), ...docs];
-                        appState.sharedPhotosFeedLastDoc = lastDoc;
-                        appState.sharedPhotosFeedHasMore = hasMore;
-                        loadMoreBtn.disabled = false;
-                        loadMoreBtn.innerHTML = '<i class="fa-solid fa-chevron-down mr-1.5"></i>더보기';
-                        if (!hasMore && loadMoreWrap) loadMoreWrap.remove();
-                        renderGallery({ skipScrollToTop: true });
-                    } catch (e) {
-                        console.error('공유 사진 더보기 실패:', e);
-                        loadMoreBtn.disabled = false;
-                        loadMoreBtn.innerHTML = '<i class="fa-solid fa-chevron-down mr-1.5"></i>다시 시도';
-                    }
-                };
-                if (loadMoreBtn) {
-                    loadMoreBtn.addEventListener('click', doLoadMore);
-                    // 스크롤 시 더보기 영역이 보이면 자동 로드 (무한 스크롤)
-                    if (loadMoreWrap) {
-                        if (typeof IntersectionObserver !== 'undefined') {
-                            const loadMoreObserver = new IntersectionObserver((entries) => {
-                                entries.forEach(entry => {
-                                    if (entry.isIntersecting && appState.sharedPhotosFeedHasMore && !loadMoreBtn.disabled) {
-                                        doLoadMore();
-                                    }
-                                });
-                            }, { root: null, rootMargin: '600px' });
-                            loadMoreObserver.observe(loadMoreWrap);
-                        }
-                        // 스크롤 이벤트 fallback (IntersectionObserver 미동작 시, 웹/모바일 공통)
-                        const onScroll = () => {
-                            if (abortSignal?.aborted || !document.contains(loadMoreWrap)) return;
-                            if (!appState.sharedPhotosFeedHasMore || loadMoreBtn.disabled) return;
-                            const el = document.scrollingElement || document.documentElement;
-                            const scrollTop = el.scrollTop;
-                            const scrollHeight = el.scrollHeight;
-                            if (scrollTop + window.innerHeight >= scrollHeight - 400) {
-                                doLoadMore();
-                            }
-                        };
-                        const opts = { passive: true, signal: abortSignal };
-                        window.addEventListener('scroll', onScroll, opts);
-                        const scrollEl = document.scrollingElement || document.documentElement;
-                        if (scrollEl && scrollEl !== document) scrollEl.addEventListener('scroll', onScroll, opts);
-                    }
-                }
-            }
-            
+            // 더보기는 초기 구조에 이미 포함됨 (배치 완료 대기 없이 표시)
+
             // 이전 포스트 ID 목록 업데이트 (전체 재렌더링인 경우)
             previousGalleryPostIds = new Set(currentPostIds);
             
@@ -1681,7 +2013,7 @@ export async function renderGallery(options = {}) {
                     return;
                 }
                 
-                setupGalleryEventListeners(container, sortedGroups, abortSignal);
+                setupGalleryEventListeners(container, sortedGroups, { abortSignal });
                 
                 // IntersectionObserver 설정 (포스트 렌더링 및 상호작용 로드용)
                 setTimeout(() => {
@@ -1713,9 +2045,15 @@ export async function renderGallery(options = {}) {
                     });
                 }, 100);
                 
-                // 갤러리 렌더링 완료 후 맨 위로 스크롤 (더보기로 추가 로드한 경우는 스크롤 유지)
-                if (!abortSignal.aborted && !options.skipScrollToTop) {
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                // 갤러리 렌더링 완료 후: 초기 진입은 맨 위로, 더보기 시에는 스크롤 위치 복원
+                if (!abortSignal.aborted) {
+                    if (skipScrollToTop && savedScrollY > 0) {
+                        requestAnimationFrame(() => {
+                            window.scrollTo({ top: savedScrollY, behavior: 'auto' });
+                        });
+                    } else if (!skipScrollToTop) {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
                 }
             }, 50);
             
@@ -1736,7 +2074,7 @@ export async function renderGallery(options = {}) {
         while (tempDiv.firstChild) {
             fragment.appendChild(tempDiv.firstChild);
         }
-        container.appendChild(fragment);
+        postsInsertPoint.appendChild(fragment);
         
         renderedIndex += POSTS_PER_BATCH;
         
@@ -1748,391 +2086,6 @@ export async function renderGallery(options = {}) {
     
     // 첫 배치 렌더링 시작
     renderNextBatch();
-    
-    // 포스트 그룹 HTML 생성 함수 (기존 map 로직을 함수로 분리)
-    // mealHistoryMap을 클로저로 전달하여 O(1) 조회 최적화
-    function renderPostGroup(photoGroup, groupIdx) {
-        const photo = photoGroup[0]; // 첫 번째 사진의 정보 사용
-        const photoCount = photoGroup.length;
-        
-        // 그룹 내에서 entryId 찾기 (첫 번째 사진에 없으면 다른 사진에서 찾기)
-        let entryId = photo.entryId;
-        if (!entryId || entryId === '' || entryId === 'null') {
-            const photoWithEntryId = photoGroup.find(p => p.entryId && p.entryId !== '' && p.entryId !== 'null');
-            if (photoWithEntryId) {
-                entryId = photoWithEntryId.entryId;
-            }
-        }
-        
-        // 본인 게시물인지 확인
-        const isMyPost = window.currentUser && photo.userId === window.currentUser.uid;
-        
-        // 게스트 모드 확인 (본인 게시물이고 게스트인 경우)
-        const isGuestPost = isMyPost && window.currentUser && window.currentUser.isAnonymous;
-        
-        // 일자 정보
-        const photoDate = photo.date ? new Date(photo.date + 'T00:00:00') : new Date(photo.timestamp);
-        const dateStr = photoDate.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
-        const timeStr = photo.time || new Date(photo.timestamp).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' });
-        
-        // 끼니 구분 정보 및 색상
-        let mealLabel = '';
-        let mealLabelStyle = '';
-        if (photo.slotId) {
-            const slot = SLOTS.find(s => s.id === photo.slotId);
-            mealLabel = slot ? slot.label : '';
-            if (slot) {
-                const slotStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
-                mealLabelStyle = `${slotStyle.text} ${slotStyle.iconBg}`;
-            }
-        }
-        
-        // 베스트 공유인지 확인
-        const isBestShare = photo.type === 'best';
-        
-        // 일간보기 공유인지 확인
-        const isDailyShare = photo.type === 'daily';
-        
-        // 인사이트 공유인지 확인
-        const isInsightShare = photo.type === 'insight';
-        
-        // 간식인지 확인 (slotId로 간식 타입 확인)
-        const isSnack = photo.slotId && SLOTS.find(s => s.id === photo.slotId)?.type === 'snack';
-        
-        // Comment 정보 가져오기
-        // 일간보기 공유는 하루 전체 comment를 caption에 표시하므로, 개별 식사 comment는 사용하지 않음
-        let comment = '';
-        if (!isDailyShare) {
-            // 1. photo 객체에 comment가 있으면 우선 사용
-            // 2. entryId가 있고 mealHistoryMap에서 찾을 수 있으면 사용 (O(1) 조회로 최적화)
-            if (photo.comment) {
-                comment = photo.comment;
-            } else if (entryId && mealHistoryMap.has(entryId)) {
-                const mealRecord = mealHistoryMap.get(entryId);
-                if (mealRecord) {
-                    comment = mealRecord.comment || '';
-                }
-            }
-            
-            // entryId가 없어도 comment가 있거나, 같은 날짜/슬롯의 기록을 찾아서 entryId 찾기
-            // 이 부분은 entryId가 없는 경우에만 실행되므로 드물지만, 최적화 필요 시 date+slotId 기반 Map 추가 고려
-            if (!entryId && window.mealHistory && photo.date && photo.slotId) {
-                // photo의 comment나 다른 정보로 mealHistory에서 매칭되는 기록 찾기
-                const matchingRecord = window.mealHistory.find(m => 
-                    m.date === photo.date && 
-                    m.slotId === photo.slotId &&
-                    (photo.comment ? (m.comment === photo.comment) : true)
-                );
-                if (matchingRecord) {
-                    entryId = matchingRecord.id;
-                    if (!comment && matchingRecord.comment) {
-                        comment = matchingRecord.comment;
-                    }
-                }
-            }
-        }
-        
-        let caption = '';
-        if (isBestShare) {
-            // 베스트 공유인 경우: comment만 표시
-            if (photo.comment) {
-                caption = photo.comment;
-            }
-        } else if (isDailyShare) {
-            // 일간보기 공유인 경우: comment만 표시
-            if (photo.comment) {
-                caption = photo.comment;
-            }
-        } else if (isInsightShare) {
-            // 인사이트 공유인 경우: comment만 표시
-            if (photo.comment) {
-                caption = photo.comment;
-            }
-        } else if (isSnack) {
-            // 간식인 경우: "메뉴 @ 장소" 형식 (장소만 있으면 "@ 장소")
-            const menu = photo.menuDetail || photo.snackType;
-            if (photo.place && menu) {
-                caption = `<span>${escapeHtml(menu)}</span> @ <span>${escapeHtml(photo.place)}</span>`;
-            } else if (photo.place) {
-                caption = `@ <span>${escapeHtml(photo.place)}</span>`;
-            } else if (menu) {
-                caption = `<span>${escapeHtml(menu)}</span>`;
-            } else {
-                caption = escapeHtml('간식');
-            }
-        } else {
-            // 일반 식사인 경우: "메뉴 @ 장소" 형식 (앨범 캡션은 .gallery-caption-menu-place에서 크기·굵기 적용)
-            if (photo.place && photo.menuDetail) {
-                caption = `<span>${escapeHtml(photo.menuDetail)}</span> @ <span>${escapeHtml(photo.place)}</span>`;
-            } else if (photo.place) {
-                caption = `@ <span>${escapeHtml(photo.place)}</span>`;
-            } else if (photo.menuDetail) {
-                caption = `<span>${escapeHtml(photo.menuDetail)}</span>`;
-            } else if (photo.mealType) {
-                caption = escapeHtml(photo.mealType);
-            }
-        }
-        
-        // 사진들 HTML 생성 (인스타그램 스타일 - 좌우 여백 없이, 구분감 있게)
-        // 베스트 공유, 일간보기 공유, 인사이트 공유는 aspect-ratio를 유지하지 않고 원본 비율 사용
-        const photosHtml = photoGroup.map((p, idx) => {
-            const isBest = p.type === 'best';
-            const isDaily = p.type === 'daily';
-            const isInsight = p.type === 'insight';
-            return `
-            <div class="flex-shrink-0 w-full snap-start ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
-                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full ${(isBest || isDaily || isInsight) ? 'h-auto' : 'h-auto'} ${(isBest || isDaily || isInsight) ? 'object-contain' : 'object-cover'}" ${(isBest || isDaily || isInsight) ? 'style="display: block; width: 100%; height: auto; vertical-align: top;"' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
-            </div>
-        `;
-        }).join('');
-        
-        const postId = getPostIdFromPhotoGroup(photoGroup);
-        const groupKey = postId; // 흔적 필터/신고 등에서 사용
-        const alternatePostIds = photoGroup.map(p => p.id).filter(Boolean).join(',');
-        const userDisplay = getDisplayProfile(photo.userId, { nickname: photo.userNickname, icon: photo.userIcon, photoUrl: photo.userPhotoUrl });
-        const hasBody = (caption && (isBestShare || isDailyShare || isInsightShare)) || (comment && !isBestShare && !isDailyShare && !isInsightShare);
-        return `
-            <div class="mb-2 bg-white border-b border-slate-200 instagram-post ${!hasBody ? 'post-no-body' : ''}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}">
-                <div class="px-3 py-3 flex items-center gap-1 relative">
-                    ${userDisplay.photoUrl ? `
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${userDisplay.photoUrl}); background-size: cover; background-position: center;">
-                            ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
-                        </div>
-                    ` : `
-                        <div class="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0 border-2 border-slate-300">
-                            ${isGuestPost ? '게' : (userDisplay.icon || '🐻')}
-                        </div>
-                    `}
-                    <div class="flex-1 min-w-0">
-                        <div class="text-sm font-bold text-slate-800 cursor-pointer hover:text-slate-600 transition-colors" onclick="window.filterGalleryByUser('${photo.userId}', '${escapeHtml(userDisplay.nickname)}')">${userDisplay.nickname}</div>
-                        <div class="flex items-center gap-2">
-                            <div class="text-xs text-slate-400">${dateStr}</div>
-                            ${mealLabel ? `<div class="text-[10px] font-bold ${mealLabelStyle || 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-full whitespace-nowrap">${mealLabel}</div>` : ''}
-                        </div>
-                    </div>
-                    <div class="relative">
-                        <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-is-insight="${isInsightShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-date-range-text="${photo.dateRangeText || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
-                            <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="relative overflow-hidden ${(isDailyShare || isInsightShare) ? 'bg-white' : 'bg-slate-100'}">
-                    <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gallery-photo-scroll" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
-                        ${photosHtml}
-                    </div>
-                    ${photoCount > 1 ? `
-                        <div class="absolute top-3 right-3 bg-black/60 text-white text-xs font-bold px-2.5 py-1 rounded-full backdrop-blur-sm">
-                            <span class="photo-counter-current">1</span>/${photoCount}
-                        </div>
-                    ` : ''}
-                </div>
-                ${!isBestShare && !isDailyShare && !isInsightShare && caption ? `
-                <div class="gallery-caption-menu-place px-6 py-1 text-white" style="background-color: #047857;">
-                    ${caption}
-                </div>
-                ` : ''}
-                <div class="feed-post-actions px-6 py-3">
-                    <!-- 좋아요, 댓글, 북마크 버튼 (아래 보더로 본문과 구분, 좌우 길이 통일을 위해 -mx-6 px-6) -->
-                    <div class="feed-post-buttons flex items-center justify-between mb-2 pb-2 -mx-6 px-6 border-b border-slate-200">
-                        <div class="flex items-center gap-4">
-                            <button onclick="window.toggleLike('${postId}')" class="post-like-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
-                                <i class="fa-regular fa-heart text-2xl text-slate-800 post-like-icon"></i>
-                                <span class="post-like-count text-sm font-bold text-slate-800" data-post-id="${postId}"></span>
-                            </button>
-                            <button onclick="window.toggleCommentInput('${postId}')" class="post-comment-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
-                                <i class="fa-regular fa-comment text-2xl text-slate-800 post-comment-icon"></i>
-                                <span class="post-comment-count text-sm font-bold text-slate-800" data-post-id="${postId}"></span>
-                            </button>
-                        </div>
-                        <button onclick="window.toggleBookmark('${postId}')" class="post-bookmark-btn active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
-                            <i class="fa-regular fa-bookmark text-2xl text-slate-800 post-bookmark-icon"></i>
-                        </button>
-                    </div>
-                    <!-- 캡션 (베스트/일간/인사이트만: 코멘트 표시) -->
-                    ${caption && (isBestShare || isDailyShare || isInsightShare) ? `<div class="mb-2 text-sm text-slate-800">${caption}</div>` : ''}
-                    <!-- 기존 코멘트 (원글) - 베스트 공유, 일간보기 공유, 인사이트 공유는 제외 (이미 caption에 표시됨) -->
-                    ${comment && !isBestShare && !isDailyShare && !isInsightShare ? (() => {
-                        // comment의 줄바꿈 개수 확인
-                        const lineBreaks = (comment.match(/\n/g) || []).length;
-                        // 대략적인 텍스트 길이로도 확인 (한 줄에 약 30자 정도로 가정)
-                        const estimatedLines = Math.ceil(comment.length / 30);
-                        const shouldShowToggle = lineBreaks >= 2 || estimatedLines > 2;
-                        const toggleBtnClass = shouldShowToggle ? '' : 'hidden';
-                        
-                        return `
-                        <div class="mb-2 text-sm text-slate-800">
-                            <span id="post-caption-collapsed-${groupIdx}" class="whitespace-pre-line line-clamp-2 inline">${escapeHtml(comment).replace(/\n/g, '<br>')}</span>
-                            <button onclick="window.togglePostCaption(${groupIdx})" id="post-caption-toggle-${groupIdx}" class="inline text-xs text-emerald-600 font-bold hover:text-emerald-700 active:text-emerald-800 transition-colors ml-1 ${toggleBtnClass}">더 보기</button>
-                            <div id="post-caption-expanded-${groupIdx}" class="whitespace-pre-line hidden">
-                                ${escapeHtml(comment).replace(/\n/g, '<br>')}
-                                <button onclick="window.togglePostCaption(${groupIdx})" id="post-caption-collapse-${groupIdx}" class="inline text-xs text-emerald-600 font-bold hover:text-emerald-700 active:text-emerald-800 transition-colors ml-1">접기</button>
-                            </div>
-                        </div>
-                    `;
-                    })() : ''}
-                    <!-- 댓글 영역 (본문 있을 때만 상단 구분선, 없으면 아이콘행 보더 하나만 표시) -->
-                    <div class="comment-section comments-empty ${((caption && (isBestShare || isDailyShare || isInsightShare)) || (comment && !isBestShare && !isDailyShare && !isInsightShare)) ? 'border-t border-slate-200 ' : ''}-mx-6 px-6 pt-1.5 mt-1" id="comment-section-${postId}">
-                        <!-- 댓글 목록 (흰색) -->
-                        <div class="post-comments-list mb-1 rounded-lg py-2 bg-white" data-post-id="${postId}" id="comments-list-${postId}">
-                            <!-- 댓글들이 동적으로 추가됨 -->
-                        </div>
-                        <!-- 댓글 더보기 -->
-                        <button id="view-comments-${postId}" class="hidden text-xs text-slate-500 font-bold mb-1 hover:text-slate-700 active:text-slate-900 transition-colors" onclick="window.viewAllComments('${postId}')">
-                            댓글 더보기
-                        </button>
-                        <!-- 댓글 입력 영역 -->
-                        <div id="comment-input-${postId}" class="hidden mt-1 py-3 -mx-6 px-6">
-                            <div class="relative">
-                                <input type="text" id="comment-text-${postId}" placeholder="댓글을 입력하세요..." class="w-full px-3 py-2 pr-16 border border-slate-300 rounded-lg text-sm focus:outline-none bg-slate-100" onkeypress="if(event.key === 'Enter') window.submitComment('${postId}')">
-                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold cursor-pointer hover:text-emerald-700" ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); window.submitComment('${postId}')" onclick="window.submitComment('${postId}')">게시</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-    
-    // 갤러리 이벤트 리스너 설정 함수
-    function setupGalleryEventListeners(container, sortedGroups, abortSignal = null) {
-        // 사진 카운터 업데이트를 위한 이벤트 리스너 추가
-        const scrollContainers = container.querySelectorAll('.gallery-photo-scroll');
-        scrollContainers.forEach((scrollContainer, idx) => {
-            const counter = scrollContainer.parentElement.querySelector('.photo-counter-current');
-            const photos = scrollContainer.querySelectorAll('div');
-            const photoCount = sortedGroups[idx]?.length || 0;
-            // 스크롤 종료 시 가장 가까운 사진으로 스냅 (한장한장 구분감)
-            if (photoCount > 1) {
-                // 웹(데스크톱): 마우스 드래그로 사진 스와이프 (document에 리스너 등록해 빠른 드래그도 포착)
-                let isDragging = false;
-                let startX = 0;
-                let startScrollLeft = 0;
-                scrollContainer.style.cursor = 'grab';
-                const onMouseMove = (e) => {
-                    if (!isDragging) return;
-                    e.preventDefault();
-                    const dx = e.pageX - startX;
-                    scrollContainer.scrollLeft = Math.max(0, Math.min(scrollContainer.scrollWidth - scrollContainer.clientWidth, startScrollLeft - dx));
-                };
-                const endDrag = () => {
-                    if (!isDragging) return;
-                    isDragging = false;
-                    scrollContainer.style.cursor = 'grab';
-                    scrollContainer.style.userSelect = '';
-                    document.removeEventListener('mousemove', onMouseMove, { capture: true });
-                    document.removeEventListener('mouseup', endDrag, { capture: true });
-                };
-                scrollContainer.addEventListener('mousedown', (e) => {
-                    if (e.button !== 0) return;
-                    e.preventDefault();
-                    isDragging = true;
-                    startX = e.pageX;
-                    startScrollLeft = scrollContainer.scrollLeft;
-                    scrollContainer.style.cursor = 'grabbing';
-                    scrollContainer.style.userSelect = 'none';
-                    document.addEventListener('mousemove', onMouseMove, { capture: true, passive: false });
-                    document.addEventListener('mouseup', endDrag, { capture: true });
-                }, { passive: false });
-
-                const snapToNearest = () => {
-                    const sl = scrollContainer.scrollLeft;
-                    const cw = scrollContainer.clientWidth;
-                    let nearest = 0;
-                    let minDist = Infinity;
-                    photos.forEach((p, i) => {
-                        const pos = p.offsetLeft + p.offsetWidth / 2;
-                        const d = Math.abs(sl + cw / 2 - pos);
-                        if (d < minDist) { minDist = d; nearest = i; }
-                    });
-                    const target = photos[nearest]?.offsetLeft ?? 0;
-                    if (Math.abs(sl - target) > 2) {
-                        scrollContainer.scrollTo({ left: target, behavior: 'smooth' });
-                    }
-                };
-                let snapTimeout = null;
-                const onScrollEnd = () => {
-                    clearTimeout(snapTimeout);
-                    snapTimeout = setTimeout(snapToNearest, 80);
-                };
-                scrollContainer.addEventListener('scroll', onScrollEnd, { passive: true });
-                if ('onscrollend' in scrollContainer) {
-                    scrollContainer.addEventListener('scrollend', snapToNearest);
-                }
-                if (abortSignal) {
-                    abortSignal.addEventListener('abort', () => {
-                        clearTimeout(snapTimeout);
-                        scrollContainer.removeEventListener('scroll', onScrollEnd);
-                        scrollContainer.removeEventListener('scrollend', snapToNearest);
-                    });
-                }
-            }
-            if (counter && photoCount > 1) {
-                const updateCounter = () => {
-                    const containerWidth = scrollContainer.clientWidth;
-                    const scrollLeft = scrollContainer.scrollLeft;
-                    let currentIndex = 1;
-                    photos.forEach((photo, photoIdx) => {
-                        const photoLeft = photo.offsetLeft;
-                        const photoCenter = photoLeft + photo.offsetWidth / 2;
-                        const viewportLeft = scrollLeft;
-                        const viewportRight = scrollLeft + containerWidth;
-                        if (photoCenter >= viewportLeft && photoCenter <= viewportRight) {
-                            currentIndex = photoIdx + 1;
-                        }
-                    });
-                    counter.textContent = currentIndex;
-                };
-                
-                const abortController = new AbortController();
-                scrollContainer.addEventListener('scroll', updateCounter, { signal: abortController.signal });
-                galleryScrollListeners.set(scrollContainer, abortController);
-                updateCounter();
-            }
-        });
-        
-        // 피드 옵션 버튼: 이벤트 위임 (레이지 로드된 게시글 포함 모두 동작)
-        if (window.showFeedOptions && !container._galleryFeedOptionsDelegate) {
-            const delegateHandler = (e) => {
-                const btn = e.target.closest('.feed-options-btn');
-                if (!btn) return;
-                e.stopPropagation();
-                e.preventDefault();
-                const entryId = btn.getAttribute('data-entry-id') || '';
-                const photoUrls = btn.getAttribute('data-photo-urls') || '';
-                const isBestShare = btn.getAttribute('data-is-best') === 'true';
-                const photoDate = btn.getAttribute('data-photo-date') || '';
-                const photoSlotId = btn.getAttribute('data-photo-slot-id') || '';
-                const isDailyShare = btn.getAttribute('data-is-daily') === 'true';
-                const isInsightShare = btn.getAttribute('data-is-insight') === 'true';
-                const dateRangeText = btn.getAttribute('data-date-range-text') || '';
-                const postId = btn.getAttribute('data-post-id') || '';
-                const authorUserId = btn.getAttribute('data-author-user-id') || '';
-                window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId, isInsightShare, dateRangeText);
-            };
-            container._galleryFeedOptionsDelegate = delegateHandler;
-            container.addEventListener('click', delegateHandler);
-        }
-        
-        // 버튼 상태 업데이트 (로그인 여부에 따라)
-        const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
-        container.querySelectorAll('[data-requires-login="true"]').forEach(btn => {
-            if (!isLoggedIn) {
-                btn.classList.add('opacity-50', 'cursor-not-allowed');
-                btn.title = '로그인이 필요합니다';
-                if (btn.tagName === 'INPUT') {
-                    btn.disabled = true;
-                    btn.placeholder = '로그인 후 댓글을 달아보세요';
-                }
-            } else {
-                btn.classList.remove('opacity-50', 'cursor-not-allowed');
-                btn.title = '';
-                if (btn.tagName === 'INPUT') {
-                    btn.disabled = false;
-                    btn.placeholder = '댓글 달기...';
-                }
-            }
-        });
-    }
     
     // Lazy Post Renderer 설정 함수 (스크롤 시 포스트 렌더링)
     function setupLazyPostRenderer(container, sortedGroups, initialCount, abortSignal = null) {
@@ -2152,9 +2105,12 @@ export async function renderGallery(options = {}) {
         // Placeholder를 관찰하는 Observer (전역 변수에 저장하여 나중에 정리 가능)
         placeholderObserver = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
-                // AbortSignal 체크
+                // AbortSignal 체크 (새 렌더 시작 시 placeholderObserver가 null일 수 있음)
                 if (abortSignal && abortSignal.aborted) {
-                    placeholderObserver.disconnect();
+                    if (placeholderObserver) {
+                        placeholderObserver.disconnect();
+                        placeholderObserver = null;
+                    }
                     return;
                 }
                 
@@ -2163,9 +2119,12 @@ export async function renderGallery(options = {}) {
                     
                     // 배치로 포스트 렌더링
                     function renderNextLazyBatch() {
-                        // AbortSignal 체크
+                        // AbortSignal 체크 (새 렌더 시작 시 placeholderObserver가 null일 수 있음)
                         if (abortSignal && abortSignal.aborted) {
-                            placeholderObserver.disconnect();
+                            if (placeholderObserver) {
+                                placeholderObserver.disconnect();
+                                placeholderObserver = null;
+                            }
                             isRendering = false;
                             return;
                         }
@@ -2175,16 +2134,20 @@ export async function renderGallery(options = {}) {
                             if (placeholder && placeholder.parentNode) {
                                 placeholder.remove();
                             }
-                            placeholderObserver.disconnect();
-                            placeholderObserver = null;
+                            if (placeholderObserver) {
+                                placeholderObserver.disconnect();
+                                placeholderObserver = null;
+                            }
                             isRendering = false;
                             return;
                         }
                         
-                        // DOM 존재 확인
+                        // DOM 존재 확인 (새 렌더로 placeholder가 제거되었을 수 있음)
                         if (!document.contains(placeholder)) {
-                            placeholderObserver.disconnect();
-                            placeholderObserver = null;
+                            if (placeholderObserver) {
+                                placeholderObserver.disconnect();
+                                placeholderObserver = null;
+                            }
                             isRendering = false;
                             return;
                         }
@@ -2217,8 +2180,10 @@ export async function renderGallery(options = {}) {
                             if (placeholder && placeholder.parentNode) {
                                 placeholder.remove();
                             }
-                            placeholderObserver.disconnect();
-                            placeholderObserver = null;
+                            if (placeholderObserver) {
+                                placeholderObserver.disconnect();
+                                placeholderObserver = null;
+                            }
                         }
                         
                         // 다음 배치 렌더링 (다음 프레임)

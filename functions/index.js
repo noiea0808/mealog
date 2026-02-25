@@ -1705,15 +1705,21 @@ exports.migrateSharedPhotosTimestamp = onCall({ region: REGION }, async (request
     const data = docSnap.data();
     const ts = data.timestamp;
 
-    // 이미 Firestore Timestamp면 스킵
-    if (ts && (typeof ts.toDate === 'function' || (ts.seconds != null && typeof ts.seconds === 'number'))) {
+    // Firestore Timestamp 객체(toDate 메서드 있음)만 스킵. plain object {seconds, nanoseconds}는 Map으로 저장되어 orderBy 문제 유발 → 변환 필요
+    if (ts && typeof ts.toDate === 'function') {
       continue;
     }
 
     let newTimestamp = null;
-    if (typeof ts === 'string') {
+    if (ts && ts.seconds != null && typeof ts.seconds === 'number') {
+      newTimestamp = new Timestamp(ts.seconds, ts.nanoseconds || 0);
+    }
+    if (!newTimestamp && typeof ts === 'string') {
       const ms = new Date(ts).getTime();
       if (!isNaN(ms)) newTimestamp = Timestamp.fromDate(new Date(ms));
+    }
+    if (!newTimestamp && typeof ts === 'number' && !isNaN(ts)) {
+      newTimestamp = Timestamp.fromDate(new Date(ts));
     }
     if (!newTimestamp && (data.date || data.time)) {
       const dStr = String(data.date || '').trim();

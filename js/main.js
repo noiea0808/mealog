@@ -1482,16 +1482,15 @@ window.switchMainTab = (tab) => {
         // 설정 탭 전환 시 폼 채우기는 nav-settings 클릭 시 openSettings()에서 수행
     } else if (tab === 'gallery') {
         document.body.classList.remove('bottom-nav-scroll-hidden');
-        // 갤러리: 동기화 먼저 수행 후 로드 (레이스: sync 완료 전 load가 덮어쓰는 문제 방지)
+        // 갤러리: 피드 먼저 로드 후 화면 표시, sync는 백그라운드에서 실행 (진입 속도 개선)
         if (!appState.galleryFilterUserId) {
             // 진입 시 기존 피드 비우고 서버에서 새로 로드 (캐시된 구식 데이터 표시 방지)
             window.sharedPhotosFeed = [];
             appState.sharedPhotosFeedLastDoc = null;
             appState.sharedPhotosFeedHasMore = false;
-            // 피드 로드와 동기화를 병렬 실행 → 초기 표시 속도 개선 (sync 대기 없이 바로 표시)
-            const loadPromise = loadSharedPhotosPage(10);
-            const syncPromise = syncOrphanedSharesToMoment();
-            loadPromise
+            showLoading('모먼트 불러오는 중...');
+            // 1) 피드 먼저 로드 → 즉시 렌더링 (sync 대기 없음)
+            loadSharedPhotosPage(10)
                 .then(({ docs, lastDoc, hasMore }) => {
                     window.sharedPhotosFeed = docs;
                     appState.sharedPhotosFeedLastDoc = lastDoc;
@@ -1501,20 +1500,23 @@ window.switchMainTab = (tab) => {
                 .catch(e => {
                     console.error('공유 사진 로드 실패:', e);
                     renderGallery();
+                })
+                .finally(() => {
+                    hideLoading();
                 });
-            syncPromise.then((synced) => {
+            // 2) 고아 공유 동기화는 백그라운드에서 실행 (완료 시 새 항목 있으면 피드 갱신)
+            syncOrphanedSharesToMoment().then((synced) => {
                 if (synced > 0) {
                     updateTimelineShareIndicators();
                     showToast('모먼트에 반영되었습니다.', 'success');
-                    // 동기화로 새 항목 추가됐으면 피드 재로드
                     loadSharedPhotosPage(10).then(({ docs, lastDoc, hasMore }) => {
                         window.sharedPhotosFeed = docs;
                         appState.sharedPhotosFeedLastDoc = lastDoc;
                         appState.sharedPhotosFeedHasMore = hasMore;
-                        renderGallery();
-                    }).catch(() => {});
+                        if (appState.currentTab === 'gallery') renderGallery();
+                    });
                 }
-            }).catch(() => {});
+            });
         } else {
             // 사용자 필터 모드: renderGallery가 내부에서 getSharedPhotosByUser 호출
             renderGallery();
@@ -4199,17 +4201,16 @@ window.Mealog.loadMyShares = loadMyShares;
 window.Mealog.loadSharedPhotosPage = loadSharedPhotosPage;
 
 /** meal 문서에는 sharedPhotos가 있는데 sharedPhotos 컬렉션에 없으면 동기화 (모먼트 피드 반영)
- * 2월 등 과거 공유: mealHistory가 14일만 로드되어 고아가 못 찾아지던 문제 → 동기화 전 60일 확보 */
+ * 14일: 진입 속도 개선. 과거 고아는 당겨서 새로고침 시 동기화 */
 async function syncOrphanedSharesToMoment(mySharesFromCaller = null) {
     if (!window.currentUser || window.currentUser.isAnonymous) return 0;
-    // 동기화 대상 확대: 14일 → 60일 (2월 공유 등 과거 고아 게시물 포함)
     const today = new Date();
-    const sixtyDaysAgo = new Date(today);
-    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+    const fourteenDaysAgo = new Date(today);
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
     const endStr = today.toISOString().split('T')[0];
-    const startStr = sixtyDaysAgo.toISOString().split('T')[0];
+    const startStr = fourteenDaysAgo.toISOString().split('T')[0];
     try {
-        await loadMealsForDateRange(startStr, endStr);
+        await loadMealsForDateRange(startStr, endStr); // 14일 범위
     } catch (e) {
         console.warn('동기화 전 meal 로드 실패 (계속 진행):', e);
     }
