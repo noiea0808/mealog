@@ -1,5 +1,5 @@
 const { initializeApp } = require('firebase-admin/app');
-const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue, Timestamp } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const { getStorage } = require('firebase-admin/storage');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
@@ -1680,3 +1680,71 @@ exports.processDeleteUserRequests = onCall(
     return { processed, failed, total: snapshot.size, errors: errors.length ? errors : undefined };
   }
 );
+
+/**
+ * sharedPhotos timestamp 마이그레이션 (Callable) - 관리자 전용
+ * 문자열/누락 timestamp → Firestore Timestamp 정규화
+ */
+exports.migrateSharedPhotosTimestamp = onCall({ region: REGION }, async (request) => {
+  const { auth } = request;
+
+  if (!auth || !auth.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+
+  const isAdmin = await isAdminByUid(auth.uid);
+  if (!isAdmin) {
+    throw new HttpsError('permission-denied', '관리자만 실행할 수 있습니다.');
+  }
+
+  const sharedColl = db.collection('artifacts').doc(APP_ID).collection('sharedPhotos');
+  const snapshot = await sharedColl.get();
+  const toMigrate = [];
+
+  for (const docSnap of snapshot.docs) {
+    const data = docSnap.data();
+    const ts = data.timestamp;
+
+    // Firestore Timestamp 객체(toDate 메서드 있음)만 스킵. plain object {seconds, nanoseconds}는 Map으로 저장되어 orderBy 문제 유발 → 변환 필요
+    if (ts && typeof ts.toDate === 'function') {
+      continue;
+    }
+
+    let newTimestamp = null;
+    if (ts && ts.seconds != null && typeof ts.seconds === 'number') {
+      newTimestamp = new Timestamp(ts.seconds, ts.nanoseconds || 0);
+    }
+    if (!newTimestamp && typeof ts === 'string') {
+      const ms = new Date(ts).getTime();
+      if (!isNaN(ms)) newTimestamp = Timestamp.fromDate(new Date(ms));
+    }
+    if (!newTimestamp && typeof ts === 'number' && !isNaN(ts)) {
+      newTimestamp = Timestamp.fromDate(new Date(ts));
+    }
+    if (!newTimestamp && (data.date || data.time)) {
+      const dStr = String(data.date || '').trim();
+      let tStr = String(data.time || '12:00:00').trim();
+      if (tStr && tStr.split(':').length === 2) tStr += ':00';
+      const ms = new Date(dStr + 'T' + tStr).getTime();
+      if (!isNaN(ms)) newTimestamp = Timestamp.fromDate(new Date(ms));
+    }
+    if (!newTimestamp) {
+      newTimestamp = Timestamp.now();
+    }
+    if (newTimestamp) toMigrate.push({ ref: docSnap.ref, timestamp: newTimestamp });
+  }
+
+  const BATCH_SIZE = 500;
+  let updated = 0;
+  for (let i = 0; i < toMigrate.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = toMigrate.slice(i, i + BATCH_SIZE);
+    for (const { ref, timestamp } of chunk) {
+      batch.update(ref, { timestamp });
+      updated++;
+    }
+    await batch.commit();
+  }
+
+  return { updated, total: snapshot.size };
+});

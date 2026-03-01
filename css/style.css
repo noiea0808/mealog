@@ -177,12 +177,10 @@ header .mealog-title {
     border-color: #475569; /* slate-600, 진한 회색 */
 }
 
-/* 앨범 사진 아래 메뉴@장소 캡션: 나눔손글씨 가람연꽃 (폰트 파일 없으면 Nanum Pen Script 폴백) */
-/* 나눔손글씨 가람연꽃 woff2 파일을 assets/fonts/ 에 넣으면 적용됨 (눈누/네이버에서 다운로드) */
+/* 앨범 사진 아래 메뉴@장소 캡션: 나눔손글씨 가람연꽃 (눈누 CDN) */
 @font-face {
     font-family: '나눔손글씨 가람연꽃';
-    src: url('../assets/fonts/NanumGaramYeonkot.woff2') format('woff2'),
-         url('../assets/fonts/NanumGaramYeonkot.woff') format('woff');
+    src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/naverfont_04@1.0/Garam.woff') format('woff');
     font-weight: normal;
     font-style: normal;
     font-display: swap;
@@ -461,6 +459,7 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
 #timelineView {
     padding-left: 0 !important;
     padding-right: 0 !important;
+    background-color: #f8fafc; /* 스와이프 전환 시 흰 공간 대신 배경색 표시 */
 }
 #timelineContainer .card {
     border-radius: 0 !important;
@@ -486,6 +485,33 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
     padding-right: 0 !important;
     padding-top: 0 !important;
     padding-bottom: 0 !important;
+}
+/* 갤러리 당겨서 새로고침 */
+#galleryPullWrap {
+    position: relative;
+    min-height: 100%;
+}
+.gallery-pull-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    height: 48px;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    font-size: 0.875rem;
+    color: #64748b;
+    transition: max-height 0.2s, opacity 0.2s;
+    pointer-events: none;
+}
+.gallery-pull-indicator.pulling,
+.gallery-pull-indicator.refreshing {
+    max-height: 48px;
+    opacity: 1;
+}
+.gallery-pull-indicator .fa-arrows-rotate {
+    font-size: 1rem;
 }
 /* 헤더 우측: .header-right = [돋보기] [알림] 순서 flex, 별도 absolute 없음 */
 /* 헤더 우측 아이콘: 기존 대비 20% 확대 (text-sm 14px→16.8px, text-lg 18px→21.6px) */
@@ -940,6 +966,10 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
 .gallery-photo-scroll > * {
     scroll-snap-stop: always;
     scroll-snap-align: start;
+}
+.gallery-photo-scroll img {
+    -webkit-user-drag: none;
+    user-select: none;
 }
 /* Comment 줄바꿈 및 제한 스타일 */
 .line-clamp-2 {

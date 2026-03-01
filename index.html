@@ -15,15 +15,16 @@
     <meta property="og:url" content="https://mealog.app/">
     <meta property="og:title" content="MEALOG - 함께한, 맛있었던 기억">
     <meta property="og:description" content="우리가 함께한, 맛있었던 기억 - 스마트 식사 타임라인">
-    <meta property="og:image" content="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 630'><rect width='1200' height='630' fill='%23059669'/><text x='50%25' y='50%25' font-size='120' font-family='Arial, sans-serif' font-weight='bold' text-anchor='middle' dominant-baseline='central' fill='white'>MEALOG</text></svg>">
-    <meta property="og:image:width" content="1200">
-    <meta property="og:image:height" content="630">
+    <meta property="og:image" content="https://mealog.app/assets/icon_512.png">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="512">
+    <meta property="og:image:height" content="512">
     
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="MEALOG - 함께한, 맛있었던 기억">
     <meta name="twitter:description" content="우리가 함께한, 맛있었던 기억 - 스마트 식사 타임라인">
-    <meta name="twitter:image" content="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 630'><rect width='1200' height='630' fill='%23059669'/><text x='50%25' y='50%25' font-size='120' font-family='Arial, sans-serif' font-weight='bold' text-anchor='middle' dominant-baseline='central' fill='white'>MEALOG</text></svg>">
+    <meta name="twitter:image" content="https://mealog.app/assets/icon_512.png">
     
     <title>MEALOG-함께한, 맛있었던 기억</title>
     
@@ -206,7 +207,7 @@
             } catch (e) {}
         });
     </script>
-    <script type="module" src="js/main.js?v=3" onerror="console.error('❌ main.js 스크립트 태그 로드 실패'); window.moduleLoadError = {message: '스크립트 태그 로드 실패', quicHint: true};"></script>
+    <script type="module" src="js/main.js?v=4" onerror="console.error('❌ main.js 스크립트 태그 로드 실패'); window.moduleLoadError = {message: '스크립트 태그 로드 실패', quicHint: true};"></script>
     
     <script>
         
@@ -626,9 +627,15 @@
         </div>
 
         <main>
-            <div id="timelineView" class="ui-tab-view"><div id="timelineContainer" class="ui-stack-lg"></div></div>
+            <div id="timelineView" class="ui-tab-view overflow-x-hidden"><div id="timelineContainer" class="ui-stack-lg"></div></div>
             <div id="galleryView" class="hidden ui-tab-view">
-                <div id="galleryContainer" class="ui-surface-soft ui-stack-sm"></div>
+                <div id="galleryPullWrap">
+                    <div id="galleryPullIndicator" class="gallery-pull-indicator" aria-hidden="true">
+                        <i class="fa-solid fa-arrows-rotate text-emerald-500"></i>
+                        <span>당겨서 새로고침</span>
+                    </div>
+                    <div id="galleryContainer" class="ui-surface-soft ui-stack-sm"></div>
+                </div>
             </div>
             <!-- 게시판 목록 뷰 -->
             <div id="boardListView" class="hidden ui-tab-view ui-stack-md relative">

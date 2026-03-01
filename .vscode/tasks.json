@@ -5,6 +5,12 @@
       "label": "Start Web Server",
       "type": "shell",
       "command": "${workspaceFolder}/start.bat",
+      "options": {
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/c"]
+        }
+      },
       "problemMatcher": [],
       "isBackground": true,
       "presentation": {
@@ -17,4 +23,3 @@
     }
   ]
 }
-

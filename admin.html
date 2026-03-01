@@ -494,6 +494,9 @@
                                 <button onclick="window.switchDataSidebar('restaurants')" id="data-sidebar-restaurants" class="w-full px-4 py-3 text-left text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl transition-colors">
                                     <i class="fa-solid fa-utensils mr-2"></i>식당정보
                                 </button>
+                                <button onclick="window.switchDataSidebar('migration')" id="data-sidebar-migration" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-database mr-2"></i>마이그레이션
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -510,9 +513,9 @@
                                             <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
                                         </button>
                                     </div>
-                                    <p class="text-sm text-slate-500 mb-4">카카오 주소검색을 통해 입력된 식당 정보를 확인할 수 있습니다.</p>
-                                    <!-- 필터 버튼 -->
-                                    <div class="flex gap-2">
+                                    <!-- 필터: 입력 방식 + 끼니 구분 -->
+                                    <div class="flex flex-wrap gap-2 items-center">
+                                        <span class="text-xs font-bold text-slate-500 mr-1">입력 방식:</span>
                                         <button onclick="window.setRestaurantFilter('all')" id="restaurant-filter-all" class="restaurant-filter-btn px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold transition-colors">
                                             <i class="fa-solid fa-list mr-1"></i>전체
                                         </button>
@@ -522,15 +525,44 @@
                                         <button onclick="window.setRestaurantFilter('manual')" id="restaurant-filter-manual" class="restaurant-filter-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">
                                             <i class="fa-solid fa-keyboard mr-1"></i>수동입력
                                         </button>
+                                        <span class="text-xs font-bold text-slate-500 ml-4 mr-1">끼니 구분:</span>
+                                        <button onclick="window.setRestaurantSlotFilter('all')" id="restaurant-slot-filter-all" class="restaurant-slot-filter-btn px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold transition-colors">
+                                            <i class="fa-solid fa-utensils mr-1"></i>전체
+                                        </button>
+                                        <button onclick="window.setRestaurantSlotFilter('meal')" id="restaurant-slot-filter-meal" class="restaurant-slot-filter-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">
+                                            <i class="fa-solid fa-bowl-food mr-1"></i>식사
+                                        </button>
+                                        <button onclick="window.setRestaurantSlotFilter('snack')" id="restaurant-slot-filter-snack" class="restaurant-slot-filter-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">
+                                            <i class="fa-solid fa-cookie mr-1"></i>간식
+                                        </button>
                                     </div>
                                 </div>
-                                <div class="p-6">
+                                <div class="p-6 pt-0">
                                     <div id="restaurantsContainer" class="space-y-4">
                                         <div class="text-center py-8 text-slate-400">
                                             <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
                                             <p>로딩 중...</p>
                                         </div>
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- 마이그레이션 -->
+                        <div id="data-main-migration" class="data-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <h2 class="text-lg font-black text-slate-800">데이터 마이그레이션</h2>
+                                    <p class="text-sm text-slate-500 mt-1">sharedPhotos timestamp 정규화 (문자열/plain object → Firestore Timestamp). 전체 문서 대상, 이미 Timestamp인 문서는 스킵.</p>
+                                </div>
+                                <div class="p-6 space-y-4">
+                                    <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                                        <p class="text-sm text-amber-800 font-bold">⚠️ 마이그레이션 전 확인</p>
+                                        <p class="text-xs text-amber-700 mt-1">문자열 timestamp 또는 timestamp 누락 문서를 Firestore Timestamp로 변환합니다. 모먼트 전체보기 정렬 문제 해결용입니다.</p>
+                                    </div>
+                                    <button onclick="window.migrateSharedPhotosTimestamp()" id="migrateSharedPhotosBtn" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                        <i class="fa-solid fa-wand-magic-sparkles mr-2"></i>sharedPhotos timestamp 마이그레이션 실행
+                                    </button>
+                                    <div id="migrationResult" class="text-sm text-slate-600 hidden"></div>
                                 </div>
                             </div>
                         </div>

@@ -1,7 +1,7 @@
 // 모달 및 입력 처리 관련 함수들
 import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from './constants.js';
 import { appState } from './state.js';
-import { setVal, compressImage, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput } from './utils.js';
+import { setVal, compressImage, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage } from './utils.js';
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from './render/index.js';
 import { dbOps } from './db.js';
 import { showToast } from './ui.js';
@@ -393,7 +393,24 @@ export function openModal(date, slotId, entryId = null) {
                 
                 // 공유 인디케이터 표시
                 updateShareIndicator();
-                
+
+                // meal 문서에는 sharedPhotos가 있는데 sharedPhotos 컬렉션(모먼트)에 없으면 동기화 시도
+                if (r.id && r.sharedPhotos && Array.isArray(r.sharedPhotos) && r.sharedPhotos.length > 0 && !r.shareBanned) {
+                    const inSharedColl = window.sharedPhotos?.some?.(p => p.entryId === r.id);
+                    if (!inSharedColl) {
+                        dbOps.sharePhotos(r.sharedPhotos, r).then(() => {
+                            if (!window.sharedPhotos) window.sharedPhotos = [];
+                            const newEntries = r.sharedPhotos.map(url => ({ entryId: r.id, photoUrl: url, userId: window.currentUser?.uid }));
+                            window.sharedPhotos = (window.sharedPhotos || []).filter(p => p.entryId !== r.id).concat(newEntries);
+                            updateTimelineShareIndicators();
+                            if (appState.currentTab === 'gallery') renderGallery();
+                            showToast('모먼트에 반영되었습니다.', 'success');
+                        }).catch((e) => {
+                            console.warn('모먼트 동기화 실패 (무시):', e);
+                        });
+                    }
+                }
+
                 // 태그 활성화 처리 함수
                 const activateTags = () => {
                     // 식사 방식 (mealType)
@@ -806,6 +823,10 @@ export async function saveEntry() {
         const nameMatches = !kakaoPlaceName || (String(placeValForKakao || '').trim() === String(kakaoPlaceName).trim());
         const shouldUseKakaoFields = kakaoPlaceId && !isSk && nameMatches;
 
+        const sourcePhotos = Array.isArray(state.currentPhotos) ? [...state.currentPhotos] : [];
+        const isBase64Photo = (photo) => typeof photo === 'string' && photo.startsWith('data:image');
+        const existingPhotoUrls = sourcePhotos.filter(photo => typeof photo === 'string' && photo && !isBase64Photo(photo));
+
         const record = {
             id: idToUse,
             date: state.currentEditingDate,
@@ -816,7 +837,8 @@ export async function saveEntry() {
             category: getT('categoryChips'),
             placeType: '',
             snackType: getT('snackTypeChips'),
-            photos: state.currentPhotos,
+            // Firestore에는 URL만 저장하고, base64는 저장 직후 Storage로 업로드 후 치환한다.
+            photos: existingPhotoUrls,
             menuDetail: isSk ? '' : (isS ? snackInputVal : menuInputVal),
             place: isSk ? '' : (isS ? (snackPlaceInputVal || appState.selectedSnackPlaceMainTag || '') : placeInputVal),
             comment: isSk ? '' : (isS ? (document.getElementById('snackCommentInput')?.value || '') : (document.getElementById('generalCommentInput')?.value || '')),
@@ -855,16 +877,16 @@ export async function saveEntry() {
         // 공유 금지 체크
         const isShareBanned = record.id ? (window.mealHistory.find(m => m.id === record.id)?.shareBanned === true) : false;
         
+        // 상태 초기화 전에 공유 의사를 보존한다. (수정 저장 + 사진 업로드 시 필요)
+        const wantsToShare = Boolean(state.wantsToShare);
+        
         // 공유할 사진 목록 결정 (단순화: wantsToShare와 currentPhotos만 사용)
-        const photosToShare = (!isShareBanned && state.wantsToShare && state.currentPhotos.length > 0)
-            ? [...state.currentPhotos]  // 공유 활성화: 현재 사진 전체
+        let photosToShare = (!isShareBanned && wantsToShare && existingPhotoUrls.length > 0)
+            ? [...existingPhotoUrls]    // 공유 활성화: 현재 URL 사진 전체
             : [];                        // 공유 비활성화 또는 금지: 빈 배열
         
         // record에 sharedPhotos 필드 추가
         record.sharedPhotos = photosToShare;
-        
-        // 공유 관련 정보를 미리 저장 (상태 초기화 전에)
-        const currentPhotos = [...state.currentPhotos];
         
         console.log('저장 시작:', record);
         
@@ -883,6 +905,79 @@ export async function saveEntry() {
         // 현재 탭과 편집 날짜를 미리 저장 (상태 초기화 전에)
         const currentTab = state.currentTab;
         const editingDate = state.currentEditingDate;
+        
+        // 서버 저장 전 UI를 먼저 갱신하기 위한 낙관 반영용 임시 레코드
+        const wasNewRecord = !record.id;
+        const optimisticTempId = wasNewRecord ? `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` : null;
+        const optimisticSlotKey = `${record.date || ''}__${record.slotId || ''}`;
+        const hasPendingBase64Photos = sourcePhotos.some(isBase64Photo);
+        if (!window._pendingPhotoUploadByEntryId) window._pendingPhotoUploadByEntryId = {};
+        if (!window._pendingPhotoUploadBySlotKey) window._pendingPhotoUploadBySlotKey = {};
+        if (hasPendingBase64Photos) {
+            if (record.id || optimisticTempId) window._pendingPhotoUploadByEntryId[record.id || optimisticTempId] = true;
+            window._pendingPhotoUploadBySlotKey[optimisticSlotKey] = true;
+        }
+        const optimisticRecord = {
+            ...record,
+            id: record.id || optimisticTempId,
+            photos: [...sourcePhotos]
+        };
+        const applyOptimisticMealRecord = () => {
+            if (!window.mealHistory || !Array.isArray(window.mealHistory) || !optimisticRecord.id) return;
+            const byId = window.mealHistory.findIndex(m => m.id === optimisticRecord.id);
+            if (byId >= 0) {
+                window.mealHistory[byId] = optimisticRecord;
+            } else if (!record.id && !isS) {
+                // main 끼니 신규 등록은 같은 날짜/슬롯 카드 교체
+                const sameSlot = window.mealHistory.findIndex(m => m.date === optimisticRecord.date && m.slotId === optimisticRecord.slotId);
+                if (sameSlot >= 0) window.mealHistory[sameSlot] = optimisticRecord;
+                else window.mealHistory.push(optimisticRecord);
+            } else {
+                window.mealHistory.push(optimisticRecord);
+            }
+            window.mealHistory.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''));
+        };
+        applyOptimisticMealRecord();
+        // 공유 아이콘도 서버 반영 전에 즉시 낙관 반영
+        if (optimisticRecord.id && !isShareBanned) {
+            if (!window.sharedPhotos || !Array.isArray(window.sharedPhotos)) window.sharedPhotos = [];
+            if (wantsToShare) {
+                const optimisticShared = (sourcePhotos.length > 0 ? sourcePhotos : ['']).map(url => ({
+                    entryId: optimisticRecord.id,
+                    photoUrl: url || '',
+                    userId: window.currentUser?.uid
+                }));
+                window.sharedPhotos = window.sharedPhotos.filter(p => p.entryId !== optimisticRecord.id).concat(optimisticShared);
+            } else {
+                window.sharedPhotos = window.sharedPhotos.filter(p => p.entryId !== optimisticRecord.id);
+            }
+            updateTimelineShareIndicators();
+        }
+        // 리스너 재렌더가 즉시 덮어쓰지 않도록 짧게 프리즈
+        window._timelineRerenderFreezeUntil = Date.now() + 1200;
+        if (currentTab === 'timeline' && editingDate) {
+            try {
+                if (window.jumpToDate) window.jumpToDate(editingDate);
+                updateTimelineShareIndicators();
+            } catch (e) {
+                console.warn('저장 직후 타임라인 낙관 반영 실패:', e);
+            }
+        } else if (currentTab === 'gallery') {
+            try {
+                renderGallery();
+                const feedContent = document.getElementById('feedContent');
+                if (feedContent) renderFeed();
+            } catch (e) {
+                console.warn('저장 직후 갤러리 낙관 반영 실패:', e);
+            }
+        } else if (currentTab === 'feed') {
+            try {
+                const feedContent = document.getElementById('feedContent');
+                if (feedContent) renderFeed();
+            } catch (e) {
+                console.warn('저장 직후 피드 낙관 반영 실패:', e);
+            }
+        }
         
         // 공유 상태 변경 여부 추적 변수 (함수 스코프)
         // 상태 초기화 전에 originalSharedPhotos 확인
@@ -905,6 +1000,93 @@ export async function saveEntry() {
                 record.id = savedId;
                 console.log('새 레코드 ID 확보:', savedId);
             }
+            // 신규 등록 시 임시 ID를 실제 ID로 치환 (이후 URL 반영 merge가 정상 동작하도록)
+            if (wasNewRecord && optimisticTempId && savedId && window.mealHistory && Array.isArray(window.mealHistory)) {
+                const tempIdx = window.mealHistory.findIndex(m => m.id === optimisticTempId);
+                if (tempIdx >= 0) {
+                    window.mealHistory[tempIdx] = { ...window.mealHistory[tempIdx], id: savedId };
+                }
+            }
+            if (hasPendingBase64Photos && wasNewRecord && optimisticTempId && savedId) {
+                window._pendingPhotoUploadByEntryId[savedId] = true;
+                delete window._pendingPhotoUploadByEntryId[optimisticTempId];
+            }
+            if (wasNewRecord && optimisticTempId && savedId && window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+                window.sharedPhotos = window.sharedPhotos.map(p => (
+                    p.entryId === optimisticTempId ? { ...p, entryId: savedId } : p
+                ));
+                updateTimelineShareIndicators();
+            }
+
+            // 새로 추가한 base64 사진은 문서 ID 확보 후 Storage 업로드 -> URL로 record.photos 치환
+            const base64Photos = sourcePhotos.filter(isBase64Photo);
+            if (base64Photos.length > 0 && record.id && window.currentUser?.uid) {
+                const preloadImage = (url, timeoutMs = 1500) => new Promise((resolve) => {
+                    if (!url || typeof url !== 'string') {
+                        resolve(false);
+                        return;
+                    }
+                    const img = new Image();
+                    let done = false;
+                    const finish = (ok) => {
+                        if (done) return;
+                        done = true;
+                        resolve(ok);
+                    };
+                    const timer = setTimeout(() => finish(false), timeoutMs);
+                    img.onload = () => { clearTimeout(timer); finish(true); };
+                    img.onerror = () => { clearTimeout(timer); finish(false); };
+                    img.src = url;
+                });
+                try {
+                    const uploadedUrls = await Promise.all(
+                        base64Photos.map((photo) => uploadBase64ToStorage(photo, window.currentUser.uid, record.id))
+                    );
+                    let uploadedIndex = 0;
+                    const finalPhotoUrls = sourcePhotos.reduce((acc, photo) => {
+                        if (isBase64Photo(photo)) {
+                            const uploaded = uploadedUrls[uploadedIndex++];
+                            if (uploaded) acc.push(uploaded);
+                            return acc;
+                        }
+                        if (typeof photo === 'string' && photo) acc.push(photo);
+                        return acc;
+                    }, []);
+
+                    record.photos = finalPhotoUrls;
+                    photosToShare = (!isShareBanned && wantsToShare && finalPhotoUrls.length > 0)
+                        ? [...finalPhotoUrls]
+                        : [];
+                    record.sharedPhotos = photosToShare;
+
+                    // 1차 저장 후 URL 기준으로 조용히 한 번 더 저장해 base64 잔존을 방지
+                    await dbOps.save(record, true);
+                    
+                    // URL 이미지가 실제 로드된 뒤에 로컬 카드 사진을 URL로 바꿔 전환 깜빡임을 줄임
+                    await preloadImage(finalPhotoUrls[0]);
+                    if (window.mealHistory && Array.isArray(window.mealHistory)) {
+                        const localIdx = window.mealHistory.findIndex(m => m.id === record.id);
+                        if (localIdx >= 0) {
+                            window.mealHistory[localIdx] = { ...window.mealHistory[localIdx], photos: [...finalPhotoUrls] };
+                        }
+                    }
+                } catch (uploadError) {
+                    console.error('사진 업로드 실패:', uploadError);
+                    showToast("사진 업로드 중 오류가 발생해 일부 사진이 저장되지 않았습니다.", 'error');
+                    // 업로드 실패 시 기존 URL 사진만 유지하여 저장
+                    record.photos = existingPhotoUrls;
+                    photosToShare = (!isShareBanned && wantsToShare && existingPhotoUrls.length > 0)
+                        ? [...existingPhotoUrls]
+                        : [];
+                    record.sharedPhotos = photosToShare;
+                    await dbOps.save(record, true);
+                } finally {
+                    if (record.id) delete window._pendingPhotoUploadByEntryId[record.id];
+                    if (optimisticTempId) delete window._pendingPhotoUploadByEntryId[optimisticTempId];
+                    delete window._pendingPhotoUploadBySlotKey[optimisticSlotKey];
+                }
+            }
+
             console.log('저장 완료');
             // 낙관적 반영: 리스너 도착 전에 mealHistory에 즉시 반영해 스크롤·렌더가 최신 데이터 기준으로 동작
             if (record.id && window.mealHistory && Array.isArray(window.mealHistory)) {
@@ -945,12 +1127,42 @@ export async function saveEntry() {
                         }
                         updateTimelineShareIndicators();
                     }
-                    dbOps.sharePhotos(photosToShare, record).then(() => {
+                    try {
+                        await dbOps.sharePhotos(photosToShare, record);
                         console.log('공유 처리 완료:', { recordId: record.id, 공유설정: hasPhotosToShare });
-                    }).catch((e) => {
+                        // 모먼트 피드에 즉시 반영되도록 sharedPhotosFeed 새로고침 (공유/해제 모두)
+                        const { loadSharedPhotosPage } = await import('./db.js');
+                        const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);
+                        let finalDocs = docs;
+                        if (hasPhotosToShare && photosToShare?.length && record?.id) {
+                            // Firestore 전파 지연 시 새 공유가 안 보이는 문제 방지: 낙관적 병합
+                            const hasOurEntry = docs.some(p => p.entryId === record.id);
+                            if (!hasOurEntry) {
+                                const now = new Date().toISOString();
+                                const profile = window.userSettings?.profile || {};
+                                const optimistic = photosToShare.map((url, idx) => ({
+                                    entryId: record.id, photoUrl: url, userId: window.currentUser?.uid,
+                                    userNickname: profile.nickname || '익명', userIcon: profile.icon || '🐻', userPhotoUrl: profile.photoUrl || null,
+                                    date: record.date || '', slotId: record.slotId || '', time: record.time || '',
+                                    timestamp: now, photoIndex: idx
+                                }));
+                                finalDocs = [...optimistic, ...docs];
+                            }
+                        } else if (hadSharedPhotos && !hasPhotosToShare && record?.id) {
+                            // 공유 해제: 전파 지연 시에도 즉시 피드에서 제거
+                            finalDocs = docs.filter(p => p.entryId !== record.id);
+                        }
+                        window.sharedPhotosFeed = finalDocs;
+                        if (typeof appState !== 'undefined') {
+                            appState.sharedPhotosFeedLastDoc = lastDoc;
+                            appState.sharedPhotosFeedHasMore = hasMore;
+                        }
+                        if (appState.currentTab === 'gallery') renderGallery();
+                        if (document.getElementById('feedContent')) renderFeed();
+                    } catch (e) {
                         console.error("공유 처리 실패:", e);
                         showToast("사진 공유 처리 중 오류가 발생했습니다.", 'error');
-                    });
+                    }
                 }
             }
         } catch (saveError) {
@@ -964,12 +1176,15 @@ export async function saveEntry() {
         setTimeout(() => {
             const tabNow = appState.currentTab;
             if (tabNow === 'timeline' && editingDate) {
-                // 타임라인 탭: 날짜 이동·렌더 후 수정한 날짜 섹션이 상단(트래커 아래)에 오도록 한 번만 스크롤
+                // 타임라인 탭: 등록화면-카드 동기화를 위해 즉시 렌더 후 jumpToDate
                 const wasScrolling = window.isScrolling;
                 try {
                     if (window.isScrolling !== undefined) {
                         window.isScrolling = true; // jumpToDate 내부 스크롤 방지
                     }
+                    // 저장 직후 mealHistory 반영을 위해 먼저 렌더 (list/page 모드 모두)
+                    renderTimeline();
+                    renderMiniCalendar();
                     if (window.jumpToDate) {
                         window.jumpToDate(editingDate);
                     }
@@ -1013,10 +1228,8 @@ export async function saveEntry() {
                     }
                 }
             } else if (tabNow === 'gallery') {
-                // 갤러리 탭: 갤러리 다시 렌더링 (데이터가 업데이트되었으므로)
-                // 리스너가 업데이트될 시간을 주기 위해 약간의 지연 후 렌더링
-                setTimeout(() => {
-                    if (appState.currentTab !== 'gallery') return; // 대기 중 탭 바뀌면 스킵
+                // 갤러리 탭: 낙관 반영을 즉시 보여주고, 리스너 동기화를 위해 한 번 더 갱신
+                const renderGalleryNow = () => {
                     try {
                         renderGallery();
                         const feedContent = document.getElementById('feedContent');
@@ -1024,6 +1237,11 @@ export async function saveEntry() {
                     } catch (e) {
                         console.error('갤러리/피드 렌더링 오류:', e);
                     }
+                };
+                renderGalleryNow();
+                setTimeout(() => {
+                    if (appState.currentTab !== 'gallery') return; // 대기 중 탭 바뀌면 스킵
+                    renderGalleryNow();
                 }, 500);
             } else if (tabNow === 'dashboard') {
                 // 분석 탭: 리스너가 타임라인/갤러리만 갱신하므로 여기서 추가 작업 없음. 탭 전환 시 최신 데이터 반영됨.
