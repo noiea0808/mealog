@@ -825,7 +825,7 @@ async function createMealogLogoImage() {
                 ctx.font = 'bold 72px "Fredoka", "Malgun Gothic", sans-serif';
                 ctx.fillText('mealog', cw / 2, iconY + iconSize + 80);
                 ctx.fillStyle = '#059669';
-                ctx.font = 'bold 52px "나눔손글씨 가람연꽃", "Nanum Garam Yeonkot", "Nanum Pen Script", cursive';
+                ctx.font = 'bold 52px "Nanum Square Round", "Malgun Gothic", "Nanum Pen Script", sans-serif';
                 ctx.fillText('우리가 함께한,', cw / 2, iconY + iconSize + 160);
                 ctx.fillText('맛있었던 기억', cw / 2, iconY + iconSize + 220);
             } catch (_) {}
@@ -837,7 +837,7 @@ async function createMealogLogoImage() {
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText('mealog', cw / 2, ch / 2 - 60);
-            ctx.font = 'bold 52px "Nanum Pen Script", cursive';
+            ctx.font = 'bold 52px "Nanum Square Round", "Malgun Gothic", sans-serif';
             ctx.fillText('우리가 함께한,', cw / 2, ch / 2 + 10);
             ctx.fillText('맛있었던 기억', cw / 2, ch / 2 + 70);
             canvas.toBlob((blob) => resolve(blob ? blob : new Blob([], { type: 'image/jpeg' })), 'image/jpeg', 0.92);
@@ -872,7 +872,7 @@ async function addCaptionToImage(imageBlob, caption) {
                 ctx.textAlign = 'left';
                 ctx.textBaseline = 'middle';
                 const fontSize = Math.round(barH * 0.65);
-                ctx.font = `bold ${fontSize}px "나눔손글씨 가람연꽃", "Nanum Garam Yeonkot", "Nanum Pen Script", cursive`;
+                ctx.font = `${fontSize}px "나눔손글씨 가람연꽃", "Nanum Garam Yeonkot", "Nanum Pen Script", cursive`;
                 const padding = 12;
                 const maxW = cw - padding * 2;
                 let text = caption;
