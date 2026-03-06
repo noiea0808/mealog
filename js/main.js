@@ -3074,7 +3074,7 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
         editBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-pencil text-slate-800 text-lg"></i><span class="font-bold text-slate-800">수정하기</span></div>';
         buttonContainer.appendChild(editBtn);
         
-        // 2. SNS로 공유
+        // 2. SNS 공유
         const externalShareBtn = document.createElement('button');
         externalShareBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
         externalShareBtn.type = 'button';
@@ -3095,7 +3095,7 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
                 showToast('공유할 사진이 없습니다.', 'error');
             }
         });
-        externalShareBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-share-nodes text-slate-800 text-lg"></i><span class="font-bold text-slate-800">SNS로 공유</span></div>';
+        externalShareBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-share-nodes text-slate-800 text-lg"></i><span class="font-bold text-slate-800">SNS 공유</span></div>';
         buttonContainer.appendChild(externalShareBtn);
         
         // 3. 공유 취소
@@ -3131,7 +3131,7 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
                 showToast('공유할 사진이 없습니다.', 'error');
             }
         });
-        externalShareBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-share-nodes text-slate-800 text-lg"></i><span class="font-bold text-slate-800">SNS로 공유</span></div>';
+        externalShareBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-share-nodes text-slate-800 text-lg"></i><span class="font-bold text-slate-800">SNS 공유</span></div>';
         buttonContainer.appendChild(externalShareBtn);
         
         const reportBtn = document.createElement('button');
