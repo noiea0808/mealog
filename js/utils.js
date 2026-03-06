@@ -778,12 +778,65 @@ export function toLocalDateString(date) {
 }
 
 /**
+ * 이미지에 메뉴@장소 캡션을 하단에 오버레이하여 Blob 반환
+ * @param {Blob} imageBlob - 원본 이미지 Blob
+ * @param {string} caption - 캡션 텍스트 (메뉴 @ 장소)
+ * @returns {Promise<Blob>}
+ */
+async function addCaptionToImage(imageBlob, caption) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(imageBlob);
+        img.onload = () => {
+            try {
+                const cw = img.width;
+                const ch = img.height;
+                const barH = Math.max(36, Math.min(48, Math.floor(cw * 0.08)));
+                const canvas = document.createElement('canvas');
+                canvas.width = cw;
+                canvas.height = ch + barH;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                ctx.fillStyle = '#047857';
+                ctx.fillRect(0, ch, cw, barH);
+                ctx.fillStyle = '#ffffff';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const fontSize = Math.max(12, Math.min(18, Math.floor(cw * 0.04)));
+                ctx.font = `bold ${fontSize}px "Malgun Gothic", "Nanum Square Round", system-ui, sans-serif`;
+                const maxW = cw - 24;
+                let text = caption;
+                if (ctx.measureText(text).width > maxW) {
+                    while (text.length > 1 && ctx.measureText(text + '…').width > maxW) text = text.slice(0, -1);
+                    text = text + '…';
+                }
+                ctx.fillText(text, cw / 2, ch + barH / 2);
+                canvas.toBlob((blob) => {
+                    URL.revokeObjectURL(url);
+                    resolve(blob || imageBlob);
+                }, imageBlob.type || 'image/jpeg', 0.92);
+            } catch (err) {
+                URL.revokeObjectURL(url);
+                resolve(imageBlob);
+            }
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            resolve(imageBlob);
+        };
+        img.src = url;
+    });
+}
+
+/**
  * 모먼트(앨범) 사진을 카카오톡·인스타그램 등 외부 앱으로 공유합니다.
  * Web Share API (navigator.share) 사용. 지원 시 네이티브 공유 시트가 열립니다.
- * @param {string} photoUrls - 쉼표로 구분된 사진 URL 또는 URL 배열
+ * caption이 있으면 모먼트처럼 이미지 하단에 메뉴@장소를 녹색 바로 오버레이합니다.
+ * @param {string|string[]} photoUrls - 쉼표로 구분된 사진 URL 또는 URL 배열
+ * @param {string} [caption] - 메뉴@장소 캡션 (있으면 이미지 하단에 오버레이)
  * @returns {Promise<boolean>} - 공유 성공 여부
  */
-export async function sharePhotosToExternal(photoUrls) {
+export async function sharePhotosToExternal(photoUrls, caption = '') {
     const urls = typeof photoUrls === 'string'
         ? photoUrls.split(',').map(u => u.trim()).filter(Boolean)
         : Array.isArray(photoUrls) ? photoUrls.filter(Boolean) : [];
@@ -796,13 +849,17 @@ export async function sharePhotosToExternal(photoUrls) {
         return false;
     }
 
+    const captionText = (caption || '').trim();
     const files = [];
     try {
         for (let i = 0; i < Math.min(urls.length, 5); i++) {
             const url = urls[i];
             const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
             if (!res.ok) continue;
-            const blob = await res.blob();
+            let blob = await res.blob();
+            if (captionText && blob.type && blob.type.startsWith('image/')) {
+                blob = await addCaptionToImage(blob, captionText);
+            }
             const ext = url.split('.').pop()?.split('?')[0] || 'jpg';
             const mime = blob.type || (ext === 'png' ? 'image/png' : 'image/jpeg');
             files.push(new File([blob], `mealog_${i + 1}.${ext}`, { type: mime, lastModified: Date.now() }));
