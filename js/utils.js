@@ -777,5 +777,63 @@ export function toLocalDateString(date) {
     return `${year}-${month}-${day}`;
 }
 
+/**
+ * 모먼트(앨범) 사진을 카카오톡·인스타그램 등 외부 앱으로 공유합니다.
+ * Web Share API (navigator.share) 사용. 지원 시 네이티브 공유 시트가 열립니다.
+ * @param {string} photoUrls - 쉼표로 구분된 사진 URL 또는 URL 배열
+ * @returns {Promise<boolean>} - 공유 성공 여부
+ */
+export async function sharePhotosToExternal(photoUrls) {
+    const urls = typeof photoUrls === 'string'
+        ? photoUrls.split(',').map(u => u.trim()).filter(Boolean)
+        : Array.isArray(photoUrls) ? photoUrls.filter(Boolean) : [];
+    if (urls.length === 0) return false;
+
+    if (!navigator.share) {
+        if (typeof window.showToast === 'function') {
+            window.showToast('이 기기에서는 공유 기능을 지원하지 않습니다.', 'error');
+        }
+        return false;
+    }
+
+    const files = [];
+    try {
+        for (let i = 0; i < Math.min(urls.length, 5); i++) {
+            const url = urls[i];
+            const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+            if (!res.ok) continue;
+            const blob = await res.blob();
+            const ext = url.split('.').pop()?.split('?')[0] || 'jpg';
+            const mime = blob.type || (ext === 'png' ? 'image/png' : 'image/jpeg');
+            files.push(new File([blob], `mealog_${i + 1}.${ext}`, { type: mime, lastModified: Date.now() }));
+        }
+        if (files.length === 0) {
+            if (typeof window.showToast === 'function') {
+                window.showToast('사진을 불러오지 못했습니다.', 'error');
+            }
+            return false;
+        }
+        const shareData = { files };
+        if (navigator.canShare && !navigator.canShare(shareData)) {
+            if (typeof window.showToast === 'function') {
+                window.showToast('이 기기에서는 이미지 공유를 지원하지 않습니다.', 'error');
+            }
+            return false;
+        }
+        await navigator.share(shareData);
+        if (typeof window.showToast === 'function') {
+            window.showToast('공유되었습니다.', 'success');
+        }
+        return true;
+    } catch (e) {
+        if (e.name === 'AbortError') return false;
+        console.error('sharePhotosToExternal 실패:', e);
+        if (typeof window.showToast === 'function') {
+            window.showToast('공유에 실패했습니다.', 'error');
+        }
+        return false;
+    }
+}
+
 
 

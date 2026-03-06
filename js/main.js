@@ -12,7 +12,7 @@ import { callableFunctions } from './firebase.js';
 import { doc, getDoc, setDoc, collection, query, where, limit, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
-import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput, warmUpIME } from './utils.js';
+import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput, warmUpIME, sharePhotosToExternal } from './utils.js';
 import { 
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
@@ -3033,6 +3033,30 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
     
     const buttonContainer = document.createElement('div');
     buttonContainer.className = 'space-y-2';
+    
+    // 카카오톡·인스타그램으로 공유 (모든 게시물에 표시)
+    const externalShareBtn = document.createElement('button');
+    externalShareBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+    externalShareBtn.type = 'button';
+    externalShareBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        menu.remove();
+        const urls = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(u => u.trim()).filter(Boolean) : [];
+        if (urls.length > 0) {
+            try {
+                showLoading('사진 불러오는 중...');
+                await sharePhotosToExternal(urls);
+            } catch (err) {
+                console.error('외부 공유 실패:', err);
+            } finally {
+                hideLoading();
+            }
+        } else {
+            showToast('공유할 사진이 없습니다.', 'error');
+        }
+    });
+    externalShareBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-share-nodes text-emerald-600 text-lg"></i><span class="font-bold text-slate-800">카카오톡·인스타그램으로 공유</span></div>';
+    buttonContainer.appendChild(externalShareBtn);
     
     if (isMyPost) {
         // 수정하기
