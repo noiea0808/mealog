@@ -7,6 +7,13 @@
     --safe-bottom: max(env(safe-area-inset-bottom, 48px), 48px); 
     --color-primary: #059669; /* 그린: CTA·선택·활성만 사용 */
 }
+/* Web: 핸폰 네비 없음 → safe-bottom 0, 하단 공백 제거 (App 네비 바로 위까지) */
+html.platform-web {
+    --safe-bottom: 0px;
+}
+html.platform-web #navigationBarOverlay {
+    display: none !important;
+}
 /* 레이아웃 시프트 방지 */
 html {
     width: 100%;
@@ -31,6 +38,10 @@ body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #mainAppHe
 body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #statusBarOverlay,
 body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #trackerSection {
     display: none !important;
+}
+/* 밀로그 검색창 포커스 시: 헤더 유지 (입력 텍스트 보이도록) */
+body:has(#searchInput:focus) #mainAppHeader {
+    display: block !important;
 }
 body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) {
     padding-top: 0 !important;
@@ -514,6 +525,17 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
     font-size: 1rem;
 }
 /* 헤더 우측: .header-right = [돋보기] [알림] 순서 flex, 별도 absolute 없음 */
+/* 밀로그 검색 확장 시: header-right가 남은 공간 차지, 검색창이 sub-title까지 확장 */
+#mainAppHeader.timeline-search-expanded .header-right {
+    flex: 1;
+    min-width: 0;
+}
+#mainAppHeader.timeline-search-expanded .timeline-search-wrapper.expanded {
+    flex: 1;
+    min-width: 0;
+    width: auto !important; /* JS width 대신 flex 사용 */
+    margin-left: 20px; /* sub-title과 20px 간격 */
+}
 /* 헤더 우측 아이콘: 기존 대비 20% 확대 (text-sm 14px→16.8px, text-lg 18px→21.6px) */
 .header-right .timeline-search-toggle i,
 .header-right .gallery-trace-btn i {
@@ -558,7 +580,7 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
 }
 .timeline-search-wrapper.expanded {
     min-width: 2rem;
-    /* 너비는 JS updateTimelineSearchExpandWidth에서 설정 */
+    /* timeline-search-expanded 시 flex: 1로 sub-title까지 확장, 그 외에는 JS width */
 }
 .timeline-search-wrapper:not(.expanded) #searchInput {
     flex: 0 0 0 !important;

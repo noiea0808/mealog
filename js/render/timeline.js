@@ -37,6 +37,8 @@ export function updateTimelineShareIndicators() {
 export function renderTimeline() {
     const state = appState;
     if (!window.currentUser || state.currentTab !== 'timeline') return;
+    /* 검색 모드일 때는 타임라인 렌더하지 않음 (검색 결과만 표시) */
+    if (window.currentSearchQuery && window.currentSearchQuery.trim()) return;
     const container = document.getElementById('timelineContainer');
     if (!container) return;
     
