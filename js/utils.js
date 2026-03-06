@@ -788,7 +788,7 @@ async function createMealogLogoImage() {
     canvas.width = cw;
     canvas.height = ch;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#059669';
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, cw, ch);
     const iconUrl = document.querySelector('#landingMealogIcon')?.src || new URL('assets/icon-only.png', window.location.href).href;
     return new Promise((resolve) => {
@@ -819,28 +819,27 @@ async function createMealogLogoImage() {
                 ctx.clip();
                 ctx.drawImage(img, iconX, iconY, iconSize, iconSize);
                 ctx.restore();
-                ctx.fillStyle = '#ffffff';
+                ctx.fillStyle = '#059669';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.font = 'bold 72px "Fredoka", "Malgun Gothic", sans-serif';
                 ctx.fillText('mealog', cw / 2, iconY + iconSize + 80);
-                ctx.fillStyle = 'rgba(209, 250, 229, 0.95)';
-                ctx.font = 'bold 28px "나눔손글씨 가람연꽃", "Nanum Garam Yeonkot", "Nanum Pen Script", cursive';
-                ctx.fillText('우리가 함께한,', cw / 2, iconY + iconSize + 150);
-                ctx.fillText('맛있었던 기억', cw / 2, iconY + iconSize + 190);
+                ctx.fillStyle = '#059669';
+                ctx.font = 'bold 52px "나눔손글씨 가람연꽃", "Nanum Garam Yeonkot", "Nanum Pen Script", cursive';
+                ctx.fillText('우리가 함께한,', cw / 2, iconY + iconSize + 160);
+                ctx.fillText('맛있었던 기억', cw / 2, iconY + iconSize + 220);
             } catch (_) {}
             canvas.toBlob((blob) => resolve(blob ? blob : new Blob([], { type: 'image/jpeg' })), 'image/jpeg', 0.92);
         };
         img.onerror = () => {
-            ctx.fillStyle = '#ffffff';
+            ctx.fillStyle = '#059669';
             ctx.font = 'bold 72px "Fredoka", sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('mealog', cw / 2, ch / 2 - 40);
-            ctx.fillStyle = 'rgba(209, 250, 229, 0.95)';
-            ctx.font = 'bold 28px "Nanum Pen Script", cursive';
-            ctx.fillText('우리가 함께한,', cw / 2, ch / 2 + 20);
-            ctx.fillText('맛있었던 기억', cw / 2, ch / 2 + 60);
+            ctx.fillText('mealog', cw / 2, ch / 2 - 60);
+            ctx.font = 'bold 52px "Nanum Pen Script", cursive';
+            ctx.fillText('우리가 함께한,', cw / 2, ch / 2 + 10);
+            ctx.fillText('맛있었던 기억', cw / 2, ch / 2 + 70);
             canvas.toBlob((blob) => resolve(blob ? blob : new Blob([], { type: 'image/jpeg' })), 'image/jpeg', 0.92);
         };
         img.src = iconUrl;
@@ -861,7 +860,7 @@ async function addCaptionToImage(imageBlob, caption) {
             try {
                 const cw = img.width;
                 const ch = img.height;
-                const barH = Math.max(36, Math.min(48, Math.floor(cw * 0.08)));
+                const barH = Math.max(44, Math.min(56, Math.floor(cw * 0.1)));
                 const canvas = document.createElement('canvas');
                 canvas.width = cw;
                 canvas.height = ch + barH;
@@ -872,7 +871,7 @@ async function addCaptionToImage(imageBlob, caption) {
                 ctx.fillStyle = '#ffffff';
                 ctx.textAlign = 'left';
                 ctx.textBaseline = 'middle';
-                const fontSize = 16;
+                const fontSize = Math.round(barH * 0.65);
                 ctx.font = `bold ${fontSize}px "나눔손글씨 가람연꽃", "Nanum Garam Yeonkot", "Nanum Pen Script", cursive`;
                 const padding = 12;
                 const maxW = cw - padding * 2;
@@ -905,9 +904,10 @@ async function addCaptionToImage(imageBlob, caption) {
  * caption이 있으면 모먼트처럼 이미지 하단에 메뉴@장소를 녹색 바로 오버레이합니다.
  * @param {string|string[]} photoUrls - 쉼표로 구분된 사진 URL 또는 URL 배열
  * @param {string} [caption] - 메뉴@장소 캡션 (있으면 이미지 하단에 오버레이)
+ * @param {boolean} [skipCaptionBar] - true면 베스트/일간/인사이트 등 캡쳐 3종에 하단 캡션바 미적용
  * @returns {Promise<boolean>} - 공유 성공 여부
  */
-export async function sharePhotosToExternal(photoUrls, caption = '') {
+export async function sharePhotosToExternal(photoUrls, caption = '', skipCaptionBar = false) {
     const urls = typeof photoUrls === 'string'
         ? photoUrls.split(',').map(u => u.trim()).filter(Boolean)
         : Array.isArray(photoUrls) ? photoUrls.filter(Boolean) : [];
@@ -928,7 +928,7 @@ export async function sharePhotosToExternal(photoUrls, caption = '') {
             const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
             if (!res.ok) continue;
             let blob = await res.blob();
-            if (captionText && blob.type && blob.type.startsWith('image/')) {
+            if (!skipCaptionBar && captionText && blob.type && blob.type.startsWith('image/')) {
                 blob = await addCaptionToImage(blob, captionText);
             }
             const ext = url.split('.').pop()?.split('?')[0] || 'jpg';

@@ -3085,7 +3085,7 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
             if (urls.length > 0) {
                 try {
                     showLoading('사진 불러오는 중...');
-                    await sharePhotosToExternal(urls, caption);
+                    await sharePhotosToExternal(urls, caption, isBestShare || isDailyShare || isInsightShare);
                 } catch (err) {
                     console.error('외부 공유 실패:', err);
                 } finally {
@@ -3121,7 +3121,7 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
             if (urls.length > 0) {
                 try {
                     showLoading('사진 불러오는 중...');
-                    await sharePhotosToExternal(urls, caption);
+                    await sharePhotosToExternal(urls, caption, isBestShare || isDailyShare || isInsightShare);
                 } catch (err) {
                     console.error('외부 공유 실패:', err);
                 } finally {
