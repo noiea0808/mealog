@@ -54,7 +54,7 @@ import {
     openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, setSettingsProfileType, handlePhotoUpload, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
     openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace
 } from './modals.js';
-import { DEFAULT_SUB_TAGS, REPORT_REASONS } from './constants.js';
+import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from './constants.js';
 import { normalizeUrl } from './utils.js';
 
 // 전역 네임스페이스 객체 생성 (하위 호환성 유지)
@@ -1787,6 +1787,7 @@ window.closeSearch = () => {
     document.getElementById('searchInput')?.blur();
     const inp = document.getElementById('searchInput');
     if (inp) inp.value = '';
+    window.currentSearchQuery = '';
     window.loadedDates = [];
     const tc = document.getElementById('timelineContainer');
     if (tc) tc.innerHTML = '';
@@ -2114,26 +2115,85 @@ window.setGalleryTraceFilter = (value) => {
     }
 };
 
+/** 검색어를 붉은색으로 강조한 HTML 반환 */
+function highlightKeyword(text, keyword) {
+    if (!keyword || !text) return escapeHtml(String(text ?? ''));
+    const k = keyword.toLowerCase();
+    const t = String(text);
+    const idx = t.toLowerCase().indexOf(k);
+    if (idx < 0) return escapeHtml(t);
+    const before = t.slice(0, idx);
+    const match = t.slice(idx, idx + k.length);
+    const after = t.slice(idx + k.length);
+    return escapeHtml(before) + `<span class="text-red-600 font-bold">${escapeHtml(match)}</span>` + highlightKeyword(after, keyword);
+}
 window.handleSearch = (k) => {
     const c = document.getElementById('timelineContainer');
     if (!c) return;
-    if (!k.trim()) {
-            window.loadedDates = [];
+    const q = (k || '').trim();
+    window.currentSearchQuery = q;
+    if (!q) {
+        window.loadedDates = [];
         c.innerHTML = "";
-            renderTimeline(); 
+        renderTimeline();
         return;
     }
-    const res = window.mealHistory.filter(m => 
-        (m.menuDetail?.toLowerCase().includes(k.toLowerCase()) || 
-         m.place?.toLowerCase().includes(k.toLowerCase()))
+    const kw = q.toLowerCase();
+    const res = (window.mealHistory || []).filter(m =>
+        (m.menuDetail?.toLowerCase().includes(kw) ||
+         m.place?.toLowerCase().includes(kw) ||
+         m.category?.toLowerCase().includes(kw) ||
+         (m.withWhomDetail || m.withWhom || '')?.toLowerCase().includes(kw) ||
+         m.snackDetail?.toLowerCase().includes(kw) ||
+         m.snackType?.toLowerCase().includes(kw))
     );
-    c.innerHTML = `<div class="px-2 py-2 text-xs font-bold text-slate-400">결과 ${res.length}건</div>` + 
-        res.map(r => 
-            `<div onclick="window.openModal('${r.date}', '${r.slotId}', '${r.id}')" class="card p-4 mb-4 border border-slate-100 active:scale-[0.98] transition-all">
-                <h4 class="font-bold">${r.menuDetail || r.mealType}</h4>
-                <p class="text-[10px] text-slate-400">${r.date}</p>
-            </div>`
-        ).join('');
+    const fmt = (v) => (v == null || v === '' || v === undefined) ? '-' : String(v);
+    const fmtDate = (d) => {
+        if (!d) return '-';
+        const [y, m, n] = String(d).split('-');
+        return m && n ? `${parseInt(m, 10)}월 ${parseInt(n, 10)}일` : d;
+    };
+    const satietyData = (v) => SATIETY_DATA?.find(d => d.val === parseInt(v, 10));
+    const ratingStarsHtml = (rating) => {
+        const n = rating ? parseInt(rating, 10) : 0;
+        if (n < 1 || n > 5) return '';
+        return `<span class="inline-flex items-center gap-0.5 text-yellow-500" title="만족도 ${n}점">${'<i class="fa-solid fa-star text-sm"></i>'.repeat(n)}</span>`;
+    };
+    const satietyIconHtml = (v) => {
+        const s = satietyData(v);
+        if (!s) return '';
+        return `<span class="inline-flex items-center ${s.color}" title="${escapeHtml(s.label)}"><i class="fa-solid ${s.icon} text-sm"></i></span>`;
+    };
+    const isSnack = (r) => r.slotId === 'snack' || (r.slotId && String(r.slotId).toLowerCase().includes('snack'));
+    const safe = (x) => escapeHtml(String(x ?? ''));
+    const hl = (text) => highlightKeyword(text, q);
+    c.innerHTML = `<div class="px-2 py-3 text-sm font-bold text-slate-500">결과 ${res.length}건</div>` +
+        res.map(r => {
+            const how = isSnack(r) ? (r.mealType || r.snackType || '-') : (r.mealType || '-');
+            const where = isSnack(r) ? (r.snackPlace || r.place || '-') : (r.place || '-');
+            const what = isSnack(r) ? (r.snackDetail || r.snackType || '-') : (r.menuDetail || r.category || '-');
+            const whom = r.withWhomDetail || r.withWhom || '-';
+            const rating = isSnack(r) ? (r.snackRating ?? r.rating) : r.rating;
+            const ratingHtml = ratingStarsHtml(rating);
+            const satietyHtml = satietyIconHtml(r.satiety);
+            const textItems = [how, what, whom].map(v => v === '-' ? '' : hl(v)).filter(Boolean);
+            const iconItems = [ratingHtml, satietyHtml].filter(Boolean);
+            const textPart = textItems.length > 0 ? textItems.join('<span class="text-slate-300 mx-1">·</span>') : '';
+            const iconPart = iconItems.length > 0 ? iconItems.map(h => `<span class="inline-flex items-center">${h}</span>`).join('<span class="text-slate-300 mx-1">·</span>') : '';
+            const tagsHtml = [textPart, iconPart].filter(Boolean).join('<span class="text-slate-300 mx-1">·</span>');
+            return `<div class="search-result-item px-3 py-3 mb-3 border border-slate-200 rounded-xl active:bg-slate-50 transition-colors cursor-pointer" data-date="${safe(r.date)}" data-slot-id="${safe(r.slotId)}" data-entry-id="${safe(r.id)}">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-sm font-bold text-slate-800">${hl(fmtDate(r.date))}</span>
+                    ${where !== '-' ? `<span class="text-slate-400">|</span><span class="text-sm text-slate-600">${hl(where)}</span>` : ''}
+                </div>
+                <div class="mt-2 flex flex-wrap items-center gap-1 text-sm text-slate-600">${tagsHtml}</div>
+            </div>`;
+        }).join('');
+    c.querySelectorAll('.search-result-item').forEach(el => {
+        el.addEventListener('click', () => {
+            window.openModal(el.dataset.date, el.dataset.slotId, el.dataset.entryId);
+        });
+    });
 };
 
 // 더보기 함수 (타임라인용)

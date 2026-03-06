@@ -189,7 +189,12 @@
         document.addEventListener('DOMContentLoaded', function() {
             var el = document.getElementById('headerStagingLabel');
             if (el && window.APP_ENV === 'staging') el.classList.remove('hidden');
-            // Capacitor 앱에서 safe-area 폴백 (env가 0일 때)
+            // Web: 핸폰 네비 없음 → safe-bottom 0으로 하단 공백 제거
+            try {
+                if (!window.Capacitor?.isNativePlatform?.()) {
+                    document.documentElement.classList.add('platform-web');
+                }
+            } catch (e) {}
             try {
                 if (window.Capacitor?.isNativePlatform?.()) {
                     var st = getComputedStyle(document.documentElement).getPropertyValue('--safe-top').trim();

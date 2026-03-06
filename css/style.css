@@ -7,6 +7,13 @@
     --safe-bottom: max(env(safe-area-inset-bottom, 48px), 48px); 
     --color-primary: #059669; /* 그린: CTA·선택·활성만 사용 */
 }
+/* Web: 핸폰 네비 없음 → safe-bottom 0, 하단 공백 제거 (App 네비 바로 위까지) */
+html.platform-web {
+    --safe-bottom: 0px;
+}
+html.platform-web #navigationBarOverlay {
+    display: none !important;
+}
 /* 레이아웃 시프트 방지 */
 html {
     width: 100%;
@@ -31,6 +38,10 @@ body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #mainAppHe
 body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #statusBarOverlay,
 body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #trackerSection {
     display: none !important;
+}
+/* 밀로그 검색창 포커스 시: 헤더 유지 (입력 텍스트 보이도록) */
+body:has(#searchInput:focus) #mainAppHeader {
+    display: block !important;
 }
 body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) {
     padding-top: 0 !important;
