@@ -1378,7 +1378,18 @@ function updateHeaderSectionLabel(tab) {
 window.switchMainTab = (tab) => {
     try {
         console.log('[탭전환] 시작:', { 이전탭: appState.currentTab, 새탭: tab });
+        const prevTab = appState.currentTab;
         appState.currentTab = tab;
+        // 다른 메뉴로 이동 시 검색창 닫기
+        if (prevTab !== tab) {
+            if (prevTab === 'timeline' && typeof window.closeSearch === 'function') window.closeSearch();
+            if ((prevTab === 'gallery' || prevTab === 'board') && tab !== 'gallery' && tab !== 'board') {
+                const tracePanel = document.getElementById('galleryTraceFilterPanel');
+                if (tracePanel) {
+                    tracePanel.classList.remove('expanded');
+                }
+            }
+        }
         // 사용자별 보기에서 다른 탭으로 나가면 최상단 헤더 다시 표시
         if (tab !== 'gallery') {
             const mainHeader = document.querySelector('#mainApp > header');
@@ -1715,18 +1726,25 @@ window.toggleGalleryTracePanel = () => {
     if (typeof window.updateGalleryTraceFilterBarUI === 'function') window.updateGalleryTraceFilterBarUI();
 };
 
-/** 타임라인 검색 확장 너비: 'mealog 밀로그' 블록 오른쪽 끝 + 20px까지만 확장. 접힌 상태에서는 영역 없음 */
+/** 타임라인 검색 확장 너비: timeline-search-expanded 시 flex로 처리, 그 외 폴백 */
 function updateTimelineSearchExpandWidth() {
-    const leftBlock = document.querySelector('header .mealog-title')?.parentElement;
     const wrapper = document.getElementById('timelineSearchPanel');
     const panel = wrapper?.querySelector('.timeline-search-panel');
-    const header = document.querySelector('#mainApp header');
-    if (!leftBlock || !wrapper || !panel || !header) return;
+    const header = document.getElementById('mainAppHeader');
+    if (!wrapper || !panel || !header) return;
     if (!wrapper.classList.contains('expanded')) {
         panel.style.width = '';
         wrapper.style.width = '';
         return;
     }
+    /* timeline-search-expanded 클래스가 있으면 flex로 sub-title까지 확장 (CSS에서 처리) */
+    if (header.classList.contains('timeline-search-expanded')) {
+        wrapper.style.width = '';
+        return;
+    }
+    /* 폴백: JS로 너비 계산 */
+    const leftBlock = document.querySelector('header .mealog-title')?.parentElement;
+    if (!leftBlock) return;
     const leftBlockRight = leftBlock.getBoundingClientRect().right;
     const headerRect = header.getBoundingClientRect();
     const headerRight = headerRect.right - 24; /* px-6 */
@@ -1734,7 +1752,7 @@ function updateTimelineSearchExpandWidth() {
     const notificationWidth = (notificationWrap && !notificationWrap.classList.contains('hidden'))
         ? notificationWrap.getBoundingClientRect().width : 0;
     const gap = 8; /* gap-2 */
-    let w = headerRight - leftBlockRight - 20 - notificationWidth - gap;
+    let w = headerRight - leftBlockRight - 8 - notificationWidth - gap;
     w = Math.max(96, w);
     wrapper.style.width = `${w}px`;
 }
@@ -1750,6 +1768,7 @@ window.toggleSearch = () => {
         window.closeSearch();
     } else {
         panel.classList.add('expanded');
+        document.getElementById('mainAppHeader')?.classList.add('timeline-search-expanded');
         requestAnimationFrame(updateTimelineSearchExpandWidth);
         document.getElementById('searchInput')?.focus();
     }
@@ -1757,6 +1776,8 @@ window.toggleSearch = () => {
 
 window.closeSearch = () => {
     const wrapper = document.getElementById('timelineSearchPanel');
+    const header = document.getElementById('mainAppHeader');
+    if (header) header.classList.remove('timeline-search-expanded');
     if (wrapper) {
         wrapper.classList.remove('expanded');
         const panel = wrapper.querySelector('.timeline-search-panel');

@@ -514,6 +514,17 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
     font-size: 1rem;
 }
 /* 헤더 우측: .header-right = [돋보기] [알림] 순서 flex, 별도 absolute 없음 */
+/* 밀로그 검색 확장 시: header-right가 남은 공간 차지, 검색창이 sub-title까지 확장 */
+#mainAppHeader.timeline-search-expanded .header-right {
+    flex: 1;
+    min-width: 0;
+}
+#mainAppHeader.timeline-search-expanded .timeline-search-wrapper.expanded {
+    flex: 1;
+    min-width: 0;
+    width: auto !important; /* JS width 대신 flex 사용 */
+    margin-left: 20px; /* sub-title과 20px 간격 */
+}
 /* 헤더 우측 아이콘: 기존 대비 20% 확대 (text-sm 14px→16.8px, text-lg 18px→21.6px) */
 .header-right .timeline-search-toggle i,
 .header-right .gallery-trace-btn i {
@@ -558,7 +569,7 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
 }
 .timeline-search-wrapper.expanded {
     min-width: 2rem;
-    /* 너비는 JS updateTimelineSearchExpandWidth에서 설정 */
+    /* timeline-search-expanded 시 flex: 1로 sub-title까지 확장, 그 외에는 JS width */
 }
 .timeline-search-wrapper:not(.expanded) #searchInput {
     flex: 0 0 0 !important;
