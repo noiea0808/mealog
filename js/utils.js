@@ -778,6 +778,76 @@ export function toLocalDateString(date) {
 }
 
 /**
+ * 앱 로고 + 서브타이틀 이미지 생성 (공유 시 마지막에 추가)
+ * @returns {Promise<Blob>}
+ */
+async function createMealogLogoImage() {
+    const cw = 1080;
+    const ch = 1080;
+    const canvas = document.createElement('canvas');
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#059669';
+    ctx.fillRect(0, 0, cw, ch);
+    const iconUrl = document.querySelector('#landingMealogIcon')?.src || new URL('assets/icon-only.png', window.location.href).href;
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            try {
+                const iconSize = 280;
+                const iconX = (cw - iconSize) / 2;
+                const iconY = ch * 0.28;
+                const radius = iconSize * 0.35;
+                ctx.save();
+                ctx.beginPath();
+                if (typeof ctx.roundRect === 'function') {
+                    ctx.roundRect(iconX, iconY, iconSize, iconSize, radius);
+                } else {
+                    const r = Math.min(radius, iconSize / 2);
+                    ctx.moveTo(iconX + r, iconY);
+                    ctx.lineTo(iconX + iconSize - r, iconY);
+                    ctx.quadraticCurveTo(iconX + iconSize, iconY, iconX + iconSize, iconY + r);
+                    ctx.lineTo(iconX + iconSize, iconY + iconSize - r);
+                    ctx.quadraticCurveTo(iconX + iconSize, iconY + iconSize, iconX + iconSize - r, iconY + iconSize);
+                    ctx.lineTo(iconX + r, iconY + iconSize);
+                    ctx.quadraticCurveTo(iconX, iconY + iconSize, iconX, iconY + iconSize - r);
+                    ctx.lineTo(iconX, iconY + r);
+                    ctx.quadraticCurveTo(iconX, iconY, iconX + r, iconY);
+                }
+                ctx.clip();
+                ctx.drawImage(img, iconX, iconY, iconSize, iconSize);
+                ctx.restore();
+                ctx.fillStyle = '#ffffff';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.font = 'bold 72px "Fredoka", "Malgun Gothic", sans-serif';
+                ctx.fillText('mealog', cw / 2, iconY + iconSize + 80);
+                ctx.fillStyle = 'rgba(209, 250, 229, 0.95)';
+                ctx.font = 'bold 28px "나눔손글씨 가람연꽃", "Nanum Garam Yeonkot", "Nanum Pen Script", cursive';
+                ctx.fillText('우리가 함께한,', cw / 2, iconY + iconSize + 150);
+                ctx.fillText('맛있었던 기억', cw / 2, iconY + iconSize + 190);
+            } catch (_) {}
+            canvas.toBlob((blob) => resolve(blob ? blob : new Blob([], { type: 'image/jpeg' })), 'image/jpeg', 0.92);
+        };
+        img.onerror = () => {
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 72px "Fredoka", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('mealog', cw / 2, ch / 2 - 40);
+            ctx.fillStyle = 'rgba(209, 250, 229, 0.95)';
+            ctx.font = 'bold 28px "Nanum Pen Script", cursive';
+            ctx.fillText('우리가 함께한,', cw / 2, ch / 2 + 20);
+            ctx.fillText('맛있었던 기억', cw / 2, ch / 2 + 60);
+            canvas.toBlob((blob) => resolve(blob ? blob : new Blob([], { type: 'image/jpeg' })), 'image/jpeg', 0.92);
+        };
+        img.src = iconUrl;
+    });
+}
+
+/**
  * 이미지에 메뉴@장소 캡션을 하단에 오버레이하여 Blob 반환
  * @param {Blob} imageBlob - 원본 이미지 Blob
  * @param {string} caption - 캡션 텍스트 (메뉴 @ 장소)
@@ -802,7 +872,7 @@ async function addCaptionToImage(imageBlob, caption) {
                 ctx.fillStyle = '#ffffff';
                 ctx.textAlign = 'left';
                 ctx.textBaseline = 'middle';
-                const fontSize = Math.max(12, Math.min(18, Math.floor(cw * 0.04)));
+                const fontSize = 16;
                 ctx.font = `bold ${fontSize}px "나눔손글씨 가람연꽃", "Nanum Garam Yeonkot", "Nanum Pen Script", cursive`;
                 const padding = 12;
                 const maxW = cw - padding * 2;
@@ -865,6 +935,8 @@ export async function sharePhotosToExternal(photoUrls, caption = '') {
             const mime = blob.type || (ext === 'png' ? 'image/png' : 'image/jpeg');
             files.push(new File([blob], `mealog_${i + 1}.${ext}`, { type: mime, lastModified: Date.now() }));
         }
+        const logoBlob = await createMealogLogoImage();
+        files.push(new File([logoBlob], 'mealog_logo.jpg', { type: 'image/jpeg', lastModified: Date.now() }));
         if (files.length === 0) {
             if (typeof window.showToast === 'function') {
                 window.showToast('사진을 불러오지 못했습니다.', 'error');
