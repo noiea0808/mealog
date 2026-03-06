@@ -800,17 +800,18 @@ async function addCaptionToImage(imageBlob, caption) {
                 ctx.fillStyle = '#047857';
                 ctx.fillRect(0, ch, cw, barH);
                 ctx.fillStyle = '#ffffff';
-                ctx.textAlign = 'center';
+                ctx.textAlign = 'left';
                 ctx.textBaseline = 'middle';
                 const fontSize = Math.max(12, Math.min(18, Math.floor(cw * 0.04)));
-                ctx.font = `bold ${fontSize}px "Malgun Gothic", "Nanum Square Round", system-ui, sans-serif`;
-                const maxW = cw - 24;
+                ctx.font = `bold ${fontSize}px "나눔손글씨 가람연꽃", "Nanum Garam Yeonkot", "Nanum Pen Script", cursive`;
+                const padding = 12;
+                const maxW = cw - padding * 2;
                 let text = caption;
                 if (ctx.measureText(text).width > maxW) {
                     while (text.length > 1 && ctx.measureText(text + '…').width > maxW) text = text.slice(0, -1);
                     text = text + '…';
                 }
-                ctx.fillText(text, cw / 2, ch + barH / 2);
+                ctx.fillText(text, padding, ch + barH / 2);
                 canvas.toBlob((blob) => {
                     URL.revokeObjectURL(url);
                     resolve(blob || imageBlob);
