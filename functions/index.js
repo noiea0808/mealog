@@ -1263,6 +1263,40 @@ exports.getSharedEntryComment = onCall({ region: REGION }, async (request) => {
   return { comment: String(comment || '').trim() };
 });
 
+const GET_SHARED_COMMENTS_BATCH_MAX = 30;
+
+/**
+ * 공유된 게시물 코멘트 일괄 조회 — 한 번의 호출로 여러 글의 코멘트 반환 (모먼트 로딩 지연 방지)
+ * 인자: { items: Array<{ entryId: string, ownerUserId: string }> } (최대 30건)
+ * 반환: { comments: Array<{ entryId: string, ownerUserId: string, comment: string }> }
+ */
+exports.getSharedEntryComments = onCall({ region: REGION }, async (request) => {
+  const { auth, data } = request;
+  if (!auth || !auth.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const items = data?.items;
+  if (!Array.isArray(items) || items.length === 0) {
+    return { comments: [] };
+  }
+  const limited = items.slice(0, GET_SHARED_COMMENTS_BATCH_MAX);
+  const sharedColl = db.collection('artifacts').doc(APP_ID).collection('sharedPhotos');
+  const results = await Promise.all(limited.map(async ({ entryId, ownerUserId }) => {
+    if (!entryId || !ownerUserId) return { entryId: entryId || '', ownerUserId: ownerUserId || '', comment: '' };
+    const sharedSnap = await sharedColl
+      .where('entryId', '==', entryId)
+      .where('userId', '==', ownerUserId)
+      .limit(1)
+      .get();
+    if (sharedSnap.empty) return { entryId, ownerUserId, comment: '' };
+    const mealRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(ownerUserId).collection('meals').doc(entryId);
+    const mealSnap = await mealRef.get();
+    const comment = mealSnap.exists ? (mealSnap.data().comment || '') : '';
+    return { entryId, ownerUserId, comment: String(comment || '').trim() };
+  }));
+  return { comments: results };
+});
+
 /**
  * 기존 sharedPhotos 문서에 meal의 comment 보정 (관리자 전용, 한 번 실행 권장)
  */
