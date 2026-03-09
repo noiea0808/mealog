@@ -71,6 +71,7 @@ export const callableFunctions = {
     confirmApkUpload: httpsCallable(functions, 'confirmApkUpload'),
     migrateSharedPhotosTimestamp: httpsCallable(functions, 'migrateSharedPhotosTimestamp'),
     getSharedEntryComment: httpsCallable(functions, 'getSharedEntryComment'),
+    getSharedEntryComments: httpsCallable(functions, 'getSharedEntryComments'),
     backfillSharedPhotosComments: httpsCallable(functions, 'backfillSharedPhotosComments')
 };
 
