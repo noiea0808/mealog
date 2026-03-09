@@ -777,5 +777,193 @@ export function toLocalDateString(date) {
     return `${year}-${month}-${day}`;
 }
 
+/**
+ * 앱 로고 + 서브타이틀 이미지 생성 (공유 시 마지막에 추가)
+ * @returns {Promise<Blob>}
+ */
+async function createMealogLogoImage() {
+    const cw = 1080;
+    const ch = 1080;
+    const canvas = document.createElement('canvas');
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, cw, ch);
+    const iconUrl = document.querySelector('#landingMealogIcon')?.src || new URL('assets/icon-only.png', window.location.href).href;
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            try {
+                const iconSize = 280;
+                const iconX = (cw - iconSize) / 2;
+                const iconY = ch * 0.28;
+                const radius = iconSize * 0.35;
+                ctx.save();
+                ctx.beginPath();
+                if (typeof ctx.roundRect === 'function') {
+                    ctx.roundRect(iconX, iconY, iconSize, iconSize, radius);
+                } else {
+                    const r = Math.min(radius, iconSize / 2);
+                    ctx.moveTo(iconX + r, iconY);
+                    ctx.lineTo(iconX + iconSize - r, iconY);
+                    ctx.quadraticCurveTo(iconX + iconSize, iconY, iconX + iconSize, iconY + r);
+                    ctx.lineTo(iconX + iconSize, iconY + iconSize - r);
+                    ctx.quadraticCurveTo(iconX + iconSize, iconY + iconSize, iconX + iconSize - r, iconY + iconSize);
+                    ctx.lineTo(iconX + r, iconY + iconSize);
+                    ctx.quadraticCurveTo(iconX, iconY + iconSize, iconX, iconY + iconSize - r);
+                    ctx.lineTo(iconX, iconY + r);
+                    ctx.quadraticCurveTo(iconX, iconY, iconX + r, iconY);
+                }
+                ctx.clip();
+                ctx.drawImage(img, iconX, iconY, iconSize, iconSize);
+                ctx.restore();
+                ctx.fillStyle = '#059669';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.font = 'bold 72px "Fredoka", "Malgun Gothic", sans-serif';
+                ctx.fillText('mealog', cw / 2, iconY + iconSize + 80);
+                ctx.fillStyle = '#059669';
+                ctx.font = 'bold 52px "Nanum Square Round", "Malgun Gothic", "Nanum Pen Script", sans-serif';
+                ctx.fillText('우리가 함께한,', cw / 2, iconY + iconSize + 160);
+                ctx.fillText('맛있었던 기억', cw / 2, iconY + iconSize + 220);
+            } catch (_) {}
+            canvas.toBlob((blob) => resolve(blob ? blob : new Blob([], { type: 'image/jpeg' })), 'image/jpeg', 0.92);
+        };
+        img.onerror = () => {
+            ctx.fillStyle = '#059669';
+            ctx.font = 'bold 72px "Fredoka", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('mealog', cw / 2, ch / 2 - 60);
+            ctx.font = 'bold 52px "Nanum Square Round", "Malgun Gothic", sans-serif';
+            ctx.fillText('우리가 함께한,', cw / 2, ch / 2 + 10);
+            ctx.fillText('맛있었던 기억', cw / 2, ch / 2 + 70);
+            canvas.toBlob((blob) => resolve(blob ? blob : new Blob([], { type: 'image/jpeg' })), 'image/jpeg', 0.92);
+        };
+        img.src = iconUrl;
+    });
+}
+
+/**
+ * 이미지에 메뉴@장소 캡션을 하단에 오버레이하여 Blob 반환
+ * @param {Blob} imageBlob - 원본 이미지 Blob
+ * @param {string} caption - 캡션 텍스트 (메뉴 @ 장소)
+ * @returns {Promise<Blob>}
+ */
+async function addCaptionToImage(imageBlob, caption) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(imageBlob);
+        img.onload = () => {
+            try {
+                const cw = img.width;
+                const ch = img.height;
+                const barH = Math.max(44, Math.min(56, Math.floor(cw * 0.1)));
+                const canvas = document.createElement('canvas');
+                canvas.width = cw;
+                canvas.height = ch + barH;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                ctx.fillStyle = '#047857';
+                ctx.fillRect(0, ch, cw, barH);
+                ctx.fillStyle = '#ffffff';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                const fontSize = Math.round(barH * 0.65);
+                ctx.font = `${fontSize}px "나눔손글씨 가람연꽃", "Nanum Garam Yeonkot", "Nanum Pen Script", cursive`;
+                const padding = 12;
+                const maxW = cw - padding * 2;
+                let text = caption;
+                if (ctx.measureText(text).width > maxW) {
+                    while (text.length > 1 && ctx.measureText(text + '…').width > maxW) text = text.slice(0, -1);
+                    text = text + '…';
+                }
+                ctx.fillText(text, padding, ch + barH / 2);
+                canvas.toBlob((blob) => {
+                    URL.revokeObjectURL(url);
+                    resolve(blob || imageBlob);
+                }, imageBlob.type || 'image/jpeg', 0.92);
+            } catch (err) {
+                URL.revokeObjectURL(url);
+                resolve(imageBlob);
+            }
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            resolve(imageBlob);
+        };
+        img.src = url;
+    });
+}
+
+/**
+ * 모먼트(앨범) 사진을 카카오톡·인스타그램 등 외부 앱으로 공유합니다.
+ * Web Share API (navigator.share) 사용. 지원 시 네이티브 공유 시트가 열립니다.
+ * caption이 있으면 모먼트처럼 이미지 하단에 메뉴@장소를 녹색 바로 오버레이합니다.
+ * @param {string|string[]} photoUrls - 쉼표로 구분된 사진 URL 또는 URL 배열
+ * @param {string} [caption] - 메뉴@장소 캡션 (있으면 이미지 하단에 오버레이)
+ * @param {boolean} [skipCaptionBar] - true면 베스트/일간/인사이트 등 캡쳐 3종에 하단 캡션바 미적용
+ * @returns {Promise<boolean>} - 공유 성공 여부
+ */
+export async function sharePhotosToExternal(photoUrls, caption = '', skipCaptionBar = false) {
+    const urls = typeof photoUrls === 'string'
+        ? photoUrls.split(',').map(u => u.trim()).filter(Boolean)
+        : Array.isArray(photoUrls) ? photoUrls.filter(Boolean) : [];
+    if (urls.length === 0) return false;
+
+    if (!navigator.share) {
+        if (typeof window.showToast === 'function') {
+            window.showToast('이 기기에서는 공유 기능을 지원하지 않습니다.', 'error');
+        }
+        return false;
+    }
+
+    const captionText = (caption || '').trim();
+    const files = [];
+    try {
+        for (let i = 0; i < Math.min(urls.length, 5); i++) {
+            const url = urls[i];
+            const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+            if (!res.ok) continue;
+            let blob = await res.blob();
+            if (!skipCaptionBar && captionText && blob.type && blob.type.startsWith('image/')) {
+                blob = await addCaptionToImage(blob, captionText);
+            }
+            const ext = url.split('.').pop()?.split('?')[0] || 'jpg';
+            const mime = blob.type || (ext === 'png' ? 'image/png' : 'image/jpeg');
+            files.push(new File([blob], `mealog_${i + 1}.${ext}`, { type: mime, lastModified: Date.now() }));
+        }
+        const logoBlob = await createMealogLogoImage();
+        files.push(new File([logoBlob], 'mealog_logo.jpg', { type: 'image/jpeg', lastModified: Date.now() }));
+        if (files.length === 0) {
+            if (typeof window.showToast === 'function') {
+                window.showToast('사진을 불러오지 못했습니다.', 'error');
+            }
+            return false;
+        }
+        const shareData = { files };
+        if (navigator.canShare && !navigator.canShare(shareData)) {
+            if (typeof window.showToast === 'function') {
+                window.showToast('이 기기에서는 이미지 공유를 지원하지 않습니다.', 'error');
+            }
+            return false;
+        }
+        await navigator.share(shareData);
+        if (typeof window.showToast === 'function') {
+            window.showToast('공유되었습니다.', 'success');
+        }
+        return true;
+    } catch (e) {
+        if (e.name === 'AbortError') return false;
+        console.error('sharePhotosToExternal 실패:', e);
+        if (typeof window.showToast === 'function') {
+            window.showToast('공유에 실패했습니다.', 'error');
+        }
+        return false;
+    }
+}
+
 
 

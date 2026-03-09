@@ -456,7 +456,25 @@ async function renderSharedPhotos() {
             return;
         }
         
+        // 문서에 userNickname이 비어 있는 작성자들은 사용자 설정에서 닉네임 조회 (관리번호에 닉네임이 안 보이는 문제 방지)
+        const userIdsNeedingNickname = [...new Set(photos.filter(p => !(p.userNickname && p.userNickname.trim()) && p.userId).map(p => p.userId))];
+        const nicknameFallbackMap = new Map();
+        for (const uid of userIdsNeedingNickname) {
+            try {
+                const settingsRef = doc(db, 'artifacts', appId, 'users', uid, 'config', 'settings');
+                const snap = await getDoc(settingsRef);
+                if (snap.exists()) {
+                    const nn = snap.data()?.profile?.nickname;
+                    if (nn && String(nn).trim()) nicknameFallbackMap.set(uid, String(nn).trim());
+                }
+            } catch (e) {
+                console.warn(`관리자 공유 게시물: 사용자 ${uid} 설정 조회 실패`, e);
+            }
+        }
+        const resolveNickname = (photo) => (photo.userNickname && String(photo.userNickname).trim()) ? photo.userNickname : (nicknameFallbackMap.get(photo.userId) || '익명');
+        
         container.innerHTML = photos.map(photo => {
+            const displayNickname = resolveNickname(photo);
             const date = photo.timestamp ? new Date(photo.timestamp) : new Date();
             const dateStr = date.toLocaleString('ko-KR', {
                 year: 'numeric',
@@ -478,7 +496,7 @@ async function renderSharedPhotos() {
                             <div class="flex items-start justify-between mb-2">
                                 <div class="flex items-center gap-2">
                                     <span class="text-lg">${photo.userIcon || '🐻'}</span>
-                                    <span class="font-bold text-slate-800">${photo.userNickname || '익명'}</span>
+                                    <span class="font-bold text-slate-800">${escapeHtml(displayNickname)}</span>
                                     ${photo.type === 'best' ? '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">베스트</span>' : ''}
                                     ${photo.type === 'daily' ? '<span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded">일간</span>' : ''}
                                     <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">관리번호: ${photo.id}</span>

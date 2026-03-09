@@ -1143,6 +1143,15 @@ function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
         else if (photo.menuDetail) caption = `<span>${escapeHtml(photo.menuDetail)}</span>`;
         else if (photo.mealType) caption = escapeHtml(photo.mealType);
     }
+    const captionText = (() => {
+        if (isBestShare || isDailyShare || isInsightShare) return (photo.comment || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').trim();
+        if (isSnack) {
+            const m = photo.menuDetail || photo.snackType;
+            return (photo.place && m) ? `${m} @ ${photo.place}` : (photo.place || m || '간식');
+        }
+        return (photo.place && photo.menuDetail) ? `${photo.menuDetail} @ ${photo.place}` : (photo.place || photo.menuDetail || photo.mealType || '');
+    })();
+    const captionAttr = (captionText || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const photosHtml = photoGroup.map((p, idx) => {
         const isBest = p.type === 'best', isDaily = p.type === 'daily', isInsight = p.type === 'insight';
         return `
@@ -1176,7 +1185,7 @@ function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
                         </div>
                     </div>
                     <div class="relative">
-                        <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-is-insight="${isInsightShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-date-range-text="${photo.dateRangeText || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
+                        <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-caption="${captionAttr}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-is-insight="${isInsightShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-date-range-text="${photo.dateRangeText || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
                             <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
                         </button>
                     </div>
@@ -1228,7 +1237,7 @@ function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
                             </div>
                         </div>
                     `;
-                    })() : ''}
+                    })() : (!isBestShare && !isDailyShare && !isInsightShare && entryId && photo.userId && !isMyPost ? `<div class="shared-comment-fetch-placeholder mb-2 text-sm text-slate-800" data-post-id="${postId}" data-entry-id="${entryId}" data-owner-user-id="${photo.userId}" data-group-idx="${groupIdx}"></div>` : '')}
                     <div class="comment-section comments-empty ${((caption && (isBestShare || isDailyShare || isInsightShare)) || (comment && !isBestShare && !isDailyShare && !isInsightShare)) ? 'border-t border-slate-200 ' : ''}-mx-6 px-6 pt-1.5 mt-1" id="comment-section-${postId}">
                         <div class="post-comments-list mb-1 rounded-lg py-2 bg-white" data-post-id="${postId}" id="comments-list-${postId}"></div>
                         <button id="view-comments-${postId}" class="hidden text-xs text-slate-500 font-bold mb-1 hover:text-slate-700 active:text-slate-900 transition-colors" onclick="window.viewAllComments('${postId}')">댓글 더보기</button>
@@ -1242,6 +1251,55 @@ function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
                 </div>
             </div>
         `;
+}
+
+/** 공유 게시물 중 문서에 comment가 없는 경우 서버에서 조회해 DOM에 반영 (다른 사용자에게 코멘트가 안 보이는 기존 문서 대응) */
+export async function fetchMissingSharedComments(container) {
+    const el = container && container.querySelector ? container : document.getElementById('galleryContainer');
+    if (!el) return;
+    const placeholders = el.querySelectorAll('.shared-comment-fetch-placeholder');
+    if (placeholders.length === 0) return;
+    let callable;
+    try {
+        const mod = await import('./firebase.js');
+        callable = mod.callableFunctions?.getSharedEntryComment;
+    } catch (e) {
+        return;
+    }
+    if (!callable) return;
+    for (const div of placeholders) {
+        const entryId = div.getAttribute('data-entry-id');
+        const ownerUserId = div.getAttribute('data-owner-user-id');
+        const groupIdx = div.getAttribute('data-group-idx');
+        const postId = div.getAttribute('data-post-id');
+        if (!entryId || !ownerUserId) continue;
+        try {
+            const { data } = await callable({ entryId, ownerUserId });
+            const comment = (data && data.comment) ? String(data.comment).trim() : '';
+            div.classList.remove('shared-comment-fetch-placeholder');
+            if (comment) {
+                const lineBreaks = (comment.match(/\n/g) || []).length;
+                const estimatedLines = Math.ceil(comment.length / 30);
+                const shouldShowToggle = lineBreaks >= 2 || estimatedLines > 2;
+                const toggleBtnClass = shouldShowToggle ? '' : 'hidden';
+                div.innerHTML = `
+                    <span id="post-caption-collapsed-${groupIdx}" class="whitespace-pre-line line-clamp-2 inline">${escapeHtml(comment).replace(/\n/g, '<br>')}</span>
+                    <button onclick="window.togglePostCaption(${groupIdx})" id="post-caption-toggle-${groupIdx}" class="inline text-xs text-emerald-600 font-bold hover:text-emerald-700 active:text-emerald-800 transition-colors ml-1 ${toggleBtnClass}">더 보기</button>
+                    <div id="post-caption-expanded-${groupIdx}" class="whitespace-pre-line hidden">
+                        ${escapeHtml(comment).replace(/\n/g, '<br>')}
+                        <button onclick="window.togglePostCaption(${groupIdx})" id="post-caption-collapse-${groupIdx}" class="inline text-xs text-emerald-600 font-bold hover:text-emerald-700 active:text-emerald-800 transition-colors ml-1">접기</button>
+                    </div>
+                `;
+                const commentSection = el.querySelector(`#comment-section-${CSS.escape(postId)}`);
+                if (commentSection) commentSection.classList.remove('comments-empty'), commentSection.classList.add('border-t', 'border-slate-200');
+            } else {
+                div.remove();
+            }
+        } catch (e) {
+            console.warn('공유 게시물 코멘트 조회 실패:', entryId, e);
+            div.remove();
+        }
+    }
 }
 
 /** 갤러리 이벤트 리스너 설정 (세 번째 인자: AbortSignal 또는 { abortSignal?, startIndex? }) - appendGalleryPosts에서도 사용 */
@@ -1336,7 +1394,8 @@ function setupGalleryEventListeners(container, sortedGroups, opts = null) {
             const dateRangeText = btn.getAttribute('data-date-range-text') || '';
             const postId = btn.getAttribute('data-post-id') || '';
             const authorUserId = btn.getAttribute('data-author-user-id') || '';
-            window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId, isInsightShare, dateRangeText);
+            const caption = btn.getAttribute('data-caption') || '';
+            window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId, isInsightShare, dateRangeText, caption);
         };
         container._galleryFeedOptionsDelegate = delegateHandler;
         container.addEventListener('click', delegateHandler);
@@ -1355,6 +1414,8 @@ async function appendGalleryPosts(docs, loadMoreWrap) {
     if (!container) return;
     const newGroups = processPhotosToGroups(docs);
     if (newGroups.length === 0) return;
+    // 새로 추가되는 작성자들의 프로필을 먼저 로드해 두어 닉네임이 '익명'으로 나오지 않도록 함
+    await fetchUserProfiles([...new Set(docs.map(p => p.userId).filter(Boolean))]);
     let mealHistoryMap = new Map();
     if (window.mealHistory && Array.isArray(window.mealHistory)) {
         window.mealHistory.forEach(meal => { if (meal.id) mealHistoryMap.set(meal.id, meal); });
@@ -1367,9 +1428,9 @@ async function appendGalleryPosts(docs, loadMoreWrap) {
     while (tempDiv.firstChild) fragment.appendChild(tempDiv.firstChild);
     loadMoreWrap.parentNode.insertBefore(fragment, loadMoreWrap);
     const fullSortedGroups = processPhotosToGroups(window.sharedPhotosFeed || []);
-    await fetchUserProfiles([...new Set(docs.map(p => p.userId).filter(Boolean))]);
     setTimeout(() => {
         setupGalleryEventListeners(container, fullSortedGroups, { startIndex: existingCount });
+        fetchMissingSharedComments(container).catch(() => {});
         if (window.postInteractions && intersectionObserver) {
             container.querySelectorAll('.instagram-post').forEach((post, i) => {
                 if (i >= existingCount && document.contains(post)) intersectionObserver.observe(post);
@@ -1882,6 +1943,7 @@ export async function renderGallery(options = {}) {
                 setTimeout(() => {
                     if (abortSignal.aborted) return;
                     setupGalleryEventListeners(container, sortedGroups, { abortSignal });
+                    fetchMissingSharedComments(container).catch(() => {});
                     setupIntersectionObserver(container, abortSignal);
                 }, 50);
                 
@@ -1980,6 +2042,7 @@ export async function renderGallery(options = {}) {
                 }
                 
                 setupGalleryEventListeners(container, sortedGroups, { abortSignal });
+                fetchMissingSharedComments(container).catch(() => {});
                 
                 // IntersectionObserver 설정 (포스트 렌더링 및 상호작용 로드용)
                 setTimeout(() => {
@@ -2521,6 +2584,8 @@ export async function renderFeed() {
             }
         }
         
+        const captionAttr = (caption || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        
         // 사진들 HTML 생성 (인스타그램 스타일 - 좌우 여백 없이, 구분감 있게)
         // 베스트 공유, 일간보기 공유, 인사이트 공유는 aspect-ratio를 유지하지 않고 원본 비율 사용
         const photosHtml = photoGroup.map((p, idx) => {
@@ -2564,7 +2629,7 @@ export async function renderFeed() {
                     </div>
                     ${isBanned ? `<div class="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0"><i class="fa-solid fa-ban mr-1"></i>공유 금지</div>` : ''}
                     <div class="relative flex-shrink-0">
-                        <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-is-insight="${isInsightShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-date-range-text="${photo.dateRangeText || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
+                        <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-caption="${captionAttr}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-is-insight="${isInsightShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-date-range-text="${photo.dateRangeText || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
                             <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
                         </button>
                     </div>
@@ -2712,7 +2777,8 @@ export async function renderFeed() {
                     const dateRangeText = btn.getAttribute('data-date-range-text') || '';
                     const postId = btn.getAttribute('data-post-id') || '';
                     const authorUserId = btn.getAttribute('data-author-user-id') || '';
-                    window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId, isInsightShare, dateRangeText);
+                    const caption = btn.getAttribute('data-caption') || '';
+                    window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId, isInsightShare, dateRangeText, caption);
                 });
                 btn.setAttribute('data-listener-added', 'true');
             } else {
@@ -2731,7 +2797,8 @@ export async function renderFeed() {
                             const dateRangeText = btn.getAttribute('data-date-range-text') || '';
                             const postId = btn.getAttribute('data-post-id') || '';
                             const authorUserId = btn.getAttribute('data-author-user-id') || '';
-                            window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId, isInsightShare, dateRangeText);
+                            const caption = btn.getAttribute('data-caption') || '';
+                            window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId, isInsightShare, dateRangeText, caption);
                         });
                         btn.setAttribute('data-listener-added', 'true');
                     }

@@ -12,7 +12,7 @@ import { callableFunctions } from './firebase.js';
 import { doc, getDoc, setDoc, collection, query, where, limit, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
-import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput, warmUpIME } from './utils.js';
+import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput, warmUpIME, sharePhotosToExternal } from './utils.js';
 import { 
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
@@ -3009,7 +3009,7 @@ if (document.readyState === 'loading') {
 }
 
 // 피드 옵션 관련 함수
-window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '', photoSlotId = '', isDailyShare = false, postId = '', authorUserId = '', isInsightShare = false, dateRangeText = '') => {
+window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '', photoSlotId = '', isDailyShare = false, postId = '', authorUserId = '', isInsightShare = false, dateRangeText = '', caption = '') => {
     const existingMenu = document.getElementById('feedOptionsMenu');
     if (existingMenu) existingMenu.remove();
     
@@ -3035,7 +3035,7 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
     buttonContainer.className = 'space-y-2';
     
     if (isMyPost) {
-        // 수정하기
+        // 1. 수정하기
         const editBtn = document.createElement('button');
         editBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
         editBtn.type = 'button';
@@ -3071,10 +3071,34 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
                 }
             }, 100);
         });
-        editBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-pencil text-emerald-600 text-lg"></i><span class="font-bold text-slate-800">수정하기</span></div>';
+        editBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-pencil text-slate-800 text-lg"></i><span class="font-bold text-slate-800">수정하기</span></div>';
         buttonContainer.appendChild(editBtn);
         
-        // 공유 취소
+        // 2. SNS 공유
+        const externalShareBtn = document.createElement('button');
+        externalShareBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        externalShareBtn.type = 'button';
+        externalShareBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            menu.remove();
+            const urls = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(u => u.trim()).filter(Boolean) : [];
+            if (urls.length > 0) {
+                try {
+                    showLoading('사진 불러오는 중...');
+                    await sharePhotosToExternal(urls, caption, isBestShare || isDailyShare || isInsightShare);
+                } catch (err) {
+                    console.error('외부 공유 실패:', err);
+                } finally {
+                    hideLoading();
+                }
+            } else {
+                showToast('공유할 사진이 없습니다.', 'error');
+            }
+        });
+        externalShareBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-share-nodes text-slate-800 text-lg"></i><span class="font-bold text-slate-800">SNS 공유</span></div>';
+        buttonContainer.appendChild(externalShareBtn);
+        
+        // 3. 공유 취소
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
         deleteBtn.type = 'button';
@@ -3086,7 +3110,30 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
         deleteBtn.innerHTML = `<div class="flex items-center gap-3"><i class="fa-solid ${deleteButtonIcon} text-red-500 text-lg"></i><span class="font-bold text-red-500">${deleteButtonText}</span></div>`;
         buttonContainer.appendChild(deleteBtn);
     } else {
-        // 다른 사람 게시물: 신고하기 (첫 번째 옵션)
+        // 다른 사람 게시물: 공유하기 > 신고하기
+        const externalShareBtn = document.createElement('button');
+        externalShareBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        externalShareBtn.type = 'button';
+        externalShareBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            menu.remove();
+            const urls = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(u => u.trim()).filter(Boolean) : [];
+            if (urls.length > 0) {
+                try {
+                    showLoading('사진 불러오는 중...');
+                    await sharePhotosToExternal(urls, caption, isBestShare || isDailyShare || isInsightShare);
+                } catch (err) {
+                    console.error('외부 공유 실패:', err);
+                } finally {
+                    hideLoading();
+                }
+            } else {
+                showToast('공유할 사진이 없습니다.', 'error');
+            }
+        });
+        externalShareBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-share-nodes text-slate-800 text-lg"></i><span class="font-bold text-slate-800">SNS 공유</span></div>';
+        buttonContainer.appendChild(externalShareBtn);
+        
         const reportBtn = document.createElement('button');
         reportBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
         reportBtn.type = 'button';
