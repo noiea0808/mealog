@@ -65,18 +65,20 @@ function nextStagingVersion(current) {
 }
 
 function run(mode) {
-    const current = loadJson(VERSION_JSON, { version: '1.0.0', buildDate: nowISO() });
+    const current = loadJson(VERSION_JSON, { version: '1.0.0', versionCode: 1, buildDate: nowISO() });
+    const nextCode = Math.max(1, (current.versionCode || 0) + 1);
 
     if (mode === 'production') {
         const nextVer = nextProductionVersion(current.version);
         const buildDate = nowISO();
         const data = {
             version: nextVer,
+            versionCode: nextCode,
             buildDate,
         };
         saveJson(VERSION_JSON, data);
-        saveJson(PRODUCTION_RELEASE_JSON, { version: nextVer, buildDate });
-        console.log(`✅ Production: ${current.version} → ${nextVer} (${formatDateForDisplay(buildDate)})`);
+        saveJson(PRODUCTION_RELEASE_JSON, { version: nextVer, versionCode: nextCode, buildDate });
+        console.log(`✅ Production: ${current.version} → ${nextVer}, versionCode: ${current.versionCode || 0} → ${nextCode} (${formatDateForDisplay(buildDate)})`);
         return;
     }
 
@@ -87,11 +89,12 @@ function run(mode) {
         const baseBuildDate = prodRelease.buildDate || buildDate;
         const data = {
             version: nextVer,
+            versionCode: nextCode,
             buildDate,
             baseBuildDate,
         };
         saveJson(VERSION_JSON, data);
-        console.log(`✅ Staging: ${current.version} → ${nextVer} (${formatDateForDisplay(baseBuildDate)} (${formatDateForDisplay(buildDate)}))`);
+        console.log(`✅ Staging: ${current.version} → ${nextVer}, versionCode: ${current.versionCode || 0} → ${nextCode} (${formatDateForDisplay(baseBuildDate)} (${formatDateForDisplay(buildDate)}))`);
         return;
     }
 
