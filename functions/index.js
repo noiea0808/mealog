@@ -853,7 +853,8 @@ exports.sharePhotos = onCall({ region: REGION }, async (request) => {
         slotId: (mealData && mealData.slotId) || '',
         time: (mealData && mealData.time) || new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }),
         timestamp: FieldValue.serverTimestamp(),
-        entryId: (mealData && mealData.id) || null
+        entryId: (mealData && mealData.id) || null,
+        comment: (mealData && mealData.comment) || ''
       });
     });
 
@@ -1231,6 +1232,78 @@ exports.unsharePhotos = onCall({ region: REGION }, async (request) => {
   }
 
   return { success: true, deletedCount: photosToDelete.length };
+});
+
+/**
+ * 공유된 게시물(entry)의 코멘트 조회 — sharedPhotos에 있는 글만 허용 (다른 사용자에게 코멘트가 안 보이는 기존 문서 대응)
+ * 인자: { entryId: string, ownerUserId: string }
+ * 반환: { comment: string }
+ */
+exports.getSharedEntryComment = onCall({ region: REGION }, async (request) => {
+  const { auth, data } = request;
+  if (!auth || !auth.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const { entryId, ownerUserId } = data || {};
+  if (!entryId || !ownerUserId) {
+    throw new HttpsError('invalid-argument', 'entryId와 ownerUserId가 필요합니다.');
+  }
+  const sharedColl = db.collection('artifacts').doc(APP_ID).collection('sharedPhotos');
+  const sharedSnap = await sharedColl
+    .where('entryId', '==', entryId)
+    .where('userId', '==', ownerUserId)
+    .limit(1)
+    .get();
+  if (sharedSnap.empty) {
+    return { comment: '' };
+  }
+  const mealRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(ownerUserId).collection('meals').doc(entryId);
+  const mealSnap = await mealRef.get();
+  const comment = mealSnap.exists ? (mealSnap.data().comment || '') : '';
+  return { comment: String(comment || '').trim() };
+});
+
+/**
+ * 기존 sharedPhotos 문서에 meal의 comment 보정 (관리자 전용, 한 번 실행 권장)
+ */
+exports.backfillSharedPhotosComments = onCall({ region: REGION }, async (request) => {
+  const { auth } = request;
+  if (!auth || !auth.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const isAdmin = await isAdminByUid(auth.uid);
+  if (!isAdmin) {
+    throw new HttpsError('permission-denied', '관리자만 실행할 수 있습니다.');
+  }
+  const sharedColl = db.collection('artifacts').doc(APP_ID).collection('sharedPhotos');
+  const snap = await sharedColl.get();
+  let updated = 0;
+  let batch = db.batch();
+  let batchCount = 0;
+  const BATCH_MAX = 500;
+  for (const docSnap of snap.docs) {
+    const d = docSnap.data();
+    const entryId = d.entryId;
+    const userId = d.userId;
+    const hasComment = d.comment != null && String(d.comment).trim() !== '';
+    if (!entryId || !userId || hasComment) continue;
+    const mealRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(userId).collection('meals').doc(entryId);
+    const mealSnap = await mealRef.get();
+    if (!mealSnap.exists) continue;
+    const comment = mealSnap.data().comment;
+    if (comment == null || String(comment).trim() === '') continue;
+    batch.update(docSnap.ref, { comment: String(comment).trim() });
+    updated++;
+    batchCount++;
+    if (batchCount >= BATCH_MAX) {
+      await batch.commit();
+      batch = db.batch();
+      batchCount = 0;
+    }
+  }
+  if (batchCount > 0) await batch.commit();
+  logger.info('backfillSharedPhotosComments', { updated, total: snap.size });
+  return { success: true, updated, total: snap.size };
 });
 
 /**
