@@ -89,10 +89,10 @@ export function normalizeUrl(url) {
 /**
  * 표시용 프로필 반환: 작성자가 현재 로그인 사용자이면 현재 프로필을 사용하고,
  * 다른 사용자이면 프로필 캐시(최신) 또는 저장된 값을 사용합니다.
- * (다른 사용자 프로필은 fetchUserProfiles로 미리 로드해 두면 최신 설정으로 표시됨)
+ * 과거 게시물도 항상 현재 설정된 프로필(아이콘/닉네임)으로 표시됩니다.
  * @param {string} authorId - 작성자 userId
  * @param {{ nickname?: string, icon?: string, photoUrl?: string }} stored - 게시물에 저장된 프로필 (캐시 없을 때 fallback)
- * @returns {{ nickname: string, icon: string, photoUrl: string|null }}
+ * @returns {{ nickname: string, icon: string|null, photoUrl: string|null }}
  */
 export function getDisplayProfile(authorId, stored = {}) {
     const isCurrentUser = typeof window !== 'undefined' && window.currentUser && authorId === window.currentUser.uid;
@@ -100,7 +100,7 @@ export function getDisplayProfile(authorId, stored = {}) {
     if (isCurrentUser && profile) {
         return {
             nickname: profile.nickname || stored.nickname || '익명',
-            icon: profile.icon ?? stored.icon ?? '🐻',
+            icon: profile.icon ?? stored.icon ?? null,
             photoUrl: profile.photoUrl ?? stored.photoUrl ?? null
         };
     }
@@ -109,15 +109,27 @@ export function getDisplayProfile(authorId, stored = {}) {
     if (cached) {
         return {
             nickname: cached.nickname || stored.nickname || '익명',
-            icon: cached.icon ?? stored.icon ?? '🐻',
+            icon: cached.icon ?? stored.icon ?? null,
             photoUrl: cached.photoUrl ?? stored.photoUrl ?? null
         };
     }
     return {
         nickname: stored.nickname || '익명',
-        icon: stored.icon ?? '🐻',
+        icon: stored.icon ?? null,
         photoUrl: stored.photoUrl ?? null
     };
+}
+
+/**
+ * 프로필 아바타에 표시할 내용 반환 (사진 > 이모지 아이콘 > 닉네임 첫글자, 설정 화면과 동일)
+ * @param {{ nickname?: string, icon?: string|null, photoUrl?: string|null }} profile - getDisplayProfile 결과
+ * @returns {{ type: 'photo'|'emoji'|'initial', value: string }}
+ */
+export function getProfileAvatarDisplay(profile) {
+    if (profile.photoUrl) return { type: 'photo', value: profile.photoUrl };
+    if (profile.icon != null && profile.icon !== '') return { type: 'emoji', value: profile.icon };
+    const initial = Array.from((profile.nickname || '익명').trim())[0] || '?';
+    return { type: 'initial', value: initial };
 }
 
 export function getInputIdFromContainer(containerId) {
