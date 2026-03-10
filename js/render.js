@@ -1174,7 +1174,7 @@ function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
                             ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
                         </div>
                     ` : `
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'initial' ? 'bg-indigo-100 text-indigo-600 text-lg font-bold' : 'bg-slate-200 text-lg'}">
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'initial' ? 'bg-indigo-100 text-indigo-600 text-sm font-bold' : 'bg-slate-200 text-lg'}">
                             ${isGuestPost ? '게' : escapeHtml(avatarDisplay.value)}
                         </div>
                     `}
@@ -1680,7 +1680,7 @@ export async function renderGallery(options = {}) {
                         } else {
                             iconEl.textContent = avatar.value;
                             iconEl.style.backgroundImage = '';
-                            iconEl.className = `gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-base flex-shrink-0 border border-slate-300 ${avatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600 font-bold' : 'bg-slate-200'}`;
+                            iconEl.className = `gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border border-slate-300 ${avatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200'}`;
                         }
                     }
                     if (photoEl && disp.photoUrl) {
@@ -1702,7 +1702,7 @@ export async function renderGallery(options = {}) {
                         ${initialAvatar.type === 'photo' ? `
                             <div class="gallery-filter-photo w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border border-slate-300 bg-slate-100" style="background-image: url(${initialAvatar.value}); background-size: cover; background-position: center;"></div>
                         ` : `
-                            <div class="gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-base flex-shrink-0 border border-slate-300 ${initialAvatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600 font-bold' : 'bg-slate-200'}">${escapeHtml(initialAvatar.value)}</div>
+                            <div class="gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border border-slate-300 ${initialAvatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200'}">${escapeHtml(initialAvatar.value)}</div>
                         `}
                         <div class="flex-1 min-w-0">
                             <div class="gallery-filter-nickname text-sm font-bold text-slate-800">${initialDisplay.nickname || '익명'}</div>
@@ -2717,7 +2717,7 @@ export async function renderFeed() {
                             ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
                         </div>
                     ` : `
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'initial' ? 'bg-indigo-100 text-indigo-600 text-lg font-bold' : 'bg-slate-200 text-lg'}">
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'initial' ? 'bg-indigo-100 text-indigo-600 text-sm font-bold' : 'bg-slate-200 text-lg'}">
                             ${isGuestPost ? '게' : escapeHtml(avatarDisplay.value)}
                         </div>
                     `}
@@ -3560,7 +3560,7 @@ async function _renderBoardList(container, filteredPosts, likedPostIds, bookmark
                                 ${authorAvatar.type === 'photo' ? `
                                     <div class="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${authorAvatar.value}); background-size: cover; background-position: center;"></div>
                                 ` : `
-                                    <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 border-2 border-slate-300 ${authorAvatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600 font-bold' : 'bg-slate-200'}">
+                                    <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border-2 border-slate-300 ${authorAvatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200'}">
                                         ${escapeHtml(authorAvatar.value)}
                                     </div>
                                 `}
@@ -3715,7 +3715,7 @@ export async function renderBoardDetail(postId) {
                         ${authorAvatar.type === 'photo' ? `
                             <div class="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${authorAvatar.value}); background-size: cover; background-position: center;"></div>
                         ` : `
-                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 border-2 border-slate-300 ${authorAvatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600 font-bold' : 'bg-slate-200'}">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border-2 border-slate-300 ${authorAvatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200'}">
                                 ${escapeHtml(authorAvatar.value)}
                             </div>
                         `}

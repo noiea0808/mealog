@@ -122,12 +122,16 @@ export function getDisplayProfile(authorId, stored = {}) {
 
 /**
  * 프로필 아바타에 표시할 내용 반환 (사진 > 이모지 아이콘 > 닉네임 첫글자, 설정 화면과 동일)
+ * 기본 동물 아이콘(🐻 등)은 예전 기본값이므로 미설정으로 간주하고 닉네임 첫글자를 표시합니다.
  * @param {{ nickname?: string, icon?: string|null, photoUrl?: string|null }} profile - getDisplayProfile 결과
  * @returns {{ type: 'photo'|'emoji'|'initial', value: string }}
  */
+const DEFAULT_AVATAR_ICONS = ['🐻', '🐰', '🐱', '🐶', '🦊', '🦁', '🐼', '🐨'];
+
 export function getProfileAvatarDisplay(profile) {
     if (profile.photoUrl) return { type: 'photo', value: profile.photoUrl };
-    if (profile.icon != null && profile.icon !== '') return { type: 'emoji', value: profile.icon };
+    const icon = profile.icon != null && profile.icon !== '' ? profile.icon : null;
+    if (icon && !DEFAULT_AVATAR_ICONS.includes(icon)) return { type: 'emoji', value: icon };
     const initial = Array.from((profile.nickname || '익명').trim())[0] || '?';
     return { type: 'initial', value: initial };
 }
