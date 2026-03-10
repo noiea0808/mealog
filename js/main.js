@@ -21,6 +21,7 @@ import {
     confirmDeleteAccount, cancelDeleteAccount, confirmDeleteAccountAction
 } from './auth.js';
 import { authFlowManager } from './auth-flow.js';
+import { initPushNotifications } from './push-notifications.js';
 
 // 전역 리스너 정리 함수 (게스트→로그인 이동 등에서 사용)
 window.cleanupFirestoreListeners = () => {
@@ -2419,6 +2420,10 @@ initAuth(async (user) => {
         
         window.currentUser = user;
         lastProcessedUserId = user.uid;
+
+        if (user && !user.isAnonymous) {
+          initPushNotifications(user.uid).catch(() => {});
+        }
         
         console.log('🔐 인증 상태 변경:', {
             uid: user.uid,

@@ -2,6 +2,7 @@ const { initializeApp } = require('firebase-admin/app');
 const { getFirestore, FieldValue, Timestamp } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const { getStorage } = require('firebase-admin/storage');
+const { getMessaging } = require('firebase-admin/messaging');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineString } = require('firebase-functions/params');
 const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
@@ -125,6 +126,37 @@ async function isAdminByUid(uid) {
   const adminRef = db.collection('artifacts').doc(APP_ID).collection('admins').doc(uid);
   const adminSnap = await adminRef.get();
   return adminSnap.exists && adminSnap.data().isAdmin === true;
+}
+
+/**
+ * 특정 사용자의 FCM 토큰들에 푸시 알림 전송 (실패 시 로그만, 호출자 대기 안 함)
+ * @param {string} userId - 수신자 uid
+ * @param {{ title: string, body: string, data?: object }} payload
+ */
+async function sendPushToUser(userId, payload) {
+  if (!userId || !payload?.title) return;
+  try {
+    const ref = db.collection('artifacts').doc(APP_ID).collection('users').doc(userId).collection('config').doc('fcmTokens');
+    const snap = await ref.get();
+    const tokensMap = (snap.exists && snap.data().tokens) || {};
+    const tokens = Object.keys(tokensMap);
+    if (tokens.length === 0) return;
+    const messaging = getMessaging();
+    const message = {
+      notification: { title: payload.title, body: payload.body || '' },
+      data: payload.data || {},
+      android: { priority: 'high' }
+    };
+    const results = await Promise.allSettled(
+      tokens.map((token) => messaging.send({ ...message, token }))
+    );
+    const failed = results.filter((r) => r.status === 'rejected');
+    if (failed.length > 0) {
+      logger.warn('sendPushToUser: some sends failed', { userId, failed: failed.length });
+    }
+  } catch (e) {
+    logger.warn('sendPushToUser failed', { userId, message: e?.message });
+  }
 }
 
 /**
@@ -454,6 +486,14 @@ exports.addBoardComment = onCall({ region: REGION }, wrapFunction('addBoardComme
     });
   }
 
+  if (postAuthorId && postAuthorId !== auth.uid) {
+    sendPushToUser(postAuthorId, {
+      title: '새 댓글',
+      body: `${authorNickname}님이 댓글을 남겼습니다.`,
+      data: { type: 'boardComment', postId: String(postId) }
+    }).catch(() => {});
+  }
+
   return { id: docRef.id, ...newComment, timestamp: new Date().toISOString() };
 }));
 
@@ -513,6 +553,14 @@ exports.addBoardCommentAsAdmin = onCall({ region: REGION }, async (request) => {
     await postRef.update({
       comments: FieldValue.increment(1)
     });
+  }
+
+  if (postAuthorId && postAuthorId !== auth.uid) {
+    sendPushToUser(postAuthorId, {
+      title: '새 댓글',
+      body: `${authorNickname}님이 댓글을 남겼습니다.`,
+      data: { type: 'boardComment', postId: String(postId) }
+    }).catch(() => {});
   }
 
   return { id: docRef.id, ...newComment, timestamp: new Date().toISOString() };
@@ -634,6 +682,14 @@ exports.addPostComment = onCall({ region: REGION }, wrapFunction('addPostComment
   };
 
   const docRef = await commentsRef.add(commentData);
+
+  if (postOwnerId && postOwnerId !== auth.uid) {
+    sendPushToUser(postOwnerId, {
+      title: '새 댓글',
+      body: `${userNickname}님이 댓글을 남겼습니다.`,
+      data: { type: 'postComment', postId: String(postId) }
+    }).catch(() => {});
+  }
 
   return { id: docRef.id, ...commentData, timestamp: new Date().toISOString() };
 }));
