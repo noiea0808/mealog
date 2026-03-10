@@ -20,6 +20,7 @@ export const appState = {
     sharedPhotosFeedPrefetchedAt: 0, // 모먼트 프리페치 시각 (ms), 캐시 유효성 판단용
     sharedPhotosFeedByUserLastDoc: null,
     sharedPhotosFeedByUserHasMore: false,
+    galleryFeedNetworkError: false, // 모먼트 피드 로드 시 네트워크 단절 등으로 실패했을 때 true
     tempSettings: null,
     
     // UI 상태

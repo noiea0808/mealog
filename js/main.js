@@ -1522,9 +1522,11 @@ window.switchMainTab = (tab) => {
                 window.sharedPhotosFeed = [];
                 appState.sharedPhotosFeedLastDoc = null;
                 appState.sharedPhotosFeedHasMore = false;
+                appState.galleryFeedNetworkError = false;
                 showLoading('모먼트 불러오는 중...');
                 loadSharedPhotosPage(10)
                     .then(({ docs, lastDoc, hasMore }) => {
+                        appState.galleryFeedNetworkError = false;
                         window.sharedPhotosFeed = docs;
                         appState.sharedPhotosFeedLastDoc = lastDoc;
                         appState.sharedPhotosFeedHasMore = hasMore;
@@ -1533,6 +1535,7 @@ window.switchMainTab = (tab) => {
                     })
                     .catch(e => {
                         console.error('공유 사진 로드 실패:', e);
+                        appState.galleryFeedNetworkError = true;
                         renderGallery();
                     })
                     .finally(() => {

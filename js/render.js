@@ -1589,7 +1589,14 @@ export async function renderGallery(options = {}) {
     const galleryFilterTab = appState.galleryFilterTab || 'moment';
     let photosToRender;
     if (filterUserId) {
-        photosToRender = await getSharedPhotosByUser(filterUserId);
+        try {
+            photosToRender = await getSharedPhotosByUser(filterUserId);
+            appState.galleryFeedNetworkError = false;
+        } catch (e) {
+            console.error('모먼트(사용자) 로드 실패:', e);
+            appState.galleryFeedNetworkError = true;
+            photosToRender = [];
+        }
     } else {
         photosToRender = window.sharedPhotosFeed || [];
         // 전체보기: 최신순 정렬 보장 (Firestore 혼합 타입·캐시 등으로 정렬 꼬임 방지)
@@ -1921,6 +1928,11 @@ export async function renderGallery(options = {}) {
     // 알림 필터 시 빈 메시지 (해당 게시물이 없을 때)
     const filterPostEmptyMsg = filterPostId && sortedGroups.length === 0 ? '해당 게시물을 찾을 수 없습니다' : null;
     
+    // 네트워크 단절 시 빈 메시지 (모먼트 피드 로드 실패 시)
+    const networkEmptyMsg = sortedGroups.length === 0 && appState.galleryFeedNetworkError
+        ? '네트워크가 끊겼습니다. 연결을 확인한 뒤 다시 시도해 주세요.'
+        : null;
+    
     // ===== DIFFING: 변경사항이 작으면 차등 업데이트, 크면 전체 재렌더링 =====
     const currentPostIds = new Set(sortedGroups.map(g => getPostIdFromPhotoGroup(g)));
     const hasSignificantChanges = 
@@ -1936,11 +1948,12 @@ export async function renderGallery(options = {}) {
         return;
     }
     
-    // 헤더와 빈 메시지만 먼저 렌더링
-    const emptyMsg = filterPostEmptyMsg || traceEmptyMsg;
+    // 헤더와 빈 메시지만 먼저 렌더링 (네트워크 오류 > 알림/흔적 필터 빈 메시지)
+    const emptyMsg = networkEmptyMsg || filterPostEmptyMsg || traceEmptyMsg;
+    const emptyIcon = networkEmptyMsg ? 'fa-wifi' : (filterPostEmptyMsg ? 'fa-comment' : traceEmptyIcon);
     const headerHtml = userProfileHeader + (emptyMsg ? `
             <div class="flex flex-col items-center justify-center py-20 text-center">
-                <i class="fa-regular ${filterPostEmptyMsg ? 'fa-comment' : traceEmptyIcon} text-6xl text-slate-200 mb-4"></i>
+                <i class="fa-regular ${emptyIcon} text-6xl text-slate-200 mb-4"></i>
                 <p class="text-sm font-bold text-slate-400">${emptyMsg}</p>
             </div>
         ` : '');
@@ -2033,6 +2046,7 @@ export async function renderGallery(options = {}) {
             try {
                 const { loadSharedPhotosPage } = await import('./db.js');
                 const { docs, lastDoc, hasMore: nextHasMore } = await loadSharedPhotosPage(10, appState.sharedPhotosFeedLastDoc);
+                appState.galleryFeedNetworkError = false;
                 window.sharedPhotosFeed = [...(window.sharedPhotosFeed || []), ...docs];
                 appState.sharedPhotosFeedLastDoc = lastDoc;
                 appState.sharedPhotosFeedHasMore = nextHasMore;
@@ -2043,6 +2057,8 @@ export async function renderGallery(options = {}) {
                 appendGalleryPosts(docs, loadMoreWrap);
             } catch (e) {
                 console.error('공유 사진 더보기 실패:', e);
+                appState.galleryFeedNetworkError = true;
+                if (typeof showToast === 'function') showToast('네트워크가 끊겼습니다. 연결을 확인한 뒤 다시 시도해 주세요.', 'error');
                 loadMoreBtn.disabled = false;
                 loadMoreBtn.innerHTML = '<i class="fa-solid fa-chevron-down mr-1.5"></i>다시 시도';
             }
@@ -2406,11 +2422,18 @@ export async function clearGalleryFilter() {
     }
     // 전체 피드로 복귀 시 첫 페이지 로드 (sharedPhotosFeed 초기화)
     if (window.sharedPhotosFeed.length === 0) {
-        const { loadSharedPhotosPage } = await import('./db.js');
-        const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);
-        window.sharedPhotosFeed = docs;
-        appState.sharedPhotosFeedLastDoc = lastDoc;
-        appState.sharedPhotosFeedHasMore = hasMore;
+        try {
+            const { loadSharedPhotosPage } = await import('./db.js');
+            const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);
+            appState.galleryFeedNetworkError = false;
+            window.sharedPhotosFeed = docs;
+            appState.sharedPhotosFeedLastDoc = lastDoc;
+            appState.sharedPhotosFeedHasMore = hasMore;
+        } catch (e) {
+            console.error('모먼트 피드 로드 실패:', e);
+            appState.galleryFeedNetworkError = true;
+            window.sharedPhotosFeed = [];
+        }
     }
     renderGallery();
 }
