@@ -41,7 +41,11 @@ async function saveFcmToken(uid, token) {
  * @param {string} uid - 로그인한 사용자 uid
  */
 export async function initPushNotifications(uid) {
-  if (!uid || !isNative()) return;
+  if (!uid || !isNative()) {
+    if (!uid) console.log('푸시: uid 없음, 스킵');
+    else if (!isNative()) console.log('푸시: 네이티브가 아님(웹/에뮬), 스킵');
+    return;
+  }
 
   try {
     const PushNotifications = await import('@capacitor/push-notifications');
@@ -75,11 +79,13 @@ export async function initPushNotifications(uid) {
       });
     }
 
+    console.log('푸시: 알림 권한 요청 중...');
     const perm = await PN.requestPermissions();
     if (perm.receive !== 'granted') {
       console.log('푸시 알림 권한이 허용되지 않음:', perm.receive);
       return;
     }
+    console.log('푸시: 권한 허용됨, FCM 등록 중...');
     await PN.register();
   } catch (e) {
     console.warn('⚠️ 푸시 알림 초기화 실패:', e?.message || e);
