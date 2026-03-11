@@ -32,4 +32,6 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Android 13+ 알림 표시를 위한 런타임 권한 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

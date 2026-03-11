@@ -2,7 +2,7 @@
 import { SLOTS, SLOT_STYLES, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS } from './constants.js';
 import { appState } from './state.js';
 import { escapeHtml, renderFormattedContent, getPlainTextPreview } from './render/utils.js';
-import { normalizeUrl, getDisplayProfile } from './utils.js';
+import { normalizeUrl, getDisplayProfile, getProfileAvatarDisplay } from './utils.js';
 import { getAdminDisplayName, getSharedPhotosByUser } from './db.js';
 
 // renderGallery 실행 중 플래그 및 이벤트 리스너 관리
@@ -1164,17 +1164,18 @@ function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
     const groupKey = postId;
     const alternatePostIds = photoGroup.map(p => p.id).filter(Boolean).join(',');
     const userDisplay = getDisplayProfile(photo.userId, { nickname: photo.userNickname, icon: photo.userIcon, photoUrl: photo.userPhotoUrl });
+    const avatarDisplay = getProfileAvatarDisplay(userDisplay);
     const hasBody = (caption && (isBestShare || isDailyShare || isInsightShare)) || (comment && !isBestShare && !isDailyShare && !isInsightShare);
     return `
             <div class="mb-2 bg-white border-b border-slate-200 instagram-post ${!hasBody ? 'post-no-body' : ''}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}">
                 <div class="px-3 py-3 flex items-center gap-1 relative">
-                    ${userDisplay.photoUrl ? `
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${userDisplay.photoUrl}); background-size: cover; background-position: center;">
+                    ${avatarDisplay.type === 'photo' ? `
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${avatarDisplay.value}); background-size: cover; background-position: center;">
                             ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
                         </div>
                     ` : `
-                        <div class="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0 border-2 border-slate-300">
-                            ${isGuestPost ? '게' : (userDisplay.icon || '🐻')}
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'initial' ? 'bg-indigo-100 text-indigo-600 text-sm font-bold' : 'bg-slate-200 text-lg'}">
+                            ${isGuestPost ? '게' : escapeHtml(avatarDisplay.value)}
                         </div>
                     `}
                     <div class="flex-1 min-w-0">
@@ -1511,7 +1512,7 @@ export async function fetchUserProfiles(userIds) {
         const results = await Promise.all(uncached.map(async (userId) => {
             const settings = await getUserSettings(userId);
             const p = settings?.profile;
-            return { userId, profile: p ? { nickname: p.nickname || '익명', icon: p.icon ?? '🐻', photoUrl: p.photoUrl || null } : null };
+            return { userId, profile: p ? { nickname: p.nickname || '익명', icon: p.icon ?? null, photoUrl: p.photoUrl || null } : null };
         }));
         results.forEach(({ userId, profile }) => {
             if (profile) window.userProfileCache.set(userId, profile);
@@ -1589,7 +1590,14 @@ export async function renderGallery(options = {}) {
     const galleryFilterTab = appState.galleryFilterTab || 'moment';
     let photosToRender;
     if (filterUserId) {
-        photosToRender = await getSharedPhotosByUser(filterUserId);
+        try {
+            photosToRender = await getSharedPhotosByUser(filterUserId);
+            appState.galleryFeedNetworkError = false;
+        } catch (e) {
+            console.error('모먼트(사용자) 로드 실패:', e);
+            appState.galleryFeedNetworkError = true;
+            photosToRender = [];
+        }
     } else {
         photosToRender = window.sharedPhotosFeed || [];
         // 전체보기: 최신순 정렬 보장 (Firestore 혼합 타입·캐시 등으로 정렬 꼬임 방지)
@@ -1629,7 +1637,8 @@ export async function renderGallery(options = {}) {
         const filteredUserPhoto = photosToRender[0] || null;
         const initialDisplay = filteredUserPhoto
             ? getDisplayProfile(filteredUserPhoto.userId, { nickname: filteredUserPhoto.userNickname, icon: filteredUserPhoto.userIcon, photoUrl: filteredUserPhoto.userPhotoUrl })
-            : getDisplayProfile(filterUserId, { nickname: '로딩...', icon: '🐻', photoUrl: null });
+            : getDisplayProfile(filterUserId, { nickname: '로딩...', icon: null, photoUrl: null });
+        const initialAvatar = getProfileAvatarDisplay(initialDisplay);
         (async () => {
             if (abortSignal && abortSignal.aborted) return;
             try {
@@ -1661,7 +1670,19 @@ export async function renderGallery(options = {}) {
                     const photoEl = existingHeader.querySelector('.gallery-filter-photo');
                     const disp = getDisplayProfile(filterUserId, { nickname: userSettings.profile.nickname, icon: userSettings.profile.icon, photoUrl: userSettings.profile.photoUrl });
                     if (nickEl) nickEl.textContent = disp.nickname || '익명';
-                    if (iconEl) iconEl.textContent = disp.icon || '🐻';
+                    if (iconEl) {
+                        const avatar = getProfileAvatarDisplay(disp);
+                        if (avatar.type === 'photo') {
+                            iconEl.textContent = '';
+                            iconEl.style.backgroundImage = `url(${avatar.value})`;
+                            iconEl.classList.add('bg-cover', 'bg-center');
+                            iconEl.classList.remove('bg-slate-200', 'bg-indigo-100');
+                        } else {
+                            iconEl.textContent = avatar.value;
+                            iconEl.style.backgroundImage = '';
+                            iconEl.className = `gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border border-slate-300 ${avatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200'}`;
+                        }
+                    }
                     if (photoEl && disp.photoUrl) {
                         photoEl.style.backgroundImage = `url(${disp.photoUrl})`;
                         photoEl.classList.add('bg-cover', 'bg-center');
@@ -1678,10 +1699,10 @@ export async function renderGallery(options = {}) {
                         <button onclick="window.clearGalleryFilter()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors flex-shrink-0">
                             <i class="fa-solid fa-arrow-left text-lg"></i>
                         </button>
-                        ${initialDisplay.photoUrl ? `
-                            <div class="gallery-filter-photo w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border border-slate-300 bg-slate-100" style="background-image: url(${initialDisplay.photoUrl}); background-size: cover; background-position: center;"></div>
+                        ${initialAvatar.type === 'photo' ? `
+                            <div class="gallery-filter-photo w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border border-slate-300 bg-slate-100" style="background-image: url(${initialAvatar.value}); background-size: cover; background-position: center;"></div>
                         ` : `
-                            <div class="gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-base flex-shrink-0 border border-slate-300 bg-slate-200">${initialDisplay.icon || '🐻'}</div>
+                            <div class="gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border border-slate-300 ${initialAvatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200'}">${escapeHtml(initialAvatar.value)}</div>
                         `}
                         <div class="flex-1 min-w-0">
                             <div class="gallery-filter-nickname text-sm font-bold text-slate-800">${initialDisplay.nickname || '익명'}</div>
@@ -1921,6 +1942,11 @@ export async function renderGallery(options = {}) {
     // 알림 필터 시 빈 메시지 (해당 게시물이 없을 때)
     const filterPostEmptyMsg = filterPostId && sortedGroups.length === 0 ? '해당 게시물을 찾을 수 없습니다' : null;
     
+    // 네트워크 단절 시 빈 메시지 (모먼트 피드 로드 실패 시)
+    const networkEmptyMsg = sortedGroups.length === 0 && appState.galleryFeedNetworkError
+        ? '네트워크가 끊겼습니다. 연결을 확인한 뒤 다시 시도해 주세요.'
+        : null;
+    
     // ===== DIFFING: 변경사항이 작으면 차등 업데이트, 크면 전체 재렌더링 =====
     const currentPostIds = new Set(sortedGroups.map(g => getPostIdFromPhotoGroup(g)));
     const hasSignificantChanges = 
@@ -1936,11 +1962,12 @@ export async function renderGallery(options = {}) {
         return;
     }
     
-    // 헤더와 빈 메시지만 먼저 렌더링
-    const emptyMsg = filterPostEmptyMsg || traceEmptyMsg;
+    // 헤더와 빈 메시지만 먼저 렌더링 (네트워크 오류 > 알림/흔적 필터 빈 메시지)
+    const emptyMsg = networkEmptyMsg || filterPostEmptyMsg || traceEmptyMsg;
+    const emptyIcon = networkEmptyMsg ? 'fa-wifi' : (filterPostEmptyMsg ? 'fa-comment' : traceEmptyIcon);
     const headerHtml = userProfileHeader + (emptyMsg ? `
             <div class="flex flex-col items-center justify-center py-20 text-center">
-                <i class="fa-regular ${filterPostEmptyMsg ? 'fa-comment' : traceEmptyIcon} text-6xl text-slate-200 mb-4"></i>
+                <i class="fa-regular ${emptyIcon} text-6xl text-slate-200 mb-4"></i>
                 <p class="text-sm font-bold text-slate-400">${emptyMsg}</p>
             </div>
         ` : '');
@@ -2033,6 +2060,7 @@ export async function renderGallery(options = {}) {
             try {
                 const { loadSharedPhotosPage } = await import('./db.js');
                 const { docs, lastDoc, hasMore: nextHasMore } = await loadSharedPhotosPage(10, appState.sharedPhotosFeedLastDoc);
+                appState.galleryFeedNetworkError = false;
                 window.sharedPhotosFeed = [...(window.sharedPhotosFeed || []), ...docs];
                 appState.sharedPhotosFeedLastDoc = lastDoc;
                 appState.sharedPhotosFeedHasMore = nextHasMore;
@@ -2043,6 +2071,8 @@ export async function renderGallery(options = {}) {
                 appendGalleryPosts(docs, loadMoreWrap);
             } catch (e) {
                 console.error('공유 사진 더보기 실패:', e);
+                appState.galleryFeedNetworkError = true;
+                if (typeof showToast === 'function') showToast('네트워크가 끊겼습니다. 연결을 확인한 뒤 다시 시도해 주세요.', 'error');
                 loadMoreBtn.disabled = false;
                 loadMoreBtn.innerHTML = '<i class="fa-solid fa-chevron-down mr-1.5"></i>다시 시도';
             }
@@ -2406,11 +2436,18 @@ export async function clearGalleryFilter() {
     }
     // 전체 피드로 복귀 시 첫 페이지 로드 (sharedPhotosFeed 초기화)
     if (window.sharedPhotosFeed.length === 0) {
-        const { loadSharedPhotosPage } = await import('./db.js');
-        const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);
-        window.sharedPhotosFeed = docs;
-        appState.sharedPhotosFeedLastDoc = lastDoc;
-        appState.sharedPhotosFeedHasMore = hasMore;
+        try {
+            const { loadSharedPhotosPage } = await import('./db.js');
+            const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);
+            appState.galleryFeedNetworkError = false;
+            window.sharedPhotosFeed = docs;
+            appState.sharedPhotosFeedLastDoc = lastDoc;
+            appState.sharedPhotosFeedHasMore = hasMore;
+        } catch (e) {
+            console.error('모먼트 피드 로드 실패:', e);
+            appState.galleryFeedNetworkError = true;
+            window.sharedPhotosFeed = [];
+        }
     }
     renderGallery();
 }
@@ -2671,16 +2708,17 @@ export async function renderFeed() {
         }).join('');
         
         const userDisplay = getDisplayProfile(photo.userId, { nickname: photo.userNickname, icon: photo.userIcon, photoUrl: photo.userPhotoUrl });
+        const avatarDisplay = getProfileAvatarDisplay(userDisplay);
         return `
             <div class="mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden instagram-post" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}">
                 <div class="px-2 py-3 flex items-center gap-1 relative">
-                    ${userDisplay.photoUrl ? `
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${userDisplay.photoUrl}); background-size: cover; background-position: center;">
+                    ${avatarDisplay.type === 'photo' ? `
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${avatarDisplay.value}); background-size: cover; background-position: center;">
                             ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
                         </div>
                     ` : `
-                        <div class="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0 border-2 border-slate-300">
-                            ${isGuestPost ? '게' : (userDisplay.icon || '🐻')}
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'initial' ? 'bg-indigo-100 text-indigo-600 text-sm font-bold' : 'bg-slate-200 text-lg'}">
+                            ${isGuestPost ? '게' : escapeHtml(avatarDisplay.value)}
                         </div>
                     `}
                     <div class="flex-1 min-w-0 mr-2">
@@ -3500,6 +3538,7 @@ async function _renderBoardList(container, filteredPosts, likedPostIds, bookmark
                 const isLiked = likedPostIds.has(post.id);
                 const isBookmarked = bookmarkedPostIds.has(post.id);
                 const authorDisplay = getDisplayProfile(post.authorId, { nickname: post.authorNickname, icon: post.authorIcon, photoUrl: post.authorPhotoUrl });
+                const authorAvatar = getProfileAvatarDisplay(authorDisplay);
                 
                 const hasImages = Array.isArray(post.imageUrls) && post.imageUrls.length > 0;
                 const isPendingPost = post.id && String(post.id).startsWith('pending-');
@@ -3518,11 +3557,11 @@ async function _renderBoardList(container, filteredPosts, likedPostIds, bookmark
                         </div>
                         <div class="flex items-center justify-between pt-3 border-t border-slate-200">
                             <div class="flex items-center gap-3 cursor-pointer hover:opacity-80 active:opacity-70 transition-opacity rounded-lg -m-1 p-1" onclick="event.stopPropagation(); window.openUserProfileFromBoard && window.openUserProfileFromBoard('${post.authorId}')" role="button" tabindex="0">
-                                ${authorDisplay.photoUrl ? `
-                                    <div class="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${authorDisplay.photoUrl}); background-size: cover; background-position: center;"></div>
+                                ${authorAvatar.type === 'photo' ? `
+                                    <div class="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${authorAvatar.value}); background-size: cover; background-position: center;"></div>
                                 ` : `
-                                    <div class="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-sm flex-shrink-0 border-2 border-slate-300">
-                                        ${authorDisplay.icon || authorDisplay.nickname.charAt(0)}
+                                    <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border-2 border-slate-300 ${authorAvatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200'}">
+                                        ${escapeHtml(authorAvatar.value)}
                                     </div>
                                 `}
                                 <div>
@@ -3669,14 +3708,15 @@ export async function renderBoardDetail(postId) {
                 <!-- 하단: 작성자/일자/조회수(왼쪽) | 좋아요·북마크(오른쪽) -->
                 ${(() => {
                     const authorDisplay = getDisplayProfile(post.authorId, { nickname: post.authorNickname, icon: post.authorIcon, photoUrl: post.authorPhotoUrl });
+                    const authorAvatar = getProfileAvatarDisplay(authorDisplay);
                     return `
                 <div class="flex items-center justify-between pt-3 border-t border-slate-200">
                     <div class="flex items-center gap-3">
-                        ${authorDisplay.photoUrl ? `
-                            <div class="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${authorDisplay.photoUrl}); background-size: cover; background-position: center;"></div>
+                        ${authorAvatar.type === 'photo' ? `
+                            <div class="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${authorAvatar.value}); background-size: cover; background-position: center;"></div>
                         ` : `
-                            <div class="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-sm flex-shrink-0 border-2 border-slate-300">
-                                ${authorDisplay.icon || authorDisplay.nickname.charAt(0)}
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border-2 border-slate-300 ${authorAvatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200'}">
+                                ${escapeHtml(authorAvatar.value)}
                             </div>
                         `}
                         <div>
@@ -3893,10 +3933,12 @@ export function createDailyShareCard(dateStr, forPreview = false) {
     const month = dObj.getMonth() + 1;
     const day = dObj.getDate();
     
-    // 사용자 정보 가져오기
+    // 사용자 정보 가져오기 (아이콘 미설정 시 닉네임 첫글자 표시)
     const userProfile = window.userSettings?.profile || {};
-    const userNickname = userProfile.nickname || '익명';
-    const userIcon = userProfile.icon || '🐻';
+    const displayProfile = { nickname: userProfile.nickname || '익명', icon: userProfile.icon ?? null, photoUrl: userProfile.photoUrl || null };
+    const userNickname = displayProfile.nickname;
+    const dailyAvatar = getProfileAvatarDisplay(displayProfile);
+    const userIconDisplay = dailyAvatar.type === 'photo' ? '' : dailyAvatar.value;
     
     // 기존 컨테이너 제거
     const existing = document.getElementById('dailyShareCardContainer');

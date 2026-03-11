@@ -337,14 +337,16 @@ export function renderBestMeals() {
         }
     }
     
-    // 월간/연간 모드에서는 만족도 5점만 표시, 주간은 4점 이상
-    const isMonthOrYearMode = state.dashboardMode === 'month' || state.dashboardMode === 'year' || state.dashboardMode === 'custom';
-    const filteredMeals = isMonthOrYearMode
+    // 연간 모드: 만족도 5점만, 월간 모드: 4점 이상, 주간: 4점 이상
+    const isYearMode = state.dashboardMode === 'year' || state.dashboardMode === 'custom';
+    const isMonthMode = state.dashboardMode === 'month';
+    const isMonthOrYearMode = isMonthMode || isYearMode;
+    const filteredMeals = isYearMode
         ? meals.filter(m => m && m.rating && parseInt(m.rating) === 5)
-        : meals.filter(m => m && m.rating);
+        : meals.filter(m => m && m.rating && parseInt(m.rating) >= 4);
     
     if (filteredMeals.length === 0) {
-        const message = isMonthOrYearMode
+        const message = isYearMode
             ? '만족도 5점인 기록이 없습니다.'
             : '만족도 4점 이상인 기록이 없습니다.';
         container.innerHTML = `<div class="text-center py-8 text-slate-400 text-sm">${message}</div>`;
@@ -731,12 +733,12 @@ export async function openShareBestModal() {
     const existingShare = await checkBestShareStatus(periodType, periodText);
     const isShared = !!existingShare;
     
-    // 베스트 탭과 동일한 필터·정렬 적용 후 1~3위만 사용 (미리보기와 화면 목록 일치)
+    // 베스트 탭과 동일한 필터·정렬 적용 후 1~3위만 사용 (미리보기와 화면 목록 일치) — 연간: 5점만, 월간/주간: 4점 이상
     const periodKey = getBestPeriodKey();
-    const isMonthOrYearMode = state.dashboardMode === 'month' || state.dashboardMode === 'year' || state.dashboardMode === 'custom';
-    const filteredForShare = isMonthOrYearMode
+    const isYearModeForShare = state.dashboardMode === 'year' || state.dashboardMode === 'custom';
+    const filteredForShare = isYearModeForShare
         ? meals.filter(m => m && m.rating && parseInt(m.rating) === 5)
-        : meals.filter(m => m && m.rating);
+        : meals.filter(m => m && m.rating && parseInt(m.rating) >= 4);
     const savedOrder = (window.userSettings && window.userSettings.bestMeals ? window.userSettings.bestMeals[periodKey] : null) || [];
     const sortedForShare = [...filteredForShare].sort((a, b) => {
         const aRating = a.rating ? parseInt(a.rating) : 0;

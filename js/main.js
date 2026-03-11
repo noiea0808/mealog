@@ -21,6 +21,7 @@ import {
     confirmDeleteAccount, cancelDeleteAccount, confirmDeleteAccountAction
 } from './auth.js';
 import { authFlowManager } from './auth-flow.js';
+import { initPushNotifications } from './push-notifications.js';
 
 // 전역 리스너 정리 함수 (게스트→로그인 이동 등에서 사용)
 window.cleanupFirestoreListeners = () => {
@@ -1522,9 +1523,11 @@ window.switchMainTab = (tab) => {
                 window.sharedPhotosFeed = [];
                 appState.sharedPhotosFeedLastDoc = null;
                 appState.sharedPhotosFeedHasMore = false;
+                appState.galleryFeedNetworkError = false;
                 showLoading('모먼트 불러오는 중...');
                 loadSharedPhotosPage(10)
                     .then(({ docs, lastDoc, hasMore }) => {
+                        appState.galleryFeedNetworkError = false;
                         window.sharedPhotosFeed = docs;
                         appState.sharedPhotosFeedLastDoc = lastDoc;
                         appState.sharedPhotosFeedHasMore = hasMore;
@@ -1533,6 +1536,7 @@ window.switchMainTab = (tab) => {
                     })
                     .catch(e => {
                         console.error('공유 사진 로드 실패:', e);
+                        appState.galleryFeedNetworkError = true;
                         renderGallery();
                     })
                     .finally(() => {
@@ -2416,6 +2420,10 @@ initAuth(async (user) => {
         
         window.currentUser = user;
         lastProcessedUserId = user.uid;
+
+        if (user && !user.isAnonymous) {
+          initPushNotifications(user.uid).catch(() => {});
+        }
         
         console.log('🔐 인증 상태 변경:', {
             uid: user.uid,
