@@ -2220,6 +2220,17 @@ export async function saveProfileSettings() {
         
         // 생년월일: 값이 입력된 경우에만 저장 및 변경 체크
         if (newBirthdate) {
+            const birthdateRegex = /^\d{4}-\d{2}-\d{2}$/;
+            if (!birthdateRegex.test(newBirthdate)) {
+                showToast("생년월일을 YYYY-MM-DD 형식으로 입력해주세요. (예: 1990-01-15)", "error");
+                return;
+            }
+            const [y, m, d] = newBirthdate.split('-').map(Number);
+            const birthDateObj = new Date(y, m - 1, d);
+            if (birthDateObj.getFullYear() !== y || birthDateObj.getMonth() !== m - 1 || birthDateObj.getDate() !== d) {
+                showToast("올바른 날짜를 입력해주세요.", "error");
+                return;
+            }
             const isBirthdateChanged = existingBirthdate && newBirthdate && existingBirthdate !== newBirthdate;
             if (isBirthdateChanged) {
                 if (existingCount >= 1) {

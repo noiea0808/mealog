@@ -805,6 +805,19 @@ export async function confirmProfileSetup() {
         return;
     }
 
+    // 수기 입력 시 YYYY-MM-DD 형식 검증
+    const birthdateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!birthdateRegex.test(birthdate)) {
+        showToast("생년월일을 YYYY-MM-DD 형식으로 입력해주세요. (예: 1990-01-15)", "error");
+        return;
+    }
+    const [y, m, d] = birthdate.split('-').map(Number);
+    const birthDateObj = new Date(y, m - 1, d);
+    if (birthDateObj.getFullYear() !== y || birthDateObj.getMonth() !== m - 1 || birthDateObj.getDate() !== d) {
+        showToast("올바른 날짜를 입력해주세요.", "error");
+        return;
+    }
+
     // 라이프스타일은 선택 입력 (필수 아님)
     
     try {

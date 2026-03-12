@@ -531,7 +531,7 @@
                     <label class="text-sm font-bold text-slate-600 block mb-2">생년월일</label>
                     <div class="flex gap-3 items-center">
                         <div class="flex-1 min-w-0">
-                            <input type="date" id="setupBirthdate" class="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 text-sm outline-none focus:border-slate-400 transition-colors" aria-label="생년월일 캘린더 선택">
+                            <input type="text" id="setupBirthdate" inputmode="numeric" pattern="[0-9\-]*" maxlength="10" placeholder="예: 1990-01-15" class="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 text-sm outline-none focus:border-slate-400 transition-colors" aria-label="생년월일 입력 (YYYY-MM-DD)">
                         </div>
                         <div id="setupGenderSwitch" class="setup-gender-switch flex-shrink-0 inline-flex rounded-xl overflow-hidden border border-slate-200 bg-slate-50" role="group" aria-label="성별">
                             <button type="button" id="setupGenderMale" class="setup-gender-btn py-3 px-4 text-sm font-bold transition-colors rounded-l-[10px] bg-slate-50 text-slate-600 border-0" data-value="male">남</button>
@@ -958,7 +958,7 @@
                             <label class="profile-settings-label" for="settingBirthdate">생년월일</label>
                             <div class="profile-settings-field w-full min-w-0">
                                 <div class="profile-settings-birthdate-row">
-                                    <input type="date" id="settingBirthdate" class="profile-settings-input profile-settings-birthdate-input">
+                                    <input type="text" id="settingBirthdate" inputmode="numeric" pattern="[0-9\-]*" maxlength="10" placeholder="예: 1990-01-15" class="profile-settings-input profile-settings-birthdate-input" aria-label="생년월일 입력 (YYYY-MM-DD)">
                                     <div class="setting-gender-switch inline-flex rounded-lg overflow-hidden border border-slate-300 bg-white/90 shadow-sm" role="group" aria-label="성별">
                                         <button type="button" id="settingGenderMale" class="setting-gender-btn py-2 px-3 rounded-l-[8px] text-sm font-bold border-0 transition-colors bg-slate-50 text-slate-600" data-value="male">남</button>
                                         <button type="button" id="settingGenderFemale" class="setting-gender-btn py-2 px-3 rounded-r-[8px] text-sm font-bold border-0 transition-colors bg-slate-50 text-slate-600" data-value="female">여</button>
