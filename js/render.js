@@ -4126,6 +4126,11 @@ let photoEditRotation = 0; // 회전 각도 (도 단위)
 let isDraggingPhoto = false;
 let dragStartX = 0;
 let dragStartY = 0;
+/** 드래그 시 화면 델타를 회전된 좌표계로 변환하기 위해 저장 */
+let dragStartClientX = 0;
+let dragStartClientY = 0;
+let dragStartOffsetX = 0;
+let dragStartOffsetY = 0;
 let isPinching = false;
 let initialPinchDistance = 0;
 let initialPinchScale = 1;
@@ -4284,9 +4289,24 @@ function setupPhotoEditDrag() {
     // 터치 이벤트는 setupPhotoEditZoomAndRotate에서 통합 처리
 }
 
+/** 화면(캔버스) 좌표계의 이동량을 회전된 이미지 좌표계로 변환 (드래그 방향이 보이는 대로 동작하도록) */
+function screenDeltaToRotatedOffset(dx, dy) {
+    const rad = (photoEditRotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    return {
+        x: cos * dx + sin * dy,
+        y: -sin * dx + cos * dy
+    };
+}
+
 // 마우스 이벤트 핸들러
 function handlePhotoEditMouseDown(e) {
     isDraggingPhoto = true;
+    dragStartClientX = e.clientX;
+    dragStartClientY = e.clientY;
+    dragStartOffsetX = photoEditOffsetX;
+    dragStartOffsetY = photoEditOffsetY;
     dragStartX = e.clientX - photoEditOffsetX;
     dragStartY = e.clientY - photoEditOffsetY;
     if (photoEditCanvas) {
@@ -4297,10 +4317,13 @@ function handlePhotoEditMouseDown(e) {
 function handlePhotoEditMouseMove(e) {
     if (!isDraggingPhoto) return;
     
-    photoEditOffsetX = e.clientX - dragStartX;
-    photoEditOffsetY = e.clientY - dragStartY;
+    const dx = e.clientX - dragStartClientX;
+    const dy = e.clientY - dragStartClientY;
+    const rotated = screenDeltaToRotatedOffset(dx, dy);
+    photoEditOffsetX = dragStartOffsetX + rotated.x;
+    photoEditOffsetY = dragStartOffsetY + rotated.y;
     
-    // 경계 체크
+    // 경계 체크 (회전된 좌표계 기준으로 drawWidth/drawHeight 사용)
     const drawWidth = editingPhotoImage.width * photoEditScale;
     const drawHeight = editingPhotoImage.height * photoEditScale;
     
@@ -4332,6 +4355,10 @@ function handlePhotoEditTouchStart(e) {
     e.preventDefault();
     const touch = e.touches[0];
     isDraggingPhoto = true;
+    dragStartClientX = touch.clientX;
+    dragStartClientY = touch.clientY;
+    dragStartOffsetX = photoEditOffsetX;
+    dragStartOffsetY = photoEditOffsetY;
     dragStartX = touch.clientX - photoEditOffsetX;
     dragStartY = touch.clientY - photoEditOffsetY;
 }
@@ -4345,10 +4372,13 @@ function handlePhotoEditTouchMove(e) {
     e.preventDefault();
     
     const touch = e.touches[0];
-    photoEditOffsetX = touch.clientX - dragStartX;
-    photoEditOffsetY = touch.clientY - dragStartY;
+    const dx = touch.clientX - dragStartClientX;
+    const dy = touch.clientY - dragStartClientY;
+    const rotated = screenDeltaToRotatedOffset(dx, dy);
+    photoEditOffsetX = dragStartOffsetX + rotated.x;
+    photoEditOffsetY = dragStartOffsetY + rotated.y;
     
-    // 경계 체크
+    // 경계 체크 (회전된 좌표계 기준으로 drawWidth/drawHeight 사용)
     const drawWidth = editingPhotoImage.width * photoEditScale;
     const drawHeight = editingPhotoImage.height * photoEditScale;
     
