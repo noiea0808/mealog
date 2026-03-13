@@ -1059,10 +1059,12 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
 
     // 네이티브 앱: Capacitor Share + Filesystem 사용 (Android WebView는 navigator.share 파일 미지원)
     if (isNative) {
+        let step = '';
         try {
             const { Share } = await import('@capacitor/share');
             const { Filesystem, Directory } = await import('@capacitor/filesystem');
             const blobs = [];
+            step = '이미지 불러오기';
             for (let i = 0; i < Math.min(urls.length, 5); i++) {
                 const url = urls[i];
                 try {
@@ -1073,7 +1075,6 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
                     if (!skipCaptionBar && captionText) {
                         blob = await addCaptionToImage(blob, captionText);
                     }
-                    // 미잘라낸 대용량 사진으로 인한 공유 실패 방지: 공유용으로 리사이즈
                     blob = await resizeBlobForShare(blob);
                     blobs.push(blob);
                 } catch (imgErr) {
@@ -1086,17 +1087,17 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
                 }
                 return false;
             }
-            // 로고는 실패해도 무시하고 사진만 공유 (앱 내 화면에 랜딩 아이콘이 없을 수 있음)
             try {
                 const logoBlob = await createMealogLogoImage();
                 if (logoBlob && logoBlob.size > 0) blobs.push(logoBlob);
             } catch (_) {}
             const prefix = `mealog_share_${Date.now()}`;
             const fileUris = [];
+            step = '파일 저장';
             for (let i = 0; i < blobs.length; i++) {
                 const path = `${prefix}_${i}.jpg`;
                 const base64 = await blobToBase64(blobs[i]);
-                if (!base64 || base64.length > 6 * 1024 * 1024) continue; // base64 6MB 초과 시 스킵 (대용량 오류 방지)
+                if (!base64 || base64.length > 6 * 1024 * 1024) continue;
                 await Filesystem.writeFile({
                     path,
                     data: base64,
@@ -1111,13 +1112,30 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
                 }
                 return false;
             }
+            step = '공유 창 열기';
             const shareOptions = {
                 url: fileUris[0],
                 text: captionText || 'mealog',
                 title: 'mealog',
                 dialogTitle: '공유하기',
             };
-            await Share.share(shareOptions);
+            try {
+                await Share.share(shareOptions);
+            } catch (shareErr) {
+                // 이미지 url 공유가 실패한 경우(일부 Android): 캡션만 공유 시도
+                if (typeof Share.share === 'function') {
+                    await Share.share({
+                        text: captionText ? `mealog - ${captionText}` : 'mealog',
+                        title: 'mealog',
+                        dialogTitle: '공유하기',
+                    });
+                    if (typeof window.showToast === 'function') {
+                        window.showToast('이미지 공유가 제한되어 캡션만 공유했습니다.', 'info');
+                    }
+                    return true;
+                }
+                throw shareErr;
+            }
             if (typeof window.showToast === 'function') {
                 window.showToast('공유되었습니다.', 'success');
             }
@@ -1125,9 +1143,10 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
         } catch (e) {
             if (e.name === 'AbortError' || (e.message && /cancelled|canceled/i.test(e.message))) return false;
             const msg = e.message || String(e);
-            console.error('sharePhotosToExternal(네이티브) 실패:', e);
+            console.error('sharePhotosToExternal(네이티브) 실패:', step, e);
             if (typeof window.showToast === 'function') {
-                window.showToast('공유에 실패했습니다. ' + (msg.length > 50 ? msg.slice(0, 50) + '…' : msg), 'error');
+                const stepMsg = step ? ` (${step} 단계)` : '';
+                window.showToast('공유에 실패했습니다.' + stepMsg + ' ' + (msg.length > 40 ? msg.slice(0, 40) + '…' : msg), 'error');
             }
             return false;
         }
