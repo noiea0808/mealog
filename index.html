@@ -1057,19 +1057,25 @@
     <!-- Entry Modal -->
     <div id="entryModal" class="hidden fixed inset-0 bg-slate-900/60 z-[300] flex items-end">
         <div class="w-full max-w-md mx-auto bg-white rounded-t-[2.5rem] flex flex-col max-h-[92vh]">
-            <div class="p-6 border-b flex justify-between items-center">
-                <h2 id="modalTitle" class="text-lg font-bold text-slate-800 tracking-tight">기록하기</h2>
-                <button onclick="window.closeModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
+            <div class="py-3 px-4 border-b flex justify-between items-center">
+                <h2 id="modalTitle" class="text-sm font-bold text-slate-800 tracking-tight">기록하기</h2>
+                <button onclick="window.closeModal()"><i class="fa-solid fa-xmark text-base text-slate-400"></i></button>
             </div>
             <div id="modalScrollArea" class="p-4 space-y-2 overflow-y-auto pb-2">
                 <div id="mainMealFields">
                     <div class="mb-2">
                         <div class="flex items-center justify-between mb-1.5">
                             <span class="text-sm font-extrabold text-slate-600 block uppercase">음식 사진</span>
-                            <span id="photoCount" class="text-[10px] text-slate-400 font-bold">0/5</span>
+                            <div class="flex items-center gap-1">
+                                <span id="photoAspectLabelMeal" class="text-[10px] text-slate-400 font-bold mr-1">비율</span>
+                                <button type="button" data-aspect="1:1" class="photo-aspect-btn aspect-btn-meal px-2 py-0.5 text-xs font-bold rounded-lg border transition-colors" onclick="window.setRecordPhotoAspectRatio('1:1')">1:1</button>
+                                <button type="button" data-aspect="3:4" class="photo-aspect-btn aspect-btn-meal px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setRecordPhotoAspectRatio('3:4')">3:4</button>
+                                <button type="button" data-aspect="4:3" class="photo-aspect-btn aspect-btn-meal px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setRecordPhotoAspectRatio('4:3')">4:3</button>
+                                <span id="photoCount" class="text-[10px] text-slate-400 font-bold ml-2">0/5</span>
+                            </div>
                         </div>
                         <div class="flex gap-2 overflow-x-auto pb-1">
-                            <button id="imageBtn" onclick="document.getElementById('imageInput').click()" class="flex-shrink-0 w-20 h-20 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors">
+                            <button id="imageBtn" onclick="document.getElementById('imageInput').click()" class="flex-shrink-0 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors record-photo-aspect-btn" style="width: 80px; aspect-ratio: 1;">
                                 <i class="fa-solid fa-camera text-xl"></i>
                             </button>
                             <div id="photoPreviewContainer" class="flex gap-2"></div>
@@ -1133,10 +1139,16 @@
                     <div class="mb-2">
                         <div class="flex items-center justify-between mb-1.5">
                             <span class="text-sm font-extrabold text-slate-600 block uppercase">간식 사진</span>
-                            <span id="snackPhotoCount" class="text-[10px] text-slate-400 font-bold">0/5</span>
+                            <div class="flex items-center gap-1">
+                                <span id="photoAspectLabelSnack" class="text-[10px] text-slate-400 font-bold mr-1">비율</span>
+                                <button type="button" data-aspect="1:1" class="photo-aspect-btn aspect-btn-snack px-2 py-0.5 text-xs font-bold rounded-lg border transition-colors" onclick="window.setRecordPhotoAspectRatio('1:1')">1:1</button>
+                                <button type="button" data-aspect="3:4" class="photo-aspect-btn aspect-btn-snack px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setRecordPhotoAspectRatio('3:4')">3:4</button>
+                                <button type="button" data-aspect="4:3" class="photo-aspect-btn aspect-btn-snack px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setRecordPhotoAspectRatio('4:3')">4:3</button>
+                                <span id="snackPhotoCount" class="text-[10px] text-slate-400 font-bold ml-2">0/5</span>
+                            </div>
                         </div>
                         <div class="flex gap-2 overflow-x-auto pb-1">
-                            <button id="snackImageBtn" onclick="document.getElementById('snackImageInput').click()" class="flex-shrink-0 w-20 h-20 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors">
+                            <button id="snackImageBtn" onclick="document.getElementById('snackImageInput').click()" class="flex-shrink-0 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors record-photo-aspect-btn" style="width: 80px; aspect-ratio: 1;">
                                 <i class="fa-solid fa-camera text-xl"></i>
                             </button>
                             <div id="snackPhotoPreviewContainer" class="flex gap-2"></div>
@@ -1312,13 +1324,16 @@
                     <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
             </div>
-            <div class="p-4 flex-1 overflow-hidden flex flex-col">
-                <div id="photoEditCanvasContainer" class="flex-1 bg-slate-100 rounded-xl overflow-hidden relative mb-4" style="min-height: 300px;">
-                    <canvas id="photoEditCanvas" class="w-full h-full"></canvas>
-                    <div id="photoEditCropArea" class="absolute border-2 border-emerald-500 border-dashed pointer-events-none" style="display: none;"></div>
+            <div class="p-4 flex-1 overflow-y-auto flex flex-col min-h-0">
+                <div class="flex justify-center mb-4 shrink-0">
+                    <div id="photoEditAspectWrapper" class="w-full max-w-[min(100%,360px)] rounded-xl border-2 border-slate-400 overflow-hidden bg-slate-100 shrink-0" style="aspect-ratio: 1;">
+                        <div id="photoEditCanvasContainer" class="w-full h-full relative">
+                            <canvas id="photoEditCanvas" class="block w-full h-full"></canvas>
+                            <div id="photoEditCropArea" class="absolute inset-0 border-2 border-emerald-500 border-dashed pointer-events-none" style="display: none;"></div>
+                        </div>
+                    </div>
                 </div>
-                <div class="space-y-2">
-                    <div class="text-sm text-slate-600 mb-2">사진을 드래그하여 보이는 영역을 조절하세요</div>
+                <div class="space-y-2 shrink-0">
                     <div class="flex gap-2 mb-2">
                         <button onclick="window.zoomOutPhotoEdit()" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm">
                             <i class="fa-solid fa-magnifying-glass-minus"></i> 축소

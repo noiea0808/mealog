@@ -42,6 +42,7 @@ export function setRecordPhotoAspectRatio(value) {
     if (!PHOTO_ASPECT_OPTIONS.includes(value)) return;
     appState.recordPhotoAspectRatio = value;
     updatePhotoAspectButtons();
+    renderPhotoPreviews(); // 등록 화면 다중 미리보기도 선택 비율로 갱신
 }
 
 /** 끼니 등록 모달: 키보드 열림 시 모달 높이를 viewport에 맞추고, 닫힘 시 네비바 영역 복원 */

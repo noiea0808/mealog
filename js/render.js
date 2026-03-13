@@ -186,9 +186,10 @@ export function renderPhotoPreviews() {
     const currentCount = appState.currentPhotos.length;
     
     if (container) {
+        const aspectCss = getRecordPhotoAspectRatioCss();
         container.innerHTML = appState.currentPhotos.map((src, idx) => 
-            `<div class="relative w-28 h-28 rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 photo-preview-item" draggable="true" data-index="${idx}">
-                <img src="${src}" class="w-full h-full object-cover">
+            `<div class="relative rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 photo-preview-item border-2 border-slate-300" style="width: 7rem; aspect-ratio: ${aspectCss};" draggable="true" data-index="${idx}">
+                <img src="${src}" class="absolute inset-0 w-full h-full object-cover" alt="">
                 <button onclick="window.removePhoto(${idx})" class="photo-remove-btn">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
@@ -4173,6 +4174,14 @@ function getPhotoEditAspectRatioCss() {
     return '1';
 }
 
+/** 기록 등록 화면·편집 화면 공통: 선택된 사진 비율의 CSS aspect-ratio 값 */
+function getRecordPhotoAspectRatioCss() {
+    const ratio = appState.recordPhotoAspectRatio || '1:1';
+    if (ratio === '3:4') return '3/4';
+    if (ratio === '4:3') return '4/3';
+    return '1';
+}
+
 function openPhotoEditModalWithImage(photoSrc) {
     const modal = document.getElementById('photoEditModal');
     if (!modal) return;
@@ -4440,7 +4449,7 @@ function handlePhotoEditWheel(e) {
     e.preventDefault();
     
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    const newScale = Math.max(0.5, Math.min(3, photoEditScale + delta));
+    const newScale = Math.max(0.1, Math.min(3, photoEditScale + delta));
     
     // 줌 중심점 계산
     const rect = photoEditCanvas.getBoundingClientRect();
@@ -4472,9 +4481,9 @@ export function zoomInPhotoEdit() {
     drawPhotoEdit();
 }
 
-// 줌아웃
+// 줌아웃 (최소 0.1 — 초기 fit 스케일이 0.5 미만일 수 있어 축소 버튼이 확대되던 문제 수정)
 export function zoomOutPhotoEdit() {
-    const newScale = Math.max(0.5, photoEditScale / 1.2);
+    const newScale = Math.max(0.1, photoEditScale / 1.2);
     const centerX = photoEditCanvas.width / 2;
     const centerY = photoEditCanvas.height / 2;
     
@@ -4524,12 +4533,14 @@ export function resetPhotoEdit() {
     drawPhotoEdit();
 }
 
-// 사진 편집 저장 (미리보기 캔버스와 동일한 크기로 출력해 모먼트 표시와 일치)
+// 사진 편집 저장 — 전체 이미지를 잘리지 않게 fit(contain)으로 저장해 재편집 시 원본 활용 가능
 export function savePhotoEdit() {
     if (!photoEditCanvas || !editingPhotoImage) return;
     
     const w = photoEditCanvas.width;
     const h = photoEditCanvas.height;
+    const imgW = editingPhotoImage.width;
+    const imgH = editingPhotoImage.height;
     
     const outputCanvas = document.createElement('canvas');
     outputCanvas.width = w;
@@ -4539,22 +4550,19 @@ export function savePhotoEdit() {
     outputCtx.fillStyle = '#ffffff';
     outputCtx.fillRect(0, 0, w, h);
     
-    const drawWidth = editingPhotoImage.width * photoEditScale;
-    const drawHeight = editingPhotoImage.height * photoEditScale;
     const centerX = w / 2;
     const centerY = h / 2;
+    // 회전 후 보이는 너비/높이 (90/270이면 치환)
+    const rotW = (photoEditRotation === 90 || photoEditRotation === 270) ? imgH : imgW;
+    const rotH = (photoEditRotation === 90 || photoEditRotation === 270) ? imgW : imgH;
+    const fitScale = Math.min(w / rotW, h / rotH);
     
     outputCtx.save();
     outputCtx.translate(centerX, centerY);
     outputCtx.rotate((photoEditRotation * Math.PI) / 180);
-    outputCtx.translate(-centerX, -centerY);
-    
-    let finalOffsetX = photoEditOffsetX;
-    let finalOffsetY = photoEditOffsetY;
-    if (drawWidth < w) finalOffsetX = (w - drawWidth) / 2;
-    if (drawHeight < h) finalOffsetY = (h - drawHeight) / 2;
-    
-    outputCtx.drawImage(editingPhotoImage, finalOffsetX, finalOffsetY, drawWidth, drawHeight);
+    outputCtx.scale(fitScale, fitScale);
+    outputCtx.translate(-imgW / 2, -imgH / 2);
+    outputCtx.drawImage(editingPhotoImage, 0, 0, imgW, imgH, 0, 0, imgW, imgH);
     outputCtx.restore();
     
     try {
