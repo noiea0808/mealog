@@ -1114,7 +1114,7 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
             }
             step = '공유 창 열기';
             const shareOptions = {
-                url: fileUris[0],
+                files: fileUris,
                 text: captionText || 'mealog',
                 title: 'mealog',
                 dialogTitle: '공유하기',
@@ -1122,8 +1122,21 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
             try {
                 await Share.share(shareOptions);
             } catch (shareErr) {
-                // 이미지 url 공유가 실패한 경우(일부 Android): 캡션만 공유 시도
-                if (typeof Share.share === 'function') {
+                // files 배열 공유 실패 시 url 단일로 재시도 (기기별 호환성)
+                try {
+                    await Share.share({
+                        url: fileUris[0],
+                        text: captionText || 'mealog',
+                        title: 'mealog',
+                        dialogTitle: '공유하기',
+                    });
+                    if (typeof window.showToast === 'function') {
+                        window.showToast('공유되었습니다.', 'success');
+                    }
+                    return true;
+                } catch (_) {}
+                // 이미지 공유 모두 실패 시 캡션만 공유
+                try {
                     await Share.share({
                         text: captionText ? `mealog - ${captionText}` : 'mealog',
                         title: 'mealog',
@@ -1133,8 +1146,9 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
                         window.showToast('이미지 공유가 제한되어 캡션만 공유했습니다.', 'info');
                     }
                     return true;
+                } catch (textErr) {
+                    throw shareErr;
                 }
-                throw shareErr;
             }
             if (typeof window.showToast === 'function') {
                 window.showToast('공유되었습니다.', 'success');
