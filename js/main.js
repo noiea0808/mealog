@@ -12,7 +12,7 @@ import { callableFunctions } from './firebase.js';
 import { doc, getDoc, setDoc, collection, query, where, limit, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
-import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput, warmUpIME, sharePhotosToExternal } from './utils.js';
+import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput, warmUpIME, sharePhotosToExternal, setupBirthdateInputFormatting } from './utils.js';
 import { 
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
@@ -4608,6 +4608,12 @@ function initEventListeners() {
         termsAgreeBtn.addEventListener('click', confirmTermsAgreement);
     }
     
+    // 생년월일 입력: 숫자만 넣으면 자동으로 하이픈 포맷 (YYYY-MM-DD)
+    const setupBirthdate = document.getElementById('setupBirthdate');
+    if (setupBirthdate) setupBirthdateInputFormatting(setupBirthdate);
+    const settingBirthdate = document.getElementById('settingBirthdate');
+    if (settingBirthdate) setupBirthdateInputFormatting(settingBirthdate);
+
     // Profile Setup Modal
     const setupProfileTypeEmoji = document.getElementById('setupProfileTypeEmoji');
     if (setupProfileTypeEmoji) {

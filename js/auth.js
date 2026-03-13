@@ -1,9 +1,10 @@
 // 인증 관련 함수들
 import { auth } from './firebase.js';
 import { GoogleAuthProvider, signInWithPopup, getRedirectResult, signInWithCredential, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { showToast, showLoading, hideLoading } from './ui.js';
+import { showToast, showBirthdateError, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
 import { dbOps } from './db.js';
+import { normalizeBirthdateRaw } from './utils.js';
 
 function isNativePlatform() {
     return typeof window.Capacitor !== 'undefined' && window.Capacitor?.isNativePlatform?.();
@@ -801,20 +802,13 @@ export async function confirmProfileSetup() {
     }
 
     if (!birthdate) {
-        showToast("생년월일을 입력해주세요.", "error");
+        showBirthdateError("생년월일을 입력해주세요.");
         return;
     }
 
-    // 수기 입력 시 YYYY-MM-DD 형식 검증
-    const birthdateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!birthdateRegex.test(birthdate)) {
-        showToast("생년월일을 YYYY-MM-DD 형식으로 입력해주세요. (예: 1990-01-15)", "error");
-        return;
-    }
-    const [y, m, d] = birthdate.split('-').map(Number);
-    const birthDateObj = new Date(y, m - 1, d);
-    if (birthDateObj.getFullYear() !== y || birthDateObj.getMonth() !== m - 1 || birthDateObj.getDate() !== d) {
-        showToast("올바른 날짜를 입력해주세요.", "error");
+    const { formatted, valid } = normalizeBirthdateRaw(birthdate);
+    if (!valid) {
+        showBirthdateError("입력한 생년월일이 올바르지 않습니다. 숫자 8자리(예: 19900115)로 입력해주세요.");
         return;
     }
 
@@ -826,7 +820,7 @@ export async function confirmProfileSetup() {
         }
         
         window.userSettings.profile.nickname = nickname;
-        window.userSettings.profile.birthdate = birthdate;
+        window.userSettings.profile.birthdate = formatted;
         window.userSettings.profile.lifestyle = lifestyle;
         window.userSettings.profile.gender = (gender === 'male' || gender === 'female') ? gender : null;
         window.userSettings.profile.birthdateChangeCount = 0;

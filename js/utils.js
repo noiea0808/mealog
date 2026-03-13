@@ -780,6 +780,78 @@ export function generateColorMap(data, key, VIBRANT_COLORS) {
     return colorMap;
 }
 
+/**
+ * 숫자만 있는 생년월일(8자리)을 YYYY-MM-DD 형식으로 포맷
+ * @param {string} digits - 숫자만 (최대 8자리)
+ * @returns {string} 예: "19900115" -> "1990-01-15"
+ */
+export function formatBirthdateFromDigits(digits) {
+    const d = (digits || '').replace(/\D/g, '').slice(0, 8);
+    if (d.length <= 4) return d;
+    if (d.length <= 6) return `${d.slice(0, 4)}-${d.slice(4)}`;
+    return `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
+}
+
+/**
+ * 생년월일 입력값 정규화 및 검증 (숫자만 넣어도 YYYY-MM-DD로 해석)
+ * @param {string} raw - 사용자 입력 (예: "19900115" 또는 "1990-01-15")
+ * @returns {{ formatted: string, valid: boolean }}
+ */
+export function normalizeBirthdateRaw(raw) {
+    const s = (raw || '').trim();
+    if (!s) return { formatted: '', valid: false };
+
+    const digitsOnly = s.replace(/\D/g, '');
+    let formatted = s;
+
+    if (digitsOnly.length === 8) {
+        formatted = `${digitsOnly.slice(0, 4)}-${digitsOnly.slice(4, 6)}-${digitsOnly.slice(6, 8)}`;
+    } else if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        return { formatted: '', valid: false };
+    }
+
+    const parts = formatted.split('-');
+    if (parts.length !== 3) return { formatted: '', valid: false };
+
+    const y = Number(parts[0]);
+    const m = Number(parts[1]);
+    const d = Number(parts[2]);
+
+    if (Number.isNaN(y) || Number.isNaN(m) || Number.isNaN(d)) return { formatted: '', valid: false };
+    if (y < 1900 || y > 2100) return { formatted: '', valid: false };
+    if (m < 1 || m > 12) return { formatted: '', valid: false };
+    if (d < 1 || d > 31) return { formatted: '', valid: false };
+
+    const birthDateObj = new Date(y, m - 1, d);
+    if (Number.isNaN(birthDateObj.getTime())) return { formatted: '', valid: false };
+    const valid =
+        birthDateObj.getFullYear() === y &&
+        birthDateObj.getMonth() === m - 1 &&
+        birthDateObj.getDate() === d;
+
+    return { formatted: valid ? formatted : '', valid };
+}
+
+/**
+ * 생년월일 input 요소에 숫자만 입력 시 자동으로 하이픈 포맷 적용
+ * @param {HTMLInputElement} el
+ */
+export function setupBirthdateInputFormatting(el) {
+    if (!el || el.dataset.birthdateFormatted === 'true') return;
+    el.dataset.birthdateFormatted = 'true';
+
+    el.addEventListener('input', function () {
+        const digits = this.value.replace(/\D/g, '').slice(0, 8);
+        if (digits.length <= 4) {
+            this.value = digits;
+        } else if (digits.length <= 6) {
+            this.value = `${digits.slice(0, 4)}-${digits.slice(4)}`;
+        } else {
+            this.value = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+        }
+    });
+}
+
 // 로컬 타임존 기준으로 YYYY-MM-DD 형식 문자열 반환
 // toISOString()은 UTC로 변환되어 한국 시간(KST, UTC+9)에서 날짜가 하루 전으로 나올 수 있음
 export function toLocalDateString(date) {
