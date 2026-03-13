@@ -1,10 +1,10 @@
 // 모달 및 입력 처리 관련 함수들
 import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from './constants.js';
 import { appState } from './state.js';
-import { setVal, compressImage, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage } from './utils.js';
+import { setVal, compressImage, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage, normalizeBirthdateRaw } from './utils.js';
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from './render/index.js';
 import { dbOps } from './db.js';
-import { showToast } from './ui.js';
+import { showToast, showBirthdateError } from './ui.js';
 import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed } from './render/index.js';
 import { getDashboardData } from './analytics.js';
 import { callableFunctions } from './firebase.js';
@@ -2218,20 +2218,14 @@ export async function saveProfileSettings() {
         const existingLifestyle = (window.userSettings?.profile?.lifestyle || '').trim();
         const existingCount = Number(window.userSettings?.profile?.birthdateChangeCount || 0);
         
-        // 생년월일: 값이 입력된 경우에만 저장 및 변경 체크
+        // 생년월일: 값이 입력된 경우에만 저장 및 변경 체크 (숫자 8자리도 자동 포맷 후 검증)
         if (newBirthdate) {
-            const birthdateRegex = /^\d{4}-\d{2}-\d{2}$/;
-            if (!birthdateRegex.test(newBirthdate)) {
-                showToast("생년월일을 YYYY-MM-DD 형식으로 입력해주세요. (예: 1990-01-15)", "error");
+            const { formatted: formattedBirthdate, valid } = normalizeBirthdateRaw(newBirthdate);
+            if (!valid) {
+                showBirthdateError("입력한 생년월일이 올바르지 않습니다. 숫자 8자리(예: 19900115)로 입력해주세요.");
                 return;
             }
-            const [y, m, d] = newBirthdate.split('-').map(Number);
-            const birthDateObj = new Date(y, m - 1, d);
-            if (birthDateObj.getFullYear() !== y || birthDateObj.getMonth() !== m - 1 || birthDateObj.getDate() !== d) {
-                showToast("올바른 날짜를 입력해주세요.", "error");
-                return;
-            }
-            const isBirthdateChanged = existingBirthdate && newBirthdate && existingBirthdate !== newBirthdate;
+            const isBirthdateChanged = existingBirthdate && formattedBirthdate && existingBirthdate !== formattedBirthdate;
             if (isBirthdateChanged) {
                 if (existingCount >= 1) {
                     showToast("생년월일은 가입 후 1회만 변경할 수 있습니다.", "error");
@@ -2244,7 +2238,7 @@ export async function saveProfileSettings() {
                 state.tempSettings.profile.birthdateChangeCount = Number(state.tempSettings.profile.birthdateChangeCount || existingCount || 0);
                 state.tempSettings.profile.birthdateChangedAt = state.tempSettings.profile.birthdateChangedAt || window.userSettings?.profile?.birthdateChangedAt || null;
             }
-            state.tempSettings.profile.birthdate = newBirthdate;
+            state.tempSettings.profile.birthdate = formattedBirthdate;
         } else {
             // 값이 없으면 기존 값 유지
             state.tempSettings.profile.birthdate = existingBirthdate || '';
