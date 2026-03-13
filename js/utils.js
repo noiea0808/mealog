@@ -1113,8 +1113,10 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
                 return false;
             }
             step = '공유 창 열기';
+            // Android: 단일 파일 시 Share 플러그인 버그로 실패하는 경우가 있어, 1개일 때 동일 URI를 2개 넘김 (capacitor-plugins#1353)
+            const shareFiles = fileUris.length === 1 ? [fileUris[0], fileUris[0]] : fileUris;
             const shareOptions = {
-                files: fileUris,
+                files: shareFiles,
                 text: captionText || 'mealog',
                 title: 'mealog',
                 dialogTitle: '공유하기',
@@ -1164,8 +1166,9 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
             console.error('sharePhotosToExternal(네이티브) 실패:', step, e);
             if (typeof window.showToast === 'function') {
                 const stepMsg = step ? ` (${step} 단계)` : '';
-                const shortMsg = msg.length > 60 ? msg.slice(0, 60) + '…' : msg;
-                window.showToast('공유 실패.' + stepMsg + ' ' + shortMsg, 'error');
+                const shortMsg = (msg.length > 60 ? msg.slice(0, 60) + '…' : msg)
+                    .replace(/\s*@[\w/-]+\s*$/i, ''); // 토스트 끝의 @capacitor/share 등 제거
+                window.showToast('공유 실패.' + stepMsg + (shortMsg ? ' ' + shortMsg : ''), 'error');
             }
             return false;
         }
