@@ -4205,7 +4205,8 @@ function initializePhotoEdit() {
         // Canvas 크기 설정
         photoEditCanvas.width = containerWidth;
         photoEditCanvas.height = containerHeight;
-    
+        container.style.touchAction = 'none';
+
     // 이미지 비율 계산
     const imgAspect = editingPhotoImage.width / editingPhotoImage.height;
     const containerAspect = containerWidth / containerHeight;
@@ -4280,6 +4281,8 @@ function setupPhotoEditDrag() {
     if (!photoEditCanvas) return;
     
     photoEditCanvas.style.cursor = 'grab';
+    // 터치 드래그가 스크롤로 가로채지 않도록 (모바일)
+    photoEditCanvas.style.touchAction = 'none';
     
     photoEditCanvas.addEventListener('mousedown', handlePhotoEditMouseDown);
     photoEditCanvas.addEventListener('mousemove', handlePhotoEditMouseMove);
@@ -4287,6 +4290,19 @@ function setupPhotoEditDrag() {
     photoEditCanvas.addEventListener('mouseleave', handlePhotoEditMouseUp);
     
     // 터치 이벤트는 setupPhotoEditZoomAndRotate에서 통합 처리
+}
+
+/** 사진 편집 offset 경계: 이미지가 화면보다 크면 빈 공간 없이, 작으면 중앙/자유 이동 가능하도록 min/max로 클램프 */
+function clampPhotoEditOffset() {
+    if (!photoEditCanvas || !editingPhotoImage) return;
+    const drawWidth = editingPhotoImage.width * photoEditScale;
+    const drawHeight = editingPhotoImage.height * photoEditScale;
+    const minX = Math.min(0, photoEditCanvas.width - drawWidth);
+    const maxX = Math.max(0, photoEditCanvas.width - drawWidth);
+    const minY = Math.min(0, photoEditCanvas.height - drawHeight);
+    const maxY = Math.max(0, photoEditCanvas.height - drawHeight);
+    photoEditOffsetX = Math.min(maxX, Math.max(minX, photoEditOffsetX));
+    photoEditOffsetY = Math.min(maxY, Math.max(minY, photoEditOffsetY));
 }
 
 /** 화면(캔버스) 좌표계의 이동량을 회전된 이미지 좌표계로 변환 (드래그 방향이 보이는 대로 동작하도록) */
@@ -4323,19 +4339,8 @@ function handlePhotoEditMouseMove(e) {
     photoEditOffsetX = dragStartOffsetX + rotated.x;
     photoEditOffsetY = dragStartOffsetY + rotated.y;
     
-    // 경계 체크 (회전된 좌표계 기준으로 drawWidth/drawHeight 사용)
-    const drawWidth = editingPhotoImage.width * photoEditScale;
-    const drawHeight = editingPhotoImage.height * photoEditScale;
-    
-    if (photoEditOffsetX > 0) photoEditOffsetX = 0;
-    if (photoEditOffsetY > 0) photoEditOffsetY = 0;
-    if (photoEditOffsetX + drawWidth < photoEditCanvas.width) {
-        photoEditOffsetX = photoEditCanvas.width - drawWidth;
-    }
-    if (photoEditOffsetY + drawHeight < photoEditCanvas.height) {
-        photoEditOffsetY = photoEditCanvas.height - drawHeight;
-    }
-    
+    // 경계 체크: 이미지가 화면보다 클 때는 빈 공간 없이, 작을 때는 자유롭게 이동 가능하도록 min/max로 클램프
+    clampPhotoEditOffset();
     drawPhotoEdit();
 }
 
@@ -4378,19 +4383,7 @@ function handlePhotoEditTouchMove(e) {
     photoEditOffsetX = dragStartOffsetX + rotated.x;
     photoEditOffsetY = dragStartOffsetY + rotated.y;
     
-    // 경계 체크 (회전된 좌표계 기준으로 drawWidth/drawHeight 사용)
-    const drawWidth = editingPhotoImage.width * photoEditScale;
-    const drawHeight = editingPhotoImage.height * photoEditScale;
-    
-    if (photoEditOffsetX > 0) photoEditOffsetX = 0;
-    if (photoEditOffsetY > 0) photoEditOffsetY = 0;
-    if (photoEditOffsetX + drawWidth < photoEditCanvas.width) {
-        photoEditOffsetX = photoEditCanvas.width - drawWidth;
-    }
-    if (photoEditOffsetY + drawHeight < photoEditCanvas.height) {
-        photoEditOffsetY = photoEditCanvas.height - drawHeight;
-    }
-    
+    clampPhotoEditOffset();
     drawPhotoEdit();
 }
 
@@ -4406,10 +4399,11 @@ function setupPhotoEditZoomAndRotate() {
     // 휠 줌 (데스크톱)
     photoEditCanvas.addEventListener('wheel', handlePhotoEditWheel, { passive: false });
     
-    // 터치 이벤트 (드래그 + 핀치 줌 통합)
-    photoEditCanvas.addEventListener('touchstart', handlePhotoEditTouchStart, { passive: false });
-    photoEditCanvas.addEventListener('touchmove', handlePhotoEditTouchMove, { passive: false });
-    photoEditCanvas.addEventListener('touchend', handlePhotoEditTouchEnd);
+    // 터치 이벤트 (드래그 + 핀치 줌 통합) - capture로 터치 확실히 수신
+    photoEditCanvas.addEventListener('touchstart', handlePhotoEditTouchStart, { passive: false, capture: true });
+    photoEditCanvas.addEventListener('touchmove', handlePhotoEditTouchMove, { passive: false, capture: true });
+    photoEditCanvas.addEventListener('touchend', handlePhotoEditTouchEnd, { capture: true });
+    photoEditCanvas.addEventListener('touchcancel', handlePhotoEditTouchEnd, { capture: true });
 }
 
 // 휠 줌 핸들러
@@ -4430,6 +4424,7 @@ function handlePhotoEditWheel(e) {
     photoEditOffsetY = y - (y - photoEditOffsetY) * scaleChange;
     
     photoEditScale = newScale;
+    clampPhotoEditOffset();
     drawPhotoEdit();
 }
 
@@ -4444,6 +4439,7 @@ export function zoomInPhotoEdit() {
     photoEditOffsetY = centerY - (centerY - photoEditOffsetY) * scaleChange;
     
     photoEditScale = newScale;
+    clampPhotoEditOffset();
     drawPhotoEdit();
 }
 
@@ -4458,6 +4454,7 @@ export function zoomOutPhotoEdit() {
     photoEditOffsetY = centerY - (centerY - photoEditOffsetY) * scaleChange;
     
     photoEditScale = newScale;
+    clampPhotoEditOffset();
     drawPhotoEdit();
 }
 
@@ -4600,9 +4597,10 @@ export function closePhotoEditModal() {
         photoEditCanvas.removeEventListener('mousemove', handlePhotoEditMouseMove);
         photoEditCanvas.removeEventListener('mouseup', handlePhotoEditMouseUp);
         photoEditCanvas.removeEventListener('mouseleave', handlePhotoEditMouseUp);
-        photoEditCanvas.removeEventListener('touchstart', handlePhotoEditTouchStart);
-        photoEditCanvas.removeEventListener('touchmove', handlePhotoEditTouchMove);
-        photoEditCanvas.removeEventListener('touchend', handlePhotoEditTouchEnd);
+        photoEditCanvas.removeEventListener('touchstart', handlePhotoEditTouchStart, true);
+        photoEditCanvas.removeEventListener('touchmove', handlePhotoEditTouchMove, true);
+        photoEditCanvas.removeEventListener('touchend', handlePhotoEditTouchEnd, true);
+        photoEditCanvas.removeEventListener('touchcancel', handlePhotoEditTouchEnd, true);
         photoEditCanvas.removeEventListener('wheel', handlePhotoEditWheel);
     }
     
