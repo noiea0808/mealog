@@ -1000,6 +1000,45 @@ function blobToBase64(blob) {
     });
 }
 
+/** 공유용 이미지 Blob 리사이즈 (대용량 미잘라낸 사진으로 인한 공유 실패 방지). maxWidth 초과 시 비율 유지해 축소, jpeg 0.88 */
+function resizeBlobForShare(blob, maxWidth = 1200) {
+    if (!blob || !blob.type || !blob.type.startsWith('image/')) return Promise.resolve(blob);
+    return new Promise((resolve) => {
+        const img = new Image();
+        const url = URL.createObjectURL(blob);
+        img.onload = () => {
+            try {
+                let w = img.width;
+                let h = img.height;
+                if (w <= maxWidth && blob.size <= 800 * 1024) {
+                    URL.revokeObjectURL(url);
+                    resolve(blob);
+                    return;
+                }
+                if (w > maxWidth) {
+                    h = Math.round((h / w) * maxWidth);
+                    w = maxWidth;
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, w, h);
+                URL.revokeObjectURL(url);
+                canvas.toBlob((out) => resolve(out || blob), 'image/jpeg', 0.88);
+            } catch (e) {
+                URL.revokeObjectURL(url);
+                resolve(blob);
+            }
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            resolve(blob);
+        };
+        img.src = url;
+    });
+}
+
 /**
  * 모먼트(앨범) 사진을 카카오톡·인스타그램 등 외부 앱으로 공유합니다.
  * 네이티브(Capacitor): @capacitor/share + Filesystem 사용. 웹: Web Share API (navigator.share).
@@ -1030,9 +1069,12 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
                     const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
                     if (!res.ok) continue;
                     let blob = await res.blob();
-                    if (!skipCaptionBar && captionText && blob.type && blob.type.startsWith('image/')) {
+                    if (!blob.type || !blob.type.startsWith('image/')) continue;
+                    if (!skipCaptionBar && captionText) {
                         blob = await addCaptionToImage(blob, captionText);
                     }
+                    // 미잘라낸 대용량 사진으로 인한 공유 실패 방지: 공유용으로 리사이즈
+                    blob = await resizeBlobForShare(blob);
                     blobs.push(blob);
                 } catch (imgErr) {
                     console.warn('SNS 공유용 이미지 로드 실패:', url?.slice(0, 60), imgErr);
@@ -1044,13 +1086,17 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
                 }
                 return false;
             }
-            const logoBlob = await createMealogLogoImage();
-            blobs.push(logoBlob);
+            // 로고는 실패해도 무시하고 사진만 공유 (앱 내 화면에 랜딩 아이콘이 없을 수 있음)
+            try {
+                const logoBlob = await createMealogLogoImage();
+                if (logoBlob && logoBlob.size > 0) blobs.push(logoBlob);
+            } catch (_) {}
             const prefix = `mealog_share_${Date.now()}`;
             const fileUris = [];
             for (let i = 0; i < blobs.length; i++) {
                 const path = `${prefix}_${i}.jpg`;
                 const base64 = await blobToBase64(blobs[i]);
+                if (!base64 || base64.length > 6 * 1024 * 1024) continue; // base64 6MB 초과 시 스킵 (대용량 오류 방지)
                 await Filesystem.writeFile({
                     path,
                     data: base64,
@@ -1059,7 +1105,12 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
                 const { uri } = await Filesystem.getUri({ path, directory: Directory.Cache });
                 fileUris.push(uri);
             }
-            // Android에서 files 배열이 실패하는 기기가 있어, 우선 단일 url(첫 번째 이미지)로 공유 시도
+            if (fileUris.length === 0) {
+                if (typeof window.showToast === 'function') {
+                    window.showToast('공유용 파일을 준비하지 못했습니다.', 'error');
+                }
+                return false;
+            }
             const shareOptions = {
                 url: fileUris[0],
                 text: captionText || 'mealog',
