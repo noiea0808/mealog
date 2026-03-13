@@ -12,6 +12,38 @@ import { callableFunctions } from './firebase.js';
 // 설정 저장 디바운싱을 위한 타이머
 let settingsSaveTimeout = null;
 
+const PHOTO_ASPECT_OPTIONS = ['1:1', '3:4', '4:3'];
+
+/** 기록 사진 비율 버튼 UI 동기화 + 카메라(등록) 버튼 비율 적용 */
+function updatePhotoAspectButtons() {
+    const ratio = appState.recordPhotoAspectRatio || '1:1';
+    document.querySelectorAll('.photo-aspect-btn').forEach(btn => {
+        const isActive = btn.getAttribute('data-aspect') === ratio;
+        btn.classList.toggle('bg-emerald-100', isActive);
+        btn.classList.toggle('border-emerald-300', isActive);
+        btn.classList.toggle('text-emerald-700', isActive);
+        btn.classList.toggle('border-slate-200', !isActive);
+        btn.classList.toggle('text-slate-600', !isActive);
+    });
+    const aspectCss = ratio === '3:4' ? '3/4' : ratio === '4:3' ? '4/3' : '1';
+    [document.getElementById('imageBtn'), document.getElementById('snackImageBtn')].forEach(btn => {
+        if (btn) {
+            btn.style.width = '80px';
+            btn.style.minWidth = '80px';
+            btn.style.aspectRatio = aspectCss;
+            btn.style.height = '';
+            btn.style.alignSelf = 'flex-start'; // flex 행에서 비율대로만 높이 유지
+        }
+    });
+}
+
+/** 기록 시 모먼트 사진 비율 설정 (1:1 / 3:4 / 4:3) */
+export function setRecordPhotoAspectRatio(value) {
+    if (!PHOTO_ASPECT_OPTIONS.includes(value)) return;
+    appState.recordPhotoAspectRatio = value;
+    updatePhotoAspectButtons();
+}
+
 /** 끼니 등록 모달: 키보드 열림 시 모달 높이를 viewport에 맞추고, 닫힘 시 네비바 영역 복원 */
 function initEntryModalKeyboardHandling(entryModal) {
     if (!entryModal || entryModal._keyboardHandlingInit) return;
@@ -314,6 +346,8 @@ export function openModal(date, slotId, entryId = null) {
         document.getElementById('mainMealFields')?.classList.toggle('hidden', isS);
         document.getElementById('snackFields')?.classList.toggle('hidden', !isS);
         
+        updatePhotoAspectButtons();
+        
         if (isS) {
             appState.selectedSnackPlaceMainTag = null;
         }
@@ -350,6 +384,7 @@ export function openModal(date, slotId, entryId = null) {
                 // sharedPhotos도 배열인지 확인
                 state.sharedPhotos = Array.isArray(r.sharedPhotos) ? r.sharedPhotos : (r.sharedPhotos ? [r.sharedPhotos] : []);
                 state.originalSharedPhotos = Array.isArray(r.sharedPhotos) ? [...r.sharedPhotos] : (r.sharedPhotos ? [r.sharedPhotos] : []); // 원본 복사 (삭제 추적용)
+                state.recordPhotoAspectRatio = (r.photoAspectRatio && PHOTO_ASPECT_OPTIONS.includes(r.photoAspectRatio)) ? r.photoAspectRatio : '1:1';
                 
                 // 공유 금지 체크
                 const isShareBanned = r.shareBanned === true;
@@ -837,6 +872,7 @@ export async function saveEntry() {
             category: getT('categoryChips'),
             placeType: '',
             snackType: getT('snackTypeChips'),
+            photoAspectRatio: state.recordPhotoAspectRatio || '1:1',
             // Firestore에는 URL만 저장하고, base64는 저장 직후 Storage로 업로드 후 치환한다.
             photos: existingPhotoUrls,
             menuDetail: isSk ? '' : (isS ? snackInputVal : menuInputVal),
@@ -1325,6 +1361,16 @@ export async function deleteEntry() {
     try {
         await dbOps.delete(entryIdToDelete);
         // 삭제 성공 - Firestore 리스너가 자동으로 타임라인을 업데이트함
+        // 모먼트 캐시에서도 해당 기록 제거 (즉시 반영)
+        if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+            window.sharedPhotos = window.sharedPhotos.filter((p) => p.entryId !== entryIdToDelete);
+        }
+        if (window.sharedPhotosFeed && Array.isArray(window.sharedPhotosFeed)) {
+            window.sharedPhotosFeed = window.sharedPhotosFeed.filter((p) => p.entryId !== entryIdToDelete);
+        }
+        if (appState.currentTab === 'gallery') {
+            try { renderGallery(); } catch (e) { console.warn('갤러리 갱신:', e); }
+        }
         showToast("기록이 삭제되었습니다.", 'success');
     } catch (error) {
         console.error('삭제 오류:', error);

@@ -1152,11 +1152,14 @@ function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
         return (photo.place && photo.menuDetail) ? `${photo.menuDetail} @ ${photo.place}` : (photo.place || photo.menuDetail || photo.mealType || '');
     })();
     const captionAttr = (captionText || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    let aspectRatio = photo.photoAspectRatio || (entryId && mealHistoryMap && mealHistoryMap.has(entryId) ? mealHistoryMap.get(entryId).photoAspectRatio : null) || '1:1';
+    if (aspectRatio !== '1:1' && aspectRatio !== '3:4' && aspectRatio !== '4:3') aspectRatio = '1:1';
+    const momentAspectCss = (aspectRatio === '3:4' ? '3/4' : aspectRatio === '4:3' ? '4/3' : '1');
     const photosHtml = photoGroup.map((p, idx) => {
         const isBest = p.type === 'best', isDaily = p.type === 'daily', isInsight = p.type === 'insight';
         return `
             <div class="flex-shrink-0 w-full snap-start ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
-                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full ${(isBest || isDaily || isInsight) ? 'h-auto' : 'h-auto'} ${(isBest || isDaily || isInsight) ? 'object-contain' : 'object-cover'}" ${(isBest || isDaily || isInsight) ? 'style="display: block; width: 100%; height: auto; vertical-align: top;"' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
+                ${(isBest || isDaily || isInsight) ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full h-auto object-contain" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx === 0 ? 'eager' : 'lazy'}">` : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="absolute inset-0 w-full h-full object-cover" loading="${idx === 0 ? 'eager' : 'lazy'}"></div>`}
             </div>
         `;
     }).join('');
@@ -2686,8 +2689,10 @@ export async function renderFeed() {
         
         const captionAttr = (caption || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
         
-        // 사진들 HTML 생성 (인스타그램 스타일 - 좌우 여백 없이, 구분감 있게)
-        // 베스트 공유, 일간보기 공유, 인사이트 공유는 aspect-ratio를 유지하지 않고 원본 비율 사용
+        // 사진 비율: shared doc 또는 meal 기록에서 가져오기
+        let aspectRatio = photo.photoAspectRatio || (entryId && window.mealHistory ? (window.mealHistory.find(m => m.id === entryId)?.photoAspectRatio) : null) || '1:1';
+        if (aspectRatio !== '1:1' && aspectRatio !== '3:4' && aspectRatio !== '4:3') aspectRatio = '1:1';
+        const momentAspectCss = (aspectRatio === '3:4' ? '3/4' : aspectRatio === '4:3' ? '4/3' : '1');
         const photosHtml = photoGroup.map((p, idx) => {
             const isBest = p.type === 'best';
             const isDaily = p.type === 'daily';
@@ -2695,8 +2700,8 @@ export async function renderFeed() {
             const photoBanned = p.banned === true;
             return `
             <div class="flex-shrink-0 w-full snap-start relative ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
-                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full ${(isBest || isDaily || isInsight) ? 'h-auto' : 'h-auto'} ${(isBest || isDaily || isInsight) ? 'object-contain' : 'object-cover'} ${photoBanned ? 'opacity-50' : ''}" ${(isBest || isDaily || isInsight) ? 'style="display: block; width: 100%; height: auto; vertical-align: top;"' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
-                ${photoBanned ? `
+                ${(isBest || isDaily || isInsight) ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full h-auto object-contain ${photoBanned ? 'opacity-50' : ''}" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx === 0 ? 'eager' : 'lazy'}">` : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="absolute inset-0 w-full h-full object-cover ${photoBanned ? 'opacity-50' : ''}" loading="${idx === 0 ? 'eager' : 'lazy'}"></div>`}
+                ${photoBanned && !(isBest || isDaily || isInsight) ? `
                     <div class="absolute inset-0 bg-orange-500/20 flex items-center justify-center">
                         <div class="bg-orange-600 text-white px-3 py-1.5 rounded-lg">
                             <i class="fa-solid fa-ban mr-1"></i>공유 금지
@@ -4161,9 +4166,19 @@ export function openProfilePhotoEdit(objectUrl) {
     openPhotoEditModalWithImage(objectUrl);
 }
 
+function getPhotoEditAspectRatioCss() {
+    const ratio = photoEditContext === 'profile' ? '1:1' : (appState.recordPhotoAspectRatio || '1:1');
+    if (ratio === '3:4') return '3/4';
+    if (ratio === '4:3') return '4/3';
+    return '1';
+}
+
 function openPhotoEditModalWithImage(photoSrc) {
     const modal = document.getElementById('photoEditModal');
     if (!modal) return;
+    
+    const wrapper = document.getElementById('photoEditAspectWrapper');
+    if (wrapper) wrapper.style.aspectRatio = getPhotoEditAspectRatioCss();
     
     modal.classList.remove('hidden');
     
@@ -4198,18 +4213,23 @@ function initializePhotoEdit() {
     
     // 모달이 완전히 렌더링된 후 크기 계산
     setTimeout(() => {
-        const containerRect = container.getBoundingClientRect();
-        const containerWidth = containerRect.width || container.offsetWidth;
-        const containerHeight = containerRect.height || container.offsetHeight;
+        // 모달이 닫힌 경우(이미지 로드 중 사용자가 닫음) 스킵
+        if (!photoEditCanvas || !photoEditCtx || !editingPhotoImage) return;
+        const containerAgain = document.getElementById('photoEditCanvasContainer');
+        if (!containerAgain) return;
+
+        const containerRect = containerAgain.getBoundingClientRect();
+        const containerWidth = containerRect.width || containerAgain.offsetWidth;
+        const containerHeight = containerRect.height || containerAgain.offsetHeight;
         
         // Canvas 크기 설정
         photoEditCanvas.width = containerWidth;
         photoEditCanvas.height = containerHeight;
-        container.style.touchAction = 'none';
+        containerAgain.style.touchAction = 'none';
 
-    // 이미지 비율 계산
-    const imgAspect = editingPhotoImage.width / editingPhotoImage.height;
-    const containerAspect = containerWidth / containerHeight;
+        // 이미지 비율 계산
+        const imgAspect = editingPhotoImage.width / editingPhotoImage.height;
+        const containerAspect = containerWidth / containerHeight;
     
     let drawWidth, drawHeight;
     if (imgAspect > containerAspect) {
@@ -4253,22 +4273,23 @@ function drawPhotoEdit() {
     const drawWidth = editingPhotoImage.width * photoEditScale;
     const drawHeight = editingPhotoImage.height * photoEditScale;
     
-    // 회전 중심점 계산
+    // 축소 시(화면에 꽉 차지 않을 때) 미리보기에서도 중앙 정렬 강제 (인스타 스타일)
+    const useCenterX = drawWidth < photoEditCanvas.width;
+    const useCenterY = drawHeight < photoEditCanvas.height;
+    const drawOffsetX = useCenterX ? (photoEditCanvas.width - drawWidth) / 2 : photoEditOffsetX;
+    const drawOffsetY = useCenterY ? (photoEditCanvas.height - drawHeight) / 2 : photoEditOffsetY;
+    
     const centerX = photoEditCanvas.width / 2;
     const centerY = photoEditCanvas.height / 2;
     
     photoEditCtx.save();
-    
-    // 회전 중심으로 이동하고 회전
     photoEditCtx.translate(centerX, centerY);
     photoEditCtx.rotate((photoEditRotation * Math.PI) / 180);
     photoEditCtx.translate(-centerX, -centerY);
-    
-    // 이미지 그리기
     photoEditCtx.drawImage(
         editingPhotoImage,
-        photoEditOffsetX,
-        photoEditOffsetY,
+        drawOffsetX,
+        drawOffsetY,
         drawWidth,
         drawHeight
     );
@@ -4292,17 +4313,25 @@ function setupPhotoEditDrag() {
     // 터치 이벤트는 setupPhotoEditZoomAndRotate에서 통합 처리
 }
 
-/** 사진 편집 offset 경계: 이미지가 화면보다 크면 빈 공간 없이, 작으면 중앙/자유 이동 가능하도록 min/max로 클램프 */
+/** 사진 편집 offset: 축소 시 중앙 정렬 강제, 확대 시 좌우/상하에 맞춰 클램프 (인스타 스타일) */
 function clampPhotoEditOffset() {
     if (!photoEditCanvas || !editingPhotoImage) return;
     const drawWidth = editingPhotoImage.width * photoEditScale;
     const drawHeight = editingPhotoImage.height * photoEditScale;
-    const minX = Math.min(0, photoEditCanvas.width - drawWidth);
-    const maxX = Math.max(0, photoEditCanvas.width - drawWidth);
-    const minY = Math.min(0, photoEditCanvas.height - drawHeight);
-    const maxY = Math.max(0, photoEditCanvas.height - drawHeight);
-    photoEditOffsetX = Math.min(maxX, Math.max(minX, photoEditOffsetX));
-    photoEditOffsetY = Math.min(maxY, Math.max(minY, photoEditOffsetY));
+    if (drawWidth < photoEditCanvas.width) {
+        photoEditOffsetX = (photoEditCanvas.width - drawWidth) / 2;
+    } else {
+        const minX = Math.min(0, photoEditCanvas.width - drawWidth);
+        const maxX = Math.max(0, photoEditCanvas.width - drawWidth);
+        photoEditOffsetX = Math.min(maxX, Math.max(minX, photoEditOffsetX));
+    }
+    if (drawHeight < photoEditCanvas.height) {
+        photoEditOffsetY = (photoEditCanvas.height - drawHeight) / 2;
+    } else {
+        const minY = Math.min(0, photoEditCanvas.height - drawHeight);
+        const maxY = Math.max(0, photoEditCanvas.height - drawHeight);
+        photoEditOffsetY = Math.min(maxY, Math.max(minY, photoEditOffsetY));
+    }
 }
 
 /** 화면(캔버스) 좌표계의 이동량을 회전된 이미지 좌표계로 변환 (드래그 방향이 보이는 대로 동작하도록) */
@@ -4495,29 +4524,25 @@ export function resetPhotoEdit() {
     drawPhotoEdit();
 }
 
-// 사진 편집 저장
+// 사진 편집 저장 (미리보기 캔버스와 동일한 크기로 출력해 모먼트 표시와 일치)
 export function savePhotoEdit() {
     if (!photoEditCanvas || !editingPhotoImage) return;
     
-    const container = document.getElementById('photoEditCanvasContainer');
-    if (!container) return;
-    
-    const containerRect = container.getBoundingClientRect();
-    const containerWidth = containerRect.width || container.offsetWidth;
-    const containerHeight = containerRect.height || container.offsetHeight;
+    const w = photoEditCanvas.width;
+    const h = photoEditCanvas.height;
     
     const outputCanvas = document.createElement('canvas');
-    outputCanvas.width = containerWidth;
-    outputCanvas.height = containerHeight;
+    outputCanvas.width = w;
+    outputCanvas.height = h;
     const outputCtx = outputCanvas.getContext('2d');
     
     outputCtx.fillStyle = '#ffffff';
-    outputCtx.fillRect(0, 0, outputCanvas.width, outputCanvas.height);
+    outputCtx.fillRect(0, 0, w, h);
     
     const drawWidth = editingPhotoImage.width * photoEditScale;
     const drawHeight = editingPhotoImage.height * photoEditScale;
-    const centerX = containerWidth / 2;
-    const centerY = containerHeight / 2;
+    const centerX = w / 2;
+    const centerY = h / 2;
     
     outputCtx.save();
     outputCtx.translate(centerX, centerY);
@@ -4526,8 +4551,8 @@ export function savePhotoEdit() {
     
     let finalOffsetX = photoEditOffsetX;
     let finalOffsetY = photoEditOffsetY;
-    if (drawWidth < containerWidth) finalOffsetX = (containerWidth - drawWidth) / 2;
-    if (drawHeight < containerHeight) finalOffsetY = (containerHeight - drawHeight) / 2;
+    if (drawWidth < w) finalOffsetX = (w - drawWidth) / 2;
+    if (drawHeight < h) finalOffsetY = (h - drawHeight) / 2;
     
     outputCtx.drawImage(editingPhotoImage, finalOffsetX, finalOffsetY, drawWidth, drawHeight);
     outputCtx.restore();

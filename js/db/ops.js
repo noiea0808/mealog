@@ -83,6 +83,20 @@ export const dbOps = {
         }
         try {
             await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'meals', id));
+
+            // 모먼트(sharedPhotos)에서 해당 기록의 공유 문서도 삭제 — 기록 삭제 시 모먼트에 남지 않도록
+            const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+            const sharedQuery = query(
+                sharedColl,
+                where('entryId', '==', id),
+                where('userId', '==', currentUser.uid)
+            );
+            const sharedSnap = await getDocs(sharedQuery);
+            if (!sharedSnap.empty) {
+                const batch = writeBatch(db);
+                sharedSnap.docs.forEach((d) => batch.delete(d.ref));
+                await batch.commit();
+            }
             // 성공 토스트는 호출자에서 표시
         } catch (e) {
             console.error("Delete Error:", e);
