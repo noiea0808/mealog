@@ -67,16 +67,11 @@ export function hideLoading() {
     }
 }
 
-// 토스트 팝업 비활성화 (전역적으로 사용하지 않음)
+const TOAST_DURATION_MS = 3500;
+
+/** 토스트: 에러(type='error')일 때만 표시, info/success는 비표시 */
 export function showToast(message, type = 'info') {
-    return;
-}
-
-const BIRTHDATE_TOAST_DURATION_MS = 3500;
-
-/** 생년월일 입력 오류 시에만 토스트 표시 (해당 항목 전용) */
-export function showBirthdateError(message) {
-    if (!message) return;
+    if (type !== 'error' || !message) return;
     const container = document.getElementById('toastContainer');
     if (!container) return;
     const toast = document.createElement('div');
@@ -91,7 +86,7 @@ export function showBirthdateError(message) {
             if (toast.parentNode) toast.parentNode.removeChild(toast);
         }, 200);
     };
-    setTimeout(remove, BIRTHDATE_TOAST_DURATION_MS);
+    setTimeout(remove, TOAST_DURATION_MS);
 }
 
 const LANDING_EXIT_MS = 280;

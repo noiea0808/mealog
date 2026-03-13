@@ -1,7 +1,7 @@
 // 인증 관련 함수들
 import { auth } from './firebase.js';
 import { GoogleAuthProvider, signInWithPopup, getRedirectResult, signInWithCredential, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { showToast, showBirthdateError, showLoading, hideLoading } from './ui.js';
+import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
 import { dbOps } from './db.js';
 import { normalizeBirthdateRaw } from './utils.js';
@@ -802,13 +802,13 @@ export async function confirmProfileSetup() {
     }
 
     if (!birthdate) {
-        showBirthdateError("생년월일을 입력해주세요.");
+        showToast("생년월일을 입력해주세요.", "error");
         return;
     }
 
     const { formatted, valid } = normalizeBirthdateRaw(birthdate);
     if (!valid) {
-        showBirthdateError("입력한 생년월일이 올바르지 않습니다. 숫자 8자리(예: 19900115)로 입력해주세요.");
+        showToast("입력한 생년월일이 올바르지 않습니다. 숫자 8자리(예: 19900115)로 입력해주세요.", "error");
         return;
     }
 

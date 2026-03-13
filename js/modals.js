@@ -4,7 +4,7 @@ import { appState } from './state.js';
 import { setVal, compressImage, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage, normalizeBirthdateRaw } from './utils.js';
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from './render/index.js';
 import { dbOps } from './db.js';
-import { showToast, showBirthdateError } from './ui.js';
+import { showToast } from './ui.js';
 import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed } from './render/index.js';
 import { getDashboardData } from './analytics.js';
 import { callableFunctions } from './firebase.js';
@@ -2222,7 +2222,7 @@ export async function saveProfileSettings() {
         if (newBirthdate) {
             const { formatted: formattedBirthdate, valid } = normalizeBirthdateRaw(newBirthdate);
             if (!valid) {
-                showBirthdateError("입력한 생년월일이 올바르지 않습니다. 숫자 8자리(예: 19900115)로 입력해주세요.");
+                showToast("입력한 생년월일이 올바르지 않습니다. 숫자 8자리(예: 19900115)로 입력해주세요.", "error");
                 return;
             }
             const isBirthdateChanged = existingBirthdate && formattedBirthdate && existingBirthdate !== formattedBirthdate;
