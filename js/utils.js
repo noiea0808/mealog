@@ -1143,10 +1143,15 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
         } catch (e) {
             if (e.name === 'AbortError' || (e.message && /cancelled|canceled/i.test(e.message))) return false;
             const msg = e.message || String(e);
+            const errDetail = { step, message: msg, name: e.name, stack: e.stack };
+            try {
+                window.__lastShareError = errDetail;
+            } catch (_) {}
             console.error('sharePhotosToExternal(네이티브) 실패:', step, e);
             if (typeof window.showToast === 'function') {
                 const stepMsg = step ? ` (${step} 단계)` : '';
-                window.showToast('공유에 실패했습니다.' + stepMsg + ' ' + (msg.length > 40 ? msg.slice(0, 40) + '…' : msg), 'error');
+                const shortMsg = msg.length > 60 ? msg.slice(0, 60) + '…' : msg;
+                window.showToast('공유 실패.' + stepMsg + ' ' + shortMsg, 'error');
             }
             return false;
         }
