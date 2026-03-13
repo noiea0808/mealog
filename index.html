@@ -1056,10 +1056,10 @@
 
     <!-- Entry Modal -->
     <div id="entryModal" class="hidden fixed inset-0 bg-slate-900/60 z-[300] flex items-end">
-        <div class="w-full max-w-md mx-auto bg-white rounded-t-[2.5rem] flex flex-col max-h-[92vh]">
-            <div class="py-3 px-4 border-b flex justify-between items-center">
-                <h2 id="modalTitle" class="text-sm font-bold text-slate-800 tracking-tight">기록하기</h2>
-                <button onclick="window.closeModal()"><i class="fa-solid fa-xmark text-base text-slate-400"></i></button>
+        <div class="w-full max-w-md mx-auto bg-white rounded-t-[1.25rem] flex flex-col max-h-[92vh]">
+            <div class="relative py-3 px-4 border-b min-h-[2.5rem] flex items-center justify-center">
+                <h2 id="modalTitle" class="text-base font-bold text-slate-800 tracking-tight">기록하기</h2>
+                <button onclick="window.closeModal()" class="absolute top-1/2 -translate-y-1/2 right-4 flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400"><i class="fa-solid fa-xmark text-base"></i></button>
             </div>
             <div id="modalScrollArea" class="p-4 space-y-2 overflow-y-auto pb-2">
                 <div id="mainMealFields">

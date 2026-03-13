@@ -1358,7 +1358,7 @@ function setupGalleryEventListeners(container, sortedGroups, opts = null) {
     scrollContainers.forEach((scrollContainer, idx) => {
         if (idx < startIndex) return;
         const counter = scrollContainer.parentElement.querySelector('.photo-counter-current');
-        const photos = scrollContainer.querySelectorAll('div');
+        const photos = Array.from(scrollContainer.children);
         const photoCount = sortedGroups[idx]?.length || 0;
         if (photoCount > 1) {
             let isDragging = false;
@@ -2780,7 +2780,7 @@ export async function renderFeed() {
         const scrollContainers = container.querySelectorAll('.gallery-photo-scroll');
         scrollContainers.forEach((scrollContainer, idx) => {
             const counter = scrollContainer.parentElement.querySelector('.photo-counter-current');
-            const photos = scrollContainer.querySelectorAll('div');
+            const photos = Array.from(scrollContainer.children);
             const photoCount = sortedGroups[idx]?.length || 0;
             // 스크롤 종료 시 가장 가까운 사진으로 스냅 (한장한장 구분감)
             if (photoCount > 1) {
@@ -2841,26 +2841,20 @@ export async function renderFeed() {
                 }
             }
             if (counter && photoCount > 1) {
+                const slideEls = Array.from(scrollContainer.children);
                 const updateCounter = () => {
                     const containerWidth = scrollContainer.clientWidth;
                     const scrollLeft = scrollContainer.scrollLeft;
-                    // 각 사진의 위치를 확인하여 현재 보이는 사진 인덱스 계산
                     let currentIndex = 1;
-                    photos.forEach((photo, photoIdx) => {
-                        const photoLeft = photo.offsetLeft;
-                        const photoRight = photoLeft + photo.offsetWidth;
-                        const viewportLeft = scrollLeft;
-                        const viewportRight = scrollLeft + containerWidth;
-                        // 사진의 중앙이 뷰포트 안에 있으면 현재 사진
-                        const photoCenter = photoLeft + photo.offsetWidth / 2;
-                        if (photoCenter >= viewportLeft && photoCenter <= viewportRight) {
+                    slideEls.forEach((slide, photoIdx) => {
+                        const photoCenter = slide.offsetLeft + slide.offsetWidth / 2;
+                        if (photoCenter >= scrollLeft && photoCenter <= scrollLeft + containerWidth) {
                             currentIndex = photoIdx + 1;
                         }
                     });
                     counter.textContent = currentIndex;
                 };
                 scrollContainer.addEventListener('scroll', updateCounter);
-                // 초기 카운터 설정
                 updateCounter();
             }
         });
