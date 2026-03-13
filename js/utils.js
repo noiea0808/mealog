@@ -986,9 +986,23 @@ async function addCaptionToImage(imageBlob, caption) {
     });
 }
 
+/** Blob을 base64 문자열로 변환 (Capacitor Filesystem 공유용) */
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const dataUrl = reader.result;
+            const base64 = dataUrl.indexOf(',') >= 0 ? dataUrl.split(',')[1] : dataUrl;
+            resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
 /**
  * 모먼트(앨범) 사진을 카카오톡·인스타그램 등 외부 앱으로 공유합니다.
- * Web Share API (navigator.share) 사용. 지원 시 네이티브 공유 시트가 열립니다.
+ * 네이티브(Capacitor): @capacitor/share + Filesystem 사용. 웹: Web Share API (navigator.share).
  * caption이 있으면 모먼트처럼 이미지 하단에 메뉴@장소를 녹색 바로 오버레이합니다.
  * @param {string|string[]} photoUrls - 쉼표로 구분된 사진 URL 또는 URL 배열
  * @param {string} [caption] - 메뉴@장소 캡션 (있으면 이미지 하단에 오버레이)
@@ -1001,6 +1015,74 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
         : Array.isArray(photoUrls) ? photoUrls.filter(Boolean) : [];
     if (urls.length === 0) return false;
 
+    const captionText = (caption || '').trim();
+    const isNative = typeof window.Capacitor !== 'undefined' && window.Capacitor?.isNativePlatform?.();
+
+    // 네이티브 앱: Capacitor Share + Filesystem 사용 (Android WebView는 navigator.share 파일 미지원)
+    if (isNative) {
+        try {
+            const { Share } = await import('@capacitor/share');
+            const { Filesystem, Directory } = await import('@capacitor/filesystem');
+            const blobs = [];
+            for (let i = 0; i < Math.min(urls.length, 5); i++) {
+                const url = urls[i];
+                try {
+                    const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+                    if (!res.ok) continue;
+                    let blob = await res.blob();
+                    if (!skipCaptionBar && captionText && blob.type && blob.type.startsWith('image/')) {
+                        blob = await addCaptionToImage(blob, captionText);
+                    }
+                    blobs.push(blob);
+                } catch (imgErr) {
+                    console.warn('SNS 공유용 이미지 로드 실패:', url?.slice(0, 60), imgErr);
+                }
+            }
+            if (blobs.length === 0) {
+                if (typeof window.showToast === 'function') {
+                    window.showToast('사진을 불러오지 못했습니다. (네트워크 또는 접근 제한)', 'error');
+                }
+                return false;
+            }
+            const logoBlob = await createMealogLogoImage();
+            blobs.push(logoBlob);
+            const prefix = `mealog_share_${Date.now()}`;
+            const fileUris = [];
+            for (let i = 0; i < blobs.length; i++) {
+                const path = `${prefix}_${i}.jpg`;
+                const base64 = await blobToBase64(blobs[i]);
+                await Filesystem.writeFile({
+                    path,
+                    data: base64,
+                    directory: Directory.Cache,
+                });
+                const { uri } = await Filesystem.getUri({ path, directory: Directory.Cache });
+                fileUris.push(uri);
+            }
+            // Android에서 files 배열이 실패하는 기기가 있어, 우선 단일 url(첫 번째 이미지)로 공유 시도
+            const shareOptions = {
+                url: fileUris[0],
+                text: captionText || 'mealog',
+                title: 'mealog',
+                dialogTitle: '공유하기',
+            };
+            await Share.share(shareOptions);
+            if (typeof window.showToast === 'function') {
+                window.showToast('공유되었습니다.', 'success');
+            }
+            return true;
+        } catch (e) {
+            if (e.name === 'AbortError' || (e.message && /cancelled|canceled/i.test(e.message))) return false;
+            const msg = e.message || String(e);
+            console.error('sharePhotosToExternal(네이티브) 실패:', e);
+            if (typeof window.showToast === 'function') {
+                window.showToast('공유에 실패했습니다. ' + (msg.length > 50 ? msg.slice(0, 50) + '…' : msg), 'error');
+            }
+            return false;
+        }
+    }
+
+    // 웹: Web Share API
     if (!navigator.share) {
         if (typeof window.showToast === 'function') {
             window.showToast('이 기기에서는 공유 기능을 지원하지 않습니다.', 'error');
@@ -1008,7 +1090,6 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
         return false;
     }
 
-    const captionText = (caption || '').trim();
     const files = [];
     try {
         for (let i = 0; i < Math.min(urls.length, 5); i++) {
