@@ -1013,24 +1013,28 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
     try {
         for (let i = 0; i < Math.min(urls.length, 5); i++) {
             const url = urls[i];
-            const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
-            if (!res.ok) continue;
-            let blob = await res.blob();
-            if (!skipCaptionBar && captionText && blob.type && blob.type.startsWith('image/')) {
-                blob = await addCaptionToImage(blob, captionText);
+            try {
+                const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+                if (!res.ok) continue;
+                let blob = await res.blob();
+                if (!skipCaptionBar && captionText && blob.type && blob.type.startsWith('image/')) {
+                    blob = await addCaptionToImage(blob, captionText);
+                }
+                const ext = url.split('.').pop()?.split('?')[0] || 'jpg';
+                const mime = blob.type || (ext === 'png' ? 'image/png' : 'image/jpeg');
+                files.push(new File([blob], `mealog_${i + 1}.${ext}`, { type: mime, lastModified: Date.now() }));
+            } catch (imgErr) {
+                console.warn('SNS 공유용 이미지 로드 실패:', url?.slice(0, 60), imgErr);
             }
-            const ext = url.split('.').pop()?.split('?')[0] || 'jpg';
-            const mime = blob.type || (ext === 'png' ? 'image/png' : 'image/jpeg');
-            files.push(new File([blob], `mealog_${i + 1}.${ext}`, { type: mime, lastModified: Date.now() }));
         }
-        const logoBlob = await createMealogLogoImage();
-        files.push(new File([logoBlob], 'mealog_logo.jpg', { type: 'image/jpeg', lastModified: Date.now() }));
         if (files.length === 0) {
             if (typeof window.showToast === 'function') {
-                window.showToast('사진을 불러오지 못했습니다.', 'error');
+                window.showToast('사진을 불러오지 못했습니다. (네트워크 또는 접근 제한)', 'error');
             }
             return false;
         }
+        const logoBlob = await createMealogLogoImage();
+        files.push(new File([logoBlob], 'mealog_logo.jpg', { type: 'image/jpeg', lastModified: Date.now() }));
         const shareData = { files };
         if (navigator.canShare && !navigator.canShare(shareData)) {
             if (typeof window.showToast === 'function') {

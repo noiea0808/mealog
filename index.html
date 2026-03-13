@@ -392,13 +392,14 @@
                 <i class="fa-solid fa-envelope text-lg"></i>
                 <span class="font-bold text-sm">이메일로 계속하기</span>
             </button>
-            <div class="flex flex-col gap-0.5 pt-0.5">
-                <button type="button" id="emailSignupLink" class="w-full py-2.5 text-emerald-100/70 text-xs font-bold underline decoration-emerald-100/50 underline-offset-4">
-                    이메일로 가입하기
-                </button>
-                <button id="guestLoginBtn" class="w-full py-2.5 text-emerald-100/70 text-xs font-bold underline decoration-emerald-100/50 underline-offset-4">
-                    로그인 없이 둘러보기 (게스트)
-                </button>
+            <div class="flex flex-row items-center px-6 pt-0.5 text-sm font-bold text-white w-full">
+                <span class="flex-1 flex justify-end pr-3">
+                    <button type="button" id="emailSignupLink" class="py-2.5 hover:underline underline-offset-4 decoration-white/80">이메일로 가입</button>
+                </span>
+                <span class="text-white/80 select-none shrink-0">|</span>
+                <span class="flex-1 flex justify-start pl-3">
+                    <button id="guestLoginBtn" class="py-2.5 hover:underline underline-offset-4 decoration-white/80">둘러보기</button>
+                </span>
             </div>
             </div>
         </div>
@@ -433,11 +434,11 @@
                     <label for="rememberEmailCheck" class="text-xs text-slate-500">이메일 기억하기</label>
                 </div>
                 <div class="text-center">
-                    <button type="button" id="emailPasswordResetLink" class="text-xs text-emerald-600 font-medium underline underline-offset-2 hover:text-emerald-700">비밀번호를 잊으셨나요?</button>
+                    <button type="button" id="emailPasswordResetLink" class="text-sm text-emerald-600 font-medium underline underline-offset-2 hover:text-emerald-700">비밀번호를 잊으셨나요?</button>
                 </div>
             </div>
             <button id="emailAuthBtn" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-md active:bg-emerald-700 transition-colors mb-4">로그인</button>
-            <button id="emailAuthToggleBtn" class="w-full text-xs text-slate-500">계정이 없으신가요? <span class="text-emerald-600 font-bold underline">회원가입</span></button>
+            <button id="emailAuthToggleBtn" class="w-full text-sm text-slate-500">계정이 없으신가요? <span class="text-emerald-600 font-bold underline">회원가입</span></button>
         </div>
     </div>
 

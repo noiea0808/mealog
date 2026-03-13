@@ -83,6 +83,34 @@ window.clearGalleryFilter = clearGalleryFilter;
 window.Mealog.clearGalleryFilter = clearGalleryFilter;
 window.switchGalleryFilterTab = switchGalleryFilterTab;
 window.Mealog.switchGalleryFilterTab = switchGalleryFilterTab;
+/** 네트워크 오류 등으로 모먼트 피드 로드가 실패했을 때 '다시 불러오기'로 호출. 전체 피드/사용자 필터 모드 모두 처리 */
+window.reloadMomentFeed = async function reloadMomentFeed() {
+    appState.galleryFeedNetworkError = false;
+    if (appState.galleryFilterUserId) {
+        renderGallery();
+        return;
+    }
+    window.sharedPhotosFeed = [];
+    appState.sharedPhotosFeedLastDoc = null;
+    appState.sharedPhotosFeedHasMore = false;
+    showLoading('모먼트 불러오는 중...');
+    try {
+        const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);
+        appState.galleryFeedNetworkError = false;
+        window.sharedPhotosFeed = docs;
+        appState.sharedPhotosFeedLastDoc = lastDoc;
+        appState.sharedPhotosFeedHasMore = hasMore;
+        appState.sharedPhotosFeedPrefetchedAt = Date.now();
+        renderGallery();
+    } catch (e) {
+        console.error('공유 사진 로드 실패:', e);
+        appState.galleryFeedNetworkError = true;
+        renderGallery();
+    } finally {
+        hideLoading();
+    }
+};
+window.Mealog.reloadMomentFeed = window.reloadMomentFeed;
 // 밀톡에서 작성자 클릭 시 사용자 프로필 화면(모먼트와 동일)으로 이동, 밀톡 탭 선택 상태로 표시. 뒤로가기 시 밀톡으로 복귀하기 위해 진입 탭 저장
 window.openUserProfileFromBoard = (userId) => {
     if (!userId) return;

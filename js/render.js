@@ -63,8 +63,8 @@ export function renderEntryChips() {
         
         // 메인 태그가 선택되지 않았을 때는 나만의 태그를 표시하지 않음
         const currentInputVal = document.getElementById(inputId)?.value || '';
-        // 함께한 사람 상세 태그는 다중 선택 가능하므로 배열로 처리
-        const isMultiSelect = id === 'peopleSuggestions';
+        // 함께한 사람·메뉴 상세 태그는 다중 선택 가능(쉼표 구분)이므로 배열로 처리
+        const isMultiSelect = id === 'peopleSuggestions' || id === 'menuSuggestions';
         const currentValues = isMultiSelect ? currentInputVal.split(',').map(v => v.trim()).filter(v => v) : [currentInputVal];
         
         if (!parentFilter) {
@@ -1190,7 +1190,7 @@ function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
                         </div>
                     </div>
                     <div class="relative">
-                        <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-caption="${captionAttr}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-is-insight="${isInsightShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-date-range-text="${photo.dateRangeText || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
+                        <button data-entry-id="${entryId || ''}" data-photo-urls="${(photoGroup.map(p => p.photoUrl).filter(Boolean).join(',') || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}" data-caption="${captionAttr}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-is-insight="${isInsightShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-date-range-text="${photo.dateRangeText || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
                             <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
                         </button>
                     </div>
@@ -1772,8 +1772,14 @@ export async function renderGallery(options = {}) {
             } catch (e) {
                 console.warn('getPostsByAuthor 실패:', e);
                 const listEl = document.getElementById('galleryFilterBoardList');
-                if (listEl && !(abortSignal && abortSignal.aborted))
-                    listEl.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">글 목록을 불러오지 못했습니다.</div>';
+                if (listEl && !(abortSignal && abortSignal.aborted)) {
+                    listEl.innerHTML = `<div class="flex flex-col items-center justify-center py-8 text-center">
+                        <p class="text-slate-400 text-sm mb-3">글 목록을 불러오지 못했습니다.</p>
+                        <button type="button" onclick="window.renderGallery && window.renderGallery()" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-lg inline-flex items-center gap-1.5">
+                            <i class="fa-solid fa-rotate-right"></i>다시 불러오기
+                        </button>
+                    </div>`;
+                }
             } finally {
                 isRenderingGallery = false;
             }
@@ -1973,6 +1979,9 @@ export async function renderGallery(options = {}) {
             <div class="flex flex-col items-center justify-center py-20 text-center">
                 <i class="fa-regular ${emptyIcon} text-6xl text-slate-200 mb-4"></i>
                 <p class="text-sm font-bold text-slate-400">${emptyMsg}</p>
+                ${networkEmptyMsg ? `<button type="button" onclick="window.reloadMomentFeed && window.reloadMomentFeed()" class="mt-4 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl transition-colors inline-flex items-center gap-1.5">
+                    <i class="fa-solid fa-rotate-right"></i>다시 불러오기
+                </button>` : ''}
             </div>
         ` : '');
     
@@ -2736,7 +2745,7 @@ export async function renderFeed() {
                     </div>
                     ${isBanned ? `<div class="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0"><i class="fa-solid fa-ban mr-1"></i>공유 금지</div>` : ''}
                     <div class="relative flex-shrink-0">
-                        <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-caption="${captionAttr}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-is-insight="${isInsightShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-date-range-text="${photo.dateRangeText || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
+                        <button data-entry-id="${entryId || ''}" data-photo-urls="${(photoGroup.map(p => p.photoUrl).filter(Boolean).join(',') || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}" data-caption="${captionAttr}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-is-insight="${isInsightShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-date-range-text="${photo.dateRangeText || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
                             <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
                         </button>
                     </div>
