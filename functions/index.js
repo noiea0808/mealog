@@ -140,7 +140,10 @@ async function sendPushToUser(userId, payload) {
     const snap = await ref.get();
     const tokensMap = (snap.exists && snap.data().tokens) || {};
     const tokens = Object.keys(tokensMap);
-    if (tokens.length === 0) return;
+    if (tokens.length === 0) {
+      logger.info('sendPushToUser: no FCM tokens for user', { userId });
+      return;
+    }
     const messaging = getMessaging();
     const message = {
       notification: { title: payload.title, body: payload.body || '' },
@@ -1345,6 +1348,9 @@ exports.getSharedEntryComments = onCall({ region: REGION }, async (request) => {
       .limit(1)
       .get();
     if (sharedSnap.empty) return { entryId, ownerUserId, comment: '' };
+    const sharedData = sharedSnap.docs[0].data();
+    const existingComment = sharedData.comment != null && String(sharedData.comment).trim() !== '' ? String(sharedData.comment).trim() : null;
+    if (existingComment !== null) return { entryId, ownerUserId, comment: existingComment };
     const mealRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(ownerUserId).collection('meals').doc(entryId);
     const mealSnap = await mealRef.get();
     const comment = mealSnap.exists ? (mealSnap.data().comment || '') : '';

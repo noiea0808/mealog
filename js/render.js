@@ -1238,7 +1238,7 @@ function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
                             </div>
                         </div>
                     `;
-                    })() : (!isBestShare && !isDailyShare && !isInsightShare && entryId && photo.userId && !isMyPost ? `<div class="shared-comment-fetch-placeholder mb-2 text-sm text-slate-800" data-post-id="${postId}" data-entry-id="${entryId}" data-owner-user-id="${photo.userId}" data-group-idx="${groupIdx}"></div>` : '')}
+                    })() : (!isBestShare && !isDailyShare && !isInsightShare && entryId && photo.userId && !isMyPost ? `<div class="shared-comment-fetch-placeholder mb-2 text-sm text-slate-800" data-post-id="${postId}" data-entry-id="${entryId}" data-owner-user-id="${photo.userId}" data-group-idx="${groupIdx}"><span class="text-xs text-slate-400">불러오는 중</span></div>` : '')}
                     <div class="comment-section comments-empty ${((caption && (isBestShare || isDailyShare || isInsightShare)) || (comment && !isBestShare && !isDailyShare && !isInsightShare)) ? 'border-t border-slate-200 ' : ''}-mx-6 px-6 pt-1.5 mt-1" id="comment-section-${postId}">
                         <div class="post-comments-list mb-1 rounded-lg py-2 bg-white" data-post-id="${postId}" id="comments-list-${postId}"></div>
                         <button id="view-comments-${postId}" class="hidden text-xs text-slate-500 font-bold mb-1 hover:text-slate-700 active:text-slate-900 transition-colors" onclick="window.viewAllComments('${postId}')">댓글 더보기</button>
@@ -2125,18 +2125,18 @@ export async function renderGallery(options = {}) {
 
             // 이전 포스트 ID 목록 업데이트 (전체 재렌더링인 경우)
             previousGalleryPostIds = new Set(currentPostIds);
-            
-            // 이벤트 리스너 설정 (AbortSignal 체크 포함)
+            // 코멘트 채우기는 50ms 대기 없이 곧바로 실행 (체감: 텍스트가 사진보다 늦게 뜨는 현상 완화)
+            (() => {
+                if (abortSignal.aborted) return;
+                setupGalleryEventListeners(container, sortedGroups, { abortSignal });
+                fetchMissingSharedComments(container, sharedCommentsPromise).catch(() => {});
+            })();
             setTimeout(() => {
                 if (abortSignal.aborted) {
                     console.log('[renderGallery] AbortSignal 감지 - 이벤트 리스너 설정 중단');
                     isRenderingGallery = false;
                     return;
                 }
-                
-                setupGalleryEventListeners(container, sortedGroups, { abortSignal });
-                fetchMissingSharedComments(container, sharedCommentsPromise).catch(() => {});
-                
                 // IntersectionObserver 설정 (포스트 렌더링 및 상호작용 로드용)
                 setTimeout(() => {
                     if (abortSignal.aborted) {
