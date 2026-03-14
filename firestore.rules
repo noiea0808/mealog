@@ -82,6 +82,15 @@ service cloud.firestore {
     }
     
     // ============================================
+    // 둘러보기(게스트) 방문 기록 — 관리자 대시보드 통계용
+    // ============================================
+    match /artifacts/{appId}/guestVisits/{docId} {
+      allow read: if isAdmin();
+      allow create, update: if request.auth != null && request.auth.uid == docId;
+      allow delete: if false;
+    }
+    
+    // ============================================
     // 공유 사진 (sharedPhotos 컬렉션)
     // ============================================
     // 보안 강화: create는 Cloud Functions를 통해서만 허용 (레이트 리밋 및 스팸 필터 적용)

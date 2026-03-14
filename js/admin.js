@@ -281,6 +281,7 @@ async function getUserStatistics() {
         };
 
         const stats = {
+            guestVisits: { all: 0, last30: 0, last7: 0, today: 0 },
             newUsers: { all: 0, last30: 0, last7: 0, today: 0 },
             activeUsers: { all: 0, last30: 0, last7: 0, today: 0 },
             records: { all: 0, last30: 0, last7: 0, today: 0 },
@@ -293,6 +294,28 @@ async function getUserStatistics() {
         };
 
         const activeUserSets = { all: new Set(), last30: new Set(), last7: new Set(), today: new Set() };
+
+        // 0) 둘러보기(게스트) 방문: guestVisits 컬렉션의 lastVisitedAt 기준
+        try {
+            const guestVisitsColl = collection(db, 'artifacts', appId, 'guestVisits');
+            const guestVisitsSnap = await getDocs(guestVisitsColl);
+            guestVisitsSnap.docs.forEach(docSnap => {
+                const d = docSnap.data();
+                let lastAt = null;
+                if (d.lastVisitedAt) {
+                    lastAt = d.lastVisitedAt.toDate ? d.lastVisitedAt.toDate() : new Date(d.lastVisitedAt);
+                }
+                if (lastAt) {
+                    const dateOnly = new Date(lastAt.getFullYear(), lastAt.getMonth(), lastAt.getDate());
+                    stats.guestVisits.all++;
+                    if (inPeriod(dateOnly, 'today')) stats.guestVisits.today++;
+                    if (inPeriod(dateOnly, 'last7')) stats.guestVisits.last7++;
+                    if (inPeriod(dateOnly, 'last30')) stats.guestVisits.last30++;
+                }
+            });
+        } catch (e) {
+            console.warn('⚠️ guestVisits 조회 실패:', e?.message || e);
+        }
 
         // 1) 신규 사용자: users 컬렉션의 createdAt 기준
         if (usersSnapshot.docs) {
@@ -416,6 +439,10 @@ function renderDashboardStats(stats, updatedAt) {
         if (el) el.textContent = value != null ? Number(value).toLocaleString() : '-';
     };
     if (stats) {
+        set('statGuestVisitsAll', stats.guestVisits?.all);
+        set('statGuestVisits30', stats.guestVisits?.last30);
+        set('statGuestVisits7', stats.guestVisits?.last7);
+        set('statGuestVisitsToday', stats.guestVisits?.today);
         set('statNewUsersAll', stats.newUsers?.all);
         set('statNewUsers30', stats.newUsers?.last30);
         set('statNewUsers7', stats.newUsers?.last7);
@@ -433,7 +460,8 @@ function renderDashboardStats(stats, updatedAt) {
         set('statShared7', stats.sharedPhotos?.last7);
         set('statSharedToday', stats.sharedPhotos?.today);
     } else {
-        ['statNewUsersAll', 'statNewUsers30', 'statNewUsers7', 'statNewUsersToday',
+        ['statGuestVisitsAll', 'statGuestVisits30', 'statGuestVisits7', 'statGuestVisitsToday',
+            'statNewUsersAll', 'statNewUsers30', 'statNewUsers7', 'statNewUsersToday',
             'statActiveUsersAll', 'statActiveUsers30', 'statActiveUsers7', 'statActiveUsersToday',
             'statRecordsAll', 'statRecords30', 'statRecords7', 'statRecordsToday',
             'statSharedAll', 'statShared30', 'statShared7', 'statSharedToday'].forEach(id => set(id, null));
@@ -458,6 +486,7 @@ async function updateStatistics() {
         if (snap.exists()) {
             const data = snap.data();
             const stats = {
+                guestVisits: data.guestVisits || { all: 0, last30: 0, last7: 0, today: 0 },
                 newUsers: data.newUsers,
                 activeUsers: data.activeUsers,
                 records: data.records,
@@ -482,6 +511,7 @@ async function refreshDashboardStats() {
         if (btn) { btn.disabled = true; btn.innerHTML = '집계 중...'; }
         const stats = await getUserStatistics();
         const payload = {
+            guestVisits: stats.guestVisits,
             newUsers: stats.newUsers,
             activeUsers: stats.activeUsers,
             records: stats.records,

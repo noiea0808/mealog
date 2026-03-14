@@ -2315,6 +2315,20 @@ async function updateUserDocument(user) {
     }
 }
 
+/** 게스트(둘러보기) 방문 기록 — 관리자 대시보드 '둘러보기' 통계용 */
+async function recordGuestVisit(uid) {
+    if (!uid || !db || !appId) return;
+    try {
+        const guestVisitsRef = doc(db, 'artifacts', appId, 'guestVisits', uid);
+        const snap = await getDoc(guestVisitsRef);
+        const data = { userId: uid, lastVisitedAt: serverTimestamp() };
+        if (!snap.exists()) data.firstVisitedAt = serverTimestamp();
+        await setDoc(guestVisitsRef, data, { merge: true });
+    } catch (e) {
+        console.warn('게스트 방문 기록 실패 (무시):', e?.message || e);
+    }
+}
+
 /** 프로필 설정 완료 시 가입 완료(createdAt) 등록. auth.js confirmProfileSetup에서 호출 */
 window.ensureUserRegistered = async function () {
     const user = auth.currentUser;
@@ -2524,6 +2538,8 @@ initAuth(async (user) => {
             
             // 게스트 모드일 때 헤더 UI 업데이트
             updateHeaderUI();
+            // 둘러보기(게스트) 방문 기록 — 관리자 대시보드 통계용
+            recordGuestVisit(user.uid).catch(() => {});
         } else {
             // 리스너 설정 (이전 리스너는 setupListeners 내부에서 해제됨)
             let dataUpdateTimer = null; // 공유 시 meals 이중 리스너 방지용 디바운스
