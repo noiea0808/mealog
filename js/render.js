@@ -1160,7 +1160,7 @@ function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
         const isBest = p.type === 'best', isDaily = p.type === 'daily', isInsight = p.type === 'insight';
         return `
             <div class="flex-shrink-0 w-full snap-start ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
-                ${(isBest || isDaily || isInsight) ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full h-auto object-contain" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx === 0 ? 'eager' : 'lazy'}">` : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="absolute inset-0 w-full h-full object-cover" loading="${idx === 0 ? 'eager' : 'lazy'}"></div>`}
+                ${(isBest || isDaily || isInsight) ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full h-auto object-contain" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx <= 1 ? 'eager' : 'lazy'}">` : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="absolute inset-0 w-full h-full object-cover" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`}
             </div>
         `;
     }).join('');
@@ -1355,7 +1355,7 @@ function applyCommentToPlaceholder(el, div, comment) {
     }
 }
 
-/** 갤러리 가로 스크롤 시 현재 슬라이드 기준 이전/다음 1장만 캐시에 미리 로드 */
+/** 갤러리 가로 스크롤 시 현재 슬라이드 기준 이전 1장 + 다음 2장 캐시에 미리 로드 */
 function preloadAdjacentGalleryImages(scrollContainer) {
     const slides = Array.from(scrollContainer.children);
     if (slides.length <= 1) return;
@@ -1367,7 +1367,8 @@ function preloadAdjacentGalleryImages(scrollContainer) {
         if (center >= scrollLeft && center <= scrollLeft + containerWidth) currentIndex = i;
     });
     const imgs = slides.map(s => s.querySelector('img')).filter(Boolean);
-    [currentIndex - 1, currentIndex + 1].forEach(idx => {
+    const toPreload = [currentIndex - 1, currentIndex + 1, currentIndex + 2];
+    toPreload.forEach(idx => {
         if (idx < 0 || idx >= imgs.length) return;
         const img = imgs[idx];
         const url = img.src || img.getAttribute('data-src');
@@ -1433,9 +1434,21 @@ function setupGalleryEventListeners(container, sortedGroups, opts = null) {
             };
             let snapTimeout = null;
             const onScrollEnd = () => { clearTimeout(snapTimeout); snapTimeout = setTimeout(snapToNearest, 80); };
+            let preloadThrottle = null;
+            const onScrollPreload = () => {
+                if (preloadThrottle) return;
+                preloadThrottle = setTimeout(() => { preloadThrottle = null; preloadAdjacentGalleryImages(scrollContainer); }, 50);
+            };
             scrollContainer.addEventListener('scroll', onScrollEnd, { passive: true });
+            scrollContainer.addEventListener('scroll', onScrollPreload, { passive: true });
             if ('onscrollend' in scrollContainer) scrollContainer.addEventListener('scrollend', snapToNearest);
-            if (abortSignal) abortSignal.addEventListener('abort', () => { clearTimeout(snapTimeout); scrollContainer.removeEventListener('scroll', onScrollEnd); scrollContainer.removeEventListener('scrollend', snapToNearest); });
+            if (abortSignal) abortSignal.addEventListener('abort', () => {
+                clearTimeout(snapTimeout);
+                clearTimeout(preloadThrottle);
+                scrollContainer.removeEventListener('scroll', onScrollEnd);
+                scrollContainer.removeEventListener('scroll', onScrollPreload);
+                scrollContainer.removeEventListener('scrollend', snapToNearest);
+            });
             preloadAdjacentGalleryImages(scrollContainer);
         }
         if (counter && photoCount > 1) {
@@ -2743,7 +2756,7 @@ export async function renderFeed() {
             const photoBanned = p.banned === true;
             return `
             <div class="flex-shrink-0 w-full snap-start relative ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
-                ${(isBest || isDaily || isInsight) ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full h-auto object-contain ${photoBanned ? 'opacity-50' : ''}" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx === 0 ? 'eager' : 'lazy'}">` : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="absolute inset-0 w-full h-full object-cover ${photoBanned ? 'opacity-50' : ''}" loading="${idx === 0 ? 'eager' : 'lazy'}"></div>`}
+                ${(isBest || isDaily || isInsight) ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full h-auto object-contain ${photoBanned ? 'opacity-50' : ''}" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx <= 1 ? 'eager' : 'lazy'}">` : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="absolute inset-0 w-full h-full object-cover ${photoBanned ? 'opacity-50' : ''}" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`}
                 ${photoBanned && !(isBest || isDaily || isInsight) ? `
                     <div class="absolute inset-0 bg-orange-500/20 flex items-center justify-center">
                         <div class="bg-orange-600 text-white px-3 py-1.5 rounded-lg">
@@ -2878,7 +2891,13 @@ export async function renderFeed() {
                     clearTimeout(snapTimeout);
                     snapTimeout = setTimeout(snapToNearest, 80);
                 };
+                let preloadThrottle = null;
+                const onScrollPreload = () => {
+                    if (preloadThrottle) return;
+                    preloadThrottle = setTimeout(() => { preloadThrottle = null; preloadAdjacentGalleryImages(scrollContainer); }, 50);
+                };
                 scrollContainer.addEventListener('scroll', onScrollEnd, { passive: true });
+                scrollContainer.addEventListener('scroll', onScrollPreload, { passive: true });
                 if ('onscrollend' in scrollContainer) {
                     scrollContainer.addEventListener('scrollend', snapToNearest);
                 }
