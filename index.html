@@ -517,11 +517,27 @@
         </div>
     </div>
 
-    <!-- Profile Setup Modal (First Login) -->
+    <!-- Profile Setup Modal (First Login / Email Signup) -->
     <div id="profileSetupModal" class="hidden fixed inset-0 z-[500] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <h3 class="text-lg font-bold text-slate-800 text-center mb-2">프로필 설정</h3>
-            <p class="text-xs text-slate-500 text-center mb-6">서비스를 이용하기 위해 닉네임을 입력해주세요.</p>
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 id="profileSetupModalTitle" class="text-lg font-bold text-slate-800 text-center mb-2">프로필 설정</h3>
+            <p id="profileSetupModalDescription" class="text-xs text-slate-500 text-center mb-6">서비스를 이용하기 위해 닉네임을 입력해주세요.</p>
+            
+            <!-- 이메일 회원가입 시에만 표시: 이메일 + 비밀번호 + 비밀번호 확인 -->
+            <div id="emailSignupBlock" class="hidden space-y-3 mb-6 pb-4 border-b border-slate-100">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 block mb-1 ml-1 uppercase">이메일</label>
+                    <input type="email" id="signupEmailInput" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400 transition-colors" placeholder="name@example.com">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 block mb-1 ml-1 uppercase">비밀번호</label>
+                    <input type="password" id="signupPasswordInput" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400 transition-colors" placeholder="6자리 이상">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 block mb-1 ml-1 uppercase">비밀번호 확인</label>
+                    <input type="password" id="signupPasswordConfirmInput" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400 transition-colors" placeholder="비밀번호 다시 입력">
+                </div>
+            </div>
             
             <div class="space-y-4 mb-6">
                 <!-- 닉네임 입력 -->

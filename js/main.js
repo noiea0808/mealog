@@ -17,7 +17,7 @@ import {
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
     copyDomain, closeDomainModal, switchToLogin, showTermsModal, closeTermsModal, cancelTermsAgreement, confirmTermsAgreement,
-    showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup, continueAsGuestFromProfileSetup, setProfileType, handleSetupPhotoUpload,
+    showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup, handleEmailSignupWithProfile, continueAsGuestFromProfileSetup, setProfileType, handleSetupPhotoUpload,
     confirmDeleteAccount, cancelDeleteAccount, confirmDeleteAccountAction
 } from './auth.js';
 import { authFlowManager } from './auth-flow.js';
@@ -4667,7 +4667,13 @@ function initEventListeners() {
     
     const profileSetupBtn = document.getElementById('profileSetupBtn');
     if (profileSetupBtn) {
-        profileSetupBtn.addEventListener('click', confirmProfileSetup);
+        profileSetupBtn.addEventListener('click', () => {
+            if (window._profileModalMode === 'emailSignup') {
+                handleEmailSignupWithProfile();
+            } else {
+                confirmProfileSetup();
+            }
+        });
     }
     const profileSetupGuestBtn = document.getElementById('profileSetupGuestBtn');
     if (profileSetupGuestBtn) {
