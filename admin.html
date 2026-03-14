@@ -104,63 +104,66 @@
 
         <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 admin-main-padding">
 
-            <!-- 대시보드 탭 -->
+            <!-- 대시보드 탭 (현황판: 캐시 문서 1회만 조회, 통계 새로고침 시에만 전체 집계) -->
             <div id="admin-tab-content-dashboard" class="admin-tab-content">
-                <!-- 통계 카드 섹션 -->
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                    <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-100">
-                        <div class="flex items-center justify-between mb-2">
-                            <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                                <i class="fa-solid fa-users text-blue-600 text-xl"></i>
-                            </div>
-                        </div>
-                        <div class="text-2xl font-black text-slate-800 mb-1" id="statTotalUsers">-</div>
-                        <div class="text-xs text-slate-500 font-bold uppercase">전체 사용자</div>
+                <!-- 기간별 통계 테이블 -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead>
+                                <tr class="border-b border-slate-200 bg-slate-50">
+                                    <th class="px-4 py-3 font-black text-slate-700 uppercase">항목</th>
+                                    <th class="px-4 py-3 font-black text-slate-700 uppercase text-center min-w-[5rem]">전체</th>
+                                    <th class="px-4 py-3 font-black text-slate-700 uppercase text-center min-w-[5rem]">최근 30일</th>
+                                    <th class="px-4 py-3 font-black text-slate-700 uppercase text-center min-w-[5rem]">최근 7일</th>
+                                    <th class="px-4 py-3 font-black text-slate-700 uppercase text-center min-w-[5rem]">오늘</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="border-b border-slate-100 hover:bg-slate-50/50">
+                                    <td class="px-4 py-3 font-bold text-slate-700">
+                                        <span class="inline-flex items-center gap-2"><i class="fa-solid fa-user-plus text-blue-600"></i>신규 사용자</span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statNewUsersAll">-</td>
+                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statNewUsers30">-</td>
+                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statNewUsers7">-</td>
+                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statNewUsersToday">-</td>
+                                </tr>
+                                <tr class="border-b border-slate-100 hover:bg-slate-50/50">
+                                    <td class="px-4 py-3 font-bold text-slate-700">
+                                        <span class="inline-flex items-center gap-2"><i class="fa-solid fa-user-check text-emerald-600"></i>활성 사용자</span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statActiveUsersAll">-</td>
+                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statActiveUsers30">-</td>
+                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statActiveUsers7">-</td>
+                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statActiveUsersToday">-</td>
+                                </tr>
+                                <tr class="border-b border-slate-100 hover:bg-slate-50/50">
+                                    <td class="px-4 py-3 font-bold text-slate-700">
+                                        <span class="inline-flex items-center gap-2"><i class="fa-solid fa-utensils text-orange-600"></i>기록</span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statRecordsAll">-</td>
+                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statRecords30">-</td>
+                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statRecords7">-</td>
+                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statRecordsToday">-</td>
+                                </tr>
+                                <tr class="hover:bg-slate-50/50">
+                                    <td class="px-4 py-3 font-bold text-slate-700">
+                                        <span class="inline-flex items-center gap-2"><i class="fa-solid fa-images text-purple-600"></i>공유 게시물</span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statSharedAll">-</td>
+                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statShared30">-</td>
+                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statShared7">-</td>
+                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statSharedToday">-</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
-
-                    <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-100">
-                        <div class="flex items-center justify-between mb-2">
-                            <div class="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
-                                <i class="fa-solid fa-user-check text-emerald-600 text-xl"></i>
-                            </div>
-                        </div>
-                        <div class="text-2xl font-black text-slate-800 mb-1" id="statActiveUsers">-</div>
-                        <div class="text-xs text-slate-500 font-bold uppercase">활성 사용자</div>
-                    </div>
-
-                    <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-100">
-                        <div class="flex items-center justify-between mb-2">
-                            <div class="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
-                                <i class="fa-solid fa-utensils text-orange-600 text-xl"></i>
-                            </div>
-                        </div>
-                        <div class="text-2xl font-black text-slate-800 mb-1" id="statTotalMeals">-</div>
-                        <div class="text-xs text-slate-500 font-bold uppercase">전체 기록</div>
-                    </div>
-
-                    <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-100">
-                        <div class="flex items-center justify-between mb-2">
-                            <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                                <i class="fa-solid fa-images text-purple-600 text-xl"></i>
-                            </div>
-                        </div>
-                        <div class="text-2xl font-black text-slate-800 mb-1" id="statSharedPhotos">-</div>
-                        <div class="text-xs text-slate-500 font-bold uppercase">공유 게시물</div>
-                    </div>
-                </div>
-
-                <!-- 최근 활동 통계 -->
-                <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-100">
-                    <h2 class="text-lg font-black text-slate-800 mb-4">최근 활동</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div class="bg-slate-50 rounded-xl p-4">
-                            <div class="text-sm text-slate-500 mb-1">최근 7일 활동</div>
-                            <div class="text-2xl font-black text-slate-800" id="statActivity7d">-</div>
-                        </div>
-                        <div class="bg-slate-50 rounded-xl p-4">
-                            <div class="text-sm text-slate-500 mb-1">최근 30일 활동</div>
-                            <div class="text-2xl font-black text-slate-800" id="statActivity30d">-</div>
-                        </div>
+                    <div class="px-4 py-3 border-t border-slate-100 bg-slate-50/50 flex flex-wrap items-center justify-between gap-2">
+                        <span id="dashboardStatsUpdatedAt" class="text-xs text-slate-500">마지막 업데이트: -</span>
+                        <button type="button" id="dashboardStatsRefreshBtn" onclick="window.refreshDashboardStats()" class="px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors">
+                            <i class="fa-solid fa-rotate-right mr-1"></i>통계 새로고침
+                        </button>
                     </div>
                 </div>
             </div>

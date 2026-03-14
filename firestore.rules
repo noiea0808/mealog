@@ -286,5 +286,13 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow write: if false; // Cloud Functions만 쓰기 가능 (admin SDK 사용)
     }
+
+    // ============================================
+    // Collection group 'meals' — 관리자 피드(타임라인 전체) 조회용
+    // 경로 규칙과 별도로, collection group 쿼리·집계에 필요 (쓰기는 기존 users/meals 규칙만 사용)
+    // ============================================
+    match /{path=**}/meals/{mealId} {
+      allow read: if isAdmin();
+    }
   }
 }
