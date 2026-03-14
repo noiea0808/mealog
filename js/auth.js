@@ -119,10 +119,12 @@ export async function startGuest() {
 }
 
 export function openEmailModal(initialMode = 'login') {
-    // 이메일 회원가입: 로그인 모달 대신 프로필 모달(이메일+비번+회원정보) 열기
+    // 이메일 회원가입: 페이지 형식 4단계 위저드 열기
     if (initialMode === 'signup') {
         document.getElementById('emailAuthModal').classList.add('hidden');
-        showProfileSetupModalForEmailSignup();
+        import('./signup-wizard.js').then(({ openSignupWizard }) => {
+            openSignupWizard({ startStep: 1, totalSteps: 4, isEmailSignup: true });
+        });
         return;
     }
     document.getElementById('emailAuthModal').classList.remove('hidden');
@@ -177,9 +179,11 @@ export function setEmailAuthMode(mode) {
 
 export function toggleEmailAuthMode() {
     if (window.emailAuthMode === 'login') {
-        // 회원가입으로 전환: 이메일 로그인 모달 닫고, 이메일+비번+회원정보 모달 열기
+        // 회원가입으로 전환: 이메일 로그인 모달 닫고, 페이지 형식 위저드 열기
         document.getElementById('emailAuthModal').classList.add('hidden');
-        showProfileSetupModalForEmailSignup();
+        import('./signup-wizard.js').then(({ openSignupWizard }) => {
+            openSignupWizard({ startStep: 1, totalSteps: 4, isEmailSignup: true });
+        });
     } else {
         window.setEmailAuthMode('login');
     }

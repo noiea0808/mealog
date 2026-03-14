@@ -517,6 +517,103 @@
         </div>
     </div>
 
+    <!-- Signup Wizard (페이지 형식 4단계 회원가입) -->
+    <div id="signupWizard" class="hidden fixed inset-0 z-[550] bg-white flex flex-col safe-area-inset">
+        <header class="flex-shrink-0 flex justify-end items-center px-4 py-3 border-b border-slate-100">
+            <span id="signupWizardProgress" class="text-sm font-bold text-slate-500">1/4</span>
+        </header>
+        <main class="flex-1 overflow-y-auto px-6 py-6 min-h-0">
+            <!-- 1페이지: 이메일 / 비번 / 비번 확인 -->
+            <div id="signupWizardStep1" class="signup-wizard-step hidden">
+                <h2 class="text-xl font-bold text-slate-800 mb-6">새로운 밀로거님의 이메일을 입력해주세요</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-xs font-bold text-slate-500 block mb-1 uppercase">이메일</label>
+                        <input type="email" id="wizardEmail" class="wizard-input w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400" placeholder="name@example.com">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-slate-500 block mb-1 uppercase">비밀번호</label>
+                        <input type="password" id="wizardPassword" class="wizard-input w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400" placeholder="6자리 이상">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-slate-500 block mb-1 uppercase">비밀번호 확인</label>
+                        <input type="password" id="wizardPasswordConfirm" class="wizard-input w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400" placeholder="비밀번호 다시 입력">
+                    </div>
+                </div>
+            </div>
+            <!-- 2페이지: 닉네임 -->
+            <div id="signupWizardStep2" class="signup-wizard-step hidden">
+                <h2 class="text-xl font-bold text-slate-800 mb-6">사용할 닉네임을 입력해주세요.</h2>
+                <div class="flex gap-2 items-end">
+                    <div class="flex-1 min-w-0">
+                        <label class="text-xs font-bold text-slate-500 block mb-1 uppercase">닉네임</label>
+                        <input type="text" id="wizardNickname" class="wizard-input w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400" placeholder="닉네임을 입력하세요" maxlength="20">
+                    </div>
+                    <button type="button" id="wizardNicknameSuggestBtn" class="flex-shrink-0 py-2.5 px-3 text-xs font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors whitespace-nowrap">다른 이름 추천</button>
+                </div>
+            </div>
+            <!-- 3페이지: 생년월일 / 성별 / 라이프스타일 (선택) -->
+            <div id="signupWizardStep3" class="signup-wizard-step hidden">
+                <h2 class="text-xl font-bold text-slate-800 mb-6">생일과 라이프 스타일을 알려주세요 (선택)</h2>
+                <div class="space-y-5">
+                    <div>
+                        <label class="text-xs font-bold text-slate-500 block mb-2 uppercase">생년월일 · 성별</label>
+                        <div class="flex gap-2 items-center flex-wrap">
+                            <input type="text" id="wizardBirthdate" inputmode="numeric" maxlength="10" placeholder="예: 1990-01-15" class="wizard-input flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400" aria-label="생년월일">
+                            <div class="inline-flex rounded-xl overflow-hidden border border-slate-200 bg-slate-50" role="group">
+                                <button type="button" class="wizard-gender-btn py-3 px-5 text-sm font-bold text-slate-600 bg-slate-50 border-0" data-value="male">남</button>
+                                <button type="button" class="wizard-gender-btn py-3 px-5 text-sm font-bold text-slate-600 bg-slate-50 border-0" data-value="female">여</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-slate-500 block mb-2 uppercase">라이프 스타일</label>
+                        <input type="hidden" id="wizardLifestyle" value="">
+                        <div class="grid grid-cols-3 gap-2">
+                            <button type="button" class="wizard-lifestyle-btn px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600" data-value="학생">학생</button>
+                            <button type="button" class="wizard-lifestyle-btn px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600" data-value="주부">주부</button>
+                            <button type="button" class="wizard-lifestyle-btn px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600" data-value="직장인">직장인</button>
+                            <button type="button" class="wizard-lifestyle-btn px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600" data-value="자영업">자영업</button>
+                            <button type="button" class="wizard-lifestyle-btn px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600" data-value="프리랜서">프리랜서</button>
+                            <button type="button" class="wizard-lifestyle-btn px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600" data-value="기타">기타</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- 4페이지: 약관 -->
+            <div id="signupWizardStep4" class="signup-wizard-step hidden">
+                <h2 class="text-xl font-bold text-slate-800 mb-2">약관 동의</h2>
+                <p id="signupWizardTermsDescription" class="text-xs text-slate-500 mb-6">서비스 이용을 위해 아래 약관에 동의해주세요.</p>
+                <div class="space-y-4 mb-6">
+                    <div class="bg-slate-50 rounded-xl p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" id="wizardTermsAgreement" class="wizard-terms-check w-4 h-4 text-emerald-600 border-slate-300 rounded">
+                                <span class="text-sm font-bold text-slate-800">이용약관 동의 (필수)</span>
+                            </label>
+                            <button type="button" class="wizard-terms-detail text-xs text-emerald-600 font-bold" data-target="wizardTermsContent">보기</button>
+                        </div>
+                        <div id="wizardTermsContent" class="hidden text-xs text-slate-600 leading-relaxed max-h-48 overflow-y-auto mt-2 pl-2 whitespace-pre-wrap">로딩 중...</div>
+                    </div>
+                    <div class="bg-slate-50 rounded-xl p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" id="wizardPrivacyAgreement" class="wizard-terms-check w-4 h-4 text-emerald-600 border-slate-300 rounded">
+                                <span class="text-sm font-bold text-slate-800">개인정보 처리방침 동의 (필수)</span>
+                            </label>
+                            <button type="button" class="wizard-terms-detail text-xs text-emerald-600 font-bold" data-target="wizardPrivacyContent">보기</button>
+                        </div>
+                        <div id="wizardPrivacyContent" class="hidden text-xs text-slate-600 leading-relaxed max-h-48 overflow-y-auto mt-2 pl-2 whitespace-pre-wrap">로딩 중...</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+        <footer class="flex-shrink-0 px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-slate-100 bg-white flex gap-2 items-stretch">
+            <button type="button" id="signupWizardBackBtn" class="flex-shrink-0 w-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-600 font-bold text-lg hover:bg-slate-200 active:bg-slate-300 transition-colors" aria-label="뒤로">‹</button>
+            <button type="button" id="signupWizardNextBtn" class="flex-1 min-w-0 py-3.5 bg-black text-white rounded-xl font-bold text-sm shadow-md active:bg-slate-800 transition-colors">다음</button>
+        </footer>
+    </div>
+
     <!-- Profile Setup Modal (First Login / Email Signup) -->
     <div id="profileSetupModal" class="hidden fixed inset-0 z-[500] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
