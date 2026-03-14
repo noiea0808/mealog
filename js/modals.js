@@ -2111,8 +2111,8 @@ export function setSettingsProfileType(type) {
         ''
     ).trim();
     if (textPreview) {
-        const initial = Array.from(nicknameVal || '?')[0] || '?';
-        textPreview.textContent = initial;
+        textPreview.innerHTML = '<i class="fa-solid fa-user text-slate-500 text-2xl"></i>';
+        textPreview.classList.add('flex', 'items-center', 'justify-center');
     }
 
     // 사진 미리보기 및 삭제 버튼 업데이트 (수정 모드일 때만 삭제 버튼 표시)

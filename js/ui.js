@@ -197,13 +197,11 @@ export function updateHeaderUI() {
                     iconEl.innerHTML = '<span style="position: absolute; bottom: 0; right: 0; background: rgba(0,0,0,0.7); color: white; font-size: 10px; font-weight: bold; width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white;">게</span>';
                 }
             } else {
-                // 사진이 없으면 닉네임 첫 글자 또는 '게' 표시
+                // 사진이 없으면 회색 사람 아이콘 또는 '게' 표시
                 if (isGuest) {
                     iconEl.innerText = '게';
                 } else {
-                    const nn = (p.nickname || '게스트').trim();
-                    const initial = (Array.from(nn)[0] || '?');
-                    iconEl.innerText = initial;
+                    iconEl.innerHTML = '<i class="fa-solid fa-user text-slate-500 text-base"></i>';
                 }
             }
         }

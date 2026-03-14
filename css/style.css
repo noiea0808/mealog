@@ -201,6 +201,36 @@ header .mealog-title {
     font-size: 1.2rem;
     font-weight: normal;
 }
+/* 모먼트 캡션: 사진 하단을 복사해 블러 레이어로 쓰고, 그 위에 캡션 텍스트 */
+.gallery-caption-wrap {
+    position: relative;
+    overflow: hidden;
+    min-height: 2.5rem;
+}
+.gallery-caption-wrap::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.28);
+    pointer-events: none;
+    z-index: 1;
+}
+.gallery-caption-blur-bg {
+    position: absolute;
+    inset: 0;
+    background-color: #cbd5e1;
+    background-size: cover;
+    background-position: center bottom;
+    filter: blur(12px);
+    transform: scale(1.08);
+    z-index: 0;
+}
+.gallery-caption-menu-place.gallery-caption-blur {
+    position: relative;
+    z-index: 2;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+/* [복구: 녹색 라벨] render.js에서 gallery-caption-wrap 구조 제거, 단일 div에 gallery-caption-menu-place + style="background-color: #047857;" */
 .calendar-scroll { 
     display: flex; 
     overflow-x: auto; 

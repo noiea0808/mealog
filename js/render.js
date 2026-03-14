@@ -1172,14 +1172,14 @@ function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
     const hasBody = (caption && (isBestShare || isDailyShare || isInsightShare)) || (comment && !isBestShare && !isDailyShare && !isInsightShare);
     return `
             <div class="mb-2 bg-white border-b border-slate-200 instagram-post ${!hasBody ? 'post-no-body' : ''}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}">
-                <div class="px-3 py-3 flex items-center gap-1 relative">
+                <div class="px-3 py-3 flex items-center gap-3 relative">
                     ${avatarDisplay.type === 'photo' ? `
                         <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${avatarDisplay.value}); background-size: cover; background-position: center;">
                             ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
                         </div>
                     ` : `
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'initial' ? 'bg-indigo-100 text-indigo-600 text-sm font-bold' : 'bg-slate-200 text-lg'}">
-                            ${isGuestPost ? '게' : escapeHtml(avatarDisplay.value)}
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200 text-lg'}">
+                            ${isGuestPost ? '게' : (avatarDisplay.type === 'default' ? '<i class="fa-solid fa-user text-lg"></i>' : escapeHtml(avatarDisplay.value))}
                         </div>
                     `}
                     <div class="flex-1 min-w-0">
@@ -1205,11 +1205,16 @@ function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
                         </div>
                     ` : ''}
                 </div>
-                ${!isBestShare && !isDailyShare && !isInsightShare && caption ? `
-                <div class="gallery-caption-menu-place px-6 py-1 text-white" style="background-color: #047857;">
-                    ${caption}
+                ${!isBestShare && !isDailyShare && !isInsightShare && caption ? (() => {
+                    const firstPhotoUrl = photoGroup[0]?.photoUrl || '';
+                    const urlForCss = firstPhotoUrl ? firstPhotoUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/\\/g, '\\\\').replace(/'/g, '\\27') : '';
+                    return `
+                <div class="gallery-caption-wrap">
+                    <div class="gallery-caption-blur-bg"${urlForCss ? ` style="background-image: url('${urlForCss}');"` : ''} aria-hidden="true"></div>
+                    <div class="gallery-caption-menu-place gallery-caption-blur px-6 py-1.5 text-white">${caption}</div>
                 </div>
-                ` : ''}
+                `;
+                })() : ''}
                 <div class="feed-post-actions px-6 py-3">
                     <div class="feed-post-buttons flex items-center justify-between mb-2 pb-2 -mx-6 px-6 border-b border-slate-200">
                         <div class="flex items-center gap-4">
@@ -1350,6 +1355,28 @@ function applyCommentToPlaceholder(el, div, comment) {
     }
 }
 
+/** 갤러리 가로 스크롤 시 현재 슬라이드 기준 이전/다음 1장만 캐시에 미리 로드 */
+function preloadAdjacentGalleryImages(scrollContainer) {
+    const slides = Array.from(scrollContainer.children);
+    if (slides.length <= 1) return;
+    const scrollLeft = scrollContainer.scrollLeft;
+    const containerWidth = scrollContainer.clientWidth;
+    let currentIndex = 0;
+    slides.forEach((slide, i) => {
+        const center = slide.offsetLeft + slide.offsetWidth / 2;
+        if (center >= scrollLeft && center <= scrollLeft + containerWidth) currentIndex = i;
+    });
+    const imgs = slides.map(s => s.querySelector('img')).filter(Boolean);
+    [currentIndex - 1, currentIndex + 1].forEach(idx => {
+        if (idx < 0 || idx >= imgs.length) return;
+        const img = imgs[idx];
+        const url = img.src || img.getAttribute('data-src');
+        if (!url) return;
+        const preload = new Image();
+        preload.src = url;
+    });
+}
+
 /** 갤러리 이벤트 리스너 설정 (세 번째 인자: AbortSignal 또는 { abortSignal?, startIndex? }) - appendGalleryPosts에서도 사용 */
 function setupGalleryEventListeners(container, sortedGroups, opts = null) {
     const abortSignal = opts && typeof opts === 'object' && opts.abortSignal !== undefined ? opts.abortSignal : (opts && typeof opts.addEventListener === 'function' ? opts : null);
@@ -1402,12 +1429,14 @@ function setupGalleryEventListeners(container, sortedGroups, opts = null) {
                 });
                 const target = photos[nearest]?.offsetLeft ?? 0;
                 if (Math.abs(sl - target) > 2) scrollContainer.scrollTo({ left: target, behavior: 'smooth' });
+                preloadAdjacentGalleryImages(scrollContainer);
             };
             let snapTimeout = null;
             const onScrollEnd = () => { clearTimeout(snapTimeout); snapTimeout = setTimeout(snapToNearest, 80); };
             scrollContainer.addEventListener('scroll', onScrollEnd, { passive: true });
             if ('onscrollend' in scrollContainer) scrollContainer.addEventListener('scrollend', snapToNearest);
             if (abortSignal) abortSignal.addEventListener('abort', () => { clearTimeout(snapTimeout); scrollContainer.removeEventListener('scroll', onScrollEnd); scrollContainer.removeEventListener('scrollend', snapToNearest); });
+            preloadAdjacentGalleryImages(scrollContainer);
         }
         if (counter && photoCount > 1) {
             const updateCounter = () => {
@@ -1682,9 +1711,13 @@ export async function renderGallery(options = {}) {
                             iconEl.classList.add('bg-cover', 'bg-center');
                             iconEl.classList.remove('bg-slate-200', 'bg-indigo-100');
                         } else {
-                            iconEl.textContent = avatar.value;
+                            if (avatar.type === 'default') {
+                                iconEl.innerHTML = '<i class="fa-solid fa-user text-sm text-slate-500"></i>';
+                            } else {
+                                iconEl.textContent = avatar.value;
+                            }
                             iconEl.style.backgroundImage = '';
-                            iconEl.className = `gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border border-slate-300 ${avatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200'}`;
+                            iconEl.className = `gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border border-slate-300 ${avatar.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200'}`;
                         }
                     }
                     if (photoEl && disp.photoUrl) {
@@ -1706,7 +1739,7 @@ export async function renderGallery(options = {}) {
                         ${initialAvatar.type === 'photo' ? `
                             <div class="gallery-filter-photo w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border border-slate-300 bg-slate-100" style="background-image: url(${initialAvatar.value}); background-size: cover; background-position: center;"></div>
                         ` : `
-                            <div class="gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border border-slate-300 ${initialAvatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200'}">${escapeHtml(initialAvatar.value)}</div>
+                            <div class="gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border border-slate-300 ${initialAvatar.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200'}">${initialAvatar.type === 'default' ? '<i class="fa-solid fa-user text-sm"></i>' : escapeHtml(initialAvatar.value)}</div>
                         `}
                         <div class="flex-1 min-w-0">
                             <div class="gallery-filter-nickname text-sm font-bold text-slate-800">${initialDisplay.nickname || '익명'}</div>
@@ -2726,14 +2759,14 @@ export async function renderFeed() {
         const avatarDisplay = getProfileAvatarDisplay(userDisplay);
         return `
             <div class="mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden instagram-post" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}">
-                <div class="px-2 py-3 flex items-center gap-1 relative">
+                <div class="px-2 py-3 flex items-center gap-3 relative">
                     ${avatarDisplay.type === 'photo' ? `
                         <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${avatarDisplay.value}); background-size: cover; background-position: center;">
                             ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
                         </div>
                     ` : `
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'initial' ? 'bg-indigo-100 text-indigo-600 text-sm font-bold' : 'bg-slate-200 text-lg'}">
-                            ${isGuestPost ? '게' : escapeHtml(avatarDisplay.value)}
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200 text-lg'}">
+                            ${isGuestPost ? '게' : (avatarDisplay.type === 'default' ? '<i class="fa-solid fa-user text-lg"></i>' : escapeHtml(avatarDisplay.value))}
                         </div>
                     `}
                     <div class="flex-1 min-w-0 mr-2">
@@ -2838,6 +2871,7 @@ export async function renderFeed() {
                     if (Math.abs(sl - target) > 2) {
                         scrollContainer.scrollTo({ left: target, behavior: 'smooth' });
                     }
+                    preloadAdjacentGalleryImages(scrollContainer);
                 };
                 let snapTimeout = null;
                 const onScrollEnd = () => {
@@ -2848,6 +2882,7 @@ export async function renderFeed() {
                 if ('onscrollend' in scrollContainer) {
                     scrollContainer.addEventListener('scrollend', snapToNearest);
                 }
+                preloadAdjacentGalleryImages(scrollContainer);
             }
             if (counter && photoCount > 1) {
                 const slideEls = Array.from(scrollContainer.children);
@@ -3569,8 +3604,8 @@ async function _renderBoardList(container, filteredPosts, likedPostIds, bookmark
                                 ${authorAvatar.type === 'photo' ? `
                                     <div class="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${authorAvatar.value}); background-size: cover; background-position: center;"></div>
                                 ` : `
-                                    <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border-2 border-slate-300 ${authorAvatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200'}">
-                                        ${escapeHtml(authorAvatar.value)}
+                                    <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border-2 border-slate-300 ${authorAvatar.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200'}">
+                                        ${authorAvatar.type === 'default' ? '<i class="fa-solid fa-user text-sm"></i>' : escapeHtml(authorAvatar.value)}
                                     </div>
                                 `}
                                 <div>
@@ -3724,8 +3759,8 @@ export async function renderBoardDetail(postId) {
                         ${authorAvatar.type === 'photo' ? `
                             <div class="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${authorAvatar.value}); background-size: cover; background-position: center;"></div>
                         ` : `
-                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border-2 border-slate-300 ${authorAvatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200'}">
-                                ${escapeHtml(authorAvatar.value)}
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border-2 border-slate-300 ${authorAvatar.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200'}">
+                                ${authorAvatar.type === 'default' ? '<i class="fa-solid fa-user text-sm"></i>' : escapeHtml(authorAvatar.value)}
                             </div>
                         `}
                         <div>
@@ -3942,12 +3977,12 @@ export function createDailyShareCard(dateStr, forPreview = false) {
     const month = dObj.getMonth() + 1;
     const day = dObj.getDate();
     
-    // 사용자 정보 가져오기 (아이콘 미설정 시 닉네임 첫글자 표시)
+    // 사용자 정보 가져오기 (아이콘 미설정 시 기본 회색 사람 아이콘)
     const userProfile = window.userSettings?.profile || {};
     const displayProfile = { nickname: userProfile.nickname || '익명', icon: userProfile.icon ?? null, photoUrl: userProfile.photoUrl || null };
     const userNickname = displayProfile.nickname;
     const dailyAvatar = getProfileAvatarDisplay(displayProfile);
-    const userIconDisplay = dailyAvatar.type === 'photo' ? '' : dailyAvatar.value;
+    const userIconDisplay = dailyAvatar.type === 'photo' ? '' : (dailyAvatar.type === 'default' ? '' : dailyAvatar.value);
     
     // 기존 컨테이너 제거
     const existing = document.getElementById('dailyShareCardContainer');
