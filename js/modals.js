@@ -1851,7 +1851,6 @@ export function openSettings() {
                     </div>
                     <div>
                         <div class="text-xs font-bold text-indigo-600">게스트 모드</div>
-                        <div class="text-[10px] text-indigo-400">앱 삭제 시 데이터가 사라집니다.</div>
                     </div>
                 </div>
                 <button id="switchToLoginBtn" class="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold active:bg-indigo-700 transition-colors">
