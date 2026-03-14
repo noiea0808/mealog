@@ -121,10 +121,10 @@ export function getDisplayProfile(authorId, stored = {}) {
 }
 
 /**
- * 프로필 아바타에 표시할 내용 반환 (사진 > 이모지 아이콘 > 닉네임 첫글자, 설정 화면과 동일)
- * 기본 동물 아이콘(🐻 등)은 예전 기본값이므로 미설정으로 간주하고 닉네임 첫글자를 표시합니다.
+ * 프로필 아바타에 표시할 내용 반환 (사진 > 이모지 아이콘 > 기본 회색 사람 아이콘)
+ * 기본 동물 아이콘(🐻 등)은 예전 기본값이므로 미설정으로 간주하고 기본 아이콘을 표시합니다.
  * @param {{ nickname?: string, icon?: string|null, photoUrl?: string|null }} profile - getDisplayProfile 결과
- * @returns {{ type: 'photo'|'emoji'|'initial', value: string }}
+ * @returns {{ type: 'photo'|'emoji'|'default', value: string }}
  */
 const DEFAULT_AVATAR_ICONS = ['🐻', '🐰', '🐱', '🐶', '🦊', '🦁', '🐼', '🐨'];
 
@@ -132,8 +132,7 @@ export function getProfileAvatarDisplay(profile) {
     if (profile.photoUrl) return { type: 'photo', value: profile.photoUrl };
     const icon = profile.icon != null && profile.icon !== '' ? profile.icon : null;
     if (icon && !DEFAULT_AVATAR_ICONS.includes(icon)) return { type: 'emoji', value: icon };
-    const initial = Array.from((profile.nickname || '익명').trim())[0] || '?';
-    return { type: 'initial', value: initial };
+    return { type: 'default', value: '' };
 }
 
 export function getInputIdFromContainer(containerId) {
@@ -986,9 +985,62 @@ async function addCaptionToImage(imageBlob, caption) {
     });
 }
 
+/** Blob을 base64 문자열로 변환 (Capacitor Filesystem 공유용) */
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const dataUrl = reader.result;
+            const base64 = dataUrl.indexOf(',') >= 0 ? dataUrl.split(',')[1] : dataUrl;
+            resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
+/** 공유용 이미지 Blob 리사이즈 (대용량 미잘라낸 사진으로 인한 공유 실패 방지). maxWidth 초과 시 비율 유지해 축소, jpeg 0.88 */
+function resizeBlobForShare(blob, maxWidth = 1200) {
+    if (!blob || !blob.type || !blob.type.startsWith('image/')) return Promise.resolve(blob);
+    return new Promise((resolve) => {
+        const img = new Image();
+        const url = URL.createObjectURL(blob);
+        img.onload = () => {
+            try {
+                let w = img.width;
+                let h = img.height;
+                if (w <= maxWidth && blob.size <= 800 * 1024) {
+                    URL.revokeObjectURL(url);
+                    resolve(blob);
+                    return;
+                }
+                if (w > maxWidth) {
+                    h = Math.round((h / w) * maxWidth);
+                    w = maxWidth;
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, w, h);
+                URL.revokeObjectURL(url);
+                canvas.toBlob((out) => resolve(out || blob), 'image/jpeg', 0.88);
+            } catch (e) {
+                URL.revokeObjectURL(url);
+                resolve(blob);
+            }
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            resolve(blob);
+        };
+        img.src = url;
+    });
+}
+
 /**
  * 모먼트(앨범) 사진을 카카오톡·인스타그램 등 외부 앱으로 공유합니다.
- * Web Share API (navigator.share) 사용. 지원 시 네이티브 공유 시트가 열립니다.
+ * 1) Web Share API(navigator.share)를 먼저 시도하고, 2) 앱에서 실패 시 Capacitor Share로 폴백.
  * caption이 있으면 모먼트처럼 이미지 하단에 메뉴@장소를 녹색 바로 오버레이합니다.
  * @param {string|string[]} photoUrls - 쉼표로 구분된 사진 URL 또는 URL 배열
  * @param {string} [caption] - 메뉴@장소 캡션 (있으면 이미지 하단에 오버레이)
@@ -1001,53 +1053,159 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
         : Array.isArray(photoUrls) ? photoUrls.filter(Boolean) : [];
     if (urls.length === 0) return false;
 
-    if (!navigator.share) {
+    const captionText = (caption || '').trim();
+    const isNative = typeof window.Capacitor !== 'undefined' && window.Capacitor?.isNativePlatform?.();
+
+    // 공통: 이미지 fetch → blob (캡션·리사이즈 적용)
+    const blobs = [];
+    for (let i = 0; i < Math.min(urls.length, 5); i++) {
+        const url = urls[i];
+        try {
+            const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+            if (!res.ok) continue;
+            let blob = await res.blob();
+            if (!blob.type || !blob.type.startsWith('image/')) continue;
+            if (!skipCaptionBar && captionText) {
+                blob = await addCaptionToImage(blob, captionText);
+            }
+            blob = await resizeBlobForShare(blob);
+            blobs.push(blob);
+        } catch (imgErr) {
+            console.warn('SNS 공유용 이미지 로드 실패:', url?.slice(0, 60), imgErr);
+        }
+    }
+    if (blobs.length === 0) {
+        if (typeof window.showToast === 'function') {
+            window.showToast('사진을 불러오지 못했습니다. (네트워크 또는 접근 제한)', 'error');
+        }
+        return false;
+    }
+    try {
+        const logoBlob = await createMealogLogoImage();
+        if (logoBlob && logoBlob.size > 0) blobs.push(logoBlob);
+    } catch (_) {}
+
+    // 1) Web Share API 먼저 시도 (웹·앱 공통, 앱 WebView에서 동작하면 그대로 사용)
+    if (navigator.share) {
+        const files = blobs.map((blob, i) => {
+            const ext = i >= blobs.length - 1 && blobs[blobs.length - 1] === blob ? 'jpg' : (urls[i]?.split('.').pop()?.split('?')[0] || 'jpg');
+            const mime = blob.type || (ext === 'png' ? 'image/png' : 'image/jpeg');
+            const name = i < urls.length ? `mealog_${i + 1}.${ext}` : 'mealog_logo.jpg';
+            return new File([blob], name, { type: mime, lastModified: Date.now() });
+        });
+        const shareData = { files };
+        if (!navigator.canShare || navigator.canShare(shareData)) {
+            try {
+                await navigator.share(shareData);
+                if (typeof window.showToast === 'function') {
+                    window.showToast('공유되었습니다.', 'success');
+                }
+                return true;
+            } catch (e) {
+                if (e.name === 'AbortError' || (e.message && /cancelled|canceled/i.test(e.message))) return false;
+                if (!isNative) {
+                    console.error('sharePhotosToExternal(웹) 실패:', e);
+                    if (typeof window.showToast === 'function') window.showToast('공유에 실패했습니다.', 'error');
+                    return false;
+                }
+                // 앱: Web Share 실패 → 아래 Capacitor Share 폴백으로 진행
+            }
+        }
+    } else if (!isNative) {
         if (typeof window.showToast === 'function') {
             window.showToast('이 기기에서는 공유 기능을 지원하지 않습니다.', 'error');
         }
         return false;
     }
 
-    const captionText = (caption || '').trim();
-    const files = [];
+    // 2) 앱 전용 폴백: Capacitor Share + Filesystem (스크립트로 로드된 플러그인 사용, dynamic import 불가 환경 대응)
+    if (!isNative) return false;
+
+    const Share = window.Capacitor?.Plugins?.Share;
+    const Filesystem = window.Capacitor?.Plugins?.Filesystem;
+    const DirectoryCache = (Filesystem?.Directory?.Cache !== undefined) ? Filesystem.Directory.Cache : 'CACHE';
+    if (!Share || !Filesystem) {
+        if (typeof window.showToast === 'function') {
+            window.showToast('공유 플러그인을 사용할 수 없습니다.', 'error');
+        }
+        return false;
+    }
+
+    let step = '';
     try {
-        for (let i = 0; i < Math.min(urls.length, 5); i++) {
-            const url = urls[i];
-            const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
-            if (!res.ok) continue;
-            let blob = await res.blob();
-            if (!skipCaptionBar && captionText && blob.type && blob.type.startsWith('image/')) {
-                blob = await addCaptionToImage(blob, captionText);
-            }
-            const ext = url.split('.').pop()?.split('?')[0] || 'jpg';
-            const mime = blob.type || (ext === 'png' ? 'image/png' : 'image/jpeg');
-            files.push(new File([blob], `mealog_${i + 1}.${ext}`, { type: mime, lastModified: Date.now() }));
+        const prefix = `mealog_share_${Date.now()}`;
+        const fileUris = [];
+        step = '파일 저장';
+        for (let i = 0; i < blobs.length; i++) {
+            const path = `${prefix}_${i}.jpg`;
+            const base64 = await blobToBase64(blobs[i]);
+            if (!base64 || base64.length > 6 * 1024 * 1024) continue;
+            await Filesystem.writeFile({
+                path,
+                data: base64,
+                directory: DirectoryCache,
+            });
+            const { uri } = await Filesystem.getUri({ path, directory: DirectoryCache });
+            fileUris.push(uri);
         }
-        const logoBlob = await createMealogLogoImage();
-        files.push(new File([logoBlob], 'mealog_logo.jpg', { type: 'image/jpeg', lastModified: Date.now() }));
-        if (files.length === 0) {
+        if (fileUris.length === 0) {
             if (typeof window.showToast === 'function') {
-                window.showToast('사진을 불러오지 못했습니다.', 'error');
+                window.showToast('공유용 파일을 준비하지 못했습니다.', 'error');
             }
             return false;
         }
-        const shareData = { files };
-        if (navigator.canShare && !navigator.canShare(shareData)) {
-            if (typeof window.showToast === 'function') {
-                window.showToast('이 기기에서는 이미지 공유를 지원하지 않습니다.', 'error');
+        step = '공유 창 열기';
+        const shareFiles = fileUris.length === 1 ? [fileUris[0], fileUris[0]] : fileUris;
+        const shareOptions = {
+            files: shareFiles,
+            text: captionText || 'mealog',
+            title: 'mealog',
+            dialogTitle: '공유하기',
+        };
+        try {
+            await Share.share(shareOptions);
+        } catch (shareErr) {
+            try {
+                await Share.share({
+                    url: fileUris[0],
+                    text: captionText || 'mealog',
+                    title: 'mealog',
+                    dialogTitle: '공유하기',
+                });
+                if (typeof window.showToast === 'function') window.showToast('공유되었습니다.', 'success');
+                return true;
+            } catch (_) {}
+            try {
+                await Share.share({
+                    text: captionText ? `mealog - ${captionText}` : 'mealog',
+                    title: 'mealog',
+                    dialogTitle: '공유하기',
+                });
+                if (typeof window.showToast === 'function') {
+                    window.showToast('이미지 공유가 제한되어 캡션만 공유했습니다.', 'info');
+                }
+                return true;
+            } catch (textErr) {
+                throw shareErr;
             }
-            return false;
         }
-        await navigator.share(shareData);
         if (typeof window.showToast === 'function') {
             window.showToast('공유되었습니다.', 'success');
         }
         return true;
     } catch (e) {
-        if (e.name === 'AbortError') return false;
-        console.error('sharePhotosToExternal 실패:', e);
+        if (e.name === 'AbortError' || (e.message && /cancelled|canceled/i.test(e.message))) return false;
+        const msg = e.message || String(e);
+        const errDetail = { step, message: msg, name: e.name, stack: e.stack };
+        try {
+            window.__lastShareError = errDetail;
+        } catch (_) {}
+        console.error('sharePhotosToExternal(네이티브 폴백) 실패:', step, e);
         if (typeof window.showToast === 'function') {
-            window.showToast('공유에 실패했습니다.', 'error');
+            const stepMsg = step ? ` (${step} 단계)` : '';
+            const shortMsg = (msg.length > 60 ? msg.slice(0, 60) + '…' : msg)
+                .replace(/\s*@[\w/-]+\s*$/i, '');
+            window.showToast('공유 실패.' + stepMsg + (shortMsg ? ' ' + shortMsg : ''), 'error');
         }
         return false;
     }

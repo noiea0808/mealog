@@ -185,6 +185,9 @@
     <script>window.Capacitor=window.Capacitor||(window.capacitorExports&&window.capacitorExports.Capacitor);</script>
     <script src="js/capacitor-splash-screen-plugin.js"></script>
     <script src="js/capacitor-social-login-plugin.js"></script>
+    <script>window.synapse = window.synapse || { exposeSynapse: function () {} };</script>
+    <script src="js/capacitor-filesystem-plugin.js"></script>
+    <script src="js/capacitor-share-plugin.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             var el = document.getElementById('headerStagingLabel');
@@ -392,13 +395,11 @@
                 <i class="fa-solid fa-envelope text-lg"></i>
                 <span class="font-bold text-sm">이메일로 계속하기</span>
             </button>
-            <div class="flex flex-col gap-0.5 pt-0.5">
-                <button type="button" id="emailSignupLink" class="w-full py-2.5 text-emerald-100/70 text-xs font-bold underline decoration-emerald-100/50 underline-offset-4">
-                    이메일로 가입하기
-                </button>
-                <button id="guestLoginBtn" class="w-full py-2.5 text-emerald-100/70 text-xs font-bold underline decoration-emerald-100/50 underline-offset-4">
-                    로그인 없이 둘러보기 (게스트)
-                </button>
+            <button id="guestLoginBtn" class="w-full py-3.5 bg-slate-700 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-[0.98] transition-transform gap-2">
+                <span class="font-bold text-sm">둘러보기</span>
+            </button>
+            <div class="pt-1 text-center">
+                <button type="button" id="emailSignupLink" class="text-sm font-bold text-white/90 hover:text-white hover:underline underline-offset-2">이메일로 가입</button>
             </div>
             </div>
         </div>
@@ -433,11 +434,11 @@
                     <label for="rememberEmailCheck" class="text-xs text-slate-500">이메일 기억하기</label>
                 </div>
                 <div class="text-center">
-                    <button type="button" id="emailPasswordResetLink" class="text-xs text-emerald-600 font-medium underline underline-offset-2 hover:text-emerald-700">비밀번호를 잊으셨나요?</button>
+                    <button type="button" id="emailPasswordResetLink" class="text-sm text-emerald-600 font-medium underline underline-offset-2 hover:text-emerald-700">비밀번호를 잊으셨나요?</button>
                 </div>
             </div>
             <button id="emailAuthBtn" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-md active:bg-emerald-700 transition-colors mb-4">로그인</button>
-            <button id="emailAuthToggleBtn" class="w-full text-xs text-slate-500">계정이 없으신가요? <span class="text-emerald-600 font-bold underline">회원가입</span></button>
+            <button id="emailAuthToggleBtn" class="w-full text-sm text-slate-500">계정이 없으신가요? <span class="text-emerald-600 font-bold underline">회원가입</span></button>
         </div>
     </div>
 
@@ -513,11 +514,124 @@
         </div>
     </div>
 
-    <!-- Profile Setup Modal (First Login) -->
+    <!-- Signup Wizard (페이지 형식 4단계 회원가입) -->
+    <div id="signupWizard" class="hidden fixed inset-0 z-[550] bg-white flex flex-col safe-area-inset">
+        <header class="flex-shrink-0 flex justify-end items-center px-4 py-3 border-b border-slate-100">
+            <span id="signupWizardProgress" class="text-sm font-bold text-slate-500">1/4</span>
+        </header>
+        <main class="flex-1 overflow-y-auto px-6 py-6 min-h-0">
+            <!-- 1페이지: 이메일 / 비번 / 비번 확인 -->
+            <div id="signupWizardStep1" class="signup-wizard-step hidden">
+                <h2 class="text-xl font-bold text-slate-800 mb-6">새로운 밀로거님의 이메일을 입력해주세요</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-xs font-bold text-slate-500 block mb-1 uppercase">이메일</label>
+                        <input type="email" id="wizardEmail" class="wizard-input w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400" placeholder="name@example.com">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-slate-500 block mb-1 uppercase">비밀번호</label>
+                        <input type="password" id="wizardPassword" class="wizard-input w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400" placeholder="6자리 이상">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-slate-500 block mb-1 uppercase">비밀번호 확인</label>
+                        <input type="password" id="wizardPasswordConfirm" class="wizard-input w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400" placeholder="비밀번호 다시 입력">
+                    </div>
+                </div>
+            </div>
+            <!-- 2페이지: 닉네임 -->
+            <div id="signupWizardStep2" class="signup-wizard-step hidden">
+                <h2 class="text-xl font-bold text-slate-800 mb-6">사용할 닉네임을 입력해주세요.</h2>
+                <div class="flex gap-2 items-end">
+                    <div class="flex-1 min-w-0">
+                        <label class="text-xs font-bold text-slate-500 block mb-1 uppercase">닉네임</label>
+                        <input type="text" id="wizardNickname" class="wizard-input w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400" placeholder="닉네임을 입력하세요" maxlength="20">
+                    </div>
+                    <button type="button" id="wizardNicknameSuggestBtn" class="flex-shrink-0 py-2.5 px-3 text-xs font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors whitespace-nowrap">다른 이름 추천</button>
+                </div>
+            </div>
+            <!-- 3페이지: 생년월일 / 성별 / 라이프스타일 (선택) -->
+            <div id="signupWizardStep3" class="signup-wizard-step hidden">
+                <h2 class="text-xl font-bold text-slate-800 mb-6">생일과 라이프 스타일을 알려주세요 (선택)</h2>
+                <div class="space-y-5">
+                    <div>
+                        <label class="text-xs font-bold text-slate-500 block mb-2 uppercase">생년월일 · 성별</label>
+                        <div class="flex gap-2 items-center flex-wrap">
+                            <input type="text" id="wizardBirthdate" inputmode="numeric" maxlength="10" placeholder="예: 1990-01-15" class="wizard-input flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400" aria-label="생년월일">
+                            <div class="inline-flex rounded-xl overflow-hidden border border-slate-200 bg-slate-50" role="group">
+                                <button type="button" class="wizard-gender-btn py-3 px-5 text-sm font-bold text-slate-600 bg-slate-50 border-0" data-value="male">남</button>
+                                <button type="button" class="wizard-gender-btn py-3 px-5 text-sm font-bold text-slate-600 bg-slate-50 border-0" data-value="female">여</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-slate-500 block mb-2 uppercase">라이프 스타일</label>
+                        <input type="hidden" id="wizardLifestyle" value="">
+                        <div class="grid grid-cols-3 gap-2">
+                            <button type="button" class="wizard-lifestyle-btn px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600" data-value="학생">학생</button>
+                            <button type="button" class="wizard-lifestyle-btn px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600" data-value="주부">주부</button>
+                            <button type="button" class="wizard-lifestyle-btn px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600" data-value="직장인">직장인</button>
+                            <button type="button" class="wizard-lifestyle-btn px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600" data-value="자영업">자영업</button>
+                            <button type="button" class="wizard-lifestyle-btn px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600" data-value="프리랜서">프리랜서</button>
+                            <button type="button" class="wizard-lifestyle-btn px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600" data-value="기타">기타</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- 4페이지: 약관 -->
+            <div id="signupWizardStep4" class="signup-wizard-step hidden">
+                <h2 class="text-xl font-bold text-slate-800 mb-2">약관 동의</h2>
+                <p id="signupWizardTermsDescription" class="text-xs text-slate-500 mb-6">서비스 이용을 위해 아래 약관에 동의해주세요.</p>
+                <div class="space-y-4 mb-6">
+                    <div class="bg-slate-50 rounded-xl p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" id="wizardTermsAgreement" class="wizard-terms-check w-4 h-4 text-emerald-600 border-slate-300 rounded">
+                                <span class="text-sm font-bold text-slate-800">이용약관 동의 (필수)</span>
+                            </label>
+                            <button type="button" class="wizard-terms-detail text-xs text-emerald-600 font-bold" data-target="wizardTermsContent">보기</button>
+                        </div>
+                        <div id="wizardTermsContent" class="hidden text-xs text-slate-600 leading-relaxed max-h-48 overflow-y-auto mt-2 pl-2 whitespace-pre-wrap">로딩 중...</div>
+                    </div>
+                    <div class="bg-slate-50 rounded-xl p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" id="wizardPrivacyAgreement" class="wizard-terms-check w-4 h-4 text-emerald-600 border-slate-300 rounded">
+                                <span class="text-sm font-bold text-slate-800">개인정보 처리방침 동의 (필수)</span>
+                            </label>
+                            <button type="button" class="wizard-terms-detail text-xs text-emerald-600 font-bold" data-target="wizardPrivacyContent">보기</button>
+                        </div>
+                        <div id="wizardPrivacyContent" class="hidden text-xs text-slate-600 leading-relaxed max-h-48 overflow-y-auto mt-2 pl-2 whitespace-pre-wrap">로딩 중...</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+        <footer class="flex-shrink-0 px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-slate-100 bg-white flex gap-2 items-stretch">
+            <button type="button" id="signupWizardBackBtn" class="flex-shrink-0 w-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-600 font-bold text-lg hover:bg-slate-200 active:bg-slate-300 transition-colors" aria-label="뒤로">‹</button>
+            <button type="button" id="signupWizardNextBtn" class="flex-1 min-w-0 py-3.5 bg-black text-white rounded-xl font-bold text-sm shadow-md active:bg-slate-800 transition-colors">다음</button>
+        </footer>
+    </div>
+
+    <!-- Profile Setup Modal (First Login / Email Signup) -->
     <div id="profileSetupModal" class="hidden fixed inset-0 z-[500] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <h3 class="text-lg font-bold text-slate-800 text-center mb-2">프로필 설정</h3>
-            <p class="text-xs text-slate-500 text-center mb-6">서비스를 이용하기 위해 닉네임을 입력해주세요.</p>
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 id="profileSetupModalTitle" class="text-lg font-bold text-slate-800 text-center mb-2">프로필 설정</h3>
+            <p id="profileSetupModalDescription" class="text-xs text-slate-500 text-center mb-6">서비스를 이용하기 위해 닉네임을 입력해주세요.</p>
+            
+            <!-- 이메일 회원가입 시에만 표시: 이메일 + 비밀번호 + 비밀번호 확인 -->
+            <div id="emailSignupBlock" class="hidden space-y-3 mb-6 pb-4 border-b border-slate-100">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 block mb-1 ml-1 uppercase">이메일</label>
+                    <input type="email" id="signupEmailInput" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400 transition-colors" placeholder="name@example.com">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 block mb-1 ml-1 uppercase">비밀번호</label>
+                    <input type="password" id="signupPasswordInput" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400 transition-colors" placeholder="6자리 이상">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 block mb-1 ml-1 uppercase">비밀번호 확인</label>
+                    <input type="password" id="signupPasswordConfirmInput" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400 transition-colors" placeholder="비밀번호 다시 입력">
+                </div>
+            </div>
             
             <div class="space-y-4 mb-6">
                 <!-- 닉네임 입력 -->
@@ -911,24 +1025,23 @@
                             <div class="flex items-center gap-2">
                                 <button id="editProfileSettingsBtn" class="profile-settings-action px-3 py-1.5 text-sm font-bold text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors">수정</button>
                                 <button id="cancelProfileSettingsBtn" class="hidden px-3 py-1.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-full transition-colors">취소</button>
-                                <button id="saveProfileSettingsBtn" class="hidden px-3 py-1.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-full transition-colors">저장</button>
+                                <button id="saveProfileSettingsBtn" class="hidden px-3 py-1.5 text-sm font-bold text-white bg-black hover:bg-slate-800 rounded-full transition-colors">저장</button>
                             </div>
                         </div>
-                        <div class="profile-settings-row border-b border-slate-100">
-                            <div class="profile-settings-label">프로필 사진</div>
-                            <div class="profile-settings-field flex items-center gap-4 py-3">
+                        <div class="profile-settings-row profile-settings-row-between border-b border-slate-100">
+                            <div class="profile-settings-label-wrap">
+                                <div class="profile-settings-label">프로필 사진</div>
+                                <p id="profilePhotoHint" class="profile-settings-hint text-xs text-slate-400 mt-0.5 hidden">사진을 설정해주세요</p>
+                            </div>
+                            <div class="profile-settings-field profile-settings-field-end flex items-center gap-2 justify-end py-3">
                                 <div id="textSection">
-                                    <div class="flex items-center gap-4">
+                                    <div class="flex items-center gap-2">
                                         <div id="textPreview" class="profile-avatar w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-base font-bold text-slate-600 flex-shrink-0">?</div>
-                                        <div class="min-w-0">
-                                            <p class="text-sm text-slate-600">닉네임 첫 글자</p>
-                                            <p class="text-xs text-slate-400 mt-0.5">닉네임 변경 시 자동 반영</p>
-                                        </div>
                                         <button id="textSectionPhotoBtn" type="button" class="profile-settings-btn text-sm font-bold text-slate-700 hover:text-slate-900">사진 설정</button>
                                     </div>
                                 </div>
                                 <div id="photoSection" class="hidden">
-                                    <div class="flex items-center gap-4">
+                                    <div class="flex items-center gap-2">
                                         <div id="photoPreview" class="profile-avatar w-12 h-12 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center flex-shrink-0">
                                             <i class="fa-solid fa-camera text-slate-400 text-base"></i>
                                         </div>
@@ -941,31 +1054,37 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="profile-settings-row border-b border-slate-100">
-                            <label class="profile-settings-label" for="settingNickname">닉네임</label>
-                            <div class="profile-settings-field">
-                                <input type="text" id="settingNickname" class="profile-settings-input" placeholder="닉네임을 입력하세요">
+                        <div class="profile-settings-row profile-settings-row-between border-b border-slate-100">
+                            <div class="profile-settings-label">닉네임</div>
+                            <div class="profile-settings-field profile-settings-field-same flex items-center min-w-0">
+                                <span id="settingNicknameDisplay" class="profile-settings-value text-base font-medium text-slate-800 truncate max-w-full ml-auto"></span>
+                                <input type="text" id="settingNickname" class="profile-settings-input profile-settings-input-inline profile-settings-nickname-input hidden text-right w-[80%] max-w-full ml-auto" placeholder="닉네임을 입력하세요">
+                            </div>
+                        </div>
+                        <div class="profile-settings-row profile-settings-row-between border-b border-slate-100">
+                            <div class="profile-settings-label-wrap flex flex-col">
+                                <div class="profile-settings-label">생년월일</div>
+                                <p id="birthdateHint" class="profile-settings-hint mt-0.5 hidden">가입 후 1회만 수정 가능</p>
+                            </div>
+                            <div class="profile-settings-field profile-settings-field-same flex items-center justify-end min-w-0">
+                                <span id="settingBirthdateDisplay" class="profile-settings-value text-base font-medium text-slate-800"></span>
+                                <div id="settingBirthdateEdit" class="hidden flex flex-col gap-1 items-end">
+                                    <div class="flex items-center gap-2">
+                                        <input type="text" id="settingBirthdate" inputmode="numeric" pattern="[0-9\-]*" maxlength="10" placeholder="예: 19900115" class="profile-settings-input profile-settings-input-inline profile-settings-birthdate-input w-40 text-right" aria-label="생년월일 입력 (숫자 8자리)">
+                                        <div class="setting-gender-switch inline-flex rounded-lg overflow-hidden border border-slate-300 bg-white/90 shadow-sm flex-shrink-0" role="group" aria-label="성별">
+                                            <button type="button" id="settingGenderMale" class="setting-gender-btn py-2 px-3 rounded-l-[8px] text-sm font-bold border-0 transition-colors bg-slate-50 text-slate-600" data-value="male">남</button>
+                                            <button type="button" id="settingGenderFemale" class="setting-gender-btn py-2 px-3 rounded-r-[8px] text-sm font-bold border-0 transition-colors bg-slate-50 text-slate-600" data-value="female">여</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <input type="hidden" id="settingGender" value="">
                             </div>
                         </div>
                         <div class="profile-settings-row border-b border-slate-100">
                             <label class="profile-settings-label" for="settingBio">소개</label>
-                            <div class="profile-settings-field">
-                                <textarea id="settingBio" class="profile-settings-input profile-settings-textarea" placeholder="자신을 소개해주세요" maxlength="200" rows="3"></textarea>
-                                <p class="profile-settings-hint text-right mt-1"><span id="bioCharCount">0</span>/200</p>
-                            </div>
-                        </div>
-                        <div class="profile-settings-row border-b border-slate-100">
-                            <label class="profile-settings-label" for="settingBirthdate">생년월일</label>
                             <div class="profile-settings-field w-full min-w-0">
-                                <div class="profile-settings-birthdate-row">
-                                    <input type="text" id="settingBirthdate" inputmode="numeric" pattern="[0-9\-]*" maxlength="10" placeholder="예: 19900115" class="profile-settings-input profile-settings-birthdate-input" aria-label="생년월일 입력 (숫자 8자리)">
-                                    <div class="setting-gender-switch inline-flex rounded-lg overflow-hidden border border-slate-300 bg-white/90 shadow-sm" role="group" aria-label="성별">
-                                        <button type="button" id="settingGenderMale" class="setting-gender-btn py-2 px-3 rounded-l-[8px] text-sm font-bold border-0 transition-colors bg-slate-50 text-slate-600" data-value="male">남</button>
-                                        <button type="button" id="settingGenderFemale" class="setting-gender-btn py-2 px-3 rounded-r-[8px] text-sm font-bold border-0 transition-colors bg-slate-50 text-slate-600" data-value="female">여</button>
-                                    </div>
-                                </div>
-                                <p id="birthdateHint" class="profile-settings-hint mt-1">가입 후 1회만 수정 가능</p>
-                                <input type="hidden" id="settingGender" value="">
+                                <textarea id="settingBio" class="profile-settings-input profile-settings-textarea w-full" placeholder="자신을 소개해주세요" maxlength="200" rows="3"></textarea>
+                                <p class="profile-settings-hint text-right mt-1 text-slate-400 text-xs"><span id="bioCharCount">0</span>/200</p>
                             </div>
                         </div>
                         <div class="profile-settings-row border-b border-slate-100">
@@ -1056,20 +1175,26 @@
 
     <!-- Entry Modal -->
     <div id="entryModal" class="hidden fixed inset-0 bg-slate-900/60 z-[300] flex items-end">
-        <div class="w-full max-w-md mx-auto bg-white rounded-t-[2.5rem] flex flex-col max-h-[92vh]">
-            <div class="p-6 border-b flex justify-between items-center">
-                <h2 id="modalTitle" class="text-lg font-bold text-slate-800 tracking-tight">기록하기</h2>
-                <button onclick="window.closeModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
+        <div class="w-full max-w-md mx-auto bg-white rounded-t-[1.25rem] flex flex-col max-h-[92vh]">
+            <div class="relative py-3 px-4 border-b min-h-[2.5rem] flex items-center justify-center">
+                <h2 id="modalTitle" class="text-base font-bold text-slate-800 tracking-tight">기록하기</h2>
+                <button onclick="window.closeModal()" class="absolute top-1/2 -translate-y-1/2 right-4 flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400"><i class="fa-solid fa-xmark text-base"></i></button>
             </div>
             <div id="modalScrollArea" class="p-4 space-y-2 overflow-y-auto pb-2">
                 <div id="mainMealFields">
                     <div class="mb-2">
                         <div class="flex items-center justify-between mb-1.5">
                             <span class="text-sm font-extrabold text-slate-600 block uppercase">음식 사진</span>
-                            <span id="photoCount" class="text-[10px] text-slate-400 font-bold">0/5</span>
+                            <div class="flex items-center gap-1">
+                                <span id="photoAspectLabelMeal" class="text-[10px] text-slate-400 font-bold mr-1">비율</span>
+                                <button type="button" data-aspect="1:1" class="photo-aspect-btn aspect-btn-meal px-2 py-0.5 text-xs font-bold rounded-lg border transition-colors" onclick="window.setRecordPhotoAspectRatio('1:1')">1:1</button>
+                                <button type="button" data-aspect="3:4" class="photo-aspect-btn aspect-btn-meal px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setRecordPhotoAspectRatio('3:4')">3:4</button>
+                                <button type="button" data-aspect="4:3" class="photo-aspect-btn aspect-btn-meal px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setRecordPhotoAspectRatio('4:3')">4:3</button>
+                                <span id="photoCount" class="text-[10px] text-slate-400 font-bold ml-2">0/5</span>
+                            </div>
                         </div>
                         <div class="flex gap-2 overflow-x-auto pb-1">
-                            <button id="imageBtn" onclick="document.getElementById('imageInput').click()" class="flex-shrink-0 w-20 h-20 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors">
+                            <button id="imageBtn" onclick="document.getElementById('imageInput').click()" class="flex-shrink-0 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors record-photo-aspect-btn" style="width: 80px; aspect-ratio: 1;">
                                 <i class="fa-solid fa-camera text-xl"></i>
                             </button>
                             <div id="photoPreviewContainer" class="flex gap-2"></div>
@@ -1133,10 +1258,16 @@
                     <div class="mb-2">
                         <div class="flex items-center justify-between mb-1.5">
                             <span class="text-sm font-extrabold text-slate-600 block uppercase">간식 사진</span>
-                            <span id="snackPhotoCount" class="text-[10px] text-slate-400 font-bold">0/5</span>
+                            <div class="flex items-center gap-1">
+                                <span id="photoAspectLabelSnack" class="text-[10px] text-slate-400 font-bold mr-1">비율</span>
+                                <button type="button" data-aspect="1:1" class="photo-aspect-btn aspect-btn-snack px-2 py-0.5 text-xs font-bold rounded-lg border transition-colors" onclick="window.setRecordPhotoAspectRatio('1:1')">1:1</button>
+                                <button type="button" data-aspect="3:4" class="photo-aspect-btn aspect-btn-snack px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setRecordPhotoAspectRatio('3:4')">3:4</button>
+                                <button type="button" data-aspect="4:3" class="photo-aspect-btn aspect-btn-snack px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setRecordPhotoAspectRatio('4:3')">4:3</button>
+                                <span id="snackPhotoCount" class="text-[10px] text-slate-400 font-bold ml-2">0/5</span>
+                            </div>
                         </div>
                         <div class="flex gap-2 overflow-x-auto pb-1">
-                            <button id="snackImageBtn" onclick="document.getElementById('snackImageInput').click()" class="flex-shrink-0 w-20 h-20 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors">
+                            <button id="snackImageBtn" onclick="document.getElementById('snackImageInput').click()" class="flex-shrink-0 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors record-photo-aspect-btn" style="width: 80px; aspect-ratio: 1;">
                                 <i class="fa-solid fa-camera text-xl"></i>
                             </button>
                             <div id="snackPhotoPreviewContainer" class="flex gap-2"></div>
@@ -1312,13 +1443,16 @@
                     <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
             </div>
-            <div class="p-4 flex-1 overflow-hidden flex flex-col">
-                <div id="photoEditCanvasContainer" class="flex-1 bg-slate-100 rounded-xl overflow-hidden relative mb-4" style="min-height: 300px;">
-                    <canvas id="photoEditCanvas" class="w-full h-full"></canvas>
-                    <div id="photoEditCropArea" class="absolute border-2 border-emerald-500 border-dashed pointer-events-none" style="display: none;"></div>
+            <div class="p-4 flex-1 overflow-y-auto flex flex-col min-h-0">
+                <div class="flex justify-center mb-4 shrink-0">
+                    <div id="photoEditAspectWrapper" class="w-full max-w-[min(100%,360px)] rounded-xl border-2 border-slate-400 overflow-hidden bg-slate-100 shrink-0" style="aspect-ratio: 1;">
+                        <div id="photoEditCanvasContainer" class="w-full h-full relative">
+                            <canvas id="photoEditCanvas" class="block w-full h-full"></canvas>
+                            <div id="photoEditCropArea" class="absolute inset-0 border-2 border-emerald-500 border-dashed pointer-events-none" style="display: none;"></div>
+                        </div>
+                    </div>
                 </div>
-                <div class="space-y-2">
-                    <div class="text-sm text-slate-600 mb-2">사진을 드래그하여 보이는 영역을 조절하세요</div>
+                <div class="space-y-2 shrink-0">
                     <div class="flex gap-2 mb-2">
                         <button onclick="window.zoomOutPhotoEdit()" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm">
                             <i class="fa-solid fa-magnifying-glass-minus"></i> 축소

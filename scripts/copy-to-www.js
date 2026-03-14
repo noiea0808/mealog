@@ -56,6 +56,8 @@ if (!fs.existsSync(configSrc) && fs.existsSync(path.join(root, 'js', 'config.def
 const capacitorCore = path.join(root, 'node_modules', '@capacitor', 'core', 'dist', 'capacitor.js');
 const socialLoginPlugin = path.join(root, 'node_modules', '@capgo', 'capacitor-social-login', 'dist', 'plugin.js');
 const splashScreenPlugin = path.join(root, 'node_modules', '@capacitor', 'splash-screen', 'dist', 'plugin.js');
+const sharePlugin = path.join(root, 'node_modules', '@capacitor', 'share', 'dist', 'plugin.js');
+const filesystemPlugin = path.join(root, 'node_modules', '@capacitor', 'filesystem', 'dist', 'plugin.js');
 if (fs.existsSync(capacitorCore)) {
   fs.copyFileSync(capacitorCore, path.join(www, 'js', 'capacitor.js'));
   console.log('✓ js/capacitor.js');
@@ -67,6 +69,14 @@ if (fs.existsSync(socialLoginPlugin)) {
 if (fs.existsSync(splashScreenPlugin)) {
   fs.copyFileSync(splashScreenPlugin, path.join(www, 'js', 'capacitor-splash-screen-plugin.js'));
   console.log('✓ js/capacitor-splash-screen-plugin.js');
+}
+if (fs.existsSync(sharePlugin)) {
+  fs.copyFileSync(sharePlugin, path.join(www, 'js', 'capacitor-share-plugin.js'));
+  console.log('✓ js/capacitor-share-plugin.js');
+}
+if (fs.existsSync(filesystemPlugin)) {
+  fs.copyFileSync(filesystemPlugin, path.join(www, 'js', 'capacitor-filesystem-plugin.js'));
+  console.log('✓ js/capacitor-filesystem-plugin.js');
 }
 
 // capacitor.config.json에서 appId 읽어 env.js 생성 (스테이징 여부 판별)

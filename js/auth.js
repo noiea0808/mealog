@@ -1,7 +1,7 @@
 // 인증 관련 함수들
 import { auth } from './firebase.js';
 import { GoogleAuthProvider, signInWithPopup, getRedirectResult, signInWithCredential, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { showToast, showBirthdateError, showLoading, hideLoading } from './ui.js';
+import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
 import { dbOps } from './db.js';
 import { normalizeBirthdateRaw } from './utils.js';
@@ -119,6 +119,14 @@ export async function startGuest() {
 }
 
 export function openEmailModal(initialMode = 'login') {
+    // 이메일 회원가입: 페이지 형식 4단계 위저드 열기
+    if (initialMode === 'signup') {
+        document.getElementById('emailAuthModal').classList.add('hidden');
+        import('./signup-wizard.js').then(({ openSignupWizard }) => {
+            openSignupWizard({ startStep: 1, totalSteps: 4, isEmailSignup: true });
+        });
+        return;
+    }
     document.getElementById('emailAuthModal').classList.remove('hidden');
     window.setEmailAuthMode(initialMode);
     const savedEmail = localStorage.getItem('savedEmail');
@@ -170,7 +178,15 @@ export function setEmailAuthMode(mode) {
 }
 
 export function toggleEmailAuthMode() {
-    window.setEmailAuthMode(window.emailAuthMode === 'login' ? 'signup' : 'login');
+    if (window.emailAuthMode === 'login') {
+        // 회원가입으로 전환: 이메일 로그인 모달 닫고, 페이지 형식 위저드 열기
+        document.getElementById('emailAuthModal').classList.add('hidden');
+        import('./signup-wizard.js').then(({ openSignupWizard }) => {
+            openSignupWizard({ startStep: 1, totalSteps: 4, isEmailSignup: true });
+        });
+    } else {
+        window.setEmailAuthMode('login');
+    }
 }
 
 export async function handleEmailAuth() {
@@ -561,6 +577,13 @@ export async function confirmTermsAgreement() {
         const currentVersion = await getCurrentTermsVersion();
         window.userSettings.termsVersion = currentVersion;
         
+        // 이메일 회원가입 플로우: 대기 중인 프로필을 userSettings에 반영
+        if (window._pendingEmailSignupProfile) {
+            const pending = window._pendingEmailSignupProfile;
+            Object.assign(window.userSettings, pending);
+            window._pendingEmailSignupProfile = null;
+        }
+        
         // providerId와 email을 현재 사용자 정보로 설정 (없을 때만, 또는 같은 providerId일 때만)
         try {
             const currentUser = auth.currentUser;
@@ -596,6 +619,10 @@ export async function confirmTermsAgreement() {
         const { dbOps } = await import('./db.js');
         await dbOps.saveSettings(window.userSettings);
         
+        if (typeof window.ensureUserRegistered === 'function') {
+            await window.ensureUserRegistered();
+        }
+        
         closeTermsModal();
         
         // 인증 플로우 관리자에게 다음 단계 처리 요청
@@ -620,8 +647,45 @@ export async function confirmTermsAgreement() {
     }
 }
 
-// 프로필 설정 모달 표시
+// 프로필 설정 모달 표시 (구글 등 로그인 후 프로필만 입력할 때)
 export function showProfileSetupModal() {
+    window._profileModalMode = 'profileOnly';
+    const block = document.getElementById('emailSignupBlock');
+    if (block) block.classList.add('hidden');
+    const titleEl = document.getElementById('profileSetupModalTitle');
+    if (titleEl) titleEl.textContent = '프로필 설정';
+    const descEl = document.getElementById('profileSetupModalDescription');
+    if (descEl) descEl.textContent = '서비스를 이용하기 위해 닉네임을 입력해주세요.';
+    const btn = document.getElementById('profileSetupBtn');
+    if (btn) btn.textContent = '시작하기';
+    const guestBtn = document.getElementById('profileSetupGuestBtn');
+    if (guestBtn) guestBtn.classList.remove('hidden');
+    _showProfileSetupModalCommon();
+}
+
+// 이메일 회원가입용: 이메일+비번+비번확인+회원정보 한 화면
+export function showProfileSetupModalForEmailSignup() {
+    window._profileModalMode = 'emailSignup';
+    const block = document.getElementById('emailSignupBlock');
+    if (block) block.classList.remove('hidden');
+    const titleEl = document.getElementById('profileSetupModalTitle');
+    if (titleEl) titleEl.textContent = '회원가입';
+    const descEl = document.getElementById('profileSetupModalDescription');
+    if (descEl) descEl.textContent = '이메일, 비밀번호와 회원정보를 입력해주세요.';
+    const btn = document.getElementById('profileSetupBtn');
+    if (btn) btn.textContent = '가입하기';
+    const guestBtn = document.getElementById('profileSetupGuestBtn');
+    if (guestBtn) guestBtn.classList.add('hidden');
+    const signupEmail = document.getElementById('signupEmailInput');
+    const signupPw = document.getElementById('signupPasswordInput');
+    const signupPwConfirm = document.getElementById('signupPasswordConfirmInput');
+    if (signupEmail) signupEmail.value = '';
+    if (signupPw) signupPw.value = '';
+    if (signupPwConfirm) signupPwConfirm.value = '';
+    _showProfileSetupModalCommon();
+}
+
+function _showProfileSetupModalCommon() {
     const modal = document.getElementById('profileSetupModal');
     if (modal) {
         modal.classList.remove('hidden');
@@ -770,6 +834,98 @@ export async function handleSetupPhotoUpload(event) {
     }
 }
 
+/** 이메일 회원가입: 이메일+비번+회원정보 한 번에 제출 → 계정 생성 후 약관 단계로 */
+export async function handleEmailSignupWithProfile() {
+    const email = (document.getElementById('signupEmailInput')?.value || '').trim();
+    const password = document.getElementById('signupPasswordInput')?.value || '';
+    const passwordConfirm = document.getElementById('signupPasswordConfirmInput')?.value || '';
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+        showToast("올바른 이메일을 입력해주세요.", "error");
+        return;
+    }
+    if (!password || password.length < 6) {
+        showToast("비밀번호는 6자리 이상이어야 합니다.", "error");
+        return;
+    }
+    if (password !== passwordConfirm) {
+        showToast("비밀번호가 일치하지 않습니다.", "error");
+        return;
+    }
+    
+    const nicknameInput = document.getElementById('setupNickname');
+    const nickname = nicknameInput?.value.trim() || '';
+    const birthdate = (document.getElementById('setupBirthdate')?.value || '').trim();
+    const lifestyle = (document.getElementById('setupLifestyle')?.value || '').trim();
+    const gender = (document.getElementById('setupGender')?.value || '').trim() || null;
+    
+    if (!nickname) {
+        showToast("닉네임을 입력해주세요.", "error");
+        return;
+    }
+    if (nickname.length > 20) {
+        showToast("닉네임은 20자 이하로 입력해주세요.", "error");
+        return;
+    }
+    
+    const { containsProfanity, isNicknameDuplicate } = await import('./utils/nickname.js');
+    if (containsProfanity(nickname)) {
+        showToast("사용할 수 없는 닉네임입니다. 다른 닉네임을 입력해주세요.", "error");
+        return;
+    }
+    const duplicate = await isNicknameDuplicate(nickname, null);
+    if (duplicate) {
+        showToast("이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.", "error");
+        return;
+    }
+    if (!birthdate) {
+        showToast("생년월일을 입력해주세요.", "error");
+        return;
+    }
+    const { formatted, valid } = normalizeBirthdateRaw(birthdate);
+    if (!valid) {
+        showToast("입력한 생년월일이 올바르지 않습니다. 숫자 8자리(예: 19900115)로 입력해주세요.", "error");
+        return;
+    }
+    
+    showLoading();
+    try {
+        const result = await createUserWithEmailAndPassword(auth, email, password);
+        console.log('🔐 이메일 회원가입 성공:', { uid: result.user.uid, email: result.user.email });
+        window._recordsLoadHidePending = true;
+        showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: true });
+        showToast("회원가입 성공! 약관에 동의해주세요.", "success");
+        
+        window._pendingEmailSignupProfile = {
+            profile: {
+                nickname,
+                birthdate: formatted,
+                lifestyle,
+                gender: (gender === 'male' || gender === 'female') ? gender : null,
+                birthdateChangeCount: 0,
+                birthdateChangedAt: null,
+                iconType: 'text',
+                icon: null,
+                photoUrl: null
+            },
+            profileCompleted: true,
+            profileCompletedAt: new Date().toISOString()
+        };
+        closeProfileSetupModal();
+        // 약관 모달은 onAuthStateChanged → checkTermsAndProfileInBackground 에서 표시됨
+    } catch (error) {
+        console.error('🔐 이메일 회원가입 에러:', error);
+        let msg = error.message || '알 수 없는 오류가 발생했습니다.';
+        if (error.code === 'auth/email-already-in-use') msg = "이미 사용 중인 이메일입니다.";
+        else if (error.code === 'auth/weak-password') msg = "비밀번호는 6자리 이상이어야 합니다.";
+        else if (error.code === 'auth/invalid-email') msg = "올바른 이메일 형식이 아닙니다.";
+        else if (error.code === 'auth/network-request-failed') msg = "네트워크 연결을 확인해주세요.";
+        showToast("오류: " + msg, "error");
+        hideLoading();
+    }
+}
+
 // 프로필 설정 확인
 export async function confirmProfileSetup() {
     const nicknameInput = document.getElementById('setupNickname');
@@ -802,13 +958,13 @@ export async function confirmProfileSetup() {
     }
 
     if (!birthdate) {
-        showBirthdateError("생년월일을 입력해주세요.");
+        showToast("생년월일을 입력해주세요.", "error");
         return;
     }
 
     const { formatted, valid } = normalizeBirthdateRaw(birthdate);
     if (!valid) {
-        showBirthdateError("입력한 생년월일이 올바르지 않습니다. 숫자 8자리(예: 19900115)로 입력해주세요.");
+        showToast("입력한 생년월일이 올바르지 않습니다. 숫자 8자리(예: 19900115)로 입력해주세요.", "error");
         return;
     }
 

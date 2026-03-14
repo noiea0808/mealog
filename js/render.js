@@ -63,8 +63,8 @@ export function renderEntryChips() {
         
         // 메인 태그가 선택되지 않았을 때는 나만의 태그를 표시하지 않음
         const currentInputVal = document.getElementById(inputId)?.value || '';
-        // 함께한 사람 상세 태그는 다중 선택 가능하므로 배열로 처리
-        const isMultiSelect = id === 'peopleSuggestions';
+        // 함께한 사람·메뉴 상세 태그는 다중 선택 가능(쉼표 구분)이므로 배열로 처리
+        const isMultiSelect = id === 'peopleSuggestions' || id === 'menuSuggestions';
         const currentValues = isMultiSelect ? currentInputVal.split(',').map(v => v.trim()).filter(v => v) : [currentInputVal];
         
         if (!parentFilter) {
@@ -186,9 +186,10 @@ export function renderPhotoPreviews() {
     const currentCount = appState.currentPhotos.length;
     
     if (container) {
+        const aspectCss = getRecordPhotoAspectRatioCss();
         container.innerHTML = appState.currentPhotos.map((src, idx) => 
-            `<div class="relative w-28 h-28 rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 photo-preview-item" draggable="true" data-index="${idx}">
-                <img src="${src}" class="w-full h-full object-cover">
+            `<div class="relative rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 photo-preview-item border-2 border-slate-300" style="width: 7rem; aspect-ratio: ${aspectCss};" draggable="true" data-index="${idx}">
+                <img src="${src}" class="absolute inset-0 w-full h-full object-cover" alt="">
                 <button onclick="window.removePhoto(${idx})" class="photo-remove-btn">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
@@ -1152,11 +1153,14 @@ function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
         return (photo.place && photo.menuDetail) ? `${photo.menuDetail} @ ${photo.place}` : (photo.place || photo.menuDetail || photo.mealType || '');
     })();
     const captionAttr = (captionText || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    let aspectRatio = photo.photoAspectRatio || (entryId && mealHistoryMap && mealHistoryMap.has(entryId) ? mealHistoryMap.get(entryId).photoAspectRatio : null) || '1:1';
+    if (aspectRatio !== '1:1' && aspectRatio !== '3:4' && aspectRatio !== '4:3') aspectRatio = '1:1';
+    const momentAspectCss = (aspectRatio === '3:4' ? '3/4' : aspectRatio === '4:3' ? '4/3' : '1');
     const photosHtml = photoGroup.map((p, idx) => {
         const isBest = p.type === 'best', isDaily = p.type === 'daily', isInsight = p.type === 'insight';
         return `
             <div class="flex-shrink-0 w-full snap-start ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
-                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full ${(isBest || isDaily || isInsight) ? 'h-auto' : 'h-auto'} ${(isBest || isDaily || isInsight) ? 'object-contain' : 'object-cover'}" ${(isBest || isDaily || isInsight) ? 'style="display: block; width: 100%; height: auto; vertical-align: top;"' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
+                ${(isBest || isDaily || isInsight) ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full h-auto object-contain" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx <= 1 ? 'eager' : 'lazy'}">` : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="absolute inset-0 w-full h-full object-cover" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`}
             </div>
         `;
     }).join('');
@@ -1168,14 +1172,14 @@ function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
     const hasBody = (caption && (isBestShare || isDailyShare || isInsightShare)) || (comment && !isBestShare && !isDailyShare && !isInsightShare);
     return `
             <div class="mb-2 bg-white border-b border-slate-200 instagram-post ${!hasBody ? 'post-no-body' : ''}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}">
-                <div class="px-3 py-3 flex items-center gap-1 relative">
+                <div class="px-3 py-3 flex items-center gap-3 relative">
                     ${avatarDisplay.type === 'photo' ? `
                         <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${avatarDisplay.value}); background-size: cover; background-position: center;">
                             ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
                         </div>
                     ` : `
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'initial' ? 'bg-indigo-100 text-indigo-600 text-sm font-bold' : 'bg-slate-200 text-lg'}">
-                            ${isGuestPost ? '게' : escapeHtml(avatarDisplay.value)}
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200 text-lg'}">
+                            ${isGuestPost ? '게' : (avatarDisplay.type === 'default' ? '<i class="fa-solid fa-user text-lg"></i>' : escapeHtml(avatarDisplay.value))}
                         </div>
                     `}
                     <div class="flex-1 min-w-0">
@@ -1186,7 +1190,7 @@ function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
                         </div>
                     </div>
                     <div class="relative">
-                        <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-caption="${captionAttr}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-is-insight="${isInsightShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-date-range-text="${photo.dateRangeText || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
+                        <button data-entry-id="${entryId || ''}" data-photo-urls="${(photoGroup.map(p => p.photoUrl).filter(Boolean).join(',') || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}" data-caption="${captionAttr}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-is-insight="${isInsightShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-date-range-text="${photo.dateRangeText || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
                             <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
                         </button>
                     </div>
@@ -1201,11 +1205,16 @@ function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
                         </div>
                     ` : ''}
                 </div>
-                ${!isBestShare && !isDailyShare && !isInsightShare && caption ? `
-                <div class="gallery-caption-menu-place px-6 py-1 text-white" style="background-color: #047857;">
-                    ${caption}
+                ${!isBestShare && !isDailyShare && !isInsightShare && caption ? (() => {
+                    const firstPhotoUrl = photoGroup[0]?.photoUrl || '';
+                    const urlForCss = firstPhotoUrl ? firstPhotoUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/\\/g, '\\\\').replace(/'/g, '\\27') : '';
+                    return `
+                <div class="gallery-caption-wrap">
+                    <div class="gallery-caption-blur-bg"${urlForCss ? ` style="background-image: url('${urlForCss}');"` : ''} aria-hidden="true"></div>
+                    <div class="gallery-caption-menu-place gallery-caption-blur px-6 py-1.5 text-white">${caption}</div>
                 </div>
-                ` : ''}
+                `;
+                })() : ''}
                 <div class="feed-post-actions px-6 py-3">
                     <div class="feed-post-buttons flex items-center justify-between mb-2 pb-2 -mx-6 px-6 border-b border-slate-200">
                         <div class="flex items-center gap-4">
@@ -1346,6 +1355,29 @@ function applyCommentToPlaceholder(el, div, comment) {
     }
 }
 
+/** 갤러리 가로 스크롤 시 현재 슬라이드 기준 이전 1장 + 다음 2장 캐시에 미리 로드 */
+function preloadAdjacentGalleryImages(scrollContainer) {
+    const slides = Array.from(scrollContainer.children);
+    if (slides.length <= 1) return;
+    const scrollLeft = scrollContainer.scrollLeft;
+    const containerWidth = scrollContainer.clientWidth;
+    let currentIndex = 0;
+    slides.forEach((slide, i) => {
+        const center = slide.offsetLeft + slide.offsetWidth / 2;
+        if (center >= scrollLeft && center <= scrollLeft + containerWidth) currentIndex = i;
+    });
+    const imgs = slides.map(s => s.querySelector('img')).filter(Boolean);
+    const toPreload = [currentIndex - 1, currentIndex + 1, currentIndex + 2];
+    toPreload.forEach(idx => {
+        if (idx < 0 || idx >= imgs.length) return;
+        const img = imgs[idx];
+        const url = img.src || img.getAttribute('data-src');
+        if (!url) return;
+        const preload = new Image();
+        preload.src = url;
+    });
+}
+
 /** 갤러리 이벤트 리스너 설정 (세 번째 인자: AbortSignal 또는 { abortSignal?, startIndex? }) - appendGalleryPosts에서도 사용 */
 function setupGalleryEventListeners(container, sortedGroups, opts = null) {
     const abortSignal = opts && typeof opts === 'object' && opts.abortSignal !== undefined ? opts.abortSignal : (opts && typeof opts.addEventListener === 'function' ? opts : null);
@@ -1354,7 +1386,7 @@ function setupGalleryEventListeners(container, sortedGroups, opts = null) {
     scrollContainers.forEach((scrollContainer, idx) => {
         if (idx < startIndex) return;
         const counter = scrollContainer.parentElement.querySelector('.photo-counter-current');
-        const photos = scrollContainer.querySelectorAll('div');
+        const photos = Array.from(scrollContainer.children);
         const photoCount = sortedGroups[idx]?.length || 0;
         if (photoCount > 1) {
             let isDragging = false;
@@ -1398,12 +1430,26 @@ function setupGalleryEventListeners(container, sortedGroups, opts = null) {
                 });
                 const target = photos[nearest]?.offsetLeft ?? 0;
                 if (Math.abs(sl - target) > 2) scrollContainer.scrollTo({ left: target, behavior: 'smooth' });
+                preloadAdjacentGalleryImages(scrollContainer);
             };
             let snapTimeout = null;
             const onScrollEnd = () => { clearTimeout(snapTimeout); snapTimeout = setTimeout(snapToNearest, 80); };
+            let preloadThrottle = null;
+            const onScrollPreload = () => {
+                if (preloadThrottle) return;
+                preloadThrottle = setTimeout(() => { preloadThrottle = null; preloadAdjacentGalleryImages(scrollContainer); }, 50);
+            };
             scrollContainer.addEventListener('scroll', onScrollEnd, { passive: true });
+            scrollContainer.addEventListener('scroll', onScrollPreload, { passive: true });
             if ('onscrollend' in scrollContainer) scrollContainer.addEventListener('scrollend', snapToNearest);
-            if (abortSignal) abortSignal.addEventListener('abort', () => { clearTimeout(snapTimeout); scrollContainer.removeEventListener('scroll', onScrollEnd); scrollContainer.removeEventListener('scrollend', snapToNearest); });
+            if (abortSignal) abortSignal.addEventListener('abort', () => {
+                clearTimeout(snapTimeout);
+                clearTimeout(preloadThrottle);
+                scrollContainer.removeEventListener('scroll', onScrollEnd);
+                scrollContainer.removeEventListener('scroll', onScrollPreload);
+                scrollContainer.removeEventListener('scrollend', snapToNearest);
+            });
+            preloadAdjacentGalleryImages(scrollContainer);
         }
         if (counter && photoCount > 1) {
             const updateCounter = () => {
@@ -1678,9 +1724,13 @@ export async function renderGallery(options = {}) {
                             iconEl.classList.add('bg-cover', 'bg-center');
                             iconEl.classList.remove('bg-slate-200', 'bg-indigo-100');
                         } else {
-                            iconEl.textContent = avatar.value;
+                            if (avatar.type === 'default') {
+                                iconEl.innerHTML = '<i class="fa-solid fa-user text-sm text-slate-500"></i>';
+                            } else {
+                                iconEl.textContent = avatar.value;
+                            }
                             iconEl.style.backgroundImage = '';
-                            iconEl.className = `gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border border-slate-300 ${avatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200'}`;
+                            iconEl.className = `gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border border-slate-300 ${avatar.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200'}`;
                         }
                     }
                     if (photoEl && disp.photoUrl) {
@@ -1702,7 +1752,7 @@ export async function renderGallery(options = {}) {
                         ${initialAvatar.type === 'photo' ? `
                             <div class="gallery-filter-photo w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border border-slate-300 bg-slate-100" style="background-image: url(${initialAvatar.value}); background-size: cover; background-position: center;"></div>
                         ` : `
-                            <div class="gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border border-slate-300 ${initialAvatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200'}">${escapeHtml(initialAvatar.value)}</div>
+                            <div class="gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border border-slate-300 ${initialAvatar.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200'}">${initialAvatar.type === 'default' ? '<i class="fa-solid fa-user text-sm"></i>' : escapeHtml(initialAvatar.value)}</div>
                         `}
                         <div class="flex-1 min-w-0">
                             <div class="gallery-filter-nickname text-sm font-bold text-slate-800">${initialDisplay.nickname || '익명'}</div>
@@ -1768,8 +1818,14 @@ export async function renderGallery(options = {}) {
             } catch (e) {
                 console.warn('getPostsByAuthor 실패:', e);
                 const listEl = document.getElementById('galleryFilterBoardList');
-                if (listEl && !(abortSignal && abortSignal.aborted))
-                    listEl.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">글 목록을 불러오지 못했습니다.</div>';
+                if (listEl && !(abortSignal && abortSignal.aborted)) {
+                    listEl.innerHTML = `<div class="flex flex-col items-center justify-center py-8 text-center">
+                        <p class="text-slate-400 text-sm mb-3">글 목록을 불러오지 못했습니다.</p>
+                        <button type="button" onclick="window.renderGallery && window.renderGallery()" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-lg inline-flex items-center gap-1.5">
+                            <i class="fa-solid fa-rotate-right"></i>다시 불러오기
+                        </button>
+                    </div>`;
+                }
             } finally {
                 isRenderingGallery = false;
             }
@@ -1969,6 +2025,9 @@ export async function renderGallery(options = {}) {
             <div class="flex flex-col items-center justify-center py-20 text-center">
                 <i class="fa-regular ${emptyIcon} text-6xl text-slate-200 mb-4"></i>
                 <p class="text-sm font-bold text-slate-400">${emptyMsg}</p>
+                ${networkEmptyMsg ? `<button type="button" onclick="window.reloadMomentFeed && window.reloadMomentFeed()" class="mt-4 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl transition-colors inline-flex items-center gap-1.5">
+                    <i class="fa-solid fa-rotate-right"></i>다시 불러오기
+                </button>` : ''}
             </div>
         ` : '');
     
@@ -2686,8 +2745,10 @@ export async function renderFeed() {
         
         const captionAttr = (caption || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
         
-        // 사진들 HTML 생성 (인스타그램 스타일 - 좌우 여백 없이, 구분감 있게)
-        // 베스트 공유, 일간보기 공유, 인사이트 공유는 aspect-ratio를 유지하지 않고 원본 비율 사용
+        // 사진 비율: shared doc 또는 meal 기록에서 가져오기
+        let aspectRatio = photo.photoAspectRatio || (entryId && window.mealHistory ? (window.mealHistory.find(m => m.id === entryId)?.photoAspectRatio) : null) || '1:1';
+        if (aspectRatio !== '1:1' && aspectRatio !== '3:4' && aspectRatio !== '4:3') aspectRatio = '1:1';
+        const momentAspectCss = (aspectRatio === '3:4' ? '3/4' : aspectRatio === '4:3' ? '4/3' : '1');
         const photosHtml = photoGroup.map((p, idx) => {
             const isBest = p.type === 'best';
             const isDaily = p.type === 'daily';
@@ -2695,8 +2756,8 @@ export async function renderFeed() {
             const photoBanned = p.banned === true;
             return `
             <div class="flex-shrink-0 w-full snap-start relative ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
-                <img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full ${(isBest || isDaily || isInsight) ? 'h-auto' : 'h-auto'} ${(isBest || isDaily || isInsight) ? 'object-contain' : 'object-cover'} ${photoBanned ? 'opacity-50' : ''}" ${(isBest || isDaily || isInsight) ? 'style="display: block; width: 100%; height: auto; vertical-align: top;"' : 'style="aspect-ratio: 1; object-fit: cover;"'} loading="${idx === 0 ? 'eager' : 'lazy'}">
-                ${photoBanned ? `
+                ${(isBest || isDaily || isInsight) ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full h-auto object-contain ${photoBanned ? 'opacity-50' : ''}" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx <= 1 ? 'eager' : 'lazy'}">` : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="absolute inset-0 w-full h-full object-cover ${photoBanned ? 'opacity-50' : ''}" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`}
+                ${photoBanned && !(isBest || isDaily || isInsight) ? `
                     <div class="absolute inset-0 bg-orange-500/20 flex items-center justify-center">
                         <div class="bg-orange-600 text-white px-3 py-1.5 rounded-lg">
                             <i class="fa-solid fa-ban mr-1"></i>공유 금지
@@ -2711,14 +2772,14 @@ export async function renderFeed() {
         const avatarDisplay = getProfileAvatarDisplay(userDisplay);
         return `
             <div class="mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden instagram-post" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}">
-                <div class="px-2 py-3 flex items-center gap-1 relative">
+                <div class="px-2 py-3 flex items-center gap-3 relative">
                     ${avatarDisplay.type === 'photo' ? `
                         <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${avatarDisplay.value}); background-size: cover; background-position: center;">
                             ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
                         </div>
                     ` : `
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'initial' ? 'bg-indigo-100 text-indigo-600 text-sm font-bold' : 'bg-slate-200 text-lg'}">
-                            ${isGuestPost ? '게' : escapeHtml(avatarDisplay.value)}
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200 text-lg'}">
+                            ${isGuestPost ? '게' : (avatarDisplay.type === 'default' ? '<i class="fa-solid fa-user text-lg"></i>' : escapeHtml(avatarDisplay.value))}
                         </div>
                     `}
                     <div class="flex-1 min-w-0 mr-2">
@@ -2730,7 +2791,7 @@ export async function renderFeed() {
                     </div>
                     ${isBanned ? `<div class="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0"><i class="fa-solid fa-ban mr-1"></i>공유 금지</div>` : ''}
                     <div class="relative flex-shrink-0">
-                        <button data-entry-id="${entryId || ''}" data-photo-urls="${photoGroup.map(p => p.photoUrl).join(',')}" data-caption="${captionAttr}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-is-insight="${isInsightShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-date-range-text="${photo.dateRangeText || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
+                        <button data-entry-id="${entryId || ''}" data-photo-urls="${(photoGroup.map(p => p.photoUrl).filter(Boolean).join(',') || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}" data-caption="${captionAttr}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-is-insight="${isInsightShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-date-range-text="${photo.dateRangeText || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
                             <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
                         </button>
                     </div>
@@ -2774,7 +2835,7 @@ export async function renderFeed() {
         const scrollContainers = container.querySelectorAll('.gallery-photo-scroll');
         scrollContainers.forEach((scrollContainer, idx) => {
             const counter = scrollContainer.parentElement.querySelector('.photo-counter-current');
-            const photos = scrollContainer.querySelectorAll('div');
+            const photos = Array.from(scrollContainer.children);
             const photoCount = sortedGroups[idx]?.length || 0;
             // 스크롤 종료 시 가장 가까운 사진으로 스냅 (한장한장 구분감)
             if (photoCount > 1) {
@@ -2823,38 +2884,40 @@ export async function renderFeed() {
                     if (Math.abs(sl - target) > 2) {
                         scrollContainer.scrollTo({ left: target, behavior: 'smooth' });
                     }
+                    preloadAdjacentGalleryImages(scrollContainer);
                 };
                 let snapTimeout = null;
                 const onScrollEnd = () => {
                     clearTimeout(snapTimeout);
                     snapTimeout = setTimeout(snapToNearest, 80);
                 };
+                let preloadThrottle = null;
+                const onScrollPreload = () => {
+                    if (preloadThrottle) return;
+                    preloadThrottle = setTimeout(() => { preloadThrottle = null; preloadAdjacentGalleryImages(scrollContainer); }, 50);
+                };
                 scrollContainer.addEventListener('scroll', onScrollEnd, { passive: true });
+                scrollContainer.addEventListener('scroll', onScrollPreload, { passive: true });
                 if ('onscrollend' in scrollContainer) {
                     scrollContainer.addEventListener('scrollend', snapToNearest);
                 }
+                preloadAdjacentGalleryImages(scrollContainer);
             }
             if (counter && photoCount > 1) {
+                const slideEls = Array.from(scrollContainer.children);
                 const updateCounter = () => {
                     const containerWidth = scrollContainer.clientWidth;
                     const scrollLeft = scrollContainer.scrollLeft;
-                    // 각 사진의 위치를 확인하여 현재 보이는 사진 인덱스 계산
                     let currentIndex = 1;
-                    photos.forEach((photo, photoIdx) => {
-                        const photoLeft = photo.offsetLeft;
-                        const photoRight = photoLeft + photo.offsetWidth;
-                        const viewportLeft = scrollLeft;
-                        const viewportRight = scrollLeft + containerWidth;
-                        // 사진의 중앙이 뷰포트 안에 있으면 현재 사진
-                        const photoCenter = photoLeft + photo.offsetWidth / 2;
-                        if (photoCenter >= viewportLeft && photoCenter <= viewportRight) {
+                    slideEls.forEach((slide, photoIdx) => {
+                        const photoCenter = slide.offsetLeft + slide.offsetWidth / 2;
+                        if (photoCenter >= scrollLeft && photoCenter <= scrollLeft + containerWidth) {
                             currentIndex = photoIdx + 1;
                         }
                     });
                     counter.textContent = currentIndex;
                 };
                 scrollContainer.addEventListener('scroll', updateCounter);
-                // 초기 카운터 설정
                 updateCounter();
             }
         });
@@ -3560,8 +3623,8 @@ async function _renderBoardList(container, filteredPosts, likedPostIds, bookmark
                                 ${authorAvatar.type === 'photo' ? `
                                     <div class="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${authorAvatar.value}); background-size: cover; background-position: center;"></div>
                                 ` : `
-                                    <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border-2 border-slate-300 ${authorAvatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200'}">
-                                        ${escapeHtml(authorAvatar.value)}
+                                    <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border-2 border-slate-300 ${authorAvatar.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200'}">
+                                        ${authorAvatar.type === 'default' ? '<i class="fa-solid fa-user text-sm"></i>' : escapeHtml(authorAvatar.value)}
                                     </div>
                                 `}
                                 <div>
@@ -3715,8 +3778,8 @@ export async function renderBoardDetail(postId) {
                         ${authorAvatar.type === 'photo' ? `
                             <div class="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${authorAvatar.value}); background-size: cover; background-position: center;"></div>
                         ` : `
-                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border-2 border-slate-300 ${authorAvatar.type === 'initial' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200'}">
-                                ${escapeHtml(authorAvatar.value)}
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border-2 border-slate-300 ${authorAvatar.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200'}">
+                                ${authorAvatar.type === 'default' ? '<i class="fa-solid fa-user text-sm"></i>' : escapeHtml(authorAvatar.value)}
                             </div>
                         `}
                         <div>
@@ -3933,12 +3996,12 @@ export function createDailyShareCard(dateStr, forPreview = false) {
     const month = dObj.getMonth() + 1;
     const day = dObj.getDate();
     
-    // 사용자 정보 가져오기 (아이콘 미설정 시 닉네임 첫글자 표시)
+    // 사용자 정보 가져오기 (아이콘 미설정 시 기본 회색 사람 아이콘)
     const userProfile = window.userSettings?.profile || {};
     const displayProfile = { nickname: userProfile.nickname || '익명', icon: userProfile.icon ?? null, photoUrl: userProfile.photoUrl || null };
     const userNickname = displayProfile.nickname;
     const dailyAvatar = getProfileAvatarDisplay(displayProfile);
-    const userIconDisplay = dailyAvatar.type === 'photo' ? '' : dailyAvatar.value;
+    const userIconDisplay = dailyAvatar.type === 'photo' ? '' : (dailyAvatar.type === 'default' ? '' : dailyAvatar.value);
     
     // 기존 컨테이너 제거
     const existing = document.getElementById('dailyShareCardContainer');
@@ -4126,6 +4189,11 @@ let photoEditRotation = 0; // 회전 각도 (도 단위)
 let isDraggingPhoto = false;
 let dragStartX = 0;
 let dragStartY = 0;
+/** 드래그 시 화면 델타를 회전된 좌표계로 변환하기 위해 저장 */
+let dragStartClientX = 0;
+let dragStartClientY = 0;
+let dragStartOffsetX = 0;
+let dragStartOffsetY = 0;
 let isPinching = false;
 let initialPinchDistance = 0;
 let initialPinchScale = 1;
@@ -4156,9 +4224,27 @@ export function openProfilePhotoEdit(objectUrl) {
     openPhotoEditModalWithImage(objectUrl);
 }
 
+function getPhotoEditAspectRatioCss() {
+    const ratio = photoEditContext === 'profile' ? '1:1' : (appState.recordPhotoAspectRatio || '1:1');
+    if (ratio === '3:4') return '3/4';
+    if (ratio === '4:3') return '4/3';
+    return '1';
+}
+
+/** 기록 등록 화면·편집 화면 공통: 선택된 사진 비율의 CSS aspect-ratio 값 */
+function getRecordPhotoAspectRatioCss() {
+    const ratio = appState.recordPhotoAspectRatio || '1:1';
+    if (ratio === '3:4') return '3/4';
+    if (ratio === '4:3') return '4/3';
+    return '1';
+}
+
 function openPhotoEditModalWithImage(photoSrc) {
     const modal = document.getElementById('photoEditModal');
     if (!modal) return;
+    
+    const wrapper = document.getElementById('photoEditAspectWrapper');
+    if (wrapper) wrapper.style.aspectRatio = getPhotoEditAspectRatioCss();
     
     modal.classList.remove('hidden');
     
@@ -4193,17 +4279,23 @@ function initializePhotoEdit() {
     
     // 모달이 완전히 렌더링된 후 크기 계산
     setTimeout(() => {
-        const containerRect = container.getBoundingClientRect();
-        const containerWidth = containerRect.width || container.offsetWidth;
-        const containerHeight = containerRect.height || container.offsetHeight;
+        // 모달이 닫힌 경우(이미지 로드 중 사용자가 닫음) 스킵
+        if (!photoEditCanvas || !photoEditCtx || !editingPhotoImage) return;
+        const containerAgain = document.getElementById('photoEditCanvasContainer');
+        if (!containerAgain) return;
+
+        const containerRect = containerAgain.getBoundingClientRect();
+        const containerWidth = containerRect.width || containerAgain.offsetWidth;
+        const containerHeight = containerRect.height || containerAgain.offsetHeight;
         
         // Canvas 크기 설정
         photoEditCanvas.width = containerWidth;
         photoEditCanvas.height = containerHeight;
-    
-    // 이미지 비율 계산
-    const imgAspect = editingPhotoImage.width / editingPhotoImage.height;
-    const containerAspect = containerWidth / containerHeight;
+        containerAgain.style.touchAction = 'none';
+
+        // 이미지 비율 계산
+        const imgAspect = editingPhotoImage.width / editingPhotoImage.height;
+        const containerAspect = containerWidth / containerHeight;
     
     let drawWidth, drawHeight;
     if (imgAspect > containerAspect) {
@@ -4247,22 +4339,23 @@ function drawPhotoEdit() {
     const drawWidth = editingPhotoImage.width * photoEditScale;
     const drawHeight = editingPhotoImage.height * photoEditScale;
     
-    // 회전 중심점 계산
+    // 축소 시(화면에 꽉 차지 않을 때) 미리보기에서도 중앙 정렬 강제 (인스타 스타일)
+    const useCenterX = drawWidth < photoEditCanvas.width;
+    const useCenterY = drawHeight < photoEditCanvas.height;
+    const drawOffsetX = useCenterX ? (photoEditCanvas.width - drawWidth) / 2 : photoEditOffsetX;
+    const drawOffsetY = useCenterY ? (photoEditCanvas.height - drawHeight) / 2 : photoEditOffsetY;
+    
     const centerX = photoEditCanvas.width / 2;
     const centerY = photoEditCanvas.height / 2;
     
     photoEditCtx.save();
-    
-    // 회전 중심으로 이동하고 회전
     photoEditCtx.translate(centerX, centerY);
     photoEditCtx.rotate((photoEditRotation * Math.PI) / 180);
     photoEditCtx.translate(-centerX, -centerY);
-    
-    // 이미지 그리기
     photoEditCtx.drawImage(
         editingPhotoImage,
-        photoEditOffsetX,
-        photoEditOffsetY,
+        drawOffsetX,
+        drawOffsetY,
         drawWidth,
         drawHeight
     );
@@ -4275,6 +4368,8 @@ function setupPhotoEditDrag() {
     if (!photoEditCanvas) return;
     
     photoEditCanvas.style.cursor = 'grab';
+    // 터치 드래그가 스크롤로 가로채지 않도록 (모바일)
+    photoEditCanvas.style.touchAction = 'none';
     
     photoEditCanvas.addEventListener('mousedown', handlePhotoEditMouseDown);
     photoEditCanvas.addEventListener('mousemove', handlePhotoEditMouseMove);
@@ -4284,9 +4379,45 @@ function setupPhotoEditDrag() {
     // 터치 이벤트는 setupPhotoEditZoomAndRotate에서 통합 처리
 }
 
+/** 사진 편집 offset: 축소 시 중앙 정렬 강제, 확대 시 좌우/상하에 맞춰 클램프 (인스타 스타일) */
+function clampPhotoEditOffset() {
+    if (!photoEditCanvas || !editingPhotoImage) return;
+    const drawWidth = editingPhotoImage.width * photoEditScale;
+    const drawHeight = editingPhotoImage.height * photoEditScale;
+    if (drawWidth < photoEditCanvas.width) {
+        photoEditOffsetX = (photoEditCanvas.width - drawWidth) / 2;
+    } else {
+        const minX = Math.min(0, photoEditCanvas.width - drawWidth);
+        const maxX = Math.max(0, photoEditCanvas.width - drawWidth);
+        photoEditOffsetX = Math.min(maxX, Math.max(minX, photoEditOffsetX));
+    }
+    if (drawHeight < photoEditCanvas.height) {
+        photoEditOffsetY = (photoEditCanvas.height - drawHeight) / 2;
+    } else {
+        const minY = Math.min(0, photoEditCanvas.height - drawHeight);
+        const maxY = Math.max(0, photoEditCanvas.height - drawHeight);
+        photoEditOffsetY = Math.min(maxY, Math.max(minY, photoEditOffsetY));
+    }
+}
+
+/** 화면(캔버스) 좌표계의 이동량을 회전된 이미지 좌표계로 변환 (드래그 방향이 보이는 대로 동작하도록) */
+function screenDeltaToRotatedOffset(dx, dy) {
+    const rad = (photoEditRotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    return {
+        x: cos * dx + sin * dy,
+        y: -sin * dx + cos * dy
+    };
+}
+
 // 마우스 이벤트 핸들러
 function handlePhotoEditMouseDown(e) {
     isDraggingPhoto = true;
+    dragStartClientX = e.clientX;
+    dragStartClientY = e.clientY;
+    dragStartOffsetX = photoEditOffsetX;
+    dragStartOffsetY = photoEditOffsetY;
     dragStartX = e.clientX - photoEditOffsetX;
     dragStartY = e.clientY - photoEditOffsetY;
     if (photoEditCanvas) {
@@ -4297,22 +4428,14 @@ function handlePhotoEditMouseDown(e) {
 function handlePhotoEditMouseMove(e) {
     if (!isDraggingPhoto) return;
     
-    photoEditOffsetX = e.clientX - dragStartX;
-    photoEditOffsetY = e.clientY - dragStartY;
+    const dx = e.clientX - dragStartClientX;
+    const dy = e.clientY - dragStartClientY;
+    const rotated = screenDeltaToRotatedOffset(dx, dy);
+    photoEditOffsetX = dragStartOffsetX + rotated.x;
+    photoEditOffsetY = dragStartOffsetY + rotated.y;
     
-    // 경계 체크
-    const drawWidth = editingPhotoImage.width * photoEditScale;
-    const drawHeight = editingPhotoImage.height * photoEditScale;
-    
-    if (photoEditOffsetX > 0) photoEditOffsetX = 0;
-    if (photoEditOffsetY > 0) photoEditOffsetY = 0;
-    if (photoEditOffsetX + drawWidth < photoEditCanvas.width) {
-        photoEditOffsetX = photoEditCanvas.width - drawWidth;
-    }
-    if (photoEditOffsetY + drawHeight < photoEditCanvas.height) {
-        photoEditOffsetY = photoEditCanvas.height - drawHeight;
-    }
-    
+    // 경계 체크: 이미지가 화면보다 클 때는 빈 공간 없이, 작을 때는 자유롭게 이동 가능하도록 min/max로 클램프
+    clampPhotoEditOffset();
     drawPhotoEdit();
 }
 
@@ -4332,6 +4455,10 @@ function handlePhotoEditTouchStart(e) {
     e.preventDefault();
     const touch = e.touches[0];
     isDraggingPhoto = true;
+    dragStartClientX = touch.clientX;
+    dragStartClientY = touch.clientY;
+    dragStartOffsetX = photoEditOffsetX;
+    dragStartOffsetY = photoEditOffsetY;
     dragStartX = touch.clientX - photoEditOffsetX;
     dragStartY = touch.clientY - photoEditOffsetY;
 }
@@ -4345,22 +4472,13 @@ function handlePhotoEditTouchMove(e) {
     e.preventDefault();
     
     const touch = e.touches[0];
-    photoEditOffsetX = touch.clientX - dragStartX;
-    photoEditOffsetY = touch.clientY - dragStartY;
+    const dx = touch.clientX - dragStartClientX;
+    const dy = touch.clientY - dragStartClientY;
+    const rotated = screenDeltaToRotatedOffset(dx, dy);
+    photoEditOffsetX = dragStartOffsetX + rotated.x;
+    photoEditOffsetY = dragStartOffsetY + rotated.y;
     
-    // 경계 체크
-    const drawWidth = editingPhotoImage.width * photoEditScale;
-    const drawHeight = editingPhotoImage.height * photoEditScale;
-    
-    if (photoEditOffsetX > 0) photoEditOffsetX = 0;
-    if (photoEditOffsetY > 0) photoEditOffsetY = 0;
-    if (photoEditOffsetX + drawWidth < photoEditCanvas.width) {
-        photoEditOffsetX = photoEditCanvas.width - drawWidth;
-    }
-    if (photoEditOffsetY + drawHeight < photoEditCanvas.height) {
-        photoEditOffsetY = photoEditCanvas.height - drawHeight;
-    }
-    
+    clampPhotoEditOffset();
     drawPhotoEdit();
 }
 
@@ -4376,10 +4494,11 @@ function setupPhotoEditZoomAndRotate() {
     // 휠 줌 (데스크톱)
     photoEditCanvas.addEventListener('wheel', handlePhotoEditWheel, { passive: false });
     
-    // 터치 이벤트 (드래그 + 핀치 줌 통합)
-    photoEditCanvas.addEventListener('touchstart', handlePhotoEditTouchStart, { passive: false });
-    photoEditCanvas.addEventListener('touchmove', handlePhotoEditTouchMove, { passive: false });
-    photoEditCanvas.addEventListener('touchend', handlePhotoEditTouchEnd);
+    // 터치 이벤트 (드래그 + 핀치 줌 통합) - capture로 터치 확실히 수신
+    photoEditCanvas.addEventListener('touchstart', handlePhotoEditTouchStart, { passive: false, capture: true });
+    photoEditCanvas.addEventListener('touchmove', handlePhotoEditTouchMove, { passive: false, capture: true });
+    photoEditCanvas.addEventListener('touchend', handlePhotoEditTouchEnd, { capture: true });
+    photoEditCanvas.addEventListener('touchcancel', handlePhotoEditTouchEnd, { capture: true });
 }
 
 // 휠 줌 핸들러
@@ -4387,7 +4506,7 @@ function handlePhotoEditWheel(e) {
     e.preventDefault();
     
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    const newScale = Math.max(0.5, Math.min(3, photoEditScale + delta));
+    const newScale = Math.max(0.1, Math.min(3, photoEditScale + delta));
     
     // 줌 중심점 계산
     const rect = photoEditCanvas.getBoundingClientRect();
@@ -4400,6 +4519,7 @@ function handlePhotoEditWheel(e) {
     photoEditOffsetY = y - (y - photoEditOffsetY) * scaleChange;
     
     photoEditScale = newScale;
+    clampPhotoEditOffset();
     drawPhotoEdit();
 }
 
@@ -4414,12 +4534,13 @@ export function zoomInPhotoEdit() {
     photoEditOffsetY = centerY - (centerY - photoEditOffsetY) * scaleChange;
     
     photoEditScale = newScale;
+    clampPhotoEditOffset();
     drawPhotoEdit();
 }
 
-// 줌아웃
+// 줌아웃 (최소 0.1 — 초기 fit 스케일이 0.5 미만일 수 있어 축소 버튼이 확대되던 문제 수정)
 export function zoomOutPhotoEdit() {
-    const newScale = Math.max(0.5, photoEditScale / 1.2);
+    const newScale = Math.max(0.1, photoEditScale / 1.2);
     const centerX = photoEditCanvas.width / 2;
     const centerY = photoEditCanvas.height / 2;
     
@@ -4428,6 +4549,7 @@ export function zoomOutPhotoEdit() {
     photoEditOffsetY = centerY - (centerY - photoEditOffsetY) * scaleChange;
     
     photoEditScale = newScale;
+    clampPhotoEditOffset();
     drawPhotoEdit();
 }
 
@@ -4468,41 +4590,36 @@ export function resetPhotoEdit() {
     drawPhotoEdit();
 }
 
-// 사진 편집 저장
+// 사진 편집 저장 — 전체 이미지를 잘리지 않게 fit(contain)으로 저장해 재편집 시 원본 활용 가능
 export function savePhotoEdit() {
     if (!photoEditCanvas || !editingPhotoImage) return;
     
-    const container = document.getElementById('photoEditCanvasContainer');
-    if (!container) return;
-    
-    const containerRect = container.getBoundingClientRect();
-    const containerWidth = containerRect.width || container.offsetWidth;
-    const containerHeight = containerRect.height || container.offsetHeight;
+    const w = photoEditCanvas.width;
+    const h = photoEditCanvas.height;
+    const imgW = editingPhotoImage.width;
+    const imgH = editingPhotoImage.height;
     
     const outputCanvas = document.createElement('canvas');
-    outputCanvas.width = containerWidth;
-    outputCanvas.height = containerHeight;
+    outputCanvas.width = w;
+    outputCanvas.height = h;
     const outputCtx = outputCanvas.getContext('2d');
     
     outputCtx.fillStyle = '#ffffff';
-    outputCtx.fillRect(0, 0, outputCanvas.width, outputCanvas.height);
+    outputCtx.fillRect(0, 0, w, h);
     
-    const drawWidth = editingPhotoImage.width * photoEditScale;
-    const drawHeight = editingPhotoImage.height * photoEditScale;
-    const centerX = containerWidth / 2;
-    const centerY = containerHeight / 2;
+    const centerX = w / 2;
+    const centerY = h / 2;
+    // 회전 후 보이는 너비/높이 (90/270이면 치환)
+    const rotW = (photoEditRotation === 90 || photoEditRotation === 270) ? imgH : imgW;
+    const rotH = (photoEditRotation === 90 || photoEditRotation === 270) ? imgW : imgH;
+    const fitScale = Math.min(w / rotW, h / rotH);
     
     outputCtx.save();
     outputCtx.translate(centerX, centerY);
     outputCtx.rotate((photoEditRotation * Math.PI) / 180);
-    outputCtx.translate(-centerX, -centerY);
-    
-    let finalOffsetX = photoEditOffsetX;
-    let finalOffsetY = photoEditOffsetY;
-    if (drawWidth < containerWidth) finalOffsetX = (containerWidth - drawWidth) / 2;
-    if (drawHeight < containerHeight) finalOffsetY = (containerHeight - drawHeight) / 2;
-    
-    outputCtx.drawImage(editingPhotoImage, finalOffsetX, finalOffsetY, drawWidth, drawHeight);
+    outputCtx.scale(fitScale, fitScale);
+    outputCtx.translate(-imgW / 2, -imgH / 2);
+    outputCtx.drawImage(editingPhotoImage, 0, 0, imgW, imgH, 0, 0, imgW, imgH);
     outputCtx.restore();
     
     try {
@@ -4570,9 +4687,10 @@ export function closePhotoEditModal() {
         photoEditCanvas.removeEventListener('mousemove', handlePhotoEditMouseMove);
         photoEditCanvas.removeEventListener('mouseup', handlePhotoEditMouseUp);
         photoEditCanvas.removeEventListener('mouseleave', handlePhotoEditMouseUp);
-        photoEditCanvas.removeEventListener('touchstart', handlePhotoEditTouchStart);
-        photoEditCanvas.removeEventListener('touchmove', handlePhotoEditTouchMove);
-        photoEditCanvas.removeEventListener('touchend', handlePhotoEditTouchEnd);
+        photoEditCanvas.removeEventListener('touchstart', handlePhotoEditTouchStart, true);
+        photoEditCanvas.removeEventListener('touchmove', handlePhotoEditTouchMove, true);
+        photoEditCanvas.removeEventListener('touchend', handlePhotoEditTouchEnd, true);
+        photoEditCanvas.removeEventListener('touchcancel', handlePhotoEditTouchEnd, true);
         photoEditCanvas.removeEventListener('wheel', handlePhotoEditWheel);
     }
     

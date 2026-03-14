@@ -4,13 +4,46 @@ import { appState } from './state.js';
 import { setVal, compressImage, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage, normalizeBirthdateRaw } from './utils.js';
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from './render/index.js';
 import { dbOps } from './db.js';
-import { showToast, showBirthdateError } from './ui.js';
+import { showToast } from './ui.js';
 import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed } from './render/index.js';
 import { getDashboardData } from './analytics.js';
 import { callableFunctions } from './firebase.js';
 
 // 설정 저장 디바운싱을 위한 타이머
 let settingsSaveTimeout = null;
+
+const PHOTO_ASPECT_OPTIONS = ['1:1', '3:4', '4:3'];
+
+/** 기록 사진 비율 버튼 UI 동기화 + 카메라(등록) 버튼 비율 적용 */
+function updatePhotoAspectButtons() {
+    const ratio = appState.recordPhotoAspectRatio || '1:1';
+    document.querySelectorAll('.photo-aspect-btn').forEach(btn => {
+        const isActive = btn.getAttribute('data-aspect') === ratio;
+        btn.classList.toggle('bg-emerald-100', isActive);
+        btn.classList.toggle('border-emerald-300', isActive);
+        btn.classList.toggle('text-emerald-700', isActive);
+        btn.classList.toggle('border-slate-200', !isActive);
+        btn.classList.toggle('text-slate-600', !isActive);
+    });
+    const aspectCss = ratio === '3:4' ? '3/4' : ratio === '4:3' ? '4/3' : '1';
+    [document.getElementById('imageBtn'), document.getElementById('snackImageBtn')].forEach(btn => {
+        if (btn) {
+            btn.style.width = '80px';
+            btn.style.minWidth = '80px';
+            btn.style.aspectRatio = aspectCss;
+            btn.style.height = '';
+            btn.style.alignSelf = 'flex-start'; // flex 행에서 비율대로만 높이 유지
+        }
+    });
+}
+
+/** 기록 시 모먼트 사진 비율 설정 (1:1 / 3:4 / 4:3) */
+export function setRecordPhotoAspectRatio(value) {
+    if (!PHOTO_ASPECT_OPTIONS.includes(value)) return;
+    appState.recordPhotoAspectRatio = value;
+    updatePhotoAspectButtons();
+    renderPhotoPreviews(); // 등록 화면 다중 미리보기도 선택 비율로 갱신
+}
 
 /** 끼니 등록 모달: 키보드 열림 시 모달 높이를 viewport에 맞추고, 닫힘 시 네비바 영역 복원 */
 function initEntryModalKeyboardHandling(entryModal) {
@@ -225,6 +258,8 @@ export function openModal(date, slotId, entryId = null) {
         state.sharedPhotos = []; // 이미 공유된 사진 목록
         state.originalSharedPhotos = []; // 원본 공유 사진 목록 (삭제 추적용)
         state.wantsToShare = false; // 공유를 원하는지 여부
+        // 새 기록 시 비율은 전역 선택값 사용 (수정 시에는 아래에서 기존 기록값으로 덮어씀)
+        state.recordPhotoAspectRatio = appState.recordPhotoAspectRatio || '1:1';
         
         const modalTitle = document.getElementById('modalTitle');
         if (modalTitle) {
@@ -314,6 +349,8 @@ export function openModal(date, slotId, entryId = null) {
         document.getElementById('mainMealFields')?.classList.toggle('hidden', isS);
         document.getElementById('snackFields')?.classList.toggle('hidden', !isS);
         
+        updatePhotoAspectButtons();
+        
         if (isS) {
             appState.selectedSnackPlaceMainTag = null;
         }
@@ -350,6 +387,7 @@ export function openModal(date, slotId, entryId = null) {
                 // sharedPhotos도 배열인지 확인
                 state.sharedPhotos = Array.isArray(r.sharedPhotos) ? r.sharedPhotos : (r.sharedPhotos ? [r.sharedPhotos] : []);
                 state.originalSharedPhotos = Array.isArray(r.sharedPhotos) ? [...r.sharedPhotos] : (r.sharedPhotos ? [r.sharedPhotos] : []); // 원본 복사 (삭제 추적용)
+                state.recordPhotoAspectRatio = (r.photoAspectRatio && PHOTO_ASPECT_OPTIONS.includes(r.photoAspectRatio)) ? r.photoAspectRatio : '1:1';
                 
                 // 공유 금지 체크
                 const isShareBanned = r.shareBanned === true;
@@ -837,6 +875,7 @@ export async function saveEntry() {
             category: getT('categoryChips'),
             placeType: '',
             snackType: getT('snackTypeChips'),
+            photoAspectRatio: state.recordPhotoAspectRatio || '1:1',
             // Firestore에는 URL만 저장하고, base64는 저장 직후 Storage로 업로드 후 치환한다.
             photos: existingPhotoUrls,
             menuDetail: isSk ? '' : (isS ? snackInputVal : menuInputVal),
@@ -1325,6 +1364,16 @@ export async function deleteEntry() {
     try {
         await dbOps.delete(entryIdToDelete);
         // 삭제 성공 - Firestore 리스너가 자동으로 타임라인을 업데이트함
+        // 모먼트 캐시에서도 해당 기록 제거 (즉시 반영)
+        if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+            window.sharedPhotos = window.sharedPhotos.filter((p) => p.entryId !== entryIdToDelete);
+        }
+        if (window.sharedPhotosFeed && Array.isArray(window.sharedPhotosFeed)) {
+            window.sharedPhotosFeed = window.sharedPhotosFeed.filter((p) => p.entryId !== entryIdToDelete);
+        }
+        if (appState.currentTab === 'gallery') {
+            try { renderGallery(); } catch (e) { console.warn('갤러리 갱신:', e); }
+        }
         showToast("기록이 삭제되었습니다.", 'success');
     } catch (error) {
         console.error('삭제 오류:', error);
@@ -1382,8 +1431,8 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
     const container = btn.parentElement.closest('.sub-chip-wrapper') ? btn.parentElement.parentElement : btn.parentElement;
     const isActive = btn.classList.contains('active');
     
-    // 함께한 사람 상세 태그(peopleSuggestions)는 다중 선택 가능
-    const isMultiSelect = !isPrimary && subContainerId === 'peopleSuggestions';
+    // 함께한 사람 상세 태그(peopleSuggestions), 메뉴 상세 태그(menuSuggestions)는 다중 선택 가능 (쉼표로 구분)
+    const isMultiSelect = !isPrimary && (subContainerId === 'peopleSuggestions' || subContainerId === 'menuSuggestions');
     
     if (!isMultiSelect) {
         // 단일 선택: 다른 태그 선택 해제
@@ -1594,6 +1643,7 @@ export function openSettings() {
     // 이모지 타입이면 text로 변환
     window.settingsProfileType = profileType === 'emoji' ? 'text' : profileType;
     setSettingsProfileType(window.settingsProfileType);
+    updateProfilePhotoHintVisibility();
     
     // 사진 미리보기 설정
     const photoPreview = document.getElementById('photoPreview');
@@ -1615,8 +1665,10 @@ export function openSettings() {
     }
     
     const nicknameInput = document.getElementById('settingNickname');
+    const nicknameDisplay = document.getElementById('settingNicknameDisplay');
+    const nicknameVal = (state.tempSettings.profile.nickname || '').trim();
     if (nicknameInput) {
-        nicknameInput.value = state.tempSettings.profile.nickname || '';
+        nicknameInput.value = nicknameVal;
         // 닉네임 입력 시 텍스트 미리보기 즉시 반영 (조합 중 지연 → 한글 IME 이슈 방지)
         if (!nicknameInput._nicknameCompositionInit) {
             addCompositionAwareInput(nicknameInput, () => {
@@ -1625,12 +1677,25 @@ export function openSettings() {
             nicknameInput._nicknameCompositionInit = true;
         }
     }
+    if (nicknameDisplay) {
+        nicknameDisplay.textContent = nicknameVal || '-';
+        nicknameDisplay.classList.toggle('hidden', !!state.isProfileEditing);
+    }
+    if (nicknameInput) nicknameInput.classList.toggle('hidden', !state.isProfileEditing);
     const bioInput = document.getElementById('settingBio');
     // 생년월일 / 라이프스타일 초기화
     const birthdateInput = document.getElementById('settingBirthdate');
-    if (birthdateInput) {
-        birthdateInput.value = state.tempSettings?.profile?.birthdate || '';
+    const birthdateDisplay = document.getElementById('settingBirthdateDisplay');
+    const birthdateEdit = document.getElementById('settingBirthdateEdit');
+    const birthdateVal = (state.tempSettings?.profile?.birthdate || '').trim();
+    if (birthdateInput) birthdateInput.value = birthdateVal;
+    const genderVal = (state.tempSettings?.profile?.gender || '').trim();
+    const genderText = genderVal === 'male' ? '(남)' : genderVal === 'female' ? '(여)' : '';
+    if (birthdateDisplay) {
+        birthdateDisplay.textContent = formatBirthdateForDisplay(birthdateVal) + (genderText ? ' ' + genderText : '');
+        birthdateDisplay.classList.toggle('hidden', !!state.isProfileEditing);
     }
+    if (birthdateEdit) birthdateEdit.classList.toggle('hidden', !state.isProfileEditing);
     const lifestyleInput = document.getElementById('settingLifestyle');
     if (lifestyleInput) {
         lifestyleInput.value = state.tempSettings?.profile?.lifestyle || '';
@@ -1654,17 +1719,18 @@ export function openSettings() {
     document.querySelectorAll('.setting-gender-btn').forEach(btn => {
         const v = btn.getAttribute('data-value') || '';
         const active = v === selectedGender;
-        btn.classList.toggle('bg-emerald-600', active);
+        btn.classList.toggle('bg-black', active);
         btn.classList.toggle('text-white', active);
         btn.classList.toggle('bg-slate-50', !active);
         btn.classList.toggle('text-slate-600', !active);
     });
 
-    // 생년월일 힌트 업데이트 (이미 1회 수정했으면 안내)
+    // 생년월일 힌트 업데이트 (이미 1회 수정했으면 안내, 수정 모드일 때만 표시)
     const birthdateHint = document.getElementById('birthdateHint');
     const changeCount = Number(state.tempSettings?.profile?.birthdateChangeCount || 0);
     if (birthdateHint) {
         birthdateHint.textContent = changeCount >= 1 ? '이미 1회 수정 완료 (추가 변경 불가)' : '가입 후 1회만 수정 가능';
+        birthdateHint.classList.toggle('hidden', !state.isProfileEditing);
     }
     if (bioInput) {
         bioInput.value = state.tempSettings.profile.bio || '';
@@ -1787,7 +1853,6 @@ export function openSettings() {
                     </div>
                     <div>
                         <div class="text-xs font-bold text-indigo-600">게스트 모드</div>
-                        <div class="text-[10px] text-indigo-400">앱 삭제 시 데이터가 사라집니다.</div>
                     </div>
                 </div>
                 <button id="switchToLoginBtn" class="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold active:bg-indigo-700 transition-colors">
@@ -1940,6 +2005,22 @@ export function switchSettingsTab(tab) {
     }
 }
 
+function updateProfilePhotoHintVisibility() {
+    const hint = document.getElementById('profilePhotoHint');
+    if (!hint) return;
+    const hasPhoto = !!(appState?.tempSettings?.profile?.photoUrl || window.settingsPhotoUrl || window.userSettings?.profile?.photoUrl);
+    hint.classList.toggle('hidden', hasPhoto);
+}
+
+function formatBirthdateForDisplay(raw) {
+    if (!raw || typeof raw !== 'string') return '-';
+    const s = raw.trim().replace(/-/g, '');
+    if (s.length === 8 && /^\d+$/.test(s)) {
+        return `${s.slice(0, 4)}.${s.slice(4, 6)}.${s.slice(6, 8)}`;
+    }
+    return raw;
+}
+
 function setProfileSettingsEditMode(isEditing) {
     const state = appState;
     state.isProfileEditing = !!isEditing;
@@ -1952,13 +2033,36 @@ function setProfileSettingsEditMode(isEditing) {
     if (saveBtn) saveBtn.classList.toggle('hidden', !isEditing);
 
     const nicknameInput = document.getElementById('settingNickname');
-    const bioInput = document.getElementById('settingBio');
+    const nicknameDisplay = document.getElementById('settingNicknameDisplay');
+    if (nicknameDisplay) {
+        nicknameDisplay.textContent = (nicknameInput?.value || state.tempSettings?.profile?.nickname || '').trim() || '-';
+        nicknameDisplay.classList.toggle('hidden', isEditing);
+    }
+    if (nicknameInput) {
+        nicknameInput.classList.toggle('hidden', !isEditing);
+        nicknameInput.disabled = !isEditing;
+    }
+
     const birthdateInput = document.getElementById('settingBirthdate');
+    const birthdateDisplay = document.getElementById('settingBirthdateDisplay');
+    const birthdateEdit = document.getElementById('settingBirthdateEdit');
+    const currentGender = (document.getElementById('settingGender')?.value || state.tempSettings?.profile?.gender || '').trim();
+    const genderText = currentGender === 'male' ? '(남)' : currentGender === 'female' ? '(여)' : '';
+    if (birthdateDisplay) {
+        birthdateDisplay.textContent = formatBirthdateForDisplay(birthdateInput?.value || state.tempSettings?.profile?.birthdate || '') + (genderText ? ' ' + genderText : '');
+        birthdateDisplay.classList.toggle('hidden', isEditing);
+    }
+    if (birthdateEdit) birthdateEdit.classList.toggle('hidden', !isEditing);
+    const birthdateHint = document.getElementById('birthdateHint');
+    if (birthdateHint) birthdateHint.classList.toggle('hidden', !isEditing);
+
+    const bioInput = document.getElementById('settingBio');
     const lifestyleInput = document.getElementById('settingLifestyle');
-    if (nicknameInput) nicknameInput.disabled = !isEditing;
     if (bioInput) bioInput.disabled = !isEditing;
     if (birthdateInput) birthdateInput.disabled = !isEditing;
     if (lifestyleInput) lifestyleInput.disabled = !isEditing;
+
+    updateProfilePhotoHintVisibility();
 
     /* 프로필 사진: 수정 모드일 때만 사진 설정/사진 선택/삭제 버튼 표시 */
     const photoSelectBtn = document.getElementById('photoSelectBtn');
@@ -2064,8 +2168,8 @@ export function setSettingsProfileType(type) {
         ''
     ).trim();
     if (textPreview) {
-        const initial = Array.from(nicknameVal || '?')[0] || '?';
-        textPreview.textContent = initial;
+        textPreview.innerHTML = '<i class="fa-solid fa-user text-slate-500 text-2xl"></i>';
+        textPreview.classList.add('flex', 'items-center', 'justify-center');
     }
 
     // 사진 미리보기 및 삭제 버튼 업데이트 (수정 모드일 때만 삭제 버튼 표시)
@@ -2087,6 +2191,7 @@ export function setSettingsProfileType(type) {
             }
         }
     }
+    updateProfilePhotoHintVisibility();
 }
 
 // 전역 노출 (탭 클릭용)
@@ -2131,6 +2236,7 @@ export async function handlePhotoUpload(event) {
         
         window.settingsPhotoUrl = photoUrl;
         window.settingsPhotoFile = compressedBlob;
+        updateProfilePhotoHintVisibility();
         
         if (typeof window.openProfilePhotoEdit === 'function') {
             window.openProfilePhotoEdit(photoUrl);
@@ -2222,7 +2328,7 @@ export async function saveProfileSettings() {
         if (newBirthdate) {
             const { formatted: formattedBirthdate, valid } = normalizeBirthdateRaw(newBirthdate);
             if (!valid) {
-                showBirthdateError("입력한 생년월일이 올바르지 않습니다. 숫자 8자리(예: 19900115)로 입력해주세요.");
+                showToast("입력한 생년월일이 올바르지 않습니다. 숫자 8자리(예: 19900115)로 입력해주세요.", "error");
                 return;
             }
             const isBirthdateChanged = existingBirthdate && formattedBirthdate && existingBirthdate !== formattedBirthdate;

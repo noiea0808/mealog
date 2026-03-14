@@ -201,6 +201,36 @@ header .mealog-title {
     font-size: 1.2rem;
     font-weight: normal;
 }
+/* 모먼트 캡션: 사진 하단을 복사해 블러 레이어로 쓰고, 그 위에 캡션 텍스트 */
+.gallery-caption-wrap {
+    position: relative;
+    overflow: hidden;
+    min-height: 2.5rem;
+}
+.gallery-caption-wrap::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.28);
+    pointer-events: none;
+    z-index: 1;
+}
+.gallery-caption-blur-bg {
+    position: absolute;
+    inset: 0;
+    background-color: #cbd5e1;
+    background-size: cover;
+    background-position: center bottom;
+    filter: blur(12px);
+    transform: scale(1.08);
+    z-index: 0;
+}
+.gallery-caption-menu-place.gallery-caption-blur {
+    position: relative;
+    z-index: 2;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+/* [복구: 녹색 라벨] render.js에서 gallery-caption-wrap 구조 제거, 단일 div에 gallery-caption-menu-place + style="background-color: #047857;" */
 .calendar-scroll { 
     display: flex; 
     overflow-x: auto; 
@@ -722,6 +752,50 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
     gap: 0.5rem;
     padding: 0.75rem 1rem;
     background: #fff;
+}
+/* 제목 왼쪽, 내용 오른쪽 배치 + 제목·입력 세로 중앙 정렬 */
+.profile-settings-row-between {
+    align-items: center;
+    gap: 1rem;
+}
+.profile-settings-row-between .profile-settings-label,
+.profile-settings-row-between .profile-settings-label-wrap {
+    flex: 0 0 auto;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 0;
+    min-width: 4.5rem;
+}
+.profile-settings-row-between .profile-settings-field {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.profile-settings-birthdate-input {
+    text-align: right;
+}
+.profile-settings-field-end {
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+.profile-settings-label-top {
+    padding-top: 0.25rem;
+}
+.profile-settings-value {
+    display: inline-block;
+    text-align: right;
+}
+.profile-settings-input-inline {
+    width: auto;
+    min-width: 8rem;
+    max-width: 100%;
+}
+.profile-settings-nickname-input {
+    text-align: right;
+}
+.profile-settings-field-same {
+    flex: 1 1 auto;
+    min-width: 0;
 }
 .profile-settings-label {
     flex: 0 0 100%;

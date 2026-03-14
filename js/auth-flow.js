@@ -464,29 +464,30 @@ export class AuthFlowManager {
                 hasProfile: readiness.hasProfile
             });
             
-            // 약관이 필요하면 약관 모달 표시
+            // 약관 또는 프로필 필요 시 페이지 형식 위저드 표시
             if (!readiness.termsAgreed) {
-                console.log('📋 약관 동의 필요: 모달 표시');
+                console.log('📋 약관 동의 필요: 위저드(페이지 형식) 표시');
                 window._recordsLoadHidePending = false;
                 switchScreen(false);
-                showTermsModal();
                 hideLoading();
-                // 약관 모달이 표시되면 여기서 종료 (약관 완료 후 프로필 확인)
+                const { openSignupWizard } = await import('./signup-wizard.js');
+                if (readiness.hasProfile) {
+                    // 기존 회원 약관 업데이트: 4페이지만 (1/1)
+                    openSignupWizard({ startStep: 4, totalSteps: 1, isTermsOnly: true });
+                } else {
+                    // 신규: 닉네임 → 생년월일/성별/라이프스타일 → 약관 (2/4 ~ 4/4)
+                    openSignupWizard({ startStep: 2, totalSteps: 4, isEmailSignup: false });
+                }
                 return;
             }
             
-            // 약관은 완료되었고, 프로필이 필요하면 프로필 모달 표시
             if (!readiness.hasProfile) {
-                console.log('📋 프로필 설정 필요: 모달 표시');
+                console.log('📋 프로필 설정 필요: 위저드(페이지 형식) 표시');
                 window._recordsLoadHidePending = false;
                 switchScreen(false);
                 hideLoading();
-                if (window.showProfileSetupModal) {
-                    window.showProfileSetupModal();
-                } else {
-                    const { showProfileSetupModal } = await import('./auth.js');
-                    showProfileSetupModal();
-                }
+                const { openSignupWizard } = await import('./signup-wizard.js');
+                openSignupWizard({ startStep: 2, totalSteps: 4, isEmailSignup: false });
             } else {
                 console.log('✅ 약관과 프로필 모두 완료됨. 모달을 표시하지 않습니다.');
                 this.hasCompleted = true;
@@ -522,35 +523,25 @@ export class AuthFlowManager {
             // Phase 2-2: 상태 전이 로직 명확화 - 각 상태별 명확한 처리
             switch (state) {
                 case AuthState.NEEDS_TERMS:
-                    // 약관 동의 필요: 랜딩 페이지 유지, 약관 모달 표시
-                    // (현재는 백그라운드에서 확인하므로 이 케이스는 거의 사용되지 않음)
-                    console.log('📋 약관 동의 필요: 모달 표시');
+                    console.log('📋 약관 동의 필요: 위저드(페이지 형식) 표시');
                     switchScreen(false);
-                    showTermsModal();
-                    // 모달이 뜨면 로딩 오버레이는 내려야 함 (무한 스피너 방지)
+                    const { openSignupWizard: openWizardTerms } = await import('./signup-wizard.js');
+                    openWizardTerms(readiness.hasProfile ? { startStep: 4, totalSteps: 1, isTermsOnly: true } : { startStep: 2, totalSteps: 4, isEmailSignup: false });
                     hideLoading();
                     break;
                     
                 case AuthState.NEEDS_PROFILE:
-                    // 프로필 설정 필요: 프로필을 다시 확인하여 이미 설정되어 있으면 모달 표시 안 함
                     const profileReadiness = await this.checkUserReadinessForProfile(this.user);
                     
                     if (profileReadiness.hasProfile) {
-                        // 프로필이 이미 설정되어 있음: 모달 표시하지 않고 바로 READY 상태로
-                        console.log('✅ 프로필이 이미 설정되어 있습니다. 모달을 표시하지 않고 메인 화면으로 진행합니다.');
+                        console.log('✅ 프로필이 이미 설정되어 있습니다.');
                         this.currentState = AuthState.READY;
                         await this.processState(this.currentState, profileReadiness);
                     } else {
-                        // 프로필 설정 필요: 랜딩 페이지 유지, 프로필 설정 모달 표시
-                        console.log('📋 프로필 설정 필요: 모달 표시');
+                        console.log('📋 프로필 설정 필요: 위저드(페이지 형식) 표시');
                         switchScreen(false);
-                        if (window.showProfileSetupModal) {
-                            window.showProfileSetupModal();
-                        } else {
-                            const { showProfileSetupModal } = await import('./auth.js');
-                            showProfileSetupModal();
-                        }
-                        // 모달이 뜨면 로딩 오버레이는 내려야 함 (무한 스피너 방지)
+                        const { openSignupWizard: openWizardProfile } = await import('./signup-wizard.js');
+                        openWizardProfile({ startStep: 2, totalSteps: 4, isEmailSignup: false });
                         hideLoading();
                     }
                     break;

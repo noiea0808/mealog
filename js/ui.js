@@ -67,16 +67,11 @@ export function hideLoading() {
     }
 }
 
-// 토스트 팝업 비활성화 (전역적으로 사용하지 않음)
+const TOAST_DURATION_MS = 3500;
+
+/** 토스트: 에러(type='error')일 때만 표시, info/success는 비표시 */
 export function showToast(message, type = 'info') {
-    return;
-}
-
-const BIRTHDATE_TOAST_DURATION_MS = 3500;
-
-/** 생년월일 입력 오류 시에만 토스트 표시 (해당 항목 전용) */
-export function showBirthdateError(message) {
-    if (!message) return;
+    if (type !== 'error' || !message) return;
     const container = document.getElementById('toastContainer');
     if (!container) return;
     const toast = document.createElement('div');
@@ -91,7 +86,7 @@ export function showBirthdateError(message) {
             if (toast.parentNode) toast.parentNode.removeChild(toast);
         }, 200);
     };
-    setTimeout(remove, BIRTHDATE_TOAST_DURATION_MS);
+    setTimeout(remove, TOAST_DURATION_MS);
 }
 
 const LANDING_EXIT_MS = 280;
@@ -139,12 +134,12 @@ export function updateHeaderUI() {
         
         // 게스트 모드이거나 userSettings가 없는 경우에도 처리
         if (!window.userSettings || !window.userSettings.profile) {
-            // 게스트 모드일 때는 '게' 표시
+    // 게스트 모드일 때는 회색 사람 아이콘
             if (isGuest) {
                 const iconEl = document.getElementById('navProfileIcon');
                 if (iconEl) {
                     // 모든 스타일 및 클래스 초기화
-                    iconEl.className = 'w-8 h-8 rounded-full flex items-center justify-center bg-slate-300 flex-shrink-0 overflow-hidden border border-slate-400';
+                    iconEl.className = 'w-8 h-8 rounded-full flex items-center justify-center bg-slate-300 flex-shrink-0 overflow-hidden border border-slate-400 text-slate-500';
                     iconEl.style.backgroundImage = '';
                     iconEl.style.backgroundSize = '';
                     iconEl.style.backgroundPosition = '';
@@ -153,8 +148,7 @@ export function updateHeaderUI() {
                     iconEl.style.height = '';
                     iconEl.style.objectFit = '';
                     iconEl.style.position = '';
-                    iconEl.innerHTML = '';
-                    iconEl.innerText = '게';
+                    iconEl.innerHTML = '<i class="fa-solid fa-user text-slate-500 text-base"></i>';
                     
                     const currentProfileKey = `게스트||${isGuest}`;
                     if (lastHeaderUpdate !== currentProfileKey) {
@@ -202,14 +196,8 @@ export function updateHeaderUI() {
                     iconEl.innerHTML = '<span style="position: absolute; bottom: 0; right: 0; background: rgba(0,0,0,0.7); color: white; font-size: 10px; font-weight: bold; width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white;">게</span>';
                 }
             } else {
-                // 사진이 없으면 닉네임 첫 글자 또는 '게' 표시
-                if (isGuest) {
-                    iconEl.innerText = '게';
-                } else {
-                    const nn = (p.nickname || '게스트').trim();
-                    const initial = (Array.from(nn)[0] || '?');
-                    iconEl.innerText = initial;
-                }
+                // 사진이 없으면 회색 사람 아이콘 (게스트/일반 동일)
+                iconEl.innerHTML = '<i class="fa-solid fa-user text-slate-500 text-base"></i>';
             }
         }
         
