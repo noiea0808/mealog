@@ -258,6 +258,8 @@ export function openModal(date, slotId, entryId = null) {
         state.sharedPhotos = []; // 이미 공유된 사진 목록
         state.originalSharedPhotos = []; // 원본 공유 사진 목록 (삭제 추적용)
         state.wantsToShare = false; // 공유를 원하는지 여부
+        // 새 기록 시 비율은 전역 선택값 사용 (수정 시에는 아래에서 기존 기록값으로 덮어씀)
+        state.recordPhotoAspectRatio = appState.recordPhotoAspectRatio || '1:1';
         
         const modalTitle = document.getElementById('modalTitle');
         if (modalTitle) {

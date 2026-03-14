@@ -53,6 +53,7 @@ import {
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
     handleMultipleImages, removePhoto, updateShareIndicator, toggleSharePhoto,
     openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, setSettingsProfileType, handlePhotoUpload, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
+    setRecordPhotoAspectRatio,
     openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace
 } from './modals.js';
 import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from './constants.js';
@@ -207,6 +208,8 @@ window.updateShareIndicator = updateShareIndicator;
 window.Mealog.updateShareIndicator = updateShareIndicator;
 window.toggleSharePhoto = toggleSharePhoto;
 window.Mealog.toggleSharePhoto = toggleSharePhoto;
+window.setRecordPhotoAspectRatio = setRecordPhotoAspectRatio;
+window.Mealog.setRecordPhotoAspectRatio = setRecordPhotoAspectRatio;
 window.openSettings = openSettings;
 window.Mealog.openSettings = openSettings;
 window.closeSettings = closeSettings;
