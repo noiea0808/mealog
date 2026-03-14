@@ -1119,13 +1119,21 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
         return false;
     }
 
-    // 2) 앱 전용 폴백: Capacitor Share + Filesystem
+    // 2) 앱 전용 폴백: Capacitor Share + Filesystem (스크립트로 로드된 플러그인 사용, dynamic import 불가 환경 대응)
     if (!isNative) return false;
+
+    const Share = window.Capacitor?.Plugins?.Share;
+    const Filesystem = window.Capacitor?.Plugins?.Filesystem;
+    const DirectoryCache = (Filesystem?.Directory?.Cache !== undefined) ? Filesystem.Directory.Cache : 'CACHE';
+    if (!Share || !Filesystem) {
+        if (typeof window.showToast === 'function') {
+            window.showToast('공유 플러그인을 사용할 수 없습니다.', 'error');
+        }
+        return false;
+    }
 
     let step = '';
     try {
-        const { Share } = await import('@capacitor/share');
-        const { Filesystem, Directory } = await import('@capacitor/filesystem');
         const prefix = `mealog_share_${Date.now()}`;
         const fileUris = [];
         step = '파일 저장';
@@ -1136,9 +1144,9 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
             await Filesystem.writeFile({
                 path,
                 data: base64,
-                directory: Directory.Cache,
+                directory: DirectoryCache,
             });
-            const { uri } = await Filesystem.getUri({ path, directory: Directory.Cache });
+            const { uri } = await Filesystem.getUri({ path, directory: DirectoryCache });
             fileUris.push(uri);
         }
         if (fileUris.length === 0) {
