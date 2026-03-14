@@ -1641,6 +1641,7 @@ export function openSettings() {
     // 이모지 타입이면 text로 변환
     window.settingsProfileType = profileType === 'emoji' ? 'text' : profileType;
     setSettingsProfileType(window.settingsProfileType);
+    updateProfilePhotoHintVisibility();
     
     // 사진 미리보기 설정
     const photoPreview = document.getElementById('photoPreview');
@@ -1662,8 +1663,10 @@ export function openSettings() {
     }
     
     const nicknameInput = document.getElementById('settingNickname');
+    const nicknameDisplay = document.getElementById('settingNicknameDisplay');
+    const nicknameVal = (state.tempSettings.profile.nickname || '').trim();
     if (nicknameInput) {
-        nicknameInput.value = state.tempSettings.profile.nickname || '';
+        nicknameInput.value = nicknameVal;
         // 닉네임 입력 시 텍스트 미리보기 즉시 반영 (조합 중 지연 → 한글 IME 이슈 방지)
         if (!nicknameInput._nicknameCompositionInit) {
             addCompositionAwareInput(nicknameInput, () => {
@@ -1672,12 +1675,25 @@ export function openSettings() {
             nicknameInput._nicknameCompositionInit = true;
         }
     }
+    if (nicknameDisplay) {
+        nicknameDisplay.textContent = nicknameVal || '-';
+        nicknameDisplay.classList.toggle('hidden', !!state.isProfileEditing);
+    }
+    if (nicknameInput) nicknameInput.classList.toggle('hidden', !state.isProfileEditing);
     const bioInput = document.getElementById('settingBio');
     // 생년월일 / 라이프스타일 초기화
     const birthdateInput = document.getElementById('settingBirthdate');
-    if (birthdateInput) {
-        birthdateInput.value = state.tempSettings?.profile?.birthdate || '';
+    const birthdateDisplay = document.getElementById('settingBirthdateDisplay');
+    const birthdateEdit = document.getElementById('settingBirthdateEdit');
+    const birthdateVal = (state.tempSettings?.profile?.birthdate || '').trim();
+    if (birthdateInput) birthdateInput.value = birthdateVal;
+    const genderVal = (state.tempSettings?.profile?.gender || '').trim();
+    const genderText = genderVal === 'male' ? '(남)' : genderVal === 'female' ? '(여)' : '';
+    if (birthdateDisplay) {
+        birthdateDisplay.textContent = formatBirthdateForDisplay(birthdateVal) + (genderText ? ' ' + genderText : '');
+        birthdateDisplay.classList.toggle('hidden', !!state.isProfileEditing);
     }
+    if (birthdateEdit) birthdateEdit.classList.toggle('hidden', !state.isProfileEditing);
     const lifestyleInput = document.getElementById('settingLifestyle');
     if (lifestyleInput) {
         lifestyleInput.value = state.tempSettings?.profile?.lifestyle || '';
@@ -1701,17 +1717,18 @@ export function openSettings() {
     document.querySelectorAll('.setting-gender-btn').forEach(btn => {
         const v = btn.getAttribute('data-value') || '';
         const active = v === selectedGender;
-        btn.classList.toggle('bg-emerald-600', active);
+        btn.classList.toggle('bg-black', active);
         btn.classList.toggle('text-white', active);
         btn.classList.toggle('bg-slate-50', !active);
         btn.classList.toggle('text-slate-600', !active);
     });
 
-    // 생년월일 힌트 업데이트 (이미 1회 수정했으면 안내)
+    // 생년월일 힌트 업데이트 (이미 1회 수정했으면 안내, 수정 모드일 때만 표시)
     const birthdateHint = document.getElementById('birthdateHint');
     const changeCount = Number(state.tempSettings?.profile?.birthdateChangeCount || 0);
     if (birthdateHint) {
         birthdateHint.textContent = changeCount >= 1 ? '이미 1회 수정 완료 (추가 변경 불가)' : '가입 후 1회만 수정 가능';
+        birthdateHint.classList.toggle('hidden', !state.isProfileEditing);
     }
     if (bioInput) {
         bioInput.value = state.tempSettings.profile.bio || '';
@@ -1987,6 +2004,22 @@ export function switchSettingsTab(tab) {
     }
 }
 
+function updateProfilePhotoHintVisibility() {
+    const hint = document.getElementById('profilePhotoHint');
+    if (!hint) return;
+    const hasPhoto = !!(appState?.tempSettings?.profile?.photoUrl || window.settingsPhotoUrl || window.userSettings?.profile?.photoUrl);
+    hint.classList.toggle('hidden', hasPhoto);
+}
+
+function formatBirthdateForDisplay(raw) {
+    if (!raw || typeof raw !== 'string') return '-';
+    const s = raw.trim().replace(/-/g, '');
+    if (s.length === 8 && /^\d+$/.test(s)) {
+        return `${s.slice(0, 4)}.${s.slice(4, 6)}.${s.slice(6, 8)}`;
+    }
+    return raw;
+}
+
 function setProfileSettingsEditMode(isEditing) {
     const state = appState;
     state.isProfileEditing = !!isEditing;
@@ -1999,13 +2032,36 @@ function setProfileSettingsEditMode(isEditing) {
     if (saveBtn) saveBtn.classList.toggle('hidden', !isEditing);
 
     const nicknameInput = document.getElementById('settingNickname');
-    const bioInput = document.getElementById('settingBio');
+    const nicknameDisplay = document.getElementById('settingNicknameDisplay');
+    if (nicknameDisplay) {
+        nicknameDisplay.textContent = (nicknameInput?.value || state.tempSettings?.profile?.nickname || '').trim() || '-';
+        nicknameDisplay.classList.toggle('hidden', isEditing);
+    }
+    if (nicknameInput) {
+        nicknameInput.classList.toggle('hidden', !isEditing);
+        nicknameInput.disabled = !isEditing;
+    }
+
     const birthdateInput = document.getElementById('settingBirthdate');
+    const birthdateDisplay = document.getElementById('settingBirthdateDisplay');
+    const birthdateEdit = document.getElementById('settingBirthdateEdit');
+    const currentGender = (document.getElementById('settingGender')?.value || state.tempSettings?.profile?.gender || '').trim();
+    const genderText = currentGender === 'male' ? '(남)' : currentGender === 'female' ? '(여)' : '';
+    if (birthdateDisplay) {
+        birthdateDisplay.textContent = formatBirthdateForDisplay(birthdateInput?.value || state.tempSettings?.profile?.birthdate || '') + (genderText ? ' ' + genderText : '');
+        birthdateDisplay.classList.toggle('hidden', isEditing);
+    }
+    if (birthdateEdit) birthdateEdit.classList.toggle('hidden', !isEditing);
+    const birthdateHint = document.getElementById('birthdateHint');
+    if (birthdateHint) birthdateHint.classList.toggle('hidden', !isEditing);
+
+    const bioInput = document.getElementById('settingBio');
     const lifestyleInput = document.getElementById('settingLifestyle');
-    if (nicknameInput) nicknameInput.disabled = !isEditing;
     if (bioInput) bioInput.disabled = !isEditing;
     if (birthdateInput) birthdateInput.disabled = !isEditing;
     if (lifestyleInput) lifestyleInput.disabled = !isEditing;
+
+    updateProfilePhotoHintVisibility();
 
     /* 프로필 사진: 수정 모드일 때만 사진 설정/사진 선택/삭제 버튼 표시 */
     const photoSelectBtn = document.getElementById('photoSelectBtn');
@@ -2134,6 +2190,7 @@ export function setSettingsProfileType(type) {
             }
         }
     }
+    updateProfilePhotoHintVisibility();
 }
 
 // 전역 노출 (탭 클릭용)
@@ -2178,6 +2235,7 @@ export async function handlePhotoUpload(event) {
         
         window.settingsPhotoUrl = photoUrl;
         window.settingsPhotoFile = compressedBlob;
+        updateProfilePhotoHintVisibility();
         
         if (typeof window.openProfilePhotoEdit === 'function') {
             window.openProfilePhotoEdit(photoUrl);

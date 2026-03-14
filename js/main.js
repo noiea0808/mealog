@@ -4910,7 +4910,7 @@ function initEventListeners() {
             if (hidden) hidden.value = v;
             document.querySelectorAll('.setting-gender-btn').forEach(b => {
                 const active = b === btn;
-                b.classList.toggle('bg-emerald-600', active);
+                b.classList.toggle('bg-black', active);
                 b.classList.toggle('text-white', active);
                 b.classList.toggle('bg-slate-50', !active);
                 b.classList.toggle('text-slate-600', !active);

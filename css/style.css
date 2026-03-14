@@ -753,6 +753,50 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
     padding: 0.75rem 1rem;
     background: #fff;
 }
+/* 제목 왼쪽, 내용 오른쪽 배치 + 제목·입력 세로 중앙 정렬 */
+.profile-settings-row-between {
+    align-items: center;
+    gap: 1rem;
+}
+.profile-settings-row-between .profile-settings-label,
+.profile-settings-row-between .profile-settings-label-wrap {
+    flex: 0 0 auto;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 0;
+    min-width: 4.5rem;
+}
+.profile-settings-row-between .profile-settings-field {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.profile-settings-birthdate-input {
+    text-align: right;
+}
+.profile-settings-field-end {
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+.profile-settings-label-top {
+    padding-top: 0.25rem;
+}
+.profile-settings-value {
+    display: inline-block;
+    text-align: right;
+}
+.profile-settings-input-inline {
+    width: auto;
+    min-width: 8rem;
+    max-width: 100%;
+}
+.profile-settings-nickname-input {
+    text-align: right;
+}
+.profile-settings-field-same {
+    flex: 1 1 auto;
+    min-width: 0;
+}
 .profile-settings-label {
     flex: 0 0 100%;
     font-size: 0.8125rem;
