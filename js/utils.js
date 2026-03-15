@@ -613,6 +613,24 @@ export async function uploadMultipleImages(files, userId, entryId = null, progre
     return Promise.all(uploadPromises);
 }
 
+/** 팝업용 이미지 업로드: 최대 3장, 장당 600KB 이하 압축 후 users/{userId}/admin-popups/ 에 저장 */
+export async function uploadPopupImages(files, userId) {
+    if (!files || files.length === 0) return [];
+    const list = Array.from(files).slice(0, 3);
+    const compressPromises = list.map(file => compressImageToBlobMaxSize(file, 600));
+    const compressedBlobs = await Promise.all(compressPromises);
+    const uploadPromises = compressedBlobs.map(async (blob, index) => {
+        const timestamp = Date.now();
+        const randomStr = Math.random().toString(36).substring(2, 9);
+        const fileName = `${timestamp}_${randomStr}_${index}.jpg`;
+        const path = `users/${userId}/admin-popups/${fileName}`;
+        const storageRef = ref(storage, path);
+        await uploadBytes(storageRef, blob);
+        return getDownloadURL(storageRef);
+    });
+    return Promise.all(uploadPromises);
+}
+
 /** 공지용 이미지 업로드: 최대 3장, 장당 600KB 이하 압축 후 users/{userId}/admin-notices/ 에 저장 */
 export async function uploadNoticeImages(files, userId) {
     if (!files || files.length === 0) return [];

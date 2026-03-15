@@ -1149,6 +1149,25 @@
         </nav>
     </div>
 
+    <!-- 콘텐츠 팝업 모달: 밀로그 내용 폭 - 10px 고정, 이미지 좌우 꽉 참, 제목 미노출, 하단 영역 분할 -->
+    <div id="contentPopupModal" class="hidden fixed inset-0 z-[450] bg-slate-900/50 flex items-center justify-center p-4">
+        <div id="contentPopupModalInner" class="bg-white rounded-2xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden" style="width: 0;">
+            <div id="contentPopupModalBody" class="overflow-y-auto overscroll-contain p-5 flex-1 min-h-0">
+                <div id="contentPopupImages" class="content-popup-images flex flex-col gap-2 mb-3 -mx-5"></div>
+                <div id="contentPopupContent" class="text-sm text-slate-700 leading-relaxed"></div>
+                <div id="contentPopupLandingWrap" class="mt-4 hidden">
+                    <button type="button" id="contentPopupLandingBtn" class="w-full py-3 text-emerald-600 font-bold text-sm border border-emerald-500 rounded-xl hover:bg-emerald-50 transition-colors"></button>
+                </div>
+            </div>
+            <div id="contentPopupFooter" class="content-popup-footer flex flex-shrink-0 border-t border-slate-200 bg-slate-50/80">
+                <button type="button" id="contentPopupPrevBtn" class="content-popup-footer-seg hidden">이전</button>
+                <button type="button" id="contentPopupNextBtn" class="content-popup-footer-seg hidden">다음</button>
+                <button type="button" id="contentPopupDismissTodayBtn" class="content-popup-footer-seg">오늘 다시 보지 않기</button>
+                <button type="button" id="contentPopupCloseBtn" class="content-popup-footer-seg content-popup-footer-close">닫기</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Logout Confirm Modal -->
     <div id="logoutConfirmModal" class="hidden fixed inset-0 z-[400] bg-slate-900/40 flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl transform transition-all scale-100">

@@ -9,7 +9,7 @@ import { auth, db, appId } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { dbOps, setupListeners, loadSharedPhotosPage, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, boardOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { callableFunctions } from './firebase.js';
-import { doc, getDoc, setDoc, collection, query, where, limit, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
 import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput, warmUpIME, sharePhotosToExternal, setupBirthdateInputFormatting } from './utils.js';
@@ -46,7 +46,7 @@ window.cleanupFirestoreListeners = () => {
         console.warn('cleanupFirestoreListeners 실패(무시):', e);
     }
 };
-import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
+import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, renderFormattedContent, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
@@ -1412,6 +1412,10 @@ window.switchMainTab = (tab) => {
         console.log('[탭전환] 시작:', { 이전탭: appState.currentTab, 새탭: tab });
         const prevTab = appState.currentTab;
         appState.currentTab = tab;
+        // 탭 전환 시 '접근시마다' 팝업 비표시 상태 초기화 (다음 접근 시 다시 표시)
+        if (prevTab !== tab) {
+            window._contentPopupDismissedVisit = new Set();
+        }
         // 다른 메뉴로 이동 시 검색창 닫기
         if (prevTab !== tab) {
             if (prevTab === 'timeline' && typeof window.closeSearch === 'function') window.closeSearch();
@@ -1646,6 +1650,10 @@ window.switchMainTab = (tab) => {
         renderTimeline();
         renderMiniCalendar();
     }
+    // 해당 탭용 콘텐츠 팝업 표시 여부 확인 (조건 충족 시 한 건만 표시)
+    if (typeof window.checkAndShowContentPopup === 'function') {
+        setTimeout(() => window.checkAndShowContentPopup(tab), 200);
+    }
     console.log('[탭전환] 완료:', { 현재탭: appState.currentTab });
     } catch (error) {
         console.error('[탭전환] 오류 발생:', error);
@@ -1653,6 +1661,142 @@ window.switchMainTab = (tab) => {
         // 오류 발생 시에도 기본 탭 상태는 유지
         showToast('탭 전환 중 오류가 발생했습니다.', 'error');
     }
+};
+
+/** 밀로그 내용 폭보다 10px 작게 팝업 너비 고정 (body가 max-w-md 로 밀로그 폭과 동일) */
+function setContentPopupWidth() {
+    const inner = document.getElementById('contentPopupModalInner');
+    if (!inner) return;
+    const contentWidth = document.body.clientWidth || document.documentElement.clientWidth;
+    const popupWidth = Math.max(200, contentWidth - 10);
+    inner.style.width = popupWidth + 'px';
+}
+
+/** 팝업 한 건 내용으로 모달 채우기 (제목 미노출) */
+function fillContentPopupModal(popup) {
+    setContentPopupWidth();
+    const imagesEl = document.getElementById('contentPopupImages');
+    const contentEl = document.getElementById('contentPopupContent');
+    const landingWrap = document.getElementById('contentPopupLandingWrap');
+    const landingBtn = document.getElementById('contentPopupLandingBtn');
+    if (!contentEl) return;
+    imagesEl.innerHTML = '';
+    if (imagesEl && Array.isArray(popup.imageUrls) && popup.imageUrls.length > 0) {
+        popup.imageUrls.forEach(url => {
+            const img = document.createElement('img');
+            img.src = url;
+            img.alt = '팝업 이미지';
+            img.className = 'rounded-none';
+            img.loading = 'lazy';
+            imagesEl.appendChild(img);
+        });
+    }
+    contentEl.innerHTML = renderFormattedContent(popup.content || '');
+    if (landingWrap && landingBtn && popup.landingNoticeId) {
+        landingWrap.classList.remove('hidden');
+        landingBtn.textContent = popup.landingButtonLabel && popup.landingButtonLabel.trim() ? popup.landingButtonLabel.trim() : '선택한 공지 보기';
+        landingBtn.onclick = () => {
+            window.closeContentPopupModal(false);
+            if (appState.currentTab !== 'board') window.switchMainTab('board');
+            setTimeout(() => { if (typeof window.openNoticeDetail === 'function') window.openNoticeDetail(popup.landingNoticeId); }, 100);
+        };
+    } else if (landingWrap) {
+        landingWrap.classList.add('hidden');
+    }
+}
+
+/** 탭 전환 시 해당 메뉴용 콘텐츠 팝업이 있으면 조건에 맞을 때 표시 (여러 개면 이전/다음으로 이동) */
+window.checkAndShowContentPopup = async function(tab) {
+    const modal = document.getElementById('contentPopupModal');
+    const prevBtn = document.getElementById('contentPopupPrevBtn');
+    const nextBtn = document.getElementById('contentPopupNextBtn');
+    if (!modal) return;
+    try {
+        const popupsRef = collection(db, 'artifacts', appId, 'popups');
+        const q = query(popupsRef, orderBy('timestamp', 'desc'), limit(50));
+        const snap = await getDocs(q);
+        const today = new Date().toISOString().slice(0, 10);
+        const list = [];
+        snap.forEach(doc => {
+            const d = doc.data();
+            if (d.targetMenu !== tab) return;
+            const start = d.startDate || '';
+            const end = d.endDate || '';
+            if (start && end && today >= start && today <= end) list.push({ id: doc.id, ...d });
+        });
+        const isDismissed = (popup) => {
+            if (popup.frequency === 'daily') {
+                return localStorage.getItem(`content_popup_${popup.id}_${today}`) === '1';
+            }
+            if (popup.frequency === 'on_login') {
+                return sessionStorage.getItem(`content_popup_${popup.id}`) === '1';
+            }
+            if (popup.frequency === 'on_visit') {
+                return window._contentPopupDismissedVisit && window._contentPopupDismissedVisit.has(popup.id);
+            }
+            return false;
+        };
+        const toShowList = list.filter(p => !isDismissed(p));
+        if (toShowList.length === 0) return;
+        window._contentPopupList = toShowList;
+        window._contentPopupIndex = 0;
+        setContentPopupWidth();
+        fillContentPopupModal(toShowList[0]);
+        window._contentPopupCurrent = { id: toShowList[0].id, frequency: toShowList[0].frequency };
+        const updatePopupNavButtons = () => {
+            if (prevBtn) prevBtn.classList.toggle('hidden', window._contentPopupIndex === 0);
+            if (nextBtn) nextBtn.classList.toggle('hidden', window._contentPopupIndex >= (window._contentPopupList.length - 1));
+        };
+        if (prevBtn) {
+            prevBtn.onclick = () => {
+                if (window._contentPopupIndex <= 0) return;
+                window._contentPopupIndex -= 1;
+                const p = window._contentPopupList[window._contentPopupIndex];
+                fillContentPopupModal(p);
+                window._contentPopupCurrent = { id: p.id, frequency: p.frequency };
+                updatePopupNavButtons();
+            };
+        }
+        if (nextBtn) {
+            nextBtn.onclick = () => {
+                if (window._contentPopupIndex >= (window._contentPopupList.length - 1)) return;
+                window._contentPopupIndex += 1;
+                const p = window._contentPopupList[window._contentPopupIndex];
+                fillContentPopupModal(p);
+                window._contentPopupCurrent = { id: p.id, frequency: p.frequency };
+                updatePopupNavButtons();
+            };
+        }
+        updatePopupNavButtons();
+        modal.classList.remove('hidden');
+    } catch (e) {
+        console.warn('콘텐츠 팝업 조회 실패:', e);
+    }
+};
+
+window.closeContentPopupModal = function(dismissToday) {
+    const modal = document.getElementById('contentPopupModal');
+    const prevBtn = document.getElementById('contentPopupPrevBtn');
+    const nextBtn = document.getElementById('contentPopupNextBtn');
+    if (!modal) return;
+    const cur = window._contentPopupCurrent;
+    if (dismissToday && cur) {
+        const today = new Date().toISOString().slice(0, 10);
+        if (cur.frequency === 'daily') {
+            localStorage.setItem(`content_popup_${cur.id}_${today}`, '1');
+        } else if (cur.frequency === 'on_login') {
+            sessionStorage.setItem(`content_popup_${cur.id}`, '1');
+        } else if (cur.frequency === 'on_visit') {
+            if (!window._contentPopupDismissedVisit) window._contentPopupDismissedVisit = new Set();
+            window._contentPopupDismissedVisit.add(cur.id);
+        }
+    }
+    window._contentPopupCurrent = null;
+    window._contentPopupList = null;
+    window._contentPopupIndex = 0;
+    if (prevBtn) prevBtn.classList.add('hidden');
+    if (nextBtn) nextBtn.classList.add('hidden');
+    modal.classList.add('hidden');
 };
 
 window.setViewMode = (m) => {
@@ -5036,6 +5180,20 @@ function initEventListeners() {
     const logoutConfirmActionBtn = document.getElementById('logoutConfirmActionBtn');
     if (logoutConfirmActionBtn) {
         logoutConfirmActionBtn.addEventListener('click', confirmLogoutAction);
+    }
+    
+    // 콘텐츠 팝업 모달: 오늘 다시 보지 않기 / 닫기
+    const contentPopupDismissTodayBtn = document.getElementById('contentPopupDismissTodayBtn');
+    if (contentPopupDismissTodayBtn) {
+        contentPopupDismissTodayBtn.addEventListener('click', () => {
+            if (typeof window.closeContentPopupModal === 'function') window.closeContentPopupModal(true);
+        });
+    }
+    const contentPopupCloseBtn = document.getElementById('contentPopupCloseBtn');
+    if (contentPopupCloseBtn) {
+        contentPopupCloseBtn.addEventListener('click', () => {
+            if (typeof window.closeContentPopupModal === 'function') window.closeContentPopupModal(false);
+        });
     }
     
     // 탈퇴 모달 버튼

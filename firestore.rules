@@ -245,6 +245,14 @@ service cloud.firestore {
     }
     
     // ============================================
+    // 팝업 (popups 컬렉션) - 관리자 작성, 사용자 읽기
+    // ============================================
+    match /artifacts/{appId}/popups/{popupId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // ============================================
     // 공지 북마크 (noticeBookmarks 컬렉션)
     // ============================================
     match /artifacts/{appId}/noticeBookmarks/{bookmarkId} {

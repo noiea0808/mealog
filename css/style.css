@@ -1846,3 +1846,56 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
 #adminPage #adminUsersTable td:nth-child(2) { max-width: 12rem; }
 #adminPage #adminUsersTable td:nth-child(3) { max-width: 8rem; }
 #adminPage #adminUsersTable td:nth-child(4) { max-width: 5rem; }
+
+/* 콘텐츠 팝업: 이미지 좌우 꽉 채움 (박스 폭 100%), 세로는 비율 유지 */
+.content-popup-images {
+    margin-left: 0;
+    margin-right: 0;
+}
+.content-popup-images img {
+    width: 100%;
+    max-height: 50vh;
+    height: auto;
+    object-fit: cover;
+    display: block;
+    vertical-align: top;
+}
+
+/* 콘텐츠 팝업 하단: 영역 분할 (박스 없이 구분선만) */
+.content-popup-footer {
+    display: flex;
+    flex-direction: row;
+}
+.content-popup-footer-seg {
+    flex: 1;
+    padding: 14px 6px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 500;
+    color: #64748b;
+    background: transparent;
+    border: none;
+    border-right: 1px solid #e2e8f0;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.content-popup-footer-seg:last-child {
+    border-right: none;
+}
+.content-popup-footer-seg:hover {
+    background: rgba(248, 250, 252, 0.9);
+    color: #334155;
+}
+.content-popup-footer-seg:active {
+    background: #e2e8f0;
+}
+.content-popup-footer-seg.hidden {
+    display: none;
+}
+.content-popup-footer-close {
+    color: #0f172a;
+    font-weight: 600;
+}
+.content-popup-footer-close:hover {
+    color: #020617;
+}

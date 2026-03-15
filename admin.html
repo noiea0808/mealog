@@ -482,10 +482,13 @@
                     <div class="w-64 flex-shrink-0">
                         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sticky top-24">
                             <div class="space-y-2">
-                                <button onclick="window.switchContentSidebar('notice')" id="content-sidebar-notice" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                <button onclick="window.switchContentSidebar('notice')" id="content-sidebar-notice" class="w-full px-4 py-3 text-left text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl transition-colors">
                                     <i class="fa-solid fa-bullhorn mr-2"></i>공지 관리
                                 </button>
-                                <button onclick="window.switchContentSidebar('mealog')" id="content-sidebar-mealog" class="w-full px-4 py-3 text-left text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl transition-colors">
+                                <button onclick="window.switchContentSidebar('popup')" id="content-sidebar-popup" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-window-maximize mr-2"></i>팝업 관리
+                                </button>
+                                <button onclick="window.switchContentSidebar('mealog')" id="content-sidebar-mealog" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
                                     <i class="fa-solid fa-robot mr-2"></i>MEALOG
                                 </button>
                                 <button onclick="window.switchContentSidebar('characters')" id="content-sidebar-characters" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
@@ -909,6 +912,137 @@
                                             </div>
                                         </div>
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 팝업 관리 -->
+                        <div id="content-main-popup" class="content-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div class="flex justify-between items-center">
+                                        <h2 class="text-lg font-black text-slate-800">팝업 관리</h2>
+                                        <button onclick="window.openPopupWriteModal()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                            <i class="fa-solid fa-plus mr-2"></i>팝업 작성
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div id="popupListPage" class="popup-admin-page">
+                                        <h3 class="text-sm font-bold text-slate-500 mb-3">팝업 목록</h3>
+                                        <div id="popupsContainer" class="space-y-2 border border-slate-200 rounded-xl overflow-hidden">
+                                            <div class="text-center py-8 text-slate-400">
+                                                <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                                                <p>로딩 중...</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="popupDetailPage" class="popup-admin-page hidden">
+                                        <div class="flex items-center gap-3 mb-4">
+                                            <button type="button" onclick="window.backToPopupList()" class="px-3 py-2 text-slate-600 hover:bg-slate-100 rounded-xl text-sm font-bold transition-colors">
+                                                <i class="fa-solid fa-arrow-left mr-2"></i>목록으로
+                                            </button>
+                                        </div>
+                                        <div id="popupDetailContainer" class="bg-slate-50 rounded-xl border border-slate-200 p-4 min-h-[200px]">
+                                        </div>
+                                    </div>
+                                    <div id="popupWritePage" class="popup-admin-page hidden">
+                                        <div class="flex items-center gap-3 mb-4">
+                                            <button type="button" onclick="window.backToPopupListFromWrite()" class="px-3 py-2 text-slate-600 hover:bg-slate-100 rounded-xl text-sm font-bold transition-colors">
+                                                <i class="fa-solid fa-arrow-left mr-2"></i>목록으로
+                                            </button>
+                                            <h2 id="popupWritePageTitle" class="text-lg font-black text-slate-800">팝업 작성</h2>
+                                        </div>
+                                        <div class="space-y-4">
+                                            <div>
+                                                <label class="text-sm font-bold text-slate-600 block mb-2">제목</label>
+                                                <input type="text" id="popupTitle" placeholder="팝업 제목을 입력하세요" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 transition-colors">
+                                            </div>
+                                            <div>
+                                                <label class="text-sm font-bold text-slate-600 block mb-2">사진 <span class="text-slate-400 font-normal">(최대 3장)</span></label>
+                                                <input type="file" id="popupImages" accept="image/*" multiple class="hidden">
+                                                <div class="flex items-center gap-2 mb-2">
+                                                    <button type="button" id="popupAddPhotosBtn" class="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-bold hover:bg-slate-50 active:bg-slate-100 transition-colors">
+                                                        <i class="fa-solid fa-image mr-1"></i>사진 추가
+                                                    </button>
+                                                </div>
+                                                <div id="popupImagePreviews" class="flex flex-wrap gap-2 min-h-0"></div>
+                                            </div>
+                                            <div>
+                                                <label class="text-sm font-bold text-slate-600 block mb-2">내용</label>
+                                                <div class="flex gap-1 mb-2 p-1.5 bg-slate-100 rounded-lg w-fit">
+                                                    <button type="button" class="popup-format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors" aria-label="굵게" data-format="bold"><i class="fa-solid fa-bold"></i></button>
+                                                    <button type="button" class="popup-format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors" aria-label="취소선" data-format="strikeThrough"><i class="fa-solid fa-strikethrough"></i></button>
+                                                    <button type="button" class="popup-format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors" aria-label="밑줄" data-format="underline"><i class="fa-solid fa-underline"></i></button>
+                                                </div>
+                                                <div id="popupContent" contenteditable="true" data-placeholder="팝업 내용을 입력하세요" class="w-full min-h-[200px] p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 transition-colors overflow-y-auto resize-none" style="max-height: 40vh;"></div>
+                                            </div>
+                                            <div class="flex flex-wrap items-end gap-3">
+                                                <div class="w-36">
+                                                    <label class="text-xs font-bold text-slate-500 block mb-1">팝업 메뉴</label>
+                                                    <select id="popupTargetMenu" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 transition-colors">
+                                                        <option value="dashboard">밀당</option>
+                                                        <option value="timeline">밀로그</option>
+                                                        <option value="gallery">모먼트</option>
+                                                        <option value="board">밀톡</option>
+                                                        <option value="settings">사용자</option>
+                                                    </select>
+                                                </div>
+                                                <div class="w-32">
+                                                    <label class="text-xs font-bold text-slate-500 block mb-1">시작일</label>
+                                                    <input type="date" id="popupStartDate" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 transition-colors">
+                                                </div>
+                                                <div class="w-32">
+                                                    <label class="text-xs font-bold text-slate-500 block mb-1">종료일</label>
+                                                    <input type="date" id="popupEndDate" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 transition-colors">
+                                                </div>
+                                                <div class="w-36">
+                                                    <label class="text-xs font-bold text-slate-500 block mb-1">팝업 주기</label>
+                                                    <select id="popupFrequency" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 transition-colors">
+                                                        <option value="daily">하루 한 번</option>
+                                                        <option value="on_login">로그인 시마다</option>
+                                                        <option value="on_visit">접근시마다</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label class="text-sm font-bold text-slate-600 block mb-2">랜딩 페이지 (밀톡 공지)</label>
+                                                <div class="flex flex-wrap items-end gap-3">
+                                                    <div class="min-w-[180px] flex-1">
+                                                        <label class="text-xs font-bold text-slate-500 block mb-1">버튼 문구 (사용자에게 표시)</label>
+                                                        <input type="text" id="popupLandingButtonLabel" placeholder="예: 선택한 공지 보기" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 transition-colors">
+                                                    </div>
+                                                    <div class="flex items-center gap-2">
+                                                        <button type="button" onclick="window.openPopupLandingNoticeSelect()" class="py-2.5 px-4 border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center gap-2">
+                                                            <i class="fa-solid fa-link"></i> <span id="popupLandingLabel">공지 선택하기</span>
+                                                        </button>
+                                                        <input type="hidden" id="popupLandingNoticeId" value="">
+                                                        <div id="popupLandingSelectedWrap" class="hidden flex items-center gap-2 py-2.5 px-3 bg-slate-50 rounded-lg border border-slate-200">
+                                                            <span id="popupLandingSelectedTitle" class="text-sm text-slate-700 truncate max-w-[140px]"></span>
+                                                            <button type="button" onclick="window.clearPopupLanding()" class="text-slate-400 hover:text-red-500 text-sm font-bold shrink-0" title="연결 해제">삭제</button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="flex gap-3 pt-2">
+                                                <button type="button" onclick="window.backToPopupListFromWrite()" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm">취소</button>
+                                                <button type="button" id="popupSubmitBtn" onclick="window.submitPopup()" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700">등록</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 팝업 랜딩 공지 선택 모달 -->
+                        <div id="popupLandingNoticeModal" class="hidden fixed inset-0 z-[500] bg-slate-900/50 flex items-center justify-center p-4">
+                            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
+                                <div class="p-4 border-b border-slate-100 flex justify-between items-center">
+                                    <h3 class="text-lg font-bold text-slate-800">밀톡 공지 선택</h3>
+                                    <button type="button" onclick="window.closePopupLandingNoticeSelect()" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-500"><i class="fa-solid fa-times"></i></button>
+                                </div>
+                                <div id="popupLandingNoticeList" class="overflow-y-auto flex-1 p-4 space-y-2">
+                                    <div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-xl mb-2"></i><p class="text-sm">로딩 중...</p></div>
                                 </div>
                             </div>
                         </div>
