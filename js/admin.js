@@ -15,6 +15,15 @@ import { sanitizeFormattedText, renderFormattedContent, stripDangerousTagsOnly }
 
 let currentDeletePhotoId = null;
 
+/** sharedPhotos 문서를 게시물(포스트) 단위로 그룹하기 위한 키 (listeners.js와 동일 로직) */
+function getSharedPhotoGroupKey(data) {
+    if (data.type === 'daily') return `daily_${data.date || 'no-date'}_${data.userId}`;
+    if (data.type === 'best') return `best_${data.id || 'no-id'}_${data.userId}`;
+    if (data.type === 'insight') return `insight_${data.dateRangeText || 'no-range'}_${data.userId}`;
+    if (data.entryId) return `${data.entryId}_${data.userId}`;
+    return `no-entry_${data.userId}`;
+}
+
 // 사용자 테이블 정렬 상태/캐시
 let usersCache = null; // 마지막으로 로드된 사용자 목록 (정렬 전 원본)
 let usersSortState = { key: 'createdAt', dir: 'desc' };
@@ -286,10 +295,10 @@ async function getUserStatistics() {
             activeUsers: { all: 0, last30: 0, last7: 0, today: 0 },
             records: { all: 0, last30: 0, last7: 0, today: 0 },
             sharedPhotos: { all: 0, last30: 0, last7: 0, today: 0 },
-            // 하위 호환
+            // 하위 호환 (게시물 수 기준)
             totalUsers: 0,
             totalMeals: 0,
-            totalSharedPhotos: sharedSnapshot.size,
+            totalSharedPhotos: 0,
             recentActivity: { last7Days: 0, last30Days: 0 }
         };
 
@@ -336,21 +345,30 @@ async function getUserStatistics() {
         }
         stats.totalUsers = Math.max(usersFromCollection, uniqueUserIds.size, stats.newUsers.all);
 
-        // 2) 공유 게시물 기간별
-        stats.sharedPhotos.all = sharedSnapshot.docs.length;
+        // 2) 공유 게시물 기간별 (게시물 수로 카운트 — 같은 entryId/daily/best/insight는 1건)
+        const postKeysByPeriod = { all: new Set(), today: new Set(), last7: new Set(), last30: new Set() };
         sharedSnapshot.docs.forEach(d => {
             const data = d.data();
+            const key = getSharedPhotoGroupKey(data);
             let ts = null;
             if (data.timestamp) {
                 ts = data.timestamp.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
             }
             if (ts) {
                 const dateOnly = new Date(ts.getFullYear(), ts.getMonth(), ts.getDate());
-                if (inPeriod(dateOnly, 'today')) { stats.sharedPhotos.today++; stats.recentActivity.last7Days++; }
-                if (inPeriod(dateOnly, 'last7')) stats.sharedPhotos.last7++;
-                if (inPeriod(dateOnly, 'last30')) { stats.sharedPhotos.last30++; stats.recentActivity.last30Days++; }
+                postKeysByPeriod.all.add(key);
+                if (inPeriod(dateOnly, 'today')) postKeysByPeriod.today.add(key);
+                if (inPeriod(dateOnly, 'last7')) postKeysByPeriod.last7.add(key);
+                if (inPeriod(dateOnly, 'last30')) postKeysByPeriod.last30.add(key);
             }
         });
+        stats.sharedPhotos.all = postKeysByPeriod.all.size;
+        stats.recentActivity.last7Days = postKeysByPeriod.today.size;
+        stats.recentActivity.last30Days = postKeysByPeriod.last30.size;
+        stats.sharedPhotos.today = postKeysByPeriod.today.size;
+        stats.sharedPhotos.last7 = postKeysByPeriod.last7.size;
+        stats.sharedPhotos.last30 = postKeysByPeriod.last30.size;
+        stats.totalSharedPhotos = postKeysByPeriod.all.size;
 
         // 3) 각 사용자의 meals로 기록 수 + 활성 사용자 집계
         const userIdsToCheck = usersFromCollection > 0
@@ -431,6 +449,8 @@ async function getSharedPhotos(pageSize = 100) {
 
 // 대시보드 통계 캐시 문서 (adminSettings 사용 — Firestore 규칙에서 관리자 쓰기 허용됨)
 const DASHBOARD_STATS_REF = () => doc(db, 'artifacts', appId, 'adminSettings', 'dashboardStats');
+// 식당정보 캐시 문서 (전일까지 집계, 당일만 병합으로 읽기 최소화)
+const RESTAURANT_STATS_REF = () => doc(db, 'artifacts', appId, 'adminSettings', 'restaurantStats');
 
 /** 통계 객체를 화면에 반영 + 마지막 업데이트 문구 */
 function renderDashboardStats(stats, updatedAt) {
@@ -477,7 +497,7 @@ function renderDashboardStats(stats, updatedAt) {
     }
 }
 
-/** 당일(오늘 00:00~) 데이터만 경량 조회 — 캐시가 전일 기준일 때 오늘 숫자만 보정용 (읽기 최소화) */
+/** 당일(오늘 00:00~) 데이터만 경량 조회 — 캐시가 전일 기준일 때 오늘 숫자만 보정용 (읽기 최소화). 공유는 게시물 수로 카운트 */
 async function getTodayOnlyStats() {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -486,7 +506,7 @@ async function getTodayOnlyStats() {
         const [
             guestCountSnap,
             newUsersCountSnap,
-            sharedCountSnap
+            sharedDocsSnap
         ] = await Promise.all([
             getCountFromServer(query(
                 collection(db, 'artifacts', appId, 'guestVisits'),
@@ -496,15 +516,19 @@ async function getTodayOnlyStats() {
                 collection(db, 'artifacts', appId, 'users'),
                 where('createdAt', '>=', todayTimestamp)
             )),
-            getCountFromServer(query(
+            getDocs(query(
                 collection(db, 'artifacts', appId, 'sharedPhotos'),
                 where('timestamp', '>=', todayTimestamp)
             ))
         ]);
+        const todayPostKeys = new Set();
+        (sharedDocsSnap.docs || []).forEach(d => {
+            todayPostKeys.add(getSharedPhotoGroupKey(d.data()));
+        });
         return {
             guestVisitsToday: guestCountSnap.data().count ?? 0,
             newUsersToday: newUsersCountSnap.data().count ?? 0,
-            sharedPhotosToday: sharedCountSnap.data().count ?? 0
+            sharedPhotosToday: todayPostKeys.size
         };
     } catch (e) {
         console.warn('당일 통계 조회 실패 (캐시값만 표시):', e?.message || e);
@@ -5531,11 +5555,90 @@ let currentRestaurantSlotFilter = 'all'; // 'all', 'meal', 'snack'
 const MEAL_SLOTS = ['morning', 'lunch', 'dinner'];
 const SNACK_SLOTS = ['pre_morning', 'snack1', 'snack2', 'night'];
 
-// 식당정보 데이터 렌더링
+/** mealDoc.data() 형태의 객체를 restaurantMap에 반영 (slotFilter 적용) */
+function applyMealToRestaurantMap(restaurantMap, mealData, slotFilter) {
+    const place = mealData.place;
+    const slotId = mealData.slotId || '';
+    if (slotFilter === 'meal' && !MEAL_SLOTS.includes(slotId)) return;
+    if (slotFilter === 'snack' && !SNACK_SLOTS.includes(slotId)) return;
+    if (!place || place.trim() === '') return;
+
+    const placeKey = place.trim();
+    const hasPlaceId = !!(mealData.placeId || mealData.kakaoPlaceId);
+    const hasPlaceData = !!mealData.placeData;
+    const hasKakaoPlace = mealData.kakaoPlace === true || mealData.kakaoPlace === 'true';
+    const isKakao = hasPlaceId || hasPlaceData || hasKakaoPlace;
+    const placeId = mealData.placeId || mealData.kakaoPlaceId || null;
+    const address = mealData.placeAddress || mealData.address || null;
+
+    if (!restaurantMap.has(placeKey)) {
+        restaurantMap.set(placeKey, {
+            name: placeKey,
+            count: 0,
+            firstSeen: mealData.date || null,
+            lastSeen: mealData.date || null,
+            isKakao: isKakao,
+            placeId: placeId,
+            address: address,
+            kakaoCount: 0,
+            manualCount: 0
+        });
+    }
+    const restaurant = restaurantMap.get(placeKey);
+    restaurant.count++;
+    if (isKakao) {
+        restaurant.isKakao = true;
+        restaurant.kakaoCount++;
+        if (placeId && !restaurant.placeId) restaurant.placeId = placeId;
+        if (address && !restaurant.address) restaurant.address = address;
+    } else {
+        restaurant.manualCount++;
+    }
+    if (mealData.date) {
+        if (!restaurant.firstSeen || mealData.date < restaurant.firstSeen) restaurant.firstSeen = mealData.date;
+        if (!restaurant.lastSeen || mealData.date > restaurant.lastSeen) restaurant.lastSeen = mealData.date;
+    }
+}
+
+/** 당일 meals만 collectionGroup으로 조회 (읽기 최소화용). 현재 appId 경로만 사용 */
+async function getTodayMealsForRestaurants() {
+    const todayStr = getTodayDateString();
+    const mealsGroup = collectionGroup(db, 'meals');
+    const q = query(mealsGroup, where('date', '==', todayStr));
+    const snap = await getDocs(q);
+    const prefix = `artifacts/${appId}/`;
+    return snap.docs.filter(d => d.ref.path.startsWith(prefix)).map(d => d.data());
+}
+
+/** 캐시용 배열 → Map (병합용) */
+function restaurantArrayToMap(arr) {
+    const map = new Map();
+    (arr || []).forEach(r => map.set(r.name, { ...r }));
+    return map;
+}
+
+/** 전체 사용자 × 전체 meals 조회 후 restaurant Map 반환 (새로고침 시에만 사용) */
+async function fetchAllRestaurantsFull(slotFilter) {
+    const usersColl = collection(db, 'artifacts', appId, 'users');
+    const usersSnapshot = await getDocs(usersColl);
+    const restaurantMap = new Map();
+    for (const userDoc of usersSnapshot.docs) {
+        try {
+            const mealsColl = collection(db, 'artifacts', appId, 'users', userDoc.id, 'meals');
+            const mealsSnapshot = await getDocs(mealsColl);
+            mealsSnapshot.docs.forEach(mealDoc => applyMealToRestaurantMap(restaurantMap, mealDoc.data(), slotFilter));
+        } catch (e) {
+            console.warn(`사용자 ${userDoc.id} meals 조회 실패:`, e);
+        }
+    }
+    return restaurantMap;
+}
+
+// 식당정보 데이터 렌더링 (전일까지 캐시 + 당일만 병합, 새로고침 시에만 전체 조회)
 window.renderRestaurantData = async function(filter = 'all', slotFilter = 'all') {
     const container = document.getElementById('restaurantsContainer');
     if (!container) return;
-    
+
     currentRestaurantFilter = filter;
     if (slotFilter === undefined) slotFilter = currentRestaurantSlotFilter;
 
@@ -5545,104 +5648,38 @@ window.renderRestaurantData = async function(filter = 'all', slotFilter = 'all')
             <p>로딩 중...</p>
         </div>
     `;
-    
+
     try {
-        // 모든 사용자의 meals 컬렉션에서 place 필드 수집
-        const usersColl = collection(db, 'artifacts', appId, 'users');
-        const usersSnapshot = await getDocs(usersColl);
-        
-        const restaurantMap = new Map(); // place -> { name, count, firstSeen, lastSeen, isKakao, placeId, address }
-        
-        // 각 사용자의 meals 컬렉션 조회
-        for (const userDoc of usersSnapshot.docs) {
-            const userId = userDoc.id;
-            try {
-                const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
-                const mealsSnapshot = await getDocs(mealsColl);
-                
-                mealsSnapshot.forEach(mealDoc => {
-                    const mealData = mealDoc.data();
-                    const place = mealData.place;
-                    const slotId = mealData.slotId || '';
+        const todayStr = getTodayDateString();
+        const cacheSnap = await getDoc(RESTAURANT_STATS_REF());
+        let restaurantMap;
 
-                    // 끼니 구분 필터: 식사(morning/lunch/dinner) vs 간식(pre_morning/snack1/snack2/night)
-                    if (slotFilter === 'meal' && !MEAL_SLOTS.includes(slotId)) return;
-                    if (slotFilter === 'snack' && !SNACK_SLOTS.includes(slotId)) return;
+        if (slotFilter === 'all' && cacheSnap.exists() && cacheSnap.data().asOfDate && cacheSnap.data().restaurants) {
+            const data = cacheSnap.data();
+            const asOfDate = data.asOfDate;
+            const cachedList = data.restaurants || [];
 
-                    if (place && place.trim() !== '') {
-                        const placeKey = place.trim();
-                        
-                        // 카카오맵 API로 입력된 식당인지 확인
-                        // placeId, kakaoPlaceId, placeData, kakaoPlace 등이 있으면 카카오맵 입력으로 판단
-                        const hasPlaceId = !!(mealData.placeId || mealData.kakaoPlaceId);
-                        const hasPlaceData = !!mealData.placeData;
-                        const hasKakaoPlace = mealData.kakaoPlace === true || mealData.kakaoPlace === 'true';
-                        const isKakao = hasPlaceId || hasPlaceData || hasKakaoPlace;
-                        
-                        const placeId = mealData.placeId || mealData.kakaoPlaceId || null;
-                        const address = mealData.placeAddress || mealData.address || null;
-                        
-                        // 디버깅: 카카오맵 데이터 확인 (처음 몇 개만 로그)
-                        if (isKakao && Math.random() < 0.1) { // 10% 확률로 로그
-                            console.log('✅ 카카오맵 식당 발견:', {
-                                place: placeKey,
-                                placeId: placeId,
-                                address: address,
-                                hasPlaceId: hasPlaceId,
-                                hasPlaceData: hasPlaceData,
-                                hasKakaoPlace: hasKakaoPlace,
-                                mealDataKeys: Object.keys(mealData).filter(k => k.toLowerCase().includes('place') || k.toLowerCase().includes('kakao') || k.toLowerCase().includes('address'))
-                            });
-                        }
-                        
-                        if (!restaurantMap.has(placeKey)) {
-                            restaurantMap.set(placeKey, {
-                                name: placeKey,
-                                count: 0,
-                                firstSeen: mealData.date || null,
-                                lastSeen: mealData.date || null,
-                                isKakao: isKakao,
-                                placeId: placeId,
-                                address: address,
-                                kakaoCount: 0,
-                                manualCount: 0
-                            });
-                        }
-                        
-                        const restaurant = restaurantMap.get(placeKey);
-                        restaurant.count++;
-                        
-                        // 카카오맵 입력 횟수와 수동 입력 횟수 분리 집계
-                        if (isKakao) {
-                            restaurant.isKakao = true; // 한 번이라도 카카오맵으로 입력되면 true
-                            restaurant.kakaoCount++;
-                            if (placeId && !restaurant.placeId) {
-                                restaurant.placeId = placeId;
-                            }
-                            if (address && !restaurant.address) {
-                                restaurant.address = address;
-                            }
-                        } else {
-                            restaurant.manualCount++;
-                        }
-                        
-                        // 날짜 업데이트
-                        if (mealData.date) {
-                            if (!restaurant.firstSeen || mealData.date < restaurant.firstSeen) {
-                                restaurant.firstSeen = mealData.date;
-                            }
-                            if (!restaurant.lastSeen || mealData.date > restaurant.lastSeen) {
-                                restaurant.lastSeen = mealData.date;
-                            }
-                        }
-                    }
-                });
-            } catch (e) {
-                console.warn(`사용자 ${userId}의 meals 조회 실패:`, e);
+            if (asOfDate === todayStr) {
+                // 캐시가 오늘 기준이면 캐시만 사용 (읽기 1회)
+                restaurantMap = restaurantArrayToMap(cachedList);
+            } else {
+                // 전일까지 캐시 + 당일 meals만 조회 후 병합
+                restaurantMap = restaurantArrayToMap(cachedList);
+                const todayMeals = await getTodayMealsForRestaurants();
+                todayMeals.forEach(mealData => applyMealToRestaurantMap(restaurantMap, mealData, 'all'));
+                const mergedList = Array.from(restaurantMap.values());
+                await setDoc(RESTAURANT_STATS_REF(), { asOfDate: todayStr, restaurants: mergedList }, { merge: true });
             }
+        } else if (slotFilter === 'all') {
+            // 캐시 없음(전체) → 전체 조회 후 캐시 저장
+            restaurantMap = await fetchAllRestaurantsFull('all');
+            const list = Array.from(restaurantMap.values());
+            await setDoc(RESTAURANT_STATS_REF(), { asOfDate: todayStr, restaurants: list }, { merge: true });
+        } else {
+            // 끼니 필터(식사만/간식만)는 캐시에 끼니별 집계가 없으므로 전체 조회
+            restaurantMap = await fetchAllRestaurantsFull(slotFilter);
         }
-        
-        // Map을 배열로 변환
+
         let restaurants = Array.from(restaurantMap.values());
         
         // 디버깅: 필터 전 통계
@@ -5785,8 +5822,27 @@ window.setRestaurantSlotFilter = function(slotFilter) {
     renderRestaurantData(currentRestaurantFilter, slotFilter);
 };
 
-// 식당정보 새로고침
-window.refreshRestaurantData = function() {
-    renderRestaurantData(currentRestaurantFilter, currentRestaurantSlotFilter);
+// 식당정보 새로고침: 전체 조회 후 캐시 저장 (전일까지 숫자 갱신)
+window.refreshRestaurantData = async function() {
+    const container = document.getElementById('restaurantsContainer');
+    if (!container) return;
+    container.innerHTML = `
+        <div class="text-center py-8 text-slate-400">
+            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+            <p>전체 집계 중...</p>
+        </div>
+    `;
+    try {
+        const slotFilter = currentRestaurantSlotFilter;
+        const restaurantMap = await fetchAllRestaurantsFull(slotFilter === 'all' ? 'all' : slotFilter);
+        if (slotFilter === 'all') {
+            const list = Array.from(restaurantMap.values());
+            await setDoc(RESTAURANT_STATS_REF(), { asOfDate: getTodayDateString(), restaurants: list }, { merge: true });
+        }
+        await renderRestaurantData(currentRestaurantFilter, currentRestaurantSlotFilter);
+    } catch (e) {
+        console.error('식당정보 새로고침 실패:', e);
+        container.innerHTML = `<div class="text-center py-8 text-red-400"><p>새로고침 중 오류가 발생했습니다.</p></div>`;
+    }
 };
 
