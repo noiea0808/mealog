@@ -1869,7 +1869,7 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
 }
 .content-popup-footer-seg {
     flex: 1;
-    padding: 14px 6px;
+    padding: 14px 8px;
     text-align: center;
     font-size: 13px;
     font-weight: 700;
