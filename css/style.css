@@ -1861,21 +1861,22 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
     vertical-align: top;
 }
 
-/* 콘텐츠 팝업 하단: 영역 분할 (박스 없이 구분선만) */
+/* 콘텐츠 팝업 하단: 검은색 배경 / 흰색 텍스트 */
 .content-popup-footer {
     display: flex;
     flex-direction: row;
+    background: #0f172a;
 }
 .content-popup-footer-seg {
     flex: 1;
     padding: 14px 6px;
     text-align: center;
     font-size: 13px;
-    font-weight: 500;
-    color: #64748b;
-    background: transparent;
+    font-weight: 700;
+    color: #fff;
+    background: #0f172a;
     border: none;
-    border-right: 1px solid #e2e8f0;
+    border-right: 1px solid rgba(255, 255, 255, 0.15);
     cursor: pointer;
     transition: background 0.15s, color 0.15s;
 }
@@ -1883,19 +1884,24 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
     border-right: none;
 }
 .content-popup-footer-seg:hover {
-    background: rgba(248, 250, 252, 0.9);
-    color: #334155;
+    background: #1e293b;
+    color: #fff;
 }
 .content-popup-footer-seg:active {
-    background: #e2e8f0;
+    background: #334155;
+    color: #fff;
 }
 .content-popup-footer-seg.hidden {
     display: none;
 }
 .content-popup-footer-close {
-    color: #0f172a;
-    font-weight: 600;
+    color: #fff;
+    font-weight: 700;
 }
+
+.content-popup-inner { position: relative; }
+/* 단일 팝업일 때 숫자만 숨기고 바는 공간 유지 (Tailwind .hidden 사용 금지) */
+.content-popup-counter-bar.popup-counter-empty .content-popup-counter-text { visibility: hidden; }
 .content-popup-footer-close:hover {
-    color: #020617;
+    color: #fff;
 }

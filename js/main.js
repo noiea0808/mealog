@@ -1746,9 +1746,21 @@ window.checkAndShowContentPopup = async function(tab) {
         setContentPopupWidth();
         fillContentPopupModal(toShowList[0]);
         window._contentPopupCurrent = { id: toShowList[0].id, frequency: toShowList[0].frequency };
+        const counterBar = document.getElementById('contentPopupCounterBar');
+        const counterEl = document.getElementById('contentPopupCounter');
         const updatePopupNavButtons = () => {
             if (prevBtn) prevBtn.classList.toggle('hidden', window._contentPopupIndex === 0);
             if (nextBtn) nextBtn.classList.toggle('hidden', window._contentPopupIndex >= (window._contentPopupList.length - 1));
+            const total = window._contentPopupList.length;
+            if (counterBar && counterEl) {
+                if (total > 1) {
+                    counterEl.textContent = (window._contentPopupIndex + 1) + '/' + total;
+                    counterBar.classList.remove('popup-counter-empty');
+                } else {
+                    counterEl.textContent = '';
+                    counterBar.classList.add('popup-counter-empty');
+                }
+            }
         };
         if (prevBtn) {
             prevBtn.onclick = () => {
@@ -1787,14 +1799,16 @@ window.closeContentPopupModal = function(dismissToday) {
         const today = new Date().toISOString().slice(0, 10);
         if (cur.frequency === 'daily') {
             localStorage.setItem(`content_popup_${cur.id}_${today}`, '1');
-        } else if (dismissToday) {
-            if (cur.frequency === 'on_login') {
-                sessionStorage.setItem(`content_popup_${cur.id}`, '1');
-            } else if (cur.frequency === 'on_visit') {
+        } else if (cur.frequency === 'on_login') {
+            // 로그인 시마다: 닫기만 해도 이 세션에서 다시 안 띄움
+            sessionStorage.setItem(`content_popup_${cur.id}`, '1');
+            if (dismissToday) localStorage.setItem(`content_popup_${cur.id}_${today}`, '1');
+        } else if (cur.frequency === 'on_visit') {
+            if (dismissToday) {
                 if (!window._contentPopupDismissedVisit) window._contentPopupDismissedVisit = new Set();
                 window._contentPopupDismissedVisit.add(cur.id);
+                localStorage.setItem(`content_popup_${cur.id}_${today}`, '1');
             }
-            localStorage.setItem(`content_popup_${cur.id}_${today}`, '1');
         }
     }
     window._contentPopupCurrent = null;
