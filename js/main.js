@@ -1716,18 +1716,21 @@ window.checkAndShowContentPopup = async function(tab) {
         const q = query(popupsRef, orderBy('timestamp', 'desc'), limit(50));
         const snap = await getDocs(q);
         const today = new Date().toISOString().slice(0, 10);
+        const hostname = window.location.hostname || '';
+        const isLocal = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
+        const currentEnv = isLocal ? 'staging' : (window.APP_ENV || 'production');
         const list = [];
         snap.forEach(doc => {
             const d = doc.data();
+            const targetEnv = d.targetEnv || 'all';
+            if (targetEnv !== 'all' && targetEnv !== currentEnv) return;
             if (d.targetMenu !== tab) return;
             const start = d.startDate || '';
             const end = d.endDate || '';
             if (start && end && today >= start && today <= end) list.push({ id: doc.id, ...d });
         });
         const isDismissed = (popup) => {
-            if (popup.frequency === 'daily') {
-                return localStorage.getItem(`content_popup_${popup.id}_${today}`) === '1';
-            }
+            if (localStorage.getItem(`content_popup_${popup.id}_${today}`) === '1') return true;
             if (popup.frequency === 'on_login') {
                 return sessionStorage.getItem(`content_popup_${popup.id}`) === '1';
             }
@@ -1780,15 +1783,18 @@ window.closeContentPopupModal = function(dismissToday) {
     const nextBtn = document.getElementById('contentPopupNextBtn');
     if (!modal) return;
     const cur = window._contentPopupCurrent;
-    if (dismissToday && cur) {
+    if (cur) {
         const today = new Date().toISOString().slice(0, 10);
         if (cur.frequency === 'daily') {
             localStorage.setItem(`content_popup_${cur.id}_${today}`, '1');
-        } else if (cur.frequency === 'on_login') {
-            sessionStorage.setItem(`content_popup_${cur.id}`, '1');
-        } else if (cur.frequency === 'on_visit') {
-            if (!window._contentPopupDismissedVisit) window._contentPopupDismissedVisit = new Set();
-            window._contentPopupDismissedVisit.add(cur.id);
+        } else if (dismissToday) {
+            if (cur.frequency === 'on_login') {
+                sessionStorage.setItem(`content_popup_${cur.id}`, '1');
+            } else if (cur.frequency === 'on_visit') {
+                if (!window._contentPopupDismissedVisit) window._contentPopupDismissedVisit = new Set();
+                window._contentPopupDismissedVisit.add(cur.id);
+            }
+            localStorage.setItem(`content_popup_${cur.id}_${today}`, '1');
         }
     }
     window._contentPopupCurrent = null;

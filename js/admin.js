@@ -3168,6 +3168,7 @@ window.deleteNotice = async function(noticeId) {
 // ========== 팝업 관리 ==========
 const POPUP_TARGET_MENU_LABELS = { dashboard: '밀당', timeline: '밀로그', gallery: '모먼트', board: '밀톡', settings: '사용자' };
 const POPUP_FREQUENCY_LABELS = { daily: '하루 한 번', on_login: '로그인 시마다', on_visit: '접근시마다' };
+const POPUP_TARGET_ENV_LABELS = { all: '전체', production: '프로덕션만', staging: '스테이징만' };
 let currentEditingPopupId = null;
 let currentSelectedPopupId = null;
 
@@ -3186,13 +3187,14 @@ async function renderPopups() {
             const id = d.id;
             const menuLabel = POPUP_TARGET_MENU_LABELS[p.targetMenu] || p.targetMenu;
             const freqLabel = POPUP_FREQUENCY_LABELS[p.frequency] || p.frequency;
+            const envLabel = POPUP_TARGET_ENV_LABELS[p.targetEnv] || POPUP_TARGET_ENV_LABELS.all;
             const start = p.startDate || '';
             const end = p.endDate || '';
             const isSelected = currentSelectedPopupId === id;
             return `
-                <div data-popup-id="${id}" onclick="window.selectAdminPopup('${id}')" class="admin-popup-row px-4 py-3 border-b border-slate-100 last:border-b-0 cursor-pointer hover:bg-slate-50 transition-colors ${isSelected ? 'bg-emerald-50 border-l-4 border-l-emerald-500' : ''}">
-                    <h3 class="font-bold text-slate-800 truncate">${escapeHtml(p.title || '제목 없음')}</h3>
-                    <p class="text-xs text-slate-500 mt-0.5">${menuLabel} · ${freqLabel} · ${start} ~ ${end}</p>
+                <div data-popup-id="${id}" onclick="window.selectAdminPopup('${id}')" class="admin-popup-row flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-100 last:border-b-0 cursor-pointer hover:bg-slate-50 transition-colors ${isSelected ? 'bg-emerald-50 border-l-4 border-l-emerald-500' : ''}">
+                    <h3 class="font-bold text-slate-800 truncate min-w-0 flex-shrink">${escapeHtml(p.title || '제목 없음')}</h3>
+                    <p class="text-xs text-slate-500 text-right whitespace-nowrap shrink-0">${envLabel} · ${menuLabel} · ${freqLabel} · ${start} ~ ${end}</p>
                 </div>
             `;
         }).join('');
@@ -3245,6 +3247,7 @@ async function renderPopupDetailInAdmin(popupId) {
         const p = snap.data();
         const menuLabel = POPUP_TARGET_MENU_LABELS[p.targetMenu] || p.targetMenu;
         const freqLabel = POPUP_FREQUENCY_LABELS[p.frequency] || p.frequency;
+        const envLabel = POPUP_TARGET_ENV_LABELS[p.targetEnv] || POPUP_TARGET_ENV_LABELS.all;
         const imagesHtml = Array.isArray(p.imageUrls) && p.imageUrls.length > 0
             ? `<div class="flex flex-col gap-2 mb-4">${p.imageUrls.map(url => `<img src="${url}" alt="팝업 사진" class="max-w-full h-auto rounded-xl border border-slate-200 object-contain" style="max-height: 200px;">`).join('')}</div>`
             : '';
@@ -3256,7 +3259,8 @@ async function renderPopupDetailInAdmin(popupId) {
                 <h2 class="text-lg font-bold text-slate-800 mb-3">${escapeHtml(p.title || '제목 없음')}</h2>
                 <div class="bg-slate-100 rounded-xl p-3 mb-4 text-sm">
                     <p class="font-bold text-slate-700 mb-1.5">설정</p>
-                    <p class="text-slate-600"><span class="font-bold">팝업 메뉴:</span> ${menuLabel}</p>
+                    <p class="text-slate-600"><span class="font-bold">표시 환경:</span> ${envLabel}</p>
+                    <p class="text-slate-600 mt-0.5"><span class="font-bold">팝업 메뉴:</span> ${menuLabel}</p>
                     <p class="text-slate-600 mt-0.5"><span class="font-bold">팝업 주기:</span> ${freqLabel}</p>
                     <p class="text-slate-600 mt-0.5"><span class="font-bold">표시 기간:</span> ${p.startDate || ''} ~ ${p.endDate || ''}</p>
                     <p class="text-slate-600 mt-0.5"><span class="font-bold">랜딩 페이지:</span></p>
@@ -3392,6 +3396,8 @@ window.openPopupWriteModal = function(popupId = null) {
                 if (startDateInput) startDateInput.value = d.startDate || today;
                 if (endDateInput) endDateInput.value = d.endDate || today;
                 if (frequencySelect) frequencySelect.value = d.frequency || 'daily';
+                const targetEnvSelect = document.getElementById('popupTargetEnv');
+                if (targetEnvSelect) targetEnvSelect.value = d.targetEnv || 'all';
                 if (d.landingNoticeId) {
                     window.popupLandingNoticeId = d.landingNoticeId;
                     window.popupLandingNoticeTitle = d.landingNoticeTitle || '';
@@ -3508,6 +3514,8 @@ window.submitPopup = async function() {
     const startDate = startDateInput ? startDateInput.value : '';
     const endDate = endDateInput ? endDateInput.value : '';
     const frequency = frequencySelect ? frequencySelect.value : 'daily';
+    const targetEnvSelect = document.getElementById('popupTargetEnv');
+    const targetEnv = targetEnvSelect ? targetEnvSelect.value : 'all';
     if (!title) { alert('제목을 입력해주세요.'); return; }
     if (!content) { alert('내용을 입력해주세요.'); return; }
     if (!startDate || !endDate) { alert('팝업 기간(시작일·종료일)을 입력해주세요.'); return; }
@@ -3541,6 +3549,7 @@ window.submitPopup = async function() {
             startDate,
             endDate,
             frequency,
+            targetEnv: targetEnv || 'all',
             timestamp: new Date().toISOString(),
             authorDisplayName: await getAdminDisplayName()
         };
