@@ -2845,6 +2845,7 @@ initAuth(async (user) => {
         }
         
         // 로그인 배너 설정 로드 후 표시 (설정 없음 → 영역 숨김, 사용 켜고 이미지 없음 → 흰색 영역, 이미지 있음 → 이미지 표시)
+        // 표시 환경: 프로덕션만/스테이징만 선택 시 해당 환경에서만 표시. 스테이징 = 로컬(localhost 등) 포함
         async function loadAndShowLoginBanner() {
             const section = document.getElementById('loginBannerSection');
             const imgEl = document.getElementById('loginBannerImage');
@@ -2853,6 +2854,14 @@ initAuth(async (user) => {
                 const bannerDoc = await getDoc(doc(db, 'artifacts', appId, 'config', 'loginBanner'));
                 const data = bannerDoc.exists() ? bannerDoc.data() : null;
                 if (!data || !data.enabled) {
+                    section.classList.add('hidden');
+                    return;
+                }
+                const hostname = window.location.hostname || '';
+                const isLocal = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
+                const currentEnv = isLocal ? 'staging' : (window.APP_ENV || 'production');
+                const targetEnv = data.targetEnv || 'all';
+                if (targetEnv !== 'all' && targetEnv !== currentEnv) {
                     section.classList.add('hidden');
                     return;
                 }

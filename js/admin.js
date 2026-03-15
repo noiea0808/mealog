@@ -1235,9 +1235,13 @@ window.switchContentSidebar = function(section) {
     }
 };
 
+// 로그인 배너 표시 환경 라벨 (스테이징 = 로컬 포함)
+const LOGIN_BANNER_TARGET_ENV_LABELS = { all: '전체', production: '프로덕션만', staging: '스테이징만 (로컬 포함)' };
+
 // 로그인 배너 설정 로드
 async function loadLoginBannerConfig() {
     const enabledEl = document.getElementById('loginBannerEnabled');
+    const targetEnvEl = document.getElementById('loginBannerTargetEnv');
     const labelEl = document.getElementById('loginBannerImageLabel');
     const previewEl = document.getElementById('loginBannerImagePreview');
     const inputEl = document.getElementById('loginBannerImageInput');
@@ -1253,6 +1257,8 @@ async function loadLoginBannerConfig() {
         const bannerDoc = await getDoc(doc(db, 'artifacts', appId, 'config', 'loginBanner'));
         const data = bannerDoc.exists() ? bannerDoc.data() : null;
         enabledEl.checked = !!(data && data.enabled);
+        const targetEnv = (data && (data.targetEnv === 'production' || data.targetEnv === 'staging')) ? data.targetEnv : 'all';
+        if (targetEnvEl) targetEnvEl.value = targetEnv;
         const imageUrl = (data && data.imageUrl && typeof data.imageUrl === 'string') ? data.imageUrl.trim() : '';
         if (labelEl) labelEl.textContent = imageUrl ? '등록된 이미지 있음' : '선택된 이미지 없음';
         if (previewEl) {
@@ -1310,9 +1316,12 @@ window.saveLoginBanner = async function() {
     const landingIdEl = document.getElementById('loginBannerLandingNoticeId');
     const landingNoticeId = (landingIdEl && landingIdEl.value) ? landingIdEl.value.trim() : '';
     const landingNoticeTitle = window.loginBannerLandingNoticeTitle || '';
+    const targetEnvEl = document.getElementById('loginBannerTargetEnv');
+    const targetEnv = (targetEnvEl && (targetEnvEl.value === 'production' || targetEnvEl.value === 'staging')) ? targetEnvEl.value : 'all';
     try {
         const payload = {
             enabled,
+            targetEnv: targetEnv || 'all',
             imageUrl: imageUrl || null,
             updatedAt: new Date().toISOString()
         };

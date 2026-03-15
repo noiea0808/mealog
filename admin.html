@@ -1057,6 +1057,17 @@
                                         <input type="checkbox" id="loginBannerEnabled" class="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
                                         <label for="loginBannerEnabled" class="text-sm font-bold text-slate-700">배너 사용</label>
                                     </div>
+                                    <div class="flex items-center gap-3 flex-wrap">
+                                        <div class="w-40">
+                                            <label for="loginBannerTargetEnv" class="text-xs font-bold text-slate-500 block mb-1">표시 환경</label>
+                                            <select id="loginBannerTargetEnv" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 transition-colors">
+                                                <option value="all">전체</option>
+                                                <option value="production">프로덕션만</option>
+                                                <option value="staging">스테이징만 (로컬 포함)</option>
+                                            </select>
+                                        </div>
+                                        <p class="text-xs text-slate-400 self-end pb-1">스테이징 선택 시 로컬(localhost 등)에서도 표시됩니다.</p>
+                                    </div>
                                     <div id="loginBannerImageWrap" class="space-y-2">
                                         <label class="text-sm font-bold text-slate-600 block">배너 이미지</label>
                                         <input type="file" id="loginBannerImageInput" accept="image/*" class="hidden">
