@@ -403,6 +403,10 @@
             </div>
             </div>
         </div>
+        <!-- 로그인 배너: 이메일로 가입 아래·화면 하단. 관리자에서 사용 설정 시에만 표시. 권장 이미지 448×200 px -->
+        <div id="loginBannerSection" class="hidden w-full shrink-0 mt-auto" style="height: 200px;">
+            <img id="loginBannerImage" src="" alt="" class="hidden w-full h-full object-cover object-center pointer-events-none">
+        </div>
         <!-- 웹에서만 표시: 로그인 화면일 때만 노출 (Capacitor 네이티브에서는 숨김) -->
         <div id="apkDownloadSection" class="hidden mt-auto w-full pt-4 pb-[max(4rem,calc(env(safe-area-inset-bottom)+2rem))] px-4 sm:px-6 border-t border-emerald-200/40 bg-emerald-900/30">
             <a href="./download.html" id="apkDownloadLink" class="flex items-center justify-center gap-2 w-full py-3 text-emerald-100 text-sm font-bold hover:text-white transition-colors">

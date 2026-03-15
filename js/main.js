@@ -2844,6 +2844,52 @@ initAuth(async (user) => {
             return;
         }
         
+        // 로그인 배너 설정 로드 후 표시 (설정 없음 → 영역 숨김, 사용 켜고 이미지 없음 → 흰색 영역, 이미지 있음 → 이미지 표시)
+        async function loadAndShowLoginBanner() {
+            const section = document.getElementById('loginBannerSection');
+            const imgEl = document.getElementById('loginBannerImage');
+            if (!section) return;
+            try {
+                const bannerDoc = await getDoc(doc(db, 'artifacts', appId, 'config', 'loginBanner'));
+                const data = bannerDoc.exists() ? bannerDoc.data() : null;
+                if (!data || !data.enabled) {
+                    section.classList.add('hidden');
+                    return;
+                }
+                section.classList.remove('hidden');
+                section.classList.add('bg-white');
+                if (imgEl) {
+                    imgEl.classList.add('hidden');
+                    imgEl.removeAttribute('src');
+                }
+                if (data.imageUrl && typeof data.imageUrl === 'string' && data.imageUrl.trim()) {
+                    section.classList.remove('bg-white');
+                    if (imgEl) {
+                        imgEl.setAttribute('src', data.imageUrl.trim());
+                        imgEl.setAttribute('alt', '');
+                        imgEl.classList.remove('hidden');
+                    }
+                }
+                const landingNoticeId = (data.landingNoticeId && typeof data.landingNoticeId === 'string') ? data.landingNoticeId.trim() : '';
+                section.removeAttribute('role');
+                section.style.cursor = '';
+                section.onclick = null;
+                if (landingNoticeId) {
+                    section.setAttribute('role', 'button');
+                    section.style.cursor = 'pointer';
+                    section.onclick = () => {
+                        try {
+                            sessionStorage.setItem('loginBannerLandingNoticeId', landingNoticeId);
+                        } catch (_) {}
+                        if (typeof window.startGuest === 'function') window.startGuest();
+                    };
+                }
+            } catch (e) {
+                console.warn('로그인 배너 설정 로드 실패:', e);
+                section.classList.add('hidden');
+            }
+        }
+
         // 로그인 필요 시: 아이콘 페이드아웃 → 타이틀 표시 → 타이틀 중앙에서 위로 올라감 → 올라가는 애니메이션 완료 후 버튼 페이드인
         const showLoginScreen = () => {
             const landingPage = document.getElementById('landingPage');
@@ -2866,6 +2912,7 @@ initAuth(async (user) => {
                         });
                     }
                     if (apkSection) apkSection.classList.remove('hidden');
+                    loadAndShowLoginBanner();
                 };
                 // transitionend로 애니메이션 완료 후에만 버튼 표시 (점프 방지)
                 if (titleEl) {
@@ -2912,6 +2959,23 @@ initAuth(async (user) => {
         hideLoading();
     }
 });
+
+// 로그인 배너에서 공지로 랜딩: 배너 클릭 시 저장된 공지 ID가 있으면 메인 화면 진입 후 밀톡 탭으로 전환하고 해당 공지 열기
+function applyLoginBannerLandingNotice() {
+    try {
+        const noticeId = sessionStorage.getItem('loginBannerLandingNoticeId');
+        if (!noticeId || typeof window.openNoticeDetail !== 'function') return;
+        sessionStorage.removeItem('loginBannerLandingNoticeId');
+        if (typeof window.switchMainTab === 'function') {
+            window.switchMainTab('board');
+        }
+        setTimeout(() => {
+            if (typeof window.openNoticeDetail === 'function') window.openNoticeDetail(noticeId);
+        }, 500);
+    } catch (_) {}
+}
+window.addEventListener('mealog:mainScreenShown', applyLoginBannerLandingNotice);
+window.__onMainScreenShown = applyLoginBannerLandingNotice;
 
 // 스크롤 방향에 따른 헤더·하단 네비 숨김·표시 (트위터/인스타 스타일)
 // 아래로 스크롤 시 헤더·하단 네비 숨김, 위로 스크롤 시 다시 표시

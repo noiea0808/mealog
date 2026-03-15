@@ -649,6 +649,19 @@ export async function uploadNoticeImages(files, userId) {
     return Promise.all(uploadPromises);
 }
 
+/** 로그인 배너 이미지 업로드: 1장, 600KB 이하 압축 후 artifacts/{appId}/login-banner/ 에 저장 */
+export async function uploadLoginBannerImage(file, appId) {
+    if (!file || !appId) return null;
+    const blob = await compressImageToBlobMaxSize(file, 600);
+    const timestamp = Date.now();
+    const randomStr = Math.random().toString(36).substring(2, 9);
+    const fileName = `${timestamp}_${randomStr}.jpg`;
+    const path = `artifacts/${appId}/login-banner/${fileName}`;
+    const storageRef = ref(storage, path);
+    await uploadBytes(storageRef, blob);
+    return getDownloadURL(storageRef);
+}
+
 /** 밀톡 게시글용 이미지 업로드: 최대 5장, 장당 600KB 이하 압축 후 users/{userId}/board/ 에 저장 */
 export async function uploadBoardImages(files, userId) {
     if (!files || files.length === 0) return [];

@@ -273,6 +273,18 @@ service cloud.firestore {
     }
     
     // ============================================
+    // 앱 설정 (config 컬렉션) - 로그인 배너 등
+    // loginBanner: 비로그인 포함 누구나 읽기, 쓰기는 관리자만
+    // ============================================
+    match /artifacts/{appId}/config/loginBanner {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /artifacts/{appId}/config/{configId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ============================================
     // 콘텐츠 (content 컬렉션) - 관리자 전용
     // apk 문서는 누구나 읽기 가능 (다운로드 페이지용)
     // ============================================

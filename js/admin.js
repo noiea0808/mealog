@@ -7,7 +7,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPasswor
 // Firestore 규칙·Callable은 기본 Auth만 인식하므로 관리자도 기본 Auth 사용 (admin 페이지는 별도 URL)
 const adminAuth = getAuth(app);
 import { collection, collectionGroup, getDocs, query, orderBy, limit, startAfter, doc, deleteDoc, getDoc, setDoc, where, writeBatch, addDoc, serverTimestamp, getCountFromServer, Timestamp, deleteField } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { uploadImageToStorage, uploadPersonaImageToStorage, uploadNoticeImages, uploadPopupImages } from './utils.js';
+import { uploadImageToStorage, uploadPersonaImageToStorage, uploadNoticeImages, uploadPopupImages, uploadLoginBannerImage } from './utils.js';
 import { getReportsAggregateByGroupKeys, deleteBoardPostByAdmin, setBoardPostHidden, getAdminDisplayName, invalidateAdminDisplayNameCache } from './db.js';
 import { REPORT_REASONS } from './constants.js';
 import { getCurrentTermsVersion, invalidateTermsVersionCache } from './utils-terms.js';
@@ -1048,6 +1048,73 @@ function initAdminPage() {
         });
     }
     
+    // 로그인 배너 UI
+    const loginBannerImageBtn = document.getElementById('loginBannerImageBtn');
+    const loginBannerImageInput = document.getElementById('loginBannerImageInput');
+    const loginBannerImageRemoveBtn = document.getElementById('loginBannerImageRemoveBtn');
+    const loginBannerSaveBtn = document.getElementById('loginBannerSaveBtn');
+    if (loginBannerImageBtn && loginBannerImageInput) {
+        loginBannerImageBtn.addEventListener('click', () => loginBannerImageInput.click());
+    }
+    if (loginBannerImageInput) {
+        loginBannerImageInput.addEventListener('change', (e) => {
+            const file = (e.target.files && e.target.files[0]) ? e.target.files[0] : null;
+            window.loginBannerFile = file && file.type.startsWith('image/') ? file : null;
+            window.loginBannerRemoveImage = false;
+            const labelEl = document.getElementById('loginBannerImageLabel');
+            const previewEl = document.getElementById('loginBannerImagePreview');
+            if (labelEl) labelEl.textContent = window.loginBannerFile ? file.name : '선택된 이미지 없음';
+            if (previewEl) {
+                previewEl.innerHTML = '';
+                if (window.loginBannerFile) {
+                    const img = document.createElement('img');
+                    img.src = URL.createObjectURL(window.loginBannerFile);
+                    img.alt = '미리보기';
+                    img.className = 'max-w-full h-auto rounded-xl border border-slate-200 object-contain max-h-24';
+                    previewEl.appendChild(img);
+                }
+            }
+            e.target.value = '';
+        });
+    }
+    if (loginBannerImageRemoveBtn) {
+        loginBannerImageRemoveBtn.addEventListener('click', () => {
+            window.loginBannerFile = null;
+            window.loginBannerRemoveImage = true;
+            const labelEl = document.getElementById('loginBannerImageLabel');
+            const previewEl = document.getElementById('loginBannerImagePreview');
+            if (labelEl) labelEl.textContent = '선택된 이미지 없음 (저장 시 이미지 제거됨)';
+            if (previewEl) previewEl.innerHTML = '';
+            const inputEl = document.getElementById('loginBannerImageInput');
+            if (inputEl) inputEl.value = '';
+        });
+    }
+    if (loginBannerSaveBtn) {
+        loginBannerSaveBtn.addEventListener('click', () => window.saveLoginBanner());
+    }
+    const loginBannerLandingNoticeBtn = document.getElementById('loginBannerLandingNoticeBtn');
+    const loginBannerLandingClearBtn = document.getElementById('loginBannerLandingClearBtn');
+    const loginBannerLandingNoticeModalClose = document.getElementById('loginBannerLandingNoticeModalClose');
+    if (loginBannerLandingNoticeBtn) {
+        loginBannerLandingNoticeBtn.addEventListener('click', () => window.openLoginBannerLandingNoticeSelect());
+    }
+    if (loginBannerLandingClearBtn) {
+        loginBannerLandingClearBtn.addEventListener('click', () => {
+            const landingIdEl = document.getElementById('loginBannerLandingNoticeId');
+            const landingLabelEl = document.getElementById('loginBannerLandingLabel');
+            const landingSelectedWrap = document.getElementById('loginBannerLandingSelectedWrap');
+            const landingSelectedTitle = document.getElementById('loginBannerLandingSelectedTitle');
+            if (landingIdEl) landingIdEl.value = '';
+            if (landingLabelEl) landingLabelEl.textContent = '공지 선택하기';
+            if (landingSelectedWrap) landingSelectedWrap.classList.add('hidden');
+            if (landingSelectedTitle) landingSelectedTitle.textContent = '';
+            window.loginBannerLandingNoticeTitle = '';
+        });
+    }
+    if (loginBannerLandingNoticeModalClose) {
+        loginBannerLandingNoticeModalClose.addEventListener('click', () => window.closeLoginBannerLandingNoticeSelect());
+    }
+
     // Enter 키로 로그인
     const passwordInput = document.getElementById('adminPassword');
     if (passwordInput) {
@@ -1161,9 +1228,156 @@ window.switchContentSidebar = function(section) {
         renderNotices();
     } else if (section === 'popup') {
         renderPopups();
+    } else if (section === 'loginBanner') {
+        loadLoginBannerConfig();
     } else if (section === 'settings') {
         loadAdminSettings();
     }
+};
+
+// 로그인 배너 설정 로드
+async function loadLoginBannerConfig() {
+    const enabledEl = document.getElementById('loginBannerEnabled');
+    const labelEl = document.getElementById('loginBannerImageLabel');
+    const previewEl = document.getElementById('loginBannerImagePreview');
+    const inputEl = document.getElementById('loginBannerImageInput');
+    const landingIdEl = document.getElementById('loginBannerLandingNoticeId');
+    const landingLabelEl = document.getElementById('loginBannerLandingLabel');
+    const landingSelectedWrap = document.getElementById('loginBannerLandingSelectedWrap');
+    const landingSelectedTitle = document.getElementById('loginBannerLandingSelectedTitle');
+    if (!enabledEl) return;
+    window.loginBannerFile = null;
+    window.loginBannerRemoveImage = false;
+    if (inputEl) inputEl.value = '';
+    try {
+        const bannerDoc = await getDoc(doc(db, 'artifacts', appId, 'config', 'loginBanner'));
+        const data = bannerDoc.exists() ? bannerDoc.data() : null;
+        enabledEl.checked = !!(data && data.enabled);
+        const imageUrl = (data && data.imageUrl && typeof data.imageUrl === 'string') ? data.imageUrl.trim() : '';
+        if (labelEl) labelEl.textContent = imageUrl ? '등록된 이미지 있음' : '선택된 이미지 없음';
+        if (previewEl) {
+            previewEl.innerHTML = '';
+            if (imageUrl) {
+                const img = document.createElement('img');
+                img.src = imageUrl;
+                img.alt = '배너 미리보기';
+                img.className = 'max-w-full h-auto rounded-xl border border-slate-200 object-contain max-h-24';
+                previewEl.appendChild(img);
+            }
+        }
+        const lid = (data && data.landingNoticeId && typeof data.landingNoticeId === 'string') ? data.landingNoticeId.trim() : '';
+        const ltitle = (data && data.landingNoticeTitle && typeof data.landingNoticeTitle === 'string') ? data.landingNoticeTitle.trim() : '';
+        if (landingIdEl) landingIdEl.value = lid;
+        if (landingLabelEl) landingLabelEl.textContent = lid ? '공지 변경하기' : '공지 선택하기';
+        if (landingSelectedWrap) landingSelectedWrap.classList.toggle('hidden', !lid);
+        if (landingSelectedTitle) landingSelectedTitle.textContent = ltitle || '(공지)';
+        window.loginBannerLandingNoticeTitle = ltitle || '';
+    } catch (e) {
+        console.error('로그인 배너 설정 로드 실패:', e);
+        if (labelEl) labelEl.textContent = '로드 실패';
+    }
+}
+
+// 로그인 배너 저장
+window.saveLoginBanner = async function() {
+    const enabledEl = document.getElementById('loginBannerEnabled');
+    const saveBtn = document.getElementById('loginBannerSaveBtn');
+    if (!enabledEl || !saveBtn) return;
+    const enabled = enabledEl.checked;
+    let imageUrl = null;
+    if (enabled && window.loginBannerRemoveImage) {
+        imageUrl = null;
+    } else if (enabled && window.loginBannerFile) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = '업로드 중...';
+        try {
+            imageUrl = await uploadLoginBannerImage(window.loginBannerFile, appId);
+        } catch (e) {
+            console.error('배너 이미지 업로드 실패:', e);
+            alert('이미지 업로드에 실패했습니다.');
+            saveBtn.disabled = false;
+            saveBtn.textContent = '저장';
+            return;
+        }
+        saveBtn.disabled = false;
+        saveBtn.textContent = '저장';
+    } else if (enabled) {
+        const bannerDoc = await getDoc(doc(db, 'artifacts', appId, 'config', 'loginBanner'));
+        const data = bannerDoc.exists() ? bannerDoc.data() : null;
+        imageUrl = (data && data.imageUrl && typeof data.imageUrl === 'string') ? data.imageUrl.trim() : null;
+        if (imageUrl === '') imageUrl = null;
+    }
+    const landingIdEl = document.getElementById('loginBannerLandingNoticeId');
+    const landingNoticeId = (landingIdEl && landingIdEl.value) ? landingIdEl.value.trim() : '';
+    const landingNoticeTitle = window.loginBannerLandingNoticeTitle || '';
+    try {
+        const payload = {
+            enabled,
+            imageUrl: imageUrl || null,
+            updatedAt: new Date().toISOString()
+        };
+        if (landingNoticeId) {
+            payload.landingNoticeId = landingNoticeId;
+            payload.landingNoticeTitle = landingNoticeTitle;
+        } else {
+            payload.landingNoticeId = deleteField();
+            payload.landingNoticeTitle = deleteField();
+        }
+        await setDoc(doc(db, 'artifacts', appId, 'config', 'loginBanner'), payload, { merge: true });
+        alert('저장되었습니다.');
+        loadLoginBannerConfig();
+    } catch (e) {
+        console.error('로그인 배너 저장 실패:', e);
+        alert('저장에 실패했습니다: ' + (e.message || e));
+    }
+};
+
+window.openLoginBannerLandingNoticeSelect = async function() {
+    const modal = document.getElementById('loginBannerLandingNoticeModal');
+    const listEl = document.getElementById('loginBannerLandingNoticeList');
+    if (!modal || !listEl) return;
+    listEl.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-xl mb-2"></i><p class="text-sm">로딩 중...</p></div>';
+    modal.classList.remove('hidden');
+    try {
+        const noticesColl = collection(db, 'artifacts', appId, 'notices');
+        const snap = await getDocs(query(noticesColl, orderBy('timestamp', 'desc')));
+        if (snap.empty) {
+            listEl.innerHTML = '<div class="text-center py-8 text-slate-400"><p class="text-sm">등록된 공지가 없습니다.</p></div>';
+            return;
+        }
+        listEl.innerHTML = snap.docs.map(d => {
+            const n = d.data();
+            const id = d.id;
+            const title = (n.title || '제목 없음').trim();
+            return `<button type="button" data-notice-id="${escapeHtml(id)}" data-notice-title="${escapeHtml(title)}" class="login-banner-landing-notice-btn w-full text-left px-4 py-3 rounded-xl border border-slate-200 hover:bg-slate-50 hover:border-emerald-300 transition-colors">
+                <span class="font-bold text-slate-800">${escapeHtml(title)}</span>
+            </button>`;
+        }).join('');
+        listEl.querySelectorAll('.login-banner-landing-notice-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const noticeId = btn.getAttribute('data-notice-id');
+                const noticeTitle = btn.getAttribute('data-notice-title') || '(공지)';
+                window.loginBannerLandingNoticeTitle = noticeTitle;
+                const landingIdEl = document.getElementById('loginBannerLandingNoticeId');
+                const landingLabelEl = document.getElementById('loginBannerLandingLabel');
+                const landingSelectedWrap = document.getElementById('loginBannerLandingSelectedWrap');
+                const landingSelectedTitle = document.getElementById('loginBannerLandingSelectedTitle');
+                if (landingIdEl) landingIdEl.value = noticeId;
+                if (landingLabelEl) landingLabelEl.textContent = '공지 변경하기';
+                if (landingSelectedWrap) landingSelectedWrap.classList.remove('hidden');
+                if (landingSelectedTitle) landingSelectedTitle.textContent = noticeTitle;
+                window.closeLoginBannerLandingNoticeSelect();
+            });
+        });
+    } catch (e) {
+        console.error('공지 목록 로드 실패:', e);
+        listEl.innerHTML = '<div class="text-center py-8 text-red-400"><p class="text-sm">공지 목록을 불러오는 중 오류가 발생했습니다.</p></div>';
+    }
+};
+
+window.closeLoginBannerLandingNoticeSelect = function() {
+    const modal = document.getElementById('loginBannerLandingNoticeModal');
+    if (modal) modal.classList.add('hidden');
 };
 
 // APK 배포 콘텐츠 로드

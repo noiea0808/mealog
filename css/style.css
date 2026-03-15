@@ -1018,8 +1018,10 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
 #landingPage { 
     position: fixed; 
     top: 0; 
-    left: 0; 
-    width: 100%; 
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 28rem; /* 448px, body max-w-md와 동일 */
     height: 100%; 
     z-index: 200; 
     background: #ffffff;
