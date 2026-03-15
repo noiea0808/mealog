@@ -1748,6 +1748,7 @@ window.checkAndShowContentPopup = async function(tab) {
         window._contentPopupCurrent = { id: toShowList[0].id, frequency: toShowList[0].frequency };
         const counterBar = document.getElementById('contentPopupCounterBar');
         const counterEl = document.getElementById('contentPopupCounter');
+        const footerEl = document.getElementById('contentPopupFooter');
         const updatePopupNavButtons = () => {
             if (prevBtn) prevBtn.classList.toggle('hidden', window._contentPopupIndex === 0);
             if (nextBtn) nextBtn.classList.toggle('hidden', window._contentPopupIndex >= (window._contentPopupList.length - 1));
@@ -1760,6 +1761,11 @@ window.checkAndShowContentPopup = async function(tab) {
                     counterEl.textContent = '';
                     counterBar.classList.add('popup-counter-empty');
                 }
+            }
+            if (footerEl) {
+                const visibleCount = [prevBtn, nextBtn, document.getElementById('contentPopupDismissTodayBtn'), document.getElementById('contentPopupCloseBtn')]
+                    .filter(btn => btn && !btn.classList.contains('hidden')).length;
+                footerEl.setAttribute('data-visible-count', String(visibleCount));
             }
         };
         if (prevBtn) {
@@ -5202,7 +5208,7 @@ function initEventListeners() {
         logoutConfirmActionBtn.addEventListener('click', confirmLogoutAction);
     }
     
-    // 콘텐츠 팝업 모달: 오늘 다시 보지 않기 / 닫기
+    // 콘텐츠 팝업 모달: 오늘 그만 보기 / 닫기
     const contentPopupDismissTodayBtn = document.getElementById('contentPopupDismissTodayBtn');
     if (contentPopupDismissTodayBtn) {
         contentPopupDismissTodayBtn.addEventListener('click', () => {

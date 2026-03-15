@@ -1868,7 +1868,7 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
     background: #0f172a;
 }
 .content-popup-footer-seg {
-    flex: 1;
+    flex: 1 1 0;
     padding: 14px 8px;
     text-align: center;
     font-size: 13px;
@@ -1894,10 +1894,14 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
 .content-popup-footer-seg.hidden {
     display: none;
 }
-#contentPopupPrevBtn,
-#contentPopupNextBtn {
-    flex: 0 0 auto;
-    padding: 14px 2px;
+/* 2개: 1/2, 1/2 | 3개: 1/3, 1/3, 1/3 | 4개: 1/6, 1/6, 1/3, 1/3 */
+.content-popup-footer[data-visible-count="4"] #contentPopupPrevBtn,
+.content-popup-footer[data-visible-count="4"] #contentPopupNextBtn {
+    flex: 1 1 0;
+}
+.content-popup-footer[data-visible-count="4"] #contentPopupDismissTodayBtn,
+.content-popup-footer[data-visible-count="4"] #contentPopupCloseBtn {
+    flex: 2 1 0;
 }
 .content-popup-footer-close {
     color: #fff;
