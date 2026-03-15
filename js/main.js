@@ -1605,40 +1605,33 @@ window.switchMainTab = (tab) => {
             }, 100);
         }, 200);
     } else if (tab === 'timeline') {
-        // 타임라인: 본인 공유 로드 (공유 화살표 표시용) + 모먼트 동기화
+        // 타임라인: 먼저 mealHistory 기준으로 즉시 렌더 (체감 로딩 개선)
+        if (appState.viewMode === 'list') {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            appState.pageDate = today;
+        }
+        window.loadedDates = [];
+        window.hasScrolledToToday = false;
+        const c = document.getElementById('timelineContainer');
+        if (c) c.innerHTML = "";
+        renderTimeline();
+        renderMiniCalendar();
+        // 공유 화살표용 loadMyShares는 비동기로 진행, 완료 시 화살표만 갱신
         loadMyShares().then((myShares) => {
             window.sharedPhotos = myShares;
+            if (appState.currentTab !== 'timeline') return;
+            updateTimelineShareIndicators();
             syncOrphanedSharesToMoment(myShares).then((synced) => {
-                if (synced > 0) {
+                if (synced > 0 && appState.currentTab === 'timeline') {
                     updateTimelineShareIndicators();
                     showToast('모먼트에 반영되었습니다.', 'success');
                 }
             });
-            if (appState.viewMode === 'list') {
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                appState.pageDate = today;
-            }
-            window.loadedDates = [];
-            window.hasScrolledToToday = false;
-            const c = document.getElementById('timelineContainer');
-            if (c) c.innerHTML = "";
-            renderTimeline();
-            renderMiniCalendar();
         }).catch(e => {
             console.error('본인 공유 로드 실패:', e);
             window.sharedPhotos = [];
-            if (appState.viewMode === 'list') {
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                appState.pageDate = today;
-            }
-            window.loadedDates = [];
-            window.hasScrolledToToday = false;
-            const c = document.getElementById('timelineContainer');
-            if (c) c.innerHTML = "";
-            renderTimeline();
-            renderMiniCalendar();
+            if (appState.currentTab === 'timeline') updateTimelineShareIndicators();
         });
     } else if (tab !== 'board') {
         if (appState.viewMode === 'list') {
