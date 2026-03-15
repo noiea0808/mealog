@@ -3622,6 +3622,14 @@ window.setBoardWriteCategory = (category) => {
         btn.classList.toggle('active', active);
         // 기본 스타일은 css/style.css (.board-category-btn / .active)가 강제함
     });
+
+    // 치프에게 선택 시 내용 입력 placeholder 안내 문구 변경
+    const boardWriteContentEl = document.getElementById('boardWriteContent');
+    if (boardWriteContentEl) {
+        const adminPlaceholder = '치프에게 글을 쓰는 경우, 해당 글은 작성자 외의 다른 사용자에게는 보이지 않아요';
+        const defaultPlaceholder = '내용을 입력하세요';
+        boardWriteContentEl.setAttribute('data-placeholder', category === 'admin' ? adminPlaceholder : defaultPlaceholder);
+    }
 };
 
 window.submitBoardPost = async () => {

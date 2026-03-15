@@ -803,9 +803,6 @@ window.switchAdminTab = function(tab) {
     } else if (tab === 'content') {
         switchContentSidebar('mealog'); // 기본으로 MEALOG 표시
         loadMealogComments();
-    } else if (tab === 'data') {
-        switchDataSidebar('restaurants'); // 기본으로 식당정보 표시
-        renderRestaurantData('all');
     }
 }
 
@@ -1061,10 +1058,8 @@ window.switchMonitoringSidebar = function(section) {
         renderFeedManagement();
     } else if (section === 'board') {
         renderBoardPosts(currentAdminBoardCategory);
-    } else if (section === 'notice') {
-        renderNotices();
-    } else if (section === 'settings') {
-        loadAdminSettings();
+    } else if (section === 'restaurants') {
+        renderRestaurantData(currentRestaurantFilter || 'all', currentRestaurantSlotFilter || 'all');
     }
 };
 
@@ -1109,6 +1104,10 @@ window.switchContentSidebar = function(section) {
     } else if (section === 'apk') {
         bindApkFileInput();
         loadApkContent();
+    } else if (section === 'notice') {
+        renderNotices();
+    } else if (section === 'settings') {
+        loadAdminSettings();
     }
 };
 
@@ -2753,15 +2752,25 @@ window.backToNoticeList = function() {
     currentSelectedNoticeId = null;
     const listPage = document.getElementById('noticeListPage');
     const detailPage = document.getElementById('noticeDetailPage');
+    const writePage = document.getElementById('noticeWritePage');
     if (listPage) listPage.classList.remove('hidden');
     if (detailPage) detailPage.classList.add('hidden');
+    if (writePage) writePage.classList.add('hidden');
 };
 
-// 공지 작성 모달 열기
+// 글쓰기/수정 페이지에서 목록으로 (취소·등록 후 공통)
+window.backToNoticeListFromWrite = function() {
+    window.backToNoticeList();
+    currentEditingNoticeId = null;
+};
+
+// 공지 작성/수정 페이지 열기 (페이지 형식)
 window.openNoticeWriteModal = function(noticeId = null) {
     currentEditingNoticeId = noticeId;
-    const modal = document.getElementById('noticeModal');
-    const titleEl = document.getElementById('noticeModalTitle');
+    const listPage = document.getElementById('noticeListPage');
+    const detailPage = document.getElementById('noticeDetailPage');
+    const writePage = document.getElementById('noticeWritePage');
+    const titleEl = document.getElementById('noticeWritePageTitle');
     const submitBtn = document.getElementById('noticeSubmitBtn');
     const titleInput = document.getElementById('noticeTitle');
     const contentInput = document.getElementById('noticeContent');
@@ -2769,7 +2778,12 @@ window.openNoticeWriteModal = function(noticeId = null) {
     const pinnedCheckbox = document.getElementById('noticeIsPinned');
     const hiddenCheckbox = document.getElementById('noticeHidden');
     
-    if (!modal) return;
+    if (!writePage) return;
+    
+    // 목록/상세 숨기고 글쓰기 페이지 표시
+    if (listPage) listPage.classList.add('hidden');
+    if (detailPage) detailPage.classList.add('hidden');
+    writePage.classList.remove('hidden');
     
     // 초기화
     if (titleInput) titleInput.value = '';
@@ -2826,8 +2840,6 @@ window.openNoticeWriteModal = function(noticeId = null) {
         if (titleEl) titleEl.textContent = '공지 작성';
         if (submitBtn) submitBtn.textContent = '등록';
     }
-    
-    modal.classList.remove('hidden');
 };
 
 // 공지 사진 미리보기 렌더
@@ -2877,11 +2889,9 @@ function renderNoticeImagePreviews() {
     });
 }
 
-// 공지 작성 모달 닫기
+// 공지 작성 페이지 닫기 (목록으로 복귀)
 window.closeNoticeModal = function() {
-    const modal = document.getElementById('noticeModal');
-    if (modal) modal.classList.add('hidden');
-    currentEditingNoticeId = null;
+    window.backToNoticeListFromWrite();
 };
 
 // 공지 제출 (작성/수정)
@@ -2964,16 +2974,8 @@ window.submitNotice = async function() {
             alert('공지가 등록되었습니다.');
         }
         
-        window.closeNoticeModal();
+        window.backToNoticeListFromWrite();
         await renderNotices();
-        // 수정한 공지를 보고 있었으면 글본문 페이지 유지 후 본문 갱신
-        if (currentSelectedNoticeId) {
-            const listPage = document.getElementById('noticeListPage');
-            const detailPage = document.getElementById('noticeDetailPage');
-            if (listPage) listPage.classList.add('hidden');
-            if (detailPage) detailPage.classList.remove('hidden');
-            await renderNoticeDetailInAdmin(currentSelectedNoticeId);
-        }
     } catch (e) {
         console.error("공지 저장 실패:", e);
         alert("공지 저장 중 오류가 발생했습니다: " + e.message);
@@ -2985,99 +2987,9 @@ window.submitNotice = async function() {
     }
 };
 
-// 공지 수정 (팝업 대신 해당 페이지에서 인라인 편집)
-window.editNotice = async function(noticeId) {
-    const container = document.getElementById('noticeDetailContainer');
-    if (!container) return;
-    try {
-        const noticeDoc = doc(db, 'artifacts', appId, 'notices', noticeId);
-        const snap = await getDoc(noticeDoc);
-        if (!snap.exists()) {
-            alert('공지를 찾을 수 없습니다.');
-            return;
-        }
-        const notice = snap.data();
-        currentEditingNoticeId = noticeId;
-        window.noticeExistingUrls = Array.isArray(notice.imageUrls) ? [...notice.imageUrls] : [];
-        window.noticeFiles = [];
-        if (window.noticeObjectUrls?.length) {
-            window.noticeObjectUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch (_) {} });
-        }
-        window.noticeObjectUrls = [];
-
-        container.innerHTML = `
-            <div class="space-y-4">
-                <div>
-                    <label class="text-sm font-bold text-slate-600 block mb-2">제목</label>
-                    <input type="text" id="noticeInlineTitle" value="${escapeHtml(notice.title || '')}" placeholder="공지 제목" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500">
-                </div>
-                <div>
-                    <label class="text-sm font-bold text-slate-600 block mb-2">사진 <span class="text-slate-400 font-normal">(최대 3장)</span></label>
-                    <input type="file" id="noticeInlineImages" accept="image/*" multiple class="hidden">
-                    <button type="button" onclick="document.getElementById('noticeInlineImages').click()" class="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-bold hover:bg-slate-50">사진 추가</button>
-                    <div id="noticeInlineImagePreviews" class="flex flex-wrap gap-2 mt-2 min-h-0"></div>
-                </div>
-                <div>
-                    <label class="text-sm font-bold text-slate-600 block mb-2">내용</label>
-                    <div class="flex gap-1 mb-2 p-1.5 bg-slate-100 rounded-lg w-fit">
-                        <button type="button" class="notice-inline-format-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200" data-format="bold"><i class="fa-solid fa-bold"></i></button>
-                        <button type="button" class="notice-inline-format-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200" data-format="strikeThrough"><i class="fa-solid fa-strikethrough"></i></button>
-                        <button type="button" class="notice-inline-format-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200" data-format="underline"><i class="fa-solid fa-underline"></i></button>
-                    </div>
-                    <div id="noticeInlineContent" contenteditable="true" class="w-full min-h-[200px] p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 overflow-y-auto">${notice.content || ''}</div>
-                </div>
-                <div>
-                    <label class="text-sm font-bold text-slate-600 block mb-2">구분</label>
-                    <select id="noticeInlineType" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500">
-                        <option value="important" ${(notice.type || '') === 'important' ? 'selected' : ''}>중요</option>
-                        <option value="notice" ${(notice.type || '') === 'notice' ? 'selected' : ''}>알림</option>
-                        <option value="light" ${(notice.type || '') === 'light' ? 'selected' : ''}>가벼운</option>
-                    </select>
-                </div>
-                <div class="flex items-center gap-2">
-                    <input type="checkbox" id="noticeInlinePinned" ${notice.isPinned === true ? 'checked' : ''} class="w-4 h-4">
-                    <label for="noticeInlinePinned" class="text-sm text-slate-600">상단 고정</label>
-                </div>
-                <div class="flex items-center gap-2">
-                    <input type="checkbox" id="noticeInlineHidden" ${notice.hidden === true ? 'checked' : ''} class="w-4 h-4">
-                    <label for="noticeInlineHidden" class="text-sm text-slate-600">숨김</label>
-                </div>
-                <div class="flex gap-3 pt-2">
-                    <button type="button" onclick="window.cancelNoticeEdit('${noticeId}')" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm">취소</button>
-                    <button type="button" onclick="window.submitNoticeFromInline('${noticeId}')" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm">저장</button>
-                </div>
-            </div>
-        `;
-
-        renderNoticeInlineImagePreviews();
-        document.querySelectorAll('.notice-inline-format-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const el = document.getElementById('noticeInlineContent');
-                if (el) { el.focus(); document.execCommand(btn.getAttribute('data-format'), false, null); }
-            });
-        });
-        document.getElementById('noticeInlineImages').addEventListener('change', (e) => {
-            const existing = (window.noticeExistingUrls || []).length;
-            const filesCount = (window.noticeFiles || []).length;
-            const canAdd = Math.max(0, 3 - existing - filesCount);
-            const files = Array.from(e.target.files || []).slice(0, canAdd);
-            if (files.length > 0) {
-                if (!window.noticeFiles) window.noticeFiles = [];
-                if (!window.noticeObjectUrls) window.noticeObjectUrls = [];
-                files.forEach(f => {
-                    if (f.type.startsWith('image/')) {
-                        window.noticeFiles.push(f);
-                        window.noticeObjectUrls.push(URL.createObjectURL(f));
-                    }
-                });
-                renderNoticeInlineImagePreviews();
-            }
-            e.target.value = '';
-        });
-    } catch (e) {
-        console.error("공지 로드 실패:", e);
-        alert("공지를 불러오는 중 오류가 발생했습니다.");
-    }
+// 공지 수정 (글쓰기 페이지로 전환)
+window.editNotice = function(noticeId) {
+    window.openNoticeWriteModal(noticeId);
 };
 
 function renderNoticeInlineImagePreviews() {
@@ -5483,72 +5395,7 @@ window.refreshPersona = function() {
     }
 }
 
-// 데이터 탭 관련 함수들
-
-/** sharedPhotos timestamp 마이그레이션: Cloud Function 호출 (권한 우회) */
-window.migrateSharedPhotosTimestamp = async function() {
-    const btn = document.getElementById('migrateSharedPhotosBtn');
-    const resultEl = document.getElementById('migrationResult');
-    if (!btn || !resultEl) return;
-    if (!confirm('sharedPhotos의 timestamp를 Firestore Timestamp로 정규화합니다. 진행할까요?')) return;
-
-    btn.disabled = true;
-    resultEl.classList.remove('hidden');
-    resultEl.textContent = '마이그레이션 진행 중...';
-
-    try {
-        const { data } = await callableFunctions.migrateSharedPhotosTimestamp();
-        const skipped = data.total - data.updated;
-        let msg = `✅ 완료: 전체 ${data.total}건 중 ${data.updated}건 변환됨`;
-        if (skipped > 0) msg += ` (${skipped}건은 이미 Firestore Timestamp라 스킵됨)`;
-        resultEl.textContent = msg;
-        resultEl.classList.remove('text-slate-600');
-        resultEl.classList.add('text-emerald-600', 'font-bold');
-    } catch (e) {
-        console.error('마이그레이션 실패:', e);
-        resultEl.textContent = '❌ 실패: ' + (e?.message || e?.details || e);
-        resultEl.classList.remove('text-slate-600');
-        resultEl.classList.add('text-red-600', 'font-bold');
-    } finally {
-        btn.disabled = false;
-    }
-};
-
-// 데이터 사이드바 전환
-window.switchDataSidebar = function(section) {
-    // 모든 사이드바 버튼 비활성화
-    document.querySelectorAll('[id^="data-sidebar-"]').forEach(btn => {
-        btn.classList.remove('text-emerald-600', 'bg-emerald-50');
-        btn.classList.add('text-slate-500', 'hover:bg-slate-50');
-    });
-    
-    // 모든 메인 섹션 숨기기
-    document.querySelectorAll('.data-main-section').forEach(sec => {
-        sec.classList.add('hidden');
-    });
-    
-    // 선택한 사이드바 버튼 활성화
-    const activeSidebarBtn = document.getElementById(`data-sidebar-${section}`);
-    const activeMainSection = document.getElementById(`data-main-${section}`);
-    
-    if (activeSidebarBtn) {
-        activeSidebarBtn.classList.add('text-emerald-600', 'bg-emerald-50');
-        activeSidebarBtn.classList.remove('text-slate-500', 'hover:bg-slate-50');
-    }
-    
-    if (activeMainSection) {
-        activeMainSection.classList.remove('hidden');
-    }
-    
-    // 섹션별 데이터 로드
-    if (section === 'restaurants') {
-        renderRestaurantData(currentRestaurantFilter || 'all', currentRestaurantSlotFilter || 'all');
-    } else if (section === 'migration') {
-        document.getElementById('migrationResult')?.classList.add('hidden');
-    }
-};
-
-// 식당정보 필터 상태
+// 식당정보 필터 상태 (모니터링 > 식당정보)
 let currentRestaurantFilter = 'all'; // 'all', 'kakao', 'manual'
 let currentRestaurantSlotFilter = 'all'; // 'all', 'meal', 'snack'
 
