@@ -914,7 +914,7 @@ async function createMealogLogoImage() {
                 ctx.fillStyle = '#059669';
                 ctx.font = 'bold 52px "Nanum Square Round", "Malgun Gothic", "Nanum Pen Script", sans-serif';
                 ctx.fillText('우리가 함께한,', cw / 2, iconY + iconSize + 160);
-                ctx.fillText('맛있었던 기억', cw / 2, iconY + iconSize + 220);
+                ctx.fillText('맛있었던 이야기', cw / 2, iconY + iconSize + 220);
             } catch (_) {}
             canvas.toBlob((blob) => resolve(blob ? blob : new Blob([], { type: 'image/jpeg' })), 'image/jpeg', 0.92);
         };
@@ -926,7 +926,7 @@ async function createMealogLogoImage() {
             ctx.fillText('mealog', cw / 2, ch / 2 - 60);
             ctx.font = 'bold 52px "Nanum Square Round", "Malgun Gothic", sans-serif';
             ctx.fillText('우리가 함께한,', cw / 2, ch / 2 + 10);
-            ctx.fillText('맛있었던 기억', cw / 2, ch / 2 + 70);
+            ctx.fillText('맛있었던 이야기', cw / 2, ch / 2 + 70);
             canvas.toBlob((blob) => resolve(blob ? blob : new Blob([], { type: 'image/jpeg' })), 'image/jpeg', 0.92);
         };
         img.src = iconUrl;

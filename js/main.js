@@ -2324,10 +2324,12 @@ async function recordGuestVisit(uid) {
         const data = { userId: uid, lastVisitedAt: serverTimestamp() };
         if (!snap.exists()) data.firstVisitedAt = serverTimestamp();
         await setDoc(guestVisitsRef, data, { merge: true });
+        console.log('✅ 둘러보기 방문 기록됨 (관리자 대시보드 통계):', uid);
     } catch (e) {
-        console.warn('게스트 방문 기록 실패 (무시):', e?.message || e);
+        console.warn('게스트 방문 기록 실패 (관리자 대시보드 둘러보기 카운트에 반영 안 됨):', e?.message || e);
     }
 }
+window.recordGuestVisit = recordGuestVisit;
 
 /** 프로필 설정 완료 시 가입 완료(createdAt) 등록. auth.js confirmProfileSetup에서 호출 */
 window.ensureUserRegistered = async function () {
@@ -2664,18 +2666,20 @@ initAuth(async (user) => {
             return;
         }
         
-        const mainApp = document.getElementById('mainApp');
-        const landingPage = document.getElementById('landingPage');
-        // 이미 랜딩 화면이면 추가 처리 없이 종료
-        if (landingPage && landingPage.style.display === 'flex' && mainApp && mainApp.classList.contains('hidden')) {
-            return;
-        }
-        
-        // 로그아웃 처리: 다음 로그인에서 인증 플로우가 새로 돌 수 있도록 초기화
+        // 로그아웃 처리: 다음 로그인/둘러보기에서 인증 플로우가 새로 돌 수 있도록 항상 초기화
+        // (랜딩이 이미 보이더라도 초기화해야, 이후 둘러보기 시 "갑작스러운 게스트 전환"으로 잘못 막히지 않음)
         lastProcessedUserId = null;
         authFlowManager.hasCompleted = false;
         authFlowManager.lastProcessedUserId = null;
         window.userSettings = null;
+        window.currentUser = null;
+        
+        const mainApp = document.getElementById('mainApp');
+        const landingPage = document.getElementById('landingPage');
+        // 이미 랜딩 화면이면 화면 전환만 스킵 (위에서 상태는 이미 초기화됨)
+        if (landingPage && landingPage.style.display === 'flex' && mainApp && mainApp.classList.contains('hidden')) {
+            return;
+        }
         
         // 로그인 필요 시: 아이콘 페이드아웃 → 타이틀 표시 → 타이틀 중앙에서 위로 올라감 → 올라가는 애니메이션 완료 후 버튼 페이드인
         const showLoginScreen = () => {

@@ -264,6 +264,10 @@ export class AuthFlowManager {
             if (switchMainTab) switchMainTab('timeline');
             this.hasCompleted = true;
             this.lastProcessedUserId = user?.uid;
+            // 둘러보기 방문 기록 (main.js에서도 기록하지만, 게스트 화면 진입 시점에서 한 번 더 보장)
+            if (user?.uid && typeof window.recordGuestVisit === 'function') {
+                window.recordGuestVisit(user.uid).catch(() => {});
+            }
             hideLoading();
             return;
         }

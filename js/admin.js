@@ -477,25 +477,76 @@ function renderDashboardStats(stats, updatedAt) {
     }
 }
 
-// 통계 업데이트: 캐시 문서 1개만 읽어서 표시 (DB 부하 최소화)
+/** 당일(오늘 00:00~) 데이터만 경량 조회 — 캐시가 전일 기준일 때 오늘 숫자만 보정용 (읽기 최소화) */
+async function getTodayOnlyStats() {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayTimestamp = Timestamp.fromDate(todayStart);
+    try {
+        const [
+            guestCountSnap,
+            newUsersCountSnap,
+            sharedCountSnap
+        ] = await Promise.all([
+            getCountFromServer(query(
+                collection(db, 'artifacts', appId, 'guestVisits'),
+                where('lastVisitedAt', '>=', todayTimestamp)
+            )),
+            getCountFromServer(query(
+                collection(db, 'artifacts', appId, 'users'),
+                where('createdAt', '>=', todayTimestamp)
+            )),
+            getCountFromServer(query(
+                collection(db, 'artifacts', appId, 'sharedPhotos'),
+                where('timestamp', '>=', todayTimestamp)
+            ))
+        ]);
+        return {
+            guestVisitsToday: guestCountSnap.data().count ?? 0,
+            newUsersToday: newUsersCountSnap.data().count ?? 0,
+            sharedPhotosToday: sharedCountSnap.data().count ?? 0
+        };
+    } catch (e) {
+        console.warn('당일 통계 조회 실패 (캐시값만 표시):', e?.message || e);
+        return { guestVisitsToday: 0, newUsersToday: 0, sharedPhotosToday: 0 };
+    }
+}
+
+/** 오늘 날짜 문자열 (YYYY-MM-DD) */
+function getTodayDateString() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// 통계 업데이트: 전일까지는 캐시 1회 읽기, 당일만 필요 시 경량 쿼리로 보정 (DB 읽기 최소화)
 async function updateStatistics() {
     const btn = document.getElementById('dashboardStatsRefreshBtn');
     try {
         if (btn) btn.disabled = true;
         const snap = await getDoc(DASHBOARD_STATS_REF());
-        if (snap.exists()) {
-            const data = snap.data();
-            const stats = {
-                guestVisits: data.guestVisits || { all: 0, last30: 0, last7: 0, today: 0 },
-                newUsers: data.newUsers,
-                activeUsers: data.activeUsers,
-                records: data.records,
-                sharedPhotos: data.sharedPhotos
-            };
-            renderDashboardStats(stats, data.updatedAt);
-        } else {
+        if (!snap.exists()) {
             renderDashboardStats(null, null);
+            return;
         }
+        const data = snap.data();
+        const asOfDate = data.asOfDate || null; // YYYY-MM-DD, 전일까지 집계된 기준일
+        const todayStr = getTodayDateString();
+        const stats = {
+            guestVisits: data.guestVisits || { all: 0, last30: 0, last7: 0, today: 0 },
+            newUsers: data.newUsers || { all: 0, last30: 0, last7: 0, today: 0 },
+            activeUsers: data.activeUsers || { all: 0, last30: 0, last7: 0, today: 0 },
+            records: data.records || { all: 0, last30: 0, last7: 0, today: 0 },
+            sharedPhotos: data.sharedPhotos || { all: 0, last30: 0, last7: 0, today: 0 }
+        };
+        // 캐시가 오늘 이전 기준이면 당일 숫자만 경량 조회해서 보정 (전일까지는 캐시 유지)
+        if (asOfDate && asOfDate !== todayStr) {
+            const todayOnly = await getTodayOnlyStats();
+            stats.guestVisits.today = todayOnly.guestVisitsToday;
+            stats.newUsers.today = todayOnly.newUsersToday;
+            stats.sharedPhotos.today = todayOnly.sharedPhotosToday;
+            // records/activeUsers 오늘은 집계 비용이 커서 캐시 유지 (통계 새로고침 시 반영)
+        }
+        renderDashboardStats(stats, data.updatedAt);
     } catch (e) {
         console.error("대시보드 통계 로드 실패:", e);
         renderDashboardStats(null, null);
@@ -516,6 +567,7 @@ async function refreshDashboardStats() {
             activeUsers: stats.activeUsers,
             records: stats.records,
             sharedPhotos: stats.sharedPhotos,
+            asOfDate: getTodayDateString(), // 전일까지 집계 기준일 (당일 로드 시 이 날짜 이전이면 당일만 경량 조회)
             updatedAt: serverTimestamp()
         };
         await setDoc(DASHBOARD_STATS_REF(), payload);

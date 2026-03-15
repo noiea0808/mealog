@@ -461,10 +461,12 @@ export function setupListeners(userId, callbacks) {
     const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
     const todayStr = new Date().toISOString().split('T')[0];
     
+    // limit(100): 14일치가 많을 때 읽기/전송량 제한 → 첫 로딩 체감 속도 개선 (나머지는 loadMoreMeals로 로드)
     const mealsQuery = query(
         collection(db, 'artifacts', appId, 'users', userId, 'meals'),
         where('date', '>=', cutoffDateStr),
-        orderBy('date', 'desc')
+        orderBy('date', 'desc'),
+        limit(100)
     );
     
     let isInitialLoad = true;
