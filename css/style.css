@@ -1896,8 +1896,8 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
 }
 #contentPopupPrevBtn,
 #contentPopupNextBtn {
-    padding-left: 4px;
-    padding-right: 4px;
+    flex: 0 0 auto;
+    padding: 14px 2px;
 }
 .content-popup-footer-close {
     color: #fff;
