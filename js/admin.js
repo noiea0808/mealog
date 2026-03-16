@@ -3472,7 +3472,7 @@ async function renderPopupDetailInAdmin(popupId) {
         const freqLabel = POPUP_FREQUENCY_LABELS[p.frequency] || p.frequency;
         const envLabel = POPUP_TARGET_ENV_LABELS[p.targetEnv] || POPUP_TARGET_ENV_LABELS.all;
         const imagesHtml = Array.isArray(p.imageUrls) && p.imageUrls.length > 0
-            ? `<div class="flex flex-col gap-2 mb-4">${p.imageUrls.map(url => `<img src="${url}" alt="팝업 사진" class="max-w-full h-auto rounded-xl border border-slate-200 object-contain" style="max-height: 200px;">`).join('')}</div>`
+            ? `<div class="flex flex-col gap-2 mb-4">${p.imageUrls.map(url => `<img src="${url}" alt="팝업 사진" class="max-w-full h-auto rounded-xl border border-slate-200 object-contain" style="max-height: 50vh;">`).join('')}</div>`
             : '';
         const landingHtml = p.landingNoticeId
             ? `<p class="text-sm text-slate-600"><span class="font-bold">버튼 문구:</span> ${escapeHtml(p.landingButtonLabel || '선택한 공지 보기')}</p><p class="text-sm text-slate-600 mt-0.5"><span class="font-bold">연결 공지:</span> ${escapeHtml(p.landingNoticeTitle || '(공지)')}</p>`

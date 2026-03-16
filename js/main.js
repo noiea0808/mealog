@@ -1729,13 +1729,18 @@ window.checkAndShowContentPopup = async function(tab) {
             const end = d.endDate || '';
             if (start && end && today >= start && today <= end) list.push({ id: doc.id, ...d });
         });
+        // 빈도별로 다른 키 사용 → 관리자에서 하루 한번→접근시마다 등 변경 시 수정된 요건대로 표시
         const isDismissed = (popup) => {
-            if (localStorage.getItem(`content_popup_${popup.id}_${today}`) === '1') return true;
+            if (popup.frequency === 'daily') {
+                return localStorage.getItem(`content_popup_daily_${popup.id}_${today}`) === '1';
+            }
             if (popup.frequency === 'on_login') {
-                return sessionStorage.getItem(`content_popup_${popup.id}`) === '1';
+                if (sessionStorage.getItem(`content_popup_${popup.id}`) === '1') return true;
+                return localStorage.getItem(`content_popup_login_${popup.id}_${today}`) === '1';
             }
             if (popup.frequency === 'on_visit') {
-                return window._contentPopupDismissedVisit && window._contentPopupDismissedVisit.has(popup.id);
+                if (window._contentPopupDismissedVisit && window._contentPopupDismissedVisit.has(popup.id)) return true;
+                return localStorage.getItem(`content_popup_visit_${popup.id}_${today}`) === '1';
             }
             return false;
         };
@@ -1804,16 +1809,15 @@ window.closeContentPopupModal = function(dismissToday) {
     if (cur) {
         const today = new Date().toISOString().slice(0, 10);
         if (cur.frequency === 'daily') {
-            localStorage.setItem(`content_popup_${cur.id}_${today}`, '1');
+            localStorage.setItem(`content_popup_daily_${cur.id}_${today}`, '1');
         } else if (cur.frequency === 'on_login') {
-            // 로그인 시마다: 닫기만 해도 이 세션에서 다시 안 띄움
             sessionStorage.setItem(`content_popup_${cur.id}`, '1');
-            if (dismissToday) localStorage.setItem(`content_popup_${cur.id}_${today}`, '1');
+            if (dismissToday) localStorage.setItem(`content_popup_login_${cur.id}_${today}`, '1');
         } else if (cur.frequency === 'on_visit') {
             if (dismissToday) {
                 if (!window._contentPopupDismissedVisit) window._contentPopupDismissedVisit = new Set();
                 window._contentPopupDismissedVisit.add(cur.id);
-                localStorage.setItem(`content_popup_${cur.id}_${today}`, '1');
+                localStorage.setItem(`content_popup_visit_${cur.id}_${today}`, '1');
             }
         }
     }
@@ -2849,12 +2853,14 @@ initAuth(async (user) => {
         async function loadAndShowLoginBanner() {
             const section = document.getElementById('loginBannerSection');
             const imgEl = document.getElementById('loginBannerImage');
+            const landingPage = document.getElementById('landingPage');
             if (!section) return;
             try {
                 const bannerDoc = await getDoc(doc(db, 'artifacts', appId, 'config', 'loginBanner'));
                 const data = bannerDoc.exists() ? bannerDoc.data() : null;
                 if (!data || !data.enabled) {
                     section.classList.add('hidden');
+                    if (landingPage) landingPage.classList.remove('landing-banner-visible');
                     return;
                 }
                 const hostname = window.location.hostname || '';
@@ -2863,9 +2869,11 @@ initAuth(async (user) => {
                 const targetEnv = data.targetEnv || 'all';
                 if (targetEnv !== 'all' && targetEnv !== currentEnv) {
                     section.classList.add('hidden');
+                    if (landingPage) landingPage.classList.remove('landing-banner-visible');
                     return;
                 }
                 section.classList.remove('hidden');
+                if (landingPage) landingPage.classList.add('landing-banner-visible');
                 section.classList.add('bg-white');
                 if (imgEl) {
                     imgEl.classList.add('hidden');
@@ -2896,6 +2904,8 @@ initAuth(async (user) => {
             } catch (e) {
                 console.warn('로그인 배너 설정 로드 실패:', e);
                 section.classList.add('hidden');
+                const landingPage = document.getElementById('landingPage');
+                if (landingPage) landingPage.classList.remove('landing-banner-visible');
             }
         }
 
@@ -4539,10 +4549,20 @@ function initMainAppKeyboardHandling() {
         [100, 300, 500, 800].forEach(ms => setTimeout(checkViewport, ms));
     });
 
-    /* Capacitor: 뒤로가기로 키보드 내렸을 때 네비 복원 (viewport가 갱신되지 않는 WebView에서 확실히 동작) */
+    /* Capacitor: Android 뒤로가기 — 1) 기록 모달 닫기 2) 밀톡 게시물 상세→목록 3) 키보드 내림 4) history/exit */
     if (window.Capacitor?.isNativePlatform?.()) {
         import('@capacitor/app').then(({ App }) => {
             App.addListener('backButton', ({ canGoBack }) => {
+                const entryModal = document.getElementById('entryModal');
+                if (entryModal && !entryModal.classList.contains('hidden')) {
+                    if (typeof window.closeModal === 'function') window.closeModal();
+                    return;
+                }
+                const boardDetailView = document.getElementById('boardDetailView');
+                if (appState.currentTab === 'board' && boardDetailView && !boardDetailView.classList.contains('hidden')) {
+                    if (typeof window.backToBoardList === 'function') window.backToBoardList();
+                    return;
+                }
                 const active = document.activeElement;
                 if (isInputLike(active)) {
                     active.blur();
