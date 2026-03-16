@@ -1288,6 +1288,23 @@ async function loadLoginBannerConfig() {
     }
 }
 
+/** 로그인 배너 조회수·클릭수 재조회 */
+window.refreshLoginBannerStats = async function() {
+    const btn = document.getElementById('loginBannerRefreshStatsBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>재조회 중';
+    }
+    try {
+        await loadLoginBannerConfig();
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-arrows-rotate mr-1"></i>재조회';
+        }
+    }
+};
+
 // 로그인 배너 저장
 window.saveLoginBanner = async function() {
     const enabledEl = document.getElementById('loginBannerEnabled');
@@ -3449,6 +3466,24 @@ async function renderPopups() {
         container.innerHTML = '<div class="text-center py-8 text-red-400 px-4"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>팝업 목록을 불러오는 중 오류가 발생했습니다.</p></div>';
     }
 }
+
+/** 팝업 목록·상세의 조회수·클릭수 재조회 */
+window.refreshPopupsStats = async function() {
+    const btn = document.getElementById('popupRefreshStatsBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>재조회 중';
+    }
+    try {
+        await renderPopups();
+        if (currentSelectedPopupId) await renderPopupDetailInAdmin(currentSelectedPopupId);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-arrows-rotate mr-1"></i>재조회';
+        }
+    }
+};
 
 window.selectAdminPopup = async function(popupId) {
     currentSelectedPopupId = popupId;

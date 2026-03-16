@@ -935,7 +935,12 @@
                                 </div>
                                 <div class="p-6">
                                     <div id="popupListPage" class="popup-admin-page">
-                                        <h3 class="text-sm font-bold text-slate-500 mb-3">팝업 목록</h3>
+                                        <div class="flex items-center justify-between gap-3 mb-3">
+                                            <h3 class="text-sm font-bold text-slate-500">팝업 목록</h3>
+                                            <button type="button" id="popupRefreshStatsBtn" onclick="window.refreshPopupsStats()" class="px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors" title="조회수·클릭수 새로고침">
+                                                <i class="fa-solid fa-arrows-rotate mr-1"></i>재조회
+                                            </button>
+                                        </div>
                                         <div id="popupsContainer" class="space-y-2 border border-slate-200 rounded-xl overflow-hidden">
                                             <div class="text-center py-8 text-slate-400">
                                                 <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
@@ -1054,10 +1059,15 @@
                                 <div class="p-6 border-b border-slate-100">
                                     <h2 class="text-lg font-black text-slate-800">로그인 배너</h2>
                                     <p class="text-sm text-slate-500 mt-1">로그인 화면 하단(이메일로 가입 아래)에 표시되는 배너입니다. 권장 이미지 크기: 448×160 px</p>
-                                    <div id="loginBannerStats" class="mt-4 flex items-center gap-4 text-sm text-slate-600 border border-slate-200 rounded-xl px-4 py-3 bg-slate-50">
-                                        <span class="font-bold text-slate-700">배너 목록</span>
-                                        <span>조회 <span id="loginBannerViewCount" class="font-bold text-slate-800">0</span></span>
-                                        <span>클릭 <span id="loginBannerClickCount" class="font-bold text-slate-800">0</span></span>
+                                    <div id="loginBannerStats" class="mt-4 flex items-center justify-between gap-4 text-sm text-slate-600 border border-slate-200 rounded-xl px-4 py-3 bg-slate-50">
+                                        <div class="flex items-center gap-4">
+                                            <span class="font-bold text-slate-700">배너 목록</span>
+                                            <span>조회 <span id="loginBannerViewCount" class="font-bold text-slate-800">0</span></span>
+                                            <span>클릭 <span id="loginBannerClickCount" class="font-bold text-slate-800">0</span></span>
+                                        </div>
+                                        <button type="button" id="loginBannerRefreshStatsBtn" onclick="window.refreshLoginBannerStats()" class="px-3 py-1.5 text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg transition-colors shrink-0" title="조회수·클릭수 새로고침">
+                                            <i class="fa-solid fa-arrows-rotate mr-1"></i>재조회
+                                        </button>
                                     </div>
                                 </div>
                                 <div class="p-6 space-y-4">
