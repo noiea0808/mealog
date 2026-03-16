@@ -1707,6 +1707,7 @@ function fillContentPopupModal(popup) {
 
 /** 탭 전환 시 해당 메뉴용 콘텐츠 팝업이 있으면 조건에 맞을 때 표시 (여러 개면 이전/다음으로 이동) */
 window.checkAndShowContentPopup = async function(tab) {
+    if (sessionStorage.getItem('loginBannerLandingNoticeId')) return;
     const modal = document.getElementById('contentPopupModal');
     const prevBtn = document.getElementById('contentPopupPrevBtn');
     const nextBtn = document.getElementById('contentPopupNextBtn');
