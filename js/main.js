@@ -9,8 +9,8 @@ import { auth, db, appId } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { dbOps, setupListeners, loadSharedPhotosPage, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, boardOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { callableFunctions } from './firebase.js';
-import { doc, getDoc, setDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { serverTimestamp, increment } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
 import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput, warmUpIME, sharePhotosToExternal, setupBirthdateInputFormatting } from './utils.js';
 import { 
@@ -1696,6 +1696,7 @@ function fillContentPopupModal(popup) {
         landingWrap.classList.remove('hidden');
         landingBtn.textContent = popup.landingButtonLabel && popup.landingButtonLabel.trim() ? popup.landingButtonLabel.trim() : '선택한 공지 보기';
         landingBtn.onclick = () => {
+            recordPopupClick(popup.id);
             window.closeContentPopupModal(false);
             if (appState.currentTab !== 'board') window.switchMainTab('board');
             setTimeout(() => { if (typeof window.openNoticeDetail === 'function') window.openNoticeDetail(popup.landingNoticeId); }, 100);
@@ -1703,6 +1704,32 @@ function fillContentPopupModal(popup) {
     } else if (landingWrap) {
         landingWrap.classList.add('hidden');
     }
+}
+
+/** 팝업 조회 수 증가 (Firestore, 비동기 무시) */
+function recordPopupView(popupId) {
+    if (!popupId) return;
+    const ref = doc(db, 'artifacts', appId, 'popups', popupId);
+    updateDoc(ref, { viewCount: increment(1) }).catch(() => {});
+}
+
+/** 팝업 클릭 수 증가 (랜딩 버튼 클릭 시) */
+function recordPopupClick(popupId) {
+    if (!popupId) return;
+    const ref = doc(db, 'artifacts', appId, 'popups', popupId);
+    updateDoc(ref, { clickCount: increment(1) }).catch(() => {});
+}
+
+/** 로그인 배너 조회 수 증가 */
+function recordBannerView() {
+    const ref = doc(db, 'artifacts', appId, 'config', 'loginBanner');
+    setDoc(ref, { viewCount: increment(1) }, { merge: true }).catch(() => {});
+}
+
+/** 로그인 배너 클릭 수 증가 */
+function recordBannerClick() {
+    const ref = doc(db, 'artifacts', appId, 'config', 'loginBanner');
+    setDoc(ref, { clickCount: increment(1) }, { merge: true }).catch(() => {});
 }
 
 /** 탭 전환 시 해당 메뉴용 콘텐츠 팝업이 있으면 조건에 맞을 때 표시 (여러 개면 이전/다음으로 이동) */
@@ -1752,6 +1779,7 @@ window.checkAndShowContentPopup = async function(tab) {
         setContentPopupWidth();
         fillContentPopupModal(toShowList[0]);
         window._contentPopupCurrent = { id: toShowList[0].id, frequency: toShowList[0].frequency };
+        recordPopupView(toShowList[0].id);
         const counterBar = document.getElementById('contentPopupCounterBar');
         const counterEl = document.getElementById('contentPopupCounter');
         const footerEl = document.getElementById('contentPopupFooter');
@@ -1781,6 +1809,7 @@ window.checkAndShowContentPopup = async function(tab) {
                 const p = window._contentPopupList[window._contentPopupIndex];
                 fillContentPopupModal(p);
                 window._contentPopupCurrent = { id: p.id, frequency: p.frequency };
+                recordPopupView(p.id);
                 updatePopupNavButtons();
             };
         }
@@ -1791,6 +1820,7 @@ window.checkAndShowContentPopup = async function(tab) {
                 const p = window._contentPopupList[window._contentPopupIndex];
                 fillContentPopupModal(p);
                 window._contentPopupCurrent = { id: p.id, frequency: p.frequency };
+                recordPopupView(p.id);
                 updatePopupNavButtons();
             };
         }
@@ -2888,6 +2918,7 @@ initAuth(async (user) => {
                         imgEl.classList.remove('hidden');
                     }
                 }
+                recordBannerView();
                 const landingNoticeId = (data.landingNoticeId && typeof data.landingNoticeId === 'string') ? data.landingNoticeId.trim() : '';
                 section.removeAttribute('role');
                 section.style.cursor = '';
@@ -2896,6 +2927,7 @@ initAuth(async (user) => {
                     section.setAttribute('role', 'button');
                     section.style.cursor = 'pointer';
                     section.onclick = () => {
+                        recordBannerClick();
                         try {
                             sessionStorage.setItem('loginBannerLandingNoticeId', landingNoticeId);
                         } catch (_) {}

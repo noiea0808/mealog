@@ -1278,6 +1278,10 @@ async function loadLoginBannerConfig() {
         if (landingSelectedWrap) landingSelectedWrap.classList.toggle('hidden', !lid);
         if (landingSelectedTitle) landingSelectedTitle.textContent = ltitle || '(공지)';
         window.loginBannerLandingNoticeTitle = ltitle || '';
+        const viewCountEl = document.getElementById('loginBannerViewCount');
+        const clickCountEl = document.getElementById('loginBannerClickCount');
+        if (viewCountEl) viewCountEl.textContent = String(Number(data && data.viewCount) || 0);
+        if (clickCountEl) clickCountEl.textContent = String(Number(data && data.clickCount) || 0);
     } catch (e) {
         console.error('로그인 배너 설정 로드 실패:', e);
         if (labelEl) labelEl.textContent = '로드 실패';
@@ -3430,11 +3434,13 @@ async function renderPopups() {
             const envLabel = POPUP_TARGET_ENV_LABELS[p.targetEnv] || POPUP_TARGET_ENV_LABELS.all;
             const start = p.startDate || '';
             const end = p.endDate || '';
+            const viewCount = Number(p.viewCount) || 0;
+            const clickCount = Number(p.clickCount) || 0;
             const isSelected = currentSelectedPopupId === id;
             return `
                 <div data-popup-id="${id}" onclick="window.selectAdminPopup('${id}')" class="admin-popup-row flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-100 last:border-b-0 cursor-pointer hover:bg-slate-50 transition-colors ${isSelected ? 'bg-emerald-50 border-l-4 border-l-emerald-500' : ''}">
                     <h3 class="font-bold text-slate-800 truncate min-w-0 flex-shrink">${escapeHtml(p.title || '제목 없음')}</h3>
-                    <p class="text-xs text-slate-500 text-right whitespace-nowrap shrink-0">${envLabel} · ${menuLabel} · ${freqLabel} · ${start} ~ ${end}</p>
+                    <p class="text-xs text-slate-500 text-right whitespace-nowrap shrink-0">조회 <span class="font-bold text-slate-600">${viewCount}</span> · 클릭 <span class="font-bold text-slate-600">${clickCount}</span> · ${envLabel} · ${menuLabel} · ${freqLabel} · ${start} ~ ${end}</p>
                 </div>
             `;
         }).join('');
@@ -3488,6 +3494,8 @@ async function renderPopupDetailInAdmin(popupId) {
         const menuLabel = POPUP_TARGET_MENU_LABELS[p.targetMenu] || p.targetMenu;
         const freqLabel = POPUP_FREQUENCY_LABELS[p.frequency] || p.frequency;
         const envLabel = POPUP_TARGET_ENV_LABELS[p.targetEnv] || POPUP_TARGET_ENV_LABELS.all;
+        const viewCount = Number(p.viewCount) || 0;
+        const clickCount = Number(p.clickCount) || 0;
         const imagesHtml = Array.isArray(p.imageUrls) && p.imageUrls.length > 0
             ? `<div class="flex flex-col gap-2 mb-4">${p.imageUrls.map(url => `<img src="${url}" alt="팝업 사진" class="max-w-full h-auto rounded-xl border border-slate-200 object-contain" style="max-height: 50vh;">`).join('')}</div>`
             : '';
@@ -3498,7 +3506,9 @@ async function renderPopupDetailInAdmin(popupId) {
             <div class="mb-4">
                 <h2 class="text-lg font-bold text-slate-800 mb-3">${escapeHtml(p.title || '제목 없음')}</h2>
                 <div class="bg-slate-100 rounded-xl p-3 mb-4 text-sm">
-                    <p class="font-bold text-slate-700 mb-1.5">설정</p>
+                    <p class="font-bold text-slate-700 mb-1.5">통계</p>
+                    <p class="text-slate-600">조회 <span class="font-bold text-slate-700">${viewCount}</span> · 클릭 <span class="font-bold text-slate-700">${clickCount}</span></p>
+                    <p class="font-bold text-slate-700 mb-1.5 mt-3">설정</p>
                     <p class="text-slate-600"><span class="font-bold">표시 환경:</span> ${envLabel}</p>
                     <p class="text-slate-600 mt-0.5"><span class="font-bold">팝업 메뉴:</span> ${menuLabel}</p>
                     <p class="text-slate-600 mt-0.5"><span class="font-bold">팝업 주기:</span> ${freqLabel}</p>
@@ -4168,18 +4178,40 @@ async function getFeedPage(options = {}) {
     }
 }
 
-// 공유된 게시물 키 캐시 (userId_mealId) — 피드 필터/배지용, 세션당 1회 로드
+// 공유된 게시물 키 캐시 (userId_entryId) — 피드 필터/배지용, 세션당 1회 로드. 전체 문서 페이지네이션으로 수집해 누락 방지
 let feedSharedKeysCache = null;
 
 async function ensureFeedSharedKeysCache() {
     if (feedSharedKeysCache) return;
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-    const snap = await getDocs(sharedColl);
     feedSharedKeysCache = new Set();
-    snap.docs.forEach(d => {
-        const data = d.data();
-        if (data.userId && data.entryId) feedSharedKeysCache.add(`${data.userId}_${data.entryId}`);
-    });
+    try {
+        const PAGE = 500;
+        let lastDoc = null;
+        let hasMore = true;
+        while (hasMore) {
+            let q = query(sharedColl, orderBy('timestamp', 'desc'), limit(PAGE));
+            if (lastDoc) q = query(sharedColl, orderBy('timestamp', 'desc'), startAfter(lastDoc), limit(PAGE));
+            const snap = await getDocs(q);
+            snap.docs.forEach(d => {
+                const data = d.data();
+                const uid = data.userId;
+                const eid = data.entryId || data.mealId || null;
+                if (uid && eid) feedSharedKeysCache.add(`${uid}_${eid}`);
+            });
+            lastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
+            hasMore = snap.docs.length === PAGE;
+        }
+    } catch (e) {
+        console.warn('ensureFeedSharedKeysCache orderBy 실패, 전체 조회로 폴백:', e?.message || e);
+        const snap = await getDocs(sharedColl);
+        snap.docs.forEach(d => {
+            const data = d.data();
+            const uid = data.userId;
+            const eid = data.entryId || data.mealId || null;
+            if (uid && eid) feedSharedKeysCache.add(`${uid}_${eid}`);
+        });
+    }
 }
 
 async function renderFeedManagement() {
