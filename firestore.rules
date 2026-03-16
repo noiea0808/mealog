@@ -93,11 +93,10 @@ service cloud.firestore {
     // ============================================
     // 공유 사진 (sharedPhotos 컬렉션)
     // ============================================
-    // 보안 강화: create는 Cloud Functions를 통해서만 허용 (레이트 리밋 및 스팸 필터 적용)
+    // 보안 강화: create는 Cloud Functions 또는 관리자만 허용 (관리자 동기화 버튼용)
     match /artifacts/{appId}/sharedPhotos/{photoId} {
       allow read: if isAuthenticated();
-      // create는 Cloud Functions를 통해서만 허용 (클라이언트 직접 쓰기 차단)
-      allow create: if false;
+      allow create: if isAdmin();
       allow update: if isAuthenticated() && 
                      resource.data.userId == request.auth.uid && 
                      request.resource.data.userId == request.auth.uid;
@@ -243,13 +242,25 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
+    // 공지 조회 기록 (같은 사용자 중복 1회) — 로그인 사용자만 자신의 문서 생성/병합
+    match /artifacts/{appId}/notices/{noticeId}/views/{userId} {
+      allow read: if isAdmin();
+      allow create, update: if isAuthenticated() && request.auth.uid == userId;
+      allow delete: if false;
+    }
     
     // ============================================
-    // 팝업 (popups 컬렉션) - 관리자 작성, 사용자 읽기
+    // 팝업 (popups 컬렉션) - 관리자 작성, 사용자 읽기, 조회/클릭 수는 로그인 사용자 업데이트 허용
     // ============================================
     match /artifacts/{appId}/popups/{popupId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isAuthenticated() &&
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount'])
+         || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clickCount'])
+         || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount', 'clickCount']))
+      );
     }
     
     // ============================================
@@ -274,11 +285,17 @@ service cloud.firestore {
     
     // ============================================
     // 앱 설정 (config 컬렉션) - 로그인 배너 등
-    // loginBanner: 비로그인 포함 누구나 읽기, 쓰기는 관리자만
+    // loginBanner: 비로그인 포함 누구나 읽기, 쓰기는 관리자만. 조회/클릭 수는 통계용으로 업데이트 허용
     // ============================================
     match /artifacts/{appId}/config/loginBanner {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount'])
+        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clickCount'])
+        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount', 'clickCount'])
+      );
+      allow delete: if isAdmin();
     }
     match /artifacts/{appId}/config/{configId} {
       allow read, write: if isAdmin();

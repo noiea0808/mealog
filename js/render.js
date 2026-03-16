@@ -3902,7 +3902,9 @@ export async function renderNoticeDetail(noticeId) {
             `;
             return;
         }
-        
+        if (window.noticeOperations?.recordNoticeView) {
+            window.noticeOperations.recordNoticeView(noticeId).catch(() => {});
+        }
         let date = notice.timestamp ? (() => {
             // timestamp 안전하게 변환
             if (notice.timestamp.toDate && typeof notice.timestamp.toDate === 'function') {

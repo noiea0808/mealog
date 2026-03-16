@@ -1,6 +1,6 @@
 // 게시판 및 공지 관련 함수들
 import { db, appId, callableFunctions } from '../firebase.js';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, query, orderBy, limit, where, getDocs, getDocsFromServer, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, query, orderBy, limit, where, getDocs, getDocsFromServer, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { showToast } from '../ui.js';
 
 // 게시판 관련 함수들
@@ -685,6 +685,16 @@ export const noticeOperations = {
         } catch (e) {
             console.error("Get Notice Error:", e);
             return null;
+        }
+    },
+    /** 공지 조회 기록 (동일 사용자 중복 조회는 1회로 집계). 로그인 사용자만 기록. */
+    async recordNoticeView(noticeId) {
+        if (!window.currentUser || window.currentUser.isAnonymous || !noticeId) return;
+        try {
+            const viewRef = doc(db, 'artifacts', appId, 'notices', noticeId, 'views', window.currentUser.uid);
+            await setDoc(viewRef, { at: serverTimestamp() }, { merge: true });
+        } catch (e) {
+            console.warn("Record notice view error:", e);
         }
     },
     async getNoticeReactionCounts(noticeId) {

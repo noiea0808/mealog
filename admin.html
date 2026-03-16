@@ -370,8 +370,6 @@
                         <div class="flex flex-wrap justify-between items-center admin-users-toolbar-inner gap-2">
                             <div class="flex flex-wrap items-center gap-2">
                                 <h2 class="text-base font-black text-slate-800">사용자 관리</h2>
-                                <span id="adminUsersListPaginationInfo" class="text-slate-600 text-xs">-</span>
-                                <div id="adminUsersListPagination" class="flex items-center gap-1"></div>
                             </div>
                             <div class="flex flex-wrap items-center gap-2">
                                 <div class="inline-flex rounded-lg bg-slate-100 p-0.5" role="group" aria-label="보기 전환">
@@ -411,6 +409,7 @@
                                                 <span>선택</span>
                                             </label>
                                         </th>
+                                        <th data-page="1 2" class="px-2 py-3 text-left text-xs font-bold text-slate-600 uppercase whitespace-nowrap min-w-[2.5rem]">번호</th>
                                         <th data-page="1 2" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase min-w-[5rem]">
                                             <button type="button" class="admin-users-sort inline-flex items-center gap-1 hover:text-slate-800 transition-colors text-left whitespace-nowrap" data-sort-key="email">
                                                 이메일 / 사용자 ID <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
@@ -463,13 +462,17 @@
                                 </thead>
                                 <tbody id="usersContainer" class="divide-y divide-slate-100">
                                     <tr>
-                                        <td colspan="13" class="px-4 py-8 text-center text-slate-400">
+                                        <td colspan="14" class="px-4 py-8 text-center text-slate-400">
                                             <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
                                             <p>로딩 중...</p>
                                         </td>
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="flex flex-wrap items-center justify-between gap-2 mt-3">
+                            <span id="adminUsersListPaginationInfo" class="text-slate-600 text-sm">-</span>
+                            <div id="adminUsersListPagination" class="flex items-center gap-1"></div>
                         </div>
                     </div>
                 </div>
@@ -1051,6 +1054,11 @@
                                 <div class="p-6 border-b border-slate-100">
                                     <h2 class="text-lg font-black text-slate-800">로그인 배너</h2>
                                     <p class="text-sm text-slate-500 mt-1">로그인 화면 하단(이메일로 가입 아래)에 표시되는 배너입니다. 권장 이미지 크기: 448×160 px</p>
+                                    <div id="loginBannerStats" class="mt-4 flex items-center gap-4 text-sm text-slate-600 border border-slate-200 rounded-xl px-4 py-3 bg-slate-50">
+                                        <span class="font-bold text-slate-700">배너 목록</span>
+                                        <span>조회 <span id="loginBannerViewCount" class="font-bold text-slate-800">0</span></span>
+                                        <span>클릭 <span id="loginBannerClickCount" class="font-bold text-slate-800">0</span></span>
+                                    </div>
                                 </div>
                                 <div class="p-6 space-y-4">
                                     <div class="flex items-center gap-3">
