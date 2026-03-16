@@ -2289,10 +2289,11 @@ async function getUsers(options = {}) {
         const boardPostsColl = collection(db, 'artifacts', appId, 'boardPosts');
         const deleteRequestsColl = collection(db, 'artifacts', appId, 'deleteUserRequests');
 
-        // 1) 첫 페이지만 전체 사용자 수 조회 (1 read)
+        // 1) 첫 페이지만 전체 사용자 수 조회 — 목록 쿼리와 동일한 조건(createdAt 있음)으로 카운트
         let totalCount = adminUsersTotalCount;
         if (page === 1) {
-            const countSnap = await getCountFromServer(usersColl);
+            const countQuery = query(usersColl, orderBy('createdAt', 'desc'));
+            const countSnap = await getCountFromServer(countQuery);
             totalCount = countSnap.data().count;
             adminUsersTotalCount = totalCount;
         }
@@ -2470,7 +2471,7 @@ async function renderUsers(options = {}) {
         console.log('getUsers 결과:', users.length, '명 (페이지', adminUsersListPage, '/ 총', adminUsersTotalCount, '명)');
         
         if (users.length === 0) {
-            container.innerHTML = '<tr><td colspan="13" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
+            container.innerHTML = '<tr><td colspan="14" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
             updateAdminUsersListPagination(adminUsersTotalCount, Math.max(1, Math.ceil(adminUsersTotalCount / USERS_PER_PAGE)));
             try { applyAdminUsersPageVisibility(adminUsersCurrentPage); } catch (_) {}
             return;
@@ -2492,7 +2493,8 @@ async function renderUsers(options = {}) {
         const start = (adminUsersListPage - 1) * USERS_PER_PAGE + 1;
         const end = start + usersToShow.length - 1;
         console.log(`${usersToShow.length}명 표시 (${start}-${end} / ${adminUsersTotalCount}명).`);
-        container.innerHTML = usersToShow.map(user => {
+        container.innerHTML = usersToShow.map((user, index) => {
+            const rowNum = start + index;
             // 약관 동의 상태: 앱(auth-flow)과 동일 기준 — termsVersion 없으면 기존 사용자로 간주하여 동의함
             // 앱은 식사 기록이 있는 사용자(기존 사용자)는 약관 버전을 검사하지 않으므로, 여기서도 timelineCount > 0 이면 재동의 필요로 표시하지 않음
             const hasVersion = user.termsVersion != null && String(user.termsVersion).trim() !== '';
@@ -2553,6 +2555,7 @@ async function renderUsers(options = {}) {
                             <input type="checkbox" class="admin-user-checkbox rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" data-user-id="${escapeHtml(user.userId)}" title="선택" ${user.deleteRequested ? 'disabled' : ''}>
                         </label>
                     </td>
+                    <td data-page="1 2" class="px-2 py-3 text-slate-500 text-sm tabular-nums">${rowNum}</td>
                     <td data-page="1 2" class="px-4 py-3 align-top">${emailUserIdCell}</td>
                     <td data-page="1 2" class="px-4 py-3">
                         <div class="flex flex-col gap-0.5">
@@ -2600,7 +2603,7 @@ async function renderUsers(options = {}) {
     } catch (e) {
         console.error("사용자 목록 렌더링 실패:", e);
         const errMsg = (e && (e.message || e.code || String(e))) || '알 수 없는 오류';
-        container.innerHTML = '<tr><td colspan="13" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
+        container.innerHTML = '<tr><td colspan="14" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
     }
 }
 
@@ -2914,6 +2917,16 @@ async function renderNotices() {
             document.getElementById('noticeDetailContainer').innerHTML = '목록에서 공지를 선택하면 본문이 표시됩니다.';
             return;
         }
+        const viewCounts = await Promise.all(noticesSnapshot.docs.map(async (d) => {
+            try {
+                const viewColl = collection(db, 'artifacts', appId, 'notices', d.id, 'views');
+                const snap = await getCountFromServer(viewColl);
+                return { noticeId: d.id, count: snap.data().count };
+            } catch (e) {
+                return { noticeId: d.id, count: 0 };
+            }
+        }));
+        const viewCountMap = new Map(viewCounts.map(v => [v.noticeId, v.count]));
         
         container.innerHTML = noticesSnapshot.docs.map(d => {
             const notice = d.data();
@@ -2923,6 +2936,7 @@ async function renderNotices() {
             const typeLabel = NOTICE_TYPE_LABELS[type] || '알림';
             const typeClass = NOTICE_TYPE_CLASSES[type] || NOTICE_TYPE_CLASSES.notice;
             const isSelected = currentSelectedNoticeId === noticeId;
+            const viewCount = viewCountMap.get(noticeId) ?? 0;
             return `
                 <div data-notice-id="${noticeId}" onclick="window.selectAdminNotice('${noticeId}')" class="admin-notice-row px-4 py-3 border-b border-slate-100 last:border-b-0 cursor-pointer hover:bg-slate-50 transition-colors ${isSelected ? 'bg-emerald-50 border-l-4 border-l-emerald-500' : ''}">
                     <div class="flex items-center gap-2 flex-wrap">
@@ -2931,7 +2945,10 @@ async function renderNotices() {
                         ${notice.hidden === true ? '<span class="px-2 py-0.5 bg-slate-200 text-slate-600 text-xs font-bold rounded">숨김</span>' : ''}
                     </div>
                     <h3 class="font-bold text-slate-800 truncate mt-1">${escapeHtml(notice.title || '제목 없음')}</h3>
-                    <div class="text-xs text-slate-400 mt-1">${date}</div>
+                    <div class="flex items-center gap-3 mt-1 text-xs text-slate-400">
+                        <span>${date}</span>
+                        <span class="text-slate-500">조회 <span class="font-bold text-slate-600">${viewCount}</span></span>
+                    </div>
                 </div>
             `;
         }).join('');

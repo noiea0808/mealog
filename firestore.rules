@@ -243,6 +243,12 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
+    // 공지 조회 기록 (같은 사용자 중복 1회) — 로그인 사용자만 자신의 문서 생성/병합
+    match /artifacts/{appId}/notices/{noticeId}/views/{userId} {
+      allow read: if isAdmin();
+      allow create, update: if isAuthenticated() && request.auth.uid == userId;
+      allow delete: if false;
+    }
     
     // ============================================
     // 팝업 (popups 컬렉션) - 관리자 작성, 사용자 읽기

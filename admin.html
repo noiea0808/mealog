@@ -370,8 +370,6 @@
                         <div class="flex flex-wrap justify-between items-center admin-users-toolbar-inner gap-2">
                             <div class="flex flex-wrap items-center gap-2">
                                 <h2 class="text-base font-black text-slate-800">사용자 관리</h2>
-                                <span id="adminUsersListPaginationInfo" class="text-slate-600 text-xs">-</span>
-                                <div id="adminUsersListPagination" class="flex items-center gap-1"></div>
                             </div>
                             <div class="flex flex-wrap items-center gap-2">
                                 <div class="inline-flex rounded-lg bg-slate-100 p-0.5" role="group" aria-label="보기 전환">
@@ -411,6 +409,7 @@
                                                 <span>선택</span>
                                             </label>
                                         </th>
+                                        <th data-page="1 2" class="px-2 py-3 text-left text-xs font-bold text-slate-600 uppercase whitespace-nowrap min-w-[2.5rem]">번호</th>
                                         <th data-page="1 2" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase min-w-[5rem]">
                                             <button type="button" class="admin-users-sort inline-flex items-center gap-1 hover:text-slate-800 transition-colors text-left whitespace-nowrap" data-sort-key="email">
                                                 이메일 / 사용자 ID <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
@@ -463,13 +462,17 @@
                                 </thead>
                                 <tbody id="usersContainer" class="divide-y divide-slate-100">
                                     <tr>
-                                        <td colspan="13" class="px-4 py-8 text-center text-slate-400">
+                                        <td colspan="14" class="px-4 py-8 text-center text-slate-400">
                                             <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
                                             <p>로딩 중...</p>
                                         </td>
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="flex flex-wrap items-center justify-between gap-2 mt-3">
+                            <span id="adminUsersListPaginationInfo" class="text-slate-600 text-sm">-</span>
+                            <div id="adminUsersListPagination" class="flex items-center gap-1"></div>
                         </div>
                     </div>
                 </div>
