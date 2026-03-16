@@ -264,6 +264,10 @@ export class AuthFlowManager {
             if (switchMainTab) switchMainTab('timeline');
             this.hasCompleted = true;
             this.lastProcessedUserId = user?.uid;
+            // 둘러보기 방문 기록 (main.js에서도 기록하지만, 게스트 화면 진입 시점에서 한 번 더 보장)
+            if (user?.uid && typeof window.recordGuestVisit === 'function') {
+                window.recordGuestVisit(user.uid).catch(() => {});
+            }
             hideLoading();
             return;
         }
@@ -281,19 +285,10 @@ export class AuthFlowManager {
         closeTermsModal();
         switchScreen(true);
         if (switchMainTab) switchMainTab('timeline');
-        // 밀로그 메인 화면에서 기록 로드 중 메시지 표시 (onDataUpdate에서 meals 로드 시 hideLoading)
-        if (!window._recordsLoadHidePending) {
-            window._recordsLoadHidePending = true;
-            showLoading('기록을 불러오고 있어요', { dimBackground: false });
-            // 데이터가 이미 로드된 경우(레이스) 즉시 숨김
-            queueMicrotask(() => {
-                if (window._recordsLoadHidePending && window.loadedMealsDateRange) {
-                    window._recordsLoadHidePending = false;
-                    hideLoading();
-                }
-            });
-        }
-        
+        // 로딩 즉시 해제 (meals 스냅샷 대기하지 않음 → 체감 로딩 시간 단축, 타임라인은 데이터 도착 시 onDataUpdate에서 채워짐)
+        window._recordsLoadHidePending = false;
+        hideLoading();
+
         // 백그라운드에서 약관과 프로필 확인 (블로킹하지 않음)
         this.checkTermsAndProfileInBackground(user).catch(e => {
             console.warn('⚠️ 백그라운드 약관/프로필 확인 실패:', e);

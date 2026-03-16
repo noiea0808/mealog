@@ -1,7 +1,7 @@
 {
   "name": "mealog",
   "version": "1.0.1",
-  "description": "우리가 함께한, 맛있었던 기억 - 스마트 식사 타임라인",
+  "description": "우리가 함께한, 맛있었던 이야기 - 스마트 식사 타임라인",
   "scripts": {
     "build": "node scripts/build-config.js",
     "copy:www": "node scripts/copy-to-www.js",

@@ -1,7 +1,7 @@
 {
-  "name": "MEALOG - 함께한, 맛있었던 기억",
+  "name": "MEALOG - 함께한, 맛있었던 이야기",
   "short_name": "MEALOG",
-  "description": "우리가 함께한, 맛있었던 기억 - 스마트 식사 타임라인",
+  "description": "우리가 함께한, 맛있었던 이야기 - 스마트 식사 타임라인",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

@@ -1183,7 +1183,8 @@ export async function saveEntry() {
                                     entryId: record.id, photoUrl: url, userId: window.currentUser?.uid,
                                     userNickname: profile.nickname || '익명', userIcon: profile.icon || '🐻', userPhotoUrl: profile.photoUrl || null,
                                     date: record.date || '', slotId: record.slotId || '', time: record.time || '',
-                                    timestamp: now, photoIndex: idx
+                                    timestamp: now, photoIndex: idx,
+                                    photoAspectRatio: (record.photoAspectRatio === '3:4' || record.photoAspectRatio === '4:3') ? record.photoAspectRatio : '1:1'
                                 }));
                                 finalDocs = [...optimistic, ...docs];
                             }
@@ -1211,60 +1212,22 @@ export async function saveEntry() {
             return; // 저장 실패 시 여기서 종료
         }
         
+        // 서버 저장 완료 후 Firestore 리스너가 떨어져 onDataUpdate가 재렌더·스크롤을 유발하지 않도록 프리즈 연장
+        window._timelineRerenderFreezeUntil = Math.max(window._timelineRerenderFreezeUntil || 0, Date.now() + 3500);
+        
         // 탭에 따라 적절한 뷰 업데이트 (setTimeout 0으로 지연 없이 다음 틱에서 실행)
         setTimeout(() => {
             const tabNow = appState.currentTab;
             if (tabNow === 'timeline' && editingDate) {
-                // 타임라인 탭: 등록화면-카드 동기화를 위해 즉시 렌더 후 jumpToDate
-                const wasScrolling = window.isScrolling;
+                // 낙관 반영 시 이미 jumpToDate·스크롤 완료됨. 서버 반영 후 추가 스크롤/모달 액션 없이 ID만 동기화
                 try {
-                    if (window.isScrolling !== undefined) {
-                        window.isScrolling = true; // jumpToDate 내부 스크롤 방지
-                    }
-                    // 저장 직후 mealHistory 반영을 위해 먼저 렌더 (list/page 모드 모두)
+                    const savedScrollY = window.scrollY;
                     renderTimeline();
                     renderMiniCalendar();
-                    if (window.jumpToDate) {
-                        window.jumpToDate(editingDate);
-                    }
+                    window.scrollTo({ top: savedScrollY, behavior: 'instant' });
                     updateTimelineShareIndicators();
-                    // 렌더·이미지 로딩·레이아웃 확정 후, 브라우저가 그린 직후(rAF) 정확한 좌표로 한 번만 스크롤
-                    const scrollEditedDateToTop = () => {
-                        const dateSection = document.getElementById(`date-${editingDate}`);
-                        const trackerSection = document.getElementById('trackerSection');
-                        if (!dateSection || !trackerSection) {
-                            if (window.isScrolling !== undefined) window.isScrolling = wasScrolling;
-                            return;
-                        }
-                        const tr = trackerSection.getBoundingClientRect();
-                        const ds = dateSection.getBoundingClientRect();
-                        const goalY = tr.bottom + 16;
-                        const scrollDelta = ds.top - goalY;
-                        const top = Math.max(0, window.scrollY + scrollDelta);
-                        window.scrollTo({ top, behavior: 'instant' });
-                        if (window.isScrolling !== undefined) window.isScrolling = wasScrolling;
-                    };
-                    const imgs = document.querySelectorAll(`#date-${editingDate} img`);
-                    const imageLoadPromise = imgs.length === 0 ? Promise.resolve() : Promise.race([
-                        Promise.all(Array.from(imgs).map(img =>
-                            img.complete ? Promise.resolve() : new Promise(r => { img.onload = r; img.onerror = r; })
-                        )),
-                        new Promise(r => setTimeout(r, 400))
-                    ]);
-                    requestAnimationFrame(() => {
-                        requestAnimationFrame(() => {
-                            imageLoadPromise.then(() => {
-                                requestAnimationFrame(() => {
-                                    requestAnimationFrame(scrollEditedDateToTop);
-                                });
-                            });
-                        });
-                    });
-                } catch (scrollError) {
-                    console.error('날짜 이동 오류:', scrollError);
-                    if (window.isScrolling !== undefined) {
-                        window.isScrolling = wasScrolling;
-                    }
+                } catch (e) {
+                    console.warn('저장 후 타임라인 ID 동기화 실패:', e);
                 }
             } else if (tabNow === 'gallery') {
                 // 갤러리 탭: 낙관 반영을 즉시 보여주고, 리스너 동기화를 위해 한 번 더 갱신

@@ -894,6 +894,10 @@ exports.sharePhotos = onCall({ region: REGION }, async (request) => {
       });
     }
 
+    // 사진 비율: 모먼트에서 모든 사용자에게 동일하게 표시되도록 문서에 저장 (업로더 mealHistory에만 있으면 다른 사용자는 1:1로 보이는 문제 해결)
+    const aspectRatio = (mealData && mealData.photoAspectRatio === '3:4') ? '3:4'
+      : (mealData && mealData.photoAspectRatio === '4:3') ? '4:3' : '1:1';
+
     // 새로운 사진들을 추가 (photoIndex로 업로드 순서 저장 → 모든 사용자에게 동일한 사진 순서 보장)
     photosToShare.forEach((photoUrl, index) => {
       const docRef = sharedColl.doc();
@@ -913,7 +917,8 @@ exports.sharePhotos = onCall({ region: REGION }, async (request) => {
         time: (mealData && mealData.time) || new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }),
         timestamp: FieldValue.serverTimestamp(),
         entryId: (mealData && mealData.id) || null,
-        comment: (mealData && mealData.comment) || ''
+        comment: (mealData && mealData.comment) || '',
+        photoAspectRatio: aspectRatio
       });
     });
 

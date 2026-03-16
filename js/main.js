@@ -9,7 +9,7 @@ import { auth, db, appId } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { dbOps, setupListeners, loadSharedPhotosPage, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, boardOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { callableFunctions } from './firebase.js';
-import { doc, getDoc, setDoc, collection, query, where, limit, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
 import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput, warmUpIME, sharePhotosToExternal, setupBirthdateInputFormatting } from './utils.js';
@@ -46,7 +46,7 @@ window.cleanupFirestoreListeners = () => {
         console.warn('cleanupFirestoreListeners 실패(무시):', e);
     }
 };
-import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
+import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, renderFormattedContent, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
@@ -1412,6 +1412,10 @@ window.switchMainTab = (tab) => {
         console.log('[탭전환] 시작:', { 이전탭: appState.currentTab, 새탭: tab });
         const prevTab = appState.currentTab;
         appState.currentTab = tab;
+        // 탭 전환 시 '접근시마다' 팝업 비표시 상태 초기화 (다음 접근 시 다시 표시)
+        if (prevTab !== tab) {
+            window._contentPopupDismissedVisit = new Set();
+        }
         // 다른 메뉴로 이동 시 검색창 닫기
         if (prevTab !== tab) {
             if (prevTab === 'timeline' && typeof window.closeSearch === 'function') window.closeSearch();
@@ -1605,40 +1609,33 @@ window.switchMainTab = (tab) => {
             }, 100);
         }, 200);
     } else if (tab === 'timeline') {
-        // 타임라인: 본인 공유 로드 (공유 화살표 표시용) + 모먼트 동기화
+        // 타임라인: 먼저 mealHistory 기준으로 즉시 렌더 (체감 로딩 개선)
+        if (appState.viewMode === 'list') {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            appState.pageDate = today;
+        }
+        window.loadedDates = [];
+        window.hasScrolledToToday = false;
+        const c = document.getElementById('timelineContainer');
+        if (c) c.innerHTML = "";
+        renderTimeline();
+        renderMiniCalendar();
+        // 공유 화살표용 loadMyShares는 비동기로 진행, 완료 시 화살표만 갱신
         loadMyShares().then((myShares) => {
             window.sharedPhotos = myShares;
+            if (appState.currentTab !== 'timeline') return;
+            updateTimelineShareIndicators();
             syncOrphanedSharesToMoment(myShares).then((synced) => {
-                if (synced > 0) {
+                if (synced > 0 && appState.currentTab === 'timeline') {
                     updateTimelineShareIndicators();
                     showToast('모먼트에 반영되었습니다.', 'success');
                 }
             });
-            if (appState.viewMode === 'list') {
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                appState.pageDate = today;
-            }
-            window.loadedDates = [];
-            window.hasScrolledToToday = false;
-            const c = document.getElementById('timelineContainer');
-            if (c) c.innerHTML = "";
-            renderTimeline();
-            renderMiniCalendar();
         }).catch(e => {
             console.error('본인 공유 로드 실패:', e);
             window.sharedPhotos = [];
-            if (appState.viewMode === 'list') {
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                appState.pageDate = today;
-            }
-            window.loadedDates = [];
-            window.hasScrolledToToday = false;
-            const c = document.getElementById('timelineContainer');
-            if (c) c.innerHTML = "";
-            renderTimeline();
-            renderMiniCalendar();
+            if (appState.currentTab === 'timeline') updateTimelineShareIndicators();
         });
     } else if (tab !== 'board') {
         if (appState.viewMode === 'list') {
@@ -1653,6 +1650,10 @@ window.switchMainTab = (tab) => {
         renderTimeline();
         renderMiniCalendar();
     }
+    // 해당 탭용 콘텐츠 팝업 표시 여부 확인 (조건 충족 시 한 건만 표시)
+    if (typeof window.checkAndShowContentPopup === 'function') {
+        setTimeout(() => window.checkAndShowContentPopup(tab), 200);
+    }
     console.log('[탭전환] 완료:', { 현재탭: appState.currentTab });
     } catch (error) {
         console.error('[탭전환] 오류 발생:', error);
@@ -1660,6 +1661,173 @@ window.switchMainTab = (tab) => {
         // 오류 발생 시에도 기본 탭 상태는 유지
         showToast('탭 전환 중 오류가 발생했습니다.', 'error');
     }
+};
+
+/** 밀로그 내용 폭보다 10px 작게 팝업 너비 고정 (body가 max-w-md 로 밀로그 폭과 동일) */
+function setContentPopupWidth() {
+    const inner = document.getElementById('contentPopupModalInner');
+    if (!inner) return;
+    const contentWidth = document.body.clientWidth || document.documentElement.clientWidth;
+    const popupWidth = Math.max(200, contentWidth - 10);
+    inner.style.width = popupWidth + 'px';
+}
+
+/** 팝업 한 건 내용으로 모달 채우기 (제목 미노출) */
+function fillContentPopupModal(popup) {
+    setContentPopupWidth();
+    const imagesEl = document.getElementById('contentPopupImages');
+    const contentEl = document.getElementById('contentPopupContent');
+    const landingWrap = document.getElementById('contentPopupLandingWrap');
+    const landingBtn = document.getElementById('contentPopupLandingBtn');
+    if (!contentEl) return;
+    imagesEl.innerHTML = '';
+    if (imagesEl && Array.isArray(popup.imageUrls) && popup.imageUrls.length > 0) {
+        popup.imageUrls.forEach(url => {
+            const img = document.createElement('img');
+            img.src = url;
+            img.alt = '팝업 이미지';
+            img.className = 'rounded-none';
+            img.loading = 'lazy';
+            imagesEl.appendChild(img);
+        });
+    }
+    contentEl.innerHTML = renderFormattedContent(popup.content || '');
+    if (landingWrap && landingBtn && popup.landingNoticeId) {
+        landingWrap.classList.remove('hidden');
+        landingBtn.textContent = popup.landingButtonLabel && popup.landingButtonLabel.trim() ? popup.landingButtonLabel.trim() : '선택한 공지 보기';
+        landingBtn.onclick = () => {
+            window.closeContentPopupModal(false);
+            if (appState.currentTab !== 'board') window.switchMainTab('board');
+            setTimeout(() => { if (typeof window.openNoticeDetail === 'function') window.openNoticeDetail(popup.landingNoticeId); }, 100);
+        };
+    } else if (landingWrap) {
+        landingWrap.classList.add('hidden');
+    }
+}
+
+/** 탭 전환 시 해당 메뉴용 콘텐츠 팝업이 있으면 조건에 맞을 때 표시 (여러 개면 이전/다음으로 이동) */
+window.checkAndShowContentPopup = async function(tab) {
+    if (sessionStorage.getItem('loginBannerLandingNoticeId')) return;
+    const modal = document.getElementById('contentPopupModal');
+    const prevBtn = document.getElementById('contentPopupPrevBtn');
+    const nextBtn = document.getElementById('contentPopupNextBtn');
+    if (!modal) return;
+    try {
+        const popupsRef = collection(db, 'artifacts', appId, 'popups');
+        const q = query(popupsRef, orderBy('timestamp', 'desc'), limit(50));
+        const snap = await getDocs(q);
+        const today = new Date().toISOString().slice(0, 10);
+        const hostname = window.location.hostname || '';
+        const isLocal = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
+        const currentEnv = isLocal ? 'staging' : (window.APP_ENV || 'production');
+        const list = [];
+        snap.forEach(doc => {
+            const d = doc.data();
+            const targetEnv = d.targetEnv || 'all';
+            if (targetEnv !== 'all' && targetEnv !== currentEnv) return;
+            if (d.targetMenu !== tab) return;
+            const start = d.startDate || '';
+            const end = d.endDate || '';
+            if (start && end && today >= start && today <= end) list.push({ id: doc.id, ...d });
+        });
+        // 빈도별로 다른 키 사용 → 관리자에서 하루 한번→접근시마다 등 변경 시 수정된 요건대로 표시
+        const isDismissed = (popup) => {
+            if (popup.frequency === 'daily') {
+                return localStorage.getItem(`content_popup_daily_${popup.id}_${today}`) === '1';
+            }
+            if (popup.frequency === 'on_login') {
+                if (sessionStorage.getItem(`content_popup_${popup.id}`) === '1') return true;
+                return localStorage.getItem(`content_popup_login_${popup.id}_${today}`) === '1';
+            }
+            if (popup.frequency === 'on_visit') {
+                if (window._contentPopupDismissedVisit && window._contentPopupDismissedVisit.has(popup.id)) return true;
+                return localStorage.getItem(`content_popup_visit_${popup.id}_${today}`) === '1';
+            }
+            return false;
+        };
+        const toShowList = list.filter(p => !isDismissed(p));
+        if (toShowList.length === 0) return;
+        window._contentPopupList = toShowList;
+        window._contentPopupIndex = 0;
+        setContentPopupWidth();
+        fillContentPopupModal(toShowList[0]);
+        window._contentPopupCurrent = { id: toShowList[0].id, frequency: toShowList[0].frequency };
+        const counterBar = document.getElementById('contentPopupCounterBar');
+        const counterEl = document.getElementById('contentPopupCounter');
+        const footerEl = document.getElementById('contentPopupFooter');
+        const updatePopupNavButtons = () => {
+            if (prevBtn) prevBtn.classList.toggle('hidden', window._contentPopupIndex === 0);
+            if (nextBtn) nextBtn.classList.toggle('hidden', window._contentPopupIndex >= (window._contentPopupList.length - 1));
+            const total = window._contentPopupList.length;
+            if (counterBar && counterEl) {
+                if (total > 1) {
+                    counterEl.textContent = (window._contentPopupIndex + 1) + '/' + total;
+                    counterBar.classList.remove('popup-counter-empty');
+                } else {
+                    counterEl.textContent = '';
+                    counterBar.classList.add('popup-counter-empty');
+                }
+            }
+            if (footerEl) {
+                const visibleCount = [prevBtn, nextBtn, document.getElementById('contentPopupDismissTodayBtn'), document.getElementById('contentPopupCloseBtn')]
+                    .filter(btn => btn && !btn.classList.contains('hidden')).length;
+                footerEl.setAttribute('data-visible-count', String(visibleCount));
+            }
+        };
+        if (prevBtn) {
+            prevBtn.onclick = () => {
+                if (window._contentPopupIndex <= 0) return;
+                window._contentPopupIndex -= 1;
+                const p = window._contentPopupList[window._contentPopupIndex];
+                fillContentPopupModal(p);
+                window._contentPopupCurrent = { id: p.id, frequency: p.frequency };
+                updatePopupNavButtons();
+            };
+        }
+        if (nextBtn) {
+            nextBtn.onclick = () => {
+                if (window._contentPopupIndex >= (window._contentPopupList.length - 1)) return;
+                window._contentPopupIndex += 1;
+                const p = window._contentPopupList[window._contentPopupIndex];
+                fillContentPopupModal(p);
+                window._contentPopupCurrent = { id: p.id, frequency: p.frequency };
+                updatePopupNavButtons();
+            };
+        }
+        updatePopupNavButtons();
+        modal.classList.remove('hidden');
+    } catch (e) {
+        console.warn('콘텐츠 팝업 조회 실패:', e);
+    }
+};
+
+window.closeContentPopupModal = function(dismissToday) {
+    const modal = document.getElementById('contentPopupModal');
+    const prevBtn = document.getElementById('contentPopupPrevBtn');
+    const nextBtn = document.getElementById('contentPopupNextBtn');
+    if (!modal) return;
+    const cur = window._contentPopupCurrent;
+    if (cur) {
+        const today = new Date().toISOString().slice(0, 10);
+        if (cur.frequency === 'daily') {
+            localStorage.setItem(`content_popup_daily_${cur.id}_${today}`, '1');
+        } else if (cur.frequency === 'on_login') {
+            sessionStorage.setItem(`content_popup_${cur.id}`, '1');
+            if (dismissToday) localStorage.setItem(`content_popup_login_${cur.id}_${today}`, '1');
+        } else if (cur.frequency === 'on_visit') {
+            if (dismissToday) {
+                if (!window._contentPopupDismissedVisit) window._contentPopupDismissedVisit = new Set();
+                window._contentPopupDismissedVisit.add(cur.id);
+                localStorage.setItem(`content_popup_visit_${cur.id}_${today}`, '1');
+            }
+        }
+    }
+    window._contentPopupCurrent = null;
+    window._contentPopupList = null;
+    window._contentPopupIndex = 0;
+    if (prevBtn) prevBtn.classList.add('hidden');
+    if (nextBtn) nextBtn.classList.add('hidden');
+    modal.classList.add('hidden');
 };
 
 window.setViewMode = (m) => {
@@ -2315,6 +2483,22 @@ async function updateUserDocument(user) {
     }
 }
 
+/** 게스트(둘러보기) 방문 기록 — 관리자 대시보드 '둘러보기' 통계용 */
+async function recordGuestVisit(uid) {
+    if (!uid || !db || !appId) return;
+    try {
+        const guestVisitsRef = doc(db, 'artifacts', appId, 'guestVisits', uid);
+        const snap = await getDoc(guestVisitsRef);
+        const data = { userId: uid, lastVisitedAt: serverTimestamp() };
+        if (!snap.exists()) data.firstVisitedAt = serverTimestamp();
+        await setDoc(guestVisitsRef, data, { merge: true });
+        console.log('✅ 둘러보기 방문 기록됨 (관리자 대시보드 통계):', uid);
+    } catch (e) {
+        console.warn('게스트 방문 기록 실패 (관리자 대시보드 둘러보기 카운트에 반영 안 됨):', e?.message || e);
+    }
+}
+window.recordGuestVisit = recordGuestVisit;
+
 /** 프로필 설정 완료 시 가입 완료(createdAt) 등록. auth.js confirmProfileSetup에서 호출 */
 window.ensureUserRegistered = async function () {
     const user = auth.currentUser;
@@ -2524,6 +2708,8 @@ initAuth(async (user) => {
             
             // 게스트 모드일 때 헤더 UI 업데이트
             updateHeaderUI();
+            // 둘러보기(게스트) 방문 기록 — 관리자 대시보드 통계용
+            recordGuestVisit(user.uid).catch(() => {});
         } else {
             // 리스너 설정 (이전 리스너는 setupListeners 내부에서 해제됨)
             let dataUpdateTimer = null; // 공유 시 meals 이중 리스너 방지용 디바운스
@@ -2648,19 +2834,82 @@ initAuth(async (user) => {
             return;
         }
         
-        const mainApp = document.getElementById('mainApp');
-        const landingPage = document.getElementById('landingPage');
-        // 이미 랜딩 화면이면 추가 처리 없이 종료
-        if (landingPage && landingPage.style.display === 'flex' && mainApp && mainApp.classList.contains('hidden')) {
-            return;
-        }
-        
-        // 로그아웃 처리: 다음 로그인에서 인증 플로우가 새로 돌 수 있도록 초기화
+        // 로그아웃 처리: 다음 로그인/둘러보기에서 인증 플로우가 새로 돌 수 있도록 항상 초기화
+        // (랜딩이 이미 보이더라도 초기화해야, 이후 둘러보기 시 "갑작스러운 게스트 전환"으로 잘못 막히지 않음)
         lastProcessedUserId = null;
         authFlowManager.hasCompleted = false;
         authFlowManager.lastProcessedUserId = null;
         window.userSettings = null;
+        window.currentUser = null;
         
+        const mainApp = document.getElementById('mainApp');
+        const landingPage = document.getElementById('landingPage');
+        // 이미 랜딩 화면이면 화면 전환만 스킵 (위에서 상태는 이미 초기화됨)
+        if (landingPage && landingPage.style.display === 'flex' && mainApp && mainApp.classList.contains('hidden')) {
+            return;
+        }
+        
+        // 로그인 배너 설정 로드 후 표시 (설정 없음 → 영역 숨김, 사용 켜고 이미지 없음 → 흰색 영역, 이미지 있음 → 이미지 표시)
+        // 표시 환경: 프로덕션만/스테이징만 선택 시 해당 환경에서만 표시. 스테이징 = 로컬(localhost 등) 포함
+        async function loadAndShowLoginBanner() {
+            const section = document.getElementById('loginBannerSection');
+            const imgEl = document.getElementById('loginBannerImage');
+            const landingPage = document.getElementById('landingPage');
+            if (!section) return;
+            try {
+                const bannerDoc = await getDoc(doc(db, 'artifacts', appId, 'config', 'loginBanner'));
+                const data = bannerDoc.exists() ? bannerDoc.data() : null;
+                if (!data || !data.enabled) {
+                    section.classList.add('hidden');
+                    if (landingPage) landingPage.classList.remove('landing-banner-visible');
+                    return;
+                }
+                const hostname = window.location.hostname || '';
+                const isLocal = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
+                const currentEnv = isLocal ? 'staging' : (window.APP_ENV || 'production');
+                const targetEnv = data.targetEnv || 'all';
+                if (targetEnv !== 'all' && targetEnv !== currentEnv) {
+                    section.classList.add('hidden');
+                    if (landingPage) landingPage.classList.remove('landing-banner-visible');
+                    return;
+                }
+                section.classList.remove('hidden');
+                if (landingPage) landingPage.classList.add('landing-banner-visible');
+                section.classList.add('bg-white');
+                if (imgEl) {
+                    imgEl.classList.add('hidden');
+                    imgEl.removeAttribute('src');
+                }
+                if (data.imageUrl && typeof data.imageUrl === 'string' && data.imageUrl.trim()) {
+                    section.classList.remove('bg-white');
+                    if (imgEl) {
+                        imgEl.setAttribute('src', data.imageUrl.trim());
+                        imgEl.setAttribute('alt', '');
+                        imgEl.classList.remove('hidden');
+                    }
+                }
+                const landingNoticeId = (data.landingNoticeId && typeof data.landingNoticeId === 'string') ? data.landingNoticeId.trim() : '';
+                section.removeAttribute('role');
+                section.style.cursor = '';
+                section.onclick = null;
+                if (landingNoticeId) {
+                    section.setAttribute('role', 'button');
+                    section.style.cursor = 'pointer';
+                    section.onclick = () => {
+                        try {
+                            sessionStorage.setItem('loginBannerLandingNoticeId', landingNoticeId);
+                        } catch (_) {}
+                        if (typeof window.startGuest === 'function') window.startGuest();
+                    };
+                }
+            } catch (e) {
+                console.warn('로그인 배너 설정 로드 실패:', e);
+                section.classList.add('hidden');
+                const landingPage = document.getElementById('landingPage');
+                if (landingPage) landingPage.classList.remove('landing-banner-visible');
+            }
+        }
+
         // 로그인 필요 시: 아이콘 페이드아웃 → 타이틀 표시 → 타이틀 중앙에서 위로 올라감 → 올라가는 애니메이션 완료 후 버튼 페이드인
         const showLoginScreen = () => {
             const landingPage = document.getElementById('landingPage');
@@ -2683,6 +2932,7 @@ initAuth(async (user) => {
                         });
                     }
                     if (apkSection) apkSection.classList.remove('hidden');
+                    loadAndShowLoginBanner();
                 };
                 // transitionend로 애니메이션 완료 후에만 버튼 표시 (점프 방지)
                 if (titleEl) {
@@ -2729,6 +2979,23 @@ initAuth(async (user) => {
         hideLoading();
     }
 });
+
+// 로그인 배너에서 공지로 랜딩: 배너 클릭 시 저장된 공지 ID가 있으면 메인 화면 진입 후 밀톡 탭으로 전환하고 해당 공지 열기
+function applyLoginBannerLandingNotice() {
+    try {
+        const noticeId = sessionStorage.getItem('loginBannerLandingNoticeId');
+        if (!noticeId || typeof window.openNoticeDetail !== 'function') return;
+        sessionStorage.removeItem('loginBannerLandingNoticeId');
+        if (typeof window.switchMainTab === 'function') {
+            window.switchMainTab('board');
+        }
+        setTimeout(() => {
+            if (typeof window.openNoticeDetail === 'function') window.openNoticeDetail(noticeId);
+        }, 500);
+    } catch (_) {}
+}
+window.addEventListener('mealog:mainScreenShown', applyLoginBannerLandingNotice);
+window.__onMainScreenShown = applyLoginBannerLandingNotice;
 
 // 스크롤 방향에 따른 헤더·하단 네비 숨김·표시 (트위터/인스타 스타일)
 // 아래로 스크롤 시 헤더·하단 네비 숨김, 위로 스크롤 시 다시 표시
@@ -3602,6 +3869,14 @@ window.setBoardWriteCategory = (category) => {
         btn.classList.toggle('active', active);
         // 기본 스타일은 css/style.css (.board-category-btn / .active)가 강제함
     });
+
+    // 치프에게 선택 시 내용 입력 placeholder 안내 문구 변경
+    const boardWriteContentEl = document.getElementById('boardWriteContent');
+    if (boardWriteContentEl) {
+        const adminPlaceholder = '치프에게 글을 쓰는 경우, 해당 글은 작성자 외의 다른 사용자에게는 보이지 않아요';
+        const defaultPlaceholder = '내용을 입력하세요';
+        boardWriteContentEl.setAttribute('data-placeholder', category === 'admin' ? adminPlaceholder : defaultPlaceholder);
+    }
 };
 
 window.submitBoardPost = async () => {
@@ -4275,21 +4550,32 @@ function initMainAppKeyboardHandling() {
         [100, 300, 500, 800].forEach(ms => setTimeout(checkViewport, ms));
     });
 
-    /* Capacitor: 뒤로가기로 키보드 내렸을 때 네비 복원 (viewport가 갱신되지 않는 WebView에서 확실히 동작) */
+    /* Capacitor: Android 뒤로가기 — 1) 기록 모달 닫기 2) 밀톡 게시물 상세→목록 3) 키보드 내림 4) history/exit */
     if (window.Capacitor?.isNativePlatform?.()) {
-        import('@capacitor/app').then(({ App }) => {
+        const App = window.Capacitor?.Plugins?.App;
+        if (App && typeof App.addListener === 'function') {
             App.addListener('backButton', ({ canGoBack }) => {
+                const entryModal = document.getElementById('entryModal');
+                if (entryModal && !entryModal.classList.contains('hidden')) {
+                    if (typeof window.closeModal === 'function') window.closeModal();
+                    return;
+                }
+                const boardDetailView = document.getElementById('boardDetailView');
+                if (appState.currentTab === 'board' && boardDetailView && !boardDetailView.classList.contains('hidden')) {
+                    if (typeof window.backToBoardList === 'function') window.backToBoardList();
+                    return;
+                }
                 const active = document.activeElement;
                 if (isInputLike(active)) {
                     active.blur();
                     setKeyboardClosed(true);
                 } else if (canGoBack) {
                     window.history.back();
-                } else {
+                } else if (typeof App.exitApp === 'function') {
                     App.exitApp();
                 }
             });
-        }).catch(() => {});
+        }
     }
 }
 
@@ -5015,6 +5301,20 @@ function initEventListeners() {
     const logoutConfirmActionBtn = document.getElementById('logoutConfirmActionBtn');
     if (logoutConfirmActionBtn) {
         logoutConfirmActionBtn.addEventListener('click', confirmLogoutAction);
+    }
+    
+    // 콘텐츠 팝업 모달: 오늘 그만 보기 / 닫기
+    const contentPopupDismissTodayBtn = document.getElementById('contentPopupDismissTodayBtn');
+    if (contentPopupDismissTodayBtn) {
+        contentPopupDismissTodayBtn.addEventListener('click', () => {
+            if (typeof window.closeContentPopupModal === 'function') window.closeContentPopupModal(true);
+        });
+    }
+    const contentPopupCloseBtn = document.getElementById('contentPopupCloseBtn');
+    if (contentPopupCloseBtn) {
+        contentPopupCloseBtn.addEventListener('click', () => {
+            if (typeof window.closeContentPopupModal === 'function') window.closeContentPopupModal(false);
+        });
     }
     
     // 탈퇴 모달 버튼

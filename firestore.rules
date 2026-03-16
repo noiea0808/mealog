@@ -82,6 +82,15 @@ service cloud.firestore {
     }
     
     // ============================================
+    // 둘러보기(게스트) 방문 기록 — 관리자 대시보드 통계용
+    // ============================================
+    match /artifacts/{appId}/guestVisits/{docId} {
+      allow read: if isAdmin();
+      allow create, update: if request.auth != null && request.auth.uid == docId;
+      allow delete: if false;
+    }
+    
+    // ============================================
     // 공유 사진 (sharedPhotos 컬렉션)
     // ============================================
     // 보안 강화: create는 Cloud Functions를 통해서만 허용 (레이트 리밋 및 스팸 필터 적용)
@@ -236,6 +245,14 @@ service cloud.firestore {
     }
     
     // ============================================
+    // 팝업 (popups 컬렉션) - 관리자 작성, 사용자 읽기
+    // ============================================
+    match /artifacts/{appId}/popups/{popupId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // ============================================
     // 공지 북마크 (noticeBookmarks 컬렉션)
     // ============================================
     match /artifacts/{appId}/noticeBookmarks/{bookmarkId} {
@@ -255,6 +272,18 @@ service cloud.firestore {
       allow delete: if isOwnerOfResource();
     }
     
+    // ============================================
+    // 앱 설정 (config 컬렉션) - 로그인 배너 등
+    // loginBanner: 비로그인 포함 누구나 읽기, 쓰기는 관리자만
+    // ============================================
+    match /artifacts/{appId}/config/loginBanner {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /artifacts/{appId}/config/{configId} {
+      allow read, write: if isAdmin();
+    }
+
     // ============================================
     // 콘텐츠 (content 컬렉션) - 관리자 전용
     // apk 문서는 누구나 읽기 가능 (다운로드 페이지용)
@@ -285,6 +314,14 @@ service cloud.firestore {
     match /artifacts/{appId}/errorLogs/{errorId} {
       allow read: if isAdmin();
       allow write: if false; // Cloud Functions만 쓰기 가능 (admin SDK 사용)
+    }
+
+    // ============================================
+    // Collection group 'meals' — 관리자 피드(타임라인 전체) 조회용
+    // 경로 규칙과 별도로, collection group 쿼리·집계에 필요 (쓰기는 기존 users/meals 규칙만 사용)
+    // ============================================
+    match /{path=**}/meals/{mealId} {
+      allow read: if isAdmin();
     }
   }
 }

@@ -106,6 +106,8 @@ export function switchScreen(isLoggedIn) {
         setTimeout(() => {
             landing.style.display = 'none';
             landing.classList.remove('screen-transition-exit');
+            window.dispatchEvent(new CustomEvent('mealog:mainScreenShown'));
+            if (typeof window.__onMainScreenShown === 'function') window.__onMainScreenShown();
         }, LANDING_EXIT_MS);
     } else {
         landing.style.display = 'flex';
