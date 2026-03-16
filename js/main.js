@@ -4552,7 +4552,8 @@ function initMainAppKeyboardHandling() {
 
     /* Capacitor: Android 뒤로가기 — 1) 기록 모달 닫기 2) 밀톡 게시물 상세→목록 3) 키보드 내림 4) history/exit */
     if (window.Capacitor?.isNativePlatform?.()) {
-        import('@capacitor/app').then(({ App }) => {
+        const App = window.Capacitor?.Plugins?.App;
+        if (App && typeof App.addListener === 'function') {
             App.addListener('backButton', ({ canGoBack }) => {
                 const entryModal = document.getElementById('entryModal');
                 if (entryModal && !entryModal.classList.contains('hidden')) {
@@ -4570,11 +4571,11 @@ function initMainAppKeyboardHandling() {
                     setKeyboardClosed(true);
                 } else if (canGoBack) {
                     window.history.back();
-                } else {
+                } else if (typeof App.exitApp === 'function') {
                     App.exitApp();
                 }
             });
-        }).catch(() => {});
+        }
     }
 }
 
