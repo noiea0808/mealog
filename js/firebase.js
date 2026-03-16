@@ -1,5 +1,6 @@
 // Firebase 초기화 및 설정
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAnalytics, logEvent as analyticsLogEvent, setUserId, setUserProperties } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
 import { getAuth, initializeAuth, setPersistence, browserLocalPersistence, indexedDBLocalPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { getStorage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
@@ -16,6 +17,50 @@ const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
+
+// Firebase Analytics (GA4) - measurementId가 있으면 초기화
+let analytics = null;
+try {
+    if (firebaseConfig.measurementId) {
+        analytics = getAnalytics(app);
+    }
+} catch (e) {
+    console.warn('Firebase Analytics 초기화 실패:', e?.message || e);
+}
+export { analytics };
+
+/** Firebase Analytics 이벤트 로깅 (analytics가 없으면 무시) */
+export function logAnalyticsEvent(eventName, eventParams = {}) {
+    if (analytics) {
+        try {
+            analyticsLogEvent(analytics, eventName, eventParams);
+        } catch (e) {
+            console.warn('Analytics logEvent 실패:', e?.message || e);
+        }
+    }
+}
+
+/** 로그인한 사용자 ID 설정 (선택) */
+export function setAnalyticsUserId(userId) {
+    if (analytics && userId) {
+        try {
+            setUserId(analytics, userId);
+        } catch (e) {
+            console.warn('Analytics setUserId 실패:', e?.message || e);
+        }
+    }
+}
+
+/** 사용자 속성 설정 (선택) */
+export function setAnalyticsUserProperties(properties) {
+    if (analytics && properties && typeof properties === 'object') {
+        try {
+            setUserProperties(analytics, properties);
+        } catch (e) {
+            console.warn('Analytics setUserProperties 실패:', e?.message || e);
+        }
+    }
+}
 
 // Capacitor 네이티브에서는 getAuth 사용 시 인증이 멈출 수 있음 → initializeAuth + IndexedDB 사용
 function getAuthInstance() {
