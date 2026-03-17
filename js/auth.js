@@ -1,5 +1,5 @@
 // 인증 관련 함수들
-import { auth } from './firebase.js';
+import { auth, setAnalyticsUserId } from './firebase.js';
 import { GoogleAuthProvider, signInWithPopup, getRedirectResult, signInWithCredential, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
@@ -442,6 +442,7 @@ export async function initAuth(onAuthStateChangedCallback) {
     }
     onAuthStateChanged(auth, (user) => {
         try {
+            setAnalyticsUserId(user?.uid || null);
             onAuthStateChangedCallback(user);
         } catch (e) {
             console.error('인증 상태 처리 중 오류:', e);

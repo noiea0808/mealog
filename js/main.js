@@ -9,7 +9,7 @@ import { auth, db, appId } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { dbOps, setupListeners, loadSharedPhotosPage, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, boardOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { callableFunctions } from './firebase.js';
-import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp, increment } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
 import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput, warmUpIME, sharePhotosToExternal, setupBirthdateInputFormatting } from './utils.js';
@@ -1706,30 +1706,66 @@ function fillContentPopupModal(popup) {
     }
 }
 
-/** 팝업 조회 수 증가 (Firestore, 비동기 무시) */
+/** 팝업 조회 수 증가 — 사용자당 1회 (로그인 사용자만 집계) */
 function recordPopupView(popupId) {
-    if (!popupId) return;
-    const ref = doc(db, 'artifacts', appId, 'popups', popupId);
-    updateDoc(ref, { viewCount: increment(1) }).catch(() => {});
+    if (!popupId || !auth.currentUser) return;
+    const uid = auth.currentUser.uid;
+    const popupRef = doc(db, 'artifacts', appId, 'popups', popupId);
+    const viewRef = doc(db, 'artifacts', appId, 'popups', popupId, 'views', uid);
+    runTransaction(db, async (tx) => {
+        const snap = await tx.get(viewRef);
+        if (snap.exists()) return;
+        tx.set(viewRef, { at: serverTimestamp() });
+        tx.update(popupRef, { viewCount: increment(1) });
+    }).catch(() => {});
 }
 
-/** 팝업 클릭 수 증가 (랜딩 버튼 클릭 시) */
+/** 팝업 클릭 수 증가 — 사용자당 1회 */
 function recordPopupClick(popupId) {
-    if (!popupId) return;
-    const ref = doc(db, 'artifacts', appId, 'popups', popupId);
-    updateDoc(ref, { clickCount: increment(1) }).catch(() => {});
+    if (!popupId || !auth.currentUser) return;
+    const uid = auth.currentUser.uid;
+    const popupRef = doc(db, 'artifacts', appId, 'popups', popupId);
+    const clickRef = doc(db, 'artifacts', appId, 'popups', popupId, 'clicks', uid);
+    runTransaction(db, async (tx) => {
+        const snap = await tx.get(clickRef);
+        if (snap.exists()) return;
+        tx.set(clickRef, { at: serverTimestamp() });
+        tx.update(popupRef, { clickCount: increment(1) });
+    }).catch(() => {});
 }
 
-/** 로그인 배너 조회 수 증가 */
+/** 로그인 배너 조회 수 증가 — 로그인 사용자당 1회, 비로그인은 매번 집계 */
 function recordBannerView() {
-    const ref = doc(db, 'artifacts', appId, 'config', 'loginBanner');
-    setDoc(ref, { viewCount: increment(1) }, { merge: true }).catch(() => {});
+    const bannerRef = doc(db, 'artifacts', appId, 'config', 'loginBanner');
+    if (auth.currentUser) {
+        const uid = auth.currentUser.uid;
+        const viewRef = doc(db, 'artifacts', appId, 'config', 'loginBanner', 'views', uid);
+        runTransaction(db, async (tx) => {
+            const snap = await tx.get(viewRef);
+            if (snap.exists()) return;
+            tx.set(viewRef, { at: serverTimestamp() });
+            tx.update(bannerRef, { viewCount: increment(1) });
+        }).catch(() => {});
+    } else {
+        setDoc(bannerRef, { viewCount: increment(1) }, { merge: true }).catch(() => {});
+    }
 }
 
-/** 로그인 배너 클릭 수 증가 */
+/** 로그인 배너 클릭 수 증가 — 로그인 사용자당 1회, 비로그인은 매번 집계 */
 function recordBannerClick() {
-    const ref = doc(db, 'artifacts', appId, 'config', 'loginBanner');
-    setDoc(ref, { clickCount: increment(1) }, { merge: true }).catch(() => {});
+    const bannerRef = doc(db, 'artifacts', appId, 'config', 'loginBanner');
+    if (auth.currentUser) {
+        const uid = auth.currentUser.uid;
+        const clickRef = doc(db, 'artifacts', appId, 'config', 'loginBanner', 'clicks', uid);
+        runTransaction(db, async (tx) => {
+            const snap = await tx.get(clickRef);
+            if (snap.exists()) return;
+            tx.set(clickRef, { at: serverTimestamp() });
+            tx.update(bannerRef, { clickCount: increment(1) });
+        }).catch(() => {});
+    } else {
+        setDoc(bannerRef, { clickCount: increment(1) }, { merge: true }).catch(() => {});
+    }
 }
 
 /** 탭 전환 시 해당 메뉴용 콘텐츠 팝업이 있으면 조건에 맞을 때 표시 (여러 개면 이전/다음으로 이동) */

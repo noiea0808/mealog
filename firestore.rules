@@ -261,6 +261,16 @@ service cloud.firestore {
          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clickCount'])
          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount', 'clickCount']))
       );
+      match /views/{userId} {
+        allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+        allow create: if isAuthenticated() && request.auth.uid == userId;
+        allow update, delete: if false;
+      }
+      match /clicks/{userId} {
+        allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+        allow create: if isAuthenticated() && request.auth.uid == userId;
+        allow update, delete: if false;
+      }
     }
     
     // ============================================
@@ -296,6 +306,16 @@ service cloud.firestore {
         || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount', 'clickCount'])
       );
       allow delete: if isAdmin();
+      match /views/{userId} {
+        allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+        allow create: if isAuthenticated() && request.auth.uid == userId;
+        allow update, delete: if false;
+      }
+      match /clicks/{userId} {
+        allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+        allow create: if isAuthenticated() && request.auth.uid == userId;
+        allow update, delete: if false;
+      }
     }
     match /artifacts/{appId}/config/{configId} {
       allow read, write: if isAdmin();
