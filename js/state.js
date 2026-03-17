@@ -15,6 +15,9 @@ export const appState = {
     settingsUnsubscribe: null,
     statsUnsubscribe: null,
     sharedPhotosUnsubscribe: null,
+    notificationUnsubscribePost: null,
+    notificationUnsubscribeBoard: null,
+    notificationUnreadCount: 0,
     sharedPhotosFeedLastDoc: null,
     sharedPhotosFeedHasMore: false,
     sharedPhotosFeedPrefetchedAt: 0, // 모먼트 프리페치 시각 (ms), 캐시 유효성 판단용

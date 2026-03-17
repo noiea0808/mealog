@@ -37,6 +37,7 @@
     <!-- <link rel="manifest" href="./manifest.json"> -->
     <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%23059669'/><text x='50%25' y='50%25' font-size='120' text-anchor='middle' dominant-baseline='central' fill='white'>🍽️</text></svg>">
     
+    <!-- Tailwind CDN: 프로덕션에서는 PostCSS/CLI 사용 권장. 콘솔 경고는 무시해도 됨. -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/earlyaccess/nanumsquareround.css" rel="stylesheet">
@@ -199,6 +200,8 @@
     <script>window.synapse = window.synapse || { exposeSynapse: function () {} };</script>
     <script src="js/capacitor-filesystem-plugin.js"></script>
     <script src="js/capacitor-share-plugin.js"></script>
+    <script src="js/capacitor-badge-plugin.js"></script>
+    <script src="js/capacitor-push-notifications-plugin.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             var el = document.getElementById('headerStagingLabel');
@@ -328,6 +331,12 @@
         
         // Promise rejection 핸들러 (모듈 import 실패 등)
         window.addEventListener('unhandledrejection', (e) => {
+            var msg = (e.reason && e.reason.message) ? String(e.reason.message) : '';
+            // Android Capacitor 푸시 플러그인 알려진 오류 — 무시 (push-notifications.js에서 처리)
+            if (msg.indexOf('PushNotifications') !== -1 && msg.indexOf('is not implemented') !== -1) {
+                e.preventDefault();
+                return;
+            }
             console.error('=== Promise Rejection 발생 ===');
             console.error('이유:', e.reason);
             if (e.reason && e.reason.message) {

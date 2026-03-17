@@ -59,6 +59,7 @@ const splashScreenPlugin = path.join(root, 'node_modules', '@capacitor', 'splash
 const sharePlugin = path.join(root, 'node_modules', '@capacitor', 'share', 'dist', 'plugin.js');
 const filesystemPlugin = path.join(root, 'node_modules', '@capacitor', 'filesystem', 'dist', 'plugin.js');
 const appPlugin = path.join(root, 'node_modules', '@capacitor', 'app', 'dist', 'plugin.js');
+const pushNotificationsPlugin = path.join(root, 'node_modules', '@capacitor', 'push-notifications', 'dist', 'plugin.js');
 if (fs.existsSync(capacitorCore)) {
   fs.copyFileSync(capacitorCore, path.join(www, 'js', 'capacitor.js'));
   console.log('✓ js/capacitor.js');
@@ -85,6 +86,15 @@ if (fs.existsSync(appPlugin)) {
   fs.copyFileSync(appPlugin, appPluginWww);
   fs.copyFileSync(appPlugin, appPluginRoot);
   console.log('✓ js/capacitor-app-plugin.js (www + root)');
+}
+if (fs.existsSync(pushNotificationsPlugin)) {
+  fs.copyFileSync(pushNotificationsPlugin, path.join(www, 'js', 'capacitor-push-notifications-plugin.js'));
+  console.log('✓ js/capacitor-push-notifications-plugin.js');
+}
+const badgePlugin = path.join(root, 'node_modules', '@capawesome', 'capacitor-badge', 'dist', 'plugin.js');
+if (fs.existsSync(badgePlugin)) {
+  fs.copyFileSync(badgePlugin, path.join(www, 'js', 'capacitor-badge-plugin.js'));
+  console.log('✓ js/capacitor-badge-plugin.js');
 }
 
 // capacitor.config.json에서 appId 읽어 env.js 생성 (스테이징 여부 판별)

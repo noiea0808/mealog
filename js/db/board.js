@@ -581,7 +581,23 @@ export const boardOperations = {
             return [];
         }
     },
-    
+
+    /**
+     * 내 글(밀톡)에 달린 댓글 실시간 구독 — 변경 시에만 callback 호출 (알림 빨간점 갱신용)
+     * @param {string} ownerId - 현재 사용자 uid
+     * @param {() => void} callback - 댓글 추가/변경 시 호출 (디바운스는 호출 측에서 처리)
+     * @returns {() => void} unsubscribe
+     */
+    subscribeToMyBoardComments(ownerId, callback) {
+        const id = String(ownerId || '').trim();
+        if (!id || !callback) return () => {};
+        const commentsColl = collection(db, 'artifacts', appId, 'boardComments');
+        const q = query(commentsColl, where('postAuthorId', '==', id));
+        return onSnapshot(q, (snap) => {
+            if (snap.docChanges().length > 0) callback();
+        });
+    },
+
     // 댓글 작성 (Cloud Functions 사용 - 레이트 리밋 및 스팸 필터 적용)
     async addComment(postId, content) {
         if (!window.currentUser) {

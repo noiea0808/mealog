@@ -7,7 +7,7 @@ window.moduleLoading = true;
 import { appState, getState } from './state.js';
 import { auth, db, appId } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { dbOps, setupListeners, loadSharedPhotosPage, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, boardOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
+import { dbOps, setupListeners, loadSharedPhotosPage, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, subscribeToMyPostComments, boardOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { callableFunctions } from './firebase.js';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp, increment } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -41,6 +41,14 @@ window.cleanupFirestoreListeners = () => {
         if (appState.sharedPhotosUnsubscribe) {
             appState.sharedPhotosUnsubscribe();
             appState.sharedPhotosUnsubscribe = null;
+        }
+        if (appState.notificationUnsubscribePost) {
+            appState.notificationUnsubscribePost();
+            appState.notificationUnsubscribePost = null;
+        }
+        if (appState.notificationUnsubscribeBoard) {
+            appState.notificationUnsubscribeBoard();
+            appState.notificationUnsubscribeBoard = null;
         }
     } catch (e) {
         console.warn('cleanupFirestoreListeners 실패(무시):', e);
@@ -2300,8 +2308,34 @@ window.updateNotificationDot = async () => {
         const readState = getNotificationReadState();
         const unread = merged.filter(item => !isNotificationRead(item, readState));
         if (unread.length > 0) dotEl.classList.remove('hidden'); else dotEl.classList.add('hidden');
+        appState.notificationUnreadCount = unread.length;
+        if (typeof window.updateAppBadge === 'function') window.updateAppBadge();
     } catch (_) {
         dotEl.classList.add('hidden');
+        appState.notificationUnreadCount = 0;
+        if (typeof window.updateAppBadge === 'function') window.updateAppBadge();
+    }
+};
+
+/** 앱 아이콘 배지 수 설정 (네이티브만, 권한 확인 후 설정) */
+window.updateAppBadge = async function updateAppBadge() {
+    if (typeof window.Capacitor === 'undefined' || !window.Capacitor?.isNativePlatform?.()) return;
+    const Badge = window.Capacitor?.Plugins?.Badge;
+    if (!Badge) return;
+    const count = typeof appState.notificationUnreadCount === 'number' ? appState.notificationUnreadCount : 0;
+    try {
+        const perm = await Badge.checkPermissions().catch(() => ({ display: 'prompt' }));
+        if (perm.display !== 'granted') {
+            const requested = await Badge.requestPermissions().catch(() => ({ display: 'denied' }));
+            if (requested.display !== 'granted') return;
+        }
+        if (count <= 0) {
+            await Badge.clear();
+        } else {
+            await Badge.set({ count });
+        }
+    } catch (e) {
+        console.warn('앱 배지 설정 실패 (무시):', e?.message || e);
     }
 };
 
@@ -2322,12 +2356,53 @@ window.clearGalleryFilterPostId = () => {
 
 window.addEventListener('resize', updateTimelineSearchExpandWidth);
 
-// 앱 탭으로 돌아올 때 알림(빨간 점·목록) 갱신
+// 실시간 알림(빨간점): 내 글에 댓글 추가 시 onSnapshot으로 감지 후 디바운스 갱신
+const NOTIFICATION_DEBOUNCE_MS = 300;
+let notificationDebounceTimer = null;
+
+function onNotificationChange() {
+    clearTimeout(notificationDebounceTimer);
+    notificationDebounceTimer = setTimeout(() => {
+        if (typeof window.updateNotificationDot === 'function') window.updateNotificationDot();
+        const popup = document.getElementById('notificationPopup');
+        if (popup && !popup.classList.contains('hidden') && typeof window.loadNotificationList === 'function') window.loadNotificationList();
+    }, NOTIFICATION_DEBOUNCE_MS);
+}
+
+function startNotificationListeners() {
+    const uid = window.currentUser?.uid;
+    if (!uid || window.currentUser?.isAnonymous || !postInteractions || !boardOperations) return;
+    stopNotificationListeners();
+    try {
+        appState.notificationUnsubscribePost = subscribeToMyPostComments(uid, onNotificationChange);
+        if (typeof boardOperations.subscribeToMyBoardComments === 'function') {
+            appState.notificationUnsubscribeBoard = boardOperations.subscribeToMyBoardComments(uid, onNotificationChange);
+        }
+    } catch (e) {
+        console.warn('실시간 알림 리스너 등록 실패:', e?.message || e);
+    }
+}
+
+function stopNotificationListeners() {
+    if (appState.notificationUnsubscribePost) {
+        appState.notificationUnsubscribePost();
+        appState.notificationUnsubscribePost = null;
+    }
+    if (appState.notificationUnsubscribeBoard) {
+        appState.notificationUnsubscribeBoard();
+        appState.notificationUnsubscribeBoard = null;
+    }
+}
+
+// 앱 탭으로 돌아올 때 알림(빨간 점·목록) 갱신 + 실시간 리스너 재시작
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && window.currentUser && !window.currentUser.isAnonymous) {
         if (typeof window.updateNotificationDot === 'function') window.updateNotificationDot();
         const popup = document.getElementById('notificationPopup');
         if (popup && !popup.classList.contains('hidden') && typeof window.loadNotificationList === 'function') window.loadNotificationList();
+        startNotificationListeners();
+    } else if (document.visibilityState === 'hidden') {
+        stopNotificationListeners();
     }
 });
 
@@ -2703,6 +2778,8 @@ initAuth(async (user) => {
         lastProcessedUserId = user.uid;
 
         if (user && !user.isAnonymous) {
+          window.__onPushTokenSaved = () => showToast('알림 등록됨', 'success');
+          window.__onPushTokenSavedError = (msg) => showToast('알림 등록 실패: ' + (msg || '알 수 없음'), 'error');
           initPushNotifications(user.uid).catch(() => {});
         }
         
@@ -2771,7 +2848,8 @@ initAuth(async (user) => {
             appState.sharedPhotosUnsubscribe = null;
             window.sharedPhotos = [];
             window.sharedPhotosFeed = [];
-            
+            stopNotificationListeners();
+
             // 게스트 모드일 때 헤더 UI 업데이트
             updateHeaderUI();
             // 둘러보기(게스트) 방문 기록 — 관리자 대시보드 통계용
@@ -2842,7 +2920,8 @@ initAuth(async (user) => {
             appState.settingsUnsubscribe = settingsUnsubscribe;
             appState.dataUnsubscribe = dataUnsubscribe;
             appState.statsUnsubscribe = statsUnsubscribe;
-            
+            if (document.visibilityState === 'visible') startNotificationListeners();
+
             // 공유 사진: 리스너 제거, 탭 진입 시 loadSharedPhotosPage/loadMyShares로 페이지네이션 적용
             if (appState.sharedPhotosUnsubscribe) {
                 appState.sharedPhotosUnsubscribe();
