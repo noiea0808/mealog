@@ -128,6 +128,17 @@ async function isAdminByUid(uid) {
   return adminSnap.exists && adminSnap.data().isAdmin === true;
 }
 
+/** FCM data 페이로드: Android는 모든 값이 문자열이어야 함 */
+function fcmDataStrings(data) {
+  if (!data || typeof data !== 'object') return {};
+  const out = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (v === undefined || v === null) continue;
+    out[String(k)] = typeof v === 'string' ? v : String(v);
+  }
+  return out;
+}
+
 /**
  * 특정 사용자의 FCM 토큰들에 푸시 알림 전송 (실패 시 로그만, 호출자 대기 안 함)
  * @param {string} userId - 수신자 uid
@@ -147,7 +158,7 @@ async function sendPushToUser(userId, payload) {
     const messaging = getMessaging();
     const message = {
       notification: { title: payload.title, body: payload.body || '' },
-      data: payload.data || {},
+      data: fcmDataStrings(payload.data),
       android: { priority: 'high' }
     };
     const results = await Promise.allSettled(
@@ -155,7 +166,15 @@ async function sendPushToUser(userId, payload) {
     );
     const failed = results.filter((r) => r.status === 'rejected');
     if (failed.length > 0) {
-      logger.warn('sendPushToUser: some sends failed', { userId, failed: failed.length });
+      const firstReason = failed[0]?.reason?.message || String(failed[0]?.reason);
+      logger.warn('sendPushToUser: some sends failed', {
+        userId,
+        failed: failed.length,
+        total: tokens.length,
+        firstReason
+      });
+    } else {
+      logger.info('sendPushToUser: ok', { userId, tokenCount: tokens.length });
     }
   } catch (e) {
     logger.warn('sendPushToUser failed', { userId, message: e?.message });
@@ -466,7 +485,10 @@ exports.addBoardComment = onCall({ region: REGION }, wrapFunction('addBoardComme
   // 게시글 조회 (댓글 수 증가 + 알림용 postAuthorId)
   const postRef = db.collection('artifacts').doc(APP_ID).collection('boardPosts').doc(postId);
   const postDoc = await postRef.get();
-  const postAuthorId = postDoc.exists && postDoc.data().authorId ? String(postDoc.data().authorId).trim() : '';
+  const postData = postDoc.exists ? postDoc.data() : {};
+  const postAuthorId = (postData.authorId && String(postData.authorId).trim())
+    || (postData.userId && String(postData.userId).trim())
+    || '';
 
   // 댓글 생성 (postAuthorId: 알림에서 "내 글에 달린 댓글"만 쿼리할 때 사용)
   const commentsRef = db.collection('artifacts').doc(APP_ID).collection('boardComments');
@@ -535,7 +557,10 @@ exports.addBoardCommentAsAdmin = onCall({ region: REGION }, async (request) => {
 
   const postRef = db.collection('artifacts').doc(APP_ID).collection('boardPosts').doc(postId);
   const postDoc = await postRef.get();
-  const postAuthorId = postDoc.exists && postDoc.data().authorId ? String(postDoc.data().authorId).trim() : '';
+  const postData = postDoc.exists ? postDoc.data() : {};
+  const postAuthorId = (postData.authorId && String(postData.authorId).trim())
+    || (postData.userId && String(postData.userId).trim())
+    || '';
 
   const commentsRef = db.collection('artifacts').doc(APP_ID).collection('boardComments');
   const newComment = {

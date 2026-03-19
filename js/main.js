@@ -2780,7 +2780,9 @@ initAuth(async (user) => {
         if (user && !user.isAnonymous) {
           window.__onPushTokenSaved = () => showToast('알림 등록됨', 'success');
           window.__onPushTokenSavedError = (msg) => showToast('알림 등록 실패: ' + (msg || '알 수 없음'), 'error');
-          initPushNotifications(user.uid).catch(() => {});
+          initPushNotifications(user.uid).catch((e) =>
+            console.warn('푸시 초기화 실패:', e?.message || e)
+          );
         }
         
         console.log('🔐 인증 상태 변경:', {

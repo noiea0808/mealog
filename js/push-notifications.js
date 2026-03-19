@@ -4,6 +4,7 @@
  * - artifacts/{appId}/users/{uid}/config/fcmTokens 문서에 토큰 저장 (다중 기기 지원)
  */
 import { db, appId } from './firebase.js';
+import { showPermissionHintToast } from './ui.js';
 import { doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
@@ -19,6 +20,72 @@ function isNative() {
 
 function isAndroid() {
   return typeof window.Capacitor !== 'undefined' && window.Capacitor.getPlatform?.() === 'android';
+}
+
+/** 스테이징/프로덕션 앱 패키지 (알림 설정 화면 intent용) */
+function getAndroidApplicationId() {
+  return typeof window.APP_ENV !== 'undefined' && window.APP_ENV === 'staging'
+    ? 'com.mealog.app.staging'
+    : 'com.mealog.app';
+}
+
+/**
+ * OS 설정에서 이 앱의 알림·권한 화면으로 이동 (강제 허용은 불가 — 사용자가 켜야 함)
+ * @returns {Promise<boolean>} 시도했으면 true
+ */
+export async function openNativeAppNotificationSettings() {
+  const App = window.Capacitor?.Plugins?.App;
+  if (!App?.openUrl) return false;
+  try {
+    if (isAndroid()) {
+      const pkg = getAndroidApplicationId();
+      await App.openUrl({
+        url: `intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;data=package:${pkg};end`
+      });
+      return true;
+    }
+    await App.openUrl({ url: 'app-settings:' });
+    return true;
+  } catch (e) {
+    if (isAndroid()) {
+      try {
+        await App.openUrl({ url: `package:${getAndroidApplicationId()}` });
+        return true;
+      } catch (_) {}
+    }
+    return false;
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.openMealogNotificationSettings = () => {
+    openNativeAppNotificationSettings().catch(() => {});
+  };
+}
+
+const PUSH_HINT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+function maybeShowPushPermissionHint(uid, receive) {
+  if (!uid || !isNative()) return;
+  if (receive === 'granted' || receive === 'yes') return;
+  try {
+    const k = `mealog_push_hint_ts_${uid}`;
+    const last = parseInt(localStorage.getItem(k) || '0', 10);
+    if (Date.now() - last < PUSH_HINT_COOLDOWN_MS) return;
+    localStorage.setItem(k, String(Date.now()));
+  } catch (_) {}
+
+  const msg =
+    '댓글·알림을 받으려면 기기 설정에서 이 앱의 알림을 켜 주세요. (시스템에서만 변경 가능합니다)';
+
+  setTimeout(() => {
+    showPermissionHintToast(msg, {
+      actionLabel: '설정 열기',
+      onAction: () => {
+        openNativeAppNotificationSettings().catch(() => {});
+      }
+    });
+  }, 1600);
 }
 
 // Android: Capacitor 브리지가 PushNotifications 반환값에 .then() 호출 시 "is not implemented" 발생 → 거부 무시
@@ -78,13 +145,21 @@ async function saveFcmToken(uid, token) {
   }
 }
 
-/** 네이티브에서 PushNotifications 플러그인 가져오기 (스크립트 로드 우선, 없으면 동적 import) */
-async function getPushNotificationsPlugin() {
-  const hasFromScript = typeof window.Capacitor !== 'undefined' && window.Capacitor?.Plugins?.PushNotifications;
-  if (hasFromScript) {
+/**
+ * 스크립트로 등록된 PushNotifications만 동기 반환.
+ * 주의: async 함수에서 `return PN` 하면 Promise.resolve(PN)이 PN의 `.then`(Capacitor 프록시)을
+ * Promise로 오인해 await가 영원히 이어지지 않거나 "then is not implemented"만 터질 수 있음 (Android).
+ */
+function getPushPluginFromScript() {
+  if (typeof window.Capacitor !== 'undefined' && window.Capacitor?.Plugins?.PushNotifications) {
     console.log('푸시: 플러그인 사용 (스크립트 등록)');
     return window.Capacitor.Plugins.PushNotifications;
   }
+  return null;
+}
+
+/** 동적 import 경로만 async (여기서 반환값은 모듈에서 온 클래스/객체로 thenable 오인 위험 낮음) */
+async function loadPushPluginDynamic() {
   console.log('푸시: 스크립트에 플러그인 없음, 동적 import 시도');
   const importWithTimeout = Promise.race([
     import('@capacitor/push-notifications').then((mod) => mod.PushNotifications),
@@ -128,15 +203,21 @@ export async function initPushNotifications(uid) {
 
   try {
     console.log('푸시: 초기화 시작');
-    const PN = await getPushNotificationsPlugin();
+    let PN = getPushPluginFromScript();
+    if (!PN) {
+      PN = await loadPushPluginDynamic();
+    }
+    console.log('푸시: 플러그인 확보 직후', { hasPN: !!PN });
+    console.warn('[PUSH-DBG] 플러그인 확보 직후', { hasPN: !!PN });
     if (!PN) {
       console.warn('푸시: PushNotifications 플러그인을 불러올 수 없음');
       setPushDebug({ lastError: '플러그인 로드 실패' });
       return;
     }
-    console.log('푸시: 플러그인 로드됨, 다음 틱에 리스너·등록 실행');
+    console.log('푸시: 플러그인 로드됨');
+    console.warn('[PUSH-DBG] 플러그인 로드됨');
 
-    // Android 브리지 .then() 오류: addListener/register를 서로 다른 틱으로 분리해 register()는 반드시 호출되게 함
+    // [A] 리스너만 다음 틱에서 등록 (Android 브리지 .then() 오류 회피)
     setTimeout(() => {
       console.log('푸시: [A] 리스너 등록 시작');
       if (!pushListenersRegistered) {
@@ -162,6 +243,10 @@ export async function initPushNotifications(uid) {
           });
           PN.addListener('pushNotificationReceived', (ev) => {
             console.log('푸시 수신 (포그라운드):', ev.notification);
+            // 백그라운드에서는 FCM 시스템 알림, 포그라운드에서는 여기서만 옴 → 빨간점·배지 갱신
+            if (typeof window.updateNotificationDot === 'function') {
+              window.updateNotificationDot().catch(() => {});
+            }
           });
           PN.addListener('pushNotificationActionPerformed', (ev) => {
             console.log('푸시 탭 (알림 클릭):', ev.notification, ev.actionId);
@@ -182,45 +267,51 @@ export async function initPushNotifications(uid) {
       }
     }, 0);
 
-    setTimeout(() => {
-      console.log('푸시: [B] 플랫폼·register 블록');
-      try {
-        const platform = window.Capacitor?.getPlatform?.();
-        const android = isAndroid();
-        console.log('푸시: 플랫폼=', platform, 'Android=', android);
-        if (android) {
-          setPushDebug({ inited: true });
-          const doRegister = () => {
-            console.log('푸시: Android — FCM register() 호출');
-            try {
-              PN.register();
-            } catch (regErr) {
-              console.warn('푸시 register() 예외:', regErr?.message || regErr);
-            }
-          };
-          PN.requestPermissions()
-            .then((perm) => {
-              const receive = perm?.receive ?? perm?.value ?? perm;
-              setPushDebug({ permission: receive });
-              if (receive === 'granted' || receive === 'yes') {
-                doRegister();
-              } else {
-                console.warn('푸시: Android 알림 권한 —', receive);
-                doRegister();
-              }
-            })
-            .catch(() => {
-              setPushDebug({ permission: null });
+    // [B] 플랫폼·register는 같은 틱에서 즉시 실행 (로그가 반드시 보이도록)
+    console.log('푸시: [B] 플랫폼·register 블록');
+    console.warn('[PUSH-DBG] [B] 플랫폼·register 블록');
+    try {
+      const platform = typeof window.Capacitor?.getPlatform === 'function' ? window.Capacitor.getPlatform() : undefined;
+      const android = isAndroid();
+      console.log('푸시: 플랫폼=', platform, 'Android=', android);
+      console.warn('[PUSH-DBG] 플랫폼=', platform, 'Android=', android);
+      if (android) {
+        setPushDebug({ inited: true });
+        const doRegister = () => {
+          console.log('푸시: Android — FCM register() 호출');
+          console.warn('[PUSH-DBG] Android — FCM register() 호출');
+          try {
+            PN.register();
+          } catch (regErr) {
+            console.warn('푸시 register() 예외:', regErr?.message || regErr);
+          }
+        };
+        PN.requestPermissions()
+          .then((perm) => {
+            const receive = perm?.receive ?? perm?.value ?? perm;
+            setPushDebug({ permission: receive });
+            if (receive === 'granted' || receive === 'yes') {
               doRegister();
-            });
-          return;
-        }
-        console.log('푸시: 알림 권한 요청 중...');
-        PN.requestPermissions().then((perm) => {
+            } else {
+              console.warn('푸시: Android 알림 권한 —', receive);
+              maybeShowPushPermissionHint(uid, receive);
+              doRegister();
+            }
+          })
+          .catch(() => {
+            setPushDebug({ permission: null });
+            maybeShowPushPermissionHint(uid, 'denied');
+            doRegister();
+          });
+        return;
+      }
+      console.log('푸시: 알림 권한 요청 중...');
+      PN.requestPermissions().then((perm) => {
           setPushDebug({ permission: perm?.receive });
           if (perm?.receive !== 'granted') {
             console.log('푸시 알림 권한이 허용되지 않음:', perm?.receive);
             setPushDebug({ lastError: '권한 거부: ' + (perm?.receive || 'unknown') });
+            maybeShowPushPermissionHint(uid, perm?.receive || 'denied');
             return;
           }
           console.log('푸시: 권한 허용됨, FCM 등록 중...');
@@ -233,12 +324,12 @@ export async function initPushNotifications(uid) {
         }).catch((e) => {
           console.warn('푸시 requestPermissions 실패:', e?.message || e);
           setPushDebug({ lastError: String(e?.message || e) });
+          maybeShowPushPermissionHint(uid, 'denied');
         });
-      } catch (e2) {
-        console.warn('푸시 setTimeout 블록 실패:', e2?.message || e2);
-        setPushDebug({ lastError: String(e2?.message || e2) });
-      }
-    }, 0);
+    } catch (e2) {
+      console.warn('푸시 [B] 블록 실패:', e2?.message || e2);
+      setPushDebug({ lastError: String(e2?.message || e2) });
+    }
   } catch (e) {
     const msg = e?.message || String(e);
     console.warn('⚠️ 푸시 알림 초기화 실패:', msg);
