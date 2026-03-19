@@ -11,7 +11,36 @@ import { dbOps, setupListeners, loadSharedPhotosPage, loadMyShares, loadMoreMeal
 import { callableFunctions } from './firebase.js';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp, increment } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from './ui.js';
+import {
+    switchScreen,
+    showToast,
+    updateHeaderUI,
+    showLoading,
+    hideLoading,
+    showNetworkErrorOverlay,
+    hideNetworkErrorOverlay
+} from './ui.js';
+
+function mealogMainAppVisible() {
+    try {
+        const main = document.getElementById('mainApp');
+        return !!(main && !main.classList.contains('hidden'));
+    } catch (_) {
+        return false;
+    }
+}
+
+window.addEventListener('offline', () => {
+    if (mealogMainAppVisible() && window.currentUser) {
+        showNetworkErrorOverlay({
+            message:
+                '인터넷 연결이 끊어졌습니다. Wi-Fi 또는 데이터 연결을 확인한 뒤 다시 불러오기를 눌러 주세요.'
+        });
+    }
+});
+window.addEventListener('online', () => {
+    hideNetworkErrorOverlay();
+});
 import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput, warmUpIME, sharePhotosToExternal, setupBirthdateInputFormatting } from './utils.js';
 import { 
     initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,

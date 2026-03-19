@@ -3,6 +3,7 @@ import { db, appId } from '../firebase.js';
 import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, startAfter, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from '../constants.js';
 import { dbOps } from './ops.js';
+import { hideLoading, showNetworkErrorOverlay, isLikelyNetworkError } from '../ui.js';
 
 /** 세션당 1회만 실행 (Firestore 읽기 절감) */
 let userDocEnsureDoneForUid = null;
@@ -402,7 +403,13 @@ export function setupListeners(userId, callbacks) {
             message: error.message,
             userId: userId
         });
-        
+
+        if (isLikelyNetworkError(error)) {
+            hideLoading();
+            showNetworkErrorOverlay();
+            return;
+        }
+
         // 권한 오류인 경우 기존 사용자인지 확인하여 약관 동의 자동 설정
         if (error.code === 'permission-denied') {
             console.warn('⚠️ 설정 읽기 권한 오류. 기존 사용자인지 확인합니다...');
@@ -577,19 +584,34 @@ export function setupListeners(userId, callbacks) {
             console.error('⚠️ 데이터 리스너 에러 핸들러: 사용자 ID 불일치! 리스너 무시');
             return;
         }
+        if (isLikelyNetworkError(error)) {
+            hideLoading();
+            showNetworkErrorOverlay();
+            return;
+        }
         // 인덱스가 없을 경우 fallback: 전체 컬렉션 사용 (경고만 표시)
         console.warn("날짜 범위 쿼리 실패, 전체 컬렉션으로 fallback");
         const fallbackQuery = collection(db, 'artifacts', appId, 'users', userId, 'meals');
-        return onSnapshot(fallbackQuery, (snap) => {
-            // 사용자 ID 재확인 (fallback 리스너 내부에서)
-            if (window.currentUser && userId !== window.currentUser.uid) {
-                console.error('⚠️ Fallback 리스너: 사용자 ID 불일치! 무시');
-                return;
+        return onSnapshot(
+            fallbackQuery,
+            (snap) => {
+                // 사용자 ID 재확인 (fallback 리스너 내부에서)
+                if (window.currentUser && userId !== window.currentUser.uid) {
+                    console.error('⚠️ Fallback 리스너: 사용자 ID 불일치! 무시');
+                    return;
+                }
+                window.mealHistory = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                    .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+                if (onDataUpdate) onDataUpdate();
+            },
+            (err2) => {
+                console.error('Meals fallback listener error:', err2);
+                hideLoading();
+                if (isLikelyNetworkError(err2)) {
+                    showNetworkErrorOverlay();
+                }
             }
-            window.mealHistory = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-                .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-            if (onDataUpdate) onDataUpdate();
-        });
+        );
     });
     
     // Stats 리스너 (연도별 서브컬렉션: config/stats/years/{year})
@@ -807,6 +829,10 @@ export function setupSharedPhotosListener(callback) {
         if (callback) callback(sharedPhotos);
     }, (error) => {
         console.error("Shared Photos Listener Error:", error);
+        if (isLikelyNetworkError(error)) {
+            hideLoading();
+            showNetworkErrorOverlay();
+        }
     });
     return unsubscribe;
 }

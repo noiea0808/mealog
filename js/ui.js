@@ -273,6 +273,74 @@ export function updateHeaderUI() {
 window.showLoading = showLoading;
 window.hideLoading = hideLoading;
 
+/** Firestore / fetch 등에서 네트워크성 오류로 추정되는지 (인덱스·권한 오류는 제외) */
+export function isLikelyNetworkError(err) {
+    if (!err) return false;
+    try {
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+    } catch (_) {}
+    const code = String(err.code || '');
+    const msg = String(err.message || (typeof err.toString === 'function' ? err.toString() : '') || '').toLowerCase();
+    const networkCodes = ['unavailable', 'deadline-exceeded', 'resource-exhausted'];
+    if (networkCodes.includes(code)) return true;
+    if (code === 'failed-precondition') return false;
+    if (code === 'permission-denied') return false;
+    if (
+        /failed to fetch|networkerror|network request failed|load failed|fetcherror/i.test(msg) ||
+        /connection.*(refused|reset|aborted)|err_connection|net::err|quic|econnreset|enotfound|etimedout|timeout/i.test(
+            msg
+        ) ||
+        /internet|offline|unreachable|host.*not.*found/i.test(msg)
+    ) {
+        return true;
+    }
+    return false;
+}
 
+const DEFAULT_NETWORK_ERROR_MESSAGE =
+    '네트워크 연결을 확인할 수 없습니다. Wi-Fi 또는 데이터 연결을 확인한 뒤 다시 시도해 주세요.';
 
+let networkErrorOverlayButtonsBound = false;
+
+function bindNetworkErrorOverlayButtons() {
+    if (networkErrorOverlayButtonsBound) return;
+    const reloadBtn = document.getElementById('networkErrorReloadBtn');
+    const dismissBtn = document.getElementById('networkErrorDismissBtn');
+    if (!reloadBtn || !dismissBtn) return;
+    networkErrorOverlayButtonsBound = true;
+    reloadBtn.addEventListener('click', () => {
+        try {
+            window.location.reload();
+        } catch (_) {}
+    });
+    dismissBtn.addEventListener('click', () => {
+        hideNetworkErrorOverlay();
+    });
+}
+
+/** 메인 콘텐츠(Firestore 등) 로드 실패 시 전체 화면 안내 */
+export function showNetworkErrorOverlay(options = {}) {
+    const overlay = document.getElementById('networkErrorOverlay');
+    if (!overlay) return;
+    bindNetworkErrorOverlayButtons();
+    const msgEl = document.getElementById('networkErrorOverlayMessage');
+    if (msgEl) {
+        msgEl.textContent =
+            typeof options.message === 'string' && options.message.trim()
+                ? options.message.trim()
+                : DEFAULT_NETWORK_ERROR_MESSAGE;
+    }
+    hideLoading();
+    overlay.classList.remove('hidden');
+}
+
+export function hideNetworkErrorOverlay() {
+    const overlay = document.getElementById('networkErrorOverlay');
+    if (!overlay) return;
+    overlay.classList.add('hidden');
+}
+
+window.isLikelyNetworkError = isLikelyNetworkError;
+window.showNetworkErrorOverlay = showNetworkErrorOverlay;
+window.hideNetworkErrorOverlay = hideNetworkErrorOverlay;
 

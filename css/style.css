@@ -215,6 +215,7 @@ header .mealog-title {
     pointer-events: none;
     z-index: 1;
 }
+/* 사진 하단을 복사해 블러할 때 scaleY(-1)로 상하반전 → 라벨과 사진 경계가 덜 거칠게 보이도록 */
 .gallery-caption-blur-bg {
     position: absolute;
     inset: 0;
@@ -222,7 +223,8 @@ header .mealog-title {
     background-size: cover;
     background-position: center bottom;
     filter: blur(12px);
-    transform: scale(1.08);
+    transform: scale(1.08) scaleY(-1);
+    transform-origin: center center;
     z-index: 0;
 }
 .gallery-caption-menu-place.gallery-caption-blur {
