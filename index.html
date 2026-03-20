@@ -410,12 +410,12 @@
     </div>
 
     <!-- 샘플(더미) 계정 안내: 첫 진입·둘러보기 후 표시 -->
-    <div id="demoIntroModal" class="hidden fixed inset-0 z-[450] flex flex-col justify-end sm:justify-center sm:p-4 bg-slate-900/55 backdrop-blur-md" aria-modal="true" role="dialog" aria-labelledby="demoIntroTitle">
-        <div class="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-[20rem] sm:max-w-[22rem] sm:mx-auto shadow-2xl border border-slate-200/80 overflow-hidden max-h-[min(88vh,520px)] flex flex-col">
+    <div id="demoIntroModal" class="hidden fixed inset-0 z-[450] flex flex-col justify-center p-4 bg-slate-900/55 backdrop-blur-md" aria-modal="true" role="dialog" aria-labelledby="demoIntroTitle">
+        <div class="bg-white rounded-2xl w-full max-w-[20rem] sm:max-w-[22rem] mx-auto shadow-2xl border border-slate-200/80 overflow-hidden max-h-[min(88vh,520px)] flex flex-col">
             <div class="shrink-0 px-4 pt-4 pb-3 sm:px-5 sm:pt-5 sm:pb-3.5 border-b border-slate-100">
                 <div class="flex flex-col items-center text-center">
-                    <div class="flex-shrink-0 w-11 h-11 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center mb-2.5">
-                        <i class="fa-solid fa-eye text-lg" aria-hidden="true"></i>
+                    <div class="flex-shrink-0 w-11 h-11 rounded-xl bg-emerald-600/90 overflow-hidden mb-2.5">
+                        <img src="assets/icon-only.png" alt="" class="w-full h-full object-cover object-center" />
                     </div>
                     <h2 id="demoIntroTitle" class="text-base sm:text-lg font-black text-slate-900 leading-snug tracking-tight">체험 모드로 확인 중이에요</h2>
                     <p class="text-xs sm:text-sm text-slate-600 mt-2 leading-relaxed">
@@ -424,10 +424,10 @@
                 </div>
             </div>
             <div class="flex-1 min-h-0 flex flex-col gap-2.5 p-3 sm:p-4 bg-slate-50 border-t border-slate-100">
-                <button type="button" id="demoIntroContinueBtn" class="group w-full text-left rounded-xl px-4 py-3.5 sm:py-4 flex items-center justify-center sm:justify-start bg-slate-100/90 hover:bg-slate-200/70 active:bg-slate-200 border border-slate-200/80 text-slate-700 transition-colors">
-                    <span class="text-sm sm:text-[15px] font-bold text-slate-700">체험 모드로 계속하기</span>
+                <button type="button" id="demoIntroContinueBtn" class="group w-full text-left rounded-xl px-4 py-3.5 sm:py-4 flex items-center justify-center sm:justify-start bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-md shadow-emerald-700/20 transition-colors">
+                    <span class="text-sm sm:text-[15px] font-bold">체험 모드로 계속하기</span>
                 </button>
-                <button type="button" id="demoIntroSignupBtn" class="group w-full text-left rounded-xl px-4 py-3.5 sm:py-4 flex items-center justify-center sm:justify-start bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-md shadow-emerald-700/20 transition-colors">
+                <button type="button" id="demoIntroSignupBtn" class="group w-full text-left rounded-xl px-4 py-3.5 sm:py-4 flex items-center justify-center sm:justify-start bg-slate-900 hover:bg-slate-800 active:bg-slate-700 text-white shadow-md shadow-slate-900/20 transition-colors">
                     <span class="text-sm sm:text-[15px] font-black">로그인하고 모든 기능 사용하기</span>
                 </button>
             </div>
@@ -1289,7 +1289,7 @@
     </div>
 
     <!-- Logout Confirm Modal -->
-    <div id="logoutConfirmModal" class="hidden fixed inset-0 z-[400] flex flex-col justify-end sm:justify-center px-4 pb-4 pt-8 sm:p-4 bg-slate-900/45 backdrop-blur-[2px]" aria-modal="true" role="dialog" aria-labelledby="logoutConfirmTitle">
+    <div id="logoutConfirmModal" class="hidden fixed inset-0 z-[400] flex flex-col justify-center px-4 p-4 bg-slate-900/45 backdrop-blur-[2px]" aria-modal="true" role="dialog" aria-labelledby="logoutConfirmTitle">
         <div class="bg-white rounded-2xl w-full max-w-[18.5rem] sm:max-w-xs mx-auto shadow-2xl overflow-hidden border border-slate-200/80 sm:rounded-2xl">
             <div class="px-4 pt-4 pb-3 sm:px-5 sm:pt-5 sm:pb-4 border-b border-slate-100">
                 <h3 id="logoutConfirmTitle" class="text-lg font-bold text-slate-800">로그아웃 하시겠어요?</h3>
