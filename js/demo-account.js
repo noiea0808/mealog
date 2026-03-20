@@ -121,6 +121,10 @@ export function registerDemoIntroModalHandlers() {
         close();
         try {
             sessionStorage.setItem('explicitLogout', 'true');
+            sessionStorage.setItem('wasDemoUserLogout', 'true');
+            // localStorage에도 저장하여 페이지 리로드 후에도 유지
+            localStorage.setItem('explicitLogout', 'true');
+            localStorage.setItem('wasDemoUserLogout', 'true');
         } catch (_) {}
         signOut(auth).catch((e) => console.warn('데모→로그인 화면 전환 signOut:', e));
     });

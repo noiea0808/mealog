@@ -9,6 +9,7 @@ import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, rend
 import { getDashboardData } from './analytics.js';
 import { callableFunctions } from './firebase.js';
 import { isDemoUser } from './demo-account.js';
+// ⚠️ initPushNotifications import 제거 - 크래시 문제로 인해 비활성화
 
 // 설정 저장 디바운싱을 위한 타이머
 let settingsSaveTimeout = null;
@@ -1505,18 +1506,50 @@ export function handleMultipleImages(e) {
         showToast(`사진은 최대 ${maxPhotos}개까지 가능합니다. ${remainingSlots}개만 추가됩니다.`, 'info');
     }
     
-    filesToProcess.forEach(f => {
-        const r = new FileReader();
-        r.onload = (ev) => {
-            compressImage(ev.target.result).then(compressed => {
-                if (state.currentPhotos.length < maxPhotos) {
-                    state.currentPhotos.push(compressed);
-                    renderPhotoPreviews();
-                    updateShareIndicator();
-                }
-            });
-        };
-        r.readAsDataURL(f);
+    // ⚠️ 중요: 파일 선택 순서를 보존하기 위해 Promise 배열로 처리
+    // 각 파일을 인덱스와 함께 처리하여 순서 보장
+    const filePromises = filesToProcess.map((f, index) => {
+        return new Promise((resolve) => {
+            const r = new FileReader();
+            r.onload = (ev) => {
+                compressImage(ev.target.result).then(compressed => {
+                    resolve({ index, compressed });
+                }).catch(err => {
+                    console.error('이미지 압축 실패:', err);
+                    resolve(null); // 압축 실패한 파일은 null로 처리
+                });
+            };
+            r.onerror = () => {
+                console.error('파일 읽기 실패:', f.name);
+                resolve(null); // 실패한 파일은 null로 처리
+            };
+            r.readAsDataURL(f);
+        });
+    });
+    
+    // ⚠️ 중요: 모든 파일이 로드된 후 선택 순서대로 정렬하여 추가
+    Promise.all(filePromises).then(results => {
+        // null 제거 및 인덱스 순서대로 정렬
+        const sortedResults = results
+            .filter(r => r !== null)
+            .sort((a, b) => a.index - b.index);
+        
+        // 현재 사진 개수 확인 (다른 작업으로 인해 변경되었을 수 있음)
+        const currentPhotosCount = state.currentPhotos.length;
+        const availableSlots = maxPhotos - currentPhotosCount;
+        
+        // 선택 순서대로 추가
+        sortedResults.slice(0, availableSlots).forEach(({ compressed }) => {
+            if (state.currentPhotos.length < maxPhotos) {
+                state.currentPhotos.push(compressed);
+            }
+        });
+        
+        renderPhotoPreviews();
+        updateShareIndicator();
+    }).catch(err => {
+        console.error('파일 처리 중 오류 발생:', err);
+        showToast('사진 처리 중 오류가 발생했습니다.', 'error');
     });
     
     e.target.value = ''; // 파일 입력 초기화
@@ -2608,6 +2641,9 @@ export async function removeFavoriteTag(mainTagKey, mainTag, index) {
         }
     }
 }
+
+// ⚠️ 푸시 알림 토글 제거됨 - 크래시 문제로 인해 비활성화
+// 사용자는 기기 설정에서 직접 알림 권한을 설정해야 함
 
 export async function deleteSubTag(key, text, containerId, inputId, parentFilter) {
     const newSettings = JSON.parse(JSON.stringify(window.userSettings));

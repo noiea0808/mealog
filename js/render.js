@@ -196,7 +196,7 @@ export function renderPhotoPreviews() {
                 <button onclick="window.editPhoto(${idx})" class="photo-edit-btn">
                     <i class="fa-solid fa-crop"></i>
                 </button>
-                <div class="absolute bottom-1 left-1 w-5 h-5 bg-black/60 text-white text-[10px] font-bold rounded-full flex items-center justify-center">${idx + 1}</div>
+                <div class="absolute top-1 left-1 w-5 h-5 bg-black/60 text-white text-[10px] font-bold rounded-full flex items-center justify-center">${idx + 1}</div>
             </div>`
         ).join('');
         

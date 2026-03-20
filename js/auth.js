@@ -325,17 +325,92 @@ export async function handleLogout() {
 }
 
 export function confirmLogout() {
-    document.getElementById('logoutConfirmModal').classList.remove('hidden');
+    console.log('🔐 confirmLogout 호출됨 - 로그아웃 모달 열기');
+    const modal = document.getElementById('logoutConfirmModal');
+    if (!modal) {
+        console.error('❌ logoutConfirmModal 요소를 찾을 수 없습니다!');
+        return;
+    }
+    modal.classList.remove('hidden');
+    console.log('✅ 로그아웃 모달 열림');
 }
 
 export async function confirmLogoutAction() {
+    console.log('🔐 confirmLogoutAction 함수 시작');
     document.getElementById('logoutConfirmModal').classList.add('hidden');
     if (typeof window.clearNotificationReadStateCache === 'function') {
         window.clearNotificationReadStateCache();
     }
+    
+    // ⚠️ 중요: signOut 전에 플래그를 먼저 설정해야 함 (signOut 후 onAuthStateChanged가 즉시 호출될 수 있음)
+    // 로그아웃 전에 더미 계정인지 확인하여 저장 (로그아웃 후에는 window.currentUser가 사라지므로)
+    try {
+        const { isDemoUser } = await import('./demo-account.js');
+        const currentUser = auth.currentUser;
+        console.log('🔐 로그아웃 전 사용자 확인:', {
+            uid: currentUser?.uid,
+            email: currentUser?.email,
+            isDemo: currentUser ? isDemoUser(currentUser) : false
+        });
+        if (currentUser && isDemoUser(currentUser)) {
+            // ⚠️ 중요: localStorage에 먼저 저장 (sessionStorage는 페이지 리로드 시 사라질 수 있음)
+            // ⚠️ 중요: 동기적으로 저장하여 signOut 전에 확실히 저장됨
+            localStorage.setItem('wasDemoUserLogout', 'true');
+            sessionStorage.setItem('wasDemoUserLogout', 'true');
+            console.log('🔐 더미 계정 로그아웃 플래그 설정 완료 (localStorage + sessionStorage)');
+        } else {
+            console.log('🔐 일반 계정 로그아웃 (더미 계정 아님)');
+        }
+    } catch (e) {
+        console.error('더미 계정 확인 실패:', e);
+    }
+    
     // 명시적 로그아웃 플래그 설정 (페이지 리로드 후에도 유지)
+    // ⚠️ 중요: localStorage에 먼저 저장 (동기적으로 저장)
+    localStorage.setItem('explicitLogout', 'true');
     sessionStorage.setItem('explicitLogout', 'true');
+    console.log('🔐 명시적 로그아웃 플래그 설정 완료 (localStorage + sessionStorage)');
+    
+    // 플래그가 확실히 저장되었는지 확인 (동기적으로 확인)
+    const explicitFlag = localStorage.getItem('explicitLogout') === 'true' || sessionStorage.getItem('explicitLogout') === 'true';
+    const demoFlag = localStorage.getItem('wasDemoUserLogout') === 'true' || sessionStorage.getItem('wasDemoUserLogout') === 'true';
+    console.log('🔐 signOut 전 플래그 확인:', {
+        explicitLogout: explicitFlag,
+        wasDemoUserLogout: demoFlag,
+        localStorageExplicit: localStorage.getItem('explicitLogout'),
+        localStorageDemo: localStorage.getItem('wasDemoUserLogout')
+    });
+    
+    if (!explicitFlag) {
+        console.error('❌ explicitLogout 플래그가 설정되지 않았습니다!');
+        return; // 플래그가 설정되지 않았으면 signOut하지 않음
+    }
+    
+    // ⚠️ 중요: signOut은 비동기이지만, onAuthStateChanged는 signOut 직후 동기적으로 호출될 수 있음
+    // 따라서 플래그는 이미 localStorage에 저장되어 있으므로, signOut 후에도 플래그를 확인할 수 있어야 함
+    console.log('🔐 signOut 시작...');
     await signOut(auth);
+    console.log('🔐 signOut 완료');
+    
+    // signOut 후 onAuthStateChanged가 호출되기 전에 플래그를 다시 확인
+    const explicitFlagAfter = localStorage.getItem('explicitLogout') === 'true' || sessionStorage.getItem('explicitLogout') === 'true';
+    const demoFlagAfter = localStorage.getItem('wasDemoUserLogout') === 'true' || sessionStorage.getItem('wasDemoUserLogout') === 'true';
+    console.log('🔐 signOut 후 플래그 확인:', {
+        explicitLogout: explicitFlagAfter,
+        wasDemoUserLogout: demoFlagAfter,
+        localStorageExplicit: localStorage.getItem('explicitLogout'),
+        localStorageDemo: localStorage.getItem('wasDemoUserLogout')
+    });
+    
+    // ⚠️ 중요: 페이지 리로드 전에 플래그가 확실히 저장되었는지 다시 확인
+    if (!explicitFlagAfter) {
+        console.error('❌ signOut 후 explicitLogout 플래그가 사라졌습니다! 다시 설정...');
+        localStorage.setItem('explicitLogout', 'true');
+        sessionStorage.setItem('explicitLogout', 'true');
+    }
+    
+    // 페이지 리로드 (onAuthStateChanged에서 플래그를 확인하여 자동 로그인을 막음)
+    console.log('🔐 페이지 리로드 시작...');
     window.location.reload();
 }
 

@@ -190,6 +190,17 @@ const PUSH_INIT_VERSION = '2024-03-17';
 export async function initPushNotifications(uid) {
   console.log('푸시: init 버전', PUSH_INIT_VERSION);
   setPushDebug({ inited: false, permission: null, tokenSaved: false, lastError: null });
+  
+  // ⚠️ 중요: 앱이 완전히 준비되었는지 확인
+  if (!window.currentUser || window.currentUser.uid !== uid) {
+    console.warn('푸시: currentUser 불일치 또는 없음, 스킵', {
+      currentUserUid: window.currentUser?.uid,
+      requestedUid: uid
+    });
+    setPushDebug({ lastError: 'currentUser 불일치' });
+    return;
+  }
+  
   if (!uid || !isNative()) {
     if (!uid) {
       console.log('푸시: uid 없음, 스킵');
@@ -294,69 +305,57 @@ export async function initPushNotifications(uid) {
       }
     }, 0);
 
-    // [B] 플랫폼·register는 같은 틱에서 즉시 실행 (로그가 반드시 보이도록)
-    console.log('푸시: [B] 플랫폼·register 블록');
-    console.warn('[PUSH-DBG] [B] 플랫폼·register 블록');
-    try {
-      const platform = typeof window.Capacitor?.getPlatform === 'function' ? window.Capacitor.getPlatform() : undefined;
-      const android = isAndroid();
-      console.log('푸시: 플랫폼=', platform, 'Android=', android);
-      console.warn('[PUSH-DBG] 플랫폼=', platform, 'Android=', android);
-      if (android) {
-        setPushDebug({ inited: true });
-        const doRegister = () => {
-          console.log('푸시: Android — FCM register() 호출');
-          console.warn('[PUSH-DBG] Android — FCM register() 호출');
+    // [B] ⚠️ 중요: PN.register() 호출을 매우 안전하게 처리
+    // FCM 토큰을 받기 위해서는 register() 호출이 필요하지만, 크래시를 방지하기 위해
+    // 매우 긴 지연과 안전장치를 추가
+    console.log('푸시: [B] register() 호출 준비');
+    console.warn('[PUSH-DBG] [B] register() 호출 준비');
+    setPushDebug({ inited: true });
+    
+    // ⚠️ 매우 긴 지연 후 register() 호출 (앱이 완전히 안정화된 후)
+    const doRegister = () => {
+      console.log('푸시: register() 호출 시도');
+      console.warn('[PUSH-DBG] register() 호출 시도');
+      
+      // 앱이 활성 상태인지 확인
+      if (typeof window.Capacitor?.Plugins?.App !== 'undefined') {
+        window.Capacitor.Plugins.App.getState().then((state) => {
+          if (state.isActive) {
+            try {
+              console.log('푸시: 앱 활성 상태 확인, register() 호출');
+              PN.register();
+            } catch (regErr) {
+              console.warn('푸시 register() 예외:', regErr?.message || regErr);
+              setPushDebug({ lastError: 'register() 예외: ' + (regErr?.message || regErr) });
+            }
+          } else {
+            console.warn('푸시: 앱이 비활성 상태, register() 스킵');
+            setPushDebug({ lastError: '앱 비활성 상태' });
+          }
+        }).catch(() => {
+          // getState 실패 시에도 register() 시도
           try {
+            console.log('푸시: 상태 확인 실패, register() 호출 시도');
             PN.register();
           } catch (regErr) {
             console.warn('푸시 register() 예외:', regErr?.message || regErr);
+            setPushDebug({ lastError: 'register() 예외: ' + (regErr?.message || regErr) });
           }
-        };
-        PN.requestPermissions()
-          .then((perm) => {
-            const receive = perm?.receive ?? perm?.value ?? perm;
-            setPushDebug({ permission: receive });
-            if (receive === 'granted' || receive === 'yes') {
-              doRegister();
-            } else {
-              console.warn('푸시: Android 알림 권한 —', receive);
-              maybeShowPushPermissionHint(uid, receive);
-              doRegister();
-            }
-          })
-          .catch(() => {
-            setPushDebug({ permission: null });
-            maybeShowPushPermissionHint(uid, 'denied');
-            doRegister();
-          });
-        return;
-      }
-      console.log('푸시: 알림 권한 요청 중...');
-      PN.requestPermissions().then((perm) => {
-          setPushDebug({ permission: perm?.receive });
-          if (perm?.receive !== 'granted') {
-            console.log('푸시 알림 권한이 허용되지 않음:', perm?.receive);
-            setPushDebug({ lastError: '권한 거부: ' + (perm?.receive || 'unknown') });
-            maybeShowPushPermissionHint(uid, perm?.receive || 'denied');
-            return;
-          }
-          console.log('푸시: 권한 허용됨, FCM 등록 중...');
-          setPushDebug({ inited: true });
-          try {
-            PN.register();
-          } catch (regErr) {
-            console.warn('푸시 register() 호출 예외 (무시):', regErr?.message || regErr);
-          }
-        }).catch((e) => {
-          console.warn('푸시 requestPermissions 실패:', e?.message || e);
-          setPushDebug({ lastError: String(e?.message || e) });
-          maybeShowPushPermissionHint(uid, 'denied');
         });
-    } catch (e2) {
-      console.warn('푸시 [B] 블록 실패:', e2?.message || e2);
-      setPushDebug({ lastError: String(e2?.message || e2) });
-    }
+      } else {
+        // App 플러그인이 없으면 바로 register() 시도
+        try {
+          console.log('푸시: App 플러그인 없음, register() 호출');
+          PN.register();
+        } catch (regErr) {
+          console.warn('푸시 register() 예외:', regErr?.message || regErr);
+          setPushDebug({ lastError: 'register() 예외: ' + (regErr?.message || regErr) });
+        }
+      }
+    };
+    
+    // ⚠️ 매우 긴 지연 (10초) - 앱이 완전히 안정화된 후 호출
+    setTimeout(doRegister, 10000);
   } catch (e) {
     const msg = e?.message || String(e);
     console.warn('⚠️ 푸시 알림 초기화 실패:', msg);

@@ -2723,18 +2723,88 @@ let authCheckShowOptionsTimeout = null; // 로그인 옵션 표시 지연 타이
 
 // 로그인 상태 확인 중에는 스피너 표시하지 않음 (스피너는 로그인→메인 전환 시 기록 로드할 때만 표시)
 
-function shouldTryAutoDemoSignIn(wasExplicitLogout) {
-    if (wasExplicitLogout) return false;
+function shouldTryAutoDemoSignIn(wasExplicitLogout, wasDemoUserLogout) {
+    // ⚠️ 중요: localStorage를 먼저 확인 (페이지 리로드 후에도 유지)
+    // ⚠️ 중요: 동기적으로 즉시 확인 (비동기 작업 전에)
+    const localStorageExplicitLogout = localStorage.getItem('explicitLogout') === 'true';
+    const localStorageDemoLogout = localStorage.getItem('wasDemoUserLogout') === 'true';
+    const sessionStorageExplicitLogout = sessionStorage.getItem('explicitLogout') === 'true';
+    const sessionStorageDemoLogout = sessionStorage.getItem('wasDemoUserLogout') === 'true';
+    
+    // ⚠️ 중요: 모든 저장소에서 플래그 확인 (하나라도 true이면 차단)
+    const hasExplicitLogout = wasExplicitLogout || localStorageExplicitLogout || sessionStorageExplicitLogout;
+    const hasDemoLogout = wasDemoUserLogout || localStorageDemoLogout || sessionStorageDemoLogout;
+
+    // 명시적 로그아웃이면 절대 자동 로그인하지 않음
+    if (hasExplicitLogout) {
+        console.log('🚫 자동 데모 로그인 스킵: 명시적 로그아웃', {
+            wasExplicitLogout,
+            localStorageExplicitLogout,
+            sessionStorageExplicitLogout,
+            hasExplicitLogout
+        });
+        return false;
+    }
+    // 더미 계정에서 명시적으로 로그아웃한 경우 자동 로그인하지 않음
+    if (hasDemoLogout) {
+        console.log('🚫 자동 데모 로그인 스킵: 더미 계정 로그아웃', {
+            wasDemoUserLogout,
+            localStorageDemoLogout,
+            sessionStorageDemoLogout,
+            hasDemoLogout
+        });
+        return false;
+    }
+    // 추가 안전장치
     try {
-        if (localStorage.getItem('mealog_seen_real_login') === '1') return false;
-        if (localStorage.getItem('mealog_auto_demo_off') === '1') return false;
+        if (localStorage.getItem('mealog_seen_real_login') === '1') {
+            console.log('🚫 자동 데모 로그인 스킵: 실제 로그인 경험 있음');
+            return false;
+        }
+        if (localStorage.getItem('mealog_auto_demo_off') === '1') {
+            console.log('🚫 자동 데모 로그인 스킵: 자동 데모 비활성화');
+            return false;
+        }
     } catch (_) {}
+    console.log('✅ 자동 데모 로그인 시도');
     return true;
 }
 
 initAuth(async (user) => {
+    // ⚠️ 중요: onAuthStateChanged가 호출되는 즉시 플래그를 확인해야 함 (자동 로그인 전에)
     // 로그아웃 시 로그인 옵션 즉시 표시 여부 (명시적 로그아웃이면 true). 아래에서 제거하므로 먼저 저장
-    const wasExplicitLogout = sessionStorage.getItem('explicitLogout') === 'true';
+    // ⚠️ localStorage를 먼저 확인 (페이지 리로드 후에도 유지되도록)
+    // ⚠️ 중요: localStorage.getItem은 동기적으로 실행되므로 즉시 확인 가능
+    const localStorageExplicit = localStorage.getItem('explicitLogout');
+    const localStorageDemo = localStorage.getItem('wasDemoUserLogout');
+    const sessionStorageExplicit = sessionStorage.getItem('explicitLogout');
+    const sessionStorageDemo = sessionStorage.getItem('wasDemoUserLogout');
+    
+    const wasExplicitLogout = localStorageExplicit === 'true' || sessionStorageExplicit === 'true';
+    // 로그아웃 전에 더미 계정이었는지 확인 (로그아웃 후에는 window.currentUser가 사라지므로)
+    const wasDemoUserLogout = localStorageDemo === 'true' || sessionStorageDemo === 'true';
+    
+    console.log('🔐 onAuthStateChanged 호출:', {
+        user: user ? { uid: user.uid, email: user.email } : null,
+        wasExplicitLogout,
+        wasDemoUserLogout,
+        sessionStorageExplicit,
+        sessionStorageDemo,
+        localStorageExplicit,
+        localStorageDemo
+    });
+    
+    // ⚠️ 중요: 플래그가 설정되어 있으면 즉시 자동 로그인을 막아야 함
+    // ⚠️ 중요: 이 체크는 모든 다른 로직보다 먼저 실행되어야 함
+    if (wasDemoUserLogout) {
+        console.log('🔐 더미 계정 로그아웃 감지 (wasDemoUserLogout:', wasDemoUserLogout, ') - 자동 로그인 차단');
+    }
+    if (wasExplicitLogout) {
+        console.log('🔐 명시적 로그아웃 감지 (wasExplicitLogout:', wasExplicitLogout, ') - 자동 로그인 차단');
+    }
+    
+    // ⚠️ 중요: user가 null이고 플래그가 설정되어 있으면, 자동 로그인을 막기 위해 early return
+    // 하지만 이건 나중에 shouldTryAutoDemoSignIn에서 처리하므로 여기서는 early return하지 않음
     
     // 1. 관리자 페이지가 열려있는지 확인 (현재 탭이 관리자 페이지인 경우)
     if (window.location.pathname.includes('admin.html') || window.location.href.includes('admin.html')) {
@@ -2749,9 +2819,10 @@ initAuth(async (user) => {
     
     // 2. 갑작스러운 게스트 전환 방지: 이전에 로그인된 사용자가 있었는데 갑자기 게스트로 전환되는 경우
     // 단, 프로필 설정에서 "게스트로 둘러보기"를 선택한 경우는 허용 (메인 화면으로 이동)
+    // 더미 계정의 경우 명시적 로그아웃 시 항상 처리되어야 함
     const isGuestFromProfileSetup = sessionStorage.getItem('guestFromProfileSetup') === 'true';
     // 명시적 로그아웃(데모 안내에서「가입으로」등)은 여기서 막지 않음 — null + 이전 실계정으로 오인하면 랜딩이 안 뜸
-    if (!wasExplicitLogout && !isGuestFromProfileSetup && (!user || user.isAnonymous) && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
+    if (!wasExplicitLogout && !isGuestFromProfileSetup && !wasDemoUserLogout && (!user || user.isAnonymous) && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
         // 실제 auth.currentUser를 확인하여 관리자 페이지 영향인지 확인
         const actualCurrentUser = auth.currentUser;
         
@@ -2775,8 +2846,9 @@ initAuth(async (user) => {
     
     // 3. 로그아웃 시에도 이전 사용자가 있었으면 무시 (관리자 페이지 영향 가능)
     // 단, 명시적 로그아웃(또는 게스트로 둘러보기)인 경우는 허용
+    // 더미 계정의 경우 명시적 로그아웃 시 항상 처리되어야 함
     const isExplicitLogout = sessionStorage.getItem('explicitLogout') === 'true';
-    if (!user && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous && !isExplicitLogout && !isGuestFromProfileSetup) {
+    if (!user && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous && !isExplicitLogout && !isGuestFromProfileSetup && !wasDemoUserLogout) {
         // 실제 auth.currentUser를 확인
         const actualCurrentUser = auth.currentUser;
         
@@ -2792,10 +2864,8 @@ initAuth(async (user) => {
         }
     }
     
-    // 명시적 로그아웃 플래그 초기화 (사용 후 제거)
-    if (isExplicitLogout) {
-        sessionStorage.removeItem('explicitLogout');
-    }
+    // 명시적 로그아웃 플래그는 나중에 제거 (shouldTryAutoDemoSignIn에서 사용)
+    // 더미 계정 로그아웃 플래그도 나중에 제거 (shouldTryAutoDemoSignIn에서 사용)
     
     if (user) {
         // 자동 로그인으로 전환될 때 로그인 옵션 표시 타이머 취소 (타이틀만 보다가 메인으로 이동)
@@ -2854,9 +2924,10 @@ initAuth(async (user) => {
         if (user && !user.isAnonymous && !isDemoUser(user)) {
           window.__onPushTokenSaved = () => showToast('알림 등록됨', 'success');
           window.__onPushTokenSavedError = (msg) => showToast('알림 등록 실패: ' + (msg || '알 수 없음'), 'error');
-          initPushNotifications(user.uid).catch((e) =>
-            console.warn('푸시 초기화 실패:', e?.message || e)
-          );
+          // ⚠️ 중요: 푸시 알림 자동 초기화를 완전히 비활성화 (앱 크래시 방지)
+          // 사용자가 설정에서 명시적으로 알림을 활성화할 때만 initPushNotifications 호출
+          // 다른 컴퓨터 환경에서 앱이 종료되는 문제를 근본적으로 해결
+          console.log('푸시: 자동 초기화 비활성화됨 (설정에서 수동 활성화 필요)');
         }
         
         console.log('🔐 인증 상태 변경:', {
@@ -3056,8 +3127,9 @@ initAuth(async (user) => {
         // 로그아웃 상태
         // 추가 안전장치: 이전에 로그인된 사용자가 있었는데 갑자기 로그아웃되는 경우 무시
         // 단, 명시적 로그아웃(게스트→로그인 이동 포함)은 반드시 처리해야 함
+        // 더미 계정의 경우 명시적 로그아웃 시 항상 처리되어야 함
         // wasExplicitLogout: 콜백 상단에서 캡처한 값 (2771행에서 explicitLogout 키를 지우기 전에 읽힘)
-        if (!wasExplicitLogout && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
+        if (!wasExplicitLogout && !wasDemoUserLogout && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
             console.log('⚠️ 로그아웃 처리 중 이전 사용자 감지 - 무시 (관리자 페이지 영향 가능):', {
                 previousUserId: lastProcessedUserId,
                 previousEmail: window.currentUser.email
@@ -3203,6 +3275,8 @@ initAuth(async (user) => {
             appState.sharedPhotosUnsubscribe();
             appState.sharedPhotosUnsubscribe = null;
         }
+        // ⚠️ 중요: 알림 리스너도 해제 (로그아웃 시 permission-denied 에러 방지)
+        stopNotificationListeners();
         hideLoading();
         };
 
@@ -3213,7 +3287,43 @@ initAuth(async (user) => {
         window.currentUser = null;
         syncDemoNavGuideDots();
 
-        if (shouldTryAutoDemoSignIn(wasExplicitLogout)) {
+        // ⚠️ 중요: 플래그를 다시 한 번 확인 (onAuthStateChanged 호출 시점과 시간차가 있을 수 있음)
+        // ⚠️ 중요: localStorage를 먼저 확인 (페이지 리로드 후에도 유지)
+        // ⚠️ 중요: 동기적으로 즉시 확인 (비동기 작업 전에)
+        const currentExplicitLogout = localStorage.getItem('explicitLogout') === 'true' || sessionStorage.getItem('explicitLogout') === 'true';
+        const currentDemoLogout = localStorage.getItem('wasDemoUserLogout') === 'true' || sessionStorage.getItem('wasDemoUserLogout') === 'true';
+        const finalWasExplicitLogout = wasExplicitLogout || currentExplicitLogout;
+        const finalWasDemoUserLogout = wasDemoUserLogout || currentDemoLogout;
+        
+        // ⚠️ 중요: 플래그가 설정되어 있으면 즉시 자동 로그인을 막아야 함
+        if (finalWasExplicitLogout || finalWasDemoUserLogout) {
+            console.log('🚫 플래그 감지 - 자동 로그인 차단:', {
+                finalWasExplicitLogout,
+                finalWasDemoUserLogout,
+                localStorageExplicit: localStorage.getItem('explicitLogout'),
+                localStorageDemo: localStorage.getItem('wasDemoUserLogout'),
+                sessionStorageExplicit: sessionStorage.getItem('explicitLogout'),
+                sessionStorageDemo: sessionStorage.getItem('wasDemoUserLogout')
+            });
+        }
+        
+        const shouldAutoDemo = shouldTryAutoDemoSignIn(finalWasExplicitLogout, finalWasDemoUserLogout);
+        console.log('🔐 자동 데모 로그인 판단:', {
+            shouldAutoDemo,
+            wasExplicitLogout: finalWasExplicitLogout,
+            wasDemoUserLogout: finalWasDemoUserLogout,
+            originalWasExplicitLogout: wasExplicitLogout,
+            originalWasDemoUserLogout: wasDemoUserLogout,
+            currentExplicitLogout,
+            currentDemoLogout,
+            sessionStorageExplicit: sessionStorage.getItem('explicitLogout'),
+            sessionStorageDemo: sessionStorage.getItem('wasDemoUserLogout'),
+            localStorageExplicit: localStorage.getItem('explicitLogout'),
+            localStorageDemo: localStorage.getItem('wasDemoUserLogout')
+        });
+        
+        if (shouldAutoDemo) {
+            console.log('✅ 자동 데모 로그인 시작');
             if (appState.settingsUnsubscribe) {
                 appState.settingsUnsubscribe();
                 appState.settingsUnsubscribe = null;
@@ -3248,7 +3358,22 @@ initAuth(async (user) => {
             return;
         }
 
+        console.log('🚫 자동 데모 로그인 스킵, 로그인 화면 표시');
         presentLoginLanding();
+        
+        // 명시적 로그아웃 플래그 초기화 (사용 후 제거)
+        // ⚠️ 중요: 이미 계산된 finalWasExplicitLogout과 finalWasDemoUserLogout 변수 재사용
+        if (finalWasExplicitLogout) {
+            sessionStorage.removeItem('explicitLogout');
+            localStorage.removeItem('explicitLogout');
+            console.log('🔐 explicitLogout 플래그 제거 완료');
+        }
+        // 더미 계정 로그아웃 플래그 초기화 (사용 후 제거)
+        if (finalWasDemoUserLogout) {
+            sessionStorage.removeItem('wasDemoUserLogout');
+            localStorage.removeItem('wasDemoUserLogout');
+            console.log('🔐 wasDemoUserLogout 플래그 제거 완료');
+        }
     }
 });
 
@@ -5598,7 +5723,12 @@ function initEventListeners() {
     
     const logoutConfirmActionBtn = document.getElementById('logoutConfirmActionBtn');
     if (logoutConfirmActionBtn) {
-        logoutConfirmActionBtn.addEventListener('click', confirmLogoutAction);
+        logoutConfirmActionBtn.addEventListener('click', () => {
+            console.log('🔐 로그아웃 확인 버튼 클릭됨');
+            confirmLogoutAction();
+        });
+    } else {
+        console.error('❌ logoutConfirmActionBtn 요소를 찾을 수 없습니다!');
     }
     
     // 콘텐츠 팝업 모달: 오늘 그만 보기 / 닫기

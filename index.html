@@ -1174,7 +1174,7 @@
                         </div>
                         <div class="profile-settings-footer pt-4 space-y-2 border-t border-slate-100">
                             <div id="logoutBtnArea" class="hidden">
-                                <button onclick="window.confirmLogout()" class="profile-settings-footer-btn profile-logout-btn w-full py-3 text-sm font-bold text-slate-700 bg-slate-100 border border-slate-200 hover:bg-slate-200 transition-colors">로그아웃</button>
+                                <button onclick="console.log('🔐 로그아웃 버튼 클릭됨'); if (typeof window.confirmLogout === 'function') { window.confirmLogout(); } else { console.error('❌ window.confirmLogout 함수를 찾을 수 없습니다!'); }" class="profile-settings-footer-btn profile-logout-btn w-full py-3 text-sm font-bold text-slate-700 bg-slate-100 border border-slate-200 hover:bg-slate-200 transition-colors">로그아웃</button>
                             </div>
                             <div id="versionInfo" class="text-center text-xs text-slate-400 space-y-0.5 py-2">
                                 <div>버전 <span id="versionNumber">-</span></div>
