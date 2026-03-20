@@ -378,6 +378,8 @@ header .mealog-title {
 /* 체험 모드: 하단 네비 바로 위 메뉴 안내 박스 (콘텐츠 영역 폭 기준) */
 .demo-nav-guide-panel {
     bottom: calc(66px + var(--safe-bottom));
+    left: 50%;
+    transform: translateX(-50%);
     width: calc(min(100vw, 448px) - 20px);
     max-width: calc(100vw - 20px);
     max-height: calc(100vh - 120px - var(--safe-bottom));

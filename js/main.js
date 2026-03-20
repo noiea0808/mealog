@@ -2851,7 +2851,7 @@ initAuth(async (user) => {
             markUserHasRealLogin();
         }
 
-        if (user && !user.isAnonymous) {
+        if (user && !user.isAnonymous && !isDemoUser(user)) {
           window.__onPushTokenSaved = () => showToast('알림 등록됨', 'success');
           window.__onPushTokenSavedError = (msg) => showToast('알림 등록 실패: ' + (msg || '알 수 없음'), 'error');
           initPushNotifications(user.uid).catch((e) =>
