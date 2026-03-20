@@ -17,6 +17,19 @@ const auth = getAuth();
 
 const APP_ID = 'mealog-r0';
 
+/** 앱 공용 샘플 계정 — 클라이언트·Firestore 규칙과 동일 이메일 */
+const READ_ONLY_DEMO_EMAIL = 'dummy@mealog.net';
+
+function assertNotReadOnlyDemoAuth(auth) {
+  const email =
+    auth && auth.token && auth.token.email
+      ? String(auth.token.email).toLowerCase().trim()
+      : '';
+  if (email === READ_ONLY_DEMO_EMAIL) {
+    throw new HttpsError('permission-denied', '샘플 계정에서는 댓글을 작성할 수 없습니다.');
+  }
+}
+
 // Functions 리전 설정 (us-central1로 변경 - 배포된 리전과 일치)
 const REGION = 'us-central1';
 
@@ -478,6 +491,7 @@ exports.addBoardComment = onCall({ region: REGION }, wrapFunction('addBoardComme
   if (!auth || !auth.uid) {
     throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
   }
+  assertNotReadOnlyDemoAuth(auth);
 
   const ban = await getUserBan(auth.uid);
   if (ban.bannedWrite) {
@@ -676,6 +690,7 @@ exports.addPostComment = onCall({ region: REGION }, wrapFunction('addPostComment
   if (!auth || !auth.uid) {
     throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
   }
+  assertNotReadOnlyDemoAuth(auth);
 
   const ban = await getUserBan(auth.uid);
   if (ban.bannedWrite) {

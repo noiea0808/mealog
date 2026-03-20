@@ -985,6 +985,9 @@
                                 <button onclick="window.switchContentSidebar('terms')" id="content-sidebar-terms" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
                                     <i class="fa-solid fa-file-contract mr-2"></i>약관
                                 </button>
+                                <button onclick="window.switchContentSidebar('demoGuide')" id="content-sidebar-demoGuide" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-compass mr-2"></i>체험 가이드
+                                </button>
                                 <button onclick="window.switchContentSidebar('tags')" id="content-sidebar-tags" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
                                     <i class="fa-solid fa-tags mr-2"></i>태그관리
                                 </button>
@@ -1172,6 +1175,27 @@
                             </div>
                         </div>
                         
+                        <!-- 체험 가이드 편집 -->
+                        <div id="content-main-demoGuide" class="content-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div class="flex justify-between items-center">
+                                        <h2 class="text-lg font-black text-slate-800">체험 가이드 편집</h2>
+                                        <button onclick="window.saveDemoGuide()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                            <i class="fa-solid fa-save mr-2"></i>저장
+                                        </button>
+                                    </div>
+                                    <p class="text-xs text-slate-500 mt-2">체험 모드 진입 시 하단 메뉴별로 표시되는 안내 텍스트입니다.</p>
+                                </div>
+                                <div class="p-6 space-y-5" id="demoGuideEditorContainer">
+                                    <div class="text-center py-8 text-slate-400">
+                                        <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                                        <p class="text-sm">로딩 중...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- 태그 관리 (메인태그 편집) -->
                         <div id="content-main-tags" class="content-main-section hidden">
                             <div class="bg-white rounded-2xl shadow-sm border border-slate-100">

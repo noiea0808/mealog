@@ -50,6 +50,14 @@ import {
     confirmDeleteAccount, cancelDeleteAccount, confirmDeleteAccountAction
 } from './auth.js';
 import { authFlowManager } from './auth-flow.js';
+import { isDemoUser, markUserHasRealLogin, registerDemoIntroModalHandlers } from './demo-account.js';
+import {
+    registerDemoNavGuideHandlers,
+    handleDemoAwareNavClick,
+    showPendingDemoGuide,
+    syncDemoNavGuideDots,
+    tryCloseDemoNavGuideFromBack
+} from './demo-nav-guide.js';
 import { initPushNotifications } from './push-notifications.js';
 
 // 전역 리스너 정리 함수 (게스트→로그인 이동 등에서 사용)
@@ -447,7 +455,11 @@ window.addCommentToPost = async (postId) => {
         window.requestLogin();
         return;
     }
-    
+    if (isDemoUser(window.currentUser)) {
+        showToast('샘플 계정에서는 댓글을 작성할 수 없습니다.', 'error');
+        return;
+    }
+
     const inputEl = document.getElementById(`comment-input-${postId}`);
     if (!inputEl) return;
     
@@ -801,7 +813,11 @@ window.submitComment = async (postId) => {
         window.requestLogin();
         return;
     }
-    
+    if (isDemoUser(window.currentUser)) {
+        showToast('샘플 계정에서는 댓글을 작성할 수 없습니다.', 'error');
+        return;
+    }
+
     const inputEl = document.getElementById(`comment-text-${postId}`);
     if (!inputEl) return;
     
@@ -1855,11 +1871,18 @@ window.checkAndShowContentPopup = async function(tab) {
         recordPopupView(toShowList[0].id);
         const counterBar = document.getElementById('contentPopupCounterBar');
         const counterEl = document.getElementById('contentPopupCounter');
-        const footerEl = document.getElementById('contentPopupFooter');
+        const navRow = document.getElementById('contentPopupNavRow');
         const updatePopupNavButtons = () => {
-            if (prevBtn) prevBtn.classList.toggle('hidden', window._contentPopupIndex === 0);
-            if (nextBtn) nextBtn.classList.toggle('hidden', window._contentPopupIndex >= (window._contentPopupList.length - 1));
             const total = window._contentPopupList.length;
+            if (navRow) {
+                navRow.classList.toggle('hidden', total <= 1);
+            }
+            if (prevBtn) {
+                prevBtn.disabled = window._contentPopupIndex === 0;
+            }
+            if (nextBtn) {
+                nextBtn.disabled = window._contentPopupIndex >= total - 1;
+            }
             if (counterBar && counterEl) {
                 if (total > 1) {
                     counterEl.textContent = (window._contentPopupIndex + 1) + '/' + total;
@@ -1868,11 +1891,6 @@ window.checkAndShowContentPopup = async function(tab) {
                     counterEl.textContent = '';
                     counterBar.classList.add('popup-counter-empty');
                 }
-            }
-            if (footerEl) {
-                const visibleCount = [prevBtn, nextBtn, document.getElementById('contentPopupDismissTodayBtn'), document.getElementById('contentPopupCloseBtn')]
-                    .filter(btn => btn && !btn.classList.contains('hidden')).length;
-                footerEl.setAttribute('data-visible-count', String(visibleCount));
             }
         };
         if (prevBtn) {
@@ -1928,8 +1946,14 @@ window.closeContentPopupModal = function(dismissToday) {
     window._contentPopupCurrent = null;
     window._contentPopupList = null;
     window._contentPopupIndex = 0;
-    if (prevBtn) prevBtn.classList.add('hidden');
-    if (nextBtn) nextBtn.classList.add('hidden');
+    const navRow = document.getElementById('contentPopupNavRow');
+    if (navRow) navRow.classList.add('hidden');
+    if (prevBtn) {
+        prevBtn.disabled = false;
+    }
+    if (nextBtn) {
+        nextBtn.disabled = false;
+    }
     modal.classList.add('hidden');
 };
 
@@ -2614,7 +2638,8 @@ window.loadMoreMealsTimeline = async () => {
  */
 async function updateUserDocument(user) {
     if (!user || user.isAnonymous) return;
-    
+    if (isDemoUser(user)) return;
+
     try {
         const userDocRef = doc(db, 'artifacts', appId, 'users', user.uid);
         const userDocSnap = await getDoc(userDocRef);
@@ -2698,6 +2723,15 @@ let authCheckShowOptionsTimeout = null; // 로그인 옵션 표시 지연 타이
 
 // 로그인 상태 확인 중에는 스피너 표시하지 않음 (스피너는 로그인→메인 전환 시 기록 로드할 때만 표시)
 
+function shouldTryAutoDemoSignIn(wasExplicitLogout) {
+    if (wasExplicitLogout) return false;
+    try {
+        if (localStorage.getItem('mealog_seen_real_login') === '1') return false;
+        if (localStorage.getItem('mealog_auto_demo_off') === '1') return false;
+    } catch (_) {}
+    return true;
+}
+
 initAuth(async (user) => {
     // 로그아웃 시 로그인 옵션 즉시 표시 여부 (명시적 로그아웃이면 true). 아래에서 제거하므로 먼저 저장
     const wasExplicitLogout = sessionStorage.getItem('explicitLogout') === 'true';
@@ -2716,7 +2750,8 @@ initAuth(async (user) => {
     // 2. 갑작스러운 게스트 전환 방지: 이전에 로그인된 사용자가 있었는데 갑자기 게스트로 전환되는 경우
     // 단, 프로필 설정에서 "게스트로 둘러보기"를 선택한 경우는 허용 (메인 화면으로 이동)
     const isGuestFromProfileSetup = sessionStorage.getItem('guestFromProfileSetup') === 'true';
-    if (!isGuestFromProfileSetup && (!user || user.isAnonymous) && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
+    // 명시적 로그아웃(데모 안내에서「가입으로」등)은 여기서 막지 않음 — null + 이전 실계정으로 오인하면 랜딩이 안 뜸
+    if (!wasExplicitLogout && !isGuestFromProfileSetup && (!user || user.isAnonymous) && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
         // 실제 auth.currentUser를 확인하여 관리자 페이지 영향인지 확인
         const actualCurrentUser = auth.currentUser;
         
@@ -2810,6 +2845,11 @@ initAuth(async (user) => {
         
         window.currentUser = user;
         lastProcessedUserId = user.uid;
+        syncDemoNavGuideDots();
+
+        if (!user.isAnonymous && !isDemoUser(user)) {
+            markUserHasRealLogin();
+        }
 
         if (user && !user.isAnonymous) {
           window.__onPushTokenSaved = () => showToast('알림 등록됨', 'success');
@@ -2942,12 +2982,25 @@ initAuth(async (user) => {
                             today.setHours(0, 0, 0, 0);
                             appState.pageDate = today;
                         }
+                        // 데이터 동기화(낙관→서버) 시 전체 재렌더해도, 이미 타임라인 초기 스크롤을 마친 뒤면
+                        // hasScrolledToToday를 리셋하지 않고 스크롤 Y만 복원 → 오늘로 재스크롤·화면 흔들림 방지
+                        const preserveTimelineScroll = window.hasScrolledToToday === true;
+                        const savedScrollY = window.scrollY;
                         window.loadedDates = [];
-                        window.hasScrolledToToday = false;
+                        if (!preserveTimelineScroll) {
+                            window.hasScrolledToToday = false;
+                        }
                         const container = document.getElementById('timelineContainer');
                         if (container) container.innerHTML = "";
                         renderTimeline();
                         renderMiniCalendar();
+                        if (preserveTimelineScroll) {
+                            requestAnimationFrame(() => {
+                                requestAnimationFrame(() => {
+                                    window.scrollTo({ top: savedScrollY, behavior: 'instant' });
+                                });
+                            });
+                        }
                     }, 120);
                 },
                 settingsUnsubscribe: appState.settingsUnsubscribe,
@@ -3003,30 +3056,21 @@ initAuth(async (user) => {
         // 로그아웃 상태
         // 추가 안전장치: 이전에 로그인된 사용자가 있었는데 갑자기 로그아웃되는 경우 무시
         // 단, 명시적 로그아웃(게스트→로그인 이동 포함)은 반드시 처리해야 함
-        const isExplicitLogout = sessionStorage.getItem('explicitLogout') === 'true';
-        if (isExplicitLogout) {
-            sessionStorage.removeItem('explicitLogout');
-        }
-        if (!isExplicitLogout && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
+        // wasExplicitLogout: 콜백 상단에서 캡처한 값 (2771행에서 explicitLogout 키를 지우기 전에 읽힘)
+        if (!wasExplicitLogout && lastProcessedUserId && window.currentUser && !window.currentUser.isAnonymous) {
             console.log('⚠️ 로그아웃 처리 중 이전 사용자 감지 - 무시 (관리자 페이지 영향 가능):', {
                 previousUserId: lastProcessedUserId,
                 previousEmail: window.currentUser.email
             });
             return;
         }
-        
-        // 로그아웃 처리: 다음 로그인/둘러보기에서 인증 플로우가 새로 돌 수 있도록 항상 초기화
-        // (랜딩이 이미 보이더라도 초기화해야, 이후 둘러보기 시 "갑작스러운 게스트 전환"으로 잘못 막히지 않음)
-        lastProcessedUserId = null;
-        authFlowManager.hasCompleted = false;
-        authFlowManager.lastProcessedUserId = null;
-        window.userSettings = null;
-        window.currentUser = null;
-        
+
+        const presentLoginLanding = () => {
         const mainApp = document.getElementById('mainApp');
         const landingPage = document.getElementById('landingPage');
         // 이미 랜딩 화면이면 화면 전환만 스킵 (위에서 상태는 이미 초기화됨)
         if (landingPage && landingPage.style.display === 'flex' && mainApp && mainApp.classList.contains('hidden')) {
+            hideLoading();
             return;
         }
         
@@ -3160,6 +3204,51 @@ initAuth(async (user) => {
             appState.sharedPhotosUnsubscribe = null;
         }
         hideLoading();
+        };
+
+        lastProcessedUserId = null;
+        authFlowManager.hasCompleted = false;
+        authFlowManager.lastProcessedUserId = null;
+        window.userSettings = null;
+        window.currentUser = null;
+        syncDemoNavGuideDots();
+
+        if (shouldTryAutoDemoSignIn(wasExplicitLogout)) {
+            if (appState.settingsUnsubscribe) {
+                appState.settingsUnsubscribe();
+                appState.settingsUnsubscribe = null;
+            }
+            if (appState.dataUnsubscribe) {
+                appState.dataUnsubscribe();
+                appState.dataUnsubscribe = null;
+            }
+            if (appState.statsUnsubscribe) {
+                appState.statsUnsubscribe();
+                appState.statsUnsubscribe = null;
+            }
+            if (appState.sharedPhotosUnsubscribe) {
+                appState.sharedPhotosUnsubscribe();
+                appState.sharedPhotosUnsubscribe = null;
+            }
+            showLoading('샘플 타임라인을 불러오는 중...', { dimBackground: false, skipOnLoginScreen: true });
+            void import('./demo-account.js').then(async (mod) => {
+                if (!mod.isDemoCredentialsConfigured()) {
+                    hideLoading();
+                    presentLoginLanding();
+                    return;
+                }
+                try {
+                    await mod.signInAsDemoAccount();
+                } catch (e) {
+                    console.warn('데모 자동 로그인 실패:', e?.message || e);
+                    hideLoading();
+                    presentLoginLanding();
+                }
+            });
+            return;
+        }
+
+        presentLoginLanding();
     }
 });
 
@@ -4513,7 +4602,11 @@ window.addBoardComment = async (postId) => {
         window.requestLogin();
         return;
     }
-    
+    if (isDemoUser(window.currentUser)) {
+        showToast('샘플 계정에서는 댓글을 작성할 수 없습니다.', 'error');
+        return;
+    }
+
     const input = document.getElementById('boardCommentInput');
     if (!input) return;
     
@@ -4738,6 +4831,7 @@ function initMainAppKeyboardHandling() {
         const App = window.Capacitor?.Plugins?.App;
         if (App && typeof App.addListener === 'function') {
             App.addListener('backButton', ({ canGoBack }) => {
+                if (tryCloseDemoNavGuideFromBack()) return;
                 const entryModal = document.getElementById('entryModal');
                 if (entryModal && !entryModal.classList.contains('hidden')) {
                     if (typeof window.closeModal === 'function') window.closeModal();
@@ -5023,6 +5117,9 @@ function setupGalleryPullToRefresh() {
 }
 
 function initEventListeners() {
+    registerDemoIntroModalHandlers();
+    registerDemoNavGuideHandlers();
+
     // APK 다운로드 링크: 웹에서만 표시, 앱(Capacitor)에서는 숨김
     const apkDownloadSection = document.getElementById('apkDownloadSection');
     if (apkDownloadSection && window.Capacitor?.isNativePlatform?.()) {
@@ -5266,30 +5363,48 @@ function initEventListeners() {
     // 하단 네비게이션
     const navDashboard = document.getElementById('nav-dashboard');
     if (navDashboard) {
-        navDashboard.addEventListener('click', () => window.switchMainTab('dashboard'));
+        navDashboard.addEventListener('click', () => {
+            handleDemoAwareNavClick('dashboard');
+            window.switchMainTab('dashboard');
+            showPendingDemoGuide();
+        });
     }
-    
+
     const navTimeline = document.getElementById('nav-timeline');
     if (navTimeline) {
-        navTimeline.addEventListener('click', () => window.switchMainTab('timeline'));
+        navTimeline.addEventListener('click', () => {
+            handleDemoAwareNavClick('timeline');
+            window.switchMainTab('timeline');
+            showPendingDemoGuide();
+        });
     }
-    
+
     const navGallery = document.getElementById('nav-gallery');
     if (navGallery) {
-        navGallery.addEventListener('click', () => window.switchMainTab('gallery'));
+        navGallery.addEventListener('click', () => {
+            handleDemoAwareNavClick('gallery');
+            window.switchMainTab('gallery');
+            showPendingDemoGuide();
+        });
     }
     setupGalleryPullToRefresh();
 
     const navBoard = document.getElementById('nav-board');
     if (navBoard) {
-        navBoard.addEventListener('click', () => window.switchMainTab('board'));
+        navBoard.addEventListener('click', () => {
+            handleDemoAwareNavClick('board');
+            window.switchMainTab('board');
+            showPendingDemoGuide();
+        });
     }
-    
+
     const navSettings = document.getElementById('nav-settings');
     if (navSettings) {
         navSettings.addEventListener('click', () => {
+            handleDemoAwareNavClick('settings');
             if (typeof openSettings === 'function') openSettings();
             else if (typeof window.switchMainTab === 'function') window.switchMainTab('settings');
+            showPendingDemoGuide();
         });
     }
     

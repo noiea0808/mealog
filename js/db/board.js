@@ -2,6 +2,7 @@
 import { db, appId, callableFunctions } from '../firebase.js';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, query, orderBy, limit, where, getDocs, getDocsFromServer, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { showToast } from '../ui.js';
+import { isDemoUser } from '../demo-account.js';
 
 // 게시판 관련 함수들
 export const boardOperations = {
@@ -602,6 +603,10 @@ export const boardOperations = {
     async addComment(postId, content) {
         if (!window.currentUser) {
             throw new Error("로그인이 필요합니다.");
+        }
+        if (isDemoUser(window.currentUser)) {
+            showToast('샘플 계정에서는 댓글을 작성할 수 없습니다.', 'error');
+            throw new Error('read-only-demo');
         }
         try {
             console.log('[boardOperations.addComment] 시작:', { postId, contentLength: content?.length });

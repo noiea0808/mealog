@@ -1405,6 +1405,8 @@ window.switchContentSidebar = function(section) {
     } else if (section === 'terms') {
         loadTermsContent();
         // 약관관리 탭이 기본이므로 약관이력은 나중에 로드
+    } else if (section === 'demoGuide') {
+        loadDemoGuideContent();
     } else if (section === 'tags') {
         loadTagsContent();
     } else if (section === 'apk') {
@@ -2225,6 +2227,72 @@ window.saveTerms = async function() {
     } catch (e) {
         console.error('약관 저장 실패:', e);
         alert('약관 저장 중 오류가 발생했습니다: ' + e.message);
+    }
+};
+
+// ── 체험 가이드 편집 ──
+const DEMO_GUIDE_TABS = [
+    { key: 'dashboard', icon: 'fa-chart-line',  label: '밀당' },
+    { key: 'gallery',   icon: 'fa-images',      label: '모먼트' },
+    { key: 'timeline',  icon: 'fa-clock',        label: '밀로그' },
+    { key: 'board',     icon: 'fa-comments',     label: '밀톡' },
+    { key: 'settings',  icon: 'fa-gear',         label: '설정' },
+];
+
+async function loadDemoGuideContent() {
+    const container = document.getElementById('demoGuideEditorContainer');
+    if (!container) return;
+
+    try {
+        const guideDoc = doc(db, 'artifacts', appId, 'content', 'demoGuide');
+        const snap = await getDoc(guideDoc);
+        const saved = snap.exists() ? snap.data() : {};
+
+        container.innerHTML = DEMO_GUIDE_TABS.map(t => {
+            const d = saved[t.key] || {};
+            return `
+            <div class="bg-slate-50 rounded-xl p-5 border border-slate-200">
+                <h3 class="text-sm font-black text-slate-800 flex items-center gap-2 mb-3">
+                    <i class="fa-solid ${t.icon} text-emerald-600"></i>${t.label}
+                    <span class="text-[10px] font-mono text-slate-400">${t.key}</span>
+                </h3>
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">제목</label>
+                        <input id="dg-label-${t.key}" type="text" value="${escapeHtml(d.label || t.label)}"
+                               class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500"/>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">설명</label>
+                        <textarea id="dg-desc-${t.key}" rows="2"
+                                  class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y">${escapeHtml(d.desc || '')}</textarea>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        console.error('체험 가이드 로드 실패:', e);
+        container.innerHTML = '<p class="text-center py-8 text-red-400 text-sm">로드 중 오류가 발생했습니다.</p>';
+    }
+}
+
+window.saveDemoGuide = async function() {
+    try {
+        const data = {};
+        for (const t of DEMO_GUIDE_TABS) {
+            const labelEl = document.getElementById(`dg-label-${t.key}`);
+            const descEl  = document.getElementById(`dg-desc-${t.key}`);
+            data[t.key] = {
+                label: (labelEl?.value || '').trim(),
+                desc:  (descEl?.value  || '').trim(),
+            };
+        }
+        const guideDoc = doc(db, 'artifacts', appId, 'content', 'demoGuide');
+        await setDoc(guideDoc, { ...data, updatedAt: new Date().toISOString() }, { merge: true });
+        alert('체험 가이드가 저장되었습니다.');
+    } catch (e) {
+        console.error('체험 가이드 저장 실패:', e);
+        alert('체험 가이드 저장 중 오류가 발생했습니다: ' + e.message);
     }
 };
 

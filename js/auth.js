@@ -109,11 +109,18 @@ export async function handleGoogleLogin() {
 export async function startGuest() {
     showLoading();
     try {
-        await signInAnonymously(auth);
-        showToast("게스트 모드로 시작합니다.", "info");
-        // 로딩 오버레이는 인증 플로우에서 처리됨
+        const { signInAsDemoAccount, isDemoCredentialsConfigured, requestDemoIntroFromBrowse } = await import('./demo-account.js');
+        if (!isDemoCredentialsConfigured()) {
+            showToast('둘러보기(샘플) 로그인이 설정되지 않았습니다. config.js에 DEMO_ACCOUNT_PASSWORD를 설정해 주세요.', 'error');
+            hideLoading();
+            return;
+        }
+        requestDemoIntroFromBrowse();
+        await signInAsDemoAccount();
+        showToast('샘플 계정으로 둘러보기를 시작합니다.', 'info');
     } catch (e) {
-        showToast("게스트 로그인 실패", "error");
+        console.warn('둘러보기(데모) 로그인 실패:', e);
+        showToast('둘러보기를 시작할 수 없습니다. 잠시 후 다시 시도해 주세요.', 'error');
         hideLoading();
     }
 }
@@ -343,6 +350,12 @@ export function cancelDeleteAccount() {
 export async function confirmDeleteAccountAction() {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         showToast("로그인이 필요합니다.", "error");
+        return;
+    }
+    const { isDemoUser } = await import('./demo-account.js');
+    if (isDemoUser(window.currentUser)) {
+        showToast('샘플 계정에서는 탈퇴할 수 없습니다.', 'error');
+        document.getElementById('deleteAccountConfirmModal')?.classList.add('hidden');
         return;
     }
     
@@ -731,14 +744,21 @@ export async function continueAsGuestFromProfileSetup() {
     closeProfileSetupModal();
     try {
         sessionStorage.setItem('guestFromProfileSetup', 'true');
-        showLoading('게스트로 시작하는 중...');
+        showLoading('둘러보기로 시작하는 중...');
         await signOut(auth);
-        await signInAnonymously(auth);
-        showToast("게스트 모드로 둘러보기를 시작합니다.", "info");
+        const { signInAsDemoAccount, isDemoCredentialsConfigured, requestDemoIntroFromBrowse } = await import('./demo-account.js');
+        if (isDemoCredentialsConfigured()) {
+            requestDemoIntroFromBrowse();
+            await signInAsDemoAccount();
+            showToast('샘플 계정으로 둘러보기를 시작합니다.', 'info');
+        } else {
+            await signInAnonymously(auth);
+            showToast('게스트 모드로 둘러보기를 시작합니다.', 'info');
+        }
     } catch (e) {
         sessionStorage.removeItem('guestFromProfileSetup');
-        console.error("게스트 전환 실패:", e);
-        showToast("게스트로 시작할 수 없습니다. 다시 시도해주세요.", "error");
+        console.error("둘러보기 전환 실패:", e);
+        showToast("둘러보기로 시작할 수 없습니다. 다시 시도해주세요.", "error");
         hideLoading();
     }
 }

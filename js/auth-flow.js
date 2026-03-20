@@ -7,6 +7,8 @@ import { showToast, switchScreen, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
 import { getCurrentTermsVersion } from './utils-terms.js';
 import { showTermsModal, closeTermsModal } from './auth.js';
+import { isDemoUser, maybeShowDemoIntroModal } from './demo-account.js';
+import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 
 /**
  * 인증 상태 정의
@@ -288,6 +290,8 @@ export class AuthFlowManager {
         // 로딩 즉시 해제 (meals 스냅샷 대기하지 않음 → 체감 로딩 시간 단축, 타임라인은 데이터 도착 시 onDataUpdate에서 채워짐)
         window._recordsLoadHidePending = false;
         hideLoading();
+        maybeShowDemoIntroModal();
+        syncDemoNavGuideDots();
 
         // 백그라운드에서 약관과 프로필 확인 (블로킹하지 않음)
         this.checkTermsAndProfileInBackground(user).catch(e => {
@@ -414,6 +418,10 @@ export class AuthFlowManager {
         this.termsCheckInProgress = true;
         
         try {
+            if (isDemoUser(user)) {
+                this.termsCheckInProgress = false;
+                return;
+            }
             console.log('🔍 백그라운드에서 약관 및 프로필 상태 확인 시작');
             
             // 기존 사용자 확인 (캐시 우선)

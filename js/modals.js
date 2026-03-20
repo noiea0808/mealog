@@ -8,6 +8,7 @@ import { showToast } from './ui.js';
 import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed } from './render/index.js';
 import { getDashboardData } from './analytics.js';
 import { callableFunctions } from './firebase.js';
+import { isDemoUser } from './demo-account.js';
 
 // 설정 저장 디바운싱을 위한 타이머
 let settingsSaveTimeout = null;
@@ -729,6 +730,11 @@ export async function saveEntry() {
         // 게스트 모드에서는 저장 불가
         if (window.currentUser && window.currentUser.isAnonymous) {
             showToast("게스트 모드에서는 기록할 수 없습니다. 로그인 후 이용해주세요.", "error");
+            if (loadingOverlay) loadingOverlay.classList.add('hidden');
+            return;
+        }
+        if (window.currentUser && isDemoUser(window.currentUser)) {
+            showToast('샘플 계정에서는 기록을 저장할 수 없습니다. 로그인 후 이용해 주세요.', 'error');
             if (loadingOverlay) loadingOverlay.classList.add('hidden');
             return;
         }
@@ -1835,7 +1841,7 @@ export function openSettings() {
             </div>`;
             document.getElementById('logoutBtnArea').classList.remove('hidden');
             const deleteArea = document.getElementById('deleteAccountBtnArea');
-            if (deleteArea) deleteArea.classList.remove('hidden');
+            if (deleteArea) deleteArea.classList.toggle('hidden', isDemoUser(window.currentUser));
         }
         accountSection.innerHTML = accountHtml;
         

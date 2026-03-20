@@ -3,6 +3,7 @@ import { db, appId, auth, callableFunctions } from '../firebase.js';
 import { doc, getDoc, setDoc, deleteDoc, collection, addDoc, query, where, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { showToast } from '../ui.js';
 import { logger } from '../utils.js';
+import { isDemoUser } from '../demo-account.js';
 
 export const dbOps = {
     async save(record, silent = false) {
@@ -77,6 +78,10 @@ export const dbOps = {
             const error = new Error("로그인이 필요합니다.");
             throw error;
         }
+        if (isDemoUser(currentUser)) {
+            showToast('샘플 계정에서는 삭제할 수 없습니다.', 'error');
+            throw new Error('read-only-demo');
+        }
         if (!id) {
             const error = new Error("삭제할 항목이 없습니다.");
             throw error;
@@ -108,6 +113,10 @@ export const dbOps = {
         const currentUser = auth.currentUser || window.currentUser;
         if (!currentUser || currentUser.isAnonymous) {
             showToast("설정 저장 실패: 로그인이 필요합니다.", 'error');
+            return;
+        }
+        if (isDemoUser(currentUser)) {
+            showToast('샘플 계정에서는 설정을 변경할 수 없습니다. 로그인 후 이용해 주세요.', 'error');
             return;
         }
         try {
@@ -218,6 +227,10 @@ export const dbOps = {
             showToast("저장 실패: 로그인이 필요합니다.", 'error');
             return;
         }
+        if (isDemoUser(currentUser)) {
+            showToast('샘플 계정에서는 하루 소감을 저장할 수 없습니다.', 'error');
+            return;
+        }
         try {
             // 사용자 설정에 dailyComments 필드가 없으면 초기화
             if (!window.userSettings.dailyComments) {
@@ -249,7 +262,11 @@ export const dbOps = {
     // 공유 사진 추가 (Cloud Functions 사용 - 레이트 리밋 적용)
     async sharePhotos(photosToShare, mealData) {
         if (!window.currentUser) return;
-        
+        if (isDemoUser(window.currentUser)) {
+            showToast('샘플 계정에서는 모먼트 공유를 변경할 수 없습니다.', 'error');
+            throw new Error('read-only-demo');
+        }
+
         // 공유 금지 체크
         if (mealData && mealData.shareBanned === true) {
             showToast("이 게시물은 공유가 금지되어 있습니다.", 'error');
@@ -278,6 +295,10 @@ export const dbOps = {
     // 공유 사진 해제 (Cloud Functions 사용)
     async unsharePhotos(photos, entryId, isBestShare = false, isDailyShare = false, isInsightShare = false) {
         if (!window.currentUser || !photos || photos.length === 0) return;
+        if (isDemoUser(window.currentUser)) {
+            showToast('샘플 계정에서는 공유를 해제할 수 없습니다.', 'error');
+            throw new Error('read-only-demo');
+        }
         try {
             const result = await callableFunctions.unsharePhotos({
                 photos,

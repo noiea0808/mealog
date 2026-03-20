@@ -409,6 +409,31 @@
         </div>
     </div>
 
+    <!-- 샘플(더미) 계정 안내: 첫 진입·둘러보기 후 표시 -->
+    <div id="demoIntroModal" class="hidden fixed inset-0 z-[450] flex flex-col justify-end sm:justify-center sm:p-4 bg-slate-900/55 backdrop-blur-md" aria-modal="true" role="dialog" aria-labelledby="demoIntroTitle">
+        <div class="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-[20rem] sm:max-w-[22rem] sm:mx-auto shadow-2xl border border-slate-200/80 overflow-hidden max-h-[min(88vh,520px)] flex flex-col">
+            <div class="shrink-0 px-4 pt-4 pb-3 sm:px-5 sm:pt-5 sm:pb-3.5 border-b border-slate-100">
+                <div class="flex flex-col items-center text-center">
+                    <div class="flex-shrink-0 w-11 h-11 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center mb-2.5">
+                        <i class="fa-solid fa-eye text-lg" aria-hidden="true"></i>
+                    </div>
+                    <h2 id="demoIntroTitle" class="text-base sm:text-lg font-black text-slate-900 leading-snug tracking-tight">체험 모드로 확인 중이에요</h2>
+                    <p class="text-xs sm:text-sm text-slate-600 mt-2 leading-relaxed">
+                        밀로그가 어떻게 기록되는지 미리 확인해 보세요. 마음에 드신다면 언제든 내 계정을 만들 수 있습니다.
+                    </p>
+                </div>
+            </div>
+            <div class="flex-1 min-h-0 flex flex-col gap-2.5 p-3 sm:p-4 bg-slate-50 border-t border-slate-100">
+                <button type="button" id="demoIntroContinueBtn" class="group w-full text-left rounded-xl px-4 py-3.5 sm:py-4 flex items-center justify-center sm:justify-start bg-slate-100/90 hover:bg-slate-200/70 active:bg-slate-200 border border-slate-200/80 text-slate-700 transition-colors">
+                    <span class="text-sm sm:text-[15px] font-bold text-slate-700">체험 모드로 계속하기</span>
+                </button>
+                <button type="button" id="demoIntroSignupBtn" class="group w-full text-left rounded-xl px-4 py-3.5 sm:py-4 flex items-center justify-center sm:justify-start bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-md shadow-emerald-700/20 transition-colors">
+                    <span class="text-sm sm:text-[15px] font-black">로그인하고 모든 기능 사용하기</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- 1. Landing Page: 처음에는 밀로그 아이콘만 가운데 표시, 로그인 필요 시 옵션 표시 -->
     <div id="landingPage" class="flex flex-col min-h-screen">
         <div id="landingFlexMain" class="flex-1 flex flex-col justify-center items-center w-full relative">
@@ -1185,14 +1210,44 @@
         </main>
 
         <nav class="bottom-nav">
-            <button id="nav-dashboard" class="text-slate-300 flex justify-center items-center py-1 flex-1"><i class="fa-solid fa-chart-pie text-xl"></i></button>
-            <button id="nav-gallery" class="text-slate-300 flex justify-center items-center py-1 flex-1"><i class="fa-solid fa-images text-xl"></i></button>
-            <button id="nav-timeline" class="text-slate-600 flex justify-center items-center py-1 flex-1"><i class="fa-solid fa-list-ul text-xl"></i></button>
-            <button id="nav-board" class="text-slate-300 flex justify-center items-center py-1 flex-1"><i class="fa-solid fa-comments text-xl"></i></button>
+            <button id="nav-dashboard" type="button" class="text-slate-300 flex justify-center items-center py-1 flex-1">
+                <span class="relative inline-flex items-center justify-center">
+                    <span class="demo-nav-guide-dot hidden absolute -top-px -right-0.5 z-10 h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
+                    <i class="fa-solid fa-chart-pie text-xl"></i>
+                </span>
+            </button>
+            <button id="nav-gallery" type="button" class="text-slate-300 flex justify-center items-center py-1 flex-1">
+                <span class="relative inline-flex items-center justify-center">
+                    <span class="demo-nav-guide-dot hidden absolute -top-px -right-0.5 z-10 h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
+                    <i class="fa-solid fa-images text-xl"></i>
+                </span>
+            </button>
+            <button id="nav-timeline" type="button" class="text-slate-600 flex justify-center items-center py-1 flex-1">
+                <span class="relative inline-flex items-center justify-center">
+                    <span class="demo-nav-guide-dot hidden absolute -top-px -right-0.5 z-10 h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
+                    <i class="fa-solid fa-list-ul text-xl"></i>
+                </span>
+            </button>
+            <button id="nav-board" type="button" class="text-slate-300 flex justify-center items-center py-1 flex-1">
+                <span class="relative inline-flex items-center justify-center">
+                    <span class="demo-nav-guide-dot hidden absolute -top-px -right-0.5 z-10 h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
+                    <i class="fa-solid fa-comments text-xl"></i>
+                </span>
+            </button>
             <button id="nav-settings" type="button" class="text-slate-300 flex justify-center items-center py-1 flex-1 rounded-full overflow-hidden">
-                <span id="navProfileIcon" class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-300 flex-shrink-0 overflow-hidden border border-slate-400 text-base font-bold text-slate-600"></span>
+                <span class="relative inline-flex items-center justify-center">
+                    <span class="demo-nav-guide-dot hidden absolute top-0 -right-px z-10 h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
+                    <span id="navProfileIcon" class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-300 flex-shrink-0 overflow-hidden border border-slate-400 text-base font-bold text-slate-600"></span>
+                </span>
             </button>
         </nav>
+
+        <div id="demoNavGuideBackdrop" class="hidden fixed inset-0 z-[120] pointer-events-none" aria-hidden="true"></div>
+        <div id="demoNavGuidePanel" class="demo-nav-guide-panel hidden fixed left-1/2 -translate-x-1/2 z-[125] rounded-lg border border-amber-200 bg-amber-50 pl-4 pr-9 py-3 shadow-md" role="status" aria-labelledby="demoNavGuideTitle">
+            <button type="button" id="demoNavGuideCloseBtn" class="absolute top-2 right-2 w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-600 active:text-slate-700 transition-colors" aria-label="닫기"><i class="fa-solid fa-xmark text-sm"></i></button>
+            <h3 id="demoNavGuideTitle" class="text-sm font-black text-slate-900 tracking-tight"></h3>
+            <p id="demoNavGuideDesc" class="text-xs text-slate-700 mt-1 leading-relaxed"></p>
+        </div>
     </div>
 
     <!-- 콘텐츠 팝업 모달: 밀로그 내용 폭 - 10px 고정, 이미지 좌우 꽉 참, 제목 미노출, 하단 영역 분할 -->
@@ -1208,23 +1263,47 @@
                     <button type="button" id="contentPopupLandingBtn" class="w-full py-3 text-emerald-600 font-bold text-sm border border-emerald-500 rounded-xl hover:bg-emerald-50 transition-colors"></button>
                 </div>
             </div>
-            <div id="contentPopupFooter" class="content-popup-footer flex flex-shrink-0 border-t border-slate-600">
-                <button type="button" id="contentPopupPrevBtn" class="content-popup-footer-seg hidden">이전</button>
-                <button type="button" id="contentPopupNextBtn" class="content-popup-footer-seg hidden">다음</button>
-                <button type="button" id="contentPopupDismissTodayBtn" class="content-popup-footer-seg">오늘 그만 보기</button>
-                <button type="button" id="contentPopupCloseBtn" class="content-popup-footer-seg content-popup-footer-close">닫기</button>
+            <div id="contentPopupFooter" class="content-popup-footer flex flex-col flex-shrink-0 border-t border-slate-600">
+                <div id="contentPopupNavRow" class="content-popup-footer-nav hidden flex w-full">
+                    <button type="button" id="contentPopupPrevBtn" class="content-popup-footer-seg content-popup-footer-seg--nav">
+                        <span class="content-popup-footer-label">이전</span>
+                        <span class="content-popup-footer-hint">이전 안내 보기</span>
+                    </button>
+                    <button type="button" id="contentPopupNextBtn" class="content-popup-footer-seg content-popup-footer-seg--nav">
+                        <span class="content-popup-footer-label">다음</span>
+                        <span class="content-popup-footer-hint">다음 안내 보기</span>
+                    </button>
+                </div>
+                <div class="content-popup-footer-actions flex w-full">
+                    <button type="button" id="contentPopupDismissTodayBtn" class="content-popup-footer-seg content-popup-footer-seg--action">
+                        <span class="content-popup-footer-label">오늘 그만 보기</span>
+                        <span class="content-popup-footer-hint">오늘은 다시 표시 안 함</span>
+                    </button>
+                    <button type="button" id="contentPopupCloseBtn" class="content-popup-footer-seg content-popup-footer-seg--action content-popup-footer-close">
+                        <span class="content-popup-footer-label">닫기</span>
+                        <span class="content-popup-footer-hint">다음에 이어서 보기</span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
     <!-- Logout Confirm Modal -->
-    <div id="logoutConfirmModal" class="hidden fixed inset-0 z-[400] bg-slate-900/40 flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl transform transition-all scale-100">
-            <h3 class="text-lg font-bold text-slate-800 mb-2">로그아웃 하시겠어요?</h3>
-            <p class="text-sm text-slate-500 mb-6">기록은 안전하게 저장됩니다.</p>
-            <div class="flex gap-3">
-                <button id="logoutConfirmCancelBtn" class="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm">취소</button>
-                <button id="logoutConfirmActionBtn" class="flex-1 py-3 bg-red-50 text-red-500 rounded-xl font-bold text-sm">로그아웃</button>
+    <div id="logoutConfirmModal" class="hidden fixed inset-0 z-[400] flex flex-col justify-end sm:justify-center px-4 pb-4 pt-8 sm:p-4 bg-slate-900/45 backdrop-blur-[2px]" aria-modal="true" role="dialog" aria-labelledby="logoutConfirmTitle">
+        <div class="bg-white rounded-2xl w-full max-w-[18.5rem] sm:max-w-xs mx-auto shadow-2xl overflow-hidden border border-slate-200/80 sm:rounded-2xl">
+            <div class="px-4 pt-4 pb-3 sm:px-5 sm:pt-5 sm:pb-4 border-b border-slate-100">
+                <h3 id="logoutConfirmTitle" class="text-lg font-bold text-slate-800">로그아웃 하시겠어요?</h3>
+                <p class="text-sm text-slate-500 mt-1.5 leading-relaxed">기록은 안전하게 저장됩니다.</p>
+            </div>
+            <div class="flex min-h-[4.25rem] sm:min-h-[4.75rem]">
+                <button type="button" id="logoutConfirmCancelBtn" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2.5 py-3.5 sm:py-4 bg-slate-100 hover:bg-slate-200/90 active:bg-slate-200 border-r border-slate-200 transition-colors">
+                    <span class="text-sm sm:text-[15px] font-bold text-slate-700">취소</span>
+                    <span class="text-[11px] sm:text-xs text-slate-500 font-medium">이전 화면으로</span>
+                </button>
+                <button type="button" id="logoutConfirmActionBtn" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2.5 py-3.5 sm:py-4 bg-rose-50 hover:bg-rose-100/90 active:bg-rose-100 transition-colors">
+                    <span class="text-sm sm:text-[15px] font-bold text-rose-700">로그아웃</span>
+                    <span class="text-[11px] sm:text-xs text-rose-600/90 font-medium">로그인 화면으로</span>
+                </button>
             </div>
         </div>
     </div>
