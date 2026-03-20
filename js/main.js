@@ -2346,7 +2346,12 @@ window.updateNotificationDot = async () => {
     }
 };
 
-/** 앱 아이콘 배지 수 설정 (네이티브만, 권한 확인 후 설정) */
+/**
+ * 앱 아이콘 숫자 배지 (Capacitor Badge) — 런처 아이콘의 「숫자」만 다룸.
+ * - 미읽음 댓글/밀톡 알림 집계(notificationUnreadCount)가 있을 때만 숫자 표시.
+ * - Android: 상단 알림·알림 목록은 OS가 표시(점/닷 등). 숫자는 이 API로만 맞춤 → 관리자 푸시(adminBroadcast) 등은
+ *   푸시 수신 시 updateNotificationDot를 타지 않으므로 숫자가 올라가지 않음(FCM 쪽 notificationCount:0 병행).
+ */
 window.updateAppBadge = async function updateAppBadge() {
     if (typeof window.Capacitor === 'undefined' || !window.Capacitor?.isNativePlatform?.()) return;
     const Badge = window.Capacitor?.Plugins?.Badge;

@@ -1,11 +1,12 @@
 const { initializeApp } = require('firebase-admin/app');
-const { getFirestore, FieldValue, Timestamp } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue, Timestamp, FieldPath } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const { getStorage } = require('firebase-admin/storage');
 const { getMessaging } = require('firebase-admin/messaging');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineString } = require('firebase-functions/params');
 const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { getMealDelta, mergeDeltaIntoDay, sanitizeDayEntry, computeStatsFromMeals, isMainSlot } = require('./mealStats.js');
 const { logger } = require('firebase-functions');
 
@@ -144,7 +145,10 @@ function fcmDataStrings(data) {
  * @param {string} userId - 수신자 uid
  * @param {{ title: string, body: string, data?: object }} payload
  */
-async function sendPushToUser(userId, payload) {
+/**
+ * @param {{ adminBroadcast?: boolean }} options - 관리자 브로드캐스트: iOS aps에 badge 미포함(아이콘 숫자 변경 최소화), 앱에서 빨간점/배지 갱신 생략용 data.type
+ */
+async function sendPushToUser(userId, payload, options = {}) {
   if (!userId || !payload?.title) return;
   try {
     const ref = db.collection('artifacts').doc(APP_ID).collection('users').doc(userId).collection('config').doc('fcmTokens');
@@ -156,11 +160,35 @@ async function sendPushToUser(userId, payload) {
       return;
     }
     const messaging = getMessaging();
+    const dataObj = { ...(payload.data && typeof payload.data === 'object' ? payload.data : {}) };
+    if (options.adminBroadcast) {
+      dataObj.suppressNumericBadge = '1';
+    }
     const message = {
       notification: { title: payload.title, body: payload.body || '' },
-      data: fcmDataStrings(payload.data),
+      data: fcmDataStrings(dataObj),
       android: { priority: 'high' }
     };
+    if (options.adminBroadcast) {
+      // Android: 알림 트레이·상단 배너는 유지, 런처 숫자 배지는 이 푸시로 올리지 않도록 (일부 기기·런처에서 notificationCount 연동)
+      message.android = {
+        priority: 'high',
+        notification: {
+          title: payload.title,
+          body: payload.body || '',
+          notificationCount: 0
+        }
+      };
+      message.apns = {
+        headers: { 'apns-priority': '10' },
+        payload: {
+          aps: {
+            sound: 'default'
+            // badge 생략 → 기존 배지 숫자를 이 푸시가 덮어쓰지 않도록
+          }
+        }
+      };
+    }
     const results = await Promise.allSettled(
       tokens.map((token) => messaging.send({ ...message, token }))
     );
@@ -1947,3 +1975,291 @@ exports.migrateSharedPhotosTimestamp = onCall({ region: REGION }, async (request
 
   return { updated, total: snapshot.size };
 });
+
+/** 공지 HTML → 푸시 본문용 짧은 텍스트 */
+function noticePlainTextForPush(content, maxLen = 180) {
+  if (!content || typeof content !== 'string') return '새 공지가 등록되었습니다.';
+  const stripped = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!stripped) return '새 공지가 등록되었습니다.';
+  return stripped.length > maxLen ? `${stripped.slice(0, maxLen - 1)}…` : stripped;
+}
+
+/**
+ * 로그인 사용자(users 문서 존재)에게 동일 푸시 발송 (FCM 토큰 있는 계정만 실제 수신)
+ */
+async function broadcastNoticePushToAllUsers(payload) {
+  const usersRef = db.collection('artifacts').doc(APP_ID).collection('users');
+  let lastDoc = null;
+  let totalUsers = 0;
+  const pageSize = 200;
+  const concurrency = 25;
+  for (;;) {
+    let q = usersRef.orderBy(FieldPath.documentId()).limit(pageSize);
+    if (lastDoc) q = q.startAfter(lastDoc);
+    const snap = await q.get();
+    if (snap.empty) break;
+    const uids = snap.docs.map((d) => d.id);
+    totalUsers += uids.length;
+    for (let i = 0; i < uids.length; i += concurrency) {
+      const batch = uids.slice(i, i + concurrency);
+      await Promise.all(batch.map((uid) => sendPushToUser(uid, payload)));
+    }
+    lastDoc = snap.docs[snap.docs.length - 1];
+    if (snap.size < pageSize) break;
+  }
+  logger.info('broadcastNoticePushToAllUsers done', { totalUsers });
+}
+
+/** 관리자 푸시메시지: 상단 알림만, 탭 시 앱 내 탭 이동(data.type=adminBroadcast), 배지/빨간점 갱신 생략 */
+async function broadcastAdminPushToAllUsers(payload) {
+  const usersRef = db.collection('artifacts').doc(APP_ID).collection('users');
+  let lastDoc = null;
+  let totalUsers = 0;
+  const pageSize = 200;
+  const concurrency = 25;
+  for (;;) {
+    let q = usersRef.orderBy(FieldPath.documentId()).limit(pageSize);
+    if (lastDoc) q = q.startAfter(lastDoc);
+    const snap = await q.get();
+    if (snap.empty) break;
+    const uids = snap.docs.map((d) => d.id);
+    totalUsers += uids.length;
+    for (let i = 0; i < uids.length; i += concurrency) {
+      const batch = uids.slice(i, i + concurrency);
+      await Promise.all(batch.map((uid) => sendPushToUser(uid, payload, { adminBroadcast: true })));
+    }
+    lastDoc = snap.docs[snap.docs.length - 1];
+    if (snap.size < pageSize) break;
+  }
+  logger.info('broadcastAdminPushToAllUsers done', { totalUsers });
+}
+
+const ADMIN_PUSH_LANDING_TABS = new Set(['dashboard', 'timeline', 'gallery', 'board', 'settings']);
+
+function normalizeAdminBroadcastPayload(raw) {
+  const title = String(raw?.title || '').trim();
+  const body = String(raw?.body || '').trim();
+  const tab = String(raw?.landingTab || 'dashboard').trim();
+  const landingTab = ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard';
+  return { title, body, landingTab };
+}
+
+/** 관리자: 전체 사용자에게 푸시 즉시 발송 */
+exports.adminBroadcastPushNow = onCall(
+  { region: REGION, timeoutSeconds: 540, memory: '512MiB' },
+  async (request) => {
+    const callerUid = request.auth?.uid;
+    if (!callerUid) {
+      throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    }
+    if (!(await isAdminByUid(callerUid))) {
+      throw new HttpsError('permission-denied', '관리자만 발송할 수 있습니다.');
+    }
+    const { title, body, landingTab } = normalizeAdminBroadcastPayload(request.data || {});
+    if (!title || title.length > 80) {
+      throw new HttpsError('invalid-argument', '제목은 1~80자로 입력해 주세요.');
+    }
+    if (!body || body.length > 240) {
+      throw new HttpsError('invalid-argument', '내용은 1~240자로 입력해 주세요.');
+    }
+    await broadcastAdminPushToAllUsers({
+      title,
+      body,
+      data: { type: 'adminBroadcast', landingTab }
+    });
+    return { ok: true };
+  }
+);
+
+/**
+ * 관리자: 예약 푸시 문서 생성 (Admin SDK — 클라이언트 규칙·시계 오차 이슈 회피)
+ */
+exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  if (!(await isAdminByUid(callerUid))) {
+    throw new HttpsError('permission-denied', '관리자만 등록할 수 있습니다.');
+  }
+  const { title, body, landingTab, scheduledAtMs } = request.data || {};
+  const t = String(title || '').trim();
+  const b = String(body || '').trim();
+  const tab = String(landingTab || 'dashboard').trim();
+  const land = ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard';
+  if (!t || t.length > 80) {
+    throw new HttpsError('invalid-argument', '제목은 1~80자로 입력해 주세요.');
+  }
+  if (!b || b.length > 240) {
+    throw new HttpsError('invalid-argument', '내용은 1~240자로 입력해 주세요.');
+  }
+  const ms = typeof scheduledAtMs === 'number' && !Number.isNaN(scheduledAtMs) ? scheduledAtMs : null;
+  if (ms == null) {
+    throw new HttpsError('invalid-argument', '예약 시각(scheduledAtMs)이 올바르지 않습니다.');
+  }
+  const serverNow = Date.now();
+  if (ms < serverNow + 25 * 1000) {
+    throw new HttpsError('invalid-argument', '예약 시각은 서버 기준 약 30초 이후로 설정해 주세요.');
+  }
+  const ref = await db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes').add({
+    title: t.slice(0, 80),
+    body: b.slice(0, 240),
+    landingTab: land,
+    scheduledAt: Timestamp.fromMillis(ms),
+    status: 'pending',
+    createdByUid: callerUid,
+    createdAt: FieldValue.serverTimestamp()
+  });
+  return { ok: true, id: ref.id };
+});
+
+/**
+ * 예약 푸시: 매분 pending 중 예정 시각 도래 건 처리
+ */
+exports.processScheduledAdminPushes = onSchedule(
+  {
+    schedule: '* * * * *',
+    timeZone: 'Asia/Seoul',
+    region: REGION,
+    timeoutSeconds: 540,
+    memory: '512MiB'
+  },
+  async () => {
+    const nowMs = Date.now();
+    const coll = db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes');
+    const snap = await coll.where('status', '==', 'pending').where('scheduledAt', '<=', Timestamp.fromMillis(nowMs)).limit(25).get();
+
+    for (const docSnap of snap.docs) {
+      const ref = docSnap.ref;
+      try {
+        await db.runTransaction(async (transaction) => {
+          const s = await transaction.get(ref);
+          if (!s.exists) return;
+          const d = s.data();
+          if (d.status !== 'pending') return;
+          const sa = d.scheduledAt;
+          const ms = sa && typeof sa.toMillis === 'function' ? sa.toMillis() : 0;
+          if (!ms || ms > nowMs) return;
+          transaction.update(ref, { status: 'sending', lockedAt: FieldValue.serverTimestamp() });
+        });
+
+        const after = await ref.get();
+        const d = after.data();
+        if (!after.exists || d.status !== 'sending') continue;
+
+        const title = String(d.title || '').trim();
+        const body = String(d.body || '').trim();
+        const tab = String(d.landingTab || 'dashboard').trim();
+        const landingTab = ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard';
+        if (!title || !body) {
+          await ref.update({
+            status: 'failed',
+            errorMessage: '제목/내용 누락',
+            failedAt: FieldValue.serverTimestamp()
+          });
+          continue;
+        }
+
+        await broadcastAdminPushToAllUsers({
+          title,
+          body,
+          data: { type: 'adminBroadcast', landingTab }
+        });
+        await ref.update({
+          status: 'sent',
+          sentAt: FieldValue.serverTimestamp()
+        });
+        logger.info('processScheduledAdminPushes: sent', { id: docSnap.id });
+      } catch (e) {
+        logger.error('processScheduledAdminPushes: error', { id: docSnap.id, message: e?.message });
+        try {
+          await ref.update({
+            status: 'failed',
+            errorMessage: String(e?.message || e).slice(0, 500),
+            failedAt: FieldValue.serverTimestamp()
+          });
+        } catch (_) {}
+      }
+    }
+  }
+);
+
+/**
+ * 공지: pushFrequency === once 이고 아직 pushSentAt 없으면 전체 푸시 1회 후 pushSentAt 기록
+ */
+exports.onNoticePushOnce = onDocumentWritten(
+  {
+    document: `artifacts/${APP_ID}/notices/{noticeId}`,
+    region: REGION
+  },
+  async (event) => {
+    const noticeId = event.params.noticeId;
+    const afterSnap = event.data.after;
+    if (!afterSnap.exists) return;
+    const after = afterSnap.data();
+    if (!after || after.hidden === true || after.deleted === true) return;
+    if ((after.pushFrequency || 'none') !== 'once') return;
+    if (after.pushSentAt) return;
+
+    const title = (after.title || '공지').trim();
+    const body = noticePlainTextForPush(after.content || '');
+    const payload = {
+      title: `📢 ${title}`,
+      body,
+      data: { type: 'notice', noticeId: String(noticeId) }
+    };
+
+    try {
+      await broadcastNoticePushToAllUsers(payload);
+      await afterSnap.ref.set({ pushSentAt: FieldValue.serverTimestamp() }, { merge: true });
+      logger.info('onNoticePushOnce: ok', { noticeId });
+    } catch (e) {
+      logger.error('onNoticePushOnce failed', { noticeId, message: e?.message });
+    }
+  }
+);
+
+/**
+ * 공지: pushFrequency === daily 인 문서마다 서울 기준 당일 미발송이면 전체 푸시 (매일 09:00)
+ */
+exports.scheduledNoticeDailyPush = onSchedule(
+  {
+    schedule: '0 9 * * *',
+    timeZone: 'Asia/Seoul',
+    region: REGION,
+    timeoutSeconds: 540,
+    memory: '512MiB'
+  },
+  async () => {
+    const noticesRef = db.collection('artifacts').doc(APP_ID).collection('notices');
+    const snap = await noticesRef.where('pushFrequency', '==', 'daily').get();
+    const todaySeoul = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date());
+
+    for (const docSnap of snap.docs) {
+      const n = docSnap.data();
+      if (n.hidden === true || n.deleted === true) continue;
+      if (n.lastDailyPushDate === todaySeoul) continue;
+
+      const title = (n.title || '공지').trim();
+      const body = noticePlainTextForPush(n.content || '');
+      const payload = {
+        title: `📢 ${title}`,
+        body,
+        data: { type: 'notice', noticeId: docSnap.id }
+      };
+
+      try {
+        await broadcastNoticePushToAllUsers(payload);
+        await docSnap.ref.set({ lastDailyPushDate: todaySeoul }, { merge: true });
+        logger.info('scheduledNoticeDailyPush: ok', { noticeId: docSnap.id, todaySeoul });
+      } catch (e) {
+        logger.error('scheduledNoticeDailyPush failed', { noticeId: docSnap.id, message: e?.message });
+      }
+    }
+  }
+);

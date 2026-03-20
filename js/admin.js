@@ -24,6 +24,99 @@ function getSharedPhotoGroupKey(data) {
     return `no-entry_${data.userId}`;
 }
 
+/** 로컬 날짜(자정 기준) → YYYY-MM-DD */
+function dateKeyFromLocalDate(d) {
+    if (!d || !(d instanceof Date) || Number.isNaN(d.getTime())) return null;
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+/** 금일 포함 7일치 날짜 키 (과거→오늘 순) */
+function getLast7DateKeys(todayStart) {
+    const keys = [];
+    for (let i = 6; i >= 0; i--) {
+        const d = new Date(todayStart);
+        d.setDate(d.getDate() - i);
+        keys.push(dateKeyFromLocalDate(d));
+    }
+    return keys;
+}
+
+const DASHBOARD_7D_ROW_PREFIXES = [
+    'statGuestVisits7d', 'statNewUsers7d', 'statActiveUsers7d', 'statRecords7d', 'statShared7d'
+];
+
+const DASHBOARD_7_SUM_IDS = [
+    'statGuestVisits7Sum', 'statNewUsers7Sum', 'statActiveUsers7Sum', 'statRecords7Sum', 'statShared7Sum'
+];
+
+/** 일별 7칸이 있으면 합계, 없으면 null */
+function sumSevenDaily(values) {
+    if (!values || values.length !== 7) return null;
+    return values.reduce((a, b) => a + (Number(b) || 0), 0);
+}
+
+function getDashboard7dCellIds() {
+    const ids = [...DASHBOARD_7_SUM_IDS];
+    DASHBOARD_7D_ROW_PREFIXES.forEach((p) => {
+        for (let i = 0; i < 7; i++) ids.push(`${p}${i}`);
+    });
+    return ids;
+}
+
+/** 최근 7일 날짜 헤더 (컬럼 7개, 과거 → 오늘) */
+function renderDashboard7dHeaders(dates) {
+    for (let i = 0; i < 7; i++) {
+        const th = document.getElementById(`dashboard7dHead${i}`);
+        if (!th) continue;
+        if (dates && dates.length === 7 && dates[i]) {
+            const parts = String(dates[i]).split('-');
+            const m = parts[1] ? parseInt(parts[1], 10) : 0;
+            const day = parts[2] ? parseInt(parts[2], 10) : 0;
+            th.innerHTML = `<span class="block leading-tight text-xs">${m}/${day}</span>`;
+            th.title = dates[i];
+        } else {
+            th.textContent = '—';
+            th.removeAttribute('title');
+        }
+    }
+}
+
+/** 한 지표의 7개 컬럼 (baseId + 0..6) */
+function fillDashboard7dNumericRow(baseId, values, fallbackTotal) {
+    const tip = (fallbackTotal != null && Number.isFinite(Number(fallbackTotal)))
+        ? `7일 범위 합(캐시): ${Number(fallbackTotal).toLocaleString()} — 「통계 새로고침」으로 일별`
+        : '「통계 새로고침」으로 일별 집계';
+    for (let i = 0; i < 7; i++) {
+        const el = document.getElementById(`${baseId}${i}`);
+        if (!el) continue;
+        if (values && values.length === 7) {
+            el.textContent = Number(values[i] || 0).toLocaleString();
+            el.removeAttribute('title');
+        } else {
+            el.textContent = '—';
+            el.title = tip;
+        }
+    }
+}
+
+/** Firestore 캐시의 last7Breakdown을 안전하게 복사 (길이 7 정규화) */
+function cloneLast7Breakdown(raw) {
+    if (!raw || !Array.isArray(raw.dates) || raw.dates.length !== 7) return null;
+    const pick = (arr) => {
+        const a = Array.isArray(arr) ? arr.map(v => Number(v) || 0) : [];
+        while (a.length < 7) a.push(0);
+        return a.slice(0, 7);
+    };
+    return {
+        dates: [...raw.dates],
+        guestVisits: pick(raw.guestVisits),
+        newUsers: pick(raw.newUsers),
+        activeUsers: pick(raw.activeUsers),
+        records: pick(raw.records),
+        sharedPhotos: pick(raw.sharedPhotos)
+    };
+}
+
 // 사용자 테이블 정렬 상태/캐시
 let usersCache = null; // 마지막으로 로드된 사용자 목록 (정렬 전 원본)
 let usersSortState = { key: 'createdAt', dir: 'desc' };
@@ -272,19 +365,33 @@ async function getUserStatistics() {
             usersSnapshot = { docs: [], size: 0 };
         }
         
-        // 통계 계산을 위한 날짜 설정 (자정 기준)
+        // 통계 계산을 위한 날짜 설정 (자정 기준). 최근 7일 = 금일 포함 7개 일자(오늘−6일 ~ 오늘)
         const now = new Date();
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const last7Start = new Date(todayStart);
-        last7Start.setDate(last7Start.getDate() - 7);
+        const last7FirstDay = new Date(todayStart);
+        last7FirstDay.setDate(last7FirstDay.getDate() - 6);
         const last30Start = new Date(todayStart);
         last30Start.setDate(last30Start.getDate() - 30);
+
+        const last7DateKeys = getLast7DateKeys(todayStart);
+        const last7IndexMap = new Map(last7DateKeys.map((k, i) => [k, i]));
+        const last7DayIndex = (dateOnly) => {
+            const k = dateKeyFromLocalDate(dateOnly);
+            return k != null && last7IndexMap.has(k) ? last7IndexMap.get(k) : -1;
+        };
+
+        const z7 = () => [0, 0, 0, 0, 0, 0, 0];
+        const guestVisitsByDay = z7();
+        const newUsersByDay = z7();
+        const recordsByDay = z7();
+        const activeSetsByDay = Array.from({ length: 7 }, () => new Set());
+        const sharedSetsByDay = Array.from({ length: 7 }, () => new Set());
 
         const inPeriod = (dateOnly, period) => {
             if (!dateOnly) return false;
             if (period === 'all') return true;
             if (period === 'today') return dateOnly.getTime() >= todayStart.getTime();
-            if (period === 'last7') return dateOnly.getTime() >= last7Start.getTime();
+            if (period === 'last7') return dateOnly.getTime() >= last7FirstDay.getTime();
             if (period === 'last30') return dateOnly.getTime() >= last30Start.getTime();
             return false;
         };
@@ -320,6 +427,8 @@ async function getUserStatistics() {
                     if (inPeriod(dateOnly, 'today')) stats.guestVisits.today++;
                     if (inPeriod(dateOnly, 'last7')) stats.guestVisits.last7++;
                     if (inPeriod(dateOnly, 'last30')) stats.guestVisits.last30++;
+                    const gdi = last7DayIndex(dateOnly);
+                    if (gdi >= 0) guestVisitsByDay[gdi]++;
                 }
             });
         } catch (e) {
@@ -340,6 +449,8 @@ async function getUserStatistics() {
                     if (inPeriod(createdDateOnly, 'today')) stats.newUsers.today++;
                     if (inPeriod(createdDateOnly, 'last7')) stats.newUsers.last7++;
                     if (inPeriod(createdDateOnly, 'last30')) stats.newUsers.last30++;
+                    const ndi = last7DayIndex(createdDateOnly);
+                    if (ndi >= 0) newUsersByDay[ndi]++;
                 }
             });
         }
@@ -360,6 +471,8 @@ async function getUserStatistics() {
                 if (inPeriod(dateOnly, 'today')) postKeysByPeriod.today.add(key);
                 if (inPeriod(dateOnly, 'last7')) postKeysByPeriod.last7.add(key);
                 if (inPeriod(dateOnly, 'last30')) postKeysByPeriod.last30.add(key);
+                const sdi = last7DayIndex(dateOnly);
+                if (sdi >= 0) sharedSetsByDay[sdi].add(key);
             }
         });
         stats.sharedPhotos.all = postKeysByPeriod.all.size;
@@ -402,6 +515,11 @@ async function getUserStatistics() {
                         if (inPeriod(mealDateOnly, 'last30')) { stats.records.last30++; userHasIn30 = true; stats.recentActivity.last30Days++; }
                         userHasInAll = true;
                         if (inPeriod(mealDateOnly, 'last7')) stats.recentActivity.last7Days++;
+                        const rdi = last7DayIndex(mealDateOnly);
+                        if (rdi >= 0) {
+                            recordsByDay[rdi]++;
+                            activeSetsByDay[rdi].add(userId);
+                        }
                     }
                 });
 
@@ -419,6 +537,15 @@ async function getUserStatistics() {
         stats.activeUsers.last7 = activeUserSets.last7.size;
         stats.activeUsers.today = activeUserSets.today.size;
         stats.totalMeals = stats.records.all;
+
+        stats.last7Breakdown = {
+            dates: last7DateKeys,
+            guestVisits: [...guestVisitsByDay],
+            newUsers: [...newUsersByDay],
+            activeUsers: activeSetsByDay.map(s => s.size),
+            records: [...recordsByDay],
+            sharedPhotos: sharedSetsByDay.map(s => s.size)
+        };
 
         console.log('📊 대시보드 통계:', stats);
         return stats;
@@ -453,38 +580,51 @@ const DASHBOARD_STATS_REF = () => doc(db, 'artifacts', appId, 'adminSettings', '
 const RESTAURANT_STATS_REF = () => doc(db, 'artifacts', appId, 'adminSettings', 'restaurantStats');
 
 /** 통계 객체를 화면에 반영 + 마지막 업데이트 문구 */
-function renderDashboardStats(stats, updatedAt) {
+function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = null) {
     const set = (id, value) => {
         const el = document.getElementById(id);
         if (el) el.textContent = value != null ? Number(value).toLocaleString() : '-';
     };
+    const bdRaw = last7BreakdownOverride != null ? last7BreakdownOverride : stats?.last7Breakdown;
+    const bd = bdRaw && bdRaw.dates?.length === 7 ? bdRaw : null;
     if (stats) {
         set('statGuestVisitsAll', stats.guestVisits?.all);
         set('statGuestVisits30', stats.guestVisits?.last30);
-        set('statGuestVisits7', stats.guestVisits?.last7);
-        set('statGuestVisitsToday', stats.guestVisits?.today);
         set('statNewUsersAll', stats.newUsers?.all);
         set('statNewUsers30', stats.newUsers?.last30);
-        set('statNewUsers7', stats.newUsers?.last7);
-        set('statNewUsersToday', stats.newUsers?.today);
         set('statActiveUsersAll', stats.activeUsers?.all);
         set('statActiveUsers30', stats.activeUsers?.last30);
-        set('statActiveUsers7', stats.activeUsers?.last7);
-        set('statActiveUsersToday', stats.activeUsers?.today);
         set('statRecordsAll', stats.records?.all);
         set('statRecords30', stats.records?.last30);
-        set('statRecords7', stats.records?.last7);
-        set('statRecordsToday', stats.records?.today);
         set('statSharedAll', stats.sharedPhotos?.all);
         set('statShared30', stats.sharedPhotos?.last30);
-        set('statShared7', stats.sharedPhotos?.last7);
-        set('statSharedToday', stats.sharedPhotos?.today);
+
+        renderDashboard7dHeaders(bd?.dates);
+        fillDashboard7dNumericRow('statGuestVisits7d', bd?.guestVisits, stats.guestVisits?.last7);
+        fillDashboard7dNumericRow('statNewUsers7d', bd?.newUsers, stats.newUsers?.last7);
+        fillDashboard7dNumericRow('statActiveUsers7d', bd?.activeUsers, stats.activeUsers?.last7);
+        fillDashboard7dNumericRow('statRecords7d', bd?.records, stats.records?.last7);
+        fillDashboard7dNumericRow('statShared7d', bd?.sharedPhotos, stats.sharedPhotos?.last7);
+
+        set('statGuestVisits7Sum', sumSevenDaily(bd?.guestVisits) ?? stats.guestVisits?.last7);
+        set('statNewUsers7Sum', sumSevenDaily(bd?.newUsers) ?? stats.newUsers?.last7);
+        set('statActiveUsers7Sum', stats.activeUsers?.last7);
+        set('statRecords7Sum', sumSevenDaily(bd?.records) ?? stats.records?.last7);
+        set('statShared7Sum', sumSevenDaily(bd?.sharedPhotos) ?? stats.sharedPhotos?.last7);
     } else {
-        ['statGuestVisitsAll', 'statGuestVisits30', 'statGuestVisits7', 'statGuestVisitsToday',
-            'statNewUsersAll', 'statNewUsers30', 'statNewUsers7', 'statNewUsersToday',
-            'statActiveUsersAll', 'statActiveUsers30', 'statActiveUsers7', 'statActiveUsersToday',
-            'statRecordsAll', 'statRecords30', 'statRecords7', 'statRecordsToday',
-            'statSharedAll', 'statShared30', 'statShared7', 'statSharedToday'].forEach(id => set(id, null));
+        ['statGuestVisitsAll', 'statGuestVisits30',
+            'statNewUsersAll', 'statNewUsers30',
+            'statActiveUsersAll', 'statActiveUsers30',
+            'statRecordsAll', 'statRecords30',
+            'statSharedAll', 'statShared30'].forEach(id => set(id, null));
+        renderDashboard7dHeaders(null);
+        getDashboard7dCellIds().forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.textContent = '—';
+                el.removeAttribute('title');
+            }
+        });
     }
     const label = document.getElementById('dashboardStatsUpdatedAt');
     if (label) {
@@ -562,15 +702,21 @@ async function updateStatistics() {
             records: data.records || { all: 0, last30: 0, last7: 0, today: 0 },
             sharedPhotos: data.sharedPhotos || { all: 0, last30: 0, last7: 0, today: 0 }
         };
+        let last7Breakdown = cloneLast7Breakdown(data.last7Breakdown);
         // 캐시가 오늘 이전 기준이면 당일 숫자만 경량 조회해서 보정 (전일까지는 캐시 유지)
         if (asOfDate && asOfDate !== todayStr) {
             const todayOnly = await getTodayOnlyStats();
-            stats.guestVisits.today = todayOnly.guestVisitsToday;
-            stats.newUsers.today = todayOnly.newUsersToday;
-            stats.sharedPhotos.today = todayOnly.sharedPhotosToday;
-            // records/activeUsers 오늘은 집계 비용이 커서 캐시 유지 (통계 새로고침 시 반영)
+            if (last7Breakdown && last7Breakdown.dates) {
+                const ti = last7Breakdown.dates.indexOf(todayStr);
+                if (ti >= 0) {
+                    last7Breakdown.guestVisits[ti] = todayOnly.guestVisitsToday;
+                    last7Breakdown.newUsers[ti] = todayOnly.newUsersToday;
+                    last7Breakdown.sharedPhotos[ti] = todayOnly.sharedPhotosToday;
+                }
+            }
+            // records/activeUsers·7일 일별의 오늘 칸은 집계 비용상 캐시 유지 (통계 새로고침 시 반영)
         }
-        renderDashboardStats(stats, data.updatedAt);
+        renderDashboardStats(stats, data.updatedAt, last7Breakdown);
     } catch (e) {
         console.error("대시보드 통계 로드 실패:", e);
         renderDashboardStats(null, null);
@@ -591,11 +737,12 @@ async function refreshDashboardStats() {
             activeUsers: stats.activeUsers,
             records: stats.records,
             sharedPhotos: stats.sharedPhotos,
+            last7Breakdown: stats.last7Breakdown || null,
             asOfDate: getTodayDateString(), // 전일까지 집계 기준일 (당일 로드 시 이 날짜 이전이면 당일만 경량 조회)
             updatedAt: serverTimestamp()
         };
         await setDoc(DASHBOARD_STATS_REF(), payload);
-        renderDashboardStats(stats, new Date());
+        renderDashboardStats(stats, new Date(), stats.last7Breakdown);
     } catch (e) {
         console.error("통계 새로고침 실패:", e);
         alert("통계 새로고침 중 오류가 발생했습니다: " + (e.message || e));
@@ -800,8 +947,10 @@ window.switchAdminTab = function(tab) {
         // 페르소나 탭은 더 이상 사용하지 않음
     } else if (tab === 'users') {
         renderUsers();
+    } else if (tab === 'alerts') {
+        switchAlertsSidebar('notice');
     } else if (tab === 'content') {
-        switchContentSidebar('notice'); // 사이드바 첫 메뉴(공지 관리) 기본 선택
+        switchContentSidebar('mealog'); // 콘텐츠 탭 첫 메뉴(MEALOG)
     }
 }
 
@@ -1185,8 +1334,45 @@ window.switchMonitoringSidebar = function(section) {
 
 // 콘텐츠 관리 관련 함수들
 
+const ALERTS_SIDEBAR_SECTIONS = ['notice', 'pushMessage', 'popup', 'loginBanner'];
+
+/** 알림 탭 사이드바 (공지·푸시·팝업·로그인 배너) */
+window.switchAlertsSidebar = function (section) {
+    if (!ALERTS_SIDEBAR_SECTIONS.includes(section)) return;
+    document.querySelectorAll('[id^="alerts-sidebar-"]').forEach(btn => {
+        btn.classList.remove('text-emerald-600', 'bg-emerald-50');
+        btn.classList.add('text-slate-500', 'hover:bg-slate-50');
+    });
+    document.querySelectorAll('.content-main-section').forEach(sec => {
+        sec.classList.add('hidden');
+    });
+    const activeSidebarBtn = document.getElementById(`alerts-sidebar-${section}`);
+    const activeMainSection = document.getElementById(`content-main-${section}`);
+    if (activeSidebarBtn) {
+        activeSidebarBtn.classList.add('text-emerald-600', 'bg-emerald-50');
+        activeSidebarBtn.classList.remove('text-slate-500', 'hover:bg-slate-50');
+    }
+    if (activeMainSection) {
+        activeMainSection.classList.remove('hidden');
+    }
+    if (section === 'notice') {
+        renderNotices();
+    } else if (section === 'pushMessage') {
+        loadAdminPushMessagesPage();
+    } else if (section === 'popup') {
+        renderPopups();
+    } else if (section === 'loginBanner') {
+        loadLoginBannerConfig();
+    }
+};
+
 // 사이드바 전환
 window.switchContentSidebar = function(section) {
+    if (ALERTS_SIDEBAR_SECTIONS.includes(section)) {
+        window.switchAdminTab('alerts');
+        setTimeout(() => window.switchAlertsSidebar(section), 0);
+        return;
+    }
     // 모든 사이드바 버튼 비활성화
     document.querySelectorAll('[id^="content-sidebar-"]').forEach(btn => {
         btn.classList.remove('text-emerald-600', 'bg-emerald-50');
@@ -1226,6 +1412,8 @@ window.switchContentSidebar = function(section) {
         loadApkContent();
     } else if (section === 'notice') {
         renderNotices();
+    } else if (section === 'pushMessage') {
+        loadAdminPushMessagesPage();
     } else if (section === 'popup') {
         renderPopups();
     } else if (section === 'loginBanner') {
@@ -2916,6 +3104,7 @@ let currentEditingNoticeId = null;
 let currentSelectedNoticeId = null;
 
 const NOTICE_TYPE_LABELS = { important: '중요', notice: '알림', light: '가벼운' };
+const NOTICE_PUSH_LABELS = { none: '알림 없음', once: '한 번만', daily: '하루 한 번' };
 const NOTICE_TYPE_CLASSES = { important: 'bg-red-100 text-red-700', notice: 'bg-blue-100 text-blue-700', light: 'bg-slate-100 text-slate-700' };
 
 function formatNoticeDate(notice) {
@@ -2964,6 +3153,7 @@ async function renderNotices() {
                         <span class="px-2 py-0.5 text-xs font-bold rounded ${typeClass}">${escapeHtml(typeLabel)}</span>
                         ${notice.isPinned === true ? '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">고정</span>' : ''}
                         ${notice.hidden === true ? '<span class="px-2 py-0.5 bg-slate-200 text-slate-600 text-xs font-bold rounded">숨김</span>' : ''}
+                        ${(notice.pushFrequency && notice.pushFrequency !== 'none') ? `<span class="px-2 py-0.5 bg-violet-100 text-violet-700 text-xs font-bold rounded">${escapeHtml(NOTICE_PUSH_LABELS[notice.pushFrequency] || notice.pushFrequency)}</span>` : ''}
                     </div>
                     <h3 class="font-bold text-slate-800 truncate mt-1">${escapeHtml(notice.title || '제목 없음')}</h3>
                     <div class="flex items-center gap-3 mt-1 text-xs text-slate-400">
@@ -3013,6 +3203,7 @@ async function renderNoticeDetailInAdmin(noticeId) {
                     <span class="px-2 py-0.5 text-xs font-bold rounded ${typeClass}">${escapeHtml(typeLabel)}</span>
                     ${notice.isPinned === true ? '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">고정</span>' : ''}
                     ${notice.hidden === true ? '<span class="px-2 py-0.5 bg-slate-200 text-slate-600 text-xs font-bold rounded">숨김</span>' : ''}
+                    <span class="px-2 py-0.5 bg-violet-50 text-violet-700 text-xs font-bold rounded border border-violet-100">푸시: ${escapeHtml(NOTICE_PUSH_LABELS[notice.pushFrequency] || NOTICE_PUSH_LABELS.none)}</span>
                 </div>
                 <h2 class="text-lg font-bold text-slate-800 mb-2">${escapeHtml(notice.title || '제목 없음')}</h2>
                 <div class="text-xs text-slate-400 mb-4">${date}</div>
@@ -3119,7 +3310,9 @@ window.openNoticeWriteModal = function(noticeId = null) {
     if (typeSelect) typeSelect.value = 'important';
     if (pinnedCheckbox) pinnedCheckbox.checked = false;
     if (hiddenCheckbox) hiddenCheckbox.checked = false;
-    
+    const pushFreqSelect = document.getElementById('noticePushFrequency');
+    if (pushFreqSelect) pushFreqSelect.value = 'none';
+
     // 수정 모드인 경우
     if (noticeId) {
         if (titleEl) titleEl.textContent = '공지 수정';
@@ -3147,6 +3340,11 @@ window.openNoticeWriteModal = function(noticeId = null) {
                 if (typeSelect) typeSelect.value = noticeData.type || 'important';
                 if (pinnedCheckbox) pinnedCheckbox.checked = Boolean(noticeData.isPinned === true);
                 if (hiddenCheckbox) hiddenCheckbox.checked = Boolean(noticeData.hidden === true);
+                const pushSel = document.getElementById('noticePushFrequency');
+                if (pushSel) {
+                    const pf = noticeData.pushFrequency;
+                    pushSel.value = pf === 'once' || pf === 'daily' ? pf : 'none';
+                }
             }
         }).catch(e => {
             console.error("공지 로드 실패:", e);
@@ -3227,7 +3425,10 @@ window.submitNotice = async function() {
     const type = typeSelect ? typeSelect.value : 'important';
     const isPinned = pinnedCheckbox ? Boolean(pinnedCheckbox.checked) : false;
     const hidden = hiddenCheckbox ? Boolean(hiddenCheckbox.checked) : false;
-    
+    const pushFreqEl = document.getElementById('noticePushFrequency');
+    let pushFrequency = pushFreqEl ? String(pushFreqEl.value || 'none') : 'none';
+    if (pushFrequency !== 'once' && pushFrequency !== 'daily') pushFrequency = 'none';
+
     // sanitize 결과가 비었으나 rawContent에 내용이 있으면 위험 태그만 제거하여 서식 보존
     if (!content && rawContent.trim()) {
         content = stripDangerousTagsOnly(rawContent).trim();
@@ -3273,11 +3474,12 @@ window.submitNotice = async function() {
             type: type,
             isPinned: isPinned,
             hidden: hidden,
+            pushFrequency,
             imageUrls: imageUrls,
             timestamp: new Date().toISOString(),
             authorDisplayName: await getAdminDisplayName()
         };
-        
+
         if (currentEditingNoticeId) {
             // 수정 (isPinned, hidden 명시적 저장 - 체크 해제 시 false로 반영)
             const noticeDoc = doc(db, 'artifacts', appId, 'notices', currentEditingNoticeId);
@@ -3423,6 +3625,246 @@ window.deleteNotice = async function(noticeId) {
     } catch (e) {
         console.error("공지 삭제 실패:", e);
         alert("공지 삭제 중 오류가 발생했습니다: " + e.message);
+    }
+};
+
+// ========== 푸시메시지 관리 (관리자 브로드캐스트) ==========
+const adminBroadcastPushNowFn = httpsCallable(functions, 'adminBroadcastPushNow');
+const scheduleAdminBroadcastPushFn = httpsCallable(functions, 'scheduleAdminBroadcastPush');
+const ADMIN_PUSH_LANDING_LABELS = {
+    dashboard: '밀당',
+    timeline: '밀로그',
+    gallery: '모먼트',
+    board: '밀톡',
+    settings: '설정'
+};
+const ADMIN_SCHEDULED_PUSH_STATUS_LABELS = {
+    pending: '예약됨',
+    sending: '발송 중',
+    sent: '발송 완료',
+    failed: '실패',
+    cancelled: '취소됨'
+};
+
+function formatAdminPushDate(ts) {
+    if (!ts) return '—';
+    try {
+        const d = typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts);
+        if (Number.isNaN(d.getTime())) return '—';
+        return d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
+    } catch {
+        return '—';
+    }
+}
+
+function setAdminPushScheduleMinDatetime() {
+    const el = document.getElementById('adminPushScheduleWhen');
+    if (!el) return;
+    const pad = (n) => String(n).padStart(2, '0');
+    const d = new Date(Date.now() + 60 * 1000);
+    const local = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    el.min = local;
+}
+
+/**
+ * 푸시메시지 관리: 즉시 / 예약 옵션 전환
+ * @param {'now'|'schedule'} mode
+ */
+window.setAdminPushSendMode = function(mode) {
+    const nowTab = document.getElementById('adminPushModeTabNow');
+    const schTab = document.getElementById('adminPushModeTabSchedule');
+    const nowPanel = document.getElementById('adminPushPanelNow');
+    const schPanel = document.getElementById('adminPushPanelSchedule');
+    const isNow = mode !== 'schedule';
+
+    if (nowTab) {
+        nowTab.classList.toggle('bg-white', isNow);
+        nowTab.classList.toggle('text-violet-700', isNow);
+        nowTab.classList.toggle('shadow-sm', isNow);
+        nowTab.classList.toggle('ring-1', isNow);
+        nowTab.classList.toggle('ring-violet-200/70', isNow);
+        nowTab.classList.toggle('text-slate-500', !isNow);
+        nowTab.classList.toggle('hover:text-slate-700', !isNow);
+        nowTab.classList.toggle('hover:bg-white/60', !isNow);
+        nowTab.setAttribute('aria-selected', isNow ? 'true' : 'false');
+    }
+    if (schTab) {
+        const schOn = !isNow;
+        schTab.classList.toggle('bg-white', schOn);
+        schTab.classList.toggle('text-amber-800', schOn);
+        schTab.classList.toggle('shadow-sm', schOn);
+        schTab.classList.toggle('ring-1', schOn);
+        schTab.classList.toggle('ring-amber-200/70', schOn);
+        schTab.classList.toggle('text-slate-500', !schOn);
+        schTab.classList.toggle('hover:text-slate-700', !schOn);
+        schTab.classList.toggle('hover:bg-white/60', !schOn);
+        schTab.setAttribute('aria-selected', schOn ? 'true' : 'false');
+    }
+    if (nowPanel) nowPanel.classList.toggle('hidden', !isNow);
+    if (schPanel) schPanel.classList.toggle('hidden', isNow);
+
+    if (!isNow) setAdminPushScheduleMinDatetime();
+};
+
+async function loadAdminPushMessagesPage() {
+    window.setAdminPushSendMode('now');
+    setAdminPushScheduleMinDatetime();
+    await refreshAdminScheduledPushes();
+}
+
+window.refreshAdminScheduledPushes = async function() {
+    const container = document.getElementById('adminScheduledPushesContainer');
+    if (!container) return;
+    container.innerHTML = '<p class="text-center py-8 text-slate-400 text-sm"><i class="fa-solid fa-spinner fa-spin mr-2"></i>불러오는 중…</p>';
+    try {
+        const coll = collection(db, 'artifacts', appId, 'adminScheduledPushes');
+        const qy = query(coll, orderBy('scheduledAt', 'desc'), limit(40));
+        const snap = await getDocs(qy);
+        if (snap.empty) {
+            container.innerHTML = '<p class="text-center py-8 text-slate-400 text-sm">등록된 예약이 없습니다.</p>';
+            return;
+        }
+        const rows = snap.docs.map((d) => ({ ...d.data(), id: d.id }));
+        container.innerHTML = `<div class="divide-y divide-slate-200 bg-white">${rows.map((r) => {
+            const st = r.status || 'pending';
+            const stLabel = ADMIN_SCHEDULED_PUSH_STATUS_LABELS[st] || st;
+            const land = ADMIN_PUSH_LANDING_LABELS[r.landingTab] || r.landingTab || '—';
+            const canCancel = st === 'pending';
+            const title = escapeHtml((r.title || '').slice(0, 80));
+            const bodyPreview = escapeHtml((r.body || '').slice(0, 120));
+            const err = r.errorMessage ? `<p class="text-xs text-red-500 mt-1">${escapeHtml(String(r.errorMessage).slice(0, 200))}</p>` : '';
+            return `
+            <div class="px-4 py-3 hover:bg-slate-50/80 transition-colors">
+                <div class="flex flex-wrap items-start justify-between gap-2">
+                    <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-2 mb-1">
+                            <span class="text-xs font-bold px-2 py-0.5 rounded-lg ${st === 'sent' ? 'bg-emerald-100 text-emerald-800' : st === 'pending' ? 'bg-amber-100 text-amber-800' : st === 'failed' ? 'bg-red-100 text-red-800' : st === 'cancelled' ? 'bg-slate-200 text-slate-600' : 'bg-slate-100 text-slate-700'}">${escapeHtml(stLabel)}</span>
+                            <span class="text-xs text-slate-500">예약: ${formatAdminPushDate(r.scheduledAt)}</span>
+                            <span class="text-xs text-violet-600 font-bold">→ ${escapeHtml(land)}</span>
+                        </div>
+                        <p class="text-sm font-bold text-slate-800 truncate">${title || '(제목 없음)'}</p>
+                        <p class="text-xs text-slate-600 line-clamp-2 mt-0.5">${bodyPreview}</p>
+                        ${st === 'sent' ? `<p class="text-[11px] text-slate-400 mt-1">발송: ${formatAdminPushDate(r.sentAt)}</p>` : ''}
+                        ${err}
+                    </div>
+                    ${canCancel ? `<button type="button" onclick="window.cancelAdminScheduledPush(${JSON.stringify(r.id)})" class="shrink-0 px-3 py-1.5 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-100 transition-colors">예약 취소</button>` : ''}
+                </div>
+            </div>`;
+        }).join('')}</div>`;
+    } catch (e) {
+        console.error('예약 푸시 목록 실패:', e);
+        container.innerHTML = `<p class="text-center py-8 text-red-400 text-sm px-4">목록을 불러오지 못했습니다. ${escapeHtml(e.message || '')}</p>`;
+    }
+};
+
+window.cancelAdminScheduledPush = async function(jobId) {
+    if (!jobId || !confirm('이 예약을 취소할까요?')) return;
+    try {
+        const ref = doc(db, 'artifacts', appId, 'adminScheduledPushes', jobId);
+        await setDoc(ref, { status: 'cancelled', cancelledAt: serverTimestamp() }, { merge: true });
+        await refreshAdminScheduledPushes();
+    } catch (e) {
+        console.error(e);
+        alert('취소 실패: ' + (e.message || e));
+    }
+};
+
+window.submitAdminPushNow = async function() {
+    const titleEl = document.getElementById('adminPushNowTitle');
+    const bodyEl = document.getElementById('adminPushNowBody');
+    const landEl = document.getElementById('adminPushNowLanding');
+    const btn = document.getElementById('adminPushNowBtn');
+    const title = (titleEl?.value || '').trim();
+    const body = (bodyEl?.value || '').trim();
+    const landingTab = landEl?.value || 'dashboard';
+    if (!title) {
+        alert('제목을 입력해 주세요.');
+        return;
+    }
+    if (!body) {
+        alert('내용을 입력해 주세요.');
+        return;
+    }
+    if (!confirm('알림을 허용한 전체 로그인 사용자에게 지금 발송합니다. 계속할까요?')) return;
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '발송 중…';
+    }
+    try {
+        await adminBroadcastPushNowFn({ title, body, landingTab });
+        alert('발송 요청이 처리되었습니다.');
+        if (titleEl) titleEl.value = '';
+        if (bodyEl) bodyEl.value = '';
+    } catch (e) {
+        console.error(e);
+        const msg = e?.message || e?.details || String(e);
+        alert('발송 실패: ' + msg);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = '지금 전체 발송';
+        }
+    }
+};
+
+window.submitAdminPushSchedule = async function() {
+    const whenEl = document.getElementById('adminPushScheduleWhen');
+    const titleEl = document.getElementById('adminPushScheduleTitle');
+    const bodyEl = document.getElementById('adminPushScheduleBody');
+    const landEl = document.getElementById('adminPushScheduleLanding');
+    const btn = document.getElementById('adminPushScheduleBtn');
+    const title = (titleEl?.value || '').trim();
+    const body = (bodyEl?.value || '').trim();
+    const landingTab = landEl?.value || 'dashboard';
+    const whenVal = whenEl?.value;
+    if (!whenVal) {
+        alert('예약 일시를 선택해 주세요.');
+        return;
+    }
+    if (!title || !body) {
+        alert('제목과 내용을 모두 입력해 주세요.');
+        return;
+    }
+    const at = new Date(whenVal);
+    if (Number.isNaN(at.getTime())) {
+        alert('예약 일시가 올바르지 않습니다.');
+        return;
+    }
+    const minAhead = Date.now() + 50 * 1000;
+    if (at.getTime() < minAhead) {
+        alert('예약 시각은 현재보다 최소 약 1분 이후로 설정해 주세요.');
+        return;
+    }
+    const uid = adminAuth.currentUser?.uid;
+    if (!uid) {
+        alert('로그인이 필요합니다.');
+        return;
+    }
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '등록 중…';
+    }
+    try {
+        await scheduleAdminBroadcastPushFn({
+            title: title.slice(0, 80),
+            body: body.slice(0, 240),
+            landingTab,
+            scheduledAtMs: at.getTime()
+        });
+        alert('예약이 등록되었습니다.');
+        if (titleEl) titleEl.value = '';
+        if (bodyEl) bodyEl.value = '';
+        if (whenEl) whenEl.value = '';
+        setAdminPushScheduleMinDatetime();
+        await refreshAdminScheduledPushes();
+    } catch (e) {
+        console.error(e);
+        alert('예약 등록 실패: ' + (e.message || e));
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = '예약 등록';
+        }
     }
 };
 
@@ -6184,13 +6626,18 @@ window.refreshPersona = function() {
     const activeSection = document.querySelector('.content-main-section:not(.hidden)');
     if (activeSection) {
         const sectionId = activeSection.id.replace('content-main-', '');
+        if (['notice', 'pushMessage', 'popup', 'loginBanner'].includes(sectionId)) {
+            window.switchAdminTab('alerts');
+            setTimeout(() => window.switchAlertsSidebar(sectionId), 0);
+            return;
+        }
         if (sectionId === 'mealog' || sectionId === 'characters') {
             switchContentSidebar(sectionId);
         }
     } else {
         switchContentSidebar('mealog');
     }
-}
+};
 
 // 식당정보 필터 상태 (모니터링 > 식당정보)
 let currentRestaurantFilter = 'all'; // 'all', 'kakao', 'manual'

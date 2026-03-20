@@ -4326,43 +4326,39 @@ function initializePhotoEdit() {
     }, 100);
 }
 
+/**
+ * 편집 미리보기와 동일한 줌·이동·회전으로 대상 캔버스에 그림.
+ * 저장 시에도 이 경로를 써야 확대/위치가 결과 이미지와 일치한다.
+ */
+function drawPhotoEditToContext(ctx, width, height, backgroundColor) {
+    if (!ctx || !editingPhotoImage) return;
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = backgroundColor || '#f1f5f9';
+    ctx.fillRect(0, 0, width, height);
+
+    const drawWidth = editingPhotoImage.width * photoEditScale;
+    const drawHeight = editingPhotoImage.height * photoEditScale;
+
+    const useCenterX = drawWidth < width;
+    const useCenterY = drawHeight < height;
+    const drawOffsetX = useCenterX ? (width - drawWidth) / 2 : photoEditOffsetX;
+    const drawOffsetY = useCenterY ? (height - drawHeight) / 2 : photoEditOffsetY;
+
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate((photoEditRotation * Math.PI) / 180);
+    ctx.translate(-centerX, -centerY);
+    ctx.drawImage(editingPhotoImage, drawOffsetX, drawOffsetY, drawWidth, drawHeight);
+    ctx.restore();
+}
+
 // 사진 편집 화면 그리기
 function drawPhotoEdit() {
     if (!photoEditCanvas || !photoEditCtx || !editingPhotoImage) return;
-    
-    // Canvas 클리어
-    photoEditCtx.clearRect(0, 0, photoEditCanvas.width, photoEditCanvas.height);
-    
-    // 배경
-    photoEditCtx.fillStyle = '#f1f5f9';
-    photoEditCtx.fillRect(0, 0, photoEditCanvas.width, photoEditCanvas.height);
-    
-    // 이미지 그리기 (회전 적용)
-    const drawWidth = editingPhotoImage.width * photoEditScale;
-    const drawHeight = editingPhotoImage.height * photoEditScale;
-    
-    // 축소 시(화면에 꽉 차지 않을 때) 미리보기에서도 중앙 정렬 강제 (인스타 스타일)
-    const useCenterX = drawWidth < photoEditCanvas.width;
-    const useCenterY = drawHeight < photoEditCanvas.height;
-    const drawOffsetX = useCenterX ? (photoEditCanvas.width - drawWidth) / 2 : photoEditOffsetX;
-    const drawOffsetY = useCenterY ? (photoEditCanvas.height - drawHeight) / 2 : photoEditOffsetY;
-    
-    const centerX = photoEditCanvas.width / 2;
-    const centerY = photoEditCanvas.height / 2;
-    
-    photoEditCtx.save();
-    photoEditCtx.translate(centerX, centerY);
-    photoEditCtx.rotate((photoEditRotation * Math.PI) / 180);
-    photoEditCtx.translate(-centerX, -centerY);
-    photoEditCtx.drawImage(
-        editingPhotoImage,
-        drawOffsetX,
-        drawOffsetY,
-        drawWidth,
-        drawHeight
-    );
-    
-    photoEditCtx.restore();
+    drawPhotoEditToContext(photoEditCtx, photoEditCanvas.width, photoEditCanvas.height, '#f1f5f9');
 }
 
 // 사진 편집 드래그 설정
@@ -4592,37 +4588,21 @@ export function resetPhotoEdit() {
     drawPhotoEdit();
 }
 
-// 사진 편집 저장 — 전체 이미지를 잘리지 않게 fit(contain)으로 저장해 재편집 시 원본 활용 가능
+// 사진 편집 저장 — 화면에 보이는 줌·이동·회전과 동일하게 픽셀을보냄 (미리보기/공유와 일치)
 export function savePhotoEdit() {
     if (!photoEditCanvas || !editingPhotoImage) return;
     
     const w = photoEditCanvas.width;
     const h = photoEditCanvas.height;
-    const imgW = editingPhotoImage.width;
-    const imgH = editingPhotoImage.height;
     
     const outputCanvas = document.createElement('canvas');
     outputCanvas.width = w;
     outputCanvas.height = h;
     const outputCtx = outputCanvas.getContext('2d');
-    
-    outputCtx.fillStyle = '#ffffff';
-    outputCtx.fillRect(0, 0, w, h);
-    
-    const centerX = w / 2;
-    const centerY = h / 2;
-    // 회전 후 보이는 너비/높이 (90/270이면 치환)
-    const rotW = (photoEditRotation === 90 || photoEditRotation === 270) ? imgH : imgW;
-    const rotH = (photoEditRotation === 90 || photoEditRotation === 270) ? imgW : imgH;
-    const fitScale = Math.min(w / rotW, h / rotH);
-    
-    outputCtx.save();
-    outputCtx.translate(centerX, centerY);
-    outputCtx.rotate((photoEditRotation * Math.PI) / 180);
-    outputCtx.scale(fitScale, fitScale);
-    outputCtx.translate(-imgW / 2, -imgH / 2);
-    outputCtx.drawImage(editingPhotoImage, 0, 0, imgW, imgH, 0, 0, imgW, imgH);
-    outputCtx.restore();
+    outputCtx.imageSmoothingEnabled = true;
+    outputCtx.imageSmoothingQuality = 'high';
+
+    drawPhotoEditToContext(outputCtx, w, h, '#ffffff');
     
     try {
         outputCanvas.toBlob((blob) => {

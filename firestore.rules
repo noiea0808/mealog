@@ -250,6 +250,27 @@ service cloud.firestore {
     }
     
     // ============================================
+    // 관리자 예약 푸시 (adminScheduledPushes) — 관리자만, Functions가 발송 처리
+    // ============================================
+    // scheduledAt은 클라이언트 시계·서버 시계 차이로 과거로 오인될 수 있어 규칙에서 미래 강제하지 않음
+    // (클라이언트에서 최소 1분 후 검증 + 스케줄러가 도래 시점에만 발송)
+    match /artifacts/{appId}/adminScheduledPushes/{jobId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 80
+        && request.resource.data.body is string
+        && request.resource.data.body.size() > 0
+        && request.resource.data.body.size() <= 240
+        && request.resource.data.landingTab is string
+        && request.resource.data.scheduledAt is timestamp;
+      allow update, delete: if isAdmin();
+    }
+    
+    // ============================================
     // 팝업 (popups 컬렉션) - 관리자 작성, 사용자 읽기, 조회/클릭 수는 로그인 사용자 업데이트 허용
     // ============================================
     match /artifacts/{appId}/popups/{popupId} {

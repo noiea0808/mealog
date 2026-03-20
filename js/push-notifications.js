@@ -243,6 +243,21 @@ export async function initPushNotifications(uid) {
           });
           PN.addListener('pushNotificationReceived', (ev) => {
             console.log('푸시 수신 (포그라운드):', ev.notification);
+            const data = ev.notification?.data;
+            // 관리자 브로드캐스트: 앱 내 탭만 전환. 미읽음 집계·숫자 배지(Badge)·헤더 빨간점 갱신 안 함 → 런처는 점만(기기/OS) 가능
+            if (data?.type === 'adminBroadcast' || data?.suppressNumericBadge === '1') {
+              const allowed = ['dashboard', 'timeline', 'gallery', 'board', 'settings'];
+              const tab = allowed.includes(String(data.landingTab)) ? String(data.landingTab) : 'dashboard';
+              if (data?.type === 'adminBroadcast' && typeof window.switchMainTab === 'function') {
+                window.switchMainTab(tab);
+              }
+              return;
+            }
+            const nid = data?.noticeId;
+            if (data?.type === 'notice' && nid && typeof window.openNoticeDetail === 'function') {
+              window.switchMainTab?.('board');
+              window.openNoticeDetail(String(nid));
+            }
             // 백그라운드에서는 FCM 시스템 알림, 포그라운드에서는 여기서만 옴 → 빨간점·배지 갱신
             if (typeof window.updateNotificationDot === 'function') {
               window.updateNotificationDot().catch(() => {});
@@ -251,6 +266,18 @@ export async function initPushNotifications(uid) {
           PN.addListener('pushNotificationActionPerformed', (ev) => {
             console.log('푸시 탭 (알림 클릭):', ev.notification, ev.actionId);
             const data = ev.notification?.data;
+            if (data?.type === 'adminBroadcast') {
+              const allowed = ['dashboard', 'timeline', 'gallery', 'board', 'settings'];
+              const tab = allowed.includes(String(data.landingTab)) ? String(data.landingTab) : 'dashboard';
+              if (typeof window.switchMainTab === 'function') window.switchMainTab(tab);
+              return;
+            }
+            const noticeId = data?.noticeId != null ? String(data.noticeId) : '';
+            if (data?.type === 'notice' && noticeId && typeof window.openNoticeDetail === 'function') {
+              window.switchMainTab?.('board');
+              window.openNoticeDetail(noticeId);
+              return;
+            }
             if (data && typeof window.navigateToNotificationPost === 'function' && data.postId) {
               if (data.type === 'boardComment' && typeof window.openBoardDetail === 'function') {
                 window.switchMainTab?.('board');
