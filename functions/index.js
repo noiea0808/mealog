@@ -177,18 +177,27 @@ async function sendPushToUser(userId, payload, options = {}) {
     if (options.adminBroadcast) {
       dataObj.suppressNumericBadge = '1';
     }
+    // Android 8+ 채널: 미지정 시 기기/OS별로 트레이 미표시 이슈가 있을 수 있어 FCM 기본 채널 명시
+    const androidNotificationBase = {
+      title: payload.title,
+      body: payload.body || '',
+      channelId: 'fcm_fallback_notification_channel',
+      sound: 'default'
+    };
     const message = {
       notification: { title: payload.title, body: payload.body || '' },
       data: fcmDataStrings(dataObj),
-      android: { priority: 'high' }
+      android: {
+        priority: 'high',
+        notification: { ...androidNotificationBase }
+      }
     };
     if (options.adminBroadcast) {
       // Android: 알림 트레이·상단 배너는 유지, 런처 숫자 배지는 이 푸시로 올리지 않도록 (일부 기기·런처에서 notificationCount 연동)
       message.android = {
         priority: 'high',
         notification: {
-          title: payload.title,
-          body: payload.body || '',
+          ...androidNotificationBase,
           notificationCount: 0
         }
       };
@@ -557,6 +566,10 @@ exports.addBoardComment = onCall({ region: REGION }, wrapFunction('addBoardComme
     || (postData.userId && String(postData.userId).trim())
     || '';
 
+  if (!postAuthorId && postDoc.exists) {
+    logger.warn('addBoardComment: 게시글에 authorId/userId 없음 → 푸시 생략 가능', { postId: String(postId) });
+  }
+
   // 댓글 생성 (postAuthorId: 알림에서 "내 글에 달린 댓글"만 쿼리할 때 사용)
   const commentsRef = db.collection('artifacts').doc(APP_ID).collection('boardComments');
   const newComment = {
@@ -579,11 +592,12 @@ exports.addBoardComment = onCall({ region: REGION }, wrapFunction('addBoardComme
   }
 
   if (postAuthorId && postAuthorId !== auth.uid) {
-    sendPushToUser(postAuthorId, {
+    // 반드시 await: onCall 반환 후 인스턴스가 멈추면 미완료 Promise가 끊겨 푸시가 안 갈 수 있음
+    await sendPushToUser(postAuthorId, {
       title: '새 댓글',
       body: `${authorNickname}님이 댓글을 남겼습니다.`,
       data: { type: 'boardComment', postId: String(postId) }
-    }).catch(() => {});
+    });
   }
 
   return { id: docRef.id, ...newComment, timestamp: new Date().toISOString() };
@@ -651,11 +665,11 @@ exports.addBoardCommentAsAdmin = onCall({ region: REGION }, async (request) => {
   }
 
   if (postAuthorId && postAuthorId !== auth.uid) {
-    sendPushToUser(postAuthorId, {
+    await sendPushToUser(postAuthorId, {
       title: '새 댓글',
       body: `${authorNickname}님이 댓글을 남겼습니다.`,
       data: { type: 'boardComment', postId: String(postId) }
-    }).catch(() => {});
+    });
   }
 
   return { id: docRef.id, ...newComment, timestamp: new Date().toISOString() };
@@ -765,6 +779,13 @@ exports.addPostComment = onCall({ region: REGION }, wrapFunction('addPostComment
     }
   }
 
+  if (!postOwnerId) {
+    logger.warn('addPostComment: postOwnerId 없음 → 글 주인에게 푸시 생략', {
+      postIdSample: String(postId).slice(0, 100),
+      commenter: auth.uid
+    });
+  }
+
   // 댓글 생성
   const commentsRef = db.collection('artifacts').doc(APP_ID).collection('postComments');
   const commentData = {
@@ -780,11 +801,11 @@ exports.addPostComment = onCall({ region: REGION }, wrapFunction('addPostComment
   const docRef = await commentsRef.add(commentData);
 
   if (postOwnerId && postOwnerId !== auth.uid) {
-    sendPushToUser(postOwnerId, {
+    await sendPushToUser(postOwnerId, {
       title: '새 댓글',
       body: `${userNickname}님이 댓글을 남겼습니다.`,
       data: { type: 'postComment', postId: String(postId) }
-    }).catch(() => {});
+    });
   }
 
   return { id: docRef.id, ...commentData, timestamp: new Date().toISOString() };

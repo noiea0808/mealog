@@ -1,0 +1,100 @@
+{
+  "project_info": {
+    "project_number": "535597498508",
+    "project_id": "mealog-r0",
+    "storage_bucket": "mealog-r0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:535597498508:android:34865e8478546a82b87ba9",
+        "android_client_info": {
+          "package_name": "com.mealog.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "535597498508-12dcmmc3nriq1q2mri4b4jcanh6grp4g.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mealog.app",
+            "certificate_hash": "eabe8c1c306393f9115a42bddb7262788b3bb0d8"
+          }
+        },
+        {
+          "client_id": "535597498508-l8fr70i9vta8o51vsgdei80gqnm1n9df.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mealog.app",
+            "certificate_hash": "17d1b82d4fc63ef487b4f46881489232b3bbdecb"
+          }
+        },
+        {
+          "client_id": "535597498508-sqfprfn29gsj23rb6us3qteq98i2pi2h.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mealog.app",
+            "certificate_hash": "b9b700c90a0234ad27d64abbf7956d11d06ed3ec"
+          }
+        },
+        {
+          "client_id": "535597498508-pi88b4aofmljpnrbrnstplsmj83clrnq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCFksNleGRiAHZrGbWSW76X4Ki1fhv2eHc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "535597498508-pi88b4aofmljpnrbrnstplsmj83clrnq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:535597498508:android:351099deabf0ed69b87ba9",
+        "android_client_info": {
+          "package_name": "com.mealog.app.staging"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "535597498508-pl5ishtko0ks8hnfn6ad6q73d09m2kaq.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mealog.app.staging",
+            "certificate_hash": "5a087e963a0383e68382fa452df47b6b32b1bfb3"
+          }
+        },
+        {
+          "client_id": "535597498508-pi88b4aofmljpnrbrnstplsmj83clrnq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCFksNleGRiAHZrGbWSW76X4Ki1fhv2eHc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "535597498508-pi88b4aofmljpnrbrnstplsmj83clrnq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -10,7 +10,7 @@ import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.6.1/fireb
 
 const FCM_TOKENS_DOC = 'fcmTokens';
 if (typeof window !== 'undefined') {
-  window.__pushModuleVersion = '2024-03-17';
+  window.__pushModuleVersion = '2025-03-21';
   console.log('푸시 모듈 로드:', window.__pushModuleVersion);
 }
 
@@ -88,7 +88,7 @@ function maybeShowPushPermissionHint(uid, receive) {
   }, 1600);
 }
 
-// Android: Capacitor 브리지가 PushNotifications 반환값에 .then() 호출 시 "is not implemented" 발생 → 거부 무시
+// Android: Capacitor 코어가 플러그인 프록시에 .then()을 걸면 "then is not implemented" — 토큰은 registration 리스너로 옴
 if (typeof window !== 'undefined') {
   const prevHandler = window.onunhandledrejection;
   window.addEventListener('unhandledrejection', (event) => {
@@ -96,7 +96,10 @@ if (typeof window !== 'undefined') {
     if (typeof msg === 'string' && msg.includes('PushNotifications') && msg.includes('is not implemented')) {
       event.preventDefault();
       event.stopPropagation();
-      console.warn('푸시: Android 브리지 경고 무시 (토큰은 리스너로 수신):', msg);
+      if (!window.__mealogPushBridgeNoiseOnce) {
+        window.__mealogPushBridgeNoiseOnce = true;
+        console.debug('[푸시] Android 브리지 알려진 무시 가능 경고(토큰은 리스너):', msg);
+      }
       return true;
     }
     if (prevHandler) prevHandler.call(window, event);
@@ -105,17 +108,211 @@ if (typeof window !== 'undefined') {
 
 let pushListenersRegistered = false;
 
+/** 로그인 직후 requestPermissions → register 지연 (브리지 안정화, 너무 길면 설정 복귀 후 토큰 지연) */
+const INITIAL_PUSH_REGISTER_DELAY_MS = 2000;
+
+let cachedPushPlugin = null;
+let pushInitialRegisterTimer = null;
+let pushResumeListenerRegistered = false;
+let resumePushSyncTimer = null;
+
+function normalizePermissionReceive(result) {
+  if (result == null) return null;
+  return result.receive != null ? result.receive : result;
+}
+
+/** 디버그·정체 구간 파악용: OS 권한 스냅샷 (requestPermissions 완료 전에도 값 채움) */
+function refreshPushPermissionDebug(PN) {
+  if (!PN?.checkPermissions) return;
+  try {
+    const cp = PN.checkPermissions();
+    if (!cp || typeof cp.then !== 'function') return;
+    Promise.race([
+      cp,
+      new Promise((_, rej) => setTimeout(() => rej(new Error('CHECK_PERM_TIMEOUT')), 12000))
+    ])
+      .then((result) => {
+        setPushDebug({ permission: normalizePermissionReceive(result) });
+      })
+      .catch(() => {});
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+/**
+ * 앱이 포그라운드일 때만 FCM register (권한 다이얼로그 직후 비활성 타이밍 완화)
+ * getState() Promise가 영원히 pending이면 register가 안 불리는 경우가 있어 짧은 폴백.
+ */
+function callRegisterWhenActive(PN) {
+  if (!PN || typeof PN.register !== 'function') return;
+  setPushDebug({ phase: 'register_when_active' });
+  const tryRegister = (reason) => {
+    try {
+      console.log('푸시: register() 호출', reason ? '(' + reason + ')' : '');
+      PN.register();
+      setPushDebug({ phase: 'register_invoked' });
+    } catch (regErr) {
+      console.warn('푸시 register() 예외:', regErr?.message || regErr);
+      setPushDebug({ lastError: 'register() 예외: ' + (regErr?.message || regErr) });
+    }
+  };
+  if (typeof window.Capacitor?.Plugins?.App !== 'undefined') {
+    const stateP = window.Capacitor.Plugins.App.getState();
+    const stalled = new Promise((resolve) =>
+      setTimeout(() => resolve({ isActive: true, __mealogGetStateFallback: true }), 4000)
+    );
+    Promise.race([stateP, stalled])
+      .then((state) => {
+        if (state?.isActive) {
+          if (state.__mealogGetStateFallback) {
+            console.warn('푸시: App.getState() 지연 — register() 폴백 호출');
+            setPushDebug({ phase: 'register_getstate_fallback' });
+          } else {
+            console.log('푸시: 앱 활성 상태 확인, register() 호출');
+          }
+          tryRegister(state.__mealogGetStateFallback ? 'getState-timeout' : 'active');
+        } else {
+          console.warn('푸시: 앱이 비활성 상태, register() 스킵');
+          setPushDebug({ lastError: '앱 비활성 상태', phase: 'register_skipped_inactive' });
+        }
+      })
+      .catch(() => {
+        console.log('푸시: 상태 확인 실패, register() 호출 시도');
+        tryRegister('getState-error');
+      });
+  } else {
+    console.log('푸시: App 플러그인 없음, register() 호출');
+    tryRegister('no-app-plugin');
+  }
+}
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Capacitor 플러그인 프록시는 `then` 속성이 있어 async 함수의 `return plugin`이
+ * Promise.resolve(plugin)에 의해 thenable로 처리되며 await가 영원히 걸릴 수 있음.
+ */
+function wrapPushPluginRef(pn) {
+  return pn == null ? null : { _mealogPnRef: pn };
+}
+function unwrapPushPluginRef(box) {
+  return box != null && typeof box === 'object' && Object.prototype.hasOwnProperty.call(box, '_mealogPnRef')
+    ? box._mealogPnRef
+    : null;
+}
+
+/**
+ * 네이티브 앱: index.html의 capacitor-push-notifications-plugin.js만 유효.
+ * WebView에서는 bare import('@capacitor/push-notifications')가 영원히 pending 되는 경우가 많아 쓰지 않음.
+ */
+async function resolvePushPlugin() {
+  if (cachedPushPlugin) return wrapPushPluginRef(cachedPushPlugin);
+
+  let PN = getPushPluginFromScript();
+
+  if (isNative()) {
+    const deadline = Date.now() + 8000;
+    let attempts = 0;
+    while (!PN && Date.now() < deadline) {
+      attempts++;
+      if (attempts === 15) injectPushNotificationsScriptOnce();
+      await sleep(100);
+      PN = getPushPluginFromScript();
+    }
+    if (!PN) {
+      const keys = Object.keys(window.Capacitor?.Plugins || {});
+      setPushDebug({
+        lastError: 'PushNotifications 플러그인 없음 (로드된 Plugins: ' + keys.join(', ') + ')',
+        phase: 'aborted',
+        capPluginKeys: keys
+      });
+      console.warn(
+        '푸시: PushNotifications 없음 — capacitor-push-notifications-plugin.js·cap sync·캐시 확인',
+        keys
+      );
+      return null;
+    }
+    cachedPushPlugin = PN;
+    return wrapPushPluginRef(PN);
+  }
+
+  if (!PN) PN = await loadPushPluginDynamic();
+  if (PN) cachedPushPlugin = PN;
+  return wrapPushPluginRef(PN);
+}
+
+function scheduleResumePushSync() {
+  clearTimeout(resumePushSyncTimer);
+  resumePushSyncTimer = setTimeout(() => {
+    resumePushSyncTimer = null;
+    void syncPushRegistrationFromOs();
+  }, 500);
+}
+
+/** App 복귀 시 시스템 설정에서 알림을 켠 뒤에도 토큰 등록이 다시 돌도록 */
+function ensurePushResumeListener() {
+  if (pushResumeListenerRegistered) return;
+  const App = window.Capacitor?.Plugins?.App;
+  if (!App?.addListener) return;
+  pushResumeListenerRegistered = true;
+  App.addListener('resume', () => scheduleResumePushSync());
+}
+
+/**
+ * 시스템 설정에서만 권한을 바꾼 경우: 다이얼로그 없이 checkPermissions 후 register
+ * (로그인된 네이티브 앱에서만 의미 있음)
+ */
+export async function syncPushRegistrationFromOs() {
+  if (!isNative()) return;
+  const uid = window.currentUser?.uid;
+  if (!uid || window.currentUser?.isAnonymous) return;
+
+  const PN = unwrapPushPluginRef(await resolvePushPlugin());
+  if (!PN?.checkPermissions) return;
+
+  try {
+    const checkP = PN.checkPermissions();
+    if (checkP && typeof checkP.then === 'function') {
+      checkP
+        .then((result) => {
+          const receive = normalizePermissionReceive(result);
+          setPushDebug({ permission: receive });
+          if (receive === 'denied') return;
+          callRegisterWhenActive(PN);
+        })
+        .catch(() => callRegisterWhenActive(PN));
+      return;
+    }
+  } catch (_) {
+    /* fall through */
+  }
+  callRegisterWhenActive(PN);
+}
+
 /** 디버그용: 콘솔 없이 상태 확인 가능. chrome://inspect 콘솔에서 getPushDebugInfo() 호출 */
 function setPushDebug(update) {
   window.__pushDebug = { ...(window.__pushDebug || {}), ...update };
 }
 window.getPushDebugInfo = function getPushDebugInfo() {
   const d = window.__pushDebug || {};
+  const cap = typeof window.Capacitor !== 'undefined';
+  const native = !!(cap && window.Capacitor.isNativePlatform?.());
   return {
     inited: d.inited ?? false,
     permission: d.permission ?? null,
     tokenSaved: d.tokenSaved ?? false,
-    lastError: d.lastError ?? null
+    lastError: d.lastError ?? null,
+    phase: d.phase ?? null,
+    liveIsNative: native,
+    liveHasCapacitor: cap,
+    liveUid: window.currentUser?.uid ?? null,
+    liveIsAnonymous: !!window.currentUser?.isAnonymous,
+    __pushInitUid: window.__pushInitUid ?? null,
+    __pushInitInFlight: !!window.__pushInitInFlight,
+    liveCapPluginKeys: Object.keys(window.Capacitor?.Plugins || {})
   };
 };
 
@@ -134,7 +331,7 @@ async function saveFcmToken(uid, token) {
         [token]: { updatedAt: serverTimestamp() }
       }
     }, { merge: true });
-    setPushDebug({ tokenSaved: true, lastError: null });
+    setPushDebug({ tokenSaved: true, lastError: null, phase: 'token_saved' });
     console.log('✅ FCM 토큰 저장 완료');
     if (typeof window.__onPushTokenSaved === 'function') window.__onPushTokenSaved();
   } catch (e) {
@@ -151,11 +348,35 @@ async function saveFcmToken(uid, token) {
  * Promise로 오인해 await가 영원히 이어지지 않거나 "then is not implemented"만 터질 수 있음 (Android).
  */
 function getPushPluginFromScript() {
-  if (typeof window.Capacitor !== 'undefined' && window.Capacitor?.Plugins?.PushNotifications) {
+  const plugins = window.Capacitor?.Plugins;
+  if (!plugins) return null;
+  if (plugins.PushNotifications) {
     console.log('푸시: 플러그인 사용 (스크립트 등록)');
-    return window.Capacitor.Plugins.PushNotifications;
+    return plugins.PushNotifications;
+  }
+  const keys = Object.keys(plugins);
+  for (let i = 0; i < keys.length; i++) {
+    if (String(keys[i]).toLowerCase() === 'pushnotifications') {
+      console.log('푸시: 플러그인 사용 (키 대소문자 변형):', keys[i]);
+      return plugins[keys[i]];
+    }
   }
   return null;
+}
+
+/** 플러그인 스크립트가 빠진 번들 대비 1회 재주입 */
+function injectPushNotificationsScriptOnce() {
+  if (window.__mealogPushPluginScriptInjected) return;
+  window.__mealogPushPluginScriptInjected = true;
+  try {
+    const s = document.createElement('script');
+    s.src = `js/capacitor-push-notifications-plugin.js?inj=${Date.now()}`;
+    s.async = false;
+    (document.head || document.documentElement).appendChild(s);
+    console.warn('푸시: PushNotifications 스크립트 재주입 시도');
+  } catch (e) {
+    console.warn('푸시: 스크립트 재주입 실패:', e?.message || e);
+  }
 }
 
 /** 동적 import 경로만 async (여기서 반환값은 모듈에서 온 클래스/객체로 thenable 오인 위험 낮음) */
@@ -186,47 +407,53 @@ async function loadPushPluginDynamic() {
  * 푸시 알림 초기화: 네이티브에서만 실행, 권한 요청 후 토큰 등록 및 저장
  * @param {string} uid - 로그인한 사용자 uid
  */
-const PUSH_INIT_VERSION = '2024-03-17';
+const PUSH_INIT_VERSION = '2025-03-21-pn-reg-race';
 export async function initPushNotifications(uid) {
   console.log('푸시: init 버전', PUSH_INIT_VERSION);
-  setPushDebug({ inited: false, permission: null, tokenSaved: false, lastError: null });
-  
+  setPushDebug({ inited: false, phase: 'init_started', permission: null });
+
   // ⚠️ 중요: 앱이 완전히 준비되었는지 확인
   if (!window.currentUser || window.currentUser.uid !== uid) {
     console.warn('푸시: currentUser 불일치 또는 없음, 스킵', {
       currentUserUid: window.currentUser?.uid,
       requestedUid: uid
     });
-    setPushDebug({ lastError: 'currentUser 불일치' });
-    return;
+    setPushDebug({ lastError: 'currentUser 불일치', phase: 'aborted' });
+    return false;
   }
-  
+
   if (!uid || !isNative()) {
     if (!uid) {
       console.log('푸시: uid 없음, 스킵');
-      setPushDebug({ lastError: 'uid 없음' });
+      setPushDebug({ lastError: 'uid 없음', phase: 'aborted' });
     } else {
       console.log('푸시: 네이티브가 아님(웹/에뮬), 스킵');
-      setPushDebug({ lastError: '네이티브 아님' });
+      setPushDebug({ lastError: '네이티브 아님', phase: 'aborted' });
     }
-    return;
+    return false;
   }
 
   try {
     console.log('푸시: 초기화 시작');
-    let PN = getPushPluginFromScript();
-    if (!PN) {
-      PN = await loadPushPluginDynamic();
-    }
+    setPushDebug({ phase: 'loading_plugin' });
+    const PN = unwrapPushPluginRef(await resolvePushPlugin());
     console.log('푸시: 플러그인 확보 직후', { hasPN: !!PN });
     console.warn('[PUSH-DBG] 플러그인 확보 직후', { hasPN: !!PN });
     if (!PN) {
       console.warn('푸시: PushNotifications 플러그인을 불러올 수 없음');
-      setPushDebug({ lastError: '플러그인 로드 실패' });
-      return;
+      if (!window.__pushDebug?.lastError) {
+        setPushDebug({
+          lastError: '플러그인 로드 실패',
+          phase: 'aborted',
+          capPluginKeys: Object.keys(window.Capacitor?.Plugins || {})
+        });
+      }
+      return false;
     }
     console.log('푸시: 플러그인 로드됨');
     console.warn('[PUSH-DBG] 플러그인 로드됨');
+
+    ensurePushResumeListener();
 
     // [A] 리스너만 다음 틱에서 등록 (Android 브리지 .then() 오류 회피)
     setTimeout(() => {
@@ -305,60 +532,108 @@ export async function initPushNotifications(uid) {
       }
     }, 0);
 
-    // [B] ⚠️ 중요: PN.register() 호출을 매우 안전하게 처리
-    // FCM 토큰을 받기 위해서는 register() 호출이 필요하지만, 크래시를 방지하기 위해
-    // 매우 긴 지연과 안전장치를 추가
+    // [B] 권한 요청 후 register (짧은 지연으로 브리지 안정화)
     console.log('푸시: [B] register() 호출 준비');
     console.warn('[PUSH-DBG] [B] register() 호출 준비');
-    setPushDebug({ inited: true });
-    
-    // ⚠️ 매우 긴 지연 후 register() 호출 (앱이 완전히 안정화된 후)
+    setPushDebug({ inited: true, phase: 'register_scheduled' });
+
     const doRegister = () => {
+      setPushDebug({ phase: 'register_timer_fired' });
+      refreshPushPermissionDebug(PN);
       console.log('푸시: register() 호출 시도');
       console.warn('[PUSH-DBG] register() 호출 시도');
-      
-      // 앱이 활성 상태인지 확인
-      if (typeof window.Capacitor?.Plugins?.App !== 'undefined') {
-        window.Capacitor.Plugins.App.getState().then((state) => {
-          if (state.isActive) {
-            try {
-              console.log('푸시: 앱 활성 상태 확인, register() 호출');
-              PN.register();
-            } catch (regErr) {
-              console.warn('푸시 register() 예외:', regErr?.message || regErr);
-              setPushDebug({ lastError: 'register() 예외: ' + (regErr?.message || regErr) });
-            }
-          } else {
-            console.warn('푸시: 앱이 비활성 상태, register() 스킵');
-            setPushDebug({ lastError: '앱 비활성 상태' });
-          }
-        }).catch(() => {
-          // getState 실패 시에도 register() 시도
-          try {
-            console.log('푸시: 상태 확인 실패, register() 호출 시도');
-            PN.register();
-          } catch (regErr) {
-            console.warn('푸시 register() 예외:', regErr?.message || regErr);
-            setPushDebug({ lastError: 'register() 예외: ' + (regErr?.message || regErr) });
-          }
-        });
-      } else {
-        // App 플러그인이 없으면 바로 register() 시도
-        try {
-          console.log('푸시: App 플러그인 없음, register() 호출');
-          PN.register();
-        } catch (regErr) {
-          console.warn('푸시 register() 예외:', regErr?.message || regErr);
-          setPushDebug({ lastError: 'register() 예외: ' + (regErr?.message || regErr) });
+
+      // Android 13+ / iOS: 런타임 알림 권한 후에만 FCM 등록이 안정적 (로그인 시 init이 다시 켜진 뒤 필수)
+      try {
+        const permP = PN.requestPermissions && PN.requestPermissions();
+        if (permP && typeof permP.then === 'function') {
+          const permTimeoutMs = 25000;
+          Promise.race([
+            permP,
+            new Promise((_, rej) => setTimeout(() => rej(new Error('REQ_PERM_TIMEOUT')), permTimeoutMs))
+          ])
+            .then((result) => {
+              const receive = normalizePermissionReceive(result);
+              setPushDebug({ permission: receive, phase: 'perm_resolved' });
+              maybeShowPushPermissionHint(uid, receive);
+              if (receive === 'denied') {
+                console.warn('푸시: 알림 권한 거부, register 생략');
+                setPushDebug({ lastError: '알림 권한 거부', phase: 'perm_denied' });
+              } else {
+                callRegisterWhenActive(PN);
+              }
+            })
+            .catch((e) => {
+              const timedOut = e?.message === 'REQ_PERM_TIMEOUT';
+              console.warn(
+                '푸시: requestPermissions 실패' + (timedOut ? '(타임아웃)' : '') + ', register() 시도:',
+                e?.message || e
+              );
+              if (timedOut) {
+                setPushDebug({ lastError: 'requestPermissions 타임아웃', phase: 'perm_timeout' });
+              }
+              refreshPushPermissionDebug(PN);
+              callRegisterWhenActive(PN);
+            });
+          return;
         }
+      } catch (e) {
+        console.warn('푸시: requestPermissions 예외, register()만 시도:', e?.message || e);
       }
+      setPushDebug({ phase: 'perm_sync_path' });
+      refreshPushPermissionDebug(PN);
+      callRegisterWhenActive(PN);
     };
-    
-    // ⚠️ 매우 긴 지연 (10초) - 앱이 완전히 안정화된 후 호출
-    setTimeout(doRegister, 10000);
+
+    if (pushInitialRegisterTimer != null) {
+      clearTimeout(pushInitialRegisterTimer);
+      pushInitialRegisterTimer = null;
+    }
+    pushInitialRegisterTimer = setTimeout(() => {
+      pushInitialRegisterTimer = null;
+      doRegister();
+    }, INITIAL_PUSH_REGISTER_DELAY_MS);
+    return true;
   } catch (e) {
     const msg = e?.message || String(e);
     console.warn('⚠️ 푸시 알림 초기화 실패:', msg);
-    setPushDebug({ lastError: msg });
+    setPushDebug({ lastError: msg, phase: 'aborted' });
+    return false;
   }
+}
+
+/** 원격 디버깅 콘솔: 토큰 등록 재시도 (__pushInitUid 초기화 후 init 다시) */
+window.retryMealogPushInit = async function retryMealogPushInit() {
+  const u = window.currentUser?.uid;
+  if (!u || window.currentUser?.isAnonymous) {
+    console.warn('[푸시] 비익명 로그인 후 사용');
+    return false;
+  }
+  if (!window.Capacitor?.isNativePlatform?.()) {
+    console.warn('[푸시] 네이티브 앱에서만 동작');
+    return false;
+  }
+  window.__pushInitUid = null;
+  window.__pushInitInFlight = false;
+  const ok = await initPushNotifications(u);
+  if (ok) window.__pushInitUid = u;
+  return ok;
+};
+
+// 설정 화면에서 돌아올 때 resume과 함께 visibility로도 동기화 (OEM별 차이 대비, debounce는 scheduleResumePushSync에 위임)
+if (typeof document !== 'undefined' && typeof window !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (typeof window.Capacitor === 'undefined' || !window.Capacitor.isNativePlatform?.()) return;
+    scheduleResumePushSync();
+  });
+}
+
+// init이 끝까지 못 가도 App resume 시 syncPushRegistrationFromOs가 돌 수 있게 리스너만 먼저 붙임
+if (typeof window !== 'undefined') {
+  queueMicrotask(() => {
+    try {
+      if (window.Capacitor?.isNativePlatform?.()) ensurePushResumeListener();
+    } catch (_) {}
+  });
 }

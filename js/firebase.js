@@ -2,7 +2,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAnalytics, logEvent as analyticsLogEvent, setUserId, setUserProperties } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
 import { getAuth, initializeAuth, setPersistence, browserLocalPersistence, indexedDBLocalPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getFirestore, initializeFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { getStorage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js";
 
@@ -82,7 +82,27 @@ if (!(typeof window.Capacitor !== 'undefined' && window.Capacitor?.isNativePlatf
 }
 // 이메일 인증·비밀번호 재설정 메일을 한글로 발송
 auth.languageCode = 'ko';
-export const db = getFirestore(app);
+
+// Android WebView 등에서 firestore.googleapis.com QUIC(WebChannel) 오류(ERR_QUIC_*)로 쓰기 실패하는 경우가 있어
+// 네이티브 앱에서는 장폴링을 강제해 FCM 토큰 저장·실시간 구독 안정화
+function createFirestore() {
+    const native = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.();
+    if (native) {
+        try {
+            return initializeFirestore(app, {
+                experimentalForceLongPolling: true
+            });
+        } catch (e) {
+            const msg = String(e?.message || e);
+            if (msg.includes('already') || msg.includes('Already')) {
+                return getFirestore(app);
+            }
+            console.warn('Firestore initializeFirestore 실패, getFirestore로 대체:', msg);
+        }
+    }
+    return getFirestore(app);
+}
+export const db = createFirestore();
 export const storage = getStorage(app);
 
 // Functions 초기화 (리전 명시: us-central1)

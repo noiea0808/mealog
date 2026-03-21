@@ -29,7 +29,7 @@ import {
 import { authFlowManager } from './auth-flow.js';
 import { isDemoUser, markUserHasRealLogin } from './demo-account.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
-import { initPushNotifications } from './push-notifications.js';
+import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
 import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
@@ -946,10 +946,29 @@ initAuth(async (user) => {
         if (user && !user.isAnonymous && !isDemoUser(user)) {
           window.__onPushTokenSaved = () => showToast('알림 등록됨', 'success');
           window.__onPushTokenSavedError = (msg) => showToast('알림 등록 실패: ' + (msg || '알 수 없음'), 'error');
-          // ⚠️ 중요: 푸시 알림 자동 초기화를 완전히 비활성화 (앱 크래시 방지)
-          // 사용자가 설정에서 명시적으로 알림을 활성화할 때만 initPushNotifications 호출
-          // 다른 컴퓨터 환경에서 앱이 종료되는 문제를 근본적으로 해결
-          console.log('푸시: 자동 초기화 비활성화됨 (설정에서 수동 활성화 필요)');
+          // 네이티브 앱만: FCM 등록·토큰 Firestore 저장 (설정 토글 제거 이후 이 경로가 유일함)
+          if (typeof window.Capacitor !== 'undefined' && window.Capacitor.isNativePlatform?.()) {
+            const puid = user.uid;
+            if (window.__pushInitInFlight) {
+              /* 동시 중복 호출 생략 */
+            } else if (window.__pushInitUid !== puid) {
+              window.__pushInitInFlight = true;
+              const pushInitSafety = setTimeout(() => {
+                window.__pushInitInFlight = false;
+                console.warn('푸시: 초기화 안전 타임아웃(18s) — 구버전 JS 캐시 가능. 앱 재설치 또는 main.js?v 갱신 확인');
+              }, 18000);
+              void initPushNotifications(puid)
+                .then((ok) => {
+                  if (ok) window.__pushInitUid = puid;
+                })
+                .finally(() => {
+                  clearTimeout(pushInitSafety);
+                  window.__pushInitInFlight = false;
+                });
+            } else {
+              void syncPushRegistrationFromOs();
+            }
+          }
         }
         
         console.log('🔐 인증 상태 변경:', {
@@ -1307,6 +1326,8 @@ initAuth(async (user) => {
         authFlowManager.lastProcessedUserId = null;
         window.userSettings = null;
         window.currentUser = null;
+        window.__pushInitUid = null;
+        window.__pushInitInFlight = false;
         syncDemoNavGuideDots();
 
         // ⚠️ 중요: 플래그를 다시 한 번 확인 (onAuthStateChanged 호출 시점과 시간차가 있을 수 있음)

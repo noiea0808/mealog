@@ -78,7 +78,6 @@ import {
 import { authFlowManager } from '../auth-flow.js';
 import { isDemoUser, markUserHasRealLogin } from '../demo-account.js';
 import { syncDemoNavGuideDots } from '../demo-nav-guide.js';
-import { initPushNotifications } from '../push-notifications.js';
 import {
     renderTimeline,
     renderMiniCalendar,
