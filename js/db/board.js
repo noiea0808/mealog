@@ -1,6 +1,6 @@
 // 게시판 및 공지 관련 함수들
 import { db, appId, callableFunctions } from '../firebase.js';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, query, orderBy, limit, where, getDocs, getDocsFromServer, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, query, orderBy, limit, where, getDocs, getDocsFromServer, onSnapshot, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { showToast } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
 
@@ -826,12 +826,30 @@ export const noticeOperations = {
     }
 };
 
+/** 게시글 ID에 연결된 댓글·상호작용·북마크 삭제 (게시글 본문 삭제 전 호출) */
+async function deleteBoardPostRelatedDocsClient(postId) {
+    const pid = String(postId);
+    const names = ['boardComments', 'boardInteractions', 'boardBookmarks'];
+    for (const collName of names) {
+        const col = collection(db, 'artifacts', appId, collName);
+        const q = query(col, where('postId', '==', pid));
+        const snap = await getDocs(q);
+        const docs = snap.docs;
+        for (let i = 0; i < docs.length; i += 450) {
+            const batch = writeBatch(db);
+            docs.slice(i, i + 450).forEach((d) => batch.delete(d.ref));
+            await batch.commit();
+        }
+    }
+}
+
 // 관리자: MEAL TALK 게시글 삭제 (Firestore 규칙에서 isAdmin 체크)
 export async function deleteBoardPostByAdmin(postId) {
     if (!postId) throw new Error("게시글 ID가 필요합니다.");
     const postDoc = doc(db, 'artifacts', appId, 'boardPosts', postId);
     const postSnap = await getDoc(postDoc);
     if (!postSnap.exists()) throw new Error("게시글을 찾을 수 없습니다.");
+    await deleteBoardPostRelatedDocsClient(postId);
     await deleteDoc(postDoc);
 }
 

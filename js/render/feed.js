@@ -1,0 +1,634 @@
+/**
+ * 타임라인 옆 피드 탭 (`feedContent`) 렌더링
+ */
+import { SLOTS, SLOT_STYLES } from '../constants.js';
+import { appState } from '../state.js';
+import { escapeHtml } from './utils.js';
+import { normalizeUrl, getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
+import { getPostIdFromPhotoGroup, preloadAdjacentGalleryImages } from './post-group-utils.js';
+import { fetchUserProfiles } from './user-profiles.js';
+
+export async function renderFeed() {
+    const container = document.getElementById('feedContent');
+    if (!container) return;
+    const photosToUse = window.sharedPhotosFeed || [];
+    
+    if (photosToUse.length === 0) {
+        container.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-12 text-center">
+                <i class="fa-solid fa-images text-4xl text-slate-200 mb-3"></i>
+                <p class="text-xs font-bold text-slate-400">공유된 사진이 없습니다</p>
+                <p class="text-[10px] text-slate-300 mt-1">타임라인에서 사진을 공유해보세요!</p>
+            </div>
+        `;
+        return;
+    }
+    
+    // 사용자 필터링 적용
+    const filterUserId = appState.galleryFilterUserId;
+    let photosToRender = photosToUse;
+    
+    if (filterUserId) {
+        photosToRender = photosToUse.filter(photo => photo.userId === filterUserId);
+    }
+    
+    // 중복 제거: 같은 photoUrl과 entryId 조합은 하나만 표시
+    const seen = new Set();
+    const uniquePhotos = photosToRender.filter(photo => {
+        const key = `${photo.photoUrl}_${photo.entryId || 'no-entry'}_${photo.userId}`;
+        if (seen.has(key)) {
+            return false;
+        }
+        seen.add(key);
+        return true;
+    });
+    
+    // entryId와 userId로 그룹화 (같은 기록의 사진들을 묶음)
+    // 중요: 하나의 게시물(entryId)은 앨범에 한 번만 표시되어야 하므로, entryId와 userId만 사용
+    // 일간보기 공유(type: 'daily')는 date와 userId로 그룹화
+    const groupedPhotos = {};
+    uniquePhotos.forEach(photo => {
+        let groupKey;
+        if (photo.type === 'daily') {
+            // 일간보기 공유: date_userId로 그룹화 (같은 날짜의 일간보기 공유는 하나로 묶음)
+            groupKey = `daily_${photo.date || 'no-date'}_${photo.userId}`;
+        } else if (photo.type === 'best') {
+            // 베스트 공유: id_userId로 그룹화 (베스트 공유는 각각 고유)
+            groupKey = `best_${photo.id || 'no-id'}_${photo.userId}`;
+        } else if (photo.type === 'insight') {
+            // 인사이트 공유: dateRangeText_userId로 그룹화 (같은 기간의 인사이트 공유는 하나로 묶음)
+            groupKey = `insight_${photo.dateRangeText || 'no-range'}_${photo.userId}`;
+        } else if (photo.entryId) {
+            // entryId가 있는 경우: entryId_userId로 그룹화
+            groupKey = `${photo.entryId}_${photo.userId}`;
+        } else {
+            // entryId가 없는 경우: no-entry_userId로 그룹화
+            groupKey = `no-entry_${photo.userId}`;
+        }
+        if (!groupedPhotos[groupKey]) {
+            groupedPhotos[groupKey] = [];
+        }
+        groupedPhotos[groupKey].push(photo);
+    });
+    
+    // 다른 사용자들의 최신 프로필 미리 로드 (프로필 변경 시 다른 사용자도 최신 설정으로 표시)
+    const feedUserIds = [...new Set(uniquePhotos.map(p => p.userId).filter(Boolean))];
+    await fetchUserProfiles(feedUserIds);
+    
+    // 각 그룹 내 사진을 Firestore photoIndex 기준으로만 정렬 (글쓴이/다른 사용자 동일 순서 보장)
+    const photoSortTieBreakerSimple = (a, b) => {
+        const aKey = String(a.id ?? normalizeUrl(a.photoUrl) ?? '');
+        const bKey = String(b.id ?? normalizeUrl(b.photoUrl) ?? '');
+        return aKey.localeCompare(bKey, 'en');
+    };
+    Object.keys(groupedPhotos).forEach(groupKey => {
+        const photoGroup = groupedPhotos[groupKey];
+        photoGroup.sort((a, b) => {
+            const ai = a.photoIndex;
+            const bi = b.photoIndex;
+            if (typeof ai === 'number' && typeof bi === 'number') {
+                const cmp = ai - bi;
+                if (cmp !== 0) return cmp;
+            }
+            const cmp = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+            return cmp !== 0 ? cmp : photoSortTieBreakerSimple(a, b);
+        });
+    });
+    
+    // 그룹을 시간순으로 정렬 (동점 시 2차 키로 동일 순서 보장)
+    const sortedGroups = Object.values(groupedPhotos).sort((a, b) => {
+        const timeA = new Date(a[0].timestamp).getTime();
+        const timeB = new Date(b[0].timestamp).getTime();
+        const cmp = timeB - timeA; // 최신순
+        return cmp !== 0 ? cmp : (getPostIdFromPhotoGroup(a) || '').localeCompare(getPostIdFromPhotoGroup(b) || '', 'en');
+    });
+    
+    container.innerHTML = sortedGroups.map((photoGroup, groupIdx) => {
+        const photo = photoGroup[0]; // 첫 번째 사진의 정보 사용
+        const photoCount = photoGroup.length;
+        
+        // 그룹 내에서 entryId 찾기 (첫 번째 사진에 없으면 다른 사진에서 찾기)
+        let entryId = photo.entryId;
+        if (!entryId || entryId === '' || entryId === 'null' || entryId === 'undefined') {
+            const photoWithEntryId = photoGroup.find(p => {
+                const pEntryId = p.entryId;
+                return pEntryId && pEntryId !== '' && pEntryId !== 'null' && pEntryId !== 'undefined';
+            });
+            if (photoWithEntryId) {
+                entryId = photoWithEntryId.entryId;
+            }
+        }
+        
+        // 베스트 공유인지 확인 (먼저 확인)
+        const isBestShare = photo.type === 'best';
+        
+        // 일간보기 공유인지 확인
+        const isDailyShare = photo.type === 'daily';
+        
+        // 인사이트 공유인지 확인
+        const isInsightShare = photo.type === 'insight';
+        
+        const postId = getPostIdFromPhotoGroup(photoGroup);
+        const alternatePostIds = photoGroup.map(p => p.id).filter(Boolean).join(',');
+        
+        // 본인 게시물인지 확인
+        const isMyPost = window.currentUser && photo.userId === window.currentUser.uid;
+        
+        // 게스트 모드 확인 (본인 게시물이고 게스트인 경우)
+        const isGuestPost = isMyPost && window.currentUser && window.currentUser.isAnonymous;
+        
+        // 공유 금지 상태 확인 (그룹 내 사진 중 하나라도 금지된 것이 있으면 금지 상태로 표시)
+        const isBanned = photoGroup.some(p => p.banned === true);
+        
+        // 일자 정보
+        const photoDate = photo.date ? new Date(photo.date + 'T00:00:00') : new Date(photo.timestamp);
+        const dateStr = photoDate.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+        
+        // 끼니 구분 정보 및 색상
+        let mealLabel = '';
+        let mealLabelStyle = '';
+        if (photo.slotId) {
+            const slot = SLOTS.find(s => s.id === photo.slotId);
+            mealLabel = slot ? slot.label : '';
+            if (slot) {
+                const slotStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
+                mealLabelStyle = `${slotStyle.text} ${slotStyle.iconBg}`;
+            }
+        }
+        
+        // 간식인지 확인 (slotId로 간식 타입 확인)
+        const isSnack = photo.slotId && SLOTS.find(s => s.id === photo.slotId)?.type === 'snack';
+        
+        // Comment 정보 가져오기
+        // 일간보기 공유는 하루 전체 comment를 caption에 표시하므로, 개별 식사 comment는 사용하지 않음
+        let comment = '';
+        if (!isDailyShare) {
+            // 1. photo 객체에 comment가 있으면 우선 사용
+            // 2. entryId가 있고 mealHistory에서 찾을 수 있으면 사용
+            if (photo.comment) {
+                comment = photo.comment;
+            } else if (entryId && window.mealHistory) {
+                const mealRecord = window.mealHistory.find(m => m.id === entryId);
+                if (mealRecord) {
+                    comment = mealRecord.comment || '';
+                }
+            }
+            
+            // entryId가 없어도 comment가 있거나, 같은 날짜/슬롯의 기록을 찾아서 entryId 찾기
+            if (!entryId && window.mealHistory && photo.date && photo.slotId) {
+                // photo의 comment나 다른 정보로 mealHistory에서 매칭되는 기록 찾기
+                const matchingRecord = window.mealHistory.find(m => 
+                    m.date === photo.date && 
+                    m.slotId === photo.slotId &&
+                    (photo.comment ? (m.comment === photo.comment) : true)
+                );
+                if (matchingRecord) {
+                    entryId = matchingRecord.id;
+                    if (!comment && matchingRecord.comment) {
+                        comment = matchingRecord.comment;
+                    }
+                }
+            }
+        }
+        
+        let caption = '';
+        if (isBestShare) {
+            // 베스트 공유인 경우: comment만 표시
+            if (photo.comment) {
+                caption = photo.comment;
+            }
+        } else if (isDailyShare) {
+            // 일간보기 공유인 경우: comment만 표시
+            if (photo.comment) {
+                caption = photo.comment;
+            }
+        } else if (isInsightShare) {
+            // 인사이트 공유인 경우: comment만 표시
+            if (photo.comment) {
+                caption = photo.comment;
+            }
+        } else if (isSnack) {
+            // 간식인 경우: "메뉴 @ 장소" 형식 (장소만 있으면 "@ 장소")
+            const menu = photo.menuDetail || photo.snackType;
+            if (photo.place && menu) {
+                caption = `${menu} @ ${photo.place}`;
+            } else if (photo.place) {
+                caption = `@ ${photo.place}`;
+            } else if (menu) {
+                caption = menu;
+            } else {
+                caption = '간식';
+            }
+        } else {
+            // 일반 식사인 경우: "메뉴 @ 장소" 형식
+            if (photo.place && photo.menuDetail) {
+                caption = `${photo.menuDetail} @ ${photo.place}`;
+            } else if (photo.place) {
+                caption = `@ ${photo.place}`;
+            } else if (photo.menuDetail) {
+                caption = photo.menuDetail;
+            } else if (photo.mealType) {
+                caption = photo.mealType;
+            }
+        }
+        
+        const captionAttr = (caption || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        
+        // 사진 비율: shared doc 또는 meal 기록에서 가져오기
+        let aspectRatio = photo.photoAspectRatio || (entryId && window.mealHistory ? (window.mealHistory.find(m => m.id === entryId)?.photoAspectRatio) : null) || '1:1';
+        if (aspectRatio !== '1:1' && aspectRatio !== '3:4' && aspectRatio !== '4:3') aspectRatio = '1:1';
+        const momentAspectCss = (aspectRatio === '3:4' ? '3/4' : aspectRatio === '4:3' ? '4/3' : '1');
+        const photosHtml = photoGroup.map((p, idx) => {
+            const isBest = p.type === 'best';
+            const isDaily = p.type === 'daily';
+            const isInsight = p.type === 'insight';
+            const photoBanned = p.banned === true;
+            return `
+            <div class="flex-shrink-0 w-full snap-start relative ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
+                ${(isBest || isDaily || isInsight) ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full h-auto object-contain ${photoBanned ? 'opacity-50' : ''}" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx <= 1 ? 'eager' : 'lazy'}">` : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="absolute inset-0 w-full h-full object-cover ${photoBanned ? 'opacity-50' : ''}" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`}
+                ${photoBanned && !(isBest || isDaily || isInsight) ? `
+                    <div class="absolute inset-0 bg-orange-500/20 flex items-center justify-center">
+                        <div class="bg-orange-600 text-white px-3 py-1.5 rounded-lg">
+                            <i class="fa-solid fa-ban mr-1"></i>공유 금지
+                        </div>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+        }).join('');
+        
+        const userDisplay = getDisplayProfile(photo.userId, { nickname: photo.userNickname, icon: photo.userIcon, photoUrl: photo.userPhotoUrl });
+        const avatarDisplay = getProfileAvatarDisplay(userDisplay);
+        return `
+            <div class="mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden instagram-post" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}">
+                <div class="px-2 py-3 flex items-center gap-3 relative">
+                    ${avatarDisplay.type === 'photo' ? `
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${avatarDisplay.value}); background-size: cover; background-position: center;">
+                            ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
+                        </div>
+                    ` : `
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200 text-lg'}">
+                            ${isGuestPost ? '게' : (avatarDisplay.type === 'default' ? '<i class="fa-solid fa-user text-lg"></i>' : escapeHtml(avatarDisplay.value))}
+                        </div>
+                    `}
+                    <div class="flex-1 min-w-0 mr-2">
+                        <div class="text-sm font-bold text-slate-800">${userDisplay.nickname}</div>
+                        <div class="flex items-center gap-1 flex-wrap">
+                            <span class="text-xs text-slate-400">${dateStr}</span>
+                            ${mealLabel ? `<span class="text-[10px] font-bold ${mealLabelStyle || 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-full whitespace-nowrap ml-1">${mealLabel}</span>` : ''}
+                        </div>
+                    </div>
+                    ${isBanned ? `<div class="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0"><i class="fa-solid fa-ban mr-1"></i>공유 금지</div>` : ''}
+                    <div class="relative flex-shrink-0">
+                        <button data-entry-id="${entryId || ''}" data-photo-urls="${(photoGroup.map(p => p.photoUrl).filter(Boolean).join(',') || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}" data-caption="${captionAttr}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-is-insight="${isInsightShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-date-range-text="${photo.dateRangeText || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
+                            <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="relative overflow-hidden ${(isDailyShare || isInsightShare) ? 'bg-white' : 'bg-slate-100'}">
+                    <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gallery-photo-scroll" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
+                        ${photosHtml}
+                    </div>
+                    ${photoCount > 1 ? `
+                        <div class="absolute top-3 right-3 bg-black/60 text-white text-xs font-bold px-2.5 py-1 rounded-full backdrop-blur-sm">
+                            <span class="photo-counter-current">1</span>/${photoCount}
+                        </div>
+                    ` : ''}
+                </div>
+                ${caption ? `<div class="px-4 py-2 text-sm font-bold text-slate-800">${caption}</div>` : ''}
+                ${comment && !isBestShare && !isDailyShare && !isInsightShare ? (() => {
+                    // comment의 줄바꿈 개수 확인
+                    const lineBreaks = (comment.match(/\n/g) || []).length;
+                    // 대략적인 텍스트 길이로도 확인 (한 줄에 약 30자 정도로 가정)
+                    const estimatedLines = Math.ceil(comment.length / 30);
+                    const shouldShowToggle = lineBreaks >= 2 || estimatedLines > 2;
+                    const toggleBtnClass = shouldShowToggle ? '' : 'hidden';
+                    
+                    return `
+                    <div class="px-4 pb-3 text-sm text-slate-600">
+                        <span id="feed-comment-collapsed-${groupIdx}" class="comment-text whitespace-pre-line line-clamp-2 inline">${escapeHtml(comment).replace(/\n/g, '<br>')}</span>
+                        <button onclick="window.toggleFeedComment(${groupIdx})" id="feed-comment-toggle-${groupIdx}" class="inline text-xs text-blue-600 font-bold hover:text-blue-700 active:text-blue-800 transition-colors ml-1 ${toggleBtnClass}">더 보기</button>
+                        <div id="feed-comment-expanded-${groupIdx}" class="comment-text whitespace-pre-line hidden">
+                            ${escapeHtml(comment).replace(/\n/g, '<br>')}
+                            <button onclick="window.toggleFeedComment(${groupIdx})" id="feed-comment-collapse-${groupIdx}" class="inline text-xs text-blue-600 font-bold hover:text-blue-700 active:text-blue-800 transition-colors ml-1">접기</button>
+                        </div>
+                    </div>
+                `;
+                })() : ''}
+            </div>
+        `;
+    }).join('');
+    
+    // 사진 카운터 업데이트를 위한 이벤트 리스너 추가 및 피드 옵션 버튼 이벤트 리스너 추가
+    setTimeout(() => {
+        const scrollContainers = container.querySelectorAll('.gallery-photo-scroll');
+        scrollContainers.forEach((scrollContainer, idx) => {
+            const counter = scrollContainer.parentElement.querySelector('.photo-counter-current');
+            const photos = Array.from(scrollContainer.children);
+            const photoCount = sortedGroups[idx]?.length || 0;
+            // 스크롤 종료 시 가장 가까운 사진으로 스냅 (한장한장 구분감)
+            if (photoCount > 1) {
+                // 웹(데스크톱): 마우스 드래그로 사진 스와이프 (document에 리스너 등록해 빠른 드래그도 포착)
+                let isDragging = false;
+                let startX = 0;
+                let startScrollLeft = 0;
+                scrollContainer.style.cursor = 'grab';
+                const onMouseMove = (e) => {
+                    if (!isDragging) return;
+                    e.preventDefault();
+                    const dx = e.pageX - startX;
+                    scrollContainer.scrollLeft = Math.max(0, Math.min(scrollContainer.scrollWidth - scrollContainer.clientWidth, startScrollLeft - dx));
+                };
+                const endDrag = () => {
+                    if (!isDragging) return;
+                    isDragging = false;
+                    scrollContainer.style.cursor = 'grab';
+                    scrollContainer.style.userSelect = '';
+                    document.removeEventListener('mousemove', onMouseMove, { capture: true });
+                    document.removeEventListener('mouseup', endDrag, { capture: true });
+                };
+                scrollContainer.addEventListener('mousedown', (e) => {
+                    if (e.button !== 0) return;
+                    e.preventDefault();
+                    isDragging = true;
+                    startX = e.pageX;
+                    startScrollLeft = scrollContainer.scrollLeft;
+                    scrollContainer.style.cursor = 'grabbing';
+                    scrollContainer.style.userSelect = 'none';
+                    document.addEventListener('mousemove', onMouseMove, { capture: true, passive: false });
+                    document.addEventListener('mouseup', endDrag, { capture: true });
+                }, { passive: false });
+
+                const snapToNearest = () => {
+                    const sl = scrollContainer.scrollLeft;
+                    const cw = scrollContainer.clientWidth;
+                    let nearest = 0;
+                    let minDist = Infinity;
+                    photos.forEach((p, i) => {
+                        const pos = p.offsetLeft + p.offsetWidth / 2;
+                        const d = Math.abs(sl + cw / 2 - pos);
+                        if (d < minDist) { minDist = d; nearest = i; }
+                    });
+                    const target = photos[nearest]?.offsetLeft ?? 0;
+                    if (Math.abs(sl - target) > 2) {
+                        scrollContainer.scrollTo({ left: target, behavior: 'smooth' });
+                    }
+                    preloadAdjacentGalleryImages(scrollContainer);
+                };
+                let snapTimeout = null;
+                const onScrollEnd = () => {
+                    clearTimeout(snapTimeout);
+                    snapTimeout = setTimeout(snapToNearest, 80);
+                };
+                let preloadThrottle = null;
+                const onScrollPreload = () => {
+                    if (preloadThrottle) return;
+                    preloadThrottle = setTimeout(() => { preloadThrottle = null; preloadAdjacentGalleryImages(scrollContainer); }, 50);
+                };
+                scrollContainer.addEventListener('scroll', onScrollEnd, { passive: true });
+                scrollContainer.addEventListener('scroll', onScrollPreload, { passive: true });
+                if ('onscrollend' in scrollContainer) {
+                    scrollContainer.addEventListener('scrollend', snapToNearest);
+                }
+                preloadAdjacentGalleryImages(scrollContainer);
+            }
+            if (counter && photoCount > 1) {
+                const slideEls = Array.from(scrollContainer.children);
+                const updateCounter = () => {
+                    const containerWidth = scrollContainer.clientWidth;
+                    const scrollLeft = scrollContainer.scrollLeft;
+                    let currentIndex = 1;
+                    slideEls.forEach((slide, photoIdx) => {
+                        const photoCenter = slide.offsetLeft + slide.offsetWidth / 2;
+                        if (photoCenter >= scrollLeft && photoCenter <= scrollLeft + containerWidth) {
+                            currentIndex = photoIdx + 1;
+                        }
+                    });
+                    counter.textContent = currentIndex;
+                };
+                scrollContainer.addEventListener('scroll', updateCounter);
+                updateCounter();
+            }
+        });
+        
+        // 피드 옵션 버튼에 이벤트 리스너 추가
+        const feedOptionsButtons = container.querySelectorAll('.feed-options-btn');
+        feedOptionsButtons.forEach(btn => {
+            // 이미 이벤트 리스너가 추가되었는지 확인 (중복 방지)
+            if (btn.hasAttribute('data-listener-added')) return;
+            
+            if (window.showFeedOptions) {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const entryId = btn.getAttribute('data-entry-id') || '';
+                    const photoUrls = btn.getAttribute('data-photo-urls') || '';
+                    const isBestShare = btn.getAttribute('data-is-best') === 'true';
+                    const photoDate = btn.getAttribute('data-photo-date') || '';
+                    const photoSlotId = btn.getAttribute('data-photo-slot-id') || '';
+                    const isDailyShare = btn.getAttribute('data-is-daily') === 'true';
+                    const isInsightShare = btn.getAttribute('data-is-insight') === 'true';
+                    const dateRangeText = btn.getAttribute('data-date-range-text') || '';
+                    const postId = btn.getAttribute('data-post-id') || '';
+                    const authorUserId = btn.getAttribute('data-author-user-id') || '';
+                    const caption = btn.getAttribute('data-caption') || '';
+                    window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId, isInsightShare, dateRangeText, caption);
+                });
+                btn.setAttribute('data-listener-added', 'true');
+            } else {
+                // 함수가 아직 로드되지 않았으면 조금 후에 다시 시도
+                setTimeout(() => {
+                    if (window.showFeedOptions && !btn.hasAttribute('data-listener-added')) {
+                        btn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const entryId = btn.getAttribute('data-entry-id') || '';
+                            const photoUrls = btn.getAttribute('data-photo-urls') || '';
+                            const isBestShare = btn.getAttribute('data-is-best') === 'true';
+                            const photoDate = btn.getAttribute('data-photo-date') || '';
+                            const photoSlotId = btn.getAttribute('data-photo-slot-id') || '';
+                            const isDailyShare = btn.getAttribute('data-is-daily') === 'true';
+                            const isInsightShare = btn.getAttribute('data-is-insight') === 'true';
+                            const dateRangeText = btn.getAttribute('data-date-range-text') || '';
+                            const postId = btn.getAttribute('data-post-id') || '';
+                            const authorUserId = btn.getAttribute('data-author-user-id') || '';
+                            const caption = btn.getAttribute('data-caption') || '';
+                            window.showFeedOptions(entryId, photoUrls, isBestShare, photoDate, photoSlotId, isDailyShare, postId, authorUserId, isInsightShare, dateRangeText, caption);
+                        });
+                        btn.setAttribute('data-listener-added', 'true');
+                    }
+                }, 200);
+            }
+        });
+        
+        // Feed Comment "더 보기" 버튼 표시 여부 확인 및 위치 조정 (DOM 렌더링 후)
+        setTimeout(() => {
+            sortedGroups.forEach((photoGroup, idx) => {
+                const collapsedEl = document.getElementById(`feed-comment-collapsed-${idx}`);
+                const expandedEl = document.getElementById(`feed-comment-expanded-${idx}`);
+                const toggleBtn = document.getElementById(`feed-comment-toggle-${idx}`);
+                const collapseBtn = document.getElementById(`feed-comment-collapse-${idx}`);
+                
+                if (collapsedEl && toggleBtn) {
+                    // 실제 렌더링된 높이 측정
+                    const collapsedHeight = collapsedEl.scrollHeight;
+                    const lineHeight = parseFloat(getComputedStyle(collapsedEl).lineHeight) || 20;
+                    const maxHeight = lineHeight * 2; // 2줄 높이
+                    
+                    // 실제 높이가 두 줄을 넘으면 "더 보기" 버튼 표시
+                    if (collapsedHeight > maxHeight + 2 && toggleBtn.classList.contains('hidden')) {
+                        toggleBtn.classList.remove('hidden');
+                    }
+                    
+                    // 버튼 위치 조정: 텍스트의 마지막 줄과 같은 높이로
+                    if (!toggleBtn.classList.contains('hidden')) {
+                        const computedStyle = getComputedStyle(collapsedEl);
+                        const textLineHeight = parseFloat(computedStyle.lineHeight) || 20;
+                        // 마지막 줄의 baseline 위치 계산
+                        const lastLineBottom = textLineHeight * 2; // line-clamp-2이므로 2줄
+                        // 버튼 높이를 고려하여 위치 조정
+                        const btnHeight = toggleBtn.offsetHeight || 16;
+                        const offset = (textLineHeight - btnHeight) / 2; // 수직 중앙 정렬
+                        const bottomPosition = (lastLineBottom - btnHeight - offset);
+                        toggleBtn.style.bottom = `${Math.max(0, bottomPosition)}px`;
+                    }
+                    
+                    // 접기 버튼 위치도 동일하게 조정 (확장된 텍스트가 보일 때)
+                    if (expandedEl && collapseBtn && !expandedEl.classList.contains('hidden')) {
+                        const expandedStyle = getComputedStyle(expandedEl);
+                        const expandedLineHeight = parseFloat(expandedStyle.lineHeight) || 20;
+                        const expandedHeight = expandedEl.scrollHeight;
+                        const btnHeight = collapseBtn.offsetHeight || 16;
+                        // 확장된 텍스트의 마지막 줄 위치
+                        const lastLineNumber = Math.ceil(expandedHeight / expandedLineHeight);
+                        const lastLineBottom = expandedLineHeight * lastLineNumber;
+                        const offset = (expandedLineHeight - btnHeight) / 2;
+                        const bottomPosition = (lastLineBottom - btnHeight - offset);
+                        collapseBtn.style.bottom = `${Math.max(0, bottomPosition)}px`;
+                    }
+                }
+            });
+        }, 300);
+        
+        // 각 포스트의 좋아요, 북마크, 댓글 로드
+        sortedGroups.forEach((photoGroup) => {
+            const photo = photoGroup[0];
+            // 그룹 키 생성 (postId 계산용)
+            let groupKey;
+            const isBestShare = photo.type === 'best';
+            const isDailyShare = photo.type === 'daily';
+            const isInsightShare = photo.type === 'insight';
+            if (isDailyShare) {
+                groupKey = `daily_${photo.date || 'no-date'}_${photo.userId || 'unknown'}`;
+            } else if (isBestShare) {
+                groupKey = `best_${photo.id || 'no-id'}_${photo.userId || 'unknown'}`;
+            } else if (isInsightShare) {
+                groupKey = `insight_${photo.dateRangeText || 'no-range'}_${photo.userId || 'unknown'}`;
+            } else {
+                groupKey = `${photo.entryId || 'no-entry'}_${photo.userId || 'unknown'}`;
+            }
+            
+            // postId 계산
+            let postId = photoGroup[0]?.id || photo.id || null;
+            if (!postId || postId === 'undefined' || postId === 'null') {
+                let hash = 0;
+                const ts = photo.timestamp || (photo.date ? photo.date + 'T12:00:00' : '') || '';
+                const keyForHash = `${groupKey}_${ts}`;
+                for (let i = 0; i < keyForHash.length; i++) {
+                    hash = ((hash << 5) - hash) + keyForHash.charCodeAt(i);
+                    hash = hash & hash;
+                }
+                postId = `post_${Math.abs(hash)}_${photo.userId || 'unknown'}`;
+            }
+            
+            if (postId && window.postInteractions && window.currentUser && !window.currentUser.isAnonymous) {
+                // 좋아요 상태 및 수 로드
+                Promise.all([
+                    window.postInteractions.isLiked(postId, window.currentUser.uid).catch(() => false),
+                    window.postInteractions.getLikes(postId).catch(() => []),
+                    window.postInteractions.isBookmarked(postId, window.currentUser.uid).catch(() => false)
+                ]).then(([isLiked, likes, isBookmarked]) => {
+                    const likeBtn = document.querySelector(`.post-like-btn[data-post-id="${postId}"]`);
+                    const likeIcon = likeBtn?.querySelector('.post-like-icon');
+                    const likeCountEl = document.querySelector(`.post-like-count[data-post-id="${postId}"]`);
+                    const bookmarkBtn = document.querySelector(`.post-bookmark-btn[data-post-id="${postId}"]`);
+                    const bookmarkIcon = bookmarkBtn?.querySelector('.post-bookmark-icon');
+                    
+                    if (likeBtn && likeIcon) {
+                        if (isLiked) {
+                            likeIcon.classList.remove('fa-regular', 'fa-heart', 'text-slate-800');
+                            likeIcon.classList.add('fa-solid', 'fa-heart', 'text-red-500');
+                        }
+                    }
+                    if (likeCountEl) {
+                        likeCountEl.textContent = likes.length > 0 ? likes.length : '';
+                    }
+                    if (bookmarkBtn && bookmarkIcon && isBookmarked) {
+                        bookmarkIcon.classList.remove('fa-regular', 'fa-bookmark');
+                        bookmarkIcon.classList.add('fa-solid', 'fa-bookmark');
+                    }
+                }).catch(e => {
+                    console.error(`좋아요/북마크 상태 로드 실패 (postId: ${postId}):`, e);
+                });
+            }
+            
+            // 댓글 로드
+            if (postId && window.loadPostComments) {
+                window.loadPostComments(postId).catch(e => {
+                    console.error(`댓글 로드 실패 (postId: ${postId}):`, e);
+                });
+            }
+        });
+    }, 100);
+}
+
+export function toggleFeedComment(groupIdx) {
+    const collapsedEl = document.getElementById(`feed-comment-collapsed-${groupIdx}`);
+    const expandedEl = document.getElementById(`feed-comment-expanded-${groupIdx}`);
+    const toggleBtn = document.getElementById(`feed-comment-toggle-${groupIdx}`);
+    const collapseBtn = document.getElementById(`feed-comment-collapse-${groupIdx}`);
+    
+    if (collapsedEl && expandedEl && toggleBtn && collapseBtn) {
+        const isCollapsed = !collapsedEl.classList.contains('hidden');
+        if (isCollapsed) {
+            // 확장
+            collapsedEl.classList.add('hidden');
+            expandedEl.classList.remove('hidden');
+            toggleBtn.classList.add('hidden');
+            collapseBtn.classList.remove('hidden');
+            
+            // 접기 버튼 위치 조정: 확장된 텍스트의 마지막 줄과 같은 높이로
+            setTimeout(() => {
+                if (expandedEl && collapseBtn) {
+                    const expandedStyle = getComputedStyle(expandedEl);
+                    const expandedLineHeight = parseFloat(expandedStyle.lineHeight) || 20;
+                    const expandedHeight = expandedEl.scrollHeight;
+                    const btnHeight = collapseBtn.offsetHeight || 16;
+                    // 확장된 텍스트의 마지막 줄 위치
+                    const lastLineNumber = Math.ceil(expandedHeight / expandedLineHeight);
+                    const lastLineBottom = expandedLineHeight * lastLineNumber;
+                    const offset = (expandedLineHeight - btnHeight) / 2;
+                    const bottomPosition = (lastLineBottom - btnHeight - offset);
+                    collapseBtn.style.bottom = `${Math.max(0, bottomPosition)}px`;
+                }
+            }, 10);
+        } else {
+            // 축소
+            collapsedEl.classList.remove('hidden');
+            expandedEl.classList.add('hidden');
+            toggleBtn.classList.remove('hidden');
+            collapseBtn.classList.add('hidden');
+            
+            // 더 보기 버튼 위치 조정: collapsed 텍스트의 마지막 줄과 같은 높이로
+            setTimeout(() => {
+                if (collapsedEl && toggleBtn) {
+                    const computedStyle = getComputedStyle(collapsedEl);
+                    const textLineHeight = parseFloat(computedStyle.lineHeight) || 20;
+                    const lastLineBottom = textLineHeight * 2; // line-clamp-2이므로 2줄
+                    const btnHeight = toggleBtn.offsetHeight || 16;
+                    const offset = (textLineHeight - btnHeight) / 2;
+                    const bottomPosition = (lastLineBottom - btnHeight - offset);
+                    toggleBtn.style.bottom = `${Math.max(0, bottomPosition)}px`;
+                }
+            }, 10);
+        }
+    }
+}

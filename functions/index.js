@@ -449,6 +449,30 @@ exports.updateBoardPost = onCall({ region: REGION }, async (request) => {
 });
 
 /**
+ * 게시글 삭제 시 하위 데이터 정리 (댓글·좋아요·북마크 참조)
+ * — 남겨두면 흔적 필터(getPostIdsCommentedByUser 등)에 삭제된 글 ID가 계속 잡힘
+ */
+async function deleteBoardPostRelatedDocuments(postId) {
+  const pid = String(postId);
+  const base = db.collection('artifacts').doc(APP_ID);
+  const subcollections = [
+    ['boardComments', 'postId'],
+    ['boardInteractions', 'postId'],
+    ['boardBookmarks', 'postId']
+  ];
+  for (const [collName, field] of subcollections) {
+    const ref = base.collection(collName);
+    const snap = await ref.where(field, '==', pid).get();
+    const docs = snap.docs;
+    for (let i = 0; i < docs.length; i += 450) {
+      const batch = db.batch();
+      docs.slice(i, i + 450).forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+  }
+}
+
+/**
  * 게시글 삭제 (Callable)
  */
 exports.deleteBoardPost = onCall({ region: REGION }, async (request) => {
@@ -477,6 +501,7 @@ exports.deleteBoardPost = onCall({ region: REGION }, async (request) => {
     throw new HttpsError('permission-denied', '본인의 게시글만 삭제할 수 있습니다.');
   }
 
+  await deleteBoardPostRelatedDocuments(postId);
   await postRef.delete();
   
   return { success: true };
