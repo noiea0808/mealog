@@ -35,14 +35,14 @@ export function renderPhotoPreviews() {
         const aspectCss = getRecordPhotoAspectRatioCss();
         container.innerHTML = appState.currentPhotos.map((src, idx) => 
             `<div class="relative rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 photo-preview-item border-2 border-slate-300" style="width: 7rem; aspect-ratio: ${aspectCss};" draggable="true" data-index="${idx}">
-                <img src="${src}" class="absolute inset-0 w-full h-full object-cover" alt="">
+                <img src="${src}" draggable="false" class="absolute inset-0 w-full h-full object-cover pointer-events-none" alt="">
                 <button onclick="window.removePhoto(${idx})" class="photo-remove-btn">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
                 <button onclick="window.editPhoto(${idx})" class="photo-edit-btn">
                     <i class="fa-solid fa-crop"></i>
                 </button>
-                <div class="absolute top-1 left-1 w-5 h-5 bg-black/60 text-white text-[10px] font-bold rounded-full flex items-center justify-center">${idx + 1}</div>
+                <div class="photo-preview-order-badge absolute top-1 left-1 w-5 h-5 bg-black/60 text-white text-[10px] font-bold rounded-full flex items-center justify-center pointer-events-none">${idx + 1}</div>
             </div>`
         ).join('');
         
@@ -188,7 +188,7 @@ function setupLongPressDrag(item) {
                 const updatedItems = Array.from(container.querySelectorAll('.photo-preview-item'));
                 updatedItems.forEach((updatedItem, idx) => {
                     updatedItem.dataset.index = idx;
-                    const numberBadge = updatedItem.querySelector('.absolute.bottom-1');
+                    const numberBadge = updatedItem.querySelector('.photo-preview-order-badge');
                     if (numberBadge) {
                         numberBadge.textContent = idx + 1;
                     }
@@ -265,14 +265,17 @@ function handleDragOver(e) {
     const target = e.currentTarget.closest('.photo-preview-item');
     if (!target || target === draggedElement) return;
     
-    const targetIndex = parseInt(target.dataset.index);
-    if (draggedIndex === null || draggedIndex === targetIndex) return;
+    const targetIndex = parseInt(target.dataset.index, 10);
+    // draggedIndex는 드래그 시작 시점 인덱스로 고정됨. DOM 재배치 후에는 data-index만 최신이므로
+    // stale한 draggedIndex와 targetIndex를 비교하면 잘못 스킵되어 순서가 반영되지 않음.
+    const sourceIndex = draggedElement ? parseInt(draggedElement.dataset.index, 10) : NaN;
+    if (draggedIndex === null || Number.isNaN(sourceIndex) || sourceIndex === targetIndex) return;
     
     dropIndex = targetIndex;
     const container = target.parentElement;
     
     // 시각적 피드백: DOM 위치 변경
-    if (draggedIndex < targetIndex) {
+    if (sourceIndex < targetIndex) {
         container.insertBefore(draggedElement, target.nextSibling);
     } else {
         container.insertBefore(draggedElement, target);
@@ -282,7 +285,7 @@ function handleDragOver(e) {
     const allItems = Array.from(container.querySelectorAll('.photo-preview-item'));
     allItems.forEach((item, idx) => {
         item.dataset.index = idx;
-        const numberBadge = item.querySelector('.absolute.bottom-1');
+        const numberBadge = item.querySelector('.photo-preview-order-badge');
         if (numberBadge) {
             numberBadge.textContent = idx + 1;
         }

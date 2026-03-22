@@ -138,16 +138,16 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
                     <div class="feed-post-buttons flex items-center justify-between mb-2 pb-2 -mx-6 px-6 border-b border-slate-200">
                         <div class="flex items-center gap-4">
                             <button onclick="window.toggleLike('${postId}')" class="post-like-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
-                                <i class="fa-regular fa-heart text-2xl text-slate-800 post-like-icon"></i>
+                                <i class="fa-regular fa-heart text-2xl text-slate-800 post-like-icon social-action-icon-stroke"></i>
                                 <span class="post-like-count text-sm font-bold text-slate-800" data-post-id="${postId}"></span>
                             </button>
                             <button onclick="window.toggleCommentInput('${postId}')" class="post-comment-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
-                                <i class="fa-regular fa-comment text-2xl text-slate-800 post-comment-icon"></i>
+                                <i class="fa-regular fa-comment text-2xl text-slate-800 post-comment-icon social-action-icon-stroke"></i>
                                 <span class="post-comment-count text-sm font-bold text-slate-800" data-post-id="${postId}"></span>
                             </button>
                         </div>
                         <button onclick="window.toggleBookmark('${postId}')" class="post-bookmark-btn active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
-                            <i class="fa-regular fa-bookmark text-2xl text-slate-800 post-bookmark-icon"></i>
+                            <i class="fa-regular fa-bookmark text-2xl text-slate-800 post-bookmark-icon social-action-icon-stroke"></i>
                         </button>
                     </div>
                     ${caption && (isBestShare || isDailyShare || isInsightShare) ? `<div class="mb-2 text-sm text-slate-800">${caption}</div>` : ''}

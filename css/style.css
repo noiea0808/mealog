@@ -1067,6 +1067,12 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
 .scrollbar-hide::-webkit-scrollbar {
     display: none;
 }
+/* 모먼트 피드·밀톡 카드: 하트·댓글·북마크 아이콘 윤곽 두께 +1px (Font Awesome 글리프) */
+.social-action-icon-stroke {
+    -webkit-text-stroke: 1px currentColor;
+    paint-order: stroke fill;
+}
+
 /* 모먼트/밀톡 사진 스와이프: 한장한장 구분감 (미끄러짐 감소) */
 .gallery-photo-scroll {
     overscroll-behavior-x: contain;

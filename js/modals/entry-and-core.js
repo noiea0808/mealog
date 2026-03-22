@@ -1,7 +1,7 @@
 // 모달 및 입력 처리 관련 함수들
 import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from '../constants.js';
 import { appState } from '../state.js';
-import { setVal, compressImage, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage, normalizeBirthdateRaw } from '../utils.js';
+import { setVal, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage, normalizeBirthdateRaw } from '../utils.js';
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from '../render/index.js';
 import { dbOps } from '../db.js';
 import { showToast } from '../ui.js';
@@ -1512,12 +1512,8 @@ export function handleMultipleImages(e) {
         return new Promise((resolve) => {
             const r = new FileReader();
             r.onload = (ev) => {
-                compressImage(ev.target.result).then(compressed => {
-                    resolve({ index, compressed });
-                }).catch(err => {
-                    console.error('이미지 압축 실패:', err);
-                    resolve(null); // 압축 실패한 파일은 null로 처리
-                });
+                // 편집·미리보기는 원본 data URL 유지. Storage 업로드 시 uploadBase64ToStorage에서만 압축.
+                resolve({ index, dataUrl: ev.target.result });
             };
             r.onerror = () => {
                 console.error('파일 읽기 실패:', f.name);
@@ -1539,9 +1535,9 @@ export function handleMultipleImages(e) {
         const availableSlots = maxPhotos - currentPhotosCount;
         
         // 선택 순서대로 추가
-        sortedResults.slice(0, availableSlots).forEach(({ compressed }) => {
+        sortedResults.slice(0, availableSlots).forEach(({ dataUrl }) => {
             if (state.currentPhotos.length < maxPhotos) {
-                state.currentPhotos.push(compressed);
+                state.currentPhotos.push(dataUrl);
             }
         });
         

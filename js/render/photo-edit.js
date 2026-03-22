@@ -28,6 +28,8 @@ let initialPinchScale = 1;
 let photoEditContext = null;
 /** 프로필 편집 시 취소/닫기 시 revoke용 */
 let profilePhotoEditObjectUrl = null;
+/** 여러 장 이동 중 이중 실행 방지 */
+let photoEditNavigating = false;
 
 // 사진 편집 모달 열기 (식사 사진)
 export function editPhoto(idx) {
@@ -74,6 +76,7 @@ function openPhotoEditModalWithImage(photoSrc) {
     if (wrapper) wrapper.style.aspectRatio = getPhotoEditAspectRatioCss();
     
     modal.classList.remove('hidden');
+    updatePhotoEditNavUI();
     
     photoEditCanvas = document.getElementById('photoEditCanvas');
     if (!photoEditCanvas) return;
@@ -148,6 +151,7 @@ function initializePhotoEdit() {
         
         // 줌 및 회전 이벤트 추가
         setupPhotoEditZoomAndRotate();
+        updatePhotoEditNavUI();
     }, 100);
 }
 
@@ -413,32 +417,155 @@ export function resetPhotoEdit() {
     drawPhotoEdit();
 }
 
+function detachPhotoEditCanvasListeners() {
+    if (!photoEditCanvas) return;
+    photoEditCanvas.removeEventListener('mousedown', handlePhotoEditMouseDown);
+    photoEditCanvas.removeEventListener('mousemove', handlePhotoEditMouseMove);
+    photoEditCanvas.removeEventListener('mouseup', handlePhotoEditMouseUp);
+    photoEditCanvas.removeEventListener('mouseleave', handlePhotoEditMouseUp);
+    photoEditCanvas.removeEventListener('touchstart', handlePhotoEditTouchStart, true);
+    photoEditCanvas.removeEventListener('touchmove', handlePhotoEditTouchMove, true);
+    photoEditCanvas.removeEventListener('touchend', handlePhotoEditTouchEnd, true);
+    photoEditCanvas.removeEventListener('touchcancel', handlePhotoEditTouchEnd, true);
+    photoEditCanvas.removeEventListener('wheel', handlePhotoEditWheel);
+}
+
+/** 현재 캔버스를 JPEG data URL로 내보냄 (식사 저장·장 간 이동 시 공통) */
+function exportPhotoEditCanvasToDataUrl() {
+    return new Promise((resolve, reject) => {
+        if (!photoEditCanvas || !editingPhotoImage) {
+            reject(new Error('no canvas'));
+            return;
+        }
+        const w = photoEditCanvas.width;
+        const h = photoEditCanvas.height;
+        const outputCanvas = document.createElement('canvas');
+        outputCanvas.width = w;
+        outputCanvas.height = h;
+        const outputCtx = outputCanvas.getContext('2d');
+        outputCtx.imageSmoothingEnabled = true;
+        outputCtx.imageSmoothingQuality = 'high';
+        drawPhotoEditToContext(outputCtx, w, h, '#ffffff');
+        outputCanvas.toBlob(
+            (blob) => {
+                if (!blob) {
+                    reject(new Error('toBlob failed'));
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error('read failed'));
+                reader.readAsDataURL(blob);
+            },
+            'image/jpeg',
+            0.9
+        );
+    });
+}
+
+function updatePhotoEditNavUI() {
+    const row = document.getElementById('photoEditNavRow');
+    const label = document.getElementById('photoEditNavLabel');
+    const prev = document.getElementById('photoEditPrevBtn');
+    const next = document.getElementById('photoEditNextBtn');
+    if (!row || !label || !prev || !next) return;
+    const len = appState.currentPhotos.length;
+    const show = photoEditContext === 'meal' && len > 1 && editingPhotoIndex !== null;
+    row.classList.toggle('hidden', !show);
+    if (!show) return;
+    label.textContent = `${editingPhotoIndex + 1} / ${len}`;
+    prev.disabled = editingPhotoIndex <= 0;
+    next.disabled = editingPhotoIndex >= len - 1;
+}
+
+async function switchMealPhotoEditToIndex(newIndex) {
+    if (photoEditContext !== 'meal' || editingPhotoIndex === null) return;
+    const len = appState.currentPhotos.length;
+    if (newIndex < 0 || newIndex >= len || newIndex === editingPhotoIndex) return;
+    if (!photoEditCanvas || !photoEditCtx || !editingPhotoImage) return;
+
+    let dataUrl;
+    try {
+        dataUrl = await exportPhotoEditCanvasToDataUrl();
+    } catch (e) {
+        console.error('사진 편집 내보내기 실패:', e);
+        if (typeof window.showToast === 'function') {
+            window.showToast('사진을 저장할 수 없습니다. 다시 시도해주세요.', 'error');
+        }
+        return;
+    }
+
+    appState.currentPhotos[editingPhotoIndex] = dataUrl;
+    const { renderPhotoPreviews } = await import('../render.js');
+    renderPhotoPreviews();
+
+    detachPhotoEditCanvasListeners();
+    editingPhotoIndex = newIndex;
+    updatePhotoEditNavUI();
+    const photoSrc = appState.currentPhotos[newIndex];
+
+    editingPhotoImage = new Image();
+    const src = String(photoSrc || '');
+    const isLocalLike = src.startsWith('data:') || src.startsWith('blob:');
+    if (!isLocalLike) {
+        editingPhotoImage.crossOrigin = 'anonymous';
+    }
+    editingPhotoImage.onload = () => {
+        initializePhotoEdit();
+    };
+    editingPhotoImage.onerror = () => {
+        if (typeof window.showToast === 'function') window.showToast('이미지를 불러올 수 없습니다.', 'error');
+        closePhotoEditModal();
+    };
+    editingPhotoImage.src = photoSrc;
+}
+
+export async function goToPrevPhotoEdit() {
+    if (photoEditNavigating) return;
+    if (photoEditContext !== 'meal' || editingPhotoIndex === null || editingPhotoIndex <= 0) return;
+    photoEditNavigating = true;
+    try {
+        await switchMealPhotoEditToIndex(editingPhotoIndex - 1);
+    } finally {
+        photoEditNavigating = false;
+    }
+}
+
+export async function goToNextPhotoEdit() {
+    if (photoEditNavigating) return;
+    if (photoEditContext !== 'meal' || editingPhotoIndex === null) return;
+    const len = appState.currentPhotos.length;
+    if (editingPhotoIndex >= len - 1) return;
+    photoEditNavigating = true;
+    try {
+        await switchMealPhotoEditToIndex(editingPhotoIndex + 1);
+    } finally {
+        photoEditNavigating = false;
+    }
+}
+
 // 사진 편집 저장 — 화면에 보이는 줌·이동·회전과 동일하게 픽셀을보냄 (미리보기/공유와 일치)
 export function savePhotoEdit() {
     if (!photoEditCanvas || !editingPhotoImage) return;
-    
-    const w = photoEditCanvas.width;
-    const h = photoEditCanvas.height;
-    
-    const outputCanvas = document.createElement('canvas');
-    outputCanvas.width = w;
-    outputCanvas.height = h;
-    const outputCtx = outputCanvas.getContext('2d');
-    outputCtx.imageSmoothingEnabled = true;
-    outputCtx.imageSmoothingQuality = 'high';
 
-    drawPhotoEditToContext(outputCtx, w, h, '#ffffff');
-    
     try {
-        outputCanvas.toBlob((blob) => {
-            if (!blob) {
-                if (typeof window.showToast === 'function') {
-                    window.showToast('사진 저장에 실패했습니다. 다시 시도해주세요.', 'error');
+        if (photoEditContext === 'profile') {
+            const w = photoEditCanvas.width;
+            const h = photoEditCanvas.height;
+            const outputCanvas = document.createElement('canvas');
+            outputCanvas.width = w;
+            outputCanvas.height = h;
+            const outputCtx = outputCanvas.getContext('2d');
+            outputCtx.imageSmoothingEnabled = true;
+            outputCtx.imageSmoothingQuality = 'high';
+            drawPhotoEditToContext(outputCtx, w, h, '#ffffff');
+            outputCanvas.toBlob((blob) => {
+                if (!blob) {
+                    if (typeof window.showToast === 'function') {
+                        window.showToast('사진 저장에 실패했습니다. 다시 시도해주세요.', 'error');
+                    }
+                    return;
                 }
-                return;
-            }
-        
-            if (photoEditContext === 'profile') {
                 window.settingsPhotoFile = blob;
                 window.settingsPhotoUrl = URL.createObjectURL(blob);
                 if (profilePhotoEditObjectUrl) {
@@ -456,25 +583,29 @@ export function savePhotoEdit() {
                         photoDeleteBtn.classList.toggle('hidden', !appState.isProfileEditing);
                     }
                 }
-                // 프로필 타입을 photo로 설정
                 if (typeof window.setSettingsProfileType === 'function') {
                     window.setSettingsProfileType('photo');
                 }
                 closePhotoEditModal();
                 if (typeof window.showToast === 'function') window.showToast('사진이 적용되었습니다.', 'success');
-                return;
-            }
-        
-            if (editingPhotoIndex === null) return;
-            const reader = new FileReader();
-            reader.onload = async () => {
-                appState.currentPhotos[editingPhotoIndex] = reader.result;
+            }, 'image/jpeg', 0.9);
+            return;
+        }
+
+        if (editingPhotoIndex === null) return;
+        exportPhotoEditCanvasToDataUrl()
+            .then(async (dataUrl) => {
+                appState.currentPhotos[editingPhotoIndex] = dataUrl;
                 const { renderPhotoPreviews } = await import('../render.js');
                 renderPhotoPreviews();
                 closePhotoEditModal();
-            };
-            reader.readAsDataURL(blob);
-        }, 'image/jpeg', 0.9);
+            })
+            .catch((e) => {
+                console.error('사진 편집 저장 실패:', e);
+                if (typeof window.showToast === 'function') {
+                    window.showToast('사진 저장에 실패했습니다. 다시 시도해주세요.', 'error');
+                }
+            });
     } catch (e) {
         console.error('사진 편집 저장 실패:', e);
         if (typeof window.showToast === 'function') {
@@ -490,17 +621,7 @@ export function closePhotoEditModal() {
         modal.classList.add('hidden');
     }
     
-    if (photoEditCanvas) {
-        photoEditCanvas.removeEventListener('mousedown', handlePhotoEditMouseDown);
-        photoEditCanvas.removeEventListener('mousemove', handlePhotoEditMouseMove);
-        photoEditCanvas.removeEventListener('mouseup', handlePhotoEditMouseUp);
-        photoEditCanvas.removeEventListener('mouseleave', handlePhotoEditMouseUp);
-        photoEditCanvas.removeEventListener('touchstart', handlePhotoEditTouchStart, true);
-        photoEditCanvas.removeEventListener('touchmove', handlePhotoEditTouchMove, true);
-        photoEditCanvas.removeEventListener('touchend', handlePhotoEditTouchEnd, true);
-        photoEditCanvas.removeEventListener('touchcancel', handlePhotoEditTouchEnd, true);
-        photoEditCanvas.removeEventListener('wheel', handlePhotoEditWheel);
-    }
+    detachPhotoEditCanvasListeners();
     
     if (photoEditContext === 'profile') {
         if (profilePhotoEditObjectUrl) {
@@ -533,4 +654,6 @@ window.savePhotoEdit = savePhotoEdit;
 window.zoomInPhotoEdit = zoomInPhotoEdit;
 window.zoomOutPhotoEdit = zoomOutPhotoEdit;
 window.rotatePhotoEdit = rotatePhotoEdit;
+window.goToPrevPhotoEdit = goToPrevPhotoEdit;
+window.goToNextPhotoEdit = goToNextPhotoEdit;
 
