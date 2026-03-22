@@ -45,16 +45,38 @@ function resolveSdkDirFromPropValue(val) {
   return path.normalize(out);
 }
 
-/** ANDROID_HOME / 일반 경로로 SDK 찾기 → local.properties (gitignore)에 sdk.dir 기록 */
+/** local.properties 한 줄에서 sdk.dir 파싱 (Gradle과 동일 경로) */
+function readSdkDirFromLocalProperties(propPath) {
+  if (!fs.existsSync(propPath)) return null;
+  try {
+    const raw = fs.readFileSync(propPath, 'utf8');
+    const m = raw.match(/^\s*sdk\.dir\s*=\s*(.+)\s*$/m);
+    if (!m) return null;
+    return resolveSdkDirFromPropValue(m[1].replace(/\r$/, '').trim());
+  } catch (_) {
+    return null;
+  }
+}
+
+/** ANDROID_HOME → local.properties(sdk.dir) → 일반 경로 순으로 SDK 찾기 → local.properties 갱신 */
 function ensureAndroidSdkLocalProperties() {
   const propPath = path.join(androidDir, 'local.properties');
   let sdkDir = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
   if (!isValidAndroidSdk(sdkDir)) sdkDir = null;
 
   if (!sdkDir) {
+    const fromFile = readSdkDirFromLocalProperties(propPath);
+    if (fromFile && isValidAndroidSdk(fromFile)) {
+      sdkDir = fromFile;
+    }
+  }
+
+  if (!sdkDir) {
     const candidates = [
       process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Android', 'Sdk'),
       process.env.USERPROFILE && path.join(process.env.USERPROFILE, 'AppData', 'Local', 'Android', 'Sdk'),
+      /* 일부 PC는 SDK를 C:\\Users\\Public 등 공용 폴더에 둠 (Studio SDK Location 과 동일해야 함) */
+      isWin && process.env.PUBLIC ? path.normalize(process.env.PUBLIC) : null,
       isWin ? 'C:\\Android\\Sdk' : null,
       !isWin && process.env.HOME ? path.join(process.env.HOME, 'Android', 'Sdk') : null,
     ].filter(Boolean);
@@ -68,11 +90,18 @@ function ensureAndroidSdkLocalProperties() {
   }
 
   if (!sdkDir) {
-    console.error('❌ Android SDK 경로를 찾을 수 없습니다.');
-    console.error('   Android Studio 설치 후 SDK Manager로 플랫폼을 받거나, 다음 중 하나를 설정하세요:');
-    console.error('   - 환경 변수 ANDROID_HOME (또는 ANDROID_SDK_ROOT)');
-    console.error('   - 파일 android/local.properties 에 한 줄: sdk.dir=본인PC의_SDK_경로 (슬래시 사용 가능, 예: C:/Users/이름/AppData/Local/Android/Sdk)');
-    console.error('   (Windows 기본 SDK 위치: %LOCALAPPDATA%\\\\Android\\\\Sdk)');
+    const fromFileInvalid = readSdkDirFromLocalProperties(propPath);
+    if (fromFileInvalid && !isValidAndroidSdk(fromFileInvalid)) {
+      console.error('❌ android/local.properties 의 sdk.dir 은(는) 유효한 Android SDK 가 아닙니다:', fromFileInvalid);
+      console.error('   SDK 루트에는 build-tools 또는 platforms 폴더가 있어야 합니다.');
+      console.error('   Android Studio → Settings → Android SDK Location 이 SDK 루트(build-tools·platforms 가 있는 폴더)와 일치하는지 확인하세요.');
+    } else {
+      console.error('❌ Android SDK 경로를 찾을 수 없습니다.');
+      console.error('   Android Studio 설치 후 SDK Manager로 플랫폼을 받거나, 다음 중 하나를 설정하세요:');
+      console.error('   - 환경 변수 ANDROID_HOME (또는 ANDROID_SDK_ROOT)');
+      console.error('   - 파일 android/local.properties 에 한 줄: sdk.dir=본인PC의_SDK_경로 (슬래시 사용 가능, 예: C:/Users/이름/AppData/Local/Android/Sdk)');
+      console.error('   (Windows 기본 SDK 위치: %LOCALAPPDATA%\\\\Android\\\\Sdk)');
+    }
     process.exit(1);
   }
 
@@ -85,7 +114,7 @@ function ensureAndroidSdkLocalProperties() {
     const raw = fs.readFileSync(propPath, 'utf8');
     const m = raw.match(/^\s*sdk\.dir\s*=\s*(.+)\s*$/m);
     if (m) {
-      const existingResolved = resolveSdkDirFromPropValue(m[1]);
+      const existingResolved = resolveSdkDirFromPropValue(m[1].replace(/\r$/, '').trim());
       if (existingResolved && isValidAndroidSdk(existingResolved)) {
         needWrite = false;
       }
