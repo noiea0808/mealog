@@ -76,7 +76,12 @@ import {
     confirmDeleteAccountAction
 } from '../auth.js';
 import { authFlowManager } from '../auth-flow.js';
-import { isDemoUser, markUserHasRealLogin } from '../demo-account.js';
+import {
+    isDemoUser,
+    markUserHasRealLogin,
+    DEMO_TOAST_CANNOT_LIKE,
+    DEMO_TOAST_CANNOT_BOOKMARK
+} from '../demo-account.js';
 import { syncDemoNavGuideDots } from '../demo-nav-guide.js';
 import {
     renderTimeline,
@@ -520,6 +525,10 @@ window.toggleBoardLike = async (postId, isLike) => {
         window.requestLogin();
         return;
     }
+    if (isDemoUser(window.currentUser)) {
+        showToast(DEMO_TOAST_CANNOT_LIKE, 'info');
+        return;
+    }
     
     const likeBtns = document.querySelectorAll(`.board-post-like-btn[data-post-id="${postId}"]`);
     const firstBtn = likeBtns[0];
@@ -551,6 +560,10 @@ window.toggleBoardBookmark = async (postId) => {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         showToast("로그인이 필요합니다.", 'error');
         window.requestLogin();
+        return;
+    }
+    if (isDemoUser(window.currentUser)) {
+        showToast(DEMO_TOAST_CANNOT_BOOKMARK, 'info');
         return;
     }
     
@@ -642,6 +655,10 @@ window.toggleNoticeLike = async (noticeId, isLike = true) => {
         window.requestLogin();
         return;
     }
+    if (isDemoUser(window.currentUser)) {
+        showToast(DEMO_TOAST_CANNOT_LIKE, 'info');
+        return;
+    }
     
     const likeBtns = document.querySelectorAll(`.board-post-like-btn[data-notice-id="${noticeId}"]`);
     const firstBtn = likeBtns[0];
@@ -672,6 +689,10 @@ window.toggleNoticeBookmark = async (noticeId) => {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         showToast("로그인이 필요합니다.", 'error');
         window.requestLogin();
+        return;
+    }
+    if (isDemoUser(window.currentUser)) {
+        showToast(DEMO_TOAST_CANNOT_BOOKMARK, 'info');
         return;
     }
     

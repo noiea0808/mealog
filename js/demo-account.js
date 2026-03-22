@@ -57,6 +57,10 @@ export function isDemoUser(user) {
     return em === FALLBACK_DEMO_EMAIL;
 }
 
+/** 체험(샘플) 계정에서 좋아요·북마크 시 토스트 */
+export const DEMO_TOAST_CANNOT_LIKE = "체험 모드에서는 '좋아요'를 할 수 없어요";
+export const DEMO_TOAST_CANNOT_BOOKMARK = "체험 모드에서는 '북마크'를 할 수 없어요";
+
 export async function signInAsDemoAccount() {
     const email = await getDemoEmail();
     const password = await getDemoPassword();

@@ -9,7 +9,8 @@
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
-    "migrate:sharedPhotos": "node scripts/migrate-shared-photos-timestamp.js"
+    "migrate:sharedPhotos": "node scripts/migrate-shared-photos-timestamp.js",
+    "shift-demo-dates": "node scripts/shift-demo-user-dates.js"
   },
   "engines": {
     "node": "20"

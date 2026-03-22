@@ -6,6 +6,23 @@ import { dbOps } from '../db.js';
 import { showToast, updateHeaderUI } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
 
+/** 설정 하단 로그아웃 버튼 — 샘플 계정만 '홈으로' + 초록 스타일 */
+function syncProfileLogoutFooterButton() {
+    const btn = document.querySelector('.profile-logout-btn');
+    if (!btn) return;
+    const base =
+        'profile-settings-footer-btn profile-logout-btn w-full py-3 text-sm font-bold transition-colors';
+    const u = window.currentUser;
+    const demo = u && !u.isAnonymous && isDemoUser(u);
+    if (demo) {
+        btn.textContent = '홈으로';
+        btn.className = `${base} text-white bg-emerald-600 border border-emerald-700 hover:bg-emerald-700 active:bg-emerald-800 shadow-sm`;
+    } else {
+        btn.textContent = '로그아웃';
+        btn.className = `${base} text-slate-700 bg-slate-100 border border-slate-200 hover:bg-slate-200`;
+    }
+}
+
 export function openSettings() {
     const state = appState;
     if (!window.currentUser) return;
@@ -239,6 +256,7 @@ export function openSettings() {
                 </button>
             </div>`;
             document.getElementById('logoutBtnArea').classList.add('hidden');
+            syncProfileLogoutFooterButton();
             const deleteArea = document.getElementById('deleteAccountBtnArea');
             if (deleteArea) deleteArea.classList.add('hidden');
         } else {
@@ -250,6 +268,7 @@ export function openSettings() {
                 <div class="flex items-center gap-2 text-emerald-700 font-bold text-sm">${providerIcon} ${email}</div>
             </div>`;
             document.getElementById('logoutBtnArea').classList.remove('hidden');
+            syncProfileLogoutFooterButton();
             const deleteArea = document.getElementById('deleteAccountBtnArea');
             if (deleteArea) deleteArea.classList.toggle('hidden', isDemoUser(window.currentUser));
         }
@@ -402,12 +421,16 @@ function formatBirthdateForDisplay(raw) {
 
 function setProfileSettingsEditMode(isEditing) {
     const state = appState;
+    const demo = window.currentUser && !window.currentUser.isAnonymous && isDemoUser(window.currentUser);
+    if (demo) {
+        isEditing = false;
+    }
     state.isProfileEditing = !!isEditing;
 
     const editBtn = document.getElementById('editProfileSettingsBtn');
     const cancelBtn = document.getElementById('cancelProfileSettingsBtn');
     const saveBtn = document.getElementById('saveProfileSettingsBtn');
-    if (editBtn) editBtn.classList.toggle('hidden', isEditing);
+    if (editBtn) editBtn.classList.toggle('hidden', isEditing || demo);
     if (cancelBtn) cancelBtn.classList.toggle('hidden', !isEditing);
     if (saveBtn) saveBtn.classList.toggle('hidden', !isEditing);
 
@@ -468,7 +491,12 @@ function setProfileSettingsEditMode(isEditing) {
     });
 }
 
-window.startProfileSettingsEdit = () => setProfileSettingsEditMode(true);
+window.startProfileSettingsEdit = () => {
+    if (window.currentUser && !window.currentUser.isAnonymous && isDemoUser(window.currentUser)) {
+        return;
+    }
+    setProfileSettingsEditMode(true);
+};
 
 window.cancelProfileSettingsEdit = () => {
     const state = appState;

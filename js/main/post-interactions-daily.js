@@ -76,7 +76,12 @@ import {
     confirmDeleteAccountAction
 } from '../auth.js';
 import { authFlowManager } from '../auth-flow.js';
-import { isDemoUser, markUserHasRealLogin } from '../demo-account.js';
+import {
+    isDemoUser,
+    markUserHasRealLogin,
+    DEMO_TOAST_CANNOT_LIKE,
+    DEMO_TOAST_CANNOT_BOOKMARK
+} from '../demo-account.js';
 import { syncDemoNavGuideDots } from '../demo-nav-guide.js';
 import {
     renderTimeline,
@@ -203,6 +208,10 @@ window.toggleLike = async (postId) => {
         window.requestLogin();
         return;
     }
+    if (isDemoUser(window.currentUser)) {
+        showToast(DEMO_TOAST_CANNOT_LIKE, 'info');
+        return;
+    }
     
     try {
         const result = await postInteractions.toggleLike(postId, window.currentUser.uid);
@@ -238,6 +247,10 @@ window.toggleBookmark = async (postId) => {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         showToast("로그인이 필요합니다.", 'error');
         window.requestLogin();
+        return;
+    }
+    if (isDemoUser(window.currentUser)) {
+        showToast(DEMO_TOAST_CANNOT_BOOKMARK, 'info');
         return;
     }
     
