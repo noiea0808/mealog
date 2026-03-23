@@ -61,7 +61,11 @@ registerMainTabSwitch();
 registerContentPopup();
 registerEventListenerManager();
 registerMomentSyncDevTools();
-registerMainPostInteractions();
+try {
+    registerMainPostInteractions();
+} catch (e) {
+    console.error('❌ registerMainPostInteractions 실패:', e);
+}
 registerMainFeedOptionsReport();
 registerMainBoardHandlers();
 
@@ -1547,6 +1551,13 @@ function initDailySwipeGesture() {
     if (!tv) return;
 
     const getTimelineContainer = () => document.getElementById('timelineContainer');
+    /** 일간 스와이프는 버튼/입력 위에서 시작하지 않음 — pointermove preventDefault가 클릭을 삼켜 공유·저장이 무반응이 되는 문제 방지 */
+    const isInteractiveSwipeTarget = (node) => {
+        if (!node || node.nodeType !== 1) return false;
+        return !!node.closest(
+            'button, a, input, textarea, select, label, [contenteditable="true"], [data-mealog-daily]'
+        );
+    };
     const SWIPE_TRIGGER_PX = 28;
     const AXIS_LOCK_PX = 10;
     let startX = 0;
@@ -1705,6 +1716,7 @@ function initDailySwipeGesture() {
 
     tv.addEventListener('touchstart', (e) => {
         if (e.touches.length !== 1) return;
+        if (isInteractiveSwipeTarget(e.target)) return;
         beginSwipe(e.touches[0].clientX, e.touches[0].clientY);
     }, { passive: true });
 
@@ -1724,6 +1736,7 @@ function initDailySwipeGesture() {
     // 웹(데스크톱) 테스트용: 마우스 드래그로 스와이프 제스처 시뮬레이션
     tv.addEventListener('pointerdown', (e) => {
         if (e.pointerType !== 'mouse' || e.button !== 0) return;
+        if (isInteractiveSwipeTarget(e.target)) return;
         if (!beginSwipe(e.clientX, e.clientY)) return;
         tv.setPointerCapture?.(e.pointerId);
     });

@@ -122,7 +122,7 @@ export function renderTimeline() {
                     : null;
                 const isShared = !!dailyShare;
                 
-                const shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-slate-800 text-white' : 'text-slate-600'}">
+                const shareButton = `<button type="button" data-mealog-daily="share" data-mealog-date="${dateStr}" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-slate-800 text-white' : 'text-slate-600'}">
                     <i class="fa-solid fa-share text-[12px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
                 </button>`;
                 
@@ -158,7 +158,7 @@ export function renderTimeline() {
                 : null;
             const isShared = !!dailyShare;
             
-            shareButton = `<button onclick="window.shareDailySummary('${dateStr}')" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-slate-800 text-white' : 'text-slate-600'}">
+            shareButton = `<button type="button" data-mealog-daily="share" data-mealog-date="${dateStr}" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-slate-800 text-white' : 'text-slate-600'}">
                 <i class="fa-solid fa-share text-[12px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
             </button>`;
         }
@@ -305,7 +305,7 @@ export function renderTimeline() {
             <div class="p-4">
                 <div class="flex justify-between items-center mb-2">
                     <span class="text-sm font-extrabold text-slate-600 block uppercase">하루 소감</span>
-                    <button onclick="window.saveDailyComment('${currentDateStr}')" 
+                    <button type="button" data-mealog-daily="save-comment" data-mealog-date="${currentDateStr}" 
                         class="text-xs text-slate-600 font-bold px-3 py-1.5 active:text-slate-700 transition-colors">
                         저장
                     </button>
@@ -372,6 +372,10 @@ export function renderTimeline() {
             const existingBtn = document.getElementById('loadMoreMealsBtn');
             if (existingBtn) existingBtn.remove();
         }
+    }
+
+    if (typeof window.bindMealogDailyTimelineDelegation === 'function') {
+        window.bindMealogDailyTimelineDelegation();
     }
 }
 

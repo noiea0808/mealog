@@ -236,8 +236,10 @@ header .mealog-title {
 .calendar-scroll { 
     display: flex; 
     overflow-x: auto; 
-    padding: 4px 0; 
+    /* scale(1.15) 선택 도트가 스크롤 영역 가장자리에서 잘리지 않도록 여유 */
+    padding: 4px 10px; 
     gap: 10px; 
+    scroll-padding-inline: 10px; 
 }
 .calendar-scroll::-webkit-scrollbar { 
     display: none; 
@@ -253,25 +255,25 @@ header .mealog-title {
     font-weight: 700; 
     cursor: pointer; 
     transition: all 0.2s; 
-    background: #f1f5f9; 
+    background: #ecfdf5; 
     color: #64748b; 
 }
-/* 기록 완료(4건 이상): mealog 타이틀(text-emerald-600)=#059669 */
+/* 기록 완료(3건 이상): 진한 녹색(emerald-700)·흰 글자 */
 .dot-full { 
-    background: #059669; 
-    color: white; 
+    background: #047857; 
+    color: #ffffff; 
 }
-/* 미완(1~3건): 연한 그린(#E5F2DB) + primary 텍스트(#059669) + 테두리 #10B981 */
+/* 미완(1~2건): 연한 초록 배경·에메랄드 글자·테두리 */
 .dot-partial { 
-    background: #E5F2DB; 
+    background: #e5f2db; 
     color: #059669; 
-    border: 2px solid #10B981; 
+    border: 2px solid #10b981; 
 }
 .dot-selected { 
     transform: scale(1.15); 
-    border: 2px solid #059669; 
-    background: #fff; 
-    color: #059669; 
+    border: 2px solid #047857; 
+    background: #ffffff; 
+    color: #047857; 
 }
 /* 전체/일간: 연회색 통 하나, active=흰색 팩+#1e293b 테두리/글자, inactive=배경 없이 회색 글자만 */
 .view-tab { 
@@ -442,18 +444,25 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
 #entryModal > div {
     background: white;
 }
-#entryModal > div > div:last-child {
+/* 기록 모달 열림(entry-modal-open은 JS에서 토글): 네비는 가려지므로 액션 패딩에 바 높이를 이중으로 넣지 않음 */
+body.entry-modal-open .bottom-nav,
+body.entry-modal-open #navigationBarOverlay {
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+#entryModalActions {
     padding-top: 2px !important;
 }
-/* 앱: 액션 버튼 하단을 플로팅 네비 바로 위에 (네비 bottom 8px+safe + 바 높이 ~52px + 미세 간격) */
-html:not(.platform-web) #entryModal:not(.keyboard-open) > div > div:last-child {
-    padding-bottom: calc(64px + var(--safe-bottom)) !important;
+/* 앱: 모달이 네비를 덮음 → 플로팅 바 높이는 패딩에 넣지 않음. 제스처만 env / --safe-bottom */
+html:not(.platform-web) #entryModal:not(.keyboard-open) #entryModalActions {
+    /* 제스처/세이프 위에 약간 여유 */
+    padding-bottom: calc(10px + max(12px, calc(8px + env(safe-area-inset-bottom, 0px)), var(--safe-bottom))) !important;
 }
 /* 모웹: 홈 인디케이터 */
-html.platform-web #entryModal:not(.keyboard-open) > div > div:last-child {
-    padding-bottom: max(16px, env(safe-area-inset-bottom, 0px)) !important;
+html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
+    padding-bottom: calc(8px + max(16px, env(safe-area-inset-bottom, 0px))) !important;
 }
-#entryModal.keyboard-open > div > div:last-child {
+#entryModal.keyboard-open #entryModalActions {
     padding-bottom: 2px !important; /* 키보드 열림 시 2px만 */
 }
 #entryModal.keyboard-open #modalScrollArea {

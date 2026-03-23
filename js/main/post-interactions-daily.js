@@ -166,6 +166,557 @@ import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from '../constants.js'
 import { normalizeUrl } from '../utils.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';
 
+// escapeHtml은 render/index.js에서 import됨
+
+// 일간보기 공유: 이미 공유된 경우 해제, 아니면 미리보기 모달 열기
+window.shareDailySummary = async (dateStr) => {
+    try {
+        if (!dateStr) {
+            showToast('날짜 정보가 없습니다.', 'error');
+            return;
+        }
+        const uid = window.currentUser?.uid;
+        if (!uid) {
+            showToast('로그인이 필요합니다.', 'info');
+            if (typeof window.requestLogin === 'function') window.requestLogin();
+            return;
+        }
+
+        const existingShare = window.sharedPhotos && Array.isArray(window.sharedPhotos)
+            ? window.sharedPhotos.find(photo =>
+                photo.type === 'daily' && photo.date === dateStr && photo.userId === uid)
+            : null;
+
+        if (existingShare) {
+            const photoUrlToRemove = existingShare.photoUrl;
+            const prevShared = window.sharedPhotos ? [...window.sharedPhotos] : [];
+            if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+                window.sharedPhotos = window.sharedPhotos.filter(p =>
+                    !(p.type === 'daily' && p.date === dateStr && p.userId === uid)
+                );
+            }
+            if (appState.currentTab === 'timeline') renderTimeline();
+            if (appState.currentTab === 'gallery') renderGallery();
+            showToast('공유가 해제되었습니다.', 'success');
+            dbOps.unsharePhotos([photoUrlToRemove], null, false, true).catch(() => {
+                if (window.sharedPhotos) window.sharedPhotos = prevShared;
+                if (appState.currentTab === 'timeline') renderTimeline();
+                if (appState.currentTab === 'gallery') renderGallery();
+            });
+            return;
+        }
+
+        window.openDailySharePreviewModal(dateStr);
+    } catch (err) {
+        console.error('[shareDailySummary]', err);
+        showToast('공유를 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.', 'error');
+    }
+};
+
+// 일간 식단 공유 미리보기 모달 열기
+window.openDailySharePreviewModal = (dateStr) => {
+    const existing = document.getElementById('dailySharePreviewModal');
+    if (existing) existing.remove();
+
+    let previewCard;
+    try {
+        previewCard = createDailyShareCard(dateStr, true);
+    } catch (e) {
+        console.error('일간 공유 미리보기 카드 생성 실패:', e);
+        showToast('공유 미리보기를 열 수 없습니다. 잠시 후 다시 시도해 주세요.', 'error');
+        return;
+    }
+    if (!previewCard) {
+        showToast('공유 미리보기를 열 수 없습니다.', 'error');
+        return;
+    }
+
+    const modal = document.createElement('div');
+    modal.id = 'dailySharePreviewModal';
+    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center py-4 bg-black/50 capture-share-modal';
+
+    modal.innerHTML = `
+        <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl overflow-hidden">
+            <div id="dailyShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center z-20">
+                <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>
+                <p class="text-slate-600 font-bold">공유 중...</p>
+            </div>
+            <div class="flex justify-between items-center px-4 py-3 sm:py-3.5 border-b border-slate-200 flex-shrink-0">
+                <h3 class="text-base font-black text-slate-800">일간 식단 공유 미리보기</h3>
+                <button type="button" onclick="window.closeDailySharePreviewModal()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-full shrink-0">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <div id="dailySharePreviewScroll" class="flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 py-0 min-h-[min(280px,55vh)] max-h-[calc(92vh-9.5rem)]" style="padding: 3px;">
+                <!-- createDailyShareCard(forPreview) 결과가 여기 들어감 -->
+            </div>
+            <div class="border-t border-slate-200 overflow-hidden flex min-h-[3.25rem] sm:min-h-14 flex-shrink-0">
+                <button type="button" onclick="window.closeDailySharePreviewModal()" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 bg-slate-100 hover:bg-slate-200/90 active:bg-slate-200 border-r border-slate-200 transition-colors">
+                    <span class="text-sm sm:text-[15px] font-bold text-slate-700">취소</span>
+                    <span class="text-[11px] sm:text-xs text-slate-500 font-medium">이전 화면으로</span>
+                </button>
+                <button type="button" id="dailyShareConfirmBtn" onclick="window.confirmDailyShare('${dateStr}', event)" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 bg-slate-900 text-white hover:bg-slate-800 active:bg-slate-800 transition-colors min-w-0">
+                    <span id="dailyShareConfirmLabel" class="text-sm sm:text-[15px] font-bold">공유</span>
+                    <span id="dailyShareConfirmSub" class="text-[11px] sm:text-xs text-white/80 font-medium">피드에 올리기</span>
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    const scrollEl = document.getElementById('dailySharePreviewScroll');
+    if (scrollEl && previewCard) {
+        scrollEl.appendChild(previewCard);
+        // 처음부터 화면 안쪽을 꽉 채워서 보여주기 위해 스크롤을 상단으로
+        setTimeout(() => {
+            scrollEl.scrollTop = 0;
+        }, 0);
+    }
+
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) window.closeDailySharePreviewModal();
+    });
+};
+
+// 일간 공유 미리보기 모달 닫기
+window.closeDailySharePreviewModal = () => {
+    const modal = document.getElementById('dailySharePreviewModal');
+    if (modal) modal.remove();
+};
+
+// 미리보기에서 공유 확정: 미리보기 화면을 그대로 캡쳐해서 공유
+window.confirmDailyShare = async (dateStr, ev) => {
+    const uid = window.currentUser?.uid;
+    if (!uid) {
+        showToast('로그인이 필요합니다.', 'error');
+        if (typeof window.requestLogin === 'function') window.requestLogin();
+        return;
+    }
+
+    const previewModal = document.getElementById('dailySharePreviewModal');
+    const inModalSpinner = previewModal?.querySelector('#dailyShareLoadingOverlay');
+    if (inModalSpinner) inModalSpinner.classList.remove('hidden');
+
+    const fromEv = ev && ev.target && typeof ev.target.closest === 'function'
+        ? ev.target.closest('#dailyShareConfirmBtn')
+        : null;
+    const shareBtn = document.getElementById('dailyShareConfirmBtn') || fromEv || (ev && ev.target) || document.querySelector(`button[onclick*="confirmDailyShare('${dateStr}')"]`);
+    const shareLabel = document.getElementById('dailyShareConfirmLabel');
+    const shareSub = document.getElementById('dailyShareConfirmSub');
+    if (shareBtn) {
+        shareBtn.disabled = true;
+        shareBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        if (shareSub) shareSub.classList.add('hidden');
+        if (shareLabel) {
+            shareLabel.className = 'text-sm sm:text-[15px] font-bold text-white flex items-center justify-center gap-2';
+            shareLabel.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>공유 중...</span>';
+        } else {
+            shareBtn.textContent = '공유 중...';
+        }
+    }
+    // 스피너가 실제로 화면에 그려진 뒤 무거운 작업 진행 (두 프레임 양보로 페인트 확실히 반영)
+    await new Promise(r => requestAnimationFrame(r));
+    await new Promise(r => setTimeout(r, 50));
+
+    try {
+        if (!previewModal) {
+            throw new Error('미리보기 모달을 찾을 수 없습니다.');
+        }
+
+        const previewCard = previewModal.querySelector('#dailyShareCardContainer');
+        if (!previewCard) {
+            throw new Error('미리보기 카드를 찾을 수 없습니다.');
+        }
+
+        // Fredoka 폰트 CSS를 미리 가져와서 실제 @font-face URL 추출
+        let fredokaFontCSS = '';
+        // 폰트가 이미 로드되어 있는지 먼저 확인
+        const fontAlreadyLoaded = document.fonts.check('1em Fredoka');
+        
+        if (!fontAlreadyLoaded) {
+            try {
+                const fontCSSResponse = await fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&display=swap');
+                fredokaFontCSS = await fontCSSResponse.text();
+                // CSS를 스타일 태그로 추가하여 폰트 로드
+                const styleTag = document.createElement('style');
+                styleTag.textContent = fredokaFontCSS;
+                document.head.appendChild(styleTag);
+                
+                await document.fonts.ready;
+                let attempts = 0;
+                while (attempts < 10) {
+                    if (document.fonts.check('1em Fredoka')) break;
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    attempts++;
+                }
+            } catch (e) {
+                console.warn('Fredoka 폰트 CSS 로드 실패:', e);
+            }
+        }
+        
+        // 이미지 로드 확인 (img + background-image용 data-photo-url)
+        const images = previewCard.querySelectorAll('img');
+        const imageLoadPromises = Array.from(images).map(img => {
+            if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+            return new Promise((resolve) => {
+                img.onload = resolve;
+                img.onerror = resolve;
+                setTimeout(resolve, 400);
+            });
+        });
+        const bgDivs = previewCard.querySelectorAll('[data-photo-url]');
+        const bgLoadPromises = Array.from(bgDivs).map(div => {
+            const url = div.getAttribute('data-photo-url');
+            if (!url) return Promise.resolve();
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = resolve;
+                img.onerror = resolve;
+                img.src = url;
+                if (img.complete) resolve();
+            });
+        });
+        await Promise.all([...imageLoadPromises, ...bgLoadPromises]);
+
+        const innerContent = previewCard.querySelector('div[style*="width: 420px"]') || previewCard;
+
+        // 유령 캡처: 화면 밖(-10000px)에 복제본을 만들어 모달/transform/Flex 간섭 없이 정사이즈 캡처
+        const canvas = await captureWithGhostStrategy(innerContent, {
+            captureWidth: 420,
+            allowTaint: false,
+            foreignObjectRendering: false,
+            onclone: (clonedDoc) => {
+                if (fredokaFontCSS) {
+                    const clonedStyle = clonedDoc.createElement('style');
+                    clonedStyle.textContent = fredokaFontCSS;
+                    clonedDoc.head.appendChild(clonedStyle);
+                } else {
+                    const clonedStyle = clonedDoc.createElement('style');
+                    clonedStyle.textContent = `
+                        @font-face {
+                            font-family: 'Fredoka';
+                            font-style: normal;
+                            font-weight: 700;
+                            font-display: swap;
+                            src: url('https://fonts.gstatic.com/s/fredoka/v14/X7nP4b87HvSqjb_WIi2yDCRwoQ_k7367_DWs89XyHw.woff2') format('woff2');
+                            unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+                        }
+                    `;
+                    clonedDoc.head.appendChild(clonedStyle);
+                }
+                const allSpans = clonedDoc.querySelectorAll('span');
+                allSpans.forEach(el => {
+                    const style = el.getAttribute('style') || '';
+                    const text = el.textContent.trim();
+                    if (style.includes('MEALOG') || text === 'MEALOG' || (style.includes('font-family') && style.includes('Fredoka'))) {
+                        el.style.fontFamily = "'Fredoka', sans-serif";
+                        el.style.fontWeight = '700';
+                    }
+                });
+                // Ghost Hack: 별점 배지들만 캡처본에서 margin-top으로 살짝 내려서 베이스라인 정렬 보정
+                const badges = clonedDoc.querySelectorAll('span[style*="fefce8"]');
+                badges.forEach(el => {
+                    el.style.marginTop = '-5px';
+                    el.style.display = 'flex';
+                    el.style.alignItems = 'center';
+                });
+            }
+        });
+
+        const base64Image = canvas.toDataURL('image/png');
+        const { uploadBase64ToStorage } = await import('../utils.js');
+        const photoUrl = await uploadBase64ToStorage(base64Image, uid, `daily_${dateStr}`, 1024);
+
+        const userProfile = window.userSettings?.profile || {};
+
+        let dailyComment = '';
+        try {
+            if (window.dbOps && typeof window.dbOps.getDailyComment === 'function') {
+                dailyComment = window.dbOps.getDailyComment(dateStr) || '';
+            } else if (window.userSettings && window.userSettings.dailyComments) {
+                dailyComment = window.userSettings.dailyComments[dateStr] || '';
+            }
+        } catch (e) {
+            console.warn('getDailyComment 호출 실패:', e);
+        }
+
+        // 낙관적 UI: 클라이언트 데이터로 즉시 반영 후 서버는 백그라운드 호출
+        const dailyShareData = {
+            id: 'pending-' + Date.now(),
+            photoUrl,
+            userId: uid,
+            userNickname: userProfile.nickname || '익명',
+            userIcon: userProfile.icon || '🐻',
+            userPhotoUrl: userProfile.photoUrl || null,
+            type: 'daily',
+            date: dateStr,
+            timestamp: new Date().toISOString(),
+            entryId: null,
+            comment: dailyComment || ''
+        };
+
+        if (!window.sharedPhotos) window.sharedPhotos = [];
+        window.sharedPhotos = window.sharedPhotos.filter(p =>
+            !(p.type === 'daily' && p.date === dateStr && p.userId === uid)
+        );
+        window.sharedPhotos.push(dailyShareData);
+        window.sharedPhotos.sort((a, b) => (new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
+        // 갤러리 피드에도 낙관 반영 (맨 앞에 추가)
+        if (!window.sharedPhotosFeed) window.sharedPhotosFeed = [];
+        window.sharedPhotosFeed = [dailyShareData, ...window.sharedPhotosFeed];
+
+        window.closeDailySharePreviewModal();
+        showToast('하루 기록이 피드에 공유되었습니다!', 'success');
+        if (appState.currentTab === 'timeline') renderTimeline();
+        if (appState.currentTab === 'gallery') renderGallery();
+
+        const { callableFunctions } = await import('../firebase.js');
+        callableFunctions.createDailyShare({
+            photoUrl,
+            date: dateStr,
+            comment: dailyComment
+        }).then((result) => {
+            const serverData = result.data;
+            const idx = window.sharedPhotos?.findIndex(p => p.id === dailyShareData.id || (p.type === 'daily' && p.date === dateStr && p.userId === uid && p.photoUrl === photoUrl));
+            if (idx !== undefined && idx !== -1 && window.sharedPhotos) {
+                window.sharedPhotos[idx] = serverData;
+                if (appState.currentTab === 'timeline') renderTimeline();
+                if (appState.currentTab === 'gallery') renderGallery();
+            }
+        }).catch((e) => {
+            console.error('일간보기 공유 서버 반영 실패:', e);
+            if (window.sharedPhotos) {
+                window.sharedPhotos = window.sharedPhotos.filter(p =>
+                    !(p.type === 'daily' && p.date === dateStr && p.userId === uid)
+                );
+                if (appState.currentTab === 'timeline') renderTimeline();
+                if (appState.currentTab === 'gallery') renderGallery();
+            }
+            showToast(e?.message || e?.details || '공유 반영에 실패했습니다. 다시 시도해 주세요.', 'error');
+        });
+    } catch (e) {
+        console.error('일간보기 공유 실패:', e);
+        const errorMessage = e.message || e.details || '공유 중 오류가 발생했습니다.';
+        showToast(errorMessage, 'error');
+        window.closeDailySharePreviewModal();
+    } finally {
+        const modal = document.getElementById('dailySharePreviewModal');
+        const spinner = modal?.querySelector('#dailyShareLoadingOverlay');
+        if (spinner) spinner.classList.add('hidden');
+        // 버튼 상태 복원 (모달이 아직 DOM에 있을 때만)
+        const shareBtn = document.getElementById('dailyShareConfirmBtn') || document.querySelector(`button[onclick*="confirmDailyShare('${dateStr}')"]`);
+        const shareLabel = document.getElementById('dailyShareConfirmLabel');
+        const shareSub = document.getElementById('dailyShareConfirmSub');
+        if (shareBtn) {
+            shareBtn.disabled = false;
+            shareBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            if (shareLabel) {
+                shareLabel.innerHTML = '';
+                shareLabel.textContent = '공유';
+                shareLabel.className = 'text-sm sm:text-[15px] font-bold text-white';
+            } else {
+                shareBtn.textContent = '공유';
+            }
+            if (shareSub) {
+                shareSub.classList.remove('hidden');
+                shareSub.textContent = '피드에 올리기';
+                shareSub.className = 'text-[11px] sm:text-xs text-white/80 font-medium';
+            }
+        }
+    }
+};
+
+
+
+// 일간보기 실제 공유 실행 (캡처 → 업로드 → Firestore) - 사용하지 않음 (confirmDailyShare에서 직접 처리)
+/*
+window.executeDailyShare = async (dateStr) => {
+    // 이 함수는 더 이상 사용하지 않습니다. confirmDailyShare에서 미리보기 화면을 직접 캡쳐합니다.
+};
+*/
+
+// 일간보기 하루 전체 Comment 저장 함수
+window.saveDailyComment = async (date) => {
+    const input = document.getElementById('dailyCommentInput');
+    if (!input) {
+        console.warn('[saveDailyComment] #dailyCommentInput 없음 — 타임라인「일간」모드에서만 표시됩니다.');
+        showToast('하루 소감 영역을 찾을 수 없어요. 타임라인에서「일간」보기로 전환한 뒤 다시 시도해 주세요.', 'error');
+        return;
+    }
+    
+    const comment = input.value || '';
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    
+    try {
+        await dbOps.saveDailyComment(date, comment);
+        showToast("하루 전체 Comment가 저장되었습니다.", 'success');
+        // 전체 renderTimeline()은 스크롤·레이아웃이 튀므로 생략 — 이미 메모리·Firestore에 반영됨
+        if (input) input.blur();
+        if (appState.currentTab === 'gallery') {
+            renderGallery();
+        }
+    } catch (e) {
+        console.error("Daily Comment Save Error:", e);
+        showToast("저장 중 오류가 발생했습니다.", 'error');
+    } finally {
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+    }
+};
+
+// 일간보기 코멘트 수정 모달 열기
+window.openDailyCommentModal = (dateStr) => {
+    // 기존 모달 제거
+    const existingModal = document.getElementById('dailyCommentModal');
+    if (existingModal) existingModal.remove();
+    
+    // 날짜 포맷팅
+    const dateObj = new Date(dateStr + 'T00:00:00');
+    const year = dateObj.getFullYear();
+    const month = dateObj.getMonth() + 1;
+    const day = dateObj.getDate();
+    const dateLabel = `${year}년 ${month}월 ${day}일`;
+    
+    // 현재 코멘트 가져오기
+    let currentComment = '';
+    try {
+        if (window.dbOps && typeof window.dbOps.getDailyComment === 'function') {
+            currentComment = window.dbOps.getDailyComment(dateStr) || '';
+        } else if (window.userSettings && window.userSettings.dailyComments) {
+            currentComment = window.userSettings.dailyComments[dateStr] || '';
+        }
+    } catch (e) {
+        console.warn('getDailyComment 호출 실패:', e);
+    }
+    
+    // 모달 생성
+    const modal = document.createElement('div');
+    modal.id = 'dailyCommentModal';
+    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/50';
+    
+    modal.innerHTML = `
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-base font-black text-slate-800">하루 소감 수정</h3>
+                <button type="button" onclick="window.closeDailyCommentModal()" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <textarea id="dailyCommentModalInput" 
+                placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해보세요." 
+                class="w-full p-4 bg-slate-50 rounded-xl text-sm border border-slate-200 focus:border-slate-400 transition-all resize-none min-h-[150px]" 
+                rows="6">${escapeHtml(currentComment)}</textarea>
+            <div class="flex gap-3 mt-6">
+                <button type="button" onclick="window.closeDailyCommentModal()" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm">
+                    취소
+                </button>
+                <button type="button" onmousedown="event.preventDefault()" onclick="window.saveDailyCommentFromModal('${dateStr}')" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700">
+                    저장
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // 배경 클릭 시 닫기
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            window.closeDailyCommentModal();
+        }
+    });
+    
+    // 포커스
+    setTimeout(() => {
+        const input = document.getElementById('dailyCommentModalInput');
+        if (input) input.focus();
+    }, 100);
+};
+
+// 일간보기 코멘트 모달 닫기
+window.closeDailyCommentModal = () => {
+    const modal = document.getElementById('dailyCommentModal');
+    if (modal) modal.remove();
+};
+
+// 모달에서 일간보기 코멘트 저장
+window.saveDailyCommentFromModal = async (dateStr) => {
+    const input = document.getElementById('dailyCommentModalInput');
+    if (!input) {
+        console.warn('[saveDailyCommentFromModal] 입력란 없음');
+        showToast('입력란을 찾을 수 없습니다. 모달을 닫았다가 다시 열어 주세요.', 'error');
+        return;
+    }
+    
+    const comment = input.value || '';
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    
+    try {
+        await dbOps.saveDailyComment(dateStr, comment);
+        showToast("하루 소감이 저장되었습니다.", 'success');
+        window.closeDailyCommentModal();
+        if (appState.currentTab === 'timeline' && appState.viewMode === 'page') {
+            const d = appState.pageDate;
+            const pageStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            if (pageStr === dateStr) {
+                const inlineIn = document.getElementById('dailyCommentInput');
+                if (inlineIn) inlineIn.value = comment;
+            }
+        }
+        // 타임라인은 소감만 바뀐 경우 풀 렌더 시 스크롤이 튐 → 생략 (데이터는 이미 반영됨)
+        if (appState.currentTab === 'gallery') {
+            renderGallery();
+        }
+        if (appState.currentTab === 'feed') {
+            renderFeed();
+        }
+    } catch (e) {
+        console.error("Daily Comment Save Error:", e);
+        showToast("저장 중 오류가 발생했습니다.", 'error');
+    } finally {
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+    }
+};
+
+/** 타임라인「일간」공유/하루소감 저장 — 인라인 onclick 대신 위임 (CSP·캡처 단계 이슈 회피) */
+const _mealogDailyTimelineBound = new WeakMap();
+function bindMealogDailyTimelineDelegation() {
+    const root = document.getElementById('timelineContainer');
+    if (!root) return;
+    if (_mealogDailyTimelineBound.has(root)) return;
+    _mealogDailyTimelineBound.set(root, true);
+    root.addEventListener('mousedown', (e) => {
+        const btn = e.target.closest('button[data-mealog-daily="save-comment"]');
+        if (!btn || !root.contains(btn)) return;
+        e.preventDefault();
+    });
+    root.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-mealog-daily]');
+        if (!btn || !root.contains(btn)) return;
+        const kind = btn.getAttribute('data-mealog-daily');
+        const dateStr = btn.getAttribute('data-mealog-date') || '';
+        if (!kind || !dateStr) return;
+        if (kind === 'share') {
+            if (typeof window.shareDailySummary === 'function') {
+                void window.shareDailySummary(dateStr);
+            } else {
+                console.error('[Mealog] shareDailySummary 미정의');
+                showToast('공유 기능을 불러오지 못했습니다. 페이지를 새로고침 해 주세요.', 'error');
+            }
+        } else if (kind === 'save-comment') {
+            if (typeof window.saveDailyComment === 'function') {
+                void window.saveDailyComment(dateStr);
+            } else {
+                console.error('[Mealog] saveDailyComment 미정의');
+                showToast('저장 기능을 불러오지 못했습니다. 페이지를 새로고침 해 주세요.', 'error');
+            }
+        }
+    });
+}
+window.bindMealogDailyTimelineDelegation = bindMealogDailyTimelineDelegation;
+bindMealogDailyTimelineDelegation();
+
 export function registerMainPostInteractions() {
 // 로그인 요청 함수
 window.requestLogin = () => {
@@ -833,447 +1384,6 @@ window.togglePostCaption = (idx) => {
             toggleBtn.classList.remove('hidden');
             collapseBtn.classList.add('hidden');
         }
-    }
-};
-
-// escapeHtml은 render/index.js에서 import됨
-
-// 일간보기 공유: 이미 공유된 경우 해제, 아니면 미리보기 모달 열기
-window.shareDailySummary = async (dateStr) => {
-    const existingShare = window.sharedPhotos && Array.isArray(window.sharedPhotos)
-        ? window.sharedPhotos.find(photo => photo.type === 'daily' && photo.date === dateStr && photo.userId === window.currentUser.uid)
-        : null;
-
-    if (existingShare) {
-        const photoUrlToRemove = existingShare.photoUrl;
-        const prevShared = window.sharedPhotos ? [...window.sharedPhotos] : [];
-        if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-            window.sharedPhotos = window.sharedPhotos.filter(p =>
-                !(p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid)
-            );
-        }
-        if (appState.currentTab === 'timeline') renderTimeline();
-        if (appState.currentTab === 'gallery') renderGallery();
-        showToast('공유가 해제되었습니다.', 'success');
-        dbOps.unsharePhotos([photoUrlToRemove], null, false, true).catch(() => {
-            if (window.sharedPhotos) window.sharedPhotos = prevShared;
-            if (appState.currentTab === 'timeline') renderTimeline();
-            if (appState.currentTab === 'gallery') renderGallery();
-        });
-        return;
-    }
-
-    window.openDailySharePreviewModal(dateStr);
-};
-
-// 일간 식단 공유 미리보기 모달 열기
-window.openDailySharePreviewModal = (dateStr) => {
-    const existing = document.getElementById('dailySharePreviewModal');
-    if (existing) existing.remove();
-
-    const previewCard = createDailyShareCard(dateStr, true);
-
-    const modal = document.createElement('div');
-    modal.id = 'dailySharePreviewModal';
-    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center py-4 bg-black/50 capture-share-modal';
-
-    modal.innerHTML = `
-        <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl">
-            <div id="dailyShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center z-20">
-                <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>
-                <p class="text-slate-600 font-bold">공유 중...</p>
-            </div>
-            <div class="flex justify-between items-center p-4 border-b border-slate-100 flex-shrink-0">
-                <h3 class="text-lg font-black text-slate-800">일간 식단 공유 미리보기</h3>
-                <button onclick="window.closeDailySharePreviewModal()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-full">
-                    <i class="fa-solid fa-xmark text-xl"></i>
-                </button>
-            </div>
-            <div id="dailySharePreviewScroll" class="flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 py-0 min-h-0" style="padding: 3px;">
-                <!-- createDailyShareCard(forPreview) 결과가 여기 들어감 -->
-            </div>
-            <div class="flex gap-3 p-4 border-t border-slate-100 flex-shrink-0">
-                <button onclick="window.closeDailySharePreviewModal()" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm">
-                    취소
-                </button>
-                <button onclick="window.confirmDailyShare('${dateStr}')" class="flex-1 py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all">
-                    공유
-                </button>
-            </div>
-        </div>
-    `;
-
-    document.body.appendChild(modal);
-    const scrollEl = document.getElementById('dailySharePreviewScroll');
-    if (scrollEl && previewCard) {
-        scrollEl.appendChild(previewCard);
-        // 처음부터 화면 안쪽을 꽉 채워서 보여주기 위해 스크롤을 상단으로
-        setTimeout(() => {
-            scrollEl.scrollTop = 0;
-        }, 0);
-    }
-
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) window.closeDailySharePreviewModal();
-    });
-};
-
-// 일간 공유 미리보기 모달 닫기
-window.closeDailySharePreviewModal = () => {
-    const modal = document.getElementById('dailySharePreviewModal');
-    if (modal) modal.remove();
-};
-
-// 미리보기에서 공유 확정: 미리보기 화면을 그대로 캡쳐해서 공유
-window.confirmDailyShare = async (dateStr) => {
-    const previewModal = document.getElementById('dailySharePreviewModal');
-    const inModalSpinner = previewModal?.querySelector('#dailyShareLoadingOverlay');
-    if (inModalSpinner) inModalSpinner.classList.remove('hidden');
-
-    const shareBtn = event?.target || document.querySelector(`button[onclick*="confirmDailyShare('${dateStr}')"]`);
-    if (shareBtn) {
-        shareBtn.disabled = true;
-        shareBtn.classList.add('opacity-50', 'cursor-not-allowed');
-        shareBtn.textContent = '공유 중...';
-    }
-    // 스피너가 실제로 화면에 그려진 뒤 무거운 작업 진행 (두 프레임 양보로 페인트 확실히 반영)
-    await new Promise(r => requestAnimationFrame(r));
-    await new Promise(r => setTimeout(r, 50));
-
-    try {
-        if (!previewModal) {
-            throw new Error('미리보기 모달을 찾을 수 없습니다.');
-        }
-
-        const previewCard = previewModal.querySelector('#dailyShareCardContainer');
-        if (!previewCard) {
-            throw new Error('미리보기 카드를 찾을 수 없습니다.');
-        }
-
-        // Fredoka 폰트 CSS를 미리 가져와서 실제 @font-face URL 추출
-        let fredokaFontCSS = '';
-        // 폰트가 이미 로드되어 있는지 먼저 확인
-        const fontAlreadyLoaded = document.fonts.check('1em Fredoka');
-        
-        if (!fontAlreadyLoaded) {
-            try {
-                const fontCSSResponse = await fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&display=swap');
-                fredokaFontCSS = await fontCSSResponse.text();
-                // CSS를 스타일 태그로 추가하여 폰트 로드
-                const styleTag = document.createElement('style');
-                styleTag.textContent = fredokaFontCSS;
-                document.head.appendChild(styleTag);
-                
-                await document.fonts.ready;
-                let attempts = 0;
-                while (attempts < 10) {
-                    if (document.fonts.check('1em Fredoka')) break;
-                    await new Promise(resolve => setTimeout(resolve, 50));
-                    attempts++;
-                }
-            } catch (e) {
-                console.warn('Fredoka 폰트 CSS 로드 실패:', e);
-            }
-        }
-        
-        // 이미지 로드 확인 (img + background-image용 data-photo-url)
-        const images = previewCard.querySelectorAll('img');
-        const imageLoadPromises = Array.from(images).map(img => {
-            if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-            return new Promise((resolve) => {
-                img.onload = resolve;
-                img.onerror = resolve;
-                setTimeout(resolve, 400);
-            });
-        });
-        const bgDivs = previewCard.querySelectorAll('[data-photo-url]');
-        const bgLoadPromises = Array.from(bgDivs).map(div => {
-            const url = div.getAttribute('data-photo-url');
-            if (!url) return Promise.resolve();
-            return new Promise((resolve) => {
-                const img = new Image();
-                img.onload = resolve;
-                img.onerror = resolve;
-                img.src = url;
-                if (img.complete) resolve();
-            });
-        });
-        await Promise.all([...imageLoadPromises, ...bgLoadPromises]);
-
-        const innerContent = previewCard.querySelector('div[style*="width: 420px"]') || previewCard;
-
-        // 유령 캡처: 화면 밖(-10000px)에 복제본을 만들어 모달/transform/Flex 간섭 없이 정사이즈 캡처
-        const canvas = await captureWithGhostStrategy(innerContent, {
-            captureWidth: 420,
-            allowTaint: false,
-            foreignObjectRendering: false,
-            onclone: (clonedDoc) => {
-                if (fredokaFontCSS) {
-                    const clonedStyle = clonedDoc.createElement('style');
-                    clonedStyle.textContent = fredokaFontCSS;
-                    clonedDoc.head.appendChild(clonedStyle);
-                } else {
-                    const clonedStyle = clonedDoc.createElement('style');
-                    clonedStyle.textContent = `
-                        @font-face {
-                            font-family: 'Fredoka';
-                            font-style: normal;
-                            font-weight: 700;
-                            font-display: swap;
-                            src: url('https://fonts.gstatic.com/s/fredoka/v14/X7nP4b87HvSqjb_WIi2yDCRwoQ_k7367_DWs89XyHw.woff2') format('woff2');
-                            unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-                        }
-                    `;
-                    clonedDoc.head.appendChild(clonedStyle);
-                }
-                const allSpans = clonedDoc.querySelectorAll('span');
-                allSpans.forEach(el => {
-                    const style = el.getAttribute('style') || '';
-                    const text = el.textContent.trim();
-                    if (style.includes('MEALOG') || text === 'MEALOG' || (style.includes('font-family') && style.includes('Fredoka'))) {
-                        el.style.fontFamily = "'Fredoka', sans-serif";
-                        el.style.fontWeight = '700';
-                    }
-                });
-                // Ghost Hack: 별점 배지들만 캡처본에서 margin-top으로 살짝 내려서 베이스라인 정렬 보정
-                const badges = clonedDoc.querySelectorAll('span[style*="fefce8"]');
-                badges.forEach(el => {
-                    el.style.marginTop = '-5px';
-                    el.style.display = 'flex';
-                    el.style.alignItems = 'center';
-                });
-            }
-        });
-
-        const base64Image = canvas.toDataURL('image/png');
-        const { uploadBase64ToStorage } = await import('../utils.js');
-        const photoUrl = await uploadBase64ToStorage(base64Image, window.currentUser.uid, `daily_${dateStr}`, 1024);
-
-        const userProfile = window.userSettings?.profile || {};
-
-        let dailyComment = '';
-        try {
-            if (window.dbOps && typeof window.dbOps.getDailyComment === 'function') {
-                dailyComment = window.dbOps.getDailyComment(dateStr) || '';
-            } else if (window.userSettings && window.userSettings.dailyComments) {
-                dailyComment = window.userSettings.dailyComments[dateStr] || '';
-            }
-        } catch (e) {
-            console.warn('getDailyComment 호출 실패:', e);
-        }
-
-        // 낙관적 UI: 클라이언트 데이터로 즉시 반영 후 서버는 백그라운드 호출
-        const dailyShareData = {
-            id: 'pending-' + Date.now(),
-            photoUrl,
-            userId: window.currentUser.uid,
-            userNickname: userProfile.nickname || '익명',
-            userIcon: userProfile.icon || '🐻',
-            userPhotoUrl: userProfile.photoUrl || null,
-            type: 'daily',
-            date: dateStr,
-            timestamp: new Date().toISOString(),
-            entryId: null,
-            comment: dailyComment || ''
-        };
-
-        if (!window.sharedPhotos) window.sharedPhotos = [];
-        window.sharedPhotos = window.sharedPhotos.filter(p =>
-            !(p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid)
-        );
-        window.sharedPhotos.push(dailyShareData);
-        window.sharedPhotos.sort((a, b) => (new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
-        // 갤러리 피드에도 낙관 반영 (맨 앞에 추가)
-        if (!window.sharedPhotosFeed) window.sharedPhotosFeed = [];
-        window.sharedPhotosFeed = [dailyShareData, ...window.sharedPhotosFeed];
-
-        window.closeDailySharePreviewModal();
-        showToast('하루 기록이 피드에 공유되었습니다!', 'success');
-        if (appState.currentTab === 'timeline') renderTimeline();
-        if (appState.currentTab === 'gallery') renderGallery();
-
-        const { callableFunctions } = await import('../firebase.js');
-        callableFunctions.createDailyShare({
-            photoUrl,
-            date: dateStr,
-            comment: dailyComment
-        }).then((result) => {
-            const serverData = result.data;
-            const idx = window.sharedPhotos?.findIndex(p => p.id === dailyShareData.id || (p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid && p.photoUrl === photoUrl));
-            if (idx !== undefined && idx !== -1 && window.sharedPhotos) {
-                window.sharedPhotos[idx] = serverData;
-                if (appState.currentTab === 'timeline') renderTimeline();
-                if (appState.currentTab === 'gallery') renderGallery();
-            }
-        }).catch((e) => {
-            console.error('일간보기 공유 서버 반영 실패:', e);
-            if (window.sharedPhotos) {
-                window.sharedPhotos = window.sharedPhotos.filter(p =>
-                    !(p.type === 'daily' && p.date === dateStr && p.userId === window.currentUser.uid)
-                );
-                if (appState.currentTab === 'timeline') renderTimeline();
-                if (appState.currentTab === 'gallery') renderGallery();
-            }
-            showToast(e?.message || e?.details || '공유 반영에 실패했습니다. 다시 시도해 주세요.', 'error');
-        });
-    } catch (e) {
-        console.error('일간보기 공유 실패:', e);
-        const errorMessage = e.message || e.details || '공유 중 오류가 발생했습니다.';
-        showToast(errorMessage, 'error');
-        window.closeDailySharePreviewModal();
-    } finally {
-        const modal = document.getElementById('dailySharePreviewModal');
-        const spinner = modal?.querySelector('#dailyShareLoadingOverlay');
-        if (spinner) spinner.classList.add('hidden');
-        // 버튼 상태 복원 (모달이 아직 DOM에 있을 때만)
-        const shareBtn = document.querySelector(`button[onclick*="confirmDailyShare('${dateStr}')"]`);
-        if (shareBtn) {
-            shareBtn.disabled = false;
-            shareBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-            shareBtn.textContent = '공유';
-        }
-    }
-};
-
-// 일간보기 실제 공유 실행 (캡처 → 업로드 → Firestore) - 사용하지 않음 (confirmDailyShare에서 직접 처리)
-/*
-window.executeDailyShare = async (dateStr) => {
-    // 이 함수는 더 이상 사용하지 않습니다. confirmDailyShare에서 미리보기 화면을 직접 캡쳐합니다.
-};
-*/
-
-// 일간보기 하루 전체 Comment 저장 함수
-window.saveDailyComment = async (date) => {
-    const input = document.getElementById('dailyCommentInput');
-    if (!input) return;
-    
-    const comment = input.value || '';
-    const loadingOverlay = document.getElementById('loadingOverlay');
-    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
-    
-    try {
-        await dbOps.saveDailyComment(date, comment);
-        showToast("하루 전체 Comment가 저장되었습니다.", 'success');
-        
-        // 타임라인과 앨범 새로고침
-        if (appState.currentTab === 'timeline') {
-            renderTimeline();
-        }
-        if (appState.currentTab === 'gallery') {
-            renderGallery();
-        }
-    } catch (e) {
-        console.error("Daily Comment Save Error:", e);
-        showToast("저장 중 오류가 발생했습니다.", 'error');
-    } finally {
-        if (loadingOverlay) loadingOverlay.classList.add('hidden');
-    }
-};
-
-// 일간보기 코멘트 수정 모달 열기
-window.openDailyCommentModal = (dateStr) => {
-    // 기존 모달 제거
-    const existingModal = document.getElementById('dailyCommentModal');
-    if (existingModal) existingModal.remove();
-    
-    // 날짜 포맷팅
-    const dateObj = new Date(dateStr + 'T00:00:00');
-    const year = dateObj.getFullYear();
-    const month = dateObj.getMonth() + 1;
-    const day = dateObj.getDate();
-    const dateLabel = `${year}년 ${month}월 ${day}일`;
-    
-    // 현재 코멘트 가져오기
-    let currentComment = '';
-    try {
-        if (window.dbOps && typeof window.dbOps.getDailyComment === 'function') {
-            currentComment = window.dbOps.getDailyComment(dateStr) || '';
-        } else if (window.userSettings && window.userSettings.dailyComments) {
-            currentComment = window.userSettings.dailyComments[dateStr] || '';
-        }
-    } catch (e) {
-        console.warn('getDailyComment 호출 실패:', e);
-    }
-    
-    // 모달 생성
-    const modal = document.createElement('div');
-    modal.id = 'dailyCommentModal';
-    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/50';
-    
-    modal.innerHTML = `
-        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-black text-slate-800">하루 소감 수정</h3>
-                <button onclick="window.closeDailyCommentModal()" class="text-slate-400 hover:text-slate-600">
-                    <i class="fa-solid fa-xmark text-xl"></i>
-                </button>
-            </div>
-            <textarea id="dailyCommentModalInput" 
-                placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해보세요." 
-                class="w-full p-4 bg-slate-50 rounded-xl text-sm border border-slate-200 focus:border-slate-400 transition-all resize-none min-h-[150px]" 
-                rows="6">${escapeHtml(currentComment)}</textarea>
-            <div class="flex gap-3 mt-6">
-                <button onclick="window.closeDailyCommentModal()" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm">
-                    취소
-                </button>
-                <button onclick="window.saveDailyCommentFromModal('${dateStr}')" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700">
-                    저장
-                </button>
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
-    
-    // 배경 클릭 시 닫기
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-            window.closeDailyCommentModal();
-        }
-    });
-    
-    // 포커스
-    setTimeout(() => {
-        const input = document.getElementById('dailyCommentModalInput');
-        if (input) input.focus();
-    }, 100);
-};
-
-// 일간보기 코멘트 모달 닫기
-window.closeDailyCommentModal = () => {
-    const modal = document.getElementById('dailyCommentModal');
-    if (modal) modal.remove();
-};
-
-// 모달에서 일간보기 코멘트 저장
-window.saveDailyCommentFromModal = async (dateStr) => {
-    const input = document.getElementById('dailyCommentModalInput');
-    if (!input) return;
-    
-    const comment = input.value || '';
-    const loadingOverlay = document.getElementById('loadingOverlay');
-    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
-    
-    try {
-        await dbOps.saveDailyComment(dateStr, comment);
-        showToast("하루 소감이 저장되었습니다.", 'success');
-        window.closeDailyCommentModal();
-        
-        // 타임라인과 앨범 새로고침
-        if (appState.currentTab === 'timeline') {
-            renderTimeline();
-        }
-        if (appState.currentTab === 'gallery') {
-            renderGallery();
-        }
-        if (appState.currentTab === 'feed') {
-            renderFeed();
-        }
-    } catch (e) {
-        console.error("Daily Comment Save Error:", e);
-        showToast("저장 중 오류가 발생했습니다.", 'error');
-    } finally {
-        if (loadingOverlay) loadingOverlay.classList.add('hidden');
     }
 };
 }

@@ -16,6 +16,16 @@ let settingsSaveTimeout = null;
 
 const PHOTO_ASPECT_OPTIONS = ['1:1', '3:4', '4:3'];
 
+/** 기록 모달 표시 시 body 클래스 — 하단 네비 숨김·액션 패딩과 동기화 */
+function syncEntryModalBodyClass() {
+    const el = document.getElementById('entryModal');
+    if (el && !el.classList.contains('hidden')) {
+        document.body.classList.add('entry-modal-open');
+    } else {
+        document.body.classList.remove('entry-modal-open');
+    }
+}
+
 /** 기록 사진 비율 버튼 UI 동기화 + 카메라(등록) 버튼 비율 적용 */
 function updatePhotoAspectButtons() {
     const ratio = appState.recordPhotoAspectRatio || '1:1';
@@ -689,6 +699,7 @@ export function openModal(date, slotId, entryId = null) {
             if (typeof entryModal.setKeyboardBaseline === 'function') {
                 entryModal.setKeyboardBaseline();
             }
+            syncEntryModalBodyClass();
         } else {
             console.error('entryModal 요소를 찾을 수 없습니다.');
         }
@@ -707,6 +718,7 @@ export function closeModal() {
         entryModal.style.top = '';
         entryModal.classList.add('hidden');
     }
+    syncEntryModalBodyClass();
     // 모달을 닫을 때 로딩 오버레이도 숨김
     const loadingOverlay = document.getElementById('loadingOverlay');
     if (loadingOverlay) {
@@ -950,6 +962,7 @@ export async function saveEntry() {
         // 모달과 로딩 오버레이를 먼저 닫기 (저장 전에 닫아서 사용자 경험 개선)
         if (entryModal) {
             entryModal.classList.add('hidden');
+            syncEntryModalBodyClass();
             console.log('모달 닫기 완료');
         }
         
@@ -1295,6 +1308,7 @@ export async function saveEntry() {
         const entryModal = document.getElementById('entryModal');
         if (entryModal) {
             entryModal.classList.add('hidden');
+            syncEntryModalBodyClass();
             console.log('오류 발생 후 모달 닫기');
         }
         const state = appState;
@@ -1310,6 +1324,7 @@ export async function saveEntry() {
         const entryModal = document.getElementById('entryModal');
         if (entryModal && !entryModal.classList.contains('hidden')) {
             entryModal.classList.add('hidden');
+            syncEntryModalBodyClass();
             console.log('finally 블록에서 모달 닫기');
         }
     }

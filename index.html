@@ -1454,7 +1454,7 @@
                     </div>
                 </div>
             </div>
-            <div class="border-t border-slate-200 bg-white overflow-hidden">
+            <div id="entryModalActions" class="border-t border-slate-200 bg-white overflow-hidden">
                 <div class="flex items-stretch divide-x divide-slate-200">
                     <button id="btnDelete" onclick="window.deleteEntry()" class="hidden flex-1 flex items-center justify-center gap-2 px-2.5 py-3.5 bg-rose-50 text-rose-700 hover:bg-rose-100/90 active:bg-rose-100 transition-colors">
                         <i class="fa-solid fa-trash-can text-sm"></i>
@@ -1531,48 +1531,62 @@
 
     <!-- Best Share Modal (팝업: 중앙 정렬, 포지션 간섭 최소화) -->
     <div id="bestShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center py-4 capture-share-modal">
-        <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl">
+        <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl overflow-hidden">
             <div id="bestShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center z-20">
                 <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>
                 <p class="text-slate-600 font-bold">공유 중...</p>
             </div>
-            <div class="p-6 border-b flex justify-between items-center">
-                <h2 class="text-lg font-bold text-slate-800 tracking-tight">베스트 공유하기</h2>
-                <button onclick="window.closeShareBestModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
+            <div class="px-4 py-3 sm:px-5 sm:py-3.5 border-b border-slate-200 flex justify-between items-center gap-2 flex-shrink-0">
+                <h2 class="text-base font-bold text-slate-800 tracking-tight">베스트 공유하기</h2>
+                <button type="button" onclick="window.closeShareBestModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
             </div>
-            <div class="space-y-4 overflow-y-auto pb-10">
+            <div class="space-y-4 overflow-y-auto pb-6 min-h-0">
                 <div id="bestSharePreview" class="bg-slate-50 rounded-2xl" style="padding: 3px;"></div>
-                <div class="px-6">
+                <div class="px-4 sm:px-5">
                     <label class="text-sm font-bold text-slate-600 block mb-2">코멘트 (선택사항)</label>
                     <textarea id="bestShareComment" placeholder="이번 주/월의 베스트에 대한 코멘트를 입력하세요..." class="w-full p-3 bg-slate-50 rounded-xl text-sm border border-transparent focus:border-slate-400 transition-all resize-none" rows="3"></textarea>
                 </div>
             </div>
-            <div class="p-6 border-t">
-                <button id="bestShareSubmitBtn" onclick="window.shareBestToFeed()" class="w-full py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all">공유하기</button>
+            <div class="border-t border-slate-200 overflow-hidden flex min-h-[3.25rem] sm:min-h-14 flex-shrink-0">
+                <button type="button" onclick="window.closeShareBestModal()" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 bg-slate-100 hover:bg-slate-200/90 active:bg-slate-200 border-r border-slate-200 transition-colors">
+                    <span class="text-sm sm:text-[15px] font-bold text-slate-700">취소</span>
+                    <span class="text-[11px] sm:text-xs text-slate-500 font-medium">이전 화면으로</span>
+                </button>
+                <button type="button" id="bestShareSubmitBtn" onclick="window.shareBestToFeed()" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 bg-slate-900 text-white hover:bg-slate-800 active:bg-slate-800 transition-colors min-w-0">
+                    <span id="bestShareSubmitLabel" class="text-sm sm:text-[15px] font-bold">공유하기</span>
+                    <span id="bestShareSubmitSub" class="text-[11px] sm:text-xs text-white/80 font-medium">피드에 공유</span>
+                </button>
             </div>
         </div>
     </div>
 
     <!-- Insight Share Modal (팝업: 중앙 정렬, 포지션 간섭 최소화) -->
     <div id="insightShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center py-4 capture-share-modal">
-        <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl">
+        <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl overflow-hidden">
             <div id="insightShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center z-20">
                 <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>
                 <p class="text-slate-600 font-bold">공유 중...</p>
             </div>
-            <div class="p-6 border-b flex justify-between items-center">
-                <h2 class="text-lg font-bold text-slate-800 tracking-tight">밀당(MEAL-DANG)들의 참견 공유하기</h2>
-                <button onclick="window.closeShareInsightModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
+            <div class="px-4 py-3 sm:px-5 sm:py-3.5 border-b border-slate-200 flex justify-between items-center gap-2 flex-shrink-0 min-w-0">
+                <h2 class="text-base font-bold text-slate-800 tracking-tight min-w-0">밀당(MEAL-DANG)들의 참견 공유하기</h2>
+                <button type="button" class="shrink-0" onclick="window.closeShareInsightModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
             </div>
-            <div class="space-y-4 overflow-y-auto pb-10">
+            <div class="space-y-4 overflow-y-auto pb-6 min-h-0">
                 <div id="insightSharePreview" class="bg-slate-50 rounded-2xl" style="padding: 3px;"></div>
-                <div class="px-6">
+                <div class="px-4 sm:px-5">
                     <label class="text-sm font-bold text-slate-600 block mb-2">코멘트 (선택사항)</label>
                     <textarea id="insightShareComment" placeholder="밀당(MEAL-DANG)들의 참견에 대한 코멘트를 입력하세요..." class="w-full p-3 bg-slate-50 rounded-xl text-sm border border-transparent focus:border-slate-400 transition-all resize-none" rows="3"></textarea>
                 </div>
             </div>
-            <div class="p-6 border-t">
-                <button id="insightShareSubmitBtn" onclick="window.shareInsightToFeed()" class="w-full py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all">공유하기</button>
+            <div class="border-t border-slate-200 overflow-hidden flex min-h-[3.25rem] sm:min-h-14 flex-shrink-0">
+                <button type="button" onclick="window.closeShareInsightModal()" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 bg-slate-100 hover:bg-slate-200/90 active:bg-slate-200 border-r border-slate-200 transition-colors">
+                    <span class="text-sm sm:text-[15px] font-bold text-slate-700">취소</span>
+                    <span class="text-[11px] sm:text-xs text-slate-500 font-medium">이전 화면으로</span>
+                </button>
+                <button type="button" id="insightShareSubmitBtn" onclick="window.shareInsightToFeed()" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 bg-slate-900 text-white hover:bg-slate-800 active:bg-slate-800 transition-colors min-w-0">
+                    <span id="insightShareSubmitLabel" class="text-sm sm:text-[15px] font-bold">공유하기</span>
+                    <span id="insightShareSubmitSub" class="text-[11px] sm:text-xs text-white/80 font-medium">피드에 공유</span>
+                </button>
             </div>
         </div>
     </div>

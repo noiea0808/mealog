@@ -15,6 +15,63 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+const BEST_SHARE_SUBMIT_BASE = 'flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 transition-colors min-w-0 border-0 cursor-pointer';
+
+/** @param {'default' | 'unshare' | 'edit'} variant */
+function applyBestShareSubmitVariant(variant) {
+    const btn = document.getElementById('bestShareSubmitBtn');
+    const label = document.getElementById('bestShareSubmitLabel');
+    const sub = document.getElementById('bestShareSubmitSub');
+    if (!btn || !label || !sub) return;
+    label.innerHTML = '';
+    label.classList.remove('hidden');
+    sub.classList.remove('hidden');
+    if (variant === 'unshare') {
+        btn.className = `${BEST_SHARE_SUBMIT_BASE} bg-rose-50 hover:bg-rose-100/90 active:bg-rose-100`;
+        label.textContent = '공유 취소';
+        label.className = 'text-sm sm:text-[15px] font-bold text-rose-700';
+        sub.textContent = '피드에서 내리기';
+        sub.className = 'text-[11px] sm:text-xs text-rose-600/90 font-medium';
+    } else if (variant === 'edit') {
+        btn.className = `${BEST_SHARE_SUBMIT_BASE} bg-slate-900 text-white hover:bg-slate-800 active:bg-slate-800`;
+        label.textContent = '수정 완료';
+        label.className = 'text-sm sm:text-[15px] font-bold text-white';
+        sub.textContent = '코멘트 반영';
+        sub.className = 'text-[11px] sm:text-xs text-white/80 font-medium';
+    } else {
+        btn.className = `${BEST_SHARE_SUBMIT_BASE} bg-slate-900 text-white hover:bg-slate-800 active:bg-slate-800`;
+        label.textContent = '공유하기';
+        label.className = 'text-sm sm:text-[15px] font-bold text-white';
+        sub.textContent = '피드에 공유';
+        sub.className = 'text-[11px] sm:text-xs text-white/80 font-medium';
+    }
+}
+
+function setBestShareSubmitLoading(isLoading) {
+    const btn = document.getElementById('bestShareSubmitBtn');
+    const label = document.getElementById('bestShareSubmitLabel');
+    const sub = document.getElementById('bestShareSubmitSub');
+    if (!btn || !label || !sub) return;
+    if (isLoading) {
+        sub.classList.add('hidden');
+        label.className = 'text-sm sm:text-[15px] font-bold text-white flex items-center justify-center gap-2';
+        label.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>공유 중...</span>';
+    }
+}
+
+function setBestShareSubmitEditing(isEditing) {
+    const btn = document.getElementById('bestShareSubmitBtn');
+    const label = document.getElementById('bestShareSubmitLabel');
+    const sub = document.getElementById('bestShareSubmitSub');
+    if (!btn || !label || !sub) return;
+    if (isEditing) {
+        sub.classList.add('hidden');
+        label.innerHTML = '';
+        label.textContent = '수정 중...';
+        label.className = 'text-sm sm:text-[15px] font-bold text-white';
+    }
+}
+
 // 주간 베스트 가져오기 (만족도 4~5점, 전부 표시)
 function getWeekBestMeals(year, month, week) {
     const { start, end } = getWeekRange(year, month, week);
@@ -882,13 +939,7 @@ export async function openShareBestModal() {
         submitBtn.removeAttribute('data-edit-mode');
         submitBtn.removeAttribute('data-photo-url');
         
-        if (isShared) {
-            submitBtn.textContent = '공유 취소';
-            submitBtn.className = 'w-full py-4 bg-red-600 text-white rounded-xl font-bold active:bg-red-700 shadow-lg transition-all';
-        } else {
-            submitBtn.textContent = '공유하기';
-            submitBtn.className = 'w-full py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all';
-        }
+        applyBestShareSubmitVariant(isShared ? 'unshare' : 'default');
     }
 }
 
@@ -973,8 +1024,7 @@ export async function openEditBestShareModal(photoUrl) {
     // 공유 버튼 텍스트 업데이트 (수정 모드)
     const submitBtn = document.getElementById('bestShareSubmitBtn');
     if (submitBtn) {
-        submitBtn.textContent = '수정 완료';
-        submitBtn.className = 'w-full py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all';
+        applyBestShareSubmitVariant('edit');
         // 수정 모드임을 표시하기 위한 데이터 속성 추가
         submitBtn.setAttribute('data-edit-mode', 'true');
         submitBtn.setAttribute('data-photo-url', photoUrl);
@@ -999,7 +1049,7 @@ export async function shareBestToFeed() {
         // 수정 모드: 코멘트만 업데이트
         if (submitBtn) {
             submitBtn.disabled = true;
-            submitBtn.textContent = '수정 중...';
+            setBestShareSubmitEditing(true);
         }
         
         try {
@@ -1060,7 +1110,7 @@ export async function shareBestToFeed() {
         } finally {
             if (submitBtn) {
                 submitBtn.disabled = false;
-                submitBtn.textContent = '수정 완료';
+                applyBestShareSubmitVariant('edit');
             }
         }
         return;
@@ -1119,7 +1169,7 @@ export async function shareBestToFeed() {
     if (bestShareSpinner) bestShareSpinner.classList.remove('hidden');
     if (submitBtn) {
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>공유 중...';
+        setBestShareSubmitLoading(true);
     }
     // 스피너가 화면에 그려진 뒤 무거운 작업 진행
     await new Promise(r => requestAnimationFrame(r));
@@ -1222,7 +1272,7 @@ export async function shareBestToFeed() {
         if (spinner) spinner.classList.add('hidden');
         if (submitBtn) {
             submitBtn.disabled = false;
-            submitBtn.textContent = '공유하기';
+            applyBestShareSubmitVariant('default');
         }
     }
 }
