@@ -432,17 +432,26 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
     color: white; 
 }
 
-/* 끼니 등록 모달: 네비게이션 바 영역 (키보드 닫힘 시) - 흰색 배경 */
+/* 끼니 등록 모달: 시트는 화면 하단에 붙임. 네비·제스처는 액션바 내부 패딩으로만 확보 */
 #entryModal {
     padding-bottom: 0;
+}
+#entryModal.keyboard-open {
+    padding-bottom: 0 !important;
 }
 #entryModal > div {
     background: white;
 }
-/* 기록완료 버튼 컨테이너: 상하단 패딩 2px */
 #entryModal > div > div:last-child {
     padding-top: 2px !important;
-    padding-bottom: calc(2px + var(--safe-bottom)) !important;
+}
+/* 앱: 액션 버튼 하단을 플로팅 네비 바로 위에 (네비 bottom 8px+safe + 바 높이 ~52px + 미세 간격) */
+html:not(.platform-web) #entryModal:not(.keyboard-open) > div > div:last-child {
+    padding-bottom: calc(64px + var(--safe-bottom)) !important;
+}
+/* 모웹: 홈 인디케이터 */
+html.platform-web #entryModal:not(.keyboard-open) > div > div:last-child {
+    padding-bottom: max(16px, env(safe-area-inset-bottom, 0px)) !important;
 }
 #entryModal.keyboard-open > div > div:last-child {
     padding-bottom: 2px !important; /* 키보드 열림 시 2px만 */

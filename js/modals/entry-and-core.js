@@ -315,8 +315,16 @@ export function openModal(date, slotId, entryId = null) {
         window.setRating(3);
         window.setSatiety(3);
         
-        const scrollArea = document.getElementById('modalScrollArea');
-        if (scrollArea) scrollArea.scrollTop = 0;
+        const resetModalScrollTop = () => {
+            const scrollArea = document.getElementById('modalScrollArea');
+            if (!scrollArea) return;
+            scrollArea.scrollTop = 0;
+            if (typeof scrollArea.scrollTo === 'function') {
+                scrollArea.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+            }
+        };
+        // 모달 내부 스크롤 복원 이슈 대응: 즉시 + 다음 프레임 + 짧은 지연에 걸쳐 상단 고정
+        resetModalScrollTop();
         
         ['restaurantSuggestions', 'menuSuggestions', 'peopleSuggestions', 'snackSuggestions'].forEach(id => {
             const el = document.getElementById(id);
@@ -368,12 +376,12 @@ export function openModal(date, slotId, entryId = null) {
             if (window.currentUser && window.currentUser.isAnonymous) {
                 // 게스트 모드: 버튼 비활성화
                 btnSave.disabled = true;
-                btnSave.className = 'flex-1 py-4 bg-slate-300 text-slate-500 rounded-xl font-bold shadow-lg transition-all cursor-not-allowed';
+                btnSave.className = 'flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-300 text-slate-500 text-base font-bold transition-colors cursor-not-allowed';
                 btnSave.innerText = '로그인 후 사용할 수 있어요';
             } else {
                 // 일반 모드: 버튼 활성화 및 텍스트 설정
                 btnSave.disabled = false;
-                btnSave.className = 'flex-1 py-4 bg-slate-900 text-white rounded-xl font-bold active:bg-slate-800 shadow-lg transition-all';
+                btnSave.className = 'flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-900 text-white text-base font-bold hover:bg-slate-800 active:bg-slate-800 transition-colors';
                 btnSave.innerText = entryId ? '수정 완료' : '기록 완료';
             }
         }
@@ -674,6 +682,9 @@ export function openModal(date, slotId, entryId = null) {
             entryModal.classList.remove('keyboard-open');
             entryModal.style.height = '';
             entryModal.style.top = '';
+            resetModalScrollTop();
+            requestAnimationFrame(resetModalScrollTop);
+            setTimeout(resetModalScrollTop, 60);
             initEntryModalKeyboardHandling(entryModal);
             if (typeof entryModal.setKeyboardBaseline === 'function') {
                 entryModal.setKeyboardBaseline();
