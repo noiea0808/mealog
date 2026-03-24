@@ -24,6 +24,9 @@ android/keystore.properties
 android/*.keystore
 android/*.jks
 
+# Firebase 서비스 계정 키 (로컬 스크립트용, 커밋 금지)
+*firebase-adminsdk*.json
+
 # Firebase
 .firebase/
 firebase-debug.log

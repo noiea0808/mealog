@@ -2,7 +2,7 @@
 import { app, db, appId, functions } from '../firebase.js';
 import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js';
-import { collection, getDocs, query, orderBy, limit, startAfter, doc, getDoc, setDoc, where, addDoc, serverTimestamp, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, getDocs, query, orderBy, limit, startAfter, doc, getDoc, setDoc, where, addDoc, serverTimestamp, getCountFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { getCurrentTermsVersion } from '../utils-terms.js';
 import { escapeHtml } from './utils.js';
 
@@ -26,6 +26,38 @@ const USERS_SORT_DEFAULT_DIR = {
 };
 
 const USERS_PER_PAGE = 50;
+
+/** Firestore `in` 쿼리 최대 30 — 페이지 사용자에 해당하는 문서만 조회 */
+async function fetchUserBansMap(userBansColl, userIds) {
+    const map = new Map();
+    for (let i = 0; i < userIds.length; i += 30) {
+        const chunk = userIds.slice(i, i + 30);
+        if (!chunk.length) continue;
+        const q = query(userBansColl, where(documentId(), 'in', chunk));
+        const snap = await getDocs(q);
+        snap.docs.forEach((d) => {
+            const data = d.data();
+            map.set(d.id, { bannedShare: data.bannedShare === true, bannedWrite: data.bannedWrite === true });
+        });
+    }
+    return map;
+}
+
+async function fetchDeleteRequestedUserIdsForPage(deleteRequestsColl, userIds) {
+    const pageSet = new Set(userIds);
+    const out = new Set();
+    for (let i = 0; i < userIds.length; i += 30) {
+        const chunk = userIds.slice(i, i + 30);
+        if (!chunk.length) continue;
+        const q = query(deleteRequestsColl, where('userId', 'in', chunk));
+        const snap = await getDocs(q);
+        snap.docs.forEach((d) => {
+            const uid = d.data().userId;
+            if (uid && pageSet.has(uid)) out.add(uid);
+        });
+    }
+    return out;
+}
 
 // 페이지별 커서 저장 (이전/다음 페이지 이동용)
 let adminUsersLastDocsByPage = {};
@@ -196,25 +228,15 @@ async function getUsers(options = {}) {
             return { users: [], totalCount, lastDoc: null, hasMore: false };
         }
 
-        // 3) 이 페이지 사용자들에 대해서만 userBans, deleteRequests, sharedPhotos(whereIn), boardPosts(whereIn) 조회
-        const [userBansSnapshot, deleteRequestsSnapshot, sharedChunk1, sharedChunk2, boardChunk1, boardChunk2] = await Promise.all([
-            Promise.all(userIds.map(id => getDoc(doc(userBansColl, id)))),
-            getDocs(deleteRequestsColl),
+        // 3) 이 페이지 사용자들에 대해서만 userBans(documentId in), deleteRequests(userId in), sharedPhotos/boardPosts(whereIn)
+        const [userBansMap, deleteRequestedUserIds, sharedChunk1, sharedChunk2, boardChunk1, boardChunk2] = await Promise.all([
+            fetchUserBansMap(userBansColl, userIds),
+            fetchDeleteRequestedUserIdsForPage(deleteRequestsColl, userIds),
             userIds.length > 0 ? getDocs(query(sharedColl, where('userId', 'in', userIds.slice(0, 30)))) : Promise.resolve({ docs: [] }),
             userIds.length > 30 ? getDocs(query(sharedColl, where('userId', 'in', userIds.slice(30, 50)))) : Promise.resolve({ docs: [] }),
             userIds.length > 0 ? getDocs(query(boardPostsColl, where('authorId', 'in', userIds.slice(0, 30)))) : Promise.resolve({ docs: [] }),
             userIds.length > 30 ? getDocs(query(boardPostsColl, where('authorId', 'in', userIds.slice(30, 50)))) : Promise.resolve({ docs: [] })
         ]);
-
-        const userBansMap = new Map();
-        userBansSnapshot.forEach((snap, i) => {
-            if (snap.exists() && userIds[i]) {
-                const data = snap.data();
-                userBansMap.set(userIds[i], { bannedShare: data.bannedShare === true, bannedWrite: data.bannedWrite === true });
-            }
-        });
-        const deleteRequestedUserIds = new Set();
-        deleteRequestsSnapshot.docs.forEach(d => { const uid = d.data().userId; if (uid && userIds.includes(uid)) deleteRequestedUserIds.add(uid); });
         const albumShareCountMap = new Map();
         [...(sharedChunk1.docs || []), ...(sharedChunk2.docs || [])].forEach(d => {
             const uid = d.data().userId;
@@ -232,12 +254,18 @@ async function getUsers(options = {}) {
                 sharedUserMap.set(data.userId, { nickname: data.userNickname || null, icon: data.userIcon || null });
         });
 
-        // 4) 이 페이지 사용자만 settings, meals 개수 병렬 조회
+        // 4) settings 조회 + mealCount: users 문서의 mealCount 우선(신규 기록 시 증가), 없으면만 서브컬렉션 count
+        const hasAllMealCounts = userIds.every((_, i) => {
+            const v = usersSnapshot.docs[i].data().mealCount;
+            return v !== undefined && v !== null && Number.isFinite(Number(v)) && Number(v) >= 0;
+        });
         const [settingsDocs, mealCountSettled] = await Promise.all([
             Promise.all(userIds.map(id => getDoc(doc(db, 'artifacts', appId, 'users', id, 'config', 'settings')))),
-            Promise.allSettled(userIds.map(id => getCountFromServer(collection(db, 'artifacts', appId, 'users', id, 'meals'))))
+            hasAllMealCounts
+                ? Promise.resolve(null)
+                : Promise.allSettled(userIds.map(id => getCountFromServer(collection(db, 'artifacts', appId, 'users', id, 'meals'))))
         ]);
-        const mealCounts = mealCountSettled.map(s => s.status === 'fulfilled' ? s.value : null);
+        const mealCounts = mealCountSettled ? mealCountSettled.map(s => (s.status === 'fulfilled' ? s.value : null)) : null;
 
         const users = [];
         for (let i = 0; i < userIds.length; i++) {
@@ -293,7 +321,14 @@ async function getUsers(options = {}) {
             const bannedShare = ban?.bannedShare ?? false;
             const bannedWrite = ban?.bannedWrite ?? false;
             const deleteRequested = deleteRequestedUserIds.has(userId);
-            const timelineCount = (mealCounts[i] && typeof mealCounts[i].data === 'function') ? mealCounts[i].data().count : 0;
+            let timelineCount = 0;
+            const mcField = userDocData.mealCount;
+            if (mcField !== undefined && mcField !== null) {
+                const n = Number(mcField);
+                if (Number.isFinite(n) && n >= 0) timelineCount = n;
+            } else if (mealCounts && mealCounts[i] && typeof mealCounts[i].data === 'function') {
+                timelineCount = mealCounts[i].data().count;
+            }
             const albumShareCount = albumShareCountMap.get(userId) ?? 0;
             const talkCount = talkCountMap.get(userId) ?? 0;
 

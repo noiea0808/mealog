@@ -1,9 +1,33 @@
 // 기본 CRUD 작업
 import { db, appId, auth, callableFunctions } from '../firebase.js';
-import { doc, getDoc, setDoc, deleteDoc, collection, addDoc, query, where, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import {
+    doc,
+    getDoc,
+    setDoc,
+    deleteDoc,
+    collection,
+    addDoc,
+    query,
+    where,
+    getDocs,
+    writeBatch,
+    runTransaction,
+    increment
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { showToast } from '../ui.js';
 import { logger } from '../utils.js';
 import { isDemoUser } from '../demo-account.js';
+import { normalizeNicknameForClaim, nicknameClaimDocId } from './nickname-claims.js';
+
+async function bumpUserMealCount(uid, delta) {
+    if (!uid || !delta) return;
+    try {
+        const userRef = doc(db, 'artifacts', appId, 'users', uid);
+        await setDoc(userRef, { mealCount: increment(delta) }, { merge: true });
+    } catch (e) {
+        console.warn('mealCount 갱신 실패 (무시):', e?.message || e);
+    }
+}
 
 export const dbOps = {
     async save(record, silent = false) {
@@ -41,6 +65,7 @@ export const dbOps = {
                 return docId; // 기존 ID 반환
             } else {
                 const docRef = await addDoc(coll, dataToSave);
+                await bumpUserMealCount(currentUser.uid, 1);
                 logger.log('식사 기록 저장 성공:', docRef.id);
                 if (!silent) {
                     showToast("식사가 기록되었습니다.", 'success');
@@ -88,6 +113,7 @@ export const dbOps = {
         }
         try {
             await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'meals', id));
+            await bumpUserMealCount(currentUser.uid, -1);
 
             // 모먼트(sharedPhotos)에서 해당 기록의 공유 문서도 삭제 — 기록 삭제 시 모먼트에 남지 않도록
             const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
@@ -190,7 +216,44 @@ export const dbOps = {
                 nickname: settingsToSave.profile?.nickname,
                 hasProfile: !!settingsToSave.profile
             });
-            await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'config', 'settings'), settingsToSave, { merge: true });
+            const settingsRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'config', 'settings');
+            const claimsColl = collection(db, 'artifacts', appId, 'nicknameClaims');
+            const normNew = normalizeNicknameForClaim(settingsToSave.profile?.nickname);
+            const normOld = normalizeNicknameForClaim(existingSettings.profile?.nickname);
+
+            await runTransaction(db, async (transaction) => {
+                if (normNew) {
+                    const newClaimRef = doc(claimsColl, nicknameClaimDocId(normNew));
+                    const claimSnap = await transaction.get(newClaimRef);
+                    if (claimSnap.exists()) {
+                        const owner = claimSnap.data()?.userId;
+                        if (owner && owner !== currentUser.uid) {
+                            throw new Error('NICKNAME_TAKEN');
+                        }
+                    }
+                }
+
+                if (normOld && normOld !== normNew) {
+                    const oldClaimRef = doc(claimsColl, nicknameClaimDocId(normOld));
+                    const oldSnap = await transaction.get(oldClaimRef);
+                    if (oldSnap.exists() && oldSnap.data()?.userId === currentUser.uid) {
+                        transaction.delete(oldClaimRef);
+                    }
+                }
+
+                transaction.set(settingsRef, settingsToSave, { merge: true });
+
+                if (normNew) {
+                    const newClaimRef = doc(claimsColl, nicknameClaimDocId(normNew));
+                    transaction.set(newClaimRef, {
+                        userId: currentUser.uid,
+                        normalizedNickname: normNew,
+                        displayNickname: String(settingsToSave.profile.nickname).trim(),
+                        updatedAt: new Date().toISOString()
+                    });
+                }
+            });
+
             console.log('✅ 설정 저장 성공:', {
                 providerId: settingsToSave.providerId,
                 email: settingsToSave.email,
@@ -205,7 +268,9 @@ export const dbOps = {
                 errorMessage: e.message 
             });
             let errorMessage = "설정 저장 실패: ";
-            if (e.code === 'permission-denied') {
+            if (e.message === 'NICKNAME_TAKEN') {
+                errorMessage = "이미 사용 중인 닉네임입니다.";
+            } else if (e.code === 'permission-denied') {
                 errorMessage += "권한이 없습니다.";
             } else if (e.code === 'unavailable') {
                 errorMessage += "네트워크 연결을 확인해주세요.";

@@ -22,12 +22,28 @@ let currentRestaurantSlotFilter = 'all';
 const MEAL_SLOTS = ['morning', 'lunch', 'dinner'];
 const SNACK_SLOTS = ['pre_morning', 'snack1', 'snack2', 'night'];
 
-function applyMealToRestaurantMap(restaurantMap, mealData, slotFilter) {
+/** 사용자 meals 병렬 조회 시 동시성 (읽기 건수는 동일, 완료 시간 단축) */
+const USER_MEAL_FETCH_CONCURRENCY = 14;
+
+function cacheHasSlotBreakdown(cachedList) {
+    return (
+        Array.isArray(cachedList) &&
+        cachedList.length > 0 &&
+        typeof cachedList[0].countMeal === 'number' &&
+        typeof cachedList[0].countSnack === 'number'
+    );
+}
+
+/**
+ * 식사/간식 슬롯 구분 집계(캐시에 countMeal·countSnack 저장 → 슬롯 탭에서 전체 스캔 생략)
+ */
+function applyMealToRestaurantAggregate(restaurantMap, mealData) {
     const place = mealData.place;
-    const slotId = mealData.slotId || '';
-    if (slotFilter === 'meal' && !MEAL_SLOTS.includes(slotId)) return;
-    if (slotFilter === 'snack' && !SNACK_SLOTS.includes(slotId)) return;
     if (!place || place.trim() === '') return;
+
+    const slotId = mealData.slotId || '';
+    const isMealSlot = MEAL_SLOTS.includes(slotId);
+    const isSnackSlot = SNACK_SLOTS.includes(slotId);
 
     const placeKey = place.trim();
     const hasPlaceId = !!(mealData.placeId || mealData.kakaoPlaceId);
@@ -41,6 +57,8 @@ function applyMealToRestaurantMap(restaurantMap, mealData, slotFilter) {
         restaurantMap.set(placeKey, {
             name: placeKey,
             count: 0,
+            countMeal: 0,
+            countSnack: 0,
             firstSeen: mealData.date || null,
             lastSeen: mealData.date || null,
             isKakao: isKakao,
@@ -52,6 +70,8 @@ function applyMealToRestaurantMap(restaurantMap, mealData, slotFilter) {
     }
     const restaurant = restaurantMap.get(placeKey);
     restaurant.count++;
+    if (isMealSlot) restaurant.countMeal = (restaurant.countMeal || 0) + 1;
+    if (isSnackSlot) restaurant.countSnack = (restaurant.countSnack || 0) + 1;
     if (isKakao) {
         restaurant.isKakao = true;
         restaurant.kakaoCount++;
@@ -66,35 +86,63 @@ function applyMealToRestaurantMap(restaurantMap, mealData, slotFilter) {
     }
 }
 
+function finalizeRestaurantMapForSlot(restaurantMap, slotFilter) {
+    if (slotFilter === 'all') return restaurantMap;
+    const out = new Map();
+    for (const [k, r] of restaurantMap) {
+        const n = slotFilter === 'meal' ? r.countMeal : r.countSnack;
+        if (n > 0) {
+            out.set(k, { ...r, count: n });
+        }
+    }
+    return out;
+}
+
 async function getTodayMealsForRestaurants() {
     const todayStr = getTodayDateString();
     const mealsGroup = collectionGroup(db, 'meals');
     const q = query(mealsGroup, where('date', '==', todayStr));
     const snap = await getDocs(q);
     const prefix = `artifacts/${appId}/`;
-    return snap.docs.filter(d => d.ref.path.startsWith(prefix)).map(d => d.data());
+    return snap.docs.filter((d) => d.ref.path.startsWith(prefix)).map((d) => d.data());
 }
 
 function restaurantArrayToMap(arr) {
     const map = new Map();
-    (arr || []).forEach(r => map.set(r.name, { ...r }));
+    (arr || []).forEach((r) => map.set(r.name, { ...r }));
     return map;
 }
 
-async function fetchAllRestaurantsFull(slotFilter) {
+/** 전체 사용자 meals 스캔 → 원시 집계 Map (슬롯 필터 전) */
+async function fetchRestaurantAggregateMap() {
     const usersColl = collection(db, 'artifacts', appId, 'users');
     const usersSnapshot = await getDocs(usersColl);
+    const userDocs = usersSnapshot.docs;
     const restaurantMap = new Map();
-    for (const userDoc of usersSnapshot.docs) {
-        try {
-            const mealsColl = collection(db, 'artifacts', appId, 'users', userDoc.id, 'meals');
-            const mealsSnapshot = await getDocs(mealsColl);
-            mealsSnapshot.docs.forEach(mealDoc => applyMealToRestaurantMap(restaurantMap, mealDoc.data(), slotFilter));
-        } catch (e) {
-            console.warn(`사용자 ${userDoc.id} meals 조회 실패:`, e);
+
+    let cursor = 0;
+    async function worker() {
+        while (cursor < userDocs.length) {
+            const myIndex = cursor++;
+            const userDoc = userDocs[myIndex];
+            try {
+                const mealsColl = collection(db, 'artifacts', appId, 'users', userDoc.id, 'meals');
+                const mealsSnapshot = await getDocs(mealsColl);
+                mealsSnapshot.docs.forEach((mealDoc) => applyMealToRestaurantAggregate(restaurantMap, mealDoc.data()));
+            } catch (e) {
+                console.warn(`사용자 ${userDoc.id} meals 조회 실패:`, e);
+            }
         }
     }
+
+    const nWorkers = Math.min(USER_MEAL_FETCH_CONCURRENCY, userDocs.length || 1);
+    await Promise.all(Array.from({ length: nWorkers }, () => worker()));
     return restaurantMap;
+}
+
+async function fetchAllRestaurantsFull(slotFilter) {
+    const agg = await fetchRestaurantAggregateMap();
+    return finalizeRestaurantMapForSlot(agg, slotFilter);
 }
 
 async function renderRestaurantData(filter = 'all', slotFilter = 'all') {
@@ -116,24 +164,28 @@ async function renderRestaurantData(filter = 'all', slotFilter = 'all') {
         const cacheSnap = await getDoc(RESTAURANT_STATS_REF());
         let restaurantMap;
 
-        if (slotFilter === 'all' && cacheSnap.exists() && cacheSnap.data().asOfDate && cacheSnap.data().restaurants) {
-            const data = cacheSnap.data();
-            const asOfDate = data.asOfDate;
-            const cachedList = data.restaurants || [];
+        const cacheData = cacheSnap.exists() ? cacheSnap.data() : null;
+        const cachedList = cacheData?.restaurants || [];
+        const cacheExists = !!(cacheData?.asOfDate && cachedList.length);
+        const asOfDate = cacheExists ? cacheData.asOfDate : null;
+        const breakdownOk = cacheHasSlotBreakdown(cachedList);
 
-            if (asOfDate === todayStr) {
-                restaurantMap = restaurantArrayToMap(cachedList);
-            } else {
-                restaurantMap = restaurantArrayToMap(cachedList);
+        if (cacheExists && (slotFilter === 'all' || breakdownOk)) {
+            restaurantMap = restaurantArrayToMap(cachedList);
+            if (asOfDate !== todayStr) {
                 const todayMeals = await getTodayMealsForRestaurants();
-                todayMeals.forEach(mealData => applyMealToRestaurantMap(restaurantMap, mealData, 'all'));
-                const mergedList = Array.from(restaurantMap.values());
-                await setDoc(RESTAURANT_STATS_REF(), { asOfDate: todayStr, restaurants: mergedList }, { merge: true });
+                todayMeals.forEach((mealData) => applyMealToRestaurantAggregate(restaurantMap, mealData));
+                if (slotFilter === 'all') {
+                    const mergedList = Array.from(restaurantMap.values());
+                    await setDoc(RESTAURANT_STATS_REF(), { asOfDate: todayStr, restaurants: mergedList }, { merge: true });
+                }
             }
+            restaurantMap = finalizeRestaurantMapForSlot(restaurantMap, slotFilter);
         } else if (slotFilter === 'all') {
-            restaurantMap = await fetchAllRestaurantsFull('all');
-            const list = Array.from(restaurantMap.values());
+            const agg = await fetchRestaurantAggregateMap();
+            const list = Array.from(agg.values());
             await setDoc(RESTAURANT_STATS_REF(), { asOfDate: todayStr, restaurants: list }, { merge: true });
+            restaurantMap = finalizeRestaurantMapForSlot(agg, 'all');
         } else {
             restaurantMap = await fetchAllRestaurantsFull(slotFilter);
         }
@@ -141,14 +193,14 @@ async function renderRestaurantData(filter = 'all', slotFilter = 'all') {
         let restaurants = Array.from(restaurantMap.values());
 
         const totalCount = restaurants.length;
-        const kakaoCount = restaurants.filter(r => r.isKakao).length;
-        const manualCount = restaurants.filter(r => !r.isKakao).length;
+        const kakaoCount = restaurants.filter((r) => r.isKakao).length;
+        const manualCount = restaurants.filter((r) => !r.isKakao).length;
         console.log('📊 식당 통계:', {
             total: totalCount,
             kakao: kakaoCount,
             manual: manualCount,
             filter: filter,
-            kakaoRestaurants: restaurants.filter(r => r.isKakao).slice(0, 5).map(r => ({ name: r.name, placeId: r.placeId, address: r.address }))
+            kakaoRestaurants: restaurants.filter((r) => r.isKakao).slice(0, 5).map((r) => ({ name: r.name, placeId: r.placeId, address: r.address }))
         });
 
         if (filter === 'kakao' && kakaoCount === 0 && totalCount > 0) {
@@ -158,10 +210,10 @@ async function renderRestaurantData(filter = 'all', slotFilter = 'all') {
         }
 
         if (filter === 'kakao') {
-            restaurants = restaurants.filter(r => r.isKakao);
+            restaurants = restaurants.filter((r) => r.isKakao);
             console.log('카카오맵 필터 적용 후:', restaurants.length, '개');
         } else if (filter === 'manual') {
-            restaurants = restaurants.filter(r => !r.isKakao);
+            restaurants = restaurants.filter((r) => !r.isKakao);
             console.log('수동입력 필터 적용 후:', restaurants.length, '개');
         }
 
@@ -193,20 +245,22 @@ async function renderRestaurantData(filter = 'all', slotFilter = 'all') {
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
-                        ${restaurants.map((restaurant, index) => {
-            const inputTypeBadge = restaurant.isKakao
-                ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
+                        ${restaurants
+                            .map((restaurant, index) => {
+                                const inputTypeBadge = restaurant.isKakao
+                                    ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
                                     <i class="fa-solid fa-map-marker-alt mr-1"></i>카카오맵
                                    </span>`
-                : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
+                                    : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
                                     <i class="fa-solid fa-keyboard mr-1"></i>수동입력
                                    </span>`;
 
-            const countDetail = restaurant.isKakao && restaurant.manualCount > 0
-                ? `<div class="text-xs text-slate-500 mt-1">카카오: ${restaurant.kakaoCount}회, 수동: ${restaurant.manualCount}회</div>`
-                : '';
+                                const countDetail =
+                                    restaurant.isKakao && restaurant.manualCount > 0
+                                        ? `<div class="text-xs text-slate-500 mt-1">카카오: ${restaurant.kakaoCount}회, 수동: ${restaurant.manualCount}회</div>`
+                                        : '';
 
-            return `
+                                return `
                             <tr class="hover:bg-slate-50 transition-colors">
                                 <td class="px-4 py-3 text-sm font-bold text-slate-700">${index + 1}</td>
                                 <td class="px-4 py-3 text-sm text-slate-800">
@@ -224,7 +278,8 @@ async function renderRestaurantData(filter = 'all', slotFilter = 'all') {
                                 <td class="px-4 py-3 text-sm text-slate-600">${restaurant.lastSeen || '-'}</td>
                             </tr>
                         `;
-        }).join('')}
+                            })
+                            .join('')}
                     </tbody>
                 </table>
             </div>
@@ -233,7 +288,6 @@ async function renderRestaurantData(filter = 'all', slotFilter = 'all') {
                 ${slotLabel}
             </div>
         `;
-
     } catch (e) {
         console.error('식당정보 조회 실패:', e);
         container.innerHTML = `
@@ -253,8 +307,8 @@ export function renderRestaurantDataForMonitoringSidebar() {
 
 export function registerRestaurantStats() {
     window.renderRestaurantData = renderRestaurantData;
-    window.setRestaurantFilter = function(filter) {
-        document.querySelectorAll('.restaurant-filter-btn').forEach(btn => {
+    window.setRestaurantFilter = function (filter) {
+        document.querySelectorAll('.restaurant-filter-btn').forEach((btn) => {
             btn.classList.remove('bg-emerald-600', 'text-white');
             btn.classList.add('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
         });
@@ -265,9 +319,9 @@ export function registerRestaurantStats() {
         }
         renderRestaurantData(filter, currentRestaurantSlotFilter);
     };
-    window.setRestaurantSlotFilter = function(slotFilter) {
+    window.setRestaurantSlotFilter = function (slotFilter) {
         currentRestaurantSlotFilter = slotFilter;
-        document.querySelectorAll('.restaurant-slot-filter-btn').forEach(btn => {
+        document.querySelectorAll('.restaurant-slot-filter-btn').forEach((btn) => {
             btn.classList.remove('bg-emerald-600', 'text-white');
             btn.classList.add('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
         });
@@ -278,7 +332,7 @@ export function registerRestaurantStats() {
         }
         renderRestaurantData(currentRestaurantFilter, slotFilter);
     };
-    window.refreshRestaurantData = async function() {
+    window.refreshRestaurantData = async function () {
         const container = document.getElementById('restaurantsContainer');
         if (!container) return;
         container.innerHTML = `
@@ -288,12 +342,9 @@ export function registerRestaurantStats() {
         </div>
     `;
         try {
-            const slotFilter = currentRestaurantSlotFilter;
-            const restaurantMap = await fetchAllRestaurantsFull(slotFilter === 'all' ? 'all' : slotFilter);
-            if (slotFilter === 'all') {
-                const list = Array.from(restaurantMap.values());
-                await setDoc(RESTAURANT_STATS_REF(), { asOfDate: getTodayDateString(), restaurants: list }, { merge: true });
-            }
+            const agg = await fetchRestaurantAggregateMap();
+            const list = Array.from(agg.values());
+            await setDoc(RESTAURANT_STATS_REF(), { asOfDate: getTodayDateString(), restaurants: list }, { merge: true });
             await renderRestaurantData(currentRestaurantFilter, currentRestaurantSlotFilter);
         } catch (e) {
             console.error('식당정보 새로고침 실패:', e);
