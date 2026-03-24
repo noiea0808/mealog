@@ -37,9 +37,10 @@ jobs:
             echo "GOOGLE_WEB_CLIENT_ID: 설정됨 (길이 ${#WCID})" >> $GITHUB_STEP_SUMMARY
           fi
           echo "// API 설정 - GitHub Actions에서 자동 생성" > js/config.js
-          echo "// GEMINI_API_KEY, GOOGLE_WEB_CLIENT_ID는 GitHub Secrets에서 가져옵니다." >> js/config.js
-          echo "export const GEMINI_API_KEY = '${{ secrets.GEMINI_API_KEY }}';" >> js/config.js
+          echo "// Gemini는 Firebase Functions 환경 변수만 사용 (클라이언트 config에 포함하지 않음)" >> js/config.js
           echo "export const GOOGLE_WEB_CLIENT_ID = '${{ secrets.GOOGLE_WEB_CLIENT_ID }}';" >> js/config.js
+          echo "export const DEMO_ACCOUNT_EMAIL = '${{ secrets.DEMO_ACCOUNT_EMAIL }}';" >> js/config.js
+          echo "export const DEMO_ACCOUNT_PASSWORD = '${{ secrets.DEMO_ACCOUNT_PASSWORD }}';" >> js/config.js
           echo "생성된 config.js 내용 (마스킹):" >> $GITHUB_STEP_SUMMARY
           cat js/config.js | sed 's/AIzaSy[^'"'"']*/AIzaSy***/' | sed 's/[0-9]*-[a-zA-Z0-9_-]*\.apps\.googleusercontent\.com/***.apps.googleusercontent.com/' >> $GITHUB_STEP_SUMMARY
         shell: bash

@@ -1389,7 +1389,7 @@ initAuth(async (user) => {
             }
             showLoading('샘플 타임라인을 불러오는 중...', { dimBackground: false, skipOnLoginScreen: true });
             void import('./demo-account.js').then(async (mod) => {
-                if (!mod.isDemoCredentialsConfigured()) {
+                if (!(await mod.isDemoCredentialsConfigured())) {
                     hideLoading();
                     presentLoginLanding();
                     return;

@@ -11,7 +11,8 @@
     "logs": "firebase functions:log",
     "migrate:sharedPhotos": "node scripts/migrate-shared-photos-timestamp.js",
     "backfill:nicknameClaims": "node scripts/backfill-nickname-claims.js",
-    "shift-demo-dates": "node scripts/shift-demo-user-dates.js"
+    "shift-demo-dates": "node scripts/shift-demo-user-dates.js",
+    "set-demo-password": "node scripts/set-demo-user-password.js"
   },
   "engines": {
     "node": "20"
