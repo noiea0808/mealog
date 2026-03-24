@@ -1,6 +1,7 @@
 // 소셜 기능 (좋아요, 댓글, 북마크, 신고)
 import { db, appId, auth, callableFunctions } from '../firebase.js';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, addDoc, query, orderBy, where, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { isDemoUser } from '../demo-account.js';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, addDoc, query, orderBy, where, getDocs, getDocsFromServer, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // 좋아요, 댓글, 북마크 관련 함수들
 export const postInteractions = {
@@ -175,6 +176,9 @@ export const postInteractions = {
     async addComment(postId, userId, commentText, userProfile) {
         if (!window.currentUser || window.currentUser.isAnonymous || !postId || !commentText?.trim()) {
             throw new Error("로그인이 필요합니다.");
+        }
+        if (isDemoUser(window.currentUser)) {
+            throw new Error('샘플 계정에서는 댓글을 작성할 수 없습니다.');
         }
         try {
             console.log('[postInteractions.addComment] 시작:', { postId, commentLength: commentText?.length });
@@ -375,6 +379,22 @@ export const postInteractions = {
         }
     }
 };
+
+/**
+ * 내 글(피드)에 달린 댓글 실시간 구독 — 변경 시에만 callback 호출 (알림 빨간점 갱신용)
+ * @param {string} uid - 현재 사용자 uid
+ * @param {() => void} callback - 댓글 추가/변경 시 호출 (디바운스는 호출 측에서 처리)
+ * @returns {() => void} unsubscribe
+ */
+export function subscribeToMyPostComments(uid, callback) {
+    const id = String(uid || '').trim();
+    if (!id || !callback) return () => {};
+    const commentsColl = collection(db, 'artifacts', appId, 'postComments');
+    const q = query(commentsColl, where('postOwnerId', '==', id));
+    return onSnapshot(q, (snap) => {
+        if (snap.docChanges().length > 0) callback();
+    });
+}
 
 // 현재 사용자가 해당 게시물을 이미 신고했는지 조회 (있으면 { id, reason, reasonOther } 반환)
 // postReports read 권한 이슈 회피: 사용자 자신의 config/reportedPosts 문서에서 조회

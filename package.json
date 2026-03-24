@@ -5,18 +5,18 @@
   "scripts": {
     "build": "node scripts/build-config.js",
     "copy:www": "node scripts/copy-to-www.js",
-    "cap:sync": "node scripts/select-cap-config.js staging && npm run copy:www && npx cap sync android",
-    "cap:sync:production": "node scripts/ensure-icons.js && node scripts/select-cap-config.js production && npm run copy:www && npx cap sync android",
+    "cap:sync": "node scripts/select-cap-config.js staging && npm run copy:www && npx @capacitor/cli sync android",
+    "cap:sync:production": "node scripts/ensure-icons.js && node scripts/select-cap-config.js production && npm run copy:www && npx @capacitor/cli sync android",
     "cap:build:staging": "npm run cap:sync:bundled && node scripts/build-android.js assembleStagingDebug",
     "cap:install:staging": "npm run cap:sync:bundled && node scripts/build-android.js installStagingDebug",
     "cap:build:production": "npm run cap:sync:production && node scripts/build-android.js assembleProductionDebug",
-    "cap:open": "npx cap open android",
-    "cap:sync:bundled": "node scripts/update-version.js staging && node scripts/ensure-icons.js && node scripts/select-cap-config.js staging.bundled && npm run copy:www && npx cap sync android",
+    "cap:open": "npx @capacitor/cli open android",
+    "cap:sync:bundled": "node scripts/update-version.js staging && node scripts/ensure-icons.js && node scripts/select-cap-config.js staging.bundled && npm run copy:www && npx @capacitor/cli sync android",
     "cap:build:bundled": "npm run cap:sync:bundled && node scripts/build-android.js assembleStagingDebug",
-    "postinstall": "node scripts/patch-safe-area.js",
+    "postinstall": "node scripts/patch-safe-area.js && node scripts/patch-push-notifications-npe.js",
     "cap:build:production:release": "node scripts/update-version.js production && node scripts/ensure-keystore.js && npm run cap:sync:production && node scripts/build-android.js assembleProductionRelease",
     "cap:build:production:aab": "node scripts/update-version.js production && node scripts/ensure-keystore.js && npm run cap:sync:production && node scripts/build-android.js bundleProductionRelease",
-    "icons:generate": "capacitor-assets generate --android"
+    "icons:generate": "npx @capacitor/assets generate --android"
   },
   "dependencies": {
     "@capacitor-community/safe-area": "^8.0.1",
@@ -28,6 +28,7 @@
     "@capacitor/push-notifications": "^8.0.2",
     "@capacitor/share": "^8.0.0",
     "@capacitor/splash-screen": "^8.0.1",
+    "@capawesome/capacitor-badge": "^8.0.1",
     "@capgo/capacitor-social-login": "^8.2.23"
   },
   "devDependencies": {

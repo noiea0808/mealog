@@ -15,6 +15,9 @@ export const appState = {
     settingsUnsubscribe: null,
     statsUnsubscribe: null,
     sharedPhotosUnsubscribe: null,
+    notificationUnsubscribePost: null,
+    notificationUnsubscribeBoard: null,
+    notificationUnreadCount: 0,
     sharedPhotosFeedLastDoc: null,
     sharedPhotosFeedHasMore: false,
     sharedPhotosFeedPrefetchedAt: 0, // 모먼트 프리페치 시각 (ms), 캐시 유효성 판단용
@@ -37,7 +40,7 @@ export const appState = {
     currentEditingId: null,
     currentEditingDate: "",
     currentEditingSlotId: "",
-    currentPhotos: [], // 미리보기용 base64 URL 또는 Storage URL
+    currentPhotos: [], // 미리보기용 원본 data URL(선택 직후) 또는 Storage URL; 업로드 시에만 압축
     currentPhotoFiles: [], // 실제 파일 객체 (Storage 업로드용)
     sharedPhotos: [], // 현재 공유된 사진 목록 (모달 내)
     originalSharedPhotos: [], // 모달 열 때의 원본 공유 사진 목록 (삭제 추적용)

@@ -3,6 +3,18 @@ import { db, appId } from '../firebase.js';
 import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, startAfter, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from '../constants.js';
 import { dbOps } from './ops.js';
+import { hideLoading, showNetworkErrorOverlay, isLikelyNetworkError } from '../ui.js';
+import { isDemoUser } from '../demo-account.js';
+import {
+    addDaysToYmd,
+    applyDemoDateShiftToDailyComments,
+    applyDemoDateShiftToDailyStats,
+    applyDemoDateShiftToMeals,
+    applyDemoDateShiftToSharedPhoto,
+    computeDemoDateShiftDays,
+    computeDemoDateShiftDaysFromKeyedObject,
+    todayLocalYmd
+} from '../demo-date-shift.js';
 
 /** 세션당 1회만 실행 (Firestore 읽기 절감) */
 let userDocEnsureDoneForUid = null;
@@ -26,6 +38,12 @@ export function setupListeners(userId, callbacks) {
         if (oldDataUnsubscribe) oldDataUnsubscribe();
         const noop = () => {};
         return { settingsUnsubscribe: noop, dataUnsubscribe: noop };
+    }
+
+    const demo = isDemoUser(window.currentUser);
+    if (!demo) {
+        delete window.__demoDateShiftDays;
+        delete window.__demoRawDailyComments;
     }
     
     // 사용자 ID 불일치 경고
@@ -85,6 +103,18 @@ export function setupListeners(userId, callbacks) {
             }
             if (!window.userSettings.tags) {
                 window.userSettings.tags = {};
+            }
+            if (demo) {
+                try {
+                    window.__demoRawDailyComments = JSON.parse(JSON.stringify(window.userSettings.dailyComments || {}));
+                    const sh = Number(window.__demoDateShiftDays);
+                    if (sh) {
+                        window.userSettings.dailyComments = applyDemoDateShiftToDailyComments(
+                            window.__demoRawDailyComments,
+                            sh
+                        );
+                    }
+                } catch (_) {}
             }
             // 첫 화면을 빨리 보여주기 위해 user doc·태그 로드 전에 먼저 콜백 호출
             console.log('📞 onSettingsUpdate 콜백 호출 (초기)');
@@ -383,6 +413,18 @@ export function setupListeners(userId, callbacks) {
                     window.userSettings = serverSnap.data();
                     if (!window.userSettings.subTags) window.userSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
                     if (!window.userSettings.favoriteSubTags) window.userSettings.favoriteSubTags = { mealType: {}, category: {}, withWhom: {}, snackType: {}, snackPlace: {} };
+                    if (demo) {
+                        try {
+                            window.__demoRawDailyComments = JSON.parse(JSON.stringify(window.userSettings.dailyComments || {}));
+                            const sh = Number(window.__demoDateShiftDays);
+                            if (sh) {
+                                window.userSettings.dailyComments = applyDemoDateShiftToDailyComments(
+                                    window.__demoRawDailyComments,
+                                    sh
+                                );
+                            }
+                        } catch (_) {}
+                    }
                     console.log('📥 설정 서버에서 로드 (캐시 미스 시): termsAgreed=', window.userSettings.termsAgreed);
                     if (onSettingsUpdate) onSettingsUpdate();
                     return;
@@ -402,7 +444,13 @@ export function setupListeners(userId, callbacks) {
             message: error.message,
             userId: userId
         });
-        
+
+        if (isLikelyNetworkError(error)) {
+            hideLoading();
+            showNetworkErrorOverlay();
+            return;
+        }
+
         // 권한 오류인 경우 기존 사용자인지 확인하여 약관 동의 자동 설정
         if (error.code === 'permission-denied') {
             console.warn('⚠️ 설정 읽기 권한 오류. 기존 사용자인지 확인합니다...');
@@ -455,19 +503,80 @@ export function setupListeners(userId, callbacks) {
         });
     }
     
+    // Stats 리스너 (연도별 서브컬렉션: config/stats/years/{year}) — meals 콜백에서 mergeStatsIntoDaily 호출하므로 먼저 정의
+    // 현재 연도 + 이전 연도 구독 (연말/연초 경계 대비)
+    let statsBackfillRequested = false;
+    const statsYearData = {};
+    const statsYearsToListen = [
+        String(new Date().getFullYear()),
+        String(new Date().getFullYear() - 1)
+    ];
+    const mergeStatsIntoDaily = () => {
+        const merged = {};
+        Object.values(statsYearData).forEach((yearDaily) => {
+            if (yearDaily && typeof yearDaily === 'object') {
+                Object.assign(merged, yearDaily);
+            }
+        });
+        let shift = 0;
+        if (demo) {
+            if (window.__demoDateShiftDays != null && !Number.isNaN(Number(window.__demoDateShiftDays))) {
+                shift = Number(window.__demoDateShiftDays);
+            } else {
+                shift = computeDemoDateShiftDaysFromKeyedObject(merged);
+            }
+            window.dailyStats = shift ? applyDemoDateShiftToDailyStats(merged, shift) : merged;
+        } else {
+            window.dailyStats = merged;
+        }
+    };
+    const onStatsYearSnapshot = (year) => (snap) => {
+        if (window.currentUser && userId !== window.currentUser.uid) return;
+        if (snap.exists() && snap.data().daily) {
+            statsYearData[year] = snap.data().daily;
+        } else {
+            statsYearData[year] = null;
+        }
+        mergeStatsIntoDaily();
+        const hasAnyData = Object.values(statsYearData).some(v => v && Object.keys(v).length > 0);
+        if (!hasAnyData && !statsBackfillRequested && window.currentUser && !window.currentUser.isAnonymous && !demo) {
+            statsBackfillRequested = true;
+            import('../firebase.js').then(({ callableFunctions }) => {
+                callableFunctions.backfillUserStats().then(() => {
+                    console.log('✅ stats backfill 완료');
+                }).catch(e => {
+                    console.warn('stats backfill 실패:', e);
+                });
+            }).catch(() => {});
+        }
+        if (onDataUpdate) onDataUpdate();
+    };
+    const statsUnsubscribes = statsYearsToListen.map(year =>
+        onSnapshot(doc(db, 'artifacts', appId, 'users', userId, 'config', 'stats', 'years', year), onStatsYearSnapshot(year), (err) => {
+            console.warn('Stats year listener error:', year, err);
+            statsYearData[year] = null;
+            mergeStatsIntoDaily();
+        })
+    );
+    const statsUnsubscribe = () => statsUnsubscribes.forEach(fn => fn());
+    
     // 최근 14일 초기 로드 (고아 공유 동기화 대상 확대, 스크롤/더보기로 추가 로드)
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - 14);
     const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
     const todayStr = new Date().toISOString().split('T')[0];
     
+    const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
     // limit(100): 14일치가 많을 때 읽기/전송량 제한 → 첫 로딩 체감 속도 개선 (나머지는 loadMoreMeals로 로드)
-    const mealsQuery = query(
-        collection(db, 'artifacts', appId, 'users', userId, 'meals'),
-        where('date', '>=', cutoffDateStr),
-        orderBy('date', 'desc'),
-        limit(100)
-    );
+    // 데모: 고정 샘플 날짜가 14일 밖이면 비어 보이므로 날짜 필터 없이 최근 100건만 로드 후 화면용 날짜 시프트
+    const mealsQuery = demo
+        ? query(mealsColl, orderBy('date', 'desc'), limit(100))
+        : query(
+            mealsColl,
+            where('date', '>=', cutoffDateStr),
+            orderBy('date', 'desc'),
+            limit(100)
+        );
     
     let isInitialLoad = true;
     const dataUnsubscribe = onSnapshot(mealsQuery, (snap) => {
@@ -479,6 +588,49 @@ export function setupListeners(userId, callbacks) {
                 email: window.currentUser.email
             });
             // 잘못된 사용자의 리스너이므로 무시
+            return;
+        }
+        if (demo) {
+            const rawMeals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            const shift = computeDemoDateShiftDays(rawMeals);
+            window.__demoDateShiftDays = shift;
+            window.mealHistory = applyDemoDateShiftToMeals(rawMeals, shift).sort(
+                (a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)
+            );
+            const rawDates = rawMeals
+                .map((m) => m.date)
+                .filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d));
+            if (rawDates.length && shift) {
+                const minRaw = rawDates.reduce((a, b) => (a < b ? a : b));
+                window.loadedMealsDateRange = {
+                    start: addDaysToYmd(minRaw, shift),
+                    end: todayLocalYmd()
+                };
+            } else if (rawDates.length) {
+                const minRaw = rawDates.reduce((a, b) => (a < b ? a : b));
+                const maxRaw = rawDates.reduce((a, b) => (a > b ? a : b));
+                window.loadedMealsDateRange = { start: minRaw, end: maxRaw };
+            } else {
+                const tl = todayLocalYmd();
+                window.loadedMealsDateRange = { start: tl, end: tl };
+            }
+            if (window.userSettings && window.__demoRawDailyComments) {
+                window.userSettings.dailyComments = applyDemoDateShiftToDailyComments(
+                    window.__demoRawDailyComments,
+                    shift
+                );
+            }
+            mergeStatsIntoDaily();
+            isInitialLoad = false;
+            if (onDataUpdate) onDataUpdate();
+            import('../db.js').then(({ loadMyShares }) => {
+                loadMyShares().then((list) => {
+                    window.sharedPhotos = list;
+                    if (typeof window.updateTimelineShareIndicators === 'function') {
+                        window.updateTimelineShareIndicators();
+                    }
+                }).catch(() => {});
+            }).catch(() => {});
             return;
         }
         if (isInitialLoad) {
@@ -577,67 +729,78 @@ export function setupListeners(userId, callbacks) {
             console.error('⚠️ 데이터 리스너 에러 핸들러: 사용자 ID 불일치! 리스너 무시');
             return;
         }
+        if (isLikelyNetworkError(error)) {
+            hideLoading();
+            showNetworkErrorOverlay();
+            return;
+        }
         // 인덱스가 없을 경우 fallback: 전체 컬렉션 사용 (경고만 표시)
         console.warn("날짜 범위 쿼리 실패, 전체 컬렉션으로 fallback");
         const fallbackQuery = collection(db, 'artifacts', appId, 'users', userId, 'meals');
-        return onSnapshot(fallbackQuery, (snap) => {
-            // 사용자 ID 재확인 (fallback 리스너 내부에서)
-            if (window.currentUser && userId !== window.currentUser.uid) {
-                console.error('⚠️ Fallback 리스너: 사용자 ID 불일치! 무시');
-                return;
+        return onSnapshot(
+            fallbackQuery,
+            (snap) => {
+                // 사용자 ID 재확인 (fallback 리스너 내부에서)
+                if (window.currentUser && userId !== window.currentUser.uid) {
+                    console.error('⚠️ Fallback 리스너: 사용자 ID 불일치! 무시');
+                    return;
+                }
+                if (demo) {
+                    let rawMeals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+                    rawMeals.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+                    rawMeals = rawMeals.slice(0, 100);
+                    const shift = computeDemoDateShiftDays(rawMeals);
+                    window.__demoDateShiftDays = shift;
+                    window.mealHistory = applyDemoDateShiftToMeals(rawMeals, shift).sort(
+                        (a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)
+                    );
+                    const rawDates = rawMeals
+                        .map((m) => m.date)
+                        .filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d));
+                    if (rawDates.length && shift) {
+                        const minRaw = rawDates.reduce((a, b) => (a < b ? a : b));
+                        window.loadedMealsDateRange = {
+                            start: addDaysToYmd(minRaw, shift),
+                            end: todayLocalYmd()
+                        };
+                    } else if (rawDates.length) {
+                        const minRaw = rawDates.reduce((a, b) => (a < b ? a : b));
+                        const maxRaw = rawDates.reduce((a, b) => (a > b ? a : b));
+                        window.loadedMealsDateRange = { start: minRaw, end: maxRaw };
+                    } else {
+                        const tl = todayLocalYmd();
+                        window.loadedMealsDateRange = { start: tl, end: tl };
+                    }
+                    if (window.userSettings && window.__demoRawDailyComments) {
+                        window.userSettings.dailyComments = applyDemoDateShiftToDailyComments(
+                            window.__demoRawDailyComments,
+                            shift
+                        );
+                    }
+                    mergeStatsIntoDaily();
+                    import('../db.js').then(({ loadMyShares }) => {
+                        loadMyShares().then((list) => {
+                            window.sharedPhotos = list;
+                            if (typeof window.updateTimelineShareIndicators === 'function') {
+                                window.updateTimelineShareIndicators();
+                            }
+                        }).catch(() => {});
+                    }).catch(() => {});
+                } else {
+                    window.mealHistory = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                        .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+                }
+                if (onDataUpdate) onDataUpdate();
+            },
+            (err2) => {
+                console.error('Meals fallback listener error:', err2);
+                hideLoading();
+                if (isLikelyNetworkError(err2)) {
+                    showNetworkErrorOverlay();
+                }
             }
-            window.mealHistory = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-                .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-            if (onDataUpdate) onDataUpdate();
-        });
+        );
     });
-    
-    // Stats 리스너 (연도별 서브컬렉션: config/stats/years/{year})
-    // 현재 연도 + 이전 연도 구독 (연말/연초 경계 대비)
-    let statsBackfillRequested = false;
-    const statsYearData = {};
-    const statsYearsToListen = [
-        String(new Date().getFullYear()),
-        String(new Date().getFullYear() - 1)
-    ];
-    const mergeStatsIntoDaily = () => {
-        const merged = {};
-        Object.values(statsYearData).forEach((yearDaily) => {
-            if (yearDaily && typeof yearDaily === 'object') {
-                Object.assign(merged, yearDaily);
-            }
-        });
-        window.dailyStats = merged;
-    };
-    const onStatsYearSnapshot = (year) => (snap) => {
-        if (window.currentUser && userId !== window.currentUser.uid) return;
-        if (snap.exists() && snap.data().daily) {
-            statsYearData[year] = snap.data().daily;
-        } else {
-            statsYearData[year] = null;
-        }
-        mergeStatsIntoDaily();
-        const hasAnyData = Object.values(statsYearData).some(v => v && Object.keys(v).length > 0);
-        if (!hasAnyData && !statsBackfillRequested && window.currentUser && !window.currentUser.isAnonymous) {
-            statsBackfillRequested = true;
-            import('../firebase.js').then(({ callableFunctions }) => {
-                callableFunctions.backfillUserStats().then(() => {
-                    console.log('✅ stats backfill 완료');
-                }).catch(e => {
-                    console.warn('stats backfill 실패:', e);
-                });
-            }).catch(() => {});
-        }
-        if (onDataUpdate) onDataUpdate();
-    };
-    const statsUnsubscribes = statsYearsToListen.map(year =>
-        onSnapshot(doc(db, 'artifacts', appId, 'users', userId, 'config', 'stats', 'years', year), onStatsYearSnapshot(year), (err) => {
-            console.warn('Stats year listener error:', year, err);
-            statsYearData[year] = null;
-            mergeStatsIntoDaily();
-        })
-    );
-    const statsUnsubscribe = () => statsUnsubscribes.forEach(fn => fn());
     
     return { settingsUnsubscribe, dataUnsubscribe, statsUnsubscribe };
 }
@@ -651,6 +814,16 @@ function normalizeSharedPhotoDoc(docSnap) {
         data.timestamp = new Date(data.timestamp.seconds * 1000).toISOString();
     }
     return { id: docSnap.id, ...data };
+}
+
+/** 데모 계정 본인 공유만 date 필드를 화면용으로 시프트 (글로벌 피드에서는 본인 문서만) */
+function applyDemoShiftToSharedDocsIfNeeded(docs) {
+    if (!Array.isArray(docs) || !docs.length || !window.currentUser) return docs;
+    if (!isDemoUser(window.currentUser)) return docs;
+    const sh = Number(window.__demoDateShiftDays) || 0;
+    if (!sh) return docs;
+    const uid = window.currentUser.uid;
+    return docs.map((p) => (p.userId === uid ? applyDemoDateShiftToSharedPhoto(p, sh) : p));
 }
 
 /** docs를 그룹화했을 때 포스트(그룹) 수 계산 (renderGallery와 동일한 그룹 키 로직) */
@@ -758,7 +931,8 @@ export async function loadSharedPhotosPage(targetPosts = 10, startAfterDoc = nul
         returnLastDoc = sortedSnaps.find(s => s.id === lastId) || null;
     }
 
-    return { docs: docsToReturn, lastDoc: returnLastDoc, hasMore: hasMorePosts };
+    const shifted = applyDemoShiftToSharedDocsIfNeeded(docsToReturn);
+    return { docs: shifted, lastDoc: returnLastDoc, hasMore: hasMorePosts };
 }
 
 /** 본인 공유만 조회 (타임라인 공유 표시, 일간/베스트/인사이트 공유 확인용)
@@ -775,7 +949,7 @@ export async function loadMyShares() {
             limit(100)
         );
         const snap = await getDocsFromServer(q);
-        return snap.docs.map(d => normalizeSharedPhotoDoc(d));
+        return applyDemoShiftToSharedDocsIfNeeded(snap.docs.map(d => normalizeSharedPhotoDoc(d)));
     } catch (e) {
         if (e?.code === 'failed-precondition' && /index|indexes/i.test(String(e?.message || ''))) {
             console.warn('⚠️ loadMyShares 인덱스 필요:', e?.message);
@@ -791,7 +965,7 @@ export async function loadMyShares() {
                 const tb = (b.timestamp && new Date(b.timestamp).getTime()) || 0;
                 return tb - ta;
             });
-            return docs;
+            return applyDemoShiftToSharedDocsIfNeeded(docs);
         }
         throw e;
     }
@@ -807,6 +981,10 @@ export function setupSharedPhotosListener(callback) {
         if (callback) callback(sharedPhotos);
     }, (error) => {
         console.error("Shared Photos Listener Error:", error);
+        if (isLikelyNetworkError(error)) {
+            hideLoading();
+            showNetworkErrorOverlay();
+        }
     });
     return unsubscribe;
 }
@@ -833,7 +1011,7 @@ export async function getSharedPhotosByUser(userId) {
             limit(100)
         );
         const snap = await getDocsFromServer(q);
-        return snap.docs.map(normalize);
+        return applyDemoShiftToSharedDocsIfNeeded(snap.docs.map(normalize));
     } catch (e) {
         if (e?.code === 'failed-precondition' && /index|indexes/i.test(String(e?.message || ''))) {
             console.warn('⚠️ getSharedPhotosByUser 인덱스 필요:', e?.message);
@@ -849,7 +1027,7 @@ export async function getSharedPhotosByUser(userId) {
                 const tb = (b.timestamp && new Date(b.timestamp).getTime()) || 0;
                 return tb - ta;
             });
-            return docs;
+            return applyDemoShiftToSharedDocsIfNeeded(docs);
         }
         throw e;
     }

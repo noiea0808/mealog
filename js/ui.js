@@ -89,6 +89,68 @@ export function showToast(message, type = 'info') {
     setTimeout(remove, TOAST_DURATION_MS);
 }
 
+const PERMISSION_HINT_TOAST_MS = 14000;
+
+/**
+ * 알림 권한 등 — 안내 + 설정 열기 버튼 (error 전용 showToast와 별도)
+ * @param {string} message
+ * @param {{ actionLabel?: string, onAction?: () => void }} options
+ */
+export function showPermissionHintToast(message, options = {}) {
+    if (!message) return;
+    const { actionLabel = '설정 열기', onAction } = options;
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.setAttribute('role', 'alert');
+    toast.className =
+        'animate-toast px-4 py-3 rounded-xl text-sm font-medium text-white shadow-lg max-w-full bg-amber-600 flex flex-col gap-3';
+
+    const text = document.createElement('p');
+    text.className = 'm-0 leading-snug';
+    text.textContent = message;
+    toast.appendChild(text);
+
+    let hideTimer = null;
+    const remove = () => {
+        if (hideTimer) clearTimeout(hideTimer);
+        hideTimer = null;
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.2s ease';
+        setTimeout(() => {
+            if (toast.parentNode) toast.parentNode.removeChild(toast);
+        }, 200);
+    };
+
+    const row = document.createElement('div');
+    row.className = 'flex flex-wrap gap-2 justify-end items-center';
+    const laterBtn = document.createElement('button');
+    laterBtn.type = 'button';
+    laterBtn.className = 'px-3 py-1.5 rounded-lg text-amber-100 text-xs font-semibold hover:bg-white/10';
+    laterBtn.textContent = '나중에';
+    laterBtn.addEventListener('click', remove);
+    row.appendChild(laterBtn);
+    if (typeof onAction === 'function') {
+        const openBtn = document.createElement('button');
+        openBtn.type = 'button';
+        openBtn.className =
+            'px-3 py-1.5 rounded-lg bg-white text-amber-800 text-xs font-black hover:bg-amber-50';
+        openBtn.textContent = actionLabel;
+        openBtn.addEventListener('click', () => {
+            try {
+                onAction();
+            } catch (_) {}
+            remove();
+        });
+        row.appendChild(openBtn);
+    }
+    toast.appendChild(row);
+
+    container.appendChild(toast);
+    hideTimer = setTimeout(remove, PERMISSION_HINT_TOAST_MS);
+}
+
 const LANDING_EXIT_MS = 280;
 
 export function switchScreen(isLoggedIn) {
@@ -211,6 +273,74 @@ export function updateHeaderUI() {
 window.showLoading = showLoading;
 window.hideLoading = hideLoading;
 
+/** Firestore / fetch 등에서 네트워크성 오류로 추정되는지 (인덱스·권한 오류는 제외) */
+export function isLikelyNetworkError(err) {
+    if (!err) return false;
+    try {
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+    } catch (_) {}
+    const code = String(err.code || '');
+    const msg = String(err.message || (typeof err.toString === 'function' ? err.toString() : '') || '').toLowerCase();
+    const networkCodes = ['unavailable', 'deadline-exceeded', 'resource-exhausted'];
+    if (networkCodes.includes(code)) return true;
+    if (code === 'failed-precondition') return false;
+    if (code === 'permission-denied') return false;
+    if (
+        /failed to fetch|networkerror|network request failed|load failed|fetcherror/i.test(msg) ||
+        /connection.*(refused|reset|aborted)|err_connection|net::err|quic|econnreset|enotfound|etimedout|timeout/i.test(
+            msg
+        ) ||
+        /internet|offline|unreachable|host.*not.*found/i.test(msg)
+    ) {
+        return true;
+    }
+    return false;
+}
 
+const DEFAULT_NETWORK_ERROR_MESSAGE =
+    '네트워크 연결을 확인할 수 없습니다. Wi-Fi 또는 데이터 연결을 확인한 뒤 다시 시도해 주세요.';
 
+let networkErrorOverlayButtonsBound = false;
+
+function bindNetworkErrorOverlayButtons() {
+    if (networkErrorOverlayButtonsBound) return;
+    const reloadBtn = document.getElementById('networkErrorReloadBtn');
+    const dismissBtn = document.getElementById('networkErrorDismissBtn');
+    if (!reloadBtn || !dismissBtn) return;
+    networkErrorOverlayButtonsBound = true;
+    reloadBtn.addEventListener('click', () => {
+        try {
+            window.location.reload();
+        } catch (_) {}
+    });
+    dismissBtn.addEventListener('click', () => {
+        hideNetworkErrorOverlay();
+    });
+}
+
+/** 메인 콘텐츠(Firestore 등) 로드 실패 시 전체 화면 안내 */
+export function showNetworkErrorOverlay(options = {}) {
+    const overlay = document.getElementById('networkErrorOverlay');
+    if (!overlay) return;
+    bindNetworkErrorOverlayButtons();
+    const msgEl = document.getElementById('networkErrorOverlayMessage');
+    if (msgEl) {
+        msgEl.textContent =
+            typeof options.message === 'string' && options.message.trim()
+                ? options.message.trim()
+                : DEFAULT_NETWORK_ERROR_MESSAGE;
+    }
+    hideLoading();
+    overlay.classList.remove('hidden');
+}
+
+export function hideNetworkErrorOverlay() {
+    const overlay = document.getElementById('networkErrorOverlay');
+    if (!overlay) return;
+    overlay.classList.add('hidden');
+}
+
+window.isLikelyNetworkError = isLikelyNetworkError;
+window.showNetworkErrorOverlay = showNetworkErrorOverlay;
+window.hideNetworkErrorOverlay = hideNetworkErrorOverlay;
 

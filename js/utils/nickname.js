@@ -1,6 +1,7 @@
 // 닉네임 검증 관련 유틸리티 함수들
 import { db, appId } from '../firebase.js';
-import { collection, getDocs, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { normalizeNicknameForClaim, nicknameClaimDocId } from '../db/nickname-claims.js';
 
 // 비속어 필터링 리스트 (기본적인 비속어들)
 const PROFANITY_WORDS = [
@@ -30,33 +31,26 @@ export function containsProfanity(nickname) {
 }
 
 /**
- * 닉네임이 중복되는지 확인 (모든 사용자 settings 순회)
+ * 닉네임이 중복되는지 확인 (nicknameClaims 인덱스 1회 읽기, NFKC+소문자 기준 중복)
+ * 기존 사용자는 설정 저장 시 또는 backfill 스크립트로 인덱스가 채워짐.
  * @param {string} nickname - 확인할 닉네임
  * @param {string} currentUserId - 현재 사용자 ID (자신의 닉네임은 제외)
  * @returns {Promise<boolean>} 중복되면 true
  */
 export async function isNicknameDuplicate(nickname, currentUserId = null) {
     if (!nickname || typeof nickname !== 'string') return false;
-    
+
     try {
-        const usersColl = collection(db, 'artifacts', appId, 'users');
-        const usersSnap = await getDocs(usersColl);
-        
-        for (const userDoc of usersSnap.docs) {
-            if (currentUserId && userDoc.id === currentUserId) continue;
-            
-            const settingsRef = doc(db, 'artifacts', appId, 'users', userDoc.id, 'config', 'settings');
-            const settingsSnap = await getDoc(settingsRef);
-            if (!settingsSnap.exists()) continue;
-            
-            const settings = settingsSnap.data();
-            const existingNickname = settings.profile?.nickname;
-            if (existingNickname && existingNickname.trim() === nickname.trim()) {
-                return true;
-            }
-        }
-        
-        return false;
+        const norm = normalizeNicknameForClaim(nickname);
+        if (!norm) return false;
+
+        const claimRef = doc(db, 'artifacts', appId, 'nicknameClaims', nicknameClaimDocId(norm));
+        const snap = await getDoc(claimRef);
+        if (!snap.exists()) return false;
+        const owner = snap.data()?.userId;
+        if (!owner) return false;
+        if (currentUserId && owner === currentUserId) return false;
+        return true;
     } catch (e) {
         console.error('닉네임 중복 체크 실패:', e);
         return false;

@@ -9,6 +9,9 @@
   "plugins": {
     "SystemBars": {
       "insetsHandling": "disable"
+    },
+    "PushNotifications": {
+      "presentationOptions": ["alert", "sound", "badge"]
     }
   }
 }

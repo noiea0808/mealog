@@ -3,6 +3,8 @@ import { db, appId } from '../firebase.js';
 import { collection, query, where, orderBy, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { toLocalDateString, uploadBase64ToStorage } from '../utils.js';
 import { showToast } from '../ui.js';
+import { isDemoUser } from '../demo-account.js';
+import { addDaysToYmd, applyDemoDateShiftToDailyStats, applyDemoDateShiftToMeals } from '../demo-date-shift.js';
 
 /** 연도별 stats 로드 (config/stats/years/{year}) - 대시보드에서 과거 연도 조회 시 */
 export async function loadStatsForYears(years) {
@@ -13,7 +15,13 @@ export async function loadStatsForYears(years) {
         const snap = await getDoc(doc(db, 'artifacts', appId, 'users', uid, 'config', 'stats', 'years', year));
         if (snap.exists() && snap.data().daily) {
             window.dailyStats = window.dailyStats || {};
-            Object.assign(window.dailyStats, snap.data().daily);
+            const raw = snap.data().daily;
+            const shift =
+                isDemoUser(window.currentUser) && Number(window.__demoDateShiftDays)
+                    ? Number(window.__demoDateShiftDays)
+                    : 0;
+            const patch = shift ? applyDemoDateShiftToDailyStats(raw, shift) : raw;
+            Object.assign(window.dailyStats, patch);
         }
     }
 }
@@ -34,23 +42,32 @@ export async function loadMoreMeals(amount = 1, unit = 'month') {
         }
         
         // 추가로 로드할 시작 날짜 계산
-        const newStartDate = new Date(currentStart + 'T00:00:00');
+        const shift = isDemoUser(window.currentUser) ? Number(window.__demoDateShiftDays) || 0 : 0;
+        const rawCurrentStart = shift ? addDaysToYmd(currentStart, -shift) : currentStart;
+        if (!rawCurrentStart) {
+            console.error('데모 날짜 역변환 실패');
+            return 0;
+        }
+        const newStartDate = new Date(rawCurrentStart + 'T00:00:00');
         if (unit === 'week') {
             newStartDate.setDate(newStartDate.getDate() - 7 * amount);
         } else {
             newStartDate.setMonth(newStartDate.getMonth() - amount);
         }
-        const newStartStr = `${newStartDate.getFullYear()}-${String(newStartDate.getMonth() + 1).padStart(2, '0')}-${String(newStartDate.getDate()).padStart(2, '0')}`;
+        const newStartStrRaw = `${newStartDate.getFullYear()}-${String(newStartDate.getMonth() + 1).padStart(2, '0')}-${String(newStartDate.getDate()).padStart(2, '0')}`;
         
         const q = query(
             collection(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals'),
-            where('date', '>=', newStartStr),
-            where('date', '<', currentStart),
+            where('date', '>=', newStartStrRaw),
+            where('date', '<', rawCurrentStart),
             orderBy('date', 'desc')
         );
         
         const snapshot = await getDocs(q);
-        const additionalMeals = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        let additionalMeals = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (shift) {
+            additionalMeals = applyDemoDateShiftToMeals(additionalMeals, shift);
+        }
         
         // 기존 데이터와 병합 (중복 제거)
         const existingIds = new Set(window.mealHistory.map(m => m.id));
@@ -60,8 +77,9 @@ export async function loadMoreMeals(amount = 1, unit = 'month') {
             window.mealHistory = [...window.mealHistory, ...newMeals]
                 .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
             
-            // 로드된 범위 업데이트
-            window.loadedMealsDateRange.start = newStartStr;
+            // 로드된 범위 업데이트 (데모는 화면 좌표)
+            const displayNewStart = shift ? addDaysToYmd(newStartStrRaw, shift) : newStartStrRaw;
+            window.loadedMealsDateRange.start = displayNewStart || newStartStrRaw;
         }
         
         return newMeals.length;
@@ -99,15 +117,26 @@ export async function loadMealsForDateRange(startDate, endDate) {
             }
         }
         
+        const shift = isDemoUser(window.currentUser) ? Number(window.__demoDateShiftDays) || 0 : 0;
+        const rawStart = shift ? addDaysToYmd(startStr, -shift) : startStr;
+        const rawEnd = shift ? addDaysToYmd(endStr, -shift) : endStr;
+        if (shift && (!rawStart || !rawEnd)) {
+            console.error('데모 날짜 역변환 실패 (범위 로드)');
+            return 0;
+        }
+        
         const q = query(
             collection(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals'),
-            where('date', '>=', startStr),
-            where('date', '<=', endStr),
+            where('date', '>=', rawStart),
+            where('date', '<=', rawEnd),
             orderBy('date', 'desc')
         );
         
         const snapshot = await getDocs(q);
-        const additionalMeals = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        let additionalMeals = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (shift) {
+            additionalMeals = applyDemoDateShiftToMeals(additionalMeals, shift);
+        }
         
         // 기존 데이터와 병합 (중복 제거)
         const existingIds = new Set(window.mealHistory.map(m => m.id));

@@ -92,6 +92,9 @@
                     <button onclick="window.switchAdminTab('monitoring')" id="admin-tab-monitoring" class="admin-tab flex-1 px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
                         <i class="fa-solid fa-chart-line mr-2"></i>모니터링
                     </button>
+                    <button onclick="window.switchAdminTab('alerts')" id="admin-tab-alerts" class="admin-tab flex-1 px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
+                        <i class="fa-solid fa-bell mr-2"></i>알림
+                    </button>
                     <button onclick="window.switchAdminTab('content')" id="admin-tab-content" class="admin-tab flex-1 px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
                         <i class="fa-solid fa-file-lines mr-2"></i>콘텐츠 관리
                     </button>
@@ -112,8 +115,20 @@
                                     <th class="px-4 py-3 font-black text-slate-700 uppercase">항목</th>
                                     <th class="px-4 py-3 font-black text-slate-700 uppercase text-center min-w-[5rem]">전체</th>
                                     <th class="px-4 py-3 font-black text-slate-700 uppercase text-center min-w-[5rem]">최근 30일</th>
-                                    <th class="px-4 py-3 font-black text-slate-700 uppercase text-center min-w-[5rem]">최근 7일</th>
-                                    <th class="px-4 py-3 font-black text-slate-700 uppercase text-center min-w-[5rem]">오늘</th>
+                                    <th colspan="8" class="px-2 py-3 font-black text-slate-700 uppercase text-center border-x border-slate-200 bg-slate-100/80 text-xs tracking-wide">최근 7일</th>
+                                </tr>
+                                <tr class="border-b border-slate-200 bg-slate-50/90 text-[11px]">
+                                    <th class="px-4 py-2"></th>
+                                    <th class="px-4 py-2"></th>
+                                    <th class="px-4 py-2"></th>
+                                    <th class="px-2 py-2 text-center font-bold text-slate-600 min-w-[3rem] border-l border-slate-200">7일 합</th>
+                                    <th id="dashboard7dHead0" class="px-1 py-2 text-center font-bold text-slate-600 min-w-[2.75rem]">—</th>
+                                    <th id="dashboard7dHead1" class="px-1 py-2 text-center font-bold text-slate-600 min-w-[2.75rem]">—</th>
+                                    <th id="dashboard7dHead2" class="px-1 py-2 text-center font-bold text-slate-600 min-w-[2.75rem]">—</th>
+                                    <th id="dashboard7dHead3" class="px-1 py-2 text-center font-bold text-slate-600 min-w-[2.75rem]">—</th>
+                                    <th id="dashboard7dHead4" class="px-1 py-2 text-center font-bold text-slate-600 min-w-[2.75rem]">—</th>
+                                    <th id="dashboard7dHead5" class="px-1 py-2 text-center font-bold text-slate-600 min-w-[2.75rem]">—</th>
+                                    <th id="dashboard7dHead6" class="px-1 py-2 text-center font-bold text-slate-600 min-w-[2.75rem] border-r border-slate-200">—</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -123,8 +138,14 @@
                                     </td>
                                     <td class="px-4 py-3 text-center font-bold text-slate-800" id="statGuestVisitsAll">-</td>
                                     <td class="px-4 py-3 text-center font-bold text-slate-800" id="statGuestVisits30">-</td>
-                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statGuestVisits7">-</td>
-                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statGuestVisitsToday">-</td>
+                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100 bg-slate-50/50" id="statGuestVisits7Sum">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statGuestVisits7d0">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statGuestVisits7d1">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statGuestVisits7d2">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statGuestVisits7d3">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statGuestVisits7d4">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statGuestVisits7d5">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statGuestVisits7d6">—</td>
                                 </tr>
                                 <tr class="border-b border-slate-100 hover:bg-slate-50/50">
                                     <td class="px-4 py-3 font-bold text-slate-700">
@@ -132,8 +153,14 @@
                                     </td>
                                     <td class="px-4 py-3 text-center font-bold text-slate-800" id="statNewUsersAll">-</td>
                                     <td class="px-4 py-3 text-center font-bold text-slate-800" id="statNewUsers30">-</td>
-                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statNewUsers7">-</td>
-                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statNewUsersToday">-</td>
+                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100 bg-slate-50/50" id="statNewUsers7Sum">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statNewUsers7d0">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statNewUsers7d1">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statNewUsers7d2">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statNewUsers7d3">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statNewUsers7d4">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statNewUsers7d5">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statNewUsers7d6">—</td>
                                 </tr>
                                 <tr class="border-b border-slate-100 hover:bg-slate-50/50">
                                     <td class="px-4 py-3 font-bold text-slate-700">
@@ -141,8 +168,14 @@
                                     </td>
                                     <td class="px-4 py-3 text-center font-bold text-slate-800" id="statActiveUsersAll">-</td>
                                     <td class="px-4 py-3 text-center font-bold text-slate-800" id="statActiveUsers30">-</td>
-                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statActiveUsers7">-</td>
-                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statActiveUsersToday">-</td>
+                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100 bg-slate-50/50" id="statActiveUsers7Sum">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statActiveUsers7d0">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statActiveUsers7d1">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statActiveUsers7d2">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statActiveUsers7d3">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statActiveUsers7d4">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statActiveUsers7d5">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statActiveUsers7d6">—</td>
                                 </tr>
                                 <tr class="border-b border-slate-100 hover:bg-slate-50/50">
                                     <td class="px-4 py-3 font-bold text-slate-700">
@@ -150,8 +183,14 @@
                                     </td>
                                     <td class="px-4 py-3 text-center font-bold text-slate-800" id="statRecordsAll">-</td>
                                     <td class="px-4 py-3 text-center font-bold text-slate-800" id="statRecords30">-</td>
-                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statRecords7">-</td>
-                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statRecordsToday">-</td>
+                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100 bg-slate-50/50" id="statRecords7Sum">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecords7d0">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecords7d1">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecords7d2">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecords7d3">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecords7d4">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecords7d5">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statRecords7d6">—</td>
                                 </tr>
                                 <tr class="hover:bg-slate-50/50">
                                     <td class="px-4 py-3 font-bold text-slate-700">
@@ -159,15 +198,21 @@
                                     </td>
                                     <td class="px-4 py-3 text-center font-bold text-slate-800" id="statSharedAll">-</td>
                                     <td class="px-4 py-3 text-center font-bold text-slate-800" id="statShared30">-</td>
-                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statShared7">-</td>
-                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statSharedToday">-</td>
+                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100 bg-slate-50/50" id="statShared7Sum">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statShared7d0">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statShared7d1">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statShared7d2">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statShared7d3">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statShared7d4">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statShared7d5">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statShared7d6">—</td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
-                    <div class="px-4 py-3 border-t border-slate-100 bg-slate-50/50 flex flex-wrap items-center justify-between gap-2">
+                    <div class="px-4 py-3 border-t border-slate-100 bg-slate-50/50 flex flex-wrap items-center justify-end gap-3">
                         <span id="dashboardStatsUpdatedAt" class="text-xs text-slate-500">마지막 업데이트: -</span>
-                        <button type="button" id="dashboardStatsRefreshBtn" onclick="window.refreshDashboardStats()" class="px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors">
+                        <button type="button" id="dashboardStatsRefreshBtn" onclick="window.refreshDashboardStats()" class="px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors shrink-0">
                             <i class="fa-solid fa-rotate-right mr-1"></i>통계 새로고침
                         </button>
                     </div>
@@ -478,359 +523,29 @@
                 </div>
             </div>
 
-            <!-- 콘텐츠 관리 탭 -->
-            <div id="admin-tab-content-content" class="admin-tab-content hidden">
+            <!-- 알림 탭 (공지·푸시·팝업·로그인 배너) -->
+            <div id="admin-tab-content-alerts" class="admin-tab-content hidden">
                 <div class="flex gap-6 items-start">
-                    <!-- 왼쪽 사이드바 -->
                     <div class="w-64 flex-shrink-0">
                         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sticky top-24">
                             <div class="space-y-2">
-                                <button onclick="window.switchContentSidebar('notice')" id="content-sidebar-notice" class="w-full px-4 py-3 text-left text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl transition-colors">
+                                <button onclick="window.switchAlertsSidebar('notice')" id="alerts-sidebar-notice" class="w-full px-4 py-3 text-left text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl transition-colors">
                                     <i class="fa-solid fa-bullhorn mr-2"></i>공지 관리
                                 </button>
-                                <button onclick="window.switchContentSidebar('popup')" id="content-sidebar-popup" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                <button onclick="window.switchAlertsSidebar('pushMessage')" id="alerts-sidebar-pushMessage" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-paper-plane mr-2"></i>푸시메시지 관리
+                                </button>
+                                <button onclick="window.switchAlertsSidebar('popup')" id="alerts-sidebar-popup" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
                                     <i class="fa-solid fa-window-maximize mr-2"></i>팝업 관리
                                 </button>
-                                <button onclick="window.switchContentSidebar('loginBanner')" id="content-sidebar-loginBanner" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                <button onclick="window.switchAlertsSidebar('loginBanner')" id="alerts-sidebar-loginBanner" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
                                     <i class="fa-solid fa-rectangle-ad mr-2"></i>로그인 배너
-                                </button>
-                                <button onclick="window.switchContentSidebar('mealog')" id="content-sidebar-mealog" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
-                                    <i class="fa-solid fa-robot mr-2"></i>MEALOG
-                                </button>
-                                <button onclick="window.switchContentSidebar('characters')" id="content-sidebar-characters" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
-                                    <i class="fa-solid fa-user-astronaut mr-2"></i>AI 캐릭터
-                                </button>
-                                <button onclick="window.switchContentSidebar('terms')" id="content-sidebar-terms" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
-                                    <i class="fa-solid fa-file-contract mr-2"></i>약관
-                                </button>
-                                <button onclick="window.switchContentSidebar('tags')" id="content-sidebar-tags" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
-                                    <i class="fa-solid fa-tags mr-2"></i>태그관리
-                                </button>
-                                <button onclick="window.switchContentSidebar('apk')" id="content-sidebar-apk" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
-                                    <i class="fa-solid fa-mobile-screen mr-2"></i>APK 배포
-                                </button>
-                                <button onclick="window.switchContentSidebar('settings')" id="content-sidebar-settings" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
-                                    <i class="fa-solid fa-gear mr-2"></i>관리자 설정
                                 </button>
                             </div>
                         </div>
                     </div>
-                    
-                    <!-- 오른쪽 메인 콘텐츠 영역 -->
                     <div class="flex-1 min-w-0">
-                        <!-- MEALOG 관리 -->
-                        <div id="content-main-mealog" class="content-main-section">
-                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
-                                <div class="p-6 border-b border-slate-100">
-                                    <div class="flex justify-between items-center">
-                                        <h2 class="text-lg font-black text-slate-800">MEALOG 안내 메시지 관리</h2>
-                                        <div class="flex gap-2">
-                                            <button onclick="window.saveMealogComments()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
-                                                <i class="fa-solid fa-save mr-2"></i>저장
-                                            </button>
-                                            <button onclick="window.refreshPersona()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                                <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="p-6">
-                                    <div id="mealogCommentsContainer" class="space-y-4">
-                                        <div class="text-center py-8 text-slate-400">
-                                            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
-                                            <p>로딩 중...</p>
-                                        </div>
-                                    </div>
-                                    <button onclick="window.addMealogComment()" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                                        <i class="fa-solid fa-plus mr-2"></i>메시지 추가
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- AI 캐릭터 관리 -->
-                        <div id="content-main-characters" class="content-main-section hidden">
-                            <!-- 캐릭터 목록 뷰 -->
-                            <div id="characters-list-view" class="characters-sub-view">
-                                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-                                    <div class="flex justify-between items-center mb-4">
-                                        <h2 class="text-lg font-black text-slate-800">캐릭터 목록</h2>
-                                        <button onclick="window.addNewCharacter()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
-                                            <i class="fa-solid fa-plus mr-2"></i>추가
-                                        </button>
-                                    </div>
-                                    <div id="personaCharactersList" class="flex flex-col gap-2">
-                                        <div class="text-center py-8 text-slate-400">
-                                            <i class="fa-solid fa-spinner fa-spin text-xl mb-2"></i>
-                                            <p class="text-sm">로딩 중...</p>
-                                        </div>
-                                    </div>
-                                    <!-- AI 코멘트 발송 시 사용하는 구글 AI 모델: gemini-2.5-flash-lite -->
-                                    <p class="mt-4 pt-4 border-t border-slate-100 text-xs text-slate-400">
-                                        AI 코멘트 모델: <code class="text-slate-500">gemini-2.5-flash-lite</code>
-                                    </p>
-                                </div>
-                            </div>
-                            <!-- 캐릭터 편집 뷰 -->
-                            <div id="character-edit-view" class="characters-sub-view hidden">
-                                <div id="personaCharacterEditor" class="bg-white rounded-2xl shadow-sm border border-slate-100">
-                                    <div class="p-6 border-b border-slate-100">
-                                        <div class="flex justify-between items-center">
-                                            <div class="flex items-center gap-3">
-                                                <button onclick="window.showCharacterListView()" class="px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                                    <i class="fa-solid fa-arrow-left mr-2"></i>목록
-                                                </button>
-                                                <h2 class="text-lg font-black text-slate-800">캐릭터 편집</h2>
-                                            </div>
-                                            <div class="flex gap-2">
-                                                <button onclick="window.saveCharacter()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
-                                                    <i class="fa-solid fa-save mr-2"></i>저장
-                                                </button>
-                                                <button onclick="window.refreshPersona()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                                    <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div id="personaCharacterEditorContent" class="p-6">
-                                        <div class="text-center py-12 text-slate-400">
-                                            <i class="fa-solid fa-spinner fa-spin text-3xl mb-3"></i>
-                                            <p class="text-sm font-bold">로딩 중...</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- 약관 관리 -->
-                        <div id="content-main-terms" class="content-main-section hidden">
-                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
-                                <div class="p-6 border-b border-slate-100">
-                                    <div class="flex justify-between items-center mb-4">
-                                        <h2 class="text-lg font-black text-slate-800">약관 관리</h2>
-                                    </div>
-                                    <!-- 약관 탭 -->
-                                    <div class="flex gap-2 border-b border-slate-200">
-                                        <button id="termsTabHistory" onclick="window.switchTermsTab('history')" class="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 border-b-2 border-transparent hover:border-slate-300 transition-colors">
-                                            약관이력
-                                        </button>
-                                        <button id="termsTabManage" onclick="window.switchTermsTab('manage')" class="px-4 py-2 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors">
-                                            약관관리
-                                        </button>
-                                    </div>
-                                </div>
-                                
-                                <!-- 약관이력 화면 -->
-                                <div id="termsHistorySection" class="hidden p-6">
-                                    <div class="space-y-4">
-                                        <div class="flex items-center justify-between mb-4">
-                                            <p class="text-sm text-slate-600">배포된 약관 버전 목록입니다.</p>
-                                        </div>
-                                        <div id="termsHistoryList" class="space-y-3">
-                                            <!-- 약관 버전 리스트가 여기에 동적으로 추가됩니다 -->
-                                            <div class="text-center py-8 text-slate-400">
-                                                <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
-                                                <p class="text-sm">약관 이력 로딩 중...</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- 약관관리 화면 -->
-                                <div id="termsManageSection" class="p-6 space-y-6">
-                                    <div class="flex justify-end gap-2 mb-4">
-                                        <button onclick="window.deployTerms()" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors">
-                                            <i class="fa-solid fa-rocket mr-2"></i>배포
-                                        </button>
-                                        <button onclick="window.saveTerms()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
-                                            <i class="fa-solid fa-save mr-2"></i>저장
-                                        </button>
-                                    </div>
-                                    <!-- 이용약관 -->
-                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <div class="flex items-center justify-between mb-4">
-                                            <h3 class="text-base font-black text-slate-800 flex items-center gap-2">
-                                                <i class="fa-solid fa-file-contract text-emerald-600"></i>
-                                                이용약관
-                                            </h3>
-                                            <div class="flex items-center gap-2">
-                                                <span id="termsUpdatedAt" class="text-xs text-slate-500"></span>
-                                                <button id="termsEditBtn" onclick="window.editTerms('terms')" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors">
-                                                    <i class="fa-solid fa-pencil mr-1"></i>수정
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div id="termsContentDisplay" class="bg-white rounded-lg p-4 border border-slate-200 text-sm text-slate-700 whitespace-pre-line min-h-[200px]">
-                                            <!-- 약관 내용이 표시됩니다 -->
-                                        </div>
-                                        <div id="termsContentEditor" class="hidden">
-                                            <textarea id="termsContentTextarea" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[200px]"></textarea>
-                                        </div>
-                                    </div>
-                                    
-                                    <!-- 개인정보 처리방침 -->
-                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <div class="flex items-center justify-between mb-4">
-                                            <h3 class="text-base font-black text-slate-800 flex items-center gap-2">
-                                                <i class="fa-solid fa-shield-halved text-blue-600"></i>
-                                                개인정보 처리방침
-                                            </h3>
-                                            <div class="flex items-center gap-2">
-                                                <span id="privacyUpdatedAt" class="text-xs text-slate-500"></span>
-                                                <button id="privacyEditBtn" onclick="window.editTerms('privacy')" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors">
-                                                    <i class="fa-solid fa-pencil mr-1"></i>수정
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div id="privacyContentDisplay" class="bg-white rounded-lg p-4 border border-slate-200 text-sm text-slate-700 whitespace-pre-line min-h-[200px]">
-                                            <!-- 개인정보 처리방침 내용이 표시됩니다 -->
-                                        </div>
-                                        <div id="privacyContentEditor" class="hidden">
-                                            <textarea id="privacyContentTextarea" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[200px]"></textarea>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- 태그 관리 (메인태그 편집) -->
-                        <div id="content-main-tags" class="content-main-section hidden">
-                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
-                                <div class="p-6 border-b border-slate-100">
-                                    <div class="flex justify-between items-center">
-                                        <div>
-                                            <h2 class="text-lg font-black text-slate-800">태그 관리</h2>
-                                            <p class="text-xs text-slate-500 mt-0.5">메인태그 편집 · 신규 사용자 기본 태그(어떻게/무엇을/누구와/간식 유형/간식 장소)를 수정할 수 있습니다.</p>
-                                        </div>
-                                        <button onclick="window.saveTags()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors flex-shrink-0">
-                                            <i class="fa-solid fa-save mr-2"></i>저장
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="p-6 space-y-6">
-                                    <!-- 식사 유형 (mealType) -->
-                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
-                                            <i class="fa-solid fa-utensils text-emerald-600"></i>
-                                            식사 유형 (mealType)
-                                        </h3>
-                                        <div id="tags-mealType" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                            <!-- 태그들이 동적으로 추가됩니다 -->
-                                        </div>
-                                        <button onclick="window.addTagItem('mealType')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
-                                        </button>
-                                    </div>
-                                    
-                                    <!-- 누구와 (withWhom) -->
-                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
-                                            <i class="fa-solid fa-users text-blue-600"></i>
-                                            누구와 (withWhom)
-                                        </h3>
-                                        <div id="tags-withWhom" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                            <!-- 태그들이 동적으로 추가됩니다 -->
-                                        </div>
-                                        <button onclick="window.addTagItem('withWhom')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
-                                        </button>
-                                    </div>
-                                    
-                                    <!-- 음식 카테고리 (category) -->
-                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
-                                            <i class="fa-solid fa-bowl-food text-orange-600"></i>
-                                            음식 카테고리 (category)
-                                        </h3>
-                                        <div id="tags-category" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                            <!-- 태그들이 동적으로 추가됩니다 -->
-                                        </div>
-                                        <button onclick="window.addTagItem('category')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
-                                        </button>
-                                    </div>
-                                    
-                                    <!-- 무엇을 - 간식 (snackType) -->
-                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
-                                            <i class="fa-solid fa-cookie text-purple-600"></i>
-                                            무엇을 (snackType)
-                                        </h3>
-                                        <div id="tags-snackType" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                            <!-- 태그들이 동적으로 추가됩니다 -->
-                                        </div>
-                                        <button onclick="window.addTagItem('snackType')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
-                                        </button>
-                                    </div>
-                                    
-                                    <!-- 간식 장소 (subTagsPlaceSnack) -->
-                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
-                                            <i class="fa-solid fa-location-dot text-rose-600"></i>
-                                            간식 장소 (subTagsPlaceSnack)
-                                        </h3>
-                                        <p class="text-xs text-slate-500 mb-3">밀로그 간식 입력 시 장소 추천 칩(집/사무실/카페 등)으로 사용됩니다.</p>
-                                        <div id="tags-subTagsPlaceSnack" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                            <!-- 태그들이 동적으로 추가됩니다 -->
-                                        </div>
-                                        <button onclick="window.addTagItem('subTagsPlaceSnack')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- APK 배포 -->
-                        <div id="content-main-apk" class="content-main-section hidden">
-                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
-                                <div class="p-6 border-b border-slate-100">
-                                    <div class="flex justify-between items-center">
-                                        <div>
-                                            <h2 class="text-lg font-black text-slate-800">APK 배포</h2>
-                                            <p class="text-xs text-slate-500 mt-0.5">밀로그 앱 APK를 업로드하여 웹 다운로드 페이지에서 배포할 수 있습니다.</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="p-6 space-y-6">
-                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <h3 class="text-base font-black text-slate-800 mb-2 flex items-center gap-2">
-                                            <i class="fa-solid fa-mobile-screen text-emerald-600"></i>
-                                            APK 파일 업로드
-                                        </h3>
-                                        <p class="text-sm text-slate-500 mb-4">APK 파일을 선택하면 Cloud Storage에 업로드됩니다. (최대 100MB)</p>
-                                        <div class="flex flex-wrap gap-4 items-end">
-                                            <div class="flex-1 min-w-[200px]">
-                                                <label class="text-sm font-bold text-slate-600 block mb-2">버전(선택)</label>
-                                                <input type="text" id="apkVersionInput" placeholder="예: 1.0.0" class="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500">
-                                            </div>
-                                            <div class="flex gap-2">
-                                                <input type="file" id="apkFileInput" accept=".apk" class="hidden">
-                                                <button type="button" onclick="document.getElementById('apkFileInput').click()" id="apkSelectBtn" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-300 transition-colors">
-                                                    <i class="fa-solid fa-file mr-2"></i>파일 선택
-                                                </button>
-                                                <button type="button" onclick="window.uploadApkFile()" id="apkUploadBtn" disabled class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                                                    <i class="fa-solid fa-cloud-arrow-up mr-2"></i>업로드
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <p id="apkFileInfo" class="mt-2 text-sm text-slate-500 hidden"></p>
-                                        <p id="apkUploadStatus" class="mt-2 text-sm hidden"></p>
-                                    </div>
-                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <h3 class="text-base font-black text-slate-800 mb-2 flex items-center gap-2">
-                                            <i class="fa-solid fa-download text-blue-600"></i>
-                                            현재 배포 중인 APK
-                                        </h3>
-                                        <div id="apkCurrentInfo" class="space-y-2">
-                                            <p class="text-sm text-slate-500">로딩 중...</p>
-                                        </div>
-                                        <p class="text-xs text-slate-500 mt-3">다운로드 페이지: <a id="apkDownloadPageLink" href="./download.html" target="_blank" class="text-emerald-600 hover:underline">./download.html</a></p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+
                         
                         <!-- 공지 관리 -->
                         <div id="content-main-notice" class="content-main-section hidden">
@@ -896,26 +611,136 @@
                                                 </div>
                                                 <div id="noticeContent" contenteditable="true" data-placeholder="공지 내용을 입력하세요" class="w-full min-h-[320px] p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 transition-colors overflow-visible"></div>
                                             </div>
+                                            <!-- 게시 옵션 (하단 정리) -->
+                                            <div class="rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50/90 to-white p-4 sm:p-5 space-y-4 shadow-sm">
+                                                <div class="flex items-center gap-2 text-slate-700">
+                                                    <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700"><i class="fa-solid fa-sliders text-sm"></i></span>
+                                                    <div>
+                                                        <p class="text-sm font-black text-slate-800">게시 옵션</p>
+                                                        <p class="text-[11px] text-slate-500 leading-snug">목록 표시 · 고정 · 숨김 · 앱 푸시</p>
+                                                    </div>
+                                                </div>
+                                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label class="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1.5">구분</label>
+                                                        <select id="noticeType" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-colors">
+                                                            <option value="important">중요</option>
+                                                            <option value="notice">알림</option>
+                                                            <option value="light">가벼운</option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label for="noticePushFrequency" class="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1.5">푸시 알림</label>
+                                                        <select id="noticePushFrequency" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-colors">
+                                                            <option value="none">없음</option>
+                                                            <option value="once">한 번만</option>
+                                                            <option value="daily">매일 09:00 (KST)</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-8 sm:gap-y-2 pt-3 border-t border-slate-200/80">
+                                                    <label for="noticeIsPinned" class="inline-flex items-center gap-2.5 cursor-pointer group">
+                                                        <input type="checkbox" id="noticeIsPinned" class="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                                                        <span class="text-sm text-slate-700 group-hover:text-slate-900">상단 고정</span>
+                                                    </label>
+                                                    <label for="noticeHidden" class="inline-flex items-start gap-2.5 cursor-pointer group sm:max-w-md">
+                                                        <input type="checkbox" id="noticeHidden" class="w-4 h-4 mt-0.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 shrink-0">
+                                                        <span class="text-sm text-slate-700 group-hover:text-slate-900 leading-snug">숨김 <span class="text-slate-400 font-normal">(밀로그·밀톡에 표시 안 함)</span></span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div class="flex flex-col sm:flex-row sm:justify-end gap-2 sm:gap-3 pt-1">
+                                                <button type="button" onclick="window.backToNoticeListFromWrite()" class="w-full sm:w-auto sm:min-w-[7rem] py-3 px-4 border border-slate-200 bg-white text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-50 transition-colors">취소</button>
+                                                <button type="button" id="noticeSubmitBtn" onclick="window.submitNotice()" class="w-full sm:w-auto sm:min-w-[8.5rem] py-3 px-4 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 shadow-sm shadow-emerald-600/20 transition-colors">등록</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 푸시메시지 관리 -->
+                        <div id="content-main-pushMessage" class="content-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <h2 class="text-lg font-black text-slate-800">푸시메시지 관리</h2>
+                                    <p class="text-sm text-slate-500 mt-2 leading-relaxed">스마트폰 상단 알림으로만 표시됩니다. 사용자가 알림을 탭하면 <strong class="text-slate-700">앱 안</strong>에서 선택한 탭으로 이동합니다. (이 유형 푸시는 앱에서 알림 배지·빨간점을 올리지 않습니다.)</p>
+                                </div>
+                                <div class="p-6 space-y-6">
+                                    <div>
+                                        <p class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">발송 방식</p>
+                                        <div class="inline-flex w-full max-w-md rounded-xl border border-slate-200 bg-slate-100/80 p-1 gap-1" role="tablist" aria-label="푸시 발송 방식">
+                                            <button type="button" role="tab" id="adminPushModeTabNow" aria-selected="true" aria-controls="adminPushPanelNow" onclick="window.setAdminPushSendMode('now')" class="flex-1 py-2.5 px-3 rounded-lg text-sm font-bold transition-all bg-white text-violet-700 shadow-sm ring-1 ring-violet-200/70">
+                                                <i class="fa-solid fa-paper-plane mr-1.5 opacity-80"></i>즉시 발송
+                                            </button>
+                                            <button type="button" role="tab" id="adminPushModeTabSchedule" aria-selected="false" aria-controls="adminPushPanelSchedule" onclick="window.setAdminPushSendMode('schedule')" class="flex-1 py-2.5 px-3 rounded-lg text-sm font-bold transition-all text-slate-500 hover:text-slate-700 hover:bg-white/60">
+                                                <i class="fa-solid fa-clock mr-1.5 opacity-80"></i>예약 발송
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div id="adminPushPanelNow" role="tabpanel" aria-labelledby="adminPushModeTabNow" class="rounded-2xl border border-slate-200 bg-gradient-to-b from-violet-50/40 to-white p-4 sm:p-5 space-y-4 shadow-sm">
+                                        <p class="text-sm text-slate-600">작성 후 <strong class="text-slate-800">지금 전체 발송</strong>을 누르면 알림을 허용한 전체 사용자에게 바로 전달됩니다.</p>
+                                        <div class="space-y-3">
                                             <div>
-                                                <label class="text-sm font-bold text-slate-600 block mb-2">구분</label>
-                                                <select id="noticeType" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 transition-colors">
-                                                    <option value="important">중요</option>
-                                                    <option value="notice">알림</option>
-                                                    <option value="light">가벼운</option>
+                                                <label class="text-xs font-bold text-slate-500 block mb-1">제목 <span class="text-slate-400 font-normal">(최대 80자)</span></label>
+                                                <input type="text" id="adminPushNowTitle" maxlength="80" autocomplete="off" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20" placeholder="알림 제목">
+                                            </div>
+                                            <div>
+                                                <label class="text-xs font-bold text-slate-500 block mb-1">내용 <span class="text-slate-400 font-normal">(최대 240자)</span></label>
+                                                <textarea id="adminPushNowBody" maxlength="240" rows="3" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 resize-y min-h-[4.5rem]" placeholder="짧은 안내 문구"></textarea>
+                                            </div>
+                                            <div>
+                                                <label class="text-xs font-bold text-slate-500 block mb-1">탭 시 이동할 화면</label>
+                                                <select id="adminPushNowLanding" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-violet-500">
+                                                    <option value="dashboard">밀당</option>
+                                                    <option value="timeline">밀로그</option>
+                                                    <option value="gallery">모먼트</option>
+                                                    <option value="board">밀톡</option>
+                                                    <option value="settings">설정</option>
                                                 </select>
                                             </div>
-                                            <div class="flex items-center gap-2">
-                                                <input type="checkbox" id="noticeIsPinned" class="w-4 h-4">
-                                                <label for="noticeIsPinned" class="text-sm text-slate-600">상단 고정</label>
+                                            <button type="button" id="adminPushNowBtn" onclick="window.submitAdminPushNow()" class="w-full sm:w-auto py-3 px-6 bg-violet-600 text-white rounded-xl font-bold text-sm hover:bg-violet-700 shadow-sm transition-colors">지금 전체 발송</button>
+                                        </div>
+                                    </div>
+                                    <div id="adminPushPanelSchedule" role="tabpanel" aria-labelledby="adminPushModeTabSchedule" class="rounded-2xl border border-slate-200 bg-gradient-to-b from-amber-50/40 to-white p-4 sm:p-5 space-y-4 shadow-sm hidden">
+                                        <p class="text-sm text-slate-600">예약 일시·메시지를 입력한 뒤 <strong class="text-slate-800">예약 등록</strong>하면 해당 시각에 자동 발송됩니다.</p>
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            <div class="sm:col-span-2">
+                                                <label class="text-xs font-bold text-slate-500 block mb-1">예약 일시 <span class="text-slate-400 font-normal">(이 PC·기기 로컬 시각)</span></label>
+                                                <input type="datetime-local" id="adminPushScheduleWhen" class="w-full max-w-md p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20">
                                             </div>
-                                            <div class="flex items-center gap-2">
-                                                <input type="checkbox" id="noticeHidden" class="w-4 h-4">
-                                                <label for="noticeHidden" class="text-sm text-slate-600">숨김 (밀로그·밀톡에 노출하지 않음)</label>
+                                            <div>
+                                                <label class="text-xs font-bold text-slate-500 block mb-1">제목</label>
+                                                <input type="text" id="adminPushScheduleTitle" maxlength="80" autocomplete="off" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500" placeholder="알림 제목">
                                             </div>
-                                            <div class="flex gap-3 pt-2">
-                                                <button type="button" onclick="window.backToNoticeListFromWrite()" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm">취소</button>
-                                                <button type="button" id="noticeSubmitBtn" onclick="window.submitNotice()" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700">등록</button>
+                                            <div>
+                                                <label class="text-xs font-bold text-slate-500 block mb-1">탭 시 화면</label>
+                                                <select id="adminPushScheduleLanding" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500">
+                                                    <option value="dashboard">밀당</option>
+                                                    <option value="timeline">밀로그</option>
+                                                    <option value="gallery">모먼트</option>
+                                                    <option value="board">밀톡</option>
+                                                    <option value="settings">설정</option>
+                                                </select>
                                             </div>
+                                            <div class="sm:col-span-2">
+                                                <label class="text-xs font-bold text-slate-500 block mb-1">메시지</label>
+                                                <textarea id="adminPushScheduleBody" maxlength="240" rows="3" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 resize-y min-h-[4.5rem]" placeholder="내용"></textarea>
+                                            </div>
+                                            <div class="sm:col-span-2">
+                                                <button type="button" id="adminPushScheduleBtn" onclick="window.submitAdminPushSchedule()" class="py-3 px-6 bg-amber-600 text-white rounded-xl font-bold text-sm hover:bg-amber-700 shadow-sm transition-colors">예약 등록</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex items-center justify-between gap-2 mb-2">
+                                            <h3 class="text-sm font-bold text-slate-600">예약·발송 기록</h3>
+                                            <button type="button" onclick="window.refreshAdminScheduledPushes()" class="text-xs font-bold text-slate-500 hover:text-violet-600 px-2 py-1 rounded-lg hover:bg-slate-100 transition-colors">
+                                                <i class="fa-solid fa-arrows-rotate mr-1"></i>새로고침
+                                            </button>
+                                        </div>
+                                        <div id="adminScheduledPushesContainer" class="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/30 min-h-[100px]">
+                                            <p class="text-center py-8 text-slate-400 text-sm">목록을 불러오는 중…</p>
                                         </div>
                                     </div>
                                 </div>
@@ -1138,6 +963,374 @@
                                 </div>
                                 <div id="popupLandingNoticeList" class="overflow-y-auto flex-1 p-4 space-y-2">
                                     <div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-xl mb-2"></i><p class="text-sm">로딩 중...</p></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 콘텐츠 관리 탭 -->
+            <div id="admin-tab-content-content" class="admin-tab-content hidden">
+                <div class="flex gap-6 items-start">
+                    <div class="w-64 flex-shrink-0">
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sticky top-24">
+                            <div class="space-y-2">
+                                <button onclick="window.switchContentSidebar('mealog')" id="content-sidebar-mealog" class="w-full px-4 py-3 text-left text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-robot mr-2"></i>MEALOG
+                                </button>
+                                <button onclick="window.switchContentSidebar('characters')" id="content-sidebar-characters" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-user-astronaut mr-2"></i>AI 캐릭터
+                                </button>
+                                <button onclick="window.switchContentSidebar('terms')" id="content-sidebar-terms" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-file-contract mr-2"></i>약관
+                                </button>
+                                <button onclick="window.switchContentSidebar('demoGuide')" id="content-sidebar-demoGuide" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-compass mr-2"></i>체험 가이드
+                                </button>
+                                <button onclick="window.switchContentSidebar('tags')" id="content-sidebar-tags" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-tags mr-2"></i>태그관리
+                                </button>
+                                <button onclick="window.switchContentSidebar('apk')" id="content-sidebar-apk" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-mobile-screen mr-2"></i>APK 배포
+                                </button>
+                                <button onclick="window.switchContentSidebar('settings')" id="content-sidebar-settings" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                    <i class="fa-solid fa-gear mr-2"></i>관리자 설정
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div id="content-main-mealog" class="content-main-section">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div class="flex justify-between items-center">
+                                        <h2 class="text-lg font-black text-slate-800">MEALOG 안내 메시지 관리</h2>
+                                        <div class="flex gap-2">
+                                            <button onclick="window.saveMealogComments()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                                <i class="fa-solid fa-save mr-2"></i>저장
+                                            </button>
+                                            <button onclick="window.refreshPersona()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div id="mealogCommentsContainer" class="space-y-4">
+                                        <div class="text-center py-8 text-slate-400">
+                                            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                                            <p>로딩 중...</p>
+                                        </div>
+                                    </div>
+                                    <button onclick="window.addMealogComment()" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
+                                        <i class="fa-solid fa-plus mr-2"></i>메시지 추가
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- AI 캐릭터 관리 -->
+                        <div id="content-main-characters" class="content-main-section hidden">
+                            <!-- 캐릭터 목록 뷰 -->
+                            <div id="characters-list-view" class="characters-sub-view">
+                                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+                                    <div class="flex justify-between items-center mb-4">
+                                        <h2 class="text-lg font-black text-slate-800">캐릭터 목록</h2>
+                                        <button onclick="window.addNewCharacter()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                            <i class="fa-solid fa-plus mr-2"></i>추가
+                                        </button>
+                                    </div>
+                                    <div id="personaCharactersList" class="flex flex-col gap-2">
+                                        <div class="text-center py-8 text-slate-400">
+                                            <i class="fa-solid fa-spinner fa-spin text-xl mb-2"></i>
+                                            <p class="text-sm">로딩 중...</p>
+                                        </div>
+                                    </div>
+                                    <!-- AI 코멘트 발송 시 사용하는 구글 AI 모델: gemini-2.5-flash-lite -->
+                                    <p class="mt-4 pt-4 border-t border-slate-100 text-xs text-slate-400">
+                                        AI 코멘트 모델: <code class="text-slate-500">gemini-2.5-flash-lite</code>
+                                    </p>
+                                </div>
+                            </div>
+                            <!-- 캐릭터 편집 뷰 -->
+                            <div id="character-edit-view" class="characters-sub-view hidden">
+                                <div id="personaCharacterEditor" class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                    <div class="p-6 border-b border-slate-100">
+                                        <div class="flex justify-between items-center">
+                                            <div class="flex items-center gap-3">
+                                                <button onclick="window.showCharacterListView()" class="px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                    <i class="fa-solid fa-arrow-left mr-2"></i>목록
+                                                </button>
+                                                <h2 class="text-lg font-black text-slate-800">캐릭터 편집</h2>
+                                            </div>
+                                            <div class="flex gap-2">
+                                                <button onclick="window.saveCharacter()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                                    <i class="fa-solid fa-save mr-2"></i>저장
+                                                </button>
+                                                <button onclick="window.refreshPersona()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                    <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="personaCharacterEditorContent" class="p-6">
+                                        <div class="text-center py-12 text-slate-400">
+                                            <i class="fa-solid fa-spinner fa-spin text-3xl mb-3"></i>
+                                            <p class="text-sm font-bold">로딩 중...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 약관 관리 -->
+                        <div id="content-main-terms" class="content-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div class="flex justify-between items-center mb-4">
+                                        <h2 class="text-lg font-black text-slate-800">약관 관리</h2>
+                                    </div>
+                                    <!-- 약관 탭 -->
+                                    <div class="flex gap-2 border-b border-slate-200">
+                                        <button id="termsTabHistory" onclick="window.switchTermsTab('history')" class="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 border-b-2 border-transparent hover:border-slate-300 transition-colors">
+                                            약관이력
+                                        </button>
+                                        <button id="termsTabManage" onclick="window.switchTermsTab('manage')" class="px-4 py-2 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors">
+                                            약관관리
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- 약관이력 화면 -->
+                                <div id="termsHistorySection" class="hidden p-6">
+                                    <div class="space-y-4">
+                                        <div class="flex items-center justify-between mb-4">
+                                            <p class="text-sm text-slate-600">배포된 약관 버전 목록입니다.</p>
+                                        </div>
+                                        <div id="termsHistoryList" class="space-y-3">
+                                            <!-- 약관 버전 리스트가 여기에 동적으로 추가됩니다 -->
+                                            <div class="text-center py-8 text-slate-400">
+                                                <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                                                <p class="text-sm">약관 이력 로딩 중...</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 약관관리 화면 -->
+                                <div id="termsManageSection" class="p-6 space-y-6">
+                                    <div class="flex justify-end gap-2 mb-4">
+                                        <button onclick="window.deployTerms()" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors">
+                                            <i class="fa-solid fa-rocket mr-2"></i>배포
+                                        </button>
+                                        <button onclick="window.saveTerms()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                            <i class="fa-solid fa-save mr-2"></i>저장
+                                        </button>
+                                    </div>
+                                    <!-- 이용약관 -->
+                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                        <div class="flex items-center justify-between mb-4">
+                                            <h3 class="text-base font-black text-slate-800 flex items-center gap-2">
+                                                <i class="fa-solid fa-file-contract text-emerald-600"></i>
+                                                이용약관
+                                            </h3>
+                                            <div class="flex items-center gap-2">
+                                                <span id="termsUpdatedAt" class="text-xs text-slate-500"></span>
+                                                <button id="termsEditBtn" onclick="window.editTerms('terms')" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors">
+                                                    <i class="fa-solid fa-pencil mr-1"></i>수정
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div id="termsContentDisplay" class="bg-white rounded-lg p-4 border border-slate-200 text-sm text-slate-700 whitespace-pre-line min-h-[200px]">
+                                            <!-- 약관 내용이 표시됩니다 -->
+                                        </div>
+                                        <div id="termsContentEditor" class="hidden">
+                                            <textarea id="termsContentTextarea" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[200px]"></textarea>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 개인정보 처리방침 -->
+                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                        <div class="flex items-center justify-between mb-4">
+                                            <h3 class="text-base font-black text-slate-800 flex items-center gap-2">
+                                                <i class="fa-solid fa-shield-halved text-blue-600"></i>
+                                                개인정보 처리방침
+                                            </h3>
+                                            <div class="flex items-center gap-2">
+                                                <span id="privacyUpdatedAt" class="text-xs text-slate-500"></span>
+                                                <button id="privacyEditBtn" onclick="window.editTerms('privacy')" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors">
+                                                    <i class="fa-solid fa-pencil mr-1"></i>수정
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div id="privacyContentDisplay" class="bg-white rounded-lg p-4 border border-slate-200 text-sm text-slate-700 whitespace-pre-line min-h-[200px]">
+                                            <!-- 개인정보 처리방침 내용이 표시됩니다 -->
+                                        </div>
+                                        <div id="privacyContentEditor" class="hidden">
+                                            <textarea id="privacyContentTextarea" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[200px]"></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 체험 가이드 편집 -->
+                        <div id="content-main-demoGuide" class="content-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div class="flex justify-between items-center">
+                                        <h2 class="text-lg font-black text-slate-800">체험 가이드 편집</h2>
+                                        <button onclick="window.saveDemoGuide()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                            <i class="fa-solid fa-save mr-2"></i>저장
+                                        </button>
+                                    </div>
+                                    <p class="text-xs text-slate-500 mt-2">체험 모드 진입 시 하단 메뉴별로 표시되는 안내 텍스트입니다.</p>
+                                </div>
+                                <div class="p-6 space-y-5" id="demoGuideEditorContainer">
+                                    <div class="text-center py-8 text-slate-400">
+                                        <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                                        <p class="text-sm">로딩 중...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 태그 관리 (메인태그 편집) -->
+                        <div id="content-main-tags" class="content-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div class="flex justify-between items-center">
+                                        <div>
+                                            <h2 class="text-lg font-black text-slate-800">태그 관리</h2>
+                                            <p class="text-xs text-slate-500 mt-0.5">메인태그 편집 · 신규 사용자 기본 태그(어떻게/무엇을/누구와/간식 유형/간식 장소)를 수정할 수 있습니다.</p>
+                                        </div>
+                                        <button onclick="window.saveTags()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors flex-shrink-0">
+                                            <i class="fa-solid fa-save mr-2"></i>저장
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="p-6 space-y-6">
+                                    <!-- 식사 유형 (mealType) -->
+                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
+                                            <i class="fa-solid fa-utensils text-emerald-600"></i>
+                                            식사 유형 (mealType)
+                                        </h3>
+                                        <div id="tags-mealType" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                            <!-- 태그들이 동적으로 추가됩니다 -->
+                                        </div>
+                                        <button onclick="window.addTagItem('mealType')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
+                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
+                                        </button>
+                                    </div>
+                                    
+                                    <!-- 누구와 (withWhom) -->
+                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
+                                            <i class="fa-solid fa-users text-blue-600"></i>
+                                            누구와 (withWhom)
+                                        </h3>
+                                        <div id="tags-withWhom" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                            <!-- 태그들이 동적으로 추가됩니다 -->
+                                        </div>
+                                        <button onclick="window.addTagItem('withWhom')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
+                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
+                                        </button>
+                                    </div>
+                                    
+                                    <!-- 음식 카테고리 (category) -->
+                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
+                                            <i class="fa-solid fa-bowl-food text-orange-600"></i>
+                                            음식 카테고리 (category)
+                                        </h3>
+                                        <div id="tags-category" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                            <!-- 태그들이 동적으로 추가됩니다 -->
+                                        </div>
+                                        <button onclick="window.addTagItem('category')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
+                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
+                                        </button>
+                                    </div>
+                                    
+                                    <!-- 무엇을 - 간식 (snackType) -->
+                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
+                                            <i class="fa-solid fa-cookie text-purple-600"></i>
+                                            무엇을 (snackType)
+                                        </h3>
+                                        <div id="tags-snackType" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                            <!-- 태그들이 동적으로 추가됩니다 -->
+                                        </div>
+                                        <button onclick="window.addTagItem('snackType')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
+                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
+                                        </button>
+                                    </div>
+                                    
+                                    <!-- 간식 장소 (subTagsPlaceSnack) -->
+                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
+                                            <i class="fa-solid fa-location-dot text-rose-600"></i>
+                                            간식 장소 (subTagsPlaceSnack)
+                                        </h3>
+                                        <p class="text-xs text-slate-500 mb-3">밀로그 간식 입력 시 장소 추천 칩(집/사무실/카페 등)으로 사용됩니다.</p>
+                                        <div id="tags-subTagsPlaceSnack" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                            <!-- 태그들이 동적으로 추가됩니다 -->
+                                        </div>
+                                        <button onclick="window.addTagItem('subTagsPlaceSnack')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
+                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- APK 배포 -->
+                        <div id="content-main-apk" class="content-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div class="flex justify-between items-center">
+                                        <div>
+                                            <h2 class="text-lg font-black text-slate-800">APK 배포</h2>
+                                            <p class="text-xs text-slate-500 mt-0.5">밀로그 앱 APK를 업로드하여 웹 다운로드 페이지에서 배포할 수 있습니다.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="p-6 space-y-6">
+                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                        <h3 class="text-base font-black text-slate-800 mb-2 flex items-center gap-2">
+                                            <i class="fa-solid fa-mobile-screen text-emerald-600"></i>
+                                            APK 파일 업로드
+                                        </h3>
+                                        <p class="text-sm text-slate-500 mb-4">APK 파일을 선택하면 Cloud Storage에 업로드됩니다. (최대 100MB)</p>
+                                        <div class="flex flex-wrap gap-4 items-end">
+                                            <div class="flex-1 min-w-[200px]">
+                                                <label class="text-sm font-bold text-slate-600 block mb-2">버전(선택)</label>
+                                                <input type="text" id="apkVersionInput" placeholder="예: 1.0.0" class="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500">
+                                            </div>
+                                            <div class="flex gap-2">
+                                                <input type="file" id="apkFileInput" accept=".apk" class="hidden">
+                                                <button type="button" onclick="document.getElementById('apkFileInput').click()" id="apkSelectBtn" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-300 transition-colors">
+                                                    <i class="fa-solid fa-file mr-2"></i>파일 선택
+                                                </button>
+                                                <button type="button" onclick="window.uploadApkFile()" id="apkUploadBtn" disabled class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                                    <i class="fa-solid fa-cloud-arrow-up mr-2"></i>업로드
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <p id="apkFileInfo" class="mt-2 text-sm text-slate-500 hidden"></p>
+                                        <p id="apkUploadStatus" class="mt-2 text-sm hidden"></p>
+                                    </div>
+                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                        <h3 class="text-base font-black text-slate-800 mb-2 flex items-center gap-2">
+                                            <i class="fa-solid fa-download text-blue-600"></i>
+                                            현재 배포 중인 APK
+                                        </h3>
+                                        <div id="apkCurrentInfo" class="space-y-2">
+                                            <p class="text-sm text-slate-500">로딩 중...</p>
+                                        </div>
+                                        <p class="text-xs text-slate-500 mt-3">다운로드 페이지: <a id="apkDownloadPageLink" href="./download.html" target="_blank" class="text-emerald-600 hover:underline">./download.html</a></p>
+                                    </div>
                                 </div>
                             </div>
                         </div>

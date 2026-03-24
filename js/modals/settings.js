@@ -1,0 +1,1076 @@
+import { DEFAULT_USER_SETTINGS } from '../constants.js';
+import { appState } from '../state.js';
+import { addCompositionAwareInput, normalizeBirthdateRaw } from '../utils.js';
+import { renderTagManager } from '../render/index.js';
+import { dbOps } from '../db.js';
+import { showToast, updateHeaderUI } from '../ui.js';
+import { isDemoUser } from '../demo-account.js';
+
+/** 설정 하단 로그아웃 버튼 — 샘플 계정만 '홈으로' + 초록 스타일 */
+function syncProfileLogoutFooterButton() {
+    const btn = document.querySelector('.profile-logout-btn');
+    if (!btn) return;
+    const base =
+        'profile-settings-footer-btn profile-logout-btn w-full py-3 text-sm font-bold transition-colors';
+    const u = window.currentUser;
+    const demo = u && !u.isAnonymous && isDemoUser(u);
+    if (demo) {
+        btn.textContent = '홈으로';
+        btn.className = `${base} text-white bg-emerald-600 border border-emerald-700 hover:bg-emerald-700 active:bg-emerald-800 shadow-sm`;
+    } else {
+        btn.textContent = '로그아웃';
+        btn.className = `${base} text-slate-700 bg-slate-100 border border-slate-200 hover:bg-slate-200`;
+    }
+}
+
+export function openSettings() {
+    const state = appState;
+    if (!window.currentUser) return;
+    
+    // 게스트(익명)는 userSettings가 없을 수 있음 → 기본값 사용해 설정 모달은 열고, 로그인하기 노출
+    const sourceSettings = window.userSettings || DEFAULT_USER_SETTINGS;
+    state._profileSettingsSnapshot = JSON.parse(JSON.stringify(sourceSettings));
+    state.isProfileEditing = false;
+    state.tempSettings = JSON.parse(JSON.stringify(sourceSettings));
+    
+    // 프로필 타입 초기화 (text | photo)
+    const inferredType = state.tempSettings?.profile?.photoUrl ? 'photo' : 'text';
+    const profileType = state.tempSettings?.profile?.iconType || inferredType;
+    // 이모지 타입이면 text로 변환
+    window.settingsProfileType = profileType === 'emoji' ? 'text' : profileType;
+    setSettingsProfileType(window.settingsProfileType);
+    updateProfilePhotoHintVisibility();
+    
+    // 사진 미리보기 설정
+    const photoPreview = document.getElementById('photoPreview');
+    const photoDeleteBtn = document.getElementById('photoDeleteBtn');
+    if (photoPreview && state.tempSettings?.profile?.photoUrl) {
+        photoPreview.style.backgroundImage = `url(${state.tempSettings.profile.photoUrl})`;
+        photoPreview.style.backgroundSize = 'cover';
+        photoPreview.style.backgroundPosition = 'center';
+        photoPreview.innerHTML = '';
+        if (photoDeleteBtn) {
+            photoDeleteBtn.classList.toggle('hidden', !state.isProfileEditing);
+        }
+    } else if (photoPreview) {
+        photoPreview.innerHTML = '<i class="fa-solid fa-camera text-slate-400 text-xl"></i>';
+        photoPreview.style.backgroundImage = '';
+        if (photoDeleteBtn) {
+            photoDeleteBtn.classList.add('hidden');
+        }
+    }
+    
+    const nicknameInput = document.getElementById('settingNickname');
+    const nicknameDisplay = document.getElementById('settingNicknameDisplay');
+    const nicknameVal = (state.tempSettings.profile.nickname || '').trim();
+    if (nicknameInput) {
+        nicknameInput.value = nicknameVal;
+        // 닉네임 입력 시 텍스트 미리보기 즉시 반영 (조합 중 지연 → 한글 IME 이슈 방지)
+        if (!nicknameInput._nicknameCompositionInit) {
+            addCompositionAwareInput(nicknameInput, () => {
+                if (window.settingsProfileType === 'text') setSettingsProfileType('text');
+            });
+            nicknameInput._nicknameCompositionInit = true;
+        }
+    }
+    if (nicknameDisplay) {
+        nicknameDisplay.textContent = nicknameVal || '-';
+        nicknameDisplay.classList.toggle('hidden', !!state.isProfileEditing);
+    }
+    if (nicknameInput) nicknameInput.classList.toggle('hidden', !state.isProfileEditing);
+    const bioInput = document.getElementById('settingBio');
+    // 생년월일 / 라이프스타일 초기화
+    const birthdateInput = document.getElementById('settingBirthdate');
+    const birthdateDisplay = document.getElementById('settingBirthdateDisplay');
+    const birthdateEdit = document.getElementById('settingBirthdateEdit');
+    const birthdateVal = (state.tempSettings?.profile?.birthdate || '').trim();
+    if (birthdateInput) birthdateInput.value = birthdateVal;
+    const genderVal = (state.tempSettings?.profile?.gender || '').trim();
+    const genderText = genderVal === 'male' ? '(남)' : genderVal === 'female' ? '(여)' : '';
+    if (birthdateDisplay) {
+        birthdateDisplay.textContent = formatBirthdateForDisplay(birthdateVal) + (genderText ? ' ' + genderText : '');
+        birthdateDisplay.classList.toggle('hidden', !!state.isProfileEditing);
+    }
+    if (birthdateEdit) birthdateEdit.classList.toggle('hidden', !state.isProfileEditing);
+    const lifestyleInput = document.getElementById('settingLifestyle');
+    if (lifestyleInput) {
+        lifestyleInput.value = state.tempSettings?.profile?.lifestyle || '';
+    }
+    // 라이프스타일 버튼 선택 상태 복원
+    const selectedLifestyle = (state.tempSettings?.profile?.lifestyle || '').trim();
+    document.querySelectorAll('.settings-lifestyle-btn').forEach(btn => {
+        const v = btn.getAttribute('data-value') || '';
+        const active = v === selectedLifestyle;
+        btn.classList.toggle('bg-emerald-600', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('border-emerald-600', active);
+        btn.classList.toggle('bg-white', !active);
+        btn.classList.toggle('text-slate-600', !active);
+        btn.classList.toggle('border-slate-200', !active);
+    });
+    // 성별 선택 상태 복원
+    const selectedGender = (state.tempSettings?.profile?.gender || '').trim();
+    const settingGenderEl = document.getElementById('settingGender');
+    if (settingGenderEl) settingGenderEl.value = selectedGender;
+    document.querySelectorAll('.setting-gender-btn').forEach(btn => {
+        const v = btn.getAttribute('data-value') || '';
+        const active = v === selectedGender;
+        btn.classList.toggle('bg-black', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('bg-slate-50', !active);
+        btn.classList.toggle('text-slate-600', !active);
+    });
+
+    // 생년월일 힌트 업데이트 (이미 1회 수정했으면 안내, 수정 모드일 때만 표시)
+    const birthdateHint = document.getElementById('birthdateHint');
+    const changeCount = Number(state.tempSettings?.profile?.birthdateChangeCount || 0);
+    if (birthdateHint) {
+        birthdateHint.textContent = changeCount >= 1 ? '이미 1회 수정 완료 (추가 변경 불가)' : '가입 후 1회만 수정 가능';
+        birthdateHint.classList.toggle('hidden', !state.isProfileEditing);
+    }
+    if (bioInput) {
+        bioInput.value = state.tempSettings.profile.bio || '';
+        const bioCharCount = document.getElementById('bioCharCount');
+        if (bioCharCount) {
+            bioCharCount.textContent = (state.tempSettings.profile.bio || '').length;
+        }
+        // 글자 수 카운터 업데이트 (조합 중 지연 → 한글 IME 이슈 방지)
+        if (!bioInput._bioCompositionInit) {
+            addCompositionAwareInput(bioInput, () => {
+                const count = bioInput.value.length;
+                if (bioCharCount) bioCharCount.textContent = count;
+            });
+            bioInput._bioCompositionInit = true;
+        }
+    }
+    
+    // 밀당 메모 입력 필드 초기화
+    const shortcutsInput = document.getElementById('shortcutsInput');
+    if (shortcutsInput) {
+        shortcutsInput.value = state.tempSettings.shortcuts || '';
+    }
+    
+    // 밀당 메모 저장 버튼 이벤트 리스너
+    const saveShortcutsBtn = document.getElementById('saveShortcutsBtn');
+    if (saveShortcutsBtn) {
+        saveShortcutsBtn.onclick = async () => {
+            if (shortcutsInput) {
+                state.tempSettings.shortcuts = shortcutsInput.value.trim();
+                window.userSettings = JSON.parse(JSON.stringify(state.tempSettings));
+                try {
+                    await dbOps.saveSettings(window.userSettings);
+                    showToast("밀당 메모가 저장되었습니다.", 'success');
+                } catch (e) {
+                    console.error('밀당 메모 저장 실패:', e);
+                    showToast("밀당 메모 저장 중 오류가 발생했습니다.", 'error');
+                }
+            }
+        };
+    }
+    
+    // 자주 사용하는 태그 초기화 (없으면 빈 객체로)
+    if (!state.tempSettings.favoriteSubTags) {
+        state.tempSettings.favoriteSubTags = {
+            mealType: {},
+            category: {},
+            withWhom: {},
+            snackType: {}
+        };
+    }
+    
+    // 자주 사용하는 태그 편집 UI 렌더링
+    renderFavoriteTagsEditor();
+    
+    // 사진 선택 및 삭제 버튼 이벤트 리스너 설정 (이미 선언된 photoDeleteBtn 재사용)
+    const photoSelectBtn = document.getElementById('photoSelectBtn');
+    const photoInput = document.getElementById('photoInput');
+    const textSectionPhotoBtn = document.getElementById('textSectionPhotoBtn');
+    
+    // 텍스트 섹션의 사진 설정 버튼
+    if (textSectionPhotoBtn && photoInput) {
+        textSectionPhotoBtn.onclick = () => {
+            if (appState.isProfileEditing) {
+                photoInput.click();
+            } else {
+                showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+            }
+        };
+    }
+    
+    // 사진 섹션의 사진 선택 버튼
+    if (photoSelectBtn && photoInput) {
+        photoSelectBtn.onclick = () => {
+            if (appState.isProfileEditing) {
+                photoInput.click();
+            } else {
+                showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+            }
+        };
+    }
+    
+    if (photoDeleteBtn) {
+        photoDeleteBtn.onclick = () => {
+            handlePhotoDelete();
+        };
+    }
+    
+    // 버전 정보 로드 및 표시
+    loadVersionInfo();
+    
+    // 게스트 모드일 때 태그 관리 및 밀당 메모 탭 숨기기
+    const tagsTab = document.getElementById('settingsTabTags');
+    const shortcutsTab = document.getElementById('settingsTabShortcuts');
+    const profileSettingsSection = document.querySelector('#settingsTabContentProfile .space-y-3');
+    
+    if (window.currentUser && window.currentUser.isAnonymous) {
+        // 게스트 모드일 때 태그 관리 및 밀당 메모 탭 숨기기
+        if (tagsTab) tagsTab.classList.add('hidden');
+        if (shortcutsTab) shortcutsTab.classList.add('hidden');
+        // 게스트 모드일 때 프로필 설정 폼만 숨기기 (계정/로그인하기는 프로필 탭에 표시)
+        if (profileSettingsSection) profileSettingsSection.classList.add('hidden');
+        switchSettingsTab('profile'); // 프로필 탭으로 이동해 '로그인하기' 노출
+    } else {
+        // 일반 사용자일 때 모든 탭 표시
+        if (tagsTab) tagsTab.classList.remove('hidden');
+        if (shortcutsTab) shortcutsTab.classList.remove('hidden');
+        if (profileSettingsSection) profileSettingsSection.classList.remove('hidden');
+        switchSettingsTab('profile');
+        setProfileSettingsEditMode(false);
+    }
+        
+        const accountSection = document.getElementById('accountSection');
+    if (accountSection) {
+        let accountHtml = '';
+        if (window.currentUser.isAnonymous) {
+            accountHtml = `<div class="bg-indigo-50 p-4 rounded-2xl border border-indigo-100 mb-6">
+                <div class="flex items-center gap-3 mb-3">
+                    <div class="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-500">
+                        <i class="fa-solid fa-user-secret"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs font-bold text-indigo-600">게스트 모드</div>
+                    </div>
+                </div>
+                <button id="switchToLoginBtn" class="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold active:bg-indigo-700 transition-colors">
+                    <i class="fa-solid fa-right-to-bracket mr-1"></i>로그인하기
+                </button>
+            </div>`;
+            document.getElementById('logoutBtnArea').classList.add('hidden');
+            syncProfileLogoutFooterButton();
+            const deleteArea = document.getElementById('deleteAccountBtnArea');
+            if (deleteArea) deleteArea.classList.add('hidden');
+        } else {
+            const email = window.currentUser.email || 'Google 계정';
+            const providerIcon = window.currentUser.providerData[0]?.providerId === 'google.com' ? 
+                '<i class="fa-brands fa-google"></i>' : '<i class="fa-solid fa-envelope"></i>';
+            accountHtml = `<div class="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 mb-6">
+                <h3 class="text-xs font-black text-emerald-600 mb-2 uppercase tracking-widest">로그인 정보</h3>
+                <div class="flex items-center gap-2 text-emerald-700 font-bold text-sm">${providerIcon} ${email}</div>
+            </div>`;
+            document.getElementById('logoutBtnArea').classList.remove('hidden');
+            syncProfileLogoutFooterButton();
+            const deleteArea = document.getElementById('deleteAccountBtnArea');
+            if (deleteArea) deleteArea.classList.toggle('hidden', isDemoUser(window.currentUser));
+        }
+        accountSection.innerHTML = accountHtml;
+        
+        // 게스트 모드일 때 로그인하기 버튼에 이벤트 리스너 추가
+        if (window.currentUser && window.currentUser.isAnonymous) {
+            // 약간의 지연을 두고 버튼을 찾아서 이벤트 리스너 추가 (innerHTML 후 DOM 업데이트 대기)
+            setTimeout(() => {
+                const switchToLoginBtn = document.getElementById('switchToLoginBtn');
+                if (switchToLoginBtn) {
+                    switchToLoginBtn.addEventListener('click', async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        try {
+                            if (window.switchToLogin) {
+                                await window.switchToLogin();
+                            } else {
+                                console.error('switchToLogin 함수를 찾을 수 없습니다.');
+                                showToast("로그인 기능을 사용할 수 없습니다.", "error");
+                            }
+                        } catch (error) {
+                            console.error('로그인하기 버튼 클릭 오류:', error);
+                            showToast("로그인 페이지로 이동하는 중 오류가 발생했습니다.", "error");
+                        }
+                    });
+                }
+            }, 100);
+        }
+    }
+    
+    // 사용자 설정을 탭으로 전환 (밀려오는 방식 없이 다른 탭과 동일하게)
+    if (typeof window.switchMainTab === 'function') {
+        window.switchMainTab('settings');
+    }
+}
+
+// 버전 정보 로드 함수
+// - 프로덕션(1.0.0): 배포일자만 표시 (2026.02.19)
+// - 스테이징(1.0.0_1): 기준일 (배포일) 형식 (2026.02.18 (2026.02.19))
+function formatVersionDate(isoStr) {
+    const d = new Date(isoStr);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}.${m}.${day}`;
+}
+
+async function loadVersionInfo() {
+    try {
+        const response = await fetch('/version.json?t=' + Date.now());
+        if (response.ok) {
+            const data = await response.json();
+            const versionNumberEl = document.getElementById('versionNumber');
+            const buildDateEl = document.getElementById('buildDate');
+
+            if (versionNumberEl && data.version) {
+                versionNumberEl.textContent = data.version;
+            }
+
+            if (buildDateEl && data.buildDate) {
+                const buildDate = new Date(data.buildDate);
+                const isStaging = /_\d+$/.test(String(data.version || ''));
+
+                if (isStaging && data.baseBuildDate) {
+                    // 스테이징: 기준일 (배포일) 형식
+                    const baseStr = formatVersionDate(data.baseBuildDate);
+                    const deployStr = formatVersionDate(data.buildDate);
+                    buildDateEl.textContent = `${baseStr} (${deployStr})`;
+                    buildDateEl.title = `기준: ${new Date(data.baseBuildDate).toLocaleString('ko-KR')} / 배포: ${buildDate.toLocaleString('ko-KR')}`;
+                } else {
+                    // 프로덕션: 배포일자만
+                    buildDateEl.textContent = formatVersionDate(data.buildDate);
+                    buildDateEl.title = buildDate.toLocaleString('ko-KR');
+                }
+            }
+        }
+    } catch (e) {
+        console.debug('버전 정보 로드 실패 (무시):', e);
+    }
+}
+
+export function closeSettings() {
+    // 설정 탭일 때는 타임라인 탭으로 전환
+    if (typeof appState !== 'undefined' && appState.currentTab === 'settings' && typeof window.switchMainTab === 'function') {
+        window.switchMainTab('timeline');
+    }
+}
+
+// 설정 페이지 탭 전환 함수 (바 타입)
+export function switchSettingsTab(tab) {
+    const profileTab = document.getElementById('settingsTabProfile');
+    const tagsTab = document.getElementById('settingsTabTags');
+    const shortcutsTab = document.getElementById('settingsTabShortcuts');
+    const profileContent = document.getElementById('settingsTabContentProfile');
+    const tagsContent = document.getElementById('settingsTabContentTags');
+    const shortcutsContent = document.getElementById('settingsTabContentShortcuts');
+    
+    // 모든 탭 비활성화
+    [profileTab, tagsTab, shortcutsTab].forEach(t => {
+        if (t) {
+            t.className = 'settings-tab px-4 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors';
+        }
+    });
+    
+    // 모든 콘텐츠 숨기기
+    [profileContent, tagsContent, shortcutsContent].forEach(c => {
+        if (c) c.classList.add('hidden');
+    });
+    
+    if (tab === 'profile') {
+        // 프로필 탭 활성화
+        if (profileTab) {
+            profileTab.className = 'settings-tab active px-4 py-3 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
+            profileTab.innerHTML = '<i class="fa-solid fa-user mr-2"></i>프로필';
+        }
+        if (profileContent) profileContent.classList.remove('hidden');
+    } else if (tab === 'tags') {
+        // 태그 관리 탭 활성화
+        if (tagsTab) {
+            tagsTab.className = 'settings-tab active px-4 py-3 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
+            tagsTab.innerHTML = '<i class="fa-solid fa-tags mr-2"></i>태그 관리';
+        }
+        if (tagsContent) tagsContent.classList.remove('hidden');
+    } else if (tab === 'shortcuts') {
+        // 밀당 메모 탭 활성화
+        if (shortcutsTab) {
+            shortcutsTab.className = 'settings-tab active px-4 py-3 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
+            shortcutsTab.innerHTML = '<i class="fa-solid fa-keyboard mr-2"></i>밀당 메모';
+        }
+        if (shortcutsContent) shortcutsContent.classList.remove('hidden');
+    }
+}
+
+function updateProfilePhotoHintVisibility() {
+    const hint = document.getElementById('profilePhotoHint');
+    if (!hint) return;
+    const hasPhoto = !!(appState?.tempSettings?.profile?.photoUrl || window.settingsPhotoUrl || window.userSettings?.profile?.photoUrl);
+    hint.classList.toggle('hidden', hasPhoto);
+}
+
+function formatBirthdateForDisplay(raw) {
+    if (!raw || typeof raw !== 'string') return '-';
+    const s = raw.trim().replace(/-/g, '');
+    if (s.length === 8 && /^\d+$/.test(s)) {
+        return `${s.slice(0, 4)}.${s.slice(4, 6)}.${s.slice(6, 8)}`;
+    }
+    return raw;
+}
+
+function setProfileSettingsEditMode(isEditing) {
+    const state = appState;
+    const demo = window.currentUser && !window.currentUser.isAnonymous && isDemoUser(window.currentUser);
+    if (demo) {
+        isEditing = false;
+    }
+    state.isProfileEditing = !!isEditing;
+
+    const editBtn = document.getElementById('editProfileSettingsBtn');
+    const cancelBtn = document.getElementById('cancelProfileSettingsBtn');
+    const saveBtn = document.getElementById('saveProfileSettingsBtn');
+    if (editBtn) editBtn.classList.toggle('hidden', isEditing || demo);
+    if (cancelBtn) cancelBtn.classList.toggle('hidden', !isEditing);
+    if (saveBtn) saveBtn.classList.toggle('hidden', !isEditing);
+
+    const nicknameInput = document.getElementById('settingNickname');
+    const nicknameDisplay = document.getElementById('settingNicknameDisplay');
+    if (nicknameDisplay) {
+        nicknameDisplay.textContent = (nicknameInput?.value || state.tempSettings?.profile?.nickname || '').trim() || '-';
+        nicknameDisplay.classList.toggle('hidden', isEditing);
+    }
+    if (nicknameInput) {
+        nicknameInput.classList.toggle('hidden', !isEditing);
+        nicknameInput.disabled = !isEditing;
+    }
+
+    const birthdateInput = document.getElementById('settingBirthdate');
+    const birthdateDisplay = document.getElementById('settingBirthdateDisplay');
+    const birthdateEdit = document.getElementById('settingBirthdateEdit');
+    const currentGender = (document.getElementById('settingGender')?.value || state.tempSettings?.profile?.gender || '').trim();
+    const genderText = currentGender === 'male' ? '(남)' : currentGender === 'female' ? '(여)' : '';
+    if (birthdateDisplay) {
+        birthdateDisplay.textContent = formatBirthdateForDisplay(birthdateInput?.value || state.tempSettings?.profile?.birthdate || '') + (genderText ? ' ' + genderText : '');
+        birthdateDisplay.classList.toggle('hidden', isEditing);
+    }
+    if (birthdateEdit) birthdateEdit.classList.toggle('hidden', !isEditing);
+    const birthdateHint = document.getElementById('birthdateHint');
+    if (birthdateHint) birthdateHint.classList.toggle('hidden', !isEditing);
+
+    const bioInput = document.getElementById('settingBio');
+    const lifestyleInput = document.getElementById('settingLifestyle');
+    if (bioInput) bioInput.disabled = !isEditing;
+    if (birthdateInput) birthdateInput.disabled = !isEditing;
+    if (lifestyleInput) lifestyleInput.disabled = !isEditing;
+
+    updateProfilePhotoHintVisibility();
+
+    /* 프로필 사진: 수정 모드일 때만 사진 설정/사진 선택/삭제 버튼 표시 */
+    const photoSelectBtn = document.getElementById('photoSelectBtn');
+    const textSectionPhotoBtn = document.getElementById('textSectionPhotoBtn');
+    const photoDeleteBtn = document.getElementById('photoDeleteBtn');
+    if (photoSelectBtn) {
+        photoSelectBtn.disabled = !isEditing;
+        photoSelectBtn.classList.toggle('hidden', !isEditing);
+    }
+    if (textSectionPhotoBtn) {
+        textSectionPhotoBtn.disabled = !isEditing;
+        textSectionPhotoBtn.classList.toggle('hidden', !isEditing);
+    }
+    if (photoDeleteBtn) {
+        photoDeleteBtn.disabled = !isEditing;
+        photoDeleteBtn.classList.toggle('hidden', !isEditing);
+    }
+
+    // 라이프스타일 버튼 비활성화
+    document.querySelectorAll('.settings-lifestyle-btn').forEach(btn => {
+        btn.disabled = !isEditing;
+        btn.classList.toggle('opacity-60', !isEditing);
+        btn.classList.toggle('cursor-not-allowed', !isEditing);
+    });
+}
+
+window.startProfileSettingsEdit = () => {
+    if (window.currentUser && !window.currentUser.isAnonymous && isDemoUser(window.currentUser)) {
+        return;
+    }
+    setProfileSettingsEditMode(true);
+};
+
+window.cancelProfileSettingsEdit = () => {
+    const state = appState;
+    // snapshot으로 원복
+    if (state._profileSettingsSnapshot) {
+        state.tempSettings = JSON.parse(JSON.stringify(state._profileSettingsSnapshot));
+        window.userSettings = JSON.parse(JSON.stringify(state._profileSettingsSnapshot));
+    }
+
+    // 편집 중 선택한 사진(미저장) 상태 초기화
+    window.settingsPhotoFile = null;
+    window.settingsPhotoUrl = null;
+    const photoInput = document.getElementById('photoInput');
+    if (photoInput) photoInput.value = '';
+
+    // UI 재적용
+    const inferredType = state.tempSettings?.profile?.photoUrl ? 'photo' : 'text';
+    const profileType = state.tempSettings?.profile?.iconType || inferredType;
+    // 이모지 타입이면 text로 변환
+    window.settingsProfileType = profileType === 'emoji' ? 'text' : profileType;
+    setSettingsProfileType(window.settingsProfileType);
+
+    const nicknameInput = document.getElementById('settingNickname');
+    if (nicknameInput) nicknameInput.value = state.tempSettings?.profile?.nickname || '';
+    const bioInput = document.getElementById('settingBio');
+    if (bioInput) bioInput.value = state.tempSettings?.profile?.bio || '';
+
+    const photoPreview = document.getElementById('photoPreview');
+    const photoDeleteBtn = document.getElementById('photoDeleteBtn');
+    if (photoPreview && state.tempSettings?.profile?.photoUrl) {
+        photoPreview.style.backgroundImage = `url(${state.tempSettings.profile.photoUrl})`;
+        photoPreview.style.backgroundSize = 'cover';
+        photoPreview.style.backgroundPosition = 'center';
+        photoPreview.innerHTML = '';
+        if (photoDeleteBtn) {
+            photoDeleteBtn.classList.toggle('hidden', !state.isProfileEditing);
+        }
+    } else if (photoPreview) {
+        photoPreview.innerHTML = '<i class="fa-solid fa-camera text-slate-400 text-xl"></i>';
+        photoPreview.style.backgroundImage = '';
+        if (photoDeleteBtn) {
+            photoDeleteBtn.classList.add('hidden');
+        }
+    }
+
+    setProfileSettingsEditMode(false);
+};
+
+// 설정 페이지 프로필 타입 설정
+export function setSettingsProfileType(type) {
+    // 이모지 타입이면 text로 변환
+    if (type === 'emoji') {
+        type = 'text';
+    }
+    window.settingsProfileType = type;
+    
+    // tempSettings에도 iconType 반영 (취소/저장에 사용)
+    if (appState?.tempSettings?.profile) {
+        appState.tempSettings.profile.iconType = type;
+    }
+    
+    const textSection = document.getElementById('textSection');
+    const photoSection = document.getElementById('photoSection');
+    const photoPreview = document.getElementById('photoPreview');
+    const photoDeleteBtn = document.getElementById('photoDeleteBtn');
+
+    if (textSection) textSection.classList.toggle('hidden', type !== 'text');
+    if (photoSection) photoSection.classList.toggle('hidden', type !== 'photo');
+
+    // 텍스트 미리보기 업데이트
+    const textPreview = document.getElementById('textPreview');
+    const nicknameVal = (
+        document.getElementById('settingNickname')?.value ||
+        appState?.tempSettings?.profile?.nickname ||
+        window.userSettings?.profile?.nickname ||
+        ''
+    ).trim();
+    if (textPreview) {
+        textPreview.innerHTML = '<i class="fa-solid fa-user text-slate-500 text-2xl"></i>';
+        textPreview.classList.add('flex', 'items-center', 'justify-center');
+    }
+
+    // 사진 미리보기 및 삭제 버튼 업데이트 (수정 모드일 때만 삭제 버튼 표시)
+    if (type === 'photo' && photoPreview) {
+        const photoUrl = appState?.tempSettings?.profile?.photoUrl || window.settingsPhotoUrl || window.userSettings?.profile?.photoUrl;
+        if (photoUrl) {
+            photoPreview.style.backgroundImage = `url(${photoUrl})`;
+            photoPreview.style.backgroundSize = 'cover';
+            photoPreview.style.backgroundPosition = 'center';
+            photoPreview.innerHTML = '';
+            if (photoDeleteBtn) {
+                photoDeleteBtn.classList.toggle('hidden', !appState.isProfileEditing);
+            }
+        } else {
+            photoPreview.innerHTML = '<i class="fa-solid fa-camera text-slate-400 text-xl"></i>';
+            photoPreview.style.backgroundImage = '';
+            if (photoDeleteBtn) {
+                photoDeleteBtn.classList.add('hidden');
+            }
+        }
+    }
+    updateProfilePhotoHintVisibility();
+}
+
+// 전역 노출 (탭 클릭용)
+window.setSettingsProfileType = setSettingsProfileType;
+
+// 설정 페이지 사진 업로드 처리 (선택 → 편집 모달 → 저장 시 미리보기 반영)
+export async function handlePhotoUpload(event) {
+    if (!appState.isProfileEditing) {
+        showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+        if (event?.target) event.target.value = '';
+        return;
+    }
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    if (!file.type.startsWith('image/')) {
+        showToast("이미지 파일만 업로드할 수 있습니다.", "error");
+        return;
+    }
+    
+    try {
+        const { compressImageToBlob } = await import('../utils.js');
+        const compressedBlob = await compressImageToBlob(file);
+        const photoUrl = URL.createObjectURL(compressedBlob);
+        
+        if (window.settingsProfileType !== 'photo') {
+            setSettingsProfileType('photo');
+        }
+        
+        // 미리보기 업데이트
+        const photoPreview = document.getElementById('photoPreview');
+        const photoDeleteBtn = document.getElementById('photoDeleteBtn');
+        if (photoPreview) {
+            photoPreview.style.backgroundImage = `url(${photoUrl})`;
+            photoPreview.style.backgroundSize = 'cover';
+            photoPreview.style.backgroundPosition = 'center';
+            photoPreview.innerHTML = '';
+            if (photoDeleteBtn) {
+                photoDeleteBtn.classList.remove('hidden');
+            }
+        }
+        
+        window.settingsPhotoUrl = photoUrl;
+        window.settingsPhotoFile = compressedBlob;
+        updateProfilePhotoHintVisibility();
+        
+        if (typeof window.openProfilePhotoEdit === 'function') {
+            window.openProfilePhotoEdit(photoUrl);
+        } else {
+            // 편집 기능이 없으면 바로 저장 가능하도록 설정
+            appState.tempSettings.profile.photoUrl = photoUrl;
+        }
+    } catch (e) {
+        console.error("사진 업로드 처리 실패:", e);
+        showToast("사진 업로드 중 오류가 발생했습니다.", "error");
+    }
+}
+
+// 사진 삭제 처리
+export function handlePhotoDelete() {
+    const state = appState;
+    if (!state.isProfileEditing) {
+        showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+        return;
+    }
+    
+    // 사진 관련 변수 초기화
+    state.tempSettings.profile.photoUrl = null;
+    window.settingsPhotoFile = null;
+    window.settingsPhotoUrl = null;
+    
+    // 텍스트 모드로 전환
+    setSettingsProfileType('text');
+    
+    // 파일 입력 초기화
+    const photoInput = document.getElementById('photoInput');
+    if (photoInput) photoInput.value = '';
+    
+    showToast("사진이 삭제되었습니다.", "success");
+}
+
+export async function saveProfileSettings() {
+    const state = appState;
+    try {
+        if (!state.isProfileEditing) {
+            showToast("수정 버튼을 누른 뒤 저장할 수 있습니다.", "info");
+            return;
+        }
+        // 생년월일 / 라이프스타일 (선택사항)
+        const newBirthdate = (document.getElementById('settingBirthdate')?.value || '').trim();
+        const newLifestyle = (document.getElementById('settingLifestyle')?.value || '').trim();
+        const newGenderRaw = (document.getElementById('settingGender')?.value || '').trim();
+        const newGender = (newGenderRaw === 'male' || newGenderRaw === 'female') ? newGenderRaw : null;
+
+        const newNickname = (document.getElementById('settingNickname')?.value || '').trim();
+        const existingNickname = (window.userSettings?.profile?.nickname || '').trim();
+        const nicknameChanged = newNickname !== existingNickname;
+        
+        if (nicknameChanged) {
+            if (!newNickname) {
+                showToast("닉네임을 입력해주세요.", "error");
+                return;
+            }
+            if (newNickname.length > 20) {
+                showToast("닉네임은 20자 이하로 입력해주세요.", "error");
+                return;
+            }
+            const { containsProfanity, isNicknameDuplicate, canChangeNickname, updateNicknameChangeDate } = await import('../utils/nickname.js');
+            if (containsProfanity(newNickname)) {
+                showToast("사용할 수 없는 닉네임입니다. 다른 닉네임을 입력해주세요.", "error");
+                return;
+            }
+            const duplicate = await isNicknameDuplicate(newNickname, window.currentUser?.uid || null);
+            if (duplicate) {
+                showToast("이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.", "error");
+                return;
+            }
+            const { canChange, daysUntilNextChange } = await canChangeNickname(window.currentUser?.uid || null);
+            if (!canChange) {
+                showToast(`닉네임은 한 달에 한 번만 변경할 수 있습니다. ${daysUntilNextChange}일 후에 다시 시도해주세요.`, "error");
+                return;
+            }
+        }
+        
+        state.tempSettings.profile.nickname = newNickname || existingNickname || '게스트';
+        state.tempSettings.profile.bio = document.getElementById('settingBio').value.trim() || '';
+
+        // 생년월일 변경 1회 제한 (값이 입력된 경우에만 체크)
+        const existingBirthdate = (window.userSettings?.profile?.birthdate || '').trim();
+        const existingLifestyle = (window.userSettings?.profile?.lifestyle || '').trim();
+        const existingCount = Number(window.userSettings?.profile?.birthdateChangeCount || 0);
+        
+        // 생년월일: 값이 입력된 경우에만 저장 및 변경 체크 (숫자 8자리도 자동 포맷 후 검증)
+        if (newBirthdate) {
+            const { formatted: formattedBirthdate, valid } = normalizeBirthdateRaw(newBirthdate);
+            if (!valid) {
+                showToast("입력한 생년월일이 올바르지 않습니다. 숫자 8자리(예: 19900115)로 입력해주세요.", "error");
+                return;
+            }
+            const isBirthdateChanged = existingBirthdate && formattedBirthdate && existingBirthdate !== formattedBirthdate;
+            if (isBirthdateChanged) {
+                if (existingCount >= 1) {
+                    showToast("생년월일은 가입 후 1회만 변경할 수 있습니다.", "error");
+                    return;
+                }
+                state.tempSettings.profile.birthdateChangeCount = existingCount + 1;
+                state.tempSettings.profile.birthdateChangedAt = new Date().toISOString();
+            } else {
+                // 기존 값 유지 (또는 최초 설정이면 0 유지)
+                state.tempSettings.profile.birthdateChangeCount = Number(state.tempSettings.profile.birthdateChangeCount || existingCount || 0);
+                state.tempSettings.profile.birthdateChangedAt = state.tempSettings.profile.birthdateChangedAt || window.userSettings?.profile?.birthdateChangedAt || null;
+            }
+            state.tempSettings.profile.birthdate = formattedBirthdate;
+        } else {
+            // 값이 없으면 기존 값 유지
+            state.tempSettings.profile.birthdate = existingBirthdate || '';
+            state.tempSettings.profile.birthdateChangeCount = Number(state.tempSettings.profile.birthdateChangeCount || existingCount || 0);
+            state.tempSettings.profile.birthdateChangedAt = state.tempSettings.profile.birthdateChangedAt || window.userSettings?.profile?.birthdateChangedAt || null;
+        }
+        
+        // 라이프스타일: 값이 입력된 경우에만 저장, 없으면 기존 값 유지
+        state.tempSettings.profile.lifestyle = newLifestyle || existingLifestyle || '';
+        // 성별: 선택 입력, 기가입자 강제 아님
+        state.tempSettings.profile.gender = newGender;
+        
+        // 프로필 완료 플래그: 닉네임이 실제 값이면 완료로 처리
+        const finalNickname = (state.tempSettings.profile.nickname || '').trim();
+        if (finalNickname && finalNickname !== '게스트') {
+            state.tempSettings.profileCompleted = true;
+            state.tempSettings.profileCompletedAt = state.tempSettings.profileCompletedAt || new Date().toISOString();
+        }
+        
+        // 아이콘 타입 저장 (text | photo)
+        state.tempSettings.profile.iconType = window.settingsProfileType || 'text';
+
+        // 프로필 타입에 따라 photoUrl 저장
+        if (window.settingsProfileType === 'photo') {
+            // 사진 파일이 있으면 업로드, 없으면 기존 photoUrl 유지
+            if (window.settingsPhotoFile) {
+                const { storage } = await import('../firebase.js');
+                const { ref, uploadBytes, getDownloadURL } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js");
+                const timestamp = Date.now();
+                const fileName = `photo_${timestamp}.jpg`;
+                const photoRef = ref(storage, `users/${window.currentUser.uid}/profile/${fileName}`);
+                
+                await uploadBytes(photoRef, window.settingsPhotoFile);
+                const photoUrl = await getDownloadURL(photoRef);
+                
+                state.tempSettings.profile.photoUrl = photoUrl;
+                // 업로드 후 변수 초기화
+                window.settingsPhotoFile = null;
+                window.settingsPhotoUrl = null;
+            }
+            // icon은 항상 null (사진 또는 닉네임 첫글자만 사용)
+            state.tempSettings.profile.icon = null;
+        } else {
+            // text: 닉네임 첫 글자 표시 (저장은 nickname만으로 충분)
+            state.tempSettings.profile.icon = null;
+            state.tempSettings.profile.photoUrl = null;
+            state.tempSettings.profile.iconType = 'text';
+            window.settingsPhotoFile = null;
+            window.settingsPhotoUrl = null;
+        }
+        
+        await dbOps.saveSettings(state.tempSettings);
+        if (nicknameChanged && window.currentUser?.uid) {
+            const { updateNicknameChangeDate } = await import('../utils/nickname.js');
+            await updateNicknameChangeDate(window.currentUser.uid);
+        }
+        showToast("설정이 저장되었습니다.", 'success');
+        
+        // 헤더 업데이트
+        updateHeaderUI();
+
+        // 저장 후 보기 모드로 전환 및 스냅샷 갱신
+        state._profileSettingsSnapshot = JSON.parse(JSON.stringify(state.tempSettings));
+        setProfileSettingsEditMode(false);
+    } catch (e) {
+        console.error('프로필 저장 실패:', e);
+        showToast("설정 저장 중 오류가 발생했습니다: " + (e.message || e), 'error');
+    }
+}
+
+// 레거시 함수 (호환성 유지)
+export async function saveSettings() {
+    await saveProfileSettings();
+}
+
+export function selectIcon(i) {
+    const state = appState;
+    if (!state.isProfileEditing) {
+        showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+        return;
+    }
+    state.tempSettings.profile.icon = i;
+    document.querySelectorAll('.icon-option').forEach(el => el.classList.toggle('selected', el.innerText === i));
+    const emojiPreview = document.getElementById('emojiPreview');
+    if (emojiPreview) emojiPreview.textContent = i;
+}
+
+export function addTag(k, isSub) {
+    const state = appState;
+    const inputId = `newTag-${isSub ? 'sub-' : ''}${k}`;
+    const i = document.getElementById(inputId);
+    if (i && i.value.trim()) {
+        if (isSub) {
+            state.tempSettings.subTags[k].push({ text: i.value.trim(), parent: null });
+        } else {
+            state.tempSettings.tags[k].push(i.value.trim());
+        }
+        renderTagManager(k, isSub, state.tempSettings);
+        i.value = '';
+        requestAnimationFrame(() => {
+            document.getElementById(inputId)?.focus();
+        });
+    }
+}
+
+export function removeTag(k, idx, isSub) {
+    const state = appState;
+    if (!confirm("이 태그를 삭제하시겠습니까?")) return;
+    if (isSub) {
+        state.tempSettings.subTags[k].splice(idx, 1);
+    } else {
+        state.tempSettings.tags[k].splice(idx, 1);
+    }
+    renderTagManager(k, isSub, state.tempSettings);
+}
+
+function renderFavoriteTagsEditor() {
+    const state = appState;
+    const container = document.getElementById('favoriteTagsSection');
+    if (!container) return;
+    
+    // 현재 선택된 메인 태그 추적
+    if (!state.selectedFavoriteMainTag) {
+        state.selectedFavoriteMainTag = {};
+    }
+    
+    const tagConfigs = {
+        mealType: { prefix: '본식: ', label: '어떻게', subTagKey: 'place', mainTags: state.tempSettings.tags?.mealType || [] },
+        category: { prefix: '본식: ', label: '무엇을', subTagKey: 'menu', mainTags: state.tempSettings.tags?.category || [] },
+        withWhom: { prefix: '본식: ', label: '누구와', subTagKey: 'people', mainTags: state.tempSettings.tags?.withWhom || [] },
+        snackType: { prefix: '간식: ', label: '무엇을', subTagKey: 'snack', mainTags: state.tempSettings.tags?.snackType || [] },
+        snackPlace: { prefix: '간식: ', label: '어디서', subTagKey: 'place', mainTags: state.tempSettings.tags?.snackPlaceMain || ['집', '사무실', '카페'] }
+    };
+    
+    let html = '';
+    Object.entries(tagConfigs).forEach(([sectionId, config]) => {
+        const sectionKey = config.sectionKey || sectionId;
+        const storageKey = config.storageKey || sectionId;
+        const favoritesByMainTag = state.tempSettings.favoriteSubTags[storageKey] || {};
+        const selectedMainTag = state.selectedFavoriteMainTag[sectionKey] || null;
+        const selectedFavorites = selectedMainTag ? (favoritesByMainTag[selectedMainTag] || []) : [];
+        const sectionTitle = (config.prefix || '') + config.label;
+        
+        html += `<div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-6">
+            <div class="text-xs font-bold text-slate-600 mb-3 uppercase">${sectionTitle}</div>
+            <div id="favoriteMainTags-${sectionKey}" class="flex flex-wrap gap-2 mb-3">
+                ${config.mainTags.map(mainTag => {
+                    const isSelected = selectedMainTag === mainTag;
+                    const favorites = favoritesByMainTag[mainTag] || [];
+                    return `<button onclick="window.selectFavoriteMainTag('${sectionKey}', '${mainTag.replace(/'/g, "\\'")}')" 
+                        class="chip ${isSelected ? 'active' : ''}">
+                        <span class="font-bold">${mainTag}</span> <span class="text-[10px] opacity-70">(${favorites.length}/5)</span>
+                    </button>`;
+                }).join('')}
+            </div>
+            <div class="flex gap-2 mb-3">
+                <input type="text" id="newFavoriteTag-${sectionKey}-${selectedMainTag || 'none'}" class="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-slate-400" placeholder="태그 입력" onkeypress="if(event.key==='Enter' && window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${sectionKey}']) window.addFavoriteTag('${storageKey}', window.selectedFavoriteMainTag['${sectionKey}'])">
+                <button ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); if(window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${sectionKey}']) window.addFavoriteTag('${storageKey}', window.selectedFavoriteMainTag['${sectionKey}'])" onclick="if(window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${sectionKey}']) window.addFavoriteTag('${storageKey}', window.selectedFavoriteMainTag['${sectionKey}'])" class="bg-slate-800 text-white px-4 py-1.5 rounded-lg text-xs font-bold ${selectedMainTag ? '' : 'opacity-50 cursor-not-allowed'}" ${selectedMainTag ? '' : 'disabled'}>추가</button>
+            </div>
+            ${selectedMainTag ? `
+                ${selectedFavorites.length >= 5 ? '<div class="text-[10px] text-slate-500 mb-3">최대 5개까지 입력 가능합니다</div>' : ''}
+                <div class="mt-3">
+                    <div class="text-[10px] text-slate-400 mb-2">나만의 태그 (최대 5개)</div>
+                    <div class="flex flex-wrap gap-2" id="favoriteTags-${sectionKey}-${selectedMainTag}">
+                        ${selectedFavorites.map((text, idx) => `
+                            <div class="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold">
+                                <span>${text}</span>
+                                <button onclick="window.removeFavoriteTag('${storageKey}', '${selectedMainTag.replace(/'/g, "\\'")}', ${idx})" class="ml-1 hover:bg-emerald-700 rounded-full w-4 h-4 flex items-center justify-center transition-colors">
+                                    <i class="fa-solid fa-xmark text-[8px]"></i>
+                                </button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : '<div class="text-[10px] text-slate-400 mt-3">메인 태그를 선택하세요</div>'}
+        </div>`;
+    });
+    
+    container.innerHTML = html;
+}
+
+export function selectFavoriteMainTag(mainTagKey, mainTag) {
+    const state = appState;
+    if (!state.selectedFavoriteMainTag) {
+        state.selectedFavoriteMainTag = {};
+    }
+    
+    // 같은 태그를 다시 클릭하면 선택 해제, 다른 태그를 클릭하면 선택 변경
+    if (state.selectedFavoriteMainTag[mainTagKey] === mainTag) {
+        state.selectedFavoriteMainTag[mainTagKey] = null;
+    } else {
+        state.selectedFavoriteMainTag[mainTagKey] = mainTag;
+    }
+    
+    // 전역 변수로도 저장 (입력창에서 접근 가능하도록)
+    if (!window.selectedFavoriteMainTag) {
+        window.selectedFavoriteMainTag = {};
+    }
+    window.selectedFavoriteMainTag[mainTagKey] = state.selectedFavoriteMainTag[mainTagKey];
+    
+    renderFavoriteTagsEditor();
+}
+
+export async function addFavoriteTag(mainTagKey, mainTag) {
+    const state = appState;
+    if (!state.tempSettings.favoriteSubTags) {
+        state.tempSettings.favoriteSubTags = {
+            mealType: {},
+            category: {},
+            withWhom: {},
+            snackType: {}
+        };
+    }
+    
+    if (!state.tempSettings.favoriteSubTags[mainTagKey]) {
+        state.tempSettings.favoriteSubTags[mainTagKey] = {};
+    }
+    
+    // 메인 태그가 선택되지 않았으면 입력 불가
+    if (!mainTag || mainTag === 'none') {
+        showToast("메인 태그를 먼저 선택해주세요.", 'info');
+        return;
+    }
+    
+    const input = document.getElementById(`newFavoriteTag-${mainTagKey}-${mainTag}`);
+    if (!input) return;
+    
+    const text = input.value.trim();
+    if (!text) {
+        showToast("태그를 입력해주세요.", 'info');
+        return;
+    }
+    
+    if (!state.tempSettings.favoriteSubTags[mainTagKey][mainTag]) {
+        state.tempSettings.favoriteSubTags[mainTagKey][mainTag] = [];
+    }
+    
+    const favorites = state.tempSettings.favoriteSubTags[mainTagKey][mainTag];
+    
+    if (favorites.includes(text)) {
+        showToast("이미 추가된 태그입니다.", 'info');
+        input.value = '';
+        return;
+    }
+    
+    if (favorites.length >= 5) {
+        showToast("나만의 태그는 최대 5개까지 입력할 수 있습니다.", 'info');
+        return;
+    }
+    
+    favorites.push(text);
+    input.value = '';
+    renderFavoriteTagsEditor();
+    requestAnimationFrame(() => {
+        document.getElementById(`newFavoriteTag-${mainTagKey}-${mainTag}`)?.focus();
+    });
+    
+    // 즉시 저장 후 화면(기록 모달 등)에서 쓰는 userSettings에도 반영
+    try {
+        await dbOps.saveSettings(state.tempSettings);
+        if (!window.userSettings) window.userSettings = {};
+        window.userSettings.favoriteSubTags = JSON.parse(JSON.stringify(state.tempSettings.favoriteSubTags || {}));
+        showToast("태그가 저장되었습니다.", 'success');
+    } catch (e) {
+        console.error('태그 저장 실패:', e);
+        // dbOps.saveSettings에서 이미 에러 토스트를 표시하므로 여기서는 추가 처리 불필요
+    }
+}
+
+export async function removeFavoriteTag(mainTagKey, mainTag, index) {
+    const state = appState;
+    if (!state.tempSettings.favoriteSubTags || !state.tempSettings.favoriteSubTags[mainTagKey]) return;
+    
+    if (!state.tempSettings.favoriteSubTags[mainTagKey][mainTag]) {
+        state.tempSettings.favoriteSubTags[mainTagKey][mainTag] = [];
+    }
+    
+    const favorites = state.tempSettings.favoriteSubTags[mainTagKey][mainTag];
+    if (index >= 0 && index < favorites.length) {
+        favorites.splice(index, 1);
+        renderFavoriteTagsEditor();
+        
+        // 즉시 저장 후 화면(기록 모달 등)에서 쓰는 userSettings에도 반영
+        try {
+            await dbOps.saveSettings(state.tempSettings);
+            if (!window.userSettings) window.userSettings = {};
+            window.userSettings.favoriteSubTags = JSON.parse(JSON.stringify(state.tempSettings.favoriteSubTags || {}));
+            showToast("태그가 삭제되었습니다.", 'success');
+        } catch (e) {
+            console.error('태그 삭제 저장 실패:', e);
+            // dbOps.saveSettings에서 이미 에러 토스트를 표시하므로 여기서는 추가 처리 불필요
+        }
+    }
+}
+
+// ⚠️ 푸시 알림 토글 제거됨 - 크래시 문제로 인해 비활성화
+// 사용자는 기기 설정에서 직접 알림 권한을 설정해야 함
+
+export async function deleteSubTag(key, text, containerId, inputId, parentFilter) {
+    const newSettings = JSON.parse(JSON.stringify(window.userSettings));
+    if (newSettings.subTags && newSettings.subTags[key]) {
+        const idx = newSettings.subTags[key].findIndex(t => (typeof t === 'string' ? t : t.text) === text);
+        if (idx > -1) {
+            newSettings.subTags[key].splice(idx, 1);
+            window.userSettings = newSettings;
+            try {
+                await dbOps.saveSettings(newSettings);
+                showToast("태그가 삭제되었습니다.", 'success');
+                if (containerId) {
+                    const realParentFilter = (parentFilter === 'null' || !parentFilter) ? null : parentFilter;
+                    window.renderSecondary(containerId, newSettings.subTags[key], inputId, realParentFilter, key);
+                }
+            } catch (e) {
+                console.error(e);
+                showToast("삭제 실패", 'error');
+            }
+        }
+    }
+}
+
+// 카카오 장소 검색 함수 (백엔드 프록시 사용 - SDK 불필요)
+// mode: 'meal' | 'snack' - 식사 어디서 vs 간식 어디서

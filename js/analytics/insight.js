@@ -1614,16 +1614,69 @@ export async function openShareInsightModal() {
         }
     }
     
-    // 공유 버튼 텍스트 업데이트
+    // 공유 버튼 영역식 UI
     const submitBtn = document.getElementById('insightShareSubmitBtn');
     if (submitBtn) {
-        if (isShared) {
-            submitBtn.textContent = '공유 취소';
-            submitBtn.className = 'w-full py-4 bg-red-600 text-white rounded-xl font-bold active:bg-red-700 shadow-lg transition-all';
-        } else {
-            submitBtn.textContent = '공유하기';
-            submitBtn.className = 'w-full py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all';
-        }
+        submitBtn.removeAttribute('data-edit-mode');
+        submitBtn.removeAttribute('data-photo-url');
+        applyInsightShareSubmitVariant(isShared ? 'unshare' : 'default');
+    }
+}
+
+const INSIGHT_SHARE_SUBMIT_BASE = 'flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 transition-colors min-w-0 border-0 cursor-pointer';
+
+/** @param {'default' | 'unshare' | 'edit'} variant */
+function applyInsightShareSubmitVariant(variant) {
+    const btn = document.getElementById('insightShareSubmitBtn');
+    const label = document.getElementById('insightShareSubmitLabel');
+    const sub = document.getElementById('insightShareSubmitSub');
+    if (!btn || !label || !sub) return;
+    label.innerHTML = '';
+    label.classList.remove('hidden');
+    sub.classList.remove('hidden');
+    if (variant === 'unshare') {
+        btn.className = `${INSIGHT_SHARE_SUBMIT_BASE} bg-rose-50 hover:bg-rose-100/90 active:bg-rose-100`;
+        label.textContent = '공유 취소';
+        label.className = 'text-sm sm:text-[15px] font-bold text-rose-700';
+        sub.textContent = '피드에서 내리기';
+        sub.className = 'text-[11px] sm:text-xs text-rose-600/90 font-medium';
+    } else if (variant === 'edit') {
+        btn.className = `${INSIGHT_SHARE_SUBMIT_BASE} bg-slate-900 text-white hover:bg-slate-800 active:bg-slate-800`;
+        label.textContent = '수정 완료';
+        label.className = 'text-sm sm:text-[15px] font-bold text-white';
+        sub.textContent = '코멘트 반영';
+        sub.className = 'text-[11px] sm:text-xs text-white/80 font-medium';
+    } else {
+        btn.className = `${INSIGHT_SHARE_SUBMIT_BASE} bg-slate-900 text-white hover:bg-slate-800 active:bg-slate-800`;
+        label.textContent = '공유하기';
+        label.className = 'text-sm sm:text-[15px] font-bold text-white';
+        sub.textContent = '피드에 공유';
+        sub.className = 'text-[11px] sm:text-xs text-white/80 font-medium';
+    }
+}
+
+function setInsightShareSubmitLoading(isLoading) {
+    const btn = document.getElementById('insightShareSubmitBtn');
+    const label = document.getElementById('insightShareSubmitLabel');
+    const sub = document.getElementById('insightShareSubmitSub');
+    if (!btn || !label || !sub) return;
+    if (isLoading) {
+        sub.classList.add('hidden');
+        label.className = 'text-sm sm:text-[15px] font-bold text-white flex items-center justify-center gap-2';
+        label.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>공유 중...</span>';
+    }
+}
+
+function setInsightShareSubmitEditing(isEditing) {
+    const btn = document.getElementById('insightShareSubmitBtn');
+    const label = document.getElementById('insightShareSubmitLabel');
+    const sub = document.getElementById('insightShareSubmitSub');
+    if (!btn || !label || !sub) return;
+    if (isEditing) {
+        sub.classList.add('hidden');
+        label.innerHTML = '';
+        label.textContent = '수정 중...';
+        label.className = 'text-sm sm:text-[15px] font-bold text-white';
     }
 }
 
@@ -1669,11 +1722,10 @@ export async function openEditInsightShareModal(photoUrl) {
         commentInput.value = insightShare.comment || '';
     }
     
-    // 공유 버튼 텍스트 업데이트 (수정 모드)
+    // 공유 버튼 영역식 UI (수정 모드)
     const submitBtn = document.getElementById('insightShareSubmitBtn');
     if (submitBtn) {
-        submitBtn.textContent = '수정 완료';
-        submitBtn.className = 'w-full py-4 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900 shadow-lg transition-all';
+        applyInsightShareSubmitVariant('edit');
         // 수정 모드임을 표시하기 위한 데이터 속성 추가
         submitBtn.setAttribute('data-edit-mode', 'true');
         submitBtn.setAttribute('data-photo-url', photoUrl);
@@ -1717,7 +1769,7 @@ export async function shareInsightToFeed() {
         // 수정 모드: 코멘트만 업데이트
         if (submitBtn) {
             submitBtn.disabled = true;
-            submitBtn.textContent = '수정 중...';
+            setInsightShareSubmitEditing(true);
         }
         
         try {
@@ -1776,7 +1828,7 @@ export async function shareInsightToFeed() {
         } finally {
             if (submitBtn) {
                 submitBtn.disabled = false;
-                submitBtn.textContent = '수정 완료';
+                applyInsightShareSubmitVariant('edit');
                 submitBtn.removeAttribute('data-edit-mode');
                 submitBtn.removeAttribute('data-photo-url');
             }
@@ -1818,7 +1870,7 @@ export async function shareInsightToFeed() {
     if (insightShareSpinner) insightShareSpinner.classList.remove('hidden');
     if (submitBtn) {
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>공유 중...';
+        setInsightShareSubmitLoading(true);
     }
     await new Promise(r => requestAnimationFrame(r));
     await new Promise(r => setTimeout(r, 50));
@@ -1973,7 +2025,7 @@ export async function shareInsightToFeed() {
         if (spinner) spinner.classList.add('hidden');
         if (submitBtn) {
             submitBtn.disabled = false;
-            submitBtn.textContent = '공유하기';
+            applyInsightShareSubmitVariant('default');
         }
     }
 }

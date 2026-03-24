@@ -1,11 +1,12 @@
 const { initializeApp } = require('firebase-admin/app');
-const { getFirestore, FieldValue, Timestamp } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue, Timestamp, FieldPath } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const { getStorage } = require('firebase-admin/storage');
 const { getMessaging } = require('firebase-admin/messaging');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineString } = require('firebase-functions/params');
 const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { getMealDelta, mergeDeltaIntoDay, sanitizeDayEntry, computeStatsFromMeals, isMainSlot } = require('./mealStats.js');
 const { logger } = require('firebase-functions');
 
@@ -15,6 +16,19 @@ const db = getFirestore();
 const auth = getAuth();
 
 const APP_ID = 'mealog-r0';
+
+/** 앱 공용 샘플 계정 — 클라이언트·Firestore 규칙과 동일 이메일 */
+const READ_ONLY_DEMO_EMAIL = 'dummy@mealog.net';
+
+function assertNotReadOnlyDemoAuth(auth) {
+  const email =
+    auth && auth.token && auth.token.email
+      ? String(auth.token.email).toLowerCase().trim()
+      : '';
+  if (email === READ_ONLY_DEMO_EMAIL) {
+    throw new HttpsError('permission-denied', '샘플 계정에서는 댓글을 작성할 수 없습니다.');
+  }
+}
 
 // Functions 리전 설정 (us-central1로 변경 - 배포된 리전과 일치)
 const REGION = 'us-central1';
@@ -128,12 +142,26 @@ async function isAdminByUid(uid) {
   return adminSnap.exists && adminSnap.data().isAdmin === true;
 }
 
+/** FCM data 페이로드: Android는 모든 값이 문자열이어야 함 */
+function fcmDataStrings(data) {
+  if (!data || typeof data !== 'object') return {};
+  const out = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (v === undefined || v === null) continue;
+    out[String(k)] = typeof v === 'string' ? v : String(v);
+  }
+  return out;
+}
+
 /**
  * 특정 사용자의 FCM 토큰들에 푸시 알림 전송 (실패 시 로그만, 호출자 대기 안 함)
  * @param {string} userId - 수신자 uid
  * @param {{ title: string, body: string, data?: object }} payload
  */
-async function sendPushToUser(userId, payload) {
+/**
+ * @param {{ adminBroadcast?: boolean }} options - 관리자 브로드캐스트: iOS aps에 badge 미포함(아이콘 숫자 변경 최소화), 앱에서 빨간점/배지 갱신 생략용 data.type
+ */
+async function sendPushToUser(userId, payload, options = {}) {
   if (!userId || !payload?.title) return;
   try {
     const ref = db.collection('artifacts').doc(APP_ID).collection('users').doc(userId).collection('config').doc('fcmTokens');
@@ -145,17 +173,58 @@ async function sendPushToUser(userId, payload) {
       return;
     }
     const messaging = getMessaging();
+    const dataObj = { ...(payload.data && typeof payload.data === 'object' ? payload.data : {}) };
+    if (options.adminBroadcast) {
+      dataObj.suppressNumericBadge = '1';
+    }
+    // Android 8+ 채널: 미지정 시 기기/OS별로 트레이 미표시 이슈가 있을 수 있어 FCM 기본 채널 명시
+    const androidNotificationBase = {
+      title: payload.title,
+      body: payload.body || '',
+      channelId: 'fcm_fallback_notification_channel',
+      sound: 'default'
+    };
     const message = {
       notification: { title: payload.title, body: payload.body || '' },
-      data: payload.data || {},
-      android: { priority: 'high' }
+      data: fcmDataStrings(dataObj),
+      android: {
+        priority: 'high',
+        notification: { ...androidNotificationBase }
+      }
     };
+    if (options.adminBroadcast) {
+      // Android: 알림 트레이·상단 배너는 유지, 런처 숫자 배지는 이 푸시로 올리지 않도록 (일부 기기·런처에서 notificationCount 연동)
+      message.android = {
+        priority: 'high',
+        notification: {
+          ...androidNotificationBase,
+          notificationCount: 0
+        }
+      };
+      message.apns = {
+        headers: { 'apns-priority': '10' },
+        payload: {
+          aps: {
+            sound: 'default'
+            // badge 생략 → 기존 배지 숫자를 이 푸시가 덮어쓰지 않도록
+          }
+        }
+      };
+    }
     const results = await Promise.allSettled(
       tokens.map((token) => messaging.send({ ...message, token }))
     );
     const failed = results.filter((r) => r.status === 'rejected');
     if (failed.length > 0) {
-      logger.warn('sendPushToUser: some sends failed', { userId, failed: failed.length });
+      const firstReason = failed[0]?.reason?.message || String(failed[0]?.reason);
+      logger.warn('sendPushToUser: some sends failed', {
+        userId,
+        failed: failed.length,
+        total: tokens.length,
+        firstReason
+      });
+    } else {
+      logger.info('sendPushToUser: ok', { userId, tokenCount: tokens.length });
     }
   } catch (e) {
     logger.warn('sendPushToUser failed', { userId, message: e?.message });
@@ -389,6 +458,30 @@ exports.updateBoardPost = onCall({ region: REGION }, async (request) => {
 });
 
 /**
+ * 게시글 삭제 시 하위 데이터 정리 (댓글·좋아요·북마크 참조)
+ * — 남겨두면 흔적 필터(getPostIdsCommentedByUser 등)에 삭제된 글 ID가 계속 잡힘
+ */
+async function deleteBoardPostRelatedDocuments(postId) {
+  const pid = String(postId);
+  const base = db.collection('artifacts').doc(APP_ID);
+  const subcollections = [
+    ['boardComments', 'postId'],
+    ['boardInteractions', 'postId'],
+    ['boardBookmarks', 'postId']
+  ];
+  for (const [collName, field] of subcollections) {
+    const ref = base.collection(collName);
+    const snap = await ref.where(field, '==', pid).get();
+    const docs = snap.docs;
+    for (let i = 0; i < docs.length; i += 450) {
+      const batch = db.batch();
+      docs.slice(i, i + 450).forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+  }
+}
+
+/**
  * 게시글 삭제 (Callable)
  */
 exports.deleteBoardPost = onCall({ region: REGION }, async (request) => {
@@ -417,6 +510,7 @@ exports.deleteBoardPost = onCall({ region: REGION }, async (request) => {
     throw new HttpsError('permission-denied', '본인의 게시글만 삭제할 수 있습니다.');
   }
 
+  await deleteBoardPostRelatedDocuments(postId);
   await postRef.delete();
   
   return { success: true };
@@ -431,6 +525,7 @@ exports.addBoardComment = onCall({ region: REGION }, wrapFunction('addBoardComme
   if (!auth || !auth.uid) {
     throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
   }
+  assertNotReadOnlyDemoAuth(auth);
 
   const ban = await getUserBan(auth.uid);
   if (ban.bannedWrite) {
@@ -466,7 +561,14 @@ exports.addBoardComment = onCall({ region: REGION }, wrapFunction('addBoardComme
   // 게시글 조회 (댓글 수 증가 + 알림용 postAuthorId)
   const postRef = db.collection('artifacts').doc(APP_ID).collection('boardPosts').doc(postId);
   const postDoc = await postRef.get();
-  const postAuthorId = postDoc.exists && postDoc.data().authorId ? String(postDoc.data().authorId).trim() : '';
+  const postData = postDoc.exists ? postDoc.data() : {};
+  const postAuthorId = (postData.authorId && String(postData.authorId).trim())
+    || (postData.userId && String(postData.userId).trim())
+    || '';
+
+  if (!postAuthorId && postDoc.exists) {
+    logger.warn('addBoardComment: 게시글에 authorId/userId 없음 → 푸시 생략 가능', { postId: String(postId) });
+  }
 
   // 댓글 생성 (postAuthorId: 알림에서 "내 글에 달린 댓글"만 쿼리할 때 사용)
   const commentsRef = db.collection('artifacts').doc(APP_ID).collection('boardComments');
@@ -490,11 +592,12 @@ exports.addBoardComment = onCall({ region: REGION }, wrapFunction('addBoardComme
   }
 
   if (postAuthorId && postAuthorId !== auth.uid) {
-    sendPushToUser(postAuthorId, {
+    // 반드시 await: onCall 반환 후 인스턴스가 멈추면 미완료 Promise가 끊겨 푸시가 안 갈 수 있음
+    await sendPushToUser(postAuthorId, {
       title: '새 댓글',
       body: `${authorNickname}님이 댓글을 남겼습니다.`,
       data: { type: 'boardComment', postId: String(postId) }
-    }).catch(() => {});
+    });
   }
 
   return { id: docRef.id, ...newComment, timestamp: new Date().toISOString() };
@@ -535,7 +638,10 @@ exports.addBoardCommentAsAdmin = onCall({ region: REGION }, async (request) => {
 
   const postRef = db.collection('artifacts').doc(APP_ID).collection('boardPosts').doc(postId);
   const postDoc = await postRef.get();
-  const postAuthorId = postDoc.exists && postDoc.data().authorId ? String(postDoc.data().authorId).trim() : '';
+  const postData = postDoc.exists ? postDoc.data() : {};
+  const postAuthorId = (postData.authorId && String(postData.authorId).trim())
+    || (postData.userId && String(postData.userId).trim())
+    || '';
 
   const commentsRef = db.collection('artifacts').doc(APP_ID).collection('boardComments');
   const newComment = {
@@ -559,11 +665,11 @@ exports.addBoardCommentAsAdmin = onCall({ region: REGION }, async (request) => {
   }
 
   if (postAuthorId && postAuthorId !== auth.uid) {
-    sendPushToUser(postAuthorId, {
+    await sendPushToUser(postAuthorId, {
       title: '새 댓글',
       body: `${authorNickname}님이 댓글을 남겼습니다.`,
       data: { type: 'boardComment', postId: String(postId) }
-    }).catch(() => {});
+    });
   }
 
   return { id: docRef.id, ...newComment, timestamp: new Date().toISOString() };
@@ -623,6 +729,7 @@ exports.addPostComment = onCall({ region: REGION }, wrapFunction('addPostComment
   if (!auth || !auth.uid) {
     throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
   }
+  assertNotReadOnlyDemoAuth(auth);
 
   const ban = await getUserBan(auth.uid);
   if (ban.bannedWrite) {
@@ -672,6 +779,13 @@ exports.addPostComment = onCall({ region: REGION }, wrapFunction('addPostComment
     }
   }
 
+  if (!postOwnerId) {
+    logger.warn('addPostComment: postOwnerId 없음 → 글 주인에게 푸시 생략', {
+      postIdSample: String(postId).slice(0, 100),
+      commenter: auth.uid
+    });
+  }
+
   // 댓글 생성
   const commentsRef = db.collection('artifacts').doc(APP_ID).collection('postComments');
   const commentData = {
@@ -687,11 +801,11 @@ exports.addPostComment = onCall({ region: REGION }, wrapFunction('addPostComment
   const docRef = await commentsRef.add(commentData);
 
   if (postOwnerId && postOwnerId !== auth.uid) {
-    sendPushToUser(postOwnerId, {
+    await sendPushToUser(postOwnerId, {
       title: '새 댓글',
       body: `${userNickname}님이 댓글을 남겼습니다.`,
       data: { type: 'postComment', postId: String(postId) }
-    }).catch(() => {});
+    });
   }
 
   return { id: docRef.id, ...commentData, timestamp: new Date().toISOString() };
@@ -1922,3 +2036,291 @@ exports.migrateSharedPhotosTimestamp = onCall({ region: REGION }, async (request
 
   return { updated, total: snapshot.size };
 });
+
+/** 공지 HTML → 푸시 본문용 짧은 텍스트 */
+function noticePlainTextForPush(content, maxLen = 180) {
+  if (!content || typeof content !== 'string') return '새 공지가 등록되었습니다.';
+  const stripped = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!stripped) return '새 공지가 등록되었습니다.';
+  return stripped.length > maxLen ? `${stripped.slice(0, maxLen - 1)}…` : stripped;
+}
+
+/**
+ * 로그인 사용자(users 문서 존재)에게 동일 푸시 발송 (FCM 토큰 있는 계정만 실제 수신)
+ */
+async function broadcastNoticePushToAllUsers(payload) {
+  const usersRef = db.collection('artifacts').doc(APP_ID).collection('users');
+  let lastDoc = null;
+  let totalUsers = 0;
+  const pageSize = 200;
+  const concurrency = 25;
+  for (;;) {
+    let q = usersRef.orderBy(FieldPath.documentId()).limit(pageSize);
+    if (lastDoc) q = q.startAfter(lastDoc);
+    const snap = await q.get();
+    if (snap.empty) break;
+    const uids = snap.docs.map((d) => d.id);
+    totalUsers += uids.length;
+    for (let i = 0; i < uids.length; i += concurrency) {
+      const batch = uids.slice(i, i + concurrency);
+      await Promise.all(batch.map((uid) => sendPushToUser(uid, payload)));
+    }
+    lastDoc = snap.docs[snap.docs.length - 1];
+    if (snap.size < pageSize) break;
+  }
+  logger.info('broadcastNoticePushToAllUsers done', { totalUsers });
+}
+
+/** 관리자 푸시메시지: 상단 알림만, 탭 시 앱 내 탭 이동(data.type=adminBroadcast), 배지/빨간점 갱신 생략 */
+async function broadcastAdminPushToAllUsers(payload) {
+  const usersRef = db.collection('artifacts').doc(APP_ID).collection('users');
+  let lastDoc = null;
+  let totalUsers = 0;
+  const pageSize = 200;
+  const concurrency = 25;
+  for (;;) {
+    let q = usersRef.orderBy(FieldPath.documentId()).limit(pageSize);
+    if (lastDoc) q = q.startAfter(lastDoc);
+    const snap = await q.get();
+    if (snap.empty) break;
+    const uids = snap.docs.map((d) => d.id);
+    totalUsers += uids.length;
+    for (let i = 0; i < uids.length; i += concurrency) {
+      const batch = uids.slice(i, i + concurrency);
+      await Promise.all(batch.map((uid) => sendPushToUser(uid, payload, { adminBroadcast: true })));
+    }
+    lastDoc = snap.docs[snap.docs.length - 1];
+    if (snap.size < pageSize) break;
+  }
+  logger.info('broadcastAdminPushToAllUsers done', { totalUsers });
+}
+
+const ADMIN_PUSH_LANDING_TABS = new Set(['dashboard', 'timeline', 'gallery', 'board', 'settings']);
+
+function normalizeAdminBroadcastPayload(raw) {
+  const title = String(raw?.title || '').trim();
+  const body = String(raw?.body || '').trim();
+  const tab = String(raw?.landingTab || 'dashboard').trim();
+  const landingTab = ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard';
+  return { title, body, landingTab };
+}
+
+/** 관리자: 전체 사용자에게 푸시 즉시 발송 */
+exports.adminBroadcastPushNow = onCall(
+  { region: REGION, timeoutSeconds: 540, memory: '512MiB' },
+  async (request) => {
+    const callerUid = request.auth?.uid;
+    if (!callerUid) {
+      throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    }
+    if (!(await isAdminByUid(callerUid))) {
+      throw new HttpsError('permission-denied', '관리자만 발송할 수 있습니다.');
+    }
+    const { title, body, landingTab } = normalizeAdminBroadcastPayload(request.data || {});
+    if (!title || title.length > 80) {
+      throw new HttpsError('invalid-argument', '제목은 1~80자로 입력해 주세요.');
+    }
+    if (!body || body.length > 240) {
+      throw new HttpsError('invalid-argument', '내용은 1~240자로 입력해 주세요.');
+    }
+    await broadcastAdminPushToAllUsers({
+      title,
+      body,
+      data: { type: 'adminBroadcast', landingTab }
+    });
+    return { ok: true };
+  }
+);
+
+/**
+ * 관리자: 예약 푸시 문서 생성 (Admin SDK — 클라이언트 규칙·시계 오차 이슈 회피)
+ */
+exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  if (!(await isAdminByUid(callerUid))) {
+    throw new HttpsError('permission-denied', '관리자만 등록할 수 있습니다.');
+  }
+  const { title, body, landingTab, scheduledAtMs } = request.data || {};
+  const t = String(title || '').trim();
+  const b = String(body || '').trim();
+  const tab = String(landingTab || 'dashboard').trim();
+  const land = ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard';
+  if (!t || t.length > 80) {
+    throw new HttpsError('invalid-argument', '제목은 1~80자로 입력해 주세요.');
+  }
+  if (!b || b.length > 240) {
+    throw new HttpsError('invalid-argument', '내용은 1~240자로 입력해 주세요.');
+  }
+  const ms = typeof scheduledAtMs === 'number' && !Number.isNaN(scheduledAtMs) ? scheduledAtMs : null;
+  if (ms == null) {
+    throw new HttpsError('invalid-argument', '예약 시각(scheduledAtMs)이 올바르지 않습니다.');
+  }
+  const serverNow = Date.now();
+  if (ms < serverNow + 25 * 1000) {
+    throw new HttpsError('invalid-argument', '예약 시각은 서버 기준 약 30초 이후로 설정해 주세요.');
+  }
+  const ref = await db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes').add({
+    title: t.slice(0, 80),
+    body: b.slice(0, 240),
+    landingTab: land,
+    scheduledAt: Timestamp.fromMillis(ms),
+    status: 'pending',
+    createdByUid: callerUid,
+    createdAt: FieldValue.serverTimestamp()
+  });
+  return { ok: true, id: ref.id };
+});
+
+/**
+ * 예약 푸시: 매분 pending 중 예정 시각 도래 건 처리
+ */
+exports.processScheduledAdminPushes = onSchedule(
+  {
+    schedule: '* * * * *',
+    timeZone: 'Asia/Seoul',
+    region: REGION,
+    timeoutSeconds: 540,
+    memory: '512MiB'
+  },
+  async () => {
+    const nowMs = Date.now();
+    const coll = db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes');
+    const snap = await coll.where('status', '==', 'pending').where('scheduledAt', '<=', Timestamp.fromMillis(nowMs)).limit(25).get();
+
+    for (const docSnap of snap.docs) {
+      const ref = docSnap.ref;
+      try {
+        await db.runTransaction(async (transaction) => {
+          const s = await transaction.get(ref);
+          if (!s.exists) return;
+          const d = s.data();
+          if (d.status !== 'pending') return;
+          const sa = d.scheduledAt;
+          const ms = sa && typeof sa.toMillis === 'function' ? sa.toMillis() : 0;
+          if (!ms || ms > nowMs) return;
+          transaction.update(ref, { status: 'sending', lockedAt: FieldValue.serverTimestamp() });
+        });
+
+        const after = await ref.get();
+        const d = after.data();
+        if (!after.exists || d.status !== 'sending') continue;
+
+        const title = String(d.title || '').trim();
+        const body = String(d.body || '').trim();
+        const tab = String(d.landingTab || 'dashboard').trim();
+        const landingTab = ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard';
+        if (!title || !body) {
+          await ref.update({
+            status: 'failed',
+            errorMessage: '제목/내용 누락',
+            failedAt: FieldValue.serverTimestamp()
+          });
+          continue;
+        }
+
+        await broadcastAdminPushToAllUsers({
+          title,
+          body,
+          data: { type: 'adminBroadcast', landingTab }
+        });
+        await ref.update({
+          status: 'sent',
+          sentAt: FieldValue.serverTimestamp()
+        });
+        logger.info('processScheduledAdminPushes: sent', { id: docSnap.id });
+      } catch (e) {
+        logger.error('processScheduledAdminPushes: error', { id: docSnap.id, message: e?.message });
+        try {
+          await ref.update({
+            status: 'failed',
+            errorMessage: String(e?.message || e).slice(0, 500),
+            failedAt: FieldValue.serverTimestamp()
+          });
+        } catch (_) {}
+      }
+    }
+  }
+);
+
+/**
+ * 공지: pushFrequency === once 이고 아직 pushSentAt 없으면 전체 푸시 1회 후 pushSentAt 기록
+ */
+exports.onNoticePushOnce = onDocumentWritten(
+  {
+    document: `artifacts/${APP_ID}/notices/{noticeId}`,
+    region: REGION
+  },
+  async (event) => {
+    const noticeId = event.params.noticeId;
+    const afterSnap = event.data.after;
+    if (!afterSnap.exists) return;
+    const after = afterSnap.data();
+    if (!after || after.hidden === true || after.deleted === true) return;
+    if ((after.pushFrequency || 'none') !== 'once') return;
+    if (after.pushSentAt) return;
+
+    const title = (after.title || '공지').trim();
+    const body = noticePlainTextForPush(after.content || '');
+    const payload = {
+      title: `📢 ${title}`,
+      body,
+      data: { type: 'notice', noticeId: String(noticeId) }
+    };
+
+    try {
+      await broadcastNoticePushToAllUsers(payload);
+      await afterSnap.ref.set({ pushSentAt: FieldValue.serverTimestamp() }, { merge: true });
+      logger.info('onNoticePushOnce: ok', { noticeId });
+    } catch (e) {
+      logger.error('onNoticePushOnce failed', { noticeId, message: e?.message });
+    }
+  }
+);
+
+/**
+ * 공지: pushFrequency === daily 인 문서마다 서울 기준 당일 미발송이면 전체 푸시 (매일 09:00)
+ */
+exports.scheduledNoticeDailyPush = onSchedule(
+  {
+    schedule: '0 9 * * *',
+    timeZone: 'Asia/Seoul',
+    region: REGION,
+    timeoutSeconds: 540,
+    memory: '512MiB'
+  },
+  async () => {
+    const noticesRef = db.collection('artifacts').doc(APP_ID).collection('notices');
+    const snap = await noticesRef.where('pushFrequency', '==', 'daily').get();
+    const todaySeoul = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date());
+
+    for (const docSnap of snap.docs) {
+      const n = docSnap.data();
+      if (n.hidden === true || n.deleted === true) continue;
+      if (n.lastDailyPushDate === todaySeoul) continue;
+
+      const title = (n.title || '공지').trim();
+      const body = noticePlainTextForPush(n.content || '');
+      const payload = {
+        title: `📢 ${title}`,
+        body,
+        data: { type: 'notice', noticeId: docSnap.id }
+      };
+
+      try {
+        await broadcastNoticePushToAllUsers(payload);
+        await docSnap.ref.set({ lastDailyPushDate: todaySeoul }, { merge: true });
+        logger.info('scheduledNoticeDailyPush: ok', { noticeId: docSnap.id, todaySeoul });
+      } catch (e) {
+        logger.error('scheduledNoticeDailyPush failed', { noticeId: docSnap.id, message: e?.message });
+      }
+    }
+  }
+);
