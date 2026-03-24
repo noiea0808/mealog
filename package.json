@@ -3,7 +3,7 @@
   "version": "1.0.1",
   "description": "우리가 함께한, 맛있었던 이야기 - 스마트 식사 타임라인",
   "scripts": {
-    "build": "node scripts/build-config.js",
+    "build": "node scripts/build-config.js && node scripts/verify-client-config.js",
     "copy:www": "node scripts/copy-to-www.js",
     "cap:sync": "node scripts/select-cap-config.js staging && npm run copy:www && npx @capacitor/cli sync android",
     "cap:sync:production": "node scripts/ensure-icons.js && node scripts/select-cap-config.js production && npm run copy:www && npx @capacitor/cli sync android",

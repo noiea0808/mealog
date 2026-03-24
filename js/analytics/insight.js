@@ -3,7 +3,6 @@ import { SLOTS, SATIETY_DATA, MEALOG_ICON_URL } from '../constants.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { dbOps } from '../db.js';
-import { GEMINI_API_KEY as DEFAULT_API_KEY } from '../config.default.js';
 import { db, appId, callableFunctions } from '../firebase.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { captureWithGhostStrategy, toLocalDateString } from '../utils.js';
@@ -17,51 +16,10 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// API 키 설정 (항상 기본값으로 시작)
-// config.js가 있으면 나중에 업데이트됨
-let GEMINI_API_KEY = DEFAULT_API_KEY;
-
-// 전역 변수 확인 (최우선, HTML에서 주입된 경우)
-if (typeof window !== 'undefined' && window.GEMINI_API_KEY) {
-    GEMINI_API_KEY = window.GEMINI_API_KEY;
-    console.log('✅ 전역 변수에서 API 키 로드');
-}
-
-// config.js에서 API 키를 가져오는 함수 (비동기, 필요할 때 호출)
-// 즉시 실행하여 백그라운드에서 로드
-(async function loadConfigApiKey() {
-    try {
-        const configModule = await import('../config.js');
-        if (configModule && configModule.GEMINI_API_KEY && 
-            configModule.GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY_HERE' &&
-            !window.GEMINI_API_KEY) { // 전역 변수가 없을 때만 사용
-            GEMINI_API_KEY = configModule.GEMINI_API_KEY;
-            console.log('✅ config.js에서 API 키 로드 성공');
-        }
-    } catch (error) {
-        // config.js가 없으면 기본값 사용 (정상, 로컬 개발 환경에서)
-        console.debug('config.js 없음, 기본값 사용');
-    }
-})();
-
-// getGeminiApiUrl 함수가 사용하는 API 키 가져오기 (최신 값 반환)
-function getApiKey() {
-    // 전역 변수 확인 (최우선)
-    if (typeof window !== 'undefined' && window.GEMINI_API_KEY) {
-        return window.GEMINI_API_KEY;
-    }
-    return GEMINI_API_KEY;
-}
-// 지원 가능한 모델 목록 - gemini-2.5-flash-lite만 사용
+// Gemini는 Firebase Callable `callGemini`만 사용 (API 키는 Functions 서버 환경 변수)
 const GEMINI_MODELS = [
     'gemini-2.5-flash-lite'
 ];
-
-// API URL 생성 함수 (여러 버전 시도)
-function getGeminiApiUrl(model, version = 'v1beta') {
-    const apiKey = getApiKey();
-    return `https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent?key=${apiKey}`;
-}
 
 // 기본 캐릭터 정의
 const DEFAULT_CHARACTERS = [
@@ -850,75 +808,6 @@ function analyzeMealData(filteredData, dateRangeText) {
     };
 }
 
-// 사용 가능한 모델 목록 확인 및 캐시
-let availableModels = null;
-
-async function listAvailableModels() {
-    if (availableModels) {
-        return availableModels; // 캐시된 결과 반환
-    }
-    
-    try {
-        const apiKey = getApiKey();
-        const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
-        // 보안: API 키가 포함된 URL은 로그에 출력하지 않음
-        console.log('ListModels API 호출 중...');
-        const response = await fetch(listUrl);
-        
-        if (response.ok) {
-            const data = await response.json();
-            console.log('사용 가능한 Gemini 모델 목록:', data);
-            
-            // generateContent를 지원하는 모델 이름 추출
-            if (data.models && Array.isArray(data.models)) {
-                const modelsWithGenerateContent = data.models
-                    .filter(model => {
-                        // supportedGenerationMethods에 generateContent가 있는지 확인
-                        const methods = model.supportedGenerationMethods || [];
-                        const hasGenerateContent = methods.includes('generateContent');
-                        
-                        // 모델 이름 체크 (tts, gemma 제외)
-                        const modelName = model.name?.replace('models/', '') || '';
-                        const isExcluded = modelName.toLowerCase().includes('tts') || 
-                                          modelName.toLowerCase().includes('gemma');
-                        
-                        return hasGenerateContent && !isExcluded;
-                    })
-                    .map(model => model.name?.replace('models/', '') || null)
-                    .filter(name => name !== null);
-                
-                console.log('generateContent를 지원하는 모델 (tts/gemma 제외):', modelsWithGenerateContent);
-                availableModels = modelsWithGenerateContent;
-                return modelsWithGenerateContent;
-            }
-        } else {
-            const errorText = await response.text();
-            let errorData;
-            try {
-                errorData = JSON.parse(errorText);
-            } catch (e) {
-                errorData = { error: { message: errorText } };
-            }
-            
-            // 에러 상세 정보 로그
-            console.warn('ListModels API 오류:', {
-                status: response.status,
-                message: errorData.error?.message,
-                reason: errorData.error?.details?.[0]?.reason,
-                전체_에러: errorData
-            });
-            
-            // API 키 문제는 나중에 사용자에게 알림
-            if (response.status === 400 && errorData.error?.message?.includes('API key')) {
-                // 에러는 이미 위에서 로그로 출력됨
-            }
-        }
-    } catch (error) {
-        console.error('모델 목록 조회 실패:', error);
-    }
-    return null;
-}
-
 // 공통 페르소나 가져오기
 async function getCommonPersona() {
     try {
@@ -1031,16 +920,6 @@ async function getInsightFallbackMessages(characterId) {
 // Gemini API를 사용하여 코멘트 생성
 async function getGeminiComment(filteredData, characterId = currentCharacter, dateRangeText = '') {
     const character = INSIGHT_CHARACTERS.find(c => c.id === characterId);
-    
-    // API 키 확인
-    const apiKey = getApiKey();
-    if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE' || apiKey.trim() === '') {
-        console.error('❌ Gemini API 키가 설정되지 않았습니다.');
-        const errorMessage = character 
-            ? `${character.icon} API 키가 설정되지 않았습니다. js/config.js 파일에 GEMINI_API_KEY를 설정해주세요.`
-            : 'API 키가 설정되지 않았습니다. js/config.js 파일에 GEMINI_API_KEY를 설정해주세요.';
-        throw new Error(errorMessage);
-    }
     
     // 데이터가 없을 때 기본 메시지
     if (!filteredData || filteredData.length === 0) {

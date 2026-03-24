@@ -1755,6 +1755,28 @@ exports.removeDuplicateMeals = onCall(
 );
 
 /**
+ * 둘러보기: 데모 계정(dummy@mealog.net) 커스텀 토큰 발급
+ * 비로그인 호출 허용 — 클라이언트의 signInWithPassword(reCAPTCHA Enterprise) 실패·config 비번 불일치 회피
+ */
+exports.signInAsDemo = onCall({ region: REGION }, wrapFunction('signInAsDemo', async () => {
+  let userRecord;
+  try {
+    userRecord = await auth.getUserByEmail(READ_ONLY_DEMO_EMAIL);
+  } catch (e) {
+    if (e.code === 'auth/user-not-found') {
+      throw new HttpsError(
+        'failed-precondition',
+        `Firebase Auth에 ${READ_ONLY_DEMO_EMAIL} 사용자가 없습니다.`
+      );
+    }
+    logger.error('signInAsDemo getUserByEmail', e);
+    throw new HttpsError('internal', '데모 계정 조회에 실패했습니다.');
+  }
+  const customToken = await auth.createCustomToken(userRecord.uid, { demoBrowse: true });
+  return { customToken };
+}));
+
+/**
  * Gemini API 프록시 (WebView 차단 우회)
  * 클라이언트에서 직접 호출 대신 서버에서 Gemini API 호출
  */

@@ -109,18 +109,18 @@ export async function handleGoogleLogin() {
 export async function startGuest() {
     showLoading();
     try {
-        const { signInAsDemoAccount, isDemoCredentialsConfigured, requestDemoIntroFromBrowse } = await import('./demo-account.js');
-        if (!isDemoCredentialsConfigured()) {
-            showToast('둘러보기(샘플) 로그인이 설정되지 않았습니다. config.js에 DEMO_ACCOUNT_PASSWORD를 설정해 주세요.', 'error');
-            hideLoading();
-            return;
-        }
+        const { signInAsDemoAccount, requestDemoIntroFromBrowse } = await import('./demo-account.js');
         requestDemoIntroFromBrowse();
         await signInAsDemoAccount();
         showToast('샘플 계정으로 둘러보기를 시작합니다.', 'info');
     } catch (e) {
         console.warn('둘러보기(데모) 로그인 실패:', e);
-        showToast('둘러보기를 시작할 수 없습니다. 잠시 후 다시 시도해 주세요.', 'error');
+        const code = e?.code || '';
+        const hint =
+            code === 'auth/invalid-credential' || code === 'auth/wrong-password'
+                ? ' firebase deploy --only functions(signInAsDemo) 후 다시 시도하거나, config의 DEMO_ACCOUNT_PASSWORD를 Firebase 비밀번호와 맞추세요.'
+                : '';
+        showToast('둘러보기를 시작할 수 없습니다. 잠시 후 다시 시도해 주세요.' + hint, 'error');
         hideLoading();
     }
 }
@@ -821,12 +821,13 @@ export async function continueAsGuestFromProfileSetup() {
         sessionStorage.setItem('guestFromProfileSetup', 'true');
         showLoading('둘러보기로 시작하는 중...');
         await signOut(auth);
-        const { signInAsDemoAccount, isDemoCredentialsConfigured, requestDemoIntroFromBrowse } = await import('./demo-account.js');
-        if (isDemoCredentialsConfigured()) {
+        const { signInAsDemoAccount, requestDemoIntroFromBrowse } = await import('./demo-account.js');
+        try {
             requestDemoIntroFromBrowse();
             await signInAsDemoAccount();
             showToast('샘플 계정으로 둘러보기를 시작합니다.', 'info');
-        } else {
+        } catch (eDemo) {
+            console.warn('데모 둘러보기 실패, 익명 로그인 시도:', eDemo);
             await signInAnonymously(auth);
             showToast('게스트 모드로 둘러보기를 시작합니다.', 'info');
         }

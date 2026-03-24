@@ -137,7 +137,9 @@ export const callableFunctions = {
     migrateSharedPhotosTimestamp: httpsCallable(functions, 'migrateSharedPhotosTimestamp'),
     getSharedEntryComment: httpsCallable(functions, 'getSharedEntryComment'),
     getSharedEntryComments: httpsCallable(functions, 'getSharedEntryComments'),
-    backfillSharedPhotosComments: httpsCallable(functions, 'backfillSharedPhotosComments')
+    backfillSharedPhotosComments: httpsCallable(functions, 'backfillSharedPhotosComments'),
+    /** 둘러보기 전용 — 비로그인 호출 (데모 UID 커스텀 토큰) */
+    signInAsDemo: httpsCallable(functions, 'signInAsDemo')
 };
 
 // App Check 초기화 (reCAPTCHA v3 사용)
