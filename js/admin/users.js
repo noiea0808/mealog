@@ -370,7 +370,7 @@ export async function renderUsers(options = {}) {
         return;
     }
     
-    container.innerHTML = '<tr><td colspan="13" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
+    container.innerHTML = '<tr><td colspan="14" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
     
     try {
         console.log('renderUsers 시작');
@@ -452,11 +452,11 @@ export async function renderUsers(options = {}) {
                 loginMethodBadge = 'bg-blue-100 text-blue-700';
             }
             
-            const shareBanBadge = user.bannedShare
-                ? '<span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded">금지</span>'
-                : '<span class="text-slate-400 text-xs">-</span>';
-            const writeBanBadge = user.bannedWrite
-                ? '<span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded">금지</span>'
+            const banLabels = [];
+            if (user.bannedWrite) banLabels.push('글쓰기');
+            if (user.bannedShare) banLabels.push('공유');
+            const activityBanCell = banLabels.length
+                ? `<div class="flex flex-col gap-0.5 items-center">${banLabels.map((label) => `<span class="px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold rounded leading-tight whitespace-nowrap">${escapeHtml(label)}</span>`).join('')}</div>`
                 : '<span class="text-slate-400 text-xs">-</span>';
             const deleteRequestedBadge = user.deleteRequested
                 ? '<span class="px-2 py-0.5 bg-slate-200 text-slate-600 text-xs font-bold rounded">삭제 요청됨</span>'
@@ -471,49 +471,48 @@ export async function renderUsers(options = {}) {
                                 title="클릭하여 복사">${escapeHtml(user.userId)}</button>`;
             return `
                 <tr class="${rowClass}">
-                    <td data-page="1 2" class="px-2 py-3">
-                        <label class="flex items-center gap-1.5 cursor-pointer">
+                    <td data-page="1 2" class="px-2 py-2.5 text-center">
+                        <label class="inline-flex justify-center items-center cursor-pointer">
                             <input type="checkbox" class="admin-user-checkbox rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" data-user-id="${escapeHtml(user.userId)}" title="선택" ${user.deleteRequested ? 'disabled' : ''}>
                         </label>
                     </td>
-                    <td data-page="1 2" class="px-2 py-3 text-slate-500 text-sm tabular-nums">${rowNum}</td>
-                    <td data-page="1 2" class="px-4 py-3 align-top">${emailUserIdCell}</td>
-                    <td data-page="1 2" class="px-4 py-3">
+                    <td data-page="1 2" class="px-2 py-2.5 text-center text-slate-500 text-sm tabular-nums">${rowNum}</td>
+                    <td data-page="1 2" class="px-3 py-2.5 text-left align-middle">${emailUserIdCell}</td>
+                    <td data-page="1 2" class="px-2 py-2.5 min-w-[6.5rem] max-w-[9.75rem] text-left">
                         <div class="flex flex-col gap-0.5">
-                            <div class="flex items-center gap-2 whitespace-nowrap">
-                                <span class="text-xl">${user.icon || '🐻'}</span>
-                                <span class="font-bold text-slate-800">${user.nickname || '익명'}</span>
-                            </div>
+                            <span class="font-bold text-slate-800 break-words text-sm leading-snug">${user.nickname || '익명'}</span>
                             ${deleteRequestedBadge ? `<div class="mt-0.5">${deleteRequestedBadge}</div>` : ''}
                         </div>
                     </td>
-                    <td data-page="1 2" class="px-2 py-3 text-center">
+                    <td data-page="1 2" class="px-2 py-2.5 text-center">
+                        <span class="text-sm text-slate-600 tabular-nums">${user.birthdate && String(user.birthdate).trim() !== '' ? escapeHtml(String(user.birthdate).trim()) : '-'}</span>
+                    </td>
+                    <td data-page="1 2" class="px-2 py-2.5 text-center">
                         <span class="text-sm text-slate-600">${user.gender === 'male' ? '남' : user.gender === 'female' ? '여' : '-'}</span>
                     </td>
-                    <td data-page="1" class="px-4 py-3">
-                        <span class="px-2 py-1 ${loginMethodBadge} text-xs font-bold rounded">${user.loginMethod || '게스트'}</span>
+                    <td data-page="1" class="px-3 py-2.5 text-center">
+                        <span class="inline-flex px-2 py-1 ${loginMethodBadge} text-xs font-bold rounded">${user.loginMethod || '게스트'}</span>
                     </td>
-                    <td data-page="1" class="px-2 py-3">${writeBanBadge}</td>
-                    <td data-page="1" class="px-2 py-3">${shareBanBadge}</td>
-                    <td data-page="1" class="px-4 py-3">
-                        <div class="flex flex-col gap-1">
+                    <td data-page="1" class="px-2 py-2.5 min-w-[8rem] max-w-[11rem] text-center">
+                        <div class="flex flex-col gap-1 items-center">
                             ${termsAgreedText}
-                            ${user.termsAgreedAt ? `<span class="text-xs text-slate-500">${termsAgreedDate}</span>` : ''}
+                            ${user.termsAgreedAt ? `<span class="text-[10px] text-slate-500 leading-tight text-center">${termsAgreedDate}</span>` : ''}
                         </div>
                     </td>
-                    <td data-page="1" class="px-4 py-3">
-                        <span class="text-sm text-slate-600">${user.loginMethod === '게스트' ? '-' : createdAtDate}</span>
+                    <td data-page="1" class="px-3 py-2.5 text-center">
+                        <span class="text-sm text-slate-600 leading-snug">${user.loginMethod === '게스트' ? '-' : createdAtDate}</span>
                     </td>
-                    <td data-page="1" class="px-4 py-3">
-                        <span class="text-sm text-slate-600">${lastLoginDate}</span>
+                    <td data-page="1" class="px-3 py-2.5 text-center">
+                        <span class="text-sm text-slate-600 leading-snug">${lastLoginDate}</span>
                     </td>
-                    <td data-page="2" class="px-4 py-3">
+                    <td data-page="1" class="px-1.5 py-2.5 min-w-[3.25rem] max-w-[4rem] text-center">${activityBanCell}</td>
+                    <td data-page="2" class="px-3 py-2.5 text-center tabular-nums">
                         <span class="font-bold text-slate-800">${user.timelineCount || 0}</span>
                     </td>
-                    <td data-page="2" class="px-4 py-3">
+                    <td data-page="2" class="px-3 py-2.5 text-center tabular-nums">
                         <span class="font-bold text-slate-800">${user.albumShareCount || 0}</span>
                     </td>
-                    <td data-page="2" class="px-4 py-3">
+                    <td data-page="2" class="px-3 py-2.5 text-center tabular-nums">
                         <span class="font-bold text-slate-800">${user.talkCount || 0}</span>
                     </td>
                 </tr>
