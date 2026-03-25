@@ -56,10 +56,10 @@ async function renderNotices() {
             'notice': 'bg-blue-100 text-blue-700',
             'light': 'bg-slate-100 text-slate-700'
         };
-        const noticeTypeBorderColors = {
-            'important': 'border-l-2 border-red-400',
-            'notice': 'border-l-2 border-blue-400',
-            'light': 'border-l-2 border-yellow-400'
+        const noticeAccentClass = {
+            important: 'notice-accent-important',
+            notice: 'notice-accent-notice',
+            light: 'notice-accent-light'
         };
 
         // 로그인 사용자의 공지 하트/북마크 상태
@@ -116,7 +116,7 @@ async function renderNotices() {
             const noticeType = notice.type || notice.noticeType || 'notice';
             const typeLabel = noticeTypeLabels[noticeType] || '알림';
             const typeColor = noticeTypeColors[noticeType] || noticeTypeColors.notice;
-            const typeBorder = noticeTypeBorderColors[noticeType] || noticeTypeBorderColors.notice;
+            const typeAccent = noticeAccentClass[noticeType] || noticeAccentClass.notice;
 
             const reactions = reactionMap.get(notice.id) || { likes: 0, dislikes: 0 };
             const likeCount = reactions.likes || 0;
@@ -125,7 +125,7 @@ async function renderNotices() {
             const isBookmarked = bookmarkedNoticeIds.has(notice.id);
             
             return `
-                <div onclick="window.openNoticeDetail('${notice.id}')" class="board-list-card rounded-2xl pt-4 px-5 pb-1.5 shadow-sm hover:shadow-md cursor-pointer active:scale-[0.98] transition-all mb-2 ${typeBorder}">
+                <div onclick="window.openNoticeDetail('${notice.id}')" class="board-list-card pt-4 px-5 pb-1.5 cursor-pointer active:scale-[0.98] transition-all mb-2 ${typeAccent}">
                     <div class="flex items-start gap-3 mb-1.5">
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center gap-2 mb-3 flex-wrap">
@@ -369,7 +369,7 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
                 const hasImages = Array.isArray(post.imageUrls) && post.imageUrls.length > 0;
                 const isPendingPost = post.id && String(post.id).startsWith('pending-');
                 return `
-                    <div onclick="${isPendingPost ? '' : "window.openBoardDetail('" + post.id + "')"}" class="board-list-card rounded-2xl pt-4 px-5 pb-1.5 shadow-sm hover:shadow-md ${isPendingPost ? 'cursor-default' : 'cursor-pointer'} active:scale-[0.98] transition-all mb-2 ${isPendingPost ? 'ring-2 ring-amber-200 bg-amber-50/50' : ''}">
+                    <div onclick="${isPendingPost ? '' : "window.openBoardDetail('" + post.id + "')"}" class="board-list-card pt-4 px-5 pb-1.5 ${isPendingPost ? 'cursor-default' : 'cursor-pointer'} active:scale-[0.98] transition-all mb-2 ${isPendingPost ? 'ring-2 ring-amber-200 bg-amber-50/50' : ''}">
                         <div class="flex items-start gap-3 mb-1.5">
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2 mb-3 min-w-0 flex-wrap">

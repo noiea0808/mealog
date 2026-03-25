@@ -1825,12 +1825,16 @@ exports.searchKakaoPlaces = onCall({ region: REGION }, wrapFunction('searchKakao
   if (!keyword || typeof keyword !== 'string' || !keyword.trim()) {
     throw new HttpsError('invalid-argument', '검색어를 입력해주세요.');
   }
+  const trimmedKw = keyword.trim();
+  if (trimmedKw.length < 2) {
+    throw new HttpsError('invalid-argument', '검색어는 2글자 이상 입력해주세요.');
+  }
   const apiKey = kakaoRestApiKey.value();
   if (!apiKey) {
     throw new HttpsError('failed-precondition', 'KAKAO_REST_API_KEY가 설정되지 않았습니다. functions/.env 파일에 KAKAO_REST_API_KEY를 추가하거나, 배포 시 입력 후 재배포하세요.');
   }
-  const query = encodeURIComponent(keyword.trim());
-  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${query}&category_group_code=FD6&size=15`;
+  const query = encodeURIComponent(trimmedKw);
+  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${query}&category_group_code=FD6&size=10`;
   // 카카오 로컬 API: Authorization 헤더만 필수 (공식 문서 기준, KA 헤더 생략)
   const res = await fetch(url, {
     method: 'GET',

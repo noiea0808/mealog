@@ -120,7 +120,7 @@ export function renderEntryChips() {
                 const tagClass = isMyTag 
                     ? 'bg-emerald-100 border border-emerald-400 text-emerald-700 font-bold text-xs' 
                     : 'border border-slate-400 text-slate-600 font-bold text-xs';
-                return `<span class="sub-chip-wrapper relative inline-block mr-1 mb-1 group">
+                return `<span class="sub-chip-wrapper relative inline-block mr-0.5 mb-0.5 group">
                     <button onclick="window.selectTag('${inputId}', '${text}', this, false, '${subTagKey}', '${id}')" class="sub-chip ${isActive} ${tagClass} ${canDelete ? 'pr-7' : ''}">${text}${isMyTag ? ' <i class="fa-solid fa-star text-[9px] text-emerald-600"></i>' : ''}</button>
                     ${canDelete ? `<button onclick="event.stopPropagation(); window.deleteSubTag('${subTagKey}', '${text}', '${id}', '${inputId}', '${parentFilter}')" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-600 hover:text-red-500 w-4 h-4 flex items-center justify-center rounded-full active:bg-slate-200 transition-colors">
                         <i class="fa-solid fa-xmark"></i>

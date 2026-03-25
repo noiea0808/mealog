@@ -34,12 +34,12 @@ export function renderPhotoPreviews() {
     if (container) {
         const aspectCss = getRecordPhotoAspectRatioCss();
         container.innerHTML = appState.currentPhotos.map((src, idx) => 
-            `<div class="relative rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 photo-preview-item border-2 border-slate-300" style="width: 7rem; aspect-ratio: ${aspectCss};" draggable="true" data-index="${idx}">
-                <img src="${src}" draggable="false" class="absolute inset-0 w-full h-full object-cover pointer-events-none" alt="">
-                <button onclick="window.removePhoto(${idx})" class="photo-remove-btn">
+            `<div class="photo-preview-item relative rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 border-2 border-slate-300 select-none" style="width: 7rem; aspect-ratio: ${aspectCss};-webkit-touch-callout:none;" draggable="true" data-index="${idx}" data-original-index="${idx}">
+                <img src="${src}" draggable="false" class="absolute inset-0 w-full h-full object-cover pointer-events-none select-none" style="-webkit-user-drag:none" alt="">
+                <button type="button" onclick="window.removePhoto(parseInt(this.closest('.photo-preview-item').dataset.originalIndex, 10))" class="photo-remove-btn">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
-                <button onclick="window.editPhoto(${idx})" class="photo-edit-btn">
+                <button type="button" onclick="window.editPhoto(parseInt(this.closest('.photo-preview-item').dataset.originalIndex, 10))" class="photo-edit-btn">
                     <i class="fa-solid fa-crop"></i>
                 </button>
                 <div class="photo-preview-order-badge absolute top-1 left-1 w-5 h-5 bg-black/60 text-white text-[10px] font-bold rounded-full flex items-center justify-center pointer-events-none">${idx + 1}</div>
@@ -48,7 +48,11 @@ export function renderPhotoPreviews() {
         
         // 드래그 앤 드롭 이벤트 리스너 추가 (long press 지원)
         const photoItems = container.querySelectorAll('.photo-preview-item');
+        const touchPrimaryReorder =
+            typeof window.matchMedia === 'function' &&
+            window.matchMedia('(hover: none) and (pointer: coarse)').matches;
         photoItems.forEach(item => {
+            item.draggable = !touchPrimaryReorder;
             // 기존 드래그 앤 드롭 (데스크톱)
             item.addEventListener('dragstart', handleDragStart);
             item.addEventListener('dragover', handleDragOver);
@@ -60,8 +64,12 @@ export function renderPhotoPreviews() {
                 e.preventDefault();
             });
             
-            // Long press to drag (모바일/터치)
-            setupLongPressDrag(item);
+            // 모바일: 터치는 요소 밖으로 나가면 touchmove가 끊김 → Pointer Events + setPointerCapture 사용
+            const canPointerCapture =
+                typeof Element !== 'undefined' &&
+                Element.prototype &&
+                typeof Element.prototype.setPointerCapture === 'function';
+            setupLongPressDrag(item, touchPrimaryReorder && canPointerCapture);
         });
     }
     
@@ -98,155 +106,461 @@ let draggedIndex = null;
 let draggedElement = null;
 let dropIndex = null;
 
+/** 미리보기 DOM 순서 → appState.currentPhotos 반영 (img.src 정규화 불일치·동일 URL 중복 시에도 안전) */
+function commitPhotoOrderFromDom(container) {
+    if (!container) return false;
+    const items = Array.from(container.querySelectorAll('.photo-preview-item'));
+    const photos = appState.currentPhotos;
+    if (!items.length || items.length !== photos.length) return false;
+    const next = [];
+    for (const el of items) {
+        const oi = parseInt(el.dataset.originalIndex, 10);
+        if (!Number.isNaN(oi) && oi >= 0 && oi < photos.length) {
+            next.push(photos[oi]);
+            continue;
+        }
+        const img = el.querySelector('img');
+        const attrSrc = img?.getAttribute('src');
+        const resolvedSrc = img?.src;
+        const photo = photos.find((p) => p === attrSrc || p === resolvedSrc);
+        if (photo === undefined) return false;
+        next.push(photo);
+    }
+    const changed = items.some((el, i) => parseInt(el.dataset.originalIndex, 10) !== i);
+    if (!changed) return false;
+    appState.currentPhotos = next;
+    renderPhotoPreviews();
+    return true;
+}
+
 // Long press to drag (터치 디바이스 지원)
 let longPressTimer = null;
 let isLongPressing = false;
-let touchStartY = null;
-let originalDragIndex = null; // 터치 종료 시 splice용 원본 인덱스
+let photoDragScrollRow = null;
+let photoDragScrollRowPrevTouchAction = '';
 
-function setupLongPressDrag(item) {
+function lockPhotoDragScrollRow(item) {
+    photoDragScrollRow = item.closest('.overflow-x-auto');
+    if (photoDragScrollRow) {
+        photoDragScrollRowPrevTouchAction = photoDragScrollRow.style.touchAction;
+        photoDragScrollRow.style.touchAction = 'none';
+    }
+}
+
+function unlockPhotoDragScrollRow() {
+    if (photoDragScrollRow) {
+        photoDragScrollRow.style.touchAction = photoDragScrollRowPrevTouchAction;
+        photoDragScrollRow = null;
+        photoDragScrollRowPrevTouchAction = '';
+    }
+}
+
+function suppressSelectWhilePhotoTouchDrag(e) {
+    e.preventDefault();
+}
+
+let photoTouchDragSelectGuardCount = 0;
+
+function beginPhotoTouchDragSelectGuard() {
+    if (photoTouchDragSelectGuardCount === 0) {
+        document.addEventListener('selectstart', suppressSelectWhilePhotoTouchDrag, true);
+    }
+    photoTouchDragSelectGuardCount += 1;
+}
+
+function endPhotoTouchDragSelectGuard() {
+    photoTouchDragSelectGuardCount = Math.max(0, photoTouchDragSelectGuardCount - 1);
+    if (photoTouchDragSelectGuardCount === 0) {
+        document.removeEventListener('selectstart', suppressSelectWhilePhotoTouchDrag, true);
+    }
+}
+
+/** 손가락을 뗄 때 썸네일 노드에 touchend가 안 오는 경우가 많아 document 캡처에서 처리 */
+let photoTouchDragTouchId = null;
+let photoTouchDocEndFn = null;
+let photoTouchDragFinalizeScheduled = false;
+let photoTouchLastClientX = null;
+let photoTouchLastClientY = null;
+let photoReorderCapturedPointerId = null;
+
+function changedTouchesIncludesId(e, id) {
+    if (id == null || !e?.changedTouches?.length) return false;
+    for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === id) return true;
+    }
+    return false;
+}
+
+function attachPhotoTouchDocEnd() {
+    if (photoTouchDocEndFn) return;
+    photoTouchDocEndFn = (e) => {
+        if (!isLongPressing || photoTouchDragTouchId == null) return;
+        if (!changedTouchesIncludesId(e, photoTouchDragTouchId)) return;
+        scheduleFinalizePhotoTouchDrag();
+    };
+    document.addEventListener('touchend', photoTouchDocEndFn, true);
+    document.addEventListener('touchcancel', photoTouchDocEndFn, true);
+}
+
+function detachPhotoTouchDocEnd() {
+    if (!photoTouchDocEndFn) return;
+    document.removeEventListener('touchend', photoTouchDocEndFn, true);
+    document.removeEventListener('touchcancel', photoTouchDocEndFn, true);
+    photoTouchDocEndFn = null;
+}
+
+function scheduleFinalizePhotoTouchDrag() {
+    if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+    }
+    if (!isLongPressing) return;
+    if (photoTouchDragFinalizeScheduled) return;
+    photoTouchDragFinalizeScheduled = true;
+    queueMicrotask(() => {
+        try {
+            if (isLongPressing) {
+                finalizePhotoTouchDragGesture();
+            }
+        } finally {
+            photoTouchDragFinalizeScheduled = false;
+        }
+    });
+}
+
+/** 터치 X 기준으로 삽입할 대상 썸네일 (드래그 중인 요소는 제외) */
+function resolveTouchReorderTarget(container, touchX, touchY, draggedEl) {
+    const allItems = Array.from(container.querySelectorAll('.photo-preview-item'));
+    if (typeof document.elementFromPoint === 'function' && touchY != null) {
+        const hit = document.elementFromPoint(touchX, touchY);
+        const fromPoint = hit?.closest?.('.photo-preview-item');
+        if (fromPoint && fromPoint !== draggedEl && container.contains(fromPoint)) {
+            return fromPoint;
+        }
+    }
+    let closestItem = null;
+    let closestDistance = Infinity;
+    allItems.forEach((other) => {
+        if (other === draggedEl) return;
+        const rect = other.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const d = Math.abs(touchX - cx);
+        if (d < closestDistance) {
+            closestDistance = d;
+            closestItem = other;
+        }
+    });
+    return closestItem;
+}
+
+function finalizePhotoTouchDragGesture() {
+    detachPhotoTouchDocEnd();
+    photoTouchDragTouchId = null;
+
+    const el = draggedElement;
+    const capId = photoReorderCapturedPointerId;
+    photoReorderCapturedPointerId = null;
+    if (el && capId != null && typeof el.releasePointerCapture === 'function') {
+        try {
+            el.releasePointerCapture(capId);
+        } catch (_) { /* ignore */ }
+    }
+
+    const wasDragging = isLongPressing;
+    if (
+        wasDragging &&
+        el?.parentElement &&
+        photoTouchLastClientX != null &&
+        photoTouchLastClientY != null
+    ) {
+        const c = el.parentElement;
+        const t = resolveTouchReorderTarget(c, photoTouchLastClientX, photoTouchLastClientY, el);
+        if (t) {
+            applyTouchReorderInsert(c, t, photoTouchLastClientX);
+        }
+    }
+    photoTouchLastClientX = null;
+    photoTouchLastClientY = null;
+
+    unlockPhotoDragScrollRow();
+    let committed = false;
+    if (wasDragging && el?.parentElement) {
+        committed = commitPhotoOrderFromDom(el.parentElement);
+    }
+    if (!committed && el && el.isConnected) {
+        el.classList.remove('opacity-50', 'scale-110', 'z-50');
+        el.style.transition = '';
+    }
+    isLongPressing = false;
+    draggedIndex = null;
+    draggedElement = null;
+    dropIndex = null;
+    if (wasDragging) {
+        endPhotoTouchDragSelectGuard();
+    }
+    try {
+        window.getSelection()?.removeAllRanges();
+    } catch (_) { /* ignore */ }
+}
+
+function applyTouchReorderInsert(container, targetItem, touchX) {
+    if (!targetItem || !draggedElement) return;
+    const rect = targetItem.getBoundingClientRect();
+    const mid = rect.left + rect.width / 2;
+    if (touchX < mid) {
+        if (draggedElement.nextSibling !== targetItem) {
+            container.insertBefore(draggedElement, targetItem);
+        }
+    } else if (targetItem.nextSibling !== draggedElement) {
+        container.insertBefore(draggedElement, targetItem.nextSibling);
+    }
+    const updatedItems = Array.from(container.querySelectorAll('.photo-preview-item'));
+    updatedItems.forEach((updatedItem, idx) => {
+        updatedItem.dataset.index = String(idx);
+        const numberBadge = updatedItem.querySelector('.photo-preview-order-badge');
+        if (numberBadge) {
+            numberBadge.textContent = String(idx + 1);
+        }
+    });
+    draggedIndex = updatedItems.indexOf(draggedElement);
+    if (draggedIndex >= 0) {
+        dropIndex = draggedIndex;
+    }
+}
+
+/** 드래그 중 마지막 좌표로 한 칸이라도 맞춤 (scale 적용 직후 레이아웃·좌표 동기화용) */
+function applyPhotoTouchReorderMoveFromCoords() {
+    if (!isLongPressing || !draggedElement) return;
+    const container = draggedElement.parentElement;
+    if (!container) return;
+    const touchX = photoTouchLastClientX;
+    const touchY = photoTouchLastClientY;
+    if (touchX == null || touchY == null) return;
+    const targetItem = resolveTouchReorderTarget(container, touchX, touchY, draggedElement);
+    if (targetItem) {
+        applyTouchReorderInsert(container, targetItem, touchX);
+    }
+}
+
+/** 썸네일 확대 직후 getBoundingClientRect가 한 박자 늦는 기기 대비 */
+function schedulePhotoReorderLayoutSync() {
+    applyPhotoTouchReorderMoveFromCoords();
+    requestAnimationFrame(() => {
+        applyPhotoTouchReorderMoveFromCoords();
+        requestAnimationFrame(() => {
+            applyPhotoTouchReorderMoveFromCoords();
+        });
+    });
+}
+
+function abortPendingPhotoReorderTimer() {
+    if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+    }
+}
+
+/** 이전 세션이 finalize 없이 남은 경우(웹뷰 이슈) 다음 제스처에서 정리 */
+function closeStalePhotoTouchDragIfAny() {
+    if (isLongPressing) {
+        finalizePhotoTouchDragGesture();
+    }
+}
+
+/** @param touchIdForDoc 터치 폴백일 때만 넘김 → document touchend 캡처 연결. 포인터 캡처 경로는 생략. */
+function beginPhotoReorderDragSession(item, clientX, clientY, touchIdForDoc) {
+    isLongPressing = true;
+    const index = parseInt(item.dataset.index, 10);
+    draggedIndex = index;
+    draggedElement = item;
+    dropIndex = index;
+    photoTouchLastClientX = clientX;
+    photoTouchLastClientY = clientY;
+    if (touchIdForDoc !== undefined) {
+        photoTouchDragTouchId = touchIdForDoc;
+        attachPhotoTouchDocEnd();
+    } else {
+        photoTouchDragTouchId = null;
+    }
+    item.classList.add('opacity-50', 'scale-110', 'z-50');
+    item.style.transition = 'transform 0.2s';
+    lockPhotoDragScrollRow(item);
+    beginPhotoTouchDragSelectGuard();
+    try {
+        window.getSelection()?.removeAllRanges();
+    } catch (_) { /* ignore */ }
+    if (navigator.vibrate) {
+        navigator.vibrate(50);
+    }
+}
+
+/**
+ * @param {boolean} usePointerCapturePath - true면 Pointer Events + setPointerCapture (권장). false면 터치 전용 폴백.
+ */
+function setupLongPressDrag(item, usePointerCapturePath) {
     const LONG_PRESS_DURATION = 300; // 300ms
-    
-    // 터치 시작
+
+    if (usePointerCapturePath) {
+        let pendingPointerId = null;
+
+        item.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'mouse') return;
+            if (e.target.closest('.photo-edit-btn') || e.target.closest('.photo-remove-btn')) {
+                return;
+            }
+
+            abortPendingPhotoReorderTimer();
+            closeStalePhotoTouchDragIfAny();
+
+            pendingPointerId = e.pointerId;
+            photoTouchLastClientX = e.clientX;
+            photoTouchLastClientY = e.clientY;
+
+            longPressTimer = setTimeout(() => {
+                longPressTimer = null;
+                const index = parseInt(item.dataset.index, 10);
+                if (Number.isNaN(index)) return;
+
+                beginPhotoReorderDragSession(
+                    item,
+                    photoTouchLastClientX,
+                    photoTouchLastClientY
+                );
+                photoReorderCapturedPointerId = pendingPointerId;
+                try {
+                    item.setPointerCapture(photoReorderCapturedPointerId);
+                } catch (_) { /* ignore */ }
+                schedulePhotoReorderLayoutSync();
+            }, LONG_PRESS_DURATION);
+        }, { passive: true });
+
+        item.addEventListener('pointermove', (e) => {
+            if (e.pointerType === 'mouse') return;
+            if (pendingPointerId != null && e.pointerId !== pendingPointerId) return;
+
+            if (longPressTimer && !isLongPressing) {
+                photoTouchLastClientX = e.clientX;
+                photoTouchLastClientY = e.clientY;
+                return;
+            }
+
+            if (!isLongPressing || draggedElement !== item) return;
+            if (
+                photoReorderCapturedPointerId != null &&
+                e.pointerId !== photoReorderCapturedPointerId
+            ) {
+                return;
+            }
+            e.preventDefault();
+            try {
+                window.getSelection()?.removeAllRanges();
+            } catch (_) { /* ignore */ }
+            photoTouchLastClientX = e.clientX;
+            photoTouchLastClientY = e.clientY;
+            applyPhotoTouchReorderMoveFromCoords();
+        }, { passive: false });
+
+        const onPointerEnd = (e) => {
+            if (longPressTimer && e.pointerId === pendingPointerId) {
+                abortPendingPhotoReorderTimer();
+            }
+            if (!isLongPressing) {
+                if (e.pointerId === pendingPointerId) {
+                    pendingPointerId = null;
+                }
+                return;
+            }
+            if (
+                photoReorderCapturedPointerId != null &&
+                e.pointerId !== photoReorderCapturedPointerId
+            ) {
+                return;
+            }
+            scheduleFinalizePhotoTouchDrag();
+            pendingPointerId = null;
+        };
+
+        item.addEventListener('pointerup', onPointerEnd, { passive: true });
+        item.addEventListener('pointercancel', onPointerEnd, { passive: true });
+        return;
+    }
+
+    let pendingTouchId = null;
+
     item.addEventListener('touchstart', (e) => {
-        // 편집 버튼이나 삭제 버튼 클릭 시 무시
         if (e.target.closest('.photo-edit-btn') || e.target.closest('.photo-remove-btn')) {
             return;
         }
-        
-        isLongPressing = false;
-        touchStartY = e.touches[0].clientY;
-        
+
+        abortPendingPhotoReorderTimer();
+        closeStalePhotoTouchDragIfAny();
+
+        const tid = e.changedTouches[0]?.identifier;
+        if (tid === undefined) return;
+
+        pendingTouchId = tid;
+        photoTouchLastClientX = e.changedTouches[0].clientX;
+        photoTouchLastClientY = e.changedTouches[0].clientY;
+
         longPressTimer = setTimeout(() => {
-            isLongPressing = true;
-            const index = parseInt(item.dataset.index);
-            
-            // 드래그 시작
-            originalDragIndex = index;
-            draggedIndex = index;
-            draggedElement = item;
-            dropIndex = index;
-            
-            item.classList.add('opacity-50', 'scale-110', 'z-50');
-            item.style.transition = 'transform 0.2s';
-            
-            // 햅틱 피드백 (지원되는 경우)
-            if (navigator.vibrate) {
-                navigator.vibrate(50);
-            }
+            longPressTimer = null;
+            const index = parseInt(item.dataset.index, 10);
+            if (Number.isNaN(index)) return;
+
+            beginPhotoReorderDragSession(
+                item,
+                photoTouchLastClientX,
+                photoTouchLastClientY,
+                tid
+            );
+            schedulePhotoReorderLayoutSync();
         }, LONG_PRESS_DURATION);
     }, { passive: true });
-    
-    // 터치 이동 (사진은 가로 배치이므로 X축 기준으로 가장 가까운 아이템 찾기)
+
     item.addEventListener('touchmove', (e) => {
+        const touch = e.touches[0];
+        if (longPressTimer && !isLongPressing && touch && pendingTouchId != null) {
+            if (touch.identifier === pendingTouchId) {
+                photoTouchLastClientX = touch.clientX;
+                photoTouchLastClientY = touch.clientY;
+            }
+            return;
+        }
+
         if (!isLongPressing || !draggedElement) return;
-        
+        if (!touch) return;
+
         e.preventDefault();
-        const touchX = e.touches[0].clientX;
-        const container = item.parentElement;
-        const allItems = Array.from(container.querySelectorAll('.photo-preview-item'));
-        
-        // 가장 가까운 아이템 찾기 (가로 배치이므로 X축 중심 기준)
-        let closestItem = null;
-        let closestDistance = Infinity;
-        
-        allItems.forEach(otherItem => {
-            if (otherItem === draggedElement) return;
-            
-            const rect = otherItem.getBoundingClientRect();
-            const itemCenterX = rect.left + rect.width / 2;
-            const distance = Math.abs(touchX - itemCenterX);
-            
-            if (distance < closestDistance) {
-                closestDistance = distance;
-                closestItem = otherItem;
-            }
-        });
-        
-        if (closestItem) {
-            const targetIndex = parseInt(closestItem.dataset.index);
-            const rect = closestItem.getBoundingClientRect();
-            const itemCenterX = rect.left + rect.width / 2;
-            const swapThreshold = rect.width * 0.1; // 아이템 너비의 10% 넘어가면 스왑 (충분히 부드러운 반응)
-            
-            if (draggedIndex !== null && draggedIndex !== targetIndex) {
-                // 스왑 임계값: 터치가 대상 아이템 중심을 충분히 넘어갔을 때만 스왑
-                const pastCenter = (draggedIndex < targetIndex && touchX > itemCenterX + swapThreshold) ||
-                    (draggedIndex > targetIndex && touchX < itemCenterX - swapThreshold);
-                if (!pastCenter) return;
-                
-                dropIndex = targetIndex;
-                
-                // 시각적 피드백: DOM 위치 변경
-                if (draggedIndex < targetIndex) {
-                    container.insertBefore(draggedElement, closestItem.nextSibling);
-                } else {
-                    container.insertBefore(draggedElement, closestItem);
-                }
-                
-                // 모든 아이템의 인덱스와 번호 업데이트
-                const updatedItems = Array.from(container.querySelectorAll('.photo-preview-item'));
-                updatedItems.forEach((updatedItem, idx) => {
-                    updatedItem.dataset.index = idx;
-                    const numberBadge = updatedItem.querySelector('.photo-preview-order-badge');
-                    if (numberBadge) {
-                        numberBadge.textContent = idx + 1;
-                    }
-                });
-                draggedIndex = targetIndex; // 스왑 후 갱신 (즉시 되돌아가는 현상 방지)
-            }
-        }
+        try {
+            window.getSelection()?.removeAllRanges();
+        } catch (_) { /* ignore */ }
+        const touchX = touch.clientX;
+        const touchY = touch.clientY;
+        photoTouchLastClientX = touchX;
+        photoTouchLastClientY = touchY;
+        applyPhotoTouchReorderMoveFromCoords();
     }, { passive: false });
-    
-    // 터치 종료
+
     item.addEventListener('touchend', (e) => {
-        if (longPressTimer) {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
+        abortPendingPhotoReorderTimer();
+        if (changedTouchesIncludesId(e, pendingTouchId)) {
+            pendingTouchId = null;
         }
-        
-        if (isLongPressing && originalDragIndex !== null && dropIndex !== null && originalDragIndex !== dropIndex) {
-            // 순서 업데이트 (originalDragIndex: 원본 위치, dropIndex: 최종 위치)
-            const reorderedPhotos = [...appState.currentPhotos];
-            const [movedPhoto] = reorderedPhotos.splice(originalDragIndex, 1);
-            reorderedPhotos.splice(dropIndex, 0, movedPhoto);
-            appState.currentPhotos = reorderedPhotos;
-            // 상태 반영을 위해 전체 재렌더 (DOM·버튼 인덱스 동기화 보장)
-            renderPhotoPreviews();
+        if (!isLongPressing) return;
+        if (changedTouchesIncludesId(e, photoTouchDragTouchId)) {
+            scheduleFinalizePhotoTouchDrag();
         }
-        
-        // 상태 초기화
-        if (draggedElement) {
-            draggedElement.classList.remove('opacity-50', 'scale-110', 'z-50');
-            draggedElement.style.transition = '';
-        }
-        
-        isLongPressing = false;
-        originalDragIndex = null;
-        draggedIndex = null;
-        draggedElement = null;
-        dropIndex = null;
-        touchStartY = null;
     }, { passive: true });
-    
-    // 터치 취소
-    item.addEventListener('touchcancel', () => {
-        if (longPressTimer) {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
+
+    item.addEventListener('touchcancel', (e) => {
+        abortPendingPhotoReorderTimer();
+        if (changedTouchesIncludesId(e, pendingTouchId)) {
+            pendingTouchId = null;
         }
-        
-        if (draggedElement) {
-            draggedElement.classList.remove('opacity-50', 'scale-110', 'z-50');
-            draggedElement.style.transition = '';
+        if (!isLongPressing) return;
+        if (changedTouchesIncludesId(e, photoTouchDragTouchId)) {
+            scheduleFinalizePhotoTouchDrag();
         }
-        
-        isLongPressing = false;
-        originalDragIndex = null;
-        draggedIndex = null;
-        draggedElement = null;
-        dropIndex = null;
-        touchStartY = null;
     }, { passive: true });
 }
 
@@ -284,7 +598,7 @@ function handleDragOver(e) {
     // 모든 아이템의 인덱스와 번호 업데이트 (시각적)
     const allItems = Array.from(container.querySelectorAll('.photo-preview-item'));
     allItems.forEach((item, idx) => {
-        item.dataset.index = idx;
+        item.dataset.index = String(idx);
         const numberBadge = item.querySelector('.photo-preview-order-badge');
         if (numberBadge) {
             numberBadge.textContent = idx + 1;
@@ -299,17 +613,11 @@ function handleDrop(e) {
 
 function handleDragEnd(e) {
     e.currentTarget.classList.remove('opacity-50');
-    
-    // 드래그가 실제로 끝났을 때 순서 업데이트
-    if (draggedIndex !== null && dropIndex !== null && draggedIndex !== dropIndex) {
-        const reorderedPhotos = [...appState.currentPhotos];
-        const [movedPhoto] = reorderedPhotos.splice(draggedIndex, 1);
-        reorderedPhotos.splice(dropIndex, 0, movedPhoto);
-        appState.currentPhotos = reorderedPhotos;
-        // 상태 반영을 위해 전체 재렌더 (DOM·버튼 인덱스 동기화 보장)
-        renderPhotoPreviews();
+
+    if (draggedElement?.parentElement) {
+        commitPhotoOrderFromDom(draggedElement.parentElement);
     }
-    
+
     draggedIndex = null;
     draggedElement = null;
     dropIndex = null;
