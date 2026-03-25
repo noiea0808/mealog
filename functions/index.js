@@ -2123,6 +2123,31 @@ async function broadcastAdminPushToAllUsers(payload) {
 
 const ADMIN_PUSH_LANDING_TABS = new Set(['dashboard', 'timeline', 'gallery', 'board', 'settings']);
 
+const ADMIN_RECURRING_INTERVALS = new Set(['daily', 'weekly', 'monthly']);
+
+/** 다음 주기 발송 시각(ms). monthly: 해당 월에 일이 없으면 말일로 보정 */
+function addRecurringNextMillis(fromMs, interval) {
+  const d = new Date(fromMs);
+  if (interval === 'weekly') {
+    d.setDate(d.getDate() + 7);
+    return d.getTime();
+  }
+  if (interval === 'monthly') {
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    const day = d.getDate();
+    const h = d.getHours();
+    const mi = d.getMinutes();
+    const s = d.getSeconds();
+    const ms = d.getMilliseconds();
+    const lastDayTarget = new Date(y, m + 2, 0).getDate();
+    const useDay = Math.min(day, lastDayTarget);
+    return new Date(y, m + 1, useDay, h, mi, s, ms).getTime();
+  }
+  d.setDate(d.getDate() + 1);
+  return d.getTime();
+}
+
 function normalizeAdminBroadcastPayload(raw) {
   const title = String(raw?.title || '').trim();
   const body = String(raw?.body || '').trim();
@@ -2169,7 +2194,8 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
   if (!(await isAdminByUid(callerUid))) {
     throw new HttpsError('permission-denied', '관리자만 등록할 수 있습니다.');
   }
-  const { title, body, landingTab, scheduledAtMs } = request.data || {};
+  const data = request.data || {};
+  const { title, body, landingTab } = data;
   const t = String(title || '').trim();
   const b = String(body || '').trim();
   const tab = String(landingTab || 'dashboard').trim();
@@ -2180,15 +2206,56 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
   if (!b || b.length > 240) {
     throw new HttpsError('invalid-argument', '내용은 1~240자로 입력해 주세요.');
   }
-  const ms = typeof scheduledAtMs === 'number' && !Number.isNaN(scheduledAtMs) ? scheduledAtMs : null;
+  const serverNow = Date.now();
+  const minLead = serverNow + 25 * 1000;
+  const scheduleType = data.scheduleType === 'recurring' ? 'recurring' : 'once';
+
+  if (scheduleType === 'recurring') {
+    const recurringStartMs =
+      typeof data.recurringStartMs === 'number' && !Number.isNaN(data.recurringStartMs)
+        ? data.recurringStartMs
+        : null;
+    const recurringEndMs =
+      typeof data.recurringEndMs === 'number' && !Number.isNaN(data.recurringEndMs)
+        ? data.recurringEndMs
+        : null;
+    const recurringInterval = ADMIN_RECURRING_INTERVALS.has(String(data.recurringInterval || '').trim())
+      ? String(data.recurringInterval).trim()
+      : 'daily';
+    if (recurringStartMs == null || recurringEndMs == null) {
+      throw new HttpsError('invalid-argument', '주기 발송: 시작·종료 시각이 올바르지 않습니다.');
+    }
+    if (recurringEndMs < recurringStartMs) {
+      throw new HttpsError('invalid-argument', '종료 시각은 시작 시각 이후여야 합니다.');
+    }
+    if (recurringStartMs < minLead) {
+      throw new HttpsError('invalid-argument', '시작 시각은 서버 기준 약 30초 이후로 설정해 주세요.');
+    }
+    const ref = await db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes').add({
+      scheduleType: 'recurring',
+      recurringInterval,
+      recurringEndAt: Timestamp.fromMillis(recurringEndMs),
+      title: t.slice(0, 80),
+      body: b.slice(0, 240),
+      landingTab: land,
+      scheduledAt: Timestamp.fromMillis(recurringStartMs),
+      occurrenceCount: 0,
+      status: 'pending',
+      createdByUid: callerUid,
+      createdAt: FieldValue.serverTimestamp()
+    });
+    return { ok: true, id: ref.id };
+  }
+
+  const ms = typeof data.scheduledAtMs === 'number' && !Number.isNaN(data.scheduledAtMs) ? data.scheduledAtMs : null;
   if (ms == null) {
     throw new HttpsError('invalid-argument', '예약 시각(scheduledAtMs)이 올바르지 않습니다.');
   }
-  const serverNow = Date.now();
-  if (ms < serverNow + 25 * 1000) {
+  if (ms < minLead) {
     throw new HttpsError('invalid-argument', '예약 시각은 서버 기준 약 30초 이후로 설정해 주세요.');
   }
   const ref = await db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes').add({
+    scheduleType: 'once',
     title: t.slice(0, 80),
     body: b.slice(0, 240),
     landingTab: land,
@@ -2252,11 +2319,38 @@ exports.processScheduledAdminPushes = onSchedule(
           body,
           data: { type: 'adminBroadcast', landingTab }
         });
-        await ref.update({
-          status: 'sent',
-          sentAt: FieldValue.serverTimestamp()
-        });
-        logger.info('processScheduledAdminPushes: sent', { id: docSnap.id });
+
+        const scheduleType = d.scheduleType || 'once';
+        if (scheduleType === 'recurring') {
+          const endMs = d.recurringEndAt && typeof d.recurringEndAt.toMillis === 'function' ? d.recurringEndAt.toMillis() : 0;
+          const intervalRaw = String(d.recurringInterval || 'daily').trim();
+          const interval = ADMIN_RECURRING_INTERVALS.has(intervalRaw) ? intervalRaw : 'daily';
+          const thisRunMs = d.scheduledAt && typeof d.scheduledAt.toMillis === 'function' ? d.scheduledAt.toMillis() : nowMs;
+          const nextMs = addRecurringNextMillis(thisRunMs, interval);
+          if (!endMs || nextMs > endMs) {
+            await ref.update({
+              status: 'completed',
+              sentAt: FieldValue.serverTimestamp(),
+              lastSentAt: FieldValue.serverTimestamp(),
+              occurrenceCount: FieldValue.increment(1)
+            });
+            logger.info('processScheduledAdminPushes: recurring completed', { id: docSnap.id });
+          } else {
+            await ref.update({
+              status: 'pending',
+              scheduledAt: Timestamp.fromMillis(nextMs),
+              lastSentAt: FieldValue.serverTimestamp(),
+              occurrenceCount: FieldValue.increment(1)
+            });
+            logger.info('processScheduledAdminPushes: recurring next scheduled', { id: docSnap.id, nextMs });
+          }
+        } else {
+          await ref.update({
+            status: 'sent',
+            sentAt: FieldValue.serverTimestamp()
+          });
+          logger.info('processScheduledAdminPushes: sent', { id: docSnap.id });
+        }
       } catch (e) {
         logger.error('processScheduledAdminPushes: error', { id: docSnap.id, message: e?.message });
         try {
