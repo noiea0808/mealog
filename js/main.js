@@ -35,7 +35,7 @@ import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePla
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
-    handleMultipleImages, removePhoto, updateShareIndicator, toggleSharePhoto,
+    handleMultipleImages, removePhoto, movePhotoOrder, updateShareIndicator, toggleSharePhoto,
     openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, setSettingsProfileType, handlePhotoUpload, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
     setRecordPhotoAspectRatio,
     openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace
@@ -214,6 +214,8 @@ window.handleMultipleImages = handleMultipleImages;
 window.Mealog.handleMultipleImages = handleMultipleImages;
 window.removePhoto = removePhoto;
 window.Mealog.removePhoto = removePhoto;
+window.movePhotoOrder = movePhotoOrder;
+window.Mealog.movePhotoOrder = movePhotoOrder;
 window.updateShareIndicator = updateShareIndicator;
 window.Mealog.updateShareIndicator = updateShareIndicator;
 window.toggleSharePhoto = toggleSharePhoto;

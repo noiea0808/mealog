@@ -13,6 +13,12 @@ let usersCache = null; // 마지막으로 로드된 사용자 목록 (정렬 전
 let usersSortState = { key: 'createdAt', dir: 'desc' };
 
 const USERS_SORT_DEFAULT_DIR = {
+    deleteRequested: 'desc',
+    pageFetchIndex: 'asc',
+    birthdate: 'asc',
+    gender: 'asc',
+    signupToLastLoginDays: 'desc',
+    activityBan: 'desc',
     loginMethod: 'asc',
     email: 'asc',
     nickname: 'asc',
@@ -74,6 +80,36 @@ function normalizeNumber(v) {
     return Number.isFinite(n) ? n : 0;
 }
 
+/** 가입일(createdAt)과 마지막 로그인(lastLoginAt) 사이 경과 일 수 (내림, 24시간 단위). 둘 중 하나 없으면 null. */
+function daysBetweenSignupAndLastLogin(createdAt, lastLoginAt) {
+    const c = createdAt ? (createdAt instanceof Date ? createdAt : new Date(createdAt)) : null;
+    const l = lastLoginAt ? (lastLoginAt instanceof Date ? lastLoginAt : new Date(lastLoginAt)) : null;
+    if (!c || !l) return null;
+    const ct = c.getTime();
+    const lt = l.getTime();
+    if (!Number.isFinite(ct) || !Number.isFinite(lt)) return null;
+    if (lt < ct) return null;
+    return Math.floor((lt - ct) / (1000 * 60 * 60 * 24));
+}
+
+/** 생년월일 문자열을 정렬용 키로 변환 (없으면 null) */
+function birthdateSortComparable(birthdate) {
+    const s = birthdate == null ? '' : String(birthdate).trim();
+    if (!s) return null;
+    const digits = s.replace(/\D/g, '');
+    if (digits.length === 8) return digits;
+    const t = Date.parse(s);
+    if (Number.isFinite(t)) return String(t);
+    return s.toLowerCase();
+}
+
+/** 성별 정렬: 남 → 여 → 미입력 */
+function genderSortRank(gender) {
+    if (gender === 'male') return 1;
+    if (gender === 'female') return 2;
+    return null;
+}
+
 function normalizeDateValue(v) {
     if (!v) return null;
     if (v instanceof Date) return v.getTime();
@@ -128,6 +164,36 @@ function sortUsersForTable(users, currentVersion) {
         let av;
         let bv;
         switch (key) {
+            case 'deleteRequested':
+                av = a?.deleteRequested ? 1 : 0;
+                bv = b?.deleteRequested ? 1 : 0;
+                return compareWithNullsLast(av, bv, dir);
+            case 'pageFetchIndex':
+                av = typeof a?.pageFetchIndex === 'number' ? a.pageFetchIndex : null;
+                bv = typeof b?.pageFetchIndex === 'number' ? b.pageFetchIndex : null;
+                return compareWithNullsLast(av, bv, dir);
+            case 'birthdate':
+                av = birthdateSortComparable(a?.birthdate);
+                bv = birthdateSortComparable(b?.birthdate);
+                return compareWithNullsLast(av, bv, dir);
+            case 'gender':
+                av = genderSortRank(a?.gender);
+                bv = genderSortRank(b?.gender);
+                return compareWithNullsLast(av, bv, dir);
+            case 'signupToLastLoginDays':
+                av = a?.signupToLastLoginDays;
+                bv = b?.signupToLastLoginDays;
+                if (av !== null && av !== undefined && typeof av !== 'number') av = null;
+                if (bv !== null && bv !== undefined && typeof bv !== 'number') bv = null;
+                return compareWithNullsLast(av, bv, dir);
+            case 'activityBan':
+                av = typeof a?.activityBanLevel === 'number' ? a.activityBanLevel : 0;
+                bv = typeof b?.activityBanLevel === 'number' ? b.activityBanLevel : 0;
+                return compareWithNullsLast(av, bv, dir);
+            case 'email':
+                av = normalizeString(a?.email || a?.userId);
+                bv = normalizeString(b?.email || b?.userId);
+                return compareWithNullsLast(av, bv, dir);
             case 'timelineCount':
             case 'albumShareCount':
             case 'talkCount':
@@ -332,6 +398,12 @@ async function getUsers(options = {}) {
             const albumShareCount = albumShareCountMap.get(userId) ?? 0;
             const talkCount = talkCountMap.get(userId) ?? 0;
 
+            const activityBanLevel = (bannedWrite ? 1 : 0) + (bannedShare ? 1 : 0);
+            let signupToLastLoginDays = null;
+            if (loginMethod !== '게스트') {
+                signupToLastLoginDays = daysBetweenSignupAndLastLogin(createdAt, lastLoginAt);
+            }
+
             users.push({
                 userId,
                 nickname,
@@ -351,7 +423,10 @@ async function getUsers(options = {}) {
                 lastLoginAt,
                 bannedShare,
                 bannedWrite,
-                deleteRequested
+                deleteRequested,
+                pageFetchIndex: i,
+                activityBanLevel,
+                signupToLastLoginDays
             });
         }
 
@@ -370,7 +445,7 @@ export async function renderUsers(options = {}) {
         return;
     }
     
-    container.innerHTML = '<tr><td colspan="14" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
+    container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
     
     try {
         console.log('renderUsers 시작');
@@ -392,7 +467,7 @@ export async function renderUsers(options = {}) {
         console.log('getUsers 결과:', users.length, '명 (페이지', adminUsersListPage, '/ 총', adminUsersTotalCount, '명)');
         
         if (users.length === 0) {
-            container.innerHTML = '<tr><td colspan="14" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
+            container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
             updateAdminUsersListPagination(adminUsersTotalCount, Math.max(1, Math.ceil(adminUsersTotalCount / USERS_PER_PAGE)));
             try { applyAdminUsersPageVisibility(adminUsersCurrentPage); } catch (_) {}
             return;
@@ -444,6 +519,12 @@ export async function renderUsers(options = {}) {
             const lastLoginDate = lastLoginDt
                 ? lastLoginDt.toLocaleDateString('ko-KR', opts) + '<br>' + lastLoginDt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', ...opts })
                 : '-';
+            const signupToLastLoginDays =
+                user.loginMethod === '게스트'
+                    ? '-'
+                    : user.signupToLastLoginDays !== null && user.signupToLastLoginDays !== undefined
+                        ? `${user.signupToLastLoginDays}일`
+                        : '-';
             
             let loginMethodBadge = 'bg-slate-100 text-slate-700';
             if (user.loginMethod === '구글') {
@@ -505,6 +586,9 @@ export async function renderUsers(options = {}) {
                     <td data-page="1" class="px-3 py-2.5 text-center">
                         <span class="text-sm text-slate-600 leading-snug">${lastLoginDate}</span>
                     </td>
+                    <td data-page="1" class="px-2 py-2.5 text-center">
+                        <span class="text-sm text-slate-600 tabular-nums font-medium">${signupToLastLoginDays}</span>
+                    </td>
                     <td data-page="1" class="px-1.5 py-2.5 min-w-[3.25rem] max-w-[4rem] text-center">${activityBanCell}</td>
                     <td data-page="2" class="px-3 py-2.5 text-center tabular-nums">
                         <span class="font-bold text-slate-800">${user.timelineCount || 0}</span>
@@ -523,7 +607,7 @@ export async function renderUsers(options = {}) {
     } catch (e) {
         console.error("사용자 목록 렌더링 실패:", e);
         const errMsg = (e && (e.message || e.code || String(e))) || '알 수 없는 오류';
-        container.innerHTML = '<tr><td colspan="14" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
+        container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
     }
 }
 
