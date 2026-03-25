@@ -1387,7 +1387,7 @@ initAuth(async (user) => {
                 appState.sharedPhotosUnsubscribe();
                 appState.sharedPhotosUnsubscribe = null;
             }
-            showLoading('샘플 타임라인을 불러오는 중...', { dimBackground: false, skipOnLoginScreen: true });
+            showLoading('샘플 타임라인을 불러오는 중...', { dimBackground: false, skipOnLoginScreen: false });
             void import('./demo-account.js').then(async (mod) => {
                 if (!(await mod.isDemoCredentialsConfigured())) {
                     hideLoading();

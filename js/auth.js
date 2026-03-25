@@ -5,6 +5,7 @@ import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
 import { dbOps } from './db.js';
 import { normalizeBirthdateRaw } from './utils.js';
+import { isDemoUser } from './demo-account.js';
 
 function isNativePlatform() {
     return typeof window.Capacitor !== 'undefined' && window.Capacitor?.isNativePlatform?.();
@@ -20,7 +21,7 @@ async function getGoogleWebClientId() {
 }
 
 export async function handleGoogleLogin() {
-    showLoading();
+    showLoading('로그인 중...', { skipOnLoginScreen: false });
     try {
         let result;
         if (isNativePlatform()) {
@@ -70,7 +71,7 @@ export async function handleGoogleLogin() {
             providerData: result.user.providerData.map(p => p.providerId)
         });
         window._recordsLoadHidePending = true;
-        showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: true });
+        showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
         showToast("구글 로그인 성공!", "success");
     } catch (error) {
         console.warn('[구글 로그인] 오류:', error?.code, error?.message, error);
@@ -107,7 +108,7 @@ export async function handleGoogleLogin() {
 }
 
 export async function startGuest() {
-    showLoading();
+    showLoading('둘러보기 준비 중...', { skipOnLoginScreen: false });
     try {
         const { signInAsDemoAccount, requestDemoIntroFromBrowse } = await import('./demo-account.js');
         requestDemoIntroFromBrowse();
@@ -218,7 +219,8 @@ export async function handleEmailAuth() {
         return;
     }
     
-    showLoading();
+    const loadingMsg = window.emailAuthMode === 'signup' ? '가입 중...' : '로그인 중...';
+    showLoading(loadingMsg, { skipOnLoginScreen: false });
     try {
         let result;
         if (window.emailAuthMode === 'signup') {
@@ -230,7 +232,7 @@ export async function handleEmailAuth() {
                 providerData: result.user.providerData.map(p => p.providerId)
             });
             window._recordsLoadHidePending = true;
-            showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: true });
+            showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
             showToast("회원가입 성공! 환영합니다.", "success");
         } else {
             result = await signInWithEmailAndPassword(auth, email, password);
@@ -241,7 +243,7 @@ export async function handleEmailAuth() {
                 providerData: result.user.providerData.map(p => p.providerId)
             });
             window._recordsLoadHidePending = true;
-            showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: true });
+            showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
             showToast("로그인되었습니다.", "success");
             if (document.getElementById('rememberEmailCheck').checked) {
                 localStorage.setItem('savedEmail', email);
@@ -303,7 +305,7 @@ export async function requestPasswordReset() {
         showToast("올바른 이메일 형식이 아닙니다.", "error");
         return;
     }
-    showLoading();
+    showLoading('메일 전송 중...', { skipOnLoginScreen: false });
     try {
         await sendPasswordResetEmail(auth, email);
         showToast("비밀번호 재설정 메일을 발송했습니다. 이메일을 확인해주세요.", "success");
@@ -325,6 +327,11 @@ export async function handleLogout() {
 }
 
 export function confirmLogout() {
+    const user = auth.currentUser;
+    if (user && !user.isAnonymous && isDemoUser(user)) {
+        void confirmLogoutAction();
+        return;
+    }
     console.log('🔐 confirmLogout 호출됨 - 로그아웃 모달 열기');
     const modal = document.getElementById('logoutConfirmModal');
     if (!modal) {
@@ -519,7 +526,7 @@ export async function initAuth(onAuthStateChangedCallback) {
             if (result?.user) {
                 console.log('🔐 구글 Redirect 로그인 성공:', result.user.uid);
                 window._recordsLoadHidePending = true;
-                showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: true });
+                showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
                 showToast("구글 로그인 성공!", "success");
             }
         } catch (error) {
@@ -986,12 +993,12 @@ export async function handleEmailSignupWithProfile() {
         return;
     }
     
-    showLoading();
+    showLoading('가입 중...', { skipOnLoginScreen: false });
     try {
         const result = await createUserWithEmailAndPassword(auth, email, password);
         console.log('🔐 이메일 회원가입 성공:', { uid: result.user.uid, email: result.user.email });
         window._recordsLoadHidePending = true;
-        showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: true });
+        showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
         showToast("회원가입 성공! 약관에 동의해주세요.", "success");
         
         window._pendingEmailSignupProfile = {

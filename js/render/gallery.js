@@ -389,7 +389,7 @@ export async function renderGallery(options = {}) {
     // 사용자 프로필 뷰 + 밀톡 탭: 밀톡 탭과 동일한 목록 렌더링 (renderBoardPostList)
     if (filterUserId && galleryFilterTab === 'board') {
         container.innerHTML = userProfileHeader + `
-            <div id="galleryFilterBoardList" class="px-4 pt-1 pb-4">
+            <div id="galleryFilterBoardList" class="pt-1 pb-4">
                 <div class="flex justify-center py-8"><i class="fa-solid fa-spinner fa-spin text-2xl text-slate-300"></i></div>
             </div>
         `;

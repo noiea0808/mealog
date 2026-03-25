@@ -894,10 +894,12 @@ function renderFavoriteTagsEditor() {
         const selectedMainTag = state.selectedFavoriteMainTag[sectionKey] || null;
         const selectedFavorites = selectedMainTag ? (favoritesByMainTag[selectedMainTag] || []) : [];
         const sectionTitle = (config.prefix || '') + config.label;
-        
-        html += `<div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-6">
-            <div class="text-xs font-bold text-slate-600 mb-3 uppercase">${sectionTitle}</div>
-            <div id="favoriteMainTags-${sectionKey}" class="flex flex-wrap gap-2 mb-3">
+        const isSnack = sectionId === 'snackType' || sectionId === 'snackPlace';
+        const bandClass = isSnack ? 'settings-tag-section-snack' : 'settings-tag-section-meal';
+
+        html += `<div class="settings-tag-section ${bandClass} py-2 mb-3 px-4">
+            <div class="text-xs font-bold text-slate-600 mb-1.5 uppercase">${sectionTitle}</div>
+            <div id="favoriteMainTags-${sectionKey}" class="flex flex-wrap gap-1 mb-1.5">
                 ${config.mainTags.map(mainTag => {
                     const isSelected = selectedMainTag === mainTag;
                     const favorites = favoritesByMainTag[mainTag] || [];
@@ -907,17 +909,17 @@ function renderFavoriteTagsEditor() {
                     </button>`;
                 }).join('')}
             </div>
-            <div class="flex gap-2 mb-3">
+            <div class="flex gap-1 mb-1.5">
                 <input type="text" id="newFavoriteTag-${sectionKey}-${selectedMainTag || 'none'}" class="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-slate-400" placeholder="태그 입력" onkeypress="if(event.key==='Enter' && window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${sectionKey}']) window.addFavoriteTag('${storageKey}', window.selectedFavoriteMainTag['${sectionKey}'])">
                 <button ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); if(window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${sectionKey}']) window.addFavoriteTag('${storageKey}', window.selectedFavoriteMainTag['${sectionKey}'])" onclick="if(window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${sectionKey}']) window.addFavoriteTag('${storageKey}', window.selectedFavoriteMainTag['${sectionKey}'])" class="bg-slate-800 text-white px-4 py-1.5 rounded-lg text-xs font-bold ${selectedMainTag ? '' : 'opacity-50 cursor-not-allowed'}" ${selectedMainTag ? '' : 'disabled'}>추가</button>
             </div>
             ${selectedMainTag ? `
-                ${selectedFavorites.length >= 5 ? '<div class="text-[10px] text-slate-500 mb-3">최대 5개까지 입력 가능합니다</div>' : ''}
-                <div class="mt-3">
-                    <div class="text-[10px] text-slate-400 mb-2">나만의 태그 (최대 5개)</div>
-                    <div class="flex flex-wrap gap-2" id="favoriteTags-${sectionKey}-${selectedMainTag}">
+                ${selectedFavorites.length >= 5 ? '<div class="text-[10px] text-slate-500 mb-1.5">최대 5개까지 입력 가능합니다</div>' : ''}
+                <div class="mt-1.5">
+                    <div class="text-[10px] text-slate-400 mb-1">나만의 태그 (최대 5개)</div>
+                    <div class="flex flex-wrap gap-1" id="favoriteTags-${sectionKey}-${selectedMainTag}">
                         ${selectedFavorites.map((text, idx) => `
-                            <div class="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold">
+                            <div class="flex items-center gap-0.5 px-2.5 py-1 bg-emerald-600 text-white rounded text-xs font-bold">
                                 <span>${text}</span>
                                 <button onclick="window.removeFavoriteTag('${storageKey}', '${selectedMainTag.replace(/'/g, "\\'")}', ${idx})" class="ml-1 hover:bg-emerald-700 rounded-full w-4 h-4 flex items-center justify-center transition-colors">
                                     <i class="fa-solid fa-xmark text-[8px]"></i>
@@ -926,7 +928,7 @@ function renderFavoriteTagsEditor() {
                         `).join('')}
                     </div>
                 </div>
-            ` : '<div class="text-[10px] text-slate-400 mt-3">메인 태그를 선택하세요</div>'}
+            ` : '<div class="text-[10px] text-slate-400 mt-1.5">메인 태그를 선택하세요</div>'}
         </div>`;
     });
     

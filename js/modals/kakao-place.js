@@ -2,6 +2,8 @@ import { addCompositionAwareInput } from '../utils.js';
 import { showToast } from '../ui.js';
 import { callableFunctions } from '../firebase.js';
 
+const KAKAO_SEARCH_MIN_LENGTH = 2;
+
 export function openKakaoPlaceSearch(mode = 'meal') {
     const targetId = mode === 'snack' ? 'snackPlaceInput' : 'placeInput';
     const targetInput = document.getElementById(targetId);
@@ -25,24 +27,24 @@ function createKakaoSearchModal() {
     // 모달 생성
     const modal = document.createElement('div');
     modal.id = 'kakaoPlaceSearchModal';
-    modal.className = 'fixed inset-0 bg-slate-900/60 z-[400] flex items-end';
+    modal.className = 'fixed inset-0 bg-slate-900/60 z-[400] flex items-end justify-center overflow-x-hidden';
     modal.innerHTML = `
-        <div class="w-full bg-white rounded-t-[2.5rem] flex flex-col max-h-[80vh]">
-            <div class="p-6 border-b flex justify-between items-center">
+        <div class="w-full max-w-md mx-auto bg-white rounded-t-[1.25rem] flex flex-col min-h-0 max-h-[min(80vh,100%)]">
+            <div class="p-4 border-b flex justify-between items-center shrink-0">
                 <h2 class="text-lg font-bold text-slate-800 tracking-tight">음식점 검색</h2>
-                <button onclick="document.getElementById('kakaoPlaceSearchModal').remove()">
-                    <i class="fa-solid fa-xmark text-xl text-slate-400"></i>
+                <button type="button" onclick="document.getElementById('kakaoPlaceSearchModal').remove()" class="flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400">
+                    <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
             </div>
-            <div class="p-4">
-                <div class="relative mb-4">
-                    <button onclick="window.searchKakaoPlaces()" class="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center bg-emerald-600 text-white rounded-lg z-10 hover:bg-emerald-700 transition-colors">
+            <div class="p-4 flex-1 min-h-0 flex flex-col">
+                <div class="relative mb-4 shrink-0">
+                    <button type="button" onclick="window.searchKakaoPlaces()" class="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center bg-slate-100 text-slate-900 rounded-lg z-10 border border-slate-200 hover:bg-slate-200 transition-colors" aria-label="검색">
                         <i class="fa-solid fa-magnifying-glass text-sm"></i>
                     </button>
-                    <input type="text" id="kakaoSearchInput" placeholder="음식점 이름을 입력하세요" 
+                    <input type="text" id="kakaoSearchInput" placeholder="음식점 이름을 2글자 이상 입력하세요" 
                         class="w-full p-3 pl-12 bg-slate-50 rounded-xl outline-none text-sm border border-transparent focus:border-slate-400 transition-all">
                 </div>
-                <div id="kakaoSearchResults" class="space-y-2 max-h-[50vh] overflow-y-auto"></div>
+                <div id="kakaoSearchResults" class="space-y-2 max-h-[50vh] min-h-0 overflow-y-auto flex-1"></div>
             </div>
         </div>
     `;
@@ -70,7 +72,11 @@ function createKakaoSearchModal() {
                     if (resultsContainer) resultsContainer.innerHTML = '';
                     return;
                 }
-                searchTimeout = setTimeout(() => window.searchKakaoPlaces(), 500);
+                if (keyword.length < KAKAO_SEARCH_MIN_LENGTH) {
+                    if (resultsContainer) resultsContainer.innerHTML = '';
+                    return;
+                }
+                searchTimeout = setTimeout(() => window.searchKakaoPlaces(), 320);
             });
             searchInput._kakaoSearchCompositionInit = true;
         }
@@ -128,6 +134,8 @@ function shouldUseKakaoCallable() {
     return false;
 }
 
+let kakaoSearchRequestSeq = 0;
+
 // 카카오 장소 검색 실행
 // 앱/스테이징: Callable / 로컬웹: SDK 또는 Callable fallback
 export async function searchKakaoPlaces() {
@@ -138,11 +146,15 @@ export async function searchKakaoPlaces() {
     
     const keyword = searchInput.value.trim();
     if (!keyword) {
-        showToast("검색어를 입력해주세요.", 'info');
+        showToast('검색어를 입력해주세요.', 'error');
         return;
     }
-    
-    // 로딩 표시
+    if (keyword.length < KAKAO_SEARCH_MIN_LENGTH) {
+        showToast(`검색어는 ${KAKAO_SEARCH_MIN_LENGTH}글자 이상 입력해주세요.`, 'error');
+        return;
+    }
+
+    const seq = ++kakaoSearchRequestSeq;
     resultsContainer.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">검색 중...</div>';
     
     try {
@@ -180,7 +192,7 @@ export async function searchKakaoPlaces() {
                     } else {
                         resolve([]);
                     }
-                }, { category_group_code: 'FD6', size: 15 });
+                }, { category_group_code: 'FD6', size: 10 });
             });
         }
         // 3) 웹 + SDK 없음: Callable fallback
@@ -188,9 +200,13 @@ export async function searchKakaoPlaces() {
             const result = await callableFunctions.searchKakaoPlaces({ keyword });
             restaurants = result?.data?.documents || [];
         }
-        
+
+        if (seq !== kakaoSearchRequestSeq) return;
+
         renderKakaoSearchResults(restaurants);
     } catch (err) {
+        if (seq !== kakaoSearchRequestSeq) return;
+
         const msg = err?.message || String(err);
         if (msg.includes('로그인이 필요')) {
             showToast('장소 검색을 사용하려면 로그인해주세요.', 'error');

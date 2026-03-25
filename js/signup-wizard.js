@@ -151,12 +151,12 @@ async function validateCurrentStep() {
 
 async function submitWizard() {
     if (state.isEmailSignup) {
-        showLoading();
+        showLoading('가입 중...', { skipOnLoginScreen: false });
         try {
             const { createUserWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js');
             await createUserWithEmailAndPassword(auth, state.data.email, state.data.password);
             window._recordsLoadHidePending = true;
-            showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: true });
+            showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
             showToast('회원가입 성공! 환영합니다.', 'success');
         } catch (e) {
             hideLoading();

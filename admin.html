@@ -307,9 +307,9 @@
                                     <div class="flex gap-4 items-center flex-wrap">
                                         <div class="flex gap-2 overflow-x-auto scrollbar-hide">
                                             <button onclick="window.setAdminBoardCategory('all')" id="admin-board-category-all" class="admin-board-category-btn active px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold whitespace-nowrap">전체</button>
-                                            <button onclick="window.setAdminBoardCategory('serious')" id="admin-board-category-serious" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">무거운</button>
-                                            <button onclick="window.setAdminBoardCategory('chat')" id="admin-board-category-chat" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">가벼운</button>
                                             <button onclick="window.setAdminBoardCategory('food')" id="admin-board-category-food" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">먹는</button>
+                                            <button onclick="window.setAdminBoardCategory('chat')" id="admin-board-category-chat" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">가벼운</button>
+                                            <button onclick="window.setAdminBoardCategory('serious')" id="admin-board-category-serious" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">무거운</button>
                                             <button onclick="window.setAdminBoardCategory('admin')" id="admin-board-category-admin" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">치프에게</button>
                                         </div>
                                         <div class="flex gap-2 items-center ml-auto flex-shrink-0">
@@ -448,59 +448,66 @@
                             <table id="adminUsersTable" class="w-full admin-users-table">
                                 <thead class="admin-users-thead bg-slate-50 border-b border-slate-200">
                                     <tr>
-                                        <th data-page="1 2" class="px-2 py-3 text-left text-xs font-bold text-slate-600 uppercase w-10 whitespace-nowrap min-w-[2.5rem]">
-                                            <label class="flex items-center gap-1 cursor-pointer">
+                                        <th data-page="1 2" class="px-2 text-center text-slate-600 w-10 min-w-[2.5rem]">
+                                            <label class="flex justify-center items-center min-h-[2.75rem] cursor-pointer">
                                                 <input type="checkbox" id="adminUsersSelectAll" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" title="전체 선택">
-                                                <span>선택</span>
                                             </label>
                                         </th>
-                                        <th data-page="1 2" class="px-2 py-3 text-left text-xs font-bold text-slate-600 uppercase whitespace-nowrap min-w-[2.5rem]">번호</th>
-                                        <th data-page="1 2" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase min-w-[5rem]">
-                                            <button type="button" class="admin-users-sort inline-flex items-center gap-1 hover:text-slate-800 transition-colors text-left whitespace-nowrap" data-sort-key="email">
-                                                이메일 / 사용자 ID <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
+                                        <th data-page="1 2" class="px-2 text-center min-w-[2.5rem]">
+                                            <span class="flex min-h-[2.75rem] items-center justify-center w-full text-xs font-bold text-slate-600 uppercase leading-tight">번호</span>
+                                        </th>
+                                        <th data-page="1 2" class="px-3 text-center min-w-[5rem] max-w-[9rem]">
+                                            <button type="button" class="admin-users-sort min-h-[2.75rem] text-center leading-snug px-1 py-1.5 text-slate-700 hover:text-slate-900 rounded-md" data-sort-key="email">
+                                                <span class="line-clamp-2 text-center text-xs font-bold text-slate-600 uppercase break-words">이메일 /<br>사용자 ID <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span></span>
                                             </button>
                                         </th>
-                                        <th data-page="1 2" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase whitespace-nowrap min-w-[5rem]">
-                                            <button type="button" class="admin-users-sort inline-flex items-center gap-1 hover:text-slate-800 transition-colors whitespace-nowrap" data-sort-key="nickname">
-                                                닉네임 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
+                                        <th data-page="1 2" class="px-2 text-center min-w-[6.5rem] max-w-[9.75rem] w-[9.75rem]">
+                                            <button type="button" class="admin-users-sort min-h-[2.75rem] text-center leading-snug px-1 py-1.5 text-slate-700 hover:text-slate-900 rounded-md" data-sort-key="nickname">
+                                                <span class="line-clamp-2 text-center text-xs font-bold text-slate-600 uppercase break-words">닉네임 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span></span>
                                             </button>
                                         </th>
-                                        <th data-page="1 2" class="px-2 py-3 text-left text-xs font-bold text-slate-600 uppercase whitespace-nowrap min-w-[2.5rem]">성별</th>
-                                        <th data-page="1" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase min-w-[2.5rem] leading-tight">
-                                            <button type="button" class="admin-users-sort hover:text-slate-800 transition-colors text-left" data-sort-key="loginMethod">
-                                                로그인<br>방법 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
+                                        <th data-page="1 2" class="px-2 text-center min-w-[4rem]">
+                                            <span class="flex min-h-[2.75rem] items-center justify-center w-full text-xs font-bold text-slate-600 uppercase leading-tight">생년월일</span>
+                                        </th>
+                                        <th data-page="1 2" class="px-2 text-center min-w-[2.5rem]">
+                                            <span class="flex min-h-[2.75rem] items-center justify-center w-full text-xs font-bold text-slate-600 uppercase leading-tight">성별</span>
+                                        </th>
+                                        <th data-page="1" class="px-3 text-center min-w-[2.5rem]">
+                                            <button type="button" class="admin-users-sort min-h-[2.75rem] text-center leading-snug px-1 py-1.5 text-slate-700 hover:text-slate-900 rounded-md" data-sort-key="loginMethod">
+                                                <span class="line-clamp-2 text-center text-xs font-bold text-slate-600 uppercase break-words">로그인<br>방법 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span></span>
                                             </button>
                                         </th>
-                                        <th data-page="1" class="px-2 py-3 text-left text-xs font-bold text-slate-600 uppercase min-w-[2.5rem] leading-tight">글쓰기<br>금지</th>
-                                        <th data-page="1" class="px-2 py-3 text-left text-xs font-bold text-slate-600 uppercase min-w-[2.5rem] leading-tight">공유<br>금지</th>
-                                        <th data-page="1" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase whitespace-nowrap min-w-[4.5rem]">
-                                            <button type="button" class="admin-users-sort inline-flex items-center gap-1 hover:text-slate-800 transition-colors whitespace-nowrap" data-sort-key="terms">
-                                                약관 동의 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
+                                        <th data-page="1" class="px-2 text-center min-w-[8rem] max-w-[11rem]">
+                                            <button type="button" class="admin-users-sort min-h-[2.75rem] text-center leading-snug px-1 py-1.5 text-slate-700 hover:text-slate-900 rounded-md" data-sort-key="terms">
+                                                <span class="inline-flex items-center justify-center gap-1 text-xs font-bold text-slate-600 whitespace-nowrap">약관 동의 <span class="admin-users-sort-indicator text-[10px] text-slate-400 shrink-0" aria-hidden="true">↕</span></span>
                                             </button>
                                         </th>
-                                        <th data-page="1" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase whitespace-nowrap min-w-[4rem]">
-                                            <button type="button" class="admin-users-sort inline-flex items-center gap-1 hover:text-slate-800 transition-colors whitespace-nowrap" data-sort-key="createdAt">
-                                                가입일 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
+                                        <th data-page="1" class="px-3 text-center min-w-[4rem]">
+                                            <button type="button" class="admin-users-sort min-h-[2.75rem] text-center leading-snug px-1 py-1.5 text-slate-700 hover:text-slate-900 rounded-md" data-sort-key="createdAt">
+                                                <span class="line-clamp-2 text-center text-xs font-bold text-slate-600 uppercase break-words">가입일 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span></span>
                                             </button>
                                         </th>
-                                        <th data-page="1" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase min-w-[2.5rem] leading-tight">
-                                            <button type="button" class="admin-users-sort hover:text-slate-800 transition-colors text-left" data-sort-key="lastLoginAt">
-                                                마지막<br>로그인 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
+                                        <th data-page="1" class="px-3 text-center min-w-[2.5rem]">
+                                            <button type="button" class="admin-users-sort min-h-[2.75rem] text-center leading-snug px-1 py-1.5 text-slate-700 hover:text-slate-900 rounded-md" data-sort-key="lastLoginAt">
+                                                <span class="line-clamp-2 text-center text-xs font-bold text-slate-600 uppercase break-words">마지막<br>로그인 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span></span>
                                             </button>
                                         </th>
-                                        <th data-page="2" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase min-w-[2.5rem] leading-tight">
-                                            <button type="button" class="admin-users-sort hover:text-slate-800 transition-colors text-left" data-sort-key="timelineCount">
-                                                타임<br>라인 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
+                                        <th data-page="1" class="px-1.5 text-center text-xs font-bold text-slate-600 min-w-[3.25rem] max-w-[4rem] whitespace-normal leading-snug" title="글쓰기 금지·공유 금지">
+                                            <span class="inline-flex min-h-[2.75rem] flex-col items-center justify-center w-full gap-0 leading-tight"><span class="whitespace-nowrap">활동</span><span class="whitespace-nowrap">제한</span></span>
+                                        </th>
+                                        <th data-page="2" class="px-3 text-center min-w-[2.5rem]">
+                                            <button type="button" class="admin-users-sort min-h-[2.75rem] text-center leading-snug px-1 py-1.5 text-slate-700 hover:text-slate-900 rounded-md" data-sort-key="timelineCount">
+                                                <span class="line-clamp-2 text-center text-xs font-bold text-slate-600 uppercase break-words">타임<br>라인 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span></span>
                                             </button>
                                         </th>
-                                        <th data-page="2" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase min-w-[2.5rem] leading-tight">
-                                            <button type="button" class="admin-users-sort hover:text-slate-800 transition-colors text-left" data-sort-key="albumShareCount">
-                                                앨범<br>공유 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
+                                        <th data-page="2" class="px-3 text-center min-w-[2.5rem]">
+                                            <button type="button" class="admin-users-sort min-h-[2.75rem] text-center leading-snug px-1 py-1.5 text-slate-700 hover:text-slate-900 rounded-md" data-sort-key="albumShareCount">
+                                                <span class="line-clamp-2 text-center text-xs font-bold text-slate-600 uppercase break-words">앨범<br>공유 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span></span>
                                             </button>
                                         </th>
-                                        <th data-page="2" class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase whitespace-nowrap min-w-[3rem]">
-                                            <button type="button" class="admin-users-sort inline-flex items-center gap-1 hover:text-slate-800 transition-colors whitespace-nowrap" data-sort-key="talkCount">
-                                                토크 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
+                                        <th data-page="2" class="px-3 text-center min-w-[3rem]">
+                                            <button type="button" class="admin-users-sort min-h-[2.75rem] text-center leading-snug px-1 py-1.5 text-slate-700 hover:text-slate-900 rounded-md" data-sort-key="talkCount">
+                                                <span class="line-clamp-2 text-center text-xs font-bold text-slate-600 uppercase break-words">토크 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span></span>
                                             </button>
                                         </th>
                                     </tr>

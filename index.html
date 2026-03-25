@@ -801,6 +801,10 @@
                             <div id="notificationEmpty" class="p-4 text-center text-slate-400 text-sm hidden">새로운 댓글이 없습니다.</div>
                         </div>
                     </div>
+                    <!-- 체험(더미) 계정: 돋보기·알림 대신 로그인 유도 -->
+                    <div id="headerDemoLoginWrap" class="hidden flex items-center flex-shrink-0">
+                        <button type="button" id="headerDemoLoginBtn" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 active:opacity-90 transition-colors shadow-sm" aria-label="로그인하기">로그인하기</button>
+                    </div>
                 </div>
             </div>
         </header>
@@ -834,9 +838,9 @@
                 </button>
                 <div class="flex gap-2 mb-4 mt-2 overflow-x-auto scrollbar-hide">
                     <button id="board-category-all" class="board-category-btn active px-4 py-2 bg-black text-white border border-black rounded-lg text-xs font-bold whitespace-nowrap">전체</button>
-                    <button id="board-category-serious" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">무거운</button>
-                    <button id="board-category-chat" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">가벼운</button>
                     <button id="board-category-food" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">먹는</button>
+                    <button id="board-category-chat" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">가벼운</button>
+                    <button id="board-category-serious" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">무거운</button>
                     <button id="board-category-admin" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">치프에게</button>
                 </div>
                 <div id="noticesContainer" class="mb-4 ui-stack-md">
@@ -867,9 +871,9 @@
                         <label class="text-sm font-bold text-slate-600 block mb-2">카테고리</label>
                         <input type="hidden" id="boardWriteCategory" value="serious">
                         <div class="flex gap-2 overflow-x-auto scrollbar-hide">
-                            <button type="button" class="board-write-category-btn board-category-btn active px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap" data-value="serious" onclick="window.setBoardWriteCategory('serious')">무거운</button>
-                            <button type="button" class="board-write-category-btn board-category-btn px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap" data-value="chat" onclick="window.setBoardWriteCategory('chat')">가벼운</button>
                             <button type="button" class="board-write-category-btn board-category-btn px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap" data-value="food" onclick="window.setBoardWriteCategory('food')">먹는</button>
+                            <button type="button" class="board-write-category-btn board-category-btn px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap" data-value="chat" onclick="window.setBoardWriteCategory('chat')">가벼운</button>
+                            <button type="button" class="board-write-category-btn board-category-btn active px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap" data-value="serious" onclick="window.setBoardWriteCategory('serious')">무거운</button>
                             <button type="button" class="board-write-category-btn board-category-btn px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap" data-value="admin" onclick="window.setBoardWriteCategory('admin')">치프에게</button>
                         </div>
                     </div>
@@ -1186,9 +1190,9 @@
                         </div>
                         </div>
                     </div>
-                    <div id="settingsTabContentTags" class="settings-tab-content settings-tab-content-fullwidth hidden pt-4 space-y-4 pb-8">
+                    <div id="settingsTabContentTags" class="settings-tab-content settings-tab-content-fullwidth hidden pt-4 space-y-2 pb-8">
                         <div class="settings-section-container">
-                            <h3 class="text-xs font-black text-slate-400 mb-4 uppercase tracking-widest">나만의 태그 관리</h3>
+                            <h3 class="text-xs font-black text-slate-400 mb-2 uppercase tracking-widest">나만의 태그 관리</h3>
                             <div id="favoriteTagsSection"></div>
                         </div>
                     </div>
@@ -1349,31 +1353,43 @@
                         <input type="file" id="imageInput" class="hidden" accept="image/*" multiple onchange="window.safeCall('handleMultipleImages', event)">
                     </div>
                     
-                    <div class="p-3 bg-orange-50/50 rounded-2xl border border-orange-100 mb-2">
-                        <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">어떻게</span>
-                        <div id="typeChips" class="flex flex-wrap gap-2 mb-1.5"></div>
-                        <div class="relative">
-                            <button id="kakaoSearchBtn" onclick="window.openKakaoPlaceSearch()" class="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center bg-slate-600 text-white rounded-lg z-10 hover:bg-slate-700 transition-colors">
-                                <i class="fa-solid fa-magnifying-glass text-sm"></i>
-                            </button>
-                            <input id="placeInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full p-3 pl-12 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
+                    <div class="py-3 -mx-4 bg-orange-50/50 border-b border-orange-100 rounded-none mb-2">
+                        <div class="pl-4 pr-4 flex flex-col gap-1.5">
+                            <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">어떻게</span>
+                            <div id="typeChips" class="flex flex-wrap gap-1"></div>
                         </div>
-                        <div id="restaurantSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
+                        <div class="mt-2 px-4">
+                            <div class="relative">
+                                <button type="button" id="kakaoSearchBtn" onclick="window.openKakaoPlaceSearch()" class="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center bg-slate-100 text-slate-900 rounded-lg z-10 border border-slate-200 hover:bg-slate-200 transition-colors" aria-label="장소 검색">
+                                    <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                                </button>
+                                <input id="placeInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full p-3 pl-[58px] bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
+                            </div>
+                            <div id="restaurantSuggestions" class="flex gap-1 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
+                        </div>
                     </div>
                     
                     <div id="optionalFields" class="space-y-2">
-                        <div class="p-3 bg-slate-50 rounded-2xl border border-slate-200">
-                            <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">무엇을</span>
-                            <div id="categoryChips" class="flex flex-wrap gap-2 mb-1.5"></div>
-                            <input id="menuDetailInput" type="text" placeholder="무엇을 드셨나요? (예: 파스타, 된장찌개)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
-                            <div id="menuSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
+                        <div class="py-3 -mx-4 bg-slate-50 border-b border-slate-200 rounded-none">
+                            <div class="pl-4 pr-4 flex flex-col gap-1.5">
+                                <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">무엇을</span>
+                                <div id="categoryChips" class="flex flex-wrap gap-1"></div>
+                            </div>
+                            <div class="mt-2 px-4">
+                                <input id="menuDetailInput" type="text" placeholder="무엇을 드셨나요? (예: 파스타, 된장찌개)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
+                                <div id="menuSuggestions" class="flex gap-1 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
+                            </div>
                         </div>
                         
-                        <div class="p-3 bg-blue-50/50 rounded-2xl border border-blue-100">
-                            <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">누구와</span>
-                            <div id="withChips" class="flex flex-wrap gap-2 mb-1.5"></div>
-                            <input id="withWhomInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
-                            <div id="peopleSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
+                        <div class="py-3 -mx-4 bg-blue-50/50 border-b border-blue-100 rounded-none mb-2">
+                            <div class="pl-4 pr-4 flex flex-col gap-1.5">
+                                <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">누구와</span>
+                                <div id="withChips" class="flex flex-wrap gap-1"></div>
+                            </div>
+                            <div class="mt-2 px-4">
+                                <input id="withWhomInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
+                                <div id="peopleSuggestions" class="flex gap-1 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
+                            </div>
                         </div>
                     </div>
 
@@ -1421,20 +1437,20 @@
                         </div>
                         <input type="file" id="snackImageInput" class="hidden" accept="image/*" multiple onchange="window.safeCall('handleMultipleImages', event)">
                     </div>
-                    <div class="p-3 bg-slate-50 rounded-2xl border border-slate-200 mb-2">
+                    <div class="py-3 px-4 -mx-4 bg-slate-50 border-b border-slate-200 rounded-none mb-2">
                         <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">어디서</span>
-                        <div id="snackPlaceTypeChips" class="flex flex-wrap gap-2 mb-1.5"></div>
+                        <div id="snackPlaceTypeChips" class="flex flex-wrap gap-1 mb-1.5"></div>
                         <div class="relative">
-                            <button id="snackKakaoSearchBtn" onclick="window.openKakaoPlaceSearch('snack')" class="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center bg-slate-600 text-white rounded-lg z-10 hover:bg-slate-700 transition-colors">
+                            <button type="button" id="snackKakaoSearchBtn" onclick="window.openKakaoPlaceSearch('snack')" class="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center bg-slate-100 text-slate-900 rounded-lg z-10 border border-slate-200 hover:bg-slate-200 transition-colors" aria-label="장소 검색">
                                 <i class="fa-solid fa-magnifying-glass text-sm"></i>
                             </button>
-                            <input id="snackPlaceInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full p-3 pl-12 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
+                            <input id="snackPlaceInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full p-3 pl-[58px] bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
                         </div>
-                        <div id="snackPlaceSuggestions" class="flex flex-wrap gap-2 mt-1 mb-1 min-h-[32px] overflow-x-auto pb-0.5 items-center" data-input-id="snackPlaceInput"></div>
+                        <div id="snackPlaceSuggestions" class="flex flex-wrap gap-1 mt-1 mb-1 min-h-[32px] overflow-x-auto pb-0.5 items-center" data-input-id="snackPlaceInput"></div>
                         <span class="text-sm font-extrabold text-slate-600 mt-2 mb-1.5 block uppercase">무엇을</span>
-                        <div id="snackTypeChips" class="flex flex-wrap gap-2 mb-2"></div>
+                        <div id="snackTypeChips" class="flex flex-wrap gap-1 mb-2"></div>
                         <input id="snackDetailInput" type="text" placeholder="무엇을 드셨나요?" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
-                        <div id="snackSuggestions" class="flex gap-2 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
+                        <div id="snackSuggestions" class="flex gap-1 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
                     </div>
                     <div id="snackReviewSection" class="pt-2 border-t border-slate-50 space-y-2 mb-2">
                         <div id="snackRatingSection">

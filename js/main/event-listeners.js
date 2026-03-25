@@ -293,6 +293,23 @@ export function initEventListeners() {
             window.toggleNotificationPopup();
         });
     }
+
+    const headerDemoLoginBtn = document.getElementById('headerDemoLoginBtn');
+    if (headerDemoLoginBtn) {
+        headerDemoLoginBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            try {
+                if (typeof window.switchToLogin === 'function') {
+                    await window.switchToLogin();
+                } else {
+                    showToast('로그인 기능을 사용할 수 없습니다.', 'error');
+                }
+            } catch (err) {
+                console.error('headerDemoLoginBtn:', err);
+                showToast('로그인 화면으로 이동하지 못했습니다.', 'error');
+            }
+        });
+    }
     document.addEventListener('click', () => {
         if (typeof window.closeNotificationPopup === 'function') window.closeNotificationPopup();
     });

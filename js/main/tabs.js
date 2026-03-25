@@ -13,6 +13,7 @@ import {
 } from '../render/index.js';
 import { updateDashboard } from '../analytics.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';
+import { isDemoUser } from '../demo-account.js';
 
 const HEADER_SECTION_BY_TAB = { dashboard: '밀당', timeline: '밀로그', gallery: '모먼트', board: '밀톡', settings: '사용자' };
 
@@ -102,33 +103,55 @@ export function registerMainTabSwitch() {
             const tracePanel = document.getElementById('galleryTraceFilterPanel');
             const timelineSearchPanel = document.getElementById('timelineSearchPanel');
             const notificationWrap = document.getElementById('notificationWrap');
-            const showNotification = window.currentUser && !window.currentUser.isAnonymous;
-            if (notificationWrap) {
-                if (showNotification) {
-                    notificationWrap.classList.remove('hidden');
-                    if (typeof window.updateNotificationDot === 'function') window.updateNotificationDot();
-                    const popup = document.getElementById('notificationPopup');
-                    if (popup && !popup.classList.contains('hidden') && typeof window.loadNotificationList === 'function') window.loadNotificationList();
-                } else {
-                    notificationWrap.classList.add('hidden');
-                    if (typeof window.closeNotificationPopup === 'function') window.closeNotificationPopup();
-                }
-            }
-            if (searchBtn) searchBtn.style.display = (tab === 'timeline') ? 'flex' : 'none';
-            if (timelineSearchPanel) {
-                if (tab === 'timeline') {
-                    timelineSearchPanel.classList.remove('hidden');
-                } else {
+            const demoLoginWrap = document.getElementById('headerDemoLoginWrap');
+            const isDemo = window.currentUser && isDemoUser(window.currentUser);
+
+            if (isDemo) {
+                if (demoLoginWrap) demoLoginWrap.classList.remove('hidden');
+                if (timelineSearchPanel) {
                     timelineSearchPanel.classList.add('hidden');
                     timelineSearchPanel.classList.remove('expanded');
                 }
-            }
-            if (tracePanel) {
-                if (tab === 'gallery' || tab === 'board') {
-                    tracePanel.classList.remove('hidden');
-                } else {
+                if (tracePanel) {
                     tracePanel.classList.add('hidden');
                     tracePanel.classList.remove('expanded');
+                }
+                if (notificationWrap) {
+                    notificationWrap.classList.add('hidden');
+                    if (typeof window.closeNotificationPopup === 'function') window.closeNotificationPopup();
+                }
+                if (searchBtn) searchBtn.style.display = 'none';
+                if (typeof window.closeSearch === 'function') window.closeSearch();
+            } else {
+                if (demoLoginWrap) demoLoginWrap.classList.add('hidden');
+                const showNotification = window.currentUser && !window.currentUser.isAnonymous;
+                if (notificationWrap) {
+                    if (showNotification) {
+                        notificationWrap.classList.remove('hidden');
+                        if (typeof window.updateNotificationDot === 'function') window.updateNotificationDot();
+                        const popup = document.getElementById('notificationPopup');
+                        if (popup && !popup.classList.contains('hidden') && typeof window.loadNotificationList === 'function') window.loadNotificationList();
+                    } else {
+                        notificationWrap.classList.add('hidden');
+                        if (typeof window.closeNotificationPopup === 'function') window.closeNotificationPopup();
+                    }
+                }
+                if (searchBtn) searchBtn.style.display = (tab === 'timeline') ? 'flex' : 'none';
+                if (timelineSearchPanel) {
+                    if (tab === 'timeline') {
+                        timelineSearchPanel.classList.remove('hidden');
+                    } else {
+                        timelineSearchPanel.classList.add('hidden');
+                        timelineSearchPanel.classList.remove('expanded');
+                    }
+                }
+                if (tracePanel) {
+                    if (tab === 'gallery' || tab === 'board') {
+                        tracePanel.classList.remove('hidden');
+                    } else {
+                        tracePanel.classList.add('hidden');
+                        tracePanel.classList.remove('expanded');
+                    }
                 }
             }
 
