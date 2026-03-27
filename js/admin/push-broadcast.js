@@ -2,7 +2,7 @@
 import { app, db, appId, functions } from '../firebase.js';
 import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js';
-import { collection, query, orderBy, getDocs, limit, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, query, orderBy, getDocs, limit, doc, setDoc, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { escapeHtml } from './utils.js';
 
 const adminAuth = getAuth(app);
@@ -10,6 +10,8 @@ const adminAuth = getAuth(app);
 // ========== 푸시메시지 관리 (관리자 브로드캐스트) ==========
 const adminBroadcastPushNowFn = httpsCallable(functions, 'adminBroadcastPushNow');
 const scheduleAdminBroadcastPushFn = httpsCallable(functions, 'scheduleAdminBroadcastPush');
+const cancelAdminScheduledPushFn = httpsCallable(functions, 'cancelAdminScheduledPush');
+const deleteAdminBroadcastHistoryFn = httpsCallable(functions, 'deleteAdminBroadcastHistory');
 const ADMIN_PUSH_LANDING_LABELS = {
     dashboard: '밀당',
     timeline: '밀로그',
@@ -30,6 +32,11 @@ const ADMIN_RECURRING_INTERVAL_LABELS = {
     daily: '매일',
     weekly: '매주',
     monthly: '매월'
+};
+const ADMIN_PUSH_TARGET_ENV_LABELS = {
+    all: '전체',
+    production: '운영',
+    staging: '스테이징'
 };
 
 function formatAdminPushDate(ts) {
@@ -143,6 +150,14 @@ window.setAdminPushSendMode = function(mode) {
 export async function loadAdminPushMessagesPage() {
     window.setAdminPushSendMode('now');
     window.setAdminPushScheduleKind('once');
+    const nowLandingEl = document.getElementById('adminPushNowLanding');
+    const nowTargetEnvEl = document.getElementById('adminPushNowTargetEnv');
+    const schLandingEl = document.getElementById('adminPushScheduleLanding');
+    const schTargetEnvEl = document.getElementById('adminPushScheduleTargetEnv');
+    if (nowLandingEl) nowLandingEl.value = 'timeline';
+    if (nowTargetEnvEl) nowTargetEnvEl.value = 'staging';
+    if (schLandingEl) schLandingEl.value = 'timeline';
+    if (schTargetEnvEl) schTargetEnvEl.value = 'staging';
     setAdminPushScheduleMinDatetime();
     await refreshAdminScheduledPushes();
 }
@@ -156,7 +171,7 @@ window.refreshAdminScheduledPushes = async function() {
         const qy = query(coll, orderBy('scheduledAt', 'desc'), limit(40));
         const snap = await getDocs(qy);
         if (snap.empty) {
-            container.innerHTML = '<p class="text-center py-8 text-slate-400 text-sm">등록된 예약이 없습니다.</p>';
+            container.innerHTML = '<p class="text-center py-8 text-slate-400 text-sm">발송 기록이 없습니다.</p>';
             return;
         }
         const rows = snap.docs.map((d) => ({ ...d.data(), id: d.id }));
@@ -165,27 +180,35 @@ window.refreshAdminScheduledPushes = async function() {
             const stLabel = ADMIN_SCHEDULED_PUSH_STATUS_LABELS[st] || st;
             const land = ADMIN_PUSH_LANDING_LABELS[r.landingTab] || r.landingTab || '—';
             const canCancel = st === 'pending';
+            const canDelete = !canCancel;
             const title = escapeHtml((r.title || '').slice(0, 80));
             const bodyPreview = escapeHtml((r.body || '').slice(0, 120));
             const err = r.errorMessage ? `<p class="text-xs text-red-500 mt-1">${escapeHtml(String(r.errorMessage).slice(0, 200))}</p>` : '';
-            const isRecurring = r.scheduleType === 'recurring';
+            const targetEnv = r.targetEnv === 'production' || r.targetEnv === 'staging' ? r.targetEnv : 'all';
+            const targetEnvLabel = ADMIN_PUSH_TARGET_ENV_LABELS[targetEnv] || ADMIN_PUSH_TARGET_ENV_LABELS.all;
+            const scheduleType = r.scheduleType || 'once';
+            const isRecurring = scheduleType === 'recurring';
+            const isNow = scheduleType === 'now';
             const intv = r.recurringInterval || 'daily';
             const intvLabel = ADMIN_RECURRING_INTERVAL_LABELS[intv] || intv;
             const recurMeta = isRecurring
                 ? `<span class="text-xs text-slate-500">주기: ${escapeHtml(intvLabel)} · 종료: ${formatAdminPushDate(r.recurringEndAt)}</span>`
                 : '';
-            const whenLabel = isRecurring && st === 'pending'
-                ? `다음 발송: ${formatAdminPushDate(r.scheduledAt)}`
-                : `예약: ${formatAdminPushDate(r.scheduledAt)}`;
+            const whenLabel = isNow
+                ? `즉시 발송: ${formatAdminPushDate(r.sentAt || r.createdAt || r.scheduledAt)}`
+                : (isRecurring && st === 'pending'
+                    ? `다음 발송: ${formatAdminPushDate(r.scheduledAt)}`
+                    : `예약: ${formatAdminPushDate(r.scheduledAt)}`);
             return `
             <div class="px-4 py-3 hover:bg-slate-50/80 transition-colors">
                 <div class="flex flex-wrap items-start justify-between gap-2">
                     <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center gap-2 mb-1">
                             <span class="text-xs font-bold px-2 py-0.5 rounded-lg ${st === 'sent' || st === 'completed' ? 'bg-emerald-100 text-emerald-800' : st === 'pending' ? 'bg-amber-100 text-amber-800' : st === 'failed' ? 'bg-red-100 text-red-800' : st === 'cancelled' ? 'bg-slate-200 text-slate-600' : 'bg-slate-100 text-slate-700'}">${escapeHtml(stLabel)}</span>
-                            ${isRecurring ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-100 text-violet-800">주기</span>' : '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">1회</span>'}
+                            ${isNow ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-100 text-violet-800">즉시</span>' : (isRecurring ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-100 text-violet-800">주기</span>' : '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">1회</span>')}
                             <span class="text-xs text-slate-500">${whenLabel}</span>
                             <span class="text-xs text-violet-600 font-bold">→ ${escapeHtml(land)}</span>
+                            <span class="text-xs text-slate-500">대상: ${escapeHtml(targetEnvLabel)}</span>
                         </div>
                         ${recurMeta ? `<div class="mb-1">${recurMeta}</div>` : ''}
                         <p class="text-sm font-bold text-slate-800 truncate">${title || '(제목 없음)'}</p>
@@ -193,7 +216,8 @@ window.refreshAdminScheduledPushes = async function() {
                         ${st === 'sent' || st === 'completed' ? `<p class="text-[11px] text-slate-400 mt-1">마지막 발송: ${formatAdminPushDate(r.sentAt || r.lastSentAt)}</p>` : ''}
                         ${err}
                     </div>
-                    ${canCancel ? `<button type="button" onclick="window.cancelAdminScheduledPush(${JSON.stringify(r.id)})" class="shrink-0 px-3 py-1.5 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-100 transition-colors">예약 취소</button>` : ''}
+                    ${canCancel ? `<button type="button" onclick='window.cancelAdminScheduledPush(${JSON.stringify(r.id)})' class="shrink-0 px-3 py-1.5 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-100 transition-colors">예약 취소</button>` : ''}
+                    ${canDelete ? `<button type="button" onclick='window.deleteAdminBroadcastHistory(${JSON.stringify(r.id)})' class="shrink-0 px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors">삭제</button>` : ''}
                 </div>
             </div>`;
         }).join('')}</div>`;
@@ -206,12 +230,59 @@ window.refreshAdminScheduledPushes = async function() {
 window.cancelAdminScheduledPush = async function(jobId) {
     if (!jobId || !confirm('이 예약을 취소할까요?')) return;
     try {
-        const ref = doc(db, 'artifacts', appId, 'adminScheduledPushes', jobId);
-        await setDoc(ref, { status: 'cancelled', cancelledAt: serverTimestamp() }, { merge: true });
+        await cancelAdminScheduledPushFn({ jobId });
         await refreshAdminScheduledPushes();
     } catch (e) {
+        const msg = String(e?.message || e || '');
+        const maybeUndeployedCallable =
+            msg.includes('not-found') ||
+            msg.includes('UNIMPLEMENTED') ||
+            msg.includes('No function');
+        if (maybeUndeployedCallable) {
+            try {
+                const ref = doc(db, 'artifacts', appId, 'adminScheduledPushes', jobId);
+                await setDoc(ref, { status: 'cancelled', cancelledAt: serverTimestamp() }, { merge: true });
+                await refreshAdminScheduledPushes();
+                return;
+            } catch (fallbackErr) {
+                console.error('예약 취소 fallback 실패:', fallbackErr);
+                alert('취소 실패: ' + (fallbackErr?.message || fallbackErr));
+                return;
+            }
+        }
         console.error(e);
-        alert('취소 실패: ' + (e.message || e));
+        alert('취소 실패: ' + msg);
+    }
+};
+
+window.deleteAdminBroadcastHistory = async function(jobId) {
+    if (!jobId || !confirm('이 발송 기록을 삭제할까요?')) return;
+    try {
+        await deleteAdminBroadcastHistoryFn({ jobId });
+        await refreshAdminScheduledPushes();
+    } catch (e) {
+        const msg = String(e?.message || e || '');
+        const maybeUndeployedCallable =
+            msg.includes('not-found') ||
+            msg.includes('UNIMPLEMENTED') ||
+            msg.includes('No function') ||
+            msg.includes('CORS') ||
+            msg.includes('ERR_FAILED') ||
+            msg.includes('internal');
+        if (maybeUndeployedCallable) {
+            try {
+                const ref = doc(db, 'artifacts', appId, 'adminScheduledPushes', jobId);
+                await deleteDoc(ref);
+                await refreshAdminScheduledPushes();
+                return;
+            } catch (fallbackErr) {
+                console.error('발송 기록 삭제 fallback 실패:', fallbackErr);
+                alert('삭제 실패: ' + (fallbackErr?.message || fallbackErr));
+                return;
+            }
+        }
+        console.error(e);
+        alert('삭제 실패: ' + msg);
     }
 };
 
@@ -219,10 +290,12 @@ window.submitAdminPushNow = async function() {
     const titleEl = document.getElementById('adminPushNowTitle');
     const bodyEl = document.getElementById('adminPushNowBody');
     const landEl = document.getElementById('adminPushNowLanding');
+    const targetEnvEl = document.getElementById('adminPushNowTargetEnv');
     const btn = document.getElementById('adminPushNowBtn');
     const title = (titleEl?.value || '').trim();
     const body = (bodyEl?.value || '').trim();
-    const landingTab = landEl?.value || 'dashboard';
+    const landingTab = landEl?.value || 'timeline';
+    const targetEnv = targetEnvEl?.value || 'staging';
     if (!title) {
         alert('제목을 입력해 주세요.');
         return;
@@ -237,7 +310,7 @@ window.submitAdminPushNow = async function() {
         btn.textContent = '발송 중…';
     }
     try {
-        await adminBroadcastPushNowFn({ title, body, landingTab });
+        await adminBroadcastPushNowFn({ title, body, landingTab, targetEnv });
         alert('발송 요청이 처리되었습니다.');
         if (titleEl) titleEl.value = '';
         if (bodyEl) bodyEl.value = '';
@@ -263,10 +336,12 @@ window.submitAdminPushSchedule = async function() {
     const titleEl = document.getElementById('adminPushScheduleTitle');
     const bodyEl = document.getElementById('adminPushScheduleBody');
     const landEl = document.getElementById('adminPushScheduleLanding');
+    const targetEnvEl = document.getElementById('adminPushScheduleTargetEnv');
     const btn = document.getElementById('adminPushScheduleBtn');
     const title = (titleEl?.value || '').trim();
     const body = (bodyEl?.value || '').trim();
-    const landingTab = landEl?.value || 'dashboard';
+    const landingTab = landEl?.value || 'timeline';
+    const targetEnv = targetEnvEl?.value || 'staging';
     if (!title || !body) {
         alert('제목과 내용을 모두 입력해 주세요.');
         return;
@@ -305,6 +380,7 @@ window.submitAdminPushSchedule = async function() {
             title: title.slice(0, 80),
             body: body.slice(0, 240),
             landingTab,
+            targetEnv,
             recurringStartMs: startMs,
             recurringEndMs: endMs,
             recurringInterval
@@ -329,6 +405,7 @@ window.submitAdminPushSchedule = async function() {
             title: title.slice(0, 80),
             body: body.slice(0, 240),
             landingTab,
+            targetEnv,
             scheduledAtMs: at.getTime()
         };
     }

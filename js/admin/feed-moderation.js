@@ -113,7 +113,7 @@ async function renderFeedManagement() {
     
     try {
         await ensureFeedSharedKeysCache();
-        console.log('📋 피드 관리: 페이지', feedCurrentPage, '로드 중... (전체 타임라인)');
+        console.log('📋 피드 관리: 페이지', feedCurrentPage, '로드 중... (페이지 단위)');
         const { items } = await getFeedPage({ page: feedCurrentPage, pageSize: feedPageSize });
         const allMeals = items;
         
@@ -187,7 +187,7 @@ async function renderFeedManagement() {
             return dateB.localeCompare(dateA);
         });
         
-        // 페이지 단위로 이미 로드됨 (추가 slice 없음)
+        // 페이지 단위 로드 결과에서만 표시
         const totalPages = Math.max(1, Math.ceil(feedTotalCount / feedPageSize));
         const paginatedMeals = filteredMeals;
         
@@ -320,7 +320,10 @@ async function renderFeedManagement() {
                         <input type="checkbox" class="feed-item-checkbox" data-meal-id="${meal.id}" data-user-id="${meal.userId}" ${meal.isBestShare ? 'data-is-best="true"' : ''} ${meal.isDailyShare ? 'data-is-daily="true"' : ''} ${meal.isInsightShare ? 'data-is-insight="true"' : ''}>
                     </td>
                     <td class="px-2 py-3 align-middle text-center border-r border-slate-200 w-[56px] min-w-[56px]">
-                        <span class="text-xs font-bold text-slate-600">${oldFirstNumber}</span>
+                        <div class="flex flex-col items-center gap-1">
+                            <span class="text-xs font-bold text-slate-600">${oldFirstNumber}</span>
+                            ${isShared ? '<span class="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded">공유</span>' : ''}
+                        </div>
                     </td>
                     <td class="px-2 py-3 align-middle whitespace-nowrap text-center w-[96px] min-w-[96px] border-r border-slate-200">
                         <div class="text-xs text-slate-700 font-semibold leading-tight">${escapeHtml(dateTime.date)}</div>
@@ -513,6 +516,9 @@ window.feedGoToPage = async function(page) {
 // 피드 관리 새로고침
 window.refreshFeedManagement = function() {
     feedCurrentPage = 1;
+    feedLastDocsByPage = {};
+    feedTotalCount = 0;
+    feedSharedKeysCache = null;
     renderFeedManagement();
 }
 

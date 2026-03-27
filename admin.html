@@ -703,15 +703,25 @@
                                                 <label class="text-xs font-bold text-slate-500 block mb-1">내용 <span class="text-slate-400 font-normal">(최대 240자)</span></label>
                                                 <textarea id="adminPushNowBody" maxlength="240" rows="3" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 resize-y min-h-[4.5rem]" placeholder="짧은 안내 문구"></textarea>
                                             </div>
-                                            <div>
-                                                <label class="text-xs font-bold text-slate-500 block mb-1">탭 시 이동할 화면</label>
-                                                <select id="adminPushNowLanding" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-violet-500">
-                                                    <option value="dashboard">밀당</option>
-                                                    <option value="timeline">밀로그</option>
-                                                    <option value="gallery">모먼트</option>
-                                                    <option value="board">밀톡</option>
-                                                    <option value="settings">설정</option>
-                                                </select>
+                                            <div class="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label class="text-xs font-bold text-slate-500 block mb-1">탭 시 이동할 화면</label>
+                                                    <select id="adminPushNowLanding" class="w-full p-2.5 bg-violet-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-violet-500">
+                                                        <option value="dashboard">밀당</option>
+                                                        <option value="timeline" selected>밀로그</option>
+                                                        <option value="gallery">모먼트</option>
+                                                        <option value="board">밀톡</option>
+                                                        <option value="settings">설정</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label class="text-xs font-bold text-slate-500 block mb-1">발송 대상 환경</label>
+                                                    <select id="adminPushNowTargetEnv" class="w-full p-2.5 bg-violet-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-violet-500">
+                                                        <option value="all">전체</option>
+                                                        <option value="production">운영만</option>
+                                                        <option value="staging" selected>스테이징만</option>
+                                                    </select>
+                                                </div>
                                             </div>
                                             <button type="button" id="adminPushNowBtn" onclick="window.submitAdminPushNow()" class="w-full sm:w-auto py-3 px-6 bg-violet-600 text-white rounded-xl font-bold text-sm hover:bg-violet-700 shadow-sm transition-colors">지금 전체 발송</button>
                                         </div>
@@ -737,7 +747,7 @@
                                         </div>
                                         <div id="adminPushScheduleRecurringBlock" class="space-y-3 hidden">
                                             <p class="text-xs text-slate-500 leading-relaxed">시작 일시에 첫 발송 후, 주기마다 반복합니다. 종료 일시 이후에는 더 이상 잡히지 않습니다.</p>
-                                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                                 <div>
                                                     <label class="text-xs font-bold text-slate-500 block mb-1">시작 일시 (첫 발송)</label>
                                                     <input type="datetime-local" id="adminPushRecurringStart" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20">
@@ -746,9 +756,9 @@
                                                     <label class="text-xs font-bold text-slate-500 block mb-1">종료 일시 (이 시각까지 허용)</label>
                                                     <input type="datetime-local" id="adminPushRecurringEnd" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20">
                                                 </div>
-                                                <div class="sm:col-span-2">
+                                                <div>
                                                     <label class="text-xs font-bold text-slate-500 block mb-1">주기</label>
-                                                    <select id="adminPushRecurringInterval" class="w-full max-w-md p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500">
+                                                    <select id="adminPushRecurringInterval" class="w-full p-2.5 bg-amber-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500">
                                                         <option value="daily">매일 (같은 시각)</option>
                                                         <option value="weekly">매주 (7일마다, 같은 시각)</option>
                                                         <option value="monthly">매월 (같은 일·시각, 달에 없는 날은 말일로 보정)</option>
@@ -756,24 +766,32 @@
                                                 </div>
                                             </div>
                                         </div>
-                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-amber-100/80 pt-4">
+                                        <div class="grid grid-cols-2 gap-3 border-t border-amber-100/80 pt-4">
                                             <div>
                                                 <label class="text-xs font-bold text-slate-500 block mb-1">제목</label>
                                                 <input type="text" id="adminPushScheduleTitle" maxlength="80" autocomplete="off" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500" placeholder="알림 제목">
                                             </div>
+                                            <div class="sm:col-span-2">
+                                                <label class="text-xs font-bold text-slate-500 block mb-1">메시지</label>
+                                                <textarea id="adminPushScheduleBody" maxlength="240" rows="3" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 resize-y min-h-[4.5rem]" placeholder="내용"></textarea>
+                                            </div>
                                             <div>
                                                 <label class="text-xs font-bold text-slate-500 block mb-1">탭 시 화면</label>
-                                                <select id="adminPushScheduleLanding" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500">
+                                                <select id="adminPushScheduleLanding" class="w-full p-2.5 bg-amber-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500">
                                                     <option value="dashboard">밀당</option>
-                                                    <option value="timeline">밀로그</option>
+                                                    <option value="timeline" selected>밀로그</option>
                                                     <option value="gallery">모먼트</option>
                                                     <option value="board">밀톡</option>
                                                     <option value="settings">설정</option>
                                                 </select>
                                             </div>
-                                            <div class="sm:col-span-2">
-                                                <label class="text-xs font-bold text-slate-500 block mb-1">메시지</label>
-                                                <textarea id="adminPushScheduleBody" maxlength="240" rows="3" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 resize-y min-h-[4.5rem]" placeholder="내용"></textarea>
+                                            <div>
+                                                <label class="text-xs font-bold text-slate-500 block mb-1">발송 대상 환경</label>
+                                                <select id="adminPushScheduleTargetEnv" class="w-full p-2.5 bg-amber-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500">
+                                                    <option value="all">전체</option>
+                                                    <option value="production">운영만</option>
+                                                    <option value="staging" selected>스테이징만</option>
+                                                </select>
                                             </div>
                                             <div class="sm:col-span-2">
                                                 <button type="button" id="adminPushScheduleBtn" onclick="window.submitAdminPushSchedule()" class="py-3 px-6 bg-amber-600 text-white rounded-xl font-bold text-sm hover:bg-amber-700 shadow-sm transition-colors">예약 등록</button>
@@ -782,7 +800,7 @@
                                     </div>
                                     <div>
                                         <div class="flex items-center justify-between gap-2 mb-2">
-                                            <h3 class="text-sm font-bold text-slate-600">예약·발송 기록</h3>
+                                            <h3 class="text-sm font-bold text-slate-600">발송 기록</h3>
                                             <button type="button" onclick="window.refreshAdminScheduledPushes()" class="text-xs font-bold text-slate-500 hover:text-violet-600 px-2 py-1 rounded-lg hover:bg-slate-100 transition-colors">
                                                 <i class="fa-solid fa-arrows-rotate mr-1"></i>새로고침
                                             </button>

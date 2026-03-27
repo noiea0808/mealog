@@ -84,6 +84,12 @@ function showAdminPage(user) {
     switchAdminTab('dashboard');
 }
 
+function resetAdminScrollTop() {
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+}
+
 // 어드민 탭 전환 (기존 코드 유지 - switchAdminTab은 import했지만 내부 구현은 여기서)
 window.switchAdminTab = function(tab) {
     // 모든 탭 버튼 비활성화
@@ -109,6 +115,7 @@ window.switchAdminTab = function(tab) {
     if (activeTabContent) {
         activeTabContent.classList.remove('hidden');
     }
+    resetAdminScrollTop();
     
     // 탭별 데이터 새로고침
     if (tab === 'dashboard') {
@@ -492,6 +499,7 @@ window.switchMonitoringSidebar = function(section) {
     if (activeMainSection) {
         activeMainSection.classList.remove('hidden');
     }
+    resetAdminScrollTop();
     
     // 섹션별 데이터 로드
     if (section === 'feed') {
@@ -526,6 +534,7 @@ window.switchAlertsSidebar = function (section) {
     if (activeMainSection) {
         activeMainSection.classList.remove('hidden');
     }
+    resetAdminScrollTop();
     if (section === 'notice') {
         renderNotices();
     } else if (section === 'pushMessage') {
@@ -567,6 +576,7 @@ window.switchContentSidebar = function(section) {
     if (activeMainSection) {
         activeMainSection.classList.remove('hidden');
     }
+    resetAdminScrollTop();
     
     // 섹션별 데이터 로드
     if (section === 'mealog') {

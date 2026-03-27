@@ -134,8 +134,8 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
                 </div>
                 `;
                 })() : ''}
-                <div class="feed-post-actions px-6 py-3">
-                    <div class="feed-post-buttons flex items-center justify-between mb-2 pb-2 -mx-6 px-6 border-b border-slate-200">
+                <div class="feed-post-actions px-3 py-3">
+                    <div class="feed-post-buttons flex items-center justify-between mb-2 pb-2 -mx-3 px-3 border-b border-slate-200">
                         <div class="flex items-center gap-4">
                             <button onclick="window.toggleLike('${postId}')" class="post-like-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
                                 <i class="fa-regular fa-heart text-2xl text-slate-800 post-like-icon social-action-icon-stroke"></i>
@@ -167,10 +167,10 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
                         </div>
                     `;
                     })() : (!isBestShare && !isDailyShare && !isInsightShare && entryId && photo.userId && !isMyPost ? `<div class="shared-comment-fetch-placeholder mb-2 text-sm text-slate-800" data-post-id="${postId}" data-entry-id="${entryId}" data-owner-user-id="${photo.userId}" data-group-idx="${groupIdx}"><span class="text-xs text-slate-400">불러오는 중</span></div>` : '')}
-                    <div class="comment-section comments-empty ${((caption && (isBestShare || isDailyShare || isInsightShare)) || (comment && !isBestShare && !isDailyShare && !isInsightShare)) ? 'border-t border-slate-200 ' : ''}-mx-6 px-6 pt-1.5 mt-1" id="comment-section-${postId}">
+                    <div class="comment-section comments-empty ${((caption && (isBestShare || isDailyShare || isInsightShare)) || (comment && !isBestShare && !isDailyShare && !isInsightShare)) ? 'border-t border-slate-200 ' : ''}-mx-3 px-3 pt-1.5 mt-1" id="comment-section-${postId}">
                         <div class="post-comments-list mb-1 rounded-lg py-2 bg-white" data-post-id="${postId}" id="comments-list-${postId}"></div>
                         <button id="view-comments-${postId}" class="hidden text-xs text-slate-500 font-bold mb-1 hover:text-slate-700 active:text-slate-900 transition-colors" onclick="window.viewAllComments('${postId}')">댓글 더보기</button>
-                        <div id="comment-input-${postId}" class="hidden mt-1 py-3 -mx-6 px-6">
+                        <div id="comment-input-${postId}" class="hidden mt-1 py-3 -mx-3 px-3">
                             <div class="relative">
                                 <input type="text" id="comment-text-${postId}" placeholder="댓글을 입력하세요..." class="w-full px-3 py-2 pr-16 border border-slate-300 rounded-lg text-sm focus:outline-none bg-slate-100" onkeypress="if(event.key === 'Enter') window.submitComment('${postId}')">
                                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold cursor-pointer hover:text-emerald-700" ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); window.submitComment('${postId}')" onclick="window.submitComment('${postId}')">게시</span>

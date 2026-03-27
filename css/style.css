@@ -188,6 +188,27 @@ header .mealog-title {
     border-color: #475569; /* slate-600, 진한 회색 */
 }
 
+#generalCommentInput,
+#snackCommentInput {
+    border-left: 0 !important;
+    border-right: 0 !important;
+    border-top-left-radius: 0 !important;
+    border-top-right-radius: 0 !important;
+    border-bottom-left-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+    -webkit-tap-highlight-color: transparent;
+}
+#generalCommentInput:focus,
+#generalCommentInput:focus-visible,
+#generalCommentInput:active,
+#snackCommentInput:focus,
+#snackCommentInput:focus-visible,
+#snackCommentInput:active {
+    border-color: #e2e8f0 !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+
 /* 앨범 사진 아래 메뉴@장소 캡션: 나눔손글씨 가람연꽃 (눈누 CDN) */
 @font-face {
     font-family: '나눔손글씨 가람연꽃';
