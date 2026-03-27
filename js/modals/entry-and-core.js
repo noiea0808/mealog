@@ -57,15 +57,71 @@ export function setRecordPhotoAspectRatio(value) {
     renderPhotoPreviews(); // 등록 화면 다중 미리보기도 선택 비율로 갱신
 }
 
+/** 포커스된 입력이 고정 모달 안에 있을 때, WebView가 텍스트 레이어를 안 그리는 경우 재페인트 유도 */
+function nudgeEntryModalInputRepaint(entryModal) {
+    const el = document.activeElement;
+    if (!el || !entryModal.contains(el) || !el.matches?.('input, textarea')) return;
+    requestAnimationFrame(() => {
+        if (document.activeElement !== el) return;
+        void el.getBoundingClientRect();
+        if (typeof el.selectionStart === 'number' && typeof el.selectionEnd === 'number') {
+            const p = el.selectionEnd;
+            el.setSelectionRange(p, p);
+        }
+    });
+}
+
 /** 끼니 등록 모달: 키보드 열림 시 모달 높이를 viewport에 맞추고, 닫힘 시 네비바 영역 복원 */
 function initEntryModalKeyboardHandling(entryModal) {
     if (!entryModal || entryModal._keyboardHandlingInit) return;
     entryModal._keyboardHandlingInit = true;
     let baselineHeight = 0; // 모달 열릴 때 viewport 높이 (키보드 없음)
     let imeComposing = false; // 한글 등 IME 조합 중 여부 (조합 중 레이아웃 업데이트 시 텍스트 미표시 방지)
+    let lastAppliedVh = NaN;
+    let lastAppliedVtop = NaN;
+    let viewportGeomRaf = null;
+
+    const applyViewportGeometry = (vh, vtop) => {
+        if (!entryModal.classList.contains('keyboard-open')) return;
+        if (
+            !Number.isNaN(lastAppliedVh) &&
+            Math.abs(lastAppliedVh - vh) < 1 &&
+            Math.abs(lastAppliedVtop - vtop) < 1
+        ) {
+            return;
+        }
+        lastAppliedVh = vh;
+        lastAppliedVtop = vtop;
+        entryModal.style.height = vh + 'px';
+        entryModal.style.top = vtop + 'px';
+    };
+
+    const scheduleViewportGeometryFromVv = () => {
+        if (viewportGeomRaf != null) return;
+        viewportGeomRaf = requestAnimationFrame(() => {
+            viewportGeomRaf = null;
+            if (entryModal.classList.contains('hidden')) return;
+            if (!entryModal.classList.contains('keyboard-open')) return;
+            if (imeComposing) return;
+            const vv = window.visualViewport;
+            if (!vv) return;
+            const vh = vv.height;
+            const vtop = vv.offsetTop ?? 0;
+            applyViewportGeometry(vh, vtop);
+        });
+    };
+
     entryModal.querySelectorAll('input, textarea').forEach(el => {
         el.addEventListener('compositionstart', () => { imeComposing = true; });
-        el.addEventListener('compositionend', () => { imeComposing = false; });
+        el.addEventListener('compositionend', () => {
+            imeComposing = false;
+            nudgeEntryModalInputRepaint(entryModal);
+            scheduleViewportGeometryFromVv();
+        });
+        el.addEventListener('input', () => {
+            if (imeComposing) return;
+            nudgeEntryModalInputRepaint(entryModal);
+        });
     });
     const setKeyboardOpen = (open) => {
         if (open) {
@@ -73,10 +129,15 @@ function initEntryModalKeyboardHandling(entryModal) {
             const vv = window.visualViewport;
             const vh = vv?.height ?? window.innerHeight;
             const vtop = vv?.offsetTop ?? 0;
-            entryModal.style.height = vh + 'px';
-            entryModal.style.top = vtop + 'px';
+            applyViewportGeometry(vh, vtop);
         } else {
             entryModal.classList.remove('keyboard-open');
+            lastAppliedVh = NaN;
+            lastAppliedVtop = NaN;
+            if (viewportGeomRaf != null) {
+                cancelAnimationFrame(viewportGeomRaf);
+                viewportGeomRaf = null;
+            }
             entryModal.style.height = '';
             entryModal.style.top = '';
         }
@@ -100,7 +161,6 @@ function initEntryModalKeyboardHandling(entryModal) {
         }
     });
     if (window.visualViewport) {
-        let lastVh = 0, lastVtop = 0;
         const checkViewport = () => {
             if (entryModal.classList.contains('hidden')) return;
             const vh = window.visualViewport.height;
@@ -112,15 +172,10 @@ function initEntryModalKeyboardHandling(entryModal) {
             if (viewportRestored) {
                 setKeyboardOpen(false);
             } else if (isInputFocused) {
-                setKeyboardOpen(true);
-                // 한글 IME 조합 중에는 레이아웃 업데이트 생략 → 조합 텍스트 미표시 이슈 방지
+                entryModal.classList.add('keyboard-open');
+                // IME 조합 중에는 fixed 모달 height/top 변경 금지 (기존엔 setKeyboardOpen(true)로 조합 중에도 갱신되어 미표시 유발)
                 if (imeComposing) return;
-                // 값이 실제로 바뀐 경우에만 스타일 업데이트 (불필요한 reflow 감소)
-                if (Math.abs(lastVh - vh) < 1 && Math.abs(lastVtop - vtop) < 1) return;
-                lastVh = vh;
-                lastVtop = vtop;
-                entryModal.style.height = vh + 'px';
-                entryModal.style.top = vtop + 'px';
+                scheduleViewportGeometryFromVv();
             } else {
                 setKeyboardOpen(false);
             }
@@ -1583,6 +1638,22 @@ export function removePhoto(idx) {
     state.currentPhotos.splice(idx, 1);
     renderPhotoPreviews();
     updateShareIndicator();
+}
+
+/** 사진 순서: 인접 항목과 교환 (delta -1 = 앞쪽, +1 = 뒤쪽) */
+export function movePhotoOrder(idx, delta) {
+    const state = appState;
+    const photos = state.currentPhotos;
+    if (!Array.isArray(photos) || photos.length < 2) return;
+    const i = Number(idx);
+    const d = Number(delta);
+    if (!Number.isInteger(i) || !Number.isInteger(d) || i < 0 || i >= photos.length) return;
+    const j = i + d;
+    if (j < 0 || j >= photos.length) return;
+    const tmp = photos[i];
+    photos[i] = photos[j];
+    photos[j] = tmp;
+    renderPhotoPreviews();
 }
 
 export function updateShareIndicator() {

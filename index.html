@@ -485,31 +485,57 @@
 
     <!-- Email Auth Modal -->
     <div id="emailAuthModal" class="hidden fixed inset-0 z-[400] bg-slate-900/50 flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-white rounded-2xl p-6 w-[80%] max-w-[20rem] shadow-2xl">
-            <div class="flex justify-between items-center mb-6">
-                <h3 id="emailAuthTitle" class="text-lg font-bold text-slate-800">이메일 로그인</h3>
-                <button id="emailAuthCloseBtn"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
+        <div class="bg-white rounded-2xl w-[80%] max-w-[20rem] shadow-2xl overflow-hidden flex flex-col">
+            <div class="p-6 pb-5">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 id="emailAuthTitle" class="text-lg font-bold text-slate-800">이메일 로그인</h3>
+                    <button type="button" id="emailAuthCloseBtn" class="p-1 -m-1 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors" aria-label="닫기"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
+                <div class="space-y-3 mb-6">
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 block mb-1 ml-1 uppercase">이메일</label>
+                        <input type="email" id="emailInput" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400 transition-colors" placeholder="name@example.com">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 block mb-1 ml-1 uppercase">비밀번호</label>
+                        <input type="password" id="passwordInput" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400 transition-colors" placeholder="6자리 이상">
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="rememberEmailCheck" class="mr-2">
+                        <label for="rememberEmailCheck" class="text-xs text-slate-500">이메일 기억하기</label>
+                    </div>
+                </div>
+                <div id="emailAuthFooterLinks" class="flex flex-nowrap items-center justify-center gap-x-2 gap-y-1 text-sm">
+                    <button type="button" id="emailPasswordResetLink" class="shrink-0 text-emerald-600 font-medium underline underline-offset-2 hover:text-emerald-700">비밀번호 찾기</button>
+                    <span id="emailAuthFooterSep" class="shrink-0 text-slate-300 select-none" aria-hidden="true">|</span>
+                    <button type="button" id="emailAuthToggleBtn" class="shrink-0 text-emerald-600 font-bold underline underline-offset-2 hover:text-emerald-800">회원가입</button>
+                </div>
             </div>
-            <div class="space-y-3 mb-6">
-                <div>
-                    <label class="text-[10px] font-bold text-slate-400 block mb-1 ml-1 uppercase">이메일</label>
-                    <input type="email" id="emailInput" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400 transition-colors" placeholder="name@example.com">
-                </div>
-                <div>
-                    <label class="text-[10px] font-bold text-slate-400 block mb-1 ml-1 uppercase">비밀번호</label>
-                    <input type="password" id="passwordInput" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400 transition-colors" placeholder="6자리 이상">
-                </div>
-                <!-- 이메일 기억하기 체크박스 추가 -->
-                <div class="flex items-center mb-4">
-                    <input type="checkbox" id="rememberEmailCheck" class="mr-2">
-                    <label for="rememberEmailCheck" class="text-xs text-slate-500">이메일 기억하기</label>
-                </div>
-                <div class="text-center">
-                    <button type="button" id="emailPasswordResetLink" class="text-sm text-emerald-600 font-medium underline underline-offset-2 hover:text-emerald-700">비밀번호를 잊으셨나요?</button>
-                </div>
+            <div id="emailAuthBtn" role="button" tabindex="0" aria-label="로그인" class="w-full min-h-[52px] py-4 px-6 bg-emerald-600 text-white text-base font-bold flex items-center justify-center border-t border-emerald-500/30 active:bg-emerald-700 transition-colors cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/40 rounded-b-2xl">로그인</div>
+        </div>
+    </div>
+
+    <!-- 비밀번호 재설정: 발송 확인 (이메일 로그인 모달 위에 표시) -->
+    <div id="passwordResetConfirmModal" class="hidden fixed inset-0 z-[410] bg-slate-900/50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 class="text-lg font-bold text-slate-800 mb-2">비밀번호 재설정</h3>
+            <p class="text-sm text-slate-600 mb-2 leading-relaxed">아래 주소로 재설정 메일을 보내시겠습니까?</p>
+            <p id="passwordResetConfirmEmail" class="text-sm font-bold text-slate-800 mb-6 break-all"></p>
+            <div class="flex gap-2">
+                <button type="button" id="passwordResetConfirmCancelBtn" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-200 transition-colors">취소</button>
+                <button type="button" id="passwordResetConfirmSendBtn" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-colors">메일 보내기</button>
             </div>
-            <button id="emailAuthBtn" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-md active:bg-emerald-700 transition-colors mb-4">로그인</button>
-            <button id="emailAuthToggleBtn" class="w-full text-sm text-slate-500">계정이 없으신가요? <span class="text-emerald-600 font-bold underline">회원가입</span></button>
+        </div>
+    </div>
+
+    <!-- 비밀번호 재설정: 발송 완료 안내 -->
+    <div id="passwordResetSuccessModal" class="hidden fixed inset-0 z-[420] bg-slate-900/50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 class="text-lg font-bold text-slate-800 mb-2">메일을 보냈어요</h3>
+            <p class="text-sm text-slate-600 mb-6 leading-relaxed">
+                입력하신 이메일로 비밀번호 재설정 링크를 보냈습니다. 수신함을 확인해 주세요. 메일이 보이지 않으면 스팸함도 함께 확인해 주세요.
+            </p>
+            <button type="button" id="passwordResetSuccessOkBtn" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-colors">확인</button>
         </div>
     </div>
 
@@ -810,8 +836,13 @@
         </header>
 
         <div id="trackerSection" class="sticky z-40 px-6 py-3 bg-white border-b border-slate-100 shadow-sm safe-area-tracker">
-            <div id="trackerHeader" class="flex justify-between items-center mb-2">
-                <span id="trackerTitle" class="text-sm font-black text-slate-800 tracking-tight uppercase">날짜 선택</span>
+            <div id="trackerHeader" class="flex justify-between items-center mb-2 gap-2">
+                <div class="flex items-center gap-1 min-w-0 flex-1">
+                    <span id="trackerTitle" class="text-sm font-black text-slate-800 tracking-tight uppercase truncate">날짜 선택</span>
+                    <button type="button" id="trackerMonthCalendarBtn" class="tracker-calendar-icon-btn flex-shrink-0 p-1 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 active:opacity-80 transition-colors" aria-label="월 캘린더 열기" title="월 캘린더">
+                        <i class="fa-regular fa-calendar text-[15px] leading-none" aria-hidden="true"></i>
+                    </button>
+                </div>
                 <div id="trackerTabs" class="flex p-1 bg-slate-100 rounded-lg gap-1 flex-shrink-0">
                     <button id="btn-view-list" class="view-tab active">전체</button>
                     <button id="btn-view-page" class="view-tab inactive">일간</button>
@@ -1223,6 +1254,7 @@
             <button id="nav-gallery" type="button" class="text-slate-300 flex justify-center items-center py-1 flex-1">
                 <span class="relative inline-flex items-center justify-center">
                     <span class="demo-nav-guide-dot hidden absolute -top-px -right-0.5 z-10 h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
+                    <span class="nav-feed-update-dot hidden absolute -top-px -right-0.5 z-[11] h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
                     <i class="fa-solid fa-images text-xl"></i>
                 </span>
             </button>
@@ -1235,6 +1267,7 @@
             <button id="nav-board" type="button" class="text-slate-300 flex justify-center items-center py-1 flex-1">
                 <span class="relative inline-flex items-center justify-center">
                     <span class="demo-nav-guide-dot hidden absolute -top-px -right-0.5 z-10 h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
+                    <span class="nav-feed-update-dot hidden absolute -top-px -right-0.5 z-[11] h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
                     <i class="fa-solid fa-comments text-xl"></i>
                 </span>
             </button>
@@ -1251,6 +1284,25 @@
             <button type="button" id="demoNavGuideCloseBtn" class="absolute top-2 right-2 w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-600 active:text-slate-700 transition-colors" aria-label="닫기"><i class="fa-solid fa-xmark text-sm"></i></button>
             <h3 id="demoNavGuideTitle" class="text-sm font-black text-slate-900 tracking-tight"></h3>
             <p id="demoNavGuideDesc" class="text-sm text-slate-700 mt-1 leading-relaxed"></p>
+        </div>
+    </div>
+
+    <!-- 트래커 월 캘린더 (기록 여부 = 타임라인 트래커와 동일 로직) -->
+    <div id="trackerMonthCalendarModal" class="hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="trackerMonthCalendarHeading">
+        <button type="button" id="trackerMonthCalendarBackdrop" class="absolute inset-0 z-0 cursor-default border-0 bg-slate-900/45 p-0 backdrop-blur-[2px]" aria-label="닫기"></button>
+        <div class="relative z-10 w-full max-w-[19rem] rounded-2xl border border-slate-100 bg-white p-4 shadow-xl">
+            <div class="mb-3 flex items-center justify-between gap-2">
+                <button type="button" id="trackerMonthPrevMonth" class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-lg font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800" aria-label="이전 달">‹</button>
+                <h2 id="trackerMonthCalendarHeading" class="min-w-0 flex-1 text-center text-base font-black tracking-tight text-slate-800">2026년 3월</h2>
+                <div class="flex flex-shrink-0 items-center gap-0.5">
+                    <button type="button" id="trackerMonthNextMonth" class="flex h-9 w-9 items-center justify-center rounded-xl text-lg font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800" aria-label="다음 달">›</button>
+                    <button type="button" id="trackerMonthCalendarClose" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i class="fa-solid fa-xmark text-lg"></i></button>
+                </div>
+            </div>
+            <div class="mb-1.5 grid grid-cols-7 gap-1 text-center text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
+            </div>
+            <div id="trackerMonthCalendarGrid" class="grid grid-cols-7 gap-1"></div>
         </div>
     </div>
 

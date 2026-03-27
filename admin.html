@@ -449,12 +449,19 @@
                                 <thead class="admin-users-thead bg-slate-50 border-b border-slate-200">
                                     <tr>
                                         <th data-page="1 2" class="px-2 text-center text-slate-600 w-10 min-w-[2.5rem]">
-                                            <label class="flex justify-center items-center min-h-[2.75rem] cursor-pointer">
-                                                <input type="checkbox" id="adminUsersSelectAll" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" title="전체 선택">
-                                            </label>
+                                            <div class="flex flex-col items-center justify-center gap-1 min-h-[2.75rem]">
+                                                <label class="flex justify-center items-center cursor-pointer">
+                                                    <input type="checkbox" id="adminUsersSelectAll" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" title="전체 선택">
+                                                </label>
+                                                <button type="button" class="admin-users-sort leading-none px-0.5 py-0.5 text-slate-500 hover:text-slate-800 rounded" data-sort-key="deleteRequested" title="삭제 요청 여부 정렬">
+                                                    <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span>
+                                                </button>
+                                            </div>
                                         </th>
                                         <th data-page="1 2" class="px-2 text-center min-w-[2.5rem]">
-                                            <span class="flex min-h-[2.75rem] items-center justify-center w-full text-xs font-bold text-slate-600 uppercase leading-tight">번호</span>
+                                            <button type="button" class="admin-users-sort min-h-[2.75rem] text-center leading-snug px-1 py-1.5 text-slate-700 hover:text-slate-900 rounded-md w-full" data-sort-key="pageFetchIndex" title="페이지 내 원본 조회 순서">
+                                                <span class="line-clamp-2 text-center text-xs font-bold text-slate-600 uppercase leading-tight">번호 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span></span>
+                                            </button>
                                         </th>
                                         <th data-page="1 2" class="px-3 text-center min-w-[5rem] max-w-[9rem]">
                                             <button type="button" class="admin-users-sort min-h-[2.75rem] text-center leading-snug px-1 py-1.5 text-slate-700 hover:text-slate-900 rounded-md" data-sort-key="email">
@@ -467,10 +474,14 @@
                                             </button>
                                         </th>
                                         <th data-page="1 2" class="px-2 text-center min-w-[4rem]">
-                                            <span class="flex min-h-[2.75rem] items-center justify-center w-full text-xs font-bold text-slate-600 uppercase leading-tight">생년월일</span>
+                                            <button type="button" class="admin-users-sort min-h-[2.75rem] text-center leading-snug px-1 py-1.5 text-slate-700 hover:text-slate-900 rounded-md w-full" data-sort-key="birthdate">
+                                                <span class="line-clamp-2 text-center text-xs font-bold text-slate-600 uppercase leading-tight">생년월일 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span></span>
+                                            </button>
                                         </th>
                                         <th data-page="1 2" class="px-2 text-center min-w-[2.5rem]">
-                                            <span class="flex min-h-[2.75rem] items-center justify-center w-full text-xs font-bold text-slate-600 uppercase leading-tight">성별</span>
+                                            <button type="button" class="admin-users-sort min-h-[2.75rem] text-center leading-snug px-1 py-1.5 text-slate-700 hover:text-slate-900 rounded-md w-full" data-sort-key="gender">
+                                                <span class="flex min-h-[2.75rem] items-center justify-center w-full text-xs font-bold text-slate-600 leading-tight">성별 <span class="admin-users-sort-indicator text-[10px] text-slate-400 shrink-0" aria-hidden="true">↕</span></span>
+                                            </button>
                                         </th>
                                         <th data-page="1" class="px-3 text-center min-w-[2.5rem]">
                                             <button type="button" class="admin-users-sort min-h-[2.75rem] text-center leading-snug px-1 py-1.5 text-slate-700 hover:text-slate-900 rounded-md" data-sort-key="loginMethod">
@@ -492,8 +503,15 @@
                                                 <span class="line-clamp-2 text-center text-xs font-bold text-slate-600 uppercase break-words">마지막<br>로그인 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span></span>
                                             </button>
                                         </th>
-                                        <th data-page="1" class="px-1.5 text-center text-xs font-bold text-slate-600 min-w-[3.25rem] max-w-[4rem] whitespace-normal leading-snug" title="글쓰기 금지·공유 금지">
-                                            <span class="inline-flex min-h-[2.75rem] flex-col items-center justify-center w-full gap-0 leading-tight"><span class="whitespace-nowrap">활동</span><span class="whitespace-nowrap">제한</span></span>
+                                        <th data-page="1" class="px-2 text-center min-w-[3.5rem] max-w-[4.5rem]">
+                                            <button type="button" class="admin-users-sort min-h-[2.75rem] text-center leading-snug px-0.5 py-1 text-slate-700 hover:text-slate-900 rounded-md w-full" data-sort-key="signupToLastLoginDays" title="가입 시각~마지막 로그인 시각 사이를 24시간 단위로 나눈 뒤 내림한 일 수. 0일=그 차이가 24시간 미만. −=게스트, 가입일/마지막로그인 없음, 날짜 오류, 로그인이 가입보다 이른 경우">
+                                                <span class="flex min-h-[2.75rem] flex-col items-center justify-center w-full text-xs font-bold text-slate-600 leading-snug text-center">활동일수 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span></span>
+                                            </button>
+                                        </th>
+                                        <th data-page="1" class="px-1.5 text-center min-w-[3.25rem] max-w-[4rem] whitespace-normal leading-snug" title="글쓰기 금지·공유 금지">
+                                            <button type="button" class="admin-users-sort min-h-[2.75rem] text-center leading-tight px-0.5 py-1 text-slate-700 hover:text-slate-900 rounded-md w-full" data-sort-key="activityBan">
+                                                <span class="inline-flex min-h-[2.75rem] flex-col items-center justify-center w-full gap-0 leading-tight text-xs font-bold text-slate-600"><span class="whitespace-nowrap">활동</span><span class="whitespace-nowrap">제한 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span></span></span>
+                                            </button>
                                         </th>
                                         <th data-page="2" class="px-3 text-center min-w-[2.5rem]">
                                             <button type="button" class="admin-users-sort min-h-[2.75rem] text-center leading-snug px-1 py-1.5 text-slate-700 hover:text-slate-900 rounded-md" data-sort-key="timelineCount">
@@ -514,7 +532,7 @@
                                 </thead>
                                 <tbody id="usersContainer" class="divide-y divide-slate-100">
                                     <tr>
-                                        <td colspan="14" class="px-4 py-8 text-center text-slate-400">
+                                        <td colspan="15" class="px-4 py-8 text-center text-slate-400">
                                             <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
                                             <p>로딩 중...</p>
                                         </td>
@@ -710,12 +728,46 @@
                                         </div>
                                     </div>
                                     <div id="adminPushPanelSchedule" role="tabpanel" aria-labelledby="adminPushModeTabSchedule" class="rounded-2xl border border-slate-200 bg-gradient-to-b from-amber-50/40 to-white p-4 sm:p-5 space-y-4 shadow-sm hidden">
-                                        <p class="text-sm text-slate-600">예약 일시·메시지를 입력한 뒤 <strong class="text-slate-800">예약 등록</strong>하면 해당 시각에 자동 발송됩니다.</p>
-                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                            <div class="sm:col-span-2">
-                                                <label class="text-xs font-bold text-slate-500 block mb-1">예약 일시 <span class="text-slate-400 font-normal">(이 PC·기기 로컬 시각)</span></label>
+                                        <p class="text-sm text-slate-600">예약 방식을 고른 뒤 일시·메시지를 입력하고 <strong class="text-slate-800">예약 등록</strong>합니다. (로컬 시각 기준)</p>
+                                        <div>
+                                            <p class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">예약 방식</p>
+                                            <div class="inline-flex w-full max-w-lg rounded-xl border border-slate-200 bg-slate-100/80 p-1 gap-1" role="tablist" aria-label="예약 방식">
+                                                <button type="button" role="tab" id="adminPushScheduleKindOnce" aria-selected="true" onclick="window.setAdminPushScheduleKind('once')" class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-bold transition-all bg-white text-amber-800 shadow-sm ring-1 ring-amber-200/70">
+                                                    특정 일시 1회
+                                                </button>
+                                                <button type="button" role="tab" id="adminPushScheduleKindRecurring" aria-selected="false" onclick="window.setAdminPushScheduleKind('recurring')" class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-bold transition-all text-slate-500 hover:text-slate-700 hover:bg-white/60">
+                                                    주기적 발송
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div id="adminPushScheduleOnceBlock" class="space-y-3">
+                                            <div>
+                                                <label class="text-xs font-bold text-slate-500 block mb-1">발송 일시</label>
                                                 <input type="datetime-local" id="adminPushScheduleWhen" class="w-full max-w-md p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20">
                                             </div>
+                                        </div>
+                                        <div id="adminPushScheduleRecurringBlock" class="space-y-3 hidden">
+                                            <p class="text-xs text-slate-500 leading-relaxed">시작 일시에 첫 발송 후, 주기마다 반복합니다. 종료 일시 이후에는 더 이상 잡히지 않습니다.</p>
+                                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <div>
+                                                    <label class="text-xs font-bold text-slate-500 block mb-1">시작 일시 (첫 발송)</label>
+                                                    <input type="datetime-local" id="adminPushRecurringStart" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20">
+                                                </div>
+                                                <div>
+                                                    <label class="text-xs font-bold text-slate-500 block mb-1">종료 일시 (이 시각까지 허용)</label>
+                                                    <input type="datetime-local" id="adminPushRecurringEnd" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20">
+                                                </div>
+                                                <div class="sm:col-span-2">
+                                                    <label class="text-xs font-bold text-slate-500 block mb-1">주기</label>
+                                                    <select id="adminPushRecurringInterval" class="w-full max-w-md p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500">
+                                                        <option value="daily">매일 (같은 시각)</option>
+                                                        <option value="weekly">매주 (7일마다, 같은 시각)</option>
+                                                        <option value="monthly">매월 (같은 일·시각, 달에 없는 날은 말일로 보정)</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-amber-100/80 pt-4">
                                             <div>
                                                 <label class="text-xs font-bold text-slate-500 block mb-1">제목</label>
                                                 <input type="text" id="adminPushScheduleTitle" maxlength="80" autocomplete="off" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500" placeholder="알림 제목">

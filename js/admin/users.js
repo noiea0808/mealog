@@ -9,10 +9,18 @@ import { escapeHtml } from './utils.js';
 const adminAuth = getAuth(app);
 
 // 사용자 테이블 정렬 상태/캐시
-let usersCache = null; // 마지막으로 로드된 사용자 목록 (정렬 전 원본)
+let usersCache = null; // 서버 페이지 모드일 때만: 현재 페이지 원본
+/** 정렬·페이지 슬라이스용 전체 목록(한 번 로드 후 메모리 유지). null이면 서버 페이지네이션만 사용 */
+let usersFullListRaw = null;
 let usersSortState = { key: 'createdAt', dir: 'desc' };
 
 const USERS_SORT_DEFAULT_DIR = {
+    deleteRequested: 'desc',
+    pageFetchIndex: 'asc',
+    birthdate: 'asc',
+    gender: 'asc',
+    signupToLastLoginDays: 'desc',
+    activityBan: 'desc',
     loginMethod: 'asc',
     email: 'asc',
     nickname: 'asc',
@@ -74,6 +82,36 @@ function normalizeNumber(v) {
     return Number.isFinite(n) ? n : 0;
 }
 
+/** 가입일(createdAt)과 마지막 로그인(lastLoginAt) 사이 경과 일 수 (내림, 24시간 단위). 둘 중 하나 없으면 null. */
+function daysBetweenSignupAndLastLogin(createdAt, lastLoginAt) {
+    const c = createdAt ? (createdAt instanceof Date ? createdAt : new Date(createdAt)) : null;
+    const l = lastLoginAt ? (lastLoginAt instanceof Date ? lastLoginAt : new Date(lastLoginAt)) : null;
+    if (!c || !l) return null;
+    const ct = c.getTime();
+    const lt = l.getTime();
+    if (!Number.isFinite(ct) || !Number.isFinite(lt)) return null;
+    if (lt < ct) return null;
+    return Math.floor((lt - ct) / (1000 * 60 * 60 * 24));
+}
+
+/** 생년월일 문자열을 정렬용 키로 변환 (없으면 null) */
+function birthdateSortComparable(birthdate) {
+    const s = birthdate == null ? '' : String(birthdate).trim();
+    if (!s) return null;
+    const digits = s.replace(/\D/g, '');
+    if (digits.length === 8) return digits;
+    const t = Date.parse(s);
+    if (Number.isFinite(t)) return String(t);
+    return s.toLowerCase();
+}
+
+/** 성별 정렬: 남 → 여 → 미입력 */
+function genderSortRank(gender) {
+    if (gender === 'male') return 1;
+    if (gender === 'female') return 2;
+    return null;
+}
+
 function normalizeDateValue(v) {
     if (!v) return null;
     if (v instanceof Date) return v.getTime();
@@ -128,6 +166,36 @@ function sortUsersForTable(users, currentVersion) {
         let av;
         let bv;
         switch (key) {
+            case 'deleteRequested':
+                av = a?.deleteRequested ? 1 : 0;
+                bv = b?.deleteRequested ? 1 : 0;
+                return compareWithNullsLast(av, bv, dir);
+            case 'pageFetchIndex':
+                av = typeof a?.pageFetchIndex === 'number' ? a.pageFetchIndex : null;
+                bv = typeof b?.pageFetchIndex === 'number' ? b.pageFetchIndex : null;
+                return compareWithNullsLast(av, bv, dir);
+            case 'birthdate':
+                av = birthdateSortComparable(a?.birthdate);
+                bv = birthdateSortComparable(b?.birthdate);
+                return compareWithNullsLast(av, bv, dir);
+            case 'gender':
+                av = genderSortRank(a?.gender);
+                bv = genderSortRank(b?.gender);
+                return compareWithNullsLast(av, bv, dir);
+            case 'signupToLastLoginDays':
+                av = a?.signupToLastLoginDays;
+                bv = b?.signupToLastLoginDays;
+                if (av !== null && av !== undefined && typeof av !== 'number') av = null;
+                if (bv !== null && bv !== undefined && typeof bv !== 'number') bv = null;
+                return compareWithNullsLast(av, bv, dir);
+            case 'activityBan':
+                av = typeof a?.activityBanLevel === 'number' ? a.activityBanLevel : 0;
+                bv = typeof b?.activityBanLevel === 'number' ? b.activityBanLevel : 0;
+                return compareWithNullsLast(av, bv, dir);
+            case 'email':
+                av = normalizeString(a?.email || a?.userId);
+                bv = normalizeString(b?.email || b?.userId);
+                return compareWithNullsLast(av, bv, dir);
             case 'timelineCount':
             case 'albumShareCount':
             case 'talkCount':
@@ -187,8 +255,8 @@ function initUsersSortHandlers() {
                 usersSortState.dir = USERS_SORT_DEFAULT_DIR[key] || 'asc';
             }
             updateUsersSortHeaderUI();
-            // 캐시를 재정렬하여 즉시 반영 (재조회 없음)
-            renderUsers({ useCacheOnly: true });
+            // 전체 목록 기준 정렬(최초에는 전체 로드 후 슬라이스)
+            renderUsers({ loadFullListForSort: true });
         });
     });
     updateUsersSortHeaderUI();
@@ -332,6 +400,12 @@ async function getUsers(options = {}) {
             const albumShareCount = albumShareCountMap.get(userId) ?? 0;
             const talkCount = talkCountMap.get(userId) ?? 0;
 
+            const activityBanLevel = (bannedWrite ? 1 : 0) + (bannedShare ? 1 : 0);
+            let signupToLastLoginDays = null;
+            if (loginMethod !== '게스트') {
+                signupToLastLoginDays = daysBetweenSignupAndLastLogin(createdAt, lastLoginAt);
+            }
+
             users.push({
                 userId,
                 nickname,
@@ -351,7 +425,10 @@ async function getUsers(options = {}) {
                 lastLoginAt,
                 bannedShare,
                 bannedWrite,
-                deleteRequested
+                deleteRequested,
+                pageFetchIndex: i,
+                activityBanLevel,
+                signupToLastLoginDays
             });
         }
 
@@ -362,6 +439,34 @@ async function getUsers(options = {}) {
     }
 }
 
+/** 전체 사용자를 페이지 단위로 로드해 합침 — 정렬은 이 배열 전체 기준 */
+async function fetchAllUsersEnriched() {
+    adminUsersLastDocsByPage = {};
+    const all = [];
+    let page = 1;
+    let hasMore = true;
+    while (hasMore) {
+        const result = await getUsers({ page, pageSize: USERS_PER_PAGE });
+        if (page === 1) {
+            adminUsersTotalCount = result.totalCount;
+        }
+        result.users.forEach((u, i) => {
+            u.pageFetchIndex = all.length + i;
+            all.push(u);
+        });
+        hasMore = result.hasMore === true && result.users.length > 0;
+        page += 1;
+        if (result.users.length === 0) break;
+    }
+    return all;
+}
+
+function invalidateUsersTableCache() {
+    usersCache = null;
+    usersFullListRaw = null;
+    adminUsersLastDocsByPage = {};
+}
+
 // 사용자 목록 렌더링
 export async function renderUsers(options = {}) {
     const container = document.getElementById('usersContainer');
@@ -370,16 +475,33 @@ export async function renderUsers(options = {}) {
         return;
     }
     
-    container.innerHTML = '<tr><td colspan="14" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
+    container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
     
     try {
         console.log('renderUsers 시작');
         // 헤더 정렬 핸들러는 한 번만 바인딩
         initUsersSortHandlers();
         
+        const loadFullListForSort = options?.loadFullListForSort === true;
+        if (loadFullListForSort && !usersFullListRaw) {
+            container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>전체 사용자 목록을 불러오는 중…</p></td></tr>';
+            try {
+                usersFullListRaw = await fetchAllUsersEnriched();
+            } catch (e) {
+                console.error('전체 사용자 로드 실패:', e);
+                invalidateUsersTableCache();
+                const errMsg = (e && (e.message || e.code || String(e))) || '알 수 없는 오류';
+                container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>전체 목록을 불러오지 못했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
+                return;
+            }
+        }
+
         let users;
         const useCacheOnly = options?.useCacheOnly === true;
-        if (usersCache && Array.isArray(usersCache) && useCacheOnly) {
+
+        if (usersFullListRaw !== null && Array.isArray(usersFullListRaw)) {
+            users = usersFullListRaw;
+        } else if (usersCache && Array.isArray(usersCache) && useCacheOnly) {
             users = usersCache;
         } else if (useCacheOnly) {
             users = [];
@@ -392,7 +514,7 @@ export async function renderUsers(options = {}) {
         console.log('getUsers 결과:', users.length, '명 (페이지', adminUsersListPage, '/ 총', adminUsersTotalCount, '명)');
         
         if (users.length === 0) {
-            container.innerHTML = '<tr><td colspan="14" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
+            container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
             updateAdminUsersListPagination(adminUsersTotalCount, Math.max(1, Math.ceil(adminUsersTotalCount / USERS_PER_PAGE)));
             try { applyAdminUsersPageVisibility(adminUsersCurrentPage); } catch (_) {}
             return;
@@ -401,19 +523,28 @@ export async function renderUsers(options = {}) {
         // 최신 약관 버전 가져오기
         const currentVersion = await getCurrentTermsVersion();
         
-        // 정렬 적용 (현재 페이지 내에서만)
         const sortedUsers = sortUsersForTable(users, currentVersion);
         updateUsersSortHeaderUI();
         
-        const totalListPages = Math.max(1, Math.ceil(adminUsersTotalCount / USERS_PER_PAGE));
+        const totalCountForPaging = usersFullListRaw !== null && Array.isArray(usersFullListRaw)
+            ? usersFullListRaw.length
+            : adminUsersTotalCount;
+        const totalListPages = Math.max(1, Math.ceil(totalCountForPaging / USERS_PER_PAGE));
         if (adminUsersListPage > totalListPages) adminUsersListPage = totalListPages;
-        const usersToShow = sortedUsers;
+
+        let usersToShow;
+        if (usersFullListRaw !== null && Array.isArray(usersFullListRaw)) {
+            const startIdx = (adminUsersListPage - 1) * USERS_PER_PAGE;
+            usersToShow = sortedUsers.slice(startIdx, startIdx + USERS_PER_PAGE);
+        } else {
+            usersToShow = sortedUsers;
+        }
         
-        updateAdminUsersListPagination(adminUsersTotalCount, totalListPages);
+        updateAdminUsersListPagination(totalCountForPaging, totalListPages);
         
-        const start = (adminUsersListPage - 1) * USERS_PER_PAGE + 1;
-        const end = start + usersToShow.length - 1;
-        console.log(`${usersToShow.length}명 표시 (${start}-${end} / ${adminUsersTotalCount}명).`);
+        const start = totalCountForPaging === 0 ? 0 : (adminUsersListPage - 1) * USERS_PER_PAGE + 1;
+        const end = Math.min(adminUsersListPage * USERS_PER_PAGE, totalCountForPaging);
+        console.log(`${usersToShow.length}명 표시 (${start}-${end} / ${totalCountForPaging}명).`);
         container.innerHTML = usersToShow.map((user, index) => {
             const rowNum = start + index;
             // 약관 동의 상태: 앱(auth-flow)과 동일 기준 — termsVersion 없으면 기존 사용자로 간주하여 동의함
@@ -444,6 +575,12 @@ export async function renderUsers(options = {}) {
             const lastLoginDate = lastLoginDt
                 ? lastLoginDt.toLocaleDateString('ko-KR', opts) + '<br>' + lastLoginDt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', ...opts })
                 : '-';
+            const signupToLastLoginDays =
+                user.loginMethod === '게스트'
+                    ? '-'
+                    : user.signupToLastLoginDays !== null && user.signupToLastLoginDays !== undefined
+                        ? `${user.signupToLastLoginDays}일`
+                        : '-';
             
             let loginMethodBadge = 'bg-slate-100 text-slate-700';
             if (user.loginMethod === '구글') {
@@ -505,6 +642,9 @@ export async function renderUsers(options = {}) {
                     <td data-page="1" class="px-3 py-2.5 text-center">
                         <span class="text-sm text-slate-600 leading-snug">${lastLoginDate}</span>
                     </td>
+                    <td data-page="1" class="px-2 py-2.5 text-center">
+                        <span class="text-sm text-slate-600 tabular-nums font-medium">${signupToLastLoginDays}</span>
+                    </td>
                     <td data-page="1" class="px-1.5 py-2.5 min-w-[3.25rem] max-w-[4rem] text-center">${activityBanCell}</td>
                     <td data-page="2" class="px-3 py-2.5 text-center tabular-nums">
                         <span class="font-bold text-slate-800">${user.timelineCount || 0}</span>
@@ -523,7 +663,7 @@ export async function renderUsers(options = {}) {
     } catch (e) {
         console.error("사용자 목록 렌더링 실패:", e);
         const errMsg = (e && (e.message || e.code || String(e))) || '알 수 없는 오류';
-        container.innerHTML = '<tr><td colspan="14" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
+        container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
     }
 }
 
@@ -659,7 +799,7 @@ export async function processDeleteUserRequests() {
             }
             alert(msg);
         }
-        usersCache = null;
+        invalidateUsersTableCache();
         renderUsers();
     } catch (e) {
         console.error('삭제 요청 처리 실패:', e);
@@ -688,7 +828,7 @@ export async function adminUserDeleteSelected() {
         for (const userId of ids) {
             await addDoc(coll, { userId, requestedBy: uid, timestamp: serverTimestamp() });
         }
-        usersCache = null;
+        invalidateUsersTableCache();
         try {
             const processDeleteUserRequestsFn = httpsCallable(functions, 'processDeleteUserRequests');
             const result = await processDeleteUserRequestsFn();
@@ -738,7 +878,7 @@ export async function adminUserBanShare(value) {
             }, { merge: true });
         }
         alert(value ? `선택한 ${ids.length}명에게 공유 금지를 적용했습니다.` : `선택한 ${ids.length}명의 공유 금지를 해제했습니다.`);
-        usersCache = null;
+        invalidateUsersTableCache();
         renderUsers();
     } catch (e) {
         console.error('공유 금지 설정 실패:', e);
@@ -771,7 +911,7 @@ export async function adminUserBanWrite(value) {
             }, { merge: true });
         }
         alert(value ? `선택한 ${ids.length}명에게 글쓰기(댓글) 금지를 적용했습니다.` : `선택한 ${ids.length}명의 글쓰기 금지를 해제했습니다.`);
-        usersCache = null;
+        invalidateUsersTableCache();
         renderUsers();
     } catch (e) {
         console.error('글쓰기 금지 설정 실패:', e);
@@ -781,6 +921,6 @@ export async function adminUserBanWrite(value) {
 
 // 사용자 목록 새로고침
 export function refreshUsers() {
-    usersCache = null;
+    invalidateUsersTableCache();
     renderUsers();
 }

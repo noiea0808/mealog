@@ -379,13 +379,303 @@ export function renderTimeline() {
     }
 }
 
+let miniCalendarPointerDragBound = false;
+let miniCalendarScrollTitleBound = false;
+let trackerMonthTitleRaf = null;
+let trackerMonthCalendarModalBound = false;
+
+/** 트래커·월 팝업 공통: 일별 기록 건수 (dailyStats ∪ mealHistory) */
+function getRecordCountForIso(iso) {
+    const statsCount = (window.dailyStats && window.dailyStats[iso]?.count) ?? 0;
+    const historyCount =
+        window.mealHistory && Array.isArray(window.mealHistory)
+            ? window.mealHistory.filter((m) => m.date === iso).length
+            : 0;
+    return Math.max(statsCount, historyCount);
+}
+
+function pad2(n) {
+    return String(n).padStart(2, '0');
+}
+
+function daysInMonth(year, month1to12) {
+    return new Date(year, month1to12, 0).getDate();
+}
+
+let trackerMonthPopupYear = null;
+let trackerMonthPopupMonth = null;
+
+function closeTrackerMonthCalendar() {
+    const modal = document.getElementById('trackerMonthCalendarModal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function renderTrackerMonthCalendarPopup() {
+    const grid = document.getElementById('trackerMonthCalendarGrid');
+    const heading = document.getElementById('trackerMonthCalendarHeading');
+    if (!grid || !heading || trackerMonthPopupYear == null || trackerMonthPopupMonth == null) return;
+
+    const y = trackerMonthPopupYear;
+    const m = trackerMonthPopupMonth;
+    heading.textContent = `${y}년 ${m}월`;
+
+    const firstDow = new Date(y, m - 1, 1).getDay();
+    const dim = daysInMonth(y, m);
+
+    const pageY = appState.pageDate.getFullYear();
+    const pageM = appState.pageDate.getMonth() + 1;
+    const pageD = appState.pageDate.getDate();
+    const activeIso = `${pageY}-${pad2(pageM)}-${pad2(pageD)}`;
+
+    const parts = [];
+    for (let i = 0; i < firstDow; i++) {
+        parts.push('<div class="tracker-month-cell tracker-month-cell--empty" aria-hidden="true"></div>');
+    }
+    for (let d = 1; d <= dim; d++) {
+        const iso = `${y}-${pad2(m)}-${pad2(d)}`;
+        const c = getRecordCountForIso(iso);
+        const st = c >= 3 ? 'dot-full' : c > 0 ? 'dot-partial' : 'dot-none';
+        const sel = iso === activeIso ? 'dot-selected' : '';
+        parts.push(
+            `<button type="button" class="tracker-month-cell" data-tracker-popup-iso="${iso}" aria-label="${y}년 ${m}월 ${d}일">` +
+                `<div class="calendar-dot tracker-month-dot ${st} ${sel}">${d}</div>` +
+                `</button>`
+        );
+    }
+    grid.innerHTML = parts.join('');
+    grid.querySelectorAll('[data-tracker-popup-iso]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const iso = btn.getAttribute('data-tracker-popup-iso');
+            if (iso && typeof window.jumpToDate === 'function') window.jumpToDate(iso);
+            closeTrackerMonthCalendar();
+        });
+    });
+}
+
+export function openTrackerMonthCalendar() {
+    if (!window.currentUser) return;
+    const d = appState.pageDate;
+    trackerMonthPopupYear = d.getFullYear();
+    trackerMonthPopupMonth = d.getMonth() + 1;
+    const modal = document.getElementById('trackerMonthCalendarModal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    renderTrackerMonthCalendarPopup();
+}
+
+export function refreshTrackerMonthCalendarPopupIfOpen() {
+    const modal = document.getElementById('trackerMonthCalendarModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    renderTrackerMonthCalendarPopup();
+}
+
+function setupTrackerMonthCalendarModal() {
+    if (trackerMonthCalendarModalBound) return;
+    trackerMonthCalendarModalBound = true;
+
+    const backdrop = document.getElementById('trackerMonthCalendarBackdrop');
+    const closeBtn = document.getElementById('trackerMonthCalendarClose');
+    const prevBtn = document.getElementById('trackerMonthPrevMonth');
+    const nextBtn = document.getElementById('trackerMonthNextMonth');
+    const openBtn = document.getElementById('trackerMonthCalendarBtn');
+
+    const goPrev = () => {
+        if (trackerMonthPopupYear == null || trackerMonthPopupMonth == null) return;
+        let y = trackerMonthPopupYear;
+        let mo = trackerMonthPopupMonth - 1;
+        if (mo < 1) {
+            mo = 12;
+            y -= 1;
+        }
+        trackerMonthPopupYear = y;
+        trackerMonthPopupMonth = mo;
+        renderTrackerMonthCalendarPopup();
+    };
+    const goNext = () => {
+        if (trackerMonthPopupYear == null || trackerMonthPopupMonth == null) return;
+        let y = trackerMonthPopupYear;
+        let mo = trackerMonthPopupMonth + 1;
+        if (mo > 12) {
+            mo = 1;
+            y += 1;
+        }
+        trackerMonthPopupYear = y;
+        trackerMonthPopupMonth = mo;
+        renderTrackerMonthCalendarPopup();
+    };
+
+    if (backdrop) backdrop.addEventListener('click', closeTrackerMonthCalendar);
+    if (closeBtn) closeBtn.addEventListener('click', closeTrackerMonthCalendar);
+    if (prevBtn) prevBtn.addEventListener('click', goPrev);
+    if (nextBtn) nextBtn.addEventListener('click', goNext);
+    if (openBtn) {
+        openBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openTrackerMonthCalendar();
+        });
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        const modal = document.getElementById('trackerMonthCalendarModal');
+        if (!modal || modal.classList.contains('hidden')) return;
+        closeTrackerMonthCalendar();
+    });
+}
+
+/** 보이는 트래커 날짜들의 월 → 제목 문자열 (한 달 / 두 달 / 여러 달) */
+function formatTrackerMonthLabel(months) {
+    if (!months.length) {
+        const d = appState.pageDate;
+        return `${d.getFullYear()}년 ${d.getMonth() + 1}월`;
+    }
+    if (months.length === 1) {
+        const { year, month } = months[0];
+        return `${year}년 ${month}월`;
+    }
+    if (months.length === 2) {
+        const a = months[0];
+        const b = months[1];
+        if (a.year === b.year) {
+            return `${a.year}년 ${a.month}월/${b.month}월`;
+        }
+        return `${a.year}년 ${a.month}월/${b.year}년 ${b.month}월`;
+    }
+    const first = months[0];
+    const last = months[months.length - 1];
+    if (first.year === last.year) {
+        return `${first.year}년 ${months.map((m) => `${m.month}월`).join('/')}`;
+    }
+    return months.map((m) => `${m.year}년 ${m.month}월`).join('/');
+}
+
+/**
+ * 트래커 가로 스크롤에 맞춰 상단 월 표시 갱신 (가시 영역에 걸친 날짜의 월 기준)
+ */
+export function updateTrackerMonthTitle(container) {
+    const el = container || document.getElementById('miniCalendar');
+    const titleEl = document.getElementById('trackerTitle');
+    if (!el || !titleEl) return;
+
+    const cRect = el.getBoundingClientRect();
+    const items = el.querySelectorAll('.calendar-item[data-tracker-date]');
+    const seen = new Set();
+    const months = [];
+
+    items.forEach((item) => {
+        const r = item.getBoundingClientRect();
+        if (r.right <= cRect.left || r.left >= cRect.right) return;
+        const iso = item.getAttribute('data-tracker-date');
+        if (!iso) return;
+        const parts = iso.split('-').map(Number);
+        const y = parts[0];
+        const m = parts[1];
+        const key = `${y}-${m}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        months.push({ year: y, month: m });
+    });
+
+    months.sort((a, b) => (a.year !== b.year ? a.year - b.year : a.month - b.month));
+    titleEl.textContent = formatTrackerMonthLabel(months);
+}
+
+function scheduleTrackerMonthTitleUpdate(container) {
+    if (trackerMonthTitleRaf != null) return;
+    trackerMonthTitleRaf = requestAnimationFrame(() => {
+        trackerMonthTitleRaf = null;
+        updateTrackerMonthTitle(container);
+    });
+}
+
+function setupMiniCalendarScrollTitle(container) {
+    if (miniCalendarScrollTitleBound) return;
+    miniCalendarScrollTitleBound = true;
+
+    const onScrollOrResize = () => {
+        const c = document.getElementById('miniCalendar');
+        if (c) scheduleTrackerMonthTitleUpdate(c);
+    };
+
+    container.addEventListener('scroll', onScrollOrResize, { passive: true });
+    if (typeof ResizeObserver !== 'undefined') {
+        const ro = new ResizeObserver(onScrollOrResize);
+        ro.observe(container);
+    }
+    window.addEventListener('resize', onScrollOrResize, { passive: true });
+    container.addEventListener('scrollend', onScrollOrResize, { passive: true });
+}
+
+/** 웹: 마우스/펜으로 트래커(가로 스크롤) 드래그 — 터치는 네이티브 가로 스크롤 유지 */
+function setupMiniCalendarPointerDrag(container) {
+    if (miniCalendarPointerDragBound) return;
+    miniCalendarPointerDragBound = true;
+    const DRAG_THRESHOLD = 5;
+    let startX = 0;
+    let startScrollLeft = 0;
+    let active = false;
+    let activePointerId = null;
+    let suppressClick = false;
+
+    container.addEventListener(
+        'pointerdown',
+        (e) => {
+            if (e.pointerType === 'touch') return;
+            if (e.button !== 0) return;
+            active = true;
+            activePointerId = e.pointerId;
+            suppressClick = false;
+            startX = e.clientX;
+            startScrollLeft = container.scrollLeft;
+            try {
+                container.setPointerCapture(e.pointerId);
+            } catch (_) {}
+            container.classList.add('calendar-scroll-dragging');
+        },
+        { passive: true }
+    );
+
+    container.addEventListener('pointermove', (e) => {
+        if (!active || e.pointerId !== activePointerId) return;
+        const dx = e.clientX - startX;
+        if (Math.abs(dx) > DRAG_THRESHOLD) {
+            suppressClick = true;
+            container.scrollLeft = startScrollLeft - dx;
+        }
+    });
+
+    const end = (e) => {
+        if (!active || e.pointerId !== activePointerId) return;
+        active = false;
+        activePointerId = null;
+        container.classList.remove('calendar-scroll-dragging');
+        try {
+            container.releasePointerCapture(e.pointerId);
+        } catch (_) {}
+    };
+
+    container.addEventListener('pointerup', end);
+    container.addEventListener('pointercancel', end);
+
+    container.addEventListener(
+        'click',
+        (e) => {
+            if (suppressClick) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                suppressClick = false;
+            }
+        },
+        true
+    );
+}
+
 export function renderMiniCalendar() {
     const state = appState;
     const container = document.getElementById('miniCalendar');
     if (!container || !window.currentUser) return;
-    // 상단 월 표시를 선택된 pageDate 기준으로 즉시 갱신 (전월 선택 시에도 맞게 표시)
-    const titleEl = document.getElementById('trackerTitle');
-    if (titleEl) titleEl.innerText = `${state.pageDate.getFullYear()}년 ${state.pageDate.getMonth() + 1}월`;
     container.innerHTML = "";
     // 로컬 날짜로 변환하여 시간대 문제 방지
     const pageYear = state.pageDate.getFullYear();
@@ -401,23 +691,33 @@ export function renderMiniCalendar() {
         const month = String(d.getMonth() + 1).padStart(2, '0');
         const day = String(d.getDate()).padStart(2, '0');
         const iso = `${year}-${month}-${day}`;
-        const statsCount = (window.dailyStats && window.dailyStats[iso]?.count) ?? 0;
-        const historyCount = (window.mealHistory && Array.isArray(window.mealHistory)) ? window.mealHistory.filter(m => m.date === iso).length : 0;
-        const count = Math.max(statsCount, historyCount);
+        const count = getRecordCountForIso(iso);
         let status = count >= 3 ? "dot-full" : (count > 0 ? "dot-partial" : "dot-none");
         let dayColorClass = (d.getDay() === 0 || d.getDay() === 6) ? "text-rose-400" : "text-slate-400";
         const item = document.createElement('div');
-        item.className = "calendar-item flex flex-col items-center gap-1 cursor-pointer flex-shrink-0";
+        item.className = "calendar-item flex flex-col items-center gap-1 flex-shrink-0";
+        item.setAttribute('data-tracker-date', iso);
         item.innerHTML = `<span class="text-[11px] font-bold ${dayColorClass}">${d.toLocaleDateString('ko-KR', { weekday: 'narrow' })}</span>
             <div id="dot-${iso}" class="calendar-dot ${status} ${iso === activeStr ? 'dot-selected' : ''}">${d.getDate()}</div>`;
         item.onclick = () => window.jumpToDate(iso);
         container.appendChild(item);
     }
-    
+
+    setupMiniCalendarPointerDrag(container);
+    setupMiniCalendarScrollTitle(container);
+    setupTrackerMonthCalendarModal();
+
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            updateTrackerMonthTitle(container);
+        });
+    });
+
     setTimeout(() => {
         const activeDot = document.getElementById(`dot-${activeStr}`);
         if (activeDot) activeDot.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-        const title = document.getElementById('trackerTitle');
-        if (title) title.innerText = `${state.pageDate.getFullYear()}년 ${state.pageDate.getMonth() + 1}월`;
+        updateTrackerMonthTitle(container);
     }, 100);
+
+    refreshTrackerMonthCalendarPopupIfOpen();
 }

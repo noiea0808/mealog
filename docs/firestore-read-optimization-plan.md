@@ -13,13 +13,13 @@
 
 ---
 
-현재 일 8,000~15,000 reads 발생. 공유사진(모먼트)을 보는 사용자가 거의 없어도 **로그인한 모든 사용자**가 sharedPhotos 리스너를 구독하고 있어 reads가 과다 발생함.
+**현재 소스 기준:** `sharedPhotos`에 **onSnapshot 전역 구독은 없음** (`setupSharedPhotosListener` 삭제됨). 모먼트는 `loadSharedPhotosPage`, 타임라인 본인 공유는 `loadMyShares` 등 **필요 시 getDocs**. 아래 §1은 과거 설계 메모이며, **“지연 구독” 대신 구독 자체를 제거한 상태**에 가깝다.
 
 ---
 
-## 1. sharedPhotos 리스너: 지연 구독 (Lazy Subscription) ⭐ 최우선
+## 1. sharedPhotos (과거 이슈 메모) — 지연 구독안 ⭐ 당시 최우선
 
-### 현황
+### 과거 현황 (구독이 있던 시절)
 - **로그인 시 즉시** `setupSharedPhotosListener` 호출 → 모든 탭에서 50 doc 구독
 - 공유 1건 추가 시 → **활성 사용자 수 × 50 reads**
 - 모먼트 탭을 거의 안 봐도 리스너는 항상 동작
@@ -32,9 +32,9 @@
 | gallery | 모먼트 피드 | gallery 탭 진입 시 |
 | feed | 피드 콘텐츠 | feed 탭 진입 시 |
 
-**구현:**
-- `switchMainTab`에서 `tab === 'timeline' | 'gallery' | 'feed'`일 때만 `setupSharedPhotosListener` 시작
-- 다른 탭으로 전환 시 `sharedPhotosUnsubscribe()` 호출
+**당시 제안 구현 (참고용):**
+- `switchMainTab`에서 특정 탭일 때만 `setupSharedPhotosListener` 시작
+- 이탈 시 구독 해제
 - timeline은 공유 화살표가 있어 항상 필요할 수 있음 → **gallery + feed만 지연 구독**으로 축소 가능
   - timeline: 공유 화살표는 `window.sharedPhotos` 사용. 초기에는 빈 배열, gallery/feed 진입 후 로드된 데이터 재사용
   - **최소안**: gallery, feed 탭 진입 시에만 구독. timeline 공유 화살표는 `getSharedPhotosByUser` 등 필요 시 1회 getDocs로 대체

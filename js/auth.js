@@ -174,14 +174,26 @@ export function setEmailAuthMode(mode) {
     const title = document.getElementById('emailAuthTitle');
     const btn = document.getElementById('emailAuthBtn');
     const toggleBtn = document.getElementById('emailAuthToggleBtn');
+    const resetLink = document.getElementById('emailPasswordResetLink');
+    const footerSep = document.getElementById('emailAuthFooterSep');
     if (mode === 'login') {
         title.innerText = "이메일 로그인";
         btn.innerText = "로그인";
-        toggleBtn.innerHTML = `계정이 없으신가요? <span class="text-emerald-600 font-bold underline">회원가입</span>`;
+        btn?.setAttribute("aria-label", "로그인");
+        toggleBtn.textContent = "회원가입";
+        toggleBtn.className =
+            "shrink-0 text-emerald-600 font-bold underline underline-offset-2 hover:text-emerald-800";
+        resetLink?.classList.remove("hidden");
+        footerSep?.classList.remove("hidden");
     } else {
         title.innerText = "회원가입";
         btn.innerText = "가입하기";
-        toggleBtn.innerHTML = `이미 계정이 있으신가요? <span class="text-emerald-600 font-bold underline">로그인</span>`;
+        btn?.setAttribute("aria-label", "가입하기");
+        toggleBtn.textContent = "로그인";
+        toggleBtn.className =
+            "shrink-0 text-emerald-600 font-bold underline underline-offset-2 hover:text-emerald-800";
+        resetLink?.classList.add("hidden");
+        footerSep?.classList.add("hidden");
     }
 }
 
@@ -293,9 +305,27 @@ export async function handleEmailAuth() {
     }
 }
 
-/** 비밀번호 재설정 메일 발송 (Firebase sendPasswordResetEmail) */
-export async function requestPasswordReset() {
-    const email = document.getElementById('emailInput')?.value?.trim() || '';
+/**
+ * 비밀번호 재설정 메일 제목을 "Mealog의 비밀번호 재설정"으로 쓰려면
+ * Firebase 콘솔 > Authentication > Templates > Password reset 에서 제목을 직접 수정해야 합니다.
+ * (클라이언트 SDK에서는 제목을 바꿀 수 없습니다.) 자세한 안내: firebase/email-template-password-reset.txt
+ */
+
+function getEmailAuthInputEmail() {
+    return document.getElementById('emailInput')?.value?.trim() || '';
+}
+
+export function closePasswordResetConfirmModal() {
+    document.getElementById('passwordResetConfirmModal')?.classList.add('hidden');
+}
+
+export function closePasswordResetSuccessModal() {
+    document.getElementById('passwordResetSuccessModal')?.classList.add('hidden');
+}
+
+/** 비밀번호 찾기 클릭: 이메일 검증 후 발송 확인 모달 */
+export function requestPasswordReset() {
+    const email = getEmailAuthInputEmail();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!email) {
         showToast("이메일을 입력해주세요.", "error");
@@ -305,11 +335,26 @@ export async function requestPasswordReset() {
         showToast("올바른 이메일 형식이 아닙니다.", "error");
         return;
     }
+    const label = document.getElementById('passwordResetConfirmEmail');
+    if (label) label.textContent = email;
+    document.getElementById('passwordResetConfirmModal')?.classList.remove('hidden');
+}
+
+/** 확인 모달에서 발송 실행 */
+export async function sendPasswordResetAfterConfirm() {
+    const email =
+        document.getElementById('passwordResetConfirmEmail')?.textContent?.trim() || getEmailAuthInputEmail();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+        showToast("올바른 이메일을 확인해주세요.", "error");
+        closePasswordResetConfirmModal();
+        return;
+    }
     showLoading('메일 전송 중...', { skipOnLoginScreen: false });
     try {
         await sendPasswordResetEmail(auth, email);
-        showToast("비밀번호 재설정 메일을 발송했습니다. 이메일을 확인해주세요.", "success");
-        document.getElementById('emailAuthModal')?.classList.add('hidden');
+        closePasswordResetConfirmModal();
+        document.getElementById('passwordResetSuccessModal')?.classList.remove('hidden');
     } catch (error) {
         console.error('비밀번호 재설정 메일 발송 실패:', error);
         let msg = error.message || '발송에 실패했습니다.';

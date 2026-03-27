@@ -378,7 +378,7 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
                                     ${shouldHideContent ? '<h3 class="text-base font-bold text-slate-400 line-clamp-2 flex-1 min-w-0 leading-tight">비공개 게시물</h3>' : `<h3 class="text-base font-bold text-slate-800 line-clamp-2 flex-1 min-w-0 leading-tight">${escapeHtml(post.title)}</h3>`}
                                     ${hasImages ? '<span class="text-slate-400 shrink-0" title="사진 포함"><i class="fa-solid fa-image text-sm"></i></span>' : ''}
                                 </div>
-                                ${shouldHideContent ? '<p class="text-sm text-slate-400 line-clamp-2 mb-1.5 leading-relaxed">이 게시물은 작성자만 볼 수 있습니다.</p>' : `<p class="text-sm text-slate-600 line-clamp-2 mb-1.5 leading-relaxed">${renderFormattedContent(post.content)}</p>`}
+                                ${shouldHideContent ? '<p class="text-sm text-slate-400 line-clamp-2 mb-1.5 leading-relaxed">이 게시물은 작성자만 볼 수 있습니다.</p>' : `<p class="text-sm text-slate-600 line-clamp-2 mb-1.5 leading-relaxed">${escapeHtml(getPlainTextPreview(post.content))}</p>`}
                             </div>
                         </div>
                         <div class="flex items-center justify-between pt-3 border-t border-slate-200">

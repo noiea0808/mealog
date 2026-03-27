@@ -11,6 +11,9 @@ import {
     closeEmailModal,
     handleEmailAuth,
     requestPasswordReset,
+    sendPasswordResetAfterConfirm,
+    closePasswordResetConfirmModal,
+    closePasswordResetSuccessModal,
     toggleEmailAuthMode,
     copyDomain,
     closeDomainModal,
@@ -150,11 +153,34 @@ export function initEventListeners() {
 
     const emailAuthBtn = document.getElementById('emailAuthBtn');
     if (emailAuthBtn) {
-        emailAuthBtn.addEventListener('click', handleEmailAuth);
+        const runEmailAuth = (e) => {
+            e.preventDefault();
+            handleEmailAuth();
+        };
+        emailAuthBtn.addEventListener('click', runEmailAuth);
+        emailAuthBtn.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                runEmailAuth(e);
+            }
+        });
     }
     const emailPasswordResetLink = document.getElementById('emailPasswordResetLink');
     if (emailPasswordResetLink) {
         emailPasswordResetLink.addEventListener('click', requestPasswordReset);
+    }
+    const passwordResetConfirmCancelBtn = document.getElementById('passwordResetConfirmCancelBtn');
+    if (passwordResetConfirmCancelBtn) {
+        passwordResetConfirmCancelBtn.addEventListener('click', closePasswordResetConfirmModal);
+    }
+    const passwordResetConfirmSendBtn = document.getElementById('passwordResetConfirmSendBtn');
+    if (passwordResetConfirmSendBtn) {
+        passwordResetConfirmSendBtn.addEventListener('click', () => {
+            sendPasswordResetAfterConfirm();
+        });
+    }
+    const passwordResetSuccessOkBtn = document.getElementById('passwordResetSuccessOkBtn');
+    if (passwordResetSuccessOkBtn) {
+        passwordResetSuccessOkBtn.addEventListener('click', closePasswordResetSuccessModal);
     }
 
     const emailAuthToggleBtn = document.getElementById('emailAuthToggleBtn');

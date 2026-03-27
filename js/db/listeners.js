@@ -1,4 +1,4 @@
-// Firestore 리스너 설정 (읽기 비용 절감: user/tags는 세션당 1회만, meals 기간 축소, sharedPhotos limit 축소)
+// Firestore 리스너 설정 (읽기 비용 절감: user/tags 세션당 1회, meals 기간·limit 등)
 import { db, appId } from '../firebase.js';
 import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, startAfter, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from '../constants.js';
@@ -489,7 +489,7 @@ export function setupListeners(userId, callbacks) {
         });
     });
     
-    // Meals 리스너 - 최근 1개월만 초기 로드
+    // Meals 리스너 - 최근 7일(최대 50건) 초기 로드
     if (oldDataUnsubscribe) {
         console.log('🔌 이전 data 리스너 해제');
         oldDataUnsubscribe();
@@ -560,22 +560,22 @@ export function setupListeners(userId, callbacks) {
     );
     const statsUnsubscribe = () => statsUnsubscribes.forEach(fn => fn());
     
-    // 최근 14일 초기 로드 (고아 공유 동기화 대상 확대, 스크롤/더보기로 추가 로드)
+    // 최근 7일 초기 로드 (스크롤·loadMoreMeals로 추가 로드). 트래커 점은 dailyStats(별도 리스너)로 표시
     const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - 14);
+    cutoffDate.setDate(cutoffDate.getDate() - 7);
     const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
     const todayStr = new Date().toISOString().split('T')[0];
     
     const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
-    // limit(100): 14일치가 많을 때 읽기/전송량 제한 → 첫 로딩 체감 속도 개선 (나머지는 loadMoreMeals로 로드)
-    // 데모: 고정 샘플 날짜가 14일 밖이면 비어 보이므로 날짜 필터 없이 최근 100건만 로드 후 화면용 날짜 시프트
+    // limit(50): 초기 읽기/전송량 제한 → 나머지는 loadMoreMeals로 로드
+    // 데모: 고정 샘플 날짜가 7일 밖이면 비어 보이므로 날짜 필터 없이 최근 50건만 로드 후 화면용 날짜 시프트
     const mealsQuery = demo
-        ? query(mealsColl, orderBy('date', 'desc'), limit(100))
+        ? query(mealsColl, orderBy('date', 'desc'), limit(50))
         : query(
             mealsColl,
             where('date', '>=', cutoffDateStr),
             orderBy('date', 'desc'),
-            limit(100)
+            limit(50)
         );
     
     let isInitialLoad = true;
@@ -634,7 +634,7 @@ export function setupListeners(userId, callbacks) {
             return;
         }
         if (isInitialLoad) {
-            // 초기 로드: 최근 14일 데이터
+            // 초기 로드: 최근 7일(최대 50건) 데이터
             window.mealHistory = snap.docs.map(d => ({ id: d.id, ...d.data() }))
                 .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
             window.loadedMealsDateRange = { start: cutoffDateStr, end: todayStr };
@@ -748,7 +748,7 @@ export function setupListeners(userId, callbacks) {
                 if (demo) {
                     let rawMeals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
                     rawMeals.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-                    rawMeals = rawMeals.slice(0, 100);
+                    rawMeals = rawMeals.slice(0, 50);
                     const shift = computeDemoDateShiftDays(rawMeals);
                     window.__demoDateShiftDays = shift;
                     window.mealHistory = applyDemoDateShiftToMeals(rawMeals, shift).sort(
@@ -885,6 +885,23 @@ function toTimestampMs(photo) {
     return 0;
 }
 
+/** 모먼트 피드 최신 공유 1건의 시각(ms). 하단 네비 신규 공유 점 표시용 (1회 읽기) */
+export async function peekLatestSharedPhotoTimestampMs() {
+    if (!window.currentUser) return 0;
+    try {
+        const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+        const q = query(sharedColl, orderBy('timestamp', 'desc'), limit(1));
+        const snap = await getDocsFromServer(q);
+        if (!snap.docs.length) return 0;
+        const photo = normalizeSharedPhotoDoc(snap.docs[0]);
+        const [shifted] = applyDemoShiftToSharedDocsIfNeeded([photo]);
+        return toTimestampMs(shifted || photo);
+    } catch (e) {
+        console.warn('peekLatestSharedPhotoTimestampMs:', e?.message || e);
+        return 0;
+    }
+}
+
 /** 공유 사진 페이지네이션 로드 (갤러리/피드용). 포스트 targetPosts건만 반환, 나머지는 더보기로 로드
  * 항상 getDocsFromServer 사용 - 캐시로 인해 새 공유가 안 보이는 문제 방지 (읽기 최적화 후 발생)
  * 클라이언트 정렬: timestamp 혼합 타입(문자열/Timestamp) 시 Firestore 정렬 순서가 꼬이는 문제 방지 */
@@ -969,24 +986,6 @@ export async function loadMyShares() {
         }
         throw e;
     }
-}
-
-/** @deprecated 실시간 리스너 - reads 과다. loadSharedPhotosPage + loadMyShares 사용 권장 */
-export function setupSharedPhotosListener(callback) {
-    if (!window.currentUser) return () => {};
-    const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-    const q = query(sharedColl, orderBy('timestamp', 'desc'), limit(50));
-    const unsubscribe = onSnapshot(q, (snap) => {
-        const sharedPhotos = snap.docs.map(d => normalizeSharedPhotoDoc(d));
-        if (callback) callback(sharedPhotos);
-    }, (error) => {
-        console.error("Shared Photos Listener Error:", error);
-        if (isLikelyNetworkError(error)) {
-            hideLoading();
-            showNetworkErrorOverlay();
-        }
-    });
-    return unsubscribe;
 }
 
 /** 특정 사용자의 공유 사진만 조회 (갤러리 사용자 필터 시 전체 목록 표시용, limit 50 회피)
