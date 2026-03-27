@@ -71,7 +71,7 @@
     <!-- 메인 관리자 페이지 -->
     <div id="adminPage" class="hidden min-h-screen">
         <header id="adminHeader" class="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-50 admin-header-compact">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="max-w-7xl mx-auto px-2 sm:px-3 lg:px-4">
                 <div class="flex justify-between items-center admin-header-inner">
                     <div>
                         <h1 class="text-xl font-black text-emerald-600">MEALOG 관리자</h1>
@@ -102,7 +102,7 @@
             </div>
         </header>
 
-        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 admin-main-padding">
+        <main class="max-w-7xl mx-auto px-2 sm:px-3 lg:px-4 admin-main-padding">
 
             <!-- 대시보드 탭 (현황판: 캐시 문서 1회만 조회, 통계 새로고침 시에만 전체 집계) -->
             <div id="admin-tab-content-dashboard" class="admin-tab-content">
@@ -221,38 +221,28 @@
 
             <!-- 모니터링 탭 -->
             <div id="admin-tab-content-monitoring" class="admin-tab-content hidden">
-                <div class="flex gap-6 items-start">
-                    <!-- 왼쪽 사이드바 -->
-                    <div class="w-64 flex-shrink-0">
-                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sticky top-24">
-                            <div class="space-y-2">
-                                <button onclick="window.switchMonitoringSidebar('feed')" id="monitoring-sidebar-feed" class="w-full px-4 py-3 text-left text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl transition-colors">
-                                    <i class="fa-solid fa-images mr-2"></i>피드 관리
-                                </button>
-                                <button onclick="window.switchMonitoringSidebar('board')" id="monitoring-sidebar-board" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
-                                    <i class="fa-solid fa-comments mr-2"></i>게시판 관리
-                                </button>
-                                <button onclick="window.switchMonitoringSidebar('restaurants')" id="monitoring-sidebar-restaurants" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
-                                    <i class="fa-solid fa-utensils mr-2"></i>식당정보
-                                </button>
-                            </div>
+                <div class="space-y-4">
+                    <!-- 모니터링 가로 서브탭 -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
+                        <div class="flex gap-2 overflow-x-auto scrollbar-hide">
+                            <button onclick="window.switchMonitoringSidebar('feed')" id="monitoring-sidebar-feed" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors">
+                                <i class="fa-solid fa-images mr-2"></i>피드 관리
+                            </button>
+                            <button onclick="window.switchMonitoringSidebar('board')" id="monitoring-sidebar-board" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                <i class="fa-solid fa-comments mr-2"></i>게시판 관리
+                            </button>
+                            <button onclick="window.switchMonitoringSidebar('restaurants')" id="monitoring-sidebar-restaurants" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                <i class="fa-solid fa-utensils mr-2"></i>식당정보
+                            </button>
                         </div>
                     </div>
-                    
-                    <!-- 오른쪽 메인 콘텐츠 영역 -->
-                    <div class="flex-1 min-w-0">
+
+                    <!-- 메인 콘텐츠 영역 -->
+                    <div class="min-w-0">
                         <!-- 피드 관리 -->
                         <div id="monitoring-main-feed" class="monitoring-main-section">
                             <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
                                 <div class="p-6 border-b border-slate-100">
-                                    <div class="flex justify-between items-center mb-4">
-                                        <h2 class="text-lg font-black text-slate-800">피드 관리</h2>
-                                        <div class="flex gap-2">
-                                            <button onclick="window.refreshFeedManagement()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                                <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
-                                            </button>
-                                        </div>
-                                    </div>
                                     <!-- 필터 및 관리 기능 버튼 -->
                                     <div class="flex gap-4 mb-4 items-center flex-wrap">
                                         <div class="flex items-center gap-2">
@@ -268,6 +258,9 @@
                                             <button onclick="window.toggleFeedFilter('banned')" id="feed-filter-banned-toggle" class="feed-filter-toggle px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors">전체</button>
                                         </div>
                                         <div class="flex gap-2 items-center ml-auto">
+                                            <button onclick="window.refreshFeedManagement()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                            </button>
                                             <button onclick="window.bulkUnsharePosts()" class="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">
                                                 <i class="fa-solid fa-share-slash mr-1"></i>공유 취소
                                             </button>
@@ -297,14 +290,8 @@
                         <div id="monitoring-main-board" class="monitoring-main-section hidden">
                             <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
                                 <div class="p-6 border-b border-slate-100">
-                                    <div class="flex justify-between items-center mb-4">
-                                        <h2 class="text-lg font-black text-slate-800">게시판 관리</h2>
-                                        <button onclick="window.refreshBoardPosts()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                            <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
-                                        </button>
-                                    </div>
                                     <!-- 카테고리 필터 + 일괄처리 -->
-                                    <div class="flex gap-4 items-center flex-wrap">
+                                    <div class="flex gap-4 items-center flex-wrap mb-4">
                                         <div class="flex gap-2 overflow-x-auto scrollbar-hide">
                                             <button onclick="window.setAdminBoardCategory('all')" id="admin-board-category-all" class="admin-board-category-btn active px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold whitespace-nowrap">전체</button>
                                             <button onclick="window.setAdminBoardCategory('food')" id="admin-board-category-food" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">먹는</button>
@@ -313,6 +300,9 @@
                                             <button onclick="window.setAdminBoardCategory('admin')" id="admin-board-category-admin" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">치프에게</button>
                                         </div>
                                         <div class="flex gap-2 items-center ml-auto flex-shrink-0">
+                                            <button onclick="window.refreshBoardPosts()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                            </button>
                                             <button onclick="window.adminBoardBulkHide()" class="px-3 py-2 bg-amber-100 text-amber-600 rounded-lg text-xs font-bold hover:bg-amber-200 transition-colors">
                                                 <i class="fa-solid fa-eye-slash mr-1"></i>가리기
                                             </button>
@@ -364,14 +354,8 @@
                         <div id="monitoring-main-restaurants" class="monitoring-main-section hidden">
                             <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
                                 <div class="p-6 border-b border-slate-100">
-                                    <div class="flex justify-between items-center mb-4">
-                                        <h2 class="text-lg font-black text-slate-800">식당정보</h2>
-                                        <button onclick="window.refreshRestaurantData()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                            <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
-                                        </button>
-                                    </div>
                                     <!-- 필터: 입력 방식 + 끼니 구분 -->
-                                    <div class="flex flex-wrap gap-2 items-center">
+                                    <div class="flex flex-wrap gap-2 items-center mb-4">
                                         <span class="text-xs font-bold text-slate-500 mr-1">입력 방식:</span>
                                         <button onclick="window.setRestaurantFilter('all')" id="restaurant-filter-all" class="restaurant-filter-btn px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold transition-colors">
                                             <i class="fa-solid fa-list mr-1"></i>전체
@@ -392,6 +376,11 @@
                                         <button onclick="window.setRestaurantSlotFilter('snack')" id="restaurant-slot-filter-snack" class="restaurant-slot-filter-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">
                                             <i class="fa-solid fa-cookie mr-1"></i>간식
                                         </button>
+                                        <div class="ml-auto">
+                                            <button onclick="window.refreshRestaurantData()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="p-6 pt-0">
@@ -550,26 +539,26 @@
 
             <!-- 알림 탭 (공지·푸시·팝업·로그인 배너) -->
             <div id="admin-tab-content-alerts" class="admin-tab-content hidden">
-                <div class="flex gap-6 items-start">
-                    <div class="w-64 flex-shrink-0">
-                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sticky top-24">
-                            <div class="space-y-2">
-                                <button onclick="window.switchAlertsSidebar('notice')" id="alerts-sidebar-notice" class="w-full px-4 py-3 text-left text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl transition-colors">
+                <div class="flex flex-col gap-4">
+                    <div class="w-full">
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
+                            <div class="flex gap-2 overflow-x-auto scrollbar-hide">
+                                <button onclick="window.switchAlertsSidebar('notice')" id="alerts-sidebar-notice" class="w-auto px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors">
                                     <i class="fa-solid fa-bullhorn mr-2"></i>공지 관리
                                 </button>
-                                <button onclick="window.switchAlertsSidebar('pushMessage')" id="alerts-sidebar-pushMessage" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                <button onclick="window.switchAlertsSidebar('pushMessage')" id="alerts-sidebar-pushMessage" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                     <i class="fa-solid fa-paper-plane mr-2"></i>푸시메시지 관리
                                 </button>
-                                <button onclick="window.switchAlertsSidebar('popup')" id="alerts-sidebar-popup" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                <button onclick="window.switchAlertsSidebar('popup')" id="alerts-sidebar-popup" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                     <i class="fa-solid fa-window-maximize mr-2"></i>팝업 관리
                                 </button>
-                                <button onclick="window.switchAlertsSidebar('loginBanner')" id="alerts-sidebar-loginBanner" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                <button onclick="window.switchAlertsSidebar('loginBanner')" id="alerts-sidebar-loginBanner" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                     <i class="fa-solid fa-rectangle-ad mr-2"></i>로그인 배너
                                 </button>
                             </div>
                         </div>
                     </div>
-                    <div class="flex-1 min-w-0">
+                    <div class="min-w-0">
 
                         
                         <!-- 공지 관리 -->
@@ -1031,35 +1020,35 @@
 
             <!-- 콘텐츠 관리 탭 -->
             <div id="admin-tab-content-content" class="admin-tab-content hidden">
-                <div class="flex gap-6 items-start">
-                    <div class="w-64 flex-shrink-0">
-                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sticky top-24">
-                            <div class="space-y-2">
-                                <button onclick="window.switchContentSidebar('mealog')" id="content-sidebar-mealog" class="w-full px-4 py-3 text-left text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl transition-colors">
+                <div class="flex flex-col gap-4">
+                    <div class="w-full">
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
+                            <div class="flex gap-2 overflow-x-auto scrollbar-hide">
+                                <button onclick="window.switchContentSidebar('mealog')" id="content-sidebar-mealog" class="w-auto px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors">
                                     <i class="fa-solid fa-robot mr-2"></i>MEALOG
                                 </button>
-                                <button onclick="window.switchContentSidebar('characters')" id="content-sidebar-characters" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                <button onclick="window.switchContentSidebar('characters')" id="content-sidebar-characters" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                     <i class="fa-solid fa-user-astronaut mr-2"></i>AI 캐릭터
                                 </button>
-                                <button onclick="window.switchContentSidebar('terms')" id="content-sidebar-terms" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                <button onclick="window.switchContentSidebar('terms')" id="content-sidebar-terms" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                     <i class="fa-solid fa-file-contract mr-2"></i>약관
                                 </button>
-                                <button onclick="window.switchContentSidebar('demoGuide')" id="content-sidebar-demoGuide" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                <button onclick="window.switchContentSidebar('demoGuide')" id="content-sidebar-demoGuide" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                     <i class="fa-solid fa-compass mr-2"></i>체험 가이드
                                 </button>
-                                <button onclick="window.switchContentSidebar('tags')" id="content-sidebar-tags" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                <button onclick="window.switchContentSidebar('tags')" id="content-sidebar-tags" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                     <i class="fa-solid fa-tags mr-2"></i>태그관리
                                 </button>
-                                <button onclick="window.switchContentSidebar('apk')" id="content-sidebar-apk" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                <button onclick="window.switchContentSidebar('apk')" id="content-sidebar-apk" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                     <i class="fa-solid fa-mobile-screen mr-2"></i>APK 배포
                                 </button>
-                                <button onclick="window.switchContentSidebar('settings')" id="content-sidebar-settings" class="w-full px-4 py-3 text-left text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
+                                <button onclick="window.switchContentSidebar('settings')" id="content-sidebar-settings" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                     <i class="fa-solid fa-gear mr-2"></i>관리자 설정
                                 </button>
                             </div>
                         </div>
                     </div>
-                    <div class="flex-1 min-w-0">
+                    <div class="min-w-0">
                         <div id="content-main-mealog" class="content-main-section">
                             <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
                                 <div class="p-6 border-b border-slate-100">

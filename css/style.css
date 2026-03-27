@@ -2003,18 +2003,40 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
    Admin page layout
    ========================= */
 #adminPage .admin-header-inner {
-    padding-top: 0.5rem;
-    padding-bottom: 0.5rem;
+    padding-top: 0.15rem;
+    padding-bottom: 0.15rem;
     min-height: 40px;
     box-sizing: border-box;
 }
 #adminPage .admin-header-compact .admin-tabs-row .admin-tab {
-    padding-top: 0.5rem;
-    padding-bottom: 0.5rem;
+    padding-top: 0.225rem;
+    padding-bottom: 0.225rem;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
 }
 #adminPage .admin-main-padding {
-    padding-top: 0.5rem;
-    padding-bottom: 0.5rem;
+    padding-top: 0.15rem;
+    padding-bottom: 0.15rem;
+}
+/* 메인메뉴/서브메뉴/콘텐츠 간격 축소 */
+#adminPage .admin-tab-content {
+    margin-top: 0.2rem;
+}
+#adminPage #admin-tab-content-monitoring > .space-y-4,
+#adminPage #admin-tab-content-alerts > .flex.flex-col.gap-4,
+#adminPage #admin-tab-content-content > .flex.flex-col.gap-4 {
+    gap: 0.35rem;
+}
+#adminPage [id^="monitoring-sidebar-"],
+#adminPage [id^="alerts-sidebar-"],
+#adminPage [id^="content-sidebar-"] {
+    padding: 0.35rem 0.55rem !important;
+    font-size: 0.75rem;
+}
+#adminPage #admin-tab-content-monitoring .monitoring-main-section .p-6,
+#adminPage #admin-tab-content-alerts .content-main-section .p-6,
+#adminPage #admin-tab-content-content .content-main-section .p-6 {
+    padding: 0.7rem !important;
 }
 /* 사용자 탭: 관리 툴바 (일반 블록, 스크롤 고정 없음) */
 #adminPage .admin-users-toolbar {
