@@ -14,7 +14,6 @@ export const appState = {
     dataUnsubscribe: null,
     settingsUnsubscribe: null,
     statsUnsubscribe: null,
-    sharedPhotosUnsubscribe: null,
     notificationUnsubscribePost: null,
     notificationUnsubscribeBoard: null,
     notificationUnreadCount: 0,

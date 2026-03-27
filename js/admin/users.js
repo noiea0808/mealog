@@ -9,7 +9,9 @@ import { escapeHtml } from './utils.js';
 const adminAuth = getAuth(app);
 
 // 사용자 테이블 정렬 상태/캐시
-let usersCache = null; // 마지막으로 로드된 사용자 목록 (정렬 전 원본)
+let usersCache = null; // 서버 페이지 모드일 때만: 현재 페이지 원본
+/** 정렬·페이지 슬라이스용 전체 목록(한 번 로드 후 메모리 유지). null이면 서버 페이지네이션만 사용 */
+let usersFullListRaw = null;
 let usersSortState = { key: 'createdAt', dir: 'desc' };
 
 const USERS_SORT_DEFAULT_DIR = {
@@ -253,8 +255,8 @@ function initUsersSortHandlers() {
                 usersSortState.dir = USERS_SORT_DEFAULT_DIR[key] || 'asc';
             }
             updateUsersSortHeaderUI();
-            // 캐시를 재정렬하여 즉시 반영 (재조회 없음)
-            renderUsers({ useCacheOnly: true });
+            // 전체 목록 기준 정렬(최초에는 전체 로드 후 슬라이스)
+            renderUsers({ loadFullListForSort: true });
         });
     });
     updateUsersSortHeaderUI();
@@ -437,6 +439,34 @@ async function getUsers(options = {}) {
     }
 }
 
+/** 전체 사용자를 페이지 단위로 로드해 합침 — 정렬은 이 배열 전체 기준 */
+async function fetchAllUsersEnriched() {
+    adminUsersLastDocsByPage = {};
+    const all = [];
+    let page = 1;
+    let hasMore = true;
+    while (hasMore) {
+        const result = await getUsers({ page, pageSize: USERS_PER_PAGE });
+        if (page === 1) {
+            adminUsersTotalCount = result.totalCount;
+        }
+        result.users.forEach((u, i) => {
+            u.pageFetchIndex = all.length + i;
+            all.push(u);
+        });
+        hasMore = result.hasMore === true && result.users.length > 0;
+        page += 1;
+        if (result.users.length === 0) break;
+    }
+    return all;
+}
+
+function invalidateUsersTableCache() {
+    usersCache = null;
+    usersFullListRaw = null;
+    adminUsersLastDocsByPage = {};
+}
+
 // 사용자 목록 렌더링
 export async function renderUsers(options = {}) {
     const container = document.getElementById('usersContainer');
@@ -452,9 +482,26 @@ export async function renderUsers(options = {}) {
         // 헤더 정렬 핸들러는 한 번만 바인딩
         initUsersSortHandlers();
         
+        const loadFullListForSort = options?.loadFullListForSort === true;
+        if (loadFullListForSort && !usersFullListRaw) {
+            container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>전체 사용자 목록을 불러오는 중…</p></td></tr>';
+            try {
+                usersFullListRaw = await fetchAllUsersEnriched();
+            } catch (e) {
+                console.error('전체 사용자 로드 실패:', e);
+                invalidateUsersTableCache();
+                const errMsg = (e && (e.message || e.code || String(e))) || '알 수 없는 오류';
+                container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>전체 목록을 불러오지 못했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
+                return;
+            }
+        }
+
         let users;
         const useCacheOnly = options?.useCacheOnly === true;
-        if (usersCache && Array.isArray(usersCache) && useCacheOnly) {
+
+        if (usersFullListRaw !== null && Array.isArray(usersFullListRaw)) {
+            users = usersFullListRaw;
+        } else if (usersCache && Array.isArray(usersCache) && useCacheOnly) {
             users = usersCache;
         } else if (useCacheOnly) {
             users = [];
@@ -476,19 +523,28 @@ export async function renderUsers(options = {}) {
         // 최신 약관 버전 가져오기
         const currentVersion = await getCurrentTermsVersion();
         
-        // 정렬 적용 (현재 페이지 내에서만)
         const sortedUsers = sortUsersForTable(users, currentVersion);
         updateUsersSortHeaderUI();
         
-        const totalListPages = Math.max(1, Math.ceil(adminUsersTotalCount / USERS_PER_PAGE));
+        const totalCountForPaging = usersFullListRaw !== null && Array.isArray(usersFullListRaw)
+            ? usersFullListRaw.length
+            : adminUsersTotalCount;
+        const totalListPages = Math.max(1, Math.ceil(totalCountForPaging / USERS_PER_PAGE));
         if (adminUsersListPage > totalListPages) adminUsersListPage = totalListPages;
-        const usersToShow = sortedUsers;
+
+        let usersToShow;
+        if (usersFullListRaw !== null && Array.isArray(usersFullListRaw)) {
+            const startIdx = (adminUsersListPage - 1) * USERS_PER_PAGE;
+            usersToShow = sortedUsers.slice(startIdx, startIdx + USERS_PER_PAGE);
+        } else {
+            usersToShow = sortedUsers;
+        }
         
-        updateAdminUsersListPagination(adminUsersTotalCount, totalListPages);
+        updateAdminUsersListPagination(totalCountForPaging, totalListPages);
         
-        const start = (adminUsersListPage - 1) * USERS_PER_PAGE + 1;
-        const end = start + usersToShow.length - 1;
-        console.log(`${usersToShow.length}명 표시 (${start}-${end} / ${adminUsersTotalCount}명).`);
+        const start = totalCountForPaging === 0 ? 0 : (adminUsersListPage - 1) * USERS_PER_PAGE + 1;
+        const end = Math.min(adminUsersListPage * USERS_PER_PAGE, totalCountForPaging);
+        console.log(`${usersToShow.length}명 표시 (${start}-${end} / ${totalCountForPaging}명).`);
         container.innerHTML = usersToShow.map((user, index) => {
             const rowNum = start + index;
             // 약관 동의 상태: 앱(auth-flow)과 동일 기준 — termsVersion 없으면 기존 사용자로 간주하여 동의함
@@ -743,7 +799,7 @@ export async function processDeleteUserRequests() {
             }
             alert(msg);
         }
-        usersCache = null;
+        invalidateUsersTableCache();
         renderUsers();
     } catch (e) {
         console.error('삭제 요청 처리 실패:', e);
@@ -772,7 +828,7 @@ export async function adminUserDeleteSelected() {
         for (const userId of ids) {
             await addDoc(coll, { userId, requestedBy: uid, timestamp: serverTimestamp() });
         }
-        usersCache = null;
+        invalidateUsersTableCache();
         try {
             const processDeleteUserRequestsFn = httpsCallable(functions, 'processDeleteUserRequests');
             const result = await processDeleteUserRequestsFn();
@@ -822,7 +878,7 @@ export async function adminUserBanShare(value) {
             }, { merge: true });
         }
         alert(value ? `선택한 ${ids.length}명에게 공유 금지를 적용했습니다.` : `선택한 ${ids.length}명의 공유 금지를 해제했습니다.`);
-        usersCache = null;
+        invalidateUsersTableCache();
         renderUsers();
     } catch (e) {
         console.error('공유 금지 설정 실패:', e);
@@ -855,7 +911,7 @@ export async function adminUserBanWrite(value) {
             }, { merge: true });
         }
         alert(value ? `선택한 ${ids.length}명에게 글쓰기(댓글) 금지를 적용했습니다.` : `선택한 ${ids.length}명의 글쓰기 금지를 해제했습니다.`);
-        usersCache = null;
+        invalidateUsersTableCache();
         renderUsers();
     } catch (e) {
         console.error('글쓰기 금지 설정 실패:', e);
@@ -865,6 +921,6 @@ export async function adminUserBanWrite(value) {
 
 // 사용자 목록 새로고침
 export function refreshUsers() {
-    usersCache = null;
+    invalidateUsersTableCache();
     renderUsers();
 }

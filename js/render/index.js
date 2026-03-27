@@ -1,7 +1,13 @@
 // 렌더링 모듈 - 모든 렌더링 함수들을 re-export
 // 구조: render/utils, timeline, entry-chips, photo-edit, post-group-utils, user-profiles, board-notice, gallery, feed, render.js(태그·일간카드 등)
 export { escapeHtml, sanitizeFormattedText, renderFormattedContent, stripDangerousTagsOnly, getPlainTextPreview } from './utils.js';
-export { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators } from './timeline.js';
+export {
+    renderTimeline,
+    renderMiniCalendar,
+    updateTimelineShareIndicators,
+    openTrackerMonthCalendar,
+    refreshTrackerMonthCalendarPopupIfOpen
+} from './timeline.js';
 export { renderEntryChips } from './entry-chips.js';
 export {
     editPhoto,

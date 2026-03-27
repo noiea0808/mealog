@@ -236,10 +236,23 @@ header .mealog-title {
 .calendar-scroll { 
     display: flex; 
     overflow-x: auto; 
+    cursor: grab;
     /* scale(1.15) 선택 도트가 스크롤 영역 가장자리에서 잘리지 않도록 여유 */
     padding: 4px 10px; 
     gap: 10px; 
     scroll-padding-inline: 10px; 
+}
+.calendar-scroll.calendar-scroll-dragging {
+    cursor: grabbing;
+    user-select: none;
+}
+.calendar-scroll .calendar-item,
+.calendar-scroll .calendar-dot {
+    cursor: grab;
+}
+.calendar-scroll.calendar-scroll-dragging .calendar-item,
+.calendar-scroll.calendar-scroll-dragging .calendar-dot {
+    cursor: grabbing;
 }
 .calendar-scroll::-webkit-scrollbar { 
     display: none; 
@@ -274,6 +287,37 @@ header .mealog-title {
     border: 2px solid #047857; 
     background: #ffffff; 
     color: #047857; 
+}
+/* 트래커 월 팝업: 셀은 트래커와 동일 dot-* 클래스, 크기만 축소 */
+.tracker-month-cell {
+    display: flex;
+    min-height: 2.5rem;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    border-radius: 10px;
+    transition: background 0.15s ease;
+}
+.tracker-month-cell:not(.tracker-month-cell--empty):hover {
+    background: #f8fafc;
+}
+.tracker-month-cell--empty {
+    min-height: 2.5rem;
+    pointer-events: none;
+}
+.tracker-month-cell .calendar-dot.tracker-month-dot {
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+    font-size: 10px;
+    margin: 0;
+}
+.tracker-calendar-icon-btn:focus-visible {
+    outline: 2px solid #10b981;
+    outline-offset: 1px;
 }
 /* 전체/일간: 연회색 통 하나, active=흰색 팩+#1e293b 테두리/글자, inactive=배경 없이 회색 글자만 */
 .view-tab { 

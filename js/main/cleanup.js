@@ -19,10 +19,6 @@ export function registerMainCleanup() {
                 appState.statsUnsubscribe();
                 appState.statsUnsubscribe = null;
             }
-            if (appState.sharedPhotosUnsubscribe) {
-                appState.sharedPhotosUnsubscribe();
-                appState.sharedPhotosUnsubscribe = null;
-            }
             if (appState.notificationUnsubscribePost) {
                 appState.notificationUnsubscribePost();
                 appState.notificationUnsubscribePost = null;

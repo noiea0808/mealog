@@ -47,6 +47,7 @@ import { registerMainCleanup } from './main/cleanup.js';
 import { syncOrphanedSharesToMoment } from './main/shares-sync.js';
 import { startNotificationListeners, stopNotificationListeners } from './main/notifications.js';
 import { registerMainTabSwitch } from './main/tabs.js';
+import { clearNavFeedUpdateDots, refreshNavFeedUpdateDots } from './main/nav-feed-update-dots.js';
 import { registerContentPopup, recordBannerView, recordBannerClick } from './main/content-popup.js';
 import { initEventListeners } from './main/event-listeners.js';
 import { registerEventListenerManager } from './main/event-listener-manager.js';
@@ -923,10 +924,6 @@ initAuth(async (user) => {
                 appState.statsUnsubscribe();
                 appState.statsUnsubscribe = null;
             }
-            if (appState.sharedPhotosUnsubscribe) {
-                appState.sharedPhotosUnsubscribe();
-                appState.sharedPhotosUnsubscribe = null;
-            }
             
             // 전역 상태 초기화
             window.userSettings = null;
@@ -944,6 +941,7 @@ initAuth(async (user) => {
         window.currentUser = user;
         lastProcessedUserId = user.uid;
         syncDemoNavGuideDots();
+        refreshNavFeedUpdateDots();
 
         if (!user.isAnonymous && !isDemoUser(user)) {
             markUserHasRealLogin();
@@ -1018,9 +1016,8 @@ initAuth(async (user) => {
             }, 2000);
         }
         
-        // ✅ 게스트(익명) 모드:
-        // - 내 meals/settings는 굳이 리스너를 붙이지 않음(기록/설정 기능도 제한됨)
-        // - 대신 앨범(공유 피드)은 보여야 하므로 sharedPhotos 리스너는 유지
+        // ✅ 게스트(익명) 모드: meals/settings/stats 리스너 없음(기록·설정 제한).
+        // 모먼트 피드는 탭 진입 시 loadSharedPhotosPage, 타임라인 공유 표시는 loadMyShares 등 getDocs로 로드.
         if (user.isAnonymous) {
             if (appState.settingsUnsubscribe) {
                 appState.settingsUnsubscribe();
@@ -1035,11 +1032,6 @@ initAuth(async (user) => {
                 appState.statsUnsubscribe = null;
             }
 
-            // 게스트: sharedPhotos 리스너 대신 탭 진입 시 loadSharedPhotosPage/loadMyShares 사용
-            if (appState.sharedPhotosUnsubscribe) {
-                appState.sharedPhotosUnsubscribe();
-            }
-            appState.sharedPhotosUnsubscribe = null;
             window.sharedPhotos = [];
             window.sharedPhotosFeed = [];
             stopNotificationListeners();
@@ -1129,11 +1121,7 @@ initAuth(async (user) => {
             appState.statsUnsubscribe = statsUnsubscribe;
             if (document.visibilityState === 'visible') startNotificationListeners();
 
-            // 공유 사진: 리스너 제거, 탭 진입 시 loadSharedPhotosPage/loadMyShares로 페이지네이션 적용
-            if (appState.sharedPhotosUnsubscribe) {
-                appState.sharedPhotosUnsubscribe();
-            }
-            appState.sharedPhotosUnsubscribe = null;
+            // 공유 피드: sharedPhotos 실시간 리스너 없음 — loadSharedPhotosPage / loadMyShares로 필요 시 로드
             window.sharedPhotos = [];
             window.sharedPhotosFeed = [];
             appState.sharedPhotosFeedLastDoc = null;
@@ -1318,10 +1306,6 @@ initAuth(async (user) => {
             appState.statsUnsubscribe();
             appState.statsUnsubscribe = null;
         }
-        if (appState.sharedPhotosUnsubscribe) {
-            appState.sharedPhotosUnsubscribe();
-            appState.sharedPhotosUnsubscribe = null;
-        }
         // ⚠️ 중요: 알림 리스너도 해제 (로그아웃 시 permission-denied 에러 방지)
         stopNotificationListeners();
         hideLoading();
@@ -1335,6 +1319,7 @@ initAuth(async (user) => {
         window.__pushInitUid = null;
         window.__pushInitInFlight = false;
         syncDemoNavGuideDots();
+        clearNavFeedUpdateDots();
 
         // ⚠️ 중요: 플래그를 다시 한 번 확인 (onAuthStateChanged 호출 시점과 시간차가 있을 수 있음)
         // ⚠️ 중요: localStorage를 먼저 확인 (페이지 리로드 후에도 유지)
@@ -1384,10 +1369,6 @@ initAuth(async (user) => {
             if (appState.statsUnsubscribe) {
                 appState.statsUnsubscribe();
                 appState.statsUnsubscribe = null;
-            }
-            if (appState.sharedPhotosUnsubscribe) {
-                appState.sharedPhotosUnsubscribe();
-                appState.sharedPhotosUnsubscribe = null;
             }
             showLoading('샘플 타임라인을 불러오는 중...', { dimBackground: false, skipOnLoginScreen: false });
             void import('./demo-account.js').then(async (mod) => {

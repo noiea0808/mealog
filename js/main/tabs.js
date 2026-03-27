@@ -14,6 +14,7 @@ import {
 import { updateDashboard } from '../analytics.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';
 import { isDemoUser } from '../demo-account.js';
+import { markMomentFeedNavSeen, markBoardNavSeen } from './nav-feed-update-dots.js';
 
 const HEADER_SECTION_BY_TAB = { dashboard: '밀당', timeline: '밀로그', gallery: '모먼트', board: '밀톡', settings: '사용자' };
 
@@ -57,6 +58,7 @@ export function registerMainTabSwitch() {
             const boardWriteView = document.getElementById('boardWriteView');
 
             if (tab === 'board') {
+                markBoardNavSeen();
                 if (boardListView) boardListView.classList.remove('hidden');
                 if (boardDetailView) boardDetailView.classList.add('hidden');
                 if (boardWriteView) boardWriteView.classList.add('hidden');
@@ -177,6 +179,8 @@ export function registerMainTabSwitch() {
                 // 설정 탭 전환 시 폼 채우기는 nav-settings 클릭 시 openSettings()에서 수행
             } else if (tab === 'gallery') {
                 document.body.classList.remove('bottom-nav-scroll-hidden');
+                // 모먼트 네비 점: 새 글을 스크롤해 볼 필요 없이, 탭(아이콘)으로 들어오면 제거
+                markMomentFeedNavSeen();
                 if (!appState.galleryFilterUserId) {
                     const CACHE_VALID_MS = 30000;
                     const hasValidCache = (window.sharedPhotosFeed?.length ?? 0) > 0 &&

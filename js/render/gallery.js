@@ -1084,6 +1084,7 @@ export async function clearGalleryFilter() {
         if (typeof window.switchMainTab === 'function') window.switchMainTab('board');
         return;
     }
+    if (typeof window.markMomentFeedNavSeen === 'function') window.markMomentFeedNavSeen();
     // 전체 피드로 복귀 시 첫 페이지 로드 (sharedPhotosFeed 초기화)
     if (window.sharedPhotosFeed.length === 0) {
         try {
