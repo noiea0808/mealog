@@ -64,16 +64,30 @@ registerRestaurantStats();
 window.handleAdminLogin = handleAdminLogin;
 window.handleAdminLogout = handleAdminLogout;
 
+// 운영 적용일(로컬 자정 기준)부터 오늘까지 경과 일수
+const ADMIN_OPS_START = new Date(2026, 2, 8); // 2026-03-08
+
+function getAdminOpsElapsedDays() {
+    const today = new Date();
+    const d0 = new Date(ADMIN_OPS_START.getFullYear(), ADMIN_OPS_START.getMonth(), ADMIN_OPS_START.getDate());
+    const d1 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    return Math.max(0, Math.round((d1 - d0) / 86400000));
+}
+
+function updateAdminOpsSubtitle() {
+    const el = document.getElementById('adminOpsElapsedDays');
+    if (el) el.textContent = `오늘 기준 경과 ${getAdminOpsElapsedDays()}일`;
+}
+
 // 관리자 페이지 표시 (내부 함수)
 function showAdminPage(user) {
     const loginPage = document.getElementById('loginPage');
     const adminPage = document.getElementById('adminPage');
-    const adminUserInfo = document.getElementById('adminUserInfo');
     const loadingOverlay = document.getElementById('loadingOverlay');
     
     if (loginPage) loginPage.classList.add('hidden');
     if (adminPage) adminPage.classList.remove('hidden');
-    if (adminUserInfo) adminUserInfo.textContent = user.email || '관리자';
+    updateAdminOpsSubtitle();
     
     // 로딩 오버레이 숨기기
     if (loadingOverlay) loadingOverlay.classList.add('hidden');

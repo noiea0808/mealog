@@ -184,6 +184,59 @@ function drawPhotoEditToContext(ctx, width, height, backgroundColor) {
     ctx.restore();
 }
 
+/** 미리보기(저해상도 캔버스)와 동일한 구도로, 저장·보내기용 고해상도 크기 계산 */
+function getPhotoEditExportDimensions(logicalW, logicalH) {
+    if (!logicalW || !logicalH || !editingPhotoImage) {
+        return { outW: logicalW, outH: logicalH, scaleX: 1, scaleY: 1 };
+    }
+    const dpr = typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1;
+    const drawWidth = editingPhotoImage.width * photoEditScale;
+    const drawHeight = editingPhotoImage.height * photoEditScale;
+    // 확대 시 그려지는 이미지가 뷰포트보다 크면, 출력 픽셀을 키워 원본 샘플링이 거치지 않게 함
+    const zoomBoost = Math.max(1, drawWidth / logicalW, drawHeight / logicalH);
+    const MAX_EDGE = 4096;
+    const maxByEdge = MAX_EDGE / Math.max(logicalW, logicalH, 1);
+    let m = Math.min(4, Math.max(dpr, zoomBoost), maxByEdge);
+    if (m < 1) m = 1;
+    const outW = Math.max(1, Math.round(logicalW * m));
+    const outH = Math.max(1, Math.round(logicalH * m));
+    return { outW, outH, scaleX: outW / logicalW, scaleY: outH / logicalH };
+}
+
+/**
+ * 편집 결과를 고해상도로 래스터화한 뒤 Blob 생성 (미리보기 캔버스 크기와 무관)
+ * @param {'image/jpeg'|string} mime
+ * @param {number} quality JPEG 품질
+ */
+function exportPhotoEditToBlob(mime = 'image/jpeg', quality = 0.92) {
+    return new Promise((resolve, reject) => {
+        if (!photoEditCanvas || !editingPhotoImage) {
+            reject(new Error('no canvas'));
+            return;
+        }
+        const logicalW = photoEditCanvas.width;
+        const logicalH = photoEditCanvas.height;
+        const { outW, outH, scaleX, scaleY } = getPhotoEditExportDimensions(logicalW, logicalH);
+        const outputCanvas = document.createElement('canvas');
+        outputCanvas.width = outW;
+        outputCanvas.height = outH;
+        const outputCtx = outputCanvas.getContext('2d');
+        outputCtx.imageSmoothingEnabled = true;
+        outputCtx.imageSmoothingQuality = 'high';
+        outputCtx.scale(scaleX, scaleY);
+        drawPhotoEditToContext(outputCtx, logicalW, logicalH, '#ffffff');
+        outputCtx.setTransform(1, 0, 0, 1, 0, 0);
+        outputCanvas.toBlob(
+            (blob) => {
+                if (!blob) reject(new Error('toBlob failed'));
+                else resolve(blob);
+            },
+            mime,
+            quality
+        );
+    });
+}
+
 // 사진 편집 화면 그리기
 function drawPhotoEdit() {
     if (!photoEditCanvas || !photoEditCtx || !editingPhotoImage) return;
@@ -430,37 +483,17 @@ function detachPhotoEditCanvasListeners() {
     photoEditCanvas.removeEventListener('wheel', handlePhotoEditWheel);
 }
 
-/** 현재 캔버스를 JPEG data URL로 내보냄 (식사 저장·장 간 이동 시 공통) */
+/** 편집 결과를 고해상도 JPEG data URL로 내보냄 (식사 저장·장 간 이동 시 공통) */
 function exportPhotoEditCanvasToDataUrl() {
-    return new Promise((resolve, reject) => {
-        if (!photoEditCanvas || !editingPhotoImage) {
-            reject(new Error('no canvas'));
-            return;
-        }
-        const w = photoEditCanvas.width;
-        const h = photoEditCanvas.height;
-        const outputCanvas = document.createElement('canvas');
-        outputCanvas.width = w;
-        outputCanvas.height = h;
-        const outputCtx = outputCanvas.getContext('2d');
-        outputCtx.imageSmoothingEnabled = true;
-        outputCtx.imageSmoothingQuality = 'high';
-        drawPhotoEditToContext(outputCtx, w, h, '#ffffff');
-        outputCanvas.toBlob(
-            (blob) => {
-                if (!blob) {
-                    reject(new Error('toBlob failed'));
-                    return;
-                }
+    return exportPhotoEditToBlob('image/jpeg', 0.92).then(
+        (blob) =>
+            new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = () => resolve(reader.result);
                 reader.onerror = () => reject(new Error('read failed'));
                 reader.readAsDataURL(blob);
-            },
-            'image/jpeg',
-            0.9
-        );
-    });
+            })
+    );
 }
 
 function updatePhotoEditNavUI() {
@@ -544,51 +577,42 @@ export async function goToNextPhotoEdit() {
     }
 }
 
-// 사진 편집 저장 — 화면에 보이는 줌·이동·회전과 동일하게 픽셀을보냄 (미리보기/공유와 일치)
+// 사진 편집 저장 — 구도는 미리보기와 동일, 출력은 DPR·줌에 맞춰 고해상도 래스터화
 export function savePhotoEdit() {
     if (!photoEditCanvas || !editingPhotoImage) return;
 
     try {
         if (photoEditContext === 'profile') {
-            const w = photoEditCanvas.width;
-            const h = photoEditCanvas.height;
-            const outputCanvas = document.createElement('canvas');
-            outputCanvas.width = w;
-            outputCanvas.height = h;
-            const outputCtx = outputCanvas.getContext('2d');
-            outputCtx.imageSmoothingEnabled = true;
-            outputCtx.imageSmoothingQuality = 'high';
-            drawPhotoEditToContext(outputCtx, w, h, '#ffffff');
-            outputCanvas.toBlob((blob) => {
-                if (!blob) {
+            exportPhotoEditToBlob('image/jpeg', 0.92)
+                .then((blob) => {
+                    window.settingsPhotoFile = blob;
+                    window.settingsPhotoUrl = URL.createObjectURL(blob);
+                    if (profilePhotoEditObjectUrl) {
+                        URL.revokeObjectURL(profilePhotoEditObjectUrl);
+                        profilePhotoEditObjectUrl = null;
+                    }
+                    const photoPreview = document.getElementById('photoPreview');
+                    const photoDeleteBtn = document.getElementById('photoDeleteBtn');
+                    if (photoPreview) {
+                        photoPreview.style.backgroundImage = `url(${window.settingsPhotoUrl})`;
+                        photoPreview.style.backgroundSize = 'cover';
+                        photoPreview.style.backgroundPosition = 'center';
+                        photoPreview.innerHTML = '';
+                        if (photoDeleteBtn) {
+                            photoDeleteBtn.classList.toggle('hidden', !appState.isProfileEditing);
+                        }
+                    }
+                    if (typeof window.setSettingsProfileType === 'function') {
+                        window.setSettingsProfileType('photo');
+                    }
+                    closePhotoEditModal();
+                    if (typeof window.showToast === 'function') window.showToast('사진이 적용되었습니다.', 'success');
+                })
+                .catch(() => {
                     if (typeof window.showToast === 'function') {
                         window.showToast('사진 저장에 실패했습니다. 다시 시도해주세요.', 'error');
                     }
-                    return;
-                }
-                window.settingsPhotoFile = blob;
-                window.settingsPhotoUrl = URL.createObjectURL(blob);
-                if (profilePhotoEditObjectUrl) {
-                    URL.revokeObjectURL(profilePhotoEditObjectUrl);
-                    profilePhotoEditObjectUrl = null;
-                }
-                const photoPreview = document.getElementById('photoPreview');
-                const photoDeleteBtn = document.getElementById('photoDeleteBtn');
-                if (photoPreview) {
-                    photoPreview.style.backgroundImage = `url(${window.settingsPhotoUrl})`;
-                    photoPreview.style.backgroundSize = 'cover';
-                    photoPreview.style.backgroundPosition = 'center';
-                    photoPreview.innerHTML = '';
-                    if (photoDeleteBtn) {
-                        photoDeleteBtn.classList.toggle('hidden', !appState.isProfileEditing);
-                    }
-                }
-                if (typeof window.setSettingsProfileType === 'function') {
-                    window.setSettingsProfileType('photo');
-                }
-                closePhotoEditModal();
-                if (typeof window.showToast === 'function') window.showToast('사진이 적용되었습니다.', 'success');
-            }, 'image/jpeg', 0.9);
+                });
             return;
         }
 

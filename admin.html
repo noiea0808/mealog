@@ -75,7 +75,11 @@
                 <div class="flex justify-between items-center admin-header-inner">
                     <div>
                         <h1 class="text-xl font-black text-emerald-600">MEALOG 관리자</h1>
-                        <p class="text-xs text-slate-500 mt-0.5" id="adminUserInfo">관리자</p>
+                        <p class="text-xs text-slate-500 mt-0.5">
+                            <span>since 2026.03.08</span>
+                            <span class="text-slate-400 mx-1" aria-hidden="true">·</span>
+                            <span id="adminOpsElapsedDays"></span>
+                        </p>
                     </div>
                     <button onclick="window.handleAdminLogout()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
                         <i class="fa-solid fa-sign-out-alt mr-2"></i>로그아웃
