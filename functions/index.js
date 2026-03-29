@@ -167,9 +167,24 @@ async function sendPushToUser(userId, payload, options = {}) {
     const ref = db.collection('artifacts').doc(APP_ID).collection('users').doc(userId).collection('config').doc('fcmTokens');
     const snap = await ref.get();
     const tokensMap = (snap.exists && snap.data().tokens) || {};
-    const tokens = Object.keys(tokensMap);
+    const allTokens = Object.keys(tokensMap);
+    const envFilter = options.targetEnv === 'production' || options.targetEnv === 'staging'
+      ? options.targetEnv
+      : null;
+    const tokens = envFilter
+      ? allTokens.filter((token) => {
+        const meta = tokensMap[token];
+        if (!meta || typeof meta !== 'object') {
+          return envFilter === 'production';
+        }
+        const tokenEnv = meta.env === 'staging' ? 'staging' : (meta.env === 'production' ? 'production' : null);
+        // 하위 호환: env 미기록 기존 토큰은 운영으로 간주
+        if (!tokenEnv) return envFilter === 'production';
+        return tokenEnv === envFilter;
+      })
+      : allTokens;
     if (tokens.length === 0) {
-      logger.info('sendPushToUser: no FCM tokens for user', { userId });
+      logger.info('sendPushToUser: no FCM tokens for user', { userId, targetEnv: envFilter || 'all' });
       return;
     }
     const messaging = getMessaging();
@@ -224,7 +239,7 @@ async function sendPushToUser(userId, payload, options = {}) {
         firstReason
       });
     } else {
-      logger.info('sendPushToUser: ok', { userId, tokenCount: tokens.length });
+      logger.info('sendPushToUser: ok', { userId, tokenCount: tokens.length, targetEnv: envFilter || 'all' });
     }
   } catch (e) {
     logger.warn('sendPushToUser failed', { userId, message: e?.message });
@@ -2100,6 +2115,9 @@ async function broadcastNoticePushToAllUsers(payload) {
 /** 관리자 푸시메시지: 상단 알림만, 탭 시 앱 내 탭 이동(data.type=adminBroadcast), 배지/빨간점 갱신 생략 */
 async function broadcastAdminPushToAllUsers(payload) {
   const usersRef = db.collection('artifacts').doc(APP_ID).collection('users');
+  const targetEnv = payload?.targetEnv === 'production' || payload?.targetEnv === 'staging'
+    ? payload.targetEnv
+    : 'all';
   let lastDoc = null;
   let totalUsers = 0;
   const pageSize = 200;
@@ -2113,17 +2131,18 @@ async function broadcastAdminPushToAllUsers(payload) {
     totalUsers += uids.length;
     for (let i = 0; i < uids.length; i += concurrency) {
       const batch = uids.slice(i, i + concurrency);
-      await Promise.all(batch.map((uid) => sendPushToUser(uid, payload, { adminBroadcast: true })));
+      await Promise.all(batch.map((uid) => sendPushToUser(uid, payload, { adminBroadcast: true, targetEnv })));
     }
     lastDoc = snap.docs[snap.docs.length - 1];
     if (snap.size < pageSize) break;
   }
-  logger.info('broadcastAdminPushToAllUsers done', { totalUsers });
+  logger.info('broadcastAdminPushToAllUsers done', { totalUsers, targetEnv });
 }
 
 const ADMIN_PUSH_LANDING_TABS = new Set(['dashboard', 'timeline', 'gallery', 'board', 'settings']);
 
 const ADMIN_RECURRING_INTERVALS = new Set(['daily', 'weekly', 'monthly']);
+const ADMIN_PUSH_TARGET_ENVS = new Set(['all', 'production', 'staging']);
 
 /** 다음 주기 발송 시각(ms). monthly: 해당 월에 일이 없으면 말일로 보정 */
 function addRecurringNextMillis(fromMs, interval) {
@@ -2153,7 +2172,33 @@ function normalizeAdminBroadcastPayload(raw) {
   const body = String(raw?.body || '').trim();
   const tab = String(raw?.landingTab || 'dashboard').trim();
   const landingTab = ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard';
-  return { title, body, landingTab };
+  const envRaw = String(raw?.targetEnv || 'all').trim();
+  const targetEnv = ADMIN_PUSH_TARGET_ENVS.has(envRaw) ? envRaw : 'all';
+  return { title, body, landingTab, targetEnv };
+}
+
+async function appendAdminBroadcastHistory({
+  scheduleType = 'now',
+  title,
+  body,
+  landingTab,
+  targetEnv = 'all',
+  status = 'sent',
+  createdByUid = null
+}) {
+  const coll = db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes');
+  await coll.add({
+    scheduleType,
+    title: String(title || '').slice(0, 80),
+    body: String(body || '').slice(0, 240),
+    landingTab: ADMIN_PUSH_LANDING_TABS.has(String(landingTab || '').trim()) ? String(landingTab).trim() : 'dashboard',
+    targetEnv: ADMIN_PUSH_TARGET_ENVS.has(String(targetEnv || '').trim()) ? String(targetEnv).trim() : 'all',
+    status: String(status || 'sent'),
+    scheduledAt: FieldValue.serverTimestamp(),
+    sentAt: FieldValue.serverTimestamp(),
+    createdByUid: createdByUid || null,
+    createdAt: FieldValue.serverTimestamp()
+  });
 }
 
 /** 관리자: 전체 사용자에게 푸시 즉시 발송 */
@@ -2167,7 +2212,7 @@ exports.adminBroadcastPushNow = onCall(
     if (!(await isAdminByUid(callerUid))) {
       throw new HttpsError('permission-denied', '관리자만 발송할 수 있습니다.');
     }
-    const { title, body, landingTab } = normalizeAdminBroadcastPayload(request.data || {});
+    const { title, body, landingTab, targetEnv } = normalizeAdminBroadcastPayload(request.data || {});
     if (!title || title.length > 80) {
       throw new HttpsError('invalid-argument', '제목은 1~80자로 입력해 주세요.');
     }
@@ -2177,8 +2222,22 @@ exports.adminBroadcastPushNow = onCall(
     await broadcastAdminPushToAllUsers({
       title,
       body,
+      targetEnv,
       data: { type: 'adminBroadcast', landingTab }
     });
+    try {
+      await appendAdminBroadcastHistory({
+        scheduleType: 'now',
+        title,
+        body,
+        landingTab,
+        targetEnv,
+        status: 'sent',
+        createdByUid: callerUid
+      });
+    } catch (historyErr) {
+      logger.warn('adminBroadcastPushNow: history write failed', { message: historyErr?.message });
+    }
     return { ok: true };
   }
 );
@@ -2195,11 +2254,13 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
     throw new HttpsError('permission-denied', '관리자만 등록할 수 있습니다.');
   }
   const data = request.data || {};
-  const { title, body, landingTab } = data;
+  const { title, body, landingTab, targetEnv } = data;
   const t = String(title || '').trim();
   const b = String(body || '').trim();
   const tab = String(landingTab || 'dashboard').trim();
   const land = ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard';
+  const envRaw = String(targetEnv || 'all').trim();
+  const target = ADMIN_PUSH_TARGET_ENVS.has(envRaw) ? envRaw : 'all';
   if (!t || t.length > 80) {
     throw new HttpsError('invalid-argument', '제목은 1~80자로 입력해 주세요.');
   }
@@ -2238,6 +2299,7 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
       title: t.slice(0, 80),
       body: b.slice(0, 240),
       landingTab: land,
+      targetEnv: target,
       scheduledAt: Timestamp.fromMillis(recurringStartMs),
       occurrenceCount: 0,
       status: 'pending',
@@ -2259,12 +2321,69 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
     title: t.slice(0, 80),
     body: b.slice(0, 240),
     landingTab: land,
+    targetEnv: target,
     scheduledAt: Timestamp.fromMillis(ms),
     status: 'pending',
     createdByUid: callerUid,
     createdAt: FieldValue.serverTimestamp()
   });
   return { ok: true, id: ref.id };
+});
+
+/** 관리자: 예약 푸시 취소 */
+exports.cancelAdminScheduledPush = onCall({ region: REGION }, async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  if (!(await isAdminByUid(callerUid))) {
+    throw new HttpsError('permission-denied', '관리자만 취소할 수 있습니다.');
+  }
+  const jobId = String(request.data?.jobId || '').trim();
+  if (!jobId) {
+    throw new HttpsError('invalid-argument', '예약 ID(jobId)가 필요합니다.');
+  }
+  const ref = db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes').doc(jobId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new HttpsError('not-found', '예약을 찾을 수 없습니다.');
+  }
+  const status = String(snap.data()?.status || 'pending');
+  if (status !== 'pending') {
+    throw new HttpsError('failed-precondition', 'pending 상태의 예약만 취소할 수 있습니다.');
+  }
+  await ref.update({
+    status: 'cancelled',
+    cancelledAt: FieldValue.serverTimestamp(),
+    cancelledByUid: callerUid
+  });
+  return { ok: true, id: jobId };
+});
+
+/** 관리자: 발송 기록 삭제 (pending 제외) */
+exports.deleteAdminBroadcastHistory = onCall({ region: REGION }, async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  if (!(await isAdminByUid(callerUid))) {
+    throw new HttpsError('permission-denied', '관리자만 삭제할 수 있습니다.');
+  }
+  const jobId = String(request.data?.jobId || '').trim();
+  if (!jobId) {
+    throw new HttpsError('invalid-argument', '기록 ID(jobId)가 필요합니다.');
+  }
+  const ref = db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes').doc(jobId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new HttpsError('not-found', '기록을 찾을 수 없습니다.');
+  }
+  const status = String(snap.data()?.status || 'pending');
+  if (status === 'pending') {
+    throw new HttpsError('failed-precondition', '대기 중(pending) 기록은 삭제할 수 없습니다. 먼저 취소해 주세요.');
+  }
+  await ref.delete();
+  return { ok: true, id: jobId };
 });
 
 /**
@@ -2317,6 +2436,7 @@ exports.processScheduledAdminPushes = onSchedule(
         await broadcastAdminPushToAllUsers({
           title,
           body,
+          targetEnv: d.targetEnv === 'production' || d.targetEnv === 'staging' ? d.targetEnv : 'all',
           data: { type: 'adminBroadcast', landingTab }
         });
 

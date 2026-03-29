@@ -64,16 +64,30 @@ registerRestaurantStats();
 window.handleAdminLogin = handleAdminLogin;
 window.handleAdminLogout = handleAdminLogout;
 
+// 운영 적용일(로컬 자정 기준)부터 오늘까지 경과 일수
+const ADMIN_OPS_START = new Date(2026, 2, 8); // 2026-03-08
+
+function getAdminOpsElapsedDays() {
+    const today = new Date();
+    const d0 = new Date(ADMIN_OPS_START.getFullYear(), ADMIN_OPS_START.getMonth(), ADMIN_OPS_START.getDate());
+    const d1 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    return Math.max(0, Math.round((d1 - d0) / 86400000));
+}
+
+function updateAdminOpsSubtitle() {
+    const el = document.getElementById('adminOpsElapsedDays');
+    if (el) el.textContent = `오늘 기준 경과 ${getAdminOpsElapsedDays()}일`;
+}
+
 // 관리자 페이지 표시 (내부 함수)
 function showAdminPage(user) {
     const loginPage = document.getElementById('loginPage');
     const adminPage = document.getElementById('adminPage');
-    const adminUserInfo = document.getElementById('adminUserInfo');
     const loadingOverlay = document.getElementById('loadingOverlay');
     
     if (loginPage) loginPage.classList.add('hidden');
     if (adminPage) adminPage.classList.remove('hidden');
-    if (adminUserInfo) adminUserInfo.textContent = user.email || '관리자';
+    updateAdminOpsSubtitle();
     
     // 로딩 오버레이 숨기기
     if (loadingOverlay) loadingOverlay.classList.add('hidden');
@@ -82,6 +96,12 @@ function showAdminPage(user) {
     updateStatistics();
     renderSharedPhotos();
     switchAdminTab('dashboard');
+}
+
+function resetAdminScrollTop() {
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
 }
 
 // 어드민 탭 전환 (기존 코드 유지 - switchAdminTab은 import했지만 내부 구현은 여기서)
@@ -109,6 +129,7 @@ window.switchAdminTab = function(tab) {
     if (activeTabContent) {
         activeTabContent.classList.remove('hidden');
     }
+    resetAdminScrollTop();
     
     // 탭별 데이터 새로고침
     if (tab === 'dashboard') {
@@ -469,10 +490,10 @@ if (document.readyState === 'loading') {
 
 // 모니터링 사이드바 전환
 window.switchMonitoringSidebar = function(section) {
-    // 모든 사이드바 버튼 비활성화
+    // 모든 서브탭 버튼 비활성화
     document.querySelectorAll('[id^="monitoring-sidebar-"]').forEach(btn => {
-        btn.classList.remove('text-emerald-600', 'bg-emerald-50');
-        btn.classList.add('text-slate-500', 'hover:bg-slate-50');
+        btn.classList.remove('text-emerald-600', 'bg-emerald-50', 'border-emerald-200');
+        btn.classList.add('text-slate-500', 'bg-white', 'border-slate-200', 'hover:bg-slate-50');
     });
     
     // 모든 메인 섹션 숨기기
@@ -480,18 +501,19 @@ window.switchMonitoringSidebar = function(section) {
         sec.classList.add('hidden');
     });
     
-    // 선택한 사이드바 버튼 활성화
+    // 선택한 서브탭 버튼 활성화
     const activeSidebarBtn = document.getElementById(`monitoring-sidebar-${section}`);
     const activeMainSection = document.getElementById(`monitoring-main-${section}`);
     
     if (activeSidebarBtn) {
-        activeSidebarBtn.classList.add('text-emerald-600', 'bg-emerald-50');
-        activeSidebarBtn.classList.remove('text-slate-500', 'hover:bg-slate-50');
+        activeSidebarBtn.classList.add('text-emerald-600', 'bg-emerald-50', 'border-emerald-200');
+        activeSidebarBtn.classList.remove('text-slate-500', 'bg-white', 'border-slate-200', 'hover:bg-slate-50');
     }
     
     if (activeMainSection) {
         activeMainSection.classList.remove('hidden');
     }
+    resetAdminScrollTop();
     
     // 섹션별 데이터 로드
     if (section === 'feed') {
@@ -511,8 +533,8 @@ const ALERTS_SIDEBAR_SECTIONS = ['notice', 'pushMessage', 'popup', 'loginBanner'
 window.switchAlertsSidebar = function (section) {
     if (!ALERTS_SIDEBAR_SECTIONS.includes(section)) return;
     document.querySelectorAll('[id^="alerts-sidebar-"]').forEach(btn => {
-        btn.classList.remove('text-emerald-600', 'bg-emerald-50');
-        btn.classList.add('text-slate-500', 'hover:bg-slate-50');
+        btn.classList.remove('text-emerald-600', 'bg-emerald-50', 'border-emerald-200');
+        btn.classList.add('text-slate-500', 'bg-white', 'border-slate-200', 'hover:bg-slate-50');
     });
     document.querySelectorAll('.content-main-section').forEach(sec => {
         sec.classList.add('hidden');
@@ -520,12 +542,13 @@ window.switchAlertsSidebar = function (section) {
     const activeSidebarBtn = document.getElementById(`alerts-sidebar-${section}`);
     const activeMainSection = document.getElementById(`content-main-${section}`);
     if (activeSidebarBtn) {
-        activeSidebarBtn.classList.add('text-emerald-600', 'bg-emerald-50');
-        activeSidebarBtn.classList.remove('text-slate-500', 'hover:bg-slate-50');
+        activeSidebarBtn.classList.add('text-emerald-600', 'bg-emerald-50', 'border-emerald-200');
+        activeSidebarBtn.classList.remove('text-slate-500', 'bg-white', 'border-slate-200', 'hover:bg-slate-50');
     }
     if (activeMainSection) {
         activeMainSection.classList.remove('hidden');
     }
+    resetAdminScrollTop();
     if (section === 'notice') {
         renderNotices();
     } else if (section === 'pushMessage') {
@@ -546,8 +569,8 @@ window.switchContentSidebar = function(section) {
     }
     // 모든 사이드바 버튼 비활성화
     document.querySelectorAll('[id^="content-sidebar-"]').forEach(btn => {
-        btn.classList.remove('text-emerald-600', 'bg-emerald-50');
-        btn.classList.add('text-slate-500', 'hover:bg-slate-50');
+        btn.classList.remove('text-emerald-600', 'bg-emerald-50', 'border-emerald-200');
+        btn.classList.add('text-slate-500', 'bg-white', 'border-slate-200', 'hover:bg-slate-50');
     });
     
     // 모든 메인 섹션 숨기기
@@ -560,13 +583,14 @@ window.switchContentSidebar = function(section) {
     const activeMainSection = document.getElementById(`content-main-${section}`);
     
     if (activeSidebarBtn) {
-        activeSidebarBtn.classList.add('text-emerald-600', 'bg-emerald-50');
-        activeSidebarBtn.classList.remove('text-slate-500', 'hover:bg-slate-50');
+        activeSidebarBtn.classList.add('text-emerald-600', 'bg-emerald-50', 'border-emerald-200');
+        activeSidebarBtn.classList.remove('text-slate-500', 'bg-white', 'border-slate-200', 'hover:bg-slate-50');
     }
     
     if (activeMainSection) {
         activeMainSection.classList.remove('hidden');
     }
+    resetAdminScrollTop();
     
     // 섹션별 데이터 로드
     if (section === 'mealog') {

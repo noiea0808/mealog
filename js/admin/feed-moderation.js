@@ -113,7 +113,7 @@ async function renderFeedManagement() {
     
     try {
         await ensureFeedSharedKeysCache();
-        console.log('📋 피드 관리: 페이지', feedCurrentPage, '로드 중... (전체 타임라인)');
+        console.log('📋 피드 관리: 페이지', feedCurrentPage, '로드 중... (페이지 단위)');
         const { items } = await getFeedPage({ page: feedCurrentPage, pageSize: feedPageSize });
         const allMeals = items;
         
@@ -187,7 +187,7 @@ async function renderFeedManagement() {
             return dateB.localeCompare(dateA);
         });
         
-        // 페이지 단위로 이미 로드됨 (추가 slice 없음)
+        // 페이지 단위 로드 결과에서만 표시
         const totalPages = Math.max(1, Math.ceil(feedTotalCount / feedPageSize));
         const paginatedMeals = filteredMeals;
         
@@ -212,243 +212,188 @@ async function renderFeedManagement() {
         
         const reportsMap = await getReportsAggregateByGroupKeys();
         window._feedReportDetails = {};
-        
-        container.innerHTML = paginatedMeals.map(meal => {
-            const targetGroupKey = meal.isBestShare ? `best_${meal.id}` : meal.isDailyShare ? `daily_${meal.date || ''}_${meal.userId}` : meal.isInsightShare ? `insight_${meal.dateRangeText || ''}_${meal.userId}` : `entry_${meal.id}_${meal.userId}`;
-            const reportInfo = reportsMap[targetGroupKey];
-            if (reportInfo && reportInfo.count > 0) { window._feedReportDetails[targetGroupKey] = reportInfo.byReason; }
-            const reportBadgeHtml = (reportInfo && reportInfo.count > 0) ? `<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded cursor-pointer hover:bg-red-200" onclick="window.showReportDetailPopup('${String(targetGroupKey).replace(/'/g, "\\'")}')">🚩 신고 ${reportInfo.count}</span>` : '';
-            
-            // 베스트 공유 게시물인 경우
-            if (meal.isBestShare) {
-                const userInfo = { nickname: meal.userNickname || '익명', icon: meal.userIcon || '🐻' };
-                let dateTimeStr = '-';
-                if (meal.timestamp) {
-                    try {
-                        const dateObj = new Date(meal.timestamp);
-                        dateTimeStr = dateObj.toLocaleString('ko-KR', {
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                        });
-                    } catch (e) {
-                        dateTimeStr = meal.timestamp;
-                    }
-                }
-                
-                return `
-                    <div class="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow bg-emerald-50/30">
-                        <div class="flex gap-4">
-                            <div class="flex-shrink-0 flex items-start pt-1">
-                                <input type="checkbox" class="feed-item-checkbox" data-meal-id="${meal.id}" data-user-id="${meal.userId}" data-is-best="true">
-                            </div>
-                            <div class="flex-1 min-w-0">
-                                <div class="text-xs text-slate-500 font-bold mb-2">${dateTimeStr}</div>
-                                <div class="flex items-start justify-between mb-2">
-                                    <div class="flex items-center gap-2 flex-wrap">
-                                        <span class="text-lg">${userInfo.icon}</span>
-                                        <span class="font-bold text-slate-800">${userInfo.nickname}</span>
-                                        <span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">🏆 베스트 공유</span>
-                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">관리번호: ${meal.id}</span>
-                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">${meal.periodType || ''} ${meal.periodText || ''}</span>
-                                        <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">공유됨</span>
-                                        ${reportBadgeHtml}
-                                    </div>
-                                </div>
-                                ${meal.photoUrl ? `
-                                    <div class="mb-2">
-                                        <img src="${meal.photoUrl}" alt="베스트 공유 이미지" class="max-w-full h-auto rounded-xl border border-slate-200" style="max-height: 300px;">
-                                    </div>
-                                ` : ''}
-                                ${meal.comment ? `<div class="mt-2 text-sm text-slate-700 bg-slate-50 p-2 rounded">${escapeHtml(meal.comment)}</div>` : ''}
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
-            
-            // 일간보기 공유 게시물인 경우
-            if (meal.isDailyShare) {
-                const userInfo = { nickname: meal.userNickname || '익명', icon: meal.userIcon || '🐻' };
-                let dateTimeStr = '-';
-                if (meal.timestamp) {
-                    try {
-                        const dateObj = new Date(meal.timestamp);
-                        dateTimeStr = dateObj.toLocaleString('ko-KR', {
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                        });
-                    } catch (e) {
-                        dateTimeStr = meal.timestamp;
-                    }
-                }
-                
-                // 날짜 표시
-                let dateDisplay = meal.date || '-';
-                if (meal.date) {
-                    try {
-                        const dateObj = new Date(meal.date + 'T00:00:00');
-                        dateDisplay = dateObj.toLocaleDateString('ko-KR', { 
-                            month: 'long', 
-                            day: 'numeric', 
-                            weekday: 'short' 
-                        });
-                    } catch (e) {
-                        dateDisplay = meal.date;
-                    }
-                }
-                
-                return `
-                    <div class="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow bg-blue-50/30">
-                        <div class="flex gap-4">
-                            <div class="flex-shrink-0 flex items-start pt-1">
-                                <input type="checkbox" class="feed-item-checkbox" data-meal-id="${meal.id}" data-user-id="${meal.userId}" data-is-daily="true">
-                            </div>
-                            <div class="flex-1 min-w-0">
-                                <div class="text-xs text-slate-500 font-bold mb-2">${dateTimeStr}</div>
-                                <div class="flex items-start justify-between mb-2">
-                                    <div class="flex items-center gap-2 flex-wrap">
-                                        <span class="text-lg">${userInfo.icon}</span>
-                                        <span class="font-bold text-slate-800">${userInfo.nickname}</span>
-                                        <span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded">📅 일간보기 공유</span>
-                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">관리번호: ${meal.id}</span>
-                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">${dateDisplay}</span>
-                                        <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">공유됨</span>
-                                        ${reportBadgeHtml}
-                                    </div>
-                                </div>
-                                ${meal.photoUrl ? `
-                                    <div class="mb-2">
-                                        <img src="${meal.photoUrl}" alt="일간보기 공유 이미지" class="max-w-full h-auto rounded-xl border border-slate-200" style="max-height: 300px;">
-                                    </div>
-                                ` : ''}
-                                ${meal.comment ? `<div class="mt-2 text-sm text-slate-700 bg-slate-50 p-2 rounded whitespace-pre-line">${escapeHtml(meal.comment)}</div>` : ''}
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
-            
-            // 인사이트 공유 게시물인 경우
-            if (meal.isInsightShare) {
-                const userInfo = { nickname: meal.userNickname || '익명', icon: meal.userIcon || '🐻' };
-                let dateTimeStr = '-';
-                if (meal.timestamp) {
-                    try {
-                        const dateObj = new Date(meal.timestamp);
-                        dateTimeStr = dateObj.toLocaleString('ko-KR', {
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                        });
-                    } catch (e) {
-                        dateTimeStr = meal.timestamp;
-                    }
-                }
-                
-                return `
-                    <div class="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow bg-purple-50/30">
-                        <div class="flex gap-4">
-                            <div class="flex-shrink-0 flex items-start pt-1">
-                                <input type="checkbox" class="feed-item-checkbox" data-meal-id="${meal.id}" data-user-id="${meal.userId}" data-is-insight="true">
-                            </div>
-                            <div class="flex-1 min-w-0">
-                                <div class="text-xs text-slate-500 font-bold mb-2">${dateTimeStr}</div>
-                                <div class="flex items-start justify-between mb-2">
-                                    <div class="flex items-center gap-2 flex-wrap">
-                                        <span class="text-lg">${userInfo.icon}</span>
-                                        <span class="font-bold text-slate-800">${userInfo.nickname}</span>
-                                        <span class="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-bold rounded">💡 인사이트 공유</span>
-                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">관리번호: ${meal.id}</span>
-                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">${meal.dateRangeText || ''}</span>
-                                        <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">공유됨</span>
-                                        ${reportBadgeHtml}
-                                    </div>
-                                </div>
-                                ${meal.photoUrl ? `
-                                    <div class="mb-2">
-                                        <img src="${meal.photoUrl}" alt="인사이트 공유 이미지" class="max-w-full h-auto rounded-xl border border-slate-200" style="max-height: 300px;">
-                                    </div>
-                                ` : ''}
-                                ${meal.comment ? `<div class="mt-2 text-sm text-slate-700 bg-slate-50 p-2 rounded whitespace-pre-line">${escapeHtml(meal.comment)}</div>` : ''}
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
-            
-            // 일반 게시물
-            const userInfo = userInfoMap.get(meal.userId) || { nickname: '익명', icon: '🐻' };
-            const date = meal.date || '-';
-            const time = meal.time || '';
-            // 날짜와 시간 포맷팅
-            let dateTimeStr = '';
-            if (date && date !== '-') {
+
+        const fmtDateTimeParts = (meal) => {
+            if (meal.date) {
                 try {
-                    const dateObj = new Date(date + (time ? `T${time}` : 'T00:00:00'));
-                    dateTimeStr = dateObj.toLocaleString('ko-KR', {
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                    });
-                } catch (e) {
-                    dateTimeStr = `${date} ${time || ''}`.trim();
+                    const t = meal.time || '00:00';
+                    const d = new Date(`${meal.date}T${t}`);
+                    const datePart = d.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+                    const timePart = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                    return { date: datePart, time: timePart };
+                } catch (_) {
+                    return { date: meal.date, time: meal.time || '-' };
                 }
-            } else {
-                dateTimeStr = '-';
             }
-            const isShared = feedSharedKeysCache && feedSharedKeysCache.has(`${meal.userId}_${meal.id}`);
-            const hasLocalSharedPhotos = meal.sharedPhotos && Array.isArray(meal.sharedPhotos) && meal.sharedPhotos.length > 0;
-            const hasPhotos = meal.photos && meal.photos.length > 0;
-            const isBanned = meal.shareBanned === true;
-            // 데이터 불일치 감지: meal.sharedPhotos 배열은 있지만 sharedPhotos 컬렉션에는 없음
-            const hasDataMismatch = hasLocalSharedPhotos && !isShared;
-            
+            if (meal.timestamp) {
+                try {
+                    const d = new Date(meal.timestamp);
+                    const datePart = d.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+                    const timePart = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                    return { date: datePart, time: timePart };
+                } catch (_) {}
+            }
+            return { date: '-', time: '-' };
+        };
+
+        const getCategoryCell = (major, minor) => {
+            const m1 = (major || '').toString().trim();
+            const m2 = (minor || '').toString().trim();
+            if (!m1 && !m2) return '<span class="text-slate-300 text-xs">-</span>';
             return `
-                <div class="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow ${isBanned ? 'bg-red-50' : ''} ${hasDataMismatch ? 'bg-yellow-50 border-yellow-300' : ''}">
-                    <div class="flex gap-4">
-                        <div class="flex-shrink-0 flex items-start pt-1">
-                            <input type="checkbox" class="feed-item-checkbox" data-meal-id="${meal.id}" data-user-id="${meal.userId}">
-                        </div>
-                        <div class="flex-1 min-w-0">
-                            <div class="text-xs text-slate-500 font-bold mb-2">${dateTimeStr}</div>
-                            <div class="flex items-start justify-between mb-2">
-                                <div class="flex items-center gap-2 flex-wrap">
-                                    <span class="text-lg">${userInfo.icon}</span>
-                                    <span class="font-bold text-slate-800">${userInfo.nickname}</span>
-                                    <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">관리번호: ${meal.id}</span>
-                                    ${isShared ? '<span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">공유됨</span>' : ''}
-                                    ${hasDataMismatch ? '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">데이터 불일치</span>' : ''}
-                                    ${isBanned ? '<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded">금지됨</span>' : ''}
-                                    ${reportBadgeHtml}
-                                </div>
-                                ${hasDataMismatch ? `<button onclick="window.syncSharedPhotos('${meal.id}', '${meal.userId}')" class="px-3 py-1 bg-yellow-600 text-white rounded-lg text-xs font-bold hover:bg-yellow-700 transition-colors">동기화</button>` : ''}
-                            </div>
-                            <div class="text-sm text-slate-600 mb-2">
-                                ${meal.menuDetail || meal.place || meal.snackType || '내용 없음'}
-                            </div>
-                            ${hasPhotos && meal.photos && meal.photos.length > 0 ? `
-                                <div class="flex flex-wrap gap-2 mb-2">
-                                    ${meal.photos.map(photo => `
-                                        <img src="${photo}" alt="사진" class="w-40 h-40 object-cover rounded-xl">
-                                    `).join('')}
-                                </div>
-                            ` : ''}
-                            ${meal.comment ? `<div class="mt-2 text-sm text-slate-700 bg-slate-50 p-2 rounded">${escapeHtml(meal.comment)}</div>` : ''}
-                        </div>
-                    </div>
+                <div class="text-xs leading-tight text-center">
+                    ${m1 ? `<div class="font-bold text-slate-700 break-words">${escapeHtml(m1)}</div>` : ''}
+                    ${m2 ? `<div class="text-slate-500 break-words mt-0.5">${escapeHtml(m2)}</div>` : ''}
                 </div>
             `;
+        };
+
+        const rowsHtml = paginatedMeals.map((meal, rowIdx) => {
+            const targetGroupKey = meal.isBestShare
+                ? `best_${meal.id}`
+                : meal.isDailyShare
+                    ? `daily_${meal.date || ''}_${meal.userId}`
+                    : meal.isInsightShare
+                        ? `insight_${meal.dateRangeText || ''}_${meal.userId}`
+                        : `entry_${meal.id}_${meal.userId}`;
+            const reportInfo = reportsMap[targetGroupKey];
+            if (reportInfo && reportInfo.count > 0) window._feedReportDetails[targetGroupKey] = reportInfo.byReason;
+            const reportBadgeHtml = (reportInfo && reportInfo.count > 0)
+                ? `<button type="button" class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded hover:bg-red-200" onclick="window.showReportDetailPopup('${String(targetGroupKey).replace(/'/g, "\\'")}')">🚩 ${reportInfo.count}</button>`
+                : '';
+
+            const userInfo = meal.isBestShare || meal.isDailyShare || meal.isInsightShare
+                ? { nickname: meal.userNickname || '익명', icon: meal.userIcon || '🐻' }
+                : (userInfoMap.get(meal.userId) || { nickname: '익명', icon: '🐻' });
+
+            const isShared = feedSharedKeysCache && feedSharedKeysCache.has(`${meal.userId}_${meal.id}`);
+            const hasLocalSharedPhotos = meal.sharedPhotos && Array.isArray(meal.sharedPhotos) && meal.sharedPhotos.length > 0;
+            const hasPhotos = (Array.isArray(meal.photos) && meal.photos.length > 0) || Boolean(meal.photoUrl);
+            const isBanned = meal.shareBanned === true;
+            const hasDataMismatch = hasLocalSharedPhotos && !isShared;
+
+            const typeLabel = meal.isBestShare
+                ? '베스트 공유'
+                : meal.isDailyShare
+                    ? '일간보기 공유'
+                    : meal.isInsightShare
+                        ? '인사이트 공유'
+                        : '일반';
+
+            const whereTag = meal.place || meal.snackPlace || '';
+            const whereSubTag = meal.placeDetail || meal.placeMemo || '';
+            const whatTag = meal.category || meal.mealType || meal.snackType || '';
+            const whatSubTag = meal.menuDetail || meal.snackDetail || '';
+            const withTag = meal.withWhom || '';
+            const withSubTag = meal.withWhomDetail || '';
+            const ratingVal = meal.snackRating ?? meal.rating;
+            const satietyVal = meal.satiety;
+            const firstPhoto = meal.photoUrl || (Array.isArray(meal.photos) ? meal.photos[0] : '');
+            const rowBg = hasDataMismatch ? 'bg-yellow-50' : (isBanned ? 'bg-red-50' : '');
+            const dateTime = fmtDateTimeParts(meal);
+            const newestOrder = (feedCurrentPage - 1) * feedPageSize + rowIdx + 1;
+            const oldFirstNumber = Math.max(1, (feedTotalCount || 0) - newestOrder + 1);
+            const slotKey = String(meal.slotId || '').toLowerCase();
+            const slotLabelMap = {
+                pre_morning: '아침전',
+                morning: '아침',
+                snack1: '오전간식',
+                snack2: '오후간식',
+                night: '야식',
+                breakfast: '아침',
+                lunch: '점심',
+                dinner: '저녁',
+                snack: '간식',
+                before_breakfast: '아침전',
+                after_breakfast: '아침후',
+                before_lunch: '점심전',
+                after_lunch: '점심후',
+                before_dinner: '저녁전',
+                after_dinner: '저녁후'
+            };
+            // 식사구분은 slotId만 기준으로 표시 (mealType/snackType은 '무엇을' 성격 데이터)
+            const mealSlotLabel = slotLabelMap[slotKey] || '-';
+
+            return `
+                <tr class="border-t border-slate-200 ${rowBg}">
+                    <td class="px-3 py-3 align-middle text-center border-r border-slate-200">
+                        <input type="checkbox" class="feed-item-checkbox" data-meal-id="${meal.id}" data-user-id="${meal.userId}" ${meal.isBestShare ? 'data-is-best="true"' : ''} ${meal.isDailyShare ? 'data-is-daily="true"' : ''} ${meal.isInsightShare ? 'data-is-insight="true"' : ''}>
+                    </td>
+                    <td class="px-2 py-3 align-middle text-center border-r border-slate-200 w-[56px] min-w-[56px]">
+                        <div class="flex flex-col items-center gap-1">
+                            <span class="text-xs font-bold text-slate-600">${oldFirstNumber}</span>
+                            ${isShared ? '<span class="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded">공유</span>' : ''}
+                        </div>
+                    </td>
+                    <td class="px-2 py-3 align-middle whitespace-nowrap text-center w-[96px] min-w-[96px] border-r border-slate-200">
+                        <div class="text-xs text-slate-700 font-semibold leading-tight">${escapeHtml(dateTime.date)}</div>
+                        <div class="text-[11px] text-slate-500 leading-tight mt-0.5">${escapeHtml(dateTime.time)}</div>
+                    </td>
+                    <td class="px-3 py-3 align-middle w-[136px] max-w-[136px] text-center border-r border-slate-200">
+                        <div class="flex flex-col items-center gap-1 overflow-hidden">
+                            <span class="text-sm font-semibold text-slate-800 break-words">${userInfo.icon} ${escapeHtml(userInfo.nickname)}</span>
+                            <span class="text-[11px] text-slate-400">${escapeHtml(String(meal.id || '-'))}</span>
+                            <span class="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-bold rounded">${typeLabel}</span>
+                        </div>
+                    </td>
+                    <td class="px-2 py-3 align-middle w-[92px] max-w-[92px] text-center border-r border-slate-200 overflow-hidden">
+                        <span class="inline-flex px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-bold whitespace-nowrap">${escapeHtml(String(mealSlotLabel))}</span>
+                    </td>
+                    <td class="px-3 py-3 align-middle w-[102px] max-w-[102px] text-center border-r border-slate-200 overflow-hidden">${getCategoryCell(whereTag, whereSubTag)}</td>
+                    <td class="px-3 py-3 align-middle w-[102px] max-w-[102px] text-center border-r border-slate-200 overflow-hidden">${getCategoryCell(whatTag, whatSubTag)}</td>
+                    <td class="px-3 py-3 align-middle w-[102px] max-w-[102px] text-center border-r border-slate-200 overflow-hidden">${getCategoryCell(withTag, withSubTag)}</td>
+                    <td class="px-3 py-3 align-middle w-[120px] max-w-[120px] text-center border-r border-slate-200 overflow-hidden">
+                        <div class="text-xs leading-tight">
+                            <div class="font-bold text-slate-700 break-words">만족도 ${escapeHtml(String(ratingVal ?? '-'))}</div>
+                            <div class="font-bold text-slate-600 break-words mt-0.5">포만감 ${escapeHtml(String(satietyVal ?? '-'))}</div>
+                        </div>
+                    </td>
+                    <td class="px-2 py-3 align-middle text-center w-[208px] min-w-[208px] border-r border-slate-200">
+                        ${hasPhotos && firstPhoto
+                            ? `<img src="${firstPhoto}" alt="사진" class="mx-auto w-[200px] h-[200px] object-contain rounded-lg border border-slate-200 bg-white">`
+                            : '<span class="text-slate-300 text-xs">-</span>'}
+                    </td>
+                    <td class="px-3 py-3 align-middle w-[240px] min-w-[240px] border-r border-slate-200">
+                        ${meal.comment
+                            ? `<div class="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap break-words max-h-[200px] overflow-y-auto text-left">${escapeHtml(String(meal.comment))}</div>`
+                            : '<span class="text-slate-300 text-xs">-</span>'}
+                    </td>
+                    <td class="px-2 py-3 align-middle text-center whitespace-nowrap w-[72px] min-w-[72px]">
+                        <div class="inline-flex flex-wrap justify-center items-center gap-1">
+                            ${isShared ? '<span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">공유됨</span>' : ''}
+                            ${isBanned ? '<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded">금지됨</span>' : ''}
+                            ${hasDataMismatch ? '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">데이터 불일치</span>' : ''}
+                            ${reportBadgeHtml}
+                            ${hasDataMismatch ? `<button onclick="window.syncSharedPhotos('${meal.id}', '${meal.userId}')" class="px-2 py-0.5 bg-yellow-600 text-white rounded text-xs font-bold hover:bg-yellow-700 transition-colors">동기화</button>` : ''}
+                        </div>
+                    </td>
+                </tr>
+            `;
         }).join('');
+
+        container.innerHTML = `
+            <div class="overflow-x-auto border border-slate-200 rounded-xl bg-white">
+                <table class="w-full table-fixed text-left">
+                    <thead class="bg-slate-50">
+                        <tr class="text-xs text-slate-500">
+                            <th class="px-3 py-3 font-bold w-10 text-center whitespace-nowrap border-r border-slate-200">선택</th>
+                            <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[56px] min-w-[56px] border-r border-slate-200">번호</th>
+                            <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[96px] min-w-[96px] border-r border-slate-200">일시</th>
+                            <th class="px-3 py-3 font-bold text-center w-[136px] whitespace-nowrap border-r border-slate-200">작성자</th>
+                            <th class="px-2 py-3 font-bold text-center w-[92px] whitespace-nowrap border-r border-slate-200">식사구분</th>
+                            <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">어디서</th>
+                            <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">무엇을</th>
+                            <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">누구와</th>
+                            <th class="px-3 py-3 font-bold text-center w-[120px] whitespace-nowrap border-r border-slate-200">만족도/포만감</th>
+                            <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[208px] min-w-[208px] border-r border-slate-200">사진</th>
+                            <th class="px-3 py-3 font-bold text-center whitespace-nowrap w-[240px] min-w-[240px] border-r border-slate-200">코멘트</th>
+                            <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[72px] min-w-[72px]">상태/신고</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            </div>
+        `;
         
         // 페이지네이션 렌더링
         renderFeedPagination(totalPages);
@@ -571,6 +516,9 @@ window.feedGoToPage = async function(page) {
 // 피드 관리 새로고침
 window.refreshFeedManagement = function() {
     feedCurrentPage = 1;
+    feedLastDocsByPage = {};
+    feedTotalCount = 0;
+    feedSharedKeysCache = null;
     renderFeedManagement();
 }
 

@@ -24,9 +24,21 @@ function isAndroid() {
 
 /** 스테이징/프로덕션 앱 패키지 (알림 설정 화면 intent용) */
 function getAndroidApplicationId() {
+  const capAppId = String(window.Capacitor?.config?.appId || '').trim();
+  if (capAppId === 'com.mealog.app.staging') return 'com.mealog.app.staging';
+  if (capAppId === 'com.mealog.app') return 'com.mealog.app';
   return typeof window.APP_ENV !== 'undefined' && window.APP_ENV === 'staging'
     ? 'com.mealog.app.staging'
     : 'com.mealog.app';
+}
+
+function getCurrentPushEnv() {
+  const capAppId = String(window.Capacitor?.config?.appId || '').trim();
+  if (capAppId === 'com.mealog.app.staging') return 'staging';
+  if (capAppId === 'com.mealog.app') return 'production';
+  return typeof window.APP_ENV !== 'undefined' && window.APP_ENV === 'staging'
+    ? 'staging'
+    : 'production';
 }
 
 /**
@@ -322,13 +334,14 @@ window.getPushDebugInfo = function getPushDebugInfo() {
 async function saveFcmToken(uid, token) {
   if (!uid || !token || typeof token !== 'string') return;
   const ref = doc(db, 'artifacts', appId, 'users', uid, 'config', FCM_TOKENS_DOC);
+  const tokenEnv = getCurrentPushEnv();
   try {
     const snap = await getDoc(ref);
     const prev = (snap.data() && snap.data().tokens) || {};
     await setDoc(ref, {
       tokens: {
         ...prev,
-        [token]: { updatedAt: serverTimestamp() }
+        [token]: { updatedAt: serverTimestamp(), env: tokenEnv }
       }
     }, { merge: true });
     setPushDebug({ tokenSaved: true, lastError: null, phase: 'token_saved' });

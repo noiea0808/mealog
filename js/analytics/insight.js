@@ -44,61 +44,101 @@ const DEFAULT_CHARACTERS = [
 // 동적으로 업데이트되는 캐릭터 목록
 let INSIGHT_CHARACTERS = [...DEFAULT_CHARACTERS];
 
+/** 최근 로드 결과 재사용 (모달·대시보드 중복 조회 방지) */
+let insightCharactersLoadedAt = 0;
+const INSIGHT_CHARACTERS_TTL_MS = 3 * 60 * 1000;
+let insightCharactersLoadPromise = null;
+
+/** 브라우저 HTTP 캐시에 캐릭터 썸네일 선로드 (팝업 오픈 시 체감 단축) */
+function prefetchInsightCharacterImages(characters) {
+    const urls = new Set();
+    for (const c of characters) {
+        if (c.image && typeof c.image === 'string' && c.image.length > 0) {
+            urls.add(c.image);
+        }
+    }
+    urls.add(MEALOG_ICON_URL);
+    for (const url of urls) {
+        const img = new Image();
+        img.decoding = 'async';
+        img.src = url;
+    }
+}
+
 // Firebase에서 캐릭터 목록 가져오기
 async function loadCharactersFromFirebase() {
-    try {
-        const charactersDocRef = doc(db, 'artifacts', appId, 'persona', 'characters');
-        const charactersDoc = await getDoc(charactersDocRef);
-        
-        if (charactersDoc.exists()) {
-            const charactersData = charactersDoc.data();
-            const loadedCharacters = [...DEFAULT_CHARACTERS];
-            
-            // Firebase에서 추가된 캐릭터들 추가 (기본 캐릭터와 중복되지 않는 것만, 관리자 화면과 동일하게 id 순 정렬)
-            Object.entries(charactersData)
-                .filter(([id]) => !DEFAULT_CHARACTERS.find(c => c.id === id))
-                .sort(([a], [b]) => a.localeCompare(b))
-                .forEach(([id, charData]) => {
-                    loadedCharacters.push({
-                        id,
-                        name: charData.name || id,
-                        icon: charData.icon || '👤',
-                        image: charData.image || null,
-                        persona: '', // 나중에 개별 문서에서 가져올 예정
-                        systemPrompt: '' // 나중에 개별 문서에서 가져올 예정
-                    });
-                });
-            
-            // 각 캐릭터의 개별 설정 문서에서 persona와 systemPrompt 가져오기
-            for (const char of loadedCharacters) {
-                if (char.id !== 'mealog') { // MEALOG는 기본값 사용
-                    try {
-                        const personaDocRef = doc(db, 'artifacts', appId, 'persona', char.id);
-                        const personaDoc = await getDoc(personaDocRef);
-                        if (personaDoc.exists()) {
-                            const personaData = personaDoc.data();
-                            if (personaData.persona) char.persona = personaData.persona;
-                            if (personaData.systemPrompt) char.systemPrompt = personaData.systemPrompt;
-                            if (personaData.name) char.name = personaData.name;
-                            if (personaData.image !== undefined) char.image = personaData.image || null;
-                        }
-                    } catch (e) {
-                        console.error(`캐릭터 ${char.id} 설정 가져오기 실패:`, e);
-                    }
-                }
-            }
-            
-            INSIGHT_CHARACTERS = loadedCharacters;
-            return loadedCharacters;
-        }
-        
-        INSIGHT_CHARACTERS = [...DEFAULT_CHARACTERS];
-        return DEFAULT_CHARACTERS;
-    } catch (e) {
-        console.error('캐릭터 목록 가져오기 실패:', e);
-        INSIGHT_CHARACTERS = [...DEFAULT_CHARACTERS];
-        return DEFAULT_CHARACTERS;
+    const now = Date.now();
+    if (insightCharactersLoadedAt && (now - insightCharactersLoadedAt) < INSIGHT_CHARACTERS_TTL_MS) {
+        return INSIGHT_CHARACTERS;
     }
+    if (insightCharactersLoadPromise) {
+        return insightCharactersLoadPromise;
+    }
+
+    insightCharactersLoadPromise = (async () => {
+        try {
+            const charactersDocRef = doc(db, 'artifacts', appId, 'persona', 'characters');
+            const charactersDoc = await getDoc(charactersDocRef);
+
+            if (charactersDoc.exists()) {
+                const charactersData = charactersDoc.data();
+                const loadedCharacters = [...DEFAULT_CHARACTERS];
+
+                Object.entries(charactersData)
+                    .filter(([id]) => !DEFAULT_CHARACTERS.find(c => c.id === id))
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .forEach(([id, charData]) => {
+                        loadedCharacters.push({
+                            id,
+                            name: charData.name || id,
+                            icon: charData.icon || '👤',
+                            image: charData.image || null,
+                            persona: '',
+                            systemPrompt: ''
+                        });
+                    });
+
+                const personaTasks = loadedCharacters
+                    .filter((char) => char.id !== 'mealog')
+                    .map(async (char) => {
+                        try {
+                            const personaDocRef = doc(db, 'artifacts', appId, 'persona', char.id);
+                            const personaDoc = await getDoc(personaDocRef);
+                            if (personaDoc.exists()) {
+                                const personaData = personaDoc.data();
+                                if (personaData.persona) char.persona = personaData.persona;
+                                if (personaData.systemPrompt) char.systemPrompt = personaData.systemPrompt;
+                                if (personaData.name) char.name = personaData.name;
+                                if (personaData.image !== undefined) char.image = personaData.image || null;
+                            }
+                        } catch (e) {
+                            console.error(`캐릭터 ${char.id} 설정 가져오기 실패:`, e);
+                        }
+                    });
+                await Promise.all(personaTasks);
+
+                INSIGHT_CHARACTERS = loadedCharacters;
+                insightCharactersLoadedAt = Date.now();
+                prefetchInsightCharacterImages(INSIGHT_CHARACTERS);
+                return loadedCharacters;
+            }
+
+            INSIGHT_CHARACTERS = [...DEFAULT_CHARACTERS];
+            insightCharactersLoadedAt = Date.now();
+            prefetchInsightCharacterImages(INSIGHT_CHARACTERS);
+            return DEFAULT_CHARACTERS;
+        } catch (e) {
+            console.error('캐릭터 목록 가져오기 실패:', e);
+            INSIGHT_CHARACTERS = [...DEFAULT_CHARACTERS];
+            insightCharactersLoadedAt = 0;
+            prefetchInsightCharacterImages(INSIGHT_CHARACTERS);
+            return DEFAULT_CHARACTERS;
+        } finally {
+            insightCharactersLoadPromise = null;
+        }
+    })();
+
+    return insightCharactersLoadPromise;
 }
 
 // 현재 선택된 캐릭터 (기본값: MEALOG)
@@ -277,11 +317,11 @@ async function renderCharacterSelectPopup() {
         if (char.image) {
             // 이미지 아이콘
             iconHtml = `<div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0">
-                <img src="${escapeHtml(char.image)}" alt="${escapeHtml(char.name)}" class="w-full h-full object-contain">
+                <img src="${escapeHtml(char.image)}" alt="${escapeHtml(char.name)}" class="w-full h-full object-contain" decoding="async">
             </div>`;
         } else if (char.id === 'mealog') {
             // MEALOG 스마트폰용 밀로그 아이콘
-            iconHtml = `<div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0"><img src="${MEALOG_ICON_URL}" alt="MEALOG" class="w-full h-full object-contain" onerror="this.style.display='none';this.nextElementSibling?.classList.remove('hidden');"><span class="hidden text-emerald-700 font-black text-lg">M</span></div>`;
+            iconHtml = `<div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0"><img src="${MEALOG_ICON_URL}" alt="MEALOG" class="w-full h-full object-contain" decoding="async" onerror="this.style.display='none';this.nextElementSibling?.classList.remove('hidden');"><span class="hidden text-emerald-700 font-black text-lg">M</span></div>`;
         } else {
             // 이모지 아이콘
             iconHtml = `<div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-2xl flex-shrink-0">${escapeHtml(char.icon)}</div>`;
