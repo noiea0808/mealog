@@ -11,7 +11,7 @@ import { getAdminDisplayName } from '../db.js';
 
 const adminAuth = getAuth(app);
 
-const POPUP_TARGET_MENU_LABELS = { dashboard: '밀당', timeline: '밀로그', gallery: '모먼트', board: '밀톡', settings: '사용자' };
+const POPUP_TARGET_MENU_LABELS = { dashboard: '밀당', timeline: '밀로그', gallery: '모먼트', board: '라운지', settings: '사용자' };
 const POPUP_FREQUENCY_LABELS = { daily: '하루 한 번', on_login: '로그인 시마다', on_visit: '접근시마다' };
 const POPUP_TARGET_ENV_LABELS = { all: '전체', production: '프로덕션만', staging: '스테이징만' };
 let currentEditingPopupId = null;

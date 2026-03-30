@@ -188,7 +188,7 @@ function feedBubbleHtml(post, opts = {}) {
 
 function feedRefreshButtonHtml() {
     return `
-    <div class="feed-timeline-footer mt-0.5 flex w-full shrink-0 justify-center px-2 pb-1 pt-0.5">
+    <div class="feed-timeline-footer mt-5 flex w-full shrink-0 justify-center px-2 pb-1 pt-0.5">
       <button type="button" class="feed-refresh-btn inline-flex items-center justify-center gap-2 rounded-full border border-white/40 bg-white/15 px-4 py-2 text-sm font-medium text-white shadow-sm backdrop-blur-sm outline-none transition-colors hover:bg-white/25 active:bg-white/20 disabled:pointer-events-none disabled:opacity-50" data-feed-refresh aria-label="대화 새로고침">
         <i class="fa-solid fa-arrows-rotate text-base" aria-hidden="true"></i>
         <span>새로고침</span>
@@ -238,7 +238,7 @@ function paintFeedTimeline(root, posts) {
         .join('');
     root.innerHTML = `
         <div class="feed-timeline-stack flex min-h-full flex-col justify-end">
-            <div class="feed-timeline flex w-full flex-col justify-end gap-2 pb-0.5 pt-1">${rowsHtml}</div>
+            <div class="feed-timeline flex w-full flex-col justify-end gap-2 pb-0 pt-1">${rowsHtml}</div>
             ${feedRefreshButtonHtml()}
         </div>`;
 }
@@ -435,11 +435,11 @@ export async function renderBoardFeedTab(options = {}) {
     } catch (e) {
         console.error('renderBoardFeedTab:', e);
         if (quiet) {
-            showToast('피드를 다시 불러오지 못했어요.', 'error');
+            showToast('밀톡을 다시 불러오지 못했어요.', 'error');
         } else {
             root.innerHTML = `
             <div class="feed-panel-error flex flex-col items-center justify-center py-12 px-4 text-center text-sm">
-                피드를 불러오지 못했어요
+                밀톡을 불러오지 못했어요
             </div>`;
         }
     }

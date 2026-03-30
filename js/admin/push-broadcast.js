@@ -16,7 +16,7 @@ const ADMIN_PUSH_LANDING_LABELS = {
     dashboard: '밀당',
     timeline: '밀로그',
     gallery: '모먼트',
-    board: '밀톡',
+    board: '라운지',
     settings: '설정'
 };
 const ADMIN_SCHEDULED_PUSH_STATUS_LABELS = {

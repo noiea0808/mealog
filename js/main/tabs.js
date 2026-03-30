@@ -17,7 +17,7 @@ import { syncOrphanedSharesToMoment } from './shares-sync.js';
 import { isDemoUser } from '../demo-account.js';
 import { markMomentFeedNavSeen, markBoardNavSeen } from './nav-feed-update-dots.js';
 
-const HEADER_SECTION_BY_TAB = { dashboard: '밀당', timeline: '밀로그', gallery: '모먼트', board: '밀톡', settings: '사용자' };
+const HEADER_SECTION_BY_TAB = { dashboard: '밀당', timeline: '밀로그', gallery: '모먼트', board: '라운지', settings: '사용자' };
 
 function updateHeaderSectionLabel(tab) {
     const el = document.getElementById('headerSectionLabel');

@@ -1256,7 +1256,7 @@ const DEMO_GUIDE_TABS = [
     { key: 'dashboard', icon: 'fa-chart-line',  label: '밀당' },
     { key: 'gallery',   icon: 'fa-images',      label: '모먼트' },
     { key: 'timeline',  icon: 'fa-clock',        label: '밀로그' },
-    { key: 'board',     icon: 'fa-comments',     label: '밀톡' },
+    { key: 'board',     icon: 'fa-comments',     label: '라운지' },
     { key: 'settings',  icon: 'fa-gear',         label: '설정' },
 ];
 

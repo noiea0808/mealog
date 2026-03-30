@@ -76,11 +76,11 @@ export const feedOperations = {
             console.error('[feedOperations.getMessages]', e);
             const code = e?.code || '';
             if (code === 'permission-denied') {
-                showToast('피드를 불러올 권한이 없습니다. 다시 로그인해 주세요.', 'error');
+                showToast('밀톡을 불러올 권한이 없습니다. 다시 로그인해 주세요.', 'error');
             } else if (code === 'failed-precondition') {
-                showToast('피드 목록을 불러오는 데 문제가 있습니다. 잠시 후 다시 시도해 주세요.', 'error');
+                showToast('밀톡 목록을 불러오는 데 문제가 있습니다. 잠시 후 다시 시도해 주세요.', 'error');
             } else if (code === 'unavailable' || code === 'deadline-exceeded') {
-                showToast('피드를 불러오지 못했습니다. 네트워크를 확인해 주세요.', 'error');
+                showToast('밀톡을 불러오지 못했습니다. 네트워크를 확인해 주세요.', 'error');
             }
             return [];
         }
