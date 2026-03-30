@@ -178,23 +178,23 @@ function showFeedBubbleSheet({ postId, isMine, bubble }) {
         </div>`;
 
     const rowBase =
-        'flex w-full cursor-pointer items-center justify-center gap-2 border-0 bg-transparent px-2 py-2.5 text-center text-sm outline-none active:bg-slate-100';
+        'flex w-full cursor-pointer items-center justify-center gap-2 border-0 bg-transparent px-2 py-[calc(0.625rem*1.3)] text-center text-base outline-none active:bg-slate-100';
 
     const replyBtn = isMine
         ? ''
         : `<button type="button" data-feed-action="reply" class="${rowBase} text-slate-900">
-            <i class="fa-solid fa-reply shrink-0 text-xs text-slate-600" aria-hidden="true"></i>답장
+            <i class="fa-solid fa-reply shrink-0 text-sm text-slate-600" aria-hidden="true"></i>답장
         </button>`;
 
     const editBtn = isMine
         ? `<button type="button" data-feed-action="edit" class="${rowBase} text-slate-900">
-            <i class="fa-solid fa-pen shrink-0 text-xs text-slate-600" aria-hidden="true"></i>수정
+            <i class="fa-solid fa-pen shrink-0 text-sm text-slate-600" aria-hidden="true"></i>수정
         </button>`
         : '';
 
     const delBtn = isMine
         ? `<button type="button" data-feed-action="delete" class="${rowBase} text-red-800 active:bg-red-50">
-            <i class="fa-solid fa-trash shrink-0 text-xs text-red-700" aria-hidden="true"></i>삭제
+            <i class="fa-solid fa-trash shrink-0 text-sm text-red-700" aria-hidden="true"></i>삭제
         </button>`
         : '';
 
@@ -205,13 +205,13 @@ function showFeedBubbleSheet({ postId, isMine, bubble }) {
             ${reactionsBlock}
             <div class="flex flex-col divide-y divide-slate-200/90">
                 <button type="button" data-feed-action="copy" class="${rowBase} text-slate-900 leading-tight">
-                    <i class="fa-regular fa-copy shrink-0 text-xs text-slate-600" aria-hidden="true"></i><span class="break-words">텍스트 복사</span>
+                    <i class="fa-regular fa-copy shrink-0 text-sm text-slate-600" aria-hidden="true"></i><span class="break-words">텍스트 복사</span>
                 </button>
                 ${replyBtn}
                 ${editBtn}
                 ${delBtn}
             </div>
-            <button type="button" data-feed-sheet-dismiss class="mt-0 w-full border-t border-slate-200/90 bg-transparent py-2.5 text-center text-sm text-slate-900 outline-none active:bg-slate-100">닫기</button>
+            <button type="button" data-feed-sheet-dismiss class="mt-0 w-full border-t border-slate-200/90 bg-transparent py-[calc(0.625rem*1.3)] text-center text-base text-slate-900 outline-none active:bg-slate-100">닫기</button>
         </div>`;
 
     document.body.appendChild(root);

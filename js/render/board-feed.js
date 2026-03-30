@@ -73,8 +73,8 @@ function feedReplyQuoteHtml(replyTo, variant = 'mine') {
     const prevC = variant === 'other' ? 'text-slate-600' : 'text-emerald-800/90';
     return `
         <div class="feed-reply-quote mb-1.5 min-w-0 max-w-full rounded-md px-2 py-1 ${box}">
-            <div class="truncate text-[11px] ${nickC}">${nick}</div>
-            <div class="truncate text-[11px] ${prevC}">${prev}</div>
+            <div class="truncate text-xs ${nickC}">${nick}</div>
+            <div class="truncate text-xs ${prevC}">${prev}</div>
         </div>`;
 }
 
@@ -104,8 +104,8 @@ function feedBubbleHtml(post, opts = {}) {
         ? `<div class="mt-1.5 overflow-hidden rounded-lg"><img src="${escapeHtml(img0)}" alt="" class="max-h-40 w-auto max-w-[min(85vw,240px)] rounded-lg bg-slate-100 object-cover" loading="lazy"></div>`
         : '';
 
-    const timeMine = `<span class="feed-bubble-meta-time shrink-0 pb-1 text-[10px] leading-tight">${time}</span>`;
-    const timeOtherBesideBubble = `<span class="feed-bubble-meta-time shrink-0 self-end pb-1 text-[10px] leading-tight whitespace-nowrap">${time}</span>`;
+    const timeMine = `<span class="feed-bubble-meta-time shrink-0 pb-1 text-xs leading-tight">${time}</span>`;
+    const timeOtherBesideBubble = `<span class="feed-bubble-meta-time shrink-0 self-end pb-1 text-xs leading-tight whitespace-nowrap">${time}</span>`;
 
     if (isMine) {
         const replyQ = post.replyTo ? feedReplyQuoteHtml(post.replyTo, 'mine') : '';
@@ -114,7 +114,7 @@ function feedBubbleHtml(post, opts = {}) {
             <div class="feed-timeline-row feed-timeline-row-mine flex justify-end items-end gap-2 pr-0.5 sm:pr-2" data-post-id="${pid}">
                 ${timeMine}
                 <div class="flex w-fit max-w-[min(88%,22rem)] flex-col items-end sm:max-w-[18rem]">
-                    <div class="feed-chat-bubble feed-chat-bubble-mine inline-block w-fit max-w-full text-left rounded-2xl rounded-br-md px-5 py-2 text-sm shadow-sm">
+                    <div class="feed-chat-bubble feed-chat-bubble-mine inline-block w-fit max-w-full text-left rounded-2xl rounded-br-md px-5 py-2 text-base shadow-sm">
                         ${replyQ}
                         <p class="m-0 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem]">${body}</p>
                         ${imgBlock}
@@ -134,7 +134,7 @@ function feedBubbleHtml(post, opts = {}) {
         ? feedOtherAuthorAvatarBlock(post, authorDisplay)
         : '<div class="h-9 w-9 flex-shrink-0" aria-hidden="true"></div>';
     const nickRow = showAuthorHeader
-        ? `<span class="feed-bubble-author-nick mb-0.5 max-w-full truncate pl-0.5 text-xs font-semibold">${nick}</span>`
+        ? `<span class="feed-bubble-author-nick mb-0.5 max-w-full truncate pl-0.5 text-sm font-semibold">${nick}</span>`
         : '';
     const reactRowOther = feedReactionRowHtml(post, false);
     const replyQOther = post.replyTo ? feedReplyQuoteHtml(post.replyTo, 'other') : '';
@@ -147,7 +147,7 @@ function feedBubbleHtml(post, opts = {}) {
                     ${nickRow}
                     <div class="flex min-w-0 max-w-full flex-col items-start">
                         <div class="flex max-w-full items-end gap-1">
-                            <div class="feed-chat-bubble feed-chat-bubble-other inline-block w-fit max-w-full rounded-2xl rounded-bl-md border px-5 py-2 text-left text-sm shadow-sm">
+                            <div class="feed-chat-bubble feed-chat-bubble-other inline-block w-fit max-w-full rounded-2xl rounded-bl-md border px-5 py-2 text-left text-base shadow-sm">
                                 ${replyQOther}
                                 <p class="m-0 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem]">${body}</p>
                                 ${imgBlock}
