@@ -1155,75 +1155,106 @@ if (boardFeedPhotoInput) {
         syncBoardInlineComposerUi();
     });
 }
-if (boardInlineSubmit) {
-    boardInlineSubmit.addEventListener('click', async () => {
-        if (!window.currentUser || window.currentUser.isAnonymous) {
-            showToast('로그인이 필요합니다.', 'error');
-            window.requestLogin?.();
-            return;
-        }
-        if (isDemoUser(window.currentUser)) {
-            showToast('체험 계정에서는 메시지를 보낼수 없어요', 'error');
-            return;
-        }
-        const raw = boardInlineInput?.value || '';
-        const text = raw.trim();
-        const photoFile = window.feedComposerPhotoFile;
-        const hasPhoto = !!photoFile;
-        if (!text && !hasPhoto) return;
+/** 모바일: 입력 포커스 상태에서 전송 탭 시 키보드만 내려가고 click이 안 먹는 경우 방지 (게시 버튼과 동일 패턴) */
+let _boardFeedSubmitTouchTs = 0;
+const BOARD_FEED_TOUCH_CLICK_SUPPRESS_MS = 500;
 
-        const replyToPostId = window.__feedReplyToPostId
-            ? String(window.__feedReplyToPostId).trim()
-            : '';
+async function runBoardInlineFeedSubmit() {
+    if (!boardInlineSubmit) return;
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast('로그인이 필요합니다.', 'error');
+        window.requestLogin?.();
+        return;
+    }
+    if (isDemoUser(window.currentUser)) {
+        showToast('체험 계정에서는 메시지를 보낼수 없어요', 'error');
+        return;
+    }
+    const raw = boardInlineInput?.value || '';
+    const text = raw.trim();
+    const photoFile = window.feedComposerPhotoFile;
+    const hasPhoto = !!photoFile;
+    if (!text && !hasPhoto) return;
 
-        const imagePreviewUrls = [];
-        if (photoFile) {
-            imagePreviewUrls.push(URL.createObjectURL(photoFile));
-        }
-        const pending = buildPendingFeedMessage({ text, imagePreviewUrls, replyToPostId });
-        if (pending) applyOptimisticFeedPost(pending);
+    const replyToPostId = window.__feedReplyToPostId ? String(window.__feedReplyToPostId).trim() : '';
 
-        if (boardInlineInput) boardInlineInput.value = '';
-        clearFeedReplyBar();
-        clearFeedComposerPhoto();
-        syncBoardInlineComposerUi();
+    const imagePreviewUrls = [];
+    if (photoFile) {
+        imagePreviewUrls.push(URL.createObjectURL(photoFile));
+    }
+    const pending = buildPendingFeedMessage({ text, imagePreviewUrls, replyToPostId });
+    if (pending) applyOptimisticFeedPost(pending);
 
-        const submitBtn = boardInlineSubmit;
-        const sendIconHtml = '<i class="fa-solid fa-arrow-up text-sm"></i>';
-        const prevHtml = submitBtn.innerHTML;
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-sm"></i>';
+    if (boardInlineInput) boardInlineInput.value = '';
+    clearFeedReplyBar();
+    clearFeedComposerPhoto();
+    syncBoardInlineComposerUi();
 
-        let imageUrls = [];
-        if (hasPhoto) {
-            try {
-                imageUrls = await uploadFeedImages([photoFile], window.currentUser.uid);
-            } catch (err) {
-                console.error('[feed composer] upload:', err);
-                removePendingFeedPosts();
-                showToast(err?.message || '사진 업로드에 실패했습니다.', 'error');
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = prevHtml || sendIconHtml;
-                syncBoardInlineComposerUi();
-                return;
-            }
-        }
+    const submitBtn = boardInlineSubmit;
+    const sendIconHtml = '<i class="fa-solid fa-arrow-up text-sm"></i>';
+    const prevHtml = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-sm"></i>';
 
+    let imageUrls = [];
+    if (hasPhoto) {
         try {
-            const created = await feedOperations.createMessage({
-                text,
-                imageUrls,
-                ...(replyToPostId ? { replyToPostId } : {})
-            });
-            await renderBoardFeedTab({ quietRefresh: true, optimisticPost: created });
-        } catch (_) {
+            imageUrls = await uploadFeedImages([photoFile], window.currentUser.uid);
+        } catch (err) {
+            console.error('[feed composer] upload:', err);
             removePendingFeedPosts();
-            // createMessage에서 토스트 처리
-        } finally {
+            showToast(err?.message || '사진 업로드에 실패했습니다.', 'error');
             submitBtn.disabled = false;
-            submitBtn.innerHTML = sendIconHtml;
+            submitBtn.innerHTML = prevHtml || sendIconHtml;
             syncBoardInlineComposerUi();
+            return;
         }
+    }
+
+    try {
+        const created = await feedOperations.createMessage({
+            text,
+            imageUrls,
+            ...(replyToPostId ? { replyToPostId } : {})
+        });
+        await renderBoardFeedTab({ quietRefresh: true, optimisticPost: created });
+    } catch (_) {
+        removePendingFeedPosts();
+        // createMessage에서 토스트 처리
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = sendIconHtml;
+        syncBoardInlineComposerUi();
+    }
+}
+
+if (boardInlineSubmit) {
+    boardInlineSubmit.addEventListener(
+        'touchstart',
+        (e) => {
+            if (boardInlineSubmit.disabled) return;
+            e.preventDefault();
+        },
+        { passive: false }
+    );
+    boardInlineSubmit.addEventListener(
+        'touchend',
+        (e) => {
+            if (boardInlineSubmit.disabled) return;
+            e.preventDefault();
+            e.stopPropagation();
+            _boardFeedSubmitTouchTs = Date.now();
+            void runBoardInlineFeedSubmit();
+        },
+        { passive: false }
+    );
+    boardInlineSubmit.addEventListener('click', (e) => {
+        if (Date.now() - _boardFeedSubmitTouchTs < BOARD_FEED_TOUCH_CLICK_SUPPRESS_MS) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
+        void runBoardInlineFeedSubmit();
     });
 }
 const boardInlinePhotoBtn = document.getElementById('boardInlineComposerPhotoBtn');

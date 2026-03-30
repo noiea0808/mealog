@@ -17,8 +17,13 @@
     );
     /* 밀톡 피드 인라인 컴포저 컨테이너(아이콘·입력·버튼 전체) 면 — 알파↑ = 더 비침 */
     --board-feed-composer-surface: rgba(248, 250, 252, 0.7);
-    /* 피드 스크롤 하단: 고정 입력줄(~66px 위) + 컴포저·답장·사진 + 세이프 — 말풍선이 가리지 않게 */
-    --board-feed-scroll-inset-bottom: calc(72px + 11rem + var(--safe-bottom));
+    /*
+     * 피드 스크롤 하단 패딩: APP 네비가 아니라 fixed 컴포저(#boardInlineComposer) 기준.
+     * = 컴포저 bottom 오프셋(뷰포트 하단~컴포저 밑변) + 컴포저 박스 높이(패딩 0.4rem×2 + 한 줄 행 2.25rem + 테두리) + 새로고침 등 여유.
+     * 구체 값은 #boardListView #boardFeedPanelContent 및 body 상태별 규칙에서 조합한다.
+     */
+    --board-feed-composer-face: calc(0.8rem + 2.25rem + 2px);
+    --board-feed-above-composer: 0.75rem;
 }
 /* Web: 핸폰 네비 없음 → safe-bottom 0, 하단 공백 제거 (App 네비 바로 위까지) */
 html.platform-web {
@@ -1876,7 +1881,7 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 /* 밀톡: 피드/게시판 서브탭 아래만 스크롤 (상단 탭은 고정, 본문은 패널 내부 스크롤)
    max-height만 있으면 블록 높이는 내용 높이로만 잡혀 flex:1 자식이 늘지 않음 → 스크롤 영역 0으로 보임 */
 #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
-    /* 헤더(밀톡 타이틀) ↔ 서브탭만 촘촘히 — 피드/게시판 버튼 높이는 아래 .board-list-subtab에서 복원 */
+    /* 헤더(밀톡 타이틀) ↔ 서브탭만 촘촘히 — 피드/게시판 탭 높이는 사용자 메뉴 .settings-tab과 동일(px-3 py-2.5) */
     padding-top: 0.125rem;
     padding-bottom: 0.75rem;
     padding-left: 1rem;
@@ -1930,10 +1935,7 @@ body:has(#mainAppHeader.header-scroll-hidden) #boardListView.board-list-view-mea
 #boardListView.board-list-view-mealtalk.ui-stack-md > .board-write-fab + .board-mealtalk-subtabs {
     margin-top: calc(0.75rem * 0.3);
 }
-.board-mealtalk-subtabs .board-list-subtab {
-    padding-top: 0.1875rem;
-    padding-bottom: 0.375rem;
-}
+/* 피드/게시판 탭 높이·여백: 사용자 설정(settings-tab)과 동일 px-3 py-2.5 + 바 px-4 pt-2 pb-0 */
 
 /* 피드 인라인 입력: 기본 완전 숨김 — 밀톡+피드에서만 .board-feed-composer-visible */
 #boardInlineComposer.board-feed-chat-composer {
@@ -2097,6 +2099,10 @@ body.feed-bubble-sheet-open {
     scroll-behavior: auto;
     padding-left: 0.25rem;
     padding-right: 0.25rem;
+    /* 컴포저와 동일: bottom: calc(66px + var(--safe-bottom)) */
+    --board-feed-scroll-inset-bottom: calc(
+        66px + var(--safe-bottom) + var(--board-feed-composer-face) + var(--board-feed-above-composer)
+    );
     padding-bottom: var(--board-feed-scroll-inset-bottom);
     scroll-padding-bottom: var(--board-feed-scroll-inset-bottom);
     background: var(--board-feed-bg);
@@ -2168,7 +2174,10 @@ body.bottom-nav-scroll-hidden #boardInlineComposer.board-feed-chat-composer.boar
     bottom: calc(10px + var(--safe-bottom));
 }
 body.bottom-nav-scroll-hidden #boardListView #boardFeedPanelContent {
-    --board-feed-scroll-inset-bottom: calc(10px + 9rem + var(--safe-bottom));
+    /* 컴포저와 동일: bottom: calc(10px + var(--safe-bottom)) */
+    --board-feed-scroll-inset-bottom: calc(
+        10px + var(--safe-bottom) + var(--board-feed-composer-face) + var(--board-feed-above-composer)
+    );
 }
 body.bottom-nav-scroll-hidden #boardListView #boardListPanel:not(.hidden) {
     padding-bottom: calc(1.25rem + var(--safe-bottom));
@@ -2183,7 +2192,11 @@ body:has(#boardInlineComposerInput:focus) #boardListView.board-list-view-mealtal
     max-height: calc(100dvh - var(--safe-top));
 }
 body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent {
-    --board-feed-scroll-inset-bottom: calc(8rem + var(--safe-bottom));
+    /* 컴포저와 동일: bottom: max(0.35rem, env(safe-area-inset-bottom)) — 네비 숨김 후 키보드 대응 */
+    --board-feed-scroll-inset-bottom: calc(
+        max(0.35rem, env(safe-area-inset-bottom, 0px)) + var(--board-feed-composer-face) +
+            var(--board-feed-above-composer)
+    );
 }
 /* 패널(#boardListPanel)에서 이미 풀폭·배경 처리 — 이중 네거티브 마진 제거 */
 #boardListView #noticesContainer,

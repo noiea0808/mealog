@@ -106,6 +106,7 @@ function feedBubbleHtml(post, opts = {}) {
     const showAuthorHeader = opts.showAuthorHeader !== false;
     const uid = window.currentUser?.uid;
     const isMine = !!(uid && post.authorId === uid);
+    const isPendingSend = isMine && String(post.id || '').startsWith('pending-');
     // 피드 본문은 순수 텍스트 — 줄바꿈 유지(getPlainTextPreview는 \n을 공백으로 제거함)
     const body = escapeHtml(String(post.text || post.content || ''));
     const hasImg = Array.isArray(post.imageUrls) && post.imageUrls.length > 0;
@@ -114,8 +115,12 @@ function feedBubbleHtml(post, opts = {}) {
     const pid = escapeHtml(post.id || '');
     const hasBody = String(post.text || post.content || '').trim().length > 0;
 
+    const imgOnlyPendingSpinner =
+        isMine && isPendingSend && hasImg && !hasBody
+            ? `<span class="pointer-events-none absolute left-2 top-2 z-[1] flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600/90 text-white shadow-sm" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[11px] leading-none" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`
+            : '';
     const imgBlock = hasImg
-        ? `<div class="${hasBody ? 'mt-1.5' : ''} overflow-hidden rounded-lg"><img src="${escapeHtml(img0)}" alt="" class="max-h-40 w-auto max-w-[min(85vw,240px)] rounded-lg bg-slate-100 object-cover" loading="lazy"></div>`
+        ? `<div class="${hasBody ? 'mt-1.5' : ''} ${imgOnlyPendingSpinner ? 'relative' : ''} overflow-hidden rounded-lg">${imgOnlyPendingSpinner}<img src="${escapeHtml(img0)}" alt="" class="max-h-40 w-auto max-w-[min(85vw,240px)] rounded-lg bg-slate-100 object-cover" loading="lazy"></div>`
         : '';
 
     const timeMine = `<span class="feed-bubble-meta-time shrink-0 pb-1 text-xs leading-tight">${time}</span>`;
@@ -124,13 +129,19 @@ function feedBubbleHtml(post, opts = {}) {
     if (isMine) {
         const replyQ = post.replyTo ? feedReplyQuoteHtml(post.replyTo, 'mine') : '';
         const reactRow = feedReactionRowHtml(post, true);
+        const pendingSpinnerLead = `<span class="pointer-events-none flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600/90 text-white shadow-sm" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[11px] leading-none" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`;
+        const bodyMine = hasBody
+            ? isPendingSend
+                ? `<div class="flex min-w-0 max-w-full items-start gap-2 ${hasImg ? 'px-5 pt-2' : ''}">${pendingSpinnerLead}<p class="m-0 min-w-0 flex-1 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem]">${body}</p></div>`
+                : `<p class="m-0 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem] ${hasImg ? 'px-5 py-2' : ''}">${body}</p>`
+            : '';
         return `
-            <div class="feed-timeline-row feed-timeline-row-mine flex justify-end items-end gap-2 pr-0.5 sm:pr-2" data-post-id="${pid}">
+            <div class="feed-timeline-row feed-timeline-row-mine flex justify-end items-end gap-2 pr-0.5 sm:pr-2" data-post-id="${pid}"${isPendingSend ? ' aria-busy="true"' : ''}>
                 ${timeMine}
                 <div class="flex w-fit max-w-[min(88%,22rem)] flex-col items-end sm:max-w-[18rem]">
                     <div class="feed-chat-bubble feed-chat-bubble-mine inline-block w-fit max-w-full text-left rounded-2xl rounded-br-md ${hasImg ? 'p-0' : 'px-5 py-2'} text-base shadow-sm">
                         ${replyQ}
-                        ${hasBody ? `<p class="m-0 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem] ${hasImg ? 'px-5 py-2' : ''}">${body}</p>` : ''}
+                        ${bodyMine}
                         ${imgBlock}
                     </div>
                     ${reactRow}
@@ -177,7 +188,7 @@ function feedBubbleHtml(post, opts = {}) {
 
 function feedRefreshButtonHtml() {
     return `
-    <div class="feed-timeline-footer mt-[30px] flex w-full shrink-0 justify-center px-2 pb-3 pt-1">
+    <div class="feed-timeline-footer mt-0.5 flex w-full shrink-0 justify-center px-2 pb-1 pt-0.5">
       <button type="button" class="feed-refresh-btn inline-flex items-center justify-center gap-2 rounded-full border border-white/40 bg-white/15 px-4 py-2 text-sm font-medium text-white shadow-sm backdrop-blur-sm outline-none transition-colors hover:bg-white/25 active:bg-white/20 disabled:pointer-events-none disabled:opacity-50" data-feed-refresh aria-label="대화 새로고침">
         <i class="fa-solid fa-arrows-rotate text-base" aria-hidden="true"></i>
         <span>새로고침</span>
@@ -227,7 +238,7 @@ function paintFeedTimeline(root, posts) {
         .join('');
     root.innerHTML = `
         <div class="feed-timeline-stack flex min-h-full flex-col justify-end">
-            <div class="feed-timeline flex w-full flex-col justify-end gap-2 pb-2 pt-1">${rowsHtml}</div>
+            <div class="feed-timeline flex w-full flex-col justify-end gap-2 pb-0.5 pt-1">${rowsHtml}</div>
             ${feedRefreshButtonHtml()}
         </div>`;
 }

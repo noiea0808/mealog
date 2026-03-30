@@ -102,12 +102,6 @@ function setDotVisible(tab, visible) {
     dot.classList.toggle('hidden', !visible);
 }
 
-function setHeaderBoardDotVisible(visible) {
-    const dot = document.getElementById('boardUpdateDot');
-    if (!dot) return;
-    dot.classList.toggle('hidden', !visible);
-}
-
 function setBoardSubtabDotVisible(subtab, visible) {
     const id = subtab === 'board' ? 'boardSubtabBoard' : 'boardSubtabFeed';
     const btn = document.getElementById(id);
@@ -119,7 +113,6 @@ function setBoardSubtabDotVisible(subtab, visible) {
 export function clearNavFeedUpdateDots() {
     setDotVisible('gallery', false);
     setDotVisible('board', false);
-    setHeaderBoardDotVisible(false);
     setBoardSubtabDotVisible('feed', false);
     setBoardSubtabDotVisible('board', false);
 }
@@ -181,7 +174,6 @@ function applyBaselineAndCompare(uidKey, peekMoment, peekFeed, peekBoardPosts, p
     const boardPostsHasNew = peekBoardPosts > pSeen;
     setDotVisible('gallery', momentHasNew);
     setDotVisible('board', boardHasNew);
-    setHeaderBoardDotVisible(boardHasNew);
     setBoardSubtabDotVisible('feed', feedHasNew);
     setBoardSubtabDotVisible('board', boardPostsHasNew);
 }
@@ -229,7 +221,6 @@ export function markBoardNavSeen() {
     if (!uk) return;
     writeSeen(LS_BOARD + uk, Date.now());
     setDotVisible('board', false);
-    setHeaderBoardDotVisible(false);
 }
 
 /** 밀톡-피드(서브탭) 진입 시 호출 */
