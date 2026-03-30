@@ -863,22 +863,60 @@
                 </div>
             </div>
             <!-- 게시판 목록 뷰 -->
-            <div id="boardListView" class="hidden ui-tab-view ui-stack-md relative">
+            <div id="boardListView" class="hidden ui-tab-view ui-stack-md relative board-list-view-mealtalk">
                 <button id="boardWriteBtn" class="board-write-fab" type="button" title="글쓰기" aria-label="글쓰기">
                     <i class="fa-solid fa-pen text-lg"></i>
                 </button>
-                <div class="flex gap-2 mb-4 mt-2 overflow-x-auto scrollbar-hide">
+                <div class="board-mealtalk-subtabs flex border-b border-slate-200" role="tablist" aria-label="밀톡 보기 방식">
+                    <button type="button" id="boardSubtabFeed" role="tab" aria-selected="true" class="board-list-subtab flex-1 py-1.5 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors">피드</button>
+                    <button type="button" id="boardSubtabBoard" role="tab" aria-selected="false" class="board-list-subtab flex-1 py-1.5 text-sm font-bold text-slate-500 border-b-2 border-transparent transition-colors">게시판</button>
+                </div>
+                <div id="boardCategoryRow" class="flex gap-2 mb-4 mt-1 overflow-x-auto scrollbar-hide hidden">
                     <button id="board-category-all" class="board-category-btn active px-4 py-2 bg-black text-white border border-black rounded-lg text-xs font-bold whitespace-nowrap">전체</button>
                     <button id="board-category-food" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">먹는</button>
                     <button id="board-category-chat" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">가벼운</button>
                     <button id="board-category-serious" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">무거운</button>
                     <button id="board-category-admin" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">치프에게</button>
                 </div>
-                <div id="noticesContainer" class="mb-4 ui-stack-md">
-                    <!-- 공지가 여기에 동적으로 추가됨 -->
+                <div id="boardFeedPanel" class="board-feed-panel">
+                    <div id="boardFeedPanelContent" class="board-feed-panel-content min-h-[12rem]"></div>
                 </div>
-                <div id="boardContainer" class="ui-surface-soft ui-stack-tight">
-                    <!-- 게시글 목록이 여기에 동적으로 추가됨 -->
+                <div id="boardInlineComposer" class="board-inline-composer board-feed-chat-composer" aria-label="피드 메시지 입력">
+                    <input type="file" id="boardFeedComposerPhotoInput" class="hidden" accept="image/*">
+                    <div id="boardFeedComposerPhotoPreview" class="board-feed-composer-photo-preview flex flex-wrap gap-1.5 mb-1 min-h-0"></div>
+                    <div id="boardInlineComposerReplyBar" class="hidden board-feed-reply-bar mb-1.5 min-w-0" aria-live="polite">
+                        <div class="flex min-w-0 items-center gap-1.5 rounded-xl border border-slate-300/50 bg-slate-500/10 px-2 py-1.5">
+                            <i class="fa-solid fa-reply flex-shrink-0 text-[10px] text-emerald-700" aria-hidden="true"></i>
+                            <span id="boardInlineComposerReplyNick" class="max-w-[36%] flex-shrink-0 truncate text-[11px] font-bold text-emerald-800"></span>
+                            <span class="flex-shrink-0 text-[11px] text-slate-400" aria-hidden="true">·</span>
+                            <span id="boardInlineComposerReplySnippet" class="min-w-0 flex-1 truncate text-[11px] text-slate-600"></span>
+                            <button type="button" id="boardInlineComposerReplyClear" class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-base leading-none text-slate-500 hover:bg-white/70 active:bg-white" aria-label="답장 취소">×</button>
+                        </div>
+                    </div>
+                    <div class="board-feed-composer-row flex items-center gap-1.5">
+                        <div id="boardInlineComposerAvatar" class="board-inline-composer-avatar w-9 h-9 rounded-full flex-shrink-0 bg-slate-200 flex items-center justify-center text-slate-500 overflow-hidden border border-slate-200" aria-hidden="true">
+                            <i class="fa-solid fa-user text-xs"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <label class="sr-only" for="boardInlineComposerInput">피드 메시지</label>
+                            <textarea id="boardInlineComposerInput" rows="1" maxlength="280" class="board-inline-composer-input board-feed-chat-input w-full text-[15px] text-slate-800 placeholder:text-slate-400" placeholder="메시지를 입력하세요…"></textarea>
+                        </div>
+                        <button type="button" id="boardInlineComposerPhotoBtn" class="board-feed-composer-attach flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full text-slate-500 hover:bg-white/80 hover:text-emerald-600 active:bg-white transition-colors" title="사진 첨부" aria-label="사진 첨부">
+                            <i class="fa-regular fa-image text-lg"></i>
+                        </button>
+                        <button type="button" id="boardInlineComposerSubmit" class="board-feed-composer-send flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full text-white disabled:pointer-events-none transition-colors" disabled aria-label="보내기">
+                            <i class="fa-solid fa-arrow-up text-sm"></i>
+                        </button>
+                    </div>
+                    <span id="boardInlineComposerCount" class="sr-only" aria-live="polite">0/280</span>
+                </div>
+                <div id="boardListPanel" class="board-list-panel hidden">
+                    <div id="noticesContainer" class="mb-4 ui-stack-md">
+                        <!-- 공지가 여기에 동적으로 추가됨 -->
+                    </div>
+                    <div id="boardContainer" class="ui-surface-soft ui-stack-tight">
+                        <!-- 게시글 목록이 여기에 동적으로 추가됨 -->
+                    </div>
                 </div>
             </div>
             

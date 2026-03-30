@@ -129,7 +129,8 @@ export function getDisplayProfile(authorId, stored = {}) {
 const DEFAULT_AVATAR_ICONS = ['🐻', '🐰', '🐱', '🐶', '🦊', '🦁', '🐼', '🐨'];
 
 export function getProfileAvatarDisplay(profile) {
-    if (profile.photoUrl) return { type: 'photo', value: profile.photoUrl };
+    const photoRaw = profile.photoUrl != null ? String(profile.photoUrl).trim() : '';
+    if (photoRaw) return { type: 'photo', value: photoRaw };
     const icon = profile.icon != null && profile.icon !== '' ? profile.icon : null;
     if (icon && !DEFAULT_AVATAR_ICONS.includes(icon)) return { type: 'emoji', value: icon };
     return { type: 'default', value: '' };
@@ -675,6 +676,27 @@ export async function uploadBoardImages(files, userId) {
         const randomStr = Math.random().toString(36).substring(2, 9);
         const fileName = `${timestamp}_${randomStr}_${index}.jpg`;
         const path = `users/${userId}/board/${fileName}`;
+        const storageRef = ref(storage, path);
+        await uploadBytes(storageRef, blob);
+        return getDownloadURL(storageRef);
+    });
+
+    return Promise.all(uploadPromises);
+}
+
+/** 밀톡 피드 전용 이미지 — users/{userId}/feed/ (게시판 board/ 경로와 분리) */
+export async function uploadFeedImages(files, userId) {
+    if (!files || files.length === 0) return [];
+    const list = Array.from(files).slice(0, 5);
+
+    const compressPromises = list.map((file) => compressImageToBlobMaxSize(file, 600));
+    const compressedBlobs = await Promise.all(compressPromises);
+
+    const uploadPromises = compressedBlobs.map(async (blob, index) => {
+        const timestamp = Date.now();
+        const randomStr = Math.random().toString(36).substring(2, 9);
+        const fileName = `${timestamp}_${randomStr}_${index}.jpg`;
+        const path = `users/${userId}/feed/${fileName}`;
         const storageRef = ref(storage, path);
         await uploadBytes(storageRef, blob);
         return getDownloadURL(storageRef);

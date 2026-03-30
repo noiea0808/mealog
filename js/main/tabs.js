@@ -9,7 +9,8 @@ import {
     renderMiniCalendar,
     updateTimelineShareIndicators,
     renderGallery,
-    renderBoard
+    renderBoard,
+    syncBoardFeedComposerVisibility
 } from '../render/index.js';
 import { updateDashboard } from '../analytics.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';
@@ -280,6 +281,7 @@ export function registerMainTabSwitch() {
             if (typeof window.checkAndShowContentPopup === 'function') {
                 setTimeout(() => window.checkAndShowContentPopup(tab), 200);
             }
+            syncBoardFeedComposerVisibility();
             console.log('[탭전환] 완료:', { 현재탭: appState.currentTab });
         } catch (error) {
             console.error('[탭전환] 오류 발생:', error);
@@ -287,4 +289,5 @@ export function registerMainTabSwitch() {
             showToast('탭 전환 중 오류가 발생했습니다.', 'error');
         }
     };
+    syncBoardFeedComposerVisibility();
 }

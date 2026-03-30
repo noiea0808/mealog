@@ -40,6 +40,7 @@ const kakaoRestApiKey = defineString('KAKAO_REST_API_KEY');
 // 레이트 리밋 설정 (사용자당)
 const RATE_LIMITS = {
   post: { perMinute: 3, perHour: 20 },        // 게시글: 분당 3개, 시간당 20개
+  feedPost: { perMinute: 8, perHour: 60 },    // 밀톡 피드(전용 컬렉션): 분당 8, 시간당 60
   comment: { perMinute: 10, perHour: 50 },    // 댓글: 분당 10개, 시간당 50개
   share: { perMinute: 5, perHour: 30 },       // 공유: 분당 5개, 시간당 30개
   report: { perMinute: 2, perHour: 10 },      // 신고: 분당 2개, 시간당 10개
@@ -421,6 +422,122 @@ exports.createBoardPost = onCall({ region: REGION }, wrapFunction('createBoardPo
   const docRef = await postsRef.add(newPost);
   
   return { id: docRef.id, ...newPost, timestamp: new Date().toISOString() };
+}));
+
+function feedOneLinePreview(text, maxLen = 80) {
+  const s = String(text ?? '')
+    .replace(/\r\n/g, ' ')
+    .replace(/\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (s.length <= maxLen) return s;
+  return `${s.slice(0, Math.max(1, maxLen - 1))}…`;
+}
+
+/**
+ * 밀톡 피드 전용 메시지 (boardPosts와 분리 — 게시판 목록에 나오지 않음)
+ */
+exports.createFeedPost = onCall({ region: REGION }, wrapFunction('createFeedPost', async (request) => {
+  const { auth, data } = request;
+
+  if (!auth || !auth.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+
+  const ban = await getUserBan(auth.uid);
+  if (ban.bannedWrite) {
+    throw new HttpsError('permission-denied', '글쓰기가 제한된 계정입니다.');
+  }
+
+  const { text, imageUrls, replyToPostId } = data || {};
+  const plain = typeof text === 'string' ? text.trim() : '';
+  const sanitizedImageUrls = Array.isArray(imageUrls)
+    ? imageUrls.slice(0, 5).filter((u) => typeof u === 'string' && u)
+    : [];
+
+  if (!plain && sanitizedImageUrls.length === 0) {
+    throw new HttpsError('invalid-argument', '메시지 또는 사진을 입력해주세요.');
+  }
+  if (plain.length > 280) {
+    throw new HttpsError('invalid-argument', '메시지는 280자 이하여야 합니다.');
+  }
+
+  await checkRateLimit(auth.uid, 'feedPost', request);
+
+  if (plain) {
+    const spamCheck = checkSpam(plain);
+    if (spamCheck.isSpam) {
+      throw new HttpsError('invalid-argument', spamCheck.reason);
+    }
+  }
+
+  const userSettingsRef = db.collection('artifacts').doc(APP_ID)
+    .collection('users').doc(auth.uid)
+    .collection('config').doc('settings');
+  const userSettingsDoc = await userSettingsRef.get();
+
+  const profile = userSettingsDoc.exists ? (userSettingsDoc.data().profile || {}) : {};
+  const authorNickname = profile.nickname || '익명';
+  const authorPhotoUrl = profile.photoUrl || null;
+  const authorIcon = profile.icon || null;
+
+  const postsRef = db.collection('artifacts').doc(APP_ID).collection('feedPosts');
+
+  const rid = typeof replyToPostId === 'string' ? replyToPostId.trim() : '';
+  let replyTo = null;
+  if (rid) {
+    const parentSnap = await postsRef.doc(rid).get();
+    if (parentSnap.exists) {
+      const p = parentSnap.data() || {};
+      if (p.isHidden !== true) {
+        const pText = String(p.text || p.content || '').trim();
+        const pHasImg = Array.isArray(p.imageUrls) && p.imageUrls.length > 0;
+        let textPreview = feedOneLinePreview(pText, 80);
+        if (!textPreview && pHasImg) textPreview = '(사진)';
+        if (!textPreview) textPreview = '내용 없음';
+        replyTo = {
+          postId: rid,
+          authorNickname: p.authorNickname || '익명',
+          textPreview
+        };
+      }
+    }
+  }
+
+  const newPost = {
+    text: plain,
+    content: plain,
+    imageUrls: sanitizedImageUrls,
+    authorId: auth.uid,
+    authorNickname,
+    authorPhotoUrl,
+    authorIcon,
+    isHidden: false,
+    timestamp: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp()
+  };
+  if (replyTo) {
+    newPost.replyTo = replyTo;
+  }
+
+  const docRef = await postsRef.add(newPost);
+
+  const nowIso = new Date().toISOString();
+  const out = {
+    id: docRef.id,
+    text: plain,
+    content: plain,
+    imageUrls: sanitizedImageUrls,
+    authorId: auth.uid,
+    authorNickname,
+    authorPhotoUrl,
+    authorIcon,
+    isHidden: false,
+    timestamp: nowIso,
+    updatedAt: nowIso
+  };
+  if (replyTo) out.replyTo = replyTo;
+  return out;
 }));
 
 /**

@@ -6,6 +6,17 @@
     --safe-top: max(env(safe-area-inset-top, 28px), 28px); 
     --safe-bottom: max(env(safe-area-inset-bottom, 48px), 48px); 
     --color-primary: #059669; /* 그린: CTA·선택·활성만 사용 */
+    /* 밀톡 피드 대화 영역 배경 */
+    --board-feed-bg: rgb(5 150 105);
+    /* 하단 플로팅: 메시지 컴포저·APP 네비 — 화면 좌우에서 띄우는 인셋 (각 변에 동일 값) */
+    --app-bottom-floating-inset: 12px;
+    /* body max-w-md(28rem) 컬럼·뷰포트 둘 다에서 양끝 여백 유지 (448 고정 폭이 컬럼에 꽉 차 보이는 문제 방지) */
+    --app-bottom-bar-width: min(
+        calc(28rem - 2 * var(--app-bottom-floating-inset)),
+        calc(100vw - 2 * var(--app-bottom-floating-inset))
+    );
+    /* 밀톡 피드 인라인 컴포저 컨테이너(아이콘·입력·버튼 전체) 면 — 알파↑ = 더 비침 */
+    --board-feed-composer-surface: rgba(248, 250, 252, 0.7);
 }
 /* Web: 핸폰 네비 없음 → safe-bottom 0, 하단 공백 제거 (App 네비 바로 위까지) */
 html.platform-web {
@@ -30,6 +41,19 @@ body {
     overflow-x: clip; 
     padding-top: var(--safe-top); 
     padding-bottom: calc(80px + var(--safe-bottom)); 
+}
+/* 밀톡·피드: 입력창 아래·네비 뒤 연회색(#f8fafc) 구간을 대화 영역색과 동일하게 — 상단/타이틀은 그라데이션으로 유지 */
+body:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) {
+    background-image: linear-gradient(
+        to bottom,
+        #f8fafc 0,
+        #f8fafc max(0px, calc(100dvh - 7.25rem - var(--safe-bottom))),
+        var(--board-feed-bg) max(0px, calc(100dvh - 7.25rem - var(--safe-bottom))) 100%
+    );
+    background-attachment: fixed;
+}
+body:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) #navigationBarOverlay {
+    background-color: var(--board-feed-bg) !important;
 }
 /* 앱 전체 키보드 열림 시: 헤더·상태바·트래커·하단 네비·핸폰 네비 영역 모두 숨김 (input/textarea/contenteditable 포커스 시) */
 body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) .bottom-nav,
@@ -464,8 +488,8 @@ header .mealog-title {
     bottom: calc(66px + var(--safe-bottom));
     left: 50%;
     transform: translateX(-50%);
-    width: calc(min(100vw, 448px) - 20px);
-    max-width: calc(100vw - 20px);
+    width: var(--app-bottom-bar-width);
+    max-width: var(--app-bottom-bar-width);
     max-height: calc(100vh - 120px - var(--safe-bottom));
     box-sizing: border-box;
 }
@@ -475,8 +499,7 @@ header .mealog-title {
     bottom: calc(8px + var(--safe-bottom));
     left: 50%; 
     transform: translateX(-50%); 
-    width: calc(100vw - 20px); 
-    max-width: 448px; 
+    width: var(--app-bottom-bar-width);
     box-sizing: border-box;
     background: #ffffff; 
     border: 1px solid #f1f5f9; 
@@ -1788,6 +1811,10 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 #boardWriteBtn.board-write-fab:active {
     background-color: #047857 !important;
 }
+#boardWriteBtn.board-write-fab.hidden {
+    display: none !important;
+    pointer-events: none;
+}
 
 /* 밀톡 글쓰기: 하단 취소/등록 버튼이 네비에 가려지지 않도록 */
 #boardWriteView {
@@ -1843,6 +1870,278 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 #boardListView {
     overflow-x: hidden;
 }
+
+/* 밀톡: 피드/게시판 서브탭 아래만 스크롤 (상단 탭은 고정, 본문은 패널 내부 스크롤)
+   max-height만 있으면 블록 높이는 내용 높이로만 잡혀 flex:1 자식이 늘지 않음 → 스크롤 영역 0으로 보임 */
+#boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
+    /* 헤더(밀톡 타이틀) ↔ 서브탭만 촘촘히 — 피드/게시판 버튼 높이는 아래 .board-list-subtab에서 복원 */
+    padding-top: 0.125rem;
+    padding-bottom: 0.75rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: #fff;
+    /* 뷰포트 − 상태바 − 앱 헤더 − 하단 네비 여역(밀톡 탭에서 tracker는 숨김) */
+    height: calc(100vh - var(--safe-top) - 3.5rem - 5.25rem - var(--safe-bottom));
+    max-height: calc(100vh - var(--safe-top) - 3.5rem - 5.25rem - var(--safe-bottom));
+    height: calc(100dvh - var(--safe-top) - 3.5rem - 5.25rem - var(--safe-bottom));
+    max-height: calc(100dvh - var(--safe-top) - 3.5rem - 5.25rem - var(--safe-bottom));
+    overflow: hidden;
+}
+/* 피드 탭: 하단 흰 패딩만 제거(메시지 영역~바디 그린 연결). 탭 줄은 위쪽 규칙의 흰 배경 유지 */
+#boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden):has(#boardFeedPanel:not(.hidden)) {
+    padding-bottom: 0;
+}
+#boardListView .board-mealtalk-subtabs {
+    flex-shrink: 0;
+    background: #fff;
+}
+#boardListView #boardCategoryRow {
+    flex-shrink: 0;
+}
+/* ui-stack-md 인접 형제 margin 0.75rem → 약 30% (탭~본문 간격) */
+#boardListView.board-list-view-mealtalk.ui-stack-md > * + * {
+    margin-top: calc(0.75rem * 0.3);
+}
+.board-mealtalk-subtabs .board-list-subtab {
+    padding-top: 0.1875rem;
+    padding-bottom: 0.375rem;
+}
+
+/* 피드 인라인 입력: 기본 완전 숨김 — 밀톡+피드에서만 .board-feed-composer-visible */
+#boardInlineComposer.board-feed-chat-composer {
+    display: none !important;
+    visibility: hidden;
+    pointer-events: none;
+}
+#boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
+    display: block !important;
+    visibility: visible;
+    pointer-events: auto;
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(66px + var(--safe-bottom));
+    width: var(--app-bottom-bar-width);
+    box-sizing: border-box;
+    z-index: 45;
+    border: 1px solid rgba(148, 163, 184, 0.38);
+    border-radius: 1.5rem;
+    background: var(--board-feed-composer-surface);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 0.4rem 0.65rem;
+    margin: 0;
+    box-shadow: 0 -2px 16px rgba(15, 23, 42, 0.08);
+}
+/* 키보드 포커스 시 네비가 숨겨지므로 입력창은 하단 안전영역에 붙임 */
+body:has(#boardInlineComposerInput:focus) #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
+    bottom: max(0.35rem, env(safe-area-inset-bottom, 0px));
+    z-index: 120;
+}
+#boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible:focus-within {
+    box-shadow: 0 -2px 16px rgba(15, 23, 42, 0.1);
+}
+/* 피드 입력 한 줄: 아바타·텍스트·버튼 수직 가운데 */
+.board-feed-composer-row {
+    align-items: center;
+}
+#boardInlineComposer .board-inline-composer-avatar {
+    align-self: center;
+}
+#boardInlineComposer .board-feed-chat-input {
+    border: none;
+    outline: none;
+    resize: none;
+    background: transparent;
+    border-radius: 0;
+    margin: 0;
+    padding: 0.28rem 0.25rem;
+    line-height: 1.45;
+    min-height: 2.25rem;
+    max-height: none;
+    overflow-y: hidden;
+    overflow-x: hidden;
+    box-shadow: none;
+    vertical-align: middle;
+}
+#boardInlineComposer .board-feed-chat-input:focus {
+    box-shadow: none;
+    outline: none;
+}
+#boardInlineComposer .board-feed-chat-input::placeholder {
+    color: #94a3b8;
+}
+.board-feed-composer-send {
+    background-color: #0a0a0a !important;
+    color: #fff !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+.board-feed-composer-send:hover:not(:disabled) {
+    background-color: #171717 !important;
+}
+.board-feed-composer-send:active:not(:disabled) {
+    background-color: #262626 !important;
+}
+.board-feed-composer-send:disabled {
+    opacity: 0.35;
+}
+.board-feed-composer-send i {
+    line-height: 1;
+    color: inherit;
+}
+.board-feed-composer-attach i {
+    line-height: 1;
+}
+#boardFeedComposerPhotoPreview:empty {
+    display: none;
+    margin: 0;
+}
+
+/* 피드 말풍선: 롱프레스 메뉴 — 시스템 콜아웃·드래그 선택과 충돌 완화(복사는 시트에서) */
+.feed-chat-bubble {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+body.feed-bubble-sheet-open {
+    overflow: hidden;
+}
+
+/* 밀톡 피드: 남는 높이는 모두 대화 영역(내부 #boardFeedPanelContent만 스크롤)
+   반드시 :not(.hidden) — ID+요소 선택자만 쓰면 display:flex가 .hidden보다 특이도가 높아
+   게시판 탭에서도 패널이 안 숨겨지고 목록 영역 높이를 다 먹는 버그가 난다 */
+#boardListView #boardFeedPanel:not(.hidden) {
+    margin-left: -1rem;
+    margin-right: -1rem;
+    width: calc(100% + 2rem);
+    max-width: none;
+    box-sizing: border-box;
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--board-feed-bg);
+}
+/* 밀톡 게시판 목록: 서브탭·카테고리 아래에서만 스크롤 — 스크롤 중에만 막대 표시(JS로 .board-panel-scrollbar-active) */
+#boardListView #boardListPanel:not(.hidden) {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    background: #fff;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+}
+#boardListView #boardListPanel:not(.hidden).board-panel-scrollbar-active {
+    scrollbar-color: rgba(148, 163, 184, 0.5) transparent;
+}
+#boardListView #boardListPanel:not(.hidden)::-webkit-scrollbar {
+    width: 4px;
+}
+#boardListView #boardListPanel:not(.hidden)::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 999px;
+}
+#boardListView #boardListPanel:not(.hidden).board-panel-scrollbar-active::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.45);
+}
+#boardListView #boardListPanel:not(.hidden)::-webkit-scrollbar-track {
+    background: transparent;
+}
+#boardListView #boardFeedPanelContent {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+    padding-bottom: calc(7rem + var(--safe-bottom));
+    background: var(--board-feed-bg);
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+}
+#boardListView #boardFeedPanelContent::-webkit-scrollbar {
+    width: 4px;
+}
+#boardListView #boardFeedPanelContent::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 999px;
+}
+#boardListView #boardFeedPanelContent::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/* 밀톡 피드 메시지 영역 테마 (--board-feed-bg + 말풍선) */
+#boardListView #boardFeedPanelContent .feed-chat-bubble-mine {
+    background: #ecfdf5;
+    color: #064e3b;
+}
+#boardListView #boardFeedPanelContent .feed-chat-bubble-other {
+    background: #fff;
+    color: #1e293b;
+    border-color: rgba(255, 255, 255, 0.4);
+}
+#boardListView #boardFeedPanelContent .feed-bubble-meta-time {
+    color: rgba(255, 255, 255, 0.72);
+}
+#boardListView #boardFeedPanelContent .feed-bubble-author-nick {
+    color: rgba(255, 255, 255, 0.95);
+}
+#boardListView #boardFeedPanelContent .feed-timeline-empty-title,
+#boardListView #boardFeedPanelContent .feed-timeline-empty-sub {
+    color: rgba(255, 255, 255, 0.65);
+}
+#boardListView #boardFeedPanelContent .feed-timeline-empty-icon {
+    color: rgba(255, 255, 255, 0.4);
+}
+#boardListView #boardFeedPanelContent .feed-panel-loading-text,
+#boardListView #boardFeedPanelContent .feed-panel-loading-icon {
+    color: rgba(255, 255, 255, 0.75);
+}
+#boardListView #boardFeedPanelContent .feed-panel-error {
+    color: #fecaca;
+}
+#boardListView #boardFeedPanelContent .feed-other-avatar-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55);
+}
+#boardListView #boardFeedPanelContent.board-panel-scrollbar-active {
+    scrollbar-color: rgba(255, 255, 255, 0.45) transparent;
+}
+#boardListView #boardFeedPanelContent.board-panel-scrollbar-active::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.4);
+}
+
+/* 하단 앱 네비가 스크롤로 밀려 숨겨진 경우: 네비용 여백 제거 + 입력창을 하단에 붙여 대화 스크롤이 입력 바로 위까지 이어지게 */
+body.bottom-nav-scroll-hidden #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
+    height: calc(100vh - var(--safe-top) - 3.5rem - var(--safe-bottom));
+    max-height: calc(100vh - var(--safe-top) - 3.5rem - var(--safe-bottom));
+    height: calc(100dvh - var(--safe-top) - 3.5rem - var(--safe-bottom));
+    max-height: calc(100dvh - var(--safe-top) - 3.5rem - var(--safe-bottom));
+}
+body.bottom-nav-scroll-hidden #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible:not(:focus-within) {
+    bottom: calc(10px + var(--safe-bottom));
+}
+body.bottom-nav-scroll-hidden #boardListView #boardFeedPanelContent {
+    padding-bottom: calc(5.25rem + var(--safe-bottom));
+}
+
+/* 피드 입력 포커스 시 헤더·네비가 display:none → 목록 높이에서 네비/헤더 슬롯 제거 */
+body:has(#boardInlineComposerInput:focus) #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
+    height: calc(100vh - var(--safe-top));
+    max-height: calc(100vh - var(--safe-top));
+    height: calc(100dvh - var(--safe-top));
+    max-height: calc(100dvh - var(--safe-top));
+}
+body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent {
+    padding-bottom: calc(5rem + var(--safe-bottom));
+}
 #boardListView #noticesContainer,
 #boardListView #boardContainer {
     margin-left: -1rem;
@@ -1852,6 +2151,7 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     box-sizing: border-box;
     border-left: 1px solid #e2e8f0;
     border-right: 1px solid #e2e8f0;
+    background: #fff;
 }
 /* 프로필 모먼트 → 밀톡 탭 목록 */
 #galleryFilterBoardList {

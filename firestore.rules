@@ -169,6 +169,26 @@ service cloud.firestore {
     }
     
     // ============================================
+    // 밀톡 피드 (feedPosts) — 게시판(boardPosts)과 데이터 분리, create는 CF만
+    // ============================================
+    match /artifacts/{appId}/feedPosts/{postId} {
+      allow read: if isAuthenticated();
+      allow create: if false;
+      allow update: if isAdmin() || (isAuthorOfResource() && !isReadOnlyDemoAccount());
+      allow delete: if isAdmin() || (isAuthorOfResource() && !isReadOnlyDemoAccount());
+
+      match /reactions/{userId} {
+        allow read: if isAuthenticated();
+        allow create, update: if isAuthenticated()
+          && request.auth.uid == userId
+          && !isReadOnlyDemoAccount()
+          && request.resource.data.keys().hasOnly(['type', 'updatedAt'])
+          && request.resource.data.type in ['like', 'thumbs', 'check'];
+        allow delete: if isAuthenticated() && request.auth.uid == userId && !isReadOnlyDemoAccount();
+      }
+    }
+    
+    // ============================================
     // 게시판 상호작용 (boardInteractions 컬렉션)
     // ============================================
     match /artifacts/{appId}/boardInteractions/{interactionId} {

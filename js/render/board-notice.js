@@ -7,6 +7,26 @@ import { getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
 import { getAdminDisplayName } from '../db.js';
 import { fetchUserProfiles } from './user-profiles.js';
 
+/** 피드 인라인 입력창: 밀톡·피드 목록일 때만 표시 (글쓰기/상세/다른 탭에서는 숨김) */
+export function syncBoardFeedComposerVisibility() {
+    const inlineComposer = document.getElementById('boardInlineComposer');
+    if (!inlineComposer) return;
+    const writeView = document.getElementById('boardWriteView');
+    const detailView = document.getElementById('boardDetailView');
+    const overlayBoardUi =
+        (writeView && !writeView.classList.contains('hidden')) ||
+        (detailView && !detailView.classList.contains('hidden'));
+    const show =
+        appState.currentTab === 'board' &&
+        appState.boardListSubTab === 'feed' &&
+        !overlayBoardUi;
+    inlineComposer.classList.toggle('board-feed-composer-visible', show);
+    inlineComposer.classList.toggle('hidden', !show);
+    if (!show) {
+        document.getElementById('boardInlineComposerInput')?.blur();
+    }
+}
+
 async function getNotices() {
     try {
         const { collection, getDocs, query, orderBy, where } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
@@ -173,7 +193,53 @@ async function renderNotices() {
 export async function renderBoard(category = 'all', optimisticPost = null, options = null) {
     const container = document.getElementById('boardContainer');
     if (!container) return;
-    
+
+    const feedPanel = document.getElementById('boardFeedPanel');
+    const listPanel = document.getElementById('boardListPanel');
+    const categoryRow = document.getElementById('boardCategoryRow');
+    if (feedPanel && listPanel) {
+        const isFeed = appState.boardListSubTab === 'feed';
+        feedPanel.classList.toggle('hidden', !isFeed);
+        listPanel.classList.toggle('hidden', isFeed);
+    }
+    if (categoryRow) {
+        categoryRow.classList.toggle('hidden', appState.boardListSubTab === 'feed');
+    }
+    syncBoardFeedComposerVisibility();
+    const boardWriteFab = document.getElementById('boardWriteBtn');
+    if (boardWriteFab) {
+        boardWriteFab.classList.toggle('hidden', appState.boardListSubTab === 'feed');
+    }
+    if (typeof window.syncBoardInlineComposerAvatar === 'function') {
+        window.syncBoardInlineComposerAvatar();
+    }
+    const tracePanel = document.getElementById('galleryTraceFilterPanel');
+    if (tracePanel && appState.currentTab === 'board') {
+        tracePanel.classList.toggle('hidden', appState.boardListSubTab === 'feed');
+    }
+
+    const subFeed = document.getElementById('boardSubtabFeed');
+    const subBoard = document.getElementById('boardSubtabBoard');
+    if (subFeed && subBoard) {
+        const isFeed = appState.boardListSubTab === 'feed';
+        subFeed.classList.toggle('text-emerald-600', isFeed);
+        subFeed.classList.toggle('border-emerald-600', isFeed);
+        subFeed.classList.toggle('text-slate-500', !isFeed);
+        subFeed.classList.toggle('border-transparent', !isFeed);
+        subBoard.classList.toggle('text-emerald-600', !isFeed);
+        subBoard.classList.toggle('border-emerald-600', !isFeed);
+        subBoard.classList.toggle('text-slate-500', isFeed);
+        subBoard.classList.toggle('border-transparent', isFeed);
+        subFeed.setAttribute('aria-selected', isFeed ? 'true' : 'false');
+        subBoard.setAttribute('aria-selected', isFeed ? 'false' : 'true');
+    }
+
+    if (appState.boardListSubTab === 'feed') {
+        const { renderBoardFeedTab } = await import('./board-feed.js');
+        await renderBoardFeedTab();
+        return;
+    }
+
     renderNotices();
     
     if (!window.boardOperations) return;

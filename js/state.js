@@ -34,6 +34,10 @@ export const appState = {
     galleryFilterTab: 'moment',  // 사용자 프로필 뷰에서 탭: 'moment' | 'board' (모먼트 | 밀톡)
     galleryTraceFilter: null, // 앨범 흔적 필터: null | 'like' | 'comment' | 'bookmark'
     boardTraceFilter: null,   // 밀톡 흔적 필터: null | 'like' | 'comment' | 'bookmark'
+    /** 밀톡 상단 서브탭: 'feed' (별도 피드 예정) | 'board' 게시판 리스트 */
+    boardListSubTab: 'feed',
+    /** 피드 탭 타임라인 (세션 내 메모리, 게시 시 앞에 추가) */
+    feedTimelinePosts: [],
     
     // 편집 상태 (모달 관련)
     currentEditingId: null,

@@ -7,7 +7,7 @@ window.moduleLoading = true;
 import { appState, getState } from './state.js';
 import { auth, db, appId } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { dbOps, setupListeners, loadSharedPhotosPage, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, subscribeToMyPostComments, boardOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
+import { dbOps, setupListeners, loadSharedPhotosPage, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, subscribeToMyPostComments, boardOperations, feedOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { callableFunctions } from './firebase.js';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -305,6 +305,8 @@ window.selectKakaoPlace = selectKakaoPlace;
 window.Mealog.selectKakaoPlace = selectKakaoPlace;
 window.boardOperations = boardOperations;
 window.Mealog.boardOperations = boardOperations;
+window.feedOperations = feedOperations;
+window.Mealog.feedOperations = feedOperations;
 window.noticeOperations = noticeOperations;
 window.Mealog.noticeOperations = noticeOperations;
 window.renderBoard = renderBoard;
@@ -541,6 +543,10 @@ window.setGalleryTraceFilter = (value) => {
     if (appState.currentTab === 'gallery') {
         renderGallery();
     } else if (appState.currentTab === 'board') {
+        if (appState.boardTraceFilter && appState.boardListSubTab === 'feed' && typeof window.switchBoardListSubTab === 'function') {
+            window.switchBoardListSubTab('board');
+            return;
+        }
         const category = window.currentBoardCategory || 'all';
         renderBoard(category);
     }

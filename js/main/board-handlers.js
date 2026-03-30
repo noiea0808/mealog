@@ -14,6 +14,7 @@ import {
     postInteractions,
     subscribeToMyPostComments,
     boardOperations,
+    feedOperations,
     noticeOperations,
     submitReport,
     getUserReportForPost,
@@ -37,7 +38,9 @@ import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.6.1/fireb
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from '../ui.js';
 import {
     getDisplayProfile,
+    getProfileAvatarDisplay,
     uploadBoardImages,
+    uploadFeedImages,
     captureWithGhostStrategy,
     addCompositionAwareInput,
     warmUpIME,
@@ -83,6 +86,7 @@ import {
     DEMO_TOAST_CANNOT_BOOKMARK
 } from '../demo-account.js';
 import { syncDemoNavGuideDots } from '../demo-nav-guide.js';
+import { initFeedBubbleContextMenu } from './feed-bubble-menu.js';
 import {
     renderTimeline,
     renderMiniCalendar,
@@ -94,6 +98,8 @@ import {
     toggleFeedComment,
     createDailyShareCard,
     renderBoard,
+    renderBoardFeedTab,
+    syncBoardFeedComposerVisibility,
     renderBoardDetail,
     renderNoticeDetail,
     escapeHtml,
@@ -168,6 +174,13 @@ import { syncOrphanedSharesToMoment } from './shares-sync.js';
 
 export function registerMainBoardHandlers() {
 
+window.switchBoardListSubTab = (sub) => {
+    const next = sub === 'board' ? 'board' : 'feed';
+    if (appState.boardListSubTab === next) return;
+    appState.boardListSubTab = next;
+    renderBoard(window.currentBoardCategory || 'all');
+};
+
 // 게시판 관련 함수들
 window.currentBoardCategory = 'all';
 window.currentBoardPostId = null;
@@ -213,6 +226,26 @@ window.openBoardWrite = () => {
     if (typeof window.setBoardWriteCategory === 'function') {
         window.setBoardWriteCategory('serious');
     }
+
+    const prefill = window._boardWritePrefill;
+    const openPhotos = window._boardWriteOpenPhotos;
+    window._boardWritePrefill = null;
+    window._boardWriteOpenPhotos = false;
+    if (prefill?.body && boardWriteContentEl) {
+        const raw = String(prefill.body).trim();
+        if (raw) {
+            boardWriteContentEl.innerHTML = escapeHtml(raw).replace(/\n/g, '<br>');
+            boardWriteContentEl.classList.remove('format-editor-empty');
+            const titleInput = document.getElementById('boardWriteTitle');
+            if (titleInput) {
+                const firstLine = raw.split(/\n/).map((s) => s.trim()).find(Boolean) || raw;
+                titleInput.value = firstLine.length > 100 ? `${firstLine.slice(0, 100)}…` : firstLine;
+            }
+            if (prefill.category && typeof window.setBoardWriteCategory === 'function') {
+                window.setBoardWriteCategory(prefill.category);
+            }
+        }
+    }
     
     // 제목 및 버튼 초기화
     const titleEl = document.querySelector('#boardWriteView h2');
@@ -220,6 +253,14 @@ window.openBoardWrite = () => {
     const submitBtn = boardWriteView?.querySelector('#boardWriteSubmitBtn');
     if (submitBtn) submitBtn.textContent = '등록';
     
+    if (openPhotos) {
+        setTimeout(() => {
+            document.getElementById('boardWriteAddPhotosBtn')?.click();
+        }, 50);
+    }
+
+    syncBoardFeedComposerVisibility();
+
     // 스크롤 맨 위로
     setTimeout(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -235,7 +276,9 @@ window.backToBoardList = (optimisticPost = null, options = null) => {
     if (boardListView) boardListView.classList.remove('hidden');
     if (boardDetailView) boardDetailView.classList.add('hidden');
     if (boardWriteView) boardWriteView.classList.add('hidden');
-    if (tracePanel && appState.currentTab === 'board') tracePanel.classList.remove('hidden');
+    if (tracePanel && appState.currentTab === 'board' && appState.boardListSubTab !== 'feed') {
+        tracePanel.classList.remove('hidden');
+    }
     
     window.currentBoardPostId = null;
     window.currentEditingPostId = null;
@@ -245,7 +288,11 @@ window.backToBoardList = (optimisticPost = null, options = null) => {
     if (titleEl) titleEl.textContent = '글쓰기';
     const submitBtn = boardWriteView?.querySelector('#boardWriteSubmitBtn');
     if (submitBtn) submitBtn.textContent = '등록';
-    
+
+    if (optimisticPost || options?.excludePostId) {
+        appState.boardListSubTab = 'board';
+    }
+
     const category = window.currentBoardCategory || 'all';
     renderBoard(category, optimisticPost, options);
     
@@ -473,7 +520,8 @@ window.openBoardDetail = async (postId) => {
     if (tracePanel) tracePanel.classList.add('hidden');
     
     await renderBoardDetail(postId);
-    
+    syncBoardFeedComposerVisibility();
+
     setTimeout(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 100);
@@ -494,7 +542,8 @@ window.openNoticeDetail = async (noticeId) => {
     if (tracePanel) tracePanel.classList.add('hidden');
     
     await renderNoticeDetail(noticeId);
-    
+    syncBoardFeedComposerVisibility();
+
     setTimeout(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 100);
@@ -923,5 +972,231 @@ window.deleteBoardComment = async (commentId, postId) => {
         }
     }
 };
+
+const boardSubtabFeed = document.getElementById('boardSubtabFeed');
+const boardSubtabBoard = document.getElementById('boardSubtabBoard');
+if (boardSubtabFeed) {
+    boardSubtabFeed.addEventListener('click', () => window.switchBoardListSubTab('feed'));
+}
+if (boardSubtabBoard) {
+    boardSubtabBoard.addEventListener('click', () => window.switchBoardListSubTab('board'));
+}
+
+const BOARD_SCROLLBAR_ACTIVE_MS = 750;
+const boardPanelScrollbarHideTimers = new WeakMap();
+
+function showBoardPanelScrollbarWhileScrolling(el) {
+    if (!el) return;
+    el.classList.add('board-panel-scrollbar-active');
+    const t = boardPanelScrollbarHideTimers.get(el);
+    if (t) clearTimeout(t);
+    boardPanelScrollbarHideTimers.set(
+        el,
+        setTimeout(() => {
+            el.classList.remove('board-panel-scrollbar-active');
+            boardPanelScrollbarHideTimers.delete(el);
+        }, BOARD_SCROLLBAR_ACTIVE_MS)
+    );
+}
+
+(function bindBoardPanelScrollbarReveal() {
+    const onScroll = (e) => showBoardPanelScrollbarWhileScrolling(e.currentTarget);
+    const feed = document.getElementById('boardFeedPanelContent');
+    const list = document.getElementById('boardListPanel');
+    if (feed) feed.addEventListener('scroll', onScroll, { passive: true });
+    if (list) list.addEventListener('scroll', onScroll, { passive: true });
+})();
+
+window.syncBoardInlineComposerAvatar = () => {
+    const el = document.getElementById('boardInlineComposerAvatar');
+    if (!el) return;
+    el.style.backgroundImage = '';
+    el.style.backgroundSize = '';
+    el.style.backgroundPosition = '';
+    el.textContent = '';
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        el.className =
+            'board-inline-composer-avatar w-9 h-9 rounded-full flex-shrink-0 bg-slate-200 flex items-center justify-center text-slate-500 overflow-hidden border border-slate-200';
+        el.innerHTML = '<i class="fa-solid fa-user text-xs"></i>';
+        return;
+    }
+    const display = getDisplayProfile(window.currentUser.uid, window.userSettings?.profile);
+    const av = getProfileAvatarDisplay(display);
+    const baseClass =
+        'board-inline-composer-avatar w-9 h-9 rounded-full flex-shrink-0 overflow-hidden border border-slate-200';
+    if (av.type === 'photo') {
+        el.className = `${baseClass} bg-slate-100`;
+        el.style.backgroundImage = `url(${av.value})`;
+        el.style.backgroundSize = 'cover';
+        el.style.backgroundPosition = 'center';
+    } else if (av.type === 'default') {
+        el.className = `${baseClass} bg-slate-200 flex items-center justify-center text-slate-500`;
+        el.innerHTML = '<i class="fa-solid fa-user text-xs"></i>';
+    } else {
+        el.className = `${baseClass} bg-slate-200 flex items-center justify-center text-[11px] font-bold text-slate-700`;
+        el.textContent = av.value || '?';
+    }
+};
+
+function clearFeedComposerPhoto() {
+    if (window.feedComposerPhotoObjectUrl) {
+        try {
+            URL.revokeObjectURL(window.feedComposerPhotoObjectUrl);
+        } catch (_) {}
+        window.feedComposerPhotoObjectUrl = null;
+    }
+    window.feedComposerPhotoFile = null;
+    const prev = document.getElementById('boardFeedComposerPhotoPreview');
+    if (prev) prev.innerHTML = '';
+}
+
+function clearFeedReplyBar() {
+    const bar = document.getElementById('boardInlineComposerReplyBar');
+    if (bar) bar.classList.add('hidden');
+    window.__feedReplyToPostId = null;
+    const nickEl = document.getElementById('boardInlineComposerReplyNick');
+    const snipEl = document.getElementById('boardInlineComposerReplySnippet');
+    if (nickEl) nickEl.textContent = '';
+    if (snipEl) {
+        snipEl.textContent = '';
+        snipEl.removeAttribute('title');
+    }
+}
+
+function renderFeedComposerPhotoPreview() {
+    const prev = document.getElementById('boardFeedComposerPhotoPreview');
+    if (!prev || !window.feedComposerPhotoObjectUrl) {
+        if (prev && !window.feedComposerPhotoFile) prev.innerHTML = '';
+        return;
+    }
+    prev.innerHTML = `
+        <div class="relative w-12 h-12 rounded-md overflow-hidden border border-slate-200 shrink-0">
+            <img src="${window.feedComposerPhotoObjectUrl}" alt="" class="w-full h-full object-cover">
+            <button type="button" class="absolute top-0 right-0 w-5 h-5 flex items-center justify-center bg-black/55 text-white text-[10px] rounded-bl" aria-label="사진 제거"><i class="fa-solid fa-times"></i></button>
+        </div>`;
+    prev.querySelector('button')?.addEventListener('click', () => {
+        clearFeedComposerPhoto();
+        syncBoardInlineComposerUi();
+    });
+}
+
+const boardInlineInput = document.getElementById('boardInlineComposerInput');
+const boardInlineSubmit = document.getElementById('boardInlineComposerSubmit');
+const boardInlineCount = document.getElementById('boardInlineComposerCount');
+const boardFeedPhotoInput = document.getElementById('boardFeedComposerPhotoInput');
+
+function syncBoardInlineComposerUi() {
+    const raw = boardInlineInput?.value || '';
+    const len = raw.length;
+    const hasPhoto = !!window.feedComposerPhotoFile;
+    const hasSendableText = raw.trim().length > 0;
+    if (boardInlineCount) boardInlineCount.textContent = `${len}/280`;
+    if (boardInlineSubmit) boardInlineSubmit.disabled = !hasSendableText && !hasPhoto;
+    if (boardInlineInput) {
+        boardInlineInput.style.height = 'auto';
+        const cap = Math.max(260, Math.floor(window.innerHeight * 0.5));
+        boardInlineInput.style.height = `${Math.min(boardInlineInput.scrollHeight, cap)}px`;
+    }
+}
+window.syncBoardInlineComposerUi = syncBoardInlineComposerUi;
+
+if (boardInlineInput) {
+    boardInlineInput.addEventListener('input', syncBoardInlineComposerUi);
+    // Enter = 줄바꿈. Shift+Enter = 전송 (Ctrl/Cmd+Enter 도 전송)
+    boardInlineInput.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        if (e.shiftKey || e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            if (!boardInlineSubmit?.disabled) boardInlineSubmit.click();
+        }
+    });
+}
+if (boardFeedPhotoInput) {
+    boardFeedPhotoInput.addEventListener('change', (e) => {
+        const f = (e.target.files && e.target.files[0]) || null;
+        e.target.value = '';
+        clearFeedComposerPhoto();
+        if (!f || !f.type.startsWith('image/')) return;
+        window.feedComposerPhotoFile = f;
+        window.feedComposerPhotoObjectUrl = URL.createObjectURL(f);
+        renderFeedComposerPhotoPreview();
+        syncBoardInlineComposerUi();
+    });
+}
+if (boardInlineSubmit) {
+    boardInlineSubmit.addEventListener('click', async () => {
+        if (!window.currentUser || window.currentUser.isAnonymous) {
+            showToast('로그인이 필요합니다.', 'error');
+            window.requestLogin?.();
+            return;
+        }
+        const raw = boardInlineInput?.value || '';
+        const text = raw.trim();
+        const hasPhoto = !!window.feedComposerPhotoFile;
+        if (!text && !hasPhoto) return;
+
+        const submitBtn = boardInlineSubmit;
+        const sendIconHtml = '<i class="fa-solid fa-arrow-up text-sm"></i>';
+        const prevHtml = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-sm"></i>';
+
+        let imageUrls = [];
+        if (hasPhoto) {
+            try {
+                imageUrls = await uploadFeedImages([window.feedComposerPhotoFile], window.currentUser.uid);
+            } catch (err) {
+                console.error('[feed composer] upload:', err);
+                showToast(err?.message || '사진 업로드에 실패했습니다.', 'error');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = prevHtml || sendIconHtml;
+                syncBoardInlineComposerUi();
+                return;
+            }
+        }
+
+        try {
+            const replyToPostId = window.__feedReplyToPostId
+                ? String(window.__feedReplyToPostId).trim()
+                : '';
+            const created = await feedOperations.createMessage({
+                text,
+                imageUrls,
+                ...(replyToPostId ? { replyToPostId } : {})
+            });
+            if (boardInlineInput) boardInlineInput.value = '';
+            clearFeedComposerPhoto();
+            clearFeedReplyBar();
+            syncBoardInlineComposerUi();
+            await renderBoardFeedTab({ optimisticPost: created });
+        } catch (_) {
+            // createMessage에서 토스트 처리
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = sendIconHtml;
+            syncBoardInlineComposerUi();
+        }
+    });
+}
+const boardInlinePhotoBtn = document.getElementById('boardInlineComposerPhotoBtn');
+if (boardInlinePhotoBtn && boardFeedPhotoInput) {
+    boardInlinePhotoBtn.addEventListener('click', () => {
+        if (!window.currentUser || window.currentUser.isAnonymous) {
+            showToast('로그인이 필요합니다.', 'error');
+            window.requestLogin?.();
+            return;
+        }
+        boardFeedPhotoInput.click();
+    });
+}
+
+document.getElementById('boardInlineComposerReplyClear')?.addEventListener('click', () => {
+    clearFeedReplyBar();
+    syncBoardInlineComposerUi();
+});
+
+syncBoardInlineComposerUi();
+
+initFeedBubbleContextMenu();
 
 }

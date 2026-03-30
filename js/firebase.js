@@ -113,6 +113,7 @@ export const apiKey = "";
 
 // Callable Functions 참조
 export const callableFunctions = {
+    createFeedPost: httpsCallable(functions, 'createFeedPost'),
     createBoardPost: httpsCallable(functions, 'createBoardPost'),
     updateBoardPost: httpsCallable(functions, 'updateBoardPost'),
     deleteBoardPost: httpsCallable(functions, 'deleteBoardPost'),
