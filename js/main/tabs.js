@@ -67,7 +67,7 @@ export function registerMainTabSwitch() {
                 if (typeof window.updateGalleryTraceFilterBarUI === 'function') window.updateGalleryTraceFilterBarUI();
                 const category = window.currentBoardCategory || 'all';
                 renderBoard(category);
-                document.body.classList.remove('bottom-nav-scroll-hidden');
+                if (typeof window.__resetBoardPanelScrollNav === 'function') window.__resetBoardPanelScrollNav();
                 setTimeout(() => {
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                 }, 100);
@@ -75,6 +75,9 @@ export function registerMainTabSwitch() {
                 if (boardListView) boardListView.classList.add('hidden');
                 if (boardDetailView) boardDetailView.classList.add('hidden');
                 if (boardWriteView) boardWriteView.classList.add('hidden');
+                if (prevTab === 'board' && typeof window.__resetBoardPanelScrollNav === 'function') {
+                    window.__resetBoardPanelScrollNav();
+                }
             }
 
             document.getElementById('trackerSection').classList.toggle('hidden', tab !== 'timeline');

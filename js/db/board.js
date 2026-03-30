@@ -11,6 +11,10 @@ export const boardOperations = {
         if (!window.currentUser) {
             throw new Error("로그인이 필요합니다.");
         }
+        if (isDemoUser(window.currentUser)) {
+            showToast('샘플 계정에서는 글을 작성할 수 없습니다.', 'error');
+            throw new Error('read-only-demo');
+        }
         try {
             console.log('[boardOperations.createPost] 시작:', { title: postData.title, category: postData.category });
             const result = await callableFunctions.createBoardPost({

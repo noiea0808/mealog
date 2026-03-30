@@ -15,6 +15,7 @@ import {
     serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { showToast } from '../ui.js';
+import { isDemoUser } from '../demo-account.js';
 
 const EMPTY_REACTION_COUNTS = { like: 0, thumbs: 0, check: 0 };
 
@@ -89,6 +90,10 @@ export const feedOperations = {
         if (!window.currentUser) {
             throw new Error('로그인이 필요합니다.');
         }
+        if (isDemoUser(window.currentUser)) {
+            showToast('샘플 계정에서는 메시지를 보낼 수 없습니다.', 'error');
+            throw new Error('read-only-demo');
+        }
         try {
             const rid =
                 replyToPostId != null && String(replyToPostId).trim()
@@ -113,6 +118,10 @@ export const feedOperations = {
         if (!window.currentUser) {
             showToast('로그인이 필요합니다.', 'error');
             throw new Error('auth');
+        }
+        if (isDemoUser(window.currentUser)) {
+            showToast('샘플 계정에서는 수정할 수 없습니다.', 'info');
+            throw new Error('read-only-demo');
         }
         const id = String(postId || '').trim();
         if (!id) throw new Error('id');
@@ -160,6 +169,10 @@ export const feedOperations = {
             showToast('로그인이 필요합니다.', 'error');
             throw new Error('auth');
         }
+        if (isDemoUser(window.currentUser)) {
+            showToast('샘플 계정에서는 삭제할 수 없습니다.', 'info');
+            throw new Error('read-only-demo');
+        }
         const id = String(postId || '').trim();
         if (!id) throw new Error('id');
         try {
@@ -191,6 +204,10 @@ export const feedOperations = {
         if (!window.currentUser || window.currentUser.isAnonymous) {
             showToast('로그인이 필요합니다.', 'error');
             throw new Error('auth');
+        }
+        if (isDemoUser(window.currentUser)) {
+            showToast("샘플 계정에서는 반응을 보낼 수 없습니다.", 'info');
+            throw new Error('read-only-demo');
         }
         const allowed = ['like', 'thumbs', 'check'];
         if (!allowed.includes(type)) throw new Error('type');

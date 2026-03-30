@@ -6,6 +6,7 @@ import { showToast } from '../ui.js';
 import { feedOperations } from '../db.js';
 import { renderBoardFeedTab } from '../render/board-feed.js';
 import { getDisplayProfile } from '../utils.js';
+import { isDemoUser } from '../demo-account.js';
 
 const LONG_PRESS_MS = 520;
 const MOVE_CANCEL_PX = 16;
@@ -59,6 +60,10 @@ function replyToPost(postId) {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         showToast('로그인이 필요합니다.', 'error');
         window.requestLogin?.();
+        return;
+    }
+    if (isDemoUser(window.currentUser)) {
+        showToast('체험 계정에서는 답장을 보낼수 없어요', 'error');
         return;
     }
     const post = getFeedPostById(postId);
@@ -162,6 +167,7 @@ function showFeedBubbleSheet({ postId, isMine, bubble }) {
         'fixed inset-0 z-[200] flex items-center justify-center p-4 pointer-events-none';
     root.setAttribute('role', 'presentation');
 
+    // 샘플 계정도 버튼은 보여주되(체험), 누르면 현재 팝업 상태에서 토스트로 안내만 한다.
     const reactionsBlock = isMine
         ? ''
         : `
@@ -186,13 +192,13 @@ function showFeedBubbleSheet({ postId, isMine, bubble }) {
             <i class="fa-solid fa-reply shrink-0 text-sm text-slate-600" aria-hidden="true"></i>답장
         </button>`;
 
-    const editBtn = isMine
+    const editBtn = isMine && !isDemoUser(window.currentUser)
         ? `<button type="button" data-feed-action="edit" class="${rowBase} text-slate-900">
             <i class="fa-solid fa-pen shrink-0 text-sm text-slate-600" aria-hidden="true"></i>수정
         </button>`
         : '';
 
-    const delBtn = isMine
+    const delBtn = isMine && !isDemoUser(window.currentUser)
         ? `<button type="button" data-feed-action="delete" class="${rowBase} text-red-800 active:bg-red-50">
             <i class="fa-solid fa-trash shrink-0 text-sm text-red-700" aria-hidden="true"></i>삭제
         </button>`
@@ -228,6 +234,11 @@ function showFeedBubbleSheet({ postId, isMine, bubble }) {
     });
 
     root.querySelector('[data-feed-action="reply"]')?.addEventListener('click', () => {
+        // 샘플 계정: 팝업 유지 + 토스트만
+        if (isDemoUser(window.currentUser)) {
+            showToast('체험 계정에서는 답장을 보낼수 없어요', 'error');
+            return;
+        }
         removeSheet();
         replyToPost(postId);
     });
@@ -253,6 +264,10 @@ function showFeedBubbleSheet({ postId, isMine, bubble }) {
             if (!window.currentUser || window.currentUser.isAnonymous) {
                 showToast('로그인이 필요합니다.', 'error');
                 window.requestLogin?.();
+                return;
+            }
+            if (isDemoUser(window.currentUser)) {
+                showToast('체험 계정에서는 반응을 표시할 수 없어요', 'error');
                 return;
             }
             removeSheet();

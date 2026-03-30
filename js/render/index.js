@@ -26,7 +26,13 @@ export {
 } from './post-group-utils.js';
 export { fetchUserProfiles, getUserSettings } from './user-profiles.js';
 export { renderBoard, renderBoardDetail, renderNoticeDetail, renderBoardPostList, syncBoardFeedComposerVisibility } from './board-notice.js';
-export { renderBoardFeedTab } from './board-feed.js';
+export {
+    renderBoardFeedTab,
+    scrollFeedPanelToBottom,
+    buildPendingFeedMessage,
+    applyOptimisticFeedPost,
+    removePendingFeedPosts
+} from './board-feed.js';
 export {
     renderGallery,
     filterGalleryByUser,

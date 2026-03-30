@@ -1463,6 +1463,72 @@ window.addEventListener('scroll', () => {
     });
 }, { passive: true });
 
+/** 밀톡 피드/게시판: 본문이 내부 스크롤(#boardFeedPanelContent, #boardListPanel)이라 window 스크롤과 무관 — 동일 네비·헤더 숨김 규칙 적용 */
+const _boardPanelScrollLast = { boardFeedPanelContent: 0, boardListPanel: 0 };
+let _boardPanelScrollRaf = null;
+function applyBoardPanelScrollHideNav(el) {
+    const mainApp = document.getElementById('mainApp');
+    if (!mainApp || mainApp.classList.contains('hidden')) return;
+    const header = document.getElementById('mainAppHeader');
+    if (!header) return;
+    if (appState.currentTab !== 'board') return;
+    const id = el.id;
+    if (id !== 'boardFeedPanelContent' && id !== 'boardListPanel') return;
+
+    // 초기 자동 스크롤(맨 아래 정렬 등) 동안에는 네비/헤더 숨김 토글을 막아
+    // padding/bottom 클래스 변경 → scrollHeight 변화 → 연쇄 스크롤 흔들림을 방지.
+    const suppressUntil = Number(window.__suppressBoardPanelScrollHideNavUntil || 0) || 0;
+    if (suppressUntil && Date.now() < suppressUntil) {
+        _boardPanelScrollLast[id] = el.scrollTop;
+        return;
+    }
+
+    const y = el.scrollTop;
+    if (_boardPanelScrollRaf) cancelAnimationFrame(_boardPanelScrollRaf);
+    _boardPanelScrollRaf = requestAnimationFrame(() => {
+        const last = _boardPanelScrollLast[id] ?? 0;
+        const delta = y - last;
+        const scrollThreshold = 8;
+        const topThreshold = 24;
+        const isScrollingDown = delta > scrollThreshold;
+        const isScrollingUp = delta < -scrollThreshold;
+        const atTop = y <= topThreshold;
+        const tracker = document.getElementById('trackerSection');
+        if (isScrollingDown && !atTop) {
+            header.classList.add('header-scroll-hidden');
+            if (tracker) tracker.classList.add('tracker-header-hidden');
+            document.body.classList.add('bottom-nav-scroll-hidden');
+        } else if (isScrollingUp || atTop) {
+            header.classList.remove('header-scroll-hidden');
+            if (tracker) tracker.classList.remove('tracker-header-hidden');
+            document.body.classList.remove('bottom-nav-scroll-hidden');
+        }
+        _boardPanelScrollLast[id] = y;
+        _boardPanelScrollRaf = null;
+    });
+}
+function bindBoardPanelsScrollHideNav() {
+    const feed = document.getElementById('boardFeedPanelContent');
+    const list = document.getElementById('boardListPanel');
+    const onScroll = (e) => applyBoardPanelScrollHideNav(e.currentTarget);
+    if (feed) feed.addEventListener('scroll', onScroll, { passive: true });
+    if (list) list.addEventListener('scroll', onScroll, { passive: true });
+}
+window.__resetBoardPanelScrollNav = () => {
+    document.body.classList.remove('bottom-nav-scroll-hidden');
+    document.getElementById('mainAppHeader')?.classList.remove('header-scroll-hidden');
+    document.getElementById('trackerSection')?.classList.remove('tracker-header-hidden');
+    const feed = document.getElementById('boardFeedPanelContent');
+    const list = document.getElementById('boardListPanel');
+    if (feed) _boardPanelScrollLast.boardFeedPanelContent = feed.scrollTop;
+    if (list) _boardPanelScrollLast.boardListPanel = list.scrollTop;
+};
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindBoardPanelsScrollHideNav, { once: true });
+} else {
+    bindBoardPanelsScrollHideNav();
+}
+
 // 스크롤 이벤트 리스너 (타임라인 하단 근처에서 더 오래된 기록 자동 로드)
 let scrollTimeout;
 window.addEventListener('scroll', () => { 

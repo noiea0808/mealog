@@ -2,9 +2,21 @@
  * 밀톡 피드 탭 — feedPosts 전용 (게시판 boardPosts와 분리)
  */
 import { appState } from '../state.js';
+import { showToast } from '../ui.js';
 import { escapeHtml } from './utils.js';
 import { fetchUserProfiles } from './user-profiles.js';
 import { getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
+import { isDemoUser } from '../demo-account.js';
+
+/** paintFeedTimeline마다 이전 관찰자 해제 — 레이아웃 변화 시 스크롤 한 번만 보정 */
+let _feedScrollResizeCleanup = null;
+
+function cleanupFeedScrollResizeObserver() {
+    if (typeof _feedScrollResizeCleanup === 'function') {
+        _feedScrollResizeCleanup();
+        _feedScrollResizeCleanup = null;
+    }
+}
 
 function feedOtherAuthorAvatarBlock(post, authorDisplay) {
     const authorAvatar = getProfileAvatarDisplay(authorDisplay);
@@ -18,11 +30,11 @@ function feedOtherAuthorAvatarBlock(post, authorDisplay) {
         authorAvatar.type === 'photo' && photoSrc
             ? `<img src="${photoSrc}" alt="" width="36" height="36" class="h-9 w-9 rounded-full object-cover bg-slate-200 block" loading="lazy" decoding="async">`
             : authorAvatar.type === 'emoji'
-              ? `<span class="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-lg leading-none" style="font-family: system-ui, 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;">${escapeHtml(authorAvatar.value)}</span>`
-              : `<span class="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-slate-500"><i class="fa-solid fa-user text-sm" aria-hidden="true"></i></span>`;
+              ? `<span class="flex h-9 w-9 items-center justify-center rounded-full border-0 bg-slate-100 text-lg leading-none" style="font-family: system-ui, 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;">${escapeHtml(authorAvatar.value)}</span>`
+              : `<span class="flex h-9 w-9 items-center justify-center rounded-full border-0 bg-slate-100 text-slate-500"><i class="fa-solid fa-user text-sm" aria-hidden="true"></i></span>`;
 
     return `
-        <button type="button" class="feed-other-avatar-btn flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full p-0 shadow-sm outline-none ring-0 focus-visible:ring-2 focus-visible:ring-emerald-500/40 active:opacity-90 ${authorAvatar.type === 'photo' && photoSrc ? 'border-0 bg-slate-200' : 'border-0 bg-transparent'}"
+        <button type="button" class="feed-other-avatar-btn flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full p-0 shadow-sm outline-none ring-1 ring-white focus-visible:ring-2 focus-visible:ring-emerald-500/40 active:opacity-90 ${authorAvatar.type === 'photo' && photoSrc ? 'border-0 bg-slate-200' : 'border-0 bg-transparent'}"
             onclick="event.stopPropagation(); window.openUserProfileFromBoard && window.openUserProfileFromBoard('${aid}')"
             aria-label="${escapeHtml(authorDisplay.nickname || '익명')} 프로필">
             ${inner}
@@ -30,6 +42,7 @@ function feedOtherAuthorAvatarBlock(post, authorDisplay) {
 }
 
 function feedReactionRowHtml(post, alignEnd) {
+    if (isDemoUser(window.currentUser)) return '';
     const c = post.reactionCounts;
     if (!c) return '';
     const like = Number(c.like) || 0;
@@ -99,9 +112,10 @@ function feedBubbleHtml(post, opts = {}) {
     const img0 = hasImg ? post.imageUrls[0] : '';
     const time = postTimeLabel(post);
     const pid = escapeHtml(post.id || '');
+    const hasBody = String(post.text || post.content || '').trim().length > 0;
 
     const imgBlock = hasImg
-        ? `<div class="mt-1.5 overflow-hidden rounded-lg"><img src="${escapeHtml(img0)}" alt="" class="max-h-40 w-auto max-w-[min(85vw,240px)] rounded-lg bg-slate-100 object-cover" loading="lazy"></div>`
+        ? `<div class="${hasBody ? 'mt-1.5' : ''} overflow-hidden rounded-lg"><img src="${escapeHtml(img0)}" alt="" class="max-h-40 w-auto max-w-[min(85vw,240px)] rounded-lg bg-slate-100 object-cover" loading="lazy"></div>`
         : '';
 
     const timeMine = `<span class="feed-bubble-meta-time shrink-0 pb-1 text-xs leading-tight">${time}</span>`;
@@ -114,9 +128,9 @@ function feedBubbleHtml(post, opts = {}) {
             <div class="feed-timeline-row feed-timeline-row-mine flex justify-end items-end gap-2 pr-0.5 sm:pr-2" data-post-id="${pid}">
                 ${timeMine}
                 <div class="flex w-fit max-w-[min(88%,22rem)] flex-col items-end sm:max-w-[18rem]">
-                    <div class="feed-chat-bubble feed-chat-bubble-mine inline-block w-fit max-w-full text-left rounded-2xl rounded-br-md px-5 py-2 text-base shadow-sm">
+                    <div class="feed-chat-bubble feed-chat-bubble-mine inline-block w-fit max-w-full text-left rounded-2xl rounded-br-md ${hasImg ? 'p-0' : 'px-5 py-2'} text-base shadow-sm">
                         ${replyQ}
-                        <p class="m-0 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem]">${body}</p>
+                        ${hasBody ? `<p class="m-0 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem] ${hasImg ? 'px-5 py-2' : ''}">${body}</p>` : ''}
                         ${imgBlock}
                     </div>
                     ${reactRow}
@@ -147,9 +161,9 @@ function feedBubbleHtml(post, opts = {}) {
                     ${nickRow}
                     <div class="flex min-w-0 max-w-full flex-col items-start">
                         <div class="flex max-w-full items-end gap-1">
-                            <div class="feed-chat-bubble feed-chat-bubble-other inline-block w-fit max-w-full rounded-2xl rounded-bl-md border px-5 py-2 text-left text-base shadow-sm">
+                            <div class="feed-chat-bubble feed-chat-bubble-other inline-block w-fit max-w-full rounded-2xl rounded-bl-md border ${hasImg ? 'p-0' : 'px-5 py-2'} text-left text-base shadow-sm">
                                 ${replyQOther}
-                                <p class="m-0 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem]">${body}</p>
+                                ${hasBody ? `<p class="m-0 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem] ${hasImg ? 'px-5 py-2' : ''}">${body}</p>` : ''}
                                 ${imgBlock}
                             </div>
                             ${timeOtherBesideBubble}
@@ -159,6 +173,16 @@ function feedBubbleHtml(post, opts = {}) {
                 </div>
             </div>
         </div>`;
+}
+
+function feedRefreshButtonHtml() {
+    return `
+    <div class="feed-timeline-footer mt-[30px] flex w-full shrink-0 justify-center px-2 pb-3 pt-1">
+      <button type="button" class="feed-refresh-btn inline-flex items-center justify-center gap-2 rounded-full border border-white/40 bg-white/15 px-4 py-2 text-sm font-medium text-white shadow-sm backdrop-blur-sm outline-none transition-colors hover:bg-white/25 active:bg-white/20 disabled:pointer-events-none disabled:opacity-50" data-feed-refresh aria-label="대화 새로고침">
+        <i class="fa-solid fa-arrows-rotate text-base" aria-hidden="true"></i>
+        <span>새로고침</span>
+      </button>
+    </div>`;
 }
 
 function getPostTimestampMs(post) {
@@ -172,12 +196,16 @@ function getPostTimestampMs(post) {
 }
 
 function paintFeedTimeline(root, posts) {
+    cleanupFeedScrollResizeObserver();
     if (!posts.length) {
         root.innerHTML = `
-            <div class="feed-timeline-empty flex flex-col items-center justify-center py-10 px-4 text-center">
-                <i class="fa-regular fa-comments feed-timeline-empty-icon text-3xl mb-2" aria-hidden="true"></i>
-                <p class="feed-timeline-empty-title text-xs">아직 메시지가 없어요</p>
-                <p class="feed-timeline-empty-sub text-[11px] mt-1">아래에서 첫 메시지를 보내 보세요</p>
+            <div class="feed-timeline-stack flex min-h-full flex-col justify-end">
+                <div class="feed-timeline-empty flex flex-1 flex-col items-center justify-center py-10 px-4 text-center">
+                    <i class="fa-regular fa-comments feed-timeline-empty-icon text-3xl mb-2" aria-hidden="true"></i>
+                    <p class="feed-timeline-empty-title text-xs">아직 메시지가 없어요</p>
+                    <p class="feed-timeline-empty-sub text-[11px] mt-1">아래에서 첫 메시지를 보내 보세요</p>
+                </div>
+                ${feedRefreshButtonHtml()}
             </div>`;
         return;
     }
@@ -197,50 +225,192 @@ function paintFeedTimeline(root, posts) {
             return feedBubbleHtml(p, { showAuthorHeader });
         })
         .join('');
-    root.innerHTML = `<div class="feed-timeline flex min-h-full flex-col justify-end gap-2 pb-3 pt-1">${rowsHtml}</div>`;
+    root.innerHTML = `
+        <div class="feed-timeline-stack flex min-h-full flex-col justify-end">
+            <div class="feed-timeline flex w-full flex-col justify-end gap-2 pb-2 pt-1">${rowsHtml}</div>
+            ${feedRefreshButtonHtml()}
+        </div>`;
 }
 
-/** innerHTML 직후 scrollHeight가 아직 갱신되지 않아 맨 위(과거 메시지)만 보이는 경우 방지 */
-function scrollFeedPanelToBottom() {
+function revokeBlobUrlsOnPost(post) {
+    const urls = post?.imageUrls;
+    if (!Array.isArray(urls)) return;
+    urls.forEach((u) => {
+        if (typeof u === 'string' && u.startsWith('blob:')) {
+            try {
+                URL.revokeObjectURL(u);
+            } catch (_) {}
+        }
+    });
+}
+
+/** 전송 직후 목록에 임시 말풍선 표시 (서버 응답 전) */
+export function buildPendingFeedMessage({ text, imagePreviewUrls = [], replyToPostId = null }) {
+    const uid = window.currentUser?.uid;
+    if (!uid) return null;
+    const id = `pending-${Date.now()}`;
+    const display = getDisplayProfile(uid, window.userSettings?.profile);
+    let replyTo = null;
+    const rid = replyToPostId ? String(replyToPostId).trim() : '';
+    if (rid) {
+        const parent = (appState.feedTimelinePosts || []).find((p) => String(p.id) === rid);
+        if (parent) {
+            const raw = String(parent.text || parent.content || '').trim();
+            let prev = raw.replace(/\r\n/g, ' ').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+            if (prev.length > 80) prev = `${prev.slice(0, 79)}…`;
+            if (!prev && Array.isArray(parent.imageUrls) && parent.imageUrls.length) prev = '(사진)';
+            if (!prev) prev = '내용 없음';
+            replyTo = { authorNickname: parent.authorNickname || '익명', textPreview: prev };
+        }
+    }
+    return {
+        id,
+        text: String(text || ''),
+        content: String(text || ''),
+        imageUrls: imagePreviewUrls.slice(0, 5),
+        authorId: uid,
+        authorNickname: display.nickname || '익명',
+        authorPhotoUrl: display.photoUrl || null,
+        authorIcon: display.icon || null,
+        timestamp: new Date(),
+        reactionCounts: { like: 0, thumbs: 0, check: 0 },
+        ...(replyTo ? { replyTo } : {})
+    };
+}
+
+export function applyOptimisticFeedPost(post) {
+    const root = document.getElementById('boardFeedPanelContent');
+    if (!root || !post) return;
+    const prev = appState.feedTimelinePosts || [];
+    const withoutPending = prev.filter((p) => !String(p?.id || '').startsWith('pending-'));
+    const next = [...withoutPending, post];
+    appState.feedTimelinePosts = next;
+    paintFeedTimeline(root, next);
+    scrollFeedPanelToBottom();
+}
+
+/** 전송 실패 등: pending 말풍선 제거 + blob 정리 */
+export function removePendingFeedPosts() {
+    const root = document.getElementById('boardFeedPanelContent');
+    const prev = appState.feedTimelinePosts || [];
+    const next = [];
+    for (const p of prev) {
+        if (String(p?.id || '').startsWith('pending-')) {
+            revokeBlobUrlsOnPost(p);
+            continue;
+        }
+        next.push(p);
+    }
+    appState.feedTimelinePosts = next;
+    if (root) paintFeedTimeline(root, next);
+    scrollFeedPanelToBottom();
+}
+
+/** 맨 아래로 스크롤: scrollTop만 사용(scrollIntoView 제거로 부모·중복 스크롤 흔들림 방지). 이미지 로드 등으로 높이가 늘면 ResizeObserver로 지연 1회 보정 */
+export function scrollFeedPanelToBottom() {
     const el = document.getElementById('boardFeedPanelContent');
     if (!el) return;
 
-    const run = () => {
-        const last = el.querySelector('.feed-timeline-row:last-of-type');
-        if (last) {
-            const pad = 12;
-            const cr = el.getBoundingClientRect();
-            const br = last.getBoundingClientRect();
-            const below = br.bottom - (cr.bottom - pad);
-            if (below > 0) {
-                el.scrollTop += below;
-            }
-            return;
-        }
-        el.scrollTop = el.scrollHeight;
+    cleanupFeedScrollResizeObserver();
+
+    // 사용자가 진입 직후 위로 스크롤하면 자동 보정(ResizeObserver)이 더 이상 맨 아래로 끌고 가지 않도록
+    // "하단 근처일 때만" 자동 보정 허용 + 사용자가 위로 벗어나면 즉시 중단한다.
+    const nearBottomPx = 18;
+    const isNearBottom = () => {
+        const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+        return maxScroll - el.scrollTop <= nearBottomPx;
     };
 
-    run();
-    requestAnimationFrame(() => requestAnimationFrame(run));
-    setTimeout(run, 0);
-    setTimeout(run, 100);
-    setTimeout(run, 280);
+    const apply = () => {
+        el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    };
+
+    // 이 함수 호출 시점은 주로 "탭 진입/렌더 직후"이며,
+    // 이때 스크롤 변화가 헤더/네비 숨김 로직을 트리거하면 레이아웃이 바뀌며 흔들릴 수 있다.
+    window.__suppressBoardPanelScrollHideNavUntil = Date.now() + 1200;
+
+    apply();
+    requestAnimationFrame(() => {
+        apply();
+        requestAnimationFrame(apply);
+    });
+
+    const stack = el.querySelector('.feed-timeline-stack');
+    if (!stack || typeof ResizeObserver === 'undefined') return;
+
+    let debounceT = null;
+    let lastScrollH = el.scrollHeight;
+    let cancelledByUser = false;
+    const onUserScroll = () => {
+        if (cancelledByUser) return;
+        if (!isNearBottom()) {
+            cancelledByUser = true;
+            cleanupFeedScrollResizeObserver();
+        }
+    };
+    // capture로 먼저 감지(패시브) — 사용자가 위로 올리는 순간 자동 보정 취소
+    el.addEventListener('scroll', onUserScroll, { passive: true, capture: true });
+    const ro = new ResizeObserver(() => {
+        if (cancelledByUser) return;
+        // 사용자가 이미 위로 벗어났으면(읽기 시작) 자동으로 아래로 당기지 않음
+        if (!isNearBottom()) return;
+        const h = el.scrollHeight;
+        if (h === lastScrollH) return;
+        lastScrollH = h;
+        clearTimeout(debounceT);
+        debounceT = setTimeout(() => {
+            if (cancelledByUser) return;
+            if (!isNearBottom()) return;
+            apply();
+            lastScrollH = el.scrollHeight;
+        }, 80);
+    });
+    ro.observe(stack);
+
+    const stopT = setTimeout(() => {
+        clearTimeout(debounceT);
+        ro.disconnect();
+        if (!cancelledByUser && isNearBottom()) apply();
+    }, 1600);
+
+    _feedScrollResizeCleanup = () => {
+        clearTimeout(stopT);
+        clearTimeout(debounceT);
+        try {
+            el.removeEventListener('scroll', onUserScroll, { capture: true });
+        } catch (_) {
+            // 일부 브라우저는 options 일치가 필요할 수 있어 무시
+            el.removeEventListener('scroll', onUserScroll, true);
+        }
+        ro.disconnect();
+    };
 }
 
-/** 피드: feedPosts 컬렉션만 조회 (게시판과 무관) */
+/** 피드: feedPosts 컬렉션만 조회 (게시판과 무관)
+ * @param {object} options
+ * @param {object} [options.optimisticPost] - 전송 직후 목록에 임시로 합칠 글
+ * @param {boolean} [options.quietRefresh] - true면 전체 패널 로딩 스켈레톤 생략(온디맨드 새로고침)
+ */
 export async function renderBoardFeedTab(options = {}) {
     const root = document.getElementById('boardFeedPanelContent');
     if (!root || !window.feedOperations) return;
 
-    root.innerHTML = `
+    const quiet = !!options.quietRefresh;
+    if (!quiet) {
+        root.innerHTML = `
         <div class="feed-panel-loading flex flex-col items-center justify-center py-10">
             <i class="fa-solid fa-spinner fa-spin feed-panel-loading-icon text-2xl mb-2" aria-hidden="true"></i>
             <span class="feed-panel-loading-text text-xs">불러오는 중…</span>
         </div>`;
+    }
 
     try {
         const posts = await window.feedOperations.getMessages(50);
         let list = (posts || []).filter((p) => p && p.isHidden !== true);
+        list = list.filter((p) => !String(p?.id || '').startsWith('pending-'));
+        for (const p of appState.feedTimelinePosts || []) {
+            if (String(p?.id || '').startsWith('pending-')) revokeBlobUrlsOnPost(p);
+        }
         const op = options.optimisticPost;
         if (op != null && op.id != null && String(op.id) && !list.some((p) => String(p.id) === String(op.id))) {
             const rc = op.reactionCounts || { like: 0, thumbs: 0, check: 0 };
@@ -253,9 +423,13 @@ export async function renderBoardFeedTab(options = {}) {
         scrollFeedPanelToBottom();
     } catch (e) {
         console.error('renderBoardFeedTab:', e);
-        root.innerHTML = `
+        if (quiet) {
+            showToast('피드를 다시 불러오지 못했어요.', 'error');
+        } else {
+            root.innerHTML = `
             <div class="feed-panel-error flex flex-col items-center justify-center py-12 px-4 text-center text-sm">
                 피드를 불러오지 못했어요
             </div>`;
+        }
     }
 }

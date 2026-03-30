@@ -7,13 +7,24 @@
  * (탭 전환·피드 로드마다 호출하지 않음)
  */
 import { peekLatestSharedPhotoTimestampMs } from '../db/listeners.js';
+import { db, appId } from '../firebase.js';
+import {
+    collection,
+    query,
+    orderBy,
+    limit,
+    getDocsFromServer
+} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
 const LS_MOMENT = 'mealog_nav_moment_seen_ms_';
 const LS_BOARD = 'mealog_nav_board_seen_ms_';
+const LS_BOARD_FEED = 'mealog_nav_board_feed_seen_ms_';
+const LS_BOARD_BOARD = 'mealog_nav_board_board_seen_ms_';
 /** visibility + pageshow가 연달아 올 때 한 번만 합치기 */
 const FOREGROUND_DEBOUNCE_MS = 280;
 
 let foregroundDebounceTimer = null;
+let _lastPeek = { moment: 0, feed: 0, board: 0 };
 
 function storageUidKey() {
     const u = window.currentUser;
@@ -60,6 +71,29 @@ async function peekLatestBoardPostTimestampMs() {
     }
 }
 
+function getFeedPostTsMs(post) {
+    if (!post?.timestamp) return 0;
+    if (post.timestamp.toDate && typeof post.timestamp.toDate === 'function') return post.timestamp.toDate().getTime();
+    if (typeof post.timestamp === 'string') return new Date(post.timestamp).getTime();
+    if (post.timestamp instanceof Date) return post.timestamp.getTime();
+    return new Date(post.timestamp || 0).getTime();
+}
+
+async function peekLatestFeedPostTimestampMs() {
+    if (!window.currentUser) return 0;
+    try {
+        const postsColl = collection(db, 'artifacts', appId, 'feedPosts');
+        const q = query(postsColl, orderBy('timestamp', 'desc'), limit(1));
+        const snap = await getDocsFromServer(q);
+        if (!snap.docs.length) return 0;
+        const post = { id: snap.docs[0].id, ...snap.docs[0].data() };
+        return getFeedPostTsMs(post);
+    } catch (e) {
+        console.warn('peekLatestFeedPostTimestampMs:', e?.message || e);
+        return 0;
+    }
+}
+
 function setDotVisible(tab, visible) {
     const id = tab === 'gallery' ? 'nav-gallery' : 'nav-board';
     const btn = document.getElementById(id);
@@ -68,16 +102,37 @@ function setDotVisible(tab, visible) {
     dot.classList.toggle('hidden', !visible);
 }
 
+function setHeaderBoardDotVisible(visible) {
+    const dot = document.getElementById('boardUpdateDot');
+    if (!dot) return;
+    dot.classList.toggle('hidden', !visible);
+}
+
+function setBoardSubtabDotVisible(subtab, visible) {
+    const id = subtab === 'board' ? 'boardSubtabBoard' : 'boardSubtabFeed';
+    const btn = document.getElementById(id);
+    const dot = btn?.querySelector('.board-subtab-update-dot');
+    if (!dot) return;
+    dot.classList.toggle('hidden', !visible);
+}
+
 export function clearNavFeedUpdateDots() {
     setDotVisible('gallery', false);
     setDotVisible('board', false);
+    setHeaderBoardDotVisible(false);
+    setBoardSubtabDotVisible('feed', false);
+    setBoardSubtabDotVisible('board', false);
 }
 
-function applyBaselineAndCompare(uidKey, peekMoment, peekBoard) {
+function applyBaselineAndCompare(uidKey, peekMoment, peekFeed, peekBoardPosts, peekBoardAny) {
     const mk = LS_MOMENT + uidKey;
     const bk = LS_BOARD + uidKey;
+    const fk = LS_BOARD_FEED + uidKey;
+    const pk = LS_BOARD_BOARD + uidKey;
     let mSeen = readSeen(mk);
     let bSeen = readSeen(bk);
+    let fSeen = readSeen(fk);
+    let pSeen = readSeen(pk);
 
     if (mSeen === null) {
         if (peekMoment > 0) {
@@ -90,20 +145,45 @@ function applyBaselineAndCompare(uidKey, peekMoment, peekBoard) {
         }
     }
     if (bSeen === null) {
-        if (peekBoard > 0) {
-            writeSeen(bk, peekBoard);
-            bSeen = peekBoard;
+        if (peekBoardAny > 0) {
+            writeSeen(bk, peekBoardAny);
+            bSeen = peekBoardAny;
         } else {
             const now = Date.now();
             writeSeen(bk, now);
             bSeen = now;
         }
     }
+    if (fSeen === null) {
+        if (peekFeed > 0) {
+            writeSeen(fk, peekFeed);
+            fSeen = peekFeed;
+        } else {
+            const now = Date.now();
+            writeSeen(fk, now);
+            fSeen = now;
+        }
+    }
+    if (pSeen === null) {
+        if (peekBoardPosts > 0) {
+            writeSeen(pk, peekBoardPosts);
+            pSeen = peekBoardPosts;
+        } else {
+            const now = Date.now();
+            writeSeen(pk, now);
+            pSeen = now;
+        }
+    }
 
     const momentHasNew = peekMoment > mSeen;
-    const boardHasNew = peekBoard > bSeen;
+    const boardHasNew = peekBoardAny > bSeen;
+    const feedHasNew = peekFeed > fSeen;
+    const boardPostsHasNew = peekBoardPosts > pSeen;
     setDotVisible('gallery', momentHasNew);
     setDotVisible('board', boardHasNew);
+    setHeaderBoardDotVisible(boardHasNew);
+    setBoardSubtabDotVisible('feed', feedHasNew);
+    setBoardSubtabDotVisible('board', boardPostsHasNew);
 }
 
 export async function refreshNavFeedUpdateDots() {
@@ -112,11 +192,14 @@ export async function refreshNavFeedUpdateDots() {
         clearNavFeedUpdateDots();
         return;
     }
-    const [peekMoment, peekBoard] = await Promise.all([
+    const [peekMoment, peekFeed, peekBoardPosts] = await Promise.all([
         peekLatestSharedPhotoTimestampMs(),
+        peekLatestFeedPostTimestampMs(),
         peekLatestBoardPostTimestampMs()
     ]);
-    applyBaselineAndCompare(uk, peekMoment, peekBoard);
+    const peekBoardAny = Math.max(Number(peekFeed) || 0, Number(peekBoardPosts) || 0);
+    _lastPeek = { moment: Number(peekMoment) || 0, feed: Number(peekFeed) || 0, board: Number(peekBoardPosts) || 0 };
+    applyBaselineAndCompare(uk, _lastPeek.moment, _lastPeek.feed, _lastPeek.board, peekBoardAny);
 }
 
 function scheduleForegroundPeekRefresh() {
@@ -146,10 +229,30 @@ export function markBoardNavSeen() {
     if (!uk) return;
     writeSeen(LS_BOARD + uk, Date.now());
     setDotVisible('board', false);
+    setHeaderBoardDotVisible(false);
+}
+
+/** 밀톡-피드(서브탭) 진입 시 호출 */
+export function markBoardFeedSubtabSeen() {
+    const uk = storageUidKey();
+    if (!uk) return;
+    writeSeen(LS_BOARD_FEED + uk, Date.now());
+    setBoardSubtabDotVisible('feed', false);
+    // 전체 점은 "게시판쪽 새 글"이 남아있을 수 있으니 여기서 강제 제거하지 않음
+}
+
+/** 밀톡-게시판(서브탭) 진입 시 호출 */
+export function markBoardBoardSubtabSeen() {
+    const uk = storageUidKey();
+    if (!uk) return;
+    writeSeen(LS_BOARD_BOARD + uk, Date.now());
+    setBoardSubtabDotVisible('board', false);
 }
 
 window.markMomentFeedNavSeen = markMomentFeedNavSeen;
 window.markBoardNavSeen = markBoardNavSeen;
+window.markBoardFeedSubtabSeen = markBoardFeedSubtabSeen;
+window.markBoardBoardSubtabSeen = markBoardBoardSubtabSeen;
 window.scheduleRefreshNavFeedUpdateDots = scheduleRefreshNavFeedUpdateDots;
 window.refreshNavFeedUpdateDots = refreshNavFeedUpdateDots;
 window.clearNavFeedUpdateDots = clearNavFeedUpdateDots;

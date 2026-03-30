@@ -99,6 +99,9 @@ import {
     createDailyShareCard,
     renderBoard,
     renderBoardFeedTab,
+    buildPendingFeedMessage,
+    applyOptimisticFeedPost,
+    removePendingFeedPosts,
     syncBoardFeedComposerVisibility,
     renderBoardDetail,
     renderNoticeDetail,
@@ -179,6 +182,14 @@ window.switchBoardListSubTab = (sub) => {
     if (appState.boardListSubTab === next) return;
     appState.boardListSubTab = next;
     renderBoard(window.currentBoardCategory || 'all');
+    try {
+        if (next === 'feed' && typeof window.markBoardFeedSubtabSeen === 'function') {
+            window.markBoardFeedSubtabSeen();
+        } else if (next === 'board' && typeof window.markBoardBoardSubtabSeen === 'function') {
+            window.markBoardBoardSubtabSeen();
+        }
+    } catch (_) {}
+    if (typeof window.__resetBoardPanelScrollNav === 'function') window.__resetBoardPanelScrollNav();
 };
 
 // 게시판 관련 함수들
@@ -383,6 +394,10 @@ window.setBoardWriteCategory = (category) => {
 window.submitBoardPost = async () => {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         showToast("로그인이 필요합니다.", 'error');
+        return;
+    }
+    if (isDemoUser(window.currentUser)) {
+        showToast('샘플 계정에서는 글을 작성할 수 없습니다.', 'info');
         return;
     }
     // 모바일 IME(한글 등) 조합 중인 텍스트가 반영되도록 blur 후 대기
@@ -1007,6 +1022,23 @@ function showBoardPanelScrollbarWhileScrolling(el) {
     if (list) list.addEventListener('scroll', onScroll, { passive: true });
 })();
 
+(function bindFeedManualRefresh() {
+    const panel = document.getElementById('boardFeedPanelContent');
+    if (!panel) return;
+    panel.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-feed-refresh]');
+        if (!btn || btn.disabled) return;
+        btn.disabled = true;
+        const icon = btn.querySelector('i');
+        icon?.classList.add('fa-spin');
+        try {
+            await renderBoardFeedTab({ quietRefresh: true });
+        } finally {
+            icon?.classList.remove('fa-spin');
+        }
+    });
+})();
+
 window.syncBoardInlineComposerAvatar = () => {
     const el = document.getElementById('boardInlineComposerAvatar');
     if (!el) return;
@@ -1130,10 +1162,31 @@ if (boardInlineSubmit) {
             window.requestLogin?.();
             return;
         }
+        if (isDemoUser(window.currentUser)) {
+            showToast('체험 계정에서는 메시지를 보낼수 없어요', 'error');
+            return;
+        }
         const raw = boardInlineInput?.value || '';
         const text = raw.trim();
-        const hasPhoto = !!window.feedComposerPhotoFile;
+        const photoFile = window.feedComposerPhotoFile;
+        const hasPhoto = !!photoFile;
         if (!text && !hasPhoto) return;
+
+        const replyToPostId = window.__feedReplyToPostId
+            ? String(window.__feedReplyToPostId).trim()
+            : '';
+
+        const imagePreviewUrls = [];
+        if (photoFile) {
+            imagePreviewUrls.push(URL.createObjectURL(photoFile));
+        }
+        const pending = buildPendingFeedMessage({ text, imagePreviewUrls, replyToPostId });
+        if (pending) applyOptimisticFeedPost(pending);
+
+        if (boardInlineInput) boardInlineInput.value = '';
+        clearFeedReplyBar();
+        clearFeedComposerPhoto();
+        syncBoardInlineComposerUi();
 
         const submitBtn = boardInlineSubmit;
         const sendIconHtml = '<i class="fa-solid fa-arrow-up text-sm"></i>';
@@ -1144,9 +1197,10 @@ if (boardInlineSubmit) {
         let imageUrls = [];
         if (hasPhoto) {
             try {
-                imageUrls = await uploadFeedImages([window.feedComposerPhotoFile], window.currentUser.uid);
+                imageUrls = await uploadFeedImages([photoFile], window.currentUser.uid);
             } catch (err) {
                 console.error('[feed composer] upload:', err);
+                removePendingFeedPosts();
                 showToast(err?.message || '사진 업로드에 실패했습니다.', 'error');
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = prevHtml || sendIconHtml;
@@ -1156,20 +1210,14 @@ if (boardInlineSubmit) {
         }
 
         try {
-            const replyToPostId = window.__feedReplyToPostId
-                ? String(window.__feedReplyToPostId).trim()
-                : '';
             const created = await feedOperations.createMessage({
                 text,
                 imageUrls,
                 ...(replyToPostId ? { replyToPostId } : {})
             });
-            if (boardInlineInput) boardInlineInput.value = '';
-            clearFeedComposerPhoto();
-            clearFeedReplyBar();
-            syncBoardInlineComposerUi();
-            await renderBoardFeedTab({ optimisticPost: created });
+            await renderBoardFeedTab({ quietRefresh: true, optimisticPost: created });
         } catch (_) {
+            removePendingFeedPosts();
             // createMessage에서 토스트 처리
         } finally {
             submitBtn.disabled = false;

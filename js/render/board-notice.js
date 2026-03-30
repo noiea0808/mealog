@@ -6,6 +6,8 @@ import { escapeHtml, renderFormattedContent, getPlainTextPreview } from './utils
 import { getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
 import { getAdminDisplayName } from '../db.js';
 import { fetchUserProfiles } from './user-profiles.js';
+import { isDemoUser } from '../demo-account.js';
+// showToast는 onclick 문자열(인라인)에서 window.showToast를 사용 (main.js에서 전역 바인딩됨)
 
 /** 피드 인라인 입력창: 밀톡·피드 목록일 때만 표시 (글쓰기/상세/다른 탭에서는 숨김) */
 export function syncBoardFeedComposerVisibility() {
@@ -51,6 +53,7 @@ async function renderNotices() {
     if (!noticesContainer) return;
     
     try {
+        const demo = isDemoUser(window.currentUser);
         const notices = await getNotices();
         const activeNotices = notices.filter(n => n && !n.deleted && !n.hidden); // 삭제·숨김 아닌 공지만 표시 (밀로그·밀톡용)
         
@@ -168,6 +171,7 @@ async function renderNotices() {
                             </div>
                         </div>
                         <div class="flex items-center gap-2">
+                            ${demo ? '' : `
                             <button onclick="event.stopPropagation(); window.toggleNoticeLike('${notice.id}', true)" class="board-post-like-btn flex items-center gap-1.5 active:scale-95 transition-transform ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-notice-id="${notice.id}" ${!window.currentUser ? 'disabled' : ''}>
                                 <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart text-xl ${isLiked ? 'text-red-500' : 'text-slate-800'} social-action-icon-stroke"></i>
                                 <span class="text-xs font-bold text-slate-800">${likeCount}</span>
@@ -175,6 +179,7 @@ async function renderNotices() {
                             <button onclick="event.stopPropagation(); window.toggleNoticeBookmark('${notice.id}')" class="board-post-bookmark-btn flex items-center gap-1.5 active:scale-95 transition-transform ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-notice-id="${notice.id}" ${!window.currentUser ? 'disabled' : ''}>
                                 <i class="fa-${isBookmarked ? 'solid' : 'regular'} fa-bookmark text-xl text-slate-800 social-action-icon-stroke"></i>
                             </button>
+                            `}
                         </div>
                     </div>
                 </div>
@@ -365,6 +370,7 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
     // 다른 사용자들의 최신 프로필 미리 로드 (프로필 변경 시 다른 사용자도 최신 설정으로 표시)
     const authorIds = [...new Set((filteredPosts || []).map(p => p.authorId).filter(Boolean))];
     await fetchUserProfiles(authorIds);
+    const demo = isDemoUser(window.currentUser);
     if (filteredPosts.length === 0) {
         const traceEmptyLabels = { like: '좋아요한', comment: '댓글 단', bookmark: '북마크한' };
         const traceEmptyMsg = tracePostIds
@@ -434,8 +440,14 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
                 
                 const hasImages = Array.isArray(post.imageUrls) && post.imageUrls.length > 0;
                 const isPendingPost = post.id && String(post.id).startsWith('pending-');
+                const onClick =
+                    isPendingPost
+                        ? ''
+                        : shouldHideContent
+                          ? `event.preventDefault(); event.stopPropagation(); window.showToast ? window.showToast('이 게시물은 작성자만 볼 수 있습니다', 'error') : null`
+                          : `window.openBoardDetail('${post.id}')`;
                 return `
-                    <div onclick="${isPendingPost ? '' : "window.openBoardDetail('" + post.id + "')"}" class="board-list-card pt-4 px-5 pb-1.5 ${isPendingPost ? 'cursor-default' : 'cursor-pointer'} active:scale-[0.98] transition-all mb-2 ${isPendingPost ? 'ring-2 ring-amber-200 bg-amber-50/50' : ''}">
+                    <div onclick="${onClick}" class="board-list-card pt-4 px-5 pb-1.5 ${isPendingPost || shouldHideContent ? 'cursor-default' : 'cursor-pointer'} active:scale-[0.98] transition-all mb-2 ${isPendingPost ? 'ring-2 ring-amber-200 bg-amber-50/50' : ''}">
                         <div class="flex items-start gap-3 mb-1.5">
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2 mb-3 min-w-0 flex-wrap">
@@ -466,6 +478,7 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
                                     <i class="fa-${postIdsCommentedByUser.has(post.id) ? 'solid' : 'regular'} fa-comment text-xl social-action-icon-stroke"></i>
                                     <span class="text-xs font-bold">${post.comments ?? 0}</span>
                                 </div>
+                                ${demo ? '' : `
                                 <button onclick="event.stopPropagation(); window.toggleBoardLike('${post.id}', true)" class="board-post-like-btn flex items-center gap-1.5 active:scale-95 transition-transform ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-post-id="${post.id}" ${!window.currentUser ? 'disabled' : ''}>
                                     <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart text-xl ${isLiked ? 'text-red-500' : 'text-slate-800'} social-action-icon-stroke"></i>
                                     <span class="text-xs font-bold text-slate-800">${post.likes || 0}</span>
@@ -473,6 +486,7 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
                                 <button onclick="event.stopPropagation(); window.toggleBoardBookmark('${post.id}')" class="board-post-bookmark-btn flex items-center gap-1.5 active:scale-95 transition-transform ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-post-id="${post.id}" ${!window.currentUser ? 'disabled' : ''}>
                                     <i class="fa-${isBookmarked ? 'solid' : 'regular'} fa-bookmark text-xl text-slate-800 social-action-icon-stroke"></i>
                                 </button>
+                                `}
                             </div>
                     </div>
                 </div>
@@ -567,6 +581,7 @@ export async function renderBoardDetail(postId) {
             window.boardOperations.getComments(postId),
             getAdminDisplayName()
         ]);
+        const demo = isDemoUser(window.currentUser);
         
         // 게시글·댓글 작성자들의 최신 프로필 로드
         const detailAuthorIds = [post.authorId, ...(comments || []).map(c => c.authorId).filter(Boolean)];
@@ -617,6 +632,7 @@ export async function renderBoardDetail(postId) {
                         </div>
                     </div>
                     <div class="flex items-center gap-2">
+                        ${demo ? '' : `
                         <button onclick="window.toggleBoardLike('${postId}', true)" class="board-post-like-btn flex items-center gap-1.5 active:scale-95 transition-transform" data-post-id="${postId}" ${!window.currentUser ? 'disabled' : ''}>
                             <i class="fa-${userReaction === 'like' ? 'solid' : 'regular'} fa-heart text-xl ${userReaction === 'like' ? 'text-red-500' : 'text-slate-800'} social-action-icon-stroke"></i>
                             <span class="text-xs font-bold text-slate-800">${post.likes || 0}</span>
@@ -624,6 +640,7 @@ export async function renderBoardDetail(postId) {
                         <button onclick="window.toggleBoardBookmark('${postId}')" class="board-post-bookmark-btn flex items-center gap-1.5 active:scale-95 transition-transform" data-post-id="${postId}" ${!window.currentUser ? 'disabled' : ''}>
                             <i class="fa-${isBookmarked ? 'solid' : 'regular'} fa-bookmark text-xl text-slate-800 social-action-icon-stroke"></i>
                         </button>
+                        `}
                     </div>
                 </div>
                 `;
@@ -678,11 +695,11 @@ export async function renderBoardDetail(postId) {
                     <!-- 댓글 입력 -->
                     <div class="flex gap-2 py-3 px-3 -mx-3 -mb-3">
                         <div class="relative flex-1">
-                            <input type="text" id="boardCommentInput" placeholder="${window.currentUser ? '댓글을 입력하세요...' : '로그인 후 댓글을 작성할 수 있습니다'}" 
+                            <input type="text" id="boardCommentInput" placeholder="${demo ? '샘플 계정은 읽기 전용입니다' : (window.currentUser ? '댓글을 입력하세요...' : '로그인 후 댓글을 작성할 수 있습니다')}" 
                                    class="w-full px-3 py-2 pr-16 border border-slate-300 rounded-lg text-sm focus:outline-none bg-slate-100"
-                                   ${!window.currentUser ? 'disabled' : ''}
-                                   onkeypress="if(event.key === 'Enter' && window.currentUser && !event.shiftKey) { event.preventDefault(); window.addBoardComment('${postId}'); }">
-                            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold cursor-pointer hover:text-emerald-700" ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); if(window.currentUser) window.addBoardComment('${postId}')" onclick="if(window.currentUser) window.addBoardComment('${postId}')">게시</span>
+                                   ${(!window.currentUser || demo) ? 'disabled' : ''}
+                                   onkeypress="if(event.key === 'Enter' && window.currentUser && !event.shiftKey && !(${demo})) { event.preventDefault(); window.addBoardComment('${postId}'); }">
+                            ${demo ? `<span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">읽기</span>` : `<span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold cursor-pointer hover:text-emerald-700" ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); if(window.currentUser) window.addBoardComment('${postId}')" onclick="if(window.currentUser) window.addBoardComment('${postId}')">게시</span>`}
                         </div>
                     </div>
                 </div>
