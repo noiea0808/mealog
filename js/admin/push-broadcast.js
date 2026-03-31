@@ -1,11 +1,8 @@
 // ADMIN 브로드캐스트 푸시 (즉시 발송 / 예약)
-import { app, db, appId, functions } from '../firebase.js';
-import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { app, db, appId, functions, auth } from '../firebase.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js';
 import { collection, query, orderBy, getDocs, limit, doc, setDoc, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { escapeHtml } from './utils.js';
-
-const adminAuth = getAuth(app);
 
 // ========== 푸시메시지 관리 (관리자 브로드캐스트) ==========
 const adminBroadcastPushNowFn = httpsCallable(functions, 'adminBroadcastPushNow');
@@ -410,7 +407,7 @@ window.submitAdminPushSchedule = async function() {
         };
     }
 
-    const uid = adminAuth.currentUser?.uid;
+    const uid = auth.currentUser?.uid;
     if (!uid) {
         alert('로그인이 필요합니다.');
         return;

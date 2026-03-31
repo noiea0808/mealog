@@ -7,7 +7,7 @@ import {
     setFeedPostHiddenByAdmin,
     deleteFeedPostByAdmin
 } from '../db/feed-posts.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, fetchAdminEmailsForUserIds } from './utils.js';
 import {
     collection,
     query,
@@ -118,6 +118,9 @@ export async function renderLoungeChatManagement() {
 
         const total = loungeTotalCount ?? 0;
 
+        const authorIds = [...new Set(items.map((p) => String(p.authorId || '').trim()).filter(Boolean))];
+        const authorEmailMap = await fetchAdminEmailsForUserIds(authorIds);
+
         if (empty && loungeCurrentPage === 1) {
             container.innerHTML = '<p class="text-center py-8 text-slate-400">밀톡 메시지가 없습니다.</p>';
             if (pagEl) pagEl.innerHTML = '';
@@ -133,13 +136,18 @@ export async function renderLoungeChatManagement() {
                 const thumbs = loungeImageThumbsHtml(p.imageUrls);
                 const hidden = p.isHidden === true;
                 const aid = String(p.authorId || '').trim();
-                const authorSub = aid ? `<span class="text-xs text-slate-400">(${escapeHtml(aid.slice(0, 8))}…)</span>` : '';
+                const authorEmail = aid ? authorEmailMap.get(aid) || '' : '';
+                const authorSub = authorEmail
+                    ? `<span class="block text-xs text-slate-500 mt-0.5 break-all">${escapeHtml(authorEmail)}</span>`
+                    : aid
+                      ? `<span class="text-xs text-slate-400">(${escapeHtml(aid.slice(0, 8))}…)</span>`
+                      : '';
                 const pid = escapeHtml(p.id);
                 return `<tr class="border-b border-slate-100 ${hidden ? 'bg-slate-50' : ''} hover:bg-slate-50/80">
                 <td class="px-2 py-2 whitespace-nowrap"><input type="checkbox" class="lounge-chat-row-cb w-4 h-4 rounded border-slate-300" data-post-id="${pid}"></td>
                 <td class="px-2 py-2 text-sm text-slate-600 tabular-nums">${n}</td>
                 <td class="px-2 py-2 text-sm text-slate-700 whitespace-nowrap">${escapeHtml(formatTs(p))}</td>
-                <td class="px-2 py-2 text-sm text-slate-800 min-w-0">${escapeHtml(p.authorNickname || '익명')} ${authorSub}</td>
+                <td class="px-2 py-2 text-sm text-slate-800 min-w-0"><div class="min-w-0">${escapeHtml(p.authorNickname || '익명')}${authorSub ? `<div class="mt-0.5">${authorSub}</div>` : ''}</div></td>
                 <td class="px-2 py-2 text-sm text-slate-700 whitespace-nowrap">${reactionLabel(p.reactionCounts)}</td>
                 <td class="px-2 py-2 text-sm text-slate-700 max-w-md min-w-[12rem] align-top"><div class="min-w-0 space-y-1"><div class="truncate" title="${escapeHtml(previewRaw)}">${escapeHtml(previewRaw)}</div>${thumbs}</div>${
                     hidden ? ' <span class="text-xs font-bold text-amber-600">숨김</span>' : ''

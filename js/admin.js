@@ -41,11 +41,10 @@ import { renderFeedManagement } from './admin/feed-moderation.js';
 import { renderLoungeChatManagement } from './admin/lounge-chat-moderation.js';
 import { loadMealogComments, showCharacterListView } from './admin/persona.js';
 
-import { app, db, appId, callableFunctions } from './firebase.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { app, db, appId, callableFunctions, auth } from './firebase.js';
+import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-// Firestore 규칙·Callable은 기본 Auth만 인식하므로 관리자도 기본 Auth 사용 (admin 페이지는 별도 URL)
-const adminAuth = getAuth(app);
+// Firestore 규칙·Callable은 기본 Auth만 인식 — 메인 앱과 동일한 `auth` 인스턴스 사용
 import { collection, collectionGroup, getDocs, query, orderBy, limit, startAfter, doc, deleteDoc, getDoc, setDoc, where, writeBatch, addDoc, serverTimestamp, getCountFromServer, Timestamp, deleteField } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { uploadImageToStorage, uploadPersonaImageToStorage, uploadNoticeImages, uploadPopupImages, uploadLoginBannerImage } from './utils.js';
 import { invalidateAdminDisplayNameCache } from './db.js';
@@ -213,15 +212,29 @@ window.confirmDeletePhoto = async function() {
 };
 
 // 인증 상태 변경 리스너
-onAuthStateChanged(adminAuth, async (user) => {
+onAuthStateChanged(auth, async (user) => {
     const loadingOverlay = document.getElementById('loadingOverlay');
     const loginPage = document.getElementById('loginPage');
     const adminPage = document.getElementById('adminPage');
+    const loginError = document.getElementById('loginError');
     
     try {
         if (user) {
-            // ADMIN 권한 확인
-            const isAdmin = await checkAdminStatus(user.uid);
+            let isAdmin;
+            try {
+                isAdmin = await checkAdminStatus(user.uid);
+            } catch (e) {
+                if (e?.code === 'admin-check-network' || e?.isNetwork) {
+                    if (adminPage) adminPage.classList.add('hidden');
+                    if (loginPage) loginPage.classList.remove('hidden');
+                    if (loginError) {
+                        loginError.textContent = e.message || '관리자 확인에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+                        loginError.classList.remove('hidden');
+                    }
+                    return;
+                }
+                throw e;
+            }
             if (isAdmin) {
                 if (loginPage) loginPage.classList.add('hidden');
                 if (adminPage) adminPage.classList.remove('hidden');
@@ -232,7 +245,7 @@ onAuthStateChanged(adminAuth, async (user) => {
                 if (loginPage) loginPage.classList.remove('hidden');
                 // 이미 로그인되어 있으면 로그아웃
                 try {
-                    await signOut(adminAuth);
+                    await signOut(auth);
                 } catch (e) {
                     console.error("로그아웃 실패:", e);
                 }
@@ -1158,7 +1171,7 @@ window.deployTerms = async function() {
             terms: [{ title: '이용약관', content: termsContent }],
             privacy: [{ title: '개인정보 처리방침', content: privacyContent }],
             deployedAt: new Date().toISOString(),
-            deployedBy: adminAuth.currentUser?.email || '관리자'
+            deployedBy: auth.currentUser?.email || '관리자'
         };
         
         // 약관 버전 컬렉션에 저장 (terms 문서의 하위 컬렉션으로 저장)

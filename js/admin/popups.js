@@ -1,6 +1,5 @@
 // ADMIN 팝업 관리
-import { app, db, appId } from '../firebase.js';
-import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { app, db, appId, auth } from '../firebase.js';
 import {
     collection, query, orderBy, getDocs, doc, getDoc, setDoc, addDoc, deleteDoc, deleteField
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -8,8 +7,6 @@ import { escapeHtml } from './utils.js';
 import { sanitizeFormattedText, renderFormattedContent, stripDangerousTagsOnly } from '../render/utils.js';
 import { uploadPopupImages } from '../utils.js';
 import { getAdminDisplayName } from '../db.js';
-
-const adminAuth = getAuth(app);
 
 const POPUP_TARGET_MENU_LABELS = { dashboard: '밀당', timeline: '밀로그', gallery: '모먼트', board: '라운지', settings: '사용자' };
 const POPUP_FREQUENCY_LABELS = { daily: '하루 한 번', on_login: '로그인 시마다', on_visit: '접근시마다' };
@@ -398,7 +395,7 @@ window.submitPopup = async function() {
         const newFiles = window.popupFiles || [];
         let imageUrls = [...existingUrls];
         if (newFiles.length > 0) {
-            const uid = adminAuth.currentUser?.uid;
+            const uid = auth.currentUser?.uid;
             if (!uid) {
                 alert('로그인이 필요합니다.');
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = currentEditingPopupId ? '수정' : '등록'; }

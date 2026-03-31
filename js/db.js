@@ -13,4 +13,10 @@ export {
     attachReactionCountsToPosts
 } from './db/feed-posts.js';
 export { getFeedNotificationsForUser, subscribeFeedNotifications } from './db/feed-notifications.js';
+export {
+    isNotificationTargetAvailable,
+    isBoardNotificationTargetAvailable,
+    isFeedNotificationTargetAvailable,
+    isMomentNotificationTargetAvailable
+} from './db/notification-targets.js';
 export { loadMoreMeals, loadMealsForDateRange, loadStatsForYears, migrateBase64ImagesToStorage } from './db/loading.js';

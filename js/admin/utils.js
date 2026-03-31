@@ -69,8 +69,54 @@ export async function checkAdminStatus(userId) {
         return isAdmin;
     } catch (e) {
         console.error("❌ ADMIN 체크 오류:", e);
+        const code = e?.code || '';
+        // 일시적 네트워크/백엔드 오류는 '권한 없음'으로 처리하면 로그아웃되어 혼란스러움 → 호출부에서 재시도 유도
+        if (
+            code === 'unavailable' ||
+            code === 'deadline-exceeded' ||
+            code === 'resource-exhausted' ||
+            code === 'aborted'
+        ) {
+            const err = new Error(
+                '관리자 권한을 확인할 수 없습니다. 네트워크·방화벽을 확인한 뒤 잠시 후 다시 시도해 주세요.'
+            );
+            err.code = 'admin-check-network';
+            err.isNetwork = true;
+            throw err;
+        }
         return false;
     }
+}
+
+/**
+ * 관리자 화면용: uid별 이메일 (users 문서 → config/settings, users.js와 동일)
+ * @param {string[]} userIds
+ * @returns {Promise<Map<string, string>>}
+ */
+export async function fetchAdminEmailsForUserIds(userIds) {
+    const unique = [...new Set((userIds || []).map((id) => String(id || '').trim()).filter(Boolean))];
+    const map = new Map();
+    await Promise.all(
+        unique.map(async (uid) => {
+            let email = '';
+            try {
+                const userSnap = await getDoc(doc(db, 'artifacts', appId, 'users', uid));
+                if (userSnap.exists()) {
+                    const e = userSnap.data()?.email;
+                    if (e && String(e).trim()) email = String(e).trim();
+                }
+                const settingsSnap = await getDoc(doc(db, 'artifacts', appId, 'users', uid, 'config', 'settings'));
+                if (settingsSnap.exists()) {
+                    const se = settingsSnap.data()?.email;
+                    if (se && String(se).trim()) email = String(se).trim();
+                }
+            } catch (_) {
+                /* ignore */
+            }
+            map.set(uid, email);
+        })
+    );
+    return map;
 }
 
 // HTML 이스케이프 헬퍼 함수

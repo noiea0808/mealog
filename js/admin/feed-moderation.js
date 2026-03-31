@@ -4,7 +4,7 @@
 import { db, appId } from '../firebase.js';
 import { getReportsAggregateByGroupKeys } from '../db.js';
 import { REPORT_REASONS } from '../constants.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, fetchAdminEmailsForUserIds } from './utils.js';
 import {
     collection,
     collectionGroup,
@@ -194,16 +194,32 @@ async function renderFeedManagement() {
         // 사용자 정보 가져오기 (타임라인 게시물은 설정에서 닉네임/아이콘 조회)
         const userInfoMap = new Map();
         const userIdsToFetch = [...new Set(paginatedMeals.map(m => m.userId).filter(Boolean))];
-        await Promise.all(userIdsToFetch.map(async (uid) => {
-            if (userInfoMap.has(uid)) return;
-            try {
-                const settingsSnap = await getDoc(doc(db, 'artifacts', appId, 'users', uid, 'config', 'settings'));
-                if (settingsSnap.exists()) {
-                    const s = settingsSnap.data();
-                    userInfoMap.set(uid, { nickname: s.profile?.nickname || '익명', icon: s.profile?.icon || '🐻' });
-                }
-            } catch (e) { console.warn('사용자 정보 조회 실패:', uid, e); }
-        }));
+        const [emailMap] = await Promise.all([
+            fetchAdminEmailsForUserIds(userIdsToFetch),
+            Promise.all(
+                userIdsToFetch.map(async (uid) => {
+                    if (userInfoMap.has(uid)) return;
+                    try {
+                        const settingsSnap = await getDoc(doc(db, 'artifacts', appId, 'users', uid, 'config', 'settings'));
+                        if (settingsSnap.exists()) {
+                            const s = settingsSnap.data();
+                            userInfoMap.set(uid, {
+                                nickname: s.profile?.nickname || '익명',
+                                icon: s.profile?.icon || '🐻',
+                                email: ''
+                            });
+                        }
+                    } catch (e) {
+                        console.warn('사용자 정보 조회 실패:', uid, e);
+                    }
+                })
+            )
+        ]);
+        userIdsToFetch.forEach((uid) => {
+            if (!userInfoMap.has(uid)) userInfoMap.set(uid, { nickname: '익명', icon: '🐻', email: '' });
+            const row = userInfoMap.get(uid);
+            row.email = emailMap.get(uid) || '';
+        });
         
         if (paginatedMeals.length === 0) {
             container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-images text-2xl mb-2"></i><p>게시물이 없습니다.</p></div>';
@@ -262,9 +278,15 @@ async function renderFeedManagement() {
                 ? `<button type="button" class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded hover:bg-red-200" onclick="window.showReportDetailPopup('${String(targetGroupKey).replace(/'/g, "\\'")}')">🚩 ${reportInfo.count}</button>`
                 : '';
 
-            const userInfo = meal.isBestShare || meal.isDailyShare || meal.isInsightShare
-                ? { nickname: meal.userNickname || '익명', icon: meal.userIcon || '🐻' }
-                : (userInfoMap.get(meal.userId) || { nickname: '익명', icon: '🐻' });
+            const baseAuthor = userInfoMap.get(meal.userId) || { nickname: '익명', icon: '🐻', email: '' };
+            const userInfo =
+                meal.isBestShare || meal.isDailyShare || meal.isInsightShare
+                    ? {
+                          ...baseAuthor,
+                          nickname: meal.userNickname || baseAuthor.nickname,
+                          icon: meal.userIcon || baseAuthor.icon
+                      }
+                    : baseAuthor;
 
             const isShared = feedSharedKeysCache && feedSharedKeysCache.has(`${meal.userId}_${meal.id}`);
             const hasLocalSharedPhotos = meal.sharedPhotos && Array.isArray(meal.sharedPhotos) && meal.sharedPhotos.length > 0;
@@ -332,6 +354,7 @@ async function renderFeedManagement() {
                     <td class="px-3 py-3 align-middle w-[136px] max-w-[136px] text-center border-r border-slate-200">
                         <div class="flex flex-col items-center gap-1 overflow-hidden">
                             <span class="text-sm font-semibold text-slate-800 break-words">${userInfo.icon} ${escapeHtml(userInfo.nickname)}</span>
+                            ${userInfo.email ? `<span class="text-[11px] text-slate-500 break-all leading-tight">${escapeHtml(userInfo.email)}</span>` : ''}
                             <span class="text-[11px] text-slate-400">${escapeHtml(String(meal.id || '-'))}</span>
                             <span class="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-bold rounded">${typeLabel}</span>
                         </div>

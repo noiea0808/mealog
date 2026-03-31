@@ -1,11 +1,7 @@
-// ADMIN 인증 관련 함수들
-import { app, db, appId } from '../firebase.js';
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+// ADMIN 인증 관련 함수들 — 앱과 동일한 `auth` 인스턴스 사용(영속성·세션 일치)
+import { auth } from '../firebase.js';
+import { signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { checkAdminStatus } from './utils.js';
-import { updateStatistics, renderSharedPhotos } from './dashboard.js';
-import { renderUsers } from './users.js';
-
-const adminAuth = getAuth(app);
 
 // 관리자 로그인
 export async function handleAdminLogin() {
@@ -24,7 +20,7 @@ export async function handleAdminLogin() {
     errorDiv.classList.add('hidden');
     
     try {
-        const userCredential = await signInWithEmailAndPassword(adminAuth, email, password);
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const userId = userCredential.user.uid;
         
         console.log('🔐 로그인 성공:', {
@@ -32,11 +28,20 @@ export async function handleAdminLogin() {
             uid: userId
         });
         
-        // ADMIN 권한 확인
-        const isAdmin = await checkAdminStatus(userId);
+        let isAdmin;
+        try {
+            isAdmin = await checkAdminStatus(userId);
+        } catch (e) {
+            if (e?.code === 'admin-check-network' || e?.isNetwork) {
+                errorDiv.textContent = e.message || '관리자 확인에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+            throw e;
+        }
         
         if (!isAdmin) {
-            await signOut(adminAuth);
+            await signOut(auth);
             errorDiv.textContent = "관리자 권한이 없습니다. 브라우저 콘솔(F12)을 확인하세요.";
             errorDiv.classList.remove('hidden');
             document.getElementById('loadingOverlay').classList.add('hidden');
@@ -51,10 +56,15 @@ export async function handleAdminLogin() {
     } catch (e) {
         console.error("로그인 실패:", e);
         let errorMsg = "로그인 실패: ";
-        if (e.code === 'auth/wrong-password') errorMsg += "비밀번호가 틀렸습니다.";
-        else if (e.code === 'auth/user-not-found') errorMsg += "존재하지 않는 계정입니다.";
+        if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {
+            errorMsg += "이메일 또는 비밀번호가 올바르지 않습니다.";
+        } else if (e.code === 'auth/user-not-found') errorMsg += "존재하지 않는 계정입니다.";
         else if (e.code === 'auth/invalid-email') errorMsg += "유효하지 않은 이메일입니다.";
-        else errorMsg += e.message;
+        else if (e.code === 'auth/network-request-failed') {
+            errorMsg += "네트워크 오류입니다. 연결을 확인한 뒤 다시 시도해 주세요.";
+        } else if (e.code === 'auth/too-many-requests') {
+            errorMsg += "시도 횟수가 많습니다. 잠시 후 다시 시도해 주세요.";
+        } else errorMsg += (e.message || String(e));
         
         errorDiv.textContent = errorMsg;
         errorDiv.classList.remove('hidden');
@@ -68,7 +78,7 @@ export async function handleAdminLogin() {
 // 관리자 로그아웃
 export async function handleAdminLogout() {
     try {
-        await signOut(adminAuth);
+        await signOut(auth);
         document.getElementById('adminPage').classList.add('hidden');
         document.getElementById('loginPage').classList.remove('hidden');
         document.getElementById('adminEmail').value = '';

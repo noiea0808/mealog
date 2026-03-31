@@ -1,12 +1,9 @@
 // ADMIN 사용자 관리 관련 함수들
-import { app, db, appId, functions } from '../firebase.js';
-import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { app, db, appId, functions, auth } from '../firebase.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js';
 import { collection, getDocs, query, orderBy, limit, startAfter, doc, getDoc, setDoc, where, addDoc, serverTimestamp, getCountFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { getCurrentTermsVersion } from '../utils-terms.js';
 import { escapeHtml } from './utils.js';
-
-const adminAuth = getAuth(app);
 
 // 사용자 테이블 정렬 상태/캐시
 let usersCache = null; // 서버 페이지 모드일 때만: 현재 페이지 원본
@@ -779,7 +776,7 @@ function getSelectedUserIds() {
 
 // 대기 중인 삭제 요청 수동 처리 (트리거가 동작하지 않을 때 사용)
 export async function processDeleteUserRequests() {
-    const uid = adminAuth.currentUser?.uid;
+    const uid = auth.currentUser?.uid;
     if (!uid) {
         alert('관리자 로그인이 필요합니다.');
         return;
@@ -818,7 +815,7 @@ export async function adminUserDeleteSelected() {
     if (!confirm(`선택한 ${ids.length}명의 사용자를 삭제하시겠습니까?\n삭제 후 해당 계정으로 로그인할 수 없습니다.`)) {
         return;
     }
-    const uid = adminAuth.currentUser?.uid;
+    const uid = auth.currentUser?.uid;
     if (!uid) {
         alert('관리자 로그인이 필요합니다.');
         return;
@@ -860,7 +857,7 @@ export async function adminUserBanShare(value) {
         alert('대상을 선택해 주세요.');
         return;
     }
-    const uid = adminAuth.currentUser?.uid;
+    const uid = auth.currentUser?.uid;
     if (!uid) {
         alert('관리자 로그인이 필요합니다.');
         return;
@@ -893,7 +890,7 @@ export async function adminUserBanWrite(value) {
         alert('대상을 선택해 주세요.');
         return;
     }
-    const uid = adminAuth.currentUser?.uid;
+    const uid = auth.currentUser?.uid;
     if (!uid) {
         alert('관리자 로그인이 필요합니다.');
         return;

@@ -1,6 +1,5 @@
 // ADMIN 공지(알림) 관리
-import { app, db, appId } from '../firebase.js';
-import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { app, db, appId, auth } from '../firebase.js';
 import {
     collection, query, orderBy, getDocs, doc, getDoc, setDoc, addDoc, deleteDoc, getCountFromServer
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -8,8 +7,6 @@ import { escapeHtml } from './utils.js';
 import { sanitizeFormattedText, renderFormattedContent, stripDangerousTagsOnly } from '../render/utils.js';
 import { uploadNoticeImages } from '../utils.js';
 import { getAdminDisplayName } from '../db.js';
-
-const adminAuth = getAuth(app);
 
 let currentEditingNoticeId = null;
 let currentSelectedNoticeId = null;
@@ -369,7 +366,7 @@ window.submitNotice = async function() {
         const newFiles = window.noticeFiles || [];
         let imageUrls = [...existingUrls];
         if (newFiles.length > 0) {
-            const uid = adminAuth.currentUser?.uid;
+            const uid = auth.currentUser?.uid;
             if (!uid) {
                 alert('로그인이 필요합니다.');
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = currentEditingNoticeId ? '수정' : '등록'; }
@@ -480,7 +477,7 @@ window.submitNoticeFromInline = async function(noticeId) {
         const newFiles = window.noticeFiles || [];
         let imageUrls = [...existingUrls];
         if (newFiles.length > 0) {
-            const uid = adminAuth.currentUser?.uid;
+            const uid = auth.currentUser?.uid;
             if (!uid) { alert('로그인이 필요합니다.'); return; }
             const newUrls = await uploadNoticeImages(newFiles, uid);
             imageUrls = [...existingUrls, ...newUrls];

@@ -9,8 +9,10 @@ import {
     subscribeToMyPostComments,
     boardOperations,
     getFeedNotificationsForUser,
-    subscribeFeedNotifications
+    subscribeFeedNotifications,
+    isNotificationTargetAvailable
 } from '../db.js';
+import { showToast } from '../ui.js';
 import { escapeHtml, renderGallery } from '../render/index.js';
 
 const NOTIFICATION_LAST_OPENED_KEY = 'mealog_notification_last_opened';
@@ -247,9 +249,34 @@ function appendNotificationRow(listEl, item, { dimmed }) {
     const titleCls = dimmed ? 'text-slate-500 text-sm font-medium block truncate' : 'text-slate-700 text-sm font-medium block truncate';
     const subCls = dimmed ? 'text-slate-400 text-xs' : 'text-slate-500 text-xs';
     row.innerHTML = `${thumbHtml}<div class="flex-1 min-w-0"><span class="${titleCls}">${label}</span><span class="${subCls}">${subText}</span></div>`;
-    row.addEventListener('click', () => {
+    row.addEventListener('click', async () => {
         markNotificationAsRead(notificationKey, lastCommentAt, commentCount);
         window.closeNotificationPopup();
+        const ownerUid = window.currentUser?.uid;
+        if (!ownerUid) {
+            showToast('로그인이 필요합니다.', 'info');
+            window.updateNotificationDot();
+            return;
+        }
+        try {
+            const ok = await isNotificationTargetAvailable(type, postId, ownerUid);
+            if (!ok) {
+                if (type === 'feed') {
+                    showToast('삭제되었거나 볼 수 없는 밀톡입니다.', 'info');
+                } else if (type === 'board') {
+                    showToast('삭제되었거나 찾을 수 없는 게시글입니다.', 'info');
+                } else {
+                    showToast('공유가 해제되어 해당 게시물을 찾을 수 없습니다.', 'info');
+                }
+                window.updateNotificationDot();
+                return;
+            }
+        } catch (e) {
+            console.warn('알림 대상 확인 실패:', e?.message || e);
+            showToast('알림을 열 수 없습니다. 잠시 후 다시 시도해 주세요.', 'error');
+            window.updateNotificationDot();
+            return;
+        }
         if (type === 'feed') {
             if (typeof window.navigateToFeedNotification === 'function') window.navigateToFeedNotification(postId);
         } else if (type === 'board') {
