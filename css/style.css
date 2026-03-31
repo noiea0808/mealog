@@ -1197,6 +1197,267 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     animation: toastSlideUp 0.3s ease-out forwards; 
 }
 
+/* 가로 다이얼(range) — 만족도/포만감 */
+.mealog-dial {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 36px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #e2e8f0 0%, #e2e8f0 100%);
+    outline: none;
+}
+.mealog-dial::-webkit-slider-runnable-track {
+    height: 36px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #e2e8f0 0%, #e2e8f0 100%);
+}
+.mealog-dial::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 36px;
+    height: 36px;
+    margin-top: -11px; /* (thumb - track)/2 */
+    border-radius: 999px;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+}
+.mealog-dial::-moz-range-track {
+    height: 36px;
+    border-radius: 999px;
+    background: #e2e8f0;
+}
+.mealog-dial::-moz-range-thumb {
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+}
+
+/* 세로 휠 다이얼 (갤럭시 타이머 느낌) */
+.mealog-wheel {
+    position: relative;
+    height: 132px; /* 44px * 3줄 */
+    border-radius: 18px;
+    background: #f1f5f9; /* slate-100: 주변(비선택) 영역 */
+    border: 1px solid #e2e8f0; /* slate-200 */
+    overflow: hidden;
+}
+.mealog-wheel__indicator {
+    position: absolute;
+    left: 50%;
+    width: 120px; /* 별 5개(1행) 기준 중앙 윈도우 너비 */
+    margin-left: -60px;
+    top: 50%;
+    height: 44px;
+    transform: translateY(-50%);
+    border-radius: 14px;
+    background: #ffffff; /* 중앙(선택) 영역 */
+    border: 1px solid #e2e8f0; /* slate-200 */
+    pointer-events: none;
+}
+.mealog-wheel__scroller {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scroll-snap-type: y mandatory;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 10px;
+    scrollbar-width: none;
+}
+.mealog-wheel__scroller::-webkit-scrollbar {
+    display: none;
+}
+.mealog-wheel__pad {
+    height: 44px; /* 위/아래 여백: 중앙 정렬 */
+}
+.mealog-wheel__item {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    scroll-snap-align: center;
+    font-weight: 900;
+    color: #94a3b8; /* slate-400 */
+    transition: transform 120ms ease, color 120ms ease, opacity 120ms ease;
+    opacity: 0.55;
+}
+.mealog-wheel__item.mealog-wheel__item--active {
+    color: #0f172a; /* slate-900 */
+    opacity: 1;
+    transform: scale(1.05);
+}
+.mealog-wheel__stars i {
+    color: #facc15; /* yellow-400 */
+    font-size: 16px;
+    margin: 0 1px;
+}
+.mealog-wheel__stars {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    align-items: center;
+    justify-content: center;
+}
+.mealog-wheel__item.mealog-wheel__item--active .mealog-wheel__stars i {
+    font-size: 18px;
+}
+
+/* 포만감 아이콘: 2배 크기 */
+#satietyWheel .mealog-wheel__item i {
+    font-size: 32px;
+}
+#satietyWheel .mealog-wheel__item.mealog-wheel__item--active i {
+    font-size: 34px;
+}
+/* 간식 포만감도 동일 크기 적용 */
+#snackSatietyWheel .mealog-wheel__item i {
+    font-size: 32px;
+}
+#snackSatietyWheel .mealog-wheel__item.mealog-wheel__item--active i {
+    font-size: 34px;
+}
+
+/* 가로 휠(간식 만족도): 좌우 스냅 */
+.mealog-wheel--x .mealog-wheel__indicator {
+    left: 50%;
+    top: 10px;
+    bottom: 10px;
+    width: 120px; /* 별 5개(1행) 기준 중앙 윈도우 너비 */
+    height: auto;
+    transform: translateX(-50%);
+}
+.mealog-wheel--x .mealog-wheel__scroller {
+    overflow-y: hidden;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    display: flex;
+    align-items: center;
+    height: 100%;
+    padding: 0;
+}
+.mealog-wheel--x .mealog-wheel__pad {
+    width: calc(50% - 60px);
+    height: 1px;
+    flex: 0 0 auto;
+}
+.mealog-wheel--x .mealog-wheel__item {
+    width: 120px;
+    height: 100%;
+    flex: 0 0 auto;
+    scroll-snap-align: center;
+}
+/* 트랙 안 아이콘 3개(이전/현재/다음) */
+.mealog-dial-track-icons {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 36px;
+    pointer-events: none;
+}
+.mealog-dial-track-icons i {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    line-height: 1;
+    color: #cbd5e1; /* slate-300 */
+    font-size: 14px;
+}
+.mealog-dial-track-icons i.dial-cur {
+    font-size: 22px;
+}
+.mealog-dial-track-icons i.dial-adj {
+    font-size: 16px;
+    color: #94a3b8; /* slate-400 */
+}
+
+/* 만족도: 중앙 별 묶음 */
+.rating-star-pack {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    left: 50%;
+}
+.rating-star-pack .fa-star {
+    color: #facc15; /* yellow-400 */
+    font-size: 18px;
+}
+
+/* 기록 완료 중앙 팝업 (0.5s) */
+@keyframes successPopupFade {
+    0% { opacity: 0; }
+    20% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { opacity: 0; }
+}
+@keyframes successPopupPop {
+    0% { transform: scale(0.92); opacity: 0; }
+    25% { transform: scale(1.03); opacity: 1; }
+    60% { transform: scale(1.0); opacity: 1; }
+    100% { transform: scale(0.98); opacity: 0; }
+}
+@keyframes successCheckCircle {
+    to { stroke-dashoffset: 0; }
+}
+@keyframes successCheckMark {
+    to { stroke-dashoffset: 0; }
+}
+
+.success-popup-anim #successPopupBackdrop {
+    animation: successPopupFade 800ms ease-out both;
+}
+.success-popup-anim #successPopupContent {
+    animation: successPopupPop 800ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+}
+.success-check svg {
+    overflow: visible;
+}
+.success-popup-anim .success-check__circle-bg,
+.success-popup-anim .success-check__mark-bg {
+    stroke: #ffffff;
+    stroke-width: 25;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.success-popup-anim .success-check__circle {
+    stroke: #10b981; /* emerald-500 */
+    stroke-width: 6;
+    stroke-linecap: round;
+    stroke-dasharray: 151;
+    stroke-dashoffset: 151;
+    animation: successCheckCircle 260ms ease-out forwards;
+}
+.success-popup-anim .success-check__mark {
+    stroke: #10b981; /* emerald-500 */
+    stroke-width: 8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 48;
+    stroke-dashoffset: 48;
+    animation: successCheckMark 220ms 120ms ease-out forwards;
+}
+
+/* 텍스트 보더라인(25px 흰색): SVG text stroke로 "글자 윤곽"만 */
+.success-popup-text-outline {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    fill: #0f172a; /* slate-900 */
+    stroke: #ffffff;
+    stroke-width: 25;
+    stroke-linejoin: round;
+    paint-order: stroke fill;
+}
+
 /* 로딩 오버레이: 음식 아이콘 순차 전환 (배민 스타일) */
 @keyframes loadingFoodCycle {
     0% { opacity: 1; transform: scale(1); }

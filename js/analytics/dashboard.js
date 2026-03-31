@@ -49,6 +49,8 @@ function statsToFilteredData(dailyStats, startStr, endStr) {
             if (day.snack.place) expand(day.snack.place, 'snack1', 'place');
             if (day.snack.snackType) expand(day.snack.snackType, 'snack1', 'snackType');
             if (day.snack.rating) expand(day.snack.rating, 'snack1', 'rating');
+            if (day.snack.withWhom) expand(day.snack.withWhom, 'snack1', 'withWhom');
+            if (day.snack.satiety) expand(day.snack.satiety, 'snack1', 'satiety');
         }
     });
     return { records, mainCount, snackCount };
@@ -309,7 +311,9 @@ export async function updateDashboard() {
     // 간식 분석 차트 (어디서 → 무엇을 순) - place/snackType 없는 건도 미입력으로 포함
     renderProportionChart('snackPlaceChartContainer', snacksOnly, 'snackPlace');
     renderProportionChart('snackTypeChartContainer', snacksOnly, 'snackType');
+    renderProportionChart('snackMateChartContainer', snacksOnly.filter(m => m.withWhom), 'withWhom');
     renderProportionChart('snackRatingChartContainer', snacksOnly.filter(m => m.rating), 'rating');
+    renderProportionChart('snackSatietyChartContainer', snacksOnly.filter(m => m.satiety), 'satiety');
     
     // 식사 기록 모수 분모: 주간·연간·직접설정은 경과한 날짜(오늘 포함)만 사용
     const today = new Date();

@@ -89,6 +89,37 @@ export function showToast(message, type = 'info') {
     setTimeout(remove, TOAST_DURATION_MS);
 }
 
+let successPopupTimer = null;
+
+/**
+ * 기록 완료 중앙 팝업 (0.5초)
+ * - 여러 번 호출되면 이전 타이머를 정리하고 애니메이션을 재시작한다.
+ */
+export function showSuccessPopup(message = '기록 완료', durationMs = 800) {
+    const popup = document.getElementById('successPopup');
+    const textEl = document.getElementById('successPopupText');
+    if (!popup) return;
+
+    if (successPopupTimer) {
+        clearTimeout(successPopupTimer);
+        successPopupTimer = null;
+    }
+
+    if (textEl) textEl.textContent = message || '기록 완료';
+
+    // 애니메이션 재시작을 위해 클래스 토글 + reflow
+    document.body.classList.remove('success-popup-anim');
+    popup.classList.remove('hidden');
+    void popup.offsetHeight;
+    document.body.classList.add('success-popup-anim');
+
+    successPopupTimer = setTimeout(() => {
+        document.body.classList.remove('success-popup-anim');
+        popup.classList.add('hidden');
+        successPopupTimer = null;
+    }, Math.max(0, Number(durationMs) || 800));
+}
+
 const PERMISSION_HINT_TOAST_MS = 14000;
 
 /**

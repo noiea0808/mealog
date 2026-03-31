@@ -335,6 +335,21 @@ async function renderFeedManagement() {
             };
             // 식사구분은 slotId만 기준으로 표시 (mealType/snackType은 '무엇을' 성격 데이터)
             const mealSlotLabel = slotLabelMap[slotKey] || '-';
+            const mealDateLabel = (() => {
+                const raw = String(meal.date || '').trim();
+                if (!raw) return '';
+                try {
+                    const d = new Date(raw);
+                    if (Number.isNaN(d.getTime())) return raw;
+                    // ko-KR은 "2026. 03. 27." 형태 → 공백 제거해서 "2026.03.27."로
+                    return d
+                        .toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })
+                        .replace(/\s+/g, '');
+                } catch (_) {
+                    return raw;
+                }
+            })();
+            const mealSlotDisplay = { date: mealDateLabel, label: mealSlotLabel };
 
             return `
                 <tr class="border-t border-slate-200 ${rowBg}">
@@ -351,7 +366,7 @@ async function renderFeedManagement() {
                         <div class="text-xs text-slate-700 font-semibold leading-tight">${escapeHtml(dateTime.date)}</div>
                         <div class="text-[11px] text-slate-500 leading-tight mt-0.5">${escapeHtml(dateTime.time)}</div>
                     </td>
-                    <td class="px-3 py-3 align-middle w-[136px] max-w-[136px] text-center border-r border-slate-200">
+                    <td class="px-3 py-3 align-middle w-[176px] max-w-[176px] text-center border-r border-slate-200">
                         <div class="flex flex-col items-center gap-1 overflow-hidden">
                             <span class="text-sm font-semibold text-slate-800 break-words">${userInfo.icon} ${escapeHtml(userInfo.nickname)}</span>
                             ${userInfo.email ? `<span class="text-[11px] text-slate-500 break-all leading-tight">${escapeHtml(userInfo.email)}</span>` : ''}
@@ -360,12 +375,15 @@ async function renderFeedManagement() {
                         </div>
                     </td>
                     <td class="px-2 py-3 align-middle w-[92px] max-w-[92px] text-center border-r border-slate-200 overflow-hidden">
-                        <span class="inline-flex px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-bold whitespace-nowrap">${escapeHtml(String(mealSlotLabel))}</span>
+                        <div class="inline-flex flex-col items-center justify-center px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs font-bold leading-tight">
+                            ${mealSlotDisplay.date ? `<span class="whitespace-nowrap">${escapeHtml(String(mealSlotDisplay.date))}</span>` : ''}
+                            <span class="whitespace-nowrap">${escapeHtml(String(mealSlotDisplay.label))}</span>
+                        </div>
                     </td>
                     <td class="px-3 py-3 align-middle w-[102px] max-w-[102px] text-center border-r border-slate-200 overflow-hidden">${getCategoryCell(whereTag, whereSubTag)}</td>
                     <td class="px-3 py-3 align-middle w-[102px] max-w-[102px] text-center border-r border-slate-200 overflow-hidden">${getCategoryCell(whatTag, whatSubTag)}</td>
                     <td class="px-3 py-3 align-middle w-[102px] max-w-[102px] text-center border-r border-slate-200 overflow-hidden">${getCategoryCell(withTag, withSubTag)}</td>
-                    <td class="px-3 py-3 align-middle w-[120px] max-w-[120px] text-center border-r border-slate-200 overflow-hidden">
+                    <td class="px-3 py-3 align-middle w-[92px] max-w-[92px] text-center border-r border-slate-200 overflow-hidden">
                         <div class="text-xs leading-tight">
                             <div class="font-bold text-slate-700 break-words">만족도 ${escapeHtml(String(ratingVal ?? '-'))}</div>
                             <div class="font-bold text-slate-600 break-words mt-0.5">포만감 ${escapeHtml(String(satietyVal ?? '-'))}</div>
@@ -402,12 +420,12 @@ async function renderFeedManagement() {
                             <th class="px-3 py-3 font-bold w-10 text-center whitespace-nowrap border-r border-slate-200">선택</th>
                             <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[56px] min-w-[56px] border-r border-slate-200">번호</th>
                             <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[96px] min-w-[96px] border-r border-slate-200">일시</th>
-                            <th class="px-3 py-3 font-bold text-center w-[136px] whitespace-nowrap border-r border-slate-200">작성자</th>
+                            <th class="px-3 py-3 font-bold text-center w-[176px] whitespace-nowrap border-r border-slate-200">작성자</th>
                             <th class="px-2 py-3 font-bold text-center w-[92px] whitespace-nowrap border-r border-slate-200">식사구분</th>
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">어디서</th>
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">무엇을</th>
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">누구와</th>
-                            <th class="px-3 py-3 font-bold text-center w-[120px] whitespace-nowrap border-r border-slate-200">만족도/포만감</th>
+                            <th class="px-3 py-3 font-bold text-center w-[92px] whitespace-nowrap border-r border-slate-200">만족도/포만감</th>
                             <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[208px] min-w-[208px] border-r border-slate-200">사진</th>
                             <th class="px-3 py-3 font-bold text-center whitespace-nowrap w-[240px] min-w-[240px] border-r border-slate-200">코멘트</th>
                             <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[72px] min-w-[72px]">상태/신고</th>
