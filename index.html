@@ -214,6 +214,7 @@
             } catch (e) {}
             try {
                 if (window.Capacitor?.isNativePlatform?.()) {
+                    document.documentElement.classList.add('platform-native-app');
                     var st = getComputedStyle(document.documentElement).getPropertyValue('--safe-top').trim();
                     var sb = getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom').trim();
                     if (!st || st === '0px' || parseFloat(st) < 20) document.documentElement.style.setProperty('--safe-top', '28px');
@@ -818,13 +819,18 @@
                             <i class="fa-regular fa-bell text-lg"></i>
                             <span id="notificationDot" class="notification-dot absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full hidden" aria-hidden="true"></span>
                         </button>
-                        <div id="notificationPopup" class="notification-popup absolute right-0 top-full mt-1.5 w-72 max-h-[70vh] overflow-hidden hidden rounded-xl border border-slate-200 bg-white shadow-lg z-[60]">
+                        <div id="notificationPopup" class="notification-popup absolute right-0 top-full mt-1.5 w-80 max-h-[70vh] overflow-hidden hidden rounded-xl border border-slate-200 bg-white shadow-lg z-[60]">
                             <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-100">
-                                <span class="font-semibold text-sm text-slate-700">새로운 댓글</span>
+                                <span class="font-semibold text-sm text-slate-700">알림</span>
                                 <button type="button" id="notificationMarkAllReadBtn" class="text-xs font-medium text-emerald-600 hover:text-emerald-700 active:opacity-80 ml-auto">모두 읽음</button>
                             </div>
-                            <div id="notificationList" class="overflow-y-auto max-h-[60vh] p-2"></div>
-                            <div id="notificationEmpty" class="p-4 text-center text-slate-400 text-sm hidden">새로운 댓글이 없습니다.</div>
+                            <div class="flex gap-1 px-2 pt-2 pb-1" role="tablist" aria-label="알림 구분">
+                                <button type="button" id="notificationTabUnread" role="tab" aria-selected="true" class="notification-tab-btn flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/80">새 알림</button>
+                                <button type="button" id="notificationTabRead" role="tab" aria-selected="false" class="notification-tab-btn flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors bg-slate-100 text-slate-600 hover:bg-slate-200/70">읽은 알림</button>
+                            </div>
+                            <div id="notificationList" class="overflow-y-auto max-h-[52vh] p-2 min-h-[100px]"></div>
+                            <div id="notificationEmpty" class="p-4 text-center text-slate-400 text-sm hidden"></div>
+                            <p id="notificationReadHint" class="hidden px-3 pb-2 text-[10px] leading-snug text-slate-400 text-center border-t border-slate-50 pt-2">읽은 알림은 최근 90일 이내·최대 50개까지 표시합니다.</p>
                         </div>
                     </div>
                     <!-- 체험(더미) 계정: 돋보기·알림 대신 로그인 유도 -->
@@ -1162,16 +1168,11 @@
 
             <!-- 사용자 설정 뷰 (다른 탭과 동일하게 전환) -->
             <div id="settingsView" class="hidden flex flex-col overflow-hidden min-h-0">
-                <div class="flex px-4 pt-2 pb-0 border-b border-slate-200 flex-shrink-0 bg-white">
-                    <button id="settingsTabProfile" class="settings-tab active px-3 py-2.5 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors">
-                        <i class="fa-solid fa-user mr-2"></i>프로필
-                    </button>
-                    <button id="settingsTabTags" class="settings-tab px-3 py-2.5 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors">
-                        <i class="fa-solid fa-tags mr-2"></i>태그 관리
-                    </button>
-                    <button id="settingsTabShortcuts" class="settings-tab px-3 py-2.5 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors">
-                        <i class="fa-solid fa-keyboard mr-2"></i>밀당 메모
-                    </button>
+                <div class="settings-subtab-row flex w-full px-1 sm:px-2 pt-2 pb-0 border-b border-slate-200 flex-shrink-0 bg-white">
+                    <button id="settingsTabProfile" type="button" class="settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors leading-tight">프로필</button>
+                    <button id="settingsTabTags" type="button" class="settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors leading-tight">태그 관리</button>
+                    <button id="settingsTabShortcuts" type="button" class="settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors leading-tight">밀당 메모</button>
+                    <button id="settingsTabNotifications" type="button" class="settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors leading-tight">푸시 알림</button>
                 </div>
                 <div class="flex-1 overflow-y-auto min-h-0 px-4 pb-28 settings-view-content">
                     <!-- 프로필 탭 -->
@@ -1277,6 +1278,57 @@
                         <div class="settings-section-container">
                             <h3 class="text-xs font-black text-slate-400 mb-2 uppercase tracking-widest">나만의 태그 관리</h3>
                             <div id="favoriteTagsSection"></div>
+                        </div>
+                    </div>
+                    <div id="settingsTabContentNotifications" class="settings-tab-content settings-tab-content-fullwidth hidden pt-4 pb-8">
+                        <div class="settings-section-container space-y-3">
+                            <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest">푸시 알림</h3>
+                            <p class="text-xs text-slate-500 leading-relaxed">
+                                기기 설정에서 앱 알림을 허용한 뒤, 아래에서 <span class="font-semibold text-slate-600">받을 푸시 종류</span>만 골라 쓸 수 있어요.
+                                앱 상단 종 아이콘의 <span class="font-semibold text-slate-600">앱 내 알림</span>은 이 설정과 관계없이 모두 표시됩니다.
+                            </p>
+                            <div class="rounded-xl border border-slate-100 bg-white overflow-hidden divide-y divide-slate-100">
+                                <label class="flex items-center justify-between gap-2 px-3 py-3 cursor-pointer hover:bg-slate-50/80">
+                                    <span class="text-sm font-bold text-slate-800 min-w-0 pr-1">알림 전체</span>
+                                    <span class="relative inline-flex h-[19px] w-[35px] shrink-0">
+                                        <input type="checkbox" id="pushPrefMaster" class="peer sr-only push-pref-toggle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/50 focus-visible:ring-offset-2 rounded" role="switch" aria-label="푸시 알림 전체">
+                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-800"></span>
+                                        <span class="pointer-events-none absolute left-[1.5px] top-[1.5px] h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 peer-checked:translate-x-[16px]"></span>
+                                    </span>
+                                </label>
+                                <label class="push-pref-sub-row flex items-center justify-between gap-2 px-3 py-2.5 pl-5 cursor-pointer hover:bg-slate-50/80">
+                                    <span class="text-sm text-slate-700 min-w-0 pr-1">모먼트 댓글</span>
+                                    <span class="relative inline-flex h-[19px] w-[35px] shrink-0">
+                                        <input type="checkbox" id="pushPrefMomentComment" class="peer sr-only push-pref-toggle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/50 focus-visible:ring-offset-2 rounded" role="switch" aria-label="모먼트 댓글 푸시">
+                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-800"></span>
+                                        <span class="pointer-events-none absolute left-[1.5px] top-[1.5px] h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 peer-checked:translate-x-[16px]"></span>
+                                    </span>
+                                </label>
+                                <label class="push-pref-sub-row flex items-center justify-between gap-2 px-3 py-2.5 pl-5 cursor-pointer hover:bg-slate-50/80">
+                                    <span class="text-sm text-slate-700 min-w-0 pr-1">게시판 댓글</span>
+                                    <span class="relative inline-flex h-[19px] w-[35px] shrink-0">
+                                        <input type="checkbox" id="pushPrefBoardComment" class="peer sr-only push-pref-toggle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/50 focus-visible:ring-offset-2 rounded" role="switch" aria-label="게시판 댓글 푸시">
+                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-800"></span>
+                                        <span class="pointer-events-none absolute left-[1.5px] top-[1.5px] h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 peer-checked:translate-x-[16px]"></span>
+                                    </span>
+                                </label>
+                                <label class="push-pref-sub-row flex items-center justify-between gap-2 px-3 py-2.5 pl-5 cursor-pointer hover:bg-slate-50/80">
+                                    <span class="text-sm text-slate-700 min-w-0 pr-1">밀톡 언급·답장</span>
+                                    <span class="relative inline-flex h-[19px] w-[35px] shrink-0">
+                                        <input type="checkbox" id="pushPrefMealTalk" class="peer sr-only push-pref-toggle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/50 focus-visible:ring-offset-2 rounded" role="switch" aria-label="밀톡 푸시">
+                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-800"></span>
+                                        <span class="pointer-events-none absolute left-[1.5px] top-[1.5px] h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 peer-checked:translate-x-[16px]"></span>
+                                    </span>
+                                </label>
+                                <label class="push-pref-sub-row flex items-center justify-between gap-2 px-3 py-2.5 pl-5 cursor-pointer hover:bg-slate-50/80">
+                                    <span class="text-sm text-slate-700 min-w-0 pr-1">기본 알림 <span class="text-slate-400 font-normal">(공지·관리자 발송)</span></span>
+                                    <span class="relative inline-flex h-[19px] w-[35px] shrink-0">
+                                        <input type="checkbox" id="pushPrefAdminDefault" class="peer sr-only push-pref-toggle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/50 focus-visible:ring-offset-2 rounded" role="switch" aria-label="공지 및 관리자 푸시">
+                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-800"></span>
+                                        <span class="pointer-events-none absolute left-[1.5px] top-[1.5px] h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 peer-checked:translate-x-[16px]"></span>
+                                    </span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                     <div id="settingsTabContentShortcuts" class="settings-tab-content settings-tab-content-fullwidth hidden pt-4 space-y-4 pb-8">

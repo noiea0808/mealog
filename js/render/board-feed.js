@@ -302,7 +302,8 @@ function feedReactionRowHtml(post, alignEnd) {
 
 function feedReplyQuoteHtml(replyTo, variant = 'mine') {
     if (!replyTo || typeof replyTo !== 'object') return '';
-    const nick = escapeHtml(String(replyTo.authorNickname || '익명').trim());
+    const rawReplyNick = String(replyTo.authorNickname || '익명').trim();
+    const nick = escapeHtml(rawReplyNick);
     const prev = escapeHtml(String(replyTo.textPreview || '').trim());
     if (!nick && !prev) return '';
     const box =
@@ -311,9 +312,10 @@ function feedReplyQuoteHtml(replyTo, variant = 'mine') {
             : 'border-l-2 border-emerald-600/45 bg-emerald-100/70';
     const nickC = variant === 'other' ? 'font-semibold text-slate-800' : 'font-bold text-emerald-900';
     const prevC = variant === 'other' ? 'text-slate-600' : 'text-emerald-800/90';
+    const nickData = encodeURIComponent(rawReplyNick);
     return `
         <div class="feed-reply-quote mb-1.5 min-w-0 max-w-full rounded-md px-2 py-1 ${box}">
-            <div class="truncate text-xs ${nickC}">${nick}</div>
+            <div class="truncate text-xs ${nickC} select-none" data-feed-mention-nick="${nickData}">${nick}</div>
             <div class="truncate text-xs ${prevC}">${prev}</div>
         </div>`;
 }
@@ -329,13 +331,21 @@ function postTimeLabel(post) {
     return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
+/** 말풍선 본문: 이스케이프 후 줄 시작·공백 뒤 @닉네임만 볼드 (이메일 중간 @는 제외) */
+function feedBubbleBodyHtml(raw) {
+    const escaped = escapeHtml(String(raw ?? ''));
+    return escaped.replace(/(^|[\s\n])@([^\s@]+)/g, (m, lead, nick) => {
+        return `${lead}<strong class="font-bold">@${nick}</strong>`;
+    });
+}
+
 function feedBubbleHtml(post, opts = {}) {
     const showAuthorHeader = opts.showAuthorHeader !== false;
     const uid = window.currentUser?.uid;
     const isMine = !!(uid && post.authorId === uid);
     const isPendingSend = isMine && String(post.id || '').startsWith('pending-');
-    // 피드 본문은 순수 텍스트 — 줄바꿈 유지(getPlainTextPreview는 \n을 공백으로 제거함)
-    const body = escapeHtml(String(post.text || post.content || ''));
+    // 피드 본문: 줄바꿈 유지 + @언급 볼드( feedBubbleBodyHtml )
+    const body = feedBubbleBodyHtml(post.text || post.content || '');
     const hasImg = Array.isArray(post.imageUrls) && post.imageUrls.length > 0;
     const imageUrlsToShow = hasImg ? post.imageUrls.slice(0, 5) : [];
     const time = postTimeLabel(post);
@@ -388,12 +398,14 @@ function feedBubbleHtml(post, opts = {}) {
         icon: post.authorIcon,
         photoUrl: post.authorPhotoUrl
     });
-    const nick = escapeHtml(authorDisplay.nickname || '익명');
+    const rawAuthorNick = (authorDisplay.nickname || '익명').trim();
+    const nick = escapeHtml(rawAuthorNick);
+    const nickData = encodeURIComponent(rawAuthorNick);
     const avatarCol = showAuthorHeader
         ? feedOtherAuthorAvatarBlock(post, authorDisplay)
         : '<div class="h-9 w-9 flex-shrink-0" aria-hidden="true"></div>';
     const nickRow = showAuthorHeader
-        ? `<span class="feed-bubble-author-nick mb-0.5 max-w-full truncate pl-0.5 text-sm font-semibold">${nick}</span>`
+        ? `<span class="feed-bubble-author-nick mb-0.5 max-w-full truncate pl-0.5 text-sm font-semibold select-none" data-feed-mention-nick="${nickData}">${nick}</span>`
         : '';
     const reactRowOther = feedReactionRowHtml(post, false);
     const replyQOther = post.replyTo ? feedReplyQuoteHtml(post.replyTo, 'other') : '';

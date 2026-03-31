@@ -56,6 +56,50 @@ function oneLineSnippet(text, maxLen = 64) {
     return `${single.slice(0, Math.max(1, maxLen - 1))}…`;
 }
 
+function getMentionNickFromEl(el) {
+    const raw = el?.getAttribute?.('data-feed-mention-nick');
+    if (raw == null || raw === '') return '';
+    try {
+        return decodeURIComponent(raw);
+    } catch (_) {
+        return raw;
+    }
+}
+
+/** 닉네임 롱프레스·우클릭: 입력창에 @닉네임 삽입 */
+function insertMentionAtComposer(nickname) {
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast('로그인이 필요합니다.', 'error');
+        window.requestLogin?.();
+        return;
+    }
+    if (isDemoUser(window.currentUser)) {
+        showToast('체험 계정에서는 메시지를 보낼수 없어요', 'error');
+        return;
+    }
+    const nick = String(nickname || '').trim();
+    if (!nick) return;
+    const mention = `@${nick} `;
+    const input = document.getElementById('boardInlineComposerInput');
+    if (!input) return;
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    const v = input.value || '';
+    const before = v.slice(0, start);
+    const after = v.slice(end);
+    const needsSpace = before.length > 0 && !/\s$/.test(before);
+    const insert = needsSpace ? ` ${mention}` : mention;
+    input.value = before + insert + after;
+    const newPos = (before + insert).length;
+    input.focus();
+    try {
+        input.setSelectionRange(newPos, newPos);
+    } catch (_) {}
+    if (typeof window.syncBoardInlineComposerUi === 'function') {
+        window.syncBoardInlineComposerUi();
+    }
+}
+
 function replyToPost(postId) {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         showToast('로그인이 필요합니다.', 'error');
@@ -297,14 +341,14 @@ export function initFeedBubbleContextMenu() {
         pending = null;
     };
 
-    const armLongPress = (e, bubble, postId, isMine) => {
+    const armBubbleLongPress = (e, bubble, postId, isMine) => {
         clearTimer();
         startX = e.clientX;
         startY = e.clientY;
-        pending = { bubble, postId, isMine };
+        pending = { kind: 'bubble', bubble, postId, isMine };
         timer = setTimeout(() => {
             timer = null;
-            if (!pending) return;
+            if (!pending || pending.kind !== 'bubble') return;
             try {
                 e.preventDefault();
             } catch (_) {}
@@ -313,10 +357,37 @@ export function initFeedBubbleContextMenu() {
         }, LONG_PRESS_MS);
     };
 
+    const armMentionLongPress = (e, nick) => {
+        clearTimer();
+        startX = e.clientX;
+        startY = e.clientY;
+        pending = { kind: 'mention', nick };
+        timer = setTimeout(() => {
+            timer = null;
+            if (!pending || pending.kind !== 'mention') return;
+            try {
+                e.preventDefault();
+            } catch (_) {}
+            try {
+                if (navigator.vibrate) navigator.vibrate(12);
+            } catch (_) {}
+            insertMentionAtComposer(pending.nick);
+            pending = null;
+        }, LONG_PRESS_MS);
+    };
+
     root.addEventListener(
         'pointerdown',
         (e) => {
             if (e.target.closest?.('.feed-image-lightbox-trigger')) return;
+            const mentionEl = e.target.closest?.('[data-feed-mention-nick]');
+            if (mentionEl && root.contains(mentionEl)) {
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
+                const nick = getMentionNickFromEl(mentionEl);
+                if (!nick) return;
+                armMentionLongPress(e, nick);
+                return;
+            }
             const bubble = e.target.closest?.('.feed-chat-bubble');
             if (!bubble || !root.contains(bubble)) return;
             if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -324,7 +395,7 @@ export function initFeedBubbleContextMenu() {
             const postId = row?.getAttribute('data-post-id');
             if (!postId) return;
             const isMine = bubble.classList.contains('feed-chat-bubble-mine');
-            armLongPress(e, bubble, postId, isMine);
+            armBubbleLongPress(e, bubble, postId, isMine);
         },
         { passive: true }
     );
@@ -341,6 +412,14 @@ export function initFeedBubbleContextMenu() {
 
     root.addEventListener('contextmenu', (e) => {
         if (e.target.closest?.('.feed-image-lightbox-trigger')) return;
+        const mentionEl = e.target.closest?.('[data-feed-mention-nick]');
+        if (mentionEl && root.contains(mentionEl)) {
+            e.preventDefault();
+            clearTimer();
+            const nick = getMentionNickFromEl(mentionEl);
+            if (nick) insertMentionAtComposer(nick);
+            return;
+        }
         const bubble = e.target.closest?.('.feed-chat-bubble');
         if (!bubble || !root.contains(bubble)) return;
         e.preventDefault();

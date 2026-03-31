@@ -40,7 +40,8 @@ import { setupGalleryPullToRefresh } from './gallery-pull-refresh.js';
 import {
     openSettings,
     switchSettingsTab,
-    saveProfileSettings
+    saveProfileSettings,
+    initPushPreferencesControlsOnce
 } from '../modals.js';
 
 /** 앱 전체: 키보드 열림 시 하단 네비 숨김 + 닫힘 시 복귀 (viewport 기반 keyboard-closed) */
@@ -450,6 +451,13 @@ export function initEventListeners() {
     if (settingsTabShortcuts) {
         settingsTabShortcuts.addEventListener('click', () => window.switchSettingsTab('shortcuts'));
     }
+
+    const settingsTabNotifications = document.getElementById('settingsTabNotifications');
+    if (settingsTabNotifications) {
+        settingsTabNotifications.addEventListener('click', () => window.switchSettingsTab('notifications'));
+    }
+
+    initPushPreferencesControlsOnce();
 
     const saveProfileSettingsBtn = document.getElementById('saveProfileSettingsBtn');
     if (saveProfileSettingsBtn) {

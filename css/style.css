@@ -32,6 +32,25 @@ html.platform-web {
 html.platform-web #navigationBarOverlay {
     display: none !important;
 }
+/* 네이티브 앱: 상단·탭·설정 서브탭·알림 탭·하단 아이콘 등 메뉴성 UI만 글자/아이콘 최소 크기 보강 (브레이크포인트는 그대로) */
+html.platform-native-app .settings-subtab-row .settings-tab {
+    font-size: 0.875rem;
+}
+html.platform-native-app #trackerTabs .view-tab {
+    font-size: 0.8125rem;
+}
+html.platform-native-app #mainAppHeader .header-section-label {
+    font-size: 0.8125rem;
+}
+html.platform-native-app .notification-popup .notification-tab-btn {
+    font-size: 0.8125rem;
+}
+html.platform-native-app .bottom-nav button i {
+    font-size: 1.375rem;
+}
+html.platform-native-app #boardCategoryRow .board-category-btn {
+    font-size: 0.8125rem;
+}
 /* 레이아웃 시프트 방지 */
 html {
     width: 100%;

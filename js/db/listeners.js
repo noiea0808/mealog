@@ -21,6 +21,17 @@ let userDocEnsureDoneForUid = null;
 let cachedDefaultTags = null;
 let lastListenersUserId = null;
 
+function mergePushPreferencesIntoUserSettings() {
+    if (!window.userSettings) return;
+    const ppDef = DEFAULT_USER_SETTINGS.pushPreferences || {};
+    window.userSettings.pushPreferences = {
+        ...ppDef,
+        ...(window.userSettings.pushPreferences && typeof window.userSettings.pushPreferences === 'object'
+            ? window.userSettings.pushPreferences
+            : {})
+    };
+}
+
 export function setupListeners(userId, callbacks) {
     const { onSettingsUpdate, onDataUpdate, settingsUnsubscribe: oldSettingsUnsubscribe, dataUnsubscribe: oldDataUnsubscribe } = callbacks;
     
@@ -104,6 +115,7 @@ export function setupListeners(userId, callbacks) {
             if (!window.userSettings.tags) {
                 window.userSettings.tags = {};
             }
+            mergePushPreferencesIntoUserSettings();
             if (demo) {
                 try {
                     window.__demoRawDailyComments = JSON.parse(JSON.stringify(window.userSettings.dailyComments || {}));
@@ -413,6 +425,7 @@ export function setupListeners(userId, callbacks) {
                     window.userSettings = serverSnap.data();
                     if (!window.userSettings.subTags) window.userSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
                     if (!window.userSettings.favoriteSubTags) window.userSettings.favoriteSubTags = { mealType: {}, category: {}, withWhom: {}, snackType: {}, snackPlace: {} };
+                    mergePushPreferencesIntoUserSettings();
                     if (demo) {
                         try {
                             window.__demoRawDailyComments = JSON.parse(JSON.stringify(window.userSettings.dailyComments || {}));

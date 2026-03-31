@@ -154,16 +154,80 @@ function fcmDataStrings(data) {
   return out;
 }
 
+/** 사용자 설정 artifacts/.../config/settings 의 pushPreferences (클라이언트와 동일 키) */
+const DEFAULT_PUSH_PREFS = {
+  master: true,
+  momentComment: true,
+  boardComment: true,
+  mealTalk: true,
+  adminDefault: true
+};
+
+async function getUserPushPreferences(userId) {
+  if (!userId) return { ...DEFAULT_PUSH_PREFS };
+  try {
+    const ref = db
+      .collection('artifacts')
+      .doc(APP_ID)
+      .collection('users')
+      .doc(userId)
+      .collection('config')
+      .doc('settings');
+    const snap = await ref.get();
+    const raw =
+      snap.exists && snap.data().pushPreferences && typeof snap.data().pushPreferences === 'object'
+        ? snap.data().pushPreferences
+        : {};
+    return {
+      master: raw.master !== false,
+      momentComment: raw.momentComment !== false,
+      boardComment: raw.boardComment !== false,
+      mealTalk: raw.mealTalk !== false,
+      adminDefault: raw.adminDefault !== false
+    };
+  } catch (e) {
+    logger.warn('getUserPushPreferences failed', { userId, message: e.message });
+    return { ...DEFAULT_PUSH_PREFS };
+  }
+}
+
+/**
+ * @param {'momentComment'|'boardComment'|'mealTalk'|'adminDefault'} category
+ */
+function isPushCategoryAllowedByPrefs(prefs, category) {
+  if (!prefs || prefs.master === false) return false;
+  switch (category) {
+    case 'momentComment':
+      return prefs.momentComment !== false;
+    case 'boardComment':
+      return prefs.boardComment !== false;
+    case 'mealTalk':
+      return prefs.mealTalk !== false;
+    case 'adminDefault':
+      return prefs.adminDefault !== false;
+    default:
+      return true;
+  }
+}
+
 /**
  * 특정 사용자의 FCM 토큰들에 푸시 알림 전송 (실패 시 로그만, 호출자 대기 안 함)
  * @param {string} userId - 수신자 uid
  * @param {{ title: string, body: string, data?: object }} payload
  */
 /**
- * @param {{ adminBroadcast?: boolean }} options - 관리자 브로드캐스트: iOS aps에 badge 미포함(아이콘 숫자 변경 최소화), 앱에서 빨간점/배지 갱신 생략용 data.type
+ * @param {{ adminBroadcast?: boolean, pushCategory?: 'momentComment'|'boardComment'|'mealTalk'|'adminDefault' }} options - pushCategory 있으면 사용자 pushPreferences로 필터
  */
 async function sendPushToUser(userId, payload, options = {}) {
   if (!userId || !payload?.title) return;
+  const pushCategory = options.pushCategory;
+  if (pushCategory) {
+    const prefs = await getUserPushPreferences(userId);
+    if (!isPushCategoryAllowedByPrefs(prefs, pushCategory)) {
+      logger.info('sendPushToUser: skipped by pushPreferences', { userId, pushCategory });
+      return;
+    }
+  }
   try {
     const ref = db.collection('artifacts').doc(APP_ID).collection('users').doc(userId).collection('config').doc('fcmTokens');
     const snap = await ref.get();
@@ -434,6 +498,120 @@ function feedOneLinePreview(text, maxLen = 80) {
   return `${s.slice(0, Math.max(1, maxLen - 1))}…`;
 }
 
+function extractFeedMentionNicknames(text) {
+  const s = String(text ?? '');
+  const re = /(^|[\s\n])@([^\s@]+)/g;
+  const nicks = [];
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    nicks.push(m[2]);
+  }
+  return [...new Set(nicks)];
+}
+
+function normalizeNicknameForClaim(nickname) {
+  if (!nickname || typeof nickname !== 'string') return null;
+  const t = nickname.trim();
+  if (!t || t === '게스트') return null;
+  try {
+    return t.normalize('NFKC').toLowerCase();
+  } catch {
+    return t.toLowerCase();
+  }
+}
+
+function nicknameClaimDocId(normalized) {
+  if (!normalized) return '';
+  const clipped = normalized.length > 200 ? normalized.slice(0, 200) : normalized;
+  return encodeURIComponent(clipped);
+}
+
+async function resolveNicknameToUid(nickname) {
+  const norm = normalizeNicknameForClaim(nickname);
+  if (!norm) return null;
+  const docId = nicknameClaimDocId(norm);
+  const snap = await db.collection('artifacts').doc(APP_ID).collection('nicknameClaims').doc(docId).get();
+  if (!snap.exists) return null;
+  const uid = snap.data().userId;
+  return uid && typeof uid === 'string' ? uid : null;
+}
+
+/**
+ * 답장 대상·@언급 대상에게 알림 문서 + FCM (본인·중복 수신자는 한 번만)
+ */
+async function deliverFeedNotifications({ newPostId, senderId, authorNickname, plainText, parentAuthorId }) {
+  const recipients = new Map();
+
+  if (parentAuthorId && parentAuthorId !== senderId) {
+    recipients.set(parentAuthorId, { reply: true, mention: false });
+  }
+
+  if (plainText) {
+    const nicks = extractFeedMentionNicknames(plainText);
+    const resolved = await Promise.all(nicks.map((nick) => resolveNicknameToUid(nick)));
+    nicks.forEach((_, i) => {
+      const uid = resolved[i];
+      if (!uid || uid === senderId) return;
+      const prev = recipients.get(uid) || { reply: false, mention: false };
+      prev.mention = true;
+      recipients.set(uid, prev);
+    });
+  }
+
+  if (recipients.size === 0) return;
+
+  const previewText =
+    feedOneLinePreview(plainText, 80) || (plainText ? '' : '(사진)');
+  const usersRoot = db.collection('artifacts').doc(APP_ID).collection('users');
+
+  for (const [recipientId, flags] of recipients) {
+    const kind =
+      flags.reply && flags.mention ? 'reply_mention' : flags.reply ? 'reply' : 'mention';
+    let body = '';
+    if (kind === 'reply_mention') {
+      body = `${authorNickname}님이 답장에서 당신을 언급했어요`;
+    } else if (kind === 'reply') {
+      body = `${authorNickname}님이 답장을 보냈어요`;
+    } else {
+      body = `${authorNickname}님이 당신을 언급했어요`;
+    }
+
+    try {
+      await usersRoot.doc(recipientId).collection('feedNotifications').doc(newPostId).set({
+        feedPostId: newPostId,
+        kind,
+        actorId: senderId,
+        actorNickname: authorNickname,
+        previewText,
+        createdAt: FieldValue.serverTimestamp()
+      });
+    } catch (e) {
+      logger.warn('deliverFeedNotifications: firestore write failed', {
+        recipientId,
+        message: e.message
+      });
+    }
+
+    try {
+      await sendPushToUser(
+        recipientId,
+        {
+          title: '밀톡',
+          body,
+          data: {
+            type: 'feedActivity',
+            feedPostId: newPostId,
+            landingTab: 'board'
+          }
+        },
+        { pushCategory: 'mealTalk' }
+      );
+    } catch (e) {
+      logger.warn('deliverFeedNotifications: push failed', { recipientId, message: e.message });
+    }
+  }
+}
+
 /**
  * 밀톡 피드 전용 메시지 (boardPosts와 분리 — 게시판 목록에 나오지 않음)
  */
@@ -485,11 +663,13 @@ exports.createFeedPost = onCall({ region: REGION }, wrapFunction('createFeedPost
 
   const rid = typeof replyToPostId === 'string' ? replyToPostId.trim() : '';
   let replyTo = null;
+  let parentAuthorId = null;
   if (rid) {
     const parentSnap = await postsRef.doc(rid).get();
     if (parentSnap.exists) {
       const p = parentSnap.data() || {};
       if (p.isHidden !== true) {
+        parentAuthorId = p.authorId || null;
         const pText = String(p.text || p.content || '').trim();
         const pHasImg = Array.isArray(p.imageUrls) && p.imageUrls.length > 0;
         let textPreview = feedOneLinePreview(pText, 80);
@@ -521,6 +701,14 @@ exports.createFeedPost = onCall({ region: REGION }, wrapFunction('createFeedPost
   }
 
   const docRef = await postsRef.add(newPost);
+
+  void deliverFeedNotifications({
+    newPostId: docRef.id,
+    senderId: auth.uid,
+    authorNickname,
+    plainText: plain,
+    parentAuthorId
+  }).catch((e) => logger.warn('deliverFeedNotifications', e));
 
   const nowIso = new Date().toISOString();
   const out = {
@@ -725,11 +913,15 @@ exports.addBoardComment = onCall({ region: REGION }, wrapFunction('addBoardComme
 
   if (postAuthorId && postAuthorId !== auth.uid) {
     // 반드시 await: onCall 반환 후 인스턴스가 멈추면 미완료 Promise가 끊겨 푸시가 안 갈 수 있음
-    await sendPushToUser(postAuthorId, {
-      title: '새 댓글',
-      body: `${authorNickname}님이 댓글을 남겼습니다.`,
-      data: { type: 'boardComment', postId: String(postId) }
-    });
+    await sendPushToUser(
+      postAuthorId,
+      {
+        title: '새 댓글',
+        body: `${authorNickname}님이 댓글을 남겼습니다.`,
+        data: { type: 'boardComment', postId: String(postId) }
+      },
+      { pushCategory: 'boardComment' }
+    );
   }
 
   return { id: docRef.id, ...newComment, timestamp: new Date().toISOString() };
@@ -797,11 +989,15 @@ exports.addBoardCommentAsAdmin = onCall({ region: REGION }, async (request) => {
   }
 
   if (postAuthorId && postAuthorId !== auth.uid) {
-    await sendPushToUser(postAuthorId, {
-      title: '새 댓글',
-      body: `${authorNickname}님이 댓글을 남겼습니다.`,
-      data: { type: 'boardComment', postId: String(postId) }
-    });
+    await sendPushToUser(
+      postAuthorId,
+      {
+        title: '새 댓글',
+        body: `${authorNickname}님이 댓글을 남겼습니다.`,
+        data: { type: 'boardComment', postId: String(postId) }
+      },
+      { pushCategory: 'boardComment' }
+    );
   }
 
   return { id: docRef.id, ...newComment, timestamp: new Date().toISOString() };
@@ -933,11 +1129,15 @@ exports.addPostComment = onCall({ region: REGION }, wrapFunction('addPostComment
   const docRef = await commentsRef.add(commentData);
 
   if (postOwnerId && postOwnerId !== auth.uid) {
-    await sendPushToUser(postOwnerId, {
-      title: '새 댓글',
-      body: `${userNickname}님이 댓글을 남겼습니다.`,
-      data: { type: 'postComment', postId: String(postId) }
-    });
+    await sendPushToUser(
+      postOwnerId,
+      {
+        title: '새 댓글',
+        body: `${userNickname}님이 댓글을 남겼습니다.`,
+        data: { type: 'postComment', postId: String(postId) }
+      },
+      { pushCategory: 'momentComment' }
+    );
   }
 
   return { id: docRef.id, ...commentData, timestamp: new Date().toISOString() };
@@ -2221,7 +2421,7 @@ async function broadcastNoticePushToAllUsers(payload) {
     totalUsers += uids.length;
     for (let i = 0; i < uids.length; i += concurrency) {
       const batch = uids.slice(i, i + concurrency);
-      await Promise.all(batch.map((uid) => sendPushToUser(uid, payload)));
+      await Promise.all(batch.map((uid) => sendPushToUser(uid, payload, { pushCategory: 'adminDefault' })));
     }
     lastDoc = snap.docs[snap.docs.length - 1];
     if (snap.size < pageSize) break;
@@ -2248,7 +2448,11 @@ async function broadcastAdminPushToAllUsers(payload) {
     totalUsers += uids.length;
     for (let i = 0; i < uids.length; i += concurrency) {
       const batch = uids.slice(i, i + concurrency);
-      await Promise.all(batch.map((uid) => sendPushToUser(uid, payload, { adminBroadcast: true, targetEnv })));
+      await Promise.all(
+        batch.map((uid) =>
+          sendPushToUser(uid, payload, { adminBroadcast: true, targetEnv, pushCategory: 'adminDefault' })
+        )
+      );
     }
     lastDoc = snap.docs[snap.docs.length - 1];
     if (snap.size < pageSize) break;

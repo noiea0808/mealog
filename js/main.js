@@ -37,6 +37,7 @@ import {
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
     handleMultipleImages, removePhoto, movePhotoOrder, updateShareIndicator, toggleSharePhoto,
     openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, setSettingsProfileType, handlePhotoUpload, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
+    syncPushPreferencesFormFromUserSettings,
     setRecordPhotoAspectRatio,
     openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace
 } from './modals.js';
@@ -1053,6 +1054,9 @@ initAuth(async (user) => {
                 onSettingsUpdate: () => {
                     // 헤더 UI 업데이트 (디바운싱됨)
                     updateHeaderUI();
+                    if (typeof syncPushPreferencesFormFromUserSettings === 'function') {
+                        syncPushPreferencesFormFromUserSettings();
+                    }
                     const entryModal = document.getElementById('entryModal');
                     if (!entryModal || entryModal.classList.contains('hidden')) {
                         renderEntryChips();
