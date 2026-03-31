@@ -38,6 +38,9 @@ export const appState = {
     boardListSubTab: 'feed',
     /** 피드 탭 타임라인 (세션 내 메모리, 게시 시 앞에 추가) */
     feedTimelinePosts: [],
+    /** 더 오래된 밀톡 페이지 로드용 Firestore 커서(마지막으로 받은 배치의 가장 오래된 문서) */
+    feedTimelineOldestCursor: null,
+    feedTimelineHasMore: false,
     
     // 편집 상태 (모달 관련)
     currentEditingId: null,

@@ -179,7 +179,16 @@ export function registerMainBoardHandlers() {
 
 window.switchBoardListSubTab = (sub) => {
     const next = sub === 'board' ? 'board' : 'feed';
-    if (appState.boardListSubTab === next) return;
+    if (appState.boardListSubTab === next) {
+        try {
+            if (next === 'feed' && typeof window.markBoardFeedSubtabSeen === 'function') {
+                window.markBoardFeedSubtabSeen();
+            } else if (next === 'board' && typeof window.markBoardBoardSubtabSeen === 'function') {
+                window.markBoardBoardSubtabSeen();
+            }
+        } catch (_) {}
+        return;
+    }
     appState.boardListSubTab = next;
     renderBoard(window.currentBoardCategory || 'all');
     try {

@@ -1,10 +1,10 @@
 /**
- * 하단 네비: 모먼트(신규 공유)·밀톡(신규 글) 우상단 빨간 점
+ * 하단 네비: 모먼트(신규 공유)·라운지(신규) 아이콘 우상단 빨간 점
  * — 서버 최신 1건 시각 vs localStorage의 「해당 메뉴(탭)에 들어간 시각」
  * — 점 제거: 새 글을 읽을 필요 없음. 모먼트/밀톡 하단 아이콘으로 그 메뉴에 들어가면 제거.
  *
- * Firestore reads 최소화: peek(모먼트 1 + 밀톡 1)는 로그인 직후·앱이 다시 포그라운드로 올 때만 실행.
- * (탭 전환·피드 로드마다 호출하지 않음)
+ * Firestore reads: peek(모먼트 1 + 밀톡 1 + 게시판 1)는 로그인 직후·앱 포그라운드 복귀·메인 탭 전환(디바운스)·밀톡 목록/게시판 목록 새로고침 직후에 실행.
+ * 실시간 리스너는 없음.
  */
 import { peekLatestSharedPhotoTimestampMs } from '../db/listeners.js';
 import { db, appId } from '../firebase.js';

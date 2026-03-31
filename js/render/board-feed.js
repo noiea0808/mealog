@@ -7,9 +7,230 @@ import { escapeHtml } from './utils.js';
 import { fetchUserProfiles } from './user-profiles.js';
 import { getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
 import { isDemoUser } from '../demo-account.js';
+import { FEED_TIMELINE_BATCH_SIZE } from '../db/feed-posts.js';
 
 /** paintFeedTimeline마다 이전 관찰자 해제 — 레이아웃 변화 시 스크롤 한 번만 보정 */
 let _feedScrollResizeCleanup = null;
+
+let _feedLoadOlderInFlight = false;
+
+/** quietRefresh 시 서버 최신 페이지와 이미 스크롤로 불러 둔 오래된 메시지 병합 */
+function mergeFeedQuietRefreshFirstPage(serverPosts, existingWithoutPending) {
+    const server = (serverPosts || []).filter((p) => p && p.isHidden !== true);
+    const existing = existingWithoutPending || [];
+    if (!server.length) {
+        return existing.length
+            ? [...existing].sort((a, b) => getPostTimestampMs(a) - getPostTimestampMs(b))
+            : [];
+    }
+    const serverIds = new Set(server.map((p) => String(p.id)));
+    const minServerTs = Math.min(...server.map(getPostTimestampMs));
+    const preserved = existing.filter((p) => {
+        const id = String(p.id);
+        if (serverIds.has(id)) return false;
+        return getPostTimestampMs(p) < minServerTs;
+    });
+    const byId = new Map();
+    preserved.forEach((p) => byId.set(String(p.id), p));
+    server.forEach((p) => byId.set(String(p.id), p));
+    return Array.from(byId.values()).sort((a, b) => getPostTimestampMs(a) - getPostTimestampMs(b));
+}
+
+function ensureBoardFeedScrollOlderBound() {
+    const el = document.getElementById('boardFeedPanelContent');
+    if (!el || el.dataset.feedOlderScrollBound === '1') return;
+    el.dataset.feedOlderScrollBound = '1';
+    el.addEventListener('scroll', onBoardFeedPanelScrollOlder, { passive: true });
+}
+
+function onBoardFeedPanelScrollOlder() {
+    const el = document.getElementById('boardFeedPanelContent');
+    if (!el || el.dataset.feedLoadingOlder === '1') return;
+    if (!appState.feedTimelineHasMore) return;
+    if (!appState.feedTimelineOldestCursor) return;
+    if (_feedLoadOlderInFlight) return;
+    if (el.scrollTop > 72) return;
+    void loadMoreFeedOlderMessages();
+}
+
+async function loadMoreFeedOlderMessages() {
+    if (_feedLoadOlderInFlight || !appState.feedTimelineHasMore || !appState.feedTimelineOldestCursor) return;
+    const root = document.getElementById('boardFeedPanelContent');
+    if (!root || !window.feedOperations?.getMessagesPage) return;
+    _feedLoadOlderInFlight = true;
+    root.dataset.feedLoadingOlder = '1';
+    const prevSH = root.scrollHeight;
+    const prevST = root.scrollTop;
+    try {
+        const { posts, cursorSnap, hasMore } = await window.feedOperations.getMessagesPage({
+            limitCount: FEED_TIMELINE_BATCH_SIZE,
+            startAfterSnapshot: appState.feedTimelineOldestCursor
+        });
+        appState.feedTimelineOldestCursor = cursorSnap;
+        appState.feedTimelineHasMore = hasMore;
+
+        const existing = appState.feedTimelinePosts || [];
+        const byId = new Map();
+        existing.forEach((p) => {
+            if (p) byId.set(String(p.id), p);
+        });
+        (posts || []).forEach((p) => {
+            if (p && p.isHidden !== true) byId.set(String(p.id), p);
+        });
+        const merged = Array.from(byId.values()).sort((a, b) => getPostTimestampMs(a) - getPostTimestampMs(b));
+
+        const authorIds = [...new Set((posts || []).map((p) => p.authorId).filter(Boolean))];
+        if (authorIds.length) await fetchUserProfiles(authorIds);
+
+        appState.feedTimelinePosts = merged;
+        paintFeedTimeline(root, merged);
+        requestAnimationFrame(() => {
+            const delta = root.scrollHeight - prevSH;
+            root.scrollTop = prevST + delta;
+        });
+    } catch (e) {
+        console.error('[loadMoreFeedOlderMessages]', e);
+    } finally {
+        _feedLoadOlderInFlight = false;
+        delete root.dataset.feedLoadingOlder;
+    }
+}
+
+let _feedImageLightboxOverlay = null;
+let _feedImageLightboxUrl = '';
+let _feedImageLightboxKeyHandler = null;
+let _feedImageClickDelegateBound = false;
+
+function feedLightboxExtFromMime(mime) {
+    const m = String(mime || '').toLowerCase();
+    if (m.includes('png')) return 'png';
+    if (m.includes('webp')) return 'webp';
+    if (m.includes('gif')) return 'gif';
+    if (m.includes('jpeg') || m.includes('jpg')) return 'jpg';
+    return 'jpg';
+}
+
+function closeFeedImageLightbox() {
+    if (!_feedImageLightboxOverlay || _feedImageLightboxOverlay.classList.contains('hidden')) return;
+    _feedImageLightboxOverlay.classList.add('hidden');
+    _feedImageLightboxOverlay.setAttribute('aria-hidden', 'true');
+    const img = _feedImageLightboxOverlay.querySelector('[data-feed-lb-img]');
+    if (img) {
+        img.removeAttribute('src');
+        img.alt = '';
+    }
+    _feedImageLightboxUrl = '';
+    if (_feedImageLightboxKeyHandler) {
+        document.removeEventListener('keydown', _feedImageLightboxKeyHandler);
+        _feedImageLightboxKeyHandler = null;
+    }
+}
+
+async function downloadFeedLightboxImage(url) {
+    if (!url) return;
+    try {
+        if (url.startsWith('blob:')) {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `mealog-feed-${Date.now()}.jpg`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            showToast('다운로드를 시작했어요.', 'success');
+            return;
+        }
+        const res = await fetch(url, { mode: 'cors' });
+        if (!res.ok) throw new Error('fetch');
+        const blob = await res.blob();
+        const ext = feedLightboxExtFromMime(blob.type);
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objectUrl;
+        a.download = `mealog-feed-${Date.now()}.${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(objectUrl);
+        showToast('다운로드를 시작했어요.', 'success');
+    } catch (_) {
+        showToast('브라우저에서 저장이 막혀 새 탭으로 열었어요.', 'info');
+        window.open(url, '_blank', 'noopener,noreferrer');
+    }
+}
+
+function openFeedImageLightbox(imageUrl) {
+    const u = typeof imageUrl === 'string' ? imageUrl.trim() : '';
+    if (!u) return;
+    if (_feedImageLightboxKeyHandler) {
+        document.removeEventListener('keydown', _feedImageLightboxKeyHandler);
+        _feedImageLightboxKeyHandler = null;
+    }
+    _feedImageLightboxUrl = u;
+    if (!_feedImageLightboxOverlay) {
+        _feedImageLightboxOverlay = document.createElement('div');
+        _feedImageLightboxOverlay.id = 'feedImageLightbox';
+        /* 본문과 동일 max-w-md 폭 안에서만 표시(데스크톡 웹에서 뷰포트 전체로 퍼지지 않게) */
+        _feedImageLightboxOverlay.className =
+            'hidden fixed inset-0 z-[10001] flex justify-center bg-slate-950/90 backdrop-blur-sm';
+        _feedImageLightboxOverlay.setAttribute('role', 'dialog');
+        _feedImageLightboxOverlay.setAttribute('aria-modal', 'true');
+        _feedImageLightboxOverlay.setAttribute('aria-labelledby', 'feedImageLightboxTitle');
+        _feedImageLightboxOverlay.innerHTML = `
+            <div class="flex h-full w-full max-w-md min-h-0 flex-col">
+            <div class="flex shrink-0 items-center justify-between gap-2 px-3 pb-1 pt-[max(0.5rem,env(safe-area-inset-top))]">
+                <h2 id="feedImageLightboxTitle" class="sr-only">밀톡 사진</h2>
+                <span class="text-xs font-medium text-white/80">사진</span>
+                <div class="flex items-center gap-2">
+                    <button type="button" data-feed-lb-download class="inline-flex h-10 min-w-[2.5rem] items-center justify-center gap-1.5 rounded-full bg-white/15 px-3 text-sm font-medium text-white hover:bg-white/25 active:bg-white/20" aria-label="다운로드">
+                        <i class="fa-solid fa-download" aria-hidden="true"></i>
+                        <span class="hidden sm:inline">다운로드</span>
+                    </button>
+                    <button type="button" data-feed-lb-close class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-white hover:bg-white/25 active:bg-white/20" aria-label="닫기">
+                        <i class="fa-solid fa-times text-lg leading-none" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="feed-lightbox-stage flex min-h-0 flex-1 cursor-default items-center justify-center overflow-auto px-3 pb-[max(1rem,env(safe-area-inset-bottom))]" data-feed-lb-stage>
+                <img data-feed-lb-img alt="" class="max-h-[min(82vh,100dvh-6rem)] w-full max-w-full object-contain rounded-lg shadow-2xl" />
+            </div>
+            </div>
+        `;
+        document.body.appendChild(_feedImageLightboxOverlay);
+        const stage = _feedImageLightboxOverlay.querySelector('[data-feed-lb-stage]');
+        stage?.addEventListener('click', (e) => {
+            if (e.target === stage) closeFeedImageLightbox();
+        });
+        _feedImageLightboxOverlay.querySelector('[data-feed-lb-close]')?.addEventListener('click', () => closeFeedImageLightbox());
+        _feedImageLightboxOverlay.querySelector('[data-feed-lb-download]')?.addEventListener('click', () => {
+            void downloadFeedLightboxImage(_feedImageLightboxUrl);
+        });
+    }
+    const img = _feedImageLightboxOverlay.querySelector('[data-feed-lb-img]');
+    if (img) {
+        img.src = u;
+        img.alt = '밀톡 첨부 사진';
+    }
+    _feedImageLightboxOverlay.classList.remove('hidden');
+    _feedImageLightboxOverlay.setAttribute('aria-hidden', 'false');
+    _feedImageLightboxKeyHandler = (e) => {
+        if (e.key === 'Escape') closeFeedImageLightbox();
+    };
+    document.addEventListener('keydown', _feedImageLightboxKeyHandler);
+}
+
+function ensureFeedImageLightboxDelegate() {
+    const root = document.getElementById('boardFeedPanelContent');
+    if (!root || _feedImageClickDelegateBound) return;
+    _feedImageClickDelegateBound = true;
+    root.addEventListener('click', (e) => {
+        const btn = e.target.closest?.('[data-feed-image-open]');
+        if (!btn || !root.contains(btn)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const src = btn.getAttribute('data-feed-image-src');
+        if (src) openFeedImageLightbox(src);
+    });
+}
 
 function cleanupFeedScrollResizeObserver() {
     if (typeof _feedScrollResizeCleanup === 'function') {
@@ -120,7 +341,9 @@ function feedBubbleHtml(post, opts = {}) {
             ? `<span class="pointer-events-none absolute left-2 top-2 z-[1] flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600/90 text-white shadow-sm" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[11px] leading-none" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`
             : '';
     const imgBlock = hasImg
-        ? `<div class="${hasBody ? 'mt-1.5' : ''} ${imgOnlyPendingSpinner ? 'relative' : ''} overflow-hidden rounded-lg">${imgOnlyPendingSpinner}<img src="${escapeHtml(img0)}" alt="" class="max-h-40 w-auto max-w-[min(85vw,240px)] rounded-lg bg-slate-100 object-cover" loading="lazy"></div>`
+        ? `<div class="${hasBody ? 'mt-1.5' : ''} ${imgOnlyPendingSpinner ? 'relative' : ''} overflow-hidden rounded-lg">${imgOnlyPendingSpinner}<button type="button" class="feed-image-lightbox-trigger block w-full cursor-zoom-in p-0 border-0 bg-transparent text-left outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900/40 rounded-lg" data-feed-image-open data-feed-image-src="${escapeHtml(img0)}" aria-label="사진 크게 보기">
+            <img src="${escapeHtml(img0)}" alt="" class="pointer-events-none max-h-40 w-auto max-w-[min(85vw,240px)] rounded-lg bg-slate-100 object-cover" loading="lazy" decoding="async">
+        </button></div>`
         : '';
 
     const timeMine = `<span class="feed-bubble-meta-time shrink-0 pb-1 text-xs leading-tight">${time}</span>`;
@@ -218,6 +441,7 @@ function paintFeedTimeline(root, posts) {
                 </div>
                 ${feedRefreshButtonHtml()}
             </div>`;
+        ensureFeedImageLightboxDelegate();
         return;
     }
     const chronological = [...posts].sort((a, b) => getPostTimestampMs(a) - getPostTimestampMs(b));
@@ -241,6 +465,7 @@ function paintFeedTimeline(root, posts) {
             <div class="feed-timeline flex w-full flex-col justify-end gap-2 pb-0 pt-1">${rowsHtml}</div>
             ${feedRefreshButtonHtml()}
         </div>`;
+    ensureFeedImageLightboxDelegate();
 }
 
 function revokeBlobUrlsOnPost(post) {
@@ -408,6 +633,8 @@ export async function renderBoardFeedTab(options = {}) {
 
     const quiet = !!options.quietRefresh;
     if (!quiet) {
+        appState.feedTimelineOldestCursor = null;
+        appState.feedTimelineHasMore = false;
         root.innerHTML = `
         <div class="feed-panel-loading flex flex-col items-center justify-center py-10">
             <i class="fa-solid fa-spinner fa-spin feed-panel-loading-icon text-2xl mb-2" aria-hidden="true"></i>
@@ -416,12 +643,38 @@ export async function renderBoardFeedTab(options = {}) {
     }
 
     try {
-        const posts = await window.feedOperations.getMessages(50);
-        let list = (posts || []).filter((p) => p && p.isHidden !== true);
-        list = list.filter((p) => !String(p?.id || '').startsWith('pending-'));
         for (const p of appState.feedTimelinePosts || []) {
             if (String(p?.id || '').startsWith('pending-')) revokeBlobUrlsOnPost(p);
         }
+        const prevWithoutPending = (appState.feedTimelinePosts || []).filter(
+            (p) => !String(p?.id || '').startsWith('pending-')
+        );
+
+        const { posts: pagePosts, cursorSnap, hasMore } = await window.feedOperations.getMessagesPage({
+            limitCount: FEED_TIMELINE_BATCH_SIZE,
+            startAfterSnapshot: null
+        });
+
+        let list;
+        if (quiet) {
+            list = mergeFeedQuietRefreshFirstPage(pagePosts, prevWithoutPending);
+            const server = (pagePosts || []).filter((p) => p && p.isHidden !== true);
+            const minServerTs =
+                server.length > 0 ? Math.min(...server.map(getPostTimestampMs)) : Infinity;
+            const preservedOlder = prevWithoutPending.some((p) => getPostTimestampMs(p) < minServerTs);
+            if (preservedOlder && appState.feedTimelineOldestCursor != null) {
+                /* 스크롤로 불러 둔 구간 유지 — 페이지네이션 커서·hasMore 그대로 */
+            } else {
+                appState.feedTimelineOldestCursor = cursorSnap;
+                appState.feedTimelineHasMore = hasMore;
+            }
+        } else {
+            appState.feedTimelineOldestCursor = cursorSnap;
+            appState.feedTimelineHasMore = hasMore;
+            list = (pagePosts || []).filter((p) => p && p.isHidden !== true);
+            list = list.filter((p) => !String(p?.id || '').startsWith('pending-'));
+        }
+
         const op = options.optimisticPost;
         if (op != null && op.id != null && String(op.id) && !list.some((p) => String(p.id) === String(op.id))) {
             const rc = op.reactionCounts || { like: 0, thumbs: 0, check: 0 };
@@ -431,7 +684,9 @@ export async function renderBoardFeedTab(options = {}) {
         await fetchUserProfiles(authorIds);
         appState.feedTimelinePosts = list;
         paintFeedTimeline(root, list);
+        ensureBoardFeedScrollOlderBound();
         scrollFeedPanelToBottom();
+        window.refreshNavFeedUpdateDots?.().catch(() => {});
     } catch (e) {
         console.error('renderBoardFeedTab:', e);
         if (quiet) {

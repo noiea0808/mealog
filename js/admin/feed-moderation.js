@@ -1,5 +1,5 @@
 /**
- * 관리자 모니터링: 타임라인 피드 공유·신고·일괄 처리
+ * 관리자 모니터링: 모먼트(타임라인) 공유·신고·일괄 처리
  */
 import { db, appId } from '../firebase.js';
 import { getReportsAggregateByGroupKeys } from '../db.js';

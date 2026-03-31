@@ -184,7 +184,8 @@ service cloud.firestore {
           && !isReadOnlyDemoAccount()
           && request.resource.data.keys().hasOnly(['type', 'updatedAt'])
           && request.resource.data.type in ['like', 'thumbs', 'check'];
-        allow delete: if isAuthenticated() && request.auth.uid == userId && !isReadOnlyDemoAccount();
+        // 관리자: 글 삭제 시 하위 반응 일괄 정리
+        allow delete: if isAdmin() || (isAuthenticated() && request.auth.uid == userId && !isReadOnlyDemoAccount());
       }
     }
     

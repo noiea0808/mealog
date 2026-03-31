@@ -5,5 +5,11 @@ export { dbOps } from './db/ops.js';
 export { setupListeners, getSharedPhotosByUser, loadSharedPhotosPage, loadMyShares, peekLatestSharedPhotoTimestampMs } from './db/listeners.js';
 export { postInteractions, subscribeToMyPostComments, getUserReportForPost, submitReport, withdrawReport, getReportsAggregateByGroupKeys } from './db/social.js';
 export { boardOperations, noticeOperations, getAdminDisplayName, invalidateAdminDisplayNameCache, deleteBoardPostByAdmin, setBoardPostHidden } from './db/board.js';
-export { feedOperations } from './db/feed-posts.js';
+export {
+    feedOperations,
+    FEED_TIMELINE_BATCH_SIZE,
+    setFeedPostHiddenByAdmin,
+    deleteFeedPostByAdmin,
+    attachReactionCountsToPosts
+} from './db/feed-posts.js';
 export { loadMoreMeals, loadMealsForDateRange, loadStatsForYears, migrateBase64ImagesToStorage } from './db/loading.js';

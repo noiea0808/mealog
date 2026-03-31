@@ -283,6 +283,7 @@ export async function renderBoard(category = 'all', optimisticPost = null, optio
             merged.sort((a, b) => (new Date(b.timestamp || 0).getTime()) - (new Date(a.timestamp || 0).getTime()));
             window._boardPostsCache = merged;
             await renderBoardPostList(container, merged, likedPostIds2, bookmarkedPostIds2, tracePostIds2, postIdsCommentedByUser);
+            window.refreshNavFeedUpdateDots?.().catch(() => {});
         }).catch(() => {});
         return;
     }
@@ -310,6 +311,7 @@ export async function renderBoard(category = 'all', optimisticPost = null, optio
             merged = merged.filter(p => p.id !== excludePostId);
             window._boardPostsCache = merged;
             await renderBoardPostList(container, merged, likedPostIds2, bookmarkedPostIds2, tracePostIds2, postIdsCommentedByUser);
+            window.refreshNavFeedUpdateDots?.().catch(() => {});
         }).catch(() => {});
         return;
     }
@@ -352,6 +354,7 @@ export async function renderBoard(category = 'all', optimisticPost = null, optio
         });
         window._boardPostsCache = filteredPosts;
         await renderBoardPostList(container, filteredPosts, likedPostIds, bookmarkedPostIds, tracePostIds, postIdsCommentedByUser);
+        window.refreshNavFeedUpdateDots?.().catch(() => {});
     } catch (error) {
         console.error("게시판 로드 오류:", error);
         container.innerHTML = `

@@ -5,6 +5,7 @@ import {
     query,
     orderBy,
     limit,
+    startAfter,
     getDocs,
     getDocsFromServer,
     doc,
@@ -12,14 +13,18 @@ import {
     updateDoc,
     deleteDoc,
     setDoc,
-    serverTimestamp
+    serverTimestamp,
+    writeBatch
 } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { showToast } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
 
+/** 라운지 밀톡 탭에서 한 번에 불러오는 메시지 수 (Firestore 문서 읽기·반응 서브조회 배수에 직결) */
+export const FEED_TIMELINE_BATCH_SIZE = 20;
+
 const EMPTY_REACTION_COUNTS = { like: 0, thumbs: 0, check: 0 };
 
-async function attachReactionCountsToPosts(posts) {
+export async function attachReactionCountsToPosts(posts) {
     const list = Array.isArray(posts) ? posts : [];
     return Promise.all(
         list.map(async (p) => {
@@ -42,11 +47,35 @@ async function attachReactionCountsToPosts(posts) {
     );
 }
 
+function feedPostTimestampMs(post) {
+    if (!post?.timestamp) return 0;
+    if (post.timestamp.toDate && typeof post.timestamp.toDate === 'function') {
+        return post.timestamp.toDate().getTime();
+    }
+    if (typeof post.timestamp === 'string') return new Date(post.timestamp).getTime();
+    if (post.timestamp instanceof Date) return post.timestamp.getTime();
+    return new Date(post.timestamp || 0).getTime();
+}
+
+function showFeedLoadErrorToast(code) {
+    if (code === 'permission-denied') {
+        showToast('밀톡을 불러올 권한이 없습니다. 다시 로그인해 주세요.', 'error');
+    } else if (code === 'failed-precondition') {
+        showToast('밀톡 목록을 불러오는 데 문제가 있습니다. 잠시 후 다시 시도해 주세요.', 'error');
+    } else if (code === 'unavailable' || code === 'deadline-exceeded') {
+        showToast('밀톡을 불러오지 못했습니다. 네트워크를 확인해 주세요.', 'error');
+    }
+}
+
 export const feedOperations = {
-    async getMessages(limitCount = 50) {
+    /** 최신순 페이지 조회. `cursorSnap`은 이 배치에서 가장 오래된 문서 스냅샷(다음 `startAfter`에 사용). */
+    async getMessagesPage({ limitCount = FEED_TIMELINE_BATCH_SIZE, startAfterSnapshot = null } = {}) {
         try {
             const postsColl = collection(db, 'artifacts', appId, 'feedPosts');
-            const q = query(postsColl, orderBy('timestamp', 'desc'), limit(Math.min(limitCount, 100)));
+            const lim = Math.min(limitCount, 100);
+            const q = startAfterSnapshot
+                ? query(postsColl, orderBy('timestamp', 'desc'), startAfter(startAfterSnapshot), limit(lim))
+                : query(postsColl, orderBy('timestamp', 'desc'), limit(lim));
             let snapshot;
             try {
                 snapshot = await getDocsFromServer(q);
@@ -60,30 +89,26 @@ export const feedOperations = {
             const list = snapshot.docs
                 .map((d) => ({ id: d.id, ...d.data() }))
                 .filter((p) => p && p.isHidden !== true);
-            const getTs = (post) => {
-                if (!post.timestamp) return 0;
-                if (post.timestamp.toDate && typeof post.timestamp.toDate === 'function') {
-                    return post.timestamp.toDate().getTime();
-                }
-                if (typeof post.timestamp === 'string') return new Date(post.timestamp).getTime();
-                if (post.timestamp instanceof Date) return post.timestamp.getTime();
-                return new Date(post.timestamp || 0).getTime();
-            };
-            list.sort((a, b) => getTs(b) - getTs(a));
+            list.sort((a, b) => feedPostTimestampMs(b) - feedPostTimestampMs(a));
             const sliced = list.slice(0, limitCount);
-            return await attachReactionCountsToPosts(sliced);
+            const posts = await attachReactionCountsToPosts(sliced);
+            const cursorSnap = snapshot.docs.length ? snapshot.docs[snapshot.docs.length - 1] : null;
+            const hasMore = snapshot.docs.length === lim;
+            return { posts, cursorSnap, hasMore };
         } catch (e) {
-            console.error('[feedOperations.getMessages]', e);
+            console.error('[feedOperations.getMessagesPage]', e);
             const code = e?.code || '';
-            if (code === 'permission-denied') {
-                showToast('밀톡을 불러올 권한이 없습니다. 다시 로그인해 주세요.', 'error');
-            } else if (code === 'failed-precondition') {
-                showToast('밀톡 목록을 불러오는 데 문제가 있습니다. 잠시 후 다시 시도해 주세요.', 'error');
-            } else if (code === 'unavailable' || code === 'deadline-exceeded') {
-                showToast('밀톡을 불러오지 못했습니다. 네트워크를 확인해 주세요.', 'error');
-            }
-            return [];
+            showFeedLoadErrorToast(code);
+            return { posts: [], cursorSnap: null, hasMore: false };
         }
+    },
+
+    async getMessages(limitCount = FEED_TIMELINE_BATCH_SIZE) {
+        const { posts } = await feedOperations.getMessagesPage({
+            limitCount,
+            startAfterSnapshot: null
+        });
+        return posts;
     },
 
     async createMessage({ text, imageUrls = [], replyToPostId = null }) {
@@ -229,3 +254,37 @@ export const feedOperations = {
         }
     }
 };
+
+async function deleteFeedPostReactionsClient(postId) {
+    const pid = String(postId || '').trim();
+    if (!pid) return;
+    const rcol = collection(db, 'artifacts', appId, 'feedPosts', pid, 'reactions');
+    const snap = await getDocs(rcol);
+    const docs = snap.docs;
+    for (let i = 0; i < docs.length; i += 450) {
+        const batch = writeBatch(db);
+        docs.slice(i, i + 450).forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+    }
+}
+
+/** 관리자: 밀톡 대화 숨김/해제 (Firestore rules: isAdmin) */
+export async function setFeedPostHiddenByAdmin(postId, hidden) {
+    const id = String(postId || '').trim();
+    if (!id) throw new Error('ID가 필요합니다.');
+    const postRef = doc(db, 'artifacts', appId, 'feedPosts', id);
+    const postSnap = await getDoc(postRef);
+    if (!postSnap.exists()) throw new Error('메시지를 찾을 수 없습니다.');
+    await updateDoc(postRef, { isHidden: !!hidden, updatedAt: serverTimestamp() });
+}
+
+/** 관리자: 밀톡 대화 삭제 (반응 하위 컬렉션 정리 후 본문 삭제) */
+export async function deleteFeedPostByAdmin(postId) {
+    const id = String(postId || '').trim();
+    if (!id) throw new Error('ID가 필요합니다.');
+    const postRef = doc(db, 'artifacts', appId, 'feedPosts', id);
+    const postSnap = await getDoc(postRef);
+    if (!postSnap.exists()) throw new Error('메시지를 찾을 수 없습니다.');
+    await deleteFeedPostReactionsClient(id);
+    await deleteDoc(postRef);
+}

@@ -1895,7 +1895,9 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     max-height: calc(100vh - var(--safe-top) - 3.5rem - var(--safe-bottom));
     height: calc(100dvh - var(--safe-top) - 3.5rem - var(--safe-bottom));
     max-height: calc(100dvh - var(--safe-top) - 3.5rem - var(--safe-bottom));
-    overflow: hidden;
+    /* 세로는 visible — 서브탭 sticky가 뷰포트 기준으로 동작(overflow:hidden이면 sticky가 헤더 밑 가림 현상 완화 안 됨) */
+    overflow-x: hidden;
+    overflow-y: visible;
 }
 /* 피드 탭: 하단 흰 패딩만 제거(메시지 영역~바디 그린 연결). 탭 줄은 위쪽 규칙의 흰 배경 유지 */
 #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden):has(#boardFeedPanel:not(.hidden)) {
@@ -1914,6 +1916,15 @@ body:has(#mainAppHeader.header-scroll-hidden) #boardListView.board-list-view-mea
     background: #fff;
     /* 탭 행과 피드/게시판 본문 사이 여백 없이 맞닿게 — 아래 1px만 구분선 */
     border-bottom: 1px solid rgb(226 232 240);
+    /* 윈도우/바디 스크롤 시에도 #mainAppHeader(sticky z-50) 아래에 고정되어 타이틀에 가려지지 않음 */
+    position: sticky;
+    z-index: 40;
+}
+body:not(:has(#mainAppHeader.header-scroll-hidden)) #boardListView .board-mealtalk-subtabs {
+    top: calc(var(--safe-top) + 3.5rem);
+}
+body:has(#mainAppHeader.header-scroll-hidden) #boardListView .board-mealtalk-subtabs {
+    top: var(--safe-top);
 }
 #boardListView #boardCategoryRow {
     flex-shrink: 0;

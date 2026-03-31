@@ -316,6 +316,7 @@ export function initFeedBubbleContextMenu() {
     root.addEventListener(
         'pointerdown',
         (e) => {
+            if (e.target.closest?.('.feed-image-lightbox-trigger')) return;
             const bubble = e.target.closest?.('.feed-chat-bubble');
             if (!bubble || !root.contains(bubble)) return;
             if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -339,6 +340,7 @@ export function initFeedBubbleContextMenu() {
     root.addEventListener('pointercancel', clearTimer);
 
     root.addEventListener('contextmenu', (e) => {
+        if (e.target.closest?.('.feed-image-lightbox-trigger')) return;
         const bubble = e.target.closest?.('.feed-chat-bubble');
         if (!bubble || !root.contains(bubble)) return;
         e.preventDefault();

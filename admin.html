@@ -230,7 +230,10 @@
                     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
                         <div class="flex gap-2 overflow-x-auto scrollbar-hide">
                             <button onclick="window.switchMonitoringSidebar('feed')" id="monitoring-sidebar-feed" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors">
-                                <i class="fa-solid fa-images mr-2"></i>피드 관리
+                                <i class="fa-solid fa-images mr-2"></i>모먼트 관리
+                            </button>
+                            <button onclick="window.switchMonitoringSidebar('lounge')" id="monitoring-sidebar-lounge" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                <i class="fa-solid fa-comment-dots mr-2"></i>밀톡 관리
                             </button>
                             <button onclick="window.switchMonitoringSidebar('board')" id="monitoring-sidebar-board" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                 <i class="fa-solid fa-comments mr-2"></i>게시판 관리
@@ -286,6 +289,40 @@
                                     </div>
                                     <!-- 페이지네이션 -->
                                     <div id="feedPagination" class="mt-6 flex justify-center items-center gap-2"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 밀톡 관리 (feedPosts 대화) -->
+                        <div id="monitoring-main-lounge" class="monitoring-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div class="flex flex-wrap gap-2 items-center justify-between">
+                                        <p class="text-sm text-slate-600">라운지 밀톡(채팅) 메시지입니다. 숨김 시 앱에서는 보이지 않습니다.</p>
+                                        <div class="flex flex-wrap gap-2">
+                                            <button type="button" onclick="window.refreshLoungeChatManagement()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                            </button>
+                                            <button type="button" onclick="window.adminLoungeBulkHide()" class="px-3 py-2 bg-amber-100 text-amber-700 rounded-lg text-xs font-bold hover:bg-amber-200 transition-colors">
+                                                <i class="fa-solid fa-eye-slash mr-1"></i>숨기기
+                                            </button>
+                                            <button type="button" onclick="window.adminLoungeBulkUnhide()" class="px-3 py-2 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold hover:bg-emerald-200 transition-colors">
+                                                <i class="fa-solid fa-eye mr-1"></i>숨기기 해제
+                                            </button>
+                                            <button type="button" onclick="window.adminLoungeBulkDelete()" class="px-3 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-bold hover:bg-red-200 transition-colors">
+                                                <i class="fa-solid fa-trash mr-1"></i>삭제
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div id="loungeChatManagementTableWrap" class="min-h-[120px]">
+                                        <div class="text-center py-8 text-slate-400">
+                                            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                                            <p>로딩 중...</p>
+                                        </div>
+                                    </div>
+                                    <div id="loungeChatPagination" class="mt-6 flex justify-center items-center gap-2"></div>
                                 </div>
                             </div>
                         </div>

@@ -15,9 +15,27 @@ import {
 import { updateDashboard } from '../analytics.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';
 import { isDemoUser } from '../demo-account.js';
-import { markMomentFeedNavSeen, markBoardNavSeen } from './nav-feed-update-dots.js';
+import {
+    markMomentFeedNavSeen,
+    markBoardNavSeen,
+    markBoardFeedSubtabSeen,
+    markBoardBoardSubtabSeen,
+    refreshNavFeedUpdateDots
+} from './nav-feed-update-dots.js';
 
 const HEADER_SECTION_BY_TAB = { dashboard: '밀당', timeline: '밀로그', gallery: '모먼트', board: '라운지', settings: '사용자' };
+
+let _tabSwitchNavDotsTimer = null;
+const TAB_SWITCH_NAV_DOTS_DEBOUNCE_MS = 380;
+function scheduleNavDotsAfterTabSwitch(prevTab, tab) {
+    if (prevTab === tab) return;
+    clearTimeout(_tabSwitchNavDotsTimer);
+    _tabSwitchNavDotsTimer = setTimeout(() => {
+        _tabSwitchNavDotsTimer = null;
+        if (!window.currentUser) return;
+        refreshNavFeedUpdateDots().catch(() => {});
+    }, TAB_SWITCH_NAV_DOTS_DEBOUNCE_MS);
+}
 
 function updateHeaderSectionLabel(tab) {
     const el = document.getElementById('headerSectionLabel');
@@ -60,6 +78,11 @@ export function registerMainTabSwitch() {
 
             if (tab === 'board') {
                 markBoardNavSeen();
+                if (appState.boardListSubTab === 'feed') {
+                    markBoardFeedSubtabSeen();
+                } else {
+                    markBoardBoardSubtabSeen();
+                }
                 if (boardListView) boardListView.classList.remove('hidden');
                 if (boardDetailView) boardDetailView.classList.add('hidden');
                 if (boardWriteView) boardWriteView.classList.add('hidden');
@@ -285,6 +308,7 @@ export function registerMainTabSwitch() {
                 setTimeout(() => window.checkAndShowContentPopup(tab), 200);
             }
             syncBoardFeedComposerVisibility();
+            scheduleNavDotsAfterTabSwitch(prevTab, tab);
             console.log('[탭전환] 완료:', { 현재탭: appState.currentTab });
         } catch (error) {
             console.error('[탭전환] 오류 발생:', error);
