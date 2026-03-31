@@ -14,6 +14,10 @@ let _feedScrollResizeCleanup = null;
 
 let _feedLoadOlderInFlight = false;
 
+function getBoardLoungeScrollEl() {
+    return document.getElementById('boardLoungeScrollArea');
+}
+
 /** quietRefresh 시 서버 최신 페이지와 이미 스크롤로 불러 둔 오래된 메시지 병합 */
 function mergeFeedQuietRefreshFirstPage(serverPosts, existingWithoutPending) {
     const server = (serverPosts || []).filter((p) => p && p.isHidden !== true);
@@ -37,15 +41,16 @@ function mergeFeedQuietRefreshFirstPage(serverPosts, existingWithoutPending) {
 }
 
 function ensureBoardFeedScrollOlderBound() {
-    const el = document.getElementById('boardFeedPanelContent');
+    const el = getBoardLoungeScrollEl();
     if (!el || el.dataset.feedOlderScrollBound === '1') return;
     el.dataset.feedOlderScrollBound = '1';
     el.addEventListener('scroll', onBoardFeedPanelScrollOlder, { passive: true });
 }
 
 function onBoardFeedPanelScrollOlder() {
-    const el = document.getElementById('boardFeedPanelContent');
-    if (!el || el.dataset.feedLoadingOlder === '1') return;
+    const el = getBoardLoungeScrollEl();
+    if (!el || appState.boardListSubTab !== 'feed') return;
+    if (el.dataset.feedLoadingOlder === '1') return;
     if (!appState.feedTimelineHasMore) return;
     if (!appState.feedTimelineOldestCursor) return;
     if (_feedLoadOlderInFlight) return;
@@ -55,8 +60,9 @@ function onBoardFeedPanelScrollOlder() {
 
 async function loadMoreFeedOlderMessages() {
     if (_feedLoadOlderInFlight || !appState.feedTimelineHasMore || !appState.feedTimelineOldestCursor) return;
-    const root = document.getElementById('boardFeedPanelContent');
-    if (!root || !window.feedOperations?.getMessagesPage) return;
+    const root = getBoardLoungeScrollEl();
+    const content = document.getElementById('boardFeedPanelContent');
+    if (!root || !content || !window.feedOperations?.getMessagesPage) return;
     _feedLoadOlderInFlight = true;
     root.dataset.feedLoadingOlder = '1';
     const prevSH = root.scrollHeight;
@@ -83,7 +89,7 @@ async function loadMoreFeedOlderMessages() {
         if (authorIds.length) await fetchUserProfiles(authorIds);
 
         appState.feedTimelinePosts = merged;
-        paintFeedTimeline(root, merged);
+        paintFeedTimeline(content, merged);
         requestAnimationFrame(() => {
             const delta = root.scrollHeight - prevSH;
             root.scrollTop = prevST + delta;
@@ -331,7 +337,7 @@ function feedBubbleHtml(post, opts = {}) {
     // 피드 본문은 순수 텍스트 — 줄바꿈 유지(getPlainTextPreview는 \n을 공백으로 제거함)
     const body = escapeHtml(String(post.text || post.content || ''));
     const hasImg = Array.isArray(post.imageUrls) && post.imageUrls.length > 0;
-    const img0 = hasImg ? post.imageUrls[0] : '';
+    const imageUrlsToShow = hasImg ? post.imageUrls.slice(0, 5) : [];
     const time = postTimeLabel(post);
     const pid = escapeHtml(post.id || '');
     const hasBody = String(post.text || post.content || '').trim().length > 0;
@@ -341,9 +347,14 @@ function feedBubbleHtml(post, opts = {}) {
             ? `<span class="pointer-events-none absolute left-2 top-2 z-[1] flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600/90 text-white shadow-sm" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[11px] leading-none" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`
             : '';
     const imgBlock = hasImg
-        ? `<div class="${hasBody ? 'mt-1.5' : ''} ${imgOnlyPendingSpinner ? 'relative' : ''} overflow-hidden rounded-lg">${imgOnlyPendingSpinner}<button type="button" class="feed-image-lightbox-trigger block w-full cursor-zoom-in p-0 border-0 bg-transparent text-left outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900/40 rounded-lg" data-feed-image-open data-feed-image-src="${escapeHtml(img0)}" aria-label="사진 크게 보기">
-            <img src="${escapeHtml(img0)}" alt="" class="pointer-events-none max-h-40 w-auto max-w-[min(85vw,240px)] rounded-lg bg-slate-100 object-cover" loading="lazy" decoding="async">
-        </button></div>`
+        ? `<div class="${hasBody ? 'mt-1.5' : ''} ${imgOnlyPendingSpinner ? 'relative' : ''} flex flex-col gap-1.5 overflow-hidden rounded-lg">${imgOnlyPendingSpinner}${imageUrlsToShow
+              .map((urlRaw) => {
+                  const src = escapeHtml(String(urlRaw));
+                  return `<button type="button" class="feed-image-lightbox-trigger block w-full max-w-[min(92vw,280px)] cursor-zoom-in p-0 border-0 bg-transparent text-left outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900/40 rounded-lg" data-feed-image-open data-feed-image-src="${src}" aria-label="사진 크게 보기">
+            <img src="${src}" alt="" class="pointer-events-none max-h-[min(42vh,280px)] w-full max-w-[min(92vw,280px)] rounded-lg bg-slate-100 object-contain" loading="lazy" decoding="async">
+        </button>`;
+              })
+              .join('')}</div>`
         : '';
 
     const timeMine = `<span class="feed-bubble-meta-time shrink-0 pb-1 text-xs leading-tight">${time}</span>`;
@@ -542,10 +553,11 @@ export function removePendingFeedPosts() {
     scrollFeedPanelToBottom();
 }
 
-/** 맨 아래로 스크롤: scrollTop만 사용(scrollIntoView 제거로 부모·중복 스크롤 흔들림 방지). 이미지 로드 등으로 높이가 늘면 ResizeObserver로 지연 1회 보정 */
+/** 맨 아래로 스크롤: 통합 스크롤(#boardLoungeScrollArea) 기준. 이미지 로드 등으로 높이가 늘면 ResizeObserver로 지연 1회 보정 */
 export function scrollFeedPanelToBottom() {
+    const lounge = getBoardLoungeScrollEl();
     const el = document.getElementById('boardFeedPanelContent');
-    if (!el) return;
+    if (!lounge || !el) return;
 
     cleanupFeedScrollResizeObserver();
 
@@ -553,12 +565,12 @@ export function scrollFeedPanelToBottom() {
     // "하단 근처일 때만" 자동 보정 허용 + 사용자가 위로 벗어나면 즉시 중단한다.
     const nearBottomPx = 18;
     const isNearBottom = () => {
-        const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
-        return maxScroll - el.scrollTop <= nearBottomPx;
+        const maxScroll = Math.max(0, lounge.scrollHeight - lounge.clientHeight);
+        return maxScroll - lounge.scrollTop <= nearBottomPx;
     };
 
     const apply = () => {
-        el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+        lounge.scrollTop = Math.max(0, lounge.scrollHeight - lounge.clientHeight);
     };
 
     // 이 함수 호출 시점은 주로 "탭 진입/렌더 직후"이며,
@@ -585,7 +597,7 @@ export function scrollFeedPanelToBottom() {
         }
     };
     // capture로 먼저 감지(패시브) — 사용자가 위로 올리는 순간 자동 보정 취소
-    el.addEventListener('scroll', onUserScroll, { passive: true, capture: true });
+    lounge.addEventListener('scroll', onUserScroll, { passive: true, capture: true });
     const ro = new ResizeObserver(() => {
         if (cancelledByUser) return;
         // 사용자가 이미 위로 벗어났으면(읽기 시작) 자동으로 아래로 당기지 않음
@@ -613,10 +625,10 @@ export function scrollFeedPanelToBottom() {
         clearTimeout(stopT);
         clearTimeout(debounceT);
         try {
-            el.removeEventListener('scroll', onUserScroll, { capture: true });
+            lounge.removeEventListener('scroll', onUserScroll, { capture: true });
         } catch (_) {
             // 일부 브라우저는 options 일치가 필요할 수 있어 무시
-            el.removeEventListener('scroll', onUserScroll, true);
+            lounge.removeEventListener('scroll', onUserScroll, true);
         }
         ro.disconnect();
     };

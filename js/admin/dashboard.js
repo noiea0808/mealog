@@ -11,6 +11,11 @@ const DASHBOARD_7_SUM_IDS = [
     'statGuestVisits7Sum', 'statNewUsers7Sum', 'statActiveUsers7Sum', 'statRecords7Sum', 'statShared7Sum'
 ];
 
+const DASHBOARD_STATS_REFRESH_BTN_IDLE_HTML =
+    '<i class="fa-solid fa-rotate-right" aria-hidden="true"></i><span>통계 새로고침</span>';
+const DASHBOARD_STATS_REFRESH_BTN_LOADING_HTML =
+    '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span>집계 중…</span>';
+
 /** 일별 7칸이 있으면 합계, 없으면 null */
 function sumSevenDaily(values) {
     if (!values || values.length !== 7) return null;
@@ -498,7 +503,11 @@ export async function updateStatistics() {
 export async function refreshDashboardStats() {
     const btn = document.getElementById('dashboardStatsRefreshBtn');
     try {
-        if (btn) { btn.disabled = true; btn.innerHTML = '집계 중...'; }
+        if (btn) {
+            btn.disabled = true;
+            btn.setAttribute('aria-busy', 'true');
+            btn.innerHTML = DASHBOARD_STATS_REFRESH_BTN_LOADING_HTML;
+        }
         const stats = await getUserStatistics();
         const payload = {
             guestVisits: stats.guestVisits,
@@ -519,7 +528,8 @@ export async function refreshDashboardStats() {
         const b = document.getElementById('dashboardStatsRefreshBtn');
         if (b) {
             b.disabled = false;
-            b.innerHTML = '<i class="fa-solid fa-rotate-right mr-1"></i>통계 새로고침';
+            b.removeAttribute('aria-busy');
+            b.innerHTML = DASHBOARD_STATS_REFRESH_BTN_IDLE_HTML;
         }
     }
 }

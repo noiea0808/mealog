@@ -81,6 +81,25 @@ function reactionLabel(rc) {
     return parts.length ? parts.join(' ') : '—';
 }
 
+/** 관리자 목록: 첨부 사진 썸네일(최대 4장 + 나머지 건수) */
+function loungeImageThumbsHtml(urls) {
+    if (!Array.isArray(urls) || !urls.length) return '';
+    const maxShow = 4;
+    const slice = urls.slice(0, maxShow);
+    const rest = urls.length > maxShow ? urls.length - maxShow : 0;
+    const imgs = slice
+        .map((u) => {
+            const src = escapeHtml(String(u));
+            return `<img src="${src}" alt="" class="inline-block h-24 w-auto max-w-[140px] rounded-md border border-slate-200 object-contain bg-slate-50 align-top mr-1.5 mb-1" loading="lazy" decoding="async">`;
+        })
+        .join('');
+    const more =
+        rest > 0
+            ? `<span class="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1.5 py-2 text-xs font-bold text-slate-600">+${rest}</span>`
+            : '';
+    return `<div class="mt-1.5 flex flex-wrap items-start gap-0">${imgs}${more}</div>`;
+}
+
 export async function renderLoungeChatManagement() {
     const container = document.getElementById('loungeChatManagementTableWrap');
     const pagEl = document.getElementById('loungeChatPagination');
@@ -105,12 +124,13 @@ export async function renderLoungeChatManagement() {
             return;
         }
 
+        /* 목록은 최신순(desc). 번호는 1=가장 오래된 첫 메시지 → n = total - 페이지오프셋 - 행인덱스 */
         const rows = items
             .map((p, idx) => {
-                const n = baseNo + idx + 1;
+                const n = total - (loungeCurrentPage - 1) * LOUNGE_PAGE_SIZE - idx;
                 const text = String(p.text || p.content || '').trim();
-                const imgs = Array.isArray(p.imageUrls) && p.imageUrls.length ? ` [사진 ${p.imageUrls.length}]` : '';
-                const previewRaw = (text.slice(0, 120) + (text.length > 120 ? '…' : '')) + imgs;
+                const previewRaw = text.slice(0, 120) + (text.length > 120 ? '…' : '');
+                const thumbs = loungeImageThumbsHtml(p.imageUrls);
                 const hidden = p.isHidden === true;
                 const aid = String(p.authorId || '').trim();
                 const authorSub = aid ? `<span class="text-xs text-slate-400">(${escapeHtml(aid.slice(0, 8))}…)</span>` : '';
@@ -121,7 +141,7 @@ export async function renderLoungeChatManagement() {
                 <td class="px-2 py-2 text-sm text-slate-700 whitespace-nowrap">${escapeHtml(formatTs(p))}</td>
                 <td class="px-2 py-2 text-sm text-slate-800 min-w-0">${escapeHtml(p.authorNickname || '익명')} ${authorSub}</td>
                 <td class="px-2 py-2 text-sm text-slate-700 whitespace-nowrap">${reactionLabel(p.reactionCounts)}</td>
-                <td class="px-2 py-2 text-sm text-slate-700 max-w-md min-w-[12rem]"><div class="truncate" title="${escapeHtml(previewRaw)}">${escapeHtml(previewRaw)}</div>${
+                <td class="px-2 py-2 text-sm text-slate-700 max-w-md min-w-[12rem] align-top"><div class="min-w-0 space-y-1"><div class="truncate" title="${escapeHtml(previewRaw)}">${escapeHtml(previewRaw)}</div>${thumbs}</div>${
                     hidden ? ' <span class="text-xs font-bold text-amber-600">숨김</span>' : ''
                 }</td>
             </tr>`;

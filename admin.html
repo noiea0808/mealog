@@ -216,8 +216,8 @@
                     </div>
                     <div class="px-4 py-3 border-t border-slate-100 bg-slate-50/50 flex flex-wrap items-center justify-end gap-3">
                         <span id="dashboardStatsUpdatedAt" class="text-xs text-slate-500">마지막 업데이트: -</span>
-                        <button type="button" id="dashboardStatsRefreshBtn" onclick="window.refreshDashboardStats()" class="px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors shrink-0">
-                            <i class="fa-solid fa-rotate-right mr-1"></i>통계 새로고침
+                        <button type="button" id="dashboardStatsRefreshBtn" onclick="window.refreshDashboardStats()" class="inline-flex items-center justify-center gap-2 px-4 py-2 min-w-[9.5rem] bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors shrink-0 disabled:opacity-90 disabled:cursor-wait" aria-live="polite">
+                            <i class="fa-solid fa-rotate-right" aria-hidden="true"></i><span>통계 새로고침</span>
                         </button>
                     </div>
                 </div>

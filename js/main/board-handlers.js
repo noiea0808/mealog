@@ -1025,10 +1025,8 @@ function showBoardPanelScrollbarWhileScrolling(el) {
 
 (function bindBoardPanelScrollbarReveal() {
     const onScroll = (e) => showBoardPanelScrollbarWhileScrolling(e.currentTarget);
-    const feed = document.getElementById('boardFeedPanelContent');
-    const list = document.getElementById('boardListPanel');
-    if (feed) feed.addEventListener('scroll', onScroll, { passive: true });
-    if (list) list.addEventListener('scroll', onScroll, { passive: true });
+    const lounge = document.getElementById('boardLoungeScrollArea');
+    if (lounge) lounge.addEventListener('scroll', onScroll, { passive: true });
 })();
 
 (function bindFeedManualRefresh() {

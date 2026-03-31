@@ -1895,9 +1895,9 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     max-height: calc(100vh - var(--safe-top) - 3.5rem - var(--safe-bottom));
     height: calc(100dvh - var(--safe-top) - 3.5rem - var(--safe-bottom));
     max-height: calc(100dvh - var(--safe-top) - 3.5rem - var(--safe-bottom));
-    /* 세로는 visible — 서브탭 sticky가 뷰포트 기준으로 동작(overflow:hidden이면 sticky가 헤더 밑 가림 현상 완화 안 됨) */
+    /* 스크롤은 #boardLoungeScrollArea(피드·게시판 본문)만 — 서브탭·카테고리는 #boardLoungeFrame에서 고정 */
     overflow-x: hidden;
-    overflow-y: visible;
+    overflow-y: hidden;
 }
 /* 피드 탭: 하단 흰 패딩만 제거(메시지 영역~바디 그린 연결). 탭 줄은 위쪽 규칙의 흰 배경 유지 */
 #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden):has(#boardFeedPanel:not(.hidden)) {
@@ -1911,26 +1911,20 @@ body:has(#mainAppHeader.header-scroll-hidden) #boardListView.board-list-view-mea
     height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
     max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
 }
-#boardListView .board-mealtalk-subtabs {
+/* 서브탭: 스크롤 영역 밖 — 스크롤바가 올라오지 않음 */
+#boardListView #boardLoungeFrame .board-mealtalk-subtabs {
     flex-shrink: 0;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     background: #fff;
-    /* 탭 행과 피드/게시판 본문 사이 여백 없이 맞닿게 — 아래 1px만 구분선 */
     border-bottom: 1px solid rgb(226 232 240);
-    /* 윈도우/바디 스크롤 시에도 #mainAppHeader(sticky z-50) 아래에 고정되어 타이틀에 가려지지 않음 */
-    position: sticky;
-    z-index: 40;
-}
-body:not(:has(#mainAppHeader.header-scroll-hidden)) #boardListView .board-mealtalk-subtabs {
-    top: calc(var(--safe-top) + 3.5rem);
-}
-body:has(#mainAppHeader.header-scroll-hidden) #boardListView .board-mealtalk-subtabs {
-    top: var(--safe-top);
 }
 #boardListView #boardCategoryRow {
     flex-shrink: 0;
     background: rgb(241 245 249);
-    margin-left: -1rem;
-    margin-right: -1rem;
+    margin-left: 0;
+    margin-right: 0;
     margin-bottom: 0;
     padding: 0.5rem 1rem;
     box-sizing: border-box;
@@ -1943,8 +1937,55 @@ body:has(#mainAppHeader.header-scroll-hidden) #boardListView .board-mealtalk-sub
 #boardListView.board-list-view-mealtalk.ui-stack-md > * + * {
     margin-top: 0;
 }
-#boardListView.board-list-view-mealtalk.ui-stack-md > .board-write-fab + .board-mealtalk-subtabs {
+#boardListView.board-list-view-mealtalk.ui-stack-md > .board-write-fab + #boardLoungeFrame {
     margin-top: calc(0.75rem * 0.3);
+}
+/* 라운지 프레임: 서브탭·카테고리 + 본문 스크롤 — #boardListView 좌우 패딩(1rem) 풀블리드 */
+#boardListView #boardLoungeFrame.board-lounge-frame {
+    flex: 1 1 0;
+    min-height: 0;
+    margin-left: -1rem;
+    margin-right: -1rem;
+    width: calc(100% + 2rem);
+    max-width: none;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+/* 본문만 세로 스크롤 — 스크롤바는 피드/게시판 영역에만 표시 */
+#boardListView #boardLoungeScrollArea.board-lounge-scroll-area {
+    flex: 1 1 0;
+    min-height: 0;
+    width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+}
+#boardListView #boardLoungeScrollArea.board-lounge-scroll-area:has(#boardFeedPanel:not(.hidden)) {
+    background-color: var(--board-feed-bg);
+    /* Firefox: 트랙을 투명으로 두면 우측에 흰색이 비침 */
+    scrollbar-color: rgba(255, 255, 255, 0.35) var(--board-feed-bg);
+}
+#boardListView #boardLoungeScrollArea.board-lounge-scroll-area:has(#boardListPanel:not(.hidden)) {
+    background-color: rgb(241 245 249);
+    scrollbar-color: rgba(148, 163, 184, 0.45) rgb(241 245 249);
+}
+#boardListView #boardLoungeScrollArea::-webkit-scrollbar {
+    width: 4px;
+}
+#boardListView #boardLoungeScrollArea::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 999px;
+}
+#boardListView #boardLoungeScrollArea:has(#boardFeedPanel:not(.hidden))::-webkit-scrollbar-track {
+    background: var(--board-feed-bg);
+}
+#boardListView #boardLoungeScrollArea:has(#boardListPanel:not(.hidden))::-webkit-scrollbar-track {
+    background: rgb(241 245 249);
 }
 /* 피드/게시판 탭 높이·여백: 사용자 설정(settings-tab)과 동일 px-3 py-2.5 + 바 px-4 pt-2 pb-0 */
 
@@ -2048,65 +2089,41 @@ body.feed-bubble-sheet-open {
     overflow: hidden;
 }
 
-/* 밀톡 피드: 남는 높이는 모두 대화 영역(내부 #boardFeedPanelContent만 스크롤)
-   반드시 :not(.hidden) — ID+요소 선택자만 쓰면 display:flex가 .hidden보다 특이도가 높아
-   게시판 탭에서도 패널이 안 숨겨지고 목록 영역 높이를 다 먹는 버그가 난다 */
+/* 밀톡 피드 패널: 높이는 내용에 맞춤 — 스크롤은 #boardLoungeScrollArea(이미 풀폭) */
 #boardListView #boardFeedPanel:not(.hidden) {
-    margin-left: -1rem;
-    margin-right: -1rem;
-    width: calc(100% + 2rem);
+    margin-left: 0;
+    margin-right: 0;
+    width: 100%;
     max-width: none;
     box-sizing: border-box;
-    flex: 1 1 0;
-    min-height: 0;
+    flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: visible;
     background: var(--board-feed-bg);
 }
-/* 밀톡 게시판 목록: 서브탭·카테고리 아래에서만 스크롤 — 스크롤 중에만 막대 표시(JS로 .board-panel-scrollbar-active)
-   부모 패딩(1rem) 상쇄로 좌우 화면에 맞춤 + safe-area로 오른쪽(노치) 정렬 보정 */
+/* 밀톡 게시판 목록: 스크롤은 상위 #boardLoungeScrollArea — 본문만 풀폭·배경 */
 #boardListView #boardListPanel:not(.hidden) {
-    flex: 1 1 0;
+    flex-shrink: 0;
     min-height: 0;
     overflow-x: hidden;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
+    overflow-y: visible;
     background: rgb(241 245 249);
-    margin-left: -1rem;
-    margin-right: -1rem;
-    width: calc(100% + 2rem);
+    margin-left: 0;
+    margin-right: 0;
+    width: 100%;
     max-width: none;
     box-sizing: border-box;
     padding-left: max(0px, env(safe-area-inset-left, 0px));
     padding-right: max(0px, env(safe-area-inset-right, 0px));
     /* 마지막 카드가 플로팅 네비·홈 인디케이터 위로 스크롤되도록 (기존에는 뷰 높이에서 네비 높이를 빼 목록이 네비 ‘위’에서만 끊김) */
     padding-bottom: calc(5.25rem + var(--safe-bottom));
-    scrollbar-width: thin;
-    scrollbar-color: transparent transparent;
-}
-#boardListView #boardListPanel:not(.hidden).board-panel-scrollbar-active {
-    scrollbar-color: rgba(148, 163, 184, 0.5) transparent;
-}
-#boardListView #boardListPanel:not(.hidden)::-webkit-scrollbar {
-    width: 4px;
-}
-#boardListView #boardListPanel:not(.hidden)::-webkit-scrollbar-thumb {
-    background: transparent;
-    border-radius: 999px;
-}
-#boardListView #boardListPanel:not(.hidden).board-panel-scrollbar-active::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.45);
-}
-#boardListView #boardListPanel:not(.hidden)::-webkit-scrollbar-track {
-    background: transparent;
 }
 #boardListView #boardFeedPanelContent {
-    flex: 1 1 0;
+    flex: 0 1 auto;
     min-height: 0;
     overflow-x: hidden;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
+    overflow-y: visible;
     scroll-behavior: auto;
     padding-left: 0.25rem;
     padding-right: 0.25rem;
@@ -2117,18 +2134,19 @@ body.feed-bubble-sheet-open {
     padding-bottom: var(--board-feed-scroll-inset-bottom);
     scroll-padding-bottom: var(--board-feed-scroll-inset-bottom);
     background: var(--board-feed-bg);
-    scrollbar-width: thin;
-    scrollbar-color: transparent transparent;
 }
-#boardListView #boardFeedPanelContent::-webkit-scrollbar {
-    width: 4px;
+/* 스크롤 막대: 통합 스크롤(#boardLoungeScrollArea) — 피드(녹색)·게시판(슬레이트) 탭에 맞춤 */
+#boardListView #boardLoungeScrollArea.board-panel-scrollbar-active:has(#boardFeedPanel:not(.hidden)) {
+    scrollbar-color: rgba(255, 255, 255, 0.45) var(--board-feed-bg);
 }
-#boardListView #boardFeedPanelContent::-webkit-scrollbar-thumb {
-    background: transparent;
-    border-radius: 999px;
+#boardListView #boardLoungeScrollArea.board-panel-scrollbar-active:has(#boardFeedPanel:not(.hidden))::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.4);
 }
-#boardListView #boardFeedPanelContent::-webkit-scrollbar-track {
-    background: transparent;
+#boardListView #boardLoungeScrollArea.board-panel-scrollbar-active:has(#boardListPanel:not(.hidden)) {
+    scrollbar-color: rgba(148, 163, 184, 0.5) rgb(241 245 249);
+}
+#boardListView #boardLoungeScrollArea.board-panel-scrollbar-active:has(#boardListPanel:not(.hidden))::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.45);
 }
 
 /* 밀톡 피드 메시지 영역 테마 (--board-feed-bg + 말풍선) */
@@ -2172,12 +2190,6 @@ body.feed-bubble-sheet-open {
 #boardListView #boardFeedPanelContent .feed-refresh-btn:focus-visible {
     outline: none;
     box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55);
-}
-#boardListView #boardFeedPanelContent.board-panel-scrollbar-active {
-    scrollbar-color: rgba(255, 255, 255, 0.45) transparent;
-}
-#boardListView #boardFeedPanelContent.board-panel-scrollbar-active::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.4);
 }
 
 /* 하단 앱 네비가 스크롤로 밀려 숨겨진 경우: 입력창을 하단에 붙여 대화 스크롤이 입력 바로 위까지 이어지게 (뷰 높이는 기본과 동일) */
