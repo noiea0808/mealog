@@ -62,6 +62,7 @@ export function registerMainTabSwitch() {
                 }
             }
             if (tab !== 'gallery') {
+                appState.boardDetailOpenedFromGallery = false;
                 const mainHeader = document.querySelector('#mainApp > header');
                 if (mainHeader) mainHeader.classList.remove('hidden');
             }

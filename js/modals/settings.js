@@ -26,6 +26,11 @@ function syncProfileLogoutFooterButton() {
 export function openSettings() {
     const state = appState;
     if (!window.currentUser) return;
+
+    const myPostsBtn = document.getElementById('openMyPostsFromSettingsBtn');
+    if (myPostsBtn) {
+        myPostsBtn.classList.toggle('hidden', !window.currentUser || window.currentUser.isAnonymous);
+    }
     
     // 게스트(익명)는 userSettings가 없을 수 있음 → 기본값 사용해 설정 모달은 열고, 로그인하기 노출
     const sourceSettings = window.userSettings || DEFAULT_USER_SETTINGS;

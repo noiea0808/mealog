@@ -59,7 +59,9 @@ function initMainAppKeyboardHandling() {
         setKeyboardClosed(vh >= threshold);
     };
 
-    const isInputLike = (el) => el && (el.matches?.('input, textarea') || el.getAttribute?.('contenteditable') === 'true');
+    const isInputLike = (el) =>
+        el &&
+        (el.matches?.('input:not(.push-pref-toggle), textarea') || el.getAttribute?.('contenteditable') === 'true');
 
     if (window.visualViewport) {
         const run = () => {
@@ -462,6 +464,13 @@ export function initEventListeners() {
     const saveProfileSettingsBtn = document.getElementById('saveProfileSettingsBtn');
     if (saveProfileSettingsBtn) {
         saveProfileSettingsBtn.addEventListener('click', saveProfileSettings);
+    }
+
+    const openMyPostsFromSettingsBtn = document.getElementById('openMyPostsFromSettingsBtn');
+    if (openMyPostsFromSettingsBtn) {
+        openMyPostsFromSettingsBtn.addEventListener('click', () => {
+            if (typeof window.openMyPostsFromSettings === 'function') window.openMyPostsFromSettings();
+        });
     }
 
     const editProfileSettingsBtn = document.getElementById('editProfileSettingsBtn');

@@ -292,6 +292,21 @@ window.backToBoardList = (optimisticPost = null, options = null) => {
     const boardDetailView = document.getElementById('boardDetailView');
     const boardWriteView = document.getElementById('boardWriteView');
     const tracePanel = document.getElementById('galleryTraceFilterPanel');
+
+    if (appState.boardDetailOpenedFromGallery) {
+        appState.boardDetailOpenedFromGallery = false;
+        if (boardDetailView) boardDetailView.classList.add('hidden');
+        const galleryView = document.getElementById('galleryView');
+        if (galleryView) galleryView.classList.remove('hidden');
+        window.currentBoardPostId = null;
+        window.currentBoardNoticeId = null;
+        if (appState.currentTab === 'gallery' && appState.galleryFilterUserId) {
+            const mainHeader = document.querySelector('#mainApp > header');
+            if (mainHeader) mainHeader.classList.add('hidden');
+        }
+        if (typeof window.renderGallery === 'function') window.renderGallery();
+        return;
+    }
     
     if (boardListView) boardListView.classList.remove('hidden');
     if (boardDetailView) boardDetailView.classList.add('hidden');
@@ -537,11 +552,22 @@ window.openBoardDetail = async (postId) => {
     const boardDetailView = document.getElementById('boardDetailView');
     const boardWriteView = document.getElementById('boardWriteView');
     const tracePanel = document.getElementById('galleryTraceFilterPanel');
+    const galleryView = document.getElementById('galleryView');
     
     if (boardListView) boardListView.classList.add('hidden');
     if (boardDetailView) boardDetailView.classList.remove('hidden');
     if (boardWriteView) boardWriteView.classList.add('hidden');
     if (tracePanel) tracePanel.classList.add('hidden');
+
+    // 모먼트「사용자 프로필 → 게시판」목록에서 연 경우: 갤러리 레이어를 숨기고 본문만 전체 화면에 표시
+    if (appState.currentTab === 'gallery') {
+        appState.boardDetailOpenedFromGallery = true;
+        if (galleryView) galleryView.classList.add('hidden');
+        const mainHeader = document.querySelector('#mainApp > header');
+        if (mainHeader) mainHeader.classList.remove('hidden');
+    } else {
+        appState.boardDetailOpenedFromGallery = false;
+    }
     
     await renderBoardDetail(postId);
     syncBoardFeedComposerVisibility();

@@ -81,23 +81,23 @@ body:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) {
 body:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) #navigationBarOverlay {
     background-color: var(--board-feed-bg) !important;
 }
-/* 앱 전체 키보드 열림 시: 헤더·상태바·트래커·하단 네비·핸폰 네비 영역 모두 숨김 (input/textarea/contenteditable 포커스 시) */
-body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) .bottom-nav,
-body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #navigationBarOverlay,
-body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #mainAppHeader,
-body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #statusBarOverlay,
-body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #trackerSection {
+/* 앱 전체 키보드 열림 시: 헤더·상태바·트래커·하단 네비·핸폰 네비 영역 모두 숨김 (텍스트 입력 포커스 시) — 푸시 설정 스위치(.push-pref-toggle)는 제외 */
+body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) .bottom-nav,
+body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) #navigationBarOverlay,
+body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) #mainAppHeader,
+body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) #statusBarOverlay,
+body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) #trackerSection {
     display: none !important;
 }
 /* 밀로그 검색창 포커스 시: 헤더 유지 (입력 텍스트 보이도록) */
 body:has(#searchInput:focus) #mainAppHeader {
     display: block !important;
 }
-body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) {
+body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) {
     padding-top: 0 !important;
     padding-bottom: 0 !important;
 }
-body:has(input:focus, textarea:focus, [contenteditable="true"]:focus) #boardWriteView {
+body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) #boardWriteView {
     padding-bottom: 1rem !important;
 }
 /* iOS Safari: 입력 텍스트가 바로 안 보이는 버그 수정 (GPU compositing으로 리페인트 강제) */

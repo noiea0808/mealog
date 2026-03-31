@@ -134,6 +134,21 @@ window.openUserProfileFromBoard = (userId) => {
 };
 window.Mealog.openUserProfileFromBoard = window.openUserProfileFromBoard;
 
+/** 설정 → 내 게시물: 모먼트 탭에서 본인 프로필(공유·게시판)로 이동 */
+window.openMyPostsFromSettings = () => {
+    const u = window.currentUser;
+    if (!u || u.isAnonymous) {
+        showToast('로그인 후 이용할 수 있습니다.', 'error');
+        return;
+    }
+    appState.galleryFilterEntryTab = 'settings';
+    appState.galleryFilterTab = 'moment';
+    filterGalleryByUser(u.uid, '');
+    if (typeof window.switchMainTab === 'function') window.switchMainTab('gallery');
+    if (typeof closeSettings === 'function') closeSettings();
+};
+window.Mealog.openMyPostsFromSettings = window.openMyPostsFromSettings;
+
 // 사용자 프로필 뷰 내 모먼트/밀톡 탭 전환 시 하단 탭 표시 동기화 (render.js에서 호출)
 window.syncBottomNavForGalleryFilter = () => {
     const navGallery = document.getElementById('nav-gallery');

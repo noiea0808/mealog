@@ -1179,12 +1179,15 @@
                     <div id="settingsTabContentProfile" class="settings-tab-content settings-tab-content-fullwidth profile-settings-list pt-4 pb-8">
                         <div class="settings-section-container">
                             <div id="accountSection" class="profile-account-section"></div>
-                            <div class="profile-settings-header flex items-center justify-between py-3 border-b border-slate-100">
-                            <h3 class="text-sm font-bold text-slate-800">프로필</h3>
-                            <div class="flex items-center gap-2">
-                                <button id="editProfileSettingsBtn" class="profile-settings-action px-3 py-1.5 text-sm font-bold text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors">수정</button>
-                                <button id="cancelProfileSettingsBtn" class="hidden px-3 py-1.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-full transition-colors">취소</button>
-                                <button id="saveProfileSettingsBtn" class="hidden px-3 py-1.5 text-sm font-bold text-white bg-black hover:bg-slate-800 rounded-full transition-colors">저장</button>
+                            <div class="profile-settings-header flex items-center justify-between py-3 border-b border-slate-100 gap-2">
+                            <div class="flex items-center gap-2 min-w-0">
+                                <h3 class="text-sm font-bold text-slate-800 shrink-0">프로필</h3>
+                                <button id="editProfileSettingsBtn" type="button" class="profile-settings-action shrink-0 px-3 py-1.5 text-sm font-bold text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors">수정</button>
+                            </div>
+                            <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end shrink-0">
+                                <button type="button" id="openMyPostsFromSettingsBtn" class="hidden px-2.5 py-1.5 text-xs font-bold text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-50 active:bg-emerald-100 transition-colors whitespace-nowrap" title="모먼트에서 내 공유·게시글 보기">내 게시물</button>
+                                <button id="cancelProfileSettingsBtn" type="button" class="hidden px-3 py-1.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-full transition-colors">취소</button>
+                                <button id="saveProfileSettingsBtn" type="button" class="hidden px-3 py-1.5 text-sm font-bold text-white bg-black hover:bg-slate-800 rounded-full transition-colors">저장</button>
                             </div>
                         </div>
                         <div class="profile-settings-row profile-settings-row-between border-b border-slate-100">
