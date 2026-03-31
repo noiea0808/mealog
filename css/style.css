@@ -1423,7 +1423,7 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 .success-popup-anim .success-check__circle-bg,
 .success-popup-anim .success-check__mark-bg {
     stroke: #ffffff;
-    stroke-width: 25;
+    stroke-width: 20;
     stroke-linecap: round;
     stroke-linejoin: round;
 }
@@ -1448,14 +1448,44 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 /* 텍스트 보더라인(25px 흰색): SVG text stroke로 "글자 윤곽"만 */
 .success-popup-text-outline {
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
-    font-size: 16px;
+    font-size: 21px;
     font-weight: 800;
     letter-spacing: -0.01em;
     fill: #0f172a; /* slate-900 */
     stroke: #ffffff;
-    stroke-width: 25;
+    stroke-width: 20;
     stroke-linejoin: round;
     paint-order: stroke fill;
+}
+
+/* 기록 완료 컨페티 */
+#successPopupConfetti {
+    pointer-events: none;
+}
+.confetti-piece {
+    position: absolute;
+    width: 8px;
+    height: 14px;
+    border-radius: 2px;
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(0deg);
+}
+.success-popup-anim .confetti-piece {
+    animation: confettiBurst 800ms ease-out forwards;
+}
+@keyframes confettiBurst {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) rotate(0deg) scale(0.9);
+    }
+    10% { opacity: 1; }
+    100% {
+        opacity: 0;
+        transform:
+            translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 120px)))
+            rotate(var(--rot, 180deg))
+            scale(1);
+    }
 }
 
 /* 로딩 오버레이: 음식 아이콘 순차 전환 (배민 스타일) */

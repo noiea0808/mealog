@@ -858,6 +858,23 @@ export async function saveEntry() {
         const snackDetailInput = document.getElementById('snackDetailInput');
         const snackInputVal = snackDetailInput ? snackDetailInput.value.trim() : '';
         const snackPlaceInputVal = document.getElementById('snackPlaceInput')?.value?.trim() || '';
+
+        // 입력 검증: 어떻게/무엇을/누구와 중 최소 1개는 필요 (무응답 시 저장하지 않음)
+        // - 본식: 어떻게(typeChips) / 무엇을(categoryChips 또는 menuDetailInput) / 누구와(withChips 또는 withWhomInput)
+        // - 간식: 무엇을(snackTypeChips 또는 snackDetailInput) / 누구와(snackWithChips 또는 snackWithWhomInput)
+        if (!isSk) {
+            const hasHow = !isS && Boolean((mealType || '').trim());
+            const hasWhat = isS
+                ? Boolean((getT('snackTypeChips') || '').trim() || (snackInputVal || '').trim())
+                : Boolean((getT('categoryChips') || '').trim() || (menuInputVal || '').trim());
+            const hasWith = isS
+                ? Boolean((getT('snackWithChips') || '').trim() || (snackWithInputVal || '').trim())
+                : Boolean((getT('withChips') || '').trim() || (withInputVal || '').trim());
+            if (!hasHow && !hasWhat && !hasWith) {
+                if (loadingOverlay) loadingOverlay.classList.add('hidden');
+                return;
+            }
+        }
         
         // 디버깅: 간식 입력값 확인
         if (isS) {

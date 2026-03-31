@@ -98,6 +98,7 @@ let successPopupTimer = null;
 export function showSuccessPopup(message = '기록 완료', durationMs = 800) {
     const popup = document.getElementById('successPopup');
     const textEl = document.getElementById('successPopupText');
+    const confetti = document.getElementById('successPopupConfetti');
     if (!popup) return;
 
     if (successPopupTimer) {
@@ -111,11 +112,48 @@ export function showSuccessPopup(message = '기록 완료', durationMs = 800) {
     document.body.classList.remove('success-popup-anim');
     popup.classList.remove('hidden');
     void popup.offsetHeight;
+    // 컨페티는 "보이는 상태"에서 좌표를 재서, 체크 아이콘 중심에서 사방으로 퍼지게 생성
+    if (confetti) {
+        confetti.innerHTML = '';
+        const colors = ['#f97316', '#22c55e', '#3b82f6', '#f43f5e', '#a855f7', '#eab308', '#14b8a6'];
+        const n = 22;
+        const checkSvg = popup.querySelector?.('.success-check svg');
+        const confettiRect = confetti.getBoundingClientRect?.();
+        // 기준점: 체크 아이콘 중앙(컨페티 컨테이너 기준 좌표로 변환)
+        let cx = (confettiRect?.width ?? window.innerWidth) / 2;
+        let cy = (confettiRect?.height ?? window.innerHeight) / 2;
+        try {
+            const r = checkSvg?.getBoundingClientRect?.();
+            if (r && confettiRect) {
+                cx = (r.left + r.width / 2) - confettiRect.left;
+                cy = (r.top + r.height / 2) - confettiRect.top;
+            }
+        } catch (_) {}
+        for (let i = 0; i < n; i++) {
+            const el = document.createElement('span');
+            el.className = 'confetti-piece';
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 70 + Math.random() * 160;
+            const dx = Math.cos(angle) * dist;
+            const dy = Math.sin(angle) * dist;
+            const rot = (Math.random() * 2 - 1) * 360;
+            const delay = Math.random() * 60;
+            el.style.left = cx.toFixed(1) + 'px';
+            el.style.top = cy.toFixed(1) + 'px';
+            el.style.background = colors[i % colors.length];
+            el.style.setProperty('--dx', dx.toFixed(1) + 'px');
+            el.style.setProperty('--dy', dy.toFixed(1) + 'px');
+            el.style.setProperty('--rot', rot.toFixed(1) + 'deg');
+            el.style.animationDelay = delay.toFixed(0) + 'ms';
+            confetti.appendChild(el);
+        }
+    }
     document.body.classList.add('success-popup-anim');
 
     successPopupTimer = setTimeout(() => {
         document.body.classList.remove('success-popup-anim');
         popup.classList.add('hidden');
+        if (confetti) confetti.innerHTML = '';
         successPopupTimer = null;
     }, Math.max(0, Number(durationMs) || 800));
 }

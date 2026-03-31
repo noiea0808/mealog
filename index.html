@@ -381,17 +381,19 @@
     <!-- 기록 완료: 중앙 팝업 (0.8초) -->
     <div id="successPopup" class="hidden fixed inset-0 z-[9500] flex items-center justify-center">
         <div id="successPopupBackdrop" class="absolute inset-0 bg-slate-900/25"></div>
-        <div id="successPopupContent" class="relative w-[86%] max-w-[18rem] bg-transparent flex flex-col items-center gap-3 px-2 py-2">
+        <div id="successPopupConfetti" class="absolute inset-0 z-0" aria-hidden="true"></div>
+        <div id="successPopupContent" class="relative z-10 w-[86%] max-w-[18rem] bg-transparent flex flex-col items-center gap-3 px-2 py-2">
             <div class="success-check" aria-hidden="true">
-                <svg viewBox="0 0 52 52" width="56" height="56">
+                <svg viewBox="0 0 52 52" width="73" height="73">
+                    <circle class="success-check__fill" cx="26" cy="26" r="20" fill="#ffffff"></circle>
                     <circle class="success-check__circle-bg" cx="26" cy="26" r="20" fill="none"></circle>
                     <path class="success-check__mark-bg" fill="none" d="M14 27 L22 35 L38 18"></path>
                     <circle class="success-check__circle" cx="26" cy="26" r="20" fill="none"></circle>
                     <path class="success-check__mark" fill="none" d="M14 27 L22 35 L38 18"></path>
                 </svg>
             </div>
-            <svg id="successPopupTextSvg" width="220" height="34" viewBox="0 0 220 34" aria-hidden="true">
-                <text id="successPopupText" x="110" y="24" text-anchor="middle" class="success-popup-text-outline">기록 완료</text>
+            <svg id="successPopupTextSvg" width="220" height="44" viewBox="0 0 220 44" aria-hidden="true">
+                <text id="successPopupText" x="110" y="32" text-anchor="middle" class="success-popup-text-outline">기록 완료</text>
             </svg>
         </div>
     </div>
