@@ -2755,6 +2755,50 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 /* =========================
    Admin page layout
    ========================= */
+/* 관리 로그: 붙여넣기 b/strong·기울임 (Tailwind CDN이 JS에만 있는 클래스를 못 쓸 때·프리플라이트 상속 대비) */
+#adminPage .admin-log-entry-view b,
+#adminPage .admin-log-entry-view strong,
+#adminPage .admin-log-entry-editor b,
+#adminPage .admin-log-entry-editor strong {
+    font-weight: 700;
+}
+#adminPage .admin-log-entry-view i,
+#adminPage .admin-log-entry-view em,
+#adminPage .admin-log-entry-editor i,
+#adminPage .admin-log-entry-editor em {
+    font-style: italic;
+}
+#adminPage .admin-log-entry-view u,
+#adminPage .admin-log-entry-editor u {
+    text-decoration: underline;
+}
+#adminPage .admin-log-entry-view s,
+#adminPage .admin-log-entry-view strike,
+#adminPage .admin-log-entry-editor s,
+#adminPage .admin-log-entry-editor strike {
+    text-decoration: line-through;
+}
+/* 관리 로그: 표 (붙여넣기 후에도 보이도록 기본 테두리) */
+#adminPage .admin-log-entry-view table,
+#adminPage .admin-log-entry-editor table {
+    border-collapse: collapse;
+    width: 100%;
+    max-width: 100%;
+    margin: 0.5rem 0;
+}
+#adminPage .admin-log-entry-view th,
+#adminPage .admin-log-entry-view td,
+#adminPage .admin-log-entry-editor th,
+#adminPage .admin-log-entry-editor td {
+    border: 1px solid #cbd5e1;
+    padding: 0.35rem 0.5rem;
+    vertical-align: top;
+}
+#adminPage .admin-log-entry-view th,
+#adminPage .admin-log-entry-editor th {
+    font-weight: 700;
+    background-color: #f1f5f9;
+}
 #adminPage .admin-header-inner {
     padding-top: 0.15rem;
     padding-bottom: 0.15rem;

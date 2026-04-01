@@ -1,7 +1,7 @@
 // ADMIN 로그인 배너 설정
 import { db, appId } from '../firebase.js';
 import { collection, query, orderBy, getDocs, doc, getDoc, setDoc, deleteField } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { escapeHtml } from './utils.js';
+import { escapeHtml, runAdminRefreshAction } from './utils.js';
 import { uploadLoginBannerImage } from '../utils.js';
 
 // 로그인 배너 설정 로드
@@ -55,20 +55,14 @@ export async function loadLoginBannerConfig() {
 }
 
 /** 로그인 배너 조회수·클릭수 재조회 */
-window.refreshLoginBannerStats = async function() {
-    const btn = document.getElementById('loginBannerRefreshStatsBtn');
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>재조회 중';
-    }
-    try {
-        await loadLoginBannerConfig();
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fa-solid fa-arrows-rotate mr-1"></i>재조회';
-        }
-    }
+window.refreshLoginBannerStats = async function () {
+    await runAdminRefreshAction(
+        document.getElementById('loginBannerRefreshStatsBtn'),
+        async () => {
+            await loadLoginBannerConfig();
+        },
+        { loadingText: '재조회 중', tightSpinner: true }
+    );
 };
 
 // 로그인 배너 저장

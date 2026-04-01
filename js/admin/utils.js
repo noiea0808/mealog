@@ -126,3 +126,44 @@ export function escapeHtml(text) {
     div.textContent = text;
     return div.innerHTML;
 }
+
+/**
+ * 관리자 화면 새로고침 버튼: 조회 중 스피너·배경색·비활성화 후 복구
+ * @param {HTMLElement|string|null} button — 요소 또는 id
+ * @param {() => Promise<void>} work
+ * @param {{ loadingText?: string, tightSpinner?: boolean }} [options]
+ */
+export async function runAdminRefreshAction(button, work, options = {}) {
+    const loadingText = options.loadingText || '조회 중…';
+    const spinClass = options.tightSpinner ? 'mr-1' : 'mr-2';
+    const el = typeof button === 'string' ? document.getElementById(button) : button;
+    if (!el) {
+        await work();
+        return;
+    }
+    if (el.getAttribute('aria-busy') === 'true') return;
+    el.dataset.arPrevHtml = el.innerHTML;
+    el.dataset.arPrevClass = el.className;
+    el.dataset.arPrevStyle = el.getAttribute('style') || '';
+    el.disabled = true;
+    el.setAttribute('aria-busy', 'true');
+    el.innerHTML = `<i class="fa-solid fa-spinner fa-spin ${spinClass}" aria-hidden="true"></i><span>${loadingText}</span>`;
+    el.style.backgroundColor = '#475569';
+    el.style.color = '#fff';
+    el.style.borderColor = 'transparent';
+    el.style.cursor = 'wait';
+    try {
+        await work();
+    } finally {
+        el.innerHTML = el.dataset.arPrevHtml;
+        el.className = el.dataset.arPrevClass;
+        const ps = el.dataset.arPrevStyle;
+        if (ps) el.setAttribute('style', ps);
+        else el.removeAttribute('style');
+        delete el.dataset.arPrevHtml;
+        delete el.dataset.arPrevClass;
+        delete el.dataset.arPrevStyle;
+        el.removeAttribute('aria-busy');
+        el.disabled = false;
+    }
+}

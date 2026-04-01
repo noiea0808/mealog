@@ -7,7 +7,7 @@ import {
     setFeedPostHiddenByAdmin,
     deleteFeedPostByAdmin
 } from '../db/feed-posts.js';
-import { escapeHtml, fetchAdminEmailsForUserIds } from './utils.js';
+import { escapeHtml, fetchAdminEmailsForUserIds, runAdminRefreshAction } from './utils.js';
 import {
     collection,
     query,
@@ -19,12 +19,20 @@ import {
 } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
 const LOUNGE_PAGE_SIZE = 50;
+const ADMIN_LOUNGE_CACHE_TTL_MS = 3 * 60 * 1000;
+const loungePageCache = new Map();
+
+function invalidateLoungeMonitoringCache() {
+    loungePageCache.clear();
+}
 
 let loungeCurrentPage = 1;
 /** 전체 feedPosts 문서 수(집계) — 번호 1=첫 메시지 계산용 */
 let loungeTotalCount = null;
 /** 페이지별 마지막 문서 스냅샷 — desc 페이지에서 이 문서 다음(더 과거)부터 이어짐 */
 const loungeLastSnapByPage = {};
+/** 밀톡 목록을 한 번이라도 성공적으로 불러온 뒤에만 페이지 이동 등이 이어집니다 */
+let adminLoungeMonitoringLoaded = false;
 
 function resetLoungePagination() {
     loungeCurrentPage = 1;
@@ -32,7 +40,7 @@ function resetLoungePagination() {
     Object.keys(loungeLastSnapByPage).forEach((k) => delete loungeLastSnapByPage[k]);
 }
 
-async function fetchLoungeChatPage(page) {
+async function fetchLoungeChatPageFromNetwork(page) {
     const postsColl = collection(db, 'artifacts', appId, 'feedPosts');
 
     if (page === 1) {
@@ -59,6 +67,31 @@ async function fetchLoungeChatPage(page) {
     const withReactions = await attachReactionCountsToPosts(list);
     const hasMore = snapshot.docs.length === LOUNGE_PAGE_SIZE;
     return { items: withReactions, hasMore, empty: snapshot.docs.length === 0 };
+}
+
+/** TTL 내 동일 페이지는 getDocs/getCount 생략 */
+async function fetchLoungeChatPage(page) {
+    const ent = loungePageCache.get(page);
+    const now = Date.now();
+    if (ent && now - ent.ts < ADMIN_LOUNGE_CACHE_TTL_MS) {
+        loungeTotalCount = ent.totalCount;
+        if (ent.lastSnap) loungeLastSnapByPage[page] = ent.lastSnap;
+        return {
+            items: ent.items,
+            hasMore: ent.hasMore,
+            empty: ent.empty
+        };
+    }
+    const res = await fetchLoungeChatPageFromNetwork(page);
+    loungePageCache.set(page, {
+        ts: now,
+        totalCount: loungeTotalCount,
+        lastSnap: loungeLastSnapByPage[page] ?? null,
+        items: res.items,
+        hasMore: res.hasMore,
+        empty: res.empty
+    });
+    return res;
 }
 
 function formatTs(post) {
@@ -124,6 +157,7 @@ export async function renderLoungeChatManagement() {
         if (empty && loungeCurrentPage === 1) {
             container.innerHTML = '<p class="text-center py-8 text-slate-400">밀톡 메시지가 없습니다.</p>';
             if (pagEl) pagEl.innerHTML = '';
+            adminLoungeMonitoringLoaded = true;
             return;
         }
 
@@ -174,7 +208,9 @@ export async function renderLoungeChatManagement() {
             </div>`;
 
         renderLoungePagination(hasMore);
+        adminLoungeMonitoringLoaded = true;
     } catch (e) {
+        adminLoungeMonitoringLoaded = false;
         console.error('renderLoungeChatManagement', e);
         container.innerHTML = '<p class="text-center py-8 text-red-500">불러오지 못했습니다.</p>';
         if (pagEl) pagEl.innerHTML = '';
@@ -215,9 +251,13 @@ function getSelectedLoungePostIds() {
         .filter(Boolean);
 }
 
-window.refreshLoungeChatManagement = function () {
-    resetLoungePagination();
-    void renderLoungeChatManagement();
+window.refreshLoungeChatManagement = async function () {
+    await runAdminRefreshAction(document.getElementById('adminRefreshLoungeBtn'), async () => {
+        adminLoungeMonitoringLoaded = false;
+        invalidateLoungeMonitoringCache();
+        resetLoungePagination();
+        await renderLoungeChatManagement();
+    });
 };
 
 window.adminLoungeBulkHide = async function () {
@@ -228,6 +268,7 @@ window.adminLoungeBulkHide = async function () {
     }
     try {
         for (const id of ids) await setFeedPostHiddenByAdmin(id, true);
+        invalidateLoungeMonitoringCache();
         alert(`${ids.length}건을 숨겼습니다.`);
         await renderLoungeChatManagement();
     } catch (e) {
@@ -244,6 +285,7 @@ window.adminLoungeBulkUnhide = async function () {
     }
     try {
         for (const id of ids) await setFeedPostHiddenByAdmin(id, false);
+        invalidateLoungeMonitoringCache();
         alert(`${ids.length}건 숨김을 해제했습니다.`);
         await renderLoungeChatManagement();
     } catch (e) {
@@ -261,6 +303,7 @@ window.adminLoungeBulkDelete = async function () {
     if (!confirm(`선택한 ${ids.length}건을 삭제하시겠습니까?`)) return;
     try {
         for (const id of ids) await deleteFeedPostByAdmin(id);
+        invalidateLoungeMonitoringCache();
         alert(`${ids.length}건을 삭제했습니다.`);
         resetLoungePagination();
         await renderLoungeChatManagement();

@@ -130,6 +130,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
+    // 관리 로그 (날짜별 메타 + entries 서브컬렉션) — 관리자만
+    match /artifacts/{appId}/adminLogs/{dateKey} {
+      allow read, write: if isAdmin();
+      match /entries/{entryId} {
+        allow read, write: if isAdmin();
+      }
+    }
+    
     // 사용자 제재 (공유/글쓰기 금지) - 관리자만 읽기/쓰기
     match /artifacts/{appId}/userBans/{userId} {
       allow read, write: if isAdmin();

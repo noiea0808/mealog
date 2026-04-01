@@ -2,7 +2,7 @@
 import { app, db, appId, functions, auth } from '../firebase.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js';
 import { collection, query, orderBy, getDocs, limit, doc, setDoc, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { escapeHtml } from './utils.js';
+import { escapeHtml, runAdminRefreshAction } from './utils.js';
 
 // ========== 푸시메시지 관리 (관리자 브로드캐스트) ==========
 const adminBroadcastPushNowFn = httpsCallable(functions, 'adminBroadcastPushNow');
@@ -156,10 +156,10 @@ export async function loadAdminPushMessagesPage() {
     if (schLandingEl) schLandingEl.value = 'timeline';
     if (schTargetEnvEl) schTargetEnvEl.value = 'staging';
     setAdminPushScheduleMinDatetime();
-    await refreshAdminScheduledPushes();
+    await refreshAdminScheduledPushesCore();
 }
 
-window.refreshAdminScheduledPushes = async function() {
+async function refreshAdminScheduledPushesCore() {
     const container = document.getElementById('adminScheduledPushesContainer');
     if (!container) return;
     container.innerHTML = '<p class="text-center py-8 text-slate-400 text-sm"><i class="fa-solid fa-spinner fa-spin mr-2"></i>불러오는 중…</p>';
@@ -222,13 +222,21 @@ window.refreshAdminScheduledPushes = async function() {
         console.error('예약 푸시 목록 실패:', e);
         container.innerHTML = `<p class="text-center py-8 text-red-400 text-sm px-4">목록을 불러오지 못했습니다. ${escapeHtml(e.message || '')}</p>`;
     }
+}
+
+window.refreshAdminScheduledPushes = async function () {
+    await runAdminRefreshAction(
+        document.getElementById('adminRefreshScheduledPushesBtn'),
+        refreshAdminScheduledPushesCore,
+        { loadingText: '불러오는 중…', tightSpinner: true }
+    );
 };
 
 window.cancelAdminScheduledPush = async function(jobId) {
     if (!jobId || !confirm('이 예약을 취소할까요?')) return;
     try {
         await cancelAdminScheduledPushFn({ jobId });
-        await refreshAdminScheduledPushes();
+        await refreshAdminScheduledPushesCore();
     } catch (e) {
         const msg = String(e?.message || e || '');
         const maybeUndeployedCallable =
@@ -239,7 +247,7 @@ window.cancelAdminScheduledPush = async function(jobId) {
             try {
                 const ref = doc(db, 'artifacts', appId, 'adminScheduledPushes', jobId);
                 await setDoc(ref, { status: 'cancelled', cancelledAt: serverTimestamp() }, { merge: true });
-                await refreshAdminScheduledPushes();
+                await refreshAdminScheduledPushesCore();
                 return;
             } catch (fallbackErr) {
                 console.error('예약 취소 fallback 실패:', fallbackErr);
@@ -256,7 +264,7 @@ window.deleteAdminBroadcastHistory = async function(jobId) {
     if (!jobId || !confirm('이 발송 기록을 삭제할까요?')) return;
     try {
         await deleteAdminBroadcastHistoryFn({ jobId });
-        await refreshAdminScheduledPushes();
+        await refreshAdminScheduledPushesCore();
     } catch (e) {
         const msg = String(e?.message || e || '');
         const maybeUndeployedCallable =
@@ -270,7 +278,7 @@ window.deleteAdminBroadcastHistory = async function(jobId) {
             try {
                 const ref = doc(db, 'artifacts', appId, 'adminScheduledPushes', jobId);
                 await deleteDoc(ref);
-                await refreshAdminScheduledPushes();
+                await refreshAdminScheduledPushesCore();
                 return;
             } catch (fallbackErr) {
                 console.error('발송 기록 삭제 fallback 실패:', fallbackErr);
@@ -425,7 +433,7 @@ window.submitAdminPushSchedule = async function() {
         if (startEl) startEl.value = '';
         if (endEl) endEl.value = '';
         setAdminPushScheduleMinDatetime();
-        await refreshAdminScheduledPushes();
+        await refreshAdminScheduledPushesCore();
     } catch (e) {
         console.error(e);
         alert('예약 등록 실패: ' + (e.message || e));

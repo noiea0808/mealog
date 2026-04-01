@@ -15,7 +15,7 @@ import {
     Timestamp,
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { getSharedPhotoGroupKey, dateKeyFromLocalDate, getLast7DateKeys, getTodayDateString, escapeHtml } from './utils.js';
+import { getSharedPhotoGroupKey, dateKeyFromLocalDate, getLast7DateKeys, getTodayDateString, escapeHtml, runAdminRefreshAction } from './utils.js';
 
 const DASHBOARD_7D_ROW_PREFIXES = [
     'statGuestVisits7d', 'statNewUsers7d', 'statActiveUsers7d', 'statRecords7d', 'statShared7d'
@@ -24,11 +24,6 @@ const DASHBOARD_7D_ROW_PREFIXES = [
 const DASHBOARD_7_SUM_IDS = [
     'statGuestVisits7Sum', 'statNewUsers7Sum', 'statActiveUsers7Sum', 'statRecords7Sum', 'statShared7Sum'
 ];
-
-const DASHBOARD_STATS_REFRESH_BTN_IDLE_HTML =
-    '<i class="fa-solid fa-rotate-right" aria-hidden="true"></i><span>통계 새로고침</span>';
-const DASHBOARD_STATS_REFRESH_BTN_LOADING_HTML =
-    '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span>집계 중…</span>';
 
 /** 일별 7칸이 있으면 합계, 없으면 null */
 function sumSevenDaily(values) {
@@ -543,36 +538,29 @@ export async function updateStatistics() {
 
 // 통계 새로고침: 전체 집계 후 캐시 문서에 저장 (이때만 DB 다량 읽기)
 export async function refreshDashboardStats() {
-    const btn = document.getElementById('dashboardStatsRefreshBtn');
     try {
-        if (btn) {
-            btn.disabled = true;
-            btn.setAttribute('aria-busy', 'true');
-            btn.innerHTML = DASHBOARD_STATS_REFRESH_BTN_LOADING_HTML;
-        }
-        const stats = await getUserStatistics();
-        const payload = {
-            guestVisits: stats.guestVisits,
-            newUsers: stats.newUsers,
-            activeUsers: stats.activeUsers,
-            records: stats.records,
-            sharedPhotos: stats.sharedPhotos,
-            last7Breakdown: stats.last7Breakdown || null,
-            asOfDate: getTodayDateString(), // 전일까지 집계 기준일 (당일 로드 시 이 날짜 이전이면 당일만 경량 조회)
-            updatedAt: serverTimestamp()
-        };
-        await setDoc(DASHBOARD_STATS_REF(), payload);
-        renderDashboardStats(stats, new Date(), stats.last7Breakdown);
+        await runAdminRefreshAction(
+            document.getElementById('dashboardStatsRefreshBtn'),
+            async () => {
+                const stats = await getUserStatistics();
+                const payload = {
+                    guestVisits: stats.guestVisits,
+                    newUsers: stats.newUsers,
+                    activeUsers: stats.activeUsers,
+                    records: stats.records,
+                    sharedPhotos: stats.sharedPhotos,
+                    last7Breakdown: stats.last7Breakdown || null,
+                    asOfDate: getTodayDateString(),
+                    updatedAt: serverTimestamp()
+                };
+                await setDoc(DASHBOARD_STATS_REF(), payload);
+                renderDashboardStats(stats, new Date(), stats.last7Breakdown);
+            },
+            { loadingText: '집계 중…' }
+        );
     } catch (e) {
-        console.error("통계 새로고침 실패:", e);
-        alert("통계 새로고침 중 오류가 발생했습니다: " + (e.message || e));
-    } finally {
-        const b = document.getElementById('dashboardStatsRefreshBtn');
-        if (b) {
-            b.disabled = false;
-            b.removeAttribute('aria-busy');
-            b.innerHTML = DASHBOARD_STATS_REFRESH_BTN_IDLE_HTML;
-        }
+        console.error('통계 새로고침 실패:', e);
+        alert('통계 새로고침 중 오류가 발생했습니다: ' + (e.message || e));
     }
 }
 

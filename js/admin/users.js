@@ -3,7 +3,7 @@ import { app, db, appId, functions, auth } from '../firebase.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js';
 import { collection, getDocs, query, orderBy, limit, startAfter, doc, getDoc, setDoc, where, addDoc, serverTimestamp, getCountFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { getCurrentTermsVersion } from '../utils-terms.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, runAdminRefreshAction } from './utils.js';
 
 // 사용자 테이블 정렬 상태/캐시
 let usersCache = null; // 서버 페이지 모드일 때만: 현재 페이지 원본
@@ -69,6 +69,8 @@ let adminUsersLastDocsByPage = {};
 let adminUsersTotalCount = 0;
 let adminUsersCurrentPage = 1;
 let adminUsersListPage = 1;
+/** 새로고침으로 목록을 한 번 불러온 뒤에만 페이지·정렬·재조회가 동작 */
+let adminUsersDataLoaded = false;
 
 function normalizeString(v) {
     return (v === undefined || v === null) ? '' : String(v);
@@ -235,6 +237,10 @@ function updateUsersSortHeaderUI() {
     });
 }
 
+export function ensureAdminUsersSortHandlers() {
+    initUsersSortHandlers();
+}
+
 function initUsersSortHandlers() {
     const buttons = document.querySelectorAll('.admin-users-sort');
     if (!buttons || buttons.length === 0) return;
@@ -243,6 +249,10 @@ function initUsersSortHandlers() {
         if (btn.dataset.sortBound === '1') return;
         btn.dataset.sortBound = '1';
         btn.addEventListener('click', () => {
+            if (!adminUsersDataLoaded) {
+                alert('먼저 새로고침으로 목록을 불러오세요.');
+                return;
+            }
             const key = btn.getAttribute('data-sort-key');
             if (!key) return;
             if (usersSortState.key === key) {
@@ -471,9 +481,21 @@ export async function renderUsers(options = {}) {
         console.error('usersContainer를 찾을 수 없습니다.');
         return;
     }
-    
-    container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
-    
+
+    const mayFetch = options.forceNetwork === true || adminUsersDataLoaded || options.loadFullListForSort === true;
+    if (!mayFetch) {
+        container.innerHTML =
+            '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-rotate-right text-2xl mb-2 opacity-40" aria-hidden="true"></i><p class="text-sm">상단 <strong class="text-slate-600">새로고침</strong>으로 목록을 불러옵니다.</p></td></tr>';
+        const infoEl = document.getElementById('adminUsersListPaginationInfo');
+        const navEl = document.getElementById('adminUsersListPagination');
+        if (infoEl) infoEl.textContent = '—';
+        if (navEl) navEl.innerHTML = '';
+        return;
+    }
+
+    container.innerHTML =
+        '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
+
     try {
         console.log('renderUsers 시작');
         // 헤더 정렬 핸들러는 한 번만 바인딩
@@ -514,6 +536,7 @@ export async function renderUsers(options = {}) {
             container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
             updateAdminUsersListPagination(adminUsersTotalCount, Math.max(1, Math.ceil(adminUsersTotalCount / USERS_PER_PAGE)));
             try { applyAdminUsersPageVisibility(adminUsersCurrentPage); } catch (_) {}
+            adminUsersDataLoaded = true;
             return;
         }
         
@@ -657,7 +680,9 @@ export async function renderUsers(options = {}) {
         }).join('');
         initAdminUsersSelectAll();
         applyAdminUsersPageVisibility(typeof adminUsersCurrentPage !== 'undefined' ? adminUsersCurrentPage : 1);
+        adminUsersDataLoaded = true;
     } catch (e) {
+        adminUsersDataLoaded = false;
         console.error("사용자 목록 렌더링 실패:", e);
         const errMsg = (e && (e.message || e.code || String(e))) || '알 수 없는 오류';
         container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
@@ -678,7 +703,11 @@ function updateAdminUsersListPagination(totalCount, totalPages) {
     prevBtn.className = 'px-2 py-1 rounded text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed';
     prevBtn.textContent = '이전';
     prevBtn.disabled = adminUsersListPage <= 1;
-    prevBtn.onclick = () => { adminUsersListPage = Math.max(1, adminUsersListPage - 1); renderUsers(); };
+    prevBtn.onclick = () => {
+        if (!adminUsersDataLoaded) return;
+        adminUsersListPage = Math.max(1, adminUsersListPage - 1);
+        renderUsers();
+    };
     navEl.appendChild(prevBtn);
     const maxButtons = 7;
     let from = Math.max(1, adminUsersListPage - Math.floor(maxButtons / 2));
@@ -689,7 +718,11 @@ function updateAdminUsersListPagination(totalCount, totalPages) {
         btn.type = 'button';
         btn.className = 'admin-users-list-page-btn min-w-[1.75rem] px-2 py-1 rounded text-xs font-bold transition-colors ' + (p === adminUsersListPage ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600 hover:bg-slate-200');
         btn.textContent = String(p);
-        btn.onclick = () => { adminUsersListPage = p; renderUsers(); };
+        btn.onclick = () => {
+            if (!adminUsersDataLoaded) return;
+            adminUsersListPage = p;
+            renderUsers();
+        };
         navEl.appendChild(btn);
     }
     const nextBtn = document.createElement('button');
@@ -697,7 +730,11 @@ function updateAdminUsersListPagination(totalCount, totalPages) {
     nextBtn.className = 'px-2 py-1 rounded text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed';
     nextBtn.textContent = '다음';
     nextBtn.disabled = adminUsersListPage >= totalPages;
-    nextBtn.onclick = () => { adminUsersListPage = Math.min(totalPages, adminUsersListPage + 1); renderUsers(); };
+    nextBtn.onclick = () => {
+        if (!adminUsersDataLoaded) return;
+        adminUsersListPage = Math.min(totalPages, adminUsersListPage + 1);
+        renderUsers();
+    };
     navEl.appendChild(nextBtn);
 }
 
@@ -743,6 +780,7 @@ export function switchAdminUsersPage(pageNum) {
 
 export function switchAdminUsersListPage(pageNum) {
     if (pageNum < 1) return;
+    if (!adminUsersDataLoaded) return;
     adminUsersListPage = pageNum;
     renderUsers();
 }
@@ -797,7 +835,7 @@ export async function processDeleteUserRequests() {
             alert(msg);
         }
         invalidateUsersTableCache();
-        renderUsers();
+        if (adminUsersDataLoaded) await renderUsers();
     } catch (e) {
         console.error('삭제 요청 처리 실패:', e);
         alert('삭제 요청 처리 중 오류가 발생했습니다: ' + (e.message || e));
@@ -843,7 +881,7 @@ export async function adminUserDeleteSelected() {
             console.error('삭제 요청 처리 실패:', e);
             alert('삭제 요청은 접수되었으나 즉시 처리에 실패했습니다.\n"삭제 요청 처리" 버튼을 눌러 다시 시도해 주세요.\n\n' + (e.message || e));
         }
-        renderUsers();
+        if (adminUsersDataLoaded) await renderUsers();
     } catch (e) {
         console.error('삭제 요청 실패:', e);
         alert('삭제 요청 중 오류가 발생했습니다: ' + (e.message || e));
@@ -876,7 +914,7 @@ export async function adminUserBanShare(value) {
         }
         alert(value ? `선택한 ${ids.length}명에게 공유 금지를 적용했습니다.` : `선택한 ${ids.length}명의 공유 금지를 해제했습니다.`);
         invalidateUsersTableCache();
-        renderUsers();
+        if (adminUsersDataLoaded) await renderUsers();
     } catch (e) {
         console.error('공유 금지 설정 실패:', e);
         alert('설정 중 오류가 발생했습니다: ' + (e.message || e));
@@ -909,7 +947,7 @@ export async function adminUserBanWrite(value) {
         }
         alert(value ? `선택한 ${ids.length}명에게 글쓰기(댓글) 금지를 적용했습니다.` : `선택한 ${ids.length}명의 글쓰기 금지를 해제했습니다.`);
         invalidateUsersTableCache();
-        renderUsers();
+        if (adminUsersDataLoaded) await renderUsers();
     } catch (e) {
         console.error('글쓰기 금지 설정 실패:', e);
         alert('설정 중 오류가 발생했습니다: ' + (e.message || e));
@@ -917,7 +955,9 @@ export async function adminUserBanWrite(value) {
 }
 
 // 사용자 목록 새로고침
-export function refreshUsers() {
-    invalidateUsersTableCache();
-    renderUsers();
+export async function refreshUsers() {
+    await runAdminRefreshAction(document.getElementById('adminUsersRefreshBtn'), async () => {
+        invalidateUsersTableCache();
+        await renderUsers({ forceNetwork: true });
+    });
 }

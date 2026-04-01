@@ -102,6 +102,9 @@
                     <button onclick="window.switchAdminTab('content')" id="admin-tab-content" class="admin-tab flex-1 px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
                         <i class="fa-solid fa-file-lines mr-2"></i>콘텐츠 관리
                     </button>
+                    <button onclick="window.switchAdminTab('adminLog')" id="admin-tab-adminLog" class="admin-tab flex-1 px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
+                        <i class="fa-solid fa-clipboard-list mr-2"></i>관리 로그
+                    </button>
                 </div>
             </div>
         </header>
@@ -268,8 +271,8 @@
                                             <button onclick="window.toggleFeedFilter('banned')" id="feed-filter-banned-toggle" class="feed-filter-toggle px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors">전체</button>
                                         </div>
                                         <div class="flex gap-2 items-center ml-auto">
-                                            <button onclick="window.refreshFeedManagement()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                                <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                            <button type="button" id="adminRefreshFeedBtn" onclick="window.refreshFeedManagement()" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                <i class="fa-solid fa-sync-alt" aria-hidden="true"></i><span>새로고침</span>
                                             </button>
                                             <button onclick="window.bulkUnsharePosts()" class="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">
                                                 <i class="fa-solid fa-share-slash mr-1"></i>공유 취소
@@ -286,8 +289,8 @@
                                 <div class="p-6">
                                     <div id="feedManagementContainer" class="space-y-4">
                                         <div class="text-center py-8 text-slate-400">
-                                            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
-                                            <p>로딩 중...</p>
+                                            <i class="fa-solid fa-rotate-right text-2xl mb-2 opacity-40" aria-hidden="true"></i>
+                                            <p class="text-sm">우측 상단 <strong class="text-slate-600">새로고침</strong>으로 목록을 불러옵니다.</p>
                                         </div>
                                     </div>
                                     <!-- 페이지네이션 -->
@@ -303,8 +306,8 @@
                                     <div class="flex flex-wrap gap-2 items-center justify-between">
                                         <p class="text-sm text-slate-600">라운지 밀톡(채팅) 메시지입니다. 숨김 시 앱에서는 보이지 않습니다.</p>
                                         <div class="flex flex-wrap gap-2">
-                                            <button type="button" onclick="window.refreshLoungeChatManagement()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                                <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                            <button type="button" id="adminRefreshLoungeBtn" onclick="window.refreshLoungeChatManagement()" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                <i class="fa-solid fa-sync-alt" aria-hidden="true"></i><span>새로고침</span>
                                             </button>
                                             <button type="button" onclick="window.adminLoungeBulkHide()" class="px-3 py-2 bg-amber-100 text-amber-700 rounded-lg text-xs font-bold hover:bg-amber-200 transition-colors">
                                                 <i class="fa-solid fa-eye-slash mr-1"></i>숨기기
@@ -321,8 +324,8 @@
                                 <div class="p-6">
                                     <div id="loungeChatManagementTableWrap" class="min-h-[120px]">
                                         <div class="text-center py-8 text-slate-400">
-                                            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
-                                            <p>로딩 중...</p>
+                                            <i class="fa-solid fa-rotate-right text-2xl mb-2 opacity-40" aria-hidden="true"></i>
+                                            <p class="text-sm">상단 <strong class="text-slate-600">새로고침</strong>으로 목록을 불러옵니다.</p>
                                         </div>
                                     </div>
                                     <div id="loungeChatPagination" class="mt-6 flex justify-center items-center gap-2"></div>
@@ -344,8 +347,8 @@
                                             <button onclick="window.setAdminBoardCategory('admin')" id="admin-board-category-admin" class="admin-board-category-btn px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold whitespace-nowrap">치프에게</button>
                                         </div>
                                         <div class="flex gap-2 items-center ml-auto flex-shrink-0">
-                                            <button onclick="window.refreshBoardPosts()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                                <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                            <button type="button" id="adminRefreshBoardBtn" onclick="window.refreshBoardPosts()" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                <i class="fa-solid fa-sync-alt" aria-hidden="true"></i><span>새로고침</span>
                                             </button>
                                             <button onclick="window.adminBoardBulkHide()" class="px-3 py-2 bg-amber-100 text-amber-600 rounded-lg text-xs font-bold hover:bg-amber-200 transition-colors">
                                                 <i class="fa-solid fa-eye-slash mr-1"></i>가리기
@@ -364,8 +367,8 @@
                                     <div id="boardListPage" class="board-admin-page">
                                         <div id="boardPostsContainer" class="space-y-4">
                                             <div class="text-center py-8 text-slate-400">
-                                                <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
-                                                <p>로딩 중...</p>
+                                                <i class="fa-solid fa-rotate-right text-2xl mb-2 opacity-40" aria-hidden="true"></i>
+                                                <p class="text-sm">상단 <strong class="text-slate-600">새로고침</strong>으로 목록을 불러옵니다.</p>
                                             </div>
                                         </div>
                                     </div>
@@ -421,8 +424,8 @@
                                             <i class="fa-solid fa-cookie mr-1"></i>간식
                                         </button>
                                         <div class="ml-auto">
-                                            <button onclick="window.refreshRestaurantData()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                                <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                            <button type="button" id="adminRefreshRestaurantsBtn" onclick="window.refreshRestaurantData()" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                <i class="fa-solid fa-sync-alt" aria-hidden="true"></i><span>새로고침</span>
                                             </button>
                                         </div>
                                     </div>
@@ -430,8 +433,8 @@
                                 <div class="p-6 pt-0">
                                     <div id="restaurantsContainer" class="space-y-4">
                                         <div class="text-center py-8 text-slate-400">
-                                            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
-                                            <p>로딩 중...</p>
+                                            <i class="fa-solid fa-rotate-right text-2xl mb-2 opacity-40" aria-hidden="true"></i>
+                                            <p class="text-sm">필터 옆 <strong class="text-slate-600">새로고침</strong>으로 집계를 불러옵니다. (전체 스캔은 새로고침 시에만)</p>
                                         </div>
                                     </div>
                                 </div>
@@ -483,8 +486,8 @@
                                     <button type="button" id="adminUsersPage2" onclick="window.switchAdminUsersPage(2)" class="admin-users-page-btn px-3 py-1.5 rounded-md text-sm font-bold transition-colors bg-transparent text-slate-600 hover:bg-slate-200/50" aria-pressed="false">통계</button>
                                 </div>
                                 <span class="w-px h-5 bg-slate-200" aria-hidden="true"></span>
-                                <button onclick="window.refreshUsers()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                    <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                <button type="button" id="adminUsersRefreshBtn" onclick="window.refreshUsers()" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                    <i class="fa-solid fa-sync-alt" aria-hidden="true"></i><span>새로고침</span>
                                 </button>
                                 <button type="button" onclick="window.adminUserDeleteSelected()" class="px-3 py-2 bg-red-100 text-red-700 rounded-xl text-xs font-bold hover:bg-red-200 transition-colors">
                                     선택 삭제
@@ -594,8 +597,8 @@
                                 <tbody id="usersContainer" class="divide-y divide-slate-100">
                                     <tr>
                                         <td colspan="15" class="px-4 py-8 text-center text-slate-400">
-                                            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
-                                            <p>로딩 중...</p>
+                                            <i class="fa-solid fa-rotate-right text-2xl mb-2 opacity-40" aria-hidden="true"></i>
+                                            <p class="text-sm">상단 <strong class="text-slate-600">새로고침</strong>으로 목록을 불러옵니다.</p>
                                         </td>
                                     </tr>
                                 </tbody>
@@ -873,8 +876,8 @@
                                     <div>
                                         <div class="flex items-center justify-between gap-2 mb-2">
                                             <h3 class="text-sm font-bold text-slate-600">발송 기록</h3>
-                                            <button type="button" onclick="window.refreshAdminScheduledPushes()" class="text-xs font-bold text-slate-500 hover:text-violet-600 px-2 py-1 rounded-lg hover:bg-slate-100 transition-colors">
-                                                <i class="fa-solid fa-arrows-rotate mr-1"></i>새로고침
+                                            <button type="button" id="adminRefreshScheduledPushesBtn" onclick="window.refreshAdminScheduledPushes()" class="inline-flex items-center justify-center gap-1 text-xs font-bold text-slate-500 hover:text-violet-600 px-2 py-1 rounded-lg hover:bg-slate-100 transition-colors">
+                                                <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i><span>새로고침</span>
                                             </button>
                                         </div>
                                         <div id="adminScheduledPushesContainer" class="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/30 min-h-[100px]">
@@ -900,8 +903,8 @@
                                     <div id="popupListPage" class="popup-admin-page">
                                         <div class="flex items-center justify-between gap-3 mb-3">
                                             <h3 class="text-sm font-bold text-slate-500">팝업 목록</h3>
-                                            <button type="button" id="popupRefreshStatsBtn" onclick="window.refreshPopupsStats()" class="px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors" title="조회수·클릭수 새로고침">
-                                                <i class="fa-solid fa-arrows-rotate mr-1"></i>재조회
+                                            <button type="button" id="popupRefreshStatsBtn" onclick="window.refreshPopupsStats()" class="inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors" title="조회수·클릭수 새로고침">
+                                                <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i><span>재조회</span>
                                             </button>
                                         </div>
                                         <div id="popupsContainer" class="space-y-2 border border-slate-200 rounded-xl overflow-hidden">
@@ -1028,8 +1031,8 @@
                                             <span>조회 <span id="loginBannerViewCount" class="font-bold text-slate-800">0</span></span>
                                             <span>클릭 <span id="loginBannerClickCount" class="font-bold text-slate-800">0</span></span>
                                         </div>
-                                        <button type="button" id="loginBannerRefreshStatsBtn" onclick="window.refreshLoginBannerStats()" class="px-3 py-1.5 text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg transition-colors shrink-0" title="조회수·클릭수 새로고침">
-                                            <i class="fa-solid fa-arrows-rotate mr-1"></i>재조회
+                                        <button type="button" id="loginBannerRefreshStatsBtn" onclick="window.refreshLoginBannerStats()" class="inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg transition-colors shrink-0" title="조회수·클릭수 새로고침">
+                                            <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i><span>재조회</span>
                                         </button>
                                     </div>
                                 </div>
@@ -1148,8 +1151,8 @@
                                             <button onclick="window.saveMealogComments()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
                                                 <i class="fa-solid fa-save mr-2"></i>저장
                                             </button>
-                                            <button onclick="window.refreshPersona()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                                <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                            <button type="button" onclick="window.refreshPersona(this)" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                <i class="fa-solid fa-sync-alt" aria-hidden="true"></i><span>새로고침</span>
                                             </button>
                                         </div>
                                     </div>
@@ -1206,8 +1209,8 @@
                                                 <button onclick="window.saveCharacter()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
                                                     <i class="fa-solid fa-save mr-2"></i>저장
                                                 </button>
-                                                <button onclick="window.refreshPersona()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                                    <i class="fa-solid fa-sync-alt mr-2"></i>새로고침
+                                                <button type="button" onclick="window.refreshPersona(this)" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                    <i class="fa-solid fa-sync-alt" aria-hidden="true"></i><span>새로고침</span>
                                                 </button>
                                             </div>
                                         </div>
@@ -1497,6 +1500,35 @@
                             </div>
                         </div>
                         
+                    </div>
+                </div>
+            </div>
+
+            <!-- 관리 로그 탭 (날짜별 운영 메모) -->
+            <div id="admin-tab-content-adminLog" class="admin-tab-content hidden">
+                <div class="flex flex-col lg:flex-row gap-4">
+                    <aside class="w-full lg:w-56 shrink-0 flex flex-col gap-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
+                        <button type="button" id="adminLogAddBtn" class="w-full py-2.5 px-3 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-plus"></i>추가
+                        </button>
+                        <div id="adminLogDateList" class="flex flex-col gap-2"></div>
+                    </aside>
+                    <div class="flex-1 min-w-0 flex flex-col bg-white rounded-2xl shadow-sm border border-slate-100">
+                        <div class="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                                <h2 class="text-lg font-black text-slate-800">관리 로그</h2>
+                                <p id="adminLogSelectedDateLabel" class="text-xs text-slate-500 mt-1 font-mono">날짜를 선택하세요</p>
+                            </div>
+                            <button type="button" id="adminLogAddBlockBtn" disabled class="px-4 py-2.5 bg-slate-700 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:pointer-events-none">
+                                <i class="fa-solid fa-plus mr-2"></i>블록 추가
+                            </button>
+                        </div>
+                        <div class="flex-1 flex flex-col p-5">
+                            <p id="adminLogEmptyHint" class="text-sm text-slate-400 py-8 text-center">왼쪽에서 날짜를 선택하거나 「추가」로 오늘 블록을 만드세요.</p>
+                            <div id="adminLogEntriesWrap" class="hidden flex flex-col">
+                                <div id="adminLogEntriesContainer" class="flex flex-col gap-4"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

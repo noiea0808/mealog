@@ -3,7 +3,7 @@
  */
 import { app, db, appId, callableFunctions, auth } from '../firebase.js';
 import { uploadPersonaImageToStorage } from '../utils.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, runAdminRefreshAction } from './utils.js';
 import {
     collection,
     doc,
@@ -892,21 +892,24 @@ async function renderPersonaSettings() {
 }
 
 // 페르소나 새로고침 (콘텐츠 관리로 이동)
-window.refreshPersona = function() {
-    const activeSection = document.querySelector('.content-main-section:not(.hidden)');
-    if (activeSection) {
-        const sectionId = activeSection.id.replace('content-main-', '');
-        if (['notice', 'pushMessage', 'popup', 'loginBanner'].includes(sectionId)) {
-            window.switchAdminTab('alerts');
-            setTimeout(() => window.switchAlertsSidebar(sectionId), 0);
-            return;
+window.refreshPersona = async function (buttonEl) {
+    await runAdminRefreshAction(buttonEl || null, async () => {
+        const activeSection = document.querySelector('.content-main-section:not(.hidden)');
+        if (activeSection) {
+            const sectionId = activeSection.id.replace('content-main-', '');
+            if (['notice', 'pushMessage', 'popup', 'loginBanner'].includes(sectionId)) {
+                window.switchAdminTab('alerts');
+                await new Promise((r) => setTimeout(r, 0));
+                window.switchAlertsSidebar(sectionId);
+                return;
+            }
+            if (sectionId === 'mealog' || sectionId === 'characters') {
+                window.switchContentSidebar(sectionId);
+            }
+        } else {
+            window.switchContentSidebar('mealog');
         }
-        if (sectionId === 'mealog' || sectionId === 'characters') {
-            window.switchContentSidebar(sectionId);
-        }
-    } else {
-        window.switchContentSidebar('mealog');
-    }
+    });
 };
 
 export { loadMealogComments, showCharacterListView };

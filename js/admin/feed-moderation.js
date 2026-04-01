@@ -4,7 +4,7 @@
 import { db, appId } from '../firebase.js';
 import { getReportsAggregateByGroupKeys } from '../db.js';
 import { REPORT_REASONS } from '../constants.js';
-import { escapeHtml, fetchAdminEmailsForUserIds } from './utils.js';
+import { escapeHtml, fetchAdminEmailsForUserIds, runAdminRefreshAction } from './utils.js';
 import {
     collection,
     collectionGroup,
@@ -31,6 +31,59 @@ let feedCurrentPage = 1;
 const feedPageSize = 20;
 let feedLastDocsByPage = {};
 let feedTotalCount = 0;
+/** 모먼트 목록을 한 번이라도 성공적으로 불러온 뒤에만 필터·페이지 이동이 Firestore를 다시 칩니다 */
+let adminFeedMonitoringLoaded = false;
+// 공유 키 캐시 — ensureSharedKeysForMeals에서 채움; 무효화 시 null
+let feedSharedKeysCache = null;
+
+/** 모먼트: 페이지 쿼리·신고 집계·유저 설정 조회 TTL 캐시 (새로고침·데이터 변경 시 무효화) */
+const ADMIN_FEED_CACHE_TTL_MS = 3 * 60 * 1000;
+const feedQueryCache = new Map();
+let feedReportsAggCache = { ts: 0, map: null };
+const feedUserSettingsCache = new Map();
+
+function invalidateAdminFeedMonitoringCache() {
+    feedQueryCache.clear();
+    feedReportsAggCache = { ts: 0, map: null };
+    feedUserSettingsCache.clear();
+    feedSharedKeysCache = null;
+}
+
+function feedQueryCacheKey(page) {
+    return `${mealsAdminUseDateTimeSort ? 'dt' : 'd'}_${page}`;
+}
+
+async function getReportsAggregateCached() {
+    const now = Date.now();
+    if (feedReportsAggCache.map && now - feedReportsAggCache.ts < ADMIN_FEED_CACHE_TTL_MS) {
+        return feedReportsAggCache.map;
+    }
+    const map = await getReportsAggregateByGroupKeys();
+    feedReportsAggCache = { ts: now, map };
+    return map;
+}
+
+/**
+ * 동일 정렬·페이지에 대해 TTL 내 재요청 시 getDocs/getCount 생략
+ */
+async function getFeedPageWithCache(page) {
+    const key = feedQueryCacheKey(page);
+    const ent = feedQueryCache.get(key);
+    const now = Date.now();
+    if (ent && now - ent.ts < ADMIN_FEED_CACHE_TTL_MS) {
+        if (page === 1) feedTotalCount = ent.totalCount;
+        if (ent.lastDoc) feedLastDocsByPage[page] = ent.lastDoc;
+        return ent.items;
+    }
+    const { items } = await getFeedPage({ page, pageSize: feedPageSize });
+    feedQueryCache.set(key, {
+        ts: now,
+        items,
+        totalCount: feedTotalCount,
+        lastDoc: feedLastDocsByPage[page] ?? null
+    });
+    return items;
+}
 
 /**
  * true: collectionGroup(meals) 를 date DESC, time DESC 로 페이지네이션 (관리자 모니터링 기본).
@@ -83,15 +136,13 @@ async function getFeedPage(options = {}) {
             );
             mealsAdminUseDateTimeSort = false;
             feedLastDocsByPage = {};
+            feedQueryCache.clear();
             return getFeedPage(options);
         }
         console.error('getFeedPage error:', e);
         throw e;
     }
 }
-
-// 공유된 게시물 키 캐시 (userId_entryId) — 현재 목록에 필요한 조합만 sharedPhotos에서 조회해 누적 (전체 컬렉션 스캔 제거)
-let feedSharedKeysCache = null;
 
 /** 현재 페이지 meals 기준으로 공유 여부 조회. entryId+userId 일치 문서만 캐시에 넣음 (일간/베스트 등 타입은 기존과 동일 한계). */
 async function ensureSharedKeysForMeals(meals) {
@@ -139,8 +190,7 @@ async function renderFeedManagement() {
     
     try {
         console.log('📋 피드 관리: 페이지', feedCurrentPage, '로드 중... (페이지 단위)');
-        const { items } = await getFeedPage({ page: feedCurrentPage, pageSize: feedPageSize });
-        const allMeals = items;
+        const allMeals = await getFeedPageWithCache(feedCurrentPage);
         await ensureSharedKeysForMeals(allMeals);
         
         // 필터 적용 (일반 게시물만 — 타임라인 전체 표시, 공유 여부는 캐시로 판별)
@@ -225,15 +275,23 @@ async function renderFeedManagement() {
             Promise.all(
                 userIdsToFetch.map(async (uid) => {
                     if (userInfoMap.has(uid)) return;
+                    const now = Date.now();
+                    const hit = feedUserSettingsCache.get(uid);
+                    if (hit && now - hit.ts < ADMIN_FEED_CACHE_TTL_MS) {
+                        userInfoMap.set(uid, { nickname: hit.nickname, icon: hit.icon, email: '' });
+                        return;
+                    }
                     try {
                         const settingsSnap = await getDoc(doc(db, 'artifacts', appId, 'users', uid, 'config', 'settings'));
                         if (settingsSnap.exists()) {
                             const s = settingsSnap.data();
-                            userInfoMap.set(uid, {
+                            const row = {
                                 nickname: s.profile?.nickname || '익명',
                                 icon: s.profile?.icon || '🐻',
                                 email: ''
-                            });
+                            };
+                            feedUserSettingsCache.set(uid, { ts: now, nickname: row.nickname, icon: row.icon });
+                            userInfoMap.set(uid, row);
                         }
                     } catch (e) {
                         console.warn('사용자 정보 조회 실패:', uid, e);
@@ -249,10 +307,11 @@ async function renderFeedManagement() {
         
         if (paginatedMeals.length === 0) {
             container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-images text-2xl mb-2"></i><p>게시물이 없습니다.</p></div>';
+            adminFeedMonitoringLoaded = true;
             return;
         }
         
-        const reportsMap = await getReportsAggregateByGroupKeys();
+        const reportsMap = await getReportsAggregateCached();
         window._feedReportDetails = {};
 
         const fmtDateTimeParts = (meal) => {
@@ -467,8 +526,9 @@ async function renderFeedManagement() {
         
         // 토글 버튼 색상 업데이트
         updateFeedFilterToggleColors();
-        
+        adminFeedMonitoringLoaded = true;
     } catch (e) {
+        adminFeedMonitoringLoaded = false;
         console.error("피드 관리 렌더링 실패:", e);
         const msg = e?.message || '';
         const isIndexError = /COLLECTION_GROUP.*index|requires.*index/i.test(msg);
@@ -564,31 +624,36 @@ window.toggleFeedFilter = function(filterType) {
         }
     }
     
+    if (!adminFeedMonitoringLoaded) return;
     feedCurrentPage = 1;
     renderFeedManagement();
 }
 
 // 피드 페이지 이동 (해당 페이지로 가기 위해 필요한 커서가 없으면 이전 페이지들 순차 로드)
 window.feedGoToPage = async function(page) {
+    if (!adminFeedMonitoringLoaded) return;
     if (page < 1) return;
     const totalPages = Math.max(1, Math.ceil(feedTotalCount / feedPageSize));
     const targetPage = Math.min(page, totalPages);
     for (let p = 2; p < targetPage; p++) {
-        if (!feedLastDocsByPage[p]) await getFeedPage({ page: p });
+        if (!feedLastDocsByPage[p]) await getFeedPageWithCache(p);
     }
     feedCurrentPage = targetPage;
     renderFeedManagement();
 }
 
 // 피드 관리 새로고침
-window.refreshFeedManagement = function() {
-    feedCurrentPage = 1;
-    feedLastDocsByPage = {};
-    feedTotalCount = 0;
-    feedSharedKeysCache = null;
-    mealsAdminUseDateTimeSort = true;
-    renderFeedManagement();
-}
+window.refreshFeedManagement = async function () {
+    await runAdminRefreshAction(document.getElementById('adminRefreshFeedBtn'), async () => {
+        adminFeedMonitoringLoaded = false;
+        invalidateAdminFeedMonitoringCache();
+        feedCurrentPage = 1;
+        feedLastDocsByPage = {};
+        feedTotalCount = 0;
+        mealsAdminUseDateTimeSort = true;
+        await renderFeedManagement();
+    });
+};
 
 // 신고 상세 팝업 (사유별 건수)
 window.showReportDetailPopup = function(targetGroupKey) {
@@ -739,7 +804,7 @@ window.bulkUnsharePosts = async function() {
         // 배치 커밋 (meal 문서 업데이트 + sharedPhotos 컬렉션 삭제 모두 포함)
         await batch.commit();
         
-        feedSharedKeysCache = null;
+        invalidateAdminFeedMonitoringCache();
         alert(`${count}개의 게시물 공유가 취소되었습니다. (${sharedPhotosDeleteCount}개의 공유 사진 삭제)`);
         await renderFeedManagement();
     } catch (e) {
@@ -831,7 +896,7 @@ window.bulkBanPosts = async function() {
         // 배치 커밋 (meal 문서 업데이트 + sharedPhotos 컬렉션 삭제 모두 포함)
         await batch.commit();
         
-        feedSharedKeysCache = null;
+        invalidateAdminFeedMonitoringCache();
         alert(`${count}개의 게시물이 공유 금지되었습니다. (공유 컬렉션에서 ${sharedPhotosDeleteCount}개 삭제)`);
         renderFeedManagement();
     } catch (e) {
@@ -1036,7 +1101,7 @@ window.syncSharedPhotos = async function(mealId, userId) {
         });
         
         await batch.commit();
-        feedSharedKeysCache = null;
+        invalidateAdminFeedMonitoringCache();
         alert(`${newPhotos.length}개의 사진이 공유 컬렉션에 추가되었습니다.`);
         renderFeedManagement();
     } catch (e) {
@@ -1129,7 +1194,7 @@ window.checkAndCleanDuplicates = async function(mealId) {
         
         if (deleteCount > 0) {
             await batch.commit();
-            feedSharedKeysCache = null;
+            invalidateAdminFeedMonitoringCache();
             alert(`중복 문서 ${deleteCount}개가 삭제되었습니다.`);
             renderFeedManagement();
         } else {
@@ -1169,7 +1234,7 @@ window.bulkUnbanPosts = async function() {
     
     try {
         await batch.commit();
-        feedSharedKeysCache = null;
+        invalidateAdminFeedMonitoringCache();
         alert(`${count}개의 게시물 공유 금지가 해제되었습니다.`);
         renderFeedManagement();
     } catch (e) {

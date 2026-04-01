@@ -17,9 +17,9 @@ import {
     renderSharedPhotos
 } from './admin/dashboard.js';
 import {
-    renderUsers,
     switchAdminUsersPage,
     switchAdminUsersListPage,
+    ensureAdminUsersSortHandlers,
     processDeleteUserRequests,
     adminUserDeleteSelected,
     adminUserBanShare,
@@ -35,12 +35,14 @@ import { loadAdminPushMessagesPage } from './admin/push-broadcast.js';
 import { renderPopups, renderPopupImagePreviews } from './admin/popups.js';
 import { loadLoginBannerConfig } from './admin/login-banner.js';
 import { loadTagsContent } from './admin/tags.js';
-import { registerRestaurantStats, renderRestaurantDataForMonitoringSidebar } from './admin/restaurant-stats.js';
-import { renderBoardPosts, getCurrentAdminBoardCategory } from './admin/board-moderation.js';
-import { renderFeedManagement, refreshAdminMealsFeedSortMode } from './admin/feed-moderation.js';
-import { renderLoungeChatManagement } from './admin/lounge-chat-moderation.js';
+import { registerRestaurantStats } from './admin/restaurant-stats.js';
 import { loadMealogComments, showCharacterListView } from './admin/persona.js';
 import { runAdminStatsBackfillForUid } from './admin/stats-backfill.js';
+import { loadAdminLogTab } from './admin/ops-log.js';
+// 모니터링(모먼트·밀톡·게시판): HTML onclick용 window.* 등록
+import './admin/feed-moderation.js';
+import './admin/lounge-chat-moderation.js';
+import './admin/board-moderation.js';
 
 import { app, db, appId, callableFunctions, auth } from './firebase.js';
 import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -136,16 +138,19 @@ window.switchAdminTab = function(tab) {
     if (tab === 'dashboard') {
         updateStatistics();
     } else if (tab === 'monitoring') {
-        switchMonitoringSidebar('feed'); // 기본으로 모먼트 관리 표시 (내부에서 renderFeedManagement)
+        switchMonitoringSidebar('feed'); // UI만 전환 — 목록은 각 화면의 새로고침으로 로드
         loadAdminSettings(); // 공지·댓글 표시 이름 캐시 로드
     } else if (tab === 'persona') {
         // 페르소나 탭은 더 이상 사용하지 않음
     } else if (tab === 'users') {
-        renderUsers();
+        ensureAdminUsersSortHandlers();
+        /* 사용자 목록은 새로고침 버튼으로만 로드 */
     } else if (tab === 'alerts') {
         switchAlertsSidebar('notice');
     } else if (tab === 'content') {
         switchContentSidebar('mealog'); // 콘텐츠 탭 첫 메뉴(MEALOG)
+    } else if (tab === 'adminLog') {
+        loadAdminLogTab();
     }
 }
 
@@ -529,20 +534,7 @@ window.switchMonitoringSidebar = function(section) {
         activeMainSection.classList.remove('hidden');
     }
     resetAdminScrollTop();
-    
-    // 섹션별 데이터 로드
-    if (section === 'feed') {
-        refreshAdminMealsFeedSortMode();
-        renderFeedManagement();
-    } else if (section === 'lounge') {
-        renderLoungeChatManagement();
-    } else if (section === 'board') {
-        renderBoardPosts(getCurrentAdminBoardCategory());
-    } else if (section === 'restaurants') {
-        renderRestaurantDataForMonitoringSidebar();
-    } else if (section === 'statsBackfill') {
-        /* 통계 백필: 별도 로드 없음 */
-    }
+    /* 데이터는 각 섹션의「새로고침」버튼에서만 로드 (탭/서브메뉴 진입 시 Firestore 조회 없음) */
 };
 
 // 콘텐츠 관리 관련 함수들

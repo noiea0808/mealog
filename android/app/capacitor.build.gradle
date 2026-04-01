@@ -12,11 +12,9 @@ dependencies {
     implementation project(':capacitor-community-safe-area')
     implementation project(':capacitor-app')
     implementation project(':capacitor-filesystem')
-    implementation project(':capacitor-haptics')
     implementation project(':capacitor-push-notifications')
     implementation project(':capacitor-share')
     implementation project(':capacitor-splash-screen')
-    implementation project(':capawesome-capacitor-badge')
     implementation project(':capgo-capacitor-social-login')
 
 }
