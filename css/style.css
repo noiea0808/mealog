@@ -1411,11 +1411,54 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     to { stroke-dashoffset: 0; }
 }
 
+/* 출석 팝업: 입장 후 사라지지 않도록 끝 프레임을 유지 (기록 완료 팝업 키프레임과 분리) */
+@keyframes attendancePopupBackdropIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@keyframes attendancePopupContentIn {
+    0% { transform: scale(0.92); opacity: 0; }
+    55% { transform: scale(1.03); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
 .success-popup-anim #successPopupBackdrop {
     animation: successPopupFade 800ms ease-out both;
 }
 .success-popup-anim #successPopupContent {
     animation: successPopupPop 800ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+}
+
+/* 출석/연속 기록 팝업 — 입장만 재생, forwards로 표시 유지 */
+.attendance-popup-anim #attendancePopupBackdrop {
+    animation: attendancePopupBackdropIn 380ms ease-out forwards;
+}
+.attendance-popup-anim #attendancePopupContent {
+    animation: attendancePopupContentIn 500ms cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
+}
+.attendance-popup-anim .success-check__circle-bg,
+.attendance-popup-anim .success-check__mark-bg {
+    stroke: #ffffff;
+    stroke-width: 20;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.attendance-popup-anim .success-check__circle {
+    stroke: #10b981;
+    stroke-width: 6;
+    stroke-linecap: round;
+    stroke-dasharray: 151;
+    stroke-dashoffset: 151;
+    animation: successCheckCircle 260ms ease-out forwards;
+}
+.attendance-popup-anim .success-check__mark {
+    stroke: #10b981;
+    stroke-width: 8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 48;
+    stroke-dashoffset: 48;
+    animation: successCheckMark 220ms 120ms ease-out forwards;
 }
 .success-check svg {
     overflow: visible;

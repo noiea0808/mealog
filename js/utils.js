@@ -52,6 +52,22 @@ export function warmUpIME() {
     } catch (_) { /* 무시 */ }
 }
 
+/** 밀톡 말풍선 롱프레스 등 짧은 촉각 — 앱은 Impact Light, 웹은 Vibration API(약 12ms) */
+export function lightUiHaptic() {
+    const Haptics = typeof window !== 'undefined' ? window.Capacitor?.Plugins?.Haptics : null;
+    if (Haptics?.impact) {
+        Haptics.impact({ style: 'LIGHT' }).catch(() => {
+            try {
+                navigator.vibrate?.(12);
+            } catch (_) { /* ignore */ }
+        });
+        return;
+    }
+    try {
+        if (navigator.vibrate) navigator.vibrate(12);
+    } catch (_) { /* ignore */ }
+}
+
 /**
  * 한글 등 IME 조합 중일 때 input 핸들러 실행을 지연시킵니다.
  * 모바일에서 조합 중 DOM 업데이트가 텍스트 미표시 문제를 일으키는 것을 방지합니다.

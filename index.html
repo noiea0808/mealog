@@ -202,6 +202,7 @@
     <script src="js/capacitor-share-plugin.js"></script>
     <script src="js/capacitor-badge-plugin.js"></script>
     <script src="js/capacitor-push-notifications-plugin.js"></script>
+    <script src="js/capacitor-haptics-plugin.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             var el = document.getElementById('headerStagingLabel');
@@ -395,6 +396,31 @@
             <svg id="successPopupTextSvg" width="220" height="44" viewBox="0 0 220 44" aria-hidden="true">
                 <text id="successPopupText" x="110" y="32" text-anchor="middle" class="success-popup-text-outline">기록 완료</text>
             </svg>
+        </div>
+    </div>
+
+    <!-- 출석/연속 기록: 중앙 팝업 (기록 완료와 동일 텍스트 스타일, 테스트 시 세션당 1회) -->
+    <div id="attendancePopup" class="hidden fixed inset-0 z-[9480] flex items-center justify-center">
+        <div id="attendancePopupBackdrop" class="absolute inset-0 bg-slate-900/25"></div>
+        <div id="attendancePopupContent" class="relative z-10 w-[92%] max-w-[22rem] bg-transparent flex flex-col items-center gap-1 px-1 py-1">
+            <div class="success-check" aria-hidden="true">
+                <svg viewBox="0 0 52 52" width="73" height="73">
+                    <circle class="success-check__fill" cx="26" cy="26" r="20" fill="#ffffff"></circle>
+                    <circle class="success-check__circle-bg" cx="26" cy="26" r="20" fill="none"></circle>
+                    <path class="success-check__mark-bg" fill="none" d="M14 27 L22 35 L38 18"></path>
+                    <circle class="success-check__circle" cx="26" cy="26" r="20" fill="none"></circle>
+                    <path class="success-check__mark" fill="none" d="M14 27 L22 35 L38 18"></path>
+                </svg>
+            </div>
+            <svg id="attendancePopupTextSvg" width="340" height="60" viewBox="0 0 340 60" aria-hidden="true">
+                <text id="attendancePopupTextRoot" text-anchor="middle" class="success-popup-text-outline" x="170" y="0">
+                    <tspan id="attendancePopupLine1" x="170" y="34"></tspan>
+                    <tspan id="attendancePopupLine2" x="170" dy="0"></tspan>
+                </text>
+            </svg>
+            <button type="button" id="attendancePopupCloseBtn" class="w-full max-w-[8rem] py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-black border-[3px] border-white shadow-md active:scale-[0.98] transition-colors box-border">
+                닫기
+            </button>
         </div>
     </div>
 

@@ -130,6 +130,8 @@ export const callableFunctions = {
     createInsightShare: httpsCallable(functions, 'createInsightShare'),
     getStorageImageAsBase64: httpsCallable(functions, 'getStorageImageAsBase64'),
     backfillUserStats: httpsCallable(functions, 'backfillUserStats'),
+    /** 관리자 전용: 특정 UID의 daily stats 백필 */
+    adminBackfillUserStats: httpsCallable(functions, 'adminBackfillUserStats'),
     removeDuplicateMeals: httpsCallable(functions, 'removeDuplicateMeals'),
     callGemini: httpsCallable(functions, 'callGemini'),
     searchKakaoPlaces: httpsCallable(functions, 'searchKakaoPlaces'),

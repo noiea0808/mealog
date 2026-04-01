@@ -7,8 +7,10 @@ import { dbOps } from '../db.js';
 import { showToast, showSuccessPopup } from '../ui.js';
 import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed } from '../render/index.js';
 import { getDashboardData } from '../analytics.js';
-import { callableFunctions } from '../firebase.js';
+import { callableFunctions, db, appId } from '../firebase.js';
 import { isDemoUser } from '../demo-account.js';
+import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+import { applyDemoDateShiftToMealRecord } from '../demo-date-shift.js';
 // ⚠️ initPushNotifications import 제거 - 크래시 문제로 인해 비활성화
 
 // 설정 저장 디바운싱을 위한 타이머
@@ -303,7 +305,7 @@ function loadKakaoSDK() {
     });
 }
 
-export function openModal(date, slotId, entryId = null) {
+export async function openModal(date, slotId, entryId = null) {
     try {
         const state = appState;
         if (!window.currentUser) return;
@@ -340,6 +342,29 @@ export function openModal(date, slotId, entryId = null) {
         let savedRecord = null;
         if (entryId) {
             savedRecord = window.mealHistory.find(m => m.id === entryId);
+        }
+        // 타임라인 DOM은 loadedDates로 갱신이 스킵될 수 있어, 카드의 id와 mealHistory가 어긋나면 빈 모달이 됨 → 단건 조회
+        if (entryId && !savedRecord && window.currentUser?.uid) {
+            try {
+                const ref = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals', entryId);
+                const snap = await getDoc(ref);
+                if (snap.exists()) {
+                    let rec = { id: snap.id, ...snap.data() };
+                    const shift = isDemoUser(window.currentUser) ? Number(window.__demoDateShiftDays) || 0 : 0;
+                    if (shift) rec = applyDemoDateShiftToMealRecord(rec, shift);
+                    savedRecord = rec;
+                    const hist = window.mealHistory || [];
+                    if (!hist.some((m) => m.id === entryId)) {
+                        window.mealHistory = [...hist, rec].sort(
+                            (a, b) =>
+                                (b.date || '').localeCompare(a.date || '') ||
+                                (b.time || '').localeCompare(a.time || '')
+                        );
+                    }
+                }
+            } catch (e) {
+                console.warn('openModal: meal 단건 조회 실패', entryId, e);
+            }
         }
         
         // 모든 칩의 active 클래스 제거 (renderEntryChips 전에)

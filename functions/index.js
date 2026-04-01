@@ -9,6 +9,7 @@ const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { getMealDelta, mergeDeltaIntoDay, sanitizeDayEntry, computeStatsFromMeals, isMainSlot } = require('./mealStats.js');
 const { logger } = require('firebase-functions');
+const crypto = require('crypto');
 
 // Firebase Admin 초기화
 initializeApp();
@@ -210,6 +211,48 @@ function isPushCategoryAllowedByPrefs(prefs, category) {
   }
 }
 
+/** fcmTokens 메타의 updatedAt → 밀리초 (없으면 0) */
+function fcmTokenMetaUpdatedMs(meta) {
+  if (!meta || typeof meta !== 'object') return 0;
+  const u = meta.updatedAt;
+  if (u && typeof u.toMillis === 'function') return u.toMillis();
+  if (u && typeof u._seconds === 'number') {
+    return u._seconds * 1000 + Math.floor((u._nanoseconds || 0) / 1e6);
+  }
+  if (u && typeof u.seconds === 'number') return u.seconds * 1000;
+  return 0;
+}
+
+/**
+ * 관리자 브로드캐스트: 사용자당 FCM은 1회만(가장 최근 등록 토큰 1개).
+ * - 동일 env에 토큰 여러 개 / targetEnv all일 때 staging+production 각 1통씩이면 기기에서 2번까지 갈 수 있었음 → 1개로 고정.
+ * - 키 문자열이 미세하게 다른 중복 저장(공백 등)도 정규화 후 하나로 합침.
+ */
+function pickSingleFcmTokenForAdminBroadcast(tokensMap, tokenStrings) {
+  const bestByNorm = new Map();
+  for (const token of tokenStrings) {
+    const norm = String(token || '').trim();
+    if (!norm) continue;
+    const meta = tokensMap[token];
+    const ms = fcmTokenMetaUpdatedMs(meta);
+    const prev = bestByNorm.get(norm);
+    if (!prev || ms >= prev.ms) {
+      bestByNorm.set(norm, { token: norm, ms });
+    }
+  }
+  let best = null;
+  let bestMs = -1;
+  for (const { token, ms } of bestByNorm.values()) {
+    if (ms > bestMs) {
+      bestMs = ms;
+      best = token;
+    } else if (ms === bestMs && best != null && token.localeCompare(best) < 0) {
+      best = token;
+    }
+  }
+  return best ? [best] : [];
+}
+
 /**
  * 특정 사용자의 FCM 토큰들에 푸시 알림 전송 (실패 시 로그만, 호출자 대기 안 함)
  * @param {string} userId - 수신자 uid
@@ -236,7 +279,7 @@ async function sendPushToUser(userId, payload, options = {}) {
     const envFilter = options.targetEnv === 'production' || options.targetEnv === 'staging'
       ? options.targetEnv
       : null;
-    const tokens = envFilter
+    let tokens = envFilter
       ? allTokens.filter((token) => {
         const meta = tokensMap[token];
         if (!meta || typeof meta !== 'object') {
@@ -248,6 +291,17 @@ async function sendPushToUser(userId, payload, options = {}) {
         return tokenEnv === envFilter;
       })
       : allTokens;
+    if (options.adminBroadcast && tokens.length > 0) {
+      const before = tokens.length;
+      tokens = pickSingleFcmTokenForAdminBroadcast(tokensMap, tokens);
+      if (tokens.length !== before || before > 1) {
+        logger.info('sendPushToUser: adminBroadcast single token', {
+          userId,
+          before,
+          after: tokens.length
+        });
+      }
+    }
     if (tokens.length === 0) {
       logger.info('sendPushToUser: no FCM tokens for user', { userId, targetEnv: envFilter || 'all' });
       return;
@@ -273,16 +327,28 @@ async function sendPushToUser(userId, payload, options = {}) {
       }
     };
     if (options.adminBroadcast) {
-      // Android: 알림 트레이·상단 배너는 유지, 런처 숫자 배지는 이 푸시로 올리지 않도록 (일부 기기·런처에서 notificationCount 연동)
+      const collapseId =
+        typeof options.adminCollapseId === 'string' && options.adminCollapseId.length > 0
+          ? options.adminCollapseId.slice(0, 64)
+          : makeAdminBroadcastCollapseId(
+            payload,
+            envFilter || (options.targetEnv === 'staging' || options.targetEnv === 'production' ? options.targetEnv : 'all')
+          );
+      // Android: 동일 tag면 새 알림이 이전 줄을 대체(Callable 중복·재시도로 N줄 쌓임 방지)
+      // iOS: apns-collapse-id로 동일 키 알림 병합
       message.android = {
         priority: 'high',
         notification: {
           ...androidNotificationBase,
-          notificationCount: 0
+          notificationCount: 0,
+          tag: `mealog_adm_${collapseId}`
         }
       };
       message.apns = {
-        headers: { 'apns-priority': '10' },
+        headers: {
+          'apns-priority': '10',
+          'apns-collapse-id': collapseId
+        },
         payload: {
           aps: {
             sound: 'default'
@@ -1990,6 +2056,59 @@ exports.onDeleteUserRequest = onDocumentCreated(
 );
 
 /**
+ * 특정 사용자의 meals 전체를 읽어 daily stats 재집계 (연도별 문서)
+ * @param {string} userId
+ */
+async function rebuildUserStatsForUserId(userId) {
+  const mealsRef = db
+    .collection('artifacts')
+    .doc(APP_ID)
+    .collection('users')
+    .doc(userId)
+    .collection('meals');
+  const statsYearsRef = db
+    .collection('artifacts')
+    .doc(APP_ID)
+    .collection('users')
+    .doc(userId)
+    .collection('config')
+    .doc('stats')
+    .collection('years');
+
+  const snapshot = await mealsRef.get();
+  const meals = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const daily = computeStatsFromMeals(meals);
+
+  const dailyByYear = {};
+  Object.entries(daily).forEach(([dateStr, dayData]) => {
+    const year = dateStr.split('-')[0];
+    if (!dailyByYear[year]) dailyByYear[year] = {};
+    dailyByYear[year][dateStr] = dayData;
+  });
+
+  const batch = db.batch();
+  Object.entries(dailyByYear).forEach(([year, yearDaily]) => {
+    const yearRef = statsYearsRef.doc(year);
+    batch.set(yearRef, { daily: yearDaily, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  });
+  await batch.commit();
+
+  const totalDays = Object.keys(daily).length;
+  logger.info('rebuildUserStatsForUserId: completed', {
+    userId,
+    mealCount: meals.length,
+    dayCount: totalDays,
+    years: Object.keys(dailyByYear)
+  });
+  return {
+    success: true,
+    mealCount: meals.length,
+    dayCount: totalDays,
+    years: Object.keys(dailyByYear)
+  };
+}
+
+/**
  * 기존 meals 데이터로 stats 집계 문서 생성/갱신 (Callable) - 연도별 서브컬렉션
  * config/stats/years/{year} 에 연도별로 저장
  */
@@ -2000,37 +2119,30 @@ exports.backfillUserStats = onCall(
     if (!auth || !auth.uid) {
       throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
     }
-    const userId = auth.uid;
-    const mealsRef = db.collection('artifacts').doc(APP_ID)
-      .collection('users').doc(userId)
-      .collection('meals');
-    const statsYearsRef = db.collection('artifacts').doc(APP_ID)
-      .collection('users').doc(userId)
-      .collection('config').doc('stats')
-      .collection('years');
+    return await rebuildUserStatsForUserId(auth.uid);
+  })
+);
 
-    const snapshot = await mealsRef.get();
-    const meals = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-    const daily = computeStatsFromMeals(meals);
-
-    // 연도별로 그룹화
-    const dailyByYear = {};
-    Object.entries(daily).forEach(([dateStr, dayData]) => {
-      const year = dateStr.split('-')[0];
-      if (!dailyByYear[year]) dailyByYear[year] = {};
-      dailyByYear[year][dateStr] = dayData;
-    });
-
-    const batch = db.batch();
-    Object.entries(dailyByYear).forEach(([year, yearDaily]) => {
-      const yearRef = statsYearsRef.doc(year);
-      batch.set(yearRef, { daily: yearDaily, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    });
-    await batch.commit();
-
-    const totalDays = Object.keys(daily).length;
-    logger.info('backfillUserStats: completed', { userId, mealCount: meals.length, dayCount: totalDays, years: Object.keys(dailyByYear) });
-    return { success: true, mealCount: meals.length, dayCount: totalDays, years: Object.keys(dailyByYear) };
+/**
+ * 관리자 전용: 지정 UID의 daily stats 백필 (meals 기준 전체 재집계)
+ */
+exports.adminBackfillUserStats = onCall(
+  { region: REGION },
+  wrapFunction('adminBackfillUserStats', async (request) => {
+    const auth = request.auth;
+    if (!auth || !auth.uid) {
+      throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    }
+    const isAdmin = await isAdminByUid(auth.uid);
+    if (!isAdmin) {
+      throw new HttpsError('permission-denied', '관리자만 사용할 수 있습니다.');
+    }
+    const raw = request.data && request.data.targetUserId;
+    const targetUserId = typeof raw === 'string' ? raw.trim() : '';
+    if (!targetUserId || targetUserId.length < 20) {
+      throw new HttpsError('invalid-argument', '유효한 targetUserId(Firebase UID)를 입력해주세요.');
+    }
+    return await rebuildUserStatsForUserId(targetUserId);
   })
 );
 
@@ -2429,12 +2541,24 @@ async function broadcastNoticePushToAllUsers(payload) {
   logger.info('broadcastNoticePushToAllUsers done', { totalUsers });
 }
 
+/**
+ * 동일 제목·본문·대상env 알림이 Android에서 여러 줄로 쌓이지 않게 tag, iOS는 apns-collapse-id로 합침.
+ */
+function makeAdminBroadcastCollapseId(payload, targetEnvResolved) {
+  const t = String(payload?.title || '');
+  const b = String(payload?.body || '');
+  const land = payload?.data && typeof payload.data.landingTab === 'string' ? payload.data.landingTab : '';
+  const e = String(targetEnvResolved || 'all');
+  return crypto.createHash('sha256').update(`${t}\n${b}\n${land}\n${e}`).digest('hex').slice(0, 32);
+}
+
 /** 관리자 푸시메시지: 상단 알림만, 탭 시 앱 내 탭 이동(data.type=adminBroadcast), 배지/빨간점 갱신 생략 */
 async function broadcastAdminPushToAllUsers(payload) {
   const usersRef = db.collection('artifacts').doc(APP_ID).collection('users');
   const targetEnv = payload?.targetEnv === 'production' || payload?.targetEnv === 'staging'
     ? payload.targetEnv
     : 'all';
+  const adminCollapseId = makeAdminBroadcastCollapseId(payload, targetEnv);
   let lastDoc = null;
   let totalUsers = 0;
   const pageSize = 200;
@@ -2450,7 +2574,12 @@ async function broadcastAdminPushToAllUsers(payload) {
       const batch = uids.slice(i, i + concurrency);
       await Promise.all(
         batch.map((uid) =>
-          sendPushToUser(uid, payload, { adminBroadcast: true, targetEnv, pushCategory: 'adminDefault' })
+          sendPushToUser(uid, payload, {
+            adminBroadcast: true,
+            targetEnv,
+            pushCategory: 'adminDefault',
+            adminCollapseId
+          })
         )
       );
     }
@@ -2522,6 +2651,26 @@ async function appendAdminBroadcastHistory({
   });
 }
 
+const ADMIN_PUSH_NOW_DEDUPE_MS = 55 * 1000;
+
+/** Callable 중복 호출·클라이언트 재시도로 동일 내용이 짧은 시간에 여러 번 나가는 것 방지 */
+async function adminPushNowDedupeShouldSkip({ callerUid, title, body, landingTab, targetEnv }) {
+  const raw = `${callerUid}|${title}|${body}|${landingTab}|${targetEnv}`;
+  const docId = crypto.createHash('sha256').update(raw).digest('hex').slice(0, 48);
+  const ref = db.collection('artifacts').doc(APP_ID).collection('_adminPushDedupe').doc(docId);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const now = Date.now();
+    if (snap.exists) {
+      const at = snap.data().at;
+      const ms = at && typeof at.toMillis === 'function' ? at.toMillis() : 0;
+      if (ms && now - ms < ADMIN_PUSH_NOW_DEDUPE_MS) return true;
+    }
+    tx.set(ref, { at: FieldValue.serverTimestamp(), callerUid }, { merge: true });
+    return false;
+  });
+}
+
 /** 관리자: 전체 사용자에게 푸시 즉시 발송 */
 exports.adminBroadcastPushNow = onCall(
   { region: REGION, timeoutSeconds: 540, memory: '512MiB' },
@@ -2539,6 +2688,11 @@ exports.adminBroadcastPushNow = onCall(
     }
     if (!body || body.length > 240) {
       throw new HttpsError('invalid-argument', '내용은 1~240자로 입력해 주세요.');
+    }
+    const skip = await adminPushNowDedupeShouldSkip({ callerUid, title, body, landingTab, targetEnv });
+    if (skip) {
+      logger.info('adminBroadcastPushNow: dedupe skip (same payload within window)');
+      return { ok: true, deduped: true };
     }
     await broadcastAdminPushToAllUsers({
       title,

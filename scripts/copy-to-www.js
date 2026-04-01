@@ -73,6 +73,7 @@ const sharePlugin = path.join(root, 'node_modules', '@capacitor', 'share', 'dist
 const filesystemPlugin = path.join(root, 'node_modules', '@capacitor', 'filesystem', 'dist', 'plugin.js');
 const appPlugin = path.join(root, 'node_modules', '@capacitor', 'app', 'dist', 'plugin.js');
 const pushNotificationsPlugin = path.join(root, 'node_modules', '@capacitor', 'push-notifications', 'dist', 'plugin.js');
+const hapticsPlugin = path.join(root, 'node_modules', '@capacitor', 'haptics', 'dist', 'plugin.js');
 copyCapacitorAsset(capacitorCore, 'capacitor.js');
 copyCapacitorAsset(socialLoginPlugin, 'capacitor-social-login-plugin.js');
 copyCapacitorAsset(splashScreenPlugin, 'capacitor-splash-screen-plugin.js');
@@ -80,6 +81,7 @@ copyCapacitorAsset(sharePlugin, 'capacitor-share-plugin.js');
 copyCapacitorAsset(filesystemPlugin, 'capacitor-filesystem-plugin.js');
 copyCapacitorAsset(appPlugin, 'capacitor-app-plugin.js');
 copyCapacitorAsset(pushNotificationsPlugin, 'capacitor-push-notifications-plugin.js');
+copyCapacitorAsset(hapticsPlugin, 'capacitor-haptics-plugin.js');
 const badgePlugin = path.join(root, 'node_modules', '@capawesome', 'capacitor-badge', 'dist', 'plugin.js');
 copyCapacitorAsset(badgePlugin, 'capacitor-badge-plugin.js');
 

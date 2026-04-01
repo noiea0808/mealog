@@ -158,6 +158,59 @@ export function showSuccessPopup(message = '기록 완료', durationMs = 800) {
     }, Math.max(0, Number(durationMs) || 800));
 }
 
+function ensureAttendancePopupCloseBound() {
+    const btn = document.getElementById('attendancePopupCloseBtn');
+    if (!btn || btn.dataset.bound === '1') return;
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', closeAttendancePopup);
+}
+
+/**
+ * 출석/연속 기록 팝업 닫기 (자동 닫기 없음 — 닫기 버튼 전용)
+ */
+export function closeAttendancePopup() {
+    const popup = document.getElementById('attendancePopup');
+    document.body.classList.remove('attendance-popup-anim');
+    if (popup) popup.classList.add('hidden');
+}
+
+/**
+ * 출석/연속 기록 중앙 팝업 — 기록 완료 팝업과 동일한 굵은 윤곽 SVG 텍스트 (컨페티 없음)
+ * 입장 애니메이션은 끝까지 표시가 유지되며, 닫기 버튼으로만 닫힙니다.
+ * @param {string} line1
+ * @param {string} [line2]
+ */
+export function showAttendancePopup(line1, line2 = '') {
+    const popup = document.getElementById('attendancePopup');
+    const l1 = document.getElementById('attendancePopupLine1');
+    const l2 = document.getElementById('attendancePopupLine2');
+    const textRoot = document.getElementById('attendancePopupTextRoot');
+    if (!popup || !l1 || !l2) return;
+
+    ensureAttendancePopupCloseBound();
+
+    l1.textContent = line1 || '';
+    l2.textContent = line2 || '';
+    const two = Boolean(line2 && line2.trim());
+    if (two) {
+        l1.setAttribute('y', '24');
+        l2.setAttribute('dy', '15');
+    } else {
+        l1.setAttribute('y', '34');
+        l2.setAttribute('dy', '0');
+        l2.textContent = '';
+    }
+
+    const maxLen = Math.max((line1 || '').length, (line2 || '').length);
+    const fs = maxLen > 20 ? '15' : maxLen > 16 ? '17' : '19';
+    if (textRoot) textRoot.setAttribute('font-size', fs);
+
+    document.body.classList.remove('attendance-popup-anim');
+    popup.classList.remove('hidden');
+    void popup.offsetHeight;
+    document.body.classList.add('attendance-popup-anim');
+}
+
 const PERMISSION_HINT_TOAST_MS = 14000;
 
 /**

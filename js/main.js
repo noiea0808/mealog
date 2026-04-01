@@ -27,6 +27,7 @@ import {
     confirmDeleteAccount, cancelDeleteAccount, confirmDeleteAccountAction
 } from './auth.js';
 import { authFlowManager } from './auth-flow.js';
+import { scheduleAttendanceCheckIfNeeded } from './attendance-check.js';
 import { isDemoUser, markUserHasRealLogin } from './demo-account.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
@@ -1090,6 +1091,7 @@ initAuth(async (user) => {
                     // onSettingsUpdate에서 약관 모달을 닫으면 타이밍 이슈로 인해 모달이 잠깐 표시되었다가 사라질 수 있음
                 },
                 onDataUpdate: () => {
+                    scheduleAttendanceCheckIfNeeded();
                     const tab = appState.currentTab;
                     if (tab === 'dashboard') {
                         updateDashboard();
@@ -1507,17 +1509,22 @@ function applyBoardPanelScrollHideNav(el) {
     _boardPanelScrollRaf = requestAnimationFrame(() => {
         const last = _boardPanelScrollLast[id] ?? 0;
         const delta = y - last;
-        const scrollThreshold = 8;
-        const topThreshold = 24;
-        const isScrollingDown = delta > scrollThreshold;
-        const isScrollingUp = delta < -scrollThreshold;
-        const atTop = y <= topThreshold;
+        const scrollDownThreshold = 10;
+        const scrollUpThreshold = 3;
+        // 피드 상단·이전 메시지 로드 구역 근처면 헤더·서브탭 복구(24px만 쓰면 위로 조금만 올려도 복구 안 되는 경우가 많음)
+        const topShowThreshold = 96;
+        const isScrollingDown = delta > scrollDownThreshold;
+        const isScrollingUp = delta < -scrollUpThreshold;
+        const atNearTop = y <= topShowThreshold;
+        const hidden = header.classList.contains('header-scroll-hidden');
+        // 숨김 상태에서 아주 조금만 위로 움직여도 복구(임계 8px 대칭이면 한 번에 안 올라가면 영원히 숨김 유지됨)
+        const nudgeReveal = hidden && delta < -1;
         const tracker = document.getElementById('trackerSection');
-        if (isScrollingDown && !atTop) {
+        if (isScrollingDown && !atNearTop) {
             header.classList.add('header-scroll-hidden');
             if (tracker) tracker.classList.add('tracker-header-hidden');
             document.body.classList.add('bottom-nav-scroll-hidden');
-        } else if (isScrollingUp || atTop) {
+        } else if (isScrollingUp || atNearTop || nudgeReveal) {
             header.classList.remove('header-scroll-hidden');
             if (tracker) tracker.classList.remove('tracker-header-hidden');
             document.body.classList.remove('bottom-nav-scroll-hidden');
@@ -1535,6 +1542,11 @@ window.__resetBoardPanelScrollNav = () => {
     document.body.classList.remove('bottom-nav-scroll-hidden');
     document.getElementById('mainAppHeader')?.classList.remove('header-scroll-hidden');
     document.getElementById('trackerSection')?.classList.remove('tracker-header-hidden');
+    const lounge = document.getElementById('boardLoungeScrollArea');
+    if (lounge) _boardPanelScrollLast.boardLoungeScrollArea = lounge.scrollTop;
+};
+/** prepend 후 programatic scrollTop 직전·직후: delta 폭주로 헤더가 숨겨지지 않게 마지막 스크롤 값만 동기화 */
+window.__syncBoardPanelScrollNavLast = () => {
     const lounge = document.getElementById('boardLoungeScrollArea');
     if (lounge) _boardPanelScrollLast.boardLoungeScrollArea = lounge.scrollTop;
 };

@@ -37,9 +37,10 @@ import { loadLoginBannerConfig } from './admin/login-banner.js';
 import { loadTagsContent } from './admin/tags.js';
 import { registerRestaurantStats, renderRestaurantDataForMonitoringSidebar } from './admin/restaurant-stats.js';
 import { renderBoardPosts, getCurrentAdminBoardCategory } from './admin/board-moderation.js';
-import { renderFeedManagement } from './admin/feed-moderation.js';
+import { renderFeedManagement, refreshAdminMealsFeedSortMode } from './admin/feed-moderation.js';
 import { renderLoungeChatManagement } from './admin/lounge-chat-moderation.js';
 import { loadMealogComments, showCharacterListView } from './admin/persona.js';
+import { runAdminStatsBackfillForUid } from './admin/stats-backfill.js';
 
 import { app, db, appId, callableFunctions, auth } from './firebase.js';
 import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -135,8 +136,7 @@ window.switchAdminTab = function(tab) {
     if (tab === 'dashboard') {
         updateStatistics();
     } else if (tab === 'monitoring') {
-        switchMonitoringSidebar('feed'); // 기본으로 모먼트 관리 표시
-        renderFeedManagement();
+        switchMonitoringSidebar('feed'); // 기본으로 모먼트 관리 표시 (내부에서 renderFeedManagement)
         loadAdminSettings(); // 공지·댓글 표시 이름 캐시 로드
     } else if (tab === 'persona') {
         // 페르소나 탭은 더 이상 사용하지 않음
@@ -168,6 +168,7 @@ window.adminUserDeleteSelected = adminUserDeleteSelected;
 window.adminUserBanShare = adminUserBanShare;
 window.adminUserBanWrite = adminUserBanWrite;
 window.refreshUsers = refreshUsers;
+window.runAdminStatsBackfillForUid = runAdminStatsBackfillForUid;
 
 // 삭제 모달 열기
 window.openDeleteModal = function(photoId) {
@@ -531,6 +532,7 @@ window.switchMonitoringSidebar = function(section) {
     
     // 섹션별 데이터 로드
     if (section === 'feed') {
+        refreshAdminMealsFeedSortMode();
         renderFeedManagement();
     } else if (section === 'lounge') {
         renderLoungeChatManagement();
@@ -538,6 +540,8 @@ window.switchMonitoringSidebar = function(section) {
         renderBoardPosts(getCurrentAdminBoardCategory());
     } else if (section === 'restaurants') {
         renderRestaurantDataForMonitoringSidebar();
+    } else if (section === 'statsBackfill') {
+        /* 통계 백필: 별도 로드 없음 */
     }
 };
 

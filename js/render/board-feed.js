@@ -13,6 +13,9 @@ import { FEED_TIMELINE_BATCH_SIZE } from '../db/feed-posts.js';
 let _feedScrollResizeCleanup = null;
 
 let _feedLoadOlderInFlight = false;
+/** 빠른 플링 시 scrollTop이 요청 중에 0으로 안착하는데, 예전 prevST로 복원하면 화면이 덜컥거림 → 디바운스 */
+let _feedOlderNearTopDebounce = null;
+const FEED_OLDER_NEAR_TOP_DEBOUNCE_MS = 100;
 
 function getBoardLoungeScrollEl() {
     return document.getElementById('boardLoungeScrollArea');
@@ -50,12 +53,25 @@ function ensureBoardFeedScrollOlderBound() {
 function onBoardFeedPanelScrollOlder() {
     const el = getBoardLoungeScrollEl();
     if (!el || appState.boardListSubTab !== 'feed') return;
-    if (el.dataset.feedLoadingOlder === '1') return;
-    if (!appState.feedTimelineHasMore) return;
-    if (!appState.feedTimelineOldestCursor) return;
-    if (_feedLoadOlderInFlight) return;
-    if (el.scrollTop > 72) return;
-    void loadMoreFeedOlderMessages();
+    if (el.scrollTop > 72) {
+        if (_feedOlderNearTopDebounce) {
+            clearTimeout(_feedOlderNearTopDebounce);
+            _feedOlderNearTopDebounce = null;
+        }
+        return;
+    }
+    if (_feedOlderNearTopDebounce) clearTimeout(_feedOlderNearTopDebounce);
+    _feedOlderNearTopDebounce = setTimeout(() => {
+        _feedOlderNearTopDebounce = null;
+        const root = getBoardLoungeScrollEl();
+        if (!root || appState.boardListSubTab !== 'feed') return;
+        if (root.dataset.feedLoadingOlder === '1') return;
+        if (!appState.feedTimelineHasMore) return;
+        if (!appState.feedTimelineOldestCursor) return;
+        if (_feedLoadOlderInFlight) return;
+        if (root.scrollTop > 72) return;
+        void loadMoreFeedOlderMessages();
+    }, FEED_OLDER_NEAR_TOP_DEBOUNCE_MS);
 }
 
 async function loadMoreFeedOlderMessages() {
@@ -65,8 +81,6 @@ async function loadMoreFeedOlderMessages() {
     if (!root || !content || !window.feedOperations?.getMessagesPage) return;
     _feedLoadOlderInFlight = true;
     root.dataset.feedLoadingOlder = '1';
-    const prevSH = root.scrollHeight;
-    const prevST = root.scrollTop;
     try {
         const { posts, cursorSnap, hasMore } = await window.feedOperations.getMessagesPage({
             limitCount: FEED_TIMELINE_BATCH_SIZE,
@@ -89,10 +103,20 @@ async function loadMoreFeedOlderMessages() {
         if (authorIds.length) await fetchUserProfiles(authorIds);
 
         appState.feedTimelinePosts = merged;
+        // DOM 갱신 직전 시점 기준으로 보정(요청 시작 시 scrollTop을 쓰면 플링 중 값과 달라져 덜컥거림)
+        const scrollHeightBeforePaint = root.scrollHeight;
+        const scrollTopBeforePaint = root.scrollTop;
+        // paint·scrollTop 보정이 한 번에 큰 delta로 잡혀 헤더/서브탭이 숨겨지지 않도록
+        window.__suppressBoardPanelScrollHideNavUntil = Date.now() + 720;
         paintFeedTimeline(content, merged);
         requestAnimationFrame(() => {
-            const delta = root.scrollHeight - prevSH;
-            root.scrollTop = prevST + delta;
+            requestAnimationFrame(() => {
+                const added = root.scrollHeight - scrollHeightBeforePaint;
+                root.scrollTop = scrollTopBeforePaint + added;
+                if (typeof window.__syncBoardPanelScrollNavLast === 'function') {
+                    window.__syncBoardPanelScrollNavLast();
+                }
+            });
         });
     } catch (e) {
         console.error('[loadMoreFeedOlderMessages]', e);

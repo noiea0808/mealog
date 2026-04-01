@@ -32,20 +32,32 @@ const feedPageSize = 20;
 let feedLastDocsByPage = {};
 let feedTotalCount = 0;
 
+/**
+ * true: collectionGroup(meals) 를 date DESC, time DESC 로 페이지네이션 (관리자 모니터링 기본).
+ * false: 인덱스 미배포 등으로 실패 시 date DESC 만 사용 (폴백).
+ */
+let mealsAdminUseDateTimeSort = true;
+
 // 피드: 전체 타임라인(meals) 페이지 단위 조회 — 사진 유무와 관계없이 모든 게시물 표시, 중복 없음
 async function getFeedPage(options = {}) {
     const page = options.page ?? 1;
     const pageSize = options.pageSize ?? feedPageSize;
     const startAfterDoc = page === 1 ? null : (feedLastDocsByPage[page - 1] ?? null);
     const mealsGroup = collectionGroup(db, 'meals');
+
+    const orderParts = mealsAdminUseDateTimeSort
+        ? [orderBy('date', 'desc'), orderBy('time', 'desc')]
+        : [orderBy('date', 'desc')];
+
     try {
         if (page === 1) {
-            const countSnap = await getCountFromServer(query(mealsGroup, orderBy('date', 'desc')));
+            const countSnap = await getCountFromServer(query(mealsGroup, ...orderParts));
             feedTotalCount = countSnap.data().count;
         }
-        let q = query(mealsGroup, orderBy('date', 'desc'), limit(pageSize));
-        if (startAfterDoc) q = query(mealsGroup, orderBy('date', 'desc'), limit(pageSize), startAfter(startAfterDoc));
-        const snapshot = await getDocs(q);
+        const listQ = startAfterDoc
+            ? query(mealsGroup, ...orderParts, startAfter(startAfterDoc), limit(pageSize))
+            : query(mealsGroup, ...orderParts, limit(pageSize));
+        const snapshot = await getDocs(listQ);
         const docs = snapshot.docs;
         const lastDoc = docs.length > 0 ? docs[docs.length - 1] : null;
         if (lastDoc) feedLastDocsByPage[page] = lastDoc;
@@ -64,44 +76,58 @@ async function getFeedPage(options = {}) {
         }
         return { items, totalCount: feedTotalCount, lastDoc, hasMore: docs.length === pageSize };
     } catch (e) {
+        if (page === 1 && mealsAdminUseDateTimeSort && e?.code === 'failed-precondition') {
+            console.warn(
+                '관리자 모먼트 피드: date+time 복합 인덱스가 없어 date만 사용합니다. `firebase deploy --only firestore:indexes` 적용 후 새로고침하면 기록 시각 순으로 정렬됩니다.',
+                e?.message || e
+            );
+            mealsAdminUseDateTimeSort = false;
+            feedLastDocsByPage = {};
+            return getFeedPage(options);
+        }
         console.error('getFeedPage error:', e);
         throw e;
     }
 }
 
-// 공유된 게시물 키 캐시 (userId_entryId) — 피드 필터/배지용, 세션당 1회 로드. 전체 문서 페이지네이션으로 수집해 누락 방지
+// 공유된 게시물 키 캐시 (userId_entryId) — 현재 목록에 필요한 조합만 sharedPhotos에서 조회해 누적 (전체 컬렉션 스캔 제거)
 let feedSharedKeysCache = null;
 
-async function ensureFeedSharedKeysCache() {
-    if (feedSharedKeysCache) return;
+/** 현재 페이지 meals 기준으로 공유 여부 조회. entryId+userId 일치 문서만 캐시에 넣음 (일간/베스트 등 타입은 기존과 동일 한계). */
+async function ensureSharedKeysForMeals(meals) {
+    if (!Array.isArray(meals) || meals.length === 0) return;
+    if (!feedSharedKeysCache) feedSharedKeysCache = new Set();
+    const byUser = new Map();
+    for (const m of meals) {
+        if (!m?.userId || !m?.id) continue;
+        const key = `${m.userId}_${m.id}`;
+        if (feedSharedKeysCache.has(key)) continue;
+        if (!byUser.has(m.userId)) byUser.set(m.userId, new Set());
+        byUser.get(m.userId).add(m.id);
+    }
+    if (byUser.size === 0) return;
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-    feedSharedKeysCache = new Set();
-    try {
-        const PAGE = 500;
-        let lastDoc = null;
-        let hasMore = true;
-        while (hasMore) {
-            let q = query(sharedColl, orderBy('timestamp', 'desc'), limit(PAGE));
-            if (lastDoc) q = query(sharedColl, orderBy('timestamp', 'desc'), startAfter(lastDoc), limit(PAGE));
-            const snap = await getDocs(q);
-            snap.docs.forEach(d => {
-                const data = d.data();
-                const uid = data.userId;
-                const eid = data.entryId || data.mealId || null;
-                if (uid && eid) feedSharedKeysCache.add(`${uid}_${eid}`);
-            });
-            lastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
-            hasMore = snap.docs.length === PAGE;
+    for (const [uid, idSet] of byUser) {
+        const ids = [...idSet];
+        for (let i = 0; i < ids.length; i += 10) {
+            const chunk = ids.slice(i, i + 10);
+            try {
+                const q = query(
+                    sharedColl,
+                    where('userId', '==', uid),
+                    where('entryId', 'in', chunk)
+                );
+                const snap = await getDocs(q);
+                snap.docs.forEach((d) => {
+                    const data = d.data();
+                    const eid = data.entryId || data.mealId || null;
+                    const u = data.userId;
+                    if (u && eid) feedSharedKeysCache.add(`${u}_${eid}`);
+                });
+            } catch (e) {
+                console.warn('ensureSharedKeysForMeals:', e?.message || e);
+            }
         }
-    } catch (e) {
-        console.warn('ensureFeedSharedKeysCache orderBy 실패, 전체 조회로 폴백:', e?.message || e);
-        const snap = await getDocs(sharedColl);
-        snap.docs.forEach(d => {
-            const data = d.data();
-            const uid = data.userId;
-            const eid = data.entryId || data.mealId || null;
-            if (uid && eid) feedSharedKeysCache.add(`${uid}_${eid}`);
-        });
     }
 }
 
@@ -112,10 +138,10 @@ async function renderFeedManagement() {
     container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
     
     try {
-        await ensureFeedSharedKeysCache();
         console.log('📋 피드 관리: 페이지', feedCurrentPage, '로드 중... (페이지 단위)');
         const { items } = await getFeedPage({ page: feedCurrentPage, pageSize: feedPageSize });
         const allMeals = items;
+        await ensureSharedKeysForMeals(allMeals);
         
         // 필터 적용 (일반 게시물만 — 타임라인 전체 표시, 공유 여부는 캐시로 판별)
         console.log('🔍 필터 적용:', feedFilters);
@@ -134,7 +160,7 @@ async function renderFeedManagement() {
         
         console.log(`✅ 필터 적용 후: ${filteredMeals.length}개 (페이지 ${feedCurrentPage} / 총 ${feedTotalCount}개)`);
         
-        // 최신 업로드 순 정렬 (현재 페이지 내)
+        // 서버가 date+time 순이면 이미 맞음. 동일 시각·구문서 보정용으로 페이지 내 한 번 더 정렬
         filteredMeals.sort((a, b) => {
             // 모든 게시물을 동일한 기준으로 정렬: date + time 또는 timestamp에서 date 추출
             const getSortTime = (meal) => {
@@ -560,6 +586,7 @@ window.refreshFeedManagement = function() {
     feedLastDocsByPage = {};
     feedTotalCount = 0;
     feedSharedKeysCache = null;
+    mealsAdminUseDateTimeSort = true;
     renderFeedManagement();
 }
 
@@ -1148,6 +1175,15 @@ window.bulkUnbanPosts = async function() {
     } catch (e) {
         console.error("일괄 금지 해제 실패:", e);
         alert("일괄 금지 해제 중 오류가 발생했습니다.");
+    }
+}
+
+/** 모니터링에서 '모먼트' 탭으로 들어올 때 호출: date+time 인덱스 배포 후에도 폴백만 쓰던 세션을 한 번 되살림 */
+export function refreshAdminMealsFeedSortMode() {
+    if (!mealsAdminUseDateTimeSort) {
+        mealsAdminUseDateTimeSort = true;
+        feedLastDocsByPage = {};
+        feedCurrentPage = 1;
     }
 }
 

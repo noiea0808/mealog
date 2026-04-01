@@ -5,7 +5,7 @@ import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { feedOperations } from '../db.js';
 import { renderBoardFeedTab } from '../render/board-feed.js';
-import { getDisplayProfile } from '../utils.js';
+import { getDisplayProfile, lightUiHaptic } from '../utils.js';
 import { isDemoUser } from '../demo-account.js';
 
 const LONG_PRESS_MS = 520;
@@ -201,9 +201,7 @@ function openEditFeedModal(postId) {
 
 function showFeedBubbleSheet({ postId, isMine, bubble }) {
     removeSheet();
-    try {
-        if (navigator.vibrate) navigator.vibrate(12);
-    } catch (_) {}
+    lightUiHaptic();
 
     const root = document.createElement('div');
     root.id = SHEET_ID;
@@ -368,9 +366,7 @@ export function initFeedBubbleContextMenu() {
             try {
                 e.preventDefault();
             } catch (_) {}
-            try {
-                if (navigator.vibrate) navigator.vibrate(12);
-            } catch (_) {}
+            lightUiHaptic();
             insertMentionAtComposer(pending.nick);
             pending = null;
         }, LONG_PRESS_MS);
