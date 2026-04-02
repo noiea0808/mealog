@@ -515,13 +515,6 @@ function setupTrackerMonthCalendarModal() {
             openTrackerMonthCalendar();
         });
     }
-
-    document.addEventListener('keydown', (e) => {
-        if (e.key !== 'Escape') return;
-        const modal = document.getElementById('trackerMonthCalendarModal');
-        if (!modal || modal.classList.contains('hidden')) return;
-        closeTrackerMonthCalendar();
-    });
 }
 
 /** 보이는 트래커 날짜들의 월 → 제목 문자열 (한 달 / 두 달 / 여러 달) */

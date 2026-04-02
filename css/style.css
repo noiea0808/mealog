@@ -1248,8 +1248,8 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 .mealog-wheel__indicator {
     position: absolute;
     left: 50%;
-    width: 120px; /* 별 5개(1행) 기준 중앙 윈도우 너비 */
-    margin-left: -60px;
+    width: 172px; /* 만족도·포만감 공통 중앙 윈도우 너비 */
+    margin-left: -86px;
     top: 50%;
     height: 44px;
     transform: translateY(-50%);
@@ -1305,19 +1305,93 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     font-size: 18px;
 }
 
-/* 포만감 아이콘: 2배 크기 */
-#satietyWheel .mealog-wheel__item i {
-    font-size: 32px;
+/* 포만감 행: 아이콘 열 고정 + 텍스트 한 칸 띄고 좌측 정렬 (스크롤 시 아이콘 줄 맞춤) */
+.mealog-wheel--satiety .mealog-wheel__item {
+    justify-content: flex-start;
+    /* 왼쪽 끝에서 이모티콘(32px급) 하나 정도 띄운 뒤 아이콘 열 시작 */
+    padding-left: calc(8px + 2rem);
+    padding-right: 8px;
 }
-#satietyWheel .mealog-wheel__item.mealog-wheel__item--active i {
+.mealog-wheel__satiety-cell {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 1ch;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+.mealog-wheel__satiety-label {
+    font-size: 14px;
+    font-weight: 900;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    color: inherit;
+    white-space: nowrap;
+    text-align: left;
+    flex: 1;
+    min-width: 0;
+}
+.mealog-wheel--satiety .mealog-wheel__item i {
+    font-size: 32px;
+    flex: 0 0 40px;
+    width: 40px;
+    min-width: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    line-height: 1;
+}
+.mealog-wheel--satiety .mealog-wheel__item.mealog-wheel__item--active i {
     font-size: 34px;
 }
-/* 간식 포만감도 동일 크기 적용 */
-#snackSatietyWheel .mealog-wheel__item i {
-    font-size: 32px;
+.mealog-wheel--satiety .mealog-wheel__item.mealog-wheel__item--active .mealog-wheel__satiety-label {
+    font-size: 15px;
 }
-#snackSatietyWheel .mealog-wheel__item.mealog-wheel__item--active i {
-    font-size: 34px;
+
+/* 기록 모달 게이지 스위치 (기존 대비 약 20% 축소: 22×36 → 18×29, thumb 18→14) */
+label.entry-gauge-switch {
+    position: relative;
+    display: inline-flex;
+    height: 18px;
+    width: 29px;
+    flex-shrink: 0;
+    cursor: pointer;
+    align-items: center;
+}
+label.entry-gauge-switch .entry-gauge-switch__track {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: #e2e8f0;
+    transition: background-color 0.2s ease;
+}
+label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__track {
+    background: #059669;
+}
+label.entry-gauge-switch .entry-gauge-switch__thumb {
+    pointer-events: none;
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    height: 14px;
+    width: 14px;
+    border-radius: 9999px;
+    background: #fff;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.12);
+    transition: transform 0.2s ease;
+}
+label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
+    transform: translateX(11px);
+}
+
+/* 기록 모달: 만족도·포만감 게이지 끔 */
+.entry-gauge-dial-wrap--off .mealog-wheel__scroller {
+    opacity: 0.34;
+    filter: grayscale(0.95);
+    pointer-events: none;
 }
 
 /* 가로 휠(간식 만족도): 좌우 스냅 */

@@ -1967,7 +1967,7 @@ exports.onMealWritten = onDocumentWritten(
       .collection('config').doc('stats')
       .collection('years');
 
-    const emptyDayTemplate = { count: 0, mainCount: 0, snackCount: 0, main: { mealType: {}, category: {}, withWhom: {}, rating: {}, satiety: {} }, snack: { place: {}, snackType: {}, rating: {} } };
+    const emptyDayTemplate = { count: 0, mainCount: 0, snackCount: 0, main: { mealType: {}, category: {}, withWhom: {}, rating: {}, satiety: {} }, snack: { place: {}, snackType: {}, rating: {}, satiety: {} } };
 
     try {
       await db.runTransaction(async (tx) => {

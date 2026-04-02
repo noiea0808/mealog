@@ -1621,59 +1621,78 @@
 
                     <div id="reviewSection" class="pt-2 border-t border-slate-50 grid grid-cols-2 gap-3 items-start mb-5">
                         <div id="ratingSection" class="min-w-0">
-                            <div class="flex items-baseline justify-between gap-2">
-                                <span class="text-sm font-extrabold text-slate-600 block uppercase">만족도</span>
-                                <span id="ratingDialValue" class="hidden text-[11px] font-black text-slate-500 tabular-nums">3/5</span>
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="text-sm font-extrabold text-slate-600 uppercase">만족도</span>
+                                <label class="entry-gauge-switch" title="만족도 기록·통계 반영">
+                                    <input type="checkbox" id="entryGaugeRatingToggleMain" class="peer sr-only" role="switch" aria-label="만족도 기록 사용">
+                                    <span class="entry-gauge-switch__track" aria-hidden="true"></span>
+                                    <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
+                                </label>
                             </div>
-                            <div class="mealog-wheel mt-2" role="group" aria-label="만족도 선택">
-                                <div class="mealog-wheel__indicator" aria-hidden="true"></div>
-                                <div id="ratingWheel" class="mealog-wheel__scroller" role="listbox" aria-label="만족도">
-                                    <div class="mealog-wheel__pad" aria-hidden="true"></div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="1">
-                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i></span>
+                            <span id="ratingDialValue" class="hidden">3/5</span>
+                            <div id="ratingGaugeDialWrap" class="relative mt-2 rounded-xl">
+                                <div class="mealog-wheel entry-gauge-dial" role="group" aria-label="만족도 선택">
+                                    <div class="mealog-wheel__indicator" aria-hidden="true"></div>
+                                    <div id="ratingWheel" class="mealog-wheel__scroller" role="listbox" aria-label="만족도">
+                                        <div class="mealog-wheel__pad" aria-hidden="true"></div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="1">
+                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i></span>
+                                        </div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="2">
+                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
+                                        </div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="3">
+                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
+                                        </div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="4">
+                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
+                                        </div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="5">
+                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
+                                        </div>
+                                        <div class="mealog-wheel__pad" aria-hidden="true"></div>
                                     </div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="2">
-                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
-                                    </div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="3">
-                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
-                                    </div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="4">
-                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
-                                    </div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="5">
-                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
-                                    </div>
-                                    <div class="mealog-wheel__pad" aria-hidden="true"></div>
+                                </div>
+                                <div id="ratingGaugeOffLayerMain" class="entry-gauge-off-layer hidden absolute inset-0 z-[5] flex items-center justify-center rounded-xl border border-slate-200 bg-slate-100/92" aria-hidden="true">
+                                    <span class="text-[11px] font-black uppercase tracking-wider text-slate-400">끔</span>
                                 </div>
                             </div>
                         </div>
                         
                         <div id="satietySection" class="min-w-0">
-                            <div class="flex items-baseline justify-between gap-2">
-                                <span class="text-sm font-extrabold text-slate-600 block uppercase">포만감</span>
-                                <span id="satietyDialValue" class="text-[11px] font-black text-slate-500 whitespace-nowrap">적당히</span>
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="text-sm font-extrabold text-slate-600 uppercase">포만감</span>
+                                <label class="entry-gauge-switch" title="포만감 기록·통계 반영">
+                                    <input type="checkbox" id="entryGaugeSatietyToggleMain" class="peer sr-only" role="switch" aria-label="포만감 기록 사용">
+                                    <span class="entry-gauge-switch__track" aria-hidden="true"></span>
+                                    <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
+                                </label>
                             </div>
-                            <div class="mealog-wheel mt-2" role="group" aria-label="포만감 선택">
-                                <div class="mealog-wheel__indicator" aria-hidden="true"></div>
-                                <div id="satietyWheel" class="mealog-wheel__scroller" role="listbox" aria-label="포만감">
-                                    <div class="mealog-wheel__pad" aria-hidden="true"></div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="1" data-icon="fa-cookie-bite" data-color="#5C6BC0">
-                                        <i class="fa-solid fa-cookie-bite"></i>
+                            <div id="satietyGaugeDialWrap" class="relative mt-2 rounded-xl">
+                                <div class="mealog-wheel entry-gauge-dial mealog-wheel--satiety" role="group" aria-label="포만감 선택">
+                                    <div class="mealog-wheel__indicator" aria-hidden="true"></div>
+                                    <div id="satietyWheel" class="mealog-wheel__scroller" role="listbox" aria-label="포만감">
+                                        <div class="mealog-wheel__pad" aria-hidden="true"></div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="1" data-icon="fa-cookie-bite" data-color="#5C6BC0">
+                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-cookie-bite"></i><span class="mealog-wheel__satiety-label">한입만</span></span>
+                                        </div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="2" data-icon="fa-face-smile-wink" data-color="#26C6DA">
+                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-face-smile-wink"></i><span class="mealog-wheel__satiety-label">가볍게</span></span>
+                                        </div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="3" data-icon="fa-face-smile" data-color="#66BB6A">
+                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-face-smile"></i><span class="mealog-wheel__satiety-label">적당히</span></span>
+                                        </div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="4" data-icon="fa-face-grin" data-color="#FFC107">
+                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-face-grin"></i><span class="mealog-wheel__satiety-label">든든하게</span></span>
+                                        </div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="5" data-icon="fa-face-grin-beam-sweat" data-color="#F06292">
+                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-face-grin-beam-sweat"></i><span class="mealog-wheel__satiety-label">과식</span></span>
+                                        </div>
+                                        <div class="mealog-wheel__pad" aria-hidden="true"></div>
                                     </div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="2" data-icon="fa-face-smile-wink" data-color="#26C6DA">
-                                        <i class="fa-solid fa-face-smile-wink"></i>
-                                    </div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="3" data-icon="fa-face-smile" data-color="#66BB6A">
-                                        <i class="fa-solid fa-face-smile"></i>
-                                    </div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="4" data-icon="fa-face-grin" data-color="#FFC107">
-                                        <i class="fa-solid fa-face-grin"></i>
-                                    </div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="5" data-icon="fa-face-grin-beam-sweat" data-color="#F06292">
-                                        <i class="fa-solid fa-face-grin-beam-sweat"></i>
-                                    </div>
-                                    <div class="mealog-wheel__pad" aria-hidden="true"></div>
+                                </div>
+                                <div id="satietyGaugeOffLayerMain" class="entry-gauge-off-layer hidden absolute inset-0 z-[5] flex items-center justify-center rounded-xl border border-slate-200 bg-slate-100/92" aria-hidden="true">
+                                    <span class="text-[11px] font-black uppercase tracking-wider text-slate-400">끔</span>
                                 </div>
                             </div>
                         </div>
@@ -1731,56 +1750,77 @@
                         </div>
                     </div>
                     <div id="snackReviewSection" class="pt-2 border-t border-slate-50 grid grid-cols-2 gap-3 items-start mb-2">
-                        <div id="snackRatingSection">
-                            <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">만족도</span>
-                            <div class="mealog-wheel mt-2" role="group" aria-label="간식 만족도 선택">
-                                <div class="mealog-wheel__indicator" aria-hidden="true"></div>
-                                <div id="snackRatingWheel" class="mealog-wheel__scroller" role="listbox" aria-label="간식 만족도">
-                                    <div class="mealog-wheel__pad" aria-hidden="true"></div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="1">
-                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i></span>
+                        <div id="snackRatingSection" class="min-w-0">
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="text-sm font-extrabold text-slate-600 uppercase">만족도</span>
+                                <label class="entry-gauge-switch" title="만족도 기록·통계 반영">
+                                    <input type="checkbox" id="entryGaugeRatingToggleSnack" class="peer sr-only" role="switch" aria-label="만족도 기록 사용">
+                                    <span class="entry-gauge-switch__track" aria-hidden="true"></span>
+                                    <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
+                                </label>
+                            </div>
+                            <div id="snackRatingGaugeDialWrap" class="relative mt-2 rounded-xl">
+                                <div class="mealog-wheel entry-gauge-dial" role="group" aria-label="간식 만족도 선택">
+                                    <div class="mealog-wheel__indicator" aria-hidden="true"></div>
+                                    <div id="snackRatingWheel" class="mealog-wheel__scroller" role="listbox" aria-label="간식 만족도">
+                                        <div class="mealog-wheel__pad" aria-hidden="true"></div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="1">
+                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i></span>
+                                        </div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="2">
+                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
+                                        </div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="3">
+                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
+                                        </div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="4">
+                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
+                                        </div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="5">
+                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
+                                        </div>
+                                        <div class="mealog-wheel__pad" aria-hidden="true"></div>
                                     </div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="2">
-                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
-                                    </div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="3">
-                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
-                                    </div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="4">
-                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
-                                    </div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="5">
-                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
-                                    </div>
-                                    <div class="mealog-wheel__pad" aria-hidden="true"></div>
+                                </div>
+                                <div id="ratingGaugeOffLayerSnack" class="entry-gauge-off-layer hidden absolute inset-0 z-[5] flex items-center justify-center rounded-xl border border-slate-200 bg-slate-100/92" aria-hidden="true">
+                                    <span class="text-[11px] font-black uppercase tracking-wider text-slate-400">끔</span>
                                 </div>
                             </div>
                         </div>
-                        <div id="snackSatietySection">
-                            <div class="flex items-baseline justify-between gap-2">
-                                <span class="text-sm font-extrabold text-slate-600 block uppercase">포만감</span>
-                                <span id="snackSatietyDialValue" class="text-[11px] font-black text-slate-500 whitespace-nowrap">적당히</span>
+                        <div id="snackSatietySection" class="min-w-0">
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="text-sm font-extrabold text-slate-600 uppercase">포만감</span>
+                                <label class="entry-gauge-switch" title="포만감 기록·통계 반영">
+                                    <input type="checkbox" id="entryGaugeSatietyToggleSnack" class="peer sr-only" role="switch" aria-label="포만감 기록 사용">
+                                    <span class="entry-gauge-switch__track" aria-hidden="true"></span>
+                                    <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
+                                </label>
                             </div>
-                            <div class="mealog-wheel mt-2" role="group" aria-label="간식 포만감 선택">
-                                <div class="mealog-wheel__indicator" aria-hidden="true"></div>
-                                <div id="snackSatietyWheel" class="mealog-wheel__scroller" role="listbox" aria-label="간식 포만감">
-                                    <div class="mealog-wheel__pad" aria-hidden="true"></div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="1" data-icon="fa-cookie-bite" data-color="#5C6BC0">
-                                        <i class="fa-solid fa-cookie-bite"></i>
+                            <div id="snackSatietyGaugeDialWrap" class="relative mt-2 rounded-xl">
+                                <div class="mealog-wheel entry-gauge-dial mealog-wheel--satiety" role="group" aria-label="간식 포만감 선택">
+                                    <div class="mealog-wheel__indicator" aria-hidden="true"></div>
+                                    <div id="snackSatietyWheel" class="mealog-wheel__scroller" role="listbox" aria-label="간식 포만감">
+                                        <div class="mealog-wheel__pad" aria-hidden="true"></div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="1" data-icon="fa-cookie-bite" data-color="#5C6BC0">
+                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-cookie-bite"></i><span class="mealog-wheel__satiety-label">한입만</span></span>
+                                        </div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="2" data-icon="fa-face-smile-wink" data-color="#26C6DA">
+                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-face-smile-wink"></i><span class="mealog-wheel__satiety-label">가볍게</span></span>
+                                        </div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="3" data-icon="fa-face-smile" data-color="#66BB6A">
+                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-face-smile"></i><span class="mealog-wheel__satiety-label">적당히</span></span>
+                                        </div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="4" data-icon="fa-face-grin" data-color="#FFC107">
+                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-face-grin"></i><span class="mealog-wheel__satiety-label">든든하게</span></span>
+                                        </div>
+                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="5" data-icon="fa-face-grin-beam-sweat" data-color="#F06292">
+                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-face-grin-beam-sweat"></i><span class="mealog-wheel__satiety-label">과식</span></span>
+                                        </div>
+                                        <div class="mealog-wheel__pad" aria-hidden="true"></div>
                                     </div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="2" data-icon="fa-face-smile-wink" data-color="#26C6DA">
-                                        <i class="fa-solid fa-face-smile-wink"></i>
-                                    </div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="3" data-icon="fa-face-smile" data-color="#66BB6A">
-                                        <i class="fa-solid fa-face-smile"></i>
-                                    </div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="4" data-icon="fa-face-grin" data-color="#FFC107">
-                                        <i class="fa-solid fa-face-grin"></i>
-                                    </div>
-                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="5" data-icon="fa-face-grin-beam-sweat" data-color="#F06292">
-                                        <i class="fa-solid fa-face-grin-beam-sweat"></i>
-                                    </div>
-                                    <div class="mealog-wheel__pad" aria-hidden="true"></div>
+                                </div>
+                                <div id="satietyGaugeOffLayerSnack" class="entry-gauge-off-layer hidden absolute inset-0 z-[5] flex items-center justify-center rounded-xl border border-slate-200 bg-slate-100/92" aria-hidden="true">
+                                    <span class="text-[11px] font-black uppercase tracking-wider text-slate-400">끔</span>
                                 </div>
                             </div>
                         </div>

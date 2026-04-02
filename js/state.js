@@ -56,6 +56,9 @@ export const appState = {
     wantsToShare: false, // 공유를 원하는지 여부
     currentRating: 3,
     currentSatiety: 3,
+    /** 기록 모달 열림 중: 만족도·포만감 게이지 사용(저장·통계 반영) 여부 */
+    entryGaugeRatingOn: false,
+    entryGaugeSatietyOn: false,
     
     // 대시보드
     dashboardMode: '7d',

@@ -25,7 +25,7 @@ function getMealDelta(meal, increment) {
     mainCount: 0,
     snackCount: 0,
     main: { mealType: {}, category: {}, withWhom: {}, rating: {}, satiety: {} },
-    snack: { place: {}, snackType: {}, rating: {} }
+    snack: { place: {}, snackType: {}, rating: {}, satiety: {} }
   };
 
   const slotId = meal.slotId || '';
@@ -56,6 +56,7 @@ function getMealDelta(meal, increment) {
     const st = (meal.snackType || '').trim();
     if (st) add(delta.snack.snackType, st, st);
     if (meal.rating != null) add(delta.snack.rating, String(meal.rating), String(meal.rating));
+    if (meal.satiety != null) add(delta.snack.satiety, String(meal.satiety), String(meal.satiety));
   }
 
   return delta;
@@ -86,7 +87,7 @@ function mergeDeltaIntoDay(dayEntry, delta) {
       merge(dayEntry.main[k], delta.main[k]);
     }
   });
-  ['place', 'snackType', 'rating'].forEach(k => {
+  ['place', 'snackType', 'rating', 'satiety'].forEach(k => {
     if (delta.snack && delta.snack[k] && Object.keys(delta.snack[k]).length) {
       if (!dayEntry.snack) dayEntry.snack = {};
       if (!dayEntry.snack[k]) dayEntry.snack[k] = {};
@@ -114,7 +115,7 @@ function sanitizeDayEntry(dayEntry) {
   }
   if (dayEntry.snack) {
     const s = {};
-    ['place', 'snackType', 'rating'].forEach(k => {
+    ['place', 'snackType', 'rating', 'satiety'].forEach(k => {
       if (dayEntry.snack[k] && Object.keys(dayEntry.snack[k]).length) s[k] = dayEntry.snack[k];
     });
     if (Object.keys(s).length) out.snack = s;
@@ -141,7 +142,7 @@ function computeStatsFromMeals(meals) {
     const delta = getMealDelta(m, 1);
     if (!delta) return;
     const dateStr = delta.date;
-    const emptyDay = { count: 0, mainCount: 0, snackCount: 0, main: { mealType: {}, category: {}, withWhom: {}, rating: {}, satiety: {} }, snack: { place: {}, snackType: {}, rating: {} } };
+    const emptyDay = { count: 0, mainCount: 0, snackCount: 0, main: { mealType: {}, category: {}, withWhom: {}, rating: {}, satiety: {} }, snack: { place: {}, snackType: {}, rating: {}, satiety: {} } };
     const day = daily[dateStr] || JSON.parse(JSON.stringify(emptyDay));
     mergeDeltaIntoDay(day, delta);
     daily[dateStr] = sanitizeDayEntry(day) || day;

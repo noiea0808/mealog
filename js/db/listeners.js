@@ -32,6 +32,15 @@ function mergePushPreferencesIntoUserSettings() {
     };
 }
 
+function mergeEntryModalGaugesIntoUserSettings() {
+    if (!window.userSettings) return;
+    const cur = window.userSettings.entryModalGauges;
+    window.userSettings.entryModalGauges = {
+        ratingEnabled: cur && cur.ratingEnabled === true,
+        satietyEnabled: cur && cur.satietyEnabled === true
+    };
+}
+
 export function setupListeners(userId, callbacks) {
     const { onSettingsUpdate, onDataUpdate, settingsUnsubscribe: oldSettingsUnsubscribe, dataUnsubscribe: oldDataUnsubscribe } = callbacks;
     
@@ -116,6 +125,7 @@ export function setupListeners(userId, callbacks) {
                 window.userSettings.tags = {};
             }
             mergePushPreferencesIntoUserSettings();
+            mergeEntryModalGaugesIntoUserSettings();
             if (demo) {
                 try {
                     window.__demoRawDailyComments = JSON.parse(JSON.stringify(window.userSettings.dailyComments || {}));
@@ -426,6 +436,7 @@ export function setupListeners(userId, callbacks) {
                     if (!window.userSettings.subTags) window.userSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
                     if (!window.userSettings.favoriteSubTags) window.userSettings.favoriteSubTags = { mealType: {}, category: {}, withWhom: {}, snackType: {}, snackPlace: {} };
                     mergePushPreferencesIntoUserSettings();
+                    mergeEntryModalGaugesIntoUserSettings();
                     if (demo) {
                         try {
                             window.__demoRawDailyComments = JSON.parse(JSON.stringify(window.userSettings.dailyComments || {}));

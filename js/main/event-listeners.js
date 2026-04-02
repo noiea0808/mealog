@@ -30,6 +30,7 @@ import {
     confirmLogoutAction
 } from '../auth.js';
 import { registerDemoIntroModalHandlers } from '../demo-account.js';
+import { registerEscapeCloseModals } from './escape-close-modals.js';
 import {
     registerDemoNavGuideHandlers,
     handleDemoAwareNavClick,
@@ -665,4 +666,6 @@ export function initEventListeners() {
     if (deleteAccountConfirmActionBtn) {
         deleteAccountConfirmActionBtn.addEventListener('click', confirmDeleteAccountAction);
     }
+
+    registerEscapeCloseModals();
 }

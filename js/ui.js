@@ -158,6 +158,19 @@ export function showSuccessPopup(message = '기록 완료', durationMs = 800) {
     }, Math.max(0, Number(durationMs) || 800));
 }
 
+/** 기록 완료 팝업을 즉시 닫음 (ESC 등) */
+export function dismissSuccessPopup() {
+    if (successPopupTimer) {
+        clearTimeout(successPopupTimer);
+        successPopupTimer = null;
+    }
+    const popup = document.getElementById('successPopup');
+    const confetti = document.getElementById('successPopupConfetti');
+    document.body.classList.remove('success-popup-anim');
+    if (popup) popup.classList.add('hidden');
+    if (confetti) confetti.innerHTML = '';
+}
+
 function ensureAttendancePopupCloseBound() {
     const btn = document.getElementById('attendancePopupCloseBtn');
     if (!btn || btn.dataset.bound === '1') return;

@@ -15,8 +15,112 @@ import { applyDemoDateShiftToMealRecord } from '../demo-date-shift.js';
 
 // 설정 저장 디바운싱을 위한 타이머
 let settingsSaveTimeout = null;
+let entryGaugeSaveTimeout = null;
 
 const PHOTO_ASPECT_OPTIONS = ['1:1', '3:4', '4:3'];
+
+function ensureEntryModalGaugesOnUserSettings() {
+    if (!window.userSettings) return;
+    if (!window.userSettings.entryModalGauges || typeof window.userSettings.entryModalGauges !== 'object') {
+        window.userSettings.entryModalGauges = { ratingEnabled: false, satietyEnabled: false };
+    } else {
+        window.userSettings.entryModalGauges.ratingEnabled = window.userSettings.entryModalGauges.ratingEnabled === true;
+        window.userSettings.entryModalGauges.satietyEnabled = window.userSettings.entryModalGauges.satietyEnabled === true;
+    }
+}
+
+function syncEntryGaugeToggleCheckboxes() {
+    const r = appState.entryGaugeRatingOn === true;
+    const s = appState.entryGaugeSatietyOn === true;
+    ['entryGaugeRatingToggleMain', 'entryGaugeRatingToggleSnack'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.checked = r;
+    });
+    ['entryGaugeSatietyToggleMain', 'entryGaugeSatietyToggleSnack'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.checked = s;
+    });
+}
+
+function applyEntryGaugeDialUi() {
+    const rOn = appState.entryGaugeRatingOn === true;
+    const sOn = appState.entryGaugeSatietyOn === true;
+    const pairs = [
+        ['ratingGaugeDialWrap', 'ratingGaugeOffLayerMain', rOn],
+        ['snackRatingGaugeDialWrap', 'ratingGaugeOffLayerSnack', rOn],
+        ['satietyGaugeDialWrap', 'satietyGaugeOffLayerMain', sOn],
+        ['snackSatietyGaugeDialWrap', 'satietyGaugeOffLayerSnack', sOn]
+    ];
+    pairs.forEach(([wrapId, layerId, on]) => {
+        const wrap = document.getElementById(wrapId);
+        const layer = document.getElementById(layerId);
+        if (wrap) wrap.classList.toggle('entry-gauge-dial-wrap--off', !on);
+        if (layer) layer.classList.toggle('hidden', on);
+    });
+}
+
+function schedulePersistEntryModalGaugePrefs() {
+    ensureEntryModalGaugesOnUserSettings();
+    window.userSettings.entryModalGauges = {
+        ratingEnabled: appState.entryGaugeRatingOn === true,
+        satietyEnabled: appState.entryGaugeSatietyOn === true
+    };
+    if (window.currentUser && isDemoUser(window.currentUser)) return;
+    clearTimeout(entryGaugeSaveTimeout);
+    entryGaugeSaveTimeout = setTimeout(async () => {
+        try {
+            await dbOps.saveSettings(window.userSettings);
+        } catch (_) { /* ignore */ }
+    }, 500);
+}
+
+function finalizeEntryModalGauges(savedRecord) {
+    ensureEntryModalGaugesOnUserSettings();
+    const prefs = window.userSettings.entryModalGauges;
+    const pr = prefs.ratingEnabled === true;
+    const ps = prefs.satietyEnabled === true;
+    const r = savedRecord;
+    if (r) {
+        const rn = r.rating != null && r.rating !== '' ? Number(r.rating) : NaN;
+        if (Number.isFinite(rn)) appState.entryGaugeRatingOn = true;
+        else if (r.rating === null) appState.entryGaugeRatingOn = false;
+        else appState.entryGaugeRatingOn = pr;
+        const sn = r.satiety != null && r.satiety !== '' ? Number(r.satiety) : NaN;
+        if (Number.isFinite(sn)) appState.entryGaugeSatietyOn = true;
+        else if (r.satiety === null) appState.entryGaugeSatietyOn = false;
+        else appState.entryGaugeSatietyOn = ps;
+    } else {
+        appState.entryGaugeRatingOn = pr;
+        appState.entryGaugeSatietyOn = ps;
+    }
+    syncEntryGaugeToggleCheckboxes();
+    applyEntryGaugeDialUi();
+}
+
+function initEntryModalGaugeControlsOnce() {
+    if (window.__entryGaugeTogglesInit) return;
+    window.__entryGaugeTogglesInit = true;
+    const onRatingChange = (checked) => {
+        appState.entryGaugeRatingOn = checked;
+        syncEntryGaugeToggleCheckboxes();
+        applyEntryGaugeDialUi();
+        schedulePersistEntryModalGaugePrefs();
+    };
+    const onSatietyChange = (checked) => {
+        appState.entryGaugeSatietyOn = checked;
+        syncEntryGaugeToggleCheckboxes();
+        applyEntryGaugeDialUi();
+        schedulePersistEntryModalGaugePrefs();
+    };
+    ['entryGaugeRatingToggleMain', 'entryGaugeRatingToggleSnack'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', () => onRatingChange(!!el.checked));
+    });
+    ['entryGaugeSatietyToggleMain', 'entryGaugeSatietyToggleSnack'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', () => onSatietyChange(!!el.checked));
+    });
+}
 
 /** 기록 모달 표시 시 body 클래스 — 하단 네비 숨김·액션 패딩과 동기화 */
 function syncEntryModalBodyClass() {
@@ -402,9 +506,6 @@ export async function openModal(date, slotId, entryId = null) {
         if (mainPhotoContainer) mainPhotoContainer.innerHTML = "";
         if (snackPhotoContainer) snackPhotoContainer.innerHTML = "";
         
-        window.setRating(3);
-        window.setSatiety(3);
-        
         const resetModalScrollTop = () => {
             const scrollArea = document.getElementById('modalScrollArea');
             if (!scrollArea) return;
@@ -527,8 +628,10 @@ export async function openModal(date, slotId, entryId = null) {
                 setVal('generalCommentInput', r.comment || "");
                 setVal('snackCommentInput', r.comment || "");
                 
-                if (r.rating) window.setRating(r.rating);
-                if (r.satiety) window.setSatiety(r.satiety);
+                const rn = r.rating != null && r.rating !== '' ? Number(r.rating) : NaN;
+                const sn = r.satiety != null && r.satiety !== '' ? Number(r.satiety) : NaN;
+                window.setRating(Number.isFinite(rn) ? rn : 3);
+                window.setSatiety(Number.isFinite(sn) ? sn : 3);
                 
                 // 공유 인디케이터 표시
                 updateShareIndicator();
@@ -738,6 +841,9 @@ export async function openModal(date, slotId, entryId = null) {
                 
                 document.getElementById('btnDelete')?.classList.remove('hidden');
             }
+        } else {
+            window.setRating(3);
+            window.setSatiety(3);
         }
         
         // 간식 모드일 때 초기 추천 태그 표시
@@ -768,6 +874,9 @@ export async function openModal(date, slotId, entryId = null) {
             }
         }
         
+        initEntryModalGaugeControlsOnce();
+        finalizeEntryModalGauges(entryId && savedRecord ? savedRecord : null);
+
         const entryModal = document.getElementById('entryModal');
         if (entryModal) {
             entryModal.classList.remove('hidden');
@@ -787,6 +896,7 @@ export async function openModal(date, slotId, entryId = null) {
                 try {
                     window.setRating?.(appState.currentRating || 3);
                     window.setSatiety?.(appState.currentSatiety || 3);
+                    applyEntryGaugeDialUi();
                 } catch (_) {}
             }, 0);
         } else {
@@ -1004,6 +1114,8 @@ export async function saveEntry() {
         const isBase64Photo = (photo) => typeof photo === 'string' && photo.startsWith('data:image');
         const existingPhotoUrls = sourcePhotos.filter(photo => typeof photo === 'string' && photo && !isBase64Photo(photo));
 
+        const rateOn = appState.entryGaugeRatingOn === true;
+        const satOn = appState.entryGaugeSatietyOn === true;
         const record = {
             id: idToUse,
             date: state.currentEditingDate,
@@ -1020,8 +1132,8 @@ export async function saveEntry() {
             menuDetail: isSk ? '' : (isS ? snackInputVal : menuInputVal),
             place: isSk ? '' : (isS ? (snackPlaceInputVal || appState.selectedSnackPlaceMainTag || '') : placeInputVal),
             comment: isSk ? '' : (isS ? (document.getElementById('snackCommentInput')?.value || '') : (document.getElementById('generalCommentInput')?.value || '')),
-            rating: (isSk) ? null : state.currentRating,
-            satiety: (isSk) ? null : state.currentSatiety,
+            rating: isSk ? null : (rateOn ? state.currentRating : null),
+            satiety: isSk ? null : (satOn ? state.currentSatiety : null),
             time: new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' })
         };
         
@@ -1548,16 +1660,6 @@ export function setRating(s) {
 export function setSatiety(s) {
     const state = appState;
     state.currentSatiety = s;
-    const dialValue = document.getElementById('satietyDialValue');
-    if (dialValue) {
-        const d = (SATIETY_DATA || []).find(x => x.val === s);
-        dialValue.textContent = d?.label || String(s);
-    }
-    const snackDialValue = document.getElementById('snackSatietyDialValue');
-    if (snackDialValue) {
-        const d = (SATIETY_DATA || []).find(x => x.val === s);
-        snackDialValue.textContent = d?.label || String(s);
-    }
 
     const syncSatietyWheel = (wheelId) => {
         const wheel = document.getElementById(wheelId);
@@ -1674,10 +1776,18 @@ function initWheelDialsOnce() {
         });
     };
 
-    bindWheel('ratingWheel', (v) => window.setRating?.(v), 'y');
-    bindWheel('snackRatingWheel', (v) => window.setRating?.(v), 'y');
-    bindWheel('satietyWheel', (v) => window.setSatiety?.(v), 'y');
-    bindWheel('snackSatietyWheel', (v) => window.setSatiety?.(v), 'y');
+    bindWheel('ratingWheel', (v) => {
+        if (appState.entryGaugeRatingOn === true) window.setRating?.(v);
+    }, 'y');
+    bindWheel('snackRatingWheel', (v) => {
+        if (appState.entryGaugeRatingOn === true) window.setRating?.(v);
+    }, 'y');
+    bindWheel('satietyWheel', (v) => {
+        if (appState.entryGaugeSatietyOn === true) window.setSatiety?.(v);
+    }, 'y');
+    bindWheel('snackSatietyWheel', (v) => {
+        if (appState.entryGaugeSatietyOn === true) window.setSatiety?.(v);
+    }, 'y');
 }
 
 // entry 모달이 열리고 나면 휠 이벤트를 1회 바인딩
