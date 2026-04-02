@@ -1478,22 +1478,87 @@
                         
                         <!-- 관리자 설정 -->
                         <div id="content-main-settings" class="content-main-section hidden">
-                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
-                                <div class="p-6 border-b border-slate-100">
-                                    <h2 class="text-lg font-black text-slate-800">관리자 설정</h2>
-                                </div>
-                                <div class="p-6 space-y-6">
-                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <h3 class="text-base font-black text-slate-800 mb-2 flex items-center gap-2">
-                                            <i class="fa-solid fa-user-tag text-emerald-600"></i>
-                                            공지·댓글 표시 이름
-                                        </h3>
-                                        <p class="text-sm text-slate-500 mb-3">공지 작성 또는 게시판 댓글 작성 시 사용자에게 표시될 관리자 이름을 입력하세요.</p>
-                                        <div class="flex gap-2 items-center">
-                                            <input type="text" id="adminDisplayNameInput" placeholder="예: 운영자, 관리자" maxlength="30" class="flex-1 px-4 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500">
-                                            <button type="button" onclick="window.saveAdminDisplayName()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                            <div class="flex flex-col lg:flex-row gap-4">
+                                <aside class="w-full lg:w-44 shrink-0 flex flex-col gap-1.5 bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
+                                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide px-1 mb-0.5">메뉴</p>
+                                    <button type="button" data-settings-sub="displayName" class="admin-settings-subnav-btn w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold border transition-colors text-emerald-600 bg-emerald-50 border-emerald-200">
+                                        관리자명
+                                    </button>
+                                    <button type="button" data-settings-sub="welcome" class="admin-settings-subnav-btn w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold border transition-colors text-slate-600 bg-white border-slate-200 hover:bg-slate-50">
+                                        웰컴메시지
+                                    </button>
+                                </aside>
+                                <div class="flex-1 min-w-0 flex flex-col gap-4">
+                                    <div id="adminSettingsSub-displayName" class="admin-settings-subpanel bg-white rounded-2xl shadow-sm border border-slate-100">
+                                        <div class="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                                            <h2 class="text-lg font-black text-slate-800">관리자명</h2>
+                                        </div>
+                                        <div class="p-6">
+                                            <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                                <h3 class="text-base font-black text-slate-800 mb-2 flex items-center gap-2">
+                                                    <i class="fa-solid fa-user-tag text-emerald-600"></i>
+                                                    공지·댓글 표시 이름
+                                                </h3>
+                                                <p class="text-sm text-slate-500 mb-3">공지 작성 또는 게시판 댓글 작성 시 사용자에게 표시될 관리자 이름을 입력하세요.</p>
+                                                <div class="flex flex-wrap gap-2 items-center">
+                                                    <input type="text" id="adminDisplayNameInput" placeholder="예: 운영자, 관리자" maxlength="30" class="flex-1 min-w-[12rem] px-4 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500">
+                                                    <button type="button" onclick="window.saveAdminDisplayName()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                                        저장
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="adminSettingsSub-welcome" class="admin-settings-subpanel hidden bg-white rounded-2xl shadow-sm border border-slate-100">
+                                        <div class="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                                            <h2 class="text-lg font-black text-slate-800">웰컴메시지</h2>
+                                            <button type="button" onclick="window.saveAttendancePopupSettings()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
                                                 저장
                                             </button>
+                                        </div>
+                                        <div class="p-6 space-y-6">
+                                            <p class="text-sm text-slate-500 leading-relaxed">
+                                                로그인 후 메인 화면에서 한 번 표시되는 <strong class="text-slate-700">연속 기록 알림</strong> 팝업입니다. 아래 문구는 <strong class="text-slate-700">한 벌</strong>만 설정하고, <strong class="text-slate-700">적용 환경</strong>에서 스테이징만 / 운영만 / 전체 중 어디에 쓸지 고릅니다.
+                                            </p>
+                                            <div class="rounded-xl p-5 border border-slate-200 bg-slate-50 space-y-5">
+                                                <div class="flex flex-wrap items-center justify-between gap-3">
+                                                    <span class="text-sm font-bold text-slate-800">연속 기록 팝업 사용</span>
+                                                    <label class="inline-flex items-center gap-3 cursor-pointer select-none">
+                                                        <input type="checkbox" id="attendanceEnabled" role="switch" class="peer sr-only" checked>
+                                                        <span class="relative w-11 h-6 rounded-full bg-slate-300 transition-colors peer-checked:bg-emerald-500 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-400 peer-focus-visible:ring-offset-2 shrink-0 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5" aria-hidden="true"></span>
+                                                    </label>
+                                                </div>
+                                                <div>
+                                                    <p class="text-xs font-bold text-slate-600 mb-2">적용 환경</p>
+                                                    <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="웰컴 팝업 적용 환경">
+                                                        <label class="cursor-pointer inline-flex">
+                                                            <input type="radio" name="attendanceApplyTo" value="all" class="peer sr-only" checked>
+                                                            <span class="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-600 peer-checked:border-emerald-500 peer-checked:bg-emerald-50 peer-checked:text-emerald-800">전체</span>
+                                                        </label>
+                                                        <label class="cursor-pointer inline-flex">
+                                                            <input type="radio" name="attendanceApplyTo" value="staging" class="peer sr-only">
+                                                            <span class="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-600 peer-checked:border-amber-500 peer-checked:bg-amber-50 peer-checked:text-amber-900">스테이징</span>
+                                                        </label>
+                                                        <label class="cursor-pointer inline-flex">
+                                                            <input type="radio" name="attendanceApplyTo" value="production" class="peer sr-only">
+                                                            <span class="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-600 peer-checked:border-slate-600 peer-checked:bg-slate-100 peer-checked:text-slate-900">운영</span>
+                                                        </label>
+                                                    </div>
+                                                    <p class="text-xs text-slate-500 mt-2">스테이징·운영 구분은 앱 패키지, <code class="text-slate-600">APP_ENV</code>, 로컬 호스트 등 기존 앱과 동일한 기준입니다.</p>
+                                                </div>
+                                            </div>
+                                            <div class="rounded-xl p-5 border border-slate-200 space-y-4">
+                                                <h3 class="text-sm font-black text-slate-800">메시지</h3>
+                                                <div class="space-y-3">
+                                                    <p class="text-xs font-bold text-slate-600">기록이 없을 때 (첫 줄 / 둘째 줄)</p>
+                                                    <input type="text" id="attendanceNoRecordLine1" maxlength="60" placeholder="예: 우리 오늘부터" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 bg-white">
+                                                    <input type="text" id="attendanceNoRecordLine2" maxlength="60" placeholder="예: 시작하는거죠?!" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 bg-white">
+                                                </div>
+                                                <div class="space-y-2">
+                                                    <p class="text-xs font-bold text-slate-600">연속 기록이 있을 때 — 둘째 줄 (비우면 「N일 연속 기록!!」만 표시)</p>
+                                                    <input type="text" id="attendanceStreakLine2" maxlength="60" placeholder="부가 문구 (선택)" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 bg-white">
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -1507,24 +1572,29 @@
             <!-- 관리 로그 탭 (날짜별 운영 메모) -->
             <div id="admin-tab-content-adminLog" class="admin-tab-content hidden">
                 <div class="flex flex-col lg:flex-row gap-4">
-                    <aside class="w-full lg:w-56 shrink-0 flex flex-col gap-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
+                    <aside class="w-full lg:w-max lg:max-w-[min(100%,26rem)] shrink-0 flex flex-col gap-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
                         <button type="button" id="adminLogAddBtn" class="w-full py-2.5 px-3 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2">
                             <i class="fa-solid fa-plus"></i>추가
                         </button>
                         <div id="adminLogDateList" class="flex flex-col gap-2"></div>
                     </aside>
                     <div class="flex-1 min-w-0 flex flex-col bg-white rounded-2xl shadow-sm border border-slate-100">
-                        <div class="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                                <h2 class="text-lg font-black text-slate-800">관리 로그</h2>
-                                <p id="adminLogSelectedDateLabel" class="text-xs text-slate-500 mt-1 font-mono">날짜를 선택하세요</p>
+                        <div class="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                            <h2 class="text-lg font-black text-slate-800">관리 로그</h2>
+                            <div id="adminLogHeaderToolbar" class="flex flex-wrap items-center gap-2 hidden">
+                                <div id="adminLogHeaderActionsView" class="flex flex-wrap gap-2">
+                                    <button type="button" id="adminLogHdrEditBtn" class="px-3 py-1.5 bg-slate-700 text-white rounded-lg text-xs font-bold hover:bg-slate-800">수정</button>
+                                    <button type="button" id="adminLogHdrDeleteBtn" class="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-red-50 hover:border-red-200 hover:text-red-600">삭제</button>
+                                </div>
+                                <div id="adminLogHeaderActionsEdit" class="flex flex-wrap gap-2 hidden">
+                                    <button type="button" id="adminLogHdrSaveBtn" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700">저장</button>
+                                    <button type="button" id="adminLogHdrCancelBtn" class="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50">취소</button>
+                                    <button type="button" id="adminLogHdrDeleteEditBtn" class="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-red-50 hover:border-red-200 hover:text-red-600">삭제</button>
+                                </div>
                             </div>
-                            <button type="button" id="adminLogAddBlockBtn" disabled class="px-4 py-2.5 bg-slate-700 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:pointer-events-none">
-                                <i class="fa-solid fa-plus mr-2"></i>블록 추가
-                            </button>
                         </div>
                         <div class="flex-1 flex flex-col p-5">
-                            <p id="adminLogEmptyHint" class="text-sm text-slate-400 py-8 text-center">왼쪽에서 날짜를 선택하거나 「추가」로 오늘 블록을 만드세요.</p>
+                            <p id="adminLogEmptyHint" class="text-sm text-slate-400 py-8 text-center">왼쪽에서 항목을 선택하거나 「추가」로 블록을 쌓을 수 있습니다.</p>
                             <div id="adminLogEntriesWrap" class="hidden flex flex-col">
                                 <div id="adminLogEntriesContainer" class="flex flex-col gap-4"></div>
                             </div>

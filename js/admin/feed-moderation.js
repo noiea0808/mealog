@@ -447,15 +447,15 @@ async function renderFeedManagement() {
                             ${isShared ? '<span class="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded">공유</span>' : ''}
                         </div>
                     </td>
-                    <td class="px-2 py-3 align-middle whitespace-nowrap text-center w-[96px] min-w-[96px] border-r border-slate-200">
-                        <div class="text-xs text-slate-700 font-semibold leading-tight">${escapeHtml(dateTime.date)}</div>
-                        <div class="text-[11px] text-slate-500 leading-tight mt-0.5">${escapeHtml(dateTime.time)}</div>
+                    <td class="px-2 py-3 align-middle text-center w-[112px] min-w-[112px] max-w-[112px] border-r border-slate-200">
+                        <div class="text-xs text-slate-700 font-semibold leading-tight whitespace-nowrap">${escapeHtml(dateTime.date)}</div>
+                        <div class="text-[11px] text-slate-500 leading-tight mt-0.5 whitespace-nowrap">${escapeHtml(dateTime.time)}</div>
+                        <div class="text-[10px] text-slate-400 break-all leading-tight mt-1 font-mono text-left px-0.5" title="게시물 ID">${escapeHtml(String(meal.id || '-'))}</div>
                     </td>
                     <td class="px-3 py-3 align-middle w-[176px] max-w-[176px] text-center border-r border-slate-200">
                         <div class="flex flex-col items-center gap-1 overflow-hidden">
                             <span class="text-sm font-semibold text-slate-800 break-words">${userInfo.icon} ${escapeHtml(userInfo.nickname)}</span>
                             ${userInfo.email ? `<span class="text-[11px] text-slate-500 break-all leading-tight">${escapeHtml(userInfo.email)}</span>` : ''}
-                            <span class="text-[11px] text-slate-400">${escapeHtml(String(meal.id || '-'))}</span>
                             <span class="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-bold rounded">${typeLabel}</span>
                         </div>
                     </td>
@@ -504,7 +504,7 @@ async function renderFeedManagement() {
                         <tr class="text-xs text-slate-500">
                             <th class="px-3 py-3 font-bold w-10 text-center whitespace-nowrap border-r border-slate-200">선택</th>
                             <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[56px] min-w-[56px] border-r border-slate-200">번호</th>
-                            <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[96px] min-w-[96px] border-r border-slate-200">일시</th>
+                            <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[112px] min-w-[112px] border-r border-slate-200">일시</th>
                             <th class="px-3 py-3 font-bold text-center w-[176px] whitespace-nowrap border-r border-slate-200">작성자</th>
                             <th class="px-2 py-3 font-bold text-center w-[92px] whitespace-nowrap border-r border-slate-200">식사구분</th>
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">어디서</th>

@@ -1,7 +1,7 @@
 /**
  * 관리 로그 — 날짜별(로컬 YYYY-MM-DD) 다중 블록
  * 경로: artifacts/{appId}/adminLogs/{dateKey}/entries/{entryId}
- * 본문: HTML 저장(붙여넣기 서식 일부 유지), 저장 시 stripDangerousTagsOnly 정제
+ * UI: 사이드바는 항목별 `2026년 4월 1일(수)_13:30:30` 형식, 우측 단일 패널. 「추가」로 선택 날짜(없으면 오늘)에 블록 적층.
  */
 import { db, appId } from '../firebase.js';
 import {
@@ -41,24 +41,47 @@ function sortDateKeysDesc(keys) {
     return [...keys].filter((k) => DATE_KEY_RE.test(k)).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
 }
 
-function formatDateKeyLabel(dateKey) {
+/** @param {unknown} ts Firestore Timestamp 등 */
+function tsToMs(ts) {
+    if (ts == null) return null;
+    if (typeof ts.toMillis === 'function') return ts.toMillis();
+    if (typeof ts.seconds === 'number') return ts.seconds * 1000;
+    return null;
+}
+
+/** dateKey(YYYY-MM-DD) → 해당일 00:00 로컬 ms */
+function dateKeyToLocalMidnightMs(dateKey) {
     const parts = dateKey.split('-').map(Number);
-    if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return dateKey;
-    const d = new Date(parts[0], parts[1] - 1, parts[2]);
-    return d.toLocaleDateString('ko-KR', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        weekday: 'short'
-    });
+    if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return Date.now();
+    return new Date(parts[0], parts[1] - 1, parts[2]).getTime();
+}
+
+/**
+ * @param {string} dateKey
+ * @param {number | null} createdAtMs
+ */
+function formatSidebarEntryLabel(dateKey, createdAtMs) {
+    const ms =
+        createdAtMs != null && !Number.isNaN(createdAtMs)
+            ? createdAtMs
+            : dateKeyToLocalMidnightMs(dateKey);
+    const d = new Date(ms);
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    const day = d.getDate();
+    const wd = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${y}년 ${m}월 ${day}일(${wd})_${hh}:${mm}:${ss}`;
 }
 
 /** 텍스트가 비었는지(태그만 있는 경우 포함) */
 function bodyIsEffectivelyEmpty(body) {
     if (body == null || body === '') return true;
-    const d = document.createElement('div');
-    d.innerHTML = body;
-    return (d.textContent || '').trim().length === 0;
+    const el = document.createElement('div');
+    el.innerHTML = body;
+    return (el.textContent || '').trim().length === 0;
 }
 
 function looksLikeHtml(s) {
@@ -76,6 +99,10 @@ let listenersBound = false;
 let cachedDateKeys = [];
 /** @type {string | null} */
 let selectedDateKey = null;
+/** @type {string | null} */
+let selectedEntryId = null;
+/** @type {Record<string, { id: string, body: string, createdAtMs: number | null }[]>} */
+let entriesCache = {};
 
 function getEls() {
     return {
@@ -83,46 +110,87 @@ function getEls() {
         entriesWrap: document.getElementById('adminLogEntriesWrap'),
         entriesContainer: document.getElementById('adminLogEntriesContainer'),
         addBtn: document.getElementById('adminLogAddBtn'),
-        addBlockBtn: document.getElementById('adminLogAddBlockBtn'),
-        selectedLabel: document.getElementById('adminLogSelectedDateLabel'),
-        emptyHint: document.getElementById('adminLogEmptyHint')
+        emptyHint: document.getElementById('adminLogEmptyHint'),
+        headerToolbar: document.getElementById('adminLogHeaderToolbar'),
+        headerActionsView: document.getElementById('adminLogHeaderActionsView'),
+        headerActionsEdit: document.getElementById('adminLogHeaderActionsEdit')
     };
 }
 
-function renderDateList() {
-    const { list } = getEls();
-    if (!list) return;
-    const keys = sortDateKeysDesc(cachedDateKeys);
-    if (keys.length === 0) {
-        list.innerHTML =
-            '<p class="text-xs text-slate-400 px-2 py-3 text-center">저장된 로그가 없습니다.<br>「추가」로 오늘 블록을 만들 수 있습니다.</p>';
+function getEntryWrap() {
+    return document.querySelector('#adminLogEntriesContainer .admin-log-entry');
+}
+
+function syncAdminLogHeader() {
+    const { headerToolbar, headerActionsView, headerActionsEdit } = getEls();
+    if (!headerToolbar) return;
+    const wrap = getEntryWrap();
+    if (!selectedEntryId || !selectedDateKey || !wrap) {
+        headerToolbar.classList.add('hidden');
         return;
     }
-    list.innerHTML = keys
-        .map((key) => {
-            const active = key === selectedDateKey;
+    headerToolbar.classList.remove('hidden');
+    const editor = wrap.querySelector('.admin-log-entry-editor');
+    const isEdit = !!(editor && !editor.classList.contains('hidden'));
+    if (headerActionsView) headerActionsView.classList.toggle('hidden', isEdit);
+    if (headerActionsEdit) headerActionsEdit.classList.toggle('hidden', !isEdit);
+}
+
+function updateEditorChrome() {
+    const { emptyHint, entriesWrap } = getEls();
+    const hasEntry = !!(selectedDateKey && selectedEntryId);
+    if (emptyHint) emptyHint.classList.toggle('hidden', hasEntry);
+    if (entriesWrap) entriesWrap.classList.toggle('hidden', !hasEntry);
+    syncAdminLogHeader();
+}
+
+/** 최신순(같은 시각이면 dateKey·id 안정 정렬) */
+function getAllEntriesFlat() {
+    /** @type {{ dateKey: string, id: string, body: string, createdAtMs: number | null }[]} */
+    const rows = [];
+    for (const dateKey of sortDateKeysDesc(cachedDateKeys)) {
+        const arr = entriesCache[dateKey] || [];
+        for (const e of arr) {
+            rows.push({ dateKey, ...e });
+        }
+    }
+    rows.sort((a, b) => {
+        const ta = a.createdAtMs ?? dateKeyToLocalMidnightMs(a.dateKey);
+        const tb = b.createdAtMs ?? dateKeyToLocalMidnightMs(b.dateKey);
+        if (tb !== ta) return tb - ta;
+        if (a.dateKey !== b.dateKey) return a.dateKey < b.dateKey ? 1 : -1;
+        return a.id < b.id ? 1 : -1;
+    });
+    return rows;
+}
+
+function renderSidebarList() {
+    const { list } = getEls();
+    if (!list) return;
+    const flat = getAllEntriesFlat();
+    if (flat.length === 0) {
+        list.innerHTML =
+            '<p class="text-xs text-slate-400 px-2 py-3 text-center">저장된 로그가 없습니다.<br>「추가」로 오늘 첫 블록을 만들 수 있습니다.</p>';
+        return;
+    }
+    list.innerHTML = flat
+        .map((row) => {
+            const active = row.dateKey === selectedDateKey && row.id === selectedEntryId;
             const cls = active
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
                 : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50';
-            return `<button type="button" class="admin-log-date-item w-full text-left px-3 py-2.5 rounded-xl border text-sm font-bold transition-colors ${cls}" data-date-key="${key}">
-                <span class="block text-[11px] font-mono text-slate-400 mb-0.5">${key}</span>
-                <span class="block leading-tight">${formatDateKeyLabel(key)}</span>
-            </button>`;
+            const label = formatSidebarEntryLabel(row.dateKey, row.createdAtMs);
+            return `<button type="button" class="admin-log-block-item w-full text-left px-2.5 py-2 rounded-xl border text-xs font-bold leading-snug transition-colors break-words ${cls}" data-date-key="${row.dateKey}" data-entry-id="${row.id}">${escapeAttr(label)}</button>`;
         })
         .join('');
 }
 
-function updateEditorChrome() {
-    const { selectedLabel, emptyHint, entriesWrap, addBlockBtn } = getEls();
-    const hasSelection = !!selectedDateKey;
-    if (selectedLabel) {
-        selectedLabel.textContent = hasSelection
-            ? `${selectedDateKey} · ${formatDateKeyLabel(selectedDateKey)}`
-            : '날짜를 선택하세요';
-    }
-    if (emptyHint) emptyHint.classList.toggle('hidden', hasSelection);
-    if (entriesWrap) entriesWrap.classList.toggle('hidden', !hasSelection);
-    if (addBlockBtn) addBlockBtn.disabled = !hasSelection;
+function escapeAttr(s) {
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }
 
 function showAdminLogToast(message, kind = 'ok') {
@@ -165,10 +233,6 @@ async function ensureParentStub(dateKey) {
     await setDoc(parentDocRef(dateKey), { updatedAt: serverTimestamp() }, { merge: true });
 }
 
-/**
- * @param {HTMLElement} viewEl
- * @param {string} body
- */
 function fillViewElement(viewEl, body) {
     viewEl.className = VIEW_CONTENT_CLASS;
     viewEl.removeAttribute('style');
@@ -186,11 +250,6 @@ function fillViewElement(viewEl, body) {
     }
 }
 
-/**
- * 편집 영역에 저장본 반영(붙여넣기용 contenteditable)
- * @param {HTMLElement} editorEl
- * @param {string} body
- */
 function fillEditorElement(editorEl, body) {
     editorEl.innerHTML = '';
     if (bodyIsEffectivelyEmpty(body)) {
@@ -204,20 +263,12 @@ function fillEditorElement(editorEl, body) {
     }
 }
 
-/**
- * @param {HTMLElement} wrap
- * @param {'view'|'edit'} mode
- */
 function setEntryMode(wrap, mode) {
     const view = wrap.querySelector('.admin-log-entry-view');
     const editor = wrap.querySelector('.admin-log-entry-editor');
-    const actionsView = wrap.querySelector('.admin-log-entry-actions-view');
-    const actionsEdit = wrap.querySelector('.admin-log-entry-actions-edit');
     const isView = mode === 'view';
     if (view) view.classList.toggle('hidden', !isView);
     if (editor) editor.classList.toggle('hidden', isView);
-    if (actionsView) actionsView.classList.toggle('hidden', !isView);
-    if (actionsEdit) actionsEdit.classList.toggle('hidden', isView);
 }
 
 function enterEditMode(wrap) {
@@ -228,6 +279,7 @@ function enterEditMode(wrap) {
         editor.focus();
     }
     setEntryMode(wrap, 'edit');
+    syncAdminLogHeader();
 }
 
 function cancelEditMode(wrap) {
@@ -236,127 +288,114 @@ function cancelEditMode(wrap) {
     const view = wrap.querySelector('.admin-log-entry-view');
     if (view) fillViewElement(view, body);
     setEntryMode(wrap, 'view');
+    syncAdminLogHeader();
 }
 
 /**
- * @param {{ id: string, body: string }[]} entries
+ * @param {{ id: string, body: string, createdAtMs?: number | null }} entry
  */
-function renderEntryBlocks(entries) {
-    const { entriesContainer } = getEls();
-    if (!entriesContainer) return;
-    entriesContainer.innerHTML = '';
+function buildEntryWrap(entry) {
+    const wrap = document.createElement('div');
+    wrap.className = 'admin-log-entry border border-slate-200 rounded-xl p-4 space-y-3 bg-slate-50/50';
+    wrap.dataset.entryId = entry.id;
+    wrap.dataset.savedBody = entry.body || '';
 
-    if (entries.length === 0) {
-        const p = document.createElement('p');
-        p.className = 'text-sm text-slate-400 py-4 text-center';
-        p.textContent = '이 날짜에 블록이 없습니다. 「블록 추가」로 붙여 넣을 영역을 만드세요.';
-        entriesContainer.appendChild(p);
-        return;
+    const view = document.createElement('div');
+    fillViewElement(view, entry.body || '');
+
+    const editor = document.createElement('div');
+    editor.className = EDITOR_CLASS;
+    editor.contentEditable = 'true';
+    editor.setAttribute('spellcheck', 'true');
+    fillEditorElement(editor, entry.body || '');
+
+    wrap.append(view, editor);
+
+    const hasSaved = !bodyIsEffectivelyEmpty(entry.body);
+    if (hasSaved) {
+        setEntryMode(wrap, 'view');
+    } else {
+        setEntryMode(wrap, 'edit');
+        editor.focus();
     }
 
-    entries.forEach((e, i) => {
-        const wrap = document.createElement('div');
-        wrap.className =
-            'admin-log-entry border border-slate-200 rounded-xl p-4 space-y-3 bg-slate-50/50';
-        wrap.dataset.entryId = e.id;
-        wrap.dataset.savedBody = e.body || '';
+    return wrap;
+}
 
-        const head = document.createElement('div');
-        head.className = 'flex flex-wrap items-center justify-between gap-2';
-        const title = document.createElement('span');
-        title.className = 'text-xs font-bold text-slate-500';
-        title.textContent = `블록 ${i + 1}`;
+function renderActiveEntryPanel() {
+    const { entriesContainer } = getEls();
+    if (!entriesContainer || !selectedDateKey || !selectedEntryId) return;
+    entriesContainer.innerHTML = '';
+    const list = entriesCache[selectedDateKey] || [];
+    const entry = list.find((e) => e.id === selectedEntryId);
+    if (!entry) {
+        entriesContainer.innerHTML =
+            '<p class="text-sm text-slate-400 py-4 text-center">항목을 찾을 수 없습니다.</p>';
+        syncAdminLogHeader();
+        return;
+    }
+    entriesContainer.appendChild(buildEntryWrap(entry));
+    syncAdminLogHeader();
+}
 
-        const actionsView = document.createElement('div');
-        actionsView.className = 'admin-log-entry-actions-view flex gap-2';
-        const editBtn = document.createElement('button');
-        editBtn.type = 'button';
-        editBtn.dataset.action = 'edit';
-        editBtn.className =
-            'px-3 py-1.5 bg-slate-700 text-white rounded-lg text-xs font-bold hover:bg-slate-800';
-        editBtn.textContent = '수정';
-        const delBtnView = document.createElement('button');
-        delBtnView.type = 'button';
-        delBtnView.dataset.action = 'delete';
-        delBtnView.className =
-            'px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-red-50 hover:border-red-200 hover:text-red-600';
-        delBtnView.textContent = '삭제';
-        actionsView.append(editBtn, delBtnView);
-
-        const actionsEdit = document.createElement('div');
-        actionsEdit.className = 'admin-log-entry-actions-edit flex gap-2 hidden';
-        const saveBtn = document.createElement('button');
-        saveBtn.type = 'button';
-        saveBtn.dataset.action = 'save';
-        saveBtn.className =
-            'px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700';
-        saveBtn.textContent = '저장';
-        const cancelBtn = document.createElement('button');
-        cancelBtn.type = 'button';
-        cancelBtn.dataset.action = 'cancel';
-        cancelBtn.className =
-            'px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50';
-        cancelBtn.textContent = '취소';
-        const delBtnEdit = document.createElement('button');
-        delBtnEdit.type = 'button';
-        delBtnEdit.dataset.action = 'delete';
-        delBtnEdit.className =
-            'px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-red-50 hover:border-red-200 hover:text-red-600';
-        delBtnEdit.textContent = '삭제';
-        actionsEdit.append(saveBtn, cancelBtn, delBtnEdit);
-
-        head.append(title, actionsView, actionsEdit);
-
-        const view = document.createElement('div');
-        fillViewElement(view, e.body || '');
-
-        const editor = document.createElement('div');
-        editor.className = EDITOR_CLASS;
-        editor.contentEditable = 'true';
-        editor.setAttribute('spellcheck', 'true');
-        fillEditorElement(editor, e.body || '');
-
-        wrap.append(head, view, editor);
-
-        const hasSaved = !bodyIsEffectivelyEmpty(e.body);
-        if (hasSaved) {
-            setEntryMode(wrap, 'view');
-        } else {
-            setEntryMode(wrap, 'edit');
-            editor.focus();
-        }
-
-        entriesContainer.appendChild(wrap);
+/** @param {string} dateKey */
+async function refreshEntriesForDate(dateKey) {
+    if (!DATE_KEY_RE.test(dateKey)) return;
+    await migrateLegacyBodyIfNeeded(dateKey);
+    const q = query(entriesCol(dateKey), orderBy('createdAt', 'asc'));
+    const snap = await getDocs(q);
+    entriesCache[dateKey] = snap.docs.map((d) => {
+        const x = d.data();
+        const createdMs = tsToMs(x.createdAt);
+        return {
+            id: d.id,
+            body: typeof x.body === 'string' ? x.body : '',
+            createdAtMs: createdMs
+        };
     });
 }
 
-async function loadEntriesForDate(dateKey) {
-    const { entriesContainer } = getEls();
-    if (!entriesContainer || !dateKey) return;
-    entriesContainer.innerHTML =
-        '<p class="text-xs text-slate-500 py-6 text-center"><i class="fa-solid fa-spinner fa-spin mr-2"></i>불러오는 중…</p>';
-    try {
-        await migrateLegacyBodyIfNeeded(dateKey);
-        const q = query(entriesCol(dateKey), orderBy('createdAt', 'asc'));
-        const snap = await getDocs(q);
-        const entries = snap.docs.map((d) => {
-            const x = d.data();
-            return { id: d.id, body: typeof x.body === 'string' ? x.body : '' };
-        });
-        renderEntryBlocks(entries);
-    } catch (e) {
-        console.error('관리 로그 블록 로드 실패:', e);
-        entriesContainer.innerHTML = '';
-        showAdminLogToast('불러오기에 실패했습니다.', 'error');
-    }
+async function refreshAllEntriesCache() {
+    entriesCache = {};
+    await Promise.all(cachedDateKeys.map((k) => refreshEntriesForDate(k)));
 }
 
+async function selectEntry(dateKey, entryId) {
+    if (!DATE_KEY_RE.test(dateKey) || !entryId) return;
+    if (!entriesCache[dateKey]) await refreshEntriesForDate(dateKey);
+    selectedDateKey = dateKey;
+    selectedEntryId = entryId;
+    renderSidebarList();
+    updateEditorChrome();
+    renderActiveEntryPanel();
+}
+
+/** 해당 날짜의 가장 최근 블록 선택(createdAt asc 기준 마지막) */
 async function selectDate(dateKey) {
     if (!DATE_KEY_RE.test(dateKey)) return;
     selectedDateKey = dateKey;
-    renderDateList();
-    updateEditorChrome();
-    await loadEntriesForDate(dateKey);
+    if (!entriesCache[dateKey]) await refreshEntriesForDate(dateKey);
+    const list = entriesCache[dateKey] || [];
+    if (list.length > 0) {
+        selectedEntryId = list[list.length - 1].id;
+        renderSidebarList();
+        updateEditorChrome();
+        renderActiveEntryPanel();
+    } else {
+        selectedEntryId = null;
+        const { entriesContainer } = getEls();
+        if (entriesContainer) entriesContainer.innerHTML = '';
+        renderSidebarList();
+        updateEditorChrome();
+    }
+}
+
+async function selectPreferredEntryOnLoad() {
+    const flat = getAllEntriesFlat();
+    const today = getTodayDateString();
+    const todayRows = flat.filter((r) => r.dateKey === today);
+    const pick = todayRows[0] || flat[0];
+    if (pick) await selectEntry(pick.dateKey, pick.id);
 }
 
 async function refreshDateKeysFromServer() {
@@ -384,65 +423,54 @@ async function createEmptyEntry(dateKey) {
 function bindListenersOnce() {
     if (listenersBound) return;
     listenersBound = true;
-    const { list, addBtn, addBlockBtn, entriesContainer } = getEls();
+    const { list, addBtn } = getEls();
     if (list) {
         list.addEventListener('click', (e) => {
-            const btn = e.target.closest('.admin-log-date-item');
-            if (!btn || !list.contains(btn)) return;
-            const key = btn.getAttribute('data-date-key');
-            if (key) selectDate(key);
+            const blockBtn = e.target.closest('.admin-log-block-item');
+            if (blockBtn && list.contains(blockBtn)) {
+                const key = blockBtn.getAttribute('data-date-key');
+                const eid = blockBtn.getAttribute('data-entry-id');
+                if (key && eid) selectEntry(key, eid);
+            }
         });
     }
     if (addBtn) {
         addBtn.addEventListener('click', () => addTodayAdminLog());
     }
-    if (addBlockBtn) {
-        addBlockBtn.addEventListener('click', () => addBlockToSelectedDate());
-    }
-    if (entriesContainer) {
-        entriesContainer.addEventListener('click', (e) => {
-            const btn = e.target.closest('[data-action]');
-            if (!btn || !entriesContainer.contains(btn)) return;
-            const wrap = btn.closest('.admin-log-entry');
-            const entryId = wrap?.dataset?.entryId;
-            if (!entryId || !selectedDateKey) return;
-            const action = btn.dataset.action;
-            if (action === 'edit') enterEditMode(wrap);
-            else if (action === 'cancel') cancelEditMode(wrap);
-            else if (action === 'save') saveAdminLogEntry(entryId, wrap);
-            else if (action === 'delete') deleteAdminLogEntry(entryId);
-        });
-    }
-}
 
-export async function addBlockToSelectedDate() {
-    if (!selectedDateKey) {
-        showAdminLogToast('먼저 날짜를 선택하세요.', 'error');
-        return;
-    }
-    const dateKey = selectedDateKey;
-    try {
-        await createEmptyEntry(dateKey);
-        await refreshDateKeysFromServer();
-        mergeTodayIfNeeded(dateKey);
-        renderDateList();
-        await loadEntriesForDate(dateKey);
-        showAdminLogToast('블록을 추가했습니다.');
-    } catch (e) {
-        console.error('블록 추가 실패:', e);
-        showAdminLogToast('블록 추가에 실패했습니다.', 'error');
-    }
+    document.getElementById('adminLogHdrEditBtn')?.addEventListener('click', () => {
+        const w = getEntryWrap();
+        if (w) enterEditMode(w);
+    });
+    document.getElementById('adminLogHdrDeleteBtn')?.addEventListener('click', () => {
+        if (selectedEntryId) deleteAdminLogEntry(selectedEntryId);
+    });
+    document.getElementById('adminLogHdrSaveBtn')?.addEventListener('click', () => {
+        const w = getEntryWrap();
+        if (w && selectedEntryId) saveAdminLogEntry(selectedEntryId, w);
+    });
+    document.getElementById('adminLogHdrCancelBtn')?.addEventListener('click', () => {
+        const w = getEntryWrap();
+        if (w) cancelEditMode(w);
+    });
+    document.getElementById('adminLogHdrDeleteEditBtn')?.addEventListener('click', () => {
+        if (selectedEntryId) deleteAdminLogEntry(selectedEntryId);
+    });
 }
 
 export async function addTodayAdminLog() {
-    const today = getTodayDateString();
+    const targetKey = selectedDateKey || getTodayDateString();
     try {
-        await createEmptyEntry(today);
+        await createEmptyEntry(targetKey);
         await refreshDateKeysFromServer();
-        mergeTodayIfNeeded(today);
-        renderDateList();
-        await selectDate(today);
-        showAdminLogToast('오늘 날짜에 블록을 추가했습니다.');
+        mergeTodayIfNeeded(targetKey);
+        await refreshEntriesForDate(targetKey);
+        renderSidebarList();
+        const list = entriesCache[targetKey] || [];
+        const last = list[list.length - 1];
+        if (last) await selectEntry(targetKey, last.id);
+        else await selectDate(targetKey);
+        showAdminLogToast('블록을 추가했습니다.');
     } catch (e) {
         console.error('관리 로그 추가 실패:', e);
         showAdminLogToast('추가에 실패했습니다.', 'error');
@@ -468,7 +496,7 @@ async function saveAdminLogEntry(entryId, wrap) {
         return;
     }
 
-    const saveBtn = wrap.querySelector('.admin-log-entry-actions-edit [data-action="save"]');
+    const saveBtn = document.getElementById('adminLogHdrSaveBtn');
     if (saveBtn) {
         saveBtn.disabled = true;
         saveBtn.textContent = '저장 중…';
@@ -478,6 +506,8 @@ async function saveAdminLogEntry(entryId, wrap) {
         await updateDoc(ref, { body: html, updatedAt: serverTimestamp() });
         await setDoc(parentDocRef(selectedDateKey), { updatedAt: serverTimestamp() }, { merge: true });
         wrap.dataset.savedBody = html;
+        const cached = (entriesCache[selectedDateKey] || []).find((e) => e.id === entryId);
+        if (cached) cached.body = html;
         if (view) fillViewElement(view, html);
         setEntryMode(wrap, 'view');
         showAdminLogToast('저장했습니다.');
@@ -489,6 +519,7 @@ async function saveAdminLogEntry(entryId, wrap) {
             saveBtn.disabled = false;
             saveBtn.textContent = '저장';
         }
+        syncAdminLogHeader();
     }
 }
 
@@ -496,22 +527,40 @@ async function deleteAdminLogEntry(entryId) {
     if (!selectedDateKey || !entryId) return;
     if (!confirm('이 블록을 삭제할까요?')) return;
     try {
-        await deleteDoc(doc(db, 'artifacts', appId, 'adminLogs', selectedDateKey, 'entries', entryId));
-        const left = await getDocs(query(entriesCol(selectedDateKey), orderBy('createdAt', 'asc')));
+        const dateKey = selectedDateKey;
+        const listBefore = [...(entriesCache[dateKey] || [])];
+        const delIdx = listBefore.findIndex((e) => e.id === entryId);
+
+        await deleteDoc(doc(db, 'artifacts', appId, 'adminLogs', dateKey, 'entries', entryId));
+        const left = await getDocs(query(entriesCol(dateKey), orderBy('createdAt', 'asc')));
         if (left.empty) {
-            await deleteDoc(parentDocRef(selectedDateKey));
+            await deleteDoc(parentDocRef(dateKey));
             await refreshDateKeysFromServer();
+            delete entriesCache[dateKey];
             selectedDateKey = null;
-            renderDateList();
+            selectedEntryId = null;
+            renderSidebarList();
             const { entriesContainer } = getEls();
             if (entriesContainer) entriesContainer.innerHTML = '';
             updateEditorChrome();
             if (cachedDateKeys.length > 0) {
+                await refreshAllEntriesCache();
+                renderSidebarList();
                 await selectDate(cachedDateKeys[0]);
             }
         } else {
-            await loadEntriesForDate(selectedDateKey);
-            await setDoc(parentDocRef(selectedDateKey), { updatedAt: serverTimestamp() }, { merge: true });
+            await refreshEntriesForDate(dateKey);
+            const newList = entriesCache[dateKey] || [];
+            if (newList.length === 0) {
+                selectedEntryId = null;
+            } else {
+                const nextIdx = Math.min(delIdx, newList.length - 1);
+                selectedEntryId = newList[Math.max(0, nextIdx)].id;
+            }
+            renderSidebarList();
+            updateEditorChrome();
+            renderActiveEntryPanel();
+            await setDoc(parentDocRef(dateKey), { updatedAt: serverTimestamp() }, { merge: true });
         }
         showAdminLogToast('삭제했습니다.');
     } catch (e) {
@@ -530,17 +579,16 @@ export async function loadAdminLogTab() {
     if (entriesWrap) entriesWrap.classList.add('hidden');
     try {
         await refreshDateKeysFromServer();
+        await refreshAllEntriesCache();
         if (cachedDateKeys.length === 0) {
             selectedDateKey = null;
+            selectedEntryId = null;
             entriesContainer.innerHTML = '';
-            renderDateList();
+            renderSidebarList();
             updateEditorChrome();
             return;
         }
-        const preferred = cachedDateKeys.includes(getTodayDateString())
-            ? getTodayDateString()
-            : cachedDateKeys[0];
-        await selectDate(preferred);
+        await selectPreferredEntryOnLoad();
     } catch (e) {
         console.error('관리 로그 목록 실패:', e);
         list.innerHTML =

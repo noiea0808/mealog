@@ -8,6 +8,23 @@ const isProduction = () => {
     return hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.includes('192.168.');
 };
 
+/**
+ * 스테이징/운영 구분 (푸시·콘텐츠 팝업·연속기록 팝업 등과 동일 기준)
+ * — 네이티브는 앱 패키지, 웹은 APP_ENV 후 로컬 호스트.
+ */
+export function getMealogClientEnv() {
+    if (typeof window === 'undefined') return 'production';
+    const capAppId = String(window.Capacitor?.config?.appId || '').trim();
+    if (capAppId === 'com.mealog.app.staging') return 'staging';
+    if (capAppId === 'com.mealog.app') return 'production';
+    if (window.APP_ENV === 'staging') return 'staging';
+    const hostname = window.location.hostname || '';
+    const isLocal =
+        hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
+    if (isLocal) return 'staging';
+    return 'production';
+}
+
 // 프로덕션에서 console.log 제거를 위한 래퍼 함수
 export const logger = {
     log: (...args) => {

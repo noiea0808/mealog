@@ -39,6 +39,7 @@ import { registerRestaurantStats } from './admin/restaurant-stats.js';
 import { loadMealogComments, showCharacterListView } from './admin/persona.js';
 import { runAdminStatsBackfillForUid } from './admin/stats-backfill.js';
 import { loadAdminLogTab } from './admin/ops-log.js';
+import { invalidateAttendancePopupConfigCache, normalizeAttendancePopup } from './attendance-check.js';
 // 모니터링(모먼트·밀톡·게시판): HTML onclick용 window.* 등록
 import './admin/feed-moderation.js';
 import './admin/lounge-chat-moderation.js';
@@ -628,8 +629,42 @@ window.switchContentSidebar = function(section) {
     } else if (section === 'loginBanner') {
         loadLoginBannerConfig();
     } else if (section === 'settings') {
+        bindAdminSettingsSubnavOnce();
         loadAdminSettings();
     }
+};
+
+const ATT_DEFAULT_NO_L1 = '우리 오늘부터';
+const ATT_DEFAULT_NO_L2 = '시작하는거죠?!';
+
+let adminSettingsSubnavBound = false;
+function bindAdminSettingsSubnavOnce() {
+    if (adminSettingsSubnavBound) return;
+    adminSettingsSubnavBound = true;
+    document.querySelectorAll('.admin-settings-subnav-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const sub = btn.dataset.settingsSub;
+            if (sub) window.switchAdminSettingsSub(sub);
+        });
+    });
+}
+
+window.switchAdminSettingsSub = function (sub) {
+    if (sub !== 'displayName' && sub !== 'welcome') return;
+    document.querySelectorAll('.admin-settings-subnav-btn').forEach((btn) => {
+        const on = btn.dataset.settingsSub === sub;
+        btn.classList.toggle('text-emerald-600', on);
+        btn.classList.toggle('bg-emerald-50', on);
+        btn.classList.toggle('border-emerald-200', on);
+        btn.classList.toggle('text-slate-600', !on);
+        btn.classList.toggle('bg-white', !on);
+        btn.classList.toggle('border-slate-200', !on);
+        btn.classList.toggle('hover:bg-slate-50', !on);
+    });
+    document.querySelectorAll('.admin-settings-subpanel').forEach((panel) => {
+        const key = panel.id.replace('adminSettingsSub-', '');
+        panel.classList.toggle('hidden', key !== sub);
+    });
 };
 
 
@@ -1332,15 +1367,37 @@ window.saveDemoGuide = async function() {
 // 관리자 표시 이름 캐시 (공지·댓글 작성 시 사용)
 let cachedAdminDisplayName = '관리자';
 
+function fillAttendancePopupForm(rawAp) {
+    const n = normalizeAttendancePopup(rawAp && typeof rawAp === 'object' ? rawAp : {});
+    const en = document.getElementById('attendanceEnabled');
+    if (en) en.checked = n.enabled !== false;
+    const apply = n.applyTo === 'staging' || n.applyTo === 'production' ? n.applyTo : 'all';
+    document.querySelectorAll('input[name="attendanceApplyTo"]').forEach((r) => {
+        r.checked = r.value === apply;
+    });
+    const setInput = (id, val, defStr) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.value = val != null && String(val).trim() !== '' ? String(val) : defStr;
+    };
+    setInput('attendanceNoRecordLine1', n.noRecordLine1, ATT_DEFAULT_NO_L1);
+    setInput('attendanceNoRecordLine2', n.noRecordLine2, ATT_DEFAULT_NO_L2);
+    setInput('attendanceStreakLine2', n.streakLine2, '');
+}
+
 async function loadAdminSettings() {
     const inputEl = document.getElementById('adminDisplayNameInput');
     if (!inputEl) return;
     try {
         const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
         const snap = await getDoc(configRef);
-        const displayName = snap.exists() && snap.data().displayName ? String(snap.data().displayName).trim() : '관리자';
+        const data = snap.exists() ? snap.data() : {};
+        const displayName = data.displayName ? String(data.displayName).trim() : '관리자';
         cachedAdminDisplayName = displayName || '관리자';
         inputEl.value = cachedAdminDisplayName;
+
+        const ap = data.attendancePopup && typeof data.attendancePopup === 'object' ? data.attendancePopup : {};
+        fillAttendancePopupForm(ap);
     } catch (e) {
         console.warn('관리자 설정 로드 실패:', e);
         inputEl.value = cachedAdminDisplayName;
@@ -1359,6 +1416,28 @@ window.saveAdminDisplayName = async function() {
         alert('저장되었습니다.');
     } catch (e) {
         console.error('관리자 표시 이름 저장 실패:', e);
+        alert('저장에 실패했습니다: ' + (e?.message || e));
+    }
+};
+
+window.saveAttendancePopupSettings = async function () {
+    try {
+        const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
+        const applyEl = document.querySelector('input[name="attendanceApplyTo"]:checked');
+        let applyTo = applyEl?.value;
+        if (applyTo !== 'staging' && applyTo !== 'production') applyTo = 'all';
+        const payload = {
+            enabled: document.getElementById('attendanceEnabled')?.checked === true,
+            applyTo,
+            noRecordLine1: document.getElementById('attendanceNoRecordLine1')?.value?.trim() ?? '',
+            noRecordLine2: document.getElementById('attendanceNoRecordLine2')?.value?.trim() ?? '',
+            streakLine2: document.getElementById('attendanceStreakLine2')?.value?.trim() ?? ''
+        };
+        await setDoc(configRef, { attendancePopup: payload }, { merge: true });
+        invalidateAttendancePopupConfigCache();
+        alert('웰컴메시지 설정이 저장되었습니다.');
+    } catch (e) {
+        console.error('연속 기록 팝업 설정 저장 실패:', e);
         alert('저장에 실패했습니다: ' + (e?.message || e));
     }
 };
