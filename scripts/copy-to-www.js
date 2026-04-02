@@ -85,16 +85,23 @@ copyCapacitorAsset(hapticsPlugin, 'capacitor-haptics-plugin.js');
 const badgePlugin = path.join(root, 'node_modules', '@capawesome', 'capacitor-badge', 'dist', 'plugin.js');
 copyCapacitorAsset(badgePlugin, 'capacitor-badge-plugin.js');
 
-// capacitor.config.json에서 appId 읽어 env.js 생성 (스테이징 여부 판별)
+// capacitor.config.json에서 appId 읽어 www/js/env.js 의 APP_ENV 만 맞춤 (배지 등 나머지는 루트 env.js 유지)
 const capConfigPath = path.join(root, 'capacitor.config.json');
-if (fs.existsSync(capConfigPath)) {
+const wwwEnvPath = path.join(www, 'js', 'env.js');
+const rootEnvPath = path.join(root, 'js', 'env.js');
+if (fs.existsSync(wwwEnvPath) && fs.existsSync(capConfigPath)) {
   const capConfig = JSON.parse(fs.readFileSync(capConfigPath, 'utf8'));
   const isStaging = (capConfig.appId || '').includes('staging');
-  const envContent = `// 빌드 시 자동 생성 (capacitor.config.json appId 기준)
-window.APP_ENV = ${JSON.stringify(isStaging ? 'staging' : 'production')};
-`;
-  fs.writeFileSync(path.join(www, 'js', 'env.js'), envContent);
-  console.log('✓ js/env.js (APP_ENV=' + (isStaging ? 'staging' : 'production') + ')');
+  const appEnvVal = isStaging ? 'staging' : 'production';
+  let envBody = fs.readFileSync(wwwEnvPath, 'utf8');
+  envBody = envBody.replace(/window\.APP_ENV\s*=\s*['"][^'"]*['"]\s*;/, `window.APP_ENV = ${JSON.stringify(appEnvVal)};`);
+  const banner = '// www 빌드: APP_ENV는 capacitor.config.json appId 기준으로 갱신됨 (scripts/copy-to-www.js)\n';
+  fs.writeFileSync(wwwEnvPath, banner + envBody);
+  console.log('✓ js/env.js (APP_ENV=' + appEnvVal + ', 배지 로직 유지)');
+} else if (fs.existsSync(rootEnvPath) && fs.existsSync(wwwEnvPath)) {
+  let envBody = fs.readFileSync(rootEnvPath, 'utf8');
+  fs.writeFileSync(wwwEnvPath, envBody);
+  console.log('✓ js/env.js (루트와 동기, capacitor.config 없음)');
 }
 
 console.log('✅ www 폴더 준비 완료');
