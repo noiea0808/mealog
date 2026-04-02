@@ -339,17 +339,24 @@ export function initFeedBubbleContextMenu() {
         pending = null;
     };
 
-    const armBubbleLongPress = (e, bubble, postId, isMine) => {
+    const armBubbleLongPress = (e, bubble, postId, isMine, opts = null) => {
+        const fromImageTrigger = !!(opts && opts.fromImageTrigger);
         clearTimer();
         startX = e.clientX;
         startY = e.clientY;
-        pending = { kind: 'bubble', bubble, postId, isMine };
+        pending = { kind: 'bubble', bubble, postId, isMine, fromImageTrigger };
         timer = setTimeout(() => {
             timer = null;
             if (!pending || pending.kind !== 'bubble') return;
             try {
                 e.preventDefault();
             } catch (_) {}
+            if (pending.fromImageTrigger) {
+                window.__feedSuppressNextImageLightboxClick = true;
+                setTimeout(() => {
+                    window.__feedSuppressNextImageLightboxClick = false;
+                }, 600);
+            }
             showFeedBubbleSheet({ postId: pending.postId, isMine: pending.isMine, bubble: pending.bubble });
             pending = null;
         }, LONG_PRESS_MS);
@@ -375,7 +382,18 @@ export function initFeedBubbleContextMenu() {
     root.addEventListener(
         'pointerdown',
         (e) => {
-            if (e.target.closest?.('.feed-image-lightbox-trigger')) return;
+            const imgTrigger = e.target.closest?.('.feed-image-lightbox-trigger');
+            if (imgTrigger && root.contains(imgTrigger)) {
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
+                const bubble = imgTrigger.closest?.('.feed-chat-bubble');
+                if (!bubble || !root.contains(bubble)) return;
+                const row = bubble.closest('[data-post-id]');
+                const postId = row?.getAttribute('data-post-id');
+                if (!postId) return;
+                const isMine = bubble.classList.contains('feed-chat-bubble-mine');
+                armBubbleLongPress(e, bubble, postId, isMine, { fromImageTrigger: true });
+                return;
+            }
             const mentionEl = e.target.closest?.('[data-feed-mention-nick]');
             if (mentionEl && root.contains(mentionEl)) {
                 if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -407,7 +425,21 @@ export function initFeedBubbleContextMenu() {
     root.addEventListener('pointercancel', clearTimer);
 
     root.addEventListener('contextmenu', (e) => {
-        if (e.target.closest?.('.feed-image-lightbox-trigger')) return;
+        const imgTrigger = e.target.closest?.('.feed-image-lightbox-trigger');
+        if (imgTrigger && root.contains(imgTrigger)) {
+            const bubble = imgTrigger.closest?.('.feed-chat-bubble');
+            if (bubble && root.contains(bubble)) {
+                e.preventDefault();
+                clearTimer();
+                const row = bubble.closest('[data-post-id]');
+                const postId = row?.getAttribute('data-post-id');
+                if (postId) {
+                    const isMine = bubble.classList.contains('feed-chat-bubble-mine');
+                    showFeedBubbleSheet({ postId, isMine, bubble });
+                }
+            }
+            return;
+        }
         const mentionEl = e.target.closest?.('[data-feed-mention-nick]');
         if (mentionEl && root.contains(mentionEl)) {
             e.preventDefault();

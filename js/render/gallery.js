@@ -20,6 +20,27 @@ import {
     clearMomentPostInteractionQueue
 } from './moment-post-interactions.js';
 
+/** 모먼트 피드가 비었을 때: 진짜 없음 vs 네트워크·로드 실패 구분 */
+function buildGalleryEmptyMomentBlock(networkError, filterUserId) {
+    if (networkError) {
+        return `
+            <div class="flex flex-col items-center justify-center py-20 text-center px-4">
+                <i class="fa-regular fa-wifi text-6xl text-slate-200 mb-4" aria-hidden="true"></i>
+                <p class="text-sm font-bold text-slate-600">모먼트를 불러오지 못했습니다</p>
+                <p class="text-xs text-slate-400 mt-2 max-w-xs leading-relaxed">네트워크가 끊겼거나 불안정할 때 이 화면이 나올 수 있습니다. 연결을 확인한 뒤 다시 시도해 주세요.</p>
+                <button type="button" onclick="window.reloadMomentFeed && window.reloadMomentFeed()" class="mt-5 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl transition-colors inline-flex items-center gap-1.5">
+                    <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>다시 불러오기
+                </button>
+            </div>`;
+    }
+    return `
+            <div class="flex flex-col items-center justify-center py-20 text-center">
+                <i class="fa-solid fa-images text-6xl text-slate-200 mb-4" aria-hidden="true"></i>
+                <p class="text-sm font-bold text-slate-400">${filterUserId ? '이 사용자의 공유된 사진이 없습니다' : '공유된 사진이 없습니다'}</p>
+                ${!filterUserId ? '<p class="text-xs text-slate-300 mt-2">타임라인에서 사진을 공유해보세요!</p>' : ''}
+            </div>`;
+}
+
 let isRenderingGallery = false;
 let galleryScrollListeners = new Map();
 let intersectionObserver = null;
@@ -458,13 +479,7 @@ export async function renderGallery(options = {}) {
     }
     
     if (photosToRender.length === 0) {
-        container.innerHTML = userProfileHeader + `
-            <div class="flex flex-col items-center justify-center py-20 text-center">
-                <i class="fa-solid fa-images text-6xl text-slate-200 mb-4"></i>
-                <p class="text-sm font-bold text-slate-400">${filterUserId ? '이 사용자의 공유된 사진이 없습니다' : '공유된 사진이 없습니다'}</p>
-                ${!filterUserId ? '<p class="text-xs text-slate-300 mt-2">타임라인에서 사진을 공유해보세요!</p>' : ''}
-            </div>
-        `;
+        container.innerHTML = userProfileHeader + buildGalleryEmptyMomentBlock(!!appState.galleryFeedNetworkError, filterUserId);
         // 이전 포스트 ID 목록 초기화
         previousGalleryPostIds.clear();
         // 빈 갤러리일 때도 맨 위로 스크롤
@@ -622,10 +637,8 @@ export async function renderGallery(options = {}) {
     // 알림 필터 시 빈 메시지 (해당 게시물이 없을 때)
     const filterPostEmptyMsg = filterPostId && sortedGroups.length === 0 ? '해당 게시물을 찾을 수 없습니다' : null;
     
-    // 네트워크 단절 시 빈 메시지 (모먼트 피드 로드 실패 시)
-    const networkEmptyMsg = sortedGroups.length === 0 && appState.galleryFeedNetworkError
-        ? '네트워크가 끊겼습니다. 연결을 확인한 뒤 다시 시도해 주세요.'
-        : null;
+    // 네트워크 단절 등으로 피드 로드 실패 (흔적/알림 필터 적용 후에도 그룹이 비었을 때)
+    const showNetworkErrorEmpty = sortedGroups.length === 0 && appState.galleryFeedNetworkError;
     
     // ===== DIFFING: 변경사항이 작으면 차등 업데이트, 크면 전체 재렌더링 =====
     const currentPostIds = new Set(sortedGroups.map(g => getPostIdFromPhotoGroup(g)));
@@ -643,17 +656,16 @@ export async function renderGallery(options = {}) {
     }
     
     // 헤더와 빈 메시지만 먼저 렌더링 (네트워크 오류 > 알림/흔적 필터 빈 메시지)
-    const emptyMsg = networkEmptyMsg || filterPostEmptyMsg || traceEmptyMsg;
-    const emptyIcon = networkEmptyMsg ? 'fa-wifi' : (filterPostEmptyMsg ? 'fa-comment' : traceEmptyIcon);
-    const headerHtml = userProfileHeader + (emptyMsg ? `
+    const emptyMsg = showNetworkErrorEmpty ? null : (filterPostEmptyMsg || traceEmptyMsg);
+    const emptyIcon = filterPostEmptyMsg ? 'fa-comment' : traceEmptyIcon;
+    const headerHtml = userProfileHeader + (showNetworkErrorEmpty
+        ? buildGalleryEmptyMomentBlock(true, filterUserId)
+        : (emptyMsg ? `
             <div class="flex flex-col items-center justify-center py-20 text-center">
                 <i class="fa-regular ${emptyIcon} text-6xl text-slate-200 mb-4"></i>
                 <p class="text-sm font-bold text-slate-400">${emptyMsg}</p>
-                ${networkEmptyMsg ? `<button type="button" onclick="window.reloadMomentFeed && window.reloadMomentFeed()" class="mt-4 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl transition-colors inline-flex items-center gap-1.5">
-                    <i class="fa-solid fa-rotate-right"></i>다시 불러오기
-                </button>` : ''}
             </div>
-        ` : '');
+        ` : ''));
     
     // 더보기 표시 여부 (타임라인처럼 초기 구조에 포함하여 누락 방지)
     const canLoadMore = !filterUserId && !appState.galleryFilterPostId &&

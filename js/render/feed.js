@@ -14,6 +14,24 @@ export async function renderFeed() {
     const photosToUse = window.sharedPhotosFeed || [];
     
     if (photosToUse.length === 0) {
+        if (appState.galleryFeedNetworkError) {
+            container.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-12 text-center px-3">
+                <i class="fa-regular fa-wifi text-4xl text-slate-200 mb-3" aria-hidden="true"></i>
+                <p class="text-xs font-bold text-slate-600">모먼트를 불러오지 못했습니다</p>
+                <p class="text-[10px] text-slate-400 mt-1 leading-relaxed">네트워크가 끊겼거나 불안정할 때 이 안내가 나올 수 있습니다.</p>
+                <button type="button" class="mt-4 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-lg inline-flex items-center gap-1.5" id="feedRetryLoadBtn">
+                    <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>다시 불러오기
+                </button>
+            </div>`;
+            const retry = container.querySelector('#feedRetryLoadBtn');
+            if (retry && typeof window.reloadMomentFeed === 'function') {
+                retry.addEventListener('click', () => {
+                    window.reloadMomentFeed();
+                });
+            }
+            return;
+        }
         container.innerHTML = `
             <div class="flex flex-col items-center justify-center py-12 text-center">
                 <i class="fa-solid fa-images text-4xl text-slate-200 mb-3"></i>

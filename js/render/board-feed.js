@@ -253,6 +253,12 @@ function ensureFeedImageLightboxDelegate() {
     if (!root || _feedImageClickDelegateBound) return;
     _feedImageClickDelegateBound = true;
     root.addEventListener('click', (e) => {
+        if (window.__feedSuppressNextImageLightboxClick) {
+            window.__feedSuppressNextImageLightboxClick = false;
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
         const btn = e.target.closest?.('[data-feed-image-open]');
         if (!btn || !root.contains(btn)) return;
         e.preventDefault();
@@ -375,17 +381,24 @@ function feedBubbleHtml(post, opts = {}) {
     const time = postTimeLabel(post);
     const pid = escapeHtml(post.id || '');
     const hasBody = String(post.text || post.content || '').trim().length > 0;
+    const combinedImgText = hasImg && hasBody;
 
     const imgOnlyPendingSpinner =
         isMine && isPendingSend && hasImg && !hasBody
             ? `<span class="pointer-events-none absolute left-2 top-2 z-[1] flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600/90 text-white shadow-sm" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[11px] leading-none" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`
             : '';
+    const imgWrapClass = hasImg
+        ? `${imgOnlyPendingSpinner ? 'relative' : ''} flex flex-col gap-1.5 overflow-hidden ${
+              combinedImgText ? 'rounded-t-2xl rounded-b-none' : 'rounded-lg'
+          }`
+        : '';
+    const imgChildRound = combinedImgText ? 'rounded-none' : 'rounded-lg';
     const imgBlock = hasImg
-        ? `<div class="${hasBody ? 'mt-1.5' : ''} ${imgOnlyPendingSpinner ? 'relative' : ''} flex flex-col gap-1.5 overflow-hidden rounded-lg">${imgOnlyPendingSpinner}${imageUrlsToShow
+        ? `<div class="${imgWrapClass}">${imgOnlyPendingSpinner}${imageUrlsToShow
               .map((urlRaw) => {
                   const src = escapeHtml(String(urlRaw));
-                  return `<button type="button" class="feed-image-lightbox-trigger block w-full max-w-[min(92vw,280px)] cursor-zoom-in p-0 border-0 bg-transparent text-left outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900/40 rounded-lg" data-feed-image-open data-feed-image-src="${src}" aria-label="사진 크게 보기">
-            <img src="${src}" alt="" class="pointer-events-none max-h-[min(42vh,280px)] w-full max-w-[min(92vw,280px)] rounded-lg bg-slate-100 object-contain" loading="lazy" decoding="async">
+                  return `<button type="button" class="feed-image-lightbox-trigger block w-full max-w-[min(92vw,280px)] cursor-zoom-in p-0 border-0 bg-transparent text-left outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900/40 ${imgChildRound}" data-feed-image-open data-feed-image-src="${src}" aria-label="사진 크게 보기">
+            <img src="${src}" alt="" class="pointer-events-none max-h-[min(42vh,280px)] w-full max-w-[min(92vw,280px)] ${imgChildRound} bg-slate-100 object-contain" loading="lazy" decoding="async">
         </button>`;
               })
               .join('')}</div>`
@@ -400,7 +413,7 @@ function feedBubbleHtml(post, opts = {}) {
         const pendingSpinnerLead = `<span class="pointer-events-none flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600/90 text-white shadow-sm" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[11px] leading-none" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`;
         const bodyMine = hasBody
             ? isPendingSend
-                ? `<div class="flex min-w-0 max-w-full items-start gap-2 ${hasImg ? 'px-5 pt-2' : ''}">${pendingSpinnerLead}<p class="m-0 min-w-0 flex-1 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem]">${body}</p></div>`
+                ? `<div class="flex min-w-0 max-w-full items-start gap-2 ${hasImg ? 'px-5 py-2' : ''}">${pendingSpinnerLead}<p class="m-0 min-w-0 flex-1 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem]">${body}</p></div>`
                 : `<p class="m-0 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem] ${hasImg ? 'px-5 py-2' : ''}">${body}</p>`
             : '';
         return `
@@ -409,8 +422,8 @@ function feedBubbleHtml(post, opts = {}) {
                 <div class="flex w-fit max-w-[min(88%,22rem)] flex-col items-end sm:max-w-[18rem]">
                     <div class="feed-chat-bubble feed-chat-bubble-mine inline-block w-fit max-w-full text-left rounded-2xl rounded-br-md ${hasImg ? 'p-0' : 'px-5 py-2'} text-base shadow-sm">
                         ${replyQ}
-                        ${bodyMine}
                         ${imgBlock}
+                        ${bodyMine}
                     </div>
                     ${reactRow}
                 </div>
@@ -444,8 +457,8 @@ function feedBubbleHtml(post, opts = {}) {
                         <div class="flex max-w-full items-end gap-1">
                             <div class="feed-chat-bubble feed-chat-bubble-other inline-block w-fit max-w-full rounded-2xl rounded-bl-md border ${hasImg ? 'p-0' : 'px-5 py-2'} text-left text-base shadow-sm">
                                 ${replyQOther}
-                                ${hasBody ? `<p class="m-0 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem] ${hasImg ? 'px-5 py-2' : ''}">${body}</p>` : ''}
                                 ${imgBlock}
+                                ${hasBody ? `<p class="m-0 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem] ${hasImg ? 'px-5 py-2' : ''}">${body}</p>` : ''}
                             </div>
                             ${timeOtherBesideBubble}
                         </div>

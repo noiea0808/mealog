@@ -102,6 +102,7 @@ window.reloadMomentFeed = async function reloadMomentFeed() {
     appState.galleryFeedNetworkError = false;
     if (appState.galleryFilterUserId) {
         renderGallery();
+        if (typeof renderFeed === 'function') renderFeed();
         return;
     }
     window.sharedPhotosFeed = [];
@@ -122,6 +123,7 @@ window.reloadMomentFeed = async function reloadMomentFeed() {
         renderGallery();
     } finally {
         hideLoading();
+        if (typeof renderFeed === 'function') renderFeed();
     }
 };
 window.Mealog.reloadMomentFeed = window.reloadMomentFeed;
