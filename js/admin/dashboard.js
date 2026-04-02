@@ -119,7 +119,9 @@ function addLocalDays(date, delta) {
  * 관리자 「통계 새로고침」 전용 집계.
  * 이전: sharedPhotos/users/guestVisits 전체 getDocs + 사용자별 meals 전체 getDocs → 읽기 폭발.
  * 현재: collectionGroup·getCountFromServer·최근 30일 meals만 getDocs + 사용자당 meals 존재는 count 1회.
- * 공유 지표는 논리 포스트 dedupe 대신 sharedPhotos 「문서 수」(기간·일별 동일)로 집계해 읽기를 줄임.
+ * 공유 지표: 최근 30일·7일·일별·오늘은 sharedPhotos 문서를 한 번 읽고 getSharedPhotoGroupKey로 고유 「게시물」수 집계.
+ * (한 포스트에 사진이 여러 장이면 문서가 여러 개이므로 count 쿼리만 쓰면 장수로 부풀려짐.)
+ * 전체(all)는 여전히 Firestore 문서 수(읽기 1회) — 전역 고유 게시물 수는 전체 스캔 없이는 불가.
  */
 export async function getUserStatistics() {
     try {
@@ -318,34 +320,47 @@ export async function getUserStatistics() {
         try {
             stats.sharedPhotos.all = await countQ(query(sharedColl));
             stats.totalSharedPhotos = stats.sharedPhotos.all;
+
             const tsTodayLo = Timestamp.fromDate(todayStart);
-            const tsTodayHi = Timestamp.fromDate(tomorrowStart);
             const tsLast7Lo = Timestamp.fromDate(last7FirstDay);
             const tsLast30Lo = Timestamp.fromDate(last30Start);
             const tsEnd = Timestamp.fromDate(tomorrowStart);
 
-            stats.sharedPhotos.today = await countQ(
-                query(sharedColl, where('timestamp', '>=', tsTodayLo), where('timestamp', '<', tsTodayHi))
-            );
-            stats.sharedPhotos.last7 = await countQ(
-                query(sharedColl, where('timestamp', '>=', tsLast7Lo), where('timestamp', '<', tsEnd))
-            );
-            stats.sharedPhotos.last30 = await countQ(
+            const tToday0 = todayStart.getTime();
+            const tLast7 = last7FirstDay.getTime();
+            const tLast30 = last30Start.getTime();
+            const tTomorrow = tomorrowStart.getTime();
+
+            const keysToday = new Set();
+            const keysLast7 = new Set();
+            const keysLast30 = new Set();
+            const keysByDay7 = Array.from({ length: 7 }, () => new Set());
+
+            const sharedLast30Snap = await getDocs(
                 query(sharedColl, where('timestamp', '>=', tsLast30Lo), where('timestamp', '<', tsEnd))
             );
+            sharedLast30Snap.forEach((docSnap) => {
+                const data = docSnap.data();
+                const rawTs = data.timestamp;
+                const ts = rawTs && rawTs.toDate ? rawTs.toDate() : null;
+                if (!ts || Number.isNaN(ts.getTime())) return;
+                const t = ts.getTime();
+                const gk = getSharedPhotoGroupKey(data);
+                if (t >= tLast30 && t < tTomorrow) keysLast30.add(gk);
+                if (t >= tLast7 && t < tTomorrow) {
+                    keysLast7.add(gk);
+                    const dk = dateKeyFromLocalDate(new Date(ts.getFullYear(), ts.getMonth(), ts.getDate()));
+                    const idx = dk != null ? last7IndexMap.get(dk) : -1;
+                    if (idx != null && idx >= 0) keysByDay7[idx].add(gk);
+                }
+                if (t >= tToday0 && t < tTomorrow) keysToday.add(gk);
+            });
 
+            stats.sharedPhotos.today = keysToday.size;
+            stats.sharedPhotos.last7 = keysLast7.size;
+            stats.sharedPhotos.last30 = keysLast30.size;
             for (let di = 0; di < 7; di++) {
-                const ymd = last7DateKeys[di];
-                const d0 = startOfLocalDayFromYmd(ymd);
-                if (!d0) continue;
-                const d1 = addLocalDays(d0, 1);
-                sharedByDayCounts[di] = await countQ(
-                    query(
-                        sharedColl,
-                        where('timestamp', '>=', Timestamp.fromDate(d0)),
-                        where('timestamp', '<', Timestamp.fromDate(d1))
-                    )
-                );
+                sharedByDayCounts[di] = keysByDay7[di].size;
             }
         } catch (se) {
             console.warn('⚠️ sharedPhotos 집계 실패:', se?.message || se);
