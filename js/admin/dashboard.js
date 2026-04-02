@@ -1,7 +1,21 @@
 // ADMIN 대시보드 통계 관련 함수들
 import { db, appId } from '../firebase.js';
-import { collection, getDocs, query, orderBy, limit, doc, getDoc, setDoc, where, getCountFromServer, Timestamp, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { getSharedPhotoGroupKey, dateKeyFromLocalDate, getLast7DateKeys, getTodayDateString, escapeHtml } from './utils.js';
+import {
+    collection,
+    collectionGroup,
+    getDocs,
+    query,
+    orderBy,
+    limit,
+    doc,
+    getDoc,
+    setDoc,
+    where,
+    getCountFromServer,
+    Timestamp,
+    serverTimestamp
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getSharedPhotoGroupKey, dateKeyFromLocalDate, getLast7DateKeys, getTodayDateString, escapeHtml, runAdminRefreshAction } from './utils.js';
 
 const DASHBOARD_7D_ROW_PREFIXES = [
     'statGuestVisits7d', 'statNewUsers7d', 'statActiveUsers7d', 'statRecords7d', 'statShared7d'
@@ -82,70 +96,37 @@ function cloneLast7Breakdown(raw) {
 // 대시보드 통계 캐시 문서 (adminSettings 사용 — Firestore 규칙에서 관리자 쓰기 허용됨)
 const DASHBOARD_STATS_REF = () => doc(db, 'artifacts', appId, 'adminSettings', 'dashboardStats');
 
-// 사용자 통계 조회
+/** meals 문서 ref → users/{uid}/meals 경로에서 uid 추출 */
+function userIdFromMealDocRef(ref) {
+    const parts = ref.path.split('/');
+    const i = parts.indexOf('users');
+    return i >= 0 && parts[i + 1] ? parts[i + 1] : null;
+}
+
+function startOfLocalDayFromYmd(ymd) {
+    const p = String(ymd || '').split('-').map(Number);
+    if (p.length !== 3 || !p[0]) return null;
+    return new Date(p[0], p[1] - 1, p[2], 0, 0, 0, 0);
+}
+
+function addLocalDays(date, delta) {
+    const d = new Date(date.getTime());
+    d.setDate(d.getDate() + delta);
+    return d;
+}
+
+/**
+ * 관리자 「통계 새로고침」 전용 집계.
+ * 이전: sharedPhotos/users/guestVisits 전체 getDocs + 사용자별 meals 전체 getDocs → 읽기 폭발.
+ * 현재: collectionGroup·getCountFromServer·최근 30일 meals만 getDocs + 사용자당 meals 존재는 count 1회.
+ * 공유 지표는 논리 포스트 dedupe 대신 sharedPhotos 「문서 수」(기간·일별 동일)로 집계해 읽기를 줄임.
+ */
 export async function getUserStatistics() {
     try {
-        // 공유 게시물에서 사용자 정보 먼저 추출
-        const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-        const sharedSnapshot = await getDocs(sharedColl);
-        const uniqueUserIds = new Set();
-        const userMap = new Map(); // userId -> { email, nickname, icon, lastActivity }
-        
-        sharedSnapshot.forEach(doc => {
-            const data = doc.data();
-            if (data.userId) {
-                uniqueUserIds.add(data.userId);
-                if (!userMap.has(data.userId)) {
-                    userMap.set(data.userId, {
-                        userId: data.userId,
-                        email: null,
-                        nickname: data.userNickname || '익명',
-                        icon: data.userIcon || '🐻',
-                        lastActivity: data.timestamp ? new Date(data.timestamp) : null
-                    });
-                } else {
-                    // 마지막 활동 업데이트
-                    const userInfo = userMap.get(data.userId);
-                    if (data.timestamp) {
-                        const ts = new Date(data.timestamp);
-                        if (!userInfo.lastActivity || ts > userInfo.lastActivity) {
-                            userInfo.lastActivity = ts;
-                        }
-                    }
-                }
-            }
-        });
-        
-        console.log('📸 공유 게시물에서 발견된 사용자:', uniqueUserIds.size, '명');
-        console.log('   사용자 ID 목록:', Array.from(uniqueUserIds));
-        
-        // users 컬렉션 조회 시도
-        let usersSnapshot;
-        let usersFromCollection = 0;
-        try {
-            const usersColl = collection(db, 'artifacts', appId, 'users');
-            usersSnapshot = await getDocs(usersColl);
-            usersFromCollection = usersSnapshot.size;
-            console.log('✅ users 컬렉션 조회 성공:', usersFromCollection, '개 문서');
-            
-            // users 컬렉션의 사용자 정보 업데이트
-            usersSnapshot.forEach(userDoc => {
-                const userId = userDoc.id;
-                const userData = userDoc.data();
-                if (userMap.has(userId)) {
-                    const userInfo = userMap.get(userId);
-                    if (userData.config && userData.config.settings && userData.config.settings.profile) {
-                        userInfo.nickname = userData.config.settings.profile.nickname || userInfo.nickname;
-                        userInfo.icon = userData.config.settings.profile.icon || userInfo.icon;
-                    }
-                }
-            });
-        } catch (usersError) {
-            console.warn('⚠️ users 컬렉션 조회 실패 (공유 게시물 데이터 사용):', usersError);
-            usersSnapshot = { docs: [], size: 0 };
-        }
-        
-        // 통계 계산을 위한 날짜 설정 (자정 기준). 최근 7일 = 금일 포함 7개 일자(오늘−6일 ~ 오늘)
+        const usersColl = collection(db, 'artifacts', appId, 'users');
+        const usersSnapshot = await getDocs(usersColl);
+        const usersFromCollection = usersSnapshot.size;
+
         const now = new Date();
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const last7FirstDay = new Date(todayStart);
@@ -160,12 +141,17 @@ export async function getUserStatistics() {
             return k != null && last7IndexMap.has(k) ? last7IndexMap.get(k) : -1;
         };
 
+        const todayStr = dateKeyFromLocalDate(todayStart);
+        const last7FirstStr = dateKeyFromLocalDate(last7FirstDay);
+        const last30Str = dateKeyFromLocalDate(last30Start);
+        const tomorrowStart = addLocalDays(todayStart, 1);
+
         const z7 = () => [0, 0, 0, 0, 0, 0, 0];
         const guestVisitsByDay = z7();
         const newUsersByDay = z7();
         const recordsByDay = z7();
         const activeSetsByDay = Array.from({ length: 7 }, () => new Set());
-        const sharedSetsByDay = Array.from({ length: 7 }, () => new Set());
+        const sharedByDayCounts = z7();
 
         const inPeriod = (dateOnly, period) => {
             if (!dateOnly) return false;
@@ -182,7 +168,6 @@ export async function getUserStatistics() {
             activeUsers: { all: 0, last30: 0, last7: 0, today: 0 },
             records: { all: 0, last30: 0, last7: 0, today: 0 },
             sharedPhotos: { all: 0, last30: 0, last7: 0, today: 0 },
-            // 하위 호환 (게시물 수 기준)
             totalUsers: 0,
             totalMeals: 0,
             totalSharedPhotos: 0,
@@ -191,126 +176,183 @@ export async function getUserStatistics() {
 
         const activeUserSets = { all: new Set(), last30: new Set(), last7: new Set(), today: new Set() };
 
-        // 0) 둘러보기(게스트) 방문: guestVisits 컬렉션의 lastVisitedAt 기준
-        try {
-            const guestVisitsColl = collection(db, 'artifacts', appId, 'guestVisits');
-            const guestVisitsSnap = await getDocs(guestVisitsColl);
-            guestVisitsSnap.docs.forEach(docSnap => {
-                const d = docSnap.data();
-                let lastAt = null;
-                if (d.lastVisitedAt) {
-                    lastAt = d.lastVisitedAt.toDate ? d.lastVisitedAt.toDate() : new Date(d.lastVisitedAt);
-                }
-                if (lastAt) {
-                    const dateOnly = new Date(lastAt.getFullYear(), lastAt.getMonth(), lastAt.getDate());
-                    stats.guestVisits.all++;
-                    if (inPeriod(dateOnly, 'today')) stats.guestVisits.today++;
-                    if (inPeriod(dateOnly, 'last7')) stats.guestVisits.last7++;
-                    if (inPeriod(dateOnly, 'last30')) stats.guestVisits.last30++;
-                    const gdi = last7DayIndex(dateOnly);
-                    if (gdi >= 0) guestVisitsByDay[gdi]++;
-                }
-            });
-        } catch (e) {
-            console.warn('⚠️ guestVisits 조회 실패:', e?.message || e);
-        }
+        const mealsCg = collectionGroup(db, 'meals');
+        const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+        const guestVisitsColl = collection(db, 'artifacts', appId, 'guestVisits');
 
-        // 1) 신규 사용자: users 컬렉션의 createdAt 기준
-        if (usersSnapshot.docs) {
-            usersSnapshot.docs.forEach(userDoc => {
-                const userData = userDoc.data();
-                let createdAt = null;
-                if (userData.createdAt) {
-                    createdAt = userData.createdAt.toDate ? userData.createdAt.toDate() : new Date(userData.createdAt);
-                }
-                if (createdAt) {
-                    const createdDateOnly = new Date(createdAt.getFullYear(), createdAt.getMonth(), createdAt.getDate());
-                    stats.newUsers.all++;
-                    if (inPeriod(createdDateOnly, 'today')) stats.newUsers.today++;
-                    if (inPeriod(createdDateOnly, 'last7')) stats.newUsers.last7++;
-                    if (inPeriod(createdDateOnly, 'last30')) stats.newUsers.last30++;
-                    const ndi = last7DayIndex(createdDateOnly);
-                    if (ndi >= 0) newUsersByDay[ndi]++;
-                }
-            });
-        }
-        stats.totalUsers = Math.max(usersFromCollection, uniqueUserIds.size, stats.newUsers.all);
+        const countQ = async (q) => (await getCountFromServer(q)).data().count ?? 0;
 
-        // 2) 공유 게시물 기간별 (게시물 수로 카운트 — 같은 entryId/daily/best/insight는 1건)
-        const postKeysByPeriod = { all: new Set(), today: new Set(), last7: new Set(), last30: new Set() };
-        sharedSnapshot.docs.forEach(d => {
-            const data = d.data();
-            const key = getSharedPhotoGroupKey(data);
-            let ts = null;
-            if (data.timestamp) {
-                ts = data.timestamp.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
+        const [recordsAllCount, mealsLast30Snap] = await Promise.all([
+            countQ(query(mealsCg)),
+            getDocs(query(mealsCg, where('date', '>=', last30Str), where('date', '<=', todayStr)))
+        ]);
+
+        stats.records.all = recordsAllCount;
+        let recordsToday = 0;
+        let recordsLast7 = 0;
+        let recordsLast30 = 0;
+
+        mealsLast30Snap.forEach((docSnap) => {
+            const mealData = docSnap.data();
+            const dateStr = mealData.date;
+            const uid = userIdFromMealDocRef(docSnap.ref);
+            if (!dateStr || typeof dateStr !== 'string' || !uid) return;
+
+            recordsLast30++;
+            if (dateStr === todayStr) {
+                recordsToday++;
+                activeUserSets.today.add(uid);
             }
-            if (ts) {
-                const dateOnly = new Date(ts.getFullYear(), ts.getMonth(), ts.getDate());
-                postKeysByPeriod.all.add(key);
-                if (inPeriod(dateOnly, 'today')) postKeysByPeriod.today.add(key);
-                if (inPeriod(dateOnly, 'last7')) postKeysByPeriod.last7.add(key);
-                if (inPeriod(dateOnly, 'last30')) postKeysByPeriod.last30.add(key);
-                const sdi = last7DayIndex(dateOnly);
-                if (sdi >= 0) sharedSetsByDay[sdi].add(key);
+            if (dateStr >= last7FirstStr && dateStr <= todayStr) {
+                recordsLast7++;
+                const rdi = last7IndexMap.get(dateStr);
+                if (rdi != null && rdi >= 0) {
+                    recordsByDay[rdi]++;
+                    activeSetsByDay[rdi].add(uid);
+                }
+                activeUserSets.last7.add(uid);
             }
+            activeUserSets.last30.add(uid);
         });
-        stats.sharedPhotos.all = postKeysByPeriod.all.size;
-        stats.recentActivity.last7Days = postKeysByPeriod.today.size;
-        stats.recentActivity.last30Days = postKeysByPeriod.last30.size;
-        stats.sharedPhotos.today = postKeysByPeriod.today.size;
-        stats.sharedPhotos.last7 = postKeysByPeriod.last7.size;
-        stats.sharedPhotos.last30 = postKeysByPeriod.last30.size;
-        stats.totalSharedPhotos = postKeysByPeriod.all.size;
 
-        // 3) 각 사용자의 meals로 기록 수 + 활성 사용자 집계
-        const userIdsToCheck = usersFromCollection > 0
-            ? usersSnapshot.docs.map(doc => doc.id)
-            : Array.from(uniqueUserIds);
-        let processedUsers = 0;
+        stats.records.today = recordsToday;
+        stats.records.last7 = recordsLast7;
+        stats.records.last30 = recordsLast30;
 
-        for (const userId of userIdsToCheck) {
-            processedUsers++;
+        const userIds = usersSnapshot.docs.map((d) => d.id);
+        const UID_BATCH = 30;
+        for (let i = 0; i < userIds.length; i += UID_BATCH) {
+            const chunk = userIds.slice(i, i + UID_BATCH);
+            await Promise.all(
+                chunk.map(async (uid) => {
+                    try {
+                        const mc = collection(db, 'artifacts', appId, 'users', uid, 'meals');
+                        const n = await countQ(query(mc));
+                        if (n > 0) activeUserSets.all.add(uid);
+                    } catch (_) {}
+                })
+            );
+        }
+
+        try {
+            stats.guestVisits.all = await countQ(query(guestVisitsColl));
+            const tsTomorrow = Timestamp.fromDate(tomorrowStart);
+            stats.guestVisits.today = await countQ(
+                query(
+                    guestVisitsColl,
+                    where('lastVisitedAt', '>=', Timestamp.fromDate(todayStart)),
+                    where('lastVisitedAt', '<', tsTomorrow)
+                )
+            );
+            stats.guestVisits.last7 = await countQ(
+                query(
+                    guestVisitsColl,
+                    where('lastVisitedAt', '>=', Timestamp.fromDate(last7FirstDay)),
+                    where('lastVisitedAt', '<', tsTomorrow)
+                )
+            );
+            stats.guestVisits.last30 = await countQ(
+                query(
+                    guestVisitsColl,
+                    where('lastVisitedAt', '>=', Timestamp.fromDate(last30Start)),
+                    where('lastVisitedAt', '<', tsTomorrow)
+                )
+            );
+
+            for (let di = 0; di < 7; di++) {
+                const ymd = last7DateKeys[di];
+                const d0 = startOfLocalDayFromYmd(ymd);
+                if (!d0) continue;
+                const d1 = addLocalDays(d0, 1);
+                guestVisitsByDay[di] = await countQ(
+                    query(
+                        guestVisitsColl,
+                        where('lastVisitedAt', '>=', Timestamp.fromDate(d0)),
+                        where('lastVisitedAt', '<', Timestamp.fromDate(d1))
+                    )
+                );
+            }
+        } catch (ge) {
+            console.warn('⚠️ guestVisits 집계 실패, 전체 문서 스캔으로 폴백:', ge?.message || ge);
             try {
-                const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
-                const mealsSnapshot = await getDocs(mealsColl);
-                let userHasInAll = false, userHasIn30 = false, userHasIn7 = false, userHasInToday = false;
-
-                mealsSnapshot.forEach((mealDoc) => {
-                    const mealData = mealDoc.data();
-                    let mealDate = null;
-                    if (mealData.date) {
-                        const dateParts = mealData.date.split('-');
-                        if (dateParts.length === 3) {
-                            mealDate = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]));
-                        }
-                    } else if (mealData.timestamp) {
-                        mealDate = mealData.timestamp.toDate ? mealData.timestamp.toDate() : new Date(mealData.timestamp);
+                const guestVisitsSnap = await getDocs(guestVisitsColl);
+                guestVisitsSnap.docs.forEach((docSnap) => {
+                    const d = docSnap.data();
+                    let lastAt = null;
+                    if (d.lastVisitedAt) {
+                        lastAt = d.lastVisitedAt.toDate ? d.lastVisitedAt.toDate() : new Date(d.lastVisitedAt);
                     }
-                    if (mealDate) {
-                        const mealDateOnly = new Date(mealDate.getFullYear(), mealDate.getMonth(), mealDate.getDate());
-                        stats.records.all++;
-                        if (inPeriod(mealDateOnly, 'today')) { stats.records.today++; userHasInToday = true; }
-                        if (inPeriod(mealDateOnly, 'last7')) { stats.records.last7++; userHasIn7 = true; }
-                        if (inPeriod(mealDateOnly, 'last30')) { stats.records.last30++; userHasIn30 = true; stats.recentActivity.last30Days++; }
-                        userHasInAll = true;
-                        if (inPeriod(mealDateOnly, 'last7')) stats.recentActivity.last7Days++;
-                        const rdi = last7DayIndex(mealDateOnly);
-                        if (rdi >= 0) {
-                            recordsByDay[rdi]++;
-                            activeSetsByDay[rdi].add(userId);
-                        }
+                    if (lastAt) {
+                        const dateOnly = new Date(lastAt.getFullYear(), lastAt.getMonth(), lastAt.getDate());
+                        stats.guestVisits.all++;
+                        if (inPeriod(dateOnly, 'today')) stats.guestVisits.today++;
+                        if (inPeriod(dateOnly, 'last7')) stats.guestVisits.last7++;
+                        if (inPeriod(dateOnly, 'last30')) stats.guestVisits.last30++;
+                        const gdi = last7DayIndex(dateOnly);
+                        if (gdi >= 0) guestVisitsByDay[gdi]++;
                     }
                 });
-
-                if (userHasInAll) activeUserSets.all.add(userId);
-                if (userHasIn30) activeUserSets.last30.add(userId);
-                if (userHasIn7) activeUserSets.last7.add(userId);
-                if (userHasInToday) activeUserSets.today.add(userId);
-            } catch (e) {
-                console.warn(`  ⚠️ 사용자 ${userId}의 meals 조회 실패:`, e.code || e.message);
+            } catch (e2) {
+                console.warn('⚠️ guestVisits 폴백도 실패:', e2?.message || e2);
             }
         }
+
+        usersSnapshot.docs.forEach((userDoc) => {
+            const userData = userDoc.data();
+            let createdAt = null;
+            if (userData.createdAt) {
+                createdAt = userData.createdAt.toDate ? userData.createdAt.toDate() : new Date(userData.createdAt);
+            }
+            if (createdAt) {
+                const createdDateOnly = new Date(createdAt.getFullYear(), createdAt.getMonth(), createdAt.getDate());
+                stats.newUsers.all++;
+                if (inPeriod(createdDateOnly, 'today')) stats.newUsers.today++;
+                if (inPeriod(createdDateOnly, 'last7')) stats.newUsers.last7++;
+                if (inPeriod(createdDateOnly, 'last30')) stats.newUsers.last30++;
+                const ndi = last7DayIndex(createdDateOnly);
+                if (ndi >= 0) newUsersByDay[ndi]++;
+            }
+        });
+        stats.totalUsers = Math.max(usersFromCollection, stats.newUsers.all);
+
+        try {
+            stats.sharedPhotos.all = await countQ(query(sharedColl));
+            stats.totalSharedPhotos = stats.sharedPhotos.all;
+            const tsTodayLo = Timestamp.fromDate(todayStart);
+            const tsTodayHi = Timestamp.fromDate(tomorrowStart);
+            const tsLast7Lo = Timestamp.fromDate(last7FirstDay);
+            const tsLast30Lo = Timestamp.fromDate(last30Start);
+            const tsEnd = Timestamp.fromDate(tomorrowStart);
+
+            stats.sharedPhotos.today = await countQ(
+                query(sharedColl, where('timestamp', '>=', tsTodayLo), where('timestamp', '<', tsTodayHi))
+            );
+            stats.sharedPhotos.last7 = await countQ(
+                query(sharedColl, where('timestamp', '>=', tsLast7Lo), where('timestamp', '<', tsEnd))
+            );
+            stats.sharedPhotos.last30 = await countQ(
+                query(sharedColl, where('timestamp', '>=', tsLast30Lo), where('timestamp', '<', tsEnd))
+            );
+
+            for (let di = 0; di < 7; di++) {
+                const ymd = last7DateKeys[di];
+                const d0 = startOfLocalDayFromYmd(ymd);
+                if (!d0) continue;
+                const d1 = addLocalDays(d0, 1);
+                sharedByDayCounts[di] = await countQ(
+                    query(
+                        sharedColl,
+                        where('timestamp', '>=', Timestamp.fromDate(d0)),
+                        where('timestamp', '<', Timestamp.fromDate(d1))
+                    )
+                );
+            }
+        } catch (se) {
+            console.warn('⚠️ sharedPhotos 집계 실패:', se?.message || se);
+        }
+
+        stats.recentActivity.last7Days = stats.sharedPhotos.last7;
+        stats.recentActivity.last30Days = stats.sharedPhotos.last30;
 
         stats.activeUsers.all = activeUserSets.all.size;
         stats.activeUsers.last30 = activeUserSets.last30.size;
@@ -322,12 +364,12 @@ export async function getUserStatistics() {
             dates: last7DateKeys,
             guestVisits: [...guestVisitsByDay],
             newUsers: [...newUsersByDay],
-            activeUsers: activeSetsByDay.map(s => s.size),
+            activeUsers: activeSetsByDay.map((s) => s.size),
             records: [...recordsByDay],
-            sharedPhotos: sharedSetsByDay.map(s => s.size)
+            sharedPhotos: [...sharedByDayCounts]
         };
 
-        console.log('📊 대시보드 통계:', stats);
+        console.log('📊 대시보드 통계(최적화 집계):', stats);
         return stats;
     } catch (e) {
         console.error("❌ Get user statistics error:", e);
@@ -496,31 +538,29 @@ export async function updateStatistics() {
 
 // 통계 새로고침: 전체 집계 후 캐시 문서에 저장 (이때만 DB 다량 읽기)
 export async function refreshDashboardStats() {
-    const btn = document.getElementById('dashboardStatsRefreshBtn');
     try {
-        if (btn) { btn.disabled = true; btn.innerHTML = '집계 중...'; }
-        const stats = await getUserStatistics();
-        const payload = {
-            guestVisits: stats.guestVisits,
-            newUsers: stats.newUsers,
-            activeUsers: stats.activeUsers,
-            records: stats.records,
-            sharedPhotos: stats.sharedPhotos,
-            last7Breakdown: stats.last7Breakdown || null,
-            asOfDate: getTodayDateString(), // 전일까지 집계 기준일 (당일 로드 시 이 날짜 이전이면 당일만 경량 조회)
-            updatedAt: serverTimestamp()
-        };
-        await setDoc(DASHBOARD_STATS_REF(), payload);
-        renderDashboardStats(stats, new Date(), stats.last7Breakdown);
+        await runAdminRefreshAction(
+            document.getElementById('dashboardStatsRefreshBtn'),
+            async () => {
+                const stats = await getUserStatistics();
+                const payload = {
+                    guestVisits: stats.guestVisits,
+                    newUsers: stats.newUsers,
+                    activeUsers: stats.activeUsers,
+                    records: stats.records,
+                    sharedPhotos: stats.sharedPhotos,
+                    last7Breakdown: stats.last7Breakdown || null,
+                    asOfDate: getTodayDateString(),
+                    updatedAt: serverTimestamp()
+                };
+                await setDoc(DASHBOARD_STATS_REF(), payload);
+                renderDashboardStats(stats, new Date(), stats.last7Breakdown);
+            },
+            { loadingText: '집계 중…' }
+        );
     } catch (e) {
-        console.error("통계 새로고침 실패:", e);
-        alert("통계 새로고침 중 오류가 발생했습니다: " + (e.message || e));
-    } finally {
-        const b = document.getElementById('dashboardStatsRefreshBtn');
-        if (b) {
-            b.disabled = false;
-            b.innerHTML = '<i class="fa-solid fa-rotate-right mr-1"></i>통계 새로고침';
-        }
+        console.error('통계 새로고침 실패:', e);
+        alert('통계 새로고침 중 오류가 발생했습니다: ' + (e.message || e));
     }
 }
 

@@ -4,11 +4,13 @@ import { appState } from '../state.js';
 import { setVal, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage, normalizeBirthdateRaw } from '../utils.js';
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from '../render/index.js';
 import { dbOps } from '../db.js';
-import { showToast } from '../ui.js';
+import { showToast, showSuccessPopup } from '../ui.js';
 import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed } from '../render/index.js';
 import { getDashboardData } from '../analytics.js';
-import { callableFunctions } from '../firebase.js';
+import { callableFunctions, db, appId } from '../firebase.js';
 import { isDemoUser } from '../demo-account.js';
+import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+import { applyDemoDateShiftToMealRecord } from '../demo-date-shift.js';
 // ⚠️ initPushNotifications import 제거 - 크래시 문제로 인해 비활성화
 
 // 설정 저장 디바운싱을 위한 타이머
@@ -303,7 +305,7 @@ function loadKakaoSDK() {
     });
 }
 
-export function openModal(date, slotId, entryId = null) {
+export async function openModal(date, slotId, entryId = null) {
     try {
         const state = appState;
         if (!window.currentUser) return;
@@ -340,6 +342,29 @@ export function openModal(date, slotId, entryId = null) {
         let savedRecord = null;
         if (entryId) {
             savedRecord = window.mealHistory.find(m => m.id === entryId);
+        }
+        // 타임라인 DOM은 loadedDates로 갱신이 스킵될 수 있어, 카드의 id와 mealHistory가 어긋나면 빈 모달이 됨 → 단건 조회
+        if (entryId && !savedRecord && window.currentUser?.uid) {
+            try {
+                const ref = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals', entryId);
+                const snap = await getDoc(ref);
+                if (snap.exists()) {
+                    let rec = { id: snap.id, ...snap.data() };
+                    const shift = isDemoUser(window.currentUser) ? Number(window.__demoDateShiftDays) || 0 : 0;
+                    if (shift) rec = applyDemoDateShiftToMealRecord(rec, shift);
+                    savedRecord = rec;
+                    const hist = window.mealHistory || [];
+                    if (!hist.some((m) => m.id === entryId)) {
+                        window.mealHistory = [...hist, rec].sort(
+                            (a, b) =>
+                                (b.date || '').localeCompare(a.date || '') ||
+                                (b.time || '').localeCompare(a.time || '')
+                        );
+                    }
+                }
+            } catch (e) {
+                console.warn('openModal: meal 단건 조회 실패', entryId, e);
+            }
         }
         
         // 모든 칩의 active 클래스 제거 (renderEntryChips 전에)
@@ -487,7 +512,8 @@ export function openModal(date, slotId, entryId = null) {
                     _pi.setAttribute('data-kakao-place-name', (r.placeData && r.placeData.name) || r.place || '');
                 }
                 setVal('menuDetailInput', r.menuDetail || "");
-                setVal('withWhomInput', r.withWhomDetail || "");
+                setVal('withWhomInput', (!isS ? (r.withWhomDetail || "") : ""));
+                setVal('snackWithWhomInput', (isS ? (r.withWhomDetail || "") : ""));
                 setVal('snackDetailInput', r.menuDetail || "");
                 setVal('snackPlaceInput', r.place || "");
                 // 간식 수정 시 카카오맵 정보가 있으면 snackPlaceInput에 복원
@@ -552,7 +578,8 @@ export function openModal(date, slotId, entryId = null) {
                     
                     // 함께한 사람 (withWhom)
                     if (r.withWhom) {
-                        const withChips = document.getElementById('withChips');
+                        const chipId = isS ? 'snackWithChips' : 'withChips';
+                        const withChips = document.getElementById(chipId);
                         if (withChips) {
                             withChips.querySelectorAll('button.chip').forEach(ch => {
                                 if (ch.innerText.trim() === r.withWhom.trim()) {
@@ -755,6 +782,13 @@ export function openModal(date, slotId, entryId = null) {
                 entryModal.setKeyboardBaseline();
             }
             syncEntryModalBodyClass();
+            // 휠 다이얼 초기 스냅(모달이 실제로 열린 뒤에 한 번 더 맞춤)
+            setTimeout(() => {
+                try {
+                    window.setRating?.(appState.currentRating || 3);
+                    window.setSatiety?.(appState.currentSatiety || 3);
+                } catch (_) {}
+            }, 0);
         } else {
             console.error('entryModal 요소를 찾을 수 없습니다.');
         }
@@ -843,11 +877,29 @@ export async function saveEntry() {
         const placeInputVal = document.getElementById('placeInput')?.value || '';
         const menuInputVal = document.getElementById('menuDetailInput')?.value || '';
         const withInputVal = document.getElementById('withWhomInput')?.value || '';
+        const snackWithInputVal = document.getElementById('snackWithWhomInput')?.value || '';
         
         // 간식 입력값 가져오기 (hidden 상태여도 값을 가져올 수 있음)
         const snackDetailInput = document.getElementById('snackDetailInput');
         const snackInputVal = snackDetailInput ? snackDetailInput.value.trim() : '';
         const snackPlaceInputVal = document.getElementById('snackPlaceInput')?.value?.trim() || '';
+
+        // 입력 검증: 어떻게/무엇을/누구와 중 최소 1개는 필요 (무응답 시 저장하지 않음)
+        // - 본식: 어떻게(typeChips) / 무엇을(categoryChips 또는 menuDetailInput) / 누구와(withChips 또는 withWhomInput)
+        // - 간식: 무엇을(snackTypeChips 또는 snackDetailInput) / 누구와(snackWithChips 또는 snackWithWhomInput)
+        if (!isSk) {
+            const hasHow = !isS && Boolean((mealType || '').trim());
+            const hasWhat = isS
+                ? Boolean((getT('snackTypeChips') || '').trim() || (snackInputVal || '').trim())
+                : Boolean((getT('categoryChips') || '').trim() || (menuInputVal || '').trim());
+            const hasWith = isS
+                ? Boolean((getT('snackWithChips') || '').trim() || (snackWithInputVal || '').trim())
+                : Boolean((getT('withChips') || '').trim() || (withInputVal || '').trim());
+            if (!hasHow && !hasWhat && !hasWith) {
+                if (loadingOverlay) loadingOverlay.classList.add('hidden');
+                return;
+            }
+        }
         
         // 디버깅: 간식 입력값 확인
         if (isS) {
@@ -890,11 +942,13 @@ export async function saveEntry() {
             });
         }
         // 함께한 사람 상세 태그는 다중 선택 가능 (쉼표로 구분)
-        if (withInputVal) {
-            const withValues = withInputVal.split(',').map(v => v.trim()).filter(v => v);
+        const withInputValToSave = isS ? snackWithInputVal : withInputVal;
+        if (withInputValToSave) {
+            const withValues = withInputValToSave.split(',').map(v => v.trim()).filter(v => v);
+            const parentChipId = isS ? 'snackWithChips' : 'withChips';
             withValues.forEach(val => {
                 if (!newSettings.subTags.people.find(t => (t.text || t) === val)) {
-                    newSettings.subTags.people.push({ text: val, parent: getT('withChips') });
+                    newSettings.subTags.people.push({ text: val, parent: getT(parentChipId) });
                     tagsChanged = true;
                 }
             });
@@ -955,8 +1009,8 @@ export async function saveEntry() {
             date: state.currentEditingDate,
             slotId: state.currentEditingSlotId,
             mealType,
-            withWhom: getT('withChips'),
-            withWhomDetail: isSk ? '' : withInputVal,
+            withWhom: isS ? getT('snackWithChips') : getT('withChips'),
+            withWhomDetail: isSk ? '' : (isS ? snackWithInputVal : withInputVal),
             category: getT('categoryChips'),
             placeType: '',
             snackType: getT('snackTypeChips'),
@@ -967,7 +1021,7 @@ export async function saveEntry() {
             place: isSk ? '' : (isS ? (snackPlaceInputVal || appState.selectedSnackPlaceMainTag || '') : placeInputVal),
             comment: isSk ? '' : (isS ? (document.getElementById('snackCommentInput')?.value || '') : (document.getElementById('generalCommentInput')?.value || '')),
             rating: (isSk) ? null : state.currentRating,
-            satiety: (isSk || isS) ? null : state.currentSatiety,
+            satiety: (isSk) ? null : state.currentSatiety,
             time: new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' })
         };
         
@@ -1213,6 +1267,7 @@ export async function saveEntry() {
             }
 
             console.log('저장 완료');
+            showSuccessPopup('기록 완료', 800);
             // 낙관적 반영: 리스너 도착 전에 mealHistory에 즉시 반영해 스크롤·렌더가 최신 데이터 기준으로 동작
             if (record.id && window.mealHistory && Array.isArray(window.mealHistory)) {
                 const idx = window.mealHistory.findIndex(m => m.id === record.id);
@@ -1448,6 +1503,32 @@ export async function deleteEntry() {
 
 export function setRating(s) {
     appState.currentRating = s;
+    // (표시 생략) ratingDialValue는 UI에서 hidden 처리
+
+    // 휠 UI 동기화
+    const syncWheel = (wheelId, axis = 'y') => {
+        const wheel = document.getElementById(wheelId);
+        if (!wheel) return;
+        const ITEM_H = 44;
+        const vNorm = Math.max(1, Math.min(5, Number(s) || 1));
+        const target = (vNorm - 1) * ITEM_H;
+        const pos = axis === 'x' ? (wheel.scrollLeft || 0) : (wheel.scrollTop || 0);
+        if (!wheel._mealogSyncing && Math.abs(pos - target) > 2) {
+            wheel._mealogSyncing = true;
+            wheel.scrollTo(axis === 'x' ? { left: target, behavior: 'auto' } : { top: target, behavior: 'auto' });
+            setTimeout(() => {
+                wheel._mealogSyncing = false;
+            }, 0);
+        }
+        wheel.querySelectorAll('.mealog-wheel__item[data-val]').forEach((el) => {
+            const v = Number(el.getAttribute('data-val'));
+            el.classList.toggle('mealog-wheel__item--active', v === vNorm);
+            el.setAttribute('aria-selected', v === vNorm ? 'true' : 'false');
+        });
+    };
+    syncWheel('ratingWheel', 'y');
+    syncWheel('snackRatingWheel', 'y');
+
     const starContainer = document.getElementById('starContainer');
     if (starContainer) {
         const sts = starContainer.children;
@@ -1467,6 +1548,46 @@ export function setRating(s) {
 export function setSatiety(s) {
     const state = appState;
     state.currentSatiety = s;
+    const dialValue = document.getElementById('satietyDialValue');
+    if (dialValue) {
+        const d = (SATIETY_DATA || []).find(x => x.val === s);
+        dialValue.textContent = d?.label || String(s);
+    }
+    const snackDialValue = document.getElementById('snackSatietyDialValue');
+    if (snackDialValue) {
+        const d = (SATIETY_DATA || []).find(x => x.val === s);
+        snackDialValue.textContent = d?.label || String(s);
+    }
+
+    const syncSatietyWheel = (wheelId) => {
+        const wheel = document.getElementById(wheelId);
+        if (!wheel) return;
+        const ITEM_H = 44;
+        const vNorm = Math.max(1, Math.min(5, Number(s) || 1));
+        const targetTop = (vNorm - 1) * ITEM_H;
+        if (!wheel._mealogSyncing && Math.abs((wheel.scrollTop || 0) - targetTop) > 2) {
+            wheel._mealogSyncing = true;
+            wheel.scrollTo({ top: targetTop, behavior: 'auto' });
+            setTimeout(() => { wheel._mealogSyncing = false; }, 0);
+        }
+        wheel.querySelectorAll('.mealog-wheel__item[data-val]').forEach((el) => {
+            const v = Number(el.getAttribute('data-val'));
+            const active = v === vNorm;
+            el.classList.toggle('mealog-wheel__item--active', active);
+            el.setAttribute('aria-selected', active ? 'true' : 'false');
+            if (active) {
+                const color = el.getAttribute('data-color') || '';
+                const icon = el.querySelector('i');
+                if (icon) icon.style.color = color || '';
+            } else {
+                const icon = el.querySelector('i');
+                if (icon) icon.style.color = '';
+            }
+        });
+    };
+    syncSatietyWheel('satietyWheel');
+    syncSatietyWheel('snackSatietyWheel');
+
     const container = document.getElementById('satietyContainer');
     if (container) {
         container.innerHTML = SATIETY_DATA.map(d => 
@@ -1477,6 +1598,90 @@ export function setSatiety(s) {
         ).join('');
     }
 }
+
+// 휠 다이얼 스냅/동기화 (기록 모달 오픈 시 setRating/setSatiety로 초기화됨)
+function initWheelDialsOnce() {
+    if (window.__mealogWheelDialsInit) return;
+    window.__mealogWheelDialsInit = true;
+
+    const ITEM = 44;
+    const bindWheel = (wheelId, onSelect, axis = 'y') => {
+        const wheel = document.getElementById(wheelId);
+        if (!wheel) return;
+        // 마우스 드래그로도 휠 스크롤 가능하게
+        let dragging = false;
+        let startP = 0;
+        let startScroll = 0;
+        wheel.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'mouse' || e.pointerType === 'pen' || e.pointerType === 'touch') {
+                dragging = true;
+                startP = axis === 'x' ? e.clientX : e.clientY;
+                startScroll = axis === 'x' ? (wheel.scrollLeft || 0) : (wheel.scrollTop || 0);
+                try { wheel.setPointerCapture(e.pointerId); } catch (_) {}
+            }
+        });
+        wheel.addEventListener('pointermove', (e) => {
+            if (!dragging) return;
+            const p = axis === 'x' ? e.clientX : e.clientY;
+            const dp = p - startP;
+            if (axis === 'x') wheel.scrollLeft = startScroll - dp;
+            else wheel.scrollTop = startScroll - dp;
+        });
+        const endDrag = (e) => {
+            if (!dragging) return;
+            dragging = false;
+            try { wheel.releasePointerCapture(e.pointerId); } catch (_) {}
+        };
+        wheel.addEventListener('pointerup', endDrag);
+        wheel.addEventListener('pointercancel', endDrag);
+
+        let raf = null;
+        let lastVal = null;
+        const computeVal = () => {
+            const items = [...wheel.querySelectorAll('.mealog-wheel__item[data-val]')];
+            if (items.length === 0) return null;
+            const pos = axis === 'x' ? (wheel.scrollLeft || 0) : (wheel.scrollTop || 0);
+            const idx = Math.round(pos / ITEM);
+            const item = items[Math.max(0, Math.min(items.length - 1, idx))];
+            const v = Number(item.getAttribute('data-val'));
+            return Number.isFinite(v) ? v : null;
+        };
+        const snapTo = (v) => {
+            const items = [...wheel.querySelectorAll('.mealog-wheel__item[data-val]')];
+            const i = items.findIndex(x => Number(x.getAttribute('data-val')) === v);
+            if (i < 0) return;
+            wheel.scrollTo(axis === 'x' ? { left: i * ITEM, behavior: 'smooth' } : { top: i * ITEM, behavior: 'smooth' });
+        };
+        wheel.addEventListener('scroll', () => {
+            if (wheel._mealogSyncing) return;
+            if (raf) cancelAnimationFrame(raf);
+            raf = requestAnimationFrame(() => {
+                raf = null;
+                const v = computeVal();
+                if (v == null || v === lastVal) return;
+                lastVal = v;
+                onSelect(v);
+            });
+        }, { passive: true });
+
+        wheel.addEventListener('click', (e) => {
+            const item = e.target?.closest?.('.mealog-wheel__item[data-val]');
+            if (!item) return;
+            const v = Number(item.getAttribute('data-val'));
+            if (!Number.isFinite(v)) return;
+            snapTo(v);
+            onSelect(v);
+        });
+    };
+
+    bindWheel('ratingWheel', (v) => window.setRating?.(v), 'y');
+    bindWheel('snackRatingWheel', (v) => window.setRating?.(v), 'y');
+    bindWheel('satietyWheel', (v) => window.setSatiety?.(v), 'y');
+    bindWheel('snackSatietyWheel', (v) => window.setSatiety?.(v), 'y');
+}
+
+// entry 모달이 열리고 나면 휠 이벤트를 1회 바인딩
+setTimeout(initWheelDialsOnce, 0);
 
 export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subContainerId = null) {
     const container = btn.parentElement.closest('.sub-chip-wrapper') ? btn.parentElement.parentElement : btn.parentElement;

@@ -9,7 +9,7 @@ import {
     getAdminDisplayName,
     getReportsAggregateByGroupKeys
 } from '../db.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, runAdminRefreshAction } from './utils.js';
 import {
     collection,
     doc,
@@ -21,51 +21,37 @@ import {
     limit
 } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
+const ADMIN_BOARD_CACHE_TTL_MS = 3 * 60 * 1000;
+const boardListCache = new Map();
+
+function invalidateBoardMonitoringCache() {
+    boardListCache.clear();
+}
+
 // 게시판 게시물 렌더링 (기본 구현)
 let currentAdminBoardCategory = 'all';
-async function renderBoardPosts(category = 'all') {
-    const container = document.getElementById('boardPostsContainer');
-    if (!container) return;
-    
-    currentAdminBoardCategory = category;
-    container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
-    
-    try {
-        const [postsSnapshot, reportsMap] = await Promise.all([
-            (() => {
-                const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
-                let q;
-                if (category === 'all') {
-                    q = query(postsColl, orderBy('timestamp', 'desc'), limit(50));
-                } else {
-                    q = query(postsColl, where('category', '==', category), orderBy('timestamp', 'desc'), limit(50));
-                }
-                return getDocs(q);
-            })(),
-            getReportsAggregateByGroupKeys()
-        ]);
-        
-        if (postsSnapshot.empty) {
-            container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-comments text-2xl mb-2"></i><p>게시물이 없습니다.</p></div>';
-            return;
-        }
-        
-        window._feedReportDetails = window._feedReportDetails || {};
-        container.innerHTML = postsSnapshot.docs.map(d => {
-            const post = d.data();
-            const postId = d.id;
+/** 목록을 한 번이라도 성공적으로 불러온 뒤에만 카테고리 전환이 Firestore를 다시 칩니다 */
+let adminBoardMonitoringLoaded = false;
+
+function paintBoardPostsList(container, rows, reportsMap) {
+    window._feedReportDetails = window._feedReportDetails || {};
+    container.innerHTML = rows
+        .map(({ id: postId, post }) => {
             const ts = post.timestamp;
-            const date = ts ? (() => {
-                const d = typeof ts?.toDate === 'function' ? ts.toDate() : new Date(ts);
-                return Number.isFinite(d.getTime()) ? d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
-            })() : '-';
+            const date = ts
+                ? (() => {
+                      const d = typeof ts?.toDate === 'function' ? ts.toDate() : new Date(ts);
+                      return Number.isFinite(d.getTime()) ? d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
+                  })()
+                : '-';
             const reportInfo = reportsMap['board_' + postId];
             if (reportInfo && reportInfo.count > 0) {
                 window._feedReportDetails['board_' + postId] = reportInfo.byReason;
             }
-            const reportBadgeHtml = (reportInfo && reportInfo.count > 0)
-                ? `<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded cursor-pointer hover:bg-red-200" onclick="window.showReportDetailPopup('board_${String(postId).replace(/'/g, "\\'")}')">🚩 신고 ${reportInfo.count}</span>`
-                : '';
+            const reportBadgeHtml =
+                reportInfo && reportInfo.count > 0
+                    ? `<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded cursor-pointer hover:bg-red-200" onclick="window.showReportDetailPopup('board_${String(postId).replace(/'/g, "\\'")}')">🚩 신고 ${reportInfo.count}</span>`
+                    : '';
             const isHidden = post.isHidden === true;
             const safePostId = String(postId).replace(/'/g, "\\'");
             return `
@@ -92,10 +78,63 @@ async function renderBoardPosts(category = 'all') {
                     </div>
                 </div>
             `;
-        }).join('');
+        })
+        .join('');
+}
+
+async function renderBoardPosts(category = 'all') {
+    const container = document.getElementById('boardPostsContainer');
+    if (!container) return;
+
+    currentAdminBoardCategory = category;
+    container.innerHTML =
+        '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
+
+    try {
+        const cached = boardListCache.get(category);
+        const now = Date.now();
+        if (cached && now - cached.ts < ADMIN_BOARD_CACHE_TTL_MS) {
+            if (!cached.rows.length) {
+                container.innerHTML =
+                    '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-comments text-2xl mb-2"></i><p>게시물이 없습니다.</p></div>';
+            } else {
+                paintBoardPostsList(container, cached.rows, cached.reportsMap);
+            }
+            adminBoardMonitoringLoaded = true;
+            return;
+        }
+
+        const [postsSnapshot, reportsMap] = await Promise.all([
+            (() => {
+                const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
+                let q;
+                if (category === 'all') {
+                    q = query(postsColl, orderBy('timestamp', 'desc'), limit(50));
+                } else {
+                    q = query(postsColl, where('category', '==', category), orderBy('timestamp', 'desc'), limit(50));
+                }
+                return getDocs(q);
+            })(),
+            getReportsAggregateByGroupKeys()
+        ]);
+
+        const rows = postsSnapshot.docs.map((d) => ({ id: d.id, post: d.data() }));
+        boardListCache.set(category, { ts: now, rows, reportsMap });
+
+        if (rows.length === 0) {
+            container.innerHTML =
+                '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-comments text-2xl mb-2"></i><p>게시물이 없습니다.</p></div>';
+            adminBoardMonitoringLoaded = true;
+            return;
+        }
+
+        paintBoardPostsList(container, rows, reportsMap);
+        adminBoardMonitoringLoaded = true;
     } catch (e) {
-        console.error("게시판 게시물 렌더링 실패:", e);
-        container.innerHTML = '<div class="text-center py-8 text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>게시물을 불러오는 중 오류가 발생했습니다.</p></div>';
+        adminBoardMonitoringLoaded = false;
+        console.error('게시판 게시물 렌더링 실패:', e);
+        container.innerHTML =
+            '<div class="text-center py-8 text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>게시물을 불러오는 중 오류가 발생했습니다.</p></div>';
     }
 }
 
@@ -108,6 +147,7 @@ window.adminBoardBulkHide = async function() {
     if (ids.length === 0) { alert('가릴 게시물을 선택해주세요.'); return; }
     try {
         for (const id of ids) await setBoardPostHidden(id, true);
+        invalidateBoardMonitoringCache();
         alert(ids.length + '건이 가려졌습니다.');
         renderBoardPosts(currentAdminBoardCategory);
     } catch (e) {
@@ -121,6 +161,7 @@ window.adminBoardBulkUnhide = async function() {
     if (ids.length === 0) { alert('가리기 해제할 게시물을 선택해주세요.'); return; }
     try {
         for (const id of ids) await setBoardPostHidden(id, false);
+        invalidateBoardMonitoringCache();
         alert(ids.length + '건의 가리기가 해제되었습니다.');
         renderBoardPosts(currentAdminBoardCategory);
     } catch (e) {
@@ -135,6 +176,7 @@ window.adminBoardBulkDelete = async function() {
     if (!confirm('선택한 ' + ids.length + '건을 삭제하시겠습니까?')) return;
     try {
         for (const id of ids) await deleteBoardPostByAdmin(id);
+        invalidateBoardMonitoringCache();
         alert(ids.length + '건이 삭제되었습니다.');
         renderBoardPosts(currentAdminBoardCategory);
     } catch (e) {
@@ -144,9 +186,13 @@ window.adminBoardBulkDelete = async function() {
 };
 
 // 게시판 게시물 새로고침
-window.refreshBoardPosts = function() {
-    renderBoardPosts(currentAdminBoardCategory);
-}
+window.refreshBoardPosts = async function () {
+    await runAdminRefreshAction(document.getElementById('adminRefreshBoardBtn'), async () => {
+        invalidateBoardMonitoringCache();
+        adminBoardMonitoringLoaded = false;
+        await renderBoardPosts(currentAdminBoardCategory);
+    });
+};
 
 // 게시판 글 선택 → 상세(본문+댓글) 보기
 let currentSelectedBoardPostId = null;
@@ -263,7 +309,9 @@ window.setAdminBoardCategory = function(category) {
         activeBtn.classList.add('active', 'bg-emerald-600', 'text-white');
         activeBtn.classList.remove('bg-slate-100', 'text-slate-600');
     }
-    
+
+    currentAdminBoardCategory = category;
+    if (!adminBoardMonitoringLoaded) return;
     renderBoardPosts(category);
 }
 

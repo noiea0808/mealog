@@ -10,6 +10,15 @@ import { showTermsModal, closeTermsModal } from './auth.js';
 import { isDemoUser, maybeShowDemoIntroModal } from './demo-account.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 
+/** hasCompleted 직후 호출 — onDataUpdate가 더 이상 안 오는 경우에도 출석 팝업이 뜨도록 */
+function queueAttendanceCheck() {
+    queueMicrotask(() => {
+        import('./attendance-check.js')
+            .then((m) => m.scheduleAttendanceCheckIfNeeded())
+            .catch(() => {});
+    });
+}
+
 /**
  * 인증 상태 정의
  */
@@ -419,7 +428,10 @@ export class AuthFlowManager {
         
         try {
             if (isDemoUser(user)) {
+                this.hasCompleted = true;
+                this.lastProcessedUserId = user?.uid;
                 this.termsCheckInProgress = false;
+                queueAttendanceCheck();
                 return;
             }
             console.log('🔍 백그라운드에서 약관 및 프로필 상태 확인 시작');
@@ -456,6 +468,7 @@ export class AuthFlowManager {
                 console.log('✅ 기존 사용자: 약관과 프로필 모두 완료로 처리. 모달을 표시하지 않습니다.');
                 this.hasCompleted = true;
                 this.lastProcessedUserId = user?.uid;
+                queueAttendanceCheck();
                 return;
             }
             
@@ -495,6 +508,7 @@ export class AuthFlowManager {
                 console.log('✅ 약관과 프로필 모두 완료됨. 모달을 표시하지 않습니다.');
                 this.hasCompleted = true;
                 this.lastProcessedUserId = user?.uid;
+                queueAttendanceCheck();
             }
         } catch (error) {
             console.error('❌ 백그라운드 약관/프로필 확인 에러:', error);
@@ -557,6 +571,7 @@ export class AuthFlowManager {
                     if (switchMainTab) switchMainTab('timeline');
                     this.hasCompleted = true;
                     this.lastProcessedUserId = this.user?.uid;
+                    queueAttendanceCheck();
                     console.log('✅ 인증 플로우 완료:', this.user?.uid);
                     break;
                     
@@ -617,6 +632,7 @@ export class AuthFlowManager {
                 switchScreen(true);
                 this.hasCompleted = true;
                 this.lastProcessedUserId = this.user?.uid;
+                queueAttendanceCheck();
             } else {
                 // 프로필 미완료: 프로필 설정 모달 표시
                 console.log('📋 약관 동의 완료, 프로필 설정 필요: 모달 표시');
@@ -648,6 +664,7 @@ export class AuthFlowManager {
             switchScreen(true);
             this.hasCompleted = true;
             this.lastProcessedUserId = this.user?.uid;
+            queueAttendanceCheck();
         } catch (error) {
             console.error('❌ onProfileSetup 에러:', error);
             hideLoading();

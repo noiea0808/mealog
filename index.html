@@ -202,6 +202,7 @@
     <script src="js/capacitor-share-plugin.js"></script>
     <script src="js/capacitor-badge-plugin.js"></script>
     <script src="js/capacitor-push-notifications-plugin.js"></script>
+    <script src="js/capacitor-haptics-plugin.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             var el = document.getElementById('headerStagingLabel');
@@ -214,6 +215,7 @@
             } catch (e) {}
             try {
                 if (window.Capacitor?.isNativePlatform?.()) {
+                    document.documentElement.classList.add('platform-native-app');
                     var st = getComputedStyle(document.documentElement).getPropertyValue('--safe-top').trim();
                     var sb = getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom').trim();
                     if (!st || st === '0px' || parseFloat(st) < 20) document.documentElement.style.setProperty('--safe-top', '28px');
@@ -376,6 +378,51 @@
     <input type="text" id="imeWarmupInput" aria-hidden="true" tabindex="-1" class="absolute -left-[9999px] w-1 h-1 opacity-0 pointer-events-none" autocomplete="off">
 
     <div id="toastContainer" class="fixed bottom-24 left-1/2 -translate-x-1/2 w-[92%] max-w-[26rem] z-[600] flex flex-col items-center gap-2 pointer-events-none px-4 box-border"></div>
+
+    <!-- 기록 완료: 중앙 팝업 (0.8초) -->
+    <div id="successPopup" class="hidden fixed inset-0 z-[9500] flex items-center justify-center">
+        <div id="successPopupBackdrop" class="absolute inset-0 bg-slate-900/25"></div>
+        <div id="successPopupConfetti" class="absolute inset-0 z-0" aria-hidden="true"></div>
+        <div id="successPopupContent" class="relative z-10 w-[86%] max-w-[18rem] bg-transparent flex flex-col items-center gap-3 px-2 py-2">
+            <div class="success-check" aria-hidden="true">
+                <svg viewBox="0 0 52 52" width="73" height="73">
+                    <circle class="success-check__fill" cx="26" cy="26" r="20" fill="#ffffff"></circle>
+                    <circle class="success-check__circle-bg" cx="26" cy="26" r="20" fill="none"></circle>
+                    <path class="success-check__mark-bg" fill="none" d="M14 27 L22 35 L38 18"></path>
+                    <circle class="success-check__circle" cx="26" cy="26" r="20" fill="none"></circle>
+                    <path class="success-check__mark" fill="none" d="M14 27 L22 35 L38 18"></path>
+                </svg>
+            </div>
+            <svg id="successPopupTextSvg" width="220" height="44" viewBox="0 0 220 44" aria-hidden="true">
+                <text id="successPopupText" x="110" y="32" text-anchor="middle" class="success-popup-text-outline">기록 완료</text>
+            </svg>
+        </div>
+    </div>
+
+    <!-- 출석/연속 기록: 중앙 팝업 (기록 완료와 동일 텍스트 스타일, 테스트 시 세션당 1회) -->
+    <div id="attendancePopup" class="hidden fixed inset-0 z-[9480] flex items-center justify-center">
+        <div id="attendancePopupBackdrop" class="absolute inset-0 bg-slate-900/25"></div>
+        <div id="attendancePopupContent" class="relative z-10 w-[92%] max-w-[22rem] bg-transparent flex flex-col items-center gap-1 px-1 py-1">
+            <div class="success-check" aria-hidden="true">
+                <svg viewBox="0 0 52 52" width="73" height="73">
+                    <circle class="success-check__fill" cx="26" cy="26" r="20" fill="#ffffff"></circle>
+                    <circle class="success-check__circle-bg" cx="26" cy="26" r="20" fill="none"></circle>
+                    <path class="success-check__mark-bg" fill="none" d="M14 27 L22 35 L38 18"></path>
+                    <circle class="success-check__circle" cx="26" cy="26" r="20" fill="none"></circle>
+                    <path class="success-check__mark" fill="none" d="M14 27 L22 35 L38 18"></path>
+                </svg>
+            </div>
+            <svg id="attendancePopupTextSvg" width="340" height="60" viewBox="0 0 340 60" aria-hidden="true">
+                <text id="attendancePopupTextRoot" text-anchor="middle" class="success-popup-text-outline" x="170" y="0">
+                    <tspan id="attendancePopupLine1" x="170" y="34"></tspan>
+                    <tspan id="attendancePopupLine2" x="170" dy="0"></tspan>
+                </text>
+            </svg>
+            <button type="button" id="attendancePopupCloseBtn" class="w-full max-w-[8rem] py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-black border-[3px] border-white shadow-md active:scale-[0.98] transition-colors box-border">
+                닫기
+            </button>
+        </div>
+    </div>
 
     <div id="loadingOverlay" class="hidden fixed inset-0 bg-white/90 z-[9999] flex flex-col items-center justify-center">
         <div id="loadingOverlayBox" class="flex flex-col items-center justify-center px-6 py-5 bg-white rounded-2xl shadow-lg border border-slate-100">
@@ -787,9 +834,9 @@
                         <span id="headerSectionLabel" class="header-section-label text-xs font-semibold tracking-tight">밀로그</span>
                     </div>
                 </div>
-                <!-- 우측: 돋보기(모먼트/밀로그/밀톡만) → 알림(모든 메뉴) 순서 고정. 밀로그 검색 확장 시 flex로 sub-title까지 확장 -->
+                <!-- 우측: 돋보기(모먼트/밀로그/라운지만) → 알림(모든 메뉴) 순서 고정. 밀로그 검색 확장 시 flex로 sub-title까지 확장 -->
                 <div class="header-right flex items-center gap-2 flex-shrink-0">
-                    <!-- 돋보기: 모먼트(타임라인) = 검색, 밀로그/밀톡 = 하트·댓글·북마크·돋보기 -->
+                    <!-- 돋보기: 모먼트(타임라인) = 검색, 밀로그/라운지 = 하트·댓글·북마크·돋보기 -->
                     <div id="timelineSearchPanel" class="timeline-search-wrapper hidden relative overflow-visible">
                         <div class="timeline-search-panel flex items-center overflow-hidden">
                             <input type="text" id="searchInput" placeholder="메뉴, 장소 검색..." class="flex-1 min-w-0 bg-transparent border-0 pl-3 pr-1 py-1.5 text-sm outline-none focus:ring-0">
@@ -818,13 +865,18 @@
                             <i class="fa-regular fa-bell text-lg"></i>
                             <span id="notificationDot" class="notification-dot absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full hidden" aria-hidden="true"></span>
                         </button>
-                        <div id="notificationPopup" class="notification-popup absolute right-0 top-full mt-1.5 w-72 max-h-[70vh] overflow-hidden hidden rounded-xl border border-slate-200 bg-white shadow-lg z-[60]">
+                        <div id="notificationPopup" class="notification-popup absolute right-0 top-full mt-1.5 w-80 max-h-[70vh] overflow-hidden hidden rounded-xl border border-slate-200 bg-white shadow-lg z-[60]">
                             <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-100">
-                                <span class="font-semibold text-sm text-slate-700">새로운 댓글</span>
+                                <span class="font-semibold text-sm text-slate-700">알림</span>
                                 <button type="button" id="notificationMarkAllReadBtn" class="text-xs font-medium text-emerald-600 hover:text-emerald-700 active:opacity-80 ml-auto">모두 읽음</button>
                             </div>
-                            <div id="notificationList" class="overflow-y-auto max-h-[60vh] p-2"></div>
-                            <div id="notificationEmpty" class="p-4 text-center text-slate-400 text-sm hidden">새로운 댓글이 없습니다.</div>
+                            <div class="flex gap-1 px-2 pt-2 pb-1" role="tablist" aria-label="알림 구분">
+                                <button type="button" id="notificationTabUnread" role="tab" aria-selected="true" class="notification-tab-btn flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/80">새 알림</button>
+                                <button type="button" id="notificationTabRead" role="tab" aria-selected="false" class="notification-tab-btn flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors bg-slate-100 text-slate-600 hover:bg-slate-200/70">읽은 알림</button>
+                            </div>
+                            <div id="notificationList" class="overflow-y-auto max-h-[52vh] p-2 min-h-[100px]"></div>
+                            <div id="notificationEmpty" class="p-4 text-center text-slate-400 text-sm hidden"></div>
+                            <p id="notificationReadHint" class="hidden px-3 pb-2 text-[10px] leading-snug text-slate-400 text-center border-t border-slate-50 pt-2">읽은 알림은 최근 90일 이내·최대 50개까지 표시합니다.</p>
                         </div>
                     </div>
                     <!-- 체험(더미) 계정: 돋보기·알림 대신 로그인 유도 -->
@@ -863,22 +915,74 @@
                 </div>
             </div>
             <!-- 게시판 목록 뷰 -->
-            <div id="boardListView" class="hidden ui-tab-view ui-stack-md relative">
+            <div id="boardListView" class="hidden ui-tab-view ui-stack-md relative board-list-view-mealtalk">
                 <button id="boardWriteBtn" class="board-write-fab" type="button" title="글쓰기" aria-label="글쓰기">
                     <i class="fa-solid fa-pen text-lg"></i>
                 </button>
-                <div class="flex gap-2 mb-4 mt-2 overflow-x-auto scrollbar-hide">
+                <div id="boardLoungeFrame" class="board-lounge-frame flex min-h-0 flex-1 flex-col">
+                <div class="board-mealtalk-subtabs flex w-full min-w-0 pt-2 pb-0" role="tablist" aria-label="라운지 — 밀톡·게시판">
+                    <button type="button" id="boardSubtabFeed" role="tab" aria-selected="true" class="board-list-subtab relative flex flex-1 items-center justify-center px-3 py-2.5 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors">
+                        <span class="relative inline-block">
+                            밀톡
+                            <span class="board-subtab-update-dot hidden absolute right-0 top-0 h-1.5 w-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
+                        </span>
+                    </button>
+                    <button type="button" id="boardSubtabBoard" role="tab" aria-selected="false" class="board-list-subtab relative flex flex-1 items-center justify-center px-3 py-2.5 text-sm font-bold text-slate-500 border-b-2 border-transparent transition-colors">
+                        <span class="relative inline-block">
+                            게시판
+                            <span class="board-subtab-update-dot hidden absolute right-0 top-0 h-1.5 w-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
+                        </span>
+                    </button>
+                </div>
+                <div id="boardCategoryRow" class="flex gap-2 overflow-x-auto scrollbar-hide hidden">
                     <button id="board-category-all" class="board-category-btn active px-4 py-2 bg-black text-white border border-black rounded-lg text-xs font-bold whitespace-nowrap">전체</button>
                     <button id="board-category-food" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">먹는</button>
                     <button id="board-category-chat" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">가벼운</button>
                     <button id="board-category-serious" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">무거운</button>
                     <button id="board-category-admin" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">치프에게</button>
                 </div>
-                <div id="noticesContainer" class="mb-4 ui-stack-md">
-                    <!-- 공지가 여기에 동적으로 추가됨 -->
+                <div id="boardLoungeScrollArea" class="board-lounge-scroll-area flex min-h-0 flex-1 flex-col overflow-y-auto">
+                <div id="boardFeedPanel" class="board-feed-panel">
+                    <div id="boardFeedPanelContent" class="board-feed-panel-content min-h-[12rem]"></div>
                 </div>
-                <div id="boardContainer" class="ui-surface-soft ui-stack-tight">
-                    <!-- 게시글 목록이 여기에 동적으로 추가됨 -->
+                <div id="boardInlineComposer" class="board-inline-composer board-feed-chat-composer" aria-label="밀톡 메시지 입력">
+                    <input type="file" id="boardFeedComposerPhotoInput" class="hidden" accept="image/*">
+                    <div id="boardFeedComposerPhotoPreview" class="board-feed-composer-photo-preview flex flex-wrap gap-1.5 mb-1 min-h-0"></div>
+                    <div id="boardInlineComposerReplyBar" class="hidden board-feed-reply-bar mb-1.5 min-w-0" aria-live="polite">
+                        <div class="flex min-w-0 items-center gap-1.5 rounded-xl border border-slate-300/50 bg-slate-500/10 px-2 py-1.5">
+                            <i class="fa-solid fa-reply flex-shrink-0 text-xs text-emerald-700" aria-hidden="true"></i>
+                            <span id="boardInlineComposerReplyNick" class="max-w-[36%] flex-shrink-0 truncate text-xs font-bold text-emerald-800"></span>
+                            <span class="flex-shrink-0 text-[11px] text-slate-400" aria-hidden="true">·</span>
+                            <span id="boardInlineComposerReplySnippet" class="min-w-0 flex-1 truncate text-xs text-slate-600"></span>
+                            <button type="button" id="boardInlineComposerReplyClear" class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-base leading-none text-slate-500 hover:bg-white/70 active:bg-white" aria-label="답장 취소">×</button>
+                        </div>
+                    </div>
+                    <div class="board-feed-composer-row flex items-center gap-1.5">
+                        <div id="boardInlineComposerAvatar" class="board-inline-composer-avatar w-9 h-9 rounded-full flex-shrink-0 bg-slate-200 flex items-center justify-center text-slate-500 overflow-hidden border border-slate-200" aria-hidden="true">
+                            <i class="fa-solid fa-user text-xs"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <label class="sr-only" for="boardInlineComposerInput">밀톡 메시지</label>
+                            <textarea id="boardInlineComposerInput" rows="1" maxlength="280" class="board-inline-composer-input board-feed-chat-input w-full text-base text-slate-800 placeholder:text-slate-400" placeholder="메시지를 입력하세요…"></textarea>
+                        </div>
+                        <button type="button" id="boardInlineComposerPhotoBtn" class="board-feed-composer-attach flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full text-slate-500 hover:bg-white/80 hover:text-emerald-600 active:bg-white transition-colors" title="사진 첨부" aria-label="사진 첨부">
+                            <i class="fa-regular fa-image text-lg"></i>
+                        </button>
+                        <button type="button" id="boardInlineComposerSubmit" class="board-feed-composer-send touch-manipulation flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full text-white disabled:pointer-events-none transition-colors" disabled aria-label="보내기">
+                            <i class="fa-solid fa-arrow-up text-sm"></i>
+                        </button>
+                    </div>
+                    <span id="boardInlineComposerCount" class="sr-only" aria-live="polite">0/280</span>
+                </div>
+                <div id="boardListPanel" class="board-list-panel hidden">
+                    <div id="noticesContainer" class="mb-4 ui-stack-md">
+                        <!-- 공지가 여기에 동적으로 추가됨 -->
+                    </div>
+                    <div id="boardContainer" class="ui-surface-soft ui-stack-tight">
+                        <!-- 게시글 목록이 여기에 동적으로 추가됨 -->
+                    </div>
+                </div>
+                </div>
                 </div>
             </div>
             
@@ -1101,8 +1205,16 @@
                             <div id="snackTypeChartContainer"></div>
                         </div>
                         <div class="card ui-card-pad">
+                            <div class="ui-card-head analytics-card-head"><h3 class="ui-section-label">누구와</h3><button onclick="window.openDetailModal('snackWithWhom', '누구와 (간식)')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                            <div id="snackMateChartContainer"></div>
+                        </div>
+                        <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head"><h3 class="ui-section-label">만족도</h3><button onclick="window.openDetailModal('snackRating', '간식 만족도 통계')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                             <div id="snackRatingChartContainer"></div>
+                        </div>
+                        <div class="card ui-card-pad">
+                            <div class="ui-card-head analytics-card-head"><h3 class="ui-section-label">포만감</h3><button onclick="window.openDetailModal('snackSatiety', '포만감 (간식)')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
+                            <div id="snackSatietyChartContainer"></div>
                         </div>
                     </div>
                 </div>
@@ -1110,28 +1222,26 @@
 
             <!-- 사용자 설정 뷰 (다른 탭과 동일하게 전환) -->
             <div id="settingsView" class="hidden flex flex-col overflow-hidden min-h-0">
-                <div class="flex px-4 pt-2 pb-0 border-b border-slate-200 flex-shrink-0 bg-white">
-                    <button id="settingsTabProfile" class="settings-tab active px-3 py-2.5 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors">
-                        <i class="fa-solid fa-user mr-2"></i>프로필
-                    </button>
-                    <button id="settingsTabTags" class="settings-tab px-3 py-2.5 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors">
-                        <i class="fa-solid fa-tags mr-2"></i>태그 관리
-                    </button>
-                    <button id="settingsTabShortcuts" class="settings-tab px-3 py-2.5 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors">
-                        <i class="fa-solid fa-keyboard mr-2"></i>밀당 메모
-                    </button>
+                <div class="settings-subtab-row flex w-full px-1 sm:px-2 pt-2 pb-0 border-b border-slate-200 flex-shrink-0 bg-white">
+                    <button id="settingsTabProfile" type="button" class="settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors leading-tight">프로필</button>
+                    <button id="settingsTabTags" type="button" class="settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors leading-tight">태그 관리</button>
+                    <button id="settingsTabShortcuts" type="button" class="settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors leading-tight">밀당 메모</button>
+                    <button id="settingsTabNotifications" type="button" class="settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors leading-tight">푸시 알림</button>
                 </div>
                 <div class="flex-1 overflow-y-auto min-h-0 px-4 pb-28 settings-view-content">
                     <!-- 프로필 탭 -->
                     <div id="settingsTabContentProfile" class="settings-tab-content settings-tab-content-fullwidth profile-settings-list pt-4 pb-8">
                         <div class="settings-section-container">
                             <div id="accountSection" class="profile-account-section"></div>
-                            <div class="profile-settings-header flex items-center justify-between py-3 border-b border-slate-100">
-                            <h3 class="text-sm font-bold text-slate-800">프로필</h3>
-                            <div class="flex items-center gap-2">
-                                <button id="editProfileSettingsBtn" class="profile-settings-action px-3 py-1.5 text-sm font-bold text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors">수정</button>
-                                <button id="cancelProfileSettingsBtn" class="hidden px-3 py-1.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-full transition-colors">취소</button>
-                                <button id="saveProfileSettingsBtn" class="hidden px-3 py-1.5 text-sm font-bold text-white bg-black hover:bg-slate-800 rounded-full transition-colors">저장</button>
+                            <div class="profile-settings-header flex items-center justify-between py-3 border-b border-slate-100 gap-2">
+                            <div class="flex items-center gap-2 min-w-0">
+                                <h3 class="text-sm font-bold text-slate-800 shrink-0">프로필</h3>
+                                <button id="editProfileSettingsBtn" type="button" class="profile-settings-action shrink-0 px-3 py-1.5 text-sm font-bold text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors">수정</button>
+                            </div>
+                            <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end shrink-0">
+                                <button type="button" id="openMyPostsFromSettingsBtn" class="hidden px-2.5 py-1.5 text-xs font-bold text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-50 active:bg-emerald-100 transition-colors whitespace-nowrap" title="모먼트에서 내 공유·게시글 보기">내 게시물</button>
+                                <button id="cancelProfileSettingsBtn" type="button" class="hidden px-3 py-1.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-full transition-colors">취소</button>
+                                <button id="saveProfileSettingsBtn" type="button" class="hidden px-3 py-1.5 text-sm font-bold text-white bg-black hover:bg-slate-800 rounded-full transition-colors">저장</button>
                             </div>
                         </div>
                         <div class="profile-settings-row profile-settings-row-between border-b border-slate-100">
@@ -1225,6 +1335,57 @@
                         <div class="settings-section-container">
                             <h3 class="text-xs font-black text-slate-400 mb-2 uppercase tracking-widest">나만의 태그 관리</h3>
                             <div id="favoriteTagsSection"></div>
+                        </div>
+                    </div>
+                    <div id="settingsTabContentNotifications" class="settings-tab-content settings-tab-content-fullwidth hidden pt-4 pb-8">
+                        <div class="settings-section-container space-y-3">
+                            <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest">푸시 알림</h3>
+                            <p class="text-xs text-slate-500 leading-relaxed">
+                                기기 설정에서 앱 알림을 허용한 뒤, 아래에서 <span class="font-semibold text-slate-600">받을 푸시 종류</span>만 골라 쓸 수 있어요.
+                                앱 상단 종 아이콘의 <span class="font-semibold text-slate-600">앱 내 알림</span>은 이 설정과 관계없이 모두 표시됩니다.
+                            </p>
+                            <div class="rounded-xl border border-slate-100 bg-white overflow-hidden divide-y divide-slate-100">
+                                <label class="flex items-center justify-between gap-2 px-3 py-3 cursor-pointer hover:bg-slate-50/80">
+                                    <span class="text-sm font-bold text-slate-800 min-w-0 pr-1">알림 전체</span>
+                                    <span class="relative inline-flex h-[19px] w-[35px] shrink-0">
+                                        <input type="checkbox" id="pushPrefMaster" class="peer sr-only push-pref-toggle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/50 focus-visible:ring-offset-2 rounded" role="switch" aria-label="푸시 알림 전체">
+                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-800"></span>
+                                        <span class="pointer-events-none absolute left-[1.5px] top-[1.5px] h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 peer-checked:translate-x-[16px]"></span>
+                                    </span>
+                                </label>
+                                <label class="push-pref-sub-row flex items-center justify-between gap-2 px-3 py-2.5 pl-5 cursor-pointer hover:bg-slate-50/80">
+                                    <span class="text-sm text-slate-700 min-w-0 pr-1">모먼트 댓글</span>
+                                    <span class="relative inline-flex h-[19px] w-[35px] shrink-0">
+                                        <input type="checkbox" id="pushPrefMomentComment" class="peer sr-only push-pref-toggle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/50 focus-visible:ring-offset-2 rounded" role="switch" aria-label="모먼트 댓글 푸시">
+                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-800"></span>
+                                        <span class="pointer-events-none absolute left-[1.5px] top-[1.5px] h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 peer-checked:translate-x-[16px]"></span>
+                                    </span>
+                                </label>
+                                <label class="push-pref-sub-row flex items-center justify-between gap-2 px-3 py-2.5 pl-5 cursor-pointer hover:bg-slate-50/80">
+                                    <span class="text-sm text-slate-700 min-w-0 pr-1">게시판 댓글</span>
+                                    <span class="relative inline-flex h-[19px] w-[35px] shrink-0">
+                                        <input type="checkbox" id="pushPrefBoardComment" class="peer sr-only push-pref-toggle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/50 focus-visible:ring-offset-2 rounded" role="switch" aria-label="게시판 댓글 푸시">
+                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-800"></span>
+                                        <span class="pointer-events-none absolute left-[1.5px] top-[1.5px] h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 peer-checked:translate-x-[16px]"></span>
+                                    </span>
+                                </label>
+                                <label class="push-pref-sub-row flex items-center justify-between gap-2 px-3 py-2.5 pl-5 cursor-pointer hover:bg-slate-50/80">
+                                    <span class="text-sm text-slate-700 min-w-0 pr-1">밀톡 언급·답장</span>
+                                    <span class="relative inline-flex h-[19px] w-[35px] shrink-0">
+                                        <input type="checkbox" id="pushPrefMealTalk" class="peer sr-only push-pref-toggle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/50 focus-visible:ring-offset-2 rounded" role="switch" aria-label="밀톡 푸시">
+                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-800"></span>
+                                        <span class="pointer-events-none absolute left-[1.5px] top-[1.5px] h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 peer-checked:translate-x-[16px]"></span>
+                                    </span>
+                                </label>
+                                <label class="push-pref-sub-row flex items-center justify-between gap-2 px-3 py-2.5 pl-5 cursor-pointer hover:bg-slate-50/80">
+                                    <span class="text-sm text-slate-700 min-w-0 pr-1">기본 알림 <span class="text-slate-400 font-normal">(공지·관리자 발송)</span></span>
+                                    <span class="relative inline-flex h-[19px] w-[35px] shrink-0">
+                                        <input type="checkbox" id="pushPrefAdminDefault" class="peer sr-only push-pref-toggle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/50 focus-visible:ring-offset-2 rounded" role="switch" aria-label="공지 및 관리자 푸시">
+                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-800"></span>
+                                        <span class="pointer-events-none absolute left-[1.5px] top-[1.5px] h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 peer-checked:translate-x-[16px]"></span>
+                                    </span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                     <div id="settingsTabContentShortcuts" class="settings-tab-content settings-tab-content-fullwidth hidden pt-4 space-y-4 pb-8">
@@ -1445,25 +1606,67 @@
                         </div>
                     </div>
 
-                    <div id="reviewSection" class="pt-2 border-t border-slate-50 space-y-2">
-                        <div id="ratingSection">
-                            <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">만족도</span>
-                            <div id="starContainer" class="flex gap-2 mb-2">
-                                <button onclick="window.setRating(1)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
-                                <button onclick="window.setRating(2)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
-                                <button onclick="window.setRating(3)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
-                                <button onclick="window.setRating(4)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
-                                <button onclick="window.setRating(5)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
+                    <div id="reviewSection" class="pt-2 border-t border-slate-50 grid grid-cols-2 gap-3 items-start mb-5">
+                        <div id="ratingSection" class="min-w-0">
+                            <div class="flex items-baseline justify-between gap-2">
+                                <span class="text-sm font-extrabold text-slate-600 block uppercase">만족도</span>
+                                <span id="ratingDialValue" class="hidden text-[11px] font-black text-slate-500 tabular-nums">3/5</span>
+                            </div>
+                            <div class="mealog-wheel mt-2" role="group" aria-label="만족도 선택">
+                                <div class="mealog-wheel__indicator" aria-hidden="true"></div>
+                                <div id="ratingWheel" class="mealog-wheel__scroller" role="listbox" aria-label="만족도">
+                                    <div class="mealog-wheel__pad" aria-hidden="true"></div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="1">
+                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i></span>
+                                    </div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="2">
+                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
+                                    </div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="3">
+                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
+                                    </div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="4">
+                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
+                                    </div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="5">
+                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
+                                    </div>
+                                    <div class="mealog-wheel__pad" aria-hidden="true"></div>
+                                </div>
                             </div>
                         </div>
                         
-                        <div id="satietySection">
-                            <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">포만감</span>
-                            <div id="satietyContainer" class="flex justify-between items-center w-full px-2"></div>
+                        <div id="satietySection" class="min-w-0">
+                            <div class="flex items-baseline justify-between gap-2">
+                                <span class="text-sm font-extrabold text-slate-600 block uppercase">포만감</span>
+                                <span id="satietyDialValue" class="text-[11px] font-black text-slate-500 whitespace-nowrap">적당히</span>
+                            </div>
+                            <div class="mealog-wheel mt-2" role="group" aria-label="포만감 선택">
+                                <div class="mealog-wheel__indicator" aria-hidden="true"></div>
+                                <div id="satietyWheel" class="mealog-wheel__scroller" role="listbox" aria-label="포만감">
+                                    <div class="mealog-wheel__pad" aria-hidden="true"></div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="1" data-icon="fa-cookie-bite" data-color="#5C6BC0">
+                                        <i class="fa-solid fa-cookie-bite"></i>
+                                    </div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="2" data-icon="fa-face-smile-wink" data-color="#26C6DA">
+                                        <i class="fa-solid fa-face-smile-wink"></i>
+                                    </div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="3" data-icon="fa-face-smile" data-color="#66BB6A">
+                                        <i class="fa-solid fa-face-smile"></i>
+                                    </div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="4" data-icon="fa-face-grin" data-color="#FFC107">
+                                        <i class="fa-solid fa-face-grin"></i>
+                                    </div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="5" data-icon="fa-face-grin-beam-sweat" data-color="#F06292">
+                                        <i class="fa-solid fa-face-grin-beam-sweat"></i>
+                                    </div>
+                                    <div class="mealog-wheel__pad" aria-hidden="true"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="mb-2 -mx-4">
+                    <div class="mb-2 -mx-4 mt-2">
                         <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase px-4">Comment</span>
                         <textarea id="generalCommentInput" placeholder="오늘 식사는 어떠셨나요?" rows="6" class="w-full p-4 bg-slate-100 rounded-none text-sm border-y border-x-0 border-slate-200 focus:border-slate-200 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus:shadow-none focus-visible:shadow-none active:shadow-none transition-none resize-y min-h-[160px] appearance-none"></textarea>
                     </div>
@@ -1504,15 +1707,68 @@
                         <input id="snackDetailInput" type="text" placeholder="무엇을 드셨나요?" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
                         <div id="snackSuggestions" class="flex gap-1 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap"></div>
                     </div>
-                    <div id="snackReviewSection" class="pt-2 border-t border-slate-50 space-y-2 mb-2">
+                    <div class="py-3 -mx-4 bg-blue-50/50 border-b border-blue-100 rounded-none mb-2">
+                        <div class="pl-4 pr-4 flex flex-col gap-1.5">
+                            <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">누구와</span>
+                            <div id="snackWithChips" class="flex flex-wrap gap-1"></div>
+                        </div>
+                        <div class="mt-2 px-4">
+                            <input id="snackWithWhomInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full p-3 bg-white rounded-2xl outline-none text-sm font-bold border border-transparent focus:border-slate-400 transition-all">
+                            <div id="snackPeopleSuggestions" class="flex gap-1 mt-1 overflow-x-auto pb-0.5 whitespace-nowrap" data-input-id="snackWithWhomInput"></div>
+                        </div>
+                    </div>
+                    <div id="snackReviewSection" class="pt-2 border-t border-slate-50 grid grid-cols-2 gap-3 items-start mb-2">
                         <div id="snackRatingSection">
                             <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase">만족도</span>
-                            <div id="snackStarContainer" class="flex gap-2 mb-2">
-                                <button onclick="window.setRating(1)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
-                                <button onclick="window.setRating(2)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
-                                <button onclick="window.setRating(3)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
-                                <button onclick="window.setRating(4)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
-                                <button onclick="window.setRating(5)" class="star-btn text-2xl text-slate-200"><i class="fa-solid fa-star"></i></button>
+                            <div class="mealog-wheel mt-2" role="group" aria-label="간식 만족도 선택">
+                                <div class="mealog-wheel__indicator" aria-hidden="true"></div>
+                                <div id="snackRatingWheel" class="mealog-wheel__scroller" role="listbox" aria-label="간식 만족도">
+                                    <div class="mealog-wheel__pad" aria-hidden="true"></div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="1">
+                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i></span>
+                                    </div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="2">
+                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
+                                    </div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="3">
+                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
+                                    </div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="4">
+                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
+                                    </div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="5">
+                                        <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
+                                    </div>
+                                    <div class="mealog-wheel__pad" aria-hidden="true"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="snackSatietySection">
+                            <div class="flex items-baseline justify-between gap-2">
+                                <span class="text-sm font-extrabold text-slate-600 block uppercase">포만감</span>
+                                <span id="snackSatietyDialValue" class="text-[11px] font-black text-slate-500 whitespace-nowrap">적당히</span>
+                            </div>
+                            <div class="mealog-wheel mt-2" role="group" aria-label="간식 포만감 선택">
+                                <div class="mealog-wheel__indicator" aria-hidden="true"></div>
+                                <div id="snackSatietyWheel" class="mealog-wheel__scroller" role="listbox" aria-label="간식 포만감">
+                                    <div class="mealog-wheel__pad" aria-hidden="true"></div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="1" data-icon="fa-cookie-bite" data-color="#5C6BC0">
+                                        <i class="fa-solid fa-cookie-bite"></i>
+                                    </div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="2" data-icon="fa-face-smile-wink" data-color="#26C6DA">
+                                        <i class="fa-solid fa-face-smile-wink"></i>
+                                    </div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="3" data-icon="fa-face-smile" data-color="#66BB6A">
+                                        <i class="fa-solid fa-face-smile"></i>
+                                    </div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="4" data-icon="fa-face-grin" data-color="#FFC107">
+                                        <i class="fa-solid fa-face-grin"></i>
+                                    </div>
+                                    <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="5" data-icon="fa-face-grin-beam-sweat" data-color="#F06292">
+                                        <i class="fa-solid fa-face-grin-beam-sweat"></i>
+                                    </div>
+                                    <div class="mealog-wheel__pad" aria-hidden="true"></div>
+                                </div>
                             </div>
                         </div>
                     </div>

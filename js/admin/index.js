@@ -43,8 +43,7 @@ import {
 
 import {
     handleAdminLogin,
-    handleAdminLogout,
-    switchAdminTab
+    handleAdminLogout
 } from './auth.js';
 
 import { db, appId } from '../firebase.js';
@@ -56,7 +55,7 @@ let currentDeletePhotoId = null;
 // window 객체에 모든 함수 노출
 window.handleAdminLogin = handleAdminLogin;
 window.handleAdminLogout = handleAdminLogout;
-window.switchAdminTab = switchAdminTab;
+// switchAdminTab은 admin.js에서 정의
 window.refreshDashboardStats = refreshDashboardStats;
 window.refreshSharedPhotos = async function() {
     await renderSharedPhotos();

@@ -86,6 +86,12 @@ service cloud.firestore {
           allow write: if false;
         }
       }
+      
+      // 밀톡 알림 (답장·@언급) — Cloud Functions만 생성, 본인만 읽기
+      match /feedNotifications/{notifId} {
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        allow write: if false;
+      }
     }
     
     // ============================================
@@ -122,6 +128,14 @@ service cloud.firestore {
     match /artifacts/{appId}/adminSettings/{docId} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
+    }
+    
+    // 관리 로그 (날짜별 메타 + entries 서브컬렉션) — 관리자만
+    match /artifacts/{appId}/adminLogs/{dateKey} {
+      allow read, write: if isAdmin();
+      match /entries/{entryId} {
+        allow read, write: if isAdmin();
+      }
     }
     
     // 사용자 제재 (공유/글쓰기 금지) - 관리자만 읽기/쓰기
@@ -166,6 +180,27 @@ service cloud.firestore {
         )
       );
       allow delete: if isAdmin() || (isAuthorOfResource() && !isReadOnlyDemoAccount());
+    }
+    
+    // ============================================
+    // 밀톡 피드 (feedPosts) — 게시판(boardPosts)과 데이터 분리, create는 CF만
+    // ============================================
+    match /artifacts/{appId}/feedPosts/{postId} {
+      allow read: if isAuthenticated();
+      allow create: if false;
+      allow update: if isAdmin() || (isAuthorOfResource() && !isReadOnlyDemoAccount());
+      allow delete: if isAdmin() || (isAuthorOfResource() && !isReadOnlyDemoAccount());
+
+      match /reactions/{userId} {
+        allow read: if isAuthenticated();
+        allow create, update: if isAuthenticated()
+          && request.auth.uid == userId
+          && !isReadOnlyDemoAccount()
+          && request.resource.data.keys().hasOnly(['type', 'updatedAt'])
+          && request.resource.data.type in ['like', 'thumbs', 'check'];
+        // 관리자: 글 삭제 시 하위 반응 일괄 정리
+        allow delete: if isAdmin() || (isAuthenticated() && request.auth.uid == userId && !isReadOnlyDemoAccount());
+      }
     }
     
     // ============================================

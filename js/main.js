@@ -7,7 +7,7 @@ window.moduleLoading = true;
 import { appState, getState } from './state.js';
 import { auth, db, appId } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { dbOps, setupListeners, loadSharedPhotosPage, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, subscribeToMyPostComments, boardOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
+import { dbOps, setupListeners, loadSharedPhotosPage, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, subscribeToMyPostComments, boardOperations, feedOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { callableFunctions } from './firebase.js';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -27,6 +27,7 @@ import {
     confirmDeleteAccount, cancelDeleteAccount, confirmDeleteAccountAction
 } from './auth.js';
 import { authFlowManager } from './auth-flow.js';
+import { scheduleAttendanceCheckIfNeeded } from './attendance-check.js';
 import { isDemoUser, markUserHasRealLogin } from './demo-account.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
@@ -37,6 +38,7 @@ import {
     openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
     handleMultipleImages, removePhoto, movePhotoOrder, updateShareIndicator, toggleSharePhoto,
     openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, setSettingsProfileType, handlePhotoUpload, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
+    syncPushPreferencesFormFromUserSettings,
     setRecordPhotoAspectRatio,
     openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace
 } from './modals.js';
@@ -132,6 +134,21 @@ window.openUserProfileFromBoard = (userId) => {
     if (typeof window.switchMainTab === 'function') window.switchMainTab('gallery');
 };
 window.Mealog.openUserProfileFromBoard = window.openUserProfileFromBoard;
+
+/** 설정 → 내 게시물: 모먼트 탭에서 본인 프로필(공유·게시판)로 이동 */
+window.openMyPostsFromSettings = () => {
+    const u = window.currentUser;
+    if (!u || u.isAnonymous) {
+        showToast('로그인 후 이용할 수 있습니다.', 'error');
+        return;
+    }
+    appState.galleryFilterEntryTab = 'settings';
+    appState.galleryFilterTab = 'moment';
+    filterGalleryByUser(u.uid, '');
+    if (typeof window.switchMainTab === 'function') window.switchMainTab('gallery');
+    if (typeof closeSettings === 'function') closeSettings();
+};
+window.Mealog.openMyPostsFromSettings = window.openMyPostsFromSettings;
 
 // 사용자 프로필 뷰 내 모먼트/밀톡 탭 전환 시 하단 탭 표시 동기화 (render.js에서 호출)
 window.syncBottomNavForGalleryFilter = () => {
@@ -305,6 +322,8 @@ window.selectKakaoPlace = selectKakaoPlace;
 window.Mealog.selectKakaoPlace = selectKakaoPlace;
 window.boardOperations = boardOperations;
 window.Mealog.boardOperations = boardOperations;
+window.feedOperations = feedOperations;
+window.Mealog.feedOperations = feedOperations;
 window.noticeOperations = noticeOperations;
 window.Mealog.noticeOperations = noticeOperations;
 window.renderBoard = renderBoard;
@@ -541,6 +560,10 @@ window.setGalleryTraceFilter = (value) => {
     if (appState.currentTab === 'gallery') {
         renderGallery();
     } else if (appState.currentTab === 'board') {
+        if (appState.boardTraceFilter && appState.boardListSubTab === 'feed' && typeof window.switchBoardListSubTab === 'function') {
+            window.switchBoardListSubTab('board');
+            return;
+        }
         const category = window.currentBoardCategory || 'all';
         renderBoard(category);
     }
@@ -1047,6 +1070,9 @@ initAuth(async (user) => {
                 onSettingsUpdate: () => {
                     // 헤더 UI 업데이트 (디바운싱됨)
                     updateHeaderUI();
+                    if (typeof syncPushPreferencesFormFromUserSettings === 'function') {
+                        syncPushPreferencesFormFromUserSettings();
+                    }
                     const entryModal = document.getElementById('entryModal');
                     if (!entryModal || entryModal.classList.contains('hidden')) {
                         renderEntryChips();
@@ -1065,6 +1091,7 @@ initAuth(async (user) => {
                     // onSettingsUpdate에서 약관 모달을 닫으면 타이밍 이슈로 인해 모달이 잠깐 표시되었다가 사라질 수 있음
                 },
                 onDataUpdate: () => {
+                    scheduleAttendanceCheckIfNeeded();
                     const tab = appState.currentTab;
                     if (tab === 'dashboard') {
                         updateDashboard();
@@ -1456,6 +1483,78 @@ window.addEventListener('scroll', () => {
         _headerScrollRaf = null;
     });
 }, { passive: true });
+
+/** 밀톡 피드/게시판: 통합 스크롤(#boardLoungeScrollArea) — 동일 네비·헤더 숨김 규칙 적용 */
+const _boardPanelScrollLast = { boardLoungeScrollArea: 0 };
+let _boardPanelScrollRaf = null;
+function applyBoardPanelScrollHideNav(el) {
+    const mainApp = document.getElementById('mainApp');
+    if (!mainApp || mainApp.classList.contains('hidden')) return;
+    const header = document.getElementById('mainAppHeader');
+    if (!header) return;
+    if (appState.currentTab !== 'board') return;
+    const id = el.id;
+    if (id !== 'boardLoungeScrollArea') return;
+
+    // 초기 자동 스크롤(맨 아래 정렬 등) 동안에는 네비/헤더 숨김 토글을 막아
+    // padding/bottom 클래스 변경 → scrollHeight 변화 → 연쇄 스크롤 흔들림을 방지.
+    const suppressUntil = Number(window.__suppressBoardPanelScrollHideNavUntil || 0) || 0;
+    if (suppressUntil && Date.now() < suppressUntil) {
+        _boardPanelScrollLast[id] = el.scrollTop;
+        return;
+    }
+
+    const y = el.scrollTop;
+    if (_boardPanelScrollRaf) cancelAnimationFrame(_boardPanelScrollRaf);
+    _boardPanelScrollRaf = requestAnimationFrame(() => {
+        const last = _boardPanelScrollLast[id] ?? 0;
+        const delta = y - last;
+        const scrollDownThreshold = 10;
+        const scrollUpThreshold = 3;
+        // 피드 상단·이전 메시지 로드 구역 근처면 헤더·서브탭 복구(24px만 쓰면 위로 조금만 올려도 복구 안 되는 경우가 많음)
+        const topShowThreshold = 96;
+        const isScrollingDown = delta > scrollDownThreshold;
+        const isScrollingUp = delta < -scrollUpThreshold;
+        const atNearTop = y <= topShowThreshold;
+        const hidden = header.classList.contains('header-scroll-hidden');
+        // 숨김 상태에서 아주 조금만 위로 움직여도 복구(임계 8px 대칭이면 한 번에 안 올라가면 영원히 숨김 유지됨)
+        const nudgeReveal = hidden && delta < -1;
+        const tracker = document.getElementById('trackerSection');
+        if (isScrollingDown && !atNearTop) {
+            header.classList.add('header-scroll-hidden');
+            if (tracker) tracker.classList.add('tracker-header-hidden');
+            document.body.classList.add('bottom-nav-scroll-hidden');
+        } else if (isScrollingUp || atNearTop || nudgeReveal) {
+            header.classList.remove('header-scroll-hidden');
+            if (tracker) tracker.classList.remove('tracker-header-hidden');
+            document.body.classList.remove('bottom-nav-scroll-hidden');
+        }
+        _boardPanelScrollLast[id] = y;
+        _boardPanelScrollRaf = null;
+    });
+}
+function bindBoardPanelsScrollHideNav() {
+    const lounge = document.getElementById('boardLoungeScrollArea');
+    const onScroll = (e) => applyBoardPanelScrollHideNav(e.currentTarget);
+    if (lounge) lounge.addEventListener('scroll', onScroll, { passive: true });
+}
+window.__resetBoardPanelScrollNav = () => {
+    document.body.classList.remove('bottom-nav-scroll-hidden');
+    document.getElementById('mainAppHeader')?.classList.remove('header-scroll-hidden');
+    document.getElementById('trackerSection')?.classList.remove('tracker-header-hidden');
+    const lounge = document.getElementById('boardLoungeScrollArea');
+    if (lounge) _boardPanelScrollLast.boardLoungeScrollArea = lounge.scrollTop;
+};
+/** prepend 후 programatic scrollTop 직전·직후: delta 폭주로 헤더가 숨겨지지 않게 마지막 스크롤 값만 동기화 */
+window.__syncBoardPanelScrollNavLast = () => {
+    const lounge = document.getElementById('boardLoungeScrollArea');
+    if (lounge) _boardPanelScrollLast.boardLoungeScrollArea = lounge.scrollTop;
+};
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindBoardPanelsScrollHideNav, { once: true });
+} else {
+    bindBoardPanelsScrollHideNav();
+}
 
 // 스크롤 이벤트 리스너 (타임라인 하단 근처에서 더 오래된 기록 자동 로드)
 let scrollTimeout;

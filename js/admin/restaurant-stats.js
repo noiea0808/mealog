@@ -12,12 +12,14 @@ import {
     getDocs,
     collectionGroup
 } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
-import { getTodayDateString, escapeHtml } from './utils.js';
+import { getTodayDateString, escapeHtml, runAdminRefreshAction } from './utils.js';
 
 const RESTAURANT_STATS_REF = () => doc(db, 'artifacts', appId, 'adminSettings', 'restaurantStats');
 
 let currentRestaurantFilter = 'all';
 let currentRestaurantSlotFilter = 'all';
+/** 식당 집계 화면을 한 번이라도 성공적으로 그린 뒤에만 필터 전환이 getDoc/병합 로직을 탑니다 */
+let adminRestaurantMonitoringRendered = false;
 
 const MEAL_SLOTS = ['morning', 'lunch', 'dinner'];
 const SNACK_SLOTS = ['pre_morning', 'snack1', 'snack2', 'night'];
@@ -228,6 +230,7 @@ async function renderRestaurantData(filter = 'all', slotFilter = 'all') {
                     <p class="text-sm font-bold">${filterMsg}${slotLabel}</p>
                 </div>
             `;
+            adminRestaurantMonitoringRendered = true;
             return;
         }
 
@@ -288,7 +291,9 @@ async function renderRestaurantData(filter = 'all', slotFilter = 'all') {
                 ${slotLabel}
             </div>
         `;
+        adminRestaurantMonitoringRendered = true;
     } catch (e) {
+        adminRestaurantMonitoringRendered = false;
         console.error('식당정보 조회 실패:', e);
         container.innerHTML = `
             <div class="text-center py-8 text-red-400">
@@ -317,6 +322,8 @@ export function registerRestaurantStats() {
             activeFilterBtn.classList.remove('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
             activeFilterBtn.classList.add('bg-emerald-600', 'text-white');
         }
+        currentRestaurantFilter = filter;
+        if (!adminRestaurantMonitoringRendered) return;
         renderRestaurantData(filter, currentRestaurantSlotFilter);
     };
     window.setRestaurantSlotFilter = function (slotFilter) {
@@ -330,25 +337,29 @@ export function registerRestaurantStats() {
             activeBtn.classList.remove('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
             activeBtn.classList.add('bg-emerald-600', 'text-white');
         }
+        if (!adminRestaurantMonitoringRendered) return;
         renderRestaurantData(currentRestaurantFilter, slotFilter);
     };
     window.refreshRestaurantData = async function () {
-        const container = document.getElementById('restaurantsContainer');
-        if (!container) return;
-        container.innerHTML = `
+        await runAdminRefreshAction(document.getElementById('adminRefreshRestaurantsBtn'), async () => {
+            const container = document.getElementById('restaurantsContainer');
+            if (!container) return;
+            adminRestaurantMonitoringRendered = false;
+            container.innerHTML = `
         <div class="text-center py-8 text-slate-400">
             <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
             <p>전체 집계 중...</p>
         </div>
     `;
-        try {
-            const agg = await fetchRestaurantAggregateMap();
-            const list = Array.from(agg.values());
-            await setDoc(RESTAURANT_STATS_REF(), { asOfDate: getTodayDateString(), restaurants: list }, { merge: true });
-            await renderRestaurantData(currentRestaurantFilter, currentRestaurantSlotFilter);
-        } catch (e) {
-            console.error('식당정보 새로고침 실패:', e);
-            container.innerHTML = `<div class="text-center py-8 text-red-400"><p>새로고침 중 오류가 발생했습니다.</p></div>`;
-        }
+            try {
+                const agg = await fetchRestaurantAggregateMap();
+                const list = Array.from(agg.values());
+                await setDoc(RESTAURANT_STATS_REF(), { asOfDate: getTodayDateString(), restaurants: list }, { merge: true });
+                await renderRestaurantData(currentRestaurantFilter, currentRestaurantSlotFilter);
+            } catch (e) {
+                console.error('식당정보 새로고침 실패:', e);
+                container.innerHTML = `<div class="text-center py-8 text-red-400"><p>새로고침 중 오류가 발생했습니다.</p></div>`;
+            }
+        });
     };
 }

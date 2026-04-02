@@ -509,6 +509,12 @@ export async function initPushNotifications(uid) {
               window.switchMainTab?.('board');
               window.openNoticeDetail(String(nid));
             }
+            if (data?.type === 'feedActivity' && data?.feedPostId) {
+              if (typeof window.updateNotificationDot === 'function') {
+                window.updateNotificationDot().catch(() => {});
+              }
+              return;
+            }
             // 백그라운드에서는 FCM 시스템 알림, 포그라운드에서는 여기서만 옴 → 빨간점·배지 갱신
             if (typeof window.updateNotificationDot === 'function') {
               window.updateNotificationDot().catch(() => {});
@@ -527,6 +533,10 @@ export async function initPushNotifications(uid) {
             if (data?.type === 'notice' && noticeId && typeof window.openNoticeDetail === 'function') {
               window.switchMainTab?.('board');
               window.openNoticeDetail(noticeId);
+              return;
+            }
+            if (data?.type === 'feedActivity' && data?.feedPostId && typeof window.navigateToFeedNotification === 'function') {
+              window.navigateToFeedNotification(String(data.feedPostId));
               return;
             }
             if (data && typeof window.navigateToNotificationPost === 'function' && data.postId) {

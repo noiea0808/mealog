@@ -1,10 +1,10 @@
 /**
- * 관리자 모니터링: 타임라인 피드 공유·신고·일괄 처리
+ * 관리자 모니터링: 모먼트(타임라인) 공유·신고·일괄 처리
  */
 import { db, appId } from '../firebase.js';
 import { getReportsAggregateByGroupKeys } from '../db.js';
 import { REPORT_REASONS } from '../constants.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, fetchAdminEmailsForUserIds, runAdminRefreshAction } from './utils.js';
 import {
     collection,
     collectionGroup,
@@ -31,6 +31,65 @@ let feedCurrentPage = 1;
 const feedPageSize = 20;
 let feedLastDocsByPage = {};
 let feedTotalCount = 0;
+/** 모먼트 목록을 한 번이라도 성공적으로 불러온 뒤에만 필터·페이지 이동이 Firestore를 다시 칩니다 */
+let adminFeedMonitoringLoaded = false;
+// 공유 키 캐시 — ensureSharedKeysForMeals에서 채움; 무효화 시 null
+let feedSharedKeysCache = null;
+
+/** 모먼트: 페이지 쿼리·신고 집계·유저 설정 조회 TTL 캐시 (새로고침·데이터 변경 시 무효화) */
+const ADMIN_FEED_CACHE_TTL_MS = 3 * 60 * 1000;
+const feedQueryCache = new Map();
+let feedReportsAggCache = { ts: 0, map: null };
+const feedUserSettingsCache = new Map();
+
+function invalidateAdminFeedMonitoringCache() {
+    feedQueryCache.clear();
+    feedReportsAggCache = { ts: 0, map: null };
+    feedUserSettingsCache.clear();
+    feedSharedKeysCache = null;
+}
+
+function feedQueryCacheKey(page) {
+    return `${mealsAdminUseDateTimeSort ? 'dt' : 'd'}_${page}`;
+}
+
+async function getReportsAggregateCached() {
+    const now = Date.now();
+    if (feedReportsAggCache.map && now - feedReportsAggCache.ts < ADMIN_FEED_CACHE_TTL_MS) {
+        return feedReportsAggCache.map;
+    }
+    const map = await getReportsAggregateByGroupKeys();
+    feedReportsAggCache = { ts: now, map };
+    return map;
+}
+
+/**
+ * 동일 정렬·페이지에 대해 TTL 내 재요청 시 getDocs/getCount 생략
+ */
+async function getFeedPageWithCache(page) {
+    const key = feedQueryCacheKey(page);
+    const ent = feedQueryCache.get(key);
+    const now = Date.now();
+    if (ent && now - ent.ts < ADMIN_FEED_CACHE_TTL_MS) {
+        if (page === 1) feedTotalCount = ent.totalCount;
+        if (ent.lastDoc) feedLastDocsByPage[page] = ent.lastDoc;
+        return ent.items;
+    }
+    const { items } = await getFeedPage({ page, pageSize: feedPageSize });
+    feedQueryCache.set(key, {
+        ts: now,
+        items,
+        totalCount: feedTotalCount,
+        lastDoc: feedLastDocsByPage[page] ?? null
+    });
+    return items;
+}
+
+/**
+ * true: collectionGroup(meals) 를 date DESC, time DESC 로 페이지네이션 (관리자 모니터링 기본).
+ * false: 인덱스 미배포 등으로 실패 시 date DESC 만 사용 (폴백).
+ */
+let mealsAdminUseDateTimeSort = true;
 
 // 피드: 전체 타임라인(meals) 페이지 단위 조회 — 사진 유무와 관계없이 모든 게시물 표시, 중복 없음
 async function getFeedPage(options = {}) {
@@ -38,14 +97,20 @@ async function getFeedPage(options = {}) {
     const pageSize = options.pageSize ?? feedPageSize;
     const startAfterDoc = page === 1 ? null : (feedLastDocsByPage[page - 1] ?? null);
     const mealsGroup = collectionGroup(db, 'meals');
+
+    const orderParts = mealsAdminUseDateTimeSort
+        ? [orderBy('date', 'desc'), orderBy('time', 'desc')]
+        : [orderBy('date', 'desc')];
+
     try {
         if (page === 1) {
-            const countSnap = await getCountFromServer(query(mealsGroup, orderBy('date', 'desc')));
+            const countSnap = await getCountFromServer(query(mealsGroup, ...orderParts));
             feedTotalCount = countSnap.data().count;
         }
-        let q = query(mealsGroup, orderBy('date', 'desc'), limit(pageSize));
-        if (startAfterDoc) q = query(mealsGroup, orderBy('date', 'desc'), limit(pageSize), startAfter(startAfterDoc));
-        const snapshot = await getDocs(q);
+        const listQ = startAfterDoc
+            ? query(mealsGroup, ...orderParts, startAfter(startAfterDoc), limit(pageSize))
+            : query(mealsGroup, ...orderParts, limit(pageSize));
+        const snapshot = await getDocs(listQ);
         const docs = snapshot.docs;
         const lastDoc = docs.length > 0 ? docs[docs.length - 1] : null;
         if (lastDoc) feedLastDocsByPage[page] = lastDoc;
@@ -64,44 +129,56 @@ async function getFeedPage(options = {}) {
         }
         return { items, totalCount: feedTotalCount, lastDoc, hasMore: docs.length === pageSize };
     } catch (e) {
+        if (page === 1 && mealsAdminUseDateTimeSort && e?.code === 'failed-precondition') {
+            console.warn(
+                '관리자 모먼트 피드: date+time 복합 인덱스가 없어 date만 사용합니다. `firebase deploy --only firestore:indexes` 적용 후 새로고침하면 기록 시각 순으로 정렬됩니다.',
+                e?.message || e
+            );
+            mealsAdminUseDateTimeSort = false;
+            feedLastDocsByPage = {};
+            feedQueryCache.clear();
+            return getFeedPage(options);
+        }
         console.error('getFeedPage error:', e);
         throw e;
     }
 }
 
-// 공유된 게시물 키 캐시 (userId_entryId) — 피드 필터/배지용, 세션당 1회 로드. 전체 문서 페이지네이션으로 수집해 누락 방지
-let feedSharedKeysCache = null;
-
-async function ensureFeedSharedKeysCache() {
-    if (feedSharedKeysCache) return;
+/** 현재 페이지 meals 기준으로 공유 여부 조회. entryId+userId 일치 문서만 캐시에 넣음 (일간/베스트 등 타입은 기존과 동일 한계). */
+async function ensureSharedKeysForMeals(meals) {
+    if (!Array.isArray(meals) || meals.length === 0) return;
+    if (!feedSharedKeysCache) feedSharedKeysCache = new Set();
+    const byUser = new Map();
+    for (const m of meals) {
+        if (!m?.userId || !m?.id) continue;
+        const key = `${m.userId}_${m.id}`;
+        if (feedSharedKeysCache.has(key)) continue;
+        if (!byUser.has(m.userId)) byUser.set(m.userId, new Set());
+        byUser.get(m.userId).add(m.id);
+    }
+    if (byUser.size === 0) return;
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-    feedSharedKeysCache = new Set();
-    try {
-        const PAGE = 500;
-        let lastDoc = null;
-        let hasMore = true;
-        while (hasMore) {
-            let q = query(sharedColl, orderBy('timestamp', 'desc'), limit(PAGE));
-            if (lastDoc) q = query(sharedColl, orderBy('timestamp', 'desc'), startAfter(lastDoc), limit(PAGE));
-            const snap = await getDocs(q);
-            snap.docs.forEach(d => {
-                const data = d.data();
-                const uid = data.userId;
-                const eid = data.entryId || data.mealId || null;
-                if (uid && eid) feedSharedKeysCache.add(`${uid}_${eid}`);
-            });
-            lastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
-            hasMore = snap.docs.length === PAGE;
+    for (const [uid, idSet] of byUser) {
+        const ids = [...idSet];
+        for (let i = 0; i < ids.length; i += 10) {
+            const chunk = ids.slice(i, i + 10);
+            try {
+                const q = query(
+                    sharedColl,
+                    where('userId', '==', uid),
+                    where('entryId', 'in', chunk)
+                );
+                const snap = await getDocs(q);
+                snap.docs.forEach((d) => {
+                    const data = d.data();
+                    const eid = data.entryId || data.mealId || null;
+                    const u = data.userId;
+                    if (u && eid) feedSharedKeysCache.add(`${u}_${eid}`);
+                });
+            } catch (e) {
+                console.warn('ensureSharedKeysForMeals:', e?.message || e);
+            }
         }
-    } catch (e) {
-        console.warn('ensureFeedSharedKeysCache orderBy 실패, 전체 조회로 폴백:', e?.message || e);
-        const snap = await getDocs(sharedColl);
-        snap.docs.forEach(d => {
-            const data = d.data();
-            const uid = data.userId;
-            const eid = data.entryId || data.mealId || null;
-            if (uid && eid) feedSharedKeysCache.add(`${uid}_${eid}`);
-        });
     }
 }
 
@@ -112,10 +189,9 @@ async function renderFeedManagement() {
     container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
     
     try {
-        await ensureFeedSharedKeysCache();
         console.log('📋 피드 관리: 페이지', feedCurrentPage, '로드 중... (페이지 단위)');
-        const { items } = await getFeedPage({ page: feedCurrentPage, pageSize: feedPageSize });
-        const allMeals = items;
+        const allMeals = await getFeedPageWithCache(feedCurrentPage);
+        await ensureSharedKeysForMeals(allMeals);
         
         // 필터 적용 (일반 게시물만 — 타임라인 전체 표시, 공유 여부는 캐시로 판별)
         console.log('🔍 필터 적용:', feedFilters);
@@ -134,7 +210,7 @@ async function renderFeedManagement() {
         
         console.log(`✅ 필터 적용 후: ${filteredMeals.length}개 (페이지 ${feedCurrentPage} / 총 ${feedTotalCount}개)`);
         
-        // 최신 업로드 순 정렬 (현재 페이지 내)
+        // 서버가 date+time 순이면 이미 맞음. 동일 시각·구문서 보정용으로 페이지 내 한 번 더 정렬
         filteredMeals.sort((a, b) => {
             // 모든 게시물을 동일한 기준으로 정렬: date + time 또는 timestamp에서 date 추출
             const getSortTime = (meal) => {
@@ -194,23 +270,48 @@ async function renderFeedManagement() {
         // 사용자 정보 가져오기 (타임라인 게시물은 설정에서 닉네임/아이콘 조회)
         const userInfoMap = new Map();
         const userIdsToFetch = [...new Set(paginatedMeals.map(m => m.userId).filter(Boolean))];
-        await Promise.all(userIdsToFetch.map(async (uid) => {
-            if (userInfoMap.has(uid)) return;
-            try {
-                const settingsSnap = await getDoc(doc(db, 'artifacts', appId, 'users', uid, 'config', 'settings'));
-                if (settingsSnap.exists()) {
-                    const s = settingsSnap.data();
-                    userInfoMap.set(uid, { nickname: s.profile?.nickname || '익명', icon: s.profile?.icon || '🐻' });
-                }
-            } catch (e) { console.warn('사용자 정보 조회 실패:', uid, e); }
-        }));
+        const [emailMap] = await Promise.all([
+            fetchAdminEmailsForUserIds(userIdsToFetch),
+            Promise.all(
+                userIdsToFetch.map(async (uid) => {
+                    if (userInfoMap.has(uid)) return;
+                    const now = Date.now();
+                    const hit = feedUserSettingsCache.get(uid);
+                    if (hit && now - hit.ts < ADMIN_FEED_CACHE_TTL_MS) {
+                        userInfoMap.set(uid, { nickname: hit.nickname, icon: hit.icon, email: '' });
+                        return;
+                    }
+                    try {
+                        const settingsSnap = await getDoc(doc(db, 'artifacts', appId, 'users', uid, 'config', 'settings'));
+                        if (settingsSnap.exists()) {
+                            const s = settingsSnap.data();
+                            const row = {
+                                nickname: s.profile?.nickname || '익명',
+                                icon: s.profile?.icon || '🐻',
+                                email: ''
+                            };
+                            feedUserSettingsCache.set(uid, { ts: now, nickname: row.nickname, icon: row.icon });
+                            userInfoMap.set(uid, row);
+                        }
+                    } catch (e) {
+                        console.warn('사용자 정보 조회 실패:', uid, e);
+                    }
+                })
+            )
+        ]);
+        userIdsToFetch.forEach((uid) => {
+            if (!userInfoMap.has(uid)) userInfoMap.set(uid, { nickname: '익명', icon: '🐻', email: '' });
+            const row = userInfoMap.get(uid);
+            row.email = emailMap.get(uid) || '';
+        });
         
         if (paginatedMeals.length === 0) {
             container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-images text-2xl mb-2"></i><p>게시물이 없습니다.</p></div>';
+            adminFeedMonitoringLoaded = true;
             return;
         }
         
-        const reportsMap = await getReportsAggregateByGroupKeys();
+        const reportsMap = await getReportsAggregateCached();
         window._feedReportDetails = {};
 
         const fmtDateTimeParts = (meal) => {
@@ -262,9 +363,15 @@ async function renderFeedManagement() {
                 ? `<button type="button" class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded hover:bg-red-200" onclick="window.showReportDetailPopup('${String(targetGroupKey).replace(/'/g, "\\'")}')">🚩 ${reportInfo.count}</button>`
                 : '';
 
-            const userInfo = meal.isBestShare || meal.isDailyShare || meal.isInsightShare
-                ? { nickname: meal.userNickname || '익명', icon: meal.userIcon || '🐻' }
-                : (userInfoMap.get(meal.userId) || { nickname: '익명', icon: '🐻' });
+            const baseAuthor = userInfoMap.get(meal.userId) || { nickname: '익명', icon: '🐻', email: '' };
+            const userInfo =
+                meal.isBestShare || meal.isDailyShare || meal.isInsightShare
+                    ? {
+                          ...baseAuthor,
+                          nickname: meal.userNickname || baseAuthor.nickname,
+                          icon: meal.userIcon || baseAuthor.icon
+                      }
+                    : baseAuthor;
 
             const isShared = feedSharedKeysCache && feedSharedKeysCache.has(`${meal.userId}_${meal.id}`);
             const hasLocalSharedPhotos = meal.sharedPhotos && Array.isArray(meal.sharedPhotos) && meal.sharedPhotos.length > 0;
@@ -313,6 +420,21 @@ async function renderFeedManagement() {
             };
             // 식사구분은 slotId만 기준으로 표시 (mealType/snackType은 '무엇을' 성격 데이터)
             const mealSlotLabel = slotLabelMap[slotKey] || '-';
+            const mealDateLabel = (() => {
+                const raw = String(meal.date || '').trim();
+                if (!raw) return '';
+                try {
+                    const d = new Date(raw);
+                    if (Number.isNaN(d.getTime())) return raw;
+                    // ko-KR은 "2026. 03. 27." 형태 → 공백 제거해서 "2026.03.27."로
+                    return d
+                        .toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })
+                        .replace(/\s+/g, '');
+                } catch (_) {
+                    return raw;
+                }
+            })();
+            const mealSlotDisplay = { date: mealDateLabel, label: mealSlotLabel };
 
             return `
                 <tr class="border-t border-slate-200 ${rowBg}">
@@ -325,24 +447,28 @@ async function renderFeedManagement() {
                             ${isShared ? '<span class="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded">공유</span>' : ''}
                         </div>
                     </td>
-                    <td class="px-2 py-3 align-middle whitespace-nowrap text-center w-[96px] min-w-[96px] border-r border-slate-200">
-                        <div class="text-xs text-slate-700 font-semibold leading-tight">${escapeHtml(dateTime.date)}</div>
-                        <div class="text-[11px] text-slate-500 leading-tight mt-0.5">${escapeHtml(dateTime.time)}</div>
+                    <td class="px-2 py-3 align-middle text-center w-[112px] min-w-[112px] max-w-[112px] border-r border-slate-200">
+                        <div class="text-xs text-slate-700 font-semibold leading-tight whitespace-nowrap">${escapeHtml(dateTime.date)}</div>
+                        <div class="text-[11px] text-slate-500 leading-tight mt-0.5 whitespace-nowrap">${escapeHtml(dateTime.time)}</div>
+                        <div class="text-[10px] text-slate-400 break-all leading-tight mt-1 font-mono text-left px-0.5" title="게시물 ID">${escapeHtml(String(meal.id || '-'))}</div>
                     </td>
-                    <td class="px-3 py-3 align-middle w-[136px] max-w-[136px] text-center border-r border-slate-200">
+                    <td class="px-3 py-3 align-middle w-[176px] max-w-[176px] text-center border-r border-slate-200">
                         <div class="flex flex-col items-center gap-1 overflow-hidden">
                             <span class="text-sm font-semibold text-slate-800 break-words">${userInfo.icon} ${escapeHtml(userInfo.nickname)}</span>
-                            <span class="text-[11px] text-slate-400">${escapeHtml(String(meal.id || '-'))}</span>
+                            ${userInfo.email ? `<span class="text-[11px] text-slate-500 break-all leading-tight">${escapeHtml(userInfo.email)}</span>` : ''}
                             <span class="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-bold rounded">${typeLabel}</span>
                         </div>
                     </td>
                     <td class="px-2 py-3 align-middle w-[92px] max-w-[92px] text-center border-r border-slate-200 overflow-hidden">
-                        <span class="inline-flex px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-bold whitespace-nowrap">${escapeHtml(String(mealSlotLabel))}</span>
+                        <div class="inline-flex flex-col items-center justify-center px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs font-bold leading-tight">
+                            ${mealSlotDisplay.date ? `<span class="whitespace-nowrap">${escapeHtml(String(mealSlotDisplay.date))}</span>` : ''}
+                            <span class="whitespace-nowrap">${escapeHtml(String(mealSlotDisplay.label))}</span>
+                        </div>
                     </td>
                     <td class="px-3 py-3 align-middle w-[102px] max-w-[102px] text-center border-r border-slate-200 overflow-hidden">${getCategoryCell(whereTag, whereSubTag)}</td>
                     <td class="px-3 py-3 align-middle w-[102px] max-w-[102px] text-center border-r border-slate-200 overflow-hidden">${getCategoryCell(whatTag, whatSubTag)}</td>
                     <td class="px-3 py-3 align-middle w-[102px] max-w-[102px] text-center border-r border-slate-200 overflow-hidden">${getCategoryCell(withTag, withSubTag)}</td>
-                    <td class="px-3 py-3 align-middle w-[120px] max-w-[120px] text-center border-r border-slate-200 overflow-hidden">
+                    <td class="px-3 py-3 align-middle w-[92px] max-w-[92px] text-center border-r border-slate-200 overflow-hidden">
                         <div class="text-xs leading-tight">
                             <div class="font-bold text-slate-700 break-words">만족도 ${escapeHtml(String(ratingVal ?? '-'))}</div>
                             <div class="font-bold text-slate-600 break-words mt-0.5">포만감 ${escapeHtml(String(satietyVal ?? '-'))}</div>
@@ -378,13 +504,13 @@ async function renderFeedManagement() {
                         <tr class="text-xs text-slate-500">
                             <th class="px-3 py-3 font-bold w-10 text-center whitespace-nowrap border-r border-slate-200">선택</th>
                             <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[56px] min-w-[56px] border-r border-slate-200">번호</th>
-                            <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[96px] min-w-[96px] border-r border-slate-200">일시</th>
-                            <th class="px-3 py-3 font-bold text-center w-[136px] whitespace-nowrap border-r border-slate-200">작성자</th>
+                            <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[112px] min-w-[112px] border-r border-slate-200">일시</th>
+                            <th class="px-3 py-3 font-bold text-center w-[176px] whitespace-nowrap border-r border-slate-200">작성자</th>
                             <th class="px-2 py-3 font-bold text-center w-[92px] whitespace-nowrap border-r border-slate-200">식사구분</th>
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">어디서</th>
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">무엇을</th>
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">누구와</th>
-                            <th class="px-3 py-3 font-bold text-center w-[120px] whitespace-nowrap border-r border-slate-200">만족도/포만감</th>
+                            <th class="px-3 py-3 font-bold text-center w-[92px] whitespace-nowrap border-r border-slate-200">만족도/포만감</th>
                             <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[208px] min-w-[208px] border-r border-slate-200">사진</th>
                             <th class="px-3 py-3 font-bold text-center whitespace-nowrap w-[240px] min-w-[240px] border-r border-slate-200">코멘트</th>
                             <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[72px] min-w-[72px]">상태/신고</th>
@@ -400,8 +526,9 @@ async function renderFeedManagement() {
         
         // 토글 버튼 색상 업데이트
         updateFeedFilterToggleColors();
-        
+        adminFeedMonitoringLoaded = true;
     } catch (e) {
+        adminFeedMonitoringLoaded = false;
         console.error("피드 관리 렌더링 실패:", e);
         const msg = e?.message || '';
         const isIndexError = /COLLECTION_GROUP.*index|requires.*index/i.test(msg);
@@ -497,30 +624,36 @@ window.toggleFeedFilter = function(filterType) {
         }
     }
     
+    if (!adminFeedMonitoringLoaded) return;
     feedCurrentPage = 1;
     renderFeedManagement();
 }
 
 // 피드 페이지 이동 (해당 페이지로 가기 위해 필요한 커서가 없으면 이전 페이지들 순차 로드)
 window.feedGoToPage = async function(page) {
+    if (!adminFeedMonitoringLoaded) return;
     if (page < 1) return;
     const totalPages = Math.max(1, Math.ceil(feedTotalCount / feedPageSize));
     const targetPage = Math.min(page, totalPages);
     for (let p = 2; p < targetPage; p++) {
-        if (!feedLastDocsByPage[p]) await getFeedPage({ page: p });
+        if (!feedLastDocsByPage[p]) await getFeedPageWithCache(p);
     }
     feedCurrentPage = targetPage;
     renderFeedManagement();
 }
 
 // 피드 관리 새로고침
-window.refreshFeedManagement = function() {
-    feedCurrentPage = 1;
-    feedLastDocsByPage = {};
-    feedTotalCount = 0;
-    feedSharedKeysCache = null;
-    renderFeedManagement();
-}
+window.refreshFeedManagement = async function () {
+    await runAdminRefreshAction(document.getElementById('adminRefreshFeedBtn'), async () => {
+        adminFeedMonitoringLoaded = false;
+        invalidateAdminFeedMonitoringCache();
+        feedCurrentPage = 1;
+        feedLastDocsByPage = {};
+        feedTotalCount = 0;
+        mealsAdminUseDateTimeSort = true;
+        await renderFeedManagement();
+    });
+};
 
 // 신고 상세 팝업 (사유별 건수)
 window.showReportDetailPopup = function(targetGroupKey) {
@@ -671,7 +804,7 @@ window.bulkUnsharePosts = async function() {
         // 배치 커밋 (meal 문서 업데이트 + sharedPhotos 컬렉션 삭제 모두 포함)
         await batch.commit();
         
-        feedSharedKeysCache = null;
+        invalidateAdminFeedMonitoringCache();
         alert(`${count}개의 게시물 공유가 취소되었습니다. (${sharedPhotosDeleteCount}개의 공유 사진 삭제)`);
         await renderFeedManagement();
     } catch (e) {
@@ -763,7 +896,7 @@ window.bulkBanPosts = async function() {
         // 배치 커밋 (meal 문서 업데이트 + sharedPhotos 컬렉션 삭제 모두 포함)
         await batch.commit();
         
-        feedSharedKeysCache = null;
+        invalidateAdminFeedMonitoringCache();
         alert(`${count}개의 게시물이 공유 금지되었습니다. (공유 컬렉션에서 ${sharedPhotosDeleteCount}개 삭제)`);
         renderFeedManagement();
     } catch (e) {
@@ -968,7 +1101,7 @@ window.syncSharedPhotos = async function(mealId, userId) {
         });
         
         await batch.commit();
-        feedSharedKeysCache = null;
+        invalidateAdminFeedMonitoringCache();
         alert(`${newPhotos.length}개의 사진이 공유 컬렉션에 추가되었습니다.`);
         renderFeedManagement();
     } catch (e) {
@@ -1061,7 +1194,7 @@ window.checkAndCleanDuplicates = async function(mealId) {
         
         if (deleteCount > 0) {
             await batch.commit();
-            feedSharedKeysCache = null;
+            invalidateAdminFeedMonitoringCache();
             alert(`중복 문서 ${deleteCount}개가 삭제되었습니다.`);
             renderFeedManagement();
         } else {
@@ -1101,12 +1234,21 @@ window.bulkUnbanPosts = async function() {
     
     try {
         await batch.commit();
-        feedSharedKeysCache = null;
+        invalidateAdminFeedMonitoringCache();
         alert(`${count}개의 게시물 공유 금지가 해제되었습니다.`);
         renderFeedManagement();
     } catch (e) {
         console.error("일괄 금지 해제 실패:", e);
         alert("일괄 금지 해제 중 오류가 발생했습니다.");
+    }
+}
+
+/** 모니터링에서 '모먼트' 탭으로 들어올 때 호출: date+time 인덱스 배포 후에도 폴백만 쓰던 세션을 한 번 되살림 */
+export function refreshAdminMealsFeedSortMode() {
+    if (!mealsAdminUseDateTimeSort) {
+        mealsAdminUseDateTimeSort = true;
+        feedLastDocsByPage = {};
+        feedCurrentPage = 1;
     }
 }
 

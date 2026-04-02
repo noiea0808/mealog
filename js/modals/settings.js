@@ -26,6 +26,11 @@ function syncProfileLogoutFooterButton() {
 export function openSettings() {
     const state = appState;
     if (!window.currentUser) return;
+
+    const myPostsBtn = document.getElementById('openMyPostsFromSettingsBtn');
+    if (myPostsBtn) {
+        myPostsBtn.classList.toggle('hidden', !window.currentUser || window.currentUser.isAnonymous);
+    }
     
     // 게스트(익명)는 userSettings가 없을 수 있음 → 기본값 사용해 설정 모달은 열고, 로그인하기 노출
     const sourceSettings = window.userSettings || DEFAULT_USER_SETTINGS;
@@ -363,43 +368,55 @@ export function switchSettingsTab(tab) {
     const profileTab = document.getElementById('settingsTabProfile');
     const tagsTab = document.getElementById('settingsTabTags');
     const shortcutsTab = document.getElementById('settingsTabShortcuts');
+    const notificationsTab = document.getElementById('settingsTabNotifications');
     const profileContent = document.getElementById('settingsTabContentProfile');
     const tagsContent = document.getElementById('settingsTabContentTags');
     const shortcutsContent = document.getElementById('settingsTabContentShortcuts');
+    const notificationsContent = document.getElementById('settingsTabContentNotifications');
     
+    const settingsTabInactiveClass =
+        'settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors leading-tight';
+    const settingsTabActiveClass =
+        'settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors leading-tight';
+
     // 모든 탭 비활성화
-    [profileTab, tagsTab, shortcutsTab].forEach(t => {
-        if (t) {
-            t.className = 'settings-tab px-4 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors';
-        }
+    [profileTab, tagsTab, shortcutsTab, notificationsTab].forEach((t) => {
+        if (t) t.className = settingsTabInactiveClass;
     });
     
     // 모든 콘텐츠 숨기기
-    [profileContent, tagsContent, shortcutsContent].forEach(c => {
+    [profileContent, tagsContent, shortcutsContent, notificationsContent].forEach(c => {
         if (c) c.classList.add('hidden');
     });
     
     if (tab === 'profile') {
         // 프로필 탭 활성화
         if (profileTab) {
-            profileTab.className = 'settings-tab active px-4 py-3 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
-            profileTab.innerHTML = '<i class="fa-solid fa-user mr-2"></i>프로필';
+            profileTab.className = settingsTabActiveClass;
+            profileTab.textContent = '프로필';
         }
         if (profileContent) profileContent.classList.remove('hidden');
     } else if (tab === 'tags') {
         // 태그 관리 탭 활성화
         if (tagsTab) {
-            tagsTab.className = 'settings-tab active px-4 py-3 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
-            tagsTab.innerHTML = '<i class="fa-solid fa-tags mr-2"></i>태그 관리';
+            tagsTab.className = settingsTabActiveClass;
+            tagsTab.textContent = '태그 관리';
         }
         if (tagsContent) tagsContent.classList.remove('hidden');
     } else if (tab === 'shortcuts') {
         // 밀당 메모 탭 활성화
         if (shortcutsTab) {
-            shortcutsTab.className = 'settings-tab active px-4 py-3 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors';
-            shortcutsTab.innerHTML = '<i class="fa-solid fa-keyboard mr-2"></i>밀당 메모';
+            shortcutsTab.className = settingsTabActiveClass;
+            shortcutsTab.textContent = '밀당 메모';
         }
         if (shortcutsContent) shortcutsContent.classList.remove('hidden');
+    } else if (tab === 'notifications') {
+        if (notificationsTab) {
+            notificationsTab.className = settingsTabActiveClass;
+            notificationsTab.textContent = '푸시 알림';
+        }
+        if (notificationsContent) notificationsContent.classList.remove('hidden');
+        syncPushPreferencesFormFromUserSettings();
     }
 }
 
@@ -1049,8 +1066,90 @@ export async function removeFavoriteTag(mainTagKey, mainTag, index) {
     }
 }
 
-// ⚠️ 푸시 알림 토글 제거됨 - 크래시 문제로 인해 비활성화
-// 사용자는 기기 설정에서 직접 알림 권한을 설정해야 함
+const PUSH_PREF_FIELD_IDS = {
+    master: 'pushPrefMaster',
+    momentComment: 'pushPrefMomentComment',
+    boardComment: 'pushPrefBoardComment',
+    mealTalk: 'pushPrefMealTalk',
+    adminDefault: 'pushPrefAdminDefault'
+};
+
+function updatePushPrefSubRowsUi(masterOn, demo) {
+    document.querySelectorAll('.push-pref-sub-row').forEach((row) => {
+        const lock = !masterOn || demo;
+        row.classList.toggle('opacity-45', !masterOn);
+        row.classList.toggle('pointer-events-none', lock);
+    });
+    ['pushPrefMomentComment', 'pushPrefBoardComment', 'pushPrefMealTalk', 'pushPrefAdminDefault'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = !masterOn || !!demo;
+    });
+}
+
+/** 설정 문서의 pushPreferences → 폼 반영 (설정 리스너 갱신 시 호출) */
+export function syncPushPreferencesFormFromUserSettings() {
+    const base = DEFAULT_USER_SETTINGS.pushPreferences || {};
+    const pp = { ...base, ...(window.userSettings?.pushPreferences || {}) };
+    const demo = window.currentUser && !window.currentUser.isAnonymous && isDemoUser(window.currentUser);
+    Object.keys(PUSH_PREF_FIELD_IDS).forEach((key) => {
+        const el = document.getElementById(PUSH_PREF_FIELD_IDS[key]);
+        if (!el) return;
+        el.checked = pp[key] !== false;
+    });
+    const masterEl = document.getElementById('pushPrefMaster');
+    if (masterEl) masterEl.disabled = !!demo;
+    updatePushPrefSubRowsUi(pp.master !== false, !!demo);
+}
+
+let pushPreferencesControlsBound = false;
+
+/** 푸시 설정 토글 → Firestore 저장 (앱 내 알림과 무관) */
+export function initPushPreferencesControlsOnce() {
+    if (pushPreferencesControlsBound) return;
+    const master = document.getElementById('pushPrefMaster');
+    if (!master) return;
+    pushPreferencesControlsBound = true;
+
+    const readFormPrefs = () => {
+        const o = {};
+        Object.keys(PUSH_PREF_FIELD_IDS).forEach((key) => {
+            const el = document.getElementById(PUSH_PREF_FIELD_IDS[key]);
+            o[key] = !!(el && el.checked);
+        });
+        return o;
+    };
+
+    const persist = async (partial) => {
+        if (!window.currentUser || window.currentUser.isAnonymous) return;
+        if (isDemoUser(window.currentUser)) {
+            showToast('샘플 계정에서는 변경할 수 없습니다.', 'info');
+            syncPushPreferencesFormFromUserSettings();
+            return;
+        }
+        const cur = {
+            ...(DEFAULT_USER_SETTINGS.pushPreferences || {}),
+            ...(window.userSettings?.pushPreferences || {}),
+            ...partial
+        };
+        try {
+            await dbOps.saveSettings({ pushPreferences: cur });
+        } catch (_) {
+            syncPushPreferencesFormFromUserSettings();
+        }
+    };
+
+    master.addEventListener('change', () => {
+        const on = master.checked;
+        updatePushPrefSubRowsUi(on, isDemoUser(window.currentUser));
+        void persist({ master: on });
+    });
+
+    ['momentComment', 'boardComment', 'mealTalk', 'adminDefault'].forEach((key) => {
+        document.getElementById(PUSH_PREF_FIELD_IDS[key])?.addEventListener('change', (e) => {
+            void persist({ [key]: e.target.checked });
+        });
+    });
+}
 
 export async function deleteSubTag(key, text, containerId, inputId, parentFilter) {
     const newSettings = JSON.parse(JSON.stringify(window.userSettings));

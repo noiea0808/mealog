@@ -279,7 +279,7 @@ export async function renderGallery(options = {}) {
     const dailyShares = photosToRender.filter(p => p.type === 'daily');
     console.log('renderGallery - 일간보기 공유 개수:', dailyShares.length, dailyShares);
     
-    // 필터링된 사용자 정보 표시 (상단) — 프로필+소개+모먼트/밀톡 탭
+    // 필터링된 사용자 정보 표시 (상단) — 프로필·소개글·모먼트/게시판 탭
     let userProfileHeader = '';
     if (filterUserId) {
         await fetchUserProfiles([filterUserId]);
@@ -297,9 +297,19 @@ export async function renderGallery(options = {}) {
                 const userDocSnap = await getDoc(doc(db, 'artifacts', appId, 'users', filterUserId));
                 const existingHeader = container.querySelector('.gallery-user-profile-header');
                 if (!existingHeader) return;
-                const bio = userSettings?.profile?.bio || '';
+                const bio = (userSettings?.profile?.bio && String(userSettings.profile.bio).trim()) || '';
                 const bioEl = existingHeader.querySelector('.gallery-filter-bio');
-                if (bioEl) bioEl.textContent = bio;
+                if (bioEl) {
+                    if (bio) {
+                        bioEl.textContent = bio;
+                        bioEl.classList.remove('text-slate-400', 'italic');
+                        bioEl.classList.add('text-slate-600');
+                    } else {
+                        bioEl.textContent = '아직 소개가 없습니다.';
+                        bioEl.classList.add('text-slate-400', 'italic');
+                        bioEl.classList.remove('text-slate-600');
+                    }
+                }
                 let joinedStr = '';
                 if (userDocSnap.exists()) {
                     const data = userDocSnap.data();
@@ -341,7 +351,16 @@ export async function renderGallery(options = {}) {
                         photoEl.classList.add('bg-cover', 'bg-center');
                     }
                 }
-            } catch (_) {}
+            } catch (_) {
+                const hdr = container.querySelector('.gallery-user-profile-header');
+                if (!hdr) return;
+                const bioEl = hdr.querySelector('.gallery-filter-bio');
+                if (bioEl) {
+                    bioEl.textContent = '아직 소개가 없습니다.';
+                    bioEl.classList.add('text-slate-400', 'italic');
+                    bioEl.classList.remove('text-slate-600');
+                }
+            }
         })();
         
         const isFilteredUserGuest = window.currentUser && window.currentUser.isAnonymous && filterUserId === window.currentUser.uid;
@@ -362,11 +381,13 @@ export async function renderGallery(options = {}) {
                             <div class="gallery-filter-joined text-xs text-slate-400"></div>
                         </div>
                     </div>
-                    <div class="gallery-filter-bio text-sm text-slate-600 whitespace-pre-wrap min-h-[1.5rem] px-4 py-3 border-b-2 border-slate-200">${filteredUserPhoto ? ('' /* 비동기로 채움 */) : ''}</div>
+                    <div class="px-4 py-3 border-b-2 border-slate-200 bg-slate-50/50">
+                        <div class="gallery-filter-bio text-sm whitespace-pre-wrap min-h-[1.25rem] text-slate-400 italic">불러오는 중…</div>
+                    </div>
                 </div>
                 <div class="gallery-filter-tabs sticky top-0 z-30 flex w-full min-w-0 bg-white border-t-2 border-slate-200">
                     <button type="button" onclick="window.switchGalleryFilterTab && window.switchGalleryFilterTab('moment')" class="gallery-filter-tab-btn flex-1 min-w-0 py-3 text-sm font-bold transition-colors border-b-2 ${galleryFilterTab === 'moment' ? 'text-emerald-600 border-emerald-600' : 'text-slate-600 border-transparent'}">모먼트</button>
-                    <button type="button" onclick="window.switchGalleryFilterTab && window.switchGalleryFilterTab('board')" class="gallery-filter-tab-btn flex-1 min-w-0 py-3 text-sm font-bold transition-colors border-b-2 ${galleryFilterTab === 'board' ? 'text-emerald-600 border-emerald-600' : 'text-slate-600 border-transparent'}">밀톡</button>
+                    <button type="button" onclick="window.switchGalleryFilterTab && window.switchGalleryFilterTab('board')" class="gallery-filter-tab-btn flex-1 min-w-0 py-3 text-sm font-bold transition-colors border-b-2 ${galleryFilterTab === 'board' ? 'text-emerald-600 border-emerald-600' : 'text-slate-600 border-transparent'}">게시판</button>
                 </div>
             </div>
         `;
@@ -1082,6 +1103,11 @@ export async function clearGalleryFilter() {
     if (mainHeader) mainHeader.classList.remove('hidden');
     if (returnTab === 'board') {
         if (typeof window.switchMainTab === 'function') window.switchMainTab('board');
+        return;
+    }
+    if (returnTab === 'settings') {
+        if (typeof window.switchMainTab === 'function') window.switchMainTab('settings');
+        if (typeof window.openSettings === 'function') window.openSettings();
         return;
     }
     if (typeof window.markMomentFeedNavSeen === 'function') window.markMomentFeedNavSeen();

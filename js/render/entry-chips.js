@@ -46,7 +46,7 @@ export function renderEntryChips() {
         // 메인 태그가 선택되지 않았을 때는 나만의 태그를 표시하지 않음
         const currentInputVal = document.getElementById(inputId)?.value || '';
         // 함께한 사람·메뉴 상세 태그는 다중 선택 가능(쉼표 구분)이므로 배열로 처리
-        const isMultiSelect = id === 'peopleSuggestions' || id === 'menuSuggestions';
+        const isMultiSelect = id === 'peopleSuggestions' || id === 'menuSuggestions' || id === 'snackPeopleSuggestions';
         const currentValues = isMultiSelect ? currentInputVal.split(',').map(v => v.trim()).filter(v => v) : [currentInputVal];
         
         if (!parentFilter) {
@@ -138,6 +138,9 @@ export function renderEntryChips() {
     window.renderSecondary('menuSuggestions', subTags?.menu || [], 'menuDetailInput', null, 'menu');
     renderPrimary('withChips', tags.withWhom, 'null', 'people', 'peopleSuggestions');
     window.renderSecondary('peopleSuggestions', subTags?.people || [], 'withWhomInput', null, 'people');
+    // 간식 누구와
+    renderPrimary('snackWithChips', tags.withWhom, 'null', 'people', 'snackPeopleSuggestions');
+    window.renderSecondary('snackPeopleSuggestions', subTags?.people || [], 'snackWithWhomInput', null, 'people');
     
     // 간식 어디서: 관리자 메인태그 순서대로 칩 표시 (선택 시 개별 태그는 selectTag에서 renderSecondary 호출)
     const snackPlaceMain = tags.snackPlaceMain || ['집', '사무실', '카페'];
