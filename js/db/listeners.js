@@ -1,6 +1,6 @@
 // Firestore 리스너 설정 (읽기 비용 절감: user/tags 세션당 1회, meals 기간·limit 등)
 import { db, appId } from '../firebase.js';
-import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, startAfter, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, startAfter, getDocs, getDocsFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from '../constants.js';
 import { dbOps } from './ops.js';
 import { hideLoading, showNetworkErrorOverlay, isLikelyNetworkError } from '../ui.js';
@@ -15,6 +15,7 @@ import {
     computeDemoDateShiftDaysFromKeyedObject,
     todayLocalYmd
 } from '../demo-date-shift.js';
+import { processPhotosToGroups } from '../render/post-group-utils.js';
 
 /** 세션당 1회만 실행 (Firestore 읽기 절감) */
 let userDocEnsureDoneForUid = null;
@@ -850,7 +851,12 @@ function applyDemoShiftToSharedDocsIfNeeded(docs) {
     return docs.map((p) => (p.userId === uid ? applyDemoDateShiftToSharedPhoto(p, sh) : p));
 }
 
-/** docs를 그룹화했을 때 포스트(그룹) 수 계산 (renderGallery와 동일한 그룹 키 로직) */
+/** 프로필 모먼트 그리드와 동일: photoUrl 중복 제거 + 그룹 키 (processPhotosToGroups 길이) */
+function profileMomentGridGroupCount(docs) {
+    return processPhotosToGroups(docs || []).length;
+}
+
+/** docs를 그룹화했을 때 포스트(그룹) 수 계산 (그룹 키만 세는 버전 — 피드 배치 로직용) */
 function countPostsFromDocs(docs) {
     const seen = new Set();
     (docs || []).forEach(photo => {
@@ -1012,46 +1018,199 @@ export async function loadMyShares() {
     }
 }
 
-/** 특정 사용자의 공유 사진만 조회 (갤러리 사용자 필터 시 전체 목록 표시용, limit 50 회피)
- * getDocsFromServer 사용 - 캐시로 인해 최신 데이터 미반영 방지 */
-export async function getSharedPhotosByUser(userId) {
-    if (!userId) return [];
+/** 프로필용: Firestore 한 번에 읽는 문서 수 (100장 한 방 X → 작은 배치) */
+const SHARED_PHOTOS_BY_USER_BATCH = 15;
+/** 한 번의 사용자 액션(첫 로드·더보기)에서 배치 루프 상한 */
+const SHARED_PHOTOS_BY_USER_MAX_BATCHES = 80;
+
+function normalizeSharedPhotoDocForUserQuery(d) {
+    const data = d.data();
+    if (data.timestamp && data.timestamp.toDate) {
+        data.timestamp = data.timestamp.toDate().toISOString();
+    } else if (data.timestamp && typeof data.timestamp === 'object' && data.timestamp.seconds) {
+        data.timestamp = new Date(data.timestamp.seconds * 1000).toISOString();
+    }
+    return { id: d.id, ...data };
+}
+
+function sortSharedPhotoDocsByTimeDesc(docs) {
+    return [...docs].sort((a, b) => {
+        const ta = (a.timestamp && new Date(a.timestamp).getTime()) || 0;
+        const tb = (b.timestamp && new Date(b.timestamp).getTime()) || 0;
+        return tb - ta;
+    });
+}
+
+/**
+ * sharedPhotos를 batchSize개씩만 읽어 한 번 반환 (timestamp 경로 우선).
+ * @returns {{ pairs: { doc: object, snap: import('@firebase/firestore').QueryDocumentSnapshot }[], lastDocSnap: import('@firebase/firestore').QueryDocumentSnapshot | null, batchWasFull: boolean }}
+ */
+async function fetchSharedPhotosByUserBatch(userId, startAfterSnap, batchSize) {
+    if (!userId) {
+        return { pairs: [], lastDocSnap: null, batchWasFull: false };
+    }
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-    const normalize = (d) => {
-        const data = d.data();
-        if (data.timestamp && data.timestamp.toDate) {
-            data.timestamp = data.timestamp.toDate().toISOString();
-        } else if (data.timestamp && typeof data.timestamp === 'object' && data.timestamp.seconds) {
-            data.timestamp = new Date(data.timestamp.seconds * 1000).toISOString();
-        }
-        return { id: d.id, ...data };
-    };
+    const normalize = (docSnap) => normalizeSharedPhotoDocForUserQuery(docSnap);
+    const lim = Math.max(1, Math.min(batchSize, 30));
+
     try {
-        const q = query(
+        let q = query(
             sharedColl,
             where('userId', '==', userId),
             orderBy('timestamp', 'desc'),
-            limit(100)
+            limit(lim)
         );
+        if (startAfterSnap) {
+            q = query(
+                sharedColl,
+                where('userId', '==', userId),
+                orderBy('timestamp', 'desc'),
+                startAfter(startAfterSnap),
+                limit(lim)
+            );
+        }
         const snap = await getDocsFromServer(q);
-        return applyDemoShiftToSharedDocsIfNeeded(snap.docs.map(normalize));
+        const pairs = snap.docs.map((docSnap) => ({ doc: normalize(docSnap), snap: docSnap }));
+        const lastDocSnap = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
+        return { pairs, lastDocSnap, batchWasFull: snap.docs.length === lim };
     } catch (e) {
         if (e?.code === 'failed-precondition' && /index|indexes/i.test(String(e?.message || ''))) {
-            console.warn('⚠️ getSharedPhotosByUser 인덱스 필요:', e?.message);
+            console.warn('⚠️ fetchSharedPhotosByUserBatch 인덱스 필요:', e?.message);
             if (e?.message && /https:\/\//.test(e.message)) {
                 const linkMatch = e.message.match(/https:\/\/[^\s]+/);
                 if (linkMatch) console.warn('인덱스 생성 링크:', linkMatch[0]);
             }
-            const qFallback = query(sharedColl, where('userId', '==', userId), limit(100));
-            const snap = await getDocsFromServer(qFallback);
-            const docs = snap.docs.map(normalize);
-            docs.sort((a, b) => {
-                const ta = (a.timestamp && new Date(a.timestamp).getTime()) || 0;
-                const tb = (b.timestamp && new Date(b.timestamp).getTime()) || 0;
-                return tb - ta;
-            });
-            return applyDemoShiftToSharedDocsIfNeeded(docs);
+            try {
+                let qFb = query(
+                    sharedColl,
+                    where('userId', '==', userId),
+                    orderBy(documentId()),
+                    limit(lim)
+                );
+                if (startAfterSnap) {
+                    qFb = query(
+                        sharedColl,
+                        where('userId', '==', userId),
+                        orderBy(documentId()),
+                        startAfter(startAfterSnap),
+                        limit(lim)
+                    );
+                }
+                const snap = await getDocsFromServer(qFb);
+                const pairs = snap.docs.map((docSnap) => ({ doc: normalize(docSnap), snap: docSnap }));
+                const pairById = new Map(pairs.map((p) => [p.doc.id, p]));
+                const sortedDocs = sortSharedPhotoDocsByTimeDesc(pairs.map((p) => p.doc));
+                const sortedPairs = sortedDocs.map((d) => pairById.get(d.id)).filter(Boolean);
+                const lastDocSnap = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
+                return { pairs: sortedPairs, lastDocSnap, batchWasFull: snap.docs.length === lim };
+            } catch (e2) {
+                console.warn('⚠️ fetchSharedPhotosByUserBatch documentId 폴백 실패:', e2?.message || e2);
+                const qFallback = query(sharedColl, where('userId', '==', userId), limit(lim));
+                const snap = await getDocsFromServer(qFallback);
+                const pairs = snap.docs.map((docSnap) => ({ doc: normalize(docSnap), snap: docSnap }));
+                const pairById = new Map(pairs.map((p) => [p.doc.id, p]));
+                const sortedDocs = sortSharedPhotoDocsByTimeDesc(pairs.map((p) => p.doc));
+                const sortedPairs = sortedDocs.map((d) => pairById.get(d.id)).filter(Boolean);
+                return { pairs: sortedPairs, lastDocSnap: null, batchWasFull: false };
+            }
         }
         throw e;
     }
+}
+
+function pickOldestSharedPhotoDocByTime(docs) {
+    if (!docs || !docs.length) return null;
+    return docs.reduce((a, b) => (toTimestampMs(a) <= toTimestampMs(b) ? a : b));
+}
+
+/**
+ * 프로필 모먼트: 게시물(그룹) 개수가 targetTotalPostCount 이상이 될 때까지 batch만큼씩만 Firestore 읽기.
+ * @param seedDocs 이미 메모리에 있는 문서(추가 로드 시)
+ * @param docSnapById 프로필 세션 동안 유지할 id→QueryDocumentSnapshot (갤러리 appState 맵). null이면 호출 한정 새 Map
+ */
+export async function loadSharedPhotosByUserUpToPostCount(userId, startAfterSnap, targetTotalPostCount, seedDocs = [], docSnapById = null) {
+    if (!userId || targetTotalPostCount < 1) {
+        return { docs: [], lastDocSnap: null, hasMore: false };
+    }
+    const seen = new Set((seedDocs || []).map((d) => d.id));
+    let all = sortSharedPhotoDocsByTimeDesc(seedDocs || []);
+    let last = startAfterSnap;
+    let lastBatchWasFull = false;
+    let batches = 0;
+    const snapById = docSnapById ?? new Map();
+
+    if (profileMomentGridGroupCount(all) >= targetTotalPostCount) {
+        const oldest0 = pickOldestSharedPhotoDocByTime(all);
+        let lastOut = startAfterSnap;
+        if (oldest0 && snapById.has(oldest0.id)) {
+            lastOut = snapById.get(oldest0.id);
+        }
+        const keptIds0 = new Set(all.map((d) => d.id));
+        for (const id of [...snapById.keys()]) {
+            if (!keptIds0.has(id)) snapById.delete(id);
+        }
+        return {
+            docs: applyDemoShiftToSharedDocsIfNeeded(all),
+            lastDocSnap: lastOut,
+            hasMore: !!startAfterSnap
+        };
+    }
+
+    while (batches < SHARED_PHOTOS_BY_USER_MAX_BATCHES && profileMomentGridGroupCount(all) < targetTotalPostCount) {
+        const { pairs, lastDocSnap, batchWasFull } = await fetchSharedPhotosByUserBatch(userId, last, SHARED_PHOTOS_BY_USER_BATCH);
+        batches++;
+        lastBatchWasFull = batchWasFull;
+        if (!pairs.length) break;
+        for (const { doc: d, snap } of pairs) {
+            if (!seen.has(d.id)) {
+                seen.add(d.id);
+                snapById.set(d.id, snap);
+                all.push(d);
+            }
+        }
+        all = sortSharedPhotoDocsByTimeDesc(all);
+        last = lastDocSnap;
+        if (!batchWasFull) break;
+    }
+
+    if (profileMomentGridGroupCount(all) > targetTotalPostCount) {
+        const groups = processPhotosToGroups(all);
+        const keepIds = new Set();
+        for (const g of groups.slice(0, targetTotalPostCount)) {
+            for (const p of g) keepIds.add(p.id);
+        }
+        all = sortSharedPhotoDocsByTimeDesc(all.filter((d) => keepIds.has(d.id)));
+    }
+
+    let lastDocSnapOut = last;
+    const oldest = pickOldestSharedPhotoDocByTime(all);
+    if (oldest && snapById.has(oldest.id)) {
+        lastDocSnapOut = snapById.get(oldest.id);
+    }
+
+    const keptIds = new Set(all.map((d) => d.id));
+    for (const id of [...snapById.keys()]) {
+        if (!keptIds.has(id)) snapById.delete(id);
+    }
+
+    return {
+        docs: applyDemoShiftToSharedDocsIfNeeded(all),
+        lastDocSnap: lastDocSnapOut,
+        hasMore: lastBatchWasFull
+    };
+}
+
+/** @deprecated 프로필은 loadSharedPhotosByUserUpToPostCount 사용. 하위 호환용 단일 배치(최대 15문서). */
+export async function loadSharedPhotosByUserPage(userId, startAfterSnap = null) {
+    return fetchSharedPhotosByUserBatch(userId, startAfterSnap, SHARED_PHOTOS_BY_USER_BATCH).then(({ pairs, lastDocSnap, batchWasFull }) => ({
+        docs: applyDemoShiftToSharedDocsIfNeeded(pairs.map((p) => p.doc)),
+        lastDocSnap,
+        hasMore: batchWasFull
+    }));
+}
+
+/** 특정 사용자 공유 — 약 그리드 1면(게시물 ~15그룹) 분량만 읽기 */
+export async function getSharedPhotosByUser(userId) {
+    const { docs } = await loadSharedPhotosByUserUpToPostCount(userId, null, 15, [], new Map());
+    return docs;
 }

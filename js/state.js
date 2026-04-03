@@ -33,6 +33,16 @@ export const appState = {
     galleryFilterUserId: null, // 앨범 탭에서 필터링된 사용자 ID
     galleryFilterPostId: null,  // 알림에서 클릭 시 해당 게시물만 보기
     galleryFilterTab: 'moment',  // 사용자 프로필 뷰에서 탭: 'moment' | 'board' (모먼트 | 밀톡)
+    /** 사용자 프로필 모먼트 그리드: 처음 3×5셀(15게시물), 더보기마다 +15 (클라이언트 슬라이스) */
+    galleryUserProfileMomentVisiblePostCount: 15,
+    /** 프로필 모먼트: 누적 sharedPhotos 문서 (null이면 다음 render에서 첫 페이지 로드) */
+    galleryUserProfileSharedDocs: null,
+    /** 다음 페이지용 Firestore 마지막 문서 스냅샷 */
+    galleryUserProfileSharedLastSnap: null,
+    galleryUserProfileSharedHasMore: false,
+    galleryUserProfileSharedForUserId: null,
+    /** 프로필 모먼트: 페이지네이션·트림 후 커서 정합용 (문서 id → QueryDocumentSnapshot), 사용자 전환 시 새 Map */
+    galleryUserProfileSharedDocSnaps: null,
     /** 모먼트 사용자 프로필에서 게시글 상세를 연 경우: 뒤로가기 시 갤러리 목록으로 복귀 */
     boardDetailOpenedFromGallery: false,
     galleryTraceFilter: null, // 앨범 흔적 필터: null | 'like' | 'comment' | 'bookmark'

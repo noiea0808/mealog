@@ -95,13 +95,13 @@ window.applyMealogEnvironmentBadge = function applyMealogEnvironmentBadge(el, op
     el.removeAttribute('aria-hidden');
     el.setAttribute('aria-label', '실행 환경: ' + label);
     el.textContent = label;
-    var base = 'px-2 py-0.5 rounded-md text-[10px] font-black tracking-tight shrink-0 leading-none shadow-sm';
+    var base = 'text-[10px] font-black tracking-tight shrink-0 leading-none';
     if (label === '개발') {
-        el.className = base + ' bg-blue-600 text-white';
+        el.className = base + ' text-blue-600';
     } else if (label === '스테이징') {
-        el.className = base + ' bg-orange-500 text-white';
+        el.className = base + ' text-orange-500';
     } else {
-        el.className = base + ' bg-slate-100 text-slate-500 shadow-none';
+        el.className = base + ' text-slate-500';
     }
 };
 

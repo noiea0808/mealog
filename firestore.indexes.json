@@ -125,6 +125,16 @@
       ]
     },
     {
+      "collectionGroup": "meals",
+      "fieldPath": "slotId",
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" },
+        { "order": "DESCENDING", "queryScope": "COLLECTION_GROUP" },
+        { "order": "ASCENDING", "queryScope": "COLLECTION" },
+        { "order": "DESCENDING", "queryScope": "COLLECTION" }
+      ]
+    },
+    {
       "collectionGroup": "sharedPhotos",
       "fieldPath": "timestamp",
       "indexes": [

@@ -1387,10 +1387,10 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
     transform: translateX(11px);
 }
 
-/* 기록 모달: 만족도·포만감 게이지 끔 */
+/* 기록 모달: 만족도·포만감 게이지 끔 — 스크롤 영역만 흐리게(중앙 인디케이터는 그대로) */
 .entry-gauge-dial-wrap--off .mealog-wheel__scroller {
-    opacity: 0.34;
-    filter: grayscale(0.95);
+    opacity: 0.18;
+    filter: grayscale(1);
     pointer-events: none;
 }
 

@@ -55,7 +55,10 @@ function applyEntryGaugeDialUi() {
         const wrap = document.getElementById(wrapId);
         const layer = document.getElementById(layerId);
         if (wrap) wrap.classList.toggle('entry-gauge-dial-wrap--off', !on);
-        if (layer) layer.classList.toggle('hidden', on);
+        if (layer) {
+            layer.classList.toggle('hidden', on);
+            layer.setAttribute('aria-hidden', on ? 'true' : 'false');
+        }
     });
 }
 

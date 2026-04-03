@@ -219,6 +219,16 @@ function sortUsersForTable(users, currentVersion) {
     return sorted;
 }
 
+function updateAdminUsersTotalCountDisplay(totalCount) {
+    const el = document.getElementById('adminUsersTotalCountDisplay');
+    if (!el) return;
+    if (totalCount === null || totalCount === undefined) {
+        el.textContent = '—';
+        return;
+    }
+    el.textContent = Number(totalCount).toLocaleString('ko-KR');
+}
+
 function updateUsersSortHeaderUI() {
     const buttons = document.querySelectorAll('.admin-users-sort');
     buttons.forEach(btn => {
@@ -486,9 +496,8 @@ export async function renderUsers(options = {}) {
     if (!mayFetch) {
         container.innerHTML =
             '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-rotate-right text-2xl mb-2 opacity-40" aria-hidden="true"></i><p class="text-sm">상단 <strong class="text-slate-600">새로고침</strong>으로 목록을 불러옵니다.</p></td></tr>';
-        const infoEl = document.getElementById('adminUsersListPaginationInfo');
         const navEl = document.getElementById('adminUsersListPagination');
-        if (infoEl) infoEl.textContent = '—';
+        updateAdminUsersTotalCountDisplay(null);
         if (navEl) navEl.innerHTML = '';
         return;
     }
@@ -690,12 +699,9 @@ export async function renderUsers(options = {}) {
 }
 
 function updateAdminUsersListPagination(totalCount, totalPages) {
-    const infoEl = document.getElementById('adminUsersListPaginationInfo');
     const navEl = document.getElementById('adminUsersListPagination');
-    if (!infoEl || !navEl) return;
-    const start = totalCount === 0 ? 0 : (adminUsersListPage - 1) * USERS_PER_PAGE + 1;
-    const end = Math.min(adminUsersListPage * USERS_PER_PAGE, totalCount);
-    infoEl.textContent = totalCount === 0 ? '0명' : `${start}-${end} / ${totalCount}명`;
+    if (!navEl) return;
+    updateAdminUsersTotalCountDisplay(totalCount);
     navEl.innerHTML = '';
     if (totalPages <= 1) return;
     const prevBtn = document.createElement('button');
