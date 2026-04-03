@@ -86,7 +86,23 @@ export const DEFAULT_USER_SETTINGS = {
     isFirstLogin: true,
     onboardingCompleted: false,
     // 토스트 메시지: 기본적으로 표시하지 않음
-    showToast: false
+    showToast: false,
+    /**
+     * 푸시(FCM) 수신 여부 — 앱 내 알림(종)과 무관. false면 해당 종류 푸시는 Functions에서 발송 안 함.
+     * master: 전체 끄기 시 하위 항목과 관계없이 푸시 없음.
+     */
+    pushPreferences: {
+        master: true,
+        momentComment: true,
+        boardComment: true,
+        mealTalk: true,
+        adminDefault: true
+    },
+    /** 기록 모달: 만족도·포만감 다이얼 사용 여부 (기본 끔, 다음에도 동일하게 열림) */
+    entryModalGauges: {
+        ratingEnabled: false,
+        satietyEnabled: false
+    }
 };
 
 // 게시물 신고 사유 (id는 Firestore에 저장, label은 UI 표시)

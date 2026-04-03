@@ -66,7 +66,12 @@ function nextStagingVersion(current) {
 
 function run(mode) {
     const current = loadJson(VERSION_JSON, { version: '1.0.0', versionCode: 1, buildDate: nowISO() });
-    const nextCode = Math.max(1, (current.versionCode || 0) + 1);
+    // INSTALL_FAILED_VERSION_DOWNGRADE: 기기에 더 큰 versionCode가 있으면 version.json versionCode를 그보다 크게 맞추거나 MEALOG_MIN_VERSION_CODE=185 형태로 한 번 빌드.
+    const bumped = Math.max(1, (current.versionCode || 0) + 1);
+    const envRaw = process.env.MEALOG_MIN_VERSION_CODE;
+    const envParsed = envRaw != null && String(envRaw).trim() !== '' ? parseInt(envRaw, 10) : NaN;
+    const envMin = Number.isFinite(envParsed) && envParsed > 0 ? envParsed : 0;
+    const nextCode = Math.max(bumped, envMin);
 
     if (mode === 'production') {
         const nextVer = nextProductionVersion(current.version);

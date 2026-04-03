@@ -84,6 +84,16 @@ export function requestDemoIntroFromBrowse() {
     } catch (_) {}
 }
 
+/** ESC·백드롭 등으로 데모 안내를 닫을 때 (「시작하기」와 동일하게 다시 뜨지 않도록 표시 처리) */
+export function dismissDemoIntroModal() {
+    const modal = document.getElementById('demoIntroModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    try {
+        localStorage.setItem(INTRO_SEEN_KEY, '1');
+    } catch (_) {}
+    modal.classList.add('hidden');
+}
+
 export function maybeShowDemoIntroModal() {
     try {
         let forceFromBrowse = false;

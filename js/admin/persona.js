@@ -1,10 +1,9 @@
 /**
  * 관리자 콘텐츠: MEALOG 안내 메시지·페르소나 캐릭터 편집
  */
-import { app, db, appId, callableFunctions } from '../firebase.js';
-import { getAuth } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+import { app, db, appId, callableFunctions, auth } from '../firebase.js';
 import { uploadPersonaImageToStorage } from '../utils.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, runAdminRefreshAction } from './utils.js';
 import {
     collection,
     doc,
@@ -17,8 +16,6 @@ import {
     limit,
     orderBy
 } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
-
-const adminAuth = getAuth(app);
 
 // 페르소나 사이드바 전환
 // switchPersonaSidebar는 더 이상 사용하지 않음 (콘텐츠 관리로 이동)
@@ -666,7 +663,7 @@ window.handleCharacterImageUpload = async function(event) {
     
     try {
         // 현재 사용자 ID 가져오기 (관리자)
-        const user = adminAuth.currentUser;
+        const user = auth.currentUser;
         if (!user) {
             alert('로그인이 필요합니다.');
             return;
@@ -895,21 +892,24 @@ async function renderPersonaSettings() {
 }
 
 // 페르소나 새로고침 (콘텐츠 관리로 이동)
-window.refreshPersona = function() {
-    const activeSection = document.querySelector('.content-main-section:not(.hidden)');
-    if (activeSection) {
-        const sectionId = activeSection.id.replace('content-main-', '');
-        if (['notice', 'pushMessage', 'popup', 'loginBanner'].includes(sectionId)) {
-            window.switchAdminTab('alerts');
-            setTimeout(() => window.switchAlertsSidebar(sectionId), 0);
-            return;
+window.refreshPersona = async function (buttonEl) {
+    await runAdminRefreshAction(buttonEl || null, async () => {
+        const activeSection = document.querySelector('.content-main-section:not(.hidden)');
+        if (activeSection) {
+            const sectionId = activeSection.id.replace('content-main-', '');
+            if (['notice', 'pushMessage', 'popup', 'loginBanner'].includes(sectionId)) {
+                window.switchAdminTab('alerts');
+                await new Promise((r) => setTimeout(r, 0));
+                window.switchAlertsSidebar(sectionId);
+                return;
+            }
+            if (sectionId === 'mealog' || sectionId === 'characters') {
+                window.switchContentSidebar(sectionId);
+            }
+        } else {
+            window.switchContentSidebar('mealog');
         }
-        if (sectionId === 'mealog' || sectionId === 'characters') {
-            window.switchContentSidebar(sectionId);
-        }
-    } else {
-        window.switchContentSidebar('mealog');
-    }
+    });
 };
 
 export { loadMealogComments, showCharacterListView };

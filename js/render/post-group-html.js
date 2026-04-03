@@ -2,6 +2,7 @@
  * 모먼트/피드 공통: 공유 사진 그룹(인스타 스타일) HTML
  */
 import { SLOTS, SLOT_STYLES } from '../constants.js';
+import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
 import { getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
 import { getPostIdFromPhotoGroup } from './post-group-utils.js';
@@ -89,9 +90,19 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
     const userDisplay = getDisplayProfile(photo.userId, { nickname: photo.userNickname, icon: photo.userIcon, photoUrl: photo.userPhotoUrl });
     const avatarDisplay = getProfileAvatarDisplay(userDisplay);
     const hasBody = (caption && (isBestShare || isDailyShare || isInsightShare)) || (comment && !isBestShare && !isDailyShare && !isInsightShare);
+    const showProfileMomentBack =
+        appState.galleryFilterUserId &&
+        appState.galleryFilterPostId &&
+        photo.userId === appState.galleryFilterUserId;
+    const profileBackBtn = showProfileMomentBack
+        ? `<button type="button" onclick="window.clearGalleryFilterPostId && window.clearGalleryFilterPostId()" class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 -ml-1" aria-label="사진 목록으로">
+                        <i class="fa-solid fa-arrow-left text-lg" aria-hidden="true"></i>
+                    </button>`
+        : '';
     return `
             <div class="mb-2 bg-white border-b border-slate-200 instagram-post ${!hasBody ? 'post-no-body' : ''}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}">
-                <div class="px-3 py-3 flex items-center gap-3 relative">
+                <div class="px-3 py-3 flex items-center gap-2 relative">
+                    ${profileBackBtn}
                     ${avatarDisplay.type === 'photo' ? `
                         <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${avatarDisplay.value}); background-size: cover; background-position: center;">
                             ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}

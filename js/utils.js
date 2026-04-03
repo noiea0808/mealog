@@ -8,6 +8,23 @@ const isProduction = () => {
     return hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.includes('192.168.');
 };
 
+/**
+ * 스테이징/운영 구분 (푸시·콘텐츠 팝업·연속기록 팝업 등과 동일 기준)
+ * — 네이티브는 앱 패키지, 웹은 APP_ENV 후 로컬 호스트.
+ */
+export function getMealogClientEnv() {
+    if (typeof window === 'undefined') return 'production';
+    const capAppId = String(window.Capacitor?.config?.appId || '').trim();
+    if (capAppId === 'com.mealog.app.staging') return 'staging';
+    if (capAppId === 'com.mealog.app') return 'production';
+    if (window.APP_ENV === 'staging') return 'staging';
+    const hostname = window.location.hostname || '';
+    const isLocal =
+        hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
+    if (isLocal) return 'staging';
+    return 'production';
+}
+
 // 프로덕션에서 console.log 제거를 위한 래퍼 함수
 export const logger = {
     log: (...args) => {
@@ -50,6 +67,22 @@ export function warmUpIME() {
             el.blur();
         }, 80);
     } catch (_) { /* 무시 */ }
+}
+
+/** 밀톡 말풍선 롱프레스 등 짧은 촉각 — 앱은 Impact Light, 웹은 Vibration API(약 12ms) */
+export function lightUiHaptic() {
+    const Haptics = typeof window !== 'undefined' ? window.Capacitor?.Plugins?.Haptics : null;
+    if (Haptics?.impact) {
+        Haptics.impact({ style: 'LIGHT' }).catch(() => {
+            try {
+                navigator.vibrate?.(12);
+            } catch (_) { /* ignore */ }
+        });
+        return;
+    }
+    try {
+        if (navigator.vibrate) navigator.vibrate(12);
+    } catch (_) { /* ignore */ }
 }
 
 /**
@@ -129,7 +162,8 @@ export function getDisplayProfile(authorId, stored = {}) {
 const DEFAULT_AVATAR_ICONS = ['🐻', '🐰', '🐱', '🐶', '🦊', '🦁', '🐼', '🐨'];
 
 export function getProfileAvatarDisplay(profile) {
-    if (profile.photoUrl) return { type: 'photo', value: profile.photoUrl };
+    const photoRaw = profile.photoUrl != null ? String(profile.photoUrl).trim() : '';
+    if (photoRaw) return { type: 'photo', value: photoRaw };
     const icon = profile.icon != null && profile.icon !== '' ? profile.icon : null;
     if (icon && !DEFAULT_AVATAR_ICONS.includes(icon)) return { type: 'emoji', value: icon };
     return { type: 'default', value: '' };
@@ -675,6 +709,27 @@ export async function uploadBoardImages(files, userId) {
         const randomStr = Math.random().toString(36).substring(2, 9);
         const fileName = `${timestamp}_${randomStr}_${index}.jpg`;
         const path = `users/${userId}/board/${fileName}`;
+        const storageRef = ref(storage, path);
+        await uploadBytes(storageRef, blob);
+        return getDownloadURL(storageRef);
+    });
+
+    return Promise.all(uploadPromises);
+}
+
+/** 밀톡 피드 전용 이미지 — users/{userId}/feed/ (게시판 board/ 경로와 분리) */
+export async function uploadFeedImages(files, userId) {
+    if (!files || files.length === 0) return [];
+    const list = Array.from(files).slice(0, 5);
+
+    const compressPromises = list.map((file) => compressImageToBlobMaxSize(file, 600));
+    const compressedBlobs = await Promise.all(compressPromises);
+
+    const uploadPromises = compressedBlobs.map(async (blob, index) => {
+        const timestamp = Date.now();
+        const randomStr = Math.random().toString(36).substring(2, 9);
+        const fileName = `${timestamp}_${randomStr}_${index}.jpg`;
+        const path = `users/${userId}/feed/${fileName}`;
         const storageRef = ref(storage, path);
         await uploadBytes(storageRef, blob);
         return getDownloadURL(storageRef);

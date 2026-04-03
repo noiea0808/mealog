@@ -30,6 +30,7 @@ import {
     confirmLogoutAction
 } from '../auth.js';
 import { registerDemoIntroModalHandlers } from '../demo-account.js';
+import { registerEscapeCloseModals } from './escape-close-modals.js';
 import {
     registerDemoNavGuideHandlers,
     handleDemoAwareNavClick,
@@ -40,7 +41,8 @@ import { setupGalleryPullToRefresh } from './gallery-pull-refresh.js';
 import {
     openSettings,
     switchSettingsTab,
-    saveProfileSettings
+    saveProfileSettings,
+    initPushPreferencesControlsOnce
 } from '../modals.js';
 
 /** 앱 전체: 키보드 열림 시 하단 네비 숨김 + 닫힘 시 복귀 (viewport 기반 keyboard-closed) */
@@ -58,7 +60,9 @@ function initMainAppKeyboardHandling() {
         setKeyboardClosed(vh >= threshold);
     };
 
-    const isInputLike = (el) => el && (el.matches?.('input, textarea') || el.getAttribute?.('contenteditable') === 'true');
+    const isInputLike = (el) =>
+        el &&
+        (el.matches?.('input:not(.push-pref-toggle), textarea') || el.getAttribute?.('contenteditable') === 'true');
 
     if (window.visualViewport) {
         const run = () => {
@@ -451,9 +455,23 @@ export function initEventListeners() {
         settingsTabShortcuts.addEventListener('click', () => window.switchSettingsTab('shortcuts'));
     }
 
+    const settingsTabNotifications = document.getElementById('settingsTabNotifications');
+    if (settingsTabNotifications) {
+        settingsTabNotifications.addEventListener('click', () => window.switchSettingsTab('notifications'));
+    }
+
+    initPushPreferencesControlsOnce();
+
     const saveProfileSettingsBtn = document.getElementById('saveProfileSettingsBtn');
     if (saveProfileSettingsBtn) {
         saveProfileSettingsBtn.addEventListener('click', saveProfileSettings);
+    }
+
+    const openMyPostsFromSettingsBtn = document.getElementById('openMyPostsFromSettingsBtn');
+    if (openMyPostsFromSettingsBtn) {
+        openMyPostsFromSettingsBtn.addEventListener('click', () => {
+            if (typeof window.openMyPostsFromSettings === 'function') window.openMyPostsFromSettings();
+        });
     }
 
     const editProfileSettingsBtn = document.getElementById('editProfileSettingsBtn');
@@ -648,4 +666,6 @@ export function initEventListeners() {
     if (deleteAccountConfirmActionBtn) {
         deleteAccountConfirmActionBtn.addEventListener('click', confirmDeleteAccountAction);
     }
+
+    registerEscapeCloseModals();
 }

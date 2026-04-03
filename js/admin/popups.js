@@ -1,17 +1,14 @@
 // ADMIN 팝업 관리
-import { app, db, appId } from '../firebase.js';
-import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { app, db, appId, auth } from '../firebase.js';
 import {
     collection, query, orderBy, getDocs, doc, getDoc, setDoc, addDoc, deleteDoc, deleteField
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { escapeHtml } from './utils.js';
+import { escapeHtml, runAdminRefreshAction } from './utils.js';
 import { sanitizeFormattedText, renderFormattedContent, stripDangerousTagsOnly } from '../render/utils.js';
 import { uploadPopupImages } from '../utils.js';
 import { getAdminDisplayName } from '../db.js';
 
-const adminAuth = getAuth(app);
-
-const POPUP_TARGET_MENU_LABELS = { dashboard: '밀당', timeline: '밀로그', gallery: '모먼트', board: '밀톡', settings: '사용자' };
+const POPUP_TARGET_MENU_LABELS = { dashboard: '밀당', timeline: '밀로그', gallery: '모먼트', board: '라운지', settings: '사용자' };
 const POPUP_FREQUENCY_LABELS = { daily: '하루 한 번', on_login: '로그인 시마다', on_visit: '접근시마다' };
 const POPUP_TARGET_ENV_LABELS = { all: '전체', production: '프로덕션만', staging: '스테이징만' };
 let currentEditingPopupId = null;
@@ -52,21 +49,15 @@ export async function renderPopups() {
 }
 
 /** 팝업 목록·상세의 조회수·클릭수 재조회 */
-window.refreshPopupsStats = async function() {
-    const btn = document.getElementById('popupRefreshStatsBtn');
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>재조회 중';
-    }
-    try {
-        await renderPopups();
-        if (currentSelectedPopupId) await renderPopupDetailInAdmin(currentSelectedPopupId);
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fa-solid fa-arrows-rotate mr-1"></i>재조회';
-        }
-    }
+window.refreshPopupsStats = async function () {
+    await runAdminRefreshAction(
+        document.getElementById('popupRefreshStatsBtn'),
+        async () => {
+            await renderPopups();
+            if (currentSelectedPopupId) await renderPopupDetailInAdmin(currentSelectedPopupId);
+        },
+        { loadingText: '재조회 중', tightSpinner: true }
+    );
 };
 
 window.selectAdminPopup = async function(popupId) {
@@ -398,7 +389,7 @@ window.submitPopup = async function() {
         const newFiles = window.popupFiles || [];
         let imageUrls = [...existingUrls];
         if (newFiles.length > 0) {
-            const uid = adminAuth.currentUser?.uid;
+            const uid = auth.currentUser?.uid;
             if (!uid) {
                 alert('로그인이 필요합니다.');
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = currentEditingPopupId ? '수정' : '등록'; }

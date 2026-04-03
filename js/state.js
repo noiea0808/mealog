@@ -16,6 +16,7 @@ export const appState = {
     statsUnsubscribe: null,
     notificationUnsubscribePost: null,
     notificationUnsubscribeBoard: null,
+    notificationUnsubscribeFeed: null,
     notificationUnreadCount: 0,
     sharedPhotosFeedLastDoc: null,
     sharedPhotosFeedHasMore: false,
@@ -32,8 +33,27 @@ export const appState = {
     galleryFilterUserId: null, // 앨범 탭에서 필터링된 사용자 ID
     galleryFilterPostId: null,  // 알림에서 클릭 시 해당 게시물만 보기
     galleryFilterTab: 'moment',  // 사용자 프로필 뷰에서 탭: 'moment' | 'board' (모먼트 | 밀톡)
+    /** 사용자 프로필 모먼트 그리드: 처음 3×5셀(15게시물), 더보기마다 +15 (클라이언트 슬라이스) */
+    galleryUserProfileMomentVisiblePostCount: 15,
+    /** 프로필 모먼트: 누적 sharedPhotos 문서 (null이면 다음 render에서 첫 페이지 로드) */
+    galleryUserProfileSharedDocs: null,
+    /** 다음 페이지용 Firestore 마지막 문서 스냅샷 */
+    galleryUserProfileSharedLastSnap: null,
+    galleryUserProfileSharedHasMore: false,
+    galleryUserProfileSharedForUserId: null,
+    /** 프로필 모먼트: 페이지네이션·트림 후 커서 정합용 (문서 id → QueryDocumentSnapshot), 사용자 전환 시 새 Map */
+    galleryUserProfileSharedDocSnaps: null,
+    /** 모먼트 사용자 프로필에서 게시글 상세를 연 경우: 뒤로가기 시 갤러리 목록으로 복귀 */
+    boardDetailOpenedFromGallery: false,
     galleryTraceFilter: null, // 앨범 흔적 필터: null | 'like' | 'comment' | 'bookmark'
     boardTraceFilter: null,   // 밀톡 흔적 필터: null | 'like' | 'comment' | 'bookmark'
+    /** 밀톡 상단 서브탭: 'feed' (별도 피드 예정) | 'board' 게시판 리스트 */
+    boardListSubTab: 'feed',
+    /** 피드 탭 타임라인 (세션 내 메모리, 게시 시 앞에 추가) */
+    feedTimelinePosts: [],
+    /** 더 오래된 밀톡 페이지 로드용 Firestore 커서(마지막으로 받은 배치의 가장 오래된 문서) */
+    feedTimelineOldestCursor: null,
+    feedTimelineHasMore: false,
     
     // 편집 상태 (모달 관련)
     currentEditingId: null,
@@ -46,6 +66,9 @@ export const appState = {
     wantsToShare: false, // 공유를 원하는지 여부
     currentRating: 3,
     currentSatiety: 3,
+    /** 기록 모달 열림 중: 만족도·포만감 게이지 사용(저장·통계 반영) 여부 */
+    entryGaugeRatingOn: false,
+    entryGaugeSatietyOn: false,
     
     // 대시보드
     dashboardMode: '7d',

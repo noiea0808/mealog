@@ -3,7 +3,7 @@ import { VIBRANT_COLORS, CUMULATIVE_BAR_GRADIENT, RATING_GRADIENT, SATIETY_DATA 
 import { generateColorMap } from '../utils.js';
 
 const CUMULATIVE_KEYS = ['mealType', 'category', 'withWhom', 'snackType', 'snackPlace']; // 식사·간식 바차트 동일 색구성(빈도순 그라데이션)
-const DETAIL_MODAL_TAB_KEYS = ['mealType', 'category', 'withWhom', 'snackType', 'snackPlace']; // 상세보기 시 통계 + 세부 통계 탭 (간식 어디서 포함)
+const DETAIL_MODAL_TAB_KEYS = ['mealType', 'category', 'withWhom', 'snackType', 'snackPlace', 'snackWithWhom']; // 상세보기 시 통계 + 세부 통계 탭 (간식 누구와 포함)
 const MEAL_SLOTS = ['morning', 'lunch', 'dinner'];
 const SNACK_SLOTS = ['pre_morning', 'snack1', 'snack2', 'night'];
 import { getDayName } from './date-utils.js';
@@ -182,7 +182,7 @@ export function renderProportionChart(containerId, data, key) {
                 return 0;
             });
             sorted = emptyEntry ? [...ratingEntries, emptyEntry] : ratingEntries;
-        } else if (key === 'satiety') {
+        } else if (key === 'satiety' || key === 'snackSatiety') {
             const satietyEntries = nonEmptyEntries.sort((a, b) => {
                 const aNum = parseInt(a[0]);
                 const bNum = parseInt(b[0]);
@@ -227,7 +227,7 @@ export function renderProportionChart(containerId, data, key) {
             if (!isNaN(ratingNum)) {
                 bg = RATING_GRADIENT[ratingNum - 1] || RATING_GRADIENT[0];
             }
-        } else if (key === 'satiety') {
+        } else if (key === 'satiety' || key === 'snackSatiety') {
             const satietyNum = parseInt(name);
             if (!isNaN(satietyNum)) {
                 const satietyData = SATIETY_DATA.find(d => d.val === satietyNum);
@@ -263,7 +263,7 @@ export function renderProportionChart(containerId, data, key) {
             if (!isNaN(ratingNum)) {
                 displayName = `${ratingNum}점`;
             }
-        } else if (key === 'satiety') {
+        } else if (key === 'satiety' || key === 'snackSatiety') {
             const satietyNum = parseInt(name);
             if (!isNaN(satietyNum)) {
                 const satietyData = SATIETY_DATA.find(d => d.val === satietyNum);
@@ -322,7 +322,7 @@ export function openDetailModal(key, title) {
     // rating, snackRating, satiety는 숫자 값이므로 태그 필터링 불필요
     
     let slots, slotLabels;
-    if (key === 'snackType' || key === 'snackRating' || key === 'snackPlace') {
+    if (key === 'snackType' || key === 'snackRating' || key === 'snackPlace' || key === 'snackWithWhom' || key === 'snackSatiety') {
         slots = ['pre_morning', 'snack1', 'snack2', 'night'];
         slotLabels = ['아침 전', '오전', '오후', '야식'];
     } else {
@@ -334,7 +334,7 @@ export function openDetailModal(key, title) {
         if (key === 'snackPlace') {
             return String(m.place ?? '').trim() || '미입력';
         }
-        if (key === 'satiety') {
+        if (key === 'satiety' || key === 'snackSatiety') {
             const satietyNum = parseInt(m.satiety);
             if (!isNaN(satietyNum)) {
                 return SATIETY_DATA.find(d => d.val === satietyNum)?.label || '미입력';
@@ -347,6 +347,9 @@ export function openDetailModal(key, title) {
                 return `${ratingNum}점`;
             }
             return '미입력';
+        }
+        if (key === 'snackWithWhom') {
+            return (m.withWhomDetail || m.withWhom) || '미입력';
         }
         return m[key] || '미입력';
     };

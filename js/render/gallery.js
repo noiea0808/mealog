@@ -4,7 +4,7 @@
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
 import { normalizeUrl, getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
-import { getSharedPhotosByUser } from '../db.js';
+import { loadSharedPhotosByUserUpToPostCount } from '../db.js';
 import {
     getPostIdFromPhotoGroup,
     processPhotosToGroups,
@@ -19,6 +19,75 @@ import {
     enqueuePostInteractionLoad,
     clearMomentPostInteractionQueue
 } from './moment-post-interactions.js';
+
+/** 사용자 프로필 모먼트 그리드: 3열 × 5행 = 15게시물 단위 */
+const USER_PROFILE_MOMENT_GRID_PAGE_SIZE = 15;
+
+/** 사용자 프로필 모먼트 탭: 게시물당 첫 장만 3열 그리드(인스타 스타일) */
+function buildUserProfileMomentGridHtml(sortedGroups) {
+    const cells = sortedGroups.map((photoGroup) => {
+        const postId = getPostIdFromPhotoGroup(photoGroup);
+        const first = photoGroup[0];
+        const url = first?.photoUrl || '';
+        const n = photoGroup.length;
+        const multi = n > 1;
+        const encId = encodeURIComponent(postId || '');
+        const safeSrc = escapeHtml(url);
+        const imgOrPlaceholder = url
+            ? `<img src="${safeSrc}" alt="" class="absolute inset-0 h-full w-full object-cover" loading="lazy" draggable="false">`
+            : `<div class="absolute inset-0 flex items-center justify-center text-slate-400"><i class="fa-solid fa-image text-2xl" aria-hidden="true"></i></div>`;
+        const badge = multi
+            ? `<span class="pointer-events-none absolute top-1 right-1 flex items-center gap-0.5 rounded bg-black/60 px-1 py-0.5 text-[10px] font-black leading-none text-white shadow-sm" title="사진 ${n}장" aria-hidden="true">
+                    <i class="fa-solid fa-images text-[9px] opacity-95" aria-hidden="true"></i>
+                    <span>${n}</span>
+                </span>`
+            : '';
+        return `
+            <button type="button" class="gallery-profile-grid-cell relative aspect-square w-full min-h-0 overflow-hidden bg-slate-200 border border-slate-100 p-0 cursor-pointer active:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset" data-post-id="${encId}" aria-label="게시물 열기${multi ? `, 사진 ${n}장` : ''}">
+                ${imgOrPlaceholder}
+                ${badge}
+            </button>`;
+    }).join('');
+    return `<div class="gallery-profile-moment-grid grid grid-cols-3 gap-px bg-slate-200 p-px" role="list">${cells}</div>`;
+}
+
+function bindUserProfileMomentGridClicks(container) {
+    const grid = container.querySelector('.gallery-profile-moment-grid');
+    if (!grid) return;
+    grid.addEventListener('click', (e) => {
+        const btn = e.target.closest('.gallery-profile-grid-cell[data-post-id]');
+        if (!btn) return;
+        const raw = btn.getAttribute('data-post-id');
+        if (!raw || !appState.galleryFilterUserId) return;
+        try {
+            appState.galleryFilterPostId = decodeURIComponent(raw);
+        } catch (_) {
+            appState.galleryFilterPostId = raw;
+        }
+        renderGallery();
+    });
+}
+
+/** 모먼트 피드가 비었을 때: 진짜 없음 vs 네트워크·로드 실패 구분 */
+function buildGalleryEmptyMomentBlock(networkError, filterUserId) {
+    if (networkError) {
+        return `
+            <div class="flex flex-col items-center justify-center py-20 text-center px-4">
+                <i class="fa-regular fa-wifi text-6xl text-slate-200 mb-4" aria-hidden="true"></i>
+                <p class="text-sm font-bold text-slate-600">모먼트를 불러오지 못했습니다</p>
+                <p class="text-xs text-slate-400 mt-2 max-w-xs leading-relaxed">네트워크가 끊겼거나 불안정할 때 이 화면이 나올 수 있습니다. 연결을 확인한 뒤 다시 시도해 주세요.</p>
+                <button type="button" onclick="window.reloadMomentFeed && window.reloadMomentFeed()" class="mt-5 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl transition-colors inline-flex items-center gap-1.5">
+                    <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>다시 불러오기
+                </button>
+            </div>`;
+    }
+    return `
+            <div class="flex flex-col items-center justify-center py-20 text-center">
+                <i class="fa-solid fa-images text-6xl text-slate-200 mb-4" aria-hidden="true"></i>
+                <p class="text-sm font-bold text-slate-400">${filterUserId ? '이 사용자의 공유된 사진이 없습니다' : '공유된 사진이 없습니다'}</p>
+                ${!filterUserId ? '<p class="text-xs text-slate-300 mt-2">타임라인에서 사진을 공유해보세요!</p>' : ''}
+            </div>`;
+}
 
 let isRenderingGallery = false;
 let galleryScrollListeners = new Map();
@@ -240,7 +309,29 @@ export async function renderGallery(options = {}) {
     let photosToRender;
     if (filterUserId) {
         try {
-            photosToRender = await getSharedPhotosByUser(filterUserId);
+            if (appState.galleryUserProfileSharedForUserId !== filterUserId) {
+                appState.galleryUserProfileSharedDocs = null;
+                appState.galleryUserProfileSharedLastSnap = null;
+                appState.galleryUserProfileSharedHasMore = true;
+                appState.galleryUserProfileSharedForUserId = filterUserId;
+                appState.galleryUserProfileSharedDocSnaps = new Map();
+            }
+            if (!appState.galleryUserProfileSharedDocSnaps) {
+                appState.galleryUserProfileSharedDocSnaps = new Map();
+            }
+            if (appState.galleryUserProfileSharedDocs === null) {
+                const { docs, lastDocSnap, hasMore } = await loadSharedPhotosByUserUpToPostCount(
+                    filterUserId,
+                    null,
+                    USER_PROFILE_MOMENT_GRID_PAGE_SIZE,
+                    [],
+                    appState.galleryUserProfileSharedDocSnaps
+                );
+                appState.galleryUserProfileSharedDocs = docs;
+                appState.galleryUserProfileSharedLastSnap = lastDocSnap;
+                appState.galleryUserProfileSharedHasMore = hasMore;
+            }
+            photosToRender = appState.galleryUserProfileSharedDocs || [];
             appState.galleryFeedNetworkError = false;
         } catch (e) {
             console.error('모먼트(사용자) 로드 실패:', e);
@@ -279,7 +370,7 @@ export async function renderGallery(options = {}) {
     const dailyShares = photosToRender.filter(p => p.type === 'daily');
     console.log('renderGallery - 일간보기 공유 개수:', dailyShares.length, dailyShares);
     
-    // 필터링된 사용자 정보 표시 (상단) — 프로필+소개+모먼트/밀톡 탭
+    // 필터링된 사용자 정보 표시 (상단) — 프로필·소개글·모먼트/게시판 탭
     let userProfileHeader = '';
     if (filterUserId) {
         await fetchUserProfiles([filterUserId]);
@@ -297,9 +388,19 @@ export async function renderGallery(options = {}) {
                 const userDocSnap = await getDoc(doc(db, 'artifacts', appId, 'users', filterUserId));
                 const existingHeader = container.querySelector('.gallery-user-profile-header');
                 if (!existingHeader) return;
-                const bio = userSettings?.profile?.bio || '';
+                const bio = (userSettings?.profile?.bio && String(userSettings.profile.bio).trim()) || '';
                 const bioEl = existingHeader.querySelector('.gallery-filter-bio');
-                if (bioEl) bioEl.textContent = bio;
+                if (bioEl) {
+                    if (bio) {
+                        bioEl.textContent = bio;
+                        bioEl.classList.remove('text-slate-400', 'italic');
+                        bioEl.classList.add('text-slate-600');
+                    } else {
+                        bioEl.textContent = '아직 소개가 없습니다.';
+                        bioEl.classList.add('text-slate-400', 'italic');
+                        bioEl.classList.remove('text-slate-600');
+                    }
+                }
                 let joinedStr = '';
                 if (userDocSnap.exists()) {
                     const data = userDocSnap.data();
@@ -341,7 +442,16 @@ export async function renderGallery(options = {}) {
                         photoEl.classList.add('bg-cover', 'bg-center');
                     }
                 }
-            } catch (_) {}
+            } catch (_) {
+                const hdr = container.querySelector('.gallery-user-profile-header');
+                if (!hdr) return;
+                const bioEl = hdr.querySelector('.gallery-filter-bio');
+                if (bioEl) {
+                    bioEl.textContent = '아직 소개가 없습니다.';
+                    bioEl.classList.add('text-slate-400', 'italic');
+                    bioEl.classList.remove('text-slate-600');
+                }
+            }
         })();
         
         const isFilteredUserGuest = window.currentUser && window.currentUser.isAnonymous && filterUserId === window.currentUser.uid;
@@ -362,11 +472,13 @@ export async function renderGallery(options = {}) {
                             <div class="gallery-filter-joined text-xs text-slate-400"></div>
                         </div>
                     </div>
-                    <div class="gallery-filter-bio text-sm text-slate-600 whitespace-pre-wrap min-h-[1.5rem] px-4 py-3 border-b-2 border-slate-200">${filteredUserPhoto ? ('' /* 비동기로 채움 */) : ''}</div>
+                    <div class="px-4 py-3 border-b-2 border-slate-200 bg-slate-50/50">
+                        <div class="gallery-filter-bio text-sm whitespace-pre-wrap min-h-[1.25rem] text-slate-400 italic">불러오는 중…</div>
+                    </div>
                 </div>
                 <div class="gallery-filter-tabs sticky top-0 z-30 flex w-full min-w-0 bg-white border-t-2 border-slate-200">
                     <button type="button" onclick="window.switchGalleryFilterTab && window.switchGalleryFilterTab('moment')" class="gallery-filter-tab-btn flex-1 min-w-0 py-3 text-sm font-bold transition-colors border-b-2 ${galleryFilterTab === 'moment' ? 'text-emerald-600 border-emerald-600' : 'text-slate-600 border-transparent'}">모먼트</button>
-                    <button type="button" onclick="window.switchGalleryFilterTab && window.switchGalleryFilterTab('board')" class="gallery-filter-tab-btn flex-1 min-w-0 py-3 text-sm font-bold transition-colors border-b-2 ${galleryFilterTab === 'board' ? 'text-emerald-600 border-emerald-600' : 'text-slate-600 border-transparent'}">밀톡</button>
+                    <button type="button" onclick="window.switchGalleryFilterTab && window.switchGalleryFilterTab('board')" class="gallery-filter-tab-btn flex-1 min-w-0 py-3 text-sm font-bold transition-colors border-b-2 ${galleryFilterTab === 'board' ? 'text-emerald-600 border-emerald-600' : 'text-slate-600 border-transparent'}">게시판</button>
                 </div>
             </div>
         `;
@@ -437,13 +549,7 @@ export async function renderGallery(options = {}) {
     }
     
     if (photosToRender.length === 0) {
-        container.innerHTML = userProfileHeader + `
-            <div class="flex flex-col items-center justify-center py-20 text-center">
-                <i class="fa-solid fa-images text-6xl text-slate-200 mb-4"></i>
-                <p class="text-sm font-bold text-slate-400">${filterUserId ? '이 사용자의 공유된 사진이 없습니다' : '공유된 사진이 없습니다'}</p>
-                ${!filterUserId ? '<p class="text-xs text-slate-300 mt-2">타임라인에서 사진을 공유해보세요!</p>' : ''}
-            </div>
-        `;
+        container.innerHTML = userProfileHeader + buildGalleryEmptyMomentBlock(!!appState.galleryFeedNetworkError, filterUserId);
         // 이전 포스트 ID 목록 초기화
         previousGalleryPostIds.clear();
         // 빈 갤러리일 때도 맨 위로 스크롤
@@ -601,10 +707,117 @@ export async function renderGallery(options = {}) {
     // 알림 필터 시 빈 메시지 (해당 게시물이 없을 때)
     const filterPostEmptyMsg = filterPostId && sortedGroups.length === 0 ? '해당 게시물을 찾을 수 없습니다' : null;
     
-    // 네트워크 단절 시 빈 메시지 (모먼트 피드 로드 실패 시)
-    const networkEmptyMsg = sortedGroups.length === 0 && appState.galleryFeedNetworkError
-        ? '네트워크가 끊겼습니다. 연결을 확인한 뒤 다시 시도해 주세요.'
-        : null;
+    // 네트워크 단절 등으로 피드 로드 실패 (흔적/알림 필터 적용 후에도 그룹이 비었을 때)
+    const showNetworkErrorEmpty = sortedGroups.length === 0 && appState.galleryFeedNetworkError;
+
+    const isUserProfileMomentGrid =
+        filterUserId &&
+        galleryFilterTab === 'moment' &&
+        !appState.galleryFilterPostId;
+
+    if (isUserProfileMomentGrid) {
+        if (abortSignal.aborted) {
+            isRenderingGallery = false;
+            return;
+        }
+        const gridEmptyMsg = showNetworkErrorEmpty ? null : traceEmptyMsg;
+        const gridEmptyIcon = traceEmptyIcon;
+        let gridBody = '';
+        if (showNetworkErrorEmpty) {
+            gridBody = buildGalleryEmptyMomentBlock(true, filterUserId);
+        } else if (sortedGroups.length === 0) {
+            gridBody = gridEmptyMsg
+                ? `<div class="flex flex-col items-center justify-center py-20 text-center px-4">
+                <i class="fa-regular ${gridEmptyIcon} text-6xl text-slate-200 mb-4" aria-hidden="true"></i>
+                <p class="text-sm font-bold text-slate-400">${gridEmptyMsg}</p>
+            </div>`
+                : buildGalleryEmptyMomentBlock(false, filterUserId);
+        } else {
+            let vis = appState.galleryUserProfileMomentVisiblePostCount;
+            if (typeof vis !== 'number' || vis < USER_PROFILE_MOMENT_GRID_PAGE_SIZE) {
+                vis = USER_PROFILE_MOMENT_GRID_PAGE_SIZE;
+                appState.galleryUserProfileMomentVisiblePostCount = vis;
+            }
+            if (sortedGroups.length > 0) {
+                vis = Math.min(vis, sortedGroups.length);
+                appState.galleryUserProfileMomentVisiblePostCount = vis;
+            }
+            const gridSlice = sortedGroups.slice(0, vis);
+            gridBody = buildUserProfileMomentGridHtml(gridSlice);
+            const remainLocal = sortedGroups.length - gridSlice.length;
+            const hasMoreServer = appState.galleryUserProfileSharedHasMore === true;
+            if (remainLocal > 0 || hasMoreServer) {
+                gridBody += `
+            <div class="flex justify-center py-5 px-4 bg-white border-t border-slate-100">
+                <button type="button" id="galleryUserMomentGridLoadMoreBtn" class="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-xl transition-colors disabled:opacity-60">
+                    <i class="fa-solid fa-chevron-down mr-1.5" aria-hidden="true"></i>더보기
+                </button>
+            </div>`;
+            }
+        }
+        container.innerHTML = userProfileHeader + gridBody;
+        if (sortedGroups.length > 0 && !showNetworkErrorEmpty) {
+            bindUserProfileMomentGridClicks(container);
+            const lm = document.getElementById('galleryUserMomentGridLoadMoreBtn');
+            if (lm) {
+                lm.addEventListener('click', async () => {
+                    if (sortedGroups.length > appState.galleryUserProfileMomentVisiblePostCount) {
+                        appState.galleryUserProfileMomentVisiblePostCount = Math.min(
+                            appState.galleryUserProfileMomentVisiblePostCount + USER_PROFILE_MOMENT_GRID_PAGE_SIZE,
+                            sortedGroups.length
+                        );
+                        renderGallery();
+                        return;
+                    }
+                    if (!appState.galleryUserProfileSharedHasMore) return;
+                    const lastSnap = appState.galleryUserProfileSharedLastSnap;
+                    if (!lastSnap) {
+                        appState.galleryUserProfileSharedHasMore = false;
+                        renderGallery();
+                        return;
+                    }
+                    lm.disabled = true;
+                    const prev = lm.innerHTML;
+                    lm.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5" aria-hidden="true"></i><span class="text-slate-500">불러오는 중…</span>';
+                    try {
+                        const acc = appState.galleryUserProfileSharedDocs || [];
+                        const currentGridGroups = processPhotosToGroups(acc).length;
+                        const targetPosts = currentGridGroups + USER_PROFILE_MOMENT_GRID_PAGE_SIZE;
+                        if (!appState.galleryUserProfileSharedDocSnaps) {
+                            appState.galleryUserProfileSharedDocSnaps = new Map();
+                        }
+                        const { docs: merged, lastDocSnap, hasMore } = await loadSharedPhotosByUserUpToPostCount(
+                            filterUserId,
+                            lastSnap,
+                            targetPosts,
+                            acc,
+                            appState.galleryUserProfileSharedDocSnaps
+                        );
+                        appState.galleryUserProfileSharedDocs = merged;
+                        appState.galleryUserProfileSharedLastSnap = lastDocSnap;
+                        appState.galleryUserProfileSharedHasMore = hasMore;
+                        const mergedGroups = processPhotosToGroups(merged).length;
+                        appState.galleryUserProfileMomentVisiblePostCount = Math.min(
+                            appState.galleryUserProfileMomentVisiblePostCount + USER_PROFILE_MOMENT_GRID_PAGE_SIZE,
+                            mergedGroups
+                        );
+                        appState.galleryFeedNetworkError = false;
+                    } catch (err) {
+                        console.error('모먼트(사용자) 추가 로드 실패:', err);
+                        appState.galleryFeedNetworkError = true;
+                        if (typeof showToast === 'function') showToast('더 불러오지 못했습니다. 연결을 확인해 주세요.', 'error');
+                        lm.innerHTML = prev;
+                        lm.disabled = false;
+                        return;
+                    }
+                    await renderGallery();
+                });
+            }
+        }
+        previousGalleryPostIds.clear();
+        isRenderingGallery = false;
+        return;
+    }
     
     // ===== DIFFING: 변경사항이 작으면 차등 업데이트, 크면 전체 재렌더링 =====
     const currentPostIds = new Set(sortedGroups.map(g => getPostIdFromPhotoGroup(g)));
@@ -622,17 +835,16 @@ export async function renderGallery(options = {}) {
     }
     
     // 헤더와 빈 메시지만 먼저 렌더링 (네트워크 오류 > 알림/흔적 필터 빈 메시지)
-    const emptyMsg = networkEmptyMsg || filterPostEmptyMsg || traceEmptyMsg;
-    const emptyIcon = networkEmptyMsg ? 'fa-wifi' : (filterPostEmptyMsg ? 'fa-comment' : traceEmptyIcon);
-    const headerHtml = userProfileHeader + (emptyMsg ? `
+    const emptyMsg = showNetworkErrorEmpty ? null : (filterPostEmptyMsg || traceEmptyMsg);
+    const emptyIcon = filterPostEmptyMsg ? 'fa-comment' : traceEmptyIcon;
+    const headerHtml = userProfileHeader + (showNetworkErrorEmpty
+        ? buildGalleryEmptyMomentBlock(true, filterUserId)
+        : (emptyMsg ? `
             <div class="flex flex-col items-center justify-center py-20 text-center">
                 <i class="fa-regular ${emptyIcon} text-6xl text-slate-200 mb-4"></i>
                 <p class="text-sm font-bold text-slate-400">${emptyMsg}</p>
-                ${networkEmptyMsg ? `<button type="button" onclick="window.reloadMomentFeed && window.reloadMomentFeed()" class="mt-4 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl transition-colors inline-flex items-center gap-1.5">
-                    <i class="fa-solid fa-rotate-right"></i>다시 불러오기
-                </button>` : ''}
             </div>
-        ` : '');
+        ` : ''));
     
     // 더보기 표시 여부 (타임라인처럼 초기 구조에 포함하여 누락 방지)
     const canLoadMore = !filterUserId && !appState.galleryFilterPostId &&
@@ -1069,6 +1281,12 @@ export function filterGalleryByUser(userId, userNickname) {
         appState.galleryFilterEntryTab = 'gallery';
     }
     appState.galleryFilterUserId = userId;
+    appState.galleryUserProfileMomentVisiblePostCount = USER_PROFILE_MOMENT_GRID_PAGE_SIZE;
+    appState.galleryUserProfileSharedDocs = null;
+    appState.galleryUserProfileSharedLastSnap = null;
+    appState.galleryUserProfileSharedHasMore = true;
+    appState.galleryUserProfileSharedForUserId = userId;
+    appState.galleryUserProfileSharedDocSnaps = new Map();
     renderGallery();
 }
 
@@ -1078,10 +1296,22 @@ export async function clearGalleryFilter() {
     appState.galleryFilterUserId = null;
     appState.galleryFilterTab = 'moment';
     appState.galleryFilterEntryTab = null;
+    appState.galleryFilterPostId = null;
+    appState.galleryUserProfileMomentVisiblePostCount = USER_PROFILE_MOMENT_GRID_PAGE_SIZE;
+    appState.galleryUserProfileSharedDocs = null;
+    appState.galleryUserProfileSharedLastSnap = null;
+    appState.galleryUserProfileSharedHasMore = false;
+    appState.galleryUserProfileSharedForUserId = null;
+    appState.galleryUserProfileSharedDocSnaps = null;
     const mainHeader = document.querySelector('#mainApp > header');
     if (mainHeader) mainHeader.classList.remove('hidden');
     if (returnTab === 'board') {
         if (typeof window.switchMainTab === 'function') window.switchMainTab('board');
+        return;
+    }
+    if (returnTab === 'settings') {
+        if (typeof window.switchMainTab === 'function') window.switchMainTab('settings');
+        if (typeof window.openSettings === 'function') window.openSettings();
         return;
     }
     if (typeof window.markMomentFeedNavSeen === 'function') window.markMomentFeedNavSeen();
@@ -1107,6 +1337,7 @@ export async function clearGalleryFilter() {
 export function switchGalleryFilterTab(tab) {
     if (tab !== 'moment' && tab !== 'board') return;
     appState.galleryFilterTab = tab;
+    if (appState.galleryFilterUserId) appState.galleryFilterPostId = null;
     renderGallery();
     if (window.syncBottomNavForGalleryFilter) window.syncBottomNavForGalleryFilter();
 }

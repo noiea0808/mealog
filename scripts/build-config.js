@@ -5,7 +5,10 @@ function escapeJsSingleQuotedString(value) {
   return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
-const googleWebClientId = process.env.GOOGLE_WEB_CLIENT_ID || '';
+/** mealog-r0 / google-services.json oauth client (client_type 3). 환경변수 미설정 시 네이티브 구글 로그인용 기본값 */
+const DEFAULT_GOOGLE_WEB_CLIENT_ID =
+  '535597498508-pi88b4aofmljpnrbrnstplsmj83clrnq.apps.googleusercontent.com';
+const googleWebClientId = process.env.GOOGLE_WEB_CLIENT_ID || DEFAULT_GOOGLE_WEB_CLIENT_ID;
 /** 운영 앱(Capacitor server.url → mealog.net)은 배포된 config.js만 씀. 비어 있으면 둘러보기(데모 로그인) 불가 */
 const demoAccountEmail = process.env.DEMO_ACCOUNT_EMAIL || 'dummy@mealog.net';
 const demoAccountPassword = process.env.DEMO_ACCOUNT_PASSWORD || '';

@@ -89,6 +89,141 @@ export function showToast(message, type = 'info') {
     setTimeout(remove, TOAST_DURATION_MS);
 }
 
+let successPopupTimer = null;
+
+/**
+ * 기록 완료 중앙 팝업 (0.5초)
+ * - 여러 번 호출되면 이전 타이머를 정리하고 애니메이션을 재시작한다.
+ */
+export function showSuccessPopup(message = '기록 완료', durationMs = 800) {
+    const popup = document.getElementById('successPopup');
+    const textEl = document.getElementById('successPopupText');
+    const confetti = document.getElementById('successPopupConfetti');
+    if (!popup) return;
+
+    if (successPopupTimer) {
+        clearTimeout(successPopupTimer);
+        successPopupTimer = null;
+    }
+
+    if (textEl) textEl.textContent = message || '기록 완료';
+
+    // 애니메이션 재시작을 위해 클래스 토글 + reflow
+    document.body.classList.remove('success-popup-anim');
+    popup.classList.remove('hidden');
+    void popup.offsetHeight;
+    // 컨페티는 "보이는 상태"에서 좌표를 재서, 체크 아이콘 중심에서 사방으로 퍼지게 생성
+    if (confetti) {
+        confetti.innerHTML = '';
+        const colors = ['#f97316', '#22c55e', '#3b82f6', '#f43f5e', '#a855f7', '#eab308', '#14b8a6'];
+        const n = 22;
+        const checkSvg = popup.querySelector?.('.success-check svg');
+        const confettiRect = confetti.getBoundingClientRect?.();
+        // 기준점: 체크 아이콘 중앙(컨페티 컨테이너 기준 좌표로 변환)
+        let cx = (confettiRect?.width ?? window.innerWidth) / 2;
+        let cy = (confettiRect?.height ?? window.innerHeight) / 2;
+        try {
+            const r = checkSvg?.getBoundingClientRect?.();
+            if (r && confettiRect) {
+                cx = (r.left + r.width / 2) - confettiRect.left;
+                cy = (r.top + r.height / 2) - confettiRect.top;
+            }
+        } catch (_) {}
+        for (let i = 0; i < n; i++) {
+            const el = document.createElement('span');
+            el.className = 'confetti-piece';
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 70 + Math.random() * 160;
+            const dx = Math.cos(angle) * dist;
+            const dy = Math.sin(angle) * dist;
+            const rot = (Math.random() * 2 - 1) * 360;
+            const delay = Math.random() * 60;
+            el.style.left = cx.toFixed(1) + 'px';
+            el.style.top = cy.toFixed(1) + 'px';
+            el.style.background = colors[i % colors.length];
+            el.style.setProperty('--dx', dx.toFixed(1) + 'px');
+            el.style.setProperty('--dy', dy.toFixed(1) + 'px');
+            el.style.setProperty('--rot', rot.toFixed(1) + 'deg');
+            el.style.animationDelay = delay.toFixed(0) + 'ms';
+            confetti.appendChild(el);
+        }
+    }
+    document.body.classList.add('success-popup-anim');
+
+    successPopupTimer = setTimeout(() => {
+        document.body.classList.remove('success-popup-anim');
+        popup.classList.add('hidden');
+        if (confetti) confetti.innerHTML = '';
+        successPopupTimer = null;
+    }, Math.max(0, Number(durationMs) || 800));
+}
+
+/** 기록 완료 팝업을 즉시 닫음 (ESC 등) */
+export function dismissSuccessPopup() {
+    if (successPopupTimer) {
+        clearTimeout(successPopupTimer);
+        successPopupTimer = null;
+    }
+    const popup = document.getElementById('successPopup');
+    const confetti = document.getElementById('successPopupConfetti');
+    document.body.classList.remove('success-popup-anim');
+    if (popup) popup.classList.add('hidden');
+    if (confetti) confetti.innerHTML = '';
+}
+
+function ensureAttendancePopupCloseBound() {
+    const btn = document.getElementById('attendancePopupCloseBtn');
+    if (!btn || btn.dataset.bound === '1') return;
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', closeAttendancePopup);
+}
+
+/**
+ * 출석/연속 기록 팝업 닫기 (자동 닫기 없음 — 닫기 버튼 전용)
+ */
+export function closeAttendancePopup() {
+    const popup = document.getElementById('attendancePopup');
+    document.body.classList.remove('attendance-popup-anim');
+    if (popup) popup.classList.add('hidden');
+}
+
+/**
+ * 출석/연속 기록 중앙 팝업 — 기록 완료 팝업과 동일한 굵은 윤곽 SVG 텍스트 (컨페티 없음)
+ * 입장 애니메이션은 끝까지 표시가 유지되며, 닫기 버튼으로만 닫힙니다.
+ * @param {string} line1
+ * @param {string} [line2]
+ */
+export function showAttendancePopup(line1, line2 = '') {
+    const popup = document.getElementById('attendancePopup');
+    const l1 = document.getElementById('attendancePopupLine1');
+    const l2 = document.getElementById('attendancePopupLine2');
+    const textRoot = document.getElementById('attendancePopupTextRoot');
+    if (!popup || !l1 || !l2) return;
+
+    ensureAttendancePopupCloseBound();
+
+    l1.textContent = line1 || '';
+    l2.textContent = line2 || '';
+    const two = Boolean(line2 && line2.trim());
+    if (two) {
+        l1.setAttribute('y', '24');
+        l2.setAttribute('dy', '15');
+    } else {
+        l1.setAttribute('y', '34');
+        l2.setAttribute('dy', '0');
+        l2.textContent = '';
+    }
+
+    const maxLen = Math.max((line1 || '').length, (line2 || '').length);
+    const fs = maxLen > 20 ? '15' : maxLen > 16 ? '17' : '19';
+    if (textRoot) textRoot.setAttribute('font-size', fs);
+
+    document.body.classList.remove('attendance-popup-anim');
+    popup.classList.remove('hidden');
+    void popup.offsetHeight;
+    document.body.classList.add('attendance-popup-anim');
+}
+
 const PERMISSION_HINT_TOAST_MS = 14000;
 
 /**

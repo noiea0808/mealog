@@ -25,7 +25,14 @@ export {
     preloadAdjacentGalleryImages
 } from './post-group-utils.js';
 export { fetchUserProfiles, getUserSettings } from './user-profiles.js';
-export { renderBoard, renderBoardDetail, renderNoticeDetail, renderBoardPostList } from './board-notice.js';
+export { renderBoard, renderBoardDetail, renderNoticeDetail, renderBoardPostList, syncBoardFeedComposerVisibility } from './board-notice.js';
+export {
+    renderBoardFeedTab,
+    scrollFeedPanelToBottom,
+    buildPendingFeedMessage,
+    applyOptimisticFeedPost,
+    removePendingFeedPosts
+} from './board-feed.js';
 export {
     renderGallery,
     filterGalleryByUser,

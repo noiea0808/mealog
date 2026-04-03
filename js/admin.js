@@ -17,9 +17,9 @@ import {
     renderSharedPhotos
 } from './admin/dashboard.js';
 import {
-    renderUsers,
     switchAdminUsersPage,
     switchAdminUsersListPage,
+    ensureAdminUsersSortHandlers,
     processDeleteUserRequests,
     adminUserDeleteSelected,
     adminUserBanShare,
@@ -35,16 +35,20 @@ import { loadAdminPushMessagesPage } from './admin/push-broadcast.js';
 import { renderPopups, renderPopupImagePreviews } from './admin/popups.js';
 import { loadLoginBannerConfig } from './admin/login-banner.js';
 import { loadTagsContent } from './admin/tags.js';
-import { registerRestaurantStats, renderRestaurantDataForMonitoringSidebar } from './admin/restaurant-stats.js';
-import { renderBoardPosts, getCurrentAdminBoardCategory } from './admin/board-moderation.js';
-import { renderFeedManagement } from './admin/feed-moderation.js';
+import { registerRestaurantStats } from './admin/restaurant-stats.js';
 import { loadMealogComments, showCharacterListView } from './admin/persona.js';
+import { runAdminStatsBackfillForUid } from './admin/stats-backfill.js';
+import { loadAdminLogTab } from './admin/ops-log.js';
+import { invalidateAttendancePopupConfigCache, normalizeAttendancePopup } from './attendance-check.js';
+// 모니터링(모먼트·밀톡·게시판): HTML onclick용 window.* 등록
+import './admin/feed-moderation.js';
+import './admin/lounge-chat-moderation.js';
+import './admin/board-moderation.js';
 
-import { app, db, appId, callableFunctions } from './firebase.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { app, db, appId, callableFunctions, auth } from './firebase.js';
+import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-// Firestore 규칙·Callable은 기본 Auth만 인식하므로 관리자도 기본 Auth 사용 (admin 페이지는 별도 URL)
-const adminAuth = getAuth(app);
+// Firestore 규칙·Callable은 기본 Auth만 인식 — 메인 앱과 동일한 `auth` 인스턴스 사용
 import { collection, collectionGroup, getDocs, query, orderBy, limit, startAfter, doc, deleteDoc, getDoc, setDoc, where, writeBatch, addDoc, serverTimestamp, getCountFromServer, Timestamp, deleteField } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { uploadImageToStorage, uploadPersonaImageToStorage, uploadNoticeImages, uploadPopupImages, uploadLoginBannerImage } from './utils.js';
 import { invalidateAdminDisplayNameCache } from './db.js';
@@ -135,17 +139,19 @@ window.switchAdminTab = function(tab) {
     if (tab === 'dashboard') {
         updateStatistics();
     } else if (tab === 'monitoring') {
-        switchMonitoringSidebar('feed'); // 기본으로 피드 관리 표시
-        renderFeedManagement();
+        switchMonitoringSidebar('feed'); // UI만 전환 — 목록은 각 화면의 새로고침으로 로드
         loadAdminSettings(); // 공지·댓글 표시 이름 캐시 로드
     } else if (tab === 'persona') {
         // 페르소나 탭은 더 이상 사용하지 않음
     } else if (tab === 'users') {
-        renderUsers();
+        ensureAdminUsersSortHandlers();
+        /* 사용자 목록은 새로고침 버튼으로만 로드 */
     } else if (tab === 'alerts') {
         switchAlertsSidebar('notice');
     } else if (tab === 'content') {
         switchContentSidebar('mealog'); // 콘텐츠 탭 첫 메뉴(MEALOG)
+    } else if (tab === 'adminLog') {
+        loadAdminLogTab();
     }
 }
 
@@ -168,6 +174,7 @@ window.adminUserDeleteSelected = adminUserDeleteSelected;
 window.adminUserBanShare = adminUserBanShare;
 window.adminUserBanWrite = adminUserBanWrite;
 window.refreshUsers = refreshUsers;
+window.runAdminStatsBackfillForUid = runAdminStatsBackfillForUid;
 
 // 삭제 모달 열기
 window.openDeleteModal = function(photoId) {
@@ -212,15 +219,29 @@ window.confirmDeletePhoto = async function() {
 };
 
 // 인증 상태 변경 리스너
-onAuthStateChanged(adminAuth, async (user) => {
+onAuthStateChanged(auth, async (user) => {
     const loadingOverlay = document.getElementById('loadingOverlay');
     const loginPage = document.getElementById('loginPage');
     const adminPage = document.getElementById('adminPage');
+    const loginError = document.getElementById('loginError');
     
     try {
         if (user) {
-            // ADMIN 권한 확인
-            const isAdmin = await checkAdminStatus(user.uid);
+            let isAdmin;
+            try {
+                isAdmin = await checkAdminStatus(user.uid);
+            } catch (e) {
+                if (e?.code === 'admin-check-network' || e?.isNetwork) {
+                    if (adminPage) adminPage.classList.add('hidden');
+                    if (loginPage) loginPage.classList.remove('hidden');
+                    if (loginError) {
+                        loginError.textContent = e.message || '관리자 확인에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+                        loginError.classList.remove('hidden');
+                    }
+                    return;
+                }
+                throw e;
+            }
             if (isAdmin) {
                 if (loginPage) loginPage.classList.add('hidden');
                 if (adminPage) adminPage.classList.remove('hidden');
@@ -231,7 +252,7 @@ onAuthStateChanged(adminAuth, async (user) => {
                 if (loginPage) loginPage.classList.remove('hidden');
                 // 이미 로그인되어 있으면 로그아웃
                 try {
-                    await signOut(adminAuth);
+                    await signOut(auth);
                 } catch (e) {
                     console.error("로그아웃 실패:", e);
                 }
@@ -514,15 +535,7 @@ window.switchMonitoringSidebar = function(section) {
         activeMainSection.classList.remove('hidden');
     }
     resetAdminScrollTop();
-    
-    // 섹션별 데이터 로드
-    if (section === 'feed') {
-        renderFeedManagement();
-    } else if (section === 'board') {
-        renderBoardPosts(getCurrentAdminBoardCategory());
-    } else if (section === 'restaurants') {
-        renderRestaurantDataForMonitoringSidebar();
-    }
+    /* 데이터는 각 섹션의「새로고침」버튼에서만 로드 (탭/서브메뉴 진입 시 Firestore 조회 없음) */
 };
 
 // 콘텐츠 관리 관련 함수들
@@ -616,8 +629,42 @@ window.switchContentSidebar = function(section) {
     } else if (section === 'loginBanner') {
         loadLoginBannerConfig();
     } else if (section === 'settings') {
+        bindAdminSettingsSubnavOnce();
         loadAdminSettings();
     }
+};
+
+const ATT_DEFAULT_NO_L1 = '우리 오늘부터';
+const ATT_DEFAULT_NO_L2 = '시작하는거죠?!';
+
+let adminSettingsSubnavBound = false;
+function bindAdminSettingsSubnavOnce() {
+    if (adminSettingsSubnavBound) return;
+    adminSettingsSubnavBound = true;
+    document.querySelectorAll('.admin-settings-subnav-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const sub = btn.dataset.settingsSub;
+            if (sub) window.switchAdminSettingsSub(sub);
+        });
+    });
+}
+
+window.switchAdminSettingsSub = function (sub) {
+    if (sub !== 'displayName' && sub !== 'welcome') return;
+    document.querySelectorAll('.admin-settings-subnav-btn').forEach((btn) => {
+        const on = btn.dataset.settingsSub === sub;
+        btn.classList.toggle('text-emerald-600', on);
+        btn.classList.toggle('bg-emerald-50', on);
+        btn.classList.toggle('border-emerald-200', on);
+        btn.classList.toggle('text-slate-600', !on);
+        btn.classList.toggle('bg-white', !on);
+        btn.classList.toggle('border-slate-200', !on);
+        btn.classList.toggle('hover:bg-slate-50', !on);
+    });
+    document.querySelectorAll('.admin-settings-subpanel').forEach((panel) => {
+        const key = panel.id.replace('adminSettingsSub-', '');
+        panel.classList.toggle('hidden', key !== sub);
+    });
 };
 
 
@@ -1155,7 +1202,7 @@ window.deployTerms = async function() {
             terms: [{ title: '이용약관', content: termsContent }],
             privacy: [{ title: '개인정보 처리방침', content: privacyContent }],
             deployedAt: new Date().toISOString(),
-            deployedBy: adminAuth.currentUser?.email || '관리자'
+            deployedBy: auth.currentUser?.email || '관리자'
         };
         
         // 약관 버전 컬렉션에 저장 (terms 문서의 하위 컬렉션으로 저장)
@@ -1256,7 +1303,7 @@ const DEMO_GUIDE_TABS = [
     { key: 'dashboard', icon: 'fa-chart-line',  label: '밀당' },
     { key: 'gallery',   icon: 'fa-images',      label: '모먼트' },
     { key: 'timeline',  icon: 'fa-clock',        label: '밀로그' },
-    { key: 'board',     icon: 'fa-comments',     label: '밀톡' },
+    { key: 'board',     icon: 'fa-comments',     label: '라운지' },
     { key: 'settings',  icon: 'fa-gear',         label: '설정' },
 ];
 
@@ -1320,15 +1367,37 @@ window.saveDemoGuide = async function() {
 // 관리자 표시 이름 캐시 (공지·댓글 작성 시 사용)
 let cachedAdminDisplayName = '관리자';
 
+function fillAttendancePopupForm(rawAp) {
+    const n = normalizeAttendancePopup(rawAp && typeof rawAp === 'object' ? rawAp : {});
+    const en = document.getElementById('attendanceEnabled');
+    if (en) en.checked = n.enabled !== false;
+    const apply = n.applyTo === 'staging' || n.applyTo === 'production' ? n.applyTo : 'all';
+    document.querySelectorAll('input[name="attendanceApplyTo"]').forEach((r) => {
+        r.checked = r.value === apply;
+    });
+    const setInput = (id, val, defStr) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.value = val != null && String(val).trim() !== '' ? String(val) : defStr;
+    };
+    setInput('attendanceNoRecordLine1', n.noRecordLine1, ATT_DEFAULT_NO_L1);
+    setInput('attendanceNoRecordLine2', n.noRecordLine2, ATT_DEFAULT_NO_L2);
+    setInput('attendanceStreakLine2', n.streakLine2, '');
+}
+
 async function loadAdminSettings() {
     const inputEl = document.getElementById('adminDisplayNameInput');
     if (!inputEl) return;
     try {
         const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
         const snap = await getDoc(configRef);
-        const displayName = snap.exists() && snap.data().displayName ? String(snap.data().displayName).trim() : '관리자';
+        const data = snap.exists() ? snap.data() : {};
+        const displayName = data.displayName ? String(data.displayName).trim() : '관리자';
         cachedAdminDisplayName = displayName || '관리자';
         inputEl.value = cachedAdminDisplayName;
+
+        const ap = data.attendancePopup && typeof data.attendancePopup === 'object' ? data.attendancePopup : {};
+        fillAttendancePopupForm(ap);
     } catch (e) {
         console.warn('관리자 설정 로드 실패:', e);
         inputEl.value = cachedAdminDisplayName;
@@ -1347,6 +1416,28 @@ window.saveAdminDisplayName = async function() {
         alert('저장되었습니다.');
     } catch (e) {
         console.error('관리자 표시 이름 저장 실패:', e);
+        alert('저장에 실패했습니다: ' + (e?.message || e));
+    }
+};
+
+window.saveAttendancePopupSettings = async function () {
+    try {
+        const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
+        const applyEl = document.querySelector('input[name="attendanceApplyTo"]:checked');
+        let applyTo = applyEl?.value;
+        if (applyTo !== 'staging' && applyTo !== 'production') applyTo = 'all';
+        const payload = {
+            enabled: document.getElementById('attendanceEnabled')?.checked === true,
+            applyTo,
+            noRecordLine1: document.getElementById('attendanceNoRecordLine1')?.value?.trim() ?? '',
+            noRecordLine2: document.getElementById('attendanceNoRecordLine2')?.value?.trim() ?? '',
+            streakLine2: document.getElementById('attendanceStreakLine2')?.value?.trim() ?? ''
+        };
+        await setDoc(configRef, { attendancePopup: payload }, { merge: true });
+        invalidateAttendancePopupConfigCache();
+        alert('웰컴메시지 설정이 저장되었습니다.');
+    } catch (e) {
+        console.error('연속 기록 팝업 설정 저장 실패:', e);
         alert('저장에 실패했습니다: ' + (e?.message || e));
     }
 };
