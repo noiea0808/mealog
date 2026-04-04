@@ -129,36 +129,31 @@
                 <!-- 기간별 통계 테이블 -->
                 <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8">
                     <div class="overflow-x-auto">
-                        <table class="w-full text-left text-sm">
+                        <table id="adminDashboardStatsTable" class="min-w-max w-full text-left text-sm border-separate border-spacing-0">
                             <thead>
-                                <tr class="border-b border-slate-200 bg-slate-50">
-                                    <th class="px-4 py-3 font-black text-slate-700 uppercase">항목</th>
-                                    <th class="px-4 py-3 font-black text-slate-700 uppercase text-center min-w-[5rem]">전체</th>
-                                    <th class="px-4 py-3 font-black text-slate-700 uppercase text-center min-w-[5rem]">최근 30일</th>
-                                    <th colspan="8" class="px-2 py-3 font-black text-slate-700 uppercase text-center border-x border-slate-200 bg-slate-100/80 text-xs tracking-wide">최근 7일</th>
+                                <tr class="border-b border-slate-200 bg-slate-50" id="dashboardHeadRow1">
+                                    <th rowspan="2" class="px-2 py-1.5 font-black text-slate-700 uppercase text-xs sticky left-0 z-30 bg-slate-50 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.15)] border-r border-slate-200/90 align-middle">항목</th>
+                                    <th rowspan="2" class="px-2 py-1.5 font-black text-slate-700 uppercase text-center text-xs min-w-[4.5rem] sticky left-[8rem] z-30 bg-slate-50 shadow-[4px_0_12px_-6px_rgba(0,0,0,0.15)] border-r border-slate-200/90 align-middle">전체</th>
+                                    <th colspan="8" id="dashboardHead7dTop" class="px-2 py-1.5 font-black text-slate-700 uppercase text-center border-x border-slate-200 bg-slate-100/80 text-xs tracking-wide align-middle">최근 7일</th>
                                 </tr>
-                                <tr class="border-b border-slate-200 bg-slate-50/90 text-[11px]">
-                                    <th class="px-4 py-2"></th>
-                                    <th class="px-4 py-2"></th>
-                                    <th class="px-4 py-2"></th>
-                                    <th class="px-2 py-2 text-center font-bold text-slate-600 min-w-[3rem] border-l border-slate-200">7일 합</th>
-                                    <th id="dashboard7dHead0" class="px-1 py-2 text-center font-bold text-slate-600 min-w-[2.75rem]">—</th>
-                                    <th id="dashboard7dHead1" class="px-1 py-2 text-center font-bold text-slate-600 min-w-[2.75rem]">—</th>
-                                    <th id="dashboard7dHead2" class="px-1 py-2 text-center font-bold text-slate-600 min-w-[2.75rem]">—</th>
-                                    <th id="dashboard7dHead3" class="px-1 py-2 text-center font-bold text-slate-600 min-w-[2.75rem]">—</th>
-                                    <th id="dashboard7dHead4" class="px-1 py-2 text-center font-bold text-slate-600 min-w-[2.75rem]">—</th>
-                                    <th id="dashboard7dHead5" class="px-1 py-2 text-center font-bold text-slate-600 min-w-[2.75rem]">—</th>
-                                    <th id="dashboard7dHead6" class="px-1 py-2 text-center font-bold text-slate-600 min-w-[2.75rem] border-r border-slate-200">—</th>
+                                <tr class="border-b border-slate-200 bg-slate-50/90 text-[11px]" id="dashboardHeadRow2">
+                                    <th id="dashboard7dSumHead" class="px-2 py-1 text-center font-bold text-slate-600 min-w-[3rem] border-l border-slate-200 bg-slate-50/90">7일 합</th>
+                                    <th id="dashboard7dHead0" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
+                                    <th id="dashboard7dHead1" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
+                                    <th id="dashboard7dHead2" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
+                                    <th id="dashboard7dHead3" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
+                                    <th id="dashboard7dHead4" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
+                                    <th id="dashboard7dHead5" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
+                                    <th id="dashboard7dHead6" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] border-r border-slate-200 bg-slate-50/90">—</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr class="border-b border-slate-100 hover:bg-slate-50/50">
-                                    <td class="px-4 py-3 font-bold text-slate-700">
+                                <tr class="group border-b border-slate-100 hover:bg-slate-50/50" data-dash-week-row="newUsers">
+                                    <td class="px-2 py-2 text-sm font-bold text-slate-700 sticky left-0 z-20 bg-white group-hover:bg-slate-50/50 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle">
                                         <span class="inline-flex items-center gap-2"><i class="fa-solid fa-user-plus text-blue-600"></i>신규 사용자</span>
                                     </td>
-                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statNewUsersAll">-</td>
-                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statNewUsers30">-</td>
-                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100 bg-slate-50/50" id="statNewUsers7Sum">—</td>
+                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 sticky left-[8rem] z-20 bg-white group-hover:bg-slate-50/50 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statNewUsersAll">-</td>
+                                    <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100 bg-slate-50/50" id="statNewUsers7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statNewUsers7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statNewUsers7d1">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statNewUsers7d2">—</td>
@@ -167,13 +162,12 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statNewUsers7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statNewUsers7d6">—</td>
                                 </tr>
-                                <tr class="border-b border-slate-100 hover:bg-slate-50/50">
-                                    <td class="px-4 py-3 font-bold text-slate-700">
+                                <tr class="group border-b border-slate-100 hover:bg-slate-50/50" data-dash-week-row="activeUsers">
+                                    <td class="px-2 py-2 text-sm font-bold text-slate-700 sticky left-0 z-20 bg-white group-hover:bg-slate-50/50 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle">
                                         <span class="inline-flex items-center gap-2"><i class="fa-solid fa-user-check text-emerald-600"></i>활성 사용자</span>
                                     </td>
-                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statActiveUsersAll">-</td>
-                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statActiveUsers30">-</td>
-                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100 bg-slate-50/50" id="statActiveUsers7Sum">—</td>
+                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 sticky left-[8rem] z-20 bg-white group-hover:bg-slate-50/50 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statActiveUsersAll">-</td>
+                                    <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100 bg-slate-50/50" id="statActiveUsers7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statActiveUsers7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statActiveUsers7d1">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statActiveUsers7d2">—</td>
@@ -182,13 +176,12 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statActiveUsers7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statActiveUsers7d6">—</td>
                                 </tr>
-                                <tr class="border-b border-slate-100 hover:bg-slate-50/50">
-                                    <td class="px-4 py-3 font-bold text-slate-700">
+                                <tr class="group border-b border-slate-100 hover:bg-slate-50/50" data-dash-week-row="sharedPhotos">
+                                    <td class="px-2 py-2 text-sm font-bold text-slate-700 sticky left-0 z-20 bg-white group-hover:bg-slate-50/50 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle">
                                         <span class="inline-flex items-center gap-2"><i class="fa-solid fa-images text-purple-600"></i>공유 게시물</span>
                                     </td>
-                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statSharedAll">-</td>
-                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statShared30">-</td>
-                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100 bg-slate-50/50" id="statShared7Sum">—</td>
+                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 sticky left-[8rem] z-20 bg-white group-hover:bg-slate-50/50 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statSharedAll">-</td>
+                                    <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100 bg-slate-50/50" id="statShared7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statShared7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statShared7d1">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statShared7d2">—</td>
@@ -197,13 +190,12 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statShared7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statShared7d6">—</td>
                                 </tr>
-                                <tr class="border-b border-slate-100 hover:bg-slate-50/50">
-                                    <td class="px-4 py-3 font-bold text-slate-700">
+                                <tr class="group border-b border-slate-100 hover:bg-slate-50/50" data-dash-week-row="records">
+                                    <td class="px-2 py-2 text-sm font-bold text-slate-700 sticky left-0 z-20 bg-white group-hover:bg-slate-50/50 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle">
                                         <span class="inline-flex items-center gap-2"><i class="fa-solid fa-utensils text-orange-600"></i>기록 · 전체</span>
                                     </td>
-                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statRecordsAll">-</td>
-                                    <td class="px-4 py-3 text-center font-bold text-slate-800" id="statRecords30">-</td>
-                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100 bg-slate-50/50" id="statRecords7Sum">—</td>
+                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 sticky left-[8rem] z-20 bg-white group-hover:bg-slate-50/50 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecordsAll">-</td>
+                                    <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100 bg-slate-50/50" id="statRecords7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecords7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecords7d1">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecords7d2">—</td>
@@ -212,11 +204,10 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecords7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statRecords7d6">—</td>
                                 </tr>
-                                <tr class="border-b border-slate-100 [&_td]:bg-slate-100 hover:[&_td]:bg-slate-200/70">
-                                    <td class="px-4 py-2 text-slate-600 font-semibold text-sm pl-7"><span class="text-orange-500 mr-1.5" aria-hidden="true">·</span>아침 전 간식</td>
-                                    <td class="px-4 py-2 text-center text-sm font-bold text-slate-800 tabular-nums" id="statRecSlot_pre_morning_all">-</td>
-                                    <td class="px-4 py-2 text-center text-sm font-bold text-slate-800 tabular-nums" id="statRecSlot_pre_morning_30">-</td>
-                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100" id="statRecSlot_pre_morning_7Sum">—</td>
+                                <tr class="group border-b border-slate-100 [&_td]:bg-slate-100 hover:[&_td]:bg-slate-200/70" data-dash-week-row="slot:pre_morning" data-dash-slot-row="1">
+                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-slate-100 group-hover:bg-slate-200/70 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>아침 전 간식</td>
+                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-slate-100 group-hover:bg-slate-200/70 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_pre_morning_all">-</td>
+                                    <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100" id="statRecSlot_pre_morning_7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_pre_morning_7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_pre_morning_7d1">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_pre_morning_7d2">—</td>
@@ -225,11 +216,10 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_pre_morning_7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statRecSlot_pre_morning_7d6">—</td>
                                 </tr>
-                                <tr class="border-b border-slate-100 [&_td]:bg-slate-200 hover:[&_td]:bg-slate-300/65">
-                                    <td class="px-4 py-2 text-slate-600 font-semibold text-sm pl-7"><span class="text-orange-500 mr-1.5" aria-hidden="true">·</span>아침</td>
-                                    <td class="px-4 py-2 text-center text-sm font-bold text-slate-800 tabular-nums" id="statRecSlot_morning_all">-</td>
-                                    <td class="px-4 py-2 text-center text-sm font-bold text-slate-800 tabular-nums" id="statRecSlot_morning_30">-</td>
-                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100" id="statRecSlot_morning_7Sum">—</td>
+                                <tr class="group border-b border-slate-100 [&_td]:bg-slate-200 hover:[&_td]:bg-slate-300/65" data-dash-week-row="slot:morning" data-dash-slot-row="1">
+                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-slate-200 group-hover:bg-slate-300/65 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>아침</td>
+                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-slate-200 group-hover:bg-slate-300/65 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_morning_all">-</td>
+                                    <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100" id="statRecSlot_morning_7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_morning_7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_morning_7d1">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_morning_7d2">—</td>
@@ -238,11 +228,10 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_morning_7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statRecSlot_morning_7d6">—</td>
                                 </tr>
-                                <tr class="border-b border-slate-100 [&_td]:bg-slate-100 hover:[&_td]:bg-slate-200/70">
-                                    <td class="px-4 py-2 text-slate-600 font-semibold text-sm pl-7"><span class="text-orange-500 mr-1.5" aria-hidden="true">·</span>오전 간식</td>
-                                    <td class="px-4 py-2 text-center text-sm font-bold text-slate-800 tabular-nums" id="statRecSlot_snack1_all">-</td>
-                                    <td class="px-4 py-2 text-center text-sm font-bold text-slate-800 tabular-nums" id="statRecSlot_snack1_30">-</td>
-                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100" id="statRecSlot_snack1_7Sum">—</td>
+                                <tr class="group border-b border-slate-100 [&_td]:bg-slate-100 hover:[&_td]:bg-slate-200/70" data-dash-week-row="slot:snack1" data-dash-slot-row="1">
+                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-slate-100 group-hover:bg-slate-200/70 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>오전 간식</td>
+                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-slate-100 group-hover:bg-slate-200/70 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_snack1_all">-</td>
+                                    <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100" id="statRecSlot_snack1_7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_snack1_7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_snack1_7d1">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_snack1_7d2">—</td>
@@ -251,11 +240,10 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_snack1_7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statRecSlot_snack1_7d6">—</td>
                                 </tr>
-                                <tr class="border-b border-slate-100 [&_td]:bg-slate-200 hover:[&_td]:bg-slate-300/65">
-                                    <td class="px-4 py-2 text-slate-600 font-semibold text-sm pl-7"><span class="text-orange-500 mr-1.5" aria-hidden="true">·</span>점심</td>
-                                    <td class="px-4 py-2 text-center text-sm font-bold text-slate-800 tabular-nums" id="statRecSlot_lunch_all">-</td>
-                                    <td class="px-4 py-2 text-center text-sm font-bold text-slate-800 tabular-nums" id="statRecSlot_lunch_30">-</td>
-                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100" id="statRecSlot_lunch_7Sum">—</td>
+                                <tr class="group border-b border-slate-100 [&_td]:bg-slate-200 hover:[&_td]:bg-slate-300/65" data-dash-week-row="slot:lunch" data-dash-slot-row="1">
+                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-slate-200 group-hover:bg-slate-300/65 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>점심</td>
+                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-slate-200 group-hover:bg-slate-300/65 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_lunch_all">-</td>
+                                    <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100" id="statRecSlot_lunch_7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_lunch_7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_lunch_7d1">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_lunch_7d2">—</td>
@@ -264,11 +252,10 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_lunch_7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statRecSlot_lunch_7d6">—</td>
                                 </tr>
-                                <tr class="border-b border-slate-100 [&_td]:bg-slate-100 hover:[&_td]:bg-slate-200/70">
-                                    <td class="px-4 py-2 text-slate-600 font-semibold text-sm pl-7"><span class="text-orange-500 mr-1.5" aria-hidden="true">·</span>오후 간식</td>
-                                    <td class="px-4 py-2 text-center text-sm font-bold text-slate-800 tabular-nums" id="statRecSlot_snack2_all">-</td>
-                                    <td class="px-4 py-2 text-center text-sm font-bold text-slate-800 tabular-nums" id="statRecSlot_snack2_30">-</td>
-                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100" id="statRecSlot_snack2_7Sum">—</td>
+                                <tr class="group border-b border-slate-100 [&_td]:bg-slate-100 hover:[&_td]:bg-slate-200/70" data-dash-week-row="slot:snack2" data-dash-slot-row="1">
+                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-slate-100 group-hover:bg-slate-200/70 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>오후 간식</td>
+                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-slate-100 group-hover:bg-slate-200/70 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_snack2_all">-</td>
+                                    <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100" id="statRecSlot_snack2_7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_snack2_7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_snack2_7d1">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_snack2_7d2">—</td>
@@ -277,11 +264,10 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_snack2_7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statRecSlot_snack2_7d6">—</td>
                                 </tr>
-                                <tr class="border-b border-slate-100 [&_td]:bg-slate-200 hover:[&_td]:bg-slate-300/65">
-                                    <td class="px-4 py-2 text-slate-600 font-semibold text-sm pl-7"><span class="text-orange-500 mr-1.5" aria-hidden="true">·</span>저녁</td>
-                                    <td class="px-4 py-2 text-center text-sm font-bold text-slate-800 tabular-nums" id="statRecSlot_dinner_all">-</td>
-                                    <td class="px-4 py-2 text-center text-sm font-bold text-slate-800 tabular-nums" id="statRecSlot_dinner_30">-</td>
-                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100" id="statRecSlot_dinner_7Sum">—</td>
+                                <tr class="group border-b border-slate-100 [&_td]:bg-slate-200 hover:[&_td]:bg-slate-300/65" data-dash-week-row="slot:dinner" data-dash-slot-row="1">
+                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-slate-200 group-hover:bg-slate-300/65 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>저녁</td>
+                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-slate-200 group-hover:bg-slate-300/65 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_dinner_all">-</td>
+                                    <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100" id="statRecSlot_dinner_7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_dinner_7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_dinner_7d1">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_dinner_7d2">—</td>
@@ -290,11 +276,10 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_dinner_7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statRecSlot_dinner_7d6">—</td>
                                 </tr>
-                                <tr class="border-b border-slate-100 [&_td]:bg-slate-100 hover:[&_td]:bg-slate-200/70">
-                                    <td class="px-4 py-2 text-slate-600 font-semibold text-sm pl-7"><span class="text-orange-500 mr-1.5" aria-hidden="true">·</span>야식</td>
-                                    <td class="px-4 py-2 text-center text-sm font-bold text-slate-800 tabular-nums" id="statRecSlot_night_all">-</td>
-                                    <td class="px-4 py-2 text-center text-sm font-bold text-slate-800 tabular-nums" id="statRecSlot_night_30">-</td>
-                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100" id="statRecSlot_night_7Sum">—</td>
+                                <tr class="group border-b border-slate-100 [&_td]:bg-slate-100 hover:[&_td]:bg-slate-200/70" data-dash-week-row="slot:night" data-dash-slot-row="1">
+                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-slate-100 group-hover:bg-slate-200/70 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>야식</td>
+                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-slate-100 group-hover:bg-slate-200/70 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_night_all">-</td>
+                                    <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100" id="statRecSlot_night_7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_night_7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_night_7d1">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_night_7d2">—</td>
