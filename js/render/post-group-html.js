@@ -6,6 +6,7 @@ import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
 import { getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
 import { getPostIdFromPhotoGroup } from './post-group-utils.js';
+import { formatMealMenuDisplayLine, mergeMealDisplayFields } from '../utils/meal-display-line.js';
 
 export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
     const photo = photoGroup[0];
@@ -59,9 +60,13 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
         else if (menu) caption = `<span>${escapeHtml(menu)}</span>`;
         else caption = escapeHtml('간식');
     } else {
-        if (photo.place && photo.menuDetail) caption = `<span>${escapeHtml(photo.menuDetail)}</span> @ <span>${escapeHtml(photo.place)}</span>`;
+        const mealForLine = entryId && mealHistoryMap && mealHistoryMap.has(entryId)
+            ? mergeMealDisplayFields(photo, mealHistoryMap.get(entryId))
+            : photo;
+        const menuLine = formatMealMenuDisplayLine(mealForLine);
+        if (photo.place && menuLine) caption = `<span>${escapeHtml(menuLine)}</span> @ <span>${escapeHtml(photo.place)}</span>`;
         else if (photo.place) caption = `@ <span>${escapeHtml(photo.place)}</span>`;
-        else if (photo.menuDetail) caption = `<span>${escapeHtml(photo.menuDetail)}</span>`;
+        else if (menuLine) caption = `<span>${escapeHtml(menuLine)}</span>`;
         else if (photo.mealType) caption = escapeHtml(photo.mealType);
     }
     const captionText = (() => {
@@ -70,7 +75,11 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
             const m = photo.menuDetail || photo.snackType;
             return (photo.place && m) ? `${m} @ ${photo.place}` : (photo.place || m || '간식');
         }
-        return (photo.place && photo.menuDetail) ? `${photo.menuDetail} @ ${photo.place}` : (photo.place || photo.menuDetail || photo.mealType || '');
+        const mealForLine = entryId && mealHistoryMap && mealHistoryMap.has(entryId)
+            ? mergeMealDisplayFields(photo, mealHistoryMap.get(entryId))
+            : photo;
+        const menuLine = formatMealMenuDisplayLine(mealForLine);
+        return (photo.place && menuLine) ? `${menuLine} @ ${photo.place}` : (photo.place || menuLine || photo.mealType || '');
     })();
     const captionAttr = (captionText || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
     let aspectRatio = photo.photoAspectRatio || (entryId && mealHistoryMap && mealHistoryMap.has(entryId) ? mealHistoryMap.get(entryId).photoAspectRatio : null) || '1:1';

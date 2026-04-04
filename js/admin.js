@@ -26,6 +26,7 @@ import {
     adminUserBanWrite,
     refreshUsers
 } from './admin/users.js';
+import { switchAdminUsersSubmenu, refreshAdminUserAnalytics } from './admin/user-analytics.js';
 import {
     handleAdminLogin,
     handleAdminLogout
@@ -175,6 +176,8 @@ window.adminUserBanShare = adminUserBanShare;
 window.adminUserBanWrite = adminUserBanWrite;
 window.refreshUsers = refreshUsers;
 window.runAdminStatsBackfillForUid = runAdminStatsBackfillForUid;
+window.switchAdminUsersSubmenu = switchAdminUsersSubmenu;
+window.refreshAdminUserAnalytics = refreshAdminUserAnalytics;
 
 // 삭제 모달 열기
 window.openDeleteModal = function(photoId) {

@@ -7,6 +7,7 @@ import { escapeHtml } from './utils.js';
 import { normalizeUrl, getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
 import { getPostIdFromPhotoGroup, preloadAdjacentGalleryImages } from './post-group-utils.js';
 import { fetchUserProfiles } from './user-profiles.js';
+import { formatMealMenuDisplayLine, mergeMealDisplayFields } from '../utils/meal-display-line.js';
 
 export async function renderFeed() {
     const container = document.getElementById('feedContent');
@@ -238,13 +239,17 @@ export async function renderFeed() {
                 caption = '간식';
             }
         } else {
-            // 일반 식사인 경우: "메뉴 @ 장소" 형식
-            if (photo.place && photo.menuDetail) {
-                caption = `${photo.menuDetail} @ ${photo.place}`;
+            const mealRecord = entryId && window.mealHistory
+                ? window.mealHistory.find(m => m.id === entryId)
+                : null;
+            const mealForLine = mergeMealDisplayFields(photo, mealRecord);
+            const menuLine = formatMealMenuDisplayLine(mealForLine);
+            if (photo.place && menuLine) {
+                caption = `${menuLine} @ ${photo.place}`;
             } else if (photo.place) {
                 caption = `@ ${photo.place}`;
-            } else if (photo.menuDetail) {
-                caption = photo.menuDetail;
+            } else if (menuLine) {
+                caption = menuLine;
             } else if (photo.mealType) {
                 caption = photo.mealType;
             }

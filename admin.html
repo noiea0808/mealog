@@ -563,8 +563,15 @@
 
             <!-- 사용자 탭 -->
             <div id="admin-tab-content-users" class="admin-tab-content hidden">
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
-                    <div class="admin-users-toolbar border-b border-slate-100 bg-white rounded-t-2xl">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div class="px-4 pt-4 pb-3 border-b border-slate-100 bg-slate-50/40">
+                        <div class="inline-flex rounded-xl bg-slate-100/90 p-1 gap-0.5" role="tablist" aria-label="사용자 하위 메뉴">
+                            <button type="button" id="adminUsersSubmenuManage" onclick="window.switchAdminUsersSubmenu('manage')" class="px-4 py-2 rounded-lg text-sm font-bold transition-colors bg-white text-emerald-800 shadow-sm border border-slate-200/80" role="tab" aria-selected="true">사용자 관리</button>
+                            <button type="button" id="adminUsersSubmenuAnalytics" onclick="window.switchAdminUsersSubmenu('analytics')" class="px-4 py-2 rounded-lg text-sm font-bold transition-colors text-slate-600 hover:text-slate-800 hover:bg-white/60" role="tab" aria-selected="false">사용자 분석</button>
+                        </div>
+                    </div>
+                    <div id="adminUsersPanelManage">
+                    <div class="admin-users-toolbar border-b border-slate-100 bg-white">
                         <div class="flex flex-wrap justify-between items-center admin-users-toolbar-inner gap-2">
                             <div class="flex flex-wrap items-baseline gap-2">
                                 <h2 class="text-base font-black text-slate-800">사용자 관리</h2>
@@ -658,7 +665,7 @@
                                             </button>
                                         </th>
                                         <th data-page="1" class="px-2 text-center min-w-[3.5rem] max-w-[4.5rem]">
-                                            <button type="button" class="admin-users-sort min-h-[2.75rem] text-center leading-snug px-0.5 py-1 text-slate-700 hover:text-slate-900 rounded-md w-full" data-sort-key="signupToLastLoginDays" title="가입 시각~마지막 로그인 시각 사이를 24시간 단위로 나눈 뒤 내림한 일 수. 0일=그 차이가 24시간 미만. −=게스트, 가입일/마지막로그인 없음, 날짜 오류, 로그인이 가입보다 이른 경우">
+                                            <button type="button" class="admin-users-sort min-h-[2.75rem] text-center leading-snug px-0.5 py-1 text-slate-700 hover:text-slate-900 rounded-md w-full" data-sort-key="signupToLastLoginDays" title="가입 시각~마지막 로그인 시각 사이 경과를 일·시간으로 표시(시간은 24시간 미만 구간). −=게스트, 가입일/마지막 로그인 없음, 날짜 오류, 로그인이 가입보다 이른 경우">
                                                 <span class="flex min-h-[2.75rem] flex-col items-center justify-center w-full text-xs font-bold text-slate-600 leading-snug text-center">활동일수 <span class="admin-users-sort-indicator text-[10px] text-slate-400" aria-hidden="true">↕</span></span>
                                             </button>
                                         </th>
@@ -696,6 +703,19 @@
                         </div>
                         <div class="flex flex-wrap items-center justify-end gap-2 mt-3">
                             <div id="adminUsersListPagination" class="flex items-center gap-1"></div>
+                        </div>
+                    </div>
+                    </div>
+                    <div id="adminUsersPanelAnalytics" class="hidden">
+                        <div class="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
+                            <h2 class="text-base font-black text-slate-800">사용자 분석</h2>
+                            <p class="text-sm text-slate-600 mt-1">이 화면을 열거나 새로고침할 때마다 Firestore에서 <strong class="text-slate-800">전체 사용자</strong>를 불러와 집계합니다. (사용자 관리 표의 현재 페이지와 무관)</p>
+                        </div>
+                        <div class="p-4" id="adminUserAnalyticsMount">
+                            <div class="text-center py-12 text-slate-400 text-sm">
+                                <i class="fa-solid fa-chart-pie text-2xl mb-2 opacity-40" aria-hidden="true"></i>
+                                <p>이 탭을 열면 전체 사용자를 불러와 집계합니다.</p>
+                            </div>
                         </div>
                     </div>
                 </div>

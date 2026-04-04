@@ -2,6 +2,7 @@
 import { SLOTS, SLOT_STYLES, SATIETY_DATA } from '../constants.js';
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
+import { formatMealMenuDisplayLine } from '../utils/meal-display-line.js';
 
 // entryId가 실제로 공유되었는지 확인하는 헬퍼 함수
 // record: meal 문서 (sharedPhotos 필드 있음). sharedPhotos 컬렉션과 meal 문서가 불일치할 수 있어 둘 다 확인
@@ -184,7 +185,7 @@ export function renderTimeline() {
                         titleLine1 = 'Skip';
                     } else {
                         const p = r.place || '';
-                        const m = r.menuDetail || r.category || '';
+                        const m = formatMealMenuDisplayLine(r);
                         // 첫 번째 줄: "아침 @ 장소" 형식 (아침/점심/저녁 텍스트 색상 적용, @부터 회색)
                         const safePlace = escapeHtml(p);
                         if (p) {

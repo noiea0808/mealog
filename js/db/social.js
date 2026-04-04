@@ -295,10 +295,17 @@ export const postInteractions = {
                 // 일반 식사 게시물
                 const place = (data.place || '').trim();
                 const menuDetail = (data.menuDetail || '').trim();
-                if (menuDetail && place) return `${menuDetail} @ ${place}`;
-                if (place) return place;
-                if (menuDetail) return menuDetail;
+                const deliveryVendor = (data.deliveryVendor || '').trim();
                 const mealType = (data.mealType || '').trim();
+                let menuLine = menuDetail;
+                if (mealType === '배달/포장' && deliveryVendor && menuDetail) {
+                    menuLine = `${deliveryVendor} · ${menuDetail}`;
+                } else if (mealType === '배달/포장' && deliveryVendor) {
+                    menuLine = deliveryVendor;
+                }
+                if (menuLine && place) return `${menuLine} @ ${place}`;
+                if (place) return place;
+                if (menuLine) return menuLine;
                 if (mealType) return mealType;
                 return '해당 게시물';
             };

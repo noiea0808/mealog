@@ -15,7 +15,6 @@ dependencies {
     implementation project(':capacitor-push-notifications')
     implementation project(':capacitor-share')
     implementation project(':capacitor-splash-screen')
-    implementation project(':capawesome-capacitor-badge')
     implementation project(':capgo-capacitor-social-login')
 
 }
