@@ -67,7 +67,11 @@ export const DEFAULT_USER_SETTINGS = {
         snackPlaceMain: ['집', '사무실', '카페']
     },
     subTags: {
-        place: [{ text: '우리집', parent: '집밥' }, { text: '회사 식당', parent: '구내식당' }, { text: '스타벅스', parent: '배달/포장' }],
+        place: [
+            { text: '우리집', parent: '집밥' },
+            { text: '우리집', parent: '배달/포장' },
+            { text: '회사 식당', parent: '구내식당' }
+        ],
         menu: [{ text: '김치찌개', parent: '한식' }, { text: '아메리카노', parent: '카페' }, { text: '샌드위치', parent: '양식' }],
         people: [{ text: '엄마', parent: '가족' }, { text: '팀장님', parent: '직장동료' }],
         snack: []
@@ -117,7 +121,11 @@ export const REPORT_REASONS = [
 ];
 
 export const DEFAULT_SUB_TAGS = {
-    place: [{ text: '우리집', parent: '집밥' }, { text: '회사 식당', parent: '구내식당' }, { text: '스타벅스', parent: '배달/포장' }],
+    place: [
+        { text: '우리집', parent: '집밥' },
+        { text: '우리집', parent: '배달/포장' },
+        { text: '회사 식당', parent: '구내식당' }
+    ],
     menu: [{ text: '김치찌개', parent: '한식' }, { text: '아메리카노', parent: '카페' }, { text: '샌드위치', parent: '양식' }],
     people: [{ text: '엄마', parent: '가족' }, { text: '팀장님', parent: '직장동료' }],
     snack: []

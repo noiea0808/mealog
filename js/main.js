@@ -9,7 +9,7 @@ import { auth, db, appId } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { dbOps, setupListeners, loadSharedPhotosPage, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, subscribeToMyPostComments, boardOperations, feedOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { callableFunctions } from './firebase.js';
-import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer, enableNetwork } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import {
     switchScreen,
@@ -31,7 +31,7 @@ import { scheduleAttendanceCheckIfNeeded } from './attendance-check.js';
 import { isDemoUser, markUserHasRealLogin } from './demo-account.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
-import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
+import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
@@ -99,9 +99,23 @@ window.switchGalleryFilterTab = switchGalleryFilterTab;
 window.Mealog.switchGalleryFilterTab = switchGalleryFilterTab;
 /** 네트워크 오류 등으로 모먼트 피드 로드가 실패했을 때 '다시 불러오기'로 호출. 전체 피드/사용자 필터 모드 모두 처리 */
 window.reloadMomentFeed = async function reloadMomentFeed() {
+    invalidateGalleryRenderSession();
+    try {
+        await enableNetwork(db);
+    } catch (_) {
+        /* 오프라인 복귀 시도만 하고 실패해도 getDocsFromServer로 재시도 */
+    }
     appState.galleryFeedNetworkError = false;
     if (appState.galleryFilterUserId) {
-        renderGallery();
+        appState.galleryUserProfileSharedDocs = null;
+        appState.galleryUserProfileSharedLastSnap = null;
+        appState.galleryUserProfileSharedHasMore = true;
+        appState.galleryUserProfileSharedDocSnaps = new Map();
+        try {
+            await renderGallery();
+        } catch (e) {
+            console.error('모먼트(프로필) 다시 불러오기 렌더 실패:', e);
+        }
         if (typeof renderFeed === 'function') renderFeed();
         return;
     }
@@ -116,11 +130,11 @@ window.reloadMomentFeed = async function reloadMomentFeed() {
         appState.sharedPhotosFeedLastDoc = lastDoc;
         appState.sharedPhotosFeedHasMore = hasMore;
         appState.sharedPhotosFeedPrefetchedAt = Date.now();
-        renderGallery();
+        await renderGallery();
     } catch (e) {
         console.error('공유 사진 로드 실패:', e);
         appState.galleryFeedNetworkError = true;
-        renderGallery();
+        await renderGallery();
     } finally {
         hideLoading();
         if (typeof renderFeed === 'function') renderFeed();
@@ -597,6 +611,7 @@ window.handleSearch = (k) => {
     const kw = q.toLowerCase();
     const res = (window.mealHistory || []).filter(m =>
         (m.menuDetail?.toLowerCase().includes(kw) ||
+         m.deliveryVendor?.toLowerCase().includes(kw) ||
          m.place?.toLowerCase().includes(kw) ||
          m.category?.toLowerCase().includes(kw) ||
          (m.withWhomDetail || m.withWhom || '')?.toLowerCase().includes(kw) ||

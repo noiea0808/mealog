@@ -345,6 +345,25 @@ export function setupListeners(userId, callbacks) {
                             }
                         });
                     }
+
+                    // 집밥·배달/포장 기본 서브태그 '우리집' (태그 관리에서 사용자가 수정·삭제 가능)
+                    if (!settingsToSave.subTags) settingsToSave.subTags = {};
+                    if (!Array.isArray(settingsToSave.subTags.place)) settingsToSave.subTags.place = [];
+                    const placeSubs = settingsToSave.subTags.place;
+                    const hasPlaceSub = (text, parent) =>
+                        placeSubs.some((item) => {
+                            const t = typeof item === 'string' ? item : item?.text;
+                            const p = typeof item === 'string' ? null : item?.parent;
+                            return t === text && p === parent;
+                        });
+                    if (!hasPlaceSub('우리집', '집밥')) {
+                        placeSubs.push({ text: '우리집', parent: '집밥' });
+                        needsSave = true;
+                    }
+                    if (!hasPlaceSub('우리집', '배달/포장')) {
+                        placeSubs.push({ text: '우리집', parent: '배달/포장' });
+                        needsSave = true;
+                    }
                     
                     // 간식 항목 마이그레이션: 새로운 항목으로 업데이트
                     const newSnackTypes = ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타'];

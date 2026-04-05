@@ -35,6 +35,7 @@ export {
 } from './board-feed.js';
 export {
     renderGallery,
+    invalidateGalleryRenderSession,
     filterGalleryByUser,
     clearGalleryFilter,
     switchGalleryFilterTab

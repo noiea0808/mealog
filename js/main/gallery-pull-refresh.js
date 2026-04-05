@@ -4,7 +4,7 @@
 import { appState } from '../state.js';
 import { loadSharedPhotosPage } from '../db.js';
 import { showToast } from '../ui.js';
-import { renderGallery, updateTimelineShareIndicators } from '../render/index.js';
+import { renderGallery, invalidateGalleryRenderSession, updateTimelineShareIndicators } from '../render/index.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';
 
 export function setupGalleryPullToRefresh() {
@@ -30,7 +30,12 @@ export function setupGalleryPullToRefresh() {
         if (spanEl) spanEl.textContent = '새로고침 중...';
 
         try {
+            invalidateGalleryRenderSession();
             if (appState.galleryFilterUserId) {
+                appState.galleryUserProfileSharedDocs = null;
+                appState.galleryUserProfileSharedLastSnap = null;
+                appState.galleryUserProfileSharedHasMore = true;
+                appState.galleryUserProfileSharedDocSnaps = new Map();
                 await renderGallery();
             } else {
                 const synced = await syncOrphanedSharesToMoment();
@@ -39,14 +44,23 @@ export function setupGalleryPullToRefresh() {
                     showToast('모먼트에 반영되었습니다.', 'success');
                 }
                 const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);
+                appState.galleryFeedNetworkError = false;
                 window.sharedPhotosFeed = docs;
                 appState.sharedPhotosFeedLastDoc = lastDoc;
                 appState.sharedPhotosFeedHasMore = hasMore;
                 appState.sharedPhotosFeedPrefetchedAt = Date.now();
-                renderGallery();
+                await renderGallery();
             }
         } catch (e) {
             console.error('갤러리 새로고침 실패:', e);
+            if (!appState.galleryFilterUserId) {
+                appState.galleryFeedNetworkError = true;
+                try {
+                    await renderGallery();
+                } catch (_) {
+                    /* ignore */
+                }
+            }
             if (typeof showToast === 'function') showToast('새로고침에 실패했습니다.');
         } finally {
             isRefreshing = false;

@@ -90,11 +90,33 @@ function buildGalleryEmptyMomentBlock(networkError, filterUserId) {
 }
 
 let isRenderingGallery = false;
+/** 진행 중인 renderGallery가 무효화되면 증가. 오래 걸리는 await 이후 DOM 갱신·finally에서 뮤텍스 오남용 방지 */
+let galleryRenderSession = 0;
+/** isRenderingGallery 동안 들어온 renderGallery 요청: 한 번 더 돌려 UI가 빠지지 않게 함 */
+let galleryRenderPending = false;
 let galleryScrollListeners = new Map();
 let intersectionObserver = null;
 let placeholderObserver = null;
 let galleryAbortController = null;
 let previousGalleryPostIds = new Set();
+
+function isGallerySessionStale(sessionAtStart) {
+    return sessionAtStart !== galleryRenderSession;
+}
+
+/**
+ * 모먼트 다시 불러오기 등: 이전 렌더의 Abort·뮤텍스를 정리해, 대기 중이던 renderGallery가 영구히 스킵되지 않게 함.
+ */
+export function invalidateGalleryRenderSession() {
+    galleryRenderSession += 1;
+    try {
+        galleryAbortController?.abort();
+    } catch (_) {
+        /* ignore */
+    }
+    isRenderingGallery = false;
+    galleryRenderPending = false;
+}
 
 function setupGalleryEventListeners(container, sortedGroups, opts = null) {
     const abortSignal = opts && typeof opts === 'object' && opts.abortSignal !== undefined ? opts.abortSignal : (opts && typeof opts.addEventListener === 'function' ? opts : null);
@@ -250,12 +272,14 @@ async function appendGalleryPosts(docs, loadMoreWrap) {
 export async function renderGallery(options = {}) {
     const skipScrollToTop = options.skipScrollToTop === true; // 더보기 시 스크롤 위치 유지
     const savedScrollY = skipScrollToTop ? window.scrollY : 0; // 더보기 시 복원용
-    // 중복 실행 방지
+    // 중복 실행 방지 (완료 후 pending이 있으면 한 번 더 실행)
     if (isRenderingGallery) {
-        console.log('[renderGallery] 이미 실행 중이므로 스킵');
+        galleryRenderPending = true;
+        console.log('[renderGallery] 이미 실행 중 — 완료 후 재실행 예약');
         return;
     }
-    
+
+    const mySession = galleryRenderSession;
     try {
         isRenderingGallery = true;
         console.log('[renderGallery] 시작, window.sharedPhotos:', window.sharedPhotos?.length || 0);
@@ -263,7 +287,6 @@ export async function renderGallery(options = {}) {
         const container = document.getElementById('galleryContainer');
         if (!container) {
             console.warn('[renderGallery] galleryContainer를 찾을 수 없습니다');
-            isRenderingGallery = false;
             return;
         }
         
@@ -327,6 +350,7 @@ export async function renderGallery(options = {}) {
                     [],
                     appState.galleryUserProfileSharedDocSnaps
                 );
+                if (isGallerySessionStale(mySession)) return;
                 appState.galleryUserProfileSharedDocs = docs;
                 appState.galleryUserProfileSharedLastSnap = lastDocSnap;
                 appState.galleryUserProfileSharedHasMore = hasMore;
@@ -374,6 +398,7 @@ export async function renderGallery(options = {}) {
     let userProfileHeader = '';
     if (filterUserId) {
         await fetchUserProfiles([filterUserId]);
+        if (isGallerySessionStale(mySession)) return;
         const filteredUserPhoto = photosToRender[0] || null;
         const initialDisplay = filteredUserPhoto
             ? getDisplayProfile(filteredUserPhoto.userId, { nickname: filteredUserPhoto.userNickname, icon: filteredUserPhoto.userIcon, photoUrl: filteredUserPhoto.userPhotoUrl })
@@ -604,7 +629,8 @@ export async function renderGallery(options = {}) {
     // 다른 사용자들의 최신 프로필 미리 로드 (프로필 변경 시 다른 사용자도 최신 설정으로 표시)
     const galleryUserIds = [...new Set(uniquePhotos.map(p => p.userId).filter(Boolean))];
     await fetchUserProfiles(galleryUserIds);
-    
+    if (isGallerySessionStale(mySession)) return;
+
     // mealHistoryMap: renderPostGroup에서 댓글 등 meal 정보 조회용 (사진 순서 정렬에는 사용하지 않음)
     let mealHistoryMap = new Map();
     if (window.mealHistory && Array.isArray(window.mealHistory)) {
@@ -664,6 +690,7 @@ export async function renderGallery(options = {}) {
         } else if (appState.galleryTraceFilter === 'bookmark') {
             list = await window.postInteractions.getPostIdsBookmarkedByUser(window.currentUser.uid);
         }
+        if (isGallerySessionStale(mySession)) return;
         tracePostIds = new Set(list);
         sortedGroups = sortedGroups.filter(g => tracePostIds.has(getPostIdFromPhotoGroup(g)));
     }
@@ -1268,9 +1295,16 @@ export async function renderGallery(options = {}) {
         console.error('[renderGallery] 오류 발생:', error);
         console.error('[renderGallery] 스택:', error.stack);
     } finally {
-        isRenderingGallery = false;
+        if (!isGallerySessionStale(mySession)) {
+            isRenderingGallery = false;
+            if (galleryRenderPending) {
+                galleryRenderPending = false;
+                queueMicrotask(() => {
+                    renderGallery().catch((err) => console.error('[renderGallery] pending 재실행 실패:', err));
+                });
+            }
+        }
         // AbortController는 다음 renderGallery 호출 시 새로운 것으로 교체되므로 여기서는 null로 설정하지 않음
-        // (현재 렌더링의 비동기 작업들이 완료될 때까지 유지)
     }
 }
 

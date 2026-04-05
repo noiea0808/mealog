@@ -34,6 +34,68 @@ export function getTodayDateString() {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
+/** 로컬 기준 해당 주의 일요일 00:00 */
+export function startOfSundayWeek(d) {
+    const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const dow = x.getDay();
+    x.setDate(x.getDate() - dow);
+    x.setHours(0, 0, 0, 0);
+    return x;
+}
+
+/** 로컬 날짜 M/D (연도 생략) */
+function formatMonthDayLocal(d) {
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+/**
+ * 해당 월 안에서 몇 번째 일요일인지(1부터) + 일~토 구간 → "2주(3/2~3/8)"
+ * @param {Date} sun - 그 주의 일요일(로컬)
+ */
+export function weekLabelKoreanFromSunday(sun) {
+    const y = sun.getFullYear();
+    const m = sun.getMonth();
+    const daySun = sun.getDate();
+    let n = 0;
+    for (let day = 1; day <= daySun; day++) {
+        if (new Date(y, m, day).getDay() === 0) n++;
+    }
+    const sat = new Date(sun.getFullYear(), sun.getMonth(), sun.getDate() + 6);
+    return `${n}주(${formatMonthDayLocal(sun)}~${formatMonthDayLocal(sat)})`;
+}
+
+/**
+ * from~to(포함)가 속한 일요일 시작 주들을 과거→현재 순으로 나열
+ * @param {Date} fromDate
+ * @param {Date} toDate
+ */
+export function enumerateSundayWeeksInclusive(fromDate, toDate) {
+    const start = startOfSundayWeek(fromDate);
+    const end = startOfSundayWeek(toDate);
+    const out = [];
+    for (let t = start.getTime(); t <= end.getTime(); t += 7 * 86400000) {
+        const sun = new Date(t);
+        sun.setHours(0, 0, 0, 0);
+        out.push({
+            sundayKey: dateKeyFromLocalDate(sun),
+            label: weekLabelKoreanFromSunday(sun),
+            year: sun.getFullYear(),
+            monthIndex: sun.getMonth()
+        });
+    }
+    return out;
+}
+
+/** YYYY-MM-DD가 속한 주의 일요일 키 → weeks[].sundayKey와 동일 형식 */
+export function sundayKeyForDateKey(dateStr) {
+    if (!dateStr || typeof dateStr !== 'string') return null;
+    const p = dateStr.split('-');
+    if (p.length !== 3) return null;
+    const d = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+    if (Number.isNaN(d.getTime())) return null;
+    return dateKeyFromLocalDate(startOfSundayWeek(d));
+}
+
 // ADMIN 권한 확인
 export async function checkAdminStatus(userId) {
     if (!userId) {

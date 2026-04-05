@@ -81,8 +81,8 @@ function normalizeNumber(v) {
     return Number.isFinite(n) ? n : 0;
 }
 
-/** 가입일(createdAt)과 마지막 로그인(lastLoginAt) 사이 경과 일 수 (내림, 24시간 단위). 둘 중 하나 없으면 null. */
-function daysBetweenSignupAndLastLogin(createdAt, lastLoginAt) {
+/** 가입일~마지막 로그인 사이 경과(ms). 둘 중 하나 없거나 역전이면 null. */
+function computeSignupToLastLoginMs(createdAt, lastLoginAt) {
     const c = createdAt ? (createdAt instanceof Date ? createdAt : new Date(createdAt)) : null;
     const l = lastLoginAt ? (lastLoginAt instanceof Date ? lastLoginAt : new Date(lastLoginAt)) : null;
     if (!c || !l) return null;
@@ -90,7 +90,16 @@ function daysBetweenSignupAndLastLogin(createdAt, lastLoginAt) {
     const lt = l.getTime();
     if (!Number.isFinite(ct) || !Number.isFinite(lt)) return null;
     if (lt < ct) return null;
-    return Math.floor((lt - ct) / (1000 * 60 * 60 * 24));
+    return lt - ct;
+}
+
+/** 활동일수 셀: `0일 / 00시간` 형식 (시간은 2자리 패딩) */
+function formatSignupToLastLoginActivity(ms) {
+    if (ms == null || !Number.isFinite(ms) || ms < 0) return '-';
+    const totalHours = Math.floor(ms / (1000 * 60 * 60));
+    const days = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    return `${days}일 / ${String(hours).padStart(2, '0')}시간`;
 }
 
 /** 생년월일 문자열을 정렬용 키로 변환 (없으면 null) */
@@ -182,8 +191,8 @@ function sortUsersForTable(users, currentVersion) {
                 bv = genderSortRank(b?.gender);
                 return compareWithNullsLast(av, bv, dir);
             case 'signupToLastLoginDays':
-                av = a?.signupToLastLoginDays;
-                bv = b?.signupToLastLoginDays;
+                av = a?.signupToLastLoginMs;
+                bv = b?.signupToLastLoginMs;
                 if (av !== null && av !== undefined && typeof av !== 'number') av = null;
                 if (bv !== null && bv !== undefined && typeof bv !== 'number') bv = null;
                 return compareWithNullsLast(av, bv, dir);
@@ -245,6 +254,14 @@ function updateUsersSortHeaderUI() {
             indicator.classList.add('text-slate-400');
         }
     });
+}
+
+/**
+ * 사용자 분석용: 전체 사용자를 페이지 단위로 모두 로드한 배열 (Firestore 다회 조회).
+ * 테이블의 `usersFullListRaw`와 별개로 호출해도 동일한 getUsers 파이프라인을 사용합니다.
+ */
+export async function fetchAllUsersForAdminAnalytics() {
+    return fetchAllUsersEnriched();
 }
 
 export function ensureAdminUsersSortHandlers() {
@@ -339,18 +356,12 @@ async function getUsers(options = {}) {
                 sharedUserMap.set(data.userId, { nickname: data.userNickname || null, icon: data.userIcon || null });
         });
 
-        // 4) settings 조회 + mealCount: users 문서의 mealCount 우선(신규 기록 시 증가), 없으면만 서브컬렉션 count
-        const hasAllMealCounts = userIds.every((_, i) => {
-            const v = usersSnapshot.docs[i].data().mealCount;
-            return v !== undefined && v !== null && Number.isFinite(Number(v)) && Number(v) >= 0;
-        });
+        // 4) settings 조회 + 타임라인 건수: meals 서브컬렉션 집계(정확). users.mealCount는 백필/클라 증감용이며 불일치할 수 있음
         const [settingsDocs, mealCountSettled] = await Promise.all([
             Promise.all(userIds.map(id => getDoc(doc(db, 'artifacts', appId, 'users', id, 'config', 'settings')))),
-            hasAllMealCounts
-                ? Promise.resolve(null)
-                : Promise.allSettled(userIds.map(id => getCountFromServer(collection(db, 'artifacts', appId, 'users', id, 'meals'))))
+            Promise.allSettled(userIds.map(id => getCountFromServer(collection(db, 'artifacts', appId, 'users', id, 'meals'))))
         ]);
-        const mealCounts = mealCountSettled ? mealCountSettled.map(s => (s.status === 'fulfilled' ? s.value : null)) : null;
+        const mealCounts = mealCountSettled.map(s => (s.status === 'fulfilled' ? s.value : null));
 
         const users = [];
         for (let i = 0; i < userIds.length; i++) {
@@ -407,20 +418,23 @@ async function getUsers(options = {}) {
             const bannedWrite = ban?.bannedWrite ?? false;
             const deleteRequested = deleteRequestedUserIds.has(userId);
             let timelineCount = 0;
-            const mcField = userDocData.mealCount;
-            if (mcField !== undefined && mcField !== null) {
-                const n = Number(mcField);
-                if (Number.isFinite(n) && n >= 0) timelineCount = n;
-            } else if (mealCounts && mealCounts[i] && typeof mealCounts[i].data === 'function') {
-                timelineCount = mealCounts[i].data().count;
+            const countSnap = mealCounts[i];
+            if (countSnap && typeof countSnap.data === 'function') {
+                timelineCount = countSnap.data().count;
+            } else {
+                const mcField = userDocData.mealCount;
+                if (mcField !== undefined && mcField !== null) {
+                    const n = Number(mcField);
+                    if (Number.isFinite(n) && n >= 0) timelineCount = n;
+                }
             }
             const albumShareCount = albumShareCountMap.get(userId) ?? 0;
             const talkCount = talkCountMap.get(userId) ?? 0;
 
             const activityBanLevel = (bannedWrite ? 1 : 0) + (bannedShare ? 1 : 0);
-            let signupToLastLoginDays = null;
+            let signupToLastLoginMs = null;
             if (loginMethod !== '게스트') {
-                signupToLastLoginDays = daysBetweenSignupAndLastLogin(createdAt, lastLoginAt);
+                signupToLastLoginMs = computeSignupToLastLoginMs(createdAt, lastLoginAt);
             }
 
             users.push({
@@ -445,7 +459,7 @@ async function getUsers(options = {}) {
                 deleteRequested,
                 pageFetchIndex: i,
                 activityBanLevel,
-                signupToLastLoginDays
+                signupToLastLoginMs
             });
         }
 
@@ -604,12 +618,10 @@ export async function renderUsers(options = {}) {
             const lastLoginDate = lastLoginDt
                 ? lastLoginDt.toLocaleDateString('ko-KR', opts) + '<br>' + lastLoginDt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', ...opts })
                 : '-';
-            const signupToLastLoginDays =
+            const signupToLastLoginLabel =
                 user.loginMethod === '게스트'
                     ? '-'
-                    : user.signupToLastLoginDays !== null && user.signupToLastLoginDays !== undefined
-                        ? `${user.signupToLastLoginDays}일`
-                        : '-';
+                    : formatSignupToLastLoginActivity(user.signupToLastLoginMs);
             
             let loginMethodBadge = 'bg-slate-100 text-slate-700';
             if (user.loginMethod === '구글') {
@@ -647,6 +659,7 @@ export async function renderUsers(options = {}) {
                     <td data-page="1 2" class="px-2 py-2.5 min-w-[6.5rem] max-w-[9.75rem] text-left">
                         <div class="flex flex-col gap-0.5">
                             <span class="font-bold text-slate-800 break-words text-sm leading-snug">${user.nickname || '익명'}</span>
+                            <span class="text-[11px] leading-snug break-words ${user.lifestyle && String(user.lifestyle).trim() !== '' ? 'text-slate-500' : 'text-slate-400'}">${user.lifestyle && String(user.lifestyle).trim() !== '' ? escapeHtml(String(user.lifestyle).trim()) : '-'}</span>
                             ${deleteRequestedBadge ? `<div class="mt-0.5">${deleteRequestedBadge}</div>` : ''}
                         </div>
                     </td>
@@ -672,7 +685,7 @@ export async function renderUsers(options = {}) {
                         <span class="text-sm text-slate-600 leading-snug">${lastLoginDate}</span>
                     </td>
                     <td data-page="1" class="px-2 py-2.5 text-center">
-                        <span class="text-sm text-slate-600 tabular-nums font-medium">${signupToLastLoginDays}</span>
+                        <span class="text-sm text-slate-600 tabular-nums font-medium">${signupToLastLoginLabel}</span>
                     </td>
                     <td data-page="1" class="px-1.5 py-2.5 min-w-[3.25rem] max-w-[4rem] text-center">${activityBanCell}</td>
                     <td data-page="2" class="px-3 py-2.5 text-center tabular-nums">
@@ -690,6 +703,13 @@ export async function renderUsers(options = {}) {
         initAdminUsersSelectAll();
         applyAdminUsersPageVisibility(typeof adminUsersCurrentPage !== 'undefined' ? adminUsersCurrentPage : 1);
         adminUsersDataLoaded = true;
+        try {
+            const analyticsPanel = document.getElementById('adminUsersPanelAnalytics');
+            const analyticsVisible = analyticsPanel && !analyticsPanel.classList.contains('hidden');
+            if (analyticsVisible && typeof window.refreshAdminUserAnalytics === 'function') {
+                void window.refreshAdminUserAnalytics();
+            }
+        } catch (_) { /* ignore */ }
     } catch (e) {
         adminUsersDataLoaded = false;
         console.error("사용자 목록 렌더링 실패:", e);

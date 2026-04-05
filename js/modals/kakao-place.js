@@ -5,7 +5,10 @@ import { callableFunctions } from '../firebase.js';
 const KAKAO_SEARCH_MIN_LENGTH = 2;
 
 export function openKakaoPlaceSearch(mode = 'meal') {
-    const targetId = mode === 'snack' ? 'snackPlaceInput' : 'placeInput';
+    const targetId =
+        mode === 'snack' ? 'snackPlaceInput' :
+        mode === 'deliveryVendor' ? 'deliveryVendorInput' :
+        'placeInput';
     const targetInput = document.getElementById(targetId);
     if (!targetInput) return;
     window._kakaoPlaceSearchTarget = targetId;
@@ -38,11 +41,11 @@ function createKakaoSearchModal() {
             </div>
             <div class="p-4 flex-1 min-h-0 flex flex-col">
                 <div class="relative mb-4 shrink-0">
-                    <button type="button" onclick="window.searchKakaoPlaces()" class="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center bg-slate-100 text-slate-900 rounded-lg z-10 border border-slate-200 hover:bg-slate-200 transition-colors" aria-label="검색">
-                        <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                    <button type="button" onclick="window.searchKakaoPlaces()" class="absolute left-2 top-1/2 -translate-y-1/2 w-[1.8rem] h-[1.8rem] flex items-center justify-center bg-slate-500 text-white rounded-md z-10 border border-slate-500 hover:bg-slate-600 hover:border-slate-600 transition-colors" aria-label="검색">
+                        <i class="fa-solid fa-magnifying-glass text-[11px] text-white"></i>
                     </button>
                     <input type="text" id="kakaoSearchInput" placeholder="음식점 이름을 2글자 이상 입력하세요" 
-                        class="w-full p-3 pl-12 bg-slate-50 rounded-xl outline-none text-sm border border-transparent focus:border-slate-400 transition-all">
+                        class="w-full py-[0.6rem] pl-[46px] pr-3 bg-slate-50 rounded-xl outline-none text-sm border border-transparent focus:border-slate-400 transition-all">
                 </div>
                 <div id="kakaoSearchResults" class="space-y-2 max-h-[50vh] min-h-0 overflow-y-auto flex-1"></div>
             </div>

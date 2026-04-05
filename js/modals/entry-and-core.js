@@ -19,6 +19,65 @@ let entryGaugeSaveTimeout = null;
 
 const PHOTO_ASPECT_OPTIONS = ['1:1', '3:4', '4:3'];
 
+/** 배달/포장일 때만 '어디서 가져오셨나요' 입력란 표시 (다른 유형으로 바꾸면 값 초기화) */
+export function syncDeliveryVendorSectionVisibility() {
+    const sec = document.getElementById('deliveryVendorSection');
+    if (!sec) return;
+    const optional = document.getElementById('optionalFields');
+    const skipOptional = optional?.classList.contains('hidden');
+    const typeChips = document.getElementById('typeChips');
+    let mealType = '';
+    if (typeChips) {
+        const active = typeChips.querySelector('button.chip.active');
+        if (active) mealType = active.innerText.trim();
+    }
+    const show = !skipOptional && mealType === '배달/포장';
+    if (!show) {
+        const dvi = document.getElementById('deliveryVendorInput');
+        if (dvi) {
+            dvi.value = '';
+            dvi.removeAttribute('data-kakao-place-id');
+            dvi.removeAttribute('data-kakao-place-address');
+            dvi.removeAttribute('data-kakao-place-data');
+            dvi.removeAttribute('data-kakao-place-name');
+        }
+    }
+    sec.classList.toggle('hidden', !show);
+
+    const dual = show;
+    const area = document.getElementById('mealWhatInputArea');
+    if (area) {
+        area.classList.toggle('rounded-2xl', dual);
+        area.classList.toggle('border', dual);
+        area.classList.toggle('border-slate-200', dual);
+        area.classList.toggle('bg-white', dual);
+        area.classList.toggle('overflow-hidden', dual);
+        area.classList.toggle('divide-y', dual);
+        area.classList.toggle('divide-slate-200', dual);
+    }
+
+    const mdi = document.getElementById('menuDetailInput');
+    if (mdi) {
+        if (dual) {
+            mdi.classList.remove('border', 'border-slate-200', 'focus:border-slate-400');
+            mdi.classList.add('rounded-2xl', 'border-0', 'bg-slate-50', 'focus:ring-1', 'focus:ring-slate-200', 'focus:bg-white');
+        } else {
+            mdi.classList.remove('border-0', 'bg-slate-50', 'focus:ring-1', 'focus:ring-slate-200', 'focus:bg-white');
+            mdi.classList.add('rounded-2xl', 'border', 'border-slate-200', 'bg-white', 'focus:border-slate-400');
+        }
+    }
+    const dvi = document.getElementById('deliveryVendorInput');
+    if (dvi) {
+        if (dual) {
+            dvi.classList.remove('rounded-xl', 'rounded-lg', 'border', 'border-slate-200', 'focus:border-slate-400', 'bg-white', 'bg-slate-50', 'focus:bg-white');
+            dvi.classList.add('rounded-2xl', 'border-0', 'bg-transparent', 'focus:ring-1', 'focus:ring-slate-200', 'focus:ring-offset-0');
+        } else {
+            dvi.classList.remove('rounded-2xl', 'border-0', 'bg-transparent', 'focus:ring-1', 'focus:ring-slate-200', 'focus:ring-offset-0');
+            dvi.classList.add('rounded-xl', 'border', 'border-slate-200', 'bg-white', 'focus:border-slate-400');
+        }
+    }
+}
+
 function ensureEntryModalGaugesOnUserSettings() {
     if (!window.userSettings) return;
     if (!window.userSettings.entryModalGauges || typeof window.userSettings.entryModalGauges !== 'object') {
@@ -481,7 +540,7 @@ export async function openModal(date, slotId, entryId = null) {
         const shareIndicator = document.getElementById('sharePhotoIndicator');
         if (shareIndicator) shareIndicator.classList.add('hidden');
         
-        ['placeInput', 'menuDetailInput', 'withWhomInput', 'snackDetailInput', 'snackPlaceInput', 'generalCommentInput', 'snackCommentInput'].forEach(id => {
+        ['placeInput', 'menuDetailInput', 'withWhomInput', 'snackDetailInput', 'snackPlaceInput', 'deliveryVendorInput', 'generalCommentInput', 'snackCommentInput'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
@@ -503,6 +562,15 @@ export async function openModal(date, slotId, entryId = null) {
             snackPlaceInput.removeAttribute('data-kakao-place-data');
             snackPlaceInput.removeAttribute('data-kakao-place-name');
         }
+        const deliveryVendorInput = document.getElementById('deliveryVendorInput');
+        if (deliveryVendorInput) {
+            deliveryVendorInput.placeholder = '어느 식당 음식인가요?';
+            deliveryVendorInput.removeAttribute('data-kakao-place-id');
+            deliveryVendorInput.removeAttribute('data-kakao-place-address');
+            deliveryVendorInput.removeAttribute('data-kakao-place-data');
+            deliveryVendorInput.removeAttribute('data-kakao-place-name');
+        }
+        document.getElementById('deliveryVendorSection')?.classList.add('hidden');
         
         const mainPhotoContainer = document.getElementById('photoPreviewContainer');
         const snackPhotoContainer = document.getElementById('snackPhotoPreviewContainer');
@@ -616,6 +684,17 @@ export async function openModal(date, slotId, entryId = null) {
                     _pi.setAttribute('data-kakao-place-name', (r.placeData && r.placeData.name) || r.place || '');
                 }
                 setVal('menuDetailInput', r.menuDetail || "");
+                setVal('deliveryVendorInput', (!isS ? (r.deliveryVendor || '') : ''));
+                const _dvi = document.getElementById('deliveryVendorInput');
+                if (!isS && _dvi && (r.deliveryPlaceId || r.deliveryPlaceAddress || r.deliveryPlaceData)) {
+                    if (r.deliveryPlaceId) _dvi.setAttribute('data-kakao-place-id', r.deliveryPlaceId);
+                    _dvi.setAttribute('data-kakao-place-address', (r.deliveryPlaceAddress != null && r.deliveryPlaceAddress !== undefined) ? String(r.deliveryPlaceAddress) : '');
+                    if (r.deliveryPlaceData && typeof r.deliveryPlaceData === 'object') {
+                        _dvi.setAttribute('data-kakao-place-data', JSON.stringify(r.deliveryPlaceData));
+                    }
+                    const dn = (r.deliveryPlaceData && r.deliveryPlaceData.name) || r.deliveryVendor || '';
+                    _dvi.setAttribute('data-kakao-place-name', dn);
+                }
                 setVal('withWhomInput', (!isS ? (r.withWhomDetail || "") : ""));
                 setVal('snackWithWhomInput', (isS ? (r.withWhomDetail || "") : ""));
                 setVal('snackDetailInput', r.menuDetail || "");
@@ -809,7 +888,10 @@ export async function openModal(date, slotId, entryId = null) {
                             // sub-chip은 나중에 렌더링될 수 있으므로 여러 번 재시도
                             setTimeout(() => {
                                 activateTags();
-                                setTimeout(() => activateTags(), 100);
+                                setTimeout(() => {
+                                    activateTags();
+                                    syncDeliveryVendorSectionVisibility();
+                                }, 100);
                             }, 100);
                         } else {
                             setTimeout(() => tryActivateTags(attempts + 1), 50);
@@ -858,6 +940,8 @@ export async function openModal(date, slotId, entryId = null) {
             const subTags = window.userSettings.subTags.snack || [];
             const snackType = document.querySelector('#snackTypeChips button.active')?.innerText;
             window.renderSecondary('snackSuggestions', subTags, 'snackDetailInput', snackType || null, 'snack');
+        } else {
+            setTimeout(() => syncDeliveryVendorSectionVisibility(), 0);
         }
         
         // 입력 필드에 이벤트 리스너 추가 (간식 입력 시 추천 태그 업데이트)
@@ -996,6 +1080,10 @@ export async function saveEntry() {
         const snackDetailInput = document.getElementById('snackDetailInput');
         const snackInputVal = snackDetailInput ? snackDetailInput.value.trim() : '';
         const snackPlaceInputVal = document.getElementById('snackPlaceInput')?.value?.trim() || '';
+        const deliveryVendorEl = document.getElementById('deliveryVendorInput');
+        const deliveryVendorVal = (!isS && !isSk && mealType === '배달/포장' && deliveryVendorEl)
+            ? deliveryVendorEl.value.trim()
+            : '';
 
         // 입력 검증: 어떻게/무엇을/누구와 중 최소 1개는 필요 (무응답 시 저장하지 않음)
         // - 본식: 어떻게(typeChips) / 무엇을(categoryChips 또는 menuDetailInput) / 누구와(withChips 또는 withWhomInput)
@@ -1113,6 +1201,22 @@ export async function saveEntry() {
         const nameMatches = !kakaoPlaceName || (String(placeValForKakao || '').trim() === String(kakaoPlaceName).trim());
         const shouldUseKakaoFields = kakaoPlaceId && !isSk && nameMatches;
 
+        let shouldUseDeliveryKakao = false;
+        let deliveryKakaoPlaceId = '';
+        let deliveryKakaoPlaceAddress = '';
+        let deliveryKakaoPlaceDataStr = '';
+        if (!isS && !isSk && mealType === '배달/포장' && deliveryVendorEl) {
+            const dvId = deliveryVendorEl.getAttribute('data-kakao-place-id');
+            const dvName = deliveryVendorEl.getAttribute('data-kakao-place-name') || '';
+            const dvNameMatches = !dvName || (String(deliveryVendorVal || '').trim() === String(dvName).trim());
+            if (dvId && dvNameMatches) {
+                shouldUseDeliveryKakao = true;
+                deliveryKakaoPlaceId = dvId;
+                deliveryKakaoPlaceAddress = deliveryVendorEl.getAttribute('data-kakao-place-address') || '';
+                deliveryKakaoPlaceDataStr = deliveryVendorEl.getAttribute('data-kakao-place-data') || '';
+            }
+        }
+
         const sourcePhotos = Array.isArray(state.currentPhotos) ? [...state.currentPhotos] : [];
         const isBase64Photo = (photo) => typeof photo === 'string' && photo.startsWith('data:image');
         const existingPhotoUrls = sourcePhotos.filter(photo => typeof photo === 'string' && photo && !isBase64Photo(photo));
@@ -1139,6 +1243,35 @@ export async function saveEntry() {
             satiety: isSk ? null : (satOn ? state.currentSatiety : null),
             time: new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' })
         };
+
+        if (!isS && !isSk && mealType === '배달/포장') {
+            record.deliveryVendor = deliveryVendorVal;
+            if (shouldUseDeliveryKakao) {
+                record.deliveryPlaceId = deliveryKakaoPlaceId;
+                record.deliveryPlaceAddress = deliveryKakaoPlaceAddress || '';
+                record.deliveryKakaoPlace = true;
+                if (deliveryKakaoPlaceDataStr) {
+                    try {
+                        record.deliveryPlaceData = JSON.parse(deliveryKakaoPlaceDataStr);
+                    } catch (_) {
+                        record.deliveryPlaceData = null;
+                    }
+                } else {
+                    record.deliveryPlaceData = null;
+                }
+            } else {
+                record.deliveryPlaceId = '';
+                record.deliveryPlaceAddress = '';
+                record.deliveryPlaceData = null;
+                record.deliveryKakaoPlace = false;
+            }
+        } else {
+            record.deliveryVendor = '';
+            record.deliveryPlaceId = '';
+            record.deliveryPlaceAddress = '';
+            record.deliveryPlaceData = null;
+            record.deliveryKakaoPlace = false;
+        }
         
         // 카카오맵 API로 입력된 식당인 경우 추가 정보 저장 (선택한 장소명을 수정한 경우는 제외 → 잘못된 주소 매칭 방지)
         if (shouldUseKakaoFields) {
@@ -1853,6 +1986,17 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
         
     }
     
+    if (isPrimary && subTagKey === 'place' && subContainerId === 'restaurantSuggestions' && selectedValue && (selectedValue === '집밥' || selectedValue === '배달/포장')) {
+        const pi = document.getElementById('placeInput');
+        if (pi) {
+            pi.value = '우리집';
+            pi.removeAttribute('data-kakao-place-id');
+            pi.removeAttribute('data-kakao-place-address');
+            pi.removeAttribute('data-kakao-place-data');
+            pi.removeAttribute('data-kakao-place-name');
+        }
+    }
+
     if (isPrimary && subTagKey && subContainerId) {
         if (subContainerId === 'snackPlaceSuggestions') {
             appState.selectedSnackPlaceMainTag = selectedValue;
@@ -1862,6 +2006,7 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
             (document.getElementById(subContainerId)?.getAttribute('data-input-id') || getInputIdFromContainer(subContainerId));
         window.renderSecondary(subContainerId, subTags, inputIdForSecondary, selectedValue, subTagKey);
     }
+    syncDeliveryVendorSectionVisibility();
 }
 
 function toggleFieldsForSkip(isSkip) {
@@ -1884,6 +2029,7 @@ function toggleFieldsForSkip(isSkip) {
             ratingSection.classList.remove('hidden');
         }
     }
+    syncDeliveryVendorSectionVisibility();
 }
 
 export function handleMultipleImages(e) {

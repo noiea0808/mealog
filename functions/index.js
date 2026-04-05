@@ -1423,6 +1423,13 @@ exports.sharePhotos = onCall({ region: REGION }, async (request) => {
         mealType: (mealData && mealData.mealType) || '',
         place: (mealData && mealData.place) || '',
         menuDetail: (mealData && mealData.menuDetail) || '',
+        deliveryVendor: (mealData && mealData.deliveryVendor) || '',
+        deliveryPlaceId: (mealData && mealData.deliveryPlaceId) || '',
+        deliveryPlaceAddress: (mealData && mealData.deliveryPlaceAddress) || '',
+        deliveryPlaceData: (mealData && mealData.deliveryPlaceData && typeof mealData.deliveryPlaceData === 'object')
+          ? mealData.deliveryPlaceData
+          : null,
+        deliveryKakaoPlace: !!(mealData && mealData.deliveryKakaoPlace),
         snackType: (mealData && mealData.snackType) || '',
         date: (mealData && mealData.date) || '',
         slotId: (mealData && mealData.slotId) || '',
@@ -2092,6 +2099,12 @@ async function rebuildUserStatsForUserId(userId) {
     batch.set(yearRef, { daily: yearDaily, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   });
   await batch.commit();
+
+  const userRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(userId);
+  await userRef.set(
+    { mealCount: meals.length },
+    { merge: true }
+  );
 
   const totalDays = Object.keys(daily).length;
   logger.info('rebuildUserStatsForUserId: completed', {
