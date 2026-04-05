@@ -148,7 +148,7 @@ window.switchAdminTab = function(tab) {
         ensureAdminUsersSortHandlers();
         /* 사용자 목록은 새로고침 버튼으로만 로드 */
     } else if (tab === 'alerts') {
-        switchAlertsSidebar('notice');
+        switchAlertsSidebar('pushMessage');
     } else if (tab === 'content') {
         switchContentSidebar('mealog'); // 콘텐츠 탭 첫 메뉴(MEALOG)
     } else if (tab === 'adminLog') {
@@ -543,7 +543,7 @@ window.switchMonitoringSidebar = function(section) {
 
 // 콘텐츠 관리 관련 함수들
 
-const ALERTS_SIDEBAR_SECTIONS = ['notice', 'pushMessage', 'popup', 'loginBanner'];
+const ALERTS_SIDEBAR_SECTIONS = ['pushMessage', 'notice', 'popup', 'loginBanner'];
 
 /** 알림 탭 사이드바 (공지·푸시·팝업·로그인 배너) */
 window.switchAlertsSidebar = function (section) {
