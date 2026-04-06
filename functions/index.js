@@ -2280,10 +2280,16 @@ exports.signInWithKakao = onCall({ region: REGION }, wrapFunction('signInWithKak
         err: tokenJson?.error,
         desc: tokenJson?.error_description
       });
-      throw new HttpsError(
-        'unauthenticated',
-        tokenJson?.error_description || tokenJson?.error || '카카오 토큰 발급에 실패했습니다.'
-      );
+      const kakaoErr = tokenJson?.error;
+      const kakaoDesc = String(tokenJson?.error_description || '');
+      let clientMsg =
+        tokenJson?.error_description || tokenJson?.error || '카카오 토큰 발급에 실패했습니다.';
+      if (kakaoErr === 'invalid_client' || /bad client credentials/i.test(kakaoDesc)) {
+        clientMsg =
+          '카카오 서버 인증 실패: Firebase Functions의 KAKAO_REST_API_KEY는 반드시 같은 앱의 REST API 키여야 합니다. ' +
+          '카카오 개발자 콘솔에서 클라이언트 시크릿을 사용 중이면 KAKAO_CLIENT_SECRET도 설정·재배포하세요.';
+      }
+      throw new HttpsError('unauthenticated', clientMsg);
     }
     accessToken = tokenJson.access_token || '';
   }
@@ -2336,6 +2342,95 @@ exports.signInWithKakao = onCall({ region: REGION }, wrapFunction('signInWithKak
 
   const customToken = await auth.createCustomToken(uid, { kakao: true });
   return { customToken };
+}));
+
+function normalizeNicknameForClaimServer(nickname) {
+  if (!nickname || typeof nickname !== 'string') return null;
+  const t = nickname.trim();
+  if (!t || t === '게스트') return null;
+  try {
+    return t.normalize('NFKC').toLowerCase();
+  } catch {
+    return t.toLowerCase();
+  }
+}
+
+function nicknameClaimDocIdServer(normalized) {
+  if (!normalized) return '';
+  const clipped = normalized.length > 200 ? normalized.slice(0, 200) : normalized;
+  return encodeURIComponent(clipped);
+}
+
+/**
+ * 사용자 설정 + 닉네임 클레임을 Admin으로 저장 (클라이언트 Firestore/App Check permission-denied 시 폴백)
+ */
+exports.saveArtifactUserSettings = onCall({ region: REGION }, wrapFunction('saveArtifactUserSettings', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const tokenEmail = request.auth.token?.email;
+  if (tokenEmail && String(tokenEmail).toLowerCase().trim() === READ_ONLY_DEMO_EMAIL) {
+    throw new HttpsError('permission-denied', '샘플 계정에서는 설정을 변경할 수 없습니다.');
+  }
+  const uid = request.auth.uid;
+  const settings = request.data?.settings;
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+    throw new HttpsError('invalid-argument', 'settings 객체가 필요합니다.');
+  }
+  let payloadSize = 0;
+  try {
+    payloadSize = JSON.stringify(settings).length;
+  } catch {
+    throw new HttpsError('invalid-argument', 'settings를 직렬화할 수 없습니다.');
+  }
+  if (payloadSize > 400000) {
+    throw new HttpsError('invalid-argument', 'settings 크기가 너무 큽니다.');
+  }
+
+  const settingsRef = db.doc(`artifacts/${APP_ID}/users/${uid}/config/settings`);
+  const oldSnap = await settingsRef.get();
+  const oldData = oldSnap.exists ? oldSnap.data() : {};
+  const normOld = normalizeNicknameForClaimServer(oldData.profile?.nickname);
+  const normNew = normalizeNicknameForClaimServer(settings.profile?.nickname);
+
+  await db.runTransaction(async (transaction) => {
+    if (normNew) {
+      const newClaimRef = db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normNew)}`);
+      const claimSnap = await transaction.get(newClaimRef);
+      if (claimSnap.exists) {
+        const owner = claimSnap.data()?.userId;
+        if (owner && owner !== uid) {
+          throw new HttpsError('already-exists', '이미 사용 중인 닉네임입니다.');
+        }
+      }
+    }
+    if (normOld && normOld !== normNew) {
+      const oldClaimRef = db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normOld)}`);
+      const oldClaimSnap = await transaction.get(oldClaimRef);
+      if (oldClaimSnap.exists && oldClaimSnap.data()?.userId === uid) {
+        transaction.delete(oldClaimRef);
+      }
+    }
+    transaction.set(settingsRef, settings, { merge: true });
+    if (normNew) {
+      const newClaimRef = db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normNew)}`);
+      const displayNickname = String(settings.profile?.nickname || '').trim();
+      transaction.set(newClaimRef, {
+        userId: uid,
+        normalizedNickname: normNew,
+        displayNickname: displayNickname || normNew,
+        updatedAt: new Date().toISOString()
+      });
+    }
+  });
+
+  try {
+    await db.doc(`artifacts/${APP_ID}/users/${uid}`).set({ uid }, { merge: true });
+  } catch (e) {
+    logger.warn('saveArtifactUserSettings: user root set skipped', { uid, err: e?.message });
+  }
+
+  return { ok: true };
 }));
 
 /**

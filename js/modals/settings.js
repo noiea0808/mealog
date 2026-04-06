@@ -6,6 +6,45 @@ import { dbOps } from '../db.js';
 import { showToast, updateHeaderUI } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
 
+/**
+ * 설정 > 로그인 정보 표시용.
+ * 카카오는 커스텀 토큰 로그인이라 Firebase에 email·providerData가 없을 수 있어,
+ * 이메일 없을 때 기본 문구를 "Google 계정"으로 두면 오해를 부름.
+ */
+function getSettingsAccountLoginDisplay(user) {
+    const googleIcon = '<i class="fa-brands fa-google text-lg" aria-hidden="true"></i>';
+    const emailIcon = '<i class="fa-solid fa-envelope text-lg" aria-hidden="true"></i>';
+    const kakaoBadge =
+        '<span class="inline-flex items-center justify-center min-h-[1.5rem] px-2 rounded-lg bg-[#FEE500] text-[#191919] text-[11px] font-black tracking-tight" title="카카오 로그인">카카오</span>';
+
+    const uid = user?.uid || '';
+    const isKakaoUid = uid.startsWith('kakao_');
+    const providerId = user?.providerData?.[0]?.providerId;
+    const savedPid = window.userSettings?.providerId;
+    const isKakao = isKakaoUid || savedPid === 'kakao.com';
+
+    if (isKakao) {
+        const mail = user.email || window.userSettings?.email || '';
+        const nick = window.userSettings?.profile?.nickname || '';
+        let line = '카카오로 로그인한 계정';
+        if (mail) line = `${line} · ${mail}`;
+        else if (nick && nick !== '게스트') line = `${line} · ${nick}`;
+        else line = `${line} (이메일 미연동)`;
+        return { icon: kakaoBadge, line };
+    }
+
+    if (user.email) {
+        const icon = providerId === 'google.com' ? googleIcon : emailIcon;
+        return { icon, line: user.email };
+    }
+
+    if (providerId === 'google.com') {
+        return { icon: googleIcon, line: 'Google 계정' };
+    }
+
+    return { icon: emailIcon, line: '로그인된 계정' };
+}
+
 /** 설정 하단 로그아웃 버튼 — 샘플 계정만 '홈으로' + 초록 스타일 */
 function syncProfileLogoutFooterButton() {
     const btn = document.querySelector('.profile-logout-btn');
@@ -265,12 +304,10 @@ export function openSettings() {
             const deleteArea = document.getElementById('deleteAccountBtnArea');
             if (deleteArea) deleteArea.classList.add('hidden');
         } else {
-            const email = window.currentUser.email || 'Google 계정';
-            const providerIcon = window.currentUser.providerData[0]?.providerId === 'google.com' ? 
-                '<i class="fa-brands fa-google"></i>' : '<i class="fa-solid fa-envelope"></i>';
+            const { icon: providerIcon, line: loginLine } = getSettingsAccountLoginDisplay(window.currentUser);
             accountHtml = `<div class="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 mb-6">
                 <h3 class="text-xs font-black text-emerald-600 mb-2 uppercase tracking-widest">로그인 정보</h3>
-                <div class="flex items-center gap-2 text-emerald-700 font-bold text-sm">${providerIcon} ${email}</div>
+                <div class="flex items-center gap-2 text-emerald-700 font-bold text-sm">${providerIcon}<span class="break-all">${loginLine}</span></div>
             </div>`;
             document.getElementById('logoutBtnArea').classList.remove('hidden');
             syncProfileLogoutFooterButton();

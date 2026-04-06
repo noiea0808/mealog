@@ -19,6 +19,54 @@ function queueAttendanceCheck() {
     });
 }
 
+/** 카카오 웹 로그인 직후 1회만 자동 가입 위저드 허용 (auth.js에서 OAuth 성공 시 설정) */
+const KAKAO_PROFILE_SETUP_GATE_KEY = 'mealog_kakaoProfileSetupGate';
+
+function kakaoUidNeedsProfileWizardGuard(uid) {
+    return typeof uid === 'string' && uid.startsWith('kakao_');
+}
+
+/** 약관만(기존 회원) 위저드는 새로고침 시에도 유지 — 가드 제외 */
+function signupWizardIsProfileOnboarding(options) {
+    return !(options && options.isTermsOnly === true);
+}
+
+/**
+ * 카카오 신규 가입 위저드: 직전 OAuth에서만 허용. 플래그 없으면 로그아웃 후 로그인 화면부터.
+ */
+async function openSignupWizardWithKakaoStaleGuard(user, wizardOptions) {
+    if (kakaoUidNeedsProfileWizardGuard(user?.uid) && signupWizardIsProfileOnboarding(wizardOptions)) {
+        let gate = false;
+        try {
+            gate = sessionStorage.getItem(KAKAO_PROFILE_SETUP_GATE_KEY) === '1';
+        } catch (_) {}
+        if (gate) {
+            try {
+                sessionStorage.removeItem(KAKAO_PROFILE_SETUP_GATE_KEY);
+            } catch (_) {}
+        } else {
+            console.log('🔐 카카오 가입: 직전 OAuth 리다이렉트가 아니어 로그아웃 후 로그인 화면부터 시작합니다.');
+            try {
+                // main.js onAuthStateChanged가 비의도적 로그아웃으로 무시하지 않도록
+                sessionStorage.setItem('explicitLogout', 'true');
+            } catch (_) {}
+            const { signOut } = await import('https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js');
+            await signOut(auth);
+            window._recordsLoadHidePending = false;
+            switchScreen(false);
+            hideLoading();
+            try {
+                const { closeSignupWizard } = await import('./signup-wizard.js');
+                closeSignupWizard();
+            } catch (_) {}
+            showToast('처음부터 다시 로그인해 주세요.', 'info');
+            return;
+        }
+    }
+    const { openSignupWizard } = await import('./signup-wizard.js');
+    openSignupWizard(wizardOptions);
+}
+
 /**
  * 인증 상태 정의
  */
@@ -486,13 +534,20 @@ export class AuthFlowManager {
                 window._recordsLoadHidePending = false;
                 switchScreen(false);
                 hideLoading();
-                const { openSignupWizard } = await import('./signup-wizard.js');
                 if (readiness.hasProfile) {
-                    // 기존 회원 약관 업데이트: 4페이지만 (1/1)
-                    openSignupWizard({ startStep: 4, totalSteps: 1, isTermsOnly: true });
+                    // 기존 회원 약관 업데이트: 4페이지만 (1/1) — 카카오 가입 가드 제외
+                    await openSignupWizardWithKakaoStaleGuard(user, {
+                        startStep: 4,
+                        totalSteps: 1,
+                        isTermsOnly: true
+                    });
                 } else {
                     // 신규: 닉네임 → 생년월일/성별/라이프스타일 → 약관 (2/4 ~ 4/4)
-                    openSignupWizard({ startStep: 2, totalSteps: 4, isEmailSignup: false });
+                    await openSignupWizardWithKakaoStaleGuard(user, {
+                        startStep: 2,
+                        totalSteps: 4,
+                        isEmailSignup: false
+                    });
                 }
                 return;
             }
@@ -502,8 +557,11 @@ export class AuthFlowManager {
                 window._recordsLoadHidePending = false;
                 switchScreen(false);
                 hideLoading();
-                const { openSignupWizard } = await import('./signup-wizard.js');
-                openSignupWizard({ startStep: 2, totalSteps: 4, isEmailSignup: false });
+                await openSignupWizardWithKakaoStaleGuard(user, {
+                    startStep: 2,
+                    totalSteps: 4,
+                    isEmailSignup: false
+                });
             } else {
                 console.log('✅ 약관과 프로필 모두 완료됨. 모달을 표시하지 않습니다.');
                 this.hasCompleted = true;
@@ -542,8 +600,12 @@ export class AuthFlowManager {
                 case AuthState.NEEDS_TERMS:
                     console.log('📋 약관 동의 필요: 위저드(페이지 형식) 표시');
                     switchScreen(false);
-                    const { openSignupWizard: openWizardTerms } = await import('./signup-wizard.js');
-                    openWizardTerms(readiness.hasProfile ? { startStep: 4, totalSteps: 1, isTermsOnly: true } : { startStep: 2, totalSteps: 4, isEmailSignup: false });
+                    await openSignupWizardWithKakaoStaleGuard(
+                        this.user,
+                        readiness.hasProfile
+                            ? { startStep: 4, totalSteps: 1, isTermsOnly: true }
+                            : { startStep: 2, totalSteps: 4, isEmailSignup: false }
+                    );
                     hideLoading();
                     break;
                     
@@ -557,8 +619,11 @@ export class AuthFlowManager {
                     } else {
                         console.log('📋 프로필 설정 필요: 위저드(페이지 형식) 표시');
                         switchScreen(false);
-                        const { openSignupWizard: openWizardProfile } = await import('./signup-wizard.js');
-                        openWizardProfile({ startStep: 2, totalSteps: 4, isEmailSignup: false });
+                        await openSignupWizardWithKakaoStaleGuard(this.user, {
+                            startStep: 2,
+                            totalSteps: 4,
+                            isEmailSignup: false
+                        });
                         hideLoading();
                     }
                     break;

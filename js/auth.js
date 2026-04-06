@@ -1,5 +1,5 @@
 // 인증 관련 함수들
-import { auth, setAnalyticsUserId, callableFunctions } from './firebase.js';
+import { auth, setAnalyticsUserId, callableFunctions, appCheckInitPromise } from './firebase.js';
 import { GoogleAuthProvider, signInWithPopup, getRedirectResult, signInWithCredential, signInWithCustomToken, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
@@ -140,13 +140,18 @@ export async function tryCompleteKakaoOAuthReturn() {
             return;
         }
         await signInWithCustomToken(auth, customToken);
+        // 가입 위저드는 직후 OAuth 세션에서만 자동 오픈. 새로고침 시 플래그 없음 → auth-flow에서 로그아웃 후 로그인 화면
+        try {
+            sessionStorage.setItem('mealog_kakaoProfileSetupGate', '1');
+        } catch (_) {}
         window._recordsLoadHidePending = true;
         showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
         showToast('카카오 로그인 성공!', 'success');
     } catch (error) {
         console.warn('[카카오 OAuth 복귀] 오류:', error?.code, error?.message, error);
         const msg = error?.message || '';
-        const short = msg.length > 100 ? `${msg.slice(0, 100)}…` : msg || '카카오 로그인에 실패했습니다.';
+        const max = 240;
+        const short = msg.length > max ? `${msg.slice(0, max)}…` : msg || '카카오 로그인에 실패했습니다.';
         showToast(short, 'error');
         hideLoading();
     } finally {
@@ -795,6 +800,8 @@ export async function initAuth(onAuthStateChangedCallback) {
             hideLoading();
         }
     }
+    // Firestore App Check 강제 시: 리스너 등록 직후의 getDocs/스냅샷이 토큰 없이 나가면 전 구역 permission-denied
+    await appCheckInitPromise;
     onAuthStateChanged(auth, (user) => {
         try {
             setAnalyticsUserId(user?.uid || null);

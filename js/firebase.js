@@ -144,34 +144,41 @@ export const callableFunctions = {
     /** 둘러보기 전용 — 비로그인 호출 (데모 UID 커스텀 토큰) */
     signInAsDemo: httpsCallable(functions, 'signInAsDemo'),
     /** 카카오 액세스 토큰 → Firebase 커스텀 토큰 (비로그인 호출) */
-    signInWithKakao: httpsCallable(functions, 'signInWithKakao')
+    signInWithKakao: httpsCallable(functions, 'signInWithKakao'),
+    /** 클라이언트 Firestore permission-denied 시 설정+닉네임클레임 저장 폴백 (Admin) */
+    saveArtifactUserSettings: httpsCallable(functions, 'saveArtifactUserSettings')
 };
 
-// App Check 초기화 (reCAPTCHA v3 사용)
-// 로컬 개발 환경에서는 App Check를 비활성화 (localhost, 127.0.0.1, 0.0.0.0)
-// 에러가 발생해도 앱이 계속 작동하도록 try-catch로 감쌈
-(async () => {
+/**
+ * App Check 초기화 완료 Promise — Firestore App Check 강제 시 토큰 없으면 전 요청 permission-denied.
+ * - initAuth에서 onAuthStateChanged 전에 await 해 리스너·getDocs 레이스 방지
+ * - 로컬: 예전엔 App Check를 껐는데, 강제 켜진 프로젝트에서는 토큰 없이 전부 거절됨 → 디버그 공급자 사용
+ */
+export const appCheckInitPromise = (async () => {
     try {
-        // 로컬 개발 환경 체크
-        const isLocalhost = window.location.hostname === 'localhost' || 
-                           window.location.hostname === '127.0.0.1' || 
-                           window.location.hostname === '0.0.0.0' ||
-                           window.location.hostname === '';
-        
+        if (typeof window === 'undefined') return;
+        const isLocalhost =
+            window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1' ||
+            window.location.hostname === '0.0.0.0' ||
+            window.location.hostname === '';
         if (isLocalhost) {
-            console.log('🔧 로컬 개발 환경: App Check 비활성화');
-            return;
+            window.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+            console.log(
+                '🔧 로컬 App Check 디버그: 콘솔에 출력되는 디버그 토큰을 Firebase Console → App Check → 해당 웹 앱 → 디버그 토큰에 등록하세요. (미등록 시 Firestore permission-denied 가능)'
+            );
         }
-        
-        const { initializeAppCheck, ReCaptchaV3Provider } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js");
+        const { initializeAppCheck, ReCaptchaV3Provider, getToken } = await import(
+            'https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js'
+        );
         const appCheck = initializeAppCheck(app, {
             provider: new ReCaptchaV3Provider('6LdjYVUsAAAAAP7RvrJgOEp-7wvDpmoC8Bll9-Kw'),
             isTokenAutoRefreshEnabled: true
         });
+        await getToken(appCheck, false);
         console.log('✅ App Check 초기화 완료');
     } catch (e) {
         console.warn('⚠️ App Check 초기화 실패 (계속 진행):', e);
-        // App Check 실패해도 앱은 계속 작동
     }
 })();
 

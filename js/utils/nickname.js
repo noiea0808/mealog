@@ -116,3 +116,88 @@ export async function updateNicknameChangeDate(userId) {
         // 실패해도 계속 진행 (중요하지 않은 메타데이터)
     }
 }
+
+/** 회원가입 추천용: 형용·자연·생물·감각 단어 풀 (조합 수 ↑) */
+const NICK_MOOD = [
+    '햇살', '달빛', '바람', '구름', '별빛', '숲길', '파도', '노을', '이슬', '새벽', '한낮', '황혼',
+    '봄날', '여름', '가을', '겨울', '미소', '포근', '산들', '고요', '따스', '시원', '포동', '맑음',
+    '은은', '반짝', '나른', '싱그', '포슬', '보송', '촉촉', '뽀송', '산뜻', '포근'
+];
+const NICK_NATURE = [
+    '숲', '언덕', '계곡', '호수', '강', '바다', '하늘', '별', '달', '구름', '무지개', '안개',
+    '눈꽃', '벚꽃', '단풍', '솔숲', '들판', '초원', '모래', '절벽', '폭포', '샘물', '동굴', '해변',
+    '산책', '여정', '정원', '온실', '논밭', '밭길', '샛길', '지름길', '완만', '고개'
+];
+const NICK_CREATURE = [
+    '곰', '여우', '다람쥐', '부엉이', '고양이', '강아지', '펭귄', '판다', '토끼', '수달', '두더지',
+    '너구리', '청설', '고래', '돌고래', '물개', '해달', '문어', '상어', '가오리', '두루미', '황제펭',
+    '참새', '까치', '비둘기', '제비', '까마귀', '올빼미', '두꺼비', '개구리', '도마뱀', '거북'
+];
+const NICK_FOODISH = [
+    '떡볶이', '김밥', '라면', '우동', '초밥', '샐러드', '스프', '스튜', '카레', '피자', '파스타',
+    '샌드', '토스트', '팬케', '크림', '푸딩', '젤리', '마카롱', '도넛', '머핀', '쿠키', '티라미',
+    '에이드', '라떼', '아아', '말차', '허브', '꿀차', '식혜', '수제비', '칼국수', '냉면', '비빔'
+];
+const NICK_LEGACY_PHRASES = [
+    '늑대와 함께 춤을', '독수리가 날개를 펼 때', '바람이 말을 타고', '달이 호수를 비출 때',
+    '별이 내려앉는 밤', '산이 노래할 때', '강이 바다를 만날 때', '불꽃이 춤추는 밤',
+    '눈이 내리는 숲', '해가 뜨는 평원', '번개가 하늘을 가를 때', '구름이 산을 감싸면',
+    '나무가 말을 걸 때', '물이 돌을 닮을 때', '새벽이 잠에서 깨면'
+];
+
+function pickNickWord(arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function clipNickname(s, maxLen = 20) {
+    if (!s || typeof s !== 'string') return '밀당친구';
+    const t = s.trim();
+    if (t.length <= maxLen) return t;
+    return t.slice(0, maxLen);
+}
+
+/**
+ * 여러 단어 풀을 섞어 20자 이하 닉네임 후보 1개 (비속어 검사 전)
+ */
+export function generateRandomNicknameCombo() {
+    const r = Math.random();
+    let base;
+    if (r < 0.28) {
+        base = pickNickWord(NICK_MOOD) + pickNickWord(NICK_CREATURE);
+    } else if (r < 0.52) {
+        base = pickNickWord(NICK_NATURE) + pickNickWord(NICK_CREATURE);
+    } else if (r < 0.72) {
+        base = pickNickWord(NICK_MOOD) + pickNickWord(NICK_NATURE);
+    } else if (r < 0.88) {
+        base = pickNickWord(NICK_MOOD) + pickNickWord(NICK_FOODISH);
+    } else if (r < 0.95) {
+        base = pickNickWord(NICK_CREATURE) + pickNickWord(NICK_FOODISH);
+    } else {
+        base = pickNickWord(NICK_LEGACY_PHRASES);
+    }
+    if (Math.random() < 0.22 && base.length <= 14) {
+        base += String(Math.floor(Math.random() * 9000 + 1000));
+    }
+    base = clipNickname(base, 20);
+    if (containsProfanity(base)) {
+        base = clipNickname(pickNickWord(NICK_MOOD) + pickNickWord(NICK_CREATURE) + String(Math.floor(Math.random() * 99 + 1)), 20);
+    }
+    return base || '밀당친구';
+}
+
+/**
+ * Firestore nicknameClaims 기준으로 비어 있는 닉네임을 여러 번 시도해 고름
+ * @param {string|null} currentUserId
+ * @param {number} maxAttempts
+ * @returns {Promise<string>}
+ */
+export async function pickUnusedRandomNickname(currentUserId = null, maxAttempts = 28) {
+    for (let i = 0; i < maxAttempts; i++) {
+        const candidate = generateRandomNicknameCombo();
+        if (containsProfanity(candidate)) continue;
+        const dup = await isNicknameDuplicate(candidate, currentUserId);
+        if (!dup) return candidate;
+    }
+    const suffix = `${Date.now().toString(36)}${Math.floor(Math.random() * 999)}`;
+    return clipNickname(`밀당${suffix}`, 20);
+}
