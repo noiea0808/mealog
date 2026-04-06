@@ -93,13 +93,14 @@ function computeSignupToLastLoginMs(createdAt, lastLoginAt) {
     return lt - ct;
 }
 
-/** 활동일수 셀: `0일 / 00시간` 형식 (시간은 2자리 패딩) */
-function formatSignupToLastLoginActivity(ms) {
-    if (ms == null || !Number.isFinite(ms) || ms < 0) return '-';
+/** 활동일수 셀 HTML: 일과 시간을 두 줄로 (시간은 2자리 패딩) */
+function formatSignupToLastLoginActivityHtml(ms) {
+    if (ms == null || !Number.isFinite(ms) || ms < 0) return escapeHtml('-');
     const totalHours = Math.floor(ms / (1000 * 60 * 60));
     const days = Math.floor(totalHours / 24);
     const hours = totalHours % 24;
-    return `${days}일 / ${String(hours).padStart(2, '0')}시간`;
+    const h = `${String(hours).padStart(2, '0')}시간`;
+    return `<span class="flex flex-col items-center justify-center leading-tight tabular-nums"><span>${days}일</span><span>${escapeHtml(h)}</span></span>`;
 }
 
 /** 생년월일 문자열을 정렬용 키로 변환 (없으면 null) */
@@ -620,8 +621,8 @@ export async function renderUsers(options = {}) {
                 : '-';
             const signupToLastLoginLabel =
                 user.loginMethod === '게스트'
-                    ? '-'
-                    : formatSignupToLastLoginActivity(user.signupToLastLoginMs);
+                    ? escapeHtml('-')
+                    : formatSignupToLastLoginActivityHtml(user.signupToLastLoginMs);
             
             let loginMethodBadge = 'bg-slate-100 text-slate-700';
             if (user.loginMethod === '구글') {
@@ -685,7 +686,7 @@ export async function renderUsers(options = {}) {
                         <span class="text-sm text-slate-600 leading-snug">${lastLoginDate}</span>
                     </td>
                     <td data-page="1" class="px-2 py-2.5 text-center">
-                        <span class="text-sm text-slate-600 tabular-nums font-medium">${signupToLastLoginLabel}</span>
+                        <div class="text-sm text-slate-600 font-medium">${signupToLastLoginLabel}</div>
                     </td>
                     <td data-page="1" class="px-1.5 py-2.5 min-w-[3.25rem] max-w-[4rem] text-center">${activityBanCell}</td>
                     <td data-page="2" class="px-3 py-2.5 text-center tabular-nums">

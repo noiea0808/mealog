@@ -61,7 +61,8 @@ export function weekLabelKoreanFromSunday(sun) {
         if (new Date(y, m, day).getDay() === 0) n++;
     }
     const sat = new Date(sun.getFullYear(), sun.getMonth(), sun.getDate() + 6);
-    return `${n}주(${formatMonthDayLocal(sun)}~${formatMonthDayLocal(sat)})`;
+    // 대시보드 주간 컬럼: 주차와 날짜 구간을 줄바꿈으로 구분 (th에 whitespace-pre-line)
+    return `${n}주\n${formatMonthDayLocal(sun)}~${formatMonthDayLocal(sat)}`;
 }
 
 /**

@@ -150,6 +150,7 @@ function cloneWeeklyBreakdown(raw) {
     }
     return {
         weeks,
+        monthGroups: buildMonthHeaderGroupsWithStarts(weeks),
         newUsers: pickWeekArr(raw.newUsers, n),
         activeUsers: pickWeekArr(raw.activeUsers, n),
         records: pickWeekArr(raw.records, n),
@@ -158,20 +159,39 @@ function cloneWeeklyBreakdown(raw) {
     };
 }
 
-function buildMonthHeaderGroups(weeks) {
+/** 월별 헤더: 같은 달(일요일 기준)에 속한 연속 주차 구간 + 해당 구간 시작 week 인덱스 */
+function buildMonthHeaderGroupsWithStarts(weeks) {
     const groups = [];
     let i = 0;
     while (i < weeks.length) {
         const y = weeks[i].year;
         const m = weeks[i].monthIndex;
+        const startWeekIndex = i;
         let span = 0;
         while (i < weeks.length && weeks[i].year === y && weeks[i].monthIndex === m) {
             span++;
             i++;
         }
-        groups.push({ span, label: `${m + 1}월` });
+        groups.push({ span, startWeekIndex, label: `${m + 1}월` });
     }
     return groups;
+}
+
+/** 주차별 값 배열 → [월합, w0, w1, …] 순으로 펼침 (월합은 해당 월에 속한 주 값의 합) */
+function expandWeeklyValuesWithMonthSums(vals, monthGroups) {
+    const v = Array.isArray(vals) ? vals.map((x) => Number(x) || 0) : [];
+    const out = [];
+    for (const g of monthGroups) {
+        let sum = 0;
+        for (let k = 0; k < g.span; k++) {
+            sum += v[g.startWeekIndex + k] || 0;
+        }
+        out.push(sum);
+        for (let k = 0; k < g.span; k++) {
+            out.push(v[g.startWeekIndex + k] || 0);
+        }
+    }
+    return out;
 }
 
 function clearAdminDashboardWeekInjections() {
@@ -190,34 +210,50 @@ function syncAdminDashboardWeekLayout(weeklyBreakdown) {
     if (!row1 || !row2 || !head7d || !sumHead) return;
 
     const weeks = weeklyBreakdown?.weeks;
+    const monthGroups = weeklyBreakdown?.monthGroups || (weeks?.length ? buildMonthHeaderGroupsWithStarts(weeks) : []);
     if (!weeks || weeks.length === 0) return;
 
-    for (const g of buildMonthHeaderGroups(weeks)) {
+    for (const g of monthGroups) {
         const th = document.createElement('th');
         th.className =
             'js-dash-month-th px-2 py-1.5 font-black text-slate-700 uppercase text-center text-xs tracking-wide border-b border-slate-200 bg-slate-50';
-        th.colSpan = g.span;
+        th.colSpan = g.span + 1;
         th.textContent = g.label;
         row1.insertBefore(th, head7d);
     }
 
-    for (const w of weeks) {
-        const th = document.createElement('th');
-        th.className =
-            'js-dash-week-th px-1 py-1 text-center font-bold text-slate-600 min-w-[3.5rem] max-w-[5.5rem] text-[10px] leading-tight border-b border-slate-200 bg-slate-50/90';
-        th.textContent = w.label || '—';
-        th.title = w.sundayKey || '';
-        row2.insertBefore(th, sumHead);
+    for (const g of monthGroups) {
+        const sumTh = document.createElement('th');
+        sumTh.className =
+            'js-dash-week-th px-0.5 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] max-w-[3.25rem] text-[9px] leading-tight border-b border-slate-200 bg-slate-100';
+        sumTh.textContent = '합계';
+        sumTh.title = `${g.label} 주간 합계(같은 달에 속한 주차 수치의 합)`;
+        row2.insertBefore(sumTh, sumHead);
+        for (let j = 0; j < g.span; j++) {
+            const w = weeks[g.startWeekIndex + j];
+            const th = document.createElement('th');
+            th.className =
+                'js-dash-week-th px-1 py-1 text-center font-bold text-slate-600 min-w-[3.5rem] max-w-[5.5rem] text-[10px] leading-tight border-b border-slate-200 bg-slate-50/90 whitespace-pre-line';
+            th.textContent = w?.label || '—';
+            th.title = w?.sundayKey || '';
+            row2.insertBefore(th, sumHead);
+        }
     }
 
     document.querySelectorAll('tr[data-dash-week-row]').forEach((tr) => {
-        for (let i = 0; i < weeks.length; i++) {
-            const td = document.createElement('td');
+        for (const g of monthGroups) {
             const slotLike = tr.getAttribute('data-dash-slot-row') === '1';
-            td.className = slotLike
+            const baseCls = slotLike
                 ? 'js-dash-week-td px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums'
                 : 'js-dash-week-td px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums';
-            tr.insertBefore(td, tr.querySelector('[data-dash-7block-start]'));
+            const sumTd = document.createElement('td');
+            sumTd.className = `${baseCls} bg-slate-50/80`;
+            tr.insertBefore(sumTd, tr.querySelector('[data-dash-7block-start]'));
+            for (let j = 0; j < g.span; j++) {
+                const td = document.createElement('td');
+                td.className = baseCls;
+                tr.insertBefore(td, tr.querySelector('[data-dash-7block-start]'));
+            }
         }
     });
 }
@@ -236,12 +272,15 @@ function weeklyValuesForRow(key, weeklyBreakdown) {
 }
 
 function fillAdminDashboardWeeklyCells(weeklyBreakdown) {
+    const monthGroups = weeklyBreakdown?.monthGroups;
     document.querySelectorAll('tr[data-dash-week-row]').forEach((tr) => {
         const key = tr.getAttribute('data-dash-week-row');
         const vals = weeklyValuesForRow(key, weeklyBreakdown);
+        const expanded =
+            monthGroups && monthGroups.length ? expandWeeklyValuesWithMonthSums(vals, monthGroups) : vals;
         const tds = tr.querySelectorAll(':scope > td.js-dash-week-td');
         tds.forEach((td, i) => {
-            const v = vals[i];
+            const v = expanded[i];
             if (v != null && Number.isFinite(Number(v))) {
                 td.textContent = Number(v).toLocaleString();
                 td.removeAttribute('title');

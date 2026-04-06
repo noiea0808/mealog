@@ -142,7 +142,9 @@ export const callableFunctions = {
     getSharedEntryComments: httpsCallable(functions, 'getSharedEntryComments'),
     backfillSharedPhotosComments: httpsCallable(functions, 'backfillSharedPhotosComments'),
     /** 둘러보기 전용 — 비로그인 호출 (데모 UID 커스텀 토큰) */
-    signInAsDemo: httpsCallable(functions, 'signInAsDemo')
+    signInAsDemo: httpsCallable(functions, 'signInAsDemo'),
+    /** 카카오 액세스 토큰 → Firebase 커스텀 토큰 (비로그인 호출) */
+    signInWithKakao: httpsCallable(functions, 'signInWithKakao')
 };
 
 // App Check 초기화 (reCAPTCHA v3 사용)

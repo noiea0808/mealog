@@ -23,6 +23,15 @@ import { getTodayDateString } from './utils.js';
 
 const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_BODY = 900_000;
+const MAX_TITLE = 120;
+
+function normalizeTitle(raw) {
+    if (raw == null) return '';
+    return String(raw)
+        .replace(/[\r\n]+/g, ' ')
+        .trim()
+        .slice(0, MAX_TITLE);
+}
 
 function adminLogsCol() {
     return collection(db, 'artifacts', appId, 'adminLogs');
@@ -101,7 +110,7 @@ let cachedDateKeys = [];
 let selectedDateKey = null;
 /** @type {string | null} */
 let selectedEntryId = null;
-/** @type {Record<string, { id: string, body: string, createdAtMs: number | null }[]>} */
+/** @type {Record<string, { id: string, body: string, title: string, createdAtMs: number | null }[]>} */
 let entriesCache = {};
 
 function getEls() {
@@ -146,7 +155,7 @@ function updateEditorChrome() {
 
 /** 최신순(같은 시각이면 dateKey·id 안정 정렬) */
 function getAllEntriesFlat() {
-    /** @type {{ dateKey: string, id: string, body: string, createdAtMs: number | null }[]} */
+    /** @type {{ dateKey: string, id: string, body: string, title: string, createdAtMs: number | null }[]} */
     const rows = [];
     for (const dateKey of sortDateKeysDesc(cachedDateKeys)) {
         const arr = entriesCache[dateKey] || [];
@@ -180,7 +189,12 @@ function renderSidebarList() {
                 ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
                 : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50';
             const label = formatSidebarEntryLabel(row.dateKey, row.createdAtMs);
-            return `<button type="button" class="admin-log-block-item w-full text-left px-2.5 py-2 rounded-xl border text-xs font-bold leading-snug transition-colors break-words ${cls}" data-date-key="${row.dateKey}" data-entry-id="${row.id}">${escapeAttr(label)}</button>`;
+            const t = normalizeTitle(row.title);
+            const sub =
+                t.length > 0
+                    ? `<span class="block mt-0.5 text-[10px] font-semibold text-slate-500 leading-tight truncate min-w-0" title="${escapeAttr(t)}">${escapeAttr(t)}</span>`
+                    : '';
+            return `<button type="button" class="admin-log-block-item w-full min-w-0 max-w-full text-left px-2.5 py-2 rounded-xl border text-xs font-bold leading-snug transition-colors ${cls}" data-date-key="${row.dateKey}" data-entry-id="${row.id}"><span class="block break-words">${escapeAttr(label)}</span>${sub}</button>`;
         })
         .join('');
 }
@@ -222,6 +236,7 @@ async function migrateLegacyBodyIfNeeded(dateKey) {
     if (legacyBody.length > 0) {
         await addDoc(entriesCol(dateKey), {
             body: legacyBody,
+            title: '',
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
         });
@@ -266,14 +281,24 @@ function fillEditorElement(editorEl, body) {
 function setEntryMode(wrap, mode) {
     const view = wrap.querySelector('.admin-log-entry-view');
     const editor = wrap.querySelector('.admin-log-entry-editor');
+    const titleView = wrap.querySelector('.admin-log-entry-title-view');
+    const titleInput = wrap.querySelector('.admin-log-entry-title-input');
     const isView = mode === 'view';
     if (view) view.classList.toggle('hidden', !isView);
     if (editor) editor.classList.toggle('hidden', isView);
+    const savedTitle = normalizeTitle(wrap.dataset.savedTitle || '');
+    if (titleView) {
+        titleView.classList.toggle('hidden', !isView || savedTitle.length === 0);
+        if (isView && savedTitle.length > 0) titleView.textContent = savedTitle;
+    }
+    if (titleInput) titleInput.classList.toggle('hidden', isView);
 }
 
 function enterEditMode(wrap) {
     const body = wrap.dataset.savedBody || '';
     const editor = wrap.querySelector('.admin-log-entry-editor');
+    const titleInput = wrap.querySelector('.admin-log-entry-title-input');
+    if (titleInput) titleInput.value = wrap.dataset.savedTitle || '';
     if (editor) {
         fillEditorElement(editor, body);
         editor.focus();
@@ -284,6 +309,8 @@ function enterEditMode(wrap) {
 
 function cancelEditMode(wrap) {
     const body = wrap.dataset.savedBody || '';
+    const titleInput = wrap.querySelector('.admin-log-entry-title-input');
+    if (titleInput) titleInput.value = wrap.dataset.savedTitle || '';
     fillEditorElement(wrap.querySelector('.admin-log-entry-editor'), body);
     const view = wrap.querySelector('.admin-log-entry-view');
     if (view) fillViewElement(view, body);
@@ -292,13 +319,28 @@ function cancelEditMode(wrap) {
 }
 
 /**
- * @param {{ id: string, body: string, createdAtMs?: number | null }} entry
+ * @param {{ id: string, body: string, title?: string, createdAtMs?: number | null }} entry
  */
 function buildEntryWrap(entry) {
     const wrap = document.createElement('div');
     wrap.className = 'admin-log-entry border border-slate-200 rounded-xl p-4 space-y-3 bg-slate-50/50';
     wrap.dataset.entryId = entry.id;
     wrap.dataset.savedBody = entry.body || '';
+    wrap.dataset.savedTitle = normalizeTitle(entry.title);
+
+    const titleView = document.createElement('div');
+    titleView.className =
+        'admin-log-entry-title-view text-sm font-bold text-slate-800 leading-snug break-words';
+    const savedTitle = normalizeTitle(entry.title);
+    if (savedTitle.length > 0) titleView.textContent = savedTitle;
+
+    const titleInput = document.createElement('input');
+    titleInput.type = 'text';
+    titleInput.className =
+        'admin-log-entry-title-input w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-800 outline-none focus:border-emerald-500 bg-white';
+    titleInput.setAttribute('maxlength', String(MAX_TITLE));
+    titleInput.setAttribute('placeholder', '제목 (선택)');
+    titleInput.value = savedTitle;
 
     const view = document.createElement('div');
     fillViewElement(view, entry.body || '');
@@ -309,7 +351,7 @@ function buildEntryWrap(entry) {
     editor.setAttribute('spellcheck', 'true');
     fillEditorElement(editor, entry.body || '');
 
-    wrap.append(view, editor);
+    wrap.append(titleView, titleInput, view, editor);
 
     const hasSaved = !bodyIsEffectivelyEmpty(entry.body);
     if (hasSaved) {
@@ -350,6 +392,7 @@ async function refreshEntriesForDate(dateKey) {
         return {
             id: d.id,
             body: typeof x.body === 'string' ? x.body : '',
+            title: normalizeTitle(typeof x.title === 'string' ? x.title : ''),
             createdAtMs: createdMs
         };
     });
@@ -414,6 +457,7 @@ async function createEmptyEntry(dateKey) {
     await ensureParentStub(dateKey);
     await addDoc(entriesCol(dateKey), {
         body: '',
+        title: '',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
     });
@@ -485,7 +529,11 @@ async function saveAdminLogEntry(entryId, wrap) {
     if (!selectedDateKey || !entryId || !wrap) return;
     const editor = wrap.querySelector('.admin-log-entry-editor');
     const view = wrap.querySelector('.admin-log-entry-view');
+    const titleInput = wrap.querySelector('.admin-log-entry-title-input');
+    const titleView = wrap.querySelector('.admin-log-entry-title-view');
     if (!editor) return;
+
+    const title = normalizeTitle(titleInput?.value);
 
     let html = sanitizeAdminLogHtml(editor.innerHTML);
     if (bodyIsEffectivelyEmpty(html)) {
@@ -503,13 +551,21 @@ async function saveAdminLogEntry(entryId, wrap) {
     }
     try {
         const ref = doc(db, 'artifacts', appId, 'adminLogs', selectedDateKey, 'entries', entryId);
-        await updateDoc(ref, { body: html, updatedAt: serverTimestamp() });
+        await updateDoc(ref, { body: html, title, updatedAt: serverTimestamp() });
         await setDoc(parentDocRef(selectedDateKey), { updatedAt: serverTimestamp() }, { merge: true });
         wrap.dataset.savedBody = html;
+        wrap.dataset.savedTitle = title;
         const cached = (entriesCache[selectedDateKey] || []).find((e) => e.id === entryId);
-        if (cached) cached.body = html;
+        if (cached) {
+            cached.body = html;
+            cached.title = title;
+        }
+        if (titleView) {
+            titleView.textContent = title;
+        }
         if (view) fillViewElement(view, html);
         setEntryMode(wrap, 'view');
+        renderSidebarList();
         showAdminLogToast('저장했습니다.');
     } catch (e) {
         console.error('관리 로그 저장 실패:', e);

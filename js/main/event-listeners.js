@@ -6,6 +6,7 @@ import { showToast } from '../ui.js';
 import { addCompositionAwareInput, setupBirthdateInputFormatting } from '../utils.js';
 import {
     handleGoogleLogin,
+    handleKakaoLogin,
     startGuest,
     openEmailModal,
     closeEmailModal,
@@ -135,6 +136,11 @@ export function initEventListeners() {
     const googleLoginBtn = document.getElementById('googleLoginBtn');
     if (googleLoginBtn) {
         googleLoginBtn.addEventListener('click', handleGoogleLogin);
+    }
+
+    const kakaoLoginBtn = document.getElementById('kakaoLoginBtn');
+    if (kakaoLoginBtn) {
+        kakaoLoginBtn.addEventListener('click', handleKakaoLogin);
     }
 
     const emailLoginBtn = document.getElementById('emailLoginBtn');

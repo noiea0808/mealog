@@ -2234,6 +2234,111 @@ exports.signInAsDemo = onCall({ region: REGION }, wrapFunction('signInAsDemo', a
 }));
 
 /**
+ * 카카오 로그인: (1) 인가 코드 → kauth 토큰 교환 또는 (2) 액세스 토큰 직접 검증 후 Firebase 커스텀 토큰
+ * UID 형식 kakao_{카카오회원번호} — 비로그인 호출 허용
+ * 토큰 교환에는 REST API 키(client_id) 사용. 앱에서 클라이언트 시크릿을 켠 경우 functions/.env KAKAO_CLIENT_SECRET
+ */
+exports.signInWithKakao = onCall({ region: REGION }, wrapFunction('signInWithKakao', async (request) => {
+  const data = request.data || {};
+  let accessToken = typeof data.accessToken === 'string' ? data.accessToken.trim() : '';
+  const code = typeof data.code === 'string' ? data.code.trim() : '';
+  const redirectUri = typeof data.redirectUri === 'string' ? data.redirectUri.trim() : '';
+
+  if (code) {
+    if (!redirectUri || redirectUri.length > 2048) {
+      throw new HttpsError('invalid-argument', 'redirectUri가 필요합니다.');
+    }
+    if (!/^https:\/\//i.test(redirectUri) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(redirectUri)) {
+      throw new HttpsError('invalid-argument', 'redirectUri 형식이 올바르지 않습니다.');
+    }
+    const clientId = kakaoRestApiKey.value();
+    if (!clientId) {
+      throw new HttpsError(
+        'failed-precondition',
+        'KAKAO_REST_API_KEY가 설정되지 않았습니다. functions/.env에 설정 후 재배포하세요.'
+      );
+    }
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      code
+    });
+    const clientSecret = process.env.KAKAO_CLIENT_SECRET;
+    if (clientSecret) {
+      body.append('client_secret', clientSecret);
+    }
+    const tokenRes = await fetch('https://kauth.kakao.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8' },
+      body
+    });
+    const tokenJson = await tokenRes.json().catch(() => ({}));
+    if (!tokenRes.ok) {
+      logger.warn('signInWithKakao: token exchange failed', {
+        status: tokenRes.status,
+        err: tokenJson?.error,
+        desc: tokenJson?.error_description
+      });
+      throw new HttpsError(
+        'unauthenticated',
+        tokenJson?.error_description || tokenJson?.error || '카카오 토큰 발급에 실패했습니다.'
+      );
+    }
+    accessToken = tokenJson.access_token || '';
+  }
+
+  if (!accessToken || accessToken.length > 4096) {
+    throw new HttpsError('invalid-argument', '유효한 로그인 정보가 없습니다. 다시 시도해 주세요.');
+  }
+
+  const res = await fetch('https://kapi.kakao.com/v2/user/me', {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    logger.warn('signInWithKakao: kapi user/me failed', { status: res.status, body: body.slice(0, 200) });
+    throw new HttpsError('unauthenticated', '카카오 로그인이 만료되었거나 유효하지 않습니다.');
+  }
+  const me = await res.json();
+  const kakaoId = me?.id;
+  if (kakaoId == null || (typeof kakaoId !== 'number' && typeof kakaoId !== 'string')) {
+    throw new HttpsError('internal', '카카오 사용자 정보를 확인할 수 없습니다.');
+  }
+  const uid = `kakao_${kakaoId}`;
+  const profile = me?.kakao_account?.profile;
+  const nickname =
+    profile && typeof profile.nickname === 'string' ? profile.nickname.trim().slice(0, 64) : '';
+  let photoURL;
+  if (profile && typeof profile.thumbnail_image_url === 'string' && profile.thumbnail_image_url.length < 2048) {
+    photoURL = profile.thumbnail_image_url;
+  } else if (profile && typeof profile.profile_image_url === 'string' && profile.profile_image_url.length < 2048) {
+    photoURL = profile.profile_image_url;
+  }
+
+  try {
+    await auth.getUser(uid);
+  } catch (e) {
+    if (e.code !== 'auth/user-not-found') {
+      logger.error('signInWithKakao getUser', e);
+      throw new HttpsError('internal', '사용자 조회에 실패했습니다.');
+    }
+    const createPayload = { uid, disabled: false };
+    if (nickname) createPayload.displayName = nickname;
+    if (photoURL) createPayload.photoURL = photoURL;
+    try {
+      await auth.createUser(createPayload);
+    } catch (ce) {
+      logger.error('signInWithKakao createUser', ce);
+      throw new HttpsError('internal', '계정 생성에 실패했습니다.');
+    }
+  }
+
+  const customToken = await auth.createCustomToken(uid, { kakao: true });
+  return { customToken };
+}));
+
+/**
  * Gemini API 프록시 (WebView 차단 우회)
  * 클라이언트에서 직접 호출 대신 서버에서 Gemini API 호출
  */

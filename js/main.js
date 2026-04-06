@@ -20,7 +20,7 @@ import {
 } from './ui.js';
 import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput, warmUpIME, sharePhotosToExternal, setupBirthdateInputFormatting } from './utils.js';
 import { 
-    initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
+    initAuth, handleGoogleLogin, handleKakaoLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
     copyDomain, closeDomainModal, switchToLogin, showTermsModal, closeTermsModal, cancelTermsAgreement, confirmTermsAgreement,
     showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup, handleEmailSignupWithProfile, continueAsGuestFromProfileSetup, setProfileType, handleSetupPhotoUpload,
@@ -188,6 +188,8 @@ window.closeDomainModal = closeDomainModal;
 window.Mealog.closeDomainModal = closeDomainModal;
 window.handleGoogleLogin = handleGoogleLogin;
 window.Mealog.handleGoogleLogin = handleGoogleLogin;
+window.handleKakaoLogin = handleKakaoLogin;
+window.Mealog.handleKakaoLogin = handleKakaoLogin;
 window.startGuest = startGuest;
 window.Mealog.startGuest = startGuest;
 window.openEmailModal = openEmailModal;
@@ -720,8 +722,14 @@ async function updateUserDocument(user) {
         if (!userDocSnap.exists()) {
             // 신규 사용자: 가입 완료(createdAt)는 프로필 설정 후에만 등록
             // providerId, email, lastLoginAt만 먼저 저장
-            if (user.providerData && user.providerData.length > 0) {
-                updateData.providerId = user.providerData[0].providerId;
+            {
+                let providerId = user.providerData?.[0]?.providerId;
+                if (!providerId && typeof user.uid === 'string' && user.uid.startsWith('kakao_')) {
+                    providerId = 'kakao.com';
+                }
+                if (providerId) {
+                    updateData.providerId = providerId;
+                }
             }
             if (user.email) {
                 updateData.email = user.email;
@@ -734,8 +742,14 @@ async function updateUserDocument(user) {
                 updateData.createdAt = serverTimestamp();
                 console.log('✅ 가입 완료(프로필 설정 후) 사용자 등록:', user.uid);
             }
-            if (!existingData.providerId && user.providerData && user.providerData.length > 0) {
-                updateData.providerId = user.providerData[0].providerId;
+            if (!existingData.providerId) {
+                let pid = user.providerData?.[0]?.providerId;
+                if (!pid && typeof user.uid === 'string' && user.uid.startsWith('kakao_')) {
+                    pid = 'kakao.com';
+                }
+                if (pid) {
+                    updateData.providerId = pid;
+                }
             }
             if (!existingData.email && user.email) {
                 updateData.email = user.email;
