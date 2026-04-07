@@ -4,9 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>MEALOG — 카카오 로그인</title>
+  <!-- index.html 과 동일: 브라우저가 /favicon.ico 만 요청하는 경우를 줄임 -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%23059669'/><text x='50%25' y='50%25' font-size='120' text-anchor='middle' dominant-baseline='central' fill='white'>🍽️</text></svg>" type="image/svg+xml" />
+  <link rel="shortcut icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%23059669'/><text x='50%25' y='50%25' font-size='120' text-anchor='middle' dominant-baseline='central' fill='white'>🍽️</text></svg>" type="image/svg+xml" />
 </head>
 <body>
-  <p id="msg" style="font-family: system-ui, sans-serif; text-align: center; margin-top: 2rem; color: #334155; padding: 0 1rem; line-height: 1.5">
+  <p id="msg" style="font-family: system-ui, sans-serif; text-align: center; margin-top: 2rem; color: #334155; padding: 0 1rem; line-height: 1.6; white-space: pre-line">
     앱으로 돌아가는 중…
   </p>
   <script>
@@ -25,7 +28,9 @@
       /** 카카오가 넘긴 인가 code 또는 OAuth error 가 없으면 앱 딥링크로 보내지 않음 (PC 브라우저·직접 접속 시 콘솔 오류 방지) */
       if (!code && !err) {
         setMsg(
-          '카카오 로그인 후에만 이 페이지가 열립니다. 주소를 직접 연 경우이거나 로그인이 끝나지 않았을 수 있어요. MEALOG 앱에서 카카오 로그인을 다시 시도해 주세요.'
+          '지금 보시는 안내는 정상입니다.\n\n' +
+            '이 주소는 북마크용이 아니라, 앱에서 카카오 로그인을 마친 뒤에만 잠깐 열리는 페이지입니다. 주소창에 직접 입력해 열면 카카오에서 넘긴 정보가 없어 이 문구가 나옵니다.\n\n' +
+            'MEALOG 앱을 연 다음 「카카오로 계속하기」로 로그인을 완료해 주세요.'
         );
         return;
       }
