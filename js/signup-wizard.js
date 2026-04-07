@@ -141,6 +141,11 @@ async function validateCurrentStep() {
 }
 
 async function submitWizard() {
+    const nextBtn = getEl('signupWizardNextBtn');
+    const restoreNextBtn = () => {
+        if (nextBtn) nextBtn.disabled = false;
+    };
+
     if (state.isEmailSignup) {
         showLoading('가입 중...', { skipOnLoginScreen: false });
         try {
@@ -161,6 +166,7 @@ async function submitWizard() {
     const { dbOps } = await import('./db.js');
     if (!window.userSettings) window.userSettings = { ...DEFAULT_USER_SETTINGS };
 
+    let needsPersist = false;
     if (user && !user.isAnonymous) {
         if (!state.isTermsOnly && (state.data.nickname != null || state.data.birthdate != null)) {
             window.userSettings.profile = window.userSettings.profile || {};
@@ -179,8 +185,7 @@ async function submitWizard() {
                 window.userSettings.providerId = window.userSettings.providerId || user.providerData[0].providerId;
                 if (user.email) window.userSettings.email = window.userSettings.email || user.email;
             }
-            await dbOps.saveSettings(window.userSettings);
-            if (typeof window.ensureUserRegistered === 'function') await window.ensureUserRegistered();
+            needsPersist = true;
         }
         if (state.currentStep === 4 || state.isTermsOnly) {
             window.userSettings.termsAgreed = true;
@@ -191,9 +196,26 @@ async function submitWizard() {
                 window.userSettings.providerId = window.userSettings.providerId || user.providerData[0].providerId;
                 if (user.email) window.userSettings.email = window.userSettings.email || user.email;
             }
+            needsPersist = true;
+        }
+    }
+
+    if (needsPersist) {
+        if (nextBtn) nextBtn.disabled = true;
+        const showSpinner = !state.isEmailSignup;
+        if (showSpinner) {
+            showLoading('설정을 저장하는 중...', { skipOnLoginScreen: false });
+        }
+        try {
             await dbOps.saveSettings(window.userSettings);
             if (typeof window.ensureUserRegistered === 'function') await window.ensureUserRegistered();
+        } catch (e) {
+            if (showSpinner) hideLoading();
+            restoreNextBtn();
+            return;
         }
+        if (showSpinner) hideLoading();
+        restoreNextBtn();
     }
 
     closeSignupWizard();

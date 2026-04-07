@@ -1,4 +1,5 @@
 import { DEFAULT_USER_SETTINGS } from '../constants.js';
+import { kakaoTalkLogoSvgHtml } from '../utils/kakao-brand.js';
 import { appState } from '../state.js';
 import { addCompositionAwareInput, normalizeBirthdateRaw } from '../utils.js';
 import { renderTagManager } from '../render/index.js';
@@ -14,8 +15,10 @@ import { isDemoUser } from '../demo-account.js';
 function getSettingsAccountLoginDisplay(user) {
     const googleIcon = '<i class="fa-brands fa-google text-lg" aria-hidden="true"></i>';
     const emailIcon = '<i class="fa-solid fa-envelope text-lg" aria-hidden="true"></i>';
-    const kakaoBadge =
-        '<span class="inline-flex items-center justify-center min-h-[1.5rem] px-2 rounded-lg bg-[#FEE500] text-[#191919] text-[11px] font-black tracking-tight" title="카카오 로그인">카카오</span>';
+    const kakaoBadge = kakaoTalkLogoSvgHtml({
+        className: 'w-6 h-6 text-emerald-700',
+        title: '카카오 로그인'
+    });
 
     const uid = user?.uid || '';
     const isKakaoUid = uid.startsWith('kakao_');
@@ -26,10 +29,17 @@ function getSettingsAccountLoginDisplay(user) {
     if (isKakao) {
         const mail = user.email || window.userSettings?.email || '';
         const nick = window.userSettings?.profile?.nickname || '';
-        let line = '카카오로 로그인한 계정';
-        if (mail) line = `${line} · ${mail}`;
-        else if (nick && nick !== '게스트') line = `${line} · ${nick}`;
-        else line = `${line} (이메일 미연동)`;
+        const kakaoMemberId =
+            typeof uid === 'string' && uid.startsWith('kakao_') ? uid.slice(7) : '';
+        let line;
+        if (mail) {
+            line = mail;
+        } else {
+            const parts = [];
+            if (nick && nick !== '게스트') parts.push(nick);
+            if (kakaoMemberId) parts.push(`회원번호 ${kakaoMemberId}`);
+            line = parts.length ? `${parts.join(' · ')} (이메일 미연동)` : '(이메일 미연동)';
+        }
         return { icon: kakaoBadge, line };
     }
 
@@ -307,7 +317,7 @@ export function openSettings() {
             const { icon: providerIcon, line: loginLine } = getSettingsAccountLoginDisplay(window.currentUser);
             accountHtml = `<div class="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 mb-6">
                 <h3 class="text-xs font-black text-emerald-600 mb-2 uppercase tracking-widest">로그인 정보</h3>
-                <div class="flex items-center gap-2 text-emerald-700 font-bold text-sm">${providerIcon}<span class="break-all">${loginLine}</span></div>
+                <div class="flex items-center gap-2 text-emerald-700 font-bold text-sm" id="settingsLoginInfoRow">${providerIcon}<span class="break-all">${loginLine}</span></div>
             </div>`;
             document.getElementById('logoutBtnArea').classList.remove('hidden');
             syncProfileLogoutFooterButton();
@@ -315,6 +325,41 @@ export function openSettings() {
             if (deleteArea) deleteArea.classList.toggle('hidden', isDemoUser(window.currentUser));
         }
         accountSection.innerHTML = accountHtml;
+        // 카카오: 이메일은 users/{uid} 루트(patchArtifactUserRoot)에만 있고 Auth·settings에 없을 수 있음 → 루트에서 보강
+        if (
+            window.currentUser &&
+            !window.currentUser.isAnonymous &&
+            typeof window.currentUser.uid === 'string' &&
+            window.currentUser.uid.startsWith('kakao_')
+        ) {
+            const hasMail =
+                (window.currentUser.email || '').includes('@') ||
+                (window.userSettings?.email || '').includes('@');
+            if (!hasMail) {
+                (async () => {
+                    try {
+                        const { doc, getDoc } = await import(
+                            'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js'
+                        );
+                        const { db, appId } = await import('../firebase.js');
+                        const snap = await getDoc(doc(db, 'artifacts', appId, 'users', window.currentUser.uid));
+                        const rootEmail =
+                            snap.exists() && snap.data().email ? String(snap.data().email).trim() : '';
+                        if (rootEmail.includes('@')) {
+                            window.userSettings = window.userSettings || {};
+                            if (!window.userSettings.email) window.userSettings.email = rootEmail;
+                            const row = document.getElementById('settingsLoginInfoRow');
+                            if (row && window.currentUser) {
+                                const { icon: pi, line: ll } = getSettingsAccountLoginDisplay(window.currentUser);
+                                row.innerHTML = `${pi}<span class="break-all">${ll}</span>`;
+                            }
+                        }
+                    } catch (_) {
+                        /* ignore */
+                    }
+                })();
+            }
+        }
         
         // 게스트 모드일 때 로그인하기 버튼에 이벤트 리스너 추가
         if (window.currentUser && window.currentUser.isAnonymous) {

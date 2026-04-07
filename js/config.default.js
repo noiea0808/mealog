@@ -1,6 +1,13 @@
 // 이 파일은 항상 Git에 커밋되며, config.js가 없을 때 사용됩니다.
 // Gemini API 키는 클라이언트에 두지 않습니다. Firebase Functions `callGemini` + Functions 환경 변수 GEMINI_API_KEY.
 
+/**
+ * 로컬(localhost)에서만 사용. Firebase Console → App Check → 웹 앱 → 디버그 토큰 관리에 **동일한 UUID 문자열**을 등록하면
+ * exchangeDebugToken 403·Firestore permission-denied가 사라집니다. 비우면 매 새로고침마다 새 토큰이 콘솔에 찍혀 등록이 번거롭습니다.
+ * config.js(비커밋)에 복사해 쓰는 것을 권장.
+ */
+export const APPCHECK_DEBUG_TOKEN = '';
+
 // 네이티브 구글 로그인용 Web Client ID (Firebase Console > Authentication > Google > Web SDK)
 // android/app/google-services.json 의 oauth_client 중 client_type 3 과 동일해야 함 (공개 식별자).
 export const GOOGLE_WEB_CLIENT_ID =

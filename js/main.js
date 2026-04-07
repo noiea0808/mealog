@@ -5,7 +5,7 @@ console.log('📦 main.js 모듈 로드 시작');
 window.moduleLoading = true;
 
 import { appState, getState } from './state.js';
-import { auth, db, appId } from './firebase.js';
+import { auth, db, appId, refreshAppCheckTokenBeforeFirestore } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { dbOps, setupListeners, loadSharedPhotosPage, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, subscribeToMyPostComments, boardOperations, feedOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { callableFunctions } from './firebase.js';
@@ -712,6 +712,7 @@ async function updateUserDocument(user) {
     if (isDemoUser(user)) return;
 
     try {
+        await refreshAppCheckTokenBeforeFirestore();
         const userDocRef = doc(db, 'artifacts', appId, 'users', user.uid);
         const userDocSnap = await getDoc(userDocRef);
         
@@ -759,7 +760,25 @@ async function updateUserDocument(user) {
             }
         }
         
-        await setDoc(userDocRef, updateData, { merge: true });
+        try {
+            await setDoc(userDocRef, updateData, { merge: true });
+        } catch (writeErr) {
+            const wcode = writeErr?.code || '';
+            if (wcode === 'permission-denied' && callableFunctions?.patchArtifactUserRoot) {
+                try {
+                    await callableFunctions.patchArtifactUserRoot({
+                        setCreatedAt: !!updateData.createdAt,
+                        providerId: updateData.providerId ?? null,
+                        email: updateData.email ?? null
+                    });
+                    console.log('✅ 사용자 문서 서버 폴백 저장:', user.uid);
+                } catch (fe) {
+                    console.error('❌ 사용자 문서 서버 폴백 실패:', fe?.code || fe?.message || fe);
+                }
+            } else {
+                throw writeErr;
+            }
+        }
     } catch (e) {
         console.error('❌ 사용자 문서 업데이트 실패:', e);
         // 에러가 발생해도 계속 진행 (비중요한 정보이므로)

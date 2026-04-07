@@ -2018,8 +2018,30 @@ exports.onMealWritten = onDocumentWritten(
 );
 
 /**
+ * artifacts/{APP_ID}/users/{uid} 문서 및 모든 하위 컬렉션(meals, config/settings, …) 삭제
+ * 부모 문서만 delete() 하면 하위는 고아로 남아 재가입 시 온보딩이 건너뛰어질 수 있음
+ */
+async function recursiveDeleteArtifactUser(userId) {
+  const uid = String(userId);
+  const userRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(uid);
+  try {
+    await db.recursiveDelete(userRef);
+    logger.info('recursiveDeleteArtifactUser: subtree removed', { userId: uid });
+  } catch (e) {
+    const msg = String(e?.message || e);
+    if (e?.code === 5 || /not found/i.test(msg)) {
+      logger.info('recursiveDeleteArtifactUser: no user doc to delete', { userId: uid });
+      return;
+    }
+    logger.error('recursiveDeleteArtifactUser failed', { userId: uid, err: msg });
+    throw e;
+  }
+}
+
+/**
  * 관리자 사용자 삭제 요청 처리 (Firestore 문서 생성 시 트리거)
- * deleteUserRequests/{requestId} 문서가 생성되면 requestedBy가 관리자인지 확인 후 Auth 사용자 삭제
+ * deleteUserRequests/{requestId} 문서가 생성되면 requestedBy가 관리자인지 확인 후
+ * Firestore users/{uid} 전체(하위 포함) 삭제 → Firebase Auth 삭제
  */
 exports.onDeleteUserRequest = onDocumentCreated(
   {
@@ -2041,22 +2063,21 @@ exports.onDeleteUserRequest = onDocumentCreated(
       await snap.ref.delete();
       return;
     }
-    const userRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(String(userId));
+    try {
+      await recursiveDeleteArtifactUser(userId);
+    } catch (e) {
+      logger.error('onDeleteUserRequest: Firestore subtree delete failed', { userId, err: e?.message });
+      return;
+    }
     try {
       await auth.deleteUser(String(userId));
-      logger.info('onDeleteUserRequest: user deleted', { userId, requestedBy });
+      logger.info('onDeleteUserRequest: Auth user deleted', { userId, requestedBy });
     } catch (err) {
       if (err.code !== 'auth/user-not-found') {
         logger.error('onDeleteUserRequest: deleteUser failed', { userId, err: err.message });
         return;
       }
       logger.info('onDeleteUserRequest: user already gone in Auth', { userId });
-    }
-    try {
-      await userRef.delete();
-      logger.info('onDeleteUserRequest: Firestore user doc deleted', { userId });
-    } catch (e) {
-      logger.warn('onDeleteUserRequest: Firestore user doc delete failed (may not exist)', { userId, err: e.message });
     }
     await snap.ref.delete();
   }
@@ -2233,6 +2254,24 @@ exports.signInAsDemo = onCall({ region: REGION }, wrapFunction('signInAsDemo', a
   return { customToken };
 }));
 
+/** 카카오 OIDC id_token(JWT) 페이로드에서 email (openid 스코프·콘솔 OIDC 설정 시) */
+function parseKakaoIdTokenEmail(jwt) {
+  if (!jwt || typeof jwt !== 'string') return '';
+  try {
+    const parts = jwt.split('.');
+    if (parts.length < 2) return '';
+    let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const json = Buffer.from(b64, 'base64').toString('utf8');
+    const pl = JSON.parse(json);
+    const em = typeof pl.email === 'string' ? pl.email.trim().toLowerCase() : '';
+    if (em && em.includes('@')) return em.slice(0, 254);
+  } catch (e) {
+    logger.warn('parseKakaoIdTokenEmail', { err: e?.message });
+  }
+  return '';
+}
+
 /**
  * 카카오 로그인: (1) 인가 코드 → kauth 토큰 교환 또는 (2) 액세스 토큰 직접 검증 후 Firebase 커스텀 토큰
  * UID 형식 kakao_{카카오회원번호} — 비로그인 호출 허용
@@ -2241,6 +2280,7 @@ exports.signInAsDemo = onCall({ region: REGION }, wrapFunction('signInAsDemo', a
 exports.signInWithKakao = onCall({ region: REGION }, wrapFunction('signInWithKakao', async (request) => {
   const data = request.data || {};
   let accessToken = typeof data.accessToken === 'string' ? data.accessToken.trim() : '';
+  let idTokenFromKauth = '';
   const code = typeof data.code === 'string' ? data.code.trim() : '';
   const redirectUri = typeof data.redirectUri === 'string' ? data.redirectUri.trim() : '';
 
@@ -2292,27 +2332,64 @@ exports.signInWithKakao = onCall({ region: REGION }, wrapFunction('signInWithKak
       throw new HttpsError('unauthenticated', clientMsg);
     }
     accessToken = tokenJson.access_token || '';
+    idTokenFromKauth = typeof tokenJson.id_token === 'string' ? tokenJson.id_token.trim() : '';
+    logger.info('signInWithKakao token meta', {
+      scope: typeof tokenJson.scope === 'string' ? tokenJson.scope.slice(0, 160) : '',
+      hasIdToken: !!idTokenFromKauth
+    });
   }
 
   if (!accessToken || accessToken.length > 4096) {
     throw new HttpsError('invalid-argument', '유효한 로그인 정보가 없습니다. 다시 시도해 주세요.');
   }
 
-  const res = await fetch('https://kapi.kakao.com/v2/user/me', {
-    headers: { Authorization: `Bearer ${accessToken}` }
+  // 이메일: POST(property_keys) → 실패 시 GET. 동의·앱 설정에 따라 한쪽만 값이 오는 경우가 있음
+  const propertyKeys = JSON.stringify(['kakao_account.profile', 'kakao_account.email']);
+  let meRes = await fetch('https://kapi.kakao.com/v2/user/me', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8'
+    },
+    body: new URLSearchParams({ property_keys: propertyKeys }).toString()
   });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    logger.warn('signInWithKakao: kapi user/me failed', { status: res.status, body: body.slice(0, 200) });
+  if (!meRes.ok) {
+    meRes = await fetch('https://kapi.kakao.com/v2/user/me', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+  }
+  if (!meRes.ok) {
+    const body = await meRes.text().catch(() => '');
+    logger.warn('signInWithKakao: kapi user/me failed', { status: meRes.status, body: body.slice(0, 200) });
     throw new HttpsError('unauthenticated', '카카오 로그인이 만료되었거나 유효하지 않습니다.');
   }
-  const me = await res.json();
+  let me = await meRes.json();
+  const kaProbe = me?.kakao_account || {};
+  if (typeof kaProbe.email !== 'string' || !String(kaProbe.email).includes('@')) {
+    const getRes = await fetch('https://kapi.kakao.com/v2/user/me', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (getRes.ok) {
+      const meGet = await getRes.json().catch(() => ({}));
+      const kaG = meGet?.kakao_account || {};
+      if (typeof kaG.email === 'string' && String(kaG.email).includes('@')) {
+        me = meGet;
+      }
+    }
+  }
   const kakaoId = me?.id;
   if (kakaoId == null || (typeof kakaoId !== 'number' && typeof kakaoId !== 'string')) {
     throw new HttpsError('internal', '카카오 사용자 정보를 확인할 수 없습니다.');
   }
   const uid = `kakao_${kakaoId}`;
-  const profile = me?.kakao_account?.profile;
+  const ka = me?.kakao_account || {};
+  logger.info('signInWithKakao kakao_account', {
+    has_email: ka.has_email === true,
+    email_needs_agreement: ka.email_needs_agreement === true,
+    is_email_valid: ka.is_email_valid,
+    hasEmailString: typeof ka.email === 'string' && ka.email.includes('@')
+  });
+  const profile = ka.profile;
   const nickname =
     profile && typeof profile.nickname === 'string' ? profile.nickname.trim().slice(0, 64) : '';
   let photoURL;
@@ -2322,26 +2399,121 @@ exports.signInWithKakao = onCall({ region: REGION }, wrapFunction('signInWithKak
     photoURL = profile.profile_image_url;
   }
 
+  let email = '';
+  if (typeof ka.email === 'string') {
+    const t = ka.email.trim().toLowerCase();
+    if (t && t.includes('@') && ka.is_email_valid !== false) {
+      email = t.slice(0, 254);
+    }
+  }
+  if (!email && idTokenFromKauth) {
+    email = parseKakaoIdTokenEmail(idTokenFromKauth);
+    if (email) {
+      logger.info('signInWithKakao: email from id_token');
+    }
+  }
+  // openid 스코프 시 /v2/user/me에 없어도 OIDC userinfo에 email이 올 수 있음 (콘솔에서 OIDC 활성화 필요)
+  if (!email) {
+    const oiRes = await fetch('https://kapi.kakao.com/v1/oidc/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (oiRes.ok) {
+      const oi = await oiRes.json().catch(() => ({}));
+      const em = typeof oi.email === 'string' ? oi.email.trim().toLowerCase() : '';
+      if (em && em.includes('@')) {
+        email = em.slice(0, 254);
+        logger.info('signInWithKakao: email from OIDC userinfo');
+      } else if (oi && typeof oi === 'object') {
+        logger.info('signInWithKakao oidc userinfo keys', { keys: Object.keys(oi).join(',') });
+      }
+    } else {
+      const ob = await oiRes.text().catch(() => '');
+      logger.warn('signInWithKakao: oidc userinfo failed', {
+        status: oiRes.status,
+        body: ob.slice(0, 180)
+      });
+    }
+  }
+
+  let existing;
   try {
-    await auth.getUser(uid);
+    existing = await auth.getUser(uid);
   } catch (e) {
     if (e.code !== 'auth/user-not-found') {
       logger.error('signInWithKakao getUser', e);
       throw new HttpsError('internal', '사용자 조회에 실패했습니다.');
     }
-    const createPayload = { uid, disabled: false };
-    if (nickname) createPayload.displayName = nickname;
-    if (photoURL) createPayload.photoURL = photoURL;
+    existing = null;
+  }
+
+  const createPayload = { uid, disabled: false };
+  if (nickname) createPayload.displayName = nickname;
+  if (photoURL) createPayload.photoURL = photoURL;
+  if (email) {
+    createPayload.email = email;
+    if (ka.is_email_verified === true) {
+      createPayload.emailVerified = true;
+    }
+  }
+
+  if (!existing) {
     try {
       await auth.createUser(createPayload);
     } catch (ce) {
-      logger.error('signInWithKakao createUser', ce);
-      throw new HttpsError('internal', '계정 생성에 실패했습니다.');
+      if (ce.code === 'auth/email-already-exists' && createPayload.email) {
+        delete createPayload.email;
+        delete createPayload.emailVerified;
+        try {
+          await auth.createUser(createPayload);
+        } catch (ce2) {
+          logger.error('signInWithKakao createUser', ce2);
+          throw new HttpsError('internal', '계정 생성에 실패했습니다.');
+        }
+      } else {
+        logger.error('signInWithKakao createUser', ce);
+        throw new HttpsError('internal', '계정 생성에 실패했습니다.');
+      }
+    }
+  } else {
+    const patch = {};
+    if (nickname && nickname !== (existing.displayName || '')) {
+      patch.displayName = nickname;
+    }
+    if (photoURL && photoURL !== (existing.photoURL || '')) {
+      patch.photoURL = photoURL;
+    }
+    const prevEmail = (existing.email || '').toLowerCase();
+    if (email && email !== prevEmail) {
+      patch.email = email;
+      patch.emailVerified = ka.is_email_verified === true;
+    }
+    if (Object.keys(patch).length) {
+      try {
+        await auth.updateUser(uid, patch);
+      } catch (ue) {
+        if (ue.code === 'auth/email-already-exists' && patch.email) {
+          delete patch.email;
+          delete patch.emailVerified;
+          if (Object.keys(patch).length) {
+            try {
+              await auth.updateUser(uid, patch);
+            } catch (ue2) {
+              logger.warn('signInWithKakao updateUser', ue2);
+            }
+          }
+        } else {
+          logger.warn('signInWithKakao updateUser', ue);
+        }
+      }
     }
   }
 
   const customToken = await auth.createCustomToken(uid, { kakao: true });
-  return { customToken };
+  return {
+    customToken,
+    kakaoEmail: email || null,
+    kakaoEmailNeedsAgreement: ka.email_needs_agreement === true
+  };
 }));
 
 function normalizeNicknameForClaimServer(nickname) {
@@ -2360,6 +2532,36 @@ function nicknameClaimDocIdServer(normalized) {
   const clipped = normalized.length > 200 ? normalized.slice(0, 200) : normalized;
   return encodeURIComponent(clipped);
 }
+
+/**
+ * artifacts/{APP_ID}/users/{uid} 루트 문서 병합 (Admin) — 클라이언트 setDoc이 permission-denied일 때 폴백
+ */
+exports.patchArtifactUserRoot = onCall({ region: REGION }, wrapFunction('patchArtifactUserRoot', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const tokenEmail = request.auth.token?.email;
+  if (tokenEmail && String(tokenEmail).toLowerCase().trim() === READ_ONLY_DEMO_EMAIL) {
+    throw new HttpsError('permission-denied', '샘플 계정에서는 사용할 수 없습니다.');
+  }
+  const uid = request.auth.uid;
+  const body = request.data || {};
+  const ref = db.doc(`artifacts/${APP_ID}/users/${uid}`);
+  const patch = {
+    lastLoginAt: FieldValue.serverTimestamp()
+  };
+  if (body.setCreatedAt === true) {
+    patch.createdAt = FieldValue.serverTimestamp();
+  }
+  if (typeof body.providerId === 'string' && body.providerId.trim()) {
+    patch.providerId = body.providerId.trim();
+  }
+  if (typeof body.email === 'string' && body.email.includes('@')) {
+    patch.email = String(body.email).trim().toLowerCase().slice(0, 254);
+  }
+  await ref.set(patch, { merge: true });
+  return { ok: true };
+}));
 
 /**
  * 사용자 설정 + 닉네임 클레임을 Admin으로 저장 (클라이언트 Firestore/App Check permission-denied 시 폴백)
@@ -2625,10 +2827,17 @@ exports.processDeleteUserRequests = onCall(
         await docSnap.ref.delete();
         continue;
       }
-      const userRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(String(userId));
+      try {
+        await recursiveDeleteArtifactUser(userId);
+      } catch (e) {
+        failed++;
+        errors.push(`${userId}: Firestore ${e.message || e}`);
+        logger.error('processDeleteUserRequests: recursive delete failed', { userId, err: e?.message });
+        continue;
+      }
       try {
         await auth.deleteUser(String(userId));
-        logger.info('processDeleteUserRequests: user deleted from Auth', { userId, requestedBy });
+        logger.info('processDeleteUserRequests: Auth user deleted', { userId, requestedBy });
       } catch (err) {
         if (err.code === 'auth/user-not-found') {
           logger.info('processDeleteUserRequests: user already gone in Auth', { userId });
@@ -2638,12 +2847,6 @@ exports.processDeleteUserRequests = onCall(
           logger.error('processDeleteUserRequests: deleteUser failed', { userId, err: err.message });
           continue;
         }
-      }
-      try {
-        await userRef.delete();
-        logger.info('processDeleteUserRequests: Firestore user doc deleted', { userId });
-      } catch (e) {
-        logger.warn('processDeleteUserRequests: Firestore user doc delete failed', { userId, err: e.message });
       }
       processed++;
       await docSnap.ref.delete();

@@ -132,14 +132,44 @@ export async function tryCompleteKakaoOAuthReturn() {
     showLoading('카카오 로그인 처리 중...', { skipOnLoginScreen: false });
     try {
         const res = await callableFunctions.signInWithKakao({ code: code.trim(), redirectUri });
-        const customToken = res?.data?.customToken;
+        const data = res?.data || {};
+        const customToken = data.customToken;
         if (!customToken) {
             showToast('서버에서 로그인 토큰을 받지 못했습니다.', 'error');
             hideLoading();
             stripKakaoOAuthParamsFromUrl();
             return;
         }
+        if (data.kakaoEmailNeedsAgreement === true) {
+            showToast('카카오에서 이메일 제공 동의가 필요합니다. 카카오 로그아웃 후 다시 로그인해 동의 화면을 완료해 주세요.', 'info');
+        } else if (!data.kakaoEmail) {
+            try {
+                const h = window.location.hostname || '';
+                if (h === 'localhost' || h === '127.0.0.1' || h.endsWith('.localhost')) {
+                    console.info(
+                        '[카카오 로그인] 서버가 카카오에서 이메일을 받지 못했습니다. 카카오 콘솔: 카카오 로그인 → OpenID Connect 활성화, 동의항목 account_email, Functions 로그(oidc userinfo·kakao_account)를 확인하세요.'
+                    );
+                }
+            } catch (_) {}
+        }
         await signInWithCustomToken(auth, customToken);
+        try {
+            if (auth.currentUser) await auth.currentUser.reload();
+        } catch (_) {}
+        const ke = typeof data.kakaoEmail === 'string' ? data.kakaoEmail.trim() : '';
+        if (ke && ke.includes('@')) {
+            try {
+                await callableFunctions.patchArtifactUserRoot({
+                    setCreatedAt: false,
+                    email: ke,
+                    providerId: 'kakao.com'
+                });
+            } catch (_) {}
+            try {
+                if (!window.userSettings) window.userSettings = {};
+                window.userSettings.email = window.userSettings.email || ke;
+            } catch (_) {}
+        }
         // 가입 위저드는 직후 OAuth 세션에서만 자동 오픈. 새로고침 시 플래그 없음 → auth-flow에서 로그아웃 후 로그인 화면
         try {
             sessionStorage.setItem('mealog_kakaoProfileSetupGate', '1');
@@ -207,9 +237,12 @@ export async function handleKakaoLogin() {
         const isLocalDev =
             host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host.endsWith('.localhost');
         // 로컬에서 is_popup=false 전체 이동 시 kauth 400이 나는 환경이 있어 팝업 플로우 시도
+        // 동의 항목: 카카오 개발자 콘솔 > 앱 > 카카오 로그인 > 동의항목에서도 활성화 필요 (특히 카카오계정 이메일)
         const authorizeOpts = {
             redirectUri,
-            throughTalk: preferTalkEasyLogin
+            throughTalk: preferTalkEasyLogin,
+            // openid: 토큰 응답의 id_token(JWT)에 email 클레임이 올 수 있음 — 카카오 콘솔에서 OpenID Connect 활성화 필요할 수 있음
+            scope: 'profile_nickname,profile_image,account_email,openid'
         };
         if (isLocalDev) {
             authorizeOpts.isPopup = true;
@@ -781,6 +814,8 @@ export async function switchToLogin() {
 }
 
 export async function initAuth(onAuthStateChangedCallback) {
+    // 카카오 OAuth·로그인보다 먼저: 토큰 확보 전 Firestore 쓰기 시 permission-denied 방지
+    await appCheckInitPromise;
     if (!isNativePlatform()) {
         await tryCompleteKakaoOAuthReturn();
     }
@@ -800,8 +835,6 @@ export async function initAuth(onAuthStateChangedCallback) {
             hideLoading();
         }
     }
-    // Firestore App Check 강제 시: 리스너 등록 직후의 getDocs/스냅샷이 토큰 없이 나가면 전 구역 permission-denied
-    await appCheckInitPromise;
     onAuthStateChanged(auth, (user) => {
         try {
             setAnalyticsUserId(user?.uid || null);

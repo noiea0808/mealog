@@ -146,14 +146,48 @@ export const callableFunctions = {
     /** 카카오 액세스 토큰 → Firebase 커스텀 토큰 (비로그인 호출) */
     signInWithKakao: httpsCallable(functions, 'signInWithKakao'),
     /** 클라이언트 Firestore permission-denied 시 설정+닉네임클레임 저장 폴백 (Admin) */
-    saveArtifactUserSettings: httpsCallable(functions, 'saveArtifactUserSettings')
+    saveArtifactUserSettings: httpsCallable(functions, 'saveArtifactUserSettings'),
+    /** users/{uid} 루트 문서(lastLoginAt·createdAt·providerId·email) — 클라이언트 쓰기 거절 시 Admin 병합 */
+    patchArtifactUserRoot: httpsCallable(functions, 'patchArtifactUserRoot')
 };
 
 /**
- * App Check 초기화 완료 Promise — Firestore App Check 강제 시 토큰 없으면 전 요청 permission-denied.
- * - initAuth에서 onAuthStateChanged 전에 await 해 리스너·getDocs 레이스 방지
- * - 로컬: 예전엔 App Check를 껐는데, 강제 켜진 프로젝트에서는 토큰 없이 전부 거절됨 → 디버그 공급자 사용
+ * App Check — Firestore 강제 시 토큰 없으면 permission-denied.
+ * initAuth는 appCheckInitPromise를 카카오 OAuth보다 먼저 await.
  */
+/** @type {import('firebase/app-check').AppCheck | null} */
+export let firebaseAppCheck = null;
+
+/**
+ * App Check 강제 시, 초기화 직후 첫 Firestore 쓰기가 토큰 없이 나가 permission-denied 나는 경우 완화
+ */
+export async function refreshAppCheckTokenBeforeFirestore() {
+    await appCheckInitPromise;
+    if (!firebaseAppCheck || typeof window === 'undefined') return;
+    try {
+        const { getToken } = await import('https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js');
+        await getToken(firebaseAppCheck, true);
+    } catch (_) {
+        /* ignore */
+    }
+}
+
+async function resolveAppCheckDebugTokenForLocalhost() {
+    try {
+        const mod = await import('./config.js');
+        if (mod.APPCHECK_DEBUG_TOKEN && String(mod.APPCHECK_DEBUG_TOKEN).trim()) {
+            return String(mod.APPCHECK_DEBUG_TOKEN).trim();
+        }
+    } catch (_) {}
+    try {
+        const def = await import('./config.default.js');
+        if (def.APPCHECK_DEBUG_TOKEN && String(def.APPCHECK_DEBUG_TOKEN).trim()) {
+            return String(def.APPCHECK_DEBUG_TOKEN).trim();
+        }
+    } catch (_) {}
+    return '';
+}
+
 export const appCheckInitPromise = (async () => {
     try {
         if (typeof window === 'undefined') return;
@@ -163,10 +197,20 @@ export const appCheckInitPromise = (async () => {
             window.location.hostname === '0.0.0.0' ||
             window.location.hostname === '';
         if (isLocalhost) {
-            window.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
-            console.log(
-                '🔧 로컬 App Check 디버그: 콘솔에 출력되는 디버그 토큰을 Firebase Console → App Check → 해당 웹 앱 → 디버그 토큰에 등록하세요. (미등록 시 Firestore permission-denied 가능)'
-            );
+            const fixed = await resolveAppCheckDebugTokenForLocalhost();
+            if (fixed) {
+                window.FIREBASE_APPCHECK_DEBUG_TOKEN = fixed;
+                console.info(
+                    '🔧 App Check: config의 APPCHECK_DEBUG_TOKEN 사용 중. Firebase Console → App Check → 웹 앱에 동일 토큰이 등록돼 있어야 합니다.'
+                );
+            } else {
+                window.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+                console.warn(
+                    '🔧 로컬 App Check: 아래 콘솔에 찍힌 디버그 토큰을 Firebase Console → App Check → 해당 웹 앱 → 디버그 토큰에 등록하세요. ' +
+                        '매번 바뀌면 번거로우니 UUID 하나를 만들어 config.js에 APPCHECK_DEBUG_TOKEN으로 넣고, 그 문자열을 콘솔에도 등록하세요. ' +
+                        '미등록 시 exchangeDebugToken 403 → Firestore permission-denied가 납니다.'
+                );
+            }
         }
         const { initializeAppCheck, ReCaptchaV3Provider, getToken } = await import(
             'https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js'
@@ -175,6 +219,7 @@ export const appCheckInitPromise = (async () => {
             provider: new ReCaptchaV3Provider('6LdjYVUsAAAAAP7RvrJgOEp-7wvDpmoC8Bll9-Kw'),
             isTokenAutoRefreshEnabled: true
         });
+        firebaseAppCheck = appCheck;
         await getToken(appCheck, false);
         console.log('✅ App Check 초기화 완료');
     } catch (e) {

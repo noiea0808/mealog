@@ -1,5 +1,12 @@
 // 기본 CRUD 작업
-import { db, appId, auth, callableFunctions, appCheckInitPromise } from '../firebase.js';
+import {
+    db,
+    appId,
+    auth,
+    callableFunctions,
+    appCheckInitPromise,
+    refreshAppCheckTokenBeforeFirestore
+} from '../firebase.js';
 import {
     doc,
     getDoc,
@@ -169,6 +176,7 @@ export const dbOps = {
                 await currentUser.getIdToken(true);
             }
             await appCheckInitPromise;
+            await refreshAppCheckTokenBeforeFirestore();
             // 기존 설정을 먼저 읽어서 profile 정보 보존
             let existingSettings = {};
             try {
@@ -292,14 +300,18 @@ export const dbOps = {
             try {
                 await doClientFirestoreWrite();
             } catch (clientErr) {
+                const errMsg = String(clientErr?.message || '').toLowerCase();
                 const isPerm =
                     clientErr?.code === 'permission-denied' ||
-                    clientErr?.code === 'PERMISSION_DENIED';
+                    clientErr?.code === 'PERMISSION_DENIED' ||
+                    errMsg.includes('permission-denied') ||
+                    errMsg.includes('insufficient permissions');
                 if (isPerm && callableFunctions?.saveArtifactUserSettings) {
                     try {
                         if (typeof currentUser.getIdToken === 'function') {
                             await currentUser.getIdToken(true);
                         }
+                        await refreshAppCheckTokenBeforeFirestore();
                         const res = await callableFunctions.saveArtifactUserSettings({
                             settings: payloadForWrite
                         });

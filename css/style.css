@@ -1562,17 +1562,24 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
     animation: successCheckMark 220ms 120ms ease-out forwards;
 }
 
-/* 텍스트 보더라인(25px 흰색): SVG text stroke로 "글자 윤곽"만 */
-.success-popup-text-outline {
+/* 텍스트 보더라인: SVG text stroke로 "글자 윤곽"만 */
+.success-popup-text-outline,
+.attendance-popup-text-outline {
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
     font-size: 21px;
     font-weight: 800;
     letter-spacing: -0.01em;
     fill: #0f172a; /* slate-900 */
     stroke: #ffffff;
-    stroke-width: 20;
     stroke-linejoin: round;
     paint-order: stroke fill;
+}
+.success-popup-text-outline {
+    stroke-width: 20;
+}
+/* 출석/웰컴(두 줄) — 윤곽선 약하게 (~기록 완료 대비 70%) */
+.attendance-popup-text-outline {
+    stroke-width: 14;
 }
 
 /* 기록 완료 컨페티 */

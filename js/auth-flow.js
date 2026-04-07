@@ -19,6 +19,15 @@ function queueAttendanceCheck() {
     });
 }
 
+/** Firebase에서 방금 만든 계정의 첫 로그인(creation≈lastSignIn) — Auth만 재생성·Firestore 설정은 남은 고아 문서일 때 온보딩 재요청 */
+function isLikelyFirstSessionAfterAccountCreate(user) {
+    if (!user?.metadata?.creationTime || !user?.metadata?.lastSignInTime) return false;
+    const c = new Date(user.metadata.creationTime).getTime();
+    const l = new Date(user.metadata.lastSignInTime).getTime();
+    if (!Number.isFinite(c) || !Number.isFinite(l)) return false;
+    return Math.abs(l - c) < 120000;
+}
+
 /** 카카오 웹 로그인 직후 1회만 자동 가입 위저드 허용 (auth.js에서 OAuth 성공 시 설정) */
 const KAKAO_PROFILE_SETUP_GATE_KEY = 'mealog_kakaoProfileSetupGate';
 
@@ -33,9 +42,17 @@ function signupWizardIsProfileOnboarding(options) {
 
 /**
  * 카카오 신규 가입 위저드: 직전 OAuth에서만 허용. 플래그 없으면 로그아웃 후 로그인 화면부터.
+ * skipKakaoStaleGuard: Auth는 유지한 채 온보딩만 염 (Firestore 고아 settings 복구 등 — signOut 시 리스너 permission-denied·빈 화면 유발)
  */
-async function openSignupWizardWithKakaoStaleGuard(user, wizardOptions) {
-    if (kakaoUidNeedsProfileWizardGuard(user?.uid) && signupWizardIsProfileOnboarding(wizardOptions)) {
+async function openSignupWizardWithKakaoStaleGuard(user, wizardOptions = {}) {
+    const { skipKakaoStaleGuard, ...wizardOptionsForWizard } = wizardOptions;
+    const bypassKakaoGate = skipKakaoStaleGuard === true;
+
+    if (
+        kakaoUidNeedsProfileWizardGuard(user?.uid) &&
+        signupWizardIsProfileOnboarding(wizardOptionsForWizard) &&
+        !bypassKakaoGate
+    ) {
         let gate = false;
         try {
             gate = sessionStorage.getItem(KAKAO_PROFILE_SETUP_GATE_KEY) === '1';
@@ -64,7 +81,7 @@ async function openSignupWizardWithKakaoStaleGuard(user, wizardOptions) {
         }
     }
     const { openSignupWizard } = await import('./signup-wizard.js');
-    openSignupWizard(wizardOptions);
+    openSignupWizard(wizardOptionsForWizard);
 }
 
 /**
@@ -521,8 +538,24 @@ export class AuthFlowManager {
             }
             
             // 신규 사용자: 약관과 프로필 확인
-            const readiness = await this.checkUserReadiness(user);
-            
+            let readiness = await this.checkUserReadiness(user);
+            /** 고아 settings 복구 시 카카오 게이트를 쓰면 signOut → Firestore permission-denied 연쇄로 화면이 비므로 게이트 생략 */
+            let skipKakaoStaleGuard = false;
+            // Auth 사용자만 새로 만들었는데(첫 세션) Firestore settings만 예전에 완료 플래그가 남은 경우 → 약관/프로필 다시 진행
+            if (
+                !isExistingUser &&
+                isLikelyFirstSessionAfterAccountCreate(user) &&
+                readiness.termsAgreed &&
+                readiness.hasProfile
+            ) {
+                console.warn(
+                    '🔁 신규 Firebase 계정의 첫 로그인인데 Firestore 설정만 완료로 보입니다. (Auth 삭제 후 settings 잔존 등) 온보딩을 다시 진행합니다.'
+                );
+                readiness.termsAgreed = false;
+                readiness.hasProfile = false;
+                skipKakaoStaleGuard = true;
+            }
+
             console.log('✅ 약관 및 프로필 상태 확인 완료:', {
                 termsAgreed: readiness.termsAgreed,
                 hasProfile: readiness.hasProfile
@@ -539,14 +572,16 @@ export class AuthFlowManager {
                     await openSignupWizardWithKakaoStaleGuard(user, {
                         startStep: 4,
                         totalSteps: 1,
-                        isTermsOnly: true
+                        isTermsOnly: true,
+                        ...(skipKakaoStaleGuard ? { skipKakaoStaleGuard: true } : {})
                     });
                 } else {
                     // 신규: 닉네임 → 생년월일/성별/라이프스타일 → 약관 (2/4 ~ 4/4)
                     await openSignupWizardWithKakaoStaleGuard(user, {
                         startStep: 2,
                         totalSteps: 4,
-                        isEmailSignup: false
+                        isEmailSignup: false,
+                        ...(skipKakaoStaleGuard ? { skipKakaoStaleGuard: true } : {})
                     });
                 }
                 return;
@@ -560,7 +595,8 @@ export class AuthFlowManager {
                 await openSignupWizardWithKakaoStaleGuard(user, {
                     startStep: 2,
                     totalSteps: 4,
-                    isEmailSignup: false
+                    isEmailSignup: false,
+                    ...(skipKakaoStaleGuard ? { skipKakaoStaleGuard: true } : {})
                 });
             } else {
                 console.log('✅ 약관과 프로필 모두 완료됨. 모달을 표시하지 않습니다.');

@@ -198,6 +198,7 @@ export function showAttendancePopup(line1, line2 = '') {
     const l1 = document.getElementById('attendancePopupLine1');
     const l2 = document.getElementById('attendancePopupLine2');
     const textRoot = document.getElementById('attendancePopupTextRoot');
+    const textSvg = document.getElementById('attendancePopupTextSvg');
     if (!popup || !l1 || !l2) return;
 
     ensureAttendancePopupCloseBound();
@@ -205,18 +206,35 @@ export function showAttendancePopup(line1, line2 = '') {
     l1.textContent = line1 || '';
     l2.textContent = line2 || '';
     const two = Boolean(line2 && line2.trim());
+
+    const maxLen = Math.max((line1 || '').length, (line2 || '').length);
+    const fs = maxLen > 20 ? '15' : maxLen > 16 ? '17' : '19';
+    const fsNum = Number(fs);
+    /** 두 줄일 때 dy가 너무 작으면 글자가 겹침 — 글자 크기의 약 1.35배 이상 간격 */
+    const lineGap = Math.max(26, Math.round(fsNum * 1.38));
+
     if (two) {
-        l1.setAttribute('y', '24');
-        l2.setAttribute('dy', '15');
+        l1.setAttribute('y', '28');
+        l2.setAttribute('x', '170');
+        l2.setAttribute('dy', String(lineGap));
     } else {
-        l1.setAttribute('y', '34');
+        l1.setAttribute('y', '36');
+        l2.setAttribute('x', '170');
         l2.setAttribute('dy', '0');
         l2.textContent = '';
     }
 
-    const maxLen = Math.max((line1 || '').length, (line2 || '').length);
-    const fs = maxLen > 20 ? '15' : maxLen > 16 ? '17' : '19';
     if (textRoot) textRoot.setAttribute('font-size', fs);
+
+    if (textSvg) {
+        if (two) {
+            textSvg.setAttribute('viewBox', '0 0 340 80');
+            textSvg.setAttribute('height', '80');
+        } else {
+            textSvg.setAttribute('viewBox', '0 0 340 60');
+            textSvg.setAttribute('height', '60');
+        }
+    }
 
     document.body.classList.remove('attendance-popup-anim');
     popup.classList.remove('hidden');

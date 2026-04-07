@@ -32,6 +32,7 @@ import {
 } from '../auth.js';
 import { registerDemoIntroModalHandlers } from '../demo-account.js';
 import { registerEscapeCloseModals } from './escape-close-modals.js';
+import { kakaoTalkLogoSvgHtml } from '../utils/kakao-brand.js';
 import {
     registerDemoNavGuideHandlers,
     handleDemoAwareNavClick,
@@ -140,6 +141,12 @@ export function initEventListeners() {
 
     const kakaoLoginBtn = document.getElementById('kakaoLoginBtn');
     if (kakaoLoginBtn) {
+        if (!kakaoLoginBtn.querySelector('[data-kakao-brand-logo]')) {
+            kakaoLoginBtn.insertAdjacentHTML(
+                'afterbegin',
+                kakaoTalkLogoSvgHtml({ className: 'w-[22px] h-[22px]' })
+            );
+        }
         kakaoLoginBtn.addEventListener('click', handleKakaoLogin);
     }
 

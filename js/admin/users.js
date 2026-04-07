@@ -310,18 +310,18 @@ async function getUsers(options = {}) {
         const boardPostsColl = collection(db, 'artifacts', appId, 'boardPosts');
         const deleteRequestsColl = collection(db, 'artifacts', appId, 'deleteUserRequests');
 
-        // 1) 첫 페이지만 전체 사용자 수 조회 — 목록 쿼리와 동일한 조건(createdAt 있음)으로 카운트
+        // 1) 첫 페이지만 전체 사용자 수 조회 — lastLoginAt 기준(프로필 미완료·카카오만 로그인한 사용자도 포함)
         let totalCount = adminUsersTotalCount;
         if (page === 1) {
-            const countQuery = query(usersColl, orderBy('createdAt', 'desc'));
+            const countQuery = query(usersColl, orderBy('lastLoginAt', 'desc'));
             const countSnap = await getCountFromServer(countQuery);
             totalCount = countSnap.data().count;
             adminUsersTotalCount = totalCount;
         }
 
-        // 2) users 컬렉션 페이지 단위 쿼리 (가입일 내림차순)
-        let usersQuery = query(usersColl, orderBy('createdAt', 'desc'), limit(pageSize));
-        if (startAfterDoc) usersQuery = query(usersColl, orderBy('createdAt', 'desc'), limit(pageSize), startAfter(startAfterDoc));
+        // 2) users 컬렉션 페이지 단위 쿼리 (최근 로그인순 — createdAt 없이 문서만 있는 경우도 목록에 포함)
+        let usersQuery = query(usersColl, orderBy('lastLoginAt', 'desc'), limit(pageSize));
+        if (startAfterDoc) usersQuery = query(usersColl, orderBy('lastLoginAt', 'desc'), limit(pageSize), startAfter(startAfterDoc));
         const usersSnapshot = await getDocs(usersQuery);
         const userIds = usersSnapshot.docs.map(d => d.id);
         const lastDoc = usersSnapshot.docs.length > 0 ? usersSnapshot.docs[usersSnapshot.docs.length - 1] : null;
@@ -412,6 +412,7 @@ async function getUsers(options = {}) {
 
             let loginMethod = '게스트';
             if (providerId === 'google.com') loginMethod = '구글';
+            else if (providerId === 'kakao.com') loginMethod = '카카오';
             else if (email) loginMethod = '이메일';
 
             const ban = userBansMap.get(userId);
@@ -627,6 +628,8 @@ export async function renderUsers(options = {}) {
             let loginMethodBadge = 'bg-slate-100 text-slate-700';
             if (user.loginMethod === '구글') {
                 loginMethodBadge = 'bg-red-100 text-red-700';
+            } else if (user.loginMethod === '카카오') {
+                loginMethodBadge = 'bg-[#FEE500] text-[#191919]';
             } else if (user.loginMethod === '이메일') {
                 loginMethodBadge = 'bg-blue-100 text-blue-700';
             }
@@ -985,6 +988,7 @@ export async function adminUserBanWrite(value) {
 export async function refreshUsers() {
     await runAdminRefreshAction(document.getElementById('adminUsersRefreshBtn'), async () => {
         invalidateUsersTableCache();
-        await renderUsers({ forceNetwork: true });
+        // 가입일(createdAt) 기준 정렬은 전역 순서가 필요해 전체 로드 후 클라이언트에서 정렬(lastLoginAt만으로 페이지네이션하면 이전 페이지가 섞임)
+        await renderUsers({ forceNetwork: true, loadFullListForSort: true });
     });
 }
