@@ -11,7 +11,7 @@ import {
   refreshAppCheckTokenBeforeFirestore,
   callableFunctions
 } from './firebase.js';
-import { authStateReady } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
 import { showPermissionHintToast } from './ui.js';
 import { doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
@@ -20,6 +20,23 @@ const FCM_TOKENS_DOC = 'fcmTokens';
 if (typeof window !== 'undefined') {
   window.__pushModuleVersion = '2025-03-21';
   console.log('푸시 모듈 로드:', window.__pushModuleVersion);
+}
+
+/**
+ * gstatic firebase-auth.js(11.6.x) ESM에는 authStateReady named export가 없음 → 인스턴스 메서드 또는 onAuthStateChanged 폴백.
+ */
+async function waitForAuthReady(authInstance) {
+  if (!authInstance) return;
+  if (typeof authInstance.authStateReady === 'function') {
+    await authInstance.authStateReady();
+    return;
+  }
+  await new Promise((resolve) => {
+    const unsub = onAuthStateChanged(authInstance, () => {
+      unsub();
+      resolve();
+    });
+  });
 }
 
 function isNative() {
@@ -384,7 +401,7 @@ async function saveFcmToken(uid, token) {
 
   try {
     await appCheckInitPromise;
-    await authStateReady(auth);
+    await waitForAuthReady(auth);
     await refreshAppCheckTokenBeforeFirestore();
     await saveFcmTokenToFirestoreClient(uid, token, tokenEnv);
     onSaved();
@@ -392,7 +409,7 @@ async function saveFcmToken(uid, token) {
     const msg = e?.message || String(e);
     if (isFirestorePermissionDenied(e)) {
       try {
-        await authStateReady(auth);
+        await waitForAuthReady(auth);
         await refreshAppCheckTokenBeforeFirestore();
         await new Promise((r) => setTimeout(r, 450));
         await saveFcmTokenToFirestoreClient(uid, token, tokenEnv);
