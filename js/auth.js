@@ -73,11 +73,22 @@ const STAGING_KAKAO_APP_OAUTH_BRIDGE_URL = 'https://staging-mealog.vercel.app/ka
 function shouldUseStagingKakaoOAuthBridge() {
     try {
         if (typeof window === 'undefined') return false;
-        if (window.Capacitor?.isNativePlatform?.() && window.Capacitor?.config?.appId === 'com.mealog.app.staging') {
+        const host = String(window.location.hostname || '').toLowerCase();
+        if (host === 'staging-mealog.vercel.app' || host === 'www.staging-mealog.vercel.app') {
             return true;
         }
-        const host = String(window.location.hostname || '').toLowerCase();
-        return host === 'staging-mealog.vercel.app' || host === 'www.staging-mealog.vercel.app';
+        if (!window.Capacitor?.isNativePlatform?.()) {
+            return false;
+        }
+        const capId = String(window.Capacitor?.config?.appId || '').trim();
+        if (capId === 'com.mealog.app.staging' || capId.includes('staging')) {
+            return true;
+        }
+        /** 번들 APK(server.url 없음): 호스트는 localhost 등 — copy:www 가 넣은 APP_ENV 로 판별 */
+        if (window.APP_ENV === 'staging') {
+            return true;
+        }
+        return false;
     } catch (_) {
         return false;
     }
