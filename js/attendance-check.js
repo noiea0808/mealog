@@ -4,6 +4,7 @@
  * 관리자 설정(adminSettings/config.attendancePopup)으로 환경별 문구·노출 on/off.
  */
 import { authFlowManager } from './auth-flow.js';
+import { isDemoUser } from './demo-account.js';
 import { db, appId } from './firebase.js';
 import { showAttendancePopup } from './ui.js';
 import { getMealogClientEnv, toLocalDateString } from './utils.js';
@@ -187,6 +188,7 @@ export function scheduleAttendanceCheckIfNeeded() {
     if (typeof window === 'undefined') return;
     const user = window.currentUser;
     if (!user?.uid || user.isAnonymous) return;
+    if (isDemoUser(user)) return;
     if (!authFlowManager.hasCompleted) return;
     const mainApp = document.getElementById('mainApp');
     if (!mainApp || mainApp.classList.contains('hidden')) return;
@@ -206,6 +208,7 @@ export function scheduleAttendanceCheckIfNeeded() {
             if (!authFlowManager.hasCompleted) return;
             const mainEl = document.getElementById('mainApp');
             if (!mainEl || mainEl.classList.contains('hidden')) return;
+            if (isDemoUser(window.currentUser)) return;
 
             const cfg = await fetchAttendancePopupRoot();
             const env = getMealogClientEnv();

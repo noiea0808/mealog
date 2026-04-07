@@ -117,7 +117,7 @@ export async function updateNicknameChangeDate(userId) {
     }
 }
 
-/** 회원가입 추천용: 형용·자연·생물·감각 단어 풀 (조합 수 ↑) */
+/** 회원가입 추천용: 짧은 두 단어 풀 (무드·자연·생물·음식) + 긴 문장 풀 — 생성 비율은 generateRandomNicknameCombo에서 50:50 */
 const NICK_MOOD = [
     '햇살', '달빛', '바람', '구름', '별빛', '숲길', '파도', '노을', '이슬', '새벽', '한낮', '황혼',
     '봄날', '여름', '가을', '겨울', '미소', '포근', '산들', '고요', '따스', '시원', '포동', '맑음',
@@ -156,24 +156,30 @@ function clipNickname(s, maxLen = 20) {
     return t.slice(0, maxLen);
 }
 
+/** 짧은 두 단어(5종) 내부 비율 — 합 95로 정규화 (예전 단일 랜덤에서 레거시 5% 제외한 비율 유지) */
+const SHORT_COMBO_WEIGHT_SUM = 28 + 24 + 20 + 16 + 7;
+
 /**
  * 여러 단어 풀을 섞어 20자 이하 닉네임 후보 1개 (비속어 검사 전)
+ * 짧은 두 단어 50% + 긴 문장(NICK_LEGACY_PHRASES) 50%
  */
 export function generateRandomNicknameCombo() {
-    const r = Math.random();
     let base;
-    if (r < 0.28) {
-        base = pickNickWord(NICK_MOOD) + pickNickWord(NICK_CREATURE);
-    } else if (r < 0.52) {
-        base = pickNickWord(NICK_NATURE) + pickNickWord(NICK_CREATURE);
-    } else if (r < 0.72) {
-        base = pickNickWord(NICK_MOOD) + pickNickWord(NICK_NATURE);
-    } else if (r < 0.88) {
-        base = pickNickWord(NICK_MOOD) + pickNickWord(NICK_FOODISH);
-    } else if (r < 0.95) {
-        base = pickNickWord(NICK_CREATURE) + pickNickWord(NICK_FOODISH);
-    } else {
+    if (Math.random() < 0.5) {
         base = pickNickWord(NICK_LEGACY_PHRASES);
+    } else {
+        const r = Math.random() * SHORT_COMBO_WEIGHT_SUM;
+        if (r < 28) {
+            base = pickNickWord(NICK_MOOD) + pickNickWord(NICK_CREATURE);
+        } else if (r < 28 + 24) {
+            base = pickNickWord(NICK_NATURE) + pickNickWord(NICK_CREATURE);
+        } else if (r < 28 + 24 + 20) {
+            base = pickNickWord(NICK_MOOD) + pickNickWord(NICK_NATURE);
+        } else if (r < 28 + 24 + 20 + 16) {
+            base = pickNickWord(NICK_MOOD) + pickNickWord(NICK_FOODISH);
+        } else {
+            base = pickNickWord(NICK_CREATURE) + pickNickWord(NICK_FOODISH);
+        }
     }
     if (Math.random() < 0.22 && base.length <= 14) {
         base += String(Math.floor(Math.random() * 9000 + 1000));

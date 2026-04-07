@@ -2273,6 +2273,46 @@ function parseKakaoIdTokenEmail(jwt) {
 }
 
 /**
+ * Capacitor 앱용 카카오 인가 URL (REST API 키는 서버에서만 사용)
+ * redirectUri는 Kakao 콘솔에 등록된 값과 동일해야 하며, signInWithKakao 토큰 교환 시에도 동일 문자열 필요
+ */
+exports.getKakaoOAuthAuthorizeUrl = onCall(
+  { region: REGION },
+  wrapFunction('getKakaoOAuthAuthorizeUrl', async (request) => {
+    const data = request.data || {};
+    const redirectUri = typeof data.redirectUri === 'string' ? data.redirectUri.trim() : '';
+    if (!redirectUri || redirectUri.length > 2048) {
+      throw new HttpsError('invalid-argument', 'redirectUri가 필요합니다.');
+    }
+    if (!/^https:\/\//i.test(redirectUri) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(redirectUri)) {
+      throw new HttpsError('invalid-argument', 'redirectUri 형식이 올바르지 않습니다.');
+    }
+    const stateRaw = data.state;
+    const state =
+      typeof stateRaw === 'string' && stateRaw.length > 0 && stateRaw.length <= 512 ? stateRaw.trim() : '';
+    const clientId = kakaoRestApiKey.value();
+    if (!clientId) {
+      throw new HttpsError(
+        'failed-precondition',
+        'KAKAO_REST_API_KEY가 설정되지 않았습니다. functions/.env에 설정 후 재배포하세요.'
+      );
+    }
+    const u = new URL('https://kauth.kakao.com/oauth/authorize');
+    u.searchParams.set('client_id', clientId);
+    u.searchParams.set('redirect_uri', redirectUri);
+    u.searchParams.set('response_type', 'code');
+    u.searchParams.set(
+      'scope',
+      'profile_nickname profile_image account_email openid'
+    );
+    if (state) {
+      u.searchParams.set('state', state);
+    }
+    return { authorizeUrl: u.toString() };
+  })
+);
+
+/**
  * 카카오 로그인: (1) 인가 코드 → kauth 토큰 교환 또는 (2) 액세스 토큰 직접 검증 후 Firebase 커스텀 토큰
  * UID 형식 kakao_{카카오회원번호} — 비로그인 호출 허용
  * 토큰 교환에는 REST API 키(client_id) 사용. 앱에서 클라이언트 시크릿을 켠 경우 functions/.env KAKAO_CLIENT_SECRET

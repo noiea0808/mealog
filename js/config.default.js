@@ -22,6 +22,12 @@ export const KAKAO_JAVASCRIPT_KEY = '';
  */
 export const KAKAO_OAUTH_REDIRECT_URI = '';
 
+/**
+ * 설치형 앱 카카오 로그인용 HTTPS 브리지 페이지 (웹에 배포 후 Kakao Developers > Redirect URI에 동일 URL 등록)
+ * 브리지는 인가 code를 받아 mealogapp:// 딥링크로 앱에 넘깁니다. 비우면 아래 기본(운영 사이트) 사용.
+ */
+export const KAKAO_APP_OAUTH_BRIDGE_URL = 'https://www.mealog.net/kakao-app-oauth-bridge.html';
+
 /** 공용 데모(샘플) 계정 — Firestore 규칙의 읽기 전용 이메일과 동일해야 함 */
 export const DEMO_ACCOUNT_EMAIL = 'dummy@mealog.net';
 /** config.js에만 실제 비밀번호 설정 (Git 커밋 금지). 비어 있으면 자동 데모 로그인·둘러보기 비활성 */

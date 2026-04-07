@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MEALOG — 카카오 로그인</title>
+</head>
+<body>
+  <p style="font-family: system-ui, sans-serif; text-align: center; margin-top: 2rem; color: #334155">
+    앱으로 돌아가는 중…
+  </p>
+  <script>
+    (function () {
+      var p = new URLSearchParams(window.location.search);
+      var code = p.get('code');
+      var err = p.get('error');
+      var state = p.get('state') || '';
+      var desc = p.get('error_description') || '';
+      var base = 'mealogapp://kakao-oauth';
+      var q = [];
+      if (code) q.push('code=' + encodeURIComponent(code));
+      if (state) q.push('state=' + encodeURIComponent(state));
+      if (err) {
+        q.push('error=' + encodeURIComponent(err));
+        if (desc) q.push('error_description=' + encodeURIComponent(String(desc).slice(0, 500)));
+      }
+      var target = q.length ? base + '?' + q.join('&') : base + '?error=missing_params';
+      window.location.replace(target);
+    })();
+  </script>
+</body>
+</html>

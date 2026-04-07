@@ -68,15 +68,22 @@ export function hideLoading() {
 }
 
 const TOAST_DURATION_MS = 3500;
+const TOAST_DURATION_INFO_MS = 5000;
 
-/** 토스트: 에러(type='error')일 때만 표시, info/success는 비표시 */
+/**
+ * 토스트 — error / info / success
+ * (과거에는 error만 표시해 info 호출이 무반응이었음; 카카오 앱 차단 안내 등에서 문제 발생)
+ */
 export function showToast(message, type = 'info') {
-    if (type !== 'error' || !message) return;
+    if (!message) return;
     const container = document.getElementById('toastContainer');
     if (!container) return;
     const toast = document.createElement('div');
     toast.setAttribute('role', 'alert');
-    toast.className = 'animate-toast px-4 py-3 rounded-xl text-sm font-medium text-white shadow-lg max-w-full bg-red-500';
+    let bg = 'bg-slate-800';
+    if (type === 'error') bg = 'bg-red-500';
+    else if (type === 'success') bg = 'bg-emerald-600';
+    toast.className = `animate-toast px-4 py-3 rounded-xl text-sm font-medium text-white shadow-lg max-w-full ${bg}`;
     toast.textContent = message;
     container.appendChild(toast);
     const remove = () => {
@@ -86,7 +93,8 @@ export function showToast(message, type = 'info') {
             if (toast.parentNode) toast.parentNode.removeChild(toast);
         }, 200);
     };
-    setTimeout(remove, TOAST_DURATION_MS);
+    const dur = type === 'info' || type === 'success' ? TOAST_DURATION_INFO_MS : TOAST_DURATION_MS;
+    setTimeout(remove, dur);
 }
 
 let successPopupTimer = null;
