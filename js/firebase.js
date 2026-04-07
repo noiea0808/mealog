@@ -147,6 +147,8 @@ export const callableFunctions = {
     signInWithKakao: httpsCallable(functions, 'signInWithKakao'),
     /** 네이티브 앱: 카카오 인가 페이지 URL (REST 키는 Functions에서만 사용) */
     getKakaoOAuthAuthorizeUrl: httpsCallable(functions, 'getKakaoOAuthAuthorizeUrl'),
+    /** FCM 토큰 문서 저장 폴백 (클라이언트 Firestore/App Check 거절 시) */
+    registerFcmToken: httpsCallable(functions, 'registerFcmToken'),
     /** 클라이언트 Firestore permission-denied 시 설정+닉네임클레임 저장 폴백 (Admin) */
     saveArtifactUserSettings: httpsCallable(functions, 'saveArtifactUserSettings'),
     /** users/{uid} 루트 문서(lastLoginAt·createdAt·providerId·email) — 클라이언트 쓰기 거절 시 Admin 병합 */

@@ -3,7 +3,15 @@
  * - 로그인 사용자만 등록
  * - artifacts/{appId}/users/{uid}/config/fcmTokens 문서에 토큰 저장 (다중 기기 지원)
  */
-import { db, appId } from './firebase.js';
+import {
+  db,
+  appId,
+  auth,
+  appCheckInitPromise,
+  refreshAppCheckTokenBeforeFirestore,
+  callableFunctions
+} from './firebase.js';
+import { authStateReady } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
 import { showPermissionHintToast } from './ui.js';
 import { doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
@@ -328,30 +336,83 @@ window.getPushDebugInfo = function getPushDebugInfo() {
   };
 };
 
-/**
- * FCM 토큰을 Firestore에 저장 (merge: 기존 토큰에 추가)
- */
-async function saveFcmToken(uid, token) {
-  if (!uid || !token || typeof token !== 'string') return;
+function isFirestorePermissionDenied(err) {
+  const msg = (err && (err.message || err.code)) ? String(err.message || err.code) : String(err || '');
+  const code = err && err.code ? String(err.code) : '';
+  return (
+    code === 'permission-denied' ||
+    /permission|insufficient/i.test(msg)
+  );
+}
+
+async function saveFcmTokenToFirestoreClient(uid, token, tokenEnv) {
   const ref = doc(db, 'artifacts', appId, 'users', uid, 'config', FCM_TOKENS_DOC);
-  const tokenEnv = getCurrentPushEnv();
-  try {
-    const snap = await getDoc(ref);
-    const prev = (snap.data() && snap.data().tokens) || {};
-    await setDoc(ref, {
+  const snap = await getDoc(ref);
+  const prev = (snap.data() && snap.data().tokens) || {};
+  await setDoc(
+    ref,
+    {
       tokens: {
         ...prev,
         [token]: { updatedAt: serverTimestamp(), env: tokenEnv }
       }
-    }, { merge: true });
+    },
+    { merge: true }
+  );
+}
+
+/**
+ * FCM 토큰을 Firestore에 저장 (merge: 기존 토큰에 추가)
+ * - 로그인·App Check 직후 permission-denied 완화: 갱신 후 1회 재시도
+ * - 여전히 실패 시 registerFcmToken Callable(Admin) 폴백
+ */
+async function saveFcmToken(uid, token) {
+  if (!uid || !token || typeof token !== 'string') return;
+  const tokenEnv = getCurrentPushEnv();
+
+  const onSaved = () => {
     setPushDebug({ tokenSaved: true, lastError: null, phase: 'token_saved' });
     console.log('✅ FCM 토큰 저장 완료');
     if (typeof window.__onPushTokenSaved === 'function') window.__onPushTokenSaved();
-  } catch (e) {
-    const msg = e?.message || String(e);
+  };
+
+  const onFailed = (msg) => {
     setPushDebug({ tokenSaved: false, lastError: msg });
     console.warn('⚠️ FCM 토큰 저장 실패:', msg);
     if (typeof window.__onPushTokenSavedError === 'function') window.__onPushTokenSavedError(msg);
+  };
+
+  try {
+    await appCheckInitPromise;
+    await authStateReady(auth);
+    await refreshAppCheckTokenBeforeFirestore();
+    await saveFcmTokenToFirestoreClient(uid, token, tokenEnv);
+    onSaved();
+  } catch (e) {
+    const msg = e?.message || String(e);
+    if (isFirestorePermissionDenied(e)) {
+      try {
+        await authStateReady(auth);
+        await refreshAppCheckTokenBeforeFirestore();
+        await new Promise((r) => setTimeout(r, 450));
+        await saveFcmTokenToFirestoreClient(uid, token, tokenEnv);
+        onSaved();
+        return;
+      } catch (e2) {
+        /* fall through to callable */
+      }
+      try {
+        const payload = { token };
+        if (tokenEnv) payload.env = tokenEnv;
+        await callableFunctions.registerFcmToken(payload);
+        onSaved();
+        return;
+      } catch (e3) {
+        onFailed(e3?.message || String(e3));
+        return;
+      }
+    }
+    onFailed(msg);
   }
 }
 

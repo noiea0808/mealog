@@ -2676,6 +2676,41 @@ exports.saveArtifactUserSettings = onCall({ region: REGION }, wrapFunction('save
 }));
 
 /**
+ * FCM 토큰 등록 (클라이언트 Firestore/App Check permission-denied 시 폴백, Admin 병합)
+ */
+exports.registerFcmToken = onCall({ region: REGION }, wrapFunction('registerFcmToken', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  assertNotReadOnlyDemoAuth(request.auth);
+  const uid = request.auth.uid;
+  const token = typeof request.data?.token === 'string' ? request.data.token.trim() : '';
+  const envRaw = request.data?.env;
+  const env =
+    typeof envRaw === 'string' && envRaw.trim()
+      ? envRaw.trim().slice(0, 32)
+      : '';
+  if (!token || token.length < 20 || token.length > 4096) {
+    throw new HttpsError('invalid-argument', '유효한 FCM 토큰이 필요합니다.');
+  }
+  const ref = db.doc(`artifacts/${APP_ID}/users/${uid}/config/fcmTokens`);
+  const snap = await ref.get();
+  const prev = (snap.exists && snap.data().tokens && typeof snap.data().tokens === 'object') ? snap.data().tokens : {};
+  const entry = { updatedAt: FieldValue.serverTimestamp() };
+  if (env) entry.env = env;
+  await ref.set(
+    {
+      tokens: {
+        ...prev,
+        [token]: entry
+      }
+    },
+    { merge: true }
+  );
+  return { ok: true };
+}));
+
+/**
  * Gemini API 프록시 (WebView 차단 우회)
  * 클라이언트에서 직접 호출 대신 서버에서 Gemini API 호출
  */
