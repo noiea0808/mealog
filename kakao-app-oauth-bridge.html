@@ -6,26 +6,58 @@
   <title>MEALOG — 카카오 로그인</title>
 </head>
 <body>
-  <p style="font-family: system-ui, sans-serif; text-align: center; margin-top: 2rem; color: #334155">
+  <p id="msg" style="font-family: system-ui, sans-serif; text-align: center; margin-top: 2rem; color: #334155; padding: 0 1rem; line-height: 1.5">
     앱으로 돌아가는 중…
   </p>
   <script>
     (function () {
+      var msgEl = document.getElementById('msg');
       var p = new URLSearchParams(window.location.search);
       var code = p.get('code');
       var err = p.get('error');
       var state = p.get('state') || '';
       var desc = p.get('error_description') || '';
-      var base = 'mealogapp://kakao-oauth';
-      var q = [];
-      if (code) q.push('code=' + encodeURIComponent(code));
-      if (state) q.push('state=' + encodeURIComponent(state));
-      if (err) {
-        q.push('error=' + encodeURIComponent(err));
-        if (desc) q.push('error_description=' + encodeURIComponent(String(desc).slice(0, 500)));
+
+      function setMsg(t) {
+        if (msgEl) msgEl.textContent = t;
       }
-      var target = q.length ? base + '?' + q.join('&') : base + '?error=missing_params';
-      window.location.replace(target);
+
+      /** 카카오가 넘긴 인가 code 또는 OAuth error 가 없으면 앱 딥링크로 보내지 않음 (PC 브라우저·직접 접속 시 콘솔 오류 방지) */
+      if (!code && !err) {
+        setMsg(
+          '카카오 로그인 후에만 이 페이지가 열립니다. 주소를 직접 연 경우이거나 로그인이 끝나지 않았을 수 있어요. MEALOG 앱에서 카카오 로그인을 다시 시도해 주세요.'
+        );
+        return;
+      }
+
+      var parts = [];
+      if (code) parts.push('code=' + encodeURIComponent(code));
+      if (state) parts.push('state=' + encodeURIComponent(state));
+      if (err) {
+        parts.push('error=' + encodeURIComponent(err));
+        if (desc) parts.push('error_description=' + encodeURIComponent(String(desc).slice(0, 500)));
+      }
+      var qs = parts.join('&');
+      var deepLink = 'mealogapp://kakao-oauth' + (qs ? '?' + qs : '');
+
+      var ua = navigator.userAgent || '';
+      var isAndroid = /Android/i.test(ua);
+
+      /**
+       * Android Chrome / Custom Tabs: location.replace(mealogapp://…) 는 "no registered handler" 가 자주 남.
+       * intent:// 로 열면 설치된 앱(com.mealog.app / com.mealog.app.staging)의 VIEW 인텐트로 연결되기 쉬움.
+       * package 미지정 시 해당 scheme+host 를 처리하는 앱으로 위임.
+       */
+      if (isAndroid) {
+        var intentUrl =
+          'intent://kakao-oauth' +
+          (qs ? '?' + qs : '') +
+          '#Intent;scheme=mealogapp;end';
+        window.location.replace(intentUrl);
+        return;
+      }
+
+      window.location.replace(deepLink);
     })();
   </script>
 </body>
