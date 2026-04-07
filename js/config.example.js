@@ -7,7 +7,8 @@
 // 네이티브 구글 로그인용 (Firebase Console > Authentication > Sign-in method > Google > Web SDK configuration > Web client ID)
 export const GOOGLE_WEB_CLIENT_ID = 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com';
 
-// 카카오 로그인 — 반드시 「JavaScript 키」(REST 키 아님)
+// 카카오 로그인 — 반드시 「JavaScript 키」(REST 키 아님). 웹 전용; 네이티브 앱 카카오는 미사용
+// 로컬: 루트 .env 또는 functions/.env 에 KAKAO_JAVASCRIPT_KEY=... 후 npm run build → js/config.js 생성
 export const KAKAO_JAVASCRIPT_KEY = 'YOUR_KAKAO_JAVASCRIPT_KEY';
 // authorize 400(KOE006 등): 플랫폼 키 > JavaScript 키 에서
 //   (1) Redirect URI에 아래에서 쓰는 주소와 완전 동일하게 등록

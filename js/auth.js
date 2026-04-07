@@ -394,7 +394,10 @@ export async function handleKakaoLogin() {
     try {
         const appKey = await getKakaoJavascriptKey();
         if (!appKey) {
-            showToast('카카오 로그인 설정이 필요합니다. config.js에 KAKAO_JAVASCRIPT_KEY를 넣어 주세요.', 'error');
+            showToast(
+                '웹 카카오 로그인: KAKAO_JAVASCRIPT_KEY가 필요합니다. 루트에 .env 를 두고 npm run build 하거나, js/config.js에 직접 넣으세요. (설치형 앱은 Browser 플로우로 이 키를 쓰지 않습니다.)',
+                'error'
+            );
             hideLoading();
             return;
         }
