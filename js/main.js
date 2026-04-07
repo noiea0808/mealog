@@ -1021,7 +1021,6 @@ initAuth(async (user) => {
         }
 
         if (user && !user.isAnonymous && !isDemoUser(user)) {
-          window.__onPushTokenSaved = () => showToast('알림 등록됨', 'success');
           window.__onPushTokenSavedError = (msg) => showToast('알림 등록 실패: ' + (msg || '알 수 없음'), 'error');
           // 네이티브 앱만: FCM 등록·토큰 Firestore 저장 (설정 토글 제거 이후 이 경로가 유일함)
           if (typeof window.Capacitor !== 'undefined' && window.Capacitor.isNativePlatform?.()) {

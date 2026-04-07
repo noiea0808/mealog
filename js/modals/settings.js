@@ -1204,7 +1204,6 @@ export function initPushPreferencesControlsOnce() {
     const persist = async (partial) => {
         if (!window.currentUser || window.currentUser.isAnonymous) return;
         if (isDemoUser(window.currentUser)) {
-            showToast('샘플 계정에서는 변경할 수 없습니다.', 'info');
             syncPushPreferencesFormFromUserSettings();
             return;
         }

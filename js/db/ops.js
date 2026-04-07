@@ -167,7 +167,6 @@ export const dbOps = {
             return;
         }
         if (isDemoUser(currentUser)) {
-            showToast('샘플 계정에서는 설정을 변경할 수 없습니다. 로그인 후 이용해 주세요.', 'error');
             return;
         }
         try {
