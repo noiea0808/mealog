@@ -19,5 +19,5 @@ if (!fs.existsSync(srcFile)) {
   process.exit(1);
 }
 fs.copyFileSync(srcFile, destFile);
-const urlLabel = env === 'staging' ? 'www.staging-mealog.vercel.app' : env === 'staging.bundled' ? 'www번들' : 'mealog.net';
+const urlLabel = env === 'staging' ? 'staging-mealog.vercel.app' : env === 'staging.bundled' ? 'www번들' : 'mealog.net';
 console.log(`✓ capacitor.config.json → ${env} (${urlLabel})`);

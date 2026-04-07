@@ -67,6 +67,22 @@ async function resolveKakaoOAuthRedirectUri() {
     return getKakaoOAuthRedirectUri();
 }
 
+/** 스테이징(Vercel) — Kakao Developers Redirect URI와 문자 단위로 동일해야 함 */
+const STAGING_KAKAO_APP_OAUTH_BRIDGE_URL = 'https://staging-mealog.vercel.app/kakao-app-oauth-bridge.html';
+
+function shouldUseStagingKakaoOAuthBridge() {
+    try {
+        if (typeof window === 'undefined') return false;
+        if (window.Capacitor?.isNativePlatform?.() && window.Capacitor?.config?.appId === 'com.mealog.app.staging') {
+            return true;
+        }
+        const host = String(window.location.hostname || '').toLowerCase();
+        return host === 'staging-mealog.vercel.app' || host === 'www.staging-mealog.vercel.app';
+    } catch (_) {
+        return false;
+    }
+}
+
 async function resolveKakaoAppOAuthBridgeUrl() {
     try {
         const c = await import('./config.js');
@@ -76,6 +92,9 @@ async function resolveKakaoAppOAuthBridgeUrl() {
         }
     } catch (_) {
         /* no config.js */
+    }
+    if (shouldUseStagingKakaoOAuthBridge()) {
+        return STAGING_KAKAO_APP_OAUTH_BRIDGE_URL;
     }
     try {
         const d = await import('./config.default.js');

@@ -68,7 +68,7 @@ jobs:
       - name: Verify required files
         run: |
           echo "📋 필수 파일 확인:"
-          files=("index.html" "manifest.json" "sw.js" "js/config.js" "js/config.default.js")
+          files=("index.html" "manifest.json" "sw.js" "js/config.js" "js/config.default.js" "kakao-app-oauth-bridge.html")
           missing_files=()
           for file in "${files[@]}"; do
             if [ -f "$file" ]; then

@@ -23,8 +23,8 @@ export const KAKAO_JAVASCRIPT_KEY = '';
 export const KAKAO_OAUTH_REDIRECT_URI = '';
 
 /**
- * 설치형 앱 카카오 로그인용 HTTPS 브리지 페이지 (웹에 배포 후 Kakao Developers > Redirect URI에 동일 URL 등록)
- * 브리지는 인가 code를 받아 mealogapp:// 딥링크로 앱에 넘깁니다. 비우면 아래 기본(운영 사이트) 사용.
+ * 설치형 앱 카카오 로그인용 HTTPS 브리지 (운영 기본값).
+ * 스테이징 네이티브(com.mealog.app.staging) 및 staging-mealog.vercel.app 웹은 auth.js에서 스테이징 브리지 URL을 자동 사용.
  */
 export const KAKAO_APP_OAUTH_BRIDGE_URL = 'https://www.mealog.net/kakao-app-oauth-bridge.html';
 

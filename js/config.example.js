@@ -15,7 +15,7 @@ export const KAKAO_JAVASCRIPT_KEY = 'YOUR_KAKAO_JAVASCRIPT_KEY';
 // Functions: KAKAO_REST_API_KEY(토큰 교환). 클라이언트 시크릿 사용 시 functions/.env KAKAO_CLIENT_SECRET
 // index.html로 여는데 콘솔에는 `http://localhost:8000/` 만 있으면 여기로 맞추거나 콘솔에 index.html 경로를 추가
 export const KAKAO_OAUTH_REDIRECT_URI = ''; // 예: 'http://localhost:8000/'
-// 앱(APK) 카카오 로그인: 사이트 루트에 kakao-app-oauth-bridge.html 배포 후, 여기에 그 전체 URL을 넣거나 기본값 유지
+// 앱 카카오 브리지 URL. 비우면: 운영=www.mealog.net, 스테이징 APK·staging-mealog.vercel.app=자동(staging 브리지)
 export const KAKAO_APP_OAUTH_BRIDGE_URL = 'https://www.mealog.net/kakao-app-oauth-bridge.html';
 
 // 샘플 타임라인용 데모 계정 (Firebase Auth 이메일/비밀번호). firestore.rules의 읽기 전용 이메일과 일치시키세요.
