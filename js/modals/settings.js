@@ -6,6 +6,7 @@ import { renderTagManager } from '../render/index.js';
 import { dbOps } from '../db.js';
 import { showToast, updateHeaderUI } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
+import { logUsageMetric } from '../usage-metrics.js';
 
 /**
  * 설정 > 로그인 정보 표시용.
@@ -478,6 +479,7 @@ export function switchSettingsTab(tab) {
             profileTab.textContent = '프로필';
         }
         if (profileContent) profileContent.classList.remove('hidden');
+        logUsageMetric('settings_profile').catch(() => {});
     } else if (tab === 'tags') {
         // 태그 관리 탭 활성화
         if (tagsTab) {
@@ -485,6 +487,7 @@ export function switchSettingsTab(tab) {
             tagsTab.textContent = '태그 관리';
         }
         if (tagsContent) tagsContent.classList.remove('hidden');
+        logUsageMetric('settings_tags').catch(() => {});
     } else if (tab === 'shortcuts') {
         // 밀당 메모 탭 활성화
         if (shortcutsTab) {
@@ -492,6 +495,7 @@ export function switchSettingsTab(tab) {
             shortcutsTab.textContent = '밀당 메모';
         }
         if (shortcutsContent) shortcutsContent.classList.remove('hidden');
+        logUsageMetric('settings_mealdang_memo').catch(() => {});
     } else if (tab === 'notifications') {
         if (notificationsTab) {
             notificationsTab.className = settingsTabActiveClass;
@@ -499,6 +503,7 @@ export function switchSettingsTab(tab) {
         }
         if (notificationsContent) notificationsContent.classList.remove('hidden');
         syncPushPreferencesFormFromUserSettings();
+        logUsageMetric('settings_push').catch(() => {});
     }
 }
 

@@ -172,6 +172,7 @@ import {
     selectKakaoPlace
 } from '../modals.js';
 import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from '../constants.js';
+import { logUsageMetric } from '../usage-metrics.js';
 import { normalizeUrl } from '../utils.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';
 
@@ -190,6 +191,8 @@ window.switchBoardListSubTab = (sub) => {
         return;
     }
     appState.boardListSubTab = next;
+    if (next === 'feed') logUsageMetric('lounge_mealtalk').catch(() => {});
+    else logUsageMetric('lounge_board').catch(() => {});
     renderBoard(window.currentBoardCategory || 'all');
     try {
         if (next === 'feed' && typeof window.markBoardFeedSubtabSeen === 'function') {

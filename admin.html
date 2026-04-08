@@ -126,8 +126,18 @@
 
             <!-- 대시보드 탭 (현황판: 캐시 문서 1회만 조회, 통계 새로고침 시에만 전체 집계) -->
             <div id="admin-tab-content-dashboard" class="admin-tab-content">
-                <!-- 기간별 통계 테이블 -->
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 mb-3">
+                    <div class="flex gap-2 overflow-x-auto scrollbar-hide">
+                        <button type="button" onclick="window.switchDashboardSubtab('trend')" id="dashboard-subtab-trend" class="px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors">
+                            <i class="fa-solid fa-chart-line mr-2" aria-hidden="true"></i>트렌드
+                        </button>
+                        <button type="button" onclick="window.switchDashboardSubtab('page')" id="dashboard-subtab-page" class="px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                            <i class="fa-solid fa-table-columns mr-2" aria-hidden="true"></i>페이지별
+                        </button>
+                    </div>
+                </div>
+                <!-- 트렌드: 기존 기간별 통계 -->
+                <div id="dashboard-panel-trend" class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-4">
                     <div class="overflow-x-auto">
                         <table id="adminDashboardStatsTable" class="min-w-max w-full text-left text-sm border-separate border-spacing-0">
                             <thead>
@@ -291,12 +301,42 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="px-4 py-3 border-t border-slate-100 bg-slate-50/50 flex flex-wrap items-center justify-end gap-3">
-                        <span id="dashboardStatsUpdatedAt" class="text-xs text-slate-500">마지막 업데이트: -</span>
-                        <button type="button" id="dashboardStatsRefreshBtn" onclick="window.refreshDashboardStats()" class="inline-flex items-center justify-center gap-2 px-4 py-2 min-w-[9.5rem] bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors shrink-0 disabled:opacity-90 disabled:cursor-wait" aria-live="polite">
-                            <i class="fa-solid fa-rotate-right" aria-hidden="true"></i><span>통계 새로고침</span>
-                        </button>
+                </div>
+                <!-- 페이지별: 화면·클릭 수 (usageDaily) -->
+                <div id="dashboard-panel-page" class="hidden bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-4">
+                    <p class="px-4 pt-4 pb-2 text-xs text-slate-500 leading-relaxed"><span class="font-bold text-slate-600">탭 방문</span> 행은 하단 네비로 해당 메인 화면에 들어올 때마다 1회씩 올라가는 <span class="font-bold text-slate-600">페이지 방문 수</span>입니다. <span class="font-bold text-slate-600">그 외 행</span>은 코멘트·상세 모달·설정 하위 탭·라운지 서브탭 등 <span class="font-bold text-slate-600">조작(클릭) 횟수</span>입니다. 「전체」는 누적,「최근 7일」은 일별입니다.</p>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-max w-full text-left text-sm border-separate border-spacing-0" id="adminDashboardPageUsageTable">
+                            <thead>
+                                <tr class="border-b border-slate-200 bg-slate-50" id="dashboardPageHeadRow1">
+                                    <th rowspan="2" class="px-2 py-1.5 font-black text-slate-700 uppercase text-xs sticky left-0 z-30 bg-slate-50 w-[7.5rem] min-w-[7.5rem] max-w-[7.5rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.15)] border-r border-slate-200/90 align-middle">구분 · 항목</th>
+                                    <th rowspan="2" class="px-2 py-1.5 font-black text-slate-700 uppercase text-center text-xs min-w-[4rem] sticky left-[7.5rem] z-30 bg-slate-50 shadow-[4px_0_12px_-6px_rgba(0,0,0,0.15)] border-r border-slate-200/90 align-middle">전체</th>
+                                    <th colspan="8" id="dashboardPageHead7dTop" class="px-2 py-1.5 font-black text-slate-700 uppercase text-center border-x border-slate-200 bg-slate-100/80 text-xs tracking-wide align-middle">최근 7일</th>
+                                </tr>
+                                <tr class="border-b border-slate-200 bg-slate-50/90 text-[11px]" id="dashboardPageHeadRow2">
+                                    <th id="pageDashboard7dSumHead" class="px-2 py-1 text-center font-bold text-slate-600 min-w-[3rem] border-l border-slate-200 bg-slate-50/90">7일 합</th>
+                                    <th id="pageDashboard7dHead0" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
+                                    <th id="pageDashboard7dHead1" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
+                                    <th id="pageDashboard7dHead2" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
+                                    <th id="pageDashboard7dHead3" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
+                                    <th id="pageDashboard7dHead4" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
+                                    <th id="pageDashboard7dHead5" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
+                                    <th id="pageDashboard7dHead6" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] border-r border-slate-200 bg-slate-50/90">—</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dashboardPageUsageTableBody"></tbody>
+                        </table>
                     </div>
+                    <div class="px-4 py-3 border-t border-slate-100 bg-slate-50/90">
+                        <p class="text-xs font-bold text-slate-600 mb-1">통계에서 제외한 UID</p>
+                        <p class="text-xs font-mono text-slate-600 break-all leading-relaxed" id="dashboardPageUsageExcludedUidList"></p>
+                    </div>
+                </div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 flex flex-wrap items-center justify-end gap-3 mb-8">
+                    <span id="dashboardStatsUpdatedAt" class="text-xs text-slate-500">마지막 업데이트: -</span>
+                    <button type="button" id="dashboardStatsRefreshBtn" onclick="window.refreshDashboardStats()" class="inline-flex items-center justify-center gap-2 px-4 py-2 min-w-[9.5rem] bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors shrink-0 disabled:opacity-90 disabled:cursor-wait" aria-live="polite">
+                        <i class="fa-solid fa-rotate-right" aria-hidden="true"></i><span>통계 새로고침</span>
+                    </button>
                 </div>
             </div>
 

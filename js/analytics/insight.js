@@ -7,6 +7,7 @@ import { db, appId, callableFunctions } from '../firebase.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { captureWithGhostStrategy, toLocalDateString } from '../utils.js';
 import { getWeekRange } from './date-utils.js';
+import { logUsageMetric } from '../usage-metrics.js';
 
 // escapeHtml 함수 (필요한 경우)
 function escapeHtml(text) {
@@ -603,6 +604,7 @@ export async function updateInsightComment(filteredData, dateRangeText = '') {
 
 // 코멘트 생성 버튼 클릭 시 (COMMENT 버튼 클릭 시에만 AI 호출)
 export async function generateInsightComment() {
+    logUsageMetric('mealdang_comment_click').catch(() => {});
     if (!window.getDashboardData) {
         console.error('getDashboardData 함수를 찾을 수 없습니다.');
         return;

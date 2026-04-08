@@ -13,7 +13,8 @@ import {
     where,
     getCountFromServer,
     Timestamp,
-    serverTimestamp
+    serverTimestamp,
+    documentId
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import {
     getSharedPhotoGroupKey,
@@ -28,9 +29,261 @@ import {
     weekLabelKoreanFromSunday
 } from './utils.js';
 import { SLOTS } from '../constants.js';
+import { EXCLUDED_ANALYTICS_UIDS, EXCLUDED_ANALYTICS_UID_LIST } from '../excluded-analytics-uids.js';
 
 /** 대시보드 주간 통계 시작일 (admin.js ADMIN_OPS_START 와 동일) */
 const DASHBOARD_STATS_RANGE_START = new Date(2026, 2, 8);
+
+/** usageDaily 문서 ID 하한 (YYYY-MM-DD, 운영 시작일과 맞춤) */
+const USAGE_DAILY_MIN_ID = dateKeyFromLocalDate(DASHBOARD_STATS_RANGE_START) || '2026-03-08';
+
+/** 관리자 「페이지별」표 행 정의 (usageDaily 필드명과 동일) */
+export const PAGE_USAGE_METRIC_DEFS = [
+    { field: 'tab_mealdang', section: '밀당', label: '탭 방문' },
+    { field: 'mealdang_comment_click', section: '밀당', label: '코멘트 클릭' },
+    { field: 'mealdang_analysis_detail_click', section: '밀당', label: '분석 상세 클릭' },
+    { field: 'tab_moment', section: '모먼트', label: '탭 방문' },
+    { field: 'tab_mealog', section: '밀로그', label: '탭 방문' },
+    { field: 'lounge_mealtalk', section: '라운지', label: '밀톡' },
+    { field: 'lounge_board', section: '라운지', label: '게시판' },
+    { field: 'settings_profile', section: '사용자', label: '프로필' },
+    { field: 'settings_tags', section: '사용자', label: '태그 관리' },
+    { field: 'settings_mealdang_memo', section: '사용자', label: '밀당 메모' },
+    { field: 'settings_push', section: '사용자', label: '푸시 알림' }
+];
+
+function zeroPageUsageTotals() {
+    const o = {};
+    for (const def of PAGE_USAGE_METRIC_DEFS) {
+        o[def.field] = 0;
+    }
+    return o;
+}
+
+function addDocDataToPageTotals(data, into) {
+    const d = data || {};
+    for (const def of PAGE_USAGE_METRIC_DEFS) {
+        into[def.field] += Number(d[def.field]) || 0;
+    }
+}
+
+/** 행 정의가 바뀌면 tbody를 다시 생성 */
+let _pageUsageTableBuiltRowCount = 0;
+
+function ensurePageUsageTableBody() {
+    const tb = document.getElementById('dashboardPageUsageTableBody');
+    if (!tb) return;
+    const n = PAGE_USAGE_METRIC_DEFS.length;
+    if (_pageUsageTableBuiltRowCount === n && tb.querySelector('tr')) return;
+    tb.innerHTML = PAGE_USAGE_METRIC_DEFS.map((def, rowIdx) => {
+        const cells = [];
+        cells.push(`<td class="px-2 py-2 text-sm sticky left-0 z-20 bg-white group-hover:bg-slate-50/50 w-[7.5rem] min-w-[7.5rem] max-w-[7.5rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle">
+            <span class="block text-[10px] font-semibold text-slate-400 leading-tight">${escapeHtml(def.section)}</span>
+            <span class="block text-sm font-bold text-slate-800 leading-tight mt-0.5">${escapeHtml(def.label)}</span>
+        </td>`);
+        cells.push(`<td class="px-2 py-2 text-center text-sm font-bold text-slate-800 sticky left-[7.5rem] z-20 bg-white group-hover:bg-slate-50/50 min-w-[4rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="pageUsageRow_${rowIdx}_all">—</td>`);
+        cells.push(`<td data-page-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100 bg-slate-50/50" id="pageUsageRow_${rowIdx}_7Sum">—</td>`);
+        for (let i = 0; i < 7; i++) {
+            const border = i === 6 ? ' border-r border-slate-100' : '';
+            cells.push(`<td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums${border}" id="pageUsageRow_${rowIdx}_7d${i}">—</td>`);
+        }
+        return `<tr class="group border-b border-slate-100 hover:bg-slate-50/50">${cells.join('')}</tr>`;
+    }).join('');
+    _pageUsageTableBuiltRowCount = n;
+}
+
+function renderPageUsage7dHeaders(dates) {
+    for (let i = 0; i < 7; i++) {
+        const th = document.getElementById(`pageDashboard7dHead${i}`);
+        if (!th) continue;
+        if (dates && dates.length === 7 && dates[i]) {
+            const parts = String(dates[i]).split('-');
+            const m = parts[1] ? parseInt(parts[1], 10) : 0;
+            const day = parts[2] ? parseInt(parts[2], 10) : 0;
+            th.innerHTML = `<span class="block leading-tight text-xs">${m}/${day}</span>`;
+            th.title = dates[i];
+        } else {
+            th.textContent = '—';
+            th.removeAttribute('title');
+        }
+    }
+}
+
+function fillPageUsage7dRow(rowIdx, values, fallbackTotal) {
+    const tip = (fallbackTotal != null && Number.isFinite(Number(fallbackTotal)))
+        ? `7일 범위 합(캐시): ${Number(fallbackTotal).toLocaleString()} — 「통계 새로고침」으로 일별`
+        : '「통계 새로고침」으로 일별 집계';
+    for (let i = 0; i < 7; i++) {
+        const el = document.getElementById(`pageUsageRow_${rowIdx}_7d${i}`);
+        if (!el) continue;
+        if (values && values.length === 7) {
+            el.textContent = Number(values[i] || 0).toLocaleString();
+            el.removeAttribute('title');
+        } else {
+            el.textContent = '—';
+            el.title = tip;
+        }
+    }
+}
+
+export function renderDashboardPageExcludedFooter() {
+    const el = document.getElementById('dashboardPageUsageExcludedUidList');
+    if (el) {
+        el.textContent = EXCLUDED_ANALYTICS_UID_LIST.join(', ');
+    }
+}
+
+export function renderDashboardPageUsage(pageUsage) {
+    renderDashboardPageExcludedFooter();
+    ensurePageUsageTableBody();
+    const set = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value != null ? Number(value).toLocaleString() : '—';
+    };
+    if (!pageUsage || !pageUsage.last7Breakdown || !pageUsage.last7Breakdown.dates) {
+        renderPageUsage7dHeaders(null);
+        PAGE_USAGE_METRIC_DEFS.forEach((_, rowIdx) => {
+            set(`pageUsageRow_${rowIdx}_all`, null);
+            set(`pageUsageRow_${rowIdx}_7Sum`, null);
+            fillPageUsage7dRow(rowIdx, null, null);
+        });
+        return;
+    }
+    const dates = pageUsage.last7Breakdown.dates;
+    const byField = pageUsage.last7Breakdown.byField || {};
+    renderPageUsage7dHeaders(dates);
+    PAGE_USAGE_METRIC_DEFS.forEach((def, rowIdx) => {
+        const all = pageUsage.all?.[def.field];
+        const last7 = pageUsage.last7Sum?.[def.field];
+        const dayArr = byField[def.field];
+        set(`pageUsageRow_${rowIdx}_all`, all);
+        const sum7 = dayArr && dayArr.length === 7 ? dayArr.reduce((a, b) => a + (Number(b) || 0), 0) : null;
+        set(`pageUsageRow_${rowIdx}_7Sum`, sum7 != null ? sum7 : last7);
+        fillPageUsage7dRow(rowIdx, dayArr, last7);
+    });
+}
+
+/**
+ * 페이지별 집계 (트렌드와 동일하게 dashboardStats 캐시 + 증분으로 읽기 최소화)
+ * - 화면 로드: 캐시 1회 getDoc만 사용 (updateStatistics)
+ * - 통계 새로고침: 최근 7일은 고정 7회 getDoc, 누적(all)은 이전 캐시가 있으면 신규 일자 usageDaily만 추가 조회
+ */
+export async function aggregatePageUsageFromFirestore(prevDashboardData) {
+    const todayStr = getTodayDateString();
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const last7DateKeys = getLast7DateKeys(todayStart);
+
+    const usageCol = collection(db, 'artifacts', appId, 'usageDaily');
+    const todayRef = doc(db, 'artifacts', appId, 'usageDaily', todayStr);
+
+    const last7Snaps = await Promise.all(
+        last7DateKeys.map((k) => getDoc(doc(db, 'artifacts', appId, 'usageDaily', k)))
+    );
+
+    const byFieldDay = {};
+    for (const def of PAGE_USAGE_METRIC_DEFS) {
+        byFieldDay[def.field] = [0, 0, 0, 0, 0, 0, 0];
+    }
+    last7DateKeys.forEach((dk, i) => {
+        const data = last7Snaps[i]?.exists() ? last7Snaps[i].data() : {};
+        for (const def of PAGE_USAGE_METRIC_DEFS) {
+            byFieldDay[def.field][i] = Number(data[def.field]) || 0;
+        }
+    });
+
+    const last7Sum = {};
+    for (const def of PAGE_USAGE_METRIC_DEFS) {
+        last7Sum[def.field] = byFieldDay[def.field].reduce((a, b) => a + b, 0);
+    }
+
+    const prevPU = prevDashboardData?.pageUsage;
+    const prevMerge =
+        prevPU?.mergeThroughDate && typeof prevPU.mergeThroughDate === 'string' ? prevPU.mergeThroughDate : null;
+    const prevAll = prevPU?.all && typeof prevPU.all === 'object' ? prevPU.all : null;
+
+    let byFieldAll = zeroPageUsageTotals();
+    let todayFieldSnap = zeroPageUsageTotals();
+
+    if (!prevMerge || !prevAll) {
+        const q = query(
+            usageCol,
+            where(documentId(), '>=', USAGE_DAILY_MIN_ID),
+            where(documentId(), '<=', todayStr),
+            orderBy(documentId())
+        );
+        const snap = await getDocs(q);
+        snap.docs.forEach((d) => addDocDataToPageTotals(d.data(), byFieldAll));
+        const tSnap = await getDoc(todayRef);
+        addDocDataToPageTotals(tSnap.data(), todayFieldSnap);
+    } else if (prevMerge === todayStr) {
+        for (const def of PAGE_USAGE_METRIC_DEFS) {
+            byFieldAll[def.field] = Number(prevAll[def.field]) || 0;
+        }
+        if (!prevPU.todayFieldSnap || typeof prevPU.todayFieldSnap !== 'object') {
+            const q = query(
+                usageCol,
+                where(documentId(), '>=', USAGE_DAILY_MIN_ID),
+                where(documentId(), '<=', todayStr),
+                orderBy(documentId())
+            );
+            const snap = await getDocs(q);
+            byFieldAll = zeroPageUsageTotals();
+            snap.docs.forEach((d) => addDocDataToPageTotals(d.data(), byFieldAll));
+            const tSnap = await getDoc(todayRef);
+            todayFieldSnap = zeroPageUsageTotals();
+            addDocDataToPageTotals(tSnap.data(), todayFieldSnap);
+        } else {
+            const newT = zeroPageUsageTotals();
+            const tSnap = await getDoc(todayRef);
+            addDocDataToPageTotals(tSnap.data(), newT);
+            const oldT = prevPU.todayFieldSnap;
+            for (const def of PAGE_USAGE_METRIC_DEFS) {
+                const f = def.field;
+                byFieldAll[f] = byFieldAll[f] - (Number(oldT[f]) || 0) + (Number(newT[f]) || 0);
+            }
+            todayFieldSnap = newT;
+        }
+    } else {
+        for (const def of PAGE_USAGE_METRIC_DEFS) {
+            byFieldAll[def.field] = Number(prevAll[def.field]) || 0;
+        }
+        const incQ = query(
+            usageCol,
+            where(documentId(), '>', prevMerge),
+            where(documentId(), '<=', todayStr),
+            orderBy(documentId())
+        );
+        const incSnap = await getDocs(incQ);
+        incSnap.docs.forEach((d) => addDocDataToPageTotals(d.data(), byFieldAll));
+        const tSnap = await getDoc(todayRef);
+        addDocDataToPageTotals(tSnap.data(), todayFieldSnap);
+    }
+
+    return {
+        last7Breakdown: { dates: last7DateKeys, byField: byFieldDay },
+        all: byFieldAll,
+        last7Sum,
+        mergeThroughDate: todayStr,
+        todayFieldSnap
+    };
+}
+
+export function switchDashboardSubtab(which) {
+    const trendPanel = document.getElementById('dashboard-panel-trend');
+    const pagePanel = document.getElementById('dashboard-panel-page');
+    const btnTrend = document.getElementById('dashboard-subtab-trend');
+    const btnPage = document.getElementById('dashboard-subtab-page');
+    const active =
+        'px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors';
+    const idle =
+        'px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors';
+    const w = which === 'page' ? 'page' : 'trend';
+    if (trendPanel) trendPanel.classList.toggle('hidden', w !== 'trend');
+    if (pagePanel) pagePanel.classList.toggle('hidden', w !== 'page');
+    if (btnTrend) btnTrend.className = w === 'trend' ? active : idle;
+    if (btnPage) btnPage.className = w === 'page' ? active : idle;
+}
 
 const RECORD_SLOT_7D_PREFIXES = SLOTS.map((s) => `statRecSlot_${s.id}_7d`);
 const RECORD_SLOT_7_SUM_IDS = SLOTS.map((s) => `statRecSlot_${s.id}_7Sum`);
@@ -353,9 +606,10 @@ function weekIndexForDateKeyStr(dateKeyStr, sundayKeyToIndex) {
 
 export async function getUserStatistics() {
     try {
+        const excluded = EXCLUDED_ANALYTICS_UIDS;
         const usersColl = collection(db, 'artifacts', appId, 'users');
         const usersSnapshot = await getDocs(usersColl);
-        const usersFromCollection = usersSnapshot.size;
+        const usersFromCollection = usersSnapshot.docs.filter((d) => !excluded.has(d.id)).length;
 
         const now = new Date();
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -425,14 +679,15 @@ export async function getUserStatistics() {
         const countQ = async (q) => (await getCountFromServer(q)).data().count ?? 0;
 
         const emptyMealsSnap = { forEach() {} };
-        const [recordsAllCount, mealsRangeSnap] = await Promise.all([
+        const [recordsAllCountRaw, mealsRangeSnap] = await Promise.all([
             countQ(query(mealsCg)),
             nWeeks > 0
                 ? getDocs(query(mealsCg, where('date', '>=', firstSundayKey), where('date', '<=', todayStr)))
                 : Promise.resolve(emptyMealsSnap)
         ]);
+        let recordsAllCount = recordsAllCountRaw;
 
-        const userIdsForSlots = usersSnapshot.docs.map((d) => d.id);
+        const userIdsForSlots = usersSnapshot.docs.map((d) => d.id).filter((uid) => !excluded.has(uid));
         let slotAllArr;
         try {
             slotAllArr = await Promise.all(
@@ -450,6 +705,14 @@ export async function getUserStatistics() {
             }
         }
 
+        for (const exUid of excluded) {
+            const mcEx = collection(db, 'artifacts', appId, 'users', exUid, 'meals');
+            recordsAllCount -= await countQ(query(mcEx));
+            for (let si = 0; si < SLOTS.length; si++) {
+                slotAllArr[si] -= await countQ(query(mcEx, where('slotId', '==', SLOTS[si].id)));
+            }
+        }
+
         stats.records.all = recordsAllCount;
         let recordsToday = 0;
         let recordsLast7 = 0;
@@ -459,6 +722,7 @@ export async function getUserStatistics() {
             const dateStr = mealData.date;
             const uid = userIdFromMealDocRef(docSnap.ref);
             if (!dateStr || typeof dateStr !== 'string' || !uid) return;
+            if (excluded.has(uid)) return;
 
             const wi = weekIndexForDateKeyStr(dateStr, sundayKeyToIndex);
             if (wi >= 0) {
@@ -520,6 +784,7 @@ export async function getUserStatistics() {
         }
 
         usersSnapshot.docs.forEach((userDoc) => {
+            if (excluded.has(userDoc.id)) return;
             const userData = userDoc.data();
             let createdAt = null;
             if (userData.createdAt) {
@@ -540,7 +805,11 @@ export async function getUserStatistics() {
         stats.totalUsers = Math.max(usersFromCollection, stats.newUsers.all);
 
         try {
-            stats.sharedPhotos.all = await countQ(query(sharedColl));
+            let sharedAll = await countQ(query(sharedColl));
+            for (const exUid of excluded) {
+                sharedAll -= await countQ(query(sharedColl, where('userId', '==', exUid)));
+            }
+            stats.sharedPhotos.all = sharedAll;
             stats.totalSharedPhotos = stats.sharedPhotos.all;
 
             const tsEnd = Timestamp.fromDate(tomorrowStart);
@@ -569,6 +838,7 @@ export async function getUserStatistics() {
             );
             sharedRangeSnap.forEach((docSnap) => {
                 const data = docSnap.data();
+                if (excluded.has(String(data.userId || ''))) return;
                 const rawTs = data.timestamp;
                 const ts = rawTs && rawTs.toDate ? rawTs.toDate() : null;
                 if (!ts || Number.isNaN(ts.getTime())) return;
@@ -764,6 +1034,7 @@ export async function updateStatistics() {
         const snap = await getDoc(DASHBOARD_STATS_REF());
         if (!snap.exists()) {
             renderDashboardStats(null, null);
+            renderDashboardPageUsage(null);
             return;
         }
         const data = snap.data();
@@ -791,9 +1062,11 @@ export async function updateStatistics() {
             // records/activeUsers·7일 일별의 오늘 칸은 집계 비용상 캐시 유지 (통계 새로고침 시 반영)
         }
         renderDashboardStats(stats, data.updatedAt, last7Breakdown);
+        renderDashboardPageUsage(data.pageUsage || null);
     } catch (e) {
         console.error("대시보드 통계 로드 실패:", e);
         renderDashboardStats(null, null);
+        renderDashboardPageUsage(null);
     } finally {
         if (btn) btn.disabled = false;
     }
@@ -805,7 +1078,12 @@ export async function refreshDashboardStats() {
         await runAdminRefreshAction(
             document.getElementById('dashboardStatsRefreshBtn'),
             async () => {
-                const stats = await getUserStatistics();
+                const prevSnap = await getDoc(DASHBOARD_STATS_REF());
+                const prevData = prevSnap.exists() ? prevSnap.data() : null;
+                const [stats, pageUsage] = await Promise.all([
+                    getUserStatistics(),
+                    aggregatePageUsageFromFirestore(prevData)
+                ]);
                 const payload = {
                     newUsers: stats.newUsers,
                     activeUsers: stats.activeUsers,
@@ -814,11 +1092,13 @@ export async function refreshDashboardStats() {
                     sharedPhotos: stats.sharedPhotos,
                     last7Breakdown: stats.last7Breakdown || null,
                     weeklyBreakdown: stats.weeklyBreakdown || null,
+                    pageUsage,
                     asOfDate: getTodayDateString(),
                     updatedAt: serverTimestamp()
                 };
                 await setDoc(DASHBOARD_STATS_REF(), payload);
                 renderDashboardStats(stats, new Date(), stats.last7Breakdown);
+                renderDashboardPageUsage(pageUsage);
             },
             { loadingText: '집계 중…' }
         );

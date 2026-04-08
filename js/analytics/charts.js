@@ -1,4 +1,5 @@
 // 차트 렌더링 관련 함수들
+import { logUsageMetric } from '../usage-metrics.js';
 import { VIBRANT_COLORS, CUMULATIVE_BAR_GRADIENT, RATING_GRADIENT, SATIETY_DATA } from '../constants.js';
 import { generateColorMap } from '../utils.js';
 
@@ -293,6 +294,7 @@ export function renderProportionChart(containerId, data, key) {
 }
 
 export function openDetailModal(key, title) {
+    logUsageMetric('mealdang_analysis_detail_click').catch(() => {});
     document.getElementById('detailModalTitle').innerText = title;
     const container = document.getElementById('detailContent');
     

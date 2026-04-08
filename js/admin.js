@@ -14,7 +14,8 @@ import {
     renderDashboardStats,
     updateStatistics,
     refreshDashboardStats,
-    renderSharedPhotos
+    renderSharedPhotos,
+    switchDashboardSubtab
 } from './admin/dashboard.js';
 import {
     switchAdminUsersPage,
@@ -160,6 +161,7 @@ window.switchAdminTab = function(tab) {
 
 // 대시보드 통계 새로고침 (전체 집계 후 캐시 문서에 저장)
 window.refreshDashboardStats = refreshDashboardStats;
+window.switchDashboardSubtab = switchDashboardSubtab;
 
 // 공유 게시물 새로고침
 window.refreshSharedPhotos = async function() {

@@ -22,6 +22,7 @@ import {
     markBoardBoardSubtabSeen,
     refreshNavFeedUpdateDots
 } from './nav-feed-update-dots.js';
+import { logUsageMetric } from '../usage-metrics.js';
 
 const HEADER_SECTION_BY_TAB = { dashboard: '밀당', timeline: '밀로그', gallery: '모먼트', board: '라운지', settings: '사용자' };
 
@@ -51,6 +52,15 @@ export function registerMainTabSwitch() {
             appState.currentTab = tab;
             if (prevTab !== tab) {
                 window._contentPopupDismissedVisit = new Set();
+            }
+            if (prevTab !== tab && window.currentUser && !window.currentUser.isAnonymous) {
+                if (tab === 'dashboard') logUsageMetric('tab_mealdang').catch(() => {});
+                else if (tab === 'gallery') logUsageMetric('tab_moment').catch(() => {});
+                else if (tab === 'timeline') logUsageMetric('tab_mealog').catch(() => {});
+                else if (tab === 'board') {
+                    if (appState.boardListSubTab === 'board') logUsageMetric('lounge_board').catch(() => {});
+                    else logUsageMetric('lounge_mealtalk').catch(() => {});
+                }
             }
             if (prevTab !== tab) {
                 if (prevTab === 'timeline' && typeof window.closeSearch === 'function') window.closeSearch();
