@@ -141,7 +141,7 @@ async function finalizeKakaoSignInWithCode(code, redirectUri) {
             return;
         }
         if (data.kakaoEmailNeedsAgreement === true) {
-            showToast('카카오에서 이메일 제공 동의가 필요합니다. 카카오 로그아웃 후 다시 로그인해 동의 화면을 완료해 주세요.', 'info');
+            showToast('카카오에서 이메일 제공 동의가 필요합니다. 카카오 로그아웃 후 다시 로그인해 동의 화면을 완료해 주세요.', 'error');
         } else if (!data.kakaoEmail) {
             try {
                 const h = window.location.hostname || '';

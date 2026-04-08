@@ -183,7 +183,7 @@ async function downloadFeedLightboxImage(url) {
         URL.revokeObjectURL(objectUrl);
         showToast('다운로드를 시작했어요.', 'success');
     } catch (_) {
-        showToast('브라우저에서 저장이 막혀 새 탭으로 열었어요.', 'info');
+        showToast('브라우저에서 저장이 막혀 새 탭으로 열었어요.', 'error');
         window.open(url, '_blank', 'noopener,noreferrer');
     }
 }

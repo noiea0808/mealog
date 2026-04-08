@@ -421,7 +421,7 @@ window.submitBoardPost = async () => {
         return;
     }
     if (isDemoUser(window.currentUser)) {
-        showToast('샘플 계정에서는 글을 작성할 수 없습니다.', 'info');
+        showToast('샘플 계정에서는 글을 작성할 수 없습니다.', 'error');
         return;
     }
     // 모바일 IME(한글 등) 조합 중인 텍스트가 반영되도록 blur 후 대기
@@ -625,7 +625,7 @@ window.toggleBoardLike = async (postId, isLike) => {
         return;
     }
     if (isDemoUser(window.currentUser)) {
-        showToast(DEMO_TOAST_CANNOT_LIKE, 'info');
+        showToast(DEMO_TOAST_CANNOT_LIKE, 'error');
         return;
     }
     
@@ -662,7 +662,7 @@ window.toggleBoardBookmark = async (postId) => {
         return;
     }
     if (isDemoUser(window.currentUser)) {
-        showToast(DEMO_TOAST_CANNOT_BOOKMARK, 'info');
+        showToast(DEMO_TOAST_CANNOT_BOOKMARK, 'error');
         return;
     }
     
@@ -755,7 +755,7 @@ window.toggleNoticeLike = async (noticeId, isLike = true) => {
         return;
     }
     if (isDemoUser(window.currentUser)) {
-        showToast(DEMO_TOAST_CANNOT_LIKE, 'info');
+        showToast(DEMO_TOAST_CANNOT_LIKE, 'error');
         return;
     }
     
@@ -791,7 +791,7 @@ window.toggleNoticeBookmark = async (noticeId) => {
         return;
     }
     if (isDemoUser(window.currentUser)) {
-        showToast(DEMO_TOAST_CANNOT_BOOKMARK, 'info');
+        showToast(DEMO_TOAST_CANNOT_BOOKMARK, 'error');
         return;
     }
     

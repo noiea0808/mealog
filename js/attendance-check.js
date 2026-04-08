@@ -1,7 +1,7 @@
 /**
  * 출석/연속 기록 팝업 — 기록된 일자(dailyStats ∪ mealHistory) 기준 연속 일수 계산.
  * 테스트: 브라우저 세션(탭)당 1회 표시. 추후 localStorage + 당일 1회로 전환 가능.
- * 관리자 설정(adminSettings/config.attendancePopup)으로 환경별 문구·노출 on/off.
+ * 관리자 설정(adminSettings/config.attendancePopup)으로 기록 유무·환경별 문구·노출(끔 포함).
  */
 import { authFlowManager } from './auth-flow.js';
 import { isDemoUser } from './demo-account.js';
@@ -85,43 +85,80 @@ const DEFAULT_NO_RECORD_L1 = '우리 오늘부터';
 const DEFAULT_NO_RECORD_L2 = '시작하는거죠?!';
 
 /**
- * adminSettings/config.attendancePopup — 구버전(staging/production 분리)과 신규(단일 문구 + applyTo) 호환
- * @returns {{ enabled: boolean, applyTo: 'all'|'staging'|'production', noRecordLine1: string|null, noRecordLine2: string|null, streakLine2: string }}
+ * @param {Record<string, unknown>} raw
+ * @returns {string|null} 저장된 멀티라인 또는 null(앱 기본값)
+ */
+function pickNoRecordMessage(raw) {
+    if (Object.prototype.hasOwnProperty.call(raw, 'noRecordMessage')) {
+        if (raw.noRecordMessage == null) return '';
+        return String(raw.noRecordMessage).trim();
+    }
+    const a = raw.noRecordLine1 != null ? String(raw.noRecordLine1).trim() : '';
+    const b = raw.noRecordLine2 != null ? String(raw.noRecordLine2).trim() : '';
+    const leg = [a, b].filter(Boolean).join('\n');
+    return leg || null;
+}
+
+/** @param {unknown} v @param {'all'|'staging'|'production'} fallback */
+function pickScenarioApplyTo(v, fallback) {
+    if (v === 'staging' || v === 'production' || v === 'all' || v === 'off') return v;
+    return fallback;
+}
+
+function attendancePopupDefaults() {
+    return {
+        noRecordApplyTo: /** @type {'all'} */ ('all'),
+        hasRecordApplyTo: /** @type {'all'} */ ('all'),
+        noRecordMessage: /** @type {string|null} */ (null),
+        hasRecordMessage: ''
+    };
+}
+
+/**
+ * adminSettings/config.attendancePopup — 구버전(단일 applyTo·streakLine2·enabled) + 신규(기록 유무별 적용·끔) 호환
+ * @returns {{ noRecordApplyTo: 'all'|'staging'|'production'|'off', hasRecordApplyTo: 'all'|'staging'|'production'|'off', noRecordMessage: string|null, hasRecordMessage: string }}
  */
 export function normalizeAttendancePopup(raw) {
-    const defaults = () => ({
-        enabled: true,
-        applyTo: /** @type {'all'} */ ('all'),
-        noRecordLine1: null,
-        noRecordLine2: null,
-        streakLine2: ''
-    });
-    if (!raw || typeof raw !== 'object') return defaults();
-
-    if (raw.applyTo === 'staging' || raw.applyTo === 'production' || raw.applyTo === 'all') {
-        return {
-            enabled: raw.enabled !== false,
-            applyTo: raw.applyTo,
-            noRecordLine1: raw.noRecordLine1 != null ? raw.noRecordLine1 : null,
-            noRecordLine2: raw.noRecordLine2 != null ? raw.noRecordLine2 : null,
-            streakLine2: raw.streakLine2 != null ? String(raw.streakLine2) : ''
-        };
-    }
+    if (!raw || typeof raw !== 'object') return attendancePopupDefaults();
 
     const hasLegacy =
         (raw.staging != null && typeof raw.staging === 'object') ||
         (raw.production != null && typeof raw.production === 'object');
+
+    const hasFlat =
+        'noRecordMessage' in raw ||
+        'noRecordLine1' in raw ||
+        'noRecordLine2' in raw ||
+        'streakLine2' in raw ||
+        'hasRecordMessage' in raw ||
+        'enabled' in raw;
+
+    const hasPerScenario =
+        Object.prototype.hasOwnProperty.call(raw, 'noRecordApplyTo') ||
+        Object.prototype.hasOwnProperty.call(raw, 'hasRecordApplyTo');
+
+    /** 구버전 상위 스위치(off)만 있는 경우 → 아래에서 양쪽 끔으로 승격 */
+    let legacyMasterOff = false;
+    /** @type {'all'|'staging'|'production'} */
+    let legacyApply = 'all';
+    let noRecordMessage = pickNoRecordMessage(raw);
+    let hasRecordMessage =
+        raw.hasRecordMessage != null
+            ? String(raw.hasRecordMessage)
+            : raw.streakLine2 != null
+              ? String(raw.streakLine2)
+              : '';
+
     if (hasLegacy) {
         const st = raw.staging && typeof raw.staging === 'object' ? raw.staging : {};
         const pr = raw.production && typeof raw.production === 'object' ? raw.production : {};
         const stOn = st.enabled !== false;
         const prOn = pr.enabled !== false;
-        let applyTo = /** @type {'all'|'staging'|'production'} */ ('all');
-        if (stOn && prOn) applyTo = 'all';
-        else if (stOn && !prOn) applyTo = 'staging';
-        else if (!stOn && prOn) applyTo = 'production';
-        else applyTo = 'all';
-        const enabled = stOn || prOn;
+        if (stOn && prOn) legacyApply = 'all';
+        else if (stOn && !prOn) legacyApply = 'staging';
+        else if (!stOn && prOn) legacyApply = 'production';
+        else legacyApply = 'all';
+        legacyMasterOff = !(stOn || prOn);
         const pick = (k) => {
             const a = st[k];
             const b = pr[k];
@@ -130,28 +167,57 @@ export function normalizeAttendancePopup(raw) {
             return null;
         };
         const s2 = pick('streakLine2');
-        return {
-            enabled,
-            applyTo,
-            noRecordLine1: pick('noRecordLine1'),
-            noRecordLine2: pick('noRecordLine2'),
-            streakLine2: s2 != null ? String(s2) : ''
-        };
+        const n1 = pick('noRecordLine1');
+        const n2 = pick('noRecordLine2');
+        const n1s = n1 != null ? String(n1).trim() : '';
+        const n2s = n2 != null ? String(n2).trim() : '';
+        noRecordMessage = [n1s, n2s].filter(Boolean).join('\n') || null;
+        hasRecordMessage = s2 != null ? String(s2) : '';
+    } else if (
+        hasPerScenario ||
+        hasFlat ||
+        raw.applyTo === 'staging' ||
+        raw.applyTo === 'production' ||
+        raw.applyTo === 'all'
+    ) {
+        if (raw.applyTo === 'staging' || raw.applyTo === 'production' || raw.applyTo === 'all') {
+            legacyApply = raw.applyTo;
+        }
+        legacyMasterOff = raw.enabled === false;
+        noRecordMessage = pickNoRecordMessage(raw);
+        hasRecordMessage =
+            raw.hasRecordMessage != null
+                ? String(raw.hasRecordMessage)
+                : raw.streakLine2 != null
+                  ? String(raw.streakLine2)
+                  : '';
+    } else {
+        return attendancePopupDefaults();
     }
 
-    const hasFlat =
-        'noRecordLine1' in raw || 'noRecordLine2' in raw || 'streakLine2' in raw || 'enabled' in raw;
-    if (hasFlat) {
-        return {
-            enabled: raw.enabled !== false,
-            applyTo: 'all',
-            noRecordLine1: raw.noRecordLine1 != null ? raw.noRecordLine1 : null,
-            noRecordLine2: raw.noRecordLine2 != null ? raw.noRecordLine2 : null,
-            streakLine2: raw.streakLine2 != null ? String(raw.streakLine2) : ''
-        };
+    let noRecordApplyTo = pickScenarioApplyTo(raw.noRecordApplyTo, legacyApply);
+    let hasRecordApplyTo = pickScenarioApplyTo(raw.hasRecordApplyTo, legacyApply);
+
+    if (legacyMasterOff && !hasPerScenario) {
+        noRecordApplyTo = 'off';
+        hasRecordApplyTo = 'off';
     }
 
-    return defaults();
+    return {
+        noRecordApplyTo,
+        hasRecordApplyTo,
+        noRecordMessage,
+        hasRecordMessage
+    };
+}
+
+/** @param {'all'|'staging'|'production'|'off'} mode @param {'staging'|'production'} env */
+function envMatchesScenario(mode, env) {
+    if (mode === 'off') return false;
+    if (mode === 'all') return true;
+    if (mode === 'staging') return env === 'staging';
+    if (mode === 'production') return env === 'production';
+    return true;
 }
 
 async function fetchAttendancePopupRoot() {
@@ -212,22 +278,26 @@ export function scheduleAttendanceCheckIfNeeded() {
 
             const cfg = await fetchAttendancePopupRoot();
             const env = getMealogClientEnv();
-            if (cfg.enabled === false) return;
-            if (cfg.applyTo === 'staging' && env !== 'staging') return;
-            if (cfg.applyTo === 'production' && env !== 'production') return;
 
-            attendanceShownForUidSession = true;
             const dates = collectRecordedDateSet();
-            const l1Empty = String(cfg.noRecordLine1 ?? '').trim() || DEFAULT_NO_RECORD_L1;
-            const l2Empty = String(cfg.noRecordLine2 ?? '').trim() || DEFAULT_NO_RECORD_L2;
-            const streakL2 = String(cfg.streakLine2 ?? '').trim();
+            const noRecRaw = cfg.noRecordMessage != null ? String(cfg.noRecordMessage).trim() : '';
+            const noRecordBody =
+                noRecRaw || `${DEFAULT_NO_RECORD_L1}\n${DEFAULT_NO_RECORD_L2}`;
+            const streakExtra = String(cfg.hasRecordMessage ?? '').trim();
 
             if (dates.size === 0) {
-                showAttendancePopup(l1Empty, l2Empty);
+                if (!envMatchesScenario(cfg.noRecordApplyTo, env)) return;
+                attendanceShownForUidSession = true;
+                showAttendancePopup(noRecordBody);
                 return;
             }
+            if (!envMatchesScenario(cfg.hasRecordApplyTo, env)) return;
+            attendanceShownForUidSession = true;
             const streak = computeConsecutiveStreakDays(dates);
-            showAttendancePopup(`${streak}일 연속 기록!!`, streakL2);
+            const streakHead = `${streak}일 연속 기록!!`;
+            showAttendancePopup(
+                streakExtra ? `${streakHead}\n${streakExtra}` : streakHead
+            );
         })();
     }, 450);
 }

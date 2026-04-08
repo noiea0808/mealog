@@ -12,7 +12,7 @@ import {
   callableFunctions
 } from './firebase.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
-import { showPermissionHintToast } from './ui.js';
+import { showToast } from './ui.js';
 import { doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
@@ -116,12 +116,7 @@ function maybeShowPushPermissionHint(uid, receive) {
     '댓글·알림을 받으려면 기기 설정에서 이 앱의 알림을 켜 주세요. (시스템에서만 변경 가능합니다)';
 
   setTimeout(() => {
-    showPermissionHintToast(msg, {
-      actionLabel: '설정 열기',
-      onAction: () => {
-        openNativeAppNotificationSettings().catch(() => {});
-      }
-    });
+    showToast(msg, 'error');
   }, 1600);
 }
 

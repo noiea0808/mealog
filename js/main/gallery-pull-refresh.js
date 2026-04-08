@@ -61,7 +61,7 @@ export function setupGalleryPullToRefresh() {
                     /* ignore */
                 }
             }
-            if (typeof showToast === 'function') showToast('새로고침에 실패했습니다.');
+            if (typeof showToast === 'function') showToast('새로고침에 실패했습니다.', 'error');
         } finally {
             isRefreshing = false;
             indicator.classList.remove('refreshing');

@@ -564,7 +564,7 @@ window.setGalleryTraceFilter = (value) => {
     if (!value || value === 'collapse') return;
     const v = value === '' || value == null ? null : value;
     if (v && (!window.currentUser || window.currentUser.isAnonymous)) {
-        showToast('로그인이 필요합니다.', 'info');
+        showToast('로그인이 필요합니다.', 'error');
         window.requestLogin();
         return;
     }

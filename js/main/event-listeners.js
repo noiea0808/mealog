@@ -603,7 +603,7 @@ export function initEventListeners() {
             const canAdd = Math.max(0, 5 - total);
             const files = Array.from(e.target.files || []).slice(0, canAdd);
             if (files.length === 0) {
-                if ((e.target.files || []).length > canAdd && canAdd === 0) showToast('사진은 최대 5장까지 추가할 수 있습니다.', 'info');
+                if ((e.target.files || []).length > canAdd && canAdd === 0) showToast('사진은 최대 5장까지 추가할 수 있습니다.', 'error');
                 e.target.value = '';
                 return;
             }

@@ -1575,15 +1575,77 @@
                             <div class="flex flex-col lg:flex-row gap-4">
                                 <aside class="w-full lg:w-44 shrink-0 flex flex-col gap-1.5 bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
                                     <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide px-1 mb-0.5">메뉴</p>
-                                    <button type="button" data-settings-sub="displayName" class="admin-settings-subnav-btn w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold border transition-colors text-emerald-600 bg-emerald-50 border-emerald-200">
-                                        관리자명
-                                    </button>
-                                    <button type="button" data-settings-sub="welcome" class="admin-settings-subnav-btn w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold border transition-colors text-slate-600 bg-white border-slate-200 hover:bg-slate-50">
+                                    <button type="button" data-settings-sub="welcome" class="admin-settings-subnav-btn w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold border transition-colors text-emerald-600 bg-emerald-50 border-emerald-200">
                                         웰컴메시지
+                                    </button>
+                                    <button type="button" data-settings-sub="displayName" class="admin-settings-subnav-btn w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold border transition-colors text-slate-600 bg-white border-slate-200 hover:bg-slate-50">
+                                        관리자명
                                     </button>
                                 </aside>
                                 <div class="flex-1 min-w-0 flex flex-col gap-4">
-                                    <div id="adminSettingsSub-displayName" class="admin-settings-subpanel bg-white rounded-2xl shadow-sm border border-slate-100">
+                                    <div id="adminSettingsSub-welcome" class="admin-settings-subpanel bg-white rounded-2xl shadow-sm border border-slate-100">
+                                        <div class="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                                            <h2 class="text-lg font-black text-slate-800">웰컴메시지</h2>
+                                            <button type="button" onclick="window.saveAttendancePopupSettings()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                                저장
+                                            </button>
+                                        </div>
+                                        <div class="p-6 space-y-6">
+                                            <div class="rounded-xl p-5 border border-slate-200 space-y-4">
+                                                <h3 class="text-sm font-black text-slate-800">기록이 없을 때</h3>
+                                                <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="기록 없을 때 웰컴 적용 범위">
+                                                        <label class="cursor-pointer inline-flex">
+                                                            <input type="radio" name="attendanceNoRecordApplyTo" value="all" class="peer sr-only" checked>
+                                                            <span class="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-600 peer-checked:border-emerald-500 peer-checked:bg-emerald-50 peer-checked:text-emerald-800">전체</span>
+                                                        </label>
+                                                        <label class="cursor-pointer inline-flex">
+                                                            <input type="radio" name="attendanceNoRecordApplyTo" value="staging" class="peer sr-only">
+                                                            <span class="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-600 peer-checked:border-amber-500 peer-checked:bg-amber-50 peer-checked:text-amber-900">스테이징</span>
+                                                        </label>
+                                                        <label class="cursor-pointer inline-flex">
+                                                            <input type="radio" name="attendanceNoRecordApplyTo" value="production" class="peer sr-only">
+                                                            <span class="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-600 peer-checked:border-slate-600 peer-checked:bg-slate-100 peer-checked:text-slate-900">운영</span>
+                                                        </label>
+                                                        <label class="cursor-pointer inline-flex">
+                                                            <input type="radio" name="attendanceNoRecordApplyTo" value="off" class="peer sr-only">
+                                                            <span class="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-600 peer-checked:border-slate-400 peer-checked:bg-slate-200 peer-checked:text-slate-800">끔</span>
+                                                        </label>
+                                                    </div>
+                                                <div class="space-y-2">
+                                                    <p class="text-xs font-bold text-slate-600">문구</p>
+                                                    <p class="text-xs text-slate-500">한 칸에 입력하고, 줄바꿈(Enter)으로 여러 줄을 나눌 수 있습니다.</p>
+                                                    <textarea id="attendanceNoRecordMessage" rows="4" maxlength="500" placeholder="예: 우리 오늘부터&#10;시작하는거죠?!" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 bg-white resize-y min-h-[5.5rem] font-sans"></textarea>
+                                                </div>
+                                            </div>
+                                            <div class="rounded-xl p-5 border border-slate-200 space-y-4">
+                                                <h3 class="text-sm font-black text-slate-800">기록이 있을 때</h3>
+                                                <p class="text-xs text-slate-500">첫 줄 <strong class="text-slate-600">「N일 연속 기록!!」</strong>은 자동이며, 아래 입력은 그 다음부터 붙는 문구입니다. 비우면 첫 줄만 표시됩니다.</p>
+                                                <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="기록 있을 때 웰컴 적용 범위">
+                                                        <label class="cursor-pointer inline-flex">
+                                                            <input type="radio" name="attendanceHasRecordApplyTo" value="all" class="peer sr-only" checked>
+                                                            <span class="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-600 peer-checked:border-emerald-500 peer-checked:bg-emerald-50 peer-checked:text-emerald-800">전체</span>
+                                                        </label>
+                                                        <label class="cursor-pointer inline-flex">
+                                                            <input type="radio" name="attendanceHasRecordApplyTo" value="staging" class="peer sr-only">
+                                                            <span class="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-600 peer-checked:border-amber-500 peer-checked:bg-amber-50 peer-checked:text-amber-900">스테이징</span>
+                                                        </label>
+                                                        <label class="cursor-pointer inline-flex">
+                                                            <input type="radio" name="attendanceHasRecordApplyTo" value="production" class="peer sr-only">
+                                                            <span class="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-600 peer-checked:border-slate-600 peer-checked:bg-slate-100 peer-checked:text-slate-900">운영</span>
+                                                        </label>
+                                                        <label class="cursor-pointer inline-flex">
+                                                            <input type="radio" name="attendanceHasRecordApplyTo" value="off" class="peer sr-only">
+                                                            <span class="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-600 peer-checked:border-slate-400 peer-checked:bg-slate-200 peer-checked:text-slate-800">끔</span>
+                                                        </label>
+                                                    </div>
+                                                <div class="space-y-2">
+                                                    <p class="text-xs font-bold text-slate-600">부가 문구</p>
+                                                    <textarea id="attendanceHasRecordMessage" rows="3" maxlength="500" placeholder="「N일 연속 기록!!」 아래에 붙는 문구 (선택)" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 bg-white resize-y min-h-[4.5rem] font-sans"></textarea>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="adminSettingsSub-displayName" class="admin-settings-subpanel hidden bg-white rounded-2xl shadow-sm border border-slate-100">
                                         <div class="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
                                             <h2 class="text-lg font-black text-slate-800">관리자명</h2>
                                         </div>
@@ -1599,58 +1661,6 @@
                                                     <button type="button" onclick="window.saveAdminDisplayName()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
                                                         저장
                                                     </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div id="adminSettingsSub-welcome" class="admin-settings-subpanel hidden bg-white rounded-2xl shadow-sm border border-slate-100">
-                                        <div class="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
-                                            <h2 class="text-lg font-black text-slate-800">웰컴메시지</h2>
-                                            <button type="button" onclick="window.saveAttendancePopupSettings()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
-                                                저장
-                                            </button>
-                                        </div>
-                                        <div class="p-6 space-y-6">
-                                            <p class="text-sm text-slate-500 leading-relaxed">
-                                                로그인 후 메인 화면에서 한 번 표시되는 <strong class="text-slate-700">연속 기록 알림</strong> 팝업입니다. 아래 문구는 <strong class="text-slate-700">한 벌</strong>만 설정하고, <strong class="text-slate-700">적용 환경</strong>에서 스테이징만 / 운영만 / 전체 중 어디에 쓸지 고릅니다.
-                                            </p>
-                                            <div class="rounded-xl p-5 border border-slate-200 bg-slate-50 space-y-5">
-                                                <div class="flex flex-wrap items-center justify-between gap-3">
-                                                    <span class="text-sm font-bold text-slate-800">연속 기록 팝업 사용</span>
-                                                    <label class="inline-flex items-center gap-3 cursor-pointer select-none">
-                                                        <input type="checkbox" id="attendanceEnabled" role="switch" class="peer sr-only" checked>
-                                                        <span class="relative w-11 h-6 rounded-full bg-slate-300 transition-colors peer-checked:bg-emerald-500 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-400 peer-focus-visible:ring-offset-2 shrink-0 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5" aria-hidden="true"></span>
-                                                    </label>
-                                                </div>
-                                                <div>
-                                                    <p class="text-xs font-bold text-slate-600 mb-2">적용 환경</p>
-                                                    <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="웰컴 팝업 적용 환경">
-                                                        <label class="cursor-pointer inline-flex">
-                                                            <input type="radio" name="attendanceApplyTo" value="all" class="peer sr-only" checked>
-                                                            <span class="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-600 peer-checked:border-emerald-500 peer-checked:bg-emerald-50 peer-checked:text-emerald-800">전체</span>
-                                                        </label>
-                                                        <label class="cursor-pointer inline-flex">
-                                                            <input type="radio" name="attendanceApplyTo" value="staging" class="peer sr-only">
-                                                            <span class="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-600 peer-checked:border-amber-500 peer-checked:bg-amber-50 peer-checked:text-amber-900">스테이징</span>
-                                                        </label>
-                                                        <label class="cursor-pointer inline-flex">
-                                                            <input type="radio" name="attendanceApplyTo" value="production" class="peer sr-only">
-                                                            <span class="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-600 peer-checked:border-slate-600 peer-checked:bg-slate-100 peer-checked:text-slate-900">운영</span>
-                                                        </label>
-                                                    </div>
-                                                    <p class="text-xs text-slate-500 mt-2">스테이징·운영 구분은 앱 패키지, <code class="text-slate-600">APP_ENV</code>, 로컬 호스트 등 기존 앱과 동일한 기준입니다.</p>
-                                                </div>
-                                            </div>
-                                            <div class="rounded-xl p-5 border border-slate-200 space-y-4">
-                                                <h3 class="text-sm font-black text-slate-800">메시지</h3>
-                                                <div class="space-y-3">
-                                                    <p class="text-xs font-bold text-slate-600">기록이 없을 때 (첫 줄 / 둘째 줄)</p>
-                                                    <input type="text" id="attendanceNoRecordLine1" maxlength="60" placeholder="예: 우리 오늘부터" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 bg-white">
-                                                    <input type="text" id="attendanceNoRecordLine2" maxlength="60" placeholder="예: 시작하는거죠?!" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 bg-white">
-                                                </div>
-                                                <div class="space-y-2">
-                                                    <p class="text-xs font-bold text-slate-600">연속 기록이 있을 때 — 둘째 줄 (비우면 「N일 연속 기록!!」만 표시)</p>
-                                                    <input type="text" id="attendanceStreakLine2" maxlength="60" placeholder="부가 문구 (선택)" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 bg-white">
                                                 </div>
                                             </div>
                                         </div>

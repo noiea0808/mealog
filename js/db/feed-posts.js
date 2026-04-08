@@ -145,7 +145,7 @@ export const feedOperations = {
             throw new Error('auth');
         }
         if (isDemoUser(window.currentUser)) {
-            showToast('샘플 계정에서는 수정할 수 없습니다.', 'info');
+            showToast('샘플 계정에서는 수정할 수 없습니다.', 'error');
             throw new Error('read-only-demo');
         }
         const id = String(postId || '').trim();
@@ -195,7 +195,7 @@ export const feedOperations = {
             throw new Error('auth');
         }
         if (isDemoUser(window.currentUser)) {
-            showToast('샘플 계정에서는 삭제할 수 없습니다.', 'info');
+            showToast('샘플 계정에서는 삭제할 수 없습니다.', 'error');
             throw new Error('read-only-demo');
         }
         const id = String(postId || '').trim();
@@ -231,7 +231,7 @@ export const feedOperations = {
             throw new Error('auth');
         }
         if (isDemoUser(window.currentUser)) {
-            showToast("샘플 계정에서는 반응을 보낼 수 없습니다.", 'info');
+            showToast("샘플 계정에서는 반응을 보낼 수 없습니다.", 'error');
             throw new Error('read-only-demo');
         }
         const allowed = ['like', 'thumbs', 'check'];

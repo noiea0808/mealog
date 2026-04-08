@@ -639,6 +639,7 @@ window.switchContentSidebar = function(section) {
 
 const ATT_DEFAULT_NO_L1 = '우리 오늘부터';
 const ATT_DEFAULT_NO_L2 = '시작하는거죠?!';
+const ATT_DEFAULT_NO_RECORD_COMBINED = `${ATT_DEFAULT_NO_L1}\n${ATT_DEFAULT_NO_L2}`;
 
 let adminSettingsSubnavBound = false;
 function bindAdminSettingsSubnavOnce() {
@@ -711,16 +712,16 @@ window.uploadApkFile = async function() {
     const statusEl = document.getElementById('apkUploadStatus');
     const versionInput = document.getElementById('apkVersionInput');
     if (!input?.files?.length) {
-        if (typeof showToast === 'function') showToast('APK 파일을 선택해주세요.');
+        if (typeof showToast === 'function') showToast('APK 파일을 선택해주세요.', 'error');
         return;
     }
     const file = input.files[0];
     if (!file.name.toLowerCase().endsWith('.apk')) {
-        if (typeof showToast === 'function') showToast('APK 파일만 업로드할 수 있습니다.');
+        if (typeof showToast === 'function') showToast('APK 파일만 업로드할 수 있습니다.', 'error');
         return;
     }
     if (file.size > 100 * 1024 * 1024) {
-        if (typeof showToast === 'function') showToast('파일 크기는 100MB 이하여야 합니다.');
+        if (typeof showToast === 'function') showToast('파일 크기는 100MB 이하여야 합니다.', 'error');
         return;
     }
     try {
@@ -764,7 +765,7 @@ window.uploadApkFile = async function() {
             statusEl.textContent = '업로드 실패: ' + (e.message || '알 수 없는 오류');
             statusEl.classList.remove('hidden');
         }
-        if (typeof showToast === 'function') showToast('업로드 실패: ' + (e.message || '알 수 없는 오류'));
+        if (typeof showToast === 'function') showToast('업로드 실패: ' + (e.message || '알 수 없는 오류'), 'error');
     } finally {
         uploadBtn.disabled = false;
     }
@@ -1370,22 +1371,29 @@ window.saveDemoGuide = async function() {
 // 관리자 표시 이름 캐시 (공지·댓글 작성 시 사용)
 let cachedAdminDisplayName = '관리자';
 
+function fillAttendanceScenarioRadios(name, value) {
+    const v =
+        value === 'staging' || value === 'production' || value === 'all' || value === 'off'
+            ? value
+            : 'all';
+    document.querySelectorAll(`input[name="${name}"]`).forEach((r) => {
+        r.checked = r.value === v;
+    });
+}
+
 function fillAttendancePopupForm(rawAp) {
     const n = normalizeAttendancePopup(rawAp && typeof rawAp === 'object' ? rawAp : {});
-    const en = document.getElementById('attendanceEnabled');
-    if (en) en.checked = n.enabled !== false;
-    const apply = n.applyTo === 'staging' || n.applyTo === 'production' ? n.applyTo : 'all';
-    document.querySelectorAll('input[name="attendanceApplyTo"]').forEach((r) => {
-        r.checked = r.value === apply;
-    });
-    const setInput = (id, val, defStr) => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.value = val != null && String(val).trim() !== '' ? String(val) : defStr;
-    };
-    setInput('attendanceNoRecordLine1', n.noRecordLine1, ATT_DEFAULT_NO_L1);
-    setInput('attendanceNoRecordLine2', n.noRecordLine2, ATT_DEFAULT_NO_L2);
-    setInput('attendanceStreakLine2', n.streakLine2, '');
+    fillAttendanceScenarioRadios('attendanceNoRecordApplyTo', n.noRecordApplyTo);
+    fillAttendanceScenarioRadios('attendanceHasRecordApplyTo', n.hasRecordApplyTo);
+    const noTa = document.getElementById('attendanceNoRecordMessage');
+    if (noTa) {
+        noTa.value =
+            n.noRecordMessage === null || n.noRecordMessage === undefined
+                ? ATT_DEFAULT_NO_RECORD_COMBINED
+                : String(n.noRecordMessage);
+    }
+    const hasTa = document.getElementById('attendanceHasRecordMessage');
+    if (hasTa) hasTa.value = n.hasRecordMessage != null ? String(n.hasRecordMessage) : '';
 }
 
 async function loadAdminSettings() {
@@ -1423,18 +1431,20 @@ window.saveAdminDisplayName = async function() {
     }
 };
 
+function readAttendanceScenarioApply(name) {
+    const v = document.querySelector(`input[name="${name}"]:checked`)?.value;
+    if (v === 'staging' || v === 'production' || v === 'all' || v === 'off') return v;
+    return 'all';
+}
+
 window.saveAttendancePopupSettings = async function () {
     try {
         const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
-        const applyEl = document.querySelector('input[name="attendanceApplyTo"]:checked');
-        let applyTo = applyEl?.value;
-        if (applyTo !== 'staging' && applyTo !== 'production') applyTo = 'all';
         const payload = {
-            enabled: document.getElementById('attendanceEnabled')?.checked === true,
-            applyTo,
-            noRecordLine1: document.getElementById('attendanceNoRecordLine1')?.value?.trim() ?? '',
-            noRecordLine2: document.getElementById('attendanceNoRecordLine2')?.value?.trim() ?? '',
-            streakLine2: document.getElementById('attendanceStreakLine2')?.value?.trim() ?? ''
+            noRecordApplyTo: readAttendanceScenarioApply('attendanceNoRecordApplyTo'),
+            hasRecordApplyTo: readAttendanceScenarioApply('attendanceHasRecordApplyTo'),
+            noRecordMessage: document.getElementById('attendanceNoRecordMessage')?.value?.trim() ?? '',
+            hasRecordMessage: document.getElementById('attendanceHasRecordMessage')?.value?.trim() ?? ''
         };
         await setDoc(configRef, { attendancePopup: payload }, { merge: true });
         invalidateAttendancePopupConfigCache();

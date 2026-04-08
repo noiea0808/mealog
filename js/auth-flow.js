@@ -76,7 +76,7 @@ async function openSignupWizardWithKakaoStaleGuard(user, wizardOptions = {}) {
                 const { closeSignupWizard } = await import('./signup-wizard.js');
                 closeSignupWizard();
             } catch (_) {}
-            showToast('처음부터 다시 로그인해 주세요.', 'info');
+            showToast('처음부터 다시 로그인해 주세요.', 'error');
             return;
         }
     }

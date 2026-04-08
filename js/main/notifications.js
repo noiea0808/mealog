@@ -254,7 +254,7 @@ function appendNotificationRow(listEl, item, { dimmed }) {
         window.closeNotificationPopup();
         const ownerUid = window.currentUser?.uid;
         if (!ownerUid) {
-            showToast('로그인이 필요합니다.', 'info');
+            showToast('로그인이 필요합니다.', 'error');
             window.updateNotificationDot();
             return;
         }
@@ -262,11 +262,11 @@ function appendNotificationRow(listEl, item, { dimmed }) {
             const ok = await isNotificationTargetAvailable(type, postId, ownerUid);
             if (!ok) {
                 if (type === 'feed') {
-                    showToast('삭제되었거나 볼 수 없는 밀톡입니다.', 'info');
+                    showToast('삭제되었거나 볼 수 없는 밀톡입니다.', 'error');
                 } else if (type === 'board') {
-                    showToast('삭제되었거나 찾을 수 없는 게시글입니다.', 'info');
+                    showToast('삭제되었거나 찾을 수 없는 게시글입니다.', 'error');
                 } else {
-                    showToast('공유가 해제되어 해당 게시물을 찾을 수 없습니다.', 'info');
+                    showToast('공유가 해제되어 해당 게시물을 찾을 수 없습니다.', 'error');
                 }
                 window.updateNotificationDot();
                 return;

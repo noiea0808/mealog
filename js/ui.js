@@ -68,22 +68,19 @@ export function hideLoading() {
 }
 
 const TOAST_DURATION_MS = 3500;
-const TOAST_DURATION_INFO_MS = 5000;
 
 /**
- * 토스트 — error / info / success
- * (과거에는 error만 표시해 info 호출이 무반응이었음; 카카오 앱 차단 안내 등에서 문제 발생)
+ * 토스트 — 실패·에러(type === 'error')일 때만 표시. success / info 는 무시.
  */
 export function showToast(message, type = 'info') {
     if (!message) return;
+    if (type !== 'error') return;
     const container = document.getElementById('toastContainer');
     if (!container) return;
     const toast = document.createElement('div');
     toast.setAttribute('role', 'alert');
-    let bg = 'bg-slate-800';
-    if (type === 'error') bg = 'bg-red-500';
-    else if (type === 'success') bg = 'bg-emerald-600';
-    toast.className = `animate-toast px-4 py-3 rounded-xl text-sm font-medium text-white shadow-lg max-w-full ${bg}`;
+    toast.className =
+        'animate-toast px-4 py-3 rounded-xl text-sm font-medium text-white shadow-lg max-w-full bg-red-500';
     toast.textContent = message;
     container.appendChild(toast);
     const remove = () => {
@@ -93,8 +90,7 @@ export function showToast(message, type = 'info') {
             if (toast.parentNode) toast.parentNode.removeChild(toast);
         }, 200);
     };
-    const dur = type === 'info' || type === 'success' ? TOAST_DURATION_INFO_MS : TOAST_DURATION_MS;
-    setTimeout(remove, dur);
+    setTimeout(remove, TOAST_DURATION_MS);
 }
 
 let successPopupTimer = null;
@@ -195,121 +191,66 @@ export function closeAttendancePopup() {
     if (popup) popup.classList.add('hidden');
 }
 
+const ATTENDANCE_POPUP_SVG_NS = 'http://www.w3.org/2000/svg';
+const ATTENDANCE_POPUP_MAX_LINES = 8;
+
 /**
- * 출석/연속 기록 중앙 팝업 — 기록 완료 팝업과 동일한 굵은 윤곽 SVG 텍스트 (컨페티 없음)
- * 입장 애니메이션은 끝까지 표시가 유지되며, 닫기 버튼으로만 닫힙니다.
- * @param {string} line1
- * @param {string} [line2]
+ * 출석/연속 기록 중앙 팝업 — 기록 완료와 동일 계열 SVG 텍스트(흰 윤곽 stroke) (컨페티 없음)
+ * 줄바꿈(\n)으로 여러 줄. line2는 선택(구 호환).
+ * @param {string} line1 첫 블록 또는 전체 멀티라인 문자열
+ * @param {string} [line2] 추가 블록(멀티라인 가능)
  */
 export function showAttendancePopup(line1, line2 = '') {
+    const lines = [];
+    const pushBlock = (s) => {
+        if (s == null || s === '') return;
+        for (const seg of String(s).split(/\r?\n/)) {
+            const t = seg.trim();
+            if (t) lines.push(t);
+        }
+    };
+    pushBlock(line1);
+    pushBlock(line2);
+    const trimmed = lines.slice(0, ATTENDANCE_POPUP_MAX_LINES);
+    if (trimmed.length === 0) return;
+
     const popup = document.getElementById('attendancePopup');
-    const l1 = document.getElementById('attendancePopupLine1');
-    const l2 = document.getElementById('attendancePopupLine2');
     const textRoot = document.getElementById('attendancePopupTextRoot');
     const textSvg = document.getElementById('attendancePopupTextSvg');
-    if (!popup || !l1 || !l2) return;
+    if (!popup || !textRoot || !textSvg) return;
 
     ensureAttendancePopupCloseBound();
 
-    l1.textContent = line1 || '';
-    l2.textContent = line2 || '';
-    const two = Boolean(line2 && line2.trim());
+    while (textRoot.firstChild) {
+        textRoot.removeChild(textRoot.firstChild);
+    }
 
-    const maxLen = Math.max((line1 || '').length, (line2 || '').length);
-    const fs = maxLen > 20 ? '15' : maxLen > 16 ? '17' : '19';
+    const maxLen = Math.max(...trimmed.map((l) => l.length), 1);
+    const fs = maxLen > 20 ? '21' : maxLen > 16 ? '24' : '27';
     const fsNum = Number(fs);
-    /** 두 줄일 때 dy가 너무 작으면 글자가 겹침 — 글자 크기의 약 1.35배 이상 간격 */
     const lineGap = Math.max(26, Math.round(fsNum * 1.38));
+    const topPad = 6;
+    const startY = topPad + Math.round(fsNum * 0.75);
 
-    if (two) {
-        l1.setAttribute('y', '28');
-        l2.setAttribute('x', '170');
-        l2.setAttribute('dy', String(lineGap));
-    } else {
-        l1.setAttribute('y', '36');
-        l2.setAttribute('x', '170');
-        l2.setAttribute('dy', '0');
-        l2.textContent = '';
-    }
+    trimmed.forEach((text, i) => {
+        const tsp = document.createElementNS(ATTENDANCE_POPUP_SVG_NS, 'tspan');
+        tsp.setAttribute('x', '170');
+        if (i === 0) tsp.setAttribute('y', String(startY));
+        else tsp.setAttribute('dy', String(lineGap));
+        tsp.textContent = text;
+        textRoot.appendChild(tsp);
+    });
 
-    if (textRoot) textRoot.setAttribute('font-size', fs);
-
-    if (textSvg) {
-        if (two) {
-            textSvg.setAttribute('viewBox', '0 0 340 80');
-            textSvg.setAttribute('height', '80');
-        } else {
-            textSvg.setAttribute('viewBox', '0 0 340 60');
-            textSvg.setAttribute('height', '60');
-        }
-    }
+    textRoot.setAttribute('font-size', fs);
+    const n = trimmed.length;
+    const vbH = Math.max(56, topPad + (n - 1) * lineGap + fsNum + 18);
+    textSvg.setAttribute('viewBox', `0 0 340 ${vbH}`);
+    textSvg.setAttribute('height', String(vbH));
 
     document.body.classList.remove('attendance-popup-anim');
     popup.classList.remove('hidden');
     void popup.offsetHeight;
     document.body.classList.add('attendance-popup-anim');
-}
-
-const PERMISSION_HINT_TOAST_MS = 14000;
-
-/**
- * 알림 권한 등 — 안내 + 설정 열기 버튼 (error 전용 showToast와 별도)
- * @param {string} message
- * @param {{ actionLabel?: string, onAction?: () => void }} options
- */
-export function showPermissionHintToast(message, options = {}) {
-    if (!message) return;
-    const { actionLabel = '설정 열기', onAction } = options;
-    const container = document.getElementById('toastContainer');
-    if (!container) return;
-
-    const toast = document.createElement('div');
-    toast.setAttribute('role', 'alert');
-    toast.className =
-        'animate-toast px-4 py-3 rounded-xl text-sm font-medium text-white shadow-lg max-w-full bg-amber-600 flex flex-col gap-3';
-
-    const text = document.createElement('p');
-    text.className = 'm-0 leading-snug';
-    text.textContent = message;
-    toast.appendChild(text);
-
-    let hideTimer = null;
-    const remove = () => {
-        if (hideTimer) clearTimeout(hideTimer);
-        hideTimer = null;
-        toast.style.opacity = '0';
-        toast.style.transition = 'opacity 0.2s ease';
-        setTimeout(() => {
-            if (toast.parentNode) toast.parentNode.removeChild(toast);
-        }, 200);
-    };
-
-    const row = document.createElement('div');
-    row.className = 'flex flex-wrap gap-2 justify-end items-center';
-    const laterBtn = document.createElement('button');
-    laterBtn.type = 'button';
-    laterBtn.className = 'px-3 py-1.5 rounded-lg text-amber-100 text-xs font-semibold hover:bg-white/10';
-    laterBtn.textContent = '나중에';
-    laterBtn.addEventListener('click', remove);
-    row.appendChild(laterBtn);
-    if (typeof onAction === 'function') {
-        const openBtn = document.createElement('button');
-        openBtn.type = 'button';
-        openBtn.className =
-            'px-3 py-1.5 rounded-lg bg-white text-amber-800 text-xs font-black hover:bg-amber-50';
-        openBtn.textContent = actionLabel;
-        openBtn.addEventListener('click', () => {
-            try {
-                onAction();
-            } catch (_) {}
-            remove();
-        });
-        row.appendChild(openBtn);
-    }
-    toast.appendChild(row);
-
-    container.appendChild(toast);
-    hideTimer = setTimeout(remove, PERMISSION_HINT_TOAST_MS);
 }
 
 const LANDING_EXIT_MS = 280;

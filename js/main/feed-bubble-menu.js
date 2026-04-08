@@ -35,7 +35,7 @@ async function copyFeedText(postId, bubble) {
     const fromDom = bubble?.querySelector('p')?.innerText ?? '';
     const text = raw || fromDom;
     if (!text.trim()) {
-        showToast('복사할 텍스트가 없습니다.', 'info');
+        showToast('복사할 텍스트가 없습니다.', 'error');
         return;
     }
     try {
