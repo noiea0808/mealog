@@ -27,6 +27,27 @@ import { isDemoUser } from '../demo-account.js';
 import { normalizeNicknameForClaim, nicknameClaimDocId } from './nickname-claims.js';
 
 /** Firestore에 undefined가 들어가면 쓰기 실패할 수 있어 제거 */
+/**
+ * Firestore 쓰기 직전: 로그인 직후(카카오 커스텀 토큰 등) auth.currentUser 반영 레이스 완화
+ */
+async function resolveUserForFirestoreWrite() {
+    try {
+        if (auth && typeof auth.authStateReady === 'function') {
+            await auth.authStateReady();
+        }
+    } catch (_) {
+        /* ignore */
+    }
+    let u = auth.currentUser;
+    if (u && !u.isAnonymous) return u;
+    const w = typeof window !== 'undefined' ? window.currentUser : null;
+    if (w && !w.isAnonymous) {
+        console.warn('[dbOps] auth.currentUser 없음 → window.currentUser 사용 (로그인 직후일 수 있음)');
+        return w;
+    }
+    return u || null;
+}
+
 function stripUndefinedDeep(value) {
     if (value === undefined) return undefined;
     if (value === null) return null;
@@ -56,52 +77,74 @@ async function bumpUserMealCount(uid, delta) {
 
 export const dbOps = {
     async save(record, silent = false) {
-        const currentUser = auth.currentUser || window.currentUser;
+        let currentUser = await resolveUserForFirestoreWrite();
+        if (auth.currentUser && window.currentUser && auth.currentUser.uid !== window.currentUser.uid) {
+            logger.warn('[dbOps] auth/window UID 불일치 — auth 기준으로 저장', {
+                authUid: auth.currentUser.uid,
+                windowUid: window.currentUser.uid
+            });
+            currentUser = auth.currentUser;
+        }
         if (!currentUser || currentUser.isAnonymous) {
             const error = new Error("로그인이 필요합니다.");
             showToast("저장 실패: 로그인이 필요합니다.", 'error');
             throw error;
         }
         try {
-            if (typeof currentUser.getIdToken === 'function') {
-                await currentUser.getIdToken(true);
-            }
-            await appCheckInitPromise;
-            await refreshAppCheckTokenBeforeFirestore();
-
-            const dataToSave = { ...record };
-            const sanitizePhotoArray = (arr) => {
-                if (!Array.isArray(arr)) return [];
-                return arr.filter((photo) => {
-                    if (typeof photo !== 'string' || !photo) return false;
-                    // Firestore 문서 크기 초과 방지를 위해 data URL(base64) 저장 금지
-                    return !photo.startsWith('data:image');
-                });
-            };
-            if (Object.prototype.hasOwnProperty.call(dataToSave, 'photos')) {
-                dataToSave.photos = sanitizePhotoArray(dataToSave.photos);
-            }
-            if (Object.prototype.hasOwnProperty.call(dataToSave, 'sharedPhotos')) {
-                dataToSave.sharedPhotos = sanitizePhotoArray(dataToSave.sharedPhotos);
-            }
-            const docId = dataToSave.id;
-            delete dataToSave.id;
-            const coll = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meals');
-            logger.log('식사 기록 저장 시도:', { userId: currentUser.uid, docId, dataToSave });
-            if (docId) {
-                await setDoc(doc(coll, docId), dataToSave);
-                if (!silent) {
-                    showToast("기록이 수정되었습니다.", 'success');
+            const runWrite = async () => {
+                if (typeof currentUser.getIdToken === 'function') {
+                    await currentUser.getIdToken(true);
                 }
-                return docId; // 기존 ID 반환
-            } else {
+                await appCheckInitPromise;
+                await refreshAppCheckTokenBeforeFirestore();
+
+                const dataToSave = { ...record };
+                const sanitizePhotoArray = (arr) => {
+                    if (!Array.isArray(arr)) return [];
+                    return arr.filter((photo) => {
+                        if (typeof photo !== 'string' || !photo) return false;
+                        return !photo.startsWith('data:image');
+                    });
+                };
+                if (Object.prototype.hasOwnProperty.call(dataToSave, 'photos')) {
+                    dataToSave.photos = sanitizePhotoArray(dataToSave.photos);
+                }
+                if (Object.prototype.hasOwnProperty.call(dataToSave, 'sharedPhotos')) {
+                    dataToSave.sharedPhotos = sanitizePhotoArray(dataToSave.sharedPhotos);
+                }
+                const docId = dataToSave.id;
+                delete dataToSave.id;
+                const coll = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meals');
+                logger.log('식사 기록 저장 시도:', { userId: currentUser.uid, docId, dataToSave });
+                if (docId) {
+                    await setDoc(doc(coll, docId), dataToSave);
+                    if (!silent) {
+                        showToast("기록이 수정되었습니다.", 'success');
+                    }
+                    return docId;
+                }
                 const docRef = await addDoc(coll, dataToSave);
                 await bumpUserMealCount(currentUser.uid, 1);
                 logger.log('식사 기록 저장 성공:', docRef.id);
                 if (!silent) {
                     showToast("식사가 기록되었습니다.", 'success');
                 }
-                return docRef.id; // 새로 생성된 ID 반환
+                return docRef.id;
+            };
+
+            try {
+                return await runWrite();
+            } catch (e1) {
+                if (e1?.code === 'permission-denied') {
+                    logger.warn('[dbOps] 저장 permission-denied → 토큰·App Check 갱신 후 1회 재시도');
+                    currentUser = (await resolveUserForFirestoreWrite()) || currentUser;
+                    if (typeof currentUser?.getIdToken === 'function') {
+                        await currentUser.getIdToken(true);
+                    }
+                    await refreshAppCheckTokenBeforeFirestore();
+                    return await runWrite();
+                }
+                throw e1;
             }
         } catch (e) {
             console.error("Save Error:", e);

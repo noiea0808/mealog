@@ -154,6 +154,11 @@ async function finalizeKakaoSignInWithCode(code, redirectUri) {
         }
         await signInWithCustomToken(auth, customToken);
         try {
+            if (typeof auth.authStateReady === 'function') {
+                await auth.authStateReady();
+            }
+        } catch (_) {}
+        try {
             if (auth.currentUser) await auth.currentUser.reload();
         } catch (_) {}
         const ke = typeof data.kakaoEmail === 'string' ? data.kakaoEmail.trim() : '';
