@@ -195,11 +195,15 @@ async function resolveAppCheckDebugTokenForLocalhost() {
 export const appCheckInitPromise = (async () => {
     try {
         if (typeof window === 'undefined') return;
+        const isCapNative =
+            typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.();
+        // 빈 hostname은 일부 WebView에서만 나오며 디버그 토큰 경로로 보냄. 네이티브는 보통 https://localhost 등으로
+        // reCAPTCHA 경로를 쓰는 편이라, 네이티브+빈 hostname일 때만 디버그 강제를 피함(exchangeDebugToken 403 완화).
         const isLocalhost =
             window.location.hostname === 'localhost' ||
             window.location.hostname === '127.0.0.1' ||
             window.location.hostname === '0.0.0.0' ||
-            window.location.hostname === '';
+            (!isCapNative && window.location.hostname === '');
         if (isLocalhost) {
             const fixed = await resolveAppCheckDebugTokenForLocalhost();
             if (fixed) {

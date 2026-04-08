@@ -1593,7 +1593,7 @@
                                         <div class="p-6 space-y-6">
                                             <div class="rounded-xl p-5 border border-slate-200 space-y-4">
                                                 <h3 class="text-sm font-black text-slate-800">기록이 없을 때</h3>
-                                                <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+                                                <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-4">
                                                     <div class="flex flex-wrap gap-2 min-w-0 flex-1" role="radiogroup" aria-label="기록 없을 때 웰컴 적용 범위">
                                                         <label class="cursor-pointer inline-flex">
                                                             <input type="radio" name="attendanceNoRecordApplyTo" value="all" class="peer sr-only" checked>
@@ -1612,18 +1612,15 @@
                                                             <span class="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-600 peer-checked:border-slate-400 peer-checked:bg-slate-200 peer-checked:text-slate-800">끔</span>
                                                         </label>
                                                     </div>
-                                                    <div class="flex items-center gap-2.5 shrink-0" role="radiogroup" aria-label="기록 없을 때 웰컴 노출 빈도">
-                                                        <span class="text-xs font-black text-slate-800 whitespace-nowrap">노출</span>
-                                                        <div class="inline-flex rounded-xl border-2 border-slate-400 bg-slate-300/90 p-1 shadow-inner">
-                                                            <label class="cursor-pointer">
-                                                                <input type="radio" name="attendanceNoRecordFrequency" value="once_per_day" class="peer sr-only">
-                                                                <span class="block px-3 py-2 rounded-lg text-xs font-black text-slate-900 peer-checked:bg-emerald-600 peer-checked:text-white peer-checked:shadow-md whitespace-nowrap transition-colors">하루 한 번</span>
-                                                            </label>
-                                                            <label class="cursor-pointer">
-                                                                <input type="radio" name="attendanceNoRecordFrequency" value="every_session" class="peer sr-only" checked>
-                                                                <span class="block px-3 py-2 rounded-lg text-xs font-black text-slate-900 peer-checked:bg-emerald-600 peer-checked:text-white peer-checked:shadow-md whitespace-nowrap transition-colors">접속 시마다</span>
-                                                            </label>
-                                                        </div>
+                                                    <div class="inline-flex self-stretch sm:self-end shrink-0 w-full sm:w-auto p-1 rounded-2xl bg-slate-100/95 ring-1 ring-slate-200/80 shadow-inner gap-0.5" role="radiogroup" aria-label="기록 없을 때 웰컴 노출 빈도">
+                                                        <label class="cursor-pointer flex-1 sm:flex-initial min-w-0">
+                                                            <input type="radio" name="attendanceNoRecordFrequency" value="once_per_day" class="peer sr-only">
+                                                            <span class="flex items-center justify-center px-3 sm:px-3.5 py-2 rounded-[0.65rem] text-xs font-bold text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-md peer-checked:ring-1 peer-checked:ring-emerald-200/70 whitespace-nowrap transition-all duration-150 hover:text-slate-800">하루 1회</span>
+                                                        </label>
+                                                        <label class="cursor-pointer flex-1 sm:flex-initial min-w-0">
+                                                            <input type="radio" name="attendanceNoRecordFrequency" value="every_session" class="peer sr-only" checked>
+                                                            <span class="flex items-center justify-center px-3 sm:px-3.5 py-2 rounded-[0.65rem] text-xs font-bold text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-md peer-checked:ring-1 peer-checked:ring-emerald-200/70 whitespace-nowrap transition-all duration-150 hover:text-slate-800">접속마다</span>
+                                                        </label>
                                                     </div>
                                                 </div>
                                                 <div class="space-y-2">
@@ -1634,7 +1631,7 @@
                                             </div>
                                             <div class="rounded-xl p-5 border border-slate-200 space-y-4">
                                                 <h3 class="text-sm font-black text-slate-800">기록이 있을 때</h3>
-                                                <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+                                                <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-4">
                                                     <div class="flex flex-wrap gap-2 min-w-0 flex-1" role="radiogroup" aria-label="기록 있을 때 웰컴 적용 범위">
                                                         <label class="cursor-pointer inline-flex">
                                                             <input type="radio" name="attendanceHasRecordApplyTo" value="all" class="peer sr-only" checked>
@@ -1653,18 +1650,15 @@
                                                             <span class="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-600 peer-checked:border-slate-400 peer-checked:bg-slate-200 peer-checked:text-slate-800">끔</span>
                                                         </label>
                                                     </div>
-                                                    <div class="flex items-center gap-2.5 shrink-0" role="radiogroup" aria-label="기록 있을 때 웰컴 노출 빈도">
-                                                        <span class="text-xs font-black text-slate-800 whitespace-nowrap">노출</span>
-                                                        <div class="inline-flex rounded-xl border-2 border-slate-400 bg-slate-300/90 p-1 shadow-inner">
-                                                            <label class="cursor-pointer">
-                                                                <input type="radio" name="attendanceHasRecordFrequency" value="once_per_day" class="peer sr-only">
-                                                                <span class="block px-3 py-2 rounded-lg text-xs font-black text-slate-900 peer-checked:bg-emerald-600 peer-checked:text-white peer-checked:shadow-md whitespace-nowrap transition-colors">하루 한 번</span>
-                                                            </label>
-                                                            <label class="cursor-pointer">
-                                                                <input type="radio" name="attendanceHasRecordFrequency" value="every_session" class="peer sr-only" checked>
-                                                                <span class="block px-3 py-2 rounded-lg text-xs font-black text-slate-900 peer-checked:bg-emerald-600 peer-checked:text-white peer-checked:shadow-md whitespace-nowrap transition-colors">접속 시마다</span>
-                                                            </label>
-                                                        </div>
+                                                    <div class="inline-flex self-stretch sm:self-end shrink-0 w-full sm:w-auto p-1 rounded-2xl bg-slate-100/95 ring-1 ring-slate-200/80 shadow-inner gap-0.5" role="radiogroup" aria-label="기록 있을 때 웰컴 노출 빈도">
+                                                        <label class="cursor-pointer flex-1 sm:flex-initial min-w-0">
+                                                            <input type="radio" name="attendanceHasRecordFrequency" value="once_per_day" class="peer sr-only">
+                                                            <span class="flex items-center justify-center px-3 sm:px-3.5 py-2 rounded-[0.65rem] text-xs font-bold text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-md peer-checked:ring-1 peer-checked:ring-emerald-200/70 whitespace-nowrap transition-all duration-150 hover:text-slate-800">하루 1회</span>
+                                                        </label>
+                                                        <label class="cursor-pointer flex-1 sm:flex-initial min-w-0">
+                                                            <input type="radio" name="attendanceHasRecordFrequency" value="every_session" class="peer sr-only" checked>
+                                                            <span class="flex items-center justify-center px-3 sm:px-3.5 py-2 rounded-[0.65rem] text-xs font-bold text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-md peer-checked:ring-1 peer-checked:ring-emerald-200/70 whitespace-nowrap transition-all duration-150 hover:text-slate-800">접속마다</span>
+                                                        </label>
                                                     </div>
                                                 </div>
                                                 <p class="text-xs text-slate-500">첫 줄은 자동(어제까지 연속 일수: 0일 / 1일·2일 도전·2일 이상 각각 문구가 다름)이며, 아래 입력은 그 다음부터 붙는 문구입니다. 비우면 첫 줄만 표시됩니다.</p>

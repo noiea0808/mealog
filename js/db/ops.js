@@ -63,6 +63,12 @@ export const dbOps = {
             throw error;
         }
         try {
+            if (typeof currentUser.getIdToken === 'function') {
+                await currentUser.getIdToken(true);
+            }
+            await appCheckInitPromise;
+            await refreshAppCheckTokenBeforeFirestore();
+
             const dataToSave = { ...record };
             const sanitizePhotoArray = (arr) => {
                 if (!Array.isArray(arr)) return [];
@@ -137,6 +143,12 @@ export const dbOps = {
             throw error;
         }
         try {
+            if (typeof currentUser.getIdToken === 'function') {
+                await currentUser.getIdToken(true);
+            }
+            await appCheckInitPromise;
+            await refreshAppCheckTokenBeforeFirestore();
+
             await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'meals', id));
             await bumpUserMealCount(currentUser.uid, -1);
 
