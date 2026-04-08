@@ -5,6 +5,7 @@ import { setVal, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from '../render/index.js';
 import { dbOps } from '../db.js';
 import { showToast, showSuccessPopup } from '../ui.js';
+import { resolveRecordCompletePopupMessage } from '../attendance-check.js';
 import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed } from '../render/index.js';
 import { getDashboardData } from '../analytics.js';
 import { callableFunctions, db, appId } from '../firebase.js';
@@ -18,6 +19,31 @@ let settingsSaveTimeout = null;
 let entryGaugeSaveTimeout = null;
 
 const PHOTO_ASPECT_OPTIONS = ['1:1', '3:4', '4:3'];
+
+/** 활성 서브칩 라벨 (입력란 동기화·검증용) */
+function collectActiveSubChipLabels(containerId) {
+    const root = document.getElementById(containerId);
+    if (!root) return [];
+    return [...root.querySelectorAll('button.sub-chip.active')].map((el) =>
+        el.textContent.replace(/\s*★\s*$/, '').trim()
+    ).filter(Boolean);
+}
+
+/** 입력란이 비어 있을 때만 활성 서브칩을 쉼표로 합쳐 넣음 (태그만 선택한 저장 대비) */
+function mergeActiveSubChipsIntoInputs() {
+    const merge = (containerId, inputId) => {
+        const input = document.getElementById(inputId);
+        if (!input || input.value.trim()) return;
+        const labels = collectActiveSubChipLabels(containerId);
+        if (labels.length) input.value = labels.join(', ');
+    };
+    merge('menuSuggestions', 'menuDetailInput');
+    merge('peopleSuggestions', 'withWhomInput');
+    merge('snackSuggestions', 'snackDetailInput');
+    merge('snackPeopleSuggestions', 'snackWithWhomInput');
+    merge('restaurantSuggestions', 'placeInput');
+    merge('snackPlaceSuggestions', 'snackPlaceInput');
+}
 
 /** 배달/포장일 때만 '어디서 가져오셨나요' 입력란 표시 (다른 유형으로 바꾸면 값 초기화) */
 export function syncDeliveryVendorSectionVisibility() {
@@ -824,8 +850,8 @@ export async function openModal(date, slotId, entryId = null) {
                         }
                     }
                     
-                    // 메뉴 상세 (menuDetail) - sub-chip (다중 선택 가능, 쉼표로 구분)
-                    if (r.menuDetail) {
+                    // 메뉴 상세 (본식 menuDetail) - sub-chip (다중 선택 가능, 쉼표로 구분)
+                    if (!isS && r.menuDetail) {
                         const menuSuggestions = document.getElementById('menuSuggestions');
                         const menuDetailInput = document.getElementById('menuDetailInput');
                         if (menuSuggestions && menuDetailInput) {
@@ -848,9 +874,30 @@ export async function openModal(date, slotId, entryId = null) {
                             }
                         }
                     }
+                    // 간식 무엇을 (menuDetail → snackDetailInput / snackSuggestions)
+                    if (isS && r.menuDetail) {
+                        const snackSuggestions = document.getElementById('snackSuggestions');
+                        const snackDetailInput = document.getElementById('snackDetailInput');
+                        if (snackSuggestions && snackDetailInput) {
+                            const detailValues = r.menuDetail.split(',').map(v => v.trim()).filter(v => v);
+                            const activeValues = [];
+                            snackSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
+                                const chipText = ch.innerText.trim();
+                                if (detailValues.includes(chipText)) {
+                                    ch.classList.add('active');
+                                    activeValues.push(chipText);
+                                }
+                            });
+                            if (activeValues.length > 0) {
+                                snackDetailInput.value = activeValues.join(', ');
+                            } else {
+                                snackDetailInput.value = r.menuDetail;
+                            }
+                        }
+                    }
                     
-                    // 함께한 사람 상세 (withWhomDetail) - sub-chip (다중 선택 가능)
-                    if (r.withWhomDetail) {
+                    // 함께한 사람 상세 (본식 withWhomDetail) - sub-chip (다중 선택 가능)
+                    if (!isS && r.withWhomDetail) {
                         const peopleSuggestions = document.getElementById('peopleSuggestions');
                         const withWhomInput = document.getElementById('withWhomInput');
                         if (peopleSuggestions && withWhomInput) {
@@ -867,6 +914,25 @@ export async function openModal(date, slotId, entryId = null) {
                             // input에 선택된 값들 저장
                             if (activeValues.length > 0) {
                                 withWhomInput.value = activeValues.join(', ');
+                            }
+                        }
+                    }
+                    // 간식 누구와 상세 (snackPeopleSuggestions)
+                    if (isS && r.withWhomDetail) {
+                        const snackPeopleSuggestions = document.getElementById('snackPeopleSuggestions');
+                        const snackWithWhomInput = document.getElementById('snackWithWhomInput');
+                        if (snackPeopleSuggestions && snackWithWhomInput) {
+                            const detailValues = r.withWhomDetail.split(',').map(v => v.trim()).filter(v => v);
+                            const activeValues = [];
+                            snackPeopleSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
+                                const chipText = ch.innerText.trim();
+                                if (detailValues.includes(chipText)) {
+                                    ch.classList.add('active');
+                                    activeValues.push(chipText);
+                                }
+                            });
+                            if (activeValues.length > 0) {
+                                snackWithWhomInput.value = activeValues.join(', ');
                             }
                         }
                     }
@@ -924,11 +990,14 @@ export async function openModal(date, slotId, entryId = null) {
                     }
                 }
                 
-                document.getElementById('btnDelete')?.classList.remove('hidden');
             }
         } else {
             window.setRating(3);
             window.setSatiety(3);
+        }
+
+        if (entryId && window.currentUser && !window.currentUser.isAnonymous && !isDemoUser(window.currentUser)) {
+            document.getElementById('btnDelete')?.classList.remove('hidden');
         }
         
         // 간식 모드일 때 초기 추천 태그 표시
@@ -1071,6 +1140,7 @@ export async function saveEntry() {
         const isS = slot.type === 'snack';
         const mealType = getT('typeChips');
         const isSk = mealType === 'Skip' || mealType === '건너뜀';
+        mergeActiveSubChipsIntoInputs();
         const placeInputVal = document.getElementById('placeInput')?.value || '';
         const menuInputVal = document.getElementById('menuDetailInput')?.value || '';
         const withInputVal = document.getElementById('withWhomInput')?.value || '';
@@ -1091,11 +1161,27 @@ export async function saveEntry() {
         if (!isSk) {
             const hasHow = !isS && Boolean((mealType || '').trim());
             const hasWhat = isS
-                ? Boolean((getT('snackTypeChips') || '').trim() || (snackInputVal || '').trim())
-                : Boolean((getT('categoryChips') || '').trim() || (menuInputVal || '').trim());
+                ? Boolean(
+                      (getT('snackTypeChips') || '').trim() ||
+                          (snackInputVal || '').trim() ||
+                          collectActiveSubChipLabels('snackSuggestions').length
+                  )
+                : Boolean(
+                      (getT('categoryChips') || '').trim() ||
+                          (menuInputVal || '').trim() ||
+                          collectActiveSubChipLabels('menuSuggestions').length
+                  );
             const hasWith = isS
-                ? Boolean((getT('snackWithChips') || '').trim() || (snackWithInputVal || '').trim())
-                : Boolean((getT('withChips') || '').trim() || (withInputVal || '').trim());
+                ? Boolean(
+                      (getT('snackWithChips') || '').trim() ||
+                          (snackWithInputVal || '').trim() ||
+                          collectActiveSubChipLabels('snackPeopleSuggestions').length
+                  )
+                : Boolean(
+                      (getT('withChips') || '').trim() ||
+                          (withInputVal || '').trim() ||
+                          collectActiveSubChipLabels('peopleSuggestions').length
+                  );
             if (!hasHow && !hasWhat && !hasWith) {
                 if (loadingOverlay) loadingOverlay.classList.add('hidden');
                 return;
@@ -1515,7 +1601,6 @@ export async function saveEntry() {
             }
 
             console.log('저장 완료');
-            showSuccessPopup('기록 완료', 800);
             // 낙관적 반영: 리스너 도착 전에 mealHistory에 즉시 반영해 스크롤·렌더가 최신 데이터 기준으로 동작
             if (record.id && window.mealHistory && Array.isArray(window.mealHistory)) {
                 const idx = window.mealHistory.findIndex(m => m.id === record.id);
@@ -1527,6 +1612,8 @@ export async function saveEntry() {
                 }
                 window.mealHistory.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''));
             }
+            // 기록 완료 문구는 mealHistory 반영 후에만 계산 (그날 첫 기록 여부·연속일수가 맞아야 함)
+            showSuccessPopup(resolveRecordCompletePopupMessage(wasNewRecord, record.date), 800);
             // 저장 직후 잠깐 타임라인 전체 재렌더를 막아, jumpToDate·스크롤이 리스너 재렌더에 덮이지 않게 함
             window._timelineRerenderFreezeUntil = Date.now() + 800;
             

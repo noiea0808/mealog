@@ -102,6 +102,7 @@ let successPopupTimer = null;
 export function showSuccessPopup(message = '기록 완료', durationMs = 800) {
     const popup = document.getElementById('successPopup');
     const textEl = document.getElementById('successPopupText');
+    const textSvg = document.getElementById('successPopupTextSvg');
     const confetti = document.getElementById('successPopupConfetti');
     if (!popup) return;
 
@@ -110,7 +111,23 @@ export function showSuccessPopup(message = '기록 완료', durationMs = 800) {
         successPopupTimer = null;
     }
 
-    if (textEl) textEl.textContent = message || '기록 완료';
+    const line = String(message || '기록 완료!').trim() || '기록 완료!';
+    if (textEl) textEl.textContent = line;
+
+    /** 웰컴 팝업과 동일 단계별 최대 35px (260px 뷰 너비) */
+    if (textEl && textSvg) {
+        const maxLen = Math.max(line.length, 1);
+        const fs =
+            maxLen > 24 ? '22' : maxLen > 20 ? '26' : maxLen > 16 ? '31' : '35';
+        const fsNum = Number(fs);
+        const topPad = 6;
+        const startY = topPad + Math.round(fsNum * 0.75);
+        textEl.setAttribute('font-size', fs);
+        textEl.setAttribute('y', String(startY));
+        const vbH = Math.max(52, startY + Math.round(fsNum * 0.4) + 10);
+        textSvg.setAttribute('viewBox', `0 0 260 ${vbH}`);
+        textSvg.setAttribute('height', String(vbH));
+    }
 
     // 애니메이션 재시작을 위해 클래스 토글 + reflow
     document.body.classList.remove('success-popup-anim');
@@ -199,8 +216,9 @@ const ATTENDANCE_POPUP_MAX_LINES = 8;
  * 줄바꿈(\n)으로 여러 줄. line2는 선택(구 호환).
  * @param {string} line1 첫 블록 또는 전체 멀티라인 문자열
  * @param {string} [line2] 추가 블록(멀티라인 가능)
+ * @param {'noRecord'|'hasRecord'} [welcomeIcon] 기록 없음 웰컴은 하트, 그 외(연속 기록)는 박수 이모지
  */
-export function showAttendancePopup(line1, line2 = '') {
+export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord') {
     const lines = [];
     const pushBlock = (s) => {
         if (s == null || s === '') return;
@@ -219,6 +237,14 @@ export function showAttendancePopup(line1, line2 = '') {
     const textSvg = document.getElementById('attendancePopupTextSvg');
     if (!popup || !textRoot || !textSvg) return;
 
+    const iconHeart = document.getElementById('attendancePopupIconHeart');
+    const iconClap = document.getElementById('attendancePopupIconClap');
+    if (iconHeart && iconClap) {
+        const showHeart = welcomeIcon === 'noRecord';
+        iconHeart.classList.toggle('hidden', !showHeart);
+        iconClap.classList.toggle('hidden', showHeart);
+    }
+
     ensureAttendancePopupCloseBound();
 
     while (textRoot.firstChild) {
@@ -226,7 +252,9 @@ export function showAttendancePopup(line1, line2 = '') {
     }
 
     const maxLen = Math.max(...trimmed.map((l) => l.length), 1);
-    const fs = maxLen > 20 ? '21' : maxLen > 16 ? '24' : '27';
+    /** 짧은 문구 최대 35px, 길면 단계적으로 축소(340px 뷰 안에 맞춤) */
+    const fs =
+        maxLen > 24 ? '22' : maxLen > 20 ? '26' : maxLen > 16 ? '31' : '35';
     const fsNum = Number(fs);
     const lineGap = Math.max(26, Math.round(fsNum * 1.38));
     const topPad = 6;

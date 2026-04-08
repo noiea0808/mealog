@@ -1,6 +1,6 @@
 /**
- * 출석/연속 기록 팝업 — 기록된 일자(dailyStats ∪ mealHistory) 기준 연속 일수 계산.
- * 테스트: 브라우저 세션(탭)당 1회 표시. 추후 localStorage + 당일 1회로 전환 가능.
+ * 출석/연속 기록 팝업 — 어제(로컬)까지 이어진 연속 일수(dailyStats ∪ mealHistory). 어제 무기록이면 0.
+ * 노출 빈도: 관리자 설정 noRecordFrequency / hasRecordFrequency — 접속 시마다(세션당 1회) 또는 하루 한 번(localStorage).
  * 관리자 설정(adminSettings/config.attendancePopup)으로 기록 유무·환경별 문구·노출(끔 포함).
  */
 import { authFlowManager } from './auth-flow.js';
@@ -54,13 +54,17 @@ function prevLocalYmd(ymd) {
     return toLocalDateString(dt);
 }
 
-/** 가장 최근 기록일부터 달력 역순으로 이어진 연속 일수 */
+/**
+ * 오늘(로컬) 기준 **어제**까지 달력 역순으로 이어진 연속 기록 일수.
+ * 어제에 기록이 없으면 0 (과거에만 기록이 있어도 연속 기록으로 보지 않음).
+ */
 export function computeConsecutiveStreakDays(dateSet) {
     if (!dateSet || dateSet.size === 0) return 0;
-    const sorted = [...dateSet].sort();
-    const end = sorted[sorted.length - 1];
+    const today = toLocalDateString(new Date());
+    const yesterday = prevLocalYmd(today);
+    if (!dateSet.has(yesterday)) return 0;
     let streak = 0;
-    let cursor = end;
+    let cursor = yesterday;
     while (dateSet.has(cursor)) {
         streak++;
         cursor = prevLocalYmd(cursor);
@@ -68,9 +72,78 @@ export function computeConsecutiveStreakDays(dateSet) {
     return streak;
 }
 
+/**
+ * 기록 완료 팝업 문구 — 해당 날짜 **첫** 신규 기록만 연속 메시지.
+ * - 어제까지 연속 일수 n (`computeConsecutiveStreakDays`): n≥1 → `(n+1)일 연속 기록!`, n=0 → `기록 완료!`
+ * - 그날 두 번째 기록부터는 항상 `기록 완료!`
+ * @param {boolean} wasNewRecord
+ * @param {string} [mealDateIso] YYYY-MM-DD
+ * @returns {string}
+ */
+export function resolveRecordCompletePopupMessage(wasNewRecord, mealDateIso) {
+    if (!mealDateIso || typeof mealDateIso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(mealDateIso)) {
+        return '기록 완료!';
+    }
+    if (!wasNewRecord) return '기록 완료!';
+    const hist = window.mealHistory && Array.isArray(window.mealHistory) ? window.mealHistory : [];
+    const countOnDate = hist.filter((m) => m && m.date === mealDateIso).length;
+    /** 병합 전 호출 시 0이 되어 첫 기록 분기가 깨짐 → entry-and-core에서는 mealHistory 반영 직후 호출 */
+    if (countOnDate < 1) return '기록 완료!';
+    if (countOnDate !== 1) return '기록 완료!';
+
+    const n = computeConsecutiveStreakDays(collectRecordedDateSet());
+    if (n <= 0) return '기록 완료!';
+    return `${n + 1}일 연속 기록!`;
+}
+
+/** @param {number} streak */
+function formatAttendanceStreakHeadline(streak) {
+    if (streak <= 0) return '0일 연속 기록중!!';
+    if (streak === 1) return '2일 연속 기록 도전중!!';
+    if (streak === 2) return '2일 연속 기록 중!';
+    return `${streak}일 연속 기록 중!`;
+}
+
 let lastAttendanceUid = null;
 let attendanceShownForUidSession = false;
+/** 로컬 날짜가 바뀌면 세션 노출 플래그를 리셋(장시간 열린 탭에서도 자정 이후 재노출 가능) */
+let welcomePopupLocalDay = null;
 let attendanceDebounceTimer = null;
+
+const WELCOME_DAY_LS_PREFIX = 'mealog_welcome_shown_';
+
+/** @param {'no'|'has'} kind */
+function welcomeDayStorageKey(uid, kind) {
+    return `${WELCOME_DAY_LS_PREFIX}${uid}_${kind}`;
+}
+
+/** @param {'no'|'has'} kind */
+function wasWelcomeShownToday(uid, kind) {
+    const today = toLocalDateString(new Date());
+    try {
+        return localStorage.getItem(welcomeDayStorageKey(uid, kind)) === today;
+    } catch {
+        return false;
+    }
+}
+
+/** @param {'no'|'has'} kind */
+function markWelcomeShownToday(uid, kind) {
+    const today = toLocalDateString(new Date());
+    try {
+        localStorage.setItem(welcomeDayStorageKey(uid, kind), today);
+    } catch {
+        /* ignore */
+    }
+}
+
+function resetWelcomePopupGateIfNewLocalDay() {
+    const t = toLocalDateString(new Date());
+    if (welcomePopupLocalDay !== t) {
+        welcomePopupLocalDay = t;
+        attendanceShownForUidSession = false;
+    }
+}
 
 /** @type {Record<string, unknown> | null} */
 let cachedAttendancePopupRoot = null;
@@ -110,13 +183,21 @@ function attendancePopupDefaults() {
         noRecordApplyTo: /** @type {'all'} */ ('all'),
         hasRecordApplyTo: /** @type {'all'} */ ('all'),
         noRecordMessage: /** @type {string|null} */ (null),
-        hasRecordMessage: ''
+        hasRecordMessage: '',
+        noRecordFrequency: /** @type {'every_session'} */ ('every_session'),
+        hasRecordFrequency: /** @type {'every_session'} */ ('every_session')
     };
+}
+
+/** @param {unknown} v @returns {'once_per_day'|'every_session'} */
+function pickAttendanceShowFrequency(v) {
+    if (v === 'once_per_day' || v === 'every_session') return v;
+    return 'every_session';
 }
 
 /**
  * adminSettings/config.attendancePopup — 구버전(단일 applyTo·streakLine2·enabled) + 신규(기록 유무별 적용·끔) 호환
- * @returns {{ noRecordApplyTo: 'all'|'staging'|'production'|'off', hasRecordApplyTo: 'all'|'staging'|'production'|'off', noRecordMessage: string|null, hasRecordMessage: string }}
+ * @returns {{ noRecordApplyTo: 'all'|'staging'|'production'|'off', hasRecordApplyTo: 'all'|'staging'|'production'|'off', noRecordMessage: string|null, hasRecordMessage: string, noRecordFrequency: 'once_per_day'|'every_session', hasRecordFrequency: 'once_per_day'|'every_session' }}
  */
 export function normalizeAttendancePopup(raw) {
     if (!raw || typeof raw !== 'object') return attendancePopupDefaults();
@@ -131,7 +212,9 @@ export function normalizeAttendancePopup(raw) {
         'noRecordLine2' in raw ||
         'streakLine2' in raw ||
         'hasRecordMessage' in raw ||
-        'enabled' in raw;
+        'enabled' in raw ||
+        'noRecordFrequency' in raw ||
+        'hasRecordFrequency' in raw;
 
     const hasPerScenario =
         Object.prototype.hasOwnProperty.call(raw, 'noRecordApplyTo') ||
@@ -207,7 +290,9 @@ export function normalizeAttendancePopup(raw) {
         noRecordApplyTo,
         hasRecordApplyTo,
         noRecordMessage,
-        hasRecordMessage
+        hasRecordMessage,
+        noRecordFrequency: pickAttendanceShowFrequency(raw.noRecordFrequency),
+        hasRecordFrequency: pickAttendanceShowFrequency(raw.hasRecordFrequency)
     };
 }
 
@@ -244,11 +329,12 @@ async function fetchAttendancePopupRoot() {
 export function resetAttendanceCheckSessionForTesting() {
     lastAttendanceUid = null;
     attendanceShownForUidSession = false;
+    welcomePopupLocalDay = null;
 }
 
 /**
  * 데이터 리스너 onDataUpdate 등에서 호출.
- * 조건 충족 시 짧게 디바운스 후 1회만 팝업 (같은 로그인 세션·같은 uid 기준).
+ * 조건 충족 시 짧게 디바운스 후 팝업 (노출 빈도는 관리자 설정).
  */
 export function scheduleAttendanceCheckIfNeeded() {
     if (typeof window === 'undefined') return;
@@ -259,17 +345,17 @@ export function scheduleAttendanceCheckIfNeeded() {
     const mainApp = document.getElementById('mainApp');
     if (!mainApp || mainApp.classList.contains('hidden')) return;
 
+    resetWelcomePopupGateIfNewLocalDay();
+
     if (user.uid !== lastAttendanceUid) {
         lastAttendanceUid = user.uid;
         attendanceShownForUidSession = false;
     }
-    if (attendanceShownForUidSession) return;
 
     if (attendanceDebounceTimer) clearTimeout(attendanceDebounceTimer);
     attendanceDebounceTimer = setTimeout(() => {
         attendanceDebounceTimer = null;
         void (async () => {
-            if (attendanceShownForUidSession) return;
             if (!window.currentUser || window.currentUser.uid !== user.uid || window.currentUser.isAnonymous) return;
             if (!authFlowManager.hasCompleted) return;
             const mainEl = document.getElementById('mainApp');
@@ -278,6 +364,7 @@ export function scheduleAttendanceCheckIfNeeded() {
 
             const cfg = await fetchAttendancePopupRoot();
             const env = getMealogClientEnv();
+            const uid = user.uid;
 
             const dates = collectRecordedDateSet();
             const noRecRaw = cfg.noRecordMessage != null ? String(cfg.noRecordMessage).trim() : '';
@@ -285,18 +372,29 @@ export function scheduleAttendanceCheckIfNeeded() {
                 noRecRaw || `${DEFAULT_NO_RECORD_L1}\n${DEFAULT_NO_RECORD_L2}`;
             const streakExtra = String(cfg.hasRecordMessage ?? '').trim();
 
+            const freqNo = cfg.noRecordFrequency ?? 'every_session';
+            const freqHas = cfg.hasRecordFrequency ?? 'every_session';
+
             if (dates.size === 0) {
                 if (!envMatchesScenario(cfg.noRecordApplyTo, env)) return;
+                if (freqNo === 'once_per_day' && wasWelcomeShownToday(uid, 'no')) return;
+                if (freqNo === 'every_session' && attendanceShownForUidSession) return;
                 attendanceShownForUidSession = true;
-                showAttendancePopup(noRecordBody);
+                if (freqNo === 'once_per_day') markWelcomeShownToday(uid, 'no');
+                showAttendancePopup(noRecordBody, '', 'noRecord');
                 return;
             }
             if (!envMatchesScenario(cfg.hasRecordApplyTo, env)) return;
+            if (freqHas === 'once_per_day' && wasWelcomeShownToday(uid, 'has')) return;
+            if (freqHas === 'every_session' && attendanceShownForUidSession) return;
             attendanceShownForUidSession = true;
+            if (freqHas === 'once_per_day') markWelcomeShownToday(uid, 'has');
             const streak = computeConsecutiveStreakDays(dates);
-            const streakHead = `${streak}일 연속 기록!!`;
+            const streakHead = formatAttendanceStreakHeadline(streak);
             showAttendancePopup(
-                streakExtra ? `${streakHead}\n${streakExtra}` : streakHead
+                streakExtra ? `${streakHead}\n${streakExtra}` : streakHead,
+                '',
+                'hasRecord'
             );
         })();
     }, 450);

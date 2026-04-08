@@ -1381,10 +1381,19 @@ function fillAttendanceScenarioRadios(name, value) {
     });
 }
 
+function fillAttendanceFrequencyRadios(name, value) {
+    const v = value === 'once_per_day' || value === 'every_session' ? value : 'every_session';
+    document.querySelectorAll(`input[name="${name}"]`).forEach((r) => {
+        r.checked = r.value === v;
+    });
+}
+
 function fillAttendancePopupForm(rawAp) {
     const n = normalizeAttendancePopup(rawAp && typeof rawAp === 'object' ? rawAp : {});
     fillAttendanceScenarioRadios('attendanceNoRecordApplyTo', n.noRecordApplyTo);
     fillAttendanceScenarioRadios('attendanceHasRecordApplyTo', n.hasRecordApplyTo);
+    fillAttendanceFrequencyRadios('attendanceNoRecordFrequency', n.noRecordFrequency);
+    fillAttendanceFrequencyRadios('attendanceHasRecordFrequency', n.hasRecordFrequency);
     const noTa = document.getElementById('attendanceNoRecordMessage');
     if (noTa) {
         noTa.value =
@@ -1437,12 +1446,20 @@ function readAttendanceScenarioApply(name) {
     return 'all';
 }
 
+function readAttendanceFrequency(name) {
+    const v = document.querySelector(`input[name="${name}"]:checked`)?.value;
+    if (v === 'once_per_day' || v === 'every_session') return v;
+    return 'every_session';
+}
+
 window.saveAttendancePopupSettings = async function () {
     try {
         const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
         const payload = {
             noRecordApplyTo: readAttendanceScenarioApply('attendanceNoRecordApplyTo'),
             hasRecordApplyTo: readAttendanceScenarioApply('attendanceHasRecordApplyTo'),
+            noRecordFrequency: readAttendanceFrequency('attendanceNoRecordFrequency'),
+            hasRecordFrequency: readAttendanceFrequency('attendanceHasRecordFrequency'),
             noRecordMessage: document.getElementById('attendanceNoRecordMessage')?.value?.trim() ?? '',
             hasRecordMessage: document.getElementById('attendanceHasRecordMessage')?.value?.trim() ?? ''
         };

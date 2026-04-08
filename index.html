@@ -42,6 +42,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/earlyaccess/nanumsquareround.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/earlyaccess/nanumpenscript.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Yeon+Sung&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <link rel="stylesheet" href="css/style.css">
@@ -403,7 +404,7 @@
                 </div>
             </div>
             <svg id="successPopupTextSvg" width="260" height="52" viewBox="0 0 260 52" overflow="visible" class="max-w-full shrink-0" aria-hidden="true">
-                <text id="successPopupText" x="130" y="38" text-anchor="middle" class="success-popup-text-core">기록 완료</text>
+                <text id="successPopupText" x="130" y="38" text-anchor="middle" class="success-popup-text-core">기록 완료!</text>
             </svg>
         </div>
     </div>
@@ -412,15 +413,27 @@
     <div id="attendancePopup" class="hidden fixed inset-0 z-[9480] flex items-center justify-center">
         <div id="attendancePopupBackdrop" class="absolute inset-0 bg-slate-900/25"></div>
         <div id="attendancePopupContent" class="relative z-10 w-[92%] max-w-[22rem] bg-transparent flex flex-col items-center gap-[0.15625rem] px-2 py-2">
-            <div class="popup-celebrate-ring popup-celebrate-ring--check flex items-center justify-center" aria-hidden="true">
-                <div class="success-check">
+            <div class="popup-celebrate-ring popup-celebrate-ring--check flex items-center justify-center min-h-[4.75rem]" aria-hidden="true">
+                <!-- 기록 없을 때 웰컴만: 붉은 하트 -->
+                <div id="attendancePopupIconHeart" class="success-check shrink-0">
                     <svg viewBox="0 0 52 52" width="73" height="73">
-                        <circle class="success-check__fill" cx="26" cy="26" r="20" fill="#ffffff"></circle>
-                        <circle class="success-check__circle-bg" cx="26" cy="26" r="20" fill="none"></circle>
-                        <path class="success-check__mark-bg" fill="none" d="M14 27 L22 35 L38 18"></path>
-                        <circle class="success-check__circle" cx="26" cy="26" r="20" fill="none"></circle>
-                        <path class="success-check__mark" fill="none" d="M14 27 L22 35 L38 18"></path>
+                        <g class="attendance-popup-heart-wrap" transform="translate(26, 26) scale(1.92) translate(-12, -11)">
+                            <g class="attendance-popup-heart-flutter">
+                                <path
+                                    class="attendance-popup-heart-path"
+                                    fill="#dc2626"
+                                    stroke="#ffffff"
+                                    stroke-width="1.25"
+                                    stroke-linejoin="round"
+                                    d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+                                />
+                            </g>
+                        </g>
                     </svg>
+                </div>
+                <!-- 기록 있을 때 웰컴: 따봉 -->
+                <div id="attendancePopupIconClap" class="hidden shrink-0 flex h-[73px] w-[73px] items-center justify-center" aria-hidden="true">
+                    <span class="attendance-popup-thumbs-emoji select-none text-[3.25rem] leading-none" role="img" aria-label="따봉">👍</span>
                 </div>
             </div>
             <svg id="attendancePopupTextSvg" width="340" height="60" viewBox="0 0 340 60" overflow="visible" class="max-w-full w-full shrink-0" aria-hidden="true" style="height:auto">
