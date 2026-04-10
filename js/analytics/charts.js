@@ -1,5 +1,6 @@
 // 차트 렌더링 관련 함수들
 import { logUsageMetric } from '../usage-metrics.js';
+import { effectiveChartTag } from './meal-analytics-tags.js';
 import { VIBRANT_COLORS, CUMULATIVE_BAR_GRADIENT, RATING_GRADIENT, SATIETY_DATA } from '../constants.js';
 import { generateColorMap, toLocalDateString } from '../utils.js';
 import { getDayName } from './date-utils.js';
@@ -138,9 +139,12 @@ function aggregateProportionData(data, key) {
     const counts = {};
     const getVal = (m) => {
         if (key === 'snackPlace') {
-            const sm = String(m.snackPlaceMain ?? '').trim();
-            if (sm) return sm;
-            return String(m.place ?? '').trim() || '미입력';
+            const v = effectiveChartTag(m, 'snackPlace');
+            return v || '미입력';
+        }
+        if (key === 'mealType' || key === 'category' || key === 'withWhom' || key === 'snackType') {
+            const v = effectiveChartTag(m, key);
+            return v || '미입력';
         }
         return String(m[key] ?? '').trim() || '미입력';
     };
@@ -477,9 +481,10 @@ export function openDetailModal(key, title) {
     
     const getValue = (m) => {
         if (key === 'snackPlace') {
-            const sm = String(m.snackPlaceMain ?? '').trim();
-            if (sm) return sm;
-            return String(m.place ?? '').trim() || '미입력';
+            return effectiveChartTag(m, 'snackPlace') || '미입력';
+        }
+        if (key === 'mealType' || key === 'category' || key === 'withWhom' || key === 'snackType') {
+            return effectiveChartTag(m, key) || '미입력';
         }
         if (key === 'satiety' || key === 'snackSatiety') {
             const satietyNum = parseInt(m.satiety);
@@ -496,7 +501,7 @@ export function openDetailModal(key, title) {
             return '미입력';
         }
         if (key === 'snackWithWhom') {
-            return (m.withWhomDetail || m.withWhom) || '미입력';
+            return effectiveChartTag(m, 'withWhom') || '미입력';
         }
         return m[key] || '미입력';
     };

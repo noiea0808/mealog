@@ -1206,17 +1206,26 @@ export async function saveEntry() {
             }
         }
 
-        // 메인 칩 미선택 + 입력/서브칩만 있는 경우 → 분석·집계는「기타」로 통일
+        // 메인 칩 미선택 + (해당 축) 입력·서브칩만 있으면 → 분석·집계는「기타」
         const categoryChip = getT('categoryChips');
         const withChipBase = isS ? getT('snackWithChips') : getT('withChips');
         const snackTypeChip = getT('snackTypeChips');
         const hasMenuSub = collectActiveSubChipLabels('menuSuggestions').length > 0;
         const hasPeopleSubMain = collectActiveSubChipLabels(isS ? 'snackPeopleSuggestions' : 'peopleSuggestions').length > 0;
         const hasSnackSub = collectActiveSubChipLabels('snackSuggestions').length > 0;
+        const hasRestaurantSub = !isS ? collectActiveSubChipLabels('restaurantSuggestions').length > 0 : 0;
+        const hasSnackPlaceSub = isS ? collectActiveSubChipLabels('snackPlaceSuggestions').length > 0 : 0;
 
         let mealTypeResolved = mealType;
-        if (!isS && !isSk && !(mealType || '').trim() && (placeInputVal || '').trim()) {
-            mealTypeResolved = '기타';
+        if (!isS && !isSk && !(mealType || '').trim()) {
+            const hasAnyHowAxis =
+                (placeInputVal || '').trim() ||
+                hasRestaurantSub ||
+                (menuInputVal || '').trim() ||
+                hasMenuSub ||
+                (withInputVal || '').trim() ||
+                hasPeopleSubMain;
+            if (hasAnyHowAxis) mealTypeResolved = '기타';
         }
         let categoryResolved = categoryChip;
         if (!isS && !isSk && !(categoryChip || '').trim() && ((menuInputVal || '').trim() || hasMenuSub)) {
@@ -1227,13 +1236,21 @@ export async function saveEntry() {
             withWhomResolved = '기타';
         }
         let snackTypeResolved = snackTypeChip;
-        if (isS && !(snackTypeChip || '').trim() && ((snackInputVal || '').trim() || hasSnackSub)) {
-            snackTypeResolved = '기타';
+        if (isS && !(snackTypeChip || '').trim()) {
+            const hasSnackAnyAxis =
+                (snackInputVal || '').trim() ||
+                hasSnackSub ||
+                (snackWithInputVal || '').trim() ||
+                hasPeopleSubMain ||
+                (snackPlaceInputVal || '').trim() ||
+                hasSnackPlaceSub;
+            if (hasSnackAnyAxis) snackTypeResolved = '기타';
         }
         const selectedSnackPlaceMain = appState.selectedSnackPlaceMainTag || null;
         let snackPlaceMainResolved = '';
         if (isS && !isSk) {
-            snackPlaceMainResolved = selectedSnackPlaceMain || ((snackPlaceInputVal || '').trim() ? '기타' : '');
+            const hasPlaceBody = (snackPlaceInputVal || '').trim() || hasSnackPlaceSub;
+            snackPlaceMainResolved = selectedSnackPlaceMain || (hasPlaceBody ? '기타' : '');
         }
         
         // 디버깅: 간식 입력값 확인

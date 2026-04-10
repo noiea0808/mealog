@@ -1,6 +1,6 @@
 /**
- * 출석/연속 기록 팝업 — 어제(서울 달력)까지 이어진 연속 일수(**mealHistory 문서가 있는 날만**; 전일 무기록이면 0).
- * (기록 유무 판별은 기존처럼 dailyStats ∪ mealHistory — 연속 일수만 stats 유령 count 제외.)
+ * 출석/연속 기록 팝업 — 어제(서울 달력)까지 이어진 연속 일수(트래커와 동일: dailyStats ∪ mealHistory로 일자별 기록 유무; 전일 무기록이면 0).
+ * (meals 쿼리는 최근 구간만 로드되므로 연속 일수는 전역 dailyStats와 합쳐 계산.)
  * 노출 빈도: 케이스별(기록 없음·연속 없음·1일·2일+) 관리자 설정 — 접속마다(sessionStorage) 또는 하루 1회(localStorage).
  * 관리자 설정(adminSettings/config.attendancePopup)으로 기록 유무·환경별 문구·노출(끔 포함).
  */
@@ -48,17 +48,14 @@ export function collectRecordedDateSet() {
 }
 
 /**
- * 연속 기록·기록완료 멘트 전용: **mealHistory에 문서가 있는 날**만 사용.
- * dailyStats만 남은 유령 count는 연속 일수를 부풀리므로 제외(삭제·백필 불일치 등).
+ * 연속 기록·기록완료 멘트용 날짜 집합.
+ * — 예전에는 mealHistory만 썼는데, meals 리스너가 **최근 ~21일·최대 50건**만 올려
+ *   긴 연속 기록이 그 구간 밖에서 끊긴 것처럼 짧게 나왔음(해당 월 한정 계산 아님).
+ * — 트래커와 동일하게 {@link collectRecordedDateSet} (dailyStats ∪ mealHistory, count>0) 사용.
  * @returns {Set<string>}
  */
 export function collectRecordedDateSetForStreak() {
-    const set = new Set();
-    if (!window.mealHistory || !Array.isArray(window.mealHistory)) return set;
-    for (const m of window.mealHistory) {
-        if (m?.date && isValidYmd(m.date)) set.add(m.date);
-    }
-    return set;
+    return collectRecordedDateSet();
 }
 
 /**
