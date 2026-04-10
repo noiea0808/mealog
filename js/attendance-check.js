@@ -1,12 +1,13 @@
 /**
- * 출석/연속 기록 팝업 — 어제(로컬)까지 이어진 연속 일수(dailyStats ∪ mealHistory). 어제 무기록이면 0.
+ * 출석/연속 기록 팝업 — 어제(서울 달력)까지 이어진 연속 일수(**mealHistory 문서가 있는 날만**; 전일 무기록이면 0).
+ * (기록 유무 판별은 기존처럼 dailyStats ∪ mealHistory — 연속 일수만 stats 유령 count 제외.)
  * 노출 빈도: 케이스별(기록 없음·연속 없음·1일·2일+) 관리자 설정 — 접속마다(sessionStorage) 또는 하루 1회(localStorage).
  * 관리자 설정(adminSettings/config.attendancePopup)으로 기록 유무·환경별 문구·노출(끔 포함).
  */
 import { isDemoUser } from './demo-account.js';
 import { appCheckInitPromise, db, appId, refreshAppCheckTokenBeforeFirestore } from './firebase.js';
 import { showAttendancePopup } from './ui.js';
-import { getMealogClientEnv, toLocalDateString } from './utils.js';
+import { addCalendarDaysSeoulYmd, getMealogClientEnv, toLocalDateString, toSeoulDateString } from './utils.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
 function isValidYmd(s) {
@@ -46,27 +47,35 @@ export function collectRecordedDateSet() {
     return set;
 }
 
-function prevLocalYmd(ymd) {
-    const [y, m, d] = ymd.split('-').map(Number);
-    const dt = new Date(y, m - 1, d);
-    dt.setDate(dt.getDate() - 1);
-    return toLocalDateString(dt);
+/**
+ * 연속 기록·기록완료 멘트 전용: **mealHistory에 문서가 있는 날**만 사용.
+ * dailyStats만 남은 유령 count는 연속 일수를 부풀리므로 제외(삭제·백필 불일치 등).
+ * @returns {Set<string>}
+ */
+export function collectRecordedDateSetForStreak() {
+    const set = new Set();
+    if (!window.mealHistory || !Array.isArray(window.mealHistory)) return set;
+    for (const m of window.mealHistory) {
+        if (m?.date && isValidYmd(m.date)) set.add(m.date);
+    }
+    return set;
 }
 
 /**
- * 오늘(로컬) 기준 **어제**까지 달력 역순으로 이어진 연속 기록 일수.
- * 어제에 기록이 없으면 0 (과거에만 기록이 있어도 연속 기록으로 보지 않음).
+ * 오늘(서울 달력) 기준 **전일(어제)**부터 역순으로 이어진 연속 기록 일수.
+ * 전일에 기록이 없으면 0 (과거에만 기록이 있어도 연속 기록으로 보지 않음).
+ * — 브라우저 로컬 날짜와 기록 YYYY-MM-DD가 어긋나면 오판하므로 Asia/Seoul 기준으로 통일.
  */
 export function computeConsecutiveStreakDays(dateSet) {
     if (!dateSet || dateSet.size === 0) return 0;
-    const today = toLocalDateString(new Date());
-    const yesterday = prevLocalYmd(today);
-    if (!dateSet.has(yesterday)) return 0;
+    const today = toSeoulDateString(new Date());
+    const yesterday = addCalendarDaysSeoulYmd(today, -1);
+    if (!yesterday || !dateSet.has(yesterday)) return 0;
     let streak = 0;
     let cursor = yesterday;
     while (dateSet.has(cursor)) {
         streak++;
-        cursor = prevLocalYmd(cursor);
+        cursor = addCalendarDaysSeoulYmd(cursor, -1);
     }
     return streak;
 }
@@ -90,7 +99,7 @@ export function resolveRecordCompletePopupMessage(wasNewRecord, mealDateIso) {
     if (countOnDate < 1) return '기록 완료!';
     if (countOnDate !== 1) return '기록 완료!';
 
-    const n = computeConsecutiveStreakDays(collectRecordedDateSet());
+    const n = computeConsecutiveStreakDays(collectRecordedDateSetForStreak());
     if (n <= 0) return '기록 완료!';
     return `${n + 1}일 연속 기록!`;
 }
@@ -738,7 +747,7 @@ export function scheduleAttendanceCheckIfNeeded() {
                     }
                     return;
                 }
-                const streak = computeConsecutiveStreakDays(dates);
+                const streak = computeConsecutiveStreakDays(collectRecordedDateSetForStreak());
                 /** @type {{ row: UnifiedScenarioRow, slot: 'noStreak'|'streakOne'|'streakTwoOrMore', welcomeIcon: 'hasRecordRestart'|'hasRecord', markKind: 'ns'|'s1'|'s2p' }} */
                 let picked;
                 if (streak <= 0) {

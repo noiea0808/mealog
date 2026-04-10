@@ -967,6 +967,31 @@ export function toLocalDateString(date) {
     return `${year}-${month}-${day}`;
 }
 
+/** Asia/Seoul 달력 기준 YYYY-MM-DD (연속 기록·관리자 웰컴 API와 동일) */
+export function toSeoulDateString(date) {
+    if (!date || !(date instanceof Date)) {
+        console.warn('toSeoulDateString: 유효하지 않은 날짜 객체', date);
+        return '';
+    }
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Seoul',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).format(date);
+}
+
+/**
+ * 서울 YYYY-MM-DD에 delta일(음수 가능)을 더한 서울 달력 날짜.
+ * functions/index.js adminYmdAddDays와 동일한 산술.
+ */
+export function addCalendarDaysSeoulYmd(ymd, deltaDays) {
+    if (typeof ymd !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return '';
+    const [y, m, d] = ymd.split('-').map(Number);
+    const ms = Date.UTC(y, m - 1, d, 12, 0, 0) + deltaDays * 86400000;
+    return toSeoulDateString(new Date(ms));
+}
+
 /**
  * 공유 로고 카드 태그라인 — 웰컴(출석) 팝업과 동일 Yeon Sung
  * Google Fonts Yeon Sung은 Regular(400)만 제공(별도 Bold 없음). 캔버스에서 600이면 가짜 볼드가 음절마다 달라질 수 있어 normal(400)만 사용.
