@@ -1414,27 +1414,35 @@ function fillTriFreq(name, value) {
 
 function fillAttendancePopupForm(rawAp) {
     const n = normalizeAttendancePopup(rawAp && typeof rawAp === 'object' ? rawAp : {});
-    fillTriFreq('attendanceStagingHasFreq', n.staging.hasRecord.frequency);
-    fillTriFreq('attendanceStagingNoFreq', n.staging.noRecord.frequency);
-    fillTriFreq('attendanceProductionHasFreq', n.production.hasRecord.frequency);
-    fillTriFreq('attendanceProductionNoFreq', n.production.noRecord.frequency);
-
-    const stagingNo = document.getElementById('attendanceStagingNoMessage');
-    if (stagingNo) {
-        const msg = n.staging.noRecord.message;
-        stagingNo.value =
-            msg === null || msg === undefined ? ATT_DEFAULT_NO_RECORD_COMBINED : String(msg);
+    const keys = ['noRecord', 'noStreak', 'streakOne', 'streakTwoOrMore'];
+    const stagingFreqNames = [
+        'attendanceNoRecordStagingFreq',
+        'attendanceNoStreakStagingFreq',
+        'attendanceStreakOneStagingFreq',
+        'attendanceStreakMultiStagingFreq'
+    ];
+    const prodFreqNames = [
+        'attendanceNoRecordProductionFreq',
+        'attendanceNoStreakProductionFreq',
+        'attendanceStreakOneProductionFreq',
+        'attendanceStreakMultiProductionFreq'
+    ];
+    const msgIds = ['attendanceNoMessage', 'attendanceNoStreakMessage', 'attendanceStreakOneMessage', 'attendanceStreakMultiMessage'];
+    for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        const row = n[k];
+        fillTriFreq(stagingFreqNames[i], row.stagingFrequency);
+        fillTriFreq(prodFreqNames[i], row.productionFrequency);
+        const msgEl = document.getElementById(msgIds[i]);
+        const v = row.message;
+        if (msgEl) {
+            if (i === 0) {
+                msgEl.value = v === null || v === undefined ? ATT_DEFAULT_NO_RECORD_COMBINED : String(v);
+            } else {
+                msgEl.value = v == null ? '' : String(v);
+            }
+        }
     }
-    const prodNo = document.getElementById('attendanceProductionNoMessage');
-    if (prodNo) {
-        const msg = n.production.noRecord.message;
-        prodNo.value =
-            msg === null || msg === undefined ? ATT_DEFAULT_NO_RECORD_COMBINED : String(msg);
-    }
-    const stagingHas = document.getElementById('attendanceStagingHasMessage');
-    if (stagingHas) stagingHas.value = n.staging.hasRecord.message != null ? String(n.staging.hasRecord.message) : '';
-    const prodHas = document.getElementById('attendanceProductionHasMessage');
-    if (prodHas) prodHas.value = n.production.hasRecord.message != null ? String(n.production.hasRecord.message) : '';
 }
 
 async function loadAdminSettings() {
@@ -1482,25 +1490,25 @@ window.saveAttendancePopupSettings = async function () {
     try {
         const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
         const payload = {
-            staging: {
-                hasRecord: {
-                    frequency: readTriFreq('attendanceStagingHasFreq'),
-                    message: document.getElementById('attendanceStagingHasMessage')?.value?.trim() ?? ''
-                },
-                noRecord: {
-                    frequency: readTriFreq('attendanceStagingNoFreq'),
-                    message: document.getElementById('attendanceStagingNoMessage')?.value?.trim() ?? ''
-                }
+            noRecord: {
+                message: document.getElementById('attendanceNoMessage')?.value?.trim() ?? '',
+                stagingFrequency: readTriFreq('attendanceNoRecordStagingFreq'),
+                productionFrequency: readTriFreq('attendanceNoRecordProductionFreq')
             },
-            production: {
-                hasRecord: {
-                    frequency: readTriFreq('attendanceProductionHasFreq'),
-                    message: document.getElementById('attendanceProductionHasMessage')?.value?.trim() ?? ''
-                },
-                noRecord: {
-                    frequency: readTriFreq('attendanceProductionNoFreq'),
-                    message: document.getElementById('attendanceProductionNoMessage')?.value?.trim() ?? ''
-                }
+            noStreak: {
+                message: document.getElementById('attendanceNoStreakMessage')?.value?.trim() ?? '',
+                stagingFrequency: readTriFreq('attendanceNoStreakStagingFreq'),
+                productionFrequency: readTriFreq('attendanceNoStreakProductionFreq')
+            },
+            streakOne: {
+                message: document.getElementById('attendanceStreakOneMessage')?.value?.trim() ?? '',
+                stagingFrequency: readTriFreq('attendanceStreakOneStagingFreq'),
+                productionFrequency: readTriFreq('attendanceStreakOneProductionFreq')
+            },
+            streakTwoOrMore: {
+                message: document.getElementById('attendanceStreakMultiMessage')?.value?.trim() ?? '',
+                stagingFrequency: readTriFreq('attendanceStreakMultiStagingFreq'),
+                productionFrequency: readTriFreq('attendanceStreakMultiProductionFreq')
             }
         };
         await setDoc(configRef, { attendancePopup: payload }, { merge: true });

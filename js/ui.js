@@ -1,4 +1,5 @@
 // UI 관련 함수들
+import { getWelcomeWeekDonutSlides, getWelcomeWeekSlotRecordCount } from './analytics/charts.js';
 
 // 로딩 오버레이 중앙 관리
 let loadingOverlayTimeout = null;
@@ -199,15 +200,313 @@ function ensureAttendancePopupCloseBound() {
     btn.addEventListener('click', closeAttendancePopup);
 }
 
+const WELCOME_CHART_NS = 'http://www.w3.org/2000/svg';
+
+function attendanceWelcomeEscapeXml(s) {
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function polarToCartesian(cx, cy, r, ang) {
+    return [cx + r * Math.cos(ang), cy + r * Math.sin(ang)];
+}
+
+function donutArcPath(cx, cy, rInner, rOuter, a0, a1) {
+    const large = a1 - a0 > Math.PI ? 1 : 0;
+    const [x0o, y0o] = polarToCartesian(cx, cy, rOuter, a0);
+    const [x1o, y1o] = polarToCartesian(cx, cy, rOuter, a1);
+    const [x0i, y0i] = polarToCartesian(cx, cy, rInner, a1);
+    const [x1i, y1i] = polarToCartesian(cx, cy, rInner, a0);
+    return `M ${x0o} ${y0o} A ${rOuter} ${rOuter} 0 ${large} 1 ${x1o} ${y1o} L ${x0i} ${y0i} A ${rInner} ${rInner} 0 ${large} 0 ${x1i} ${y1i} Z`;
+}
+
+/** SVG 단일 호(360°)는 path 호가 비어 보일 수 있어 stroke 링으로 통일 */
+function donutFullRingCircle(cx, cy, rInner, rOuter, fill) {
+    const rStroke = (rInner + rOuter) / 2;
+    const sw = rOuter - rInner;
+    const safeFill = /^#[0-9A-Fa-f]{3,8}$/.test(String(fill || '')) ? String(fill) : '#94a3b8';
+    return `<circle cx="${cx}" cy="${cy}" r="${rStroke}" fill="none" stroke="${safeFill}" stroke-width="${sw}" />`;
+}
+
+/** 도넛 링 위 라벨용 — 길면 말줄임(유니코드 안전) */
+function truncateWelcomeRingLabel(str, maxChars) {
+    const s = String(str ?? '').trim();
+    if (!s) return '';
+    const chars = [...s];
+    if (chars.length <= maxChars) return s;
+    return `${chars.slice(0, Math.max(1, maxChars - 1)).join('')}…`;
+}
+
+/**
+ * 가운데 홀: (데이터 있음) 최근 7일 기록 + 어떻게·무엇을… / (없음) 안내. 링 위는 항목·%만.
+ * @param {{ title: string, total: number, segments: { color: string, count: number, displayName: string, fraction: number }[] }} slide
+ */
+function buildAttendanceWelcomeDonutSvg(slide) {
+    const { title: dimensionTitle, total, segments } = slide;
+    const cx = 120;
+    const cy = 120;
+    const rOut = 114;
+    const rIn = 44;
+    const rMid = (rIn + rOut) / 2;
+
+    const paths = [];
+    if (!total || !segments.length) {
+        paths.push(donutFullRingCircle(cx, cy, rIn, rOut, '#e2e8f0'));
+    } else if (segments.length === 1 && segments[0].fraction >= 0.999) {
+        const seg = segments[0];
+        const fill = /^#[0-9A-Fa-f]{3,8}$/.test(String(seg.color || '')) ? String(seg.color) : '#94a3b8';
+        paths.push(donutFullRingCircle(cx, cy, rIn, rOut, fill));
+    } else {
+        let a = -Math.PI / 2;
+        for (const seg of segments) {
+            const sweep = seg.fraction * Math.PI * 2;
+            if (sweep <= 0.00001) {
+                a += sweep;
+                continue;
+            }
+            const a1 = a + sweep;
+            const fill = /^#[0-9A-Fa-f]{3,8}$/.test(String(seg.color || '')) ? String(seg.color) : '#94a3b8';
+            paths.push(`<path d="${donutArcPath(cx, cy, rIn, rOut, a, a1)}" fill="${fill}"/>`);
+            a = a1;
+        }
+    }
+
+    const dim = String(dimensionTitle || '').trim() || '—';
+    let centerBlock = '';
+    if (!total || !segments.length) {
+        centerBlock = `<text x="${cx}" y="${cy - 10}" text-anchor="middle" font-size="13" font-weight="700" fill="#475569" style="font-family: inherit">${attendanceWelcomeEscapeXml('최근 7일')}</text>
+<text x="${cx}" y="${cy + 10}" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a" style="font-family: inherit">${attendanceWelcomeEscapeXml(dim)}</text>
+<text x="${cx}" y="${cy + 32}" text-anchor="middle" font-size="10" fill="#94a3b8" style="font-family: inherit">해당 기간 데이터가 없습니다</text>`;
+    } else {
+        centerBlock = `<text x="${cx}" y="${cy - 14}" text-anchor="middle" font-size="13" font-weight="700" fill="#64748b" style="font-family: inherit">${attendanceWelcomeEscapeXml('최근 7일')}</text>
+<text x="${cx}" y="${cy + 14}" text-anchor="middle" font-size="19" font-weight="700" fill="#0f172a" style="font-family: inherit">${attendanceWelcomeEscapeXml(dim)}</text>`;
+    }
+
+    const ringLabels = [];
+    if (!total || !segments.length) {
+        const mid = -Math.PI / 2;
+        const x = cx + rMid * Math.cos(mid);
+        const y = cy + rMid * Math.sin(mid);
+        ringLabels.push(
+            `<g transform="translate(${x.toFixed(2)},${y.toFixed(2)})"><text text-anchor="middle" dominant-baseline="middle" fill="#94a3b8" font-size="12" font-weight="600" style="font-family: inherit">데이터 없음</text></g>`
+        );
+    } else if (total > 0 && segments.length) {
+        let a = -Math.PI / 2;
+        const maxLabel = segments.length > 5 ? 6 : 8;
+        const singleFull = segments.length === 1 && segments[0].fraction >= 0.999;
+        for (const seg of segments) {
+            const sweep = seg.fraction * Math.PI * 2;
+            if (sweep <= 0.00001) {
+                a += sweep;
+                continue;
+            }
+            const pct = Math.round((seg.count / total) * 100);
+            const mid = a + sweep / 2;
+            const x = cx + rMid * Math.cos(mid);
+            const y = cy + rMid * Math.sin(mid);
+            if (!singleFull && (pct < 6 || sweep < 0.12)) {
+                a += sweep;
+                continue;
+            }
+            const nameLine = attendanceWelcomeEscapeXml(truncateWelcomeRingLabel(seg.displayName, maxLabel));
+            ringLabels.push(
+                `<g transform="translate(${x.toFixed(2)},${y.toFixed(2)})"><text text-anchor="middle" dominant-baseline="middle" fill="#0f172a" stroke="#ffffff" stroke-width="3" paint-order="stroke fill" font-size="13" font-weight="700" style="font-family: inherit"><tspan x="0" dy="-8">${nameLine}</tspan><tspan x="0" dy="18">${pct}%</tspan></text></g>`
+            );
+            a += sweep;
+        }
+    }
+
+    return `<svg viewBox="0 0 240 240" class="attendance-welcome-donut-svg w-[14.4rem] max-w-[min(14.4rem,92vw)] h-auto mx-auto block" xmlns="${WELCOME_CHART_NS}" aria-hidden="true">${paths.join('')}${centerBlock}${ringLabels.join('')}</svg>`;
+}
+
+/**
+ * 슬라이드 한 장 — 도넛 SVG만 (외곽 박스·스위치·도트는 HTML 껍데기)
+ * @param {{ title: string, total: number, segments: { color: string, count: number, displayName: string }[] }} slide
+ */
+function buildWelcomeChartSlideHtml(slide) {
+    const svg = buildAttendanceWelcomeDonutSvg(slide);
+    return `<div class="attendance-welcome-slide-inner flex w-full justify-center px-1">${svg}</div>`;
+}
+
+/** @type {'meal'|'snack'} */
+let welcomeChartKind = 'meal';
+
+let attendanceWelcomeSlideIdx = 0;
+let attendanceWelcomeDragStartX = null;
+
+function applyAttendanceWelcomeSlideTransform() {
+    const track = document.getElementById('attendanceWelcomeChartTrack');
+    const dots = document.getElementById('attendanceWelcomeChartDots');
+    const n = Number(track?.dataset.slideCount || 0);
+    if (!track || n < 1) return;
+    const pct = 100 / n;
+    track.style.transform = `translateX(-${attendanceWelcomeSlideIdx * pct}%)`;
+    if (dots) {
+        dots.querySelectorAll('.attendance-welcome-dot').forEach((d, i) => {
+            d.classList.toggle('attendance-welcome-dot--active', i === attendanceWelcomeSlideIdx);
+        });
+    }
+}
+
+function updateWelcomeMealSnackSwitchUi() {
+    const mealBtn = document.getElementById('attendanceWelcomeBtnMeal');
+    const snackBtn = document.getElementById('attendanceWelcomeBtnSnack');
+    const countEl = document.getElementById('attendanceWelcomeRecordCount');
+    if (!mealBtn || !snackBtn) return;
+    const onMeal = welcomeChartKind === 'meal';
+    mealBtn.classList.toggle('attendance-welcome-kind--active', onMeal);
+    mealBtn.setAttribute('aria-pressed', onMeal ? 'true' : 'false');
+    snackBtn.classList.toggle('attendance-welcome-kind--active', !onMeal);
+    snackBtn.setAttribute('aria-pressed', onMeal ? 'false' : 'true');
+    if (countEl) {
+        const n = getWelcomeWeekSlotRecordCount(7, welcomeChartKind);
+        countEl.textContent = `기록 ${n}회`;
+    }
+}
+
+function bindAttendanceWelcomeMealSnackSwitchOnce() {
+    const sw = document.getElementById('attendanceWelcomeMealSnackSwitch');
+    if (!sw || sw.dataset.bound === '1') return;
+    sw.dataset.bound = '1';
+    sw.addEventListener('click', (e) => {
+        const mealHit = e.target.closest('#attendanceWelcomeBtnMeal');
+        const snackHit = e.target.closest('#attendanceWelcomeBtnSnack');
+        if (!mealHit && !snackHit) return;
+        const next = mealHit ? 'meal' : 'snack';
+        if (next === welcomeChartKind) return;
+        welcomeChartKind = next;
+        updateWelcomeMealSnackSwitchUi();
+        renderAttendanceWelcomeChartsArea();
+    });
+}
+
+function bindAttendanceWelcomeAnalysisMoreOnce() {
+    const btn = document.getElementById('attendanceWelcomeAnalysisMore');
+    if (!btn || btn.dataset.bound === '1') return;
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', () => {
+        closeAttendancePopup();
+        if (typeof window.switchMainTab === 'function') {
+            window.switchMainTab('dashboard');
+        }
+    });
+}
+
+function bindAttendanceWelcomeChartsOnce() {
+    const vp = document.getElementById('attendanceWelcomeChartViewport');
+    if (!vp || vp.dataset.bound === '1') return;
+    vp.dataset.bound = '1';
+
+    const clearDrag = () => {
+        attendanceWelcomeDragStartX = null;
+    };
+
+    const onPointerDown = (e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        attendanceWelcomeDragStartX = e.clientX;
+        try {
+            e.currentTarget.setPointerCapture(e.pointerId);
+        } catch (_) {
+            /* ignore */
+        }
+    };
+
+    const onPointerUp = (e) => {
+        if (attendanceWelcomeDragStartX == null) return;
+        const dx = e.clientX - attendanceWelcomeDragStartX;
+        attendanceWelcomeDragStartX = null;
+        try {
+            const el = e.currentTarget;
+            if (
+                typeof el.releasePointerCapture === 'function' &&
+                typeof el.hasPointerCapture === 'function' &&
+                el.hasPointerCapture(e.pointerId)
+            ) {
+                el.releasePointerCapture(e.pointerId);
+            }
+        } catch (_) {
+            /* ignore */
+        }
+        if (Math.abs(dx) < 36) return;
+        const n = Number(vp.dataset.slideCount || 0);
+        if (n < 2) return;
+        if (dx < 0) {
+            attendanceWelcomeSlideIdx = Math.min(attendanceWelcomeSlideIdx + 1, n - 1);
+        } else {
+            attendanceWelcomeSlideIdx = Math.max(attendanceWelcomeSlideIdx - 1, 0);
+        }
+        applyAttendanceWelcomeSlideTransform();
+    };
+
+    vp.addEventListener('pointerdown', onPointerDown);
+    vp.addEventListener('pointerup', onPointerUp);
+    vp.addEventListener('pointercancel', clearDrag);
+}
+
+function renderAttendanceWelcomeChartsArea() {
+    const wrap = document.getElementById('attendancePopupWelcomeCharts');
+    const track = document.getElementById('attendanceWelcomeChartTrack');
+    const dots = document.getElementById('attendanceWelcomeChartDots');
+    const vp = document.getElementById('attendanceWelcomeChartViewport');
+    if (!wrap || !track || !dots || !vp) return;
+
+    const slides = getWelcomeWeekDonutSlides(7, welcomeChartKind);
+    const n = slides.length;
+    track.dataset.slideCount = String(n);
+    vp.dataset.slideCount = String(n);
+    attendanceWelcomeSlideIdx = 0;
+
+    const wPct = 100 / n;
+    track.style.width = `${n * 100}%`;
+    track.innerHTML = slides
+        .map((slide) => {
+            const inner = buildWelcomeChartSlideHtml(slide);
+            return `<div class="attendance-welcome-slide flex flex-col items-center justify-center py-0.5 box-border px-0.5" style="flex:0 0 ${wPct}%;width:${wPct}%">${inner}</div>`;
+        })
+        .join('');
+
+    dots.innerHTML = slides
+        .map(
+            (_, i) =>
+                `<span class="attendance-welcome-dot${i === 0 ? ' attendance-welcome-dot--active' : ''}" role="presentation"></span>`
+        )
+        .join('');
+
+    wrap.classList.remove('hidden');
+    track.style.transform = 'translateX(0)';
+    updateWelcomeMealSnackSwitchUi();
+    bindAttendanceWelcomeMealSnackSwitchOnce();
+    bindAttendanceWelcomeAnalysisMoreOnce();
+    bindAttendanceWelcomeChartsOnce();
+}
+
 /**
  * 출석/연속 기록 팝업 닫기 (자동 닫기 없음 — 닫기 버튼 전용)
  */
 export function closeAttendancePopup() {
     const popup = document.getElementById('attendancePopup');
     const attendanceContent = document.getElementById('attendancePopupContent');
-    if (attendanceContent) attendanceContent.classList.remove('attendance-popup-has-aux');
+    if (attendanceContent) {
+        attendanceContent.classList.remove('attendance-popup-has-aux', 'attendance-popup-welcome-charts');
+    }
+    const welcomeWrap = document.getElementById('attendancePopupWelcomeCharts');
+    if (welcomeWrap) welcomeWrap.classList.add('hidden');
+    const welcomeTrack = document.getElementById('attendanceWelcomeChartTrack');
+    if (welcomeTrack) welcomeTrack.style.transform = '';
+    attendanceWelcomeSlideIdx = 0;
+    attendanceWelcomeDragStartX = null;
+    welcomeChartKind = 'meal';
+    updateWelcomeMealSnackSwitchUi();
     document.body.classList.remove('attendance-popup-anim');
     if (popup) popup.classList.add('hidden');
+    try {
+        if (typeof window.flushPendingContentPopup === 'function') window.flushPendingContentPopup();
+    } catch (_) {
+        /* ignore */
+    }
 }
 
 const ATTENDANCE_POPUP_SVG_NS = 'http://www.w3.org/2000/svg';
@@ -218,7 +517,7 @@ const ATTENDANCE_POPUP_MAX_AUX_LINES = 12;
  * line1의 첫 줄만 메인; 나머지 줄 + line2는 부가(박스).
  * @param {string} line1 메인(첫 줄) 또는 멀티라인(첫 줄=메인, 이후=부가)
  * @param {string} [line2] 부가 블록(멀티라인 가능)
- * @param {'noRecord'|'hasRecord'} [welcomeIcon] 기록 없음 웰컴은 하트, 그 외(연속 기록)는 박수 이모지
+ * @param {'noRecord'|'hasRecord'|'hasRecordRestart'} [welcomeIcon] 기록 없음=하트, 연속 있음=따봉, 어제 끊김=새싹
  */
 export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord') {
     const splitLines = (s) => {
@@ -251,21 +550,31 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
     const auxBox = document.getElementById('attendancePopupAuxBox');
     if (!popup || !textRoot || !textSvg) return;
 
+    const showWelcomeCharts = welcomeIcon === 'hasRecord' || welcomeIcon === 'hasRecordRestart';
+    const showAux = Boolean(secondary) && !showWelcomeCharts;
+
     if (auxWrap && auxBox) {
-        auxBox.textContent = secondary;
-        auxWrap.classList.toggle('hidden', !secondary);
+        auxBox.textContent = showAux ? secondary : '';
+        auxWrap.classList.toggle('hidden', !showAux);
     }
     const attendanceContent = document.getElementById('attendancePopupContent');
     if (attendanceContent) {
-        attendanceContent.classList.toggle('attendance-popup-has-aux', Boolean(secondary));
+        attendanceContent.classList.toggle('attendance-popup-has-aux', showAux);
     }
 
     const iconHeart = document.getElementById('attendancePopupIconHeart');
     const iconClap = document.getElementById('attendancePopupIconClap');
+    const emojiThumbs = document.getElementById('attendancePopupEmojiThumbs');
+    const emojiRestart = document.getElementById('attendancePopupEmojiRestart');
     if (iconHeart && iconClap) {
         const showHeart = welcomeIcon === 'noRecord';
         iconHeart.classList.toggle('hidden', !showHeart);
         iconClap.classList.toggle('hidden', showHeart);
+        if (emojiThumbs && emojiRestart) {
+            const showRestart = welcomeIcon === 'hasRecordRestart';
+            emojiThumbs.classList.toggle('hidden', showRestart);
+            emojiRestart.classList.toggle('hidden', !showRestart);
+        }
     }
 
     ensureAttendancePopupCloseBound();
@@ -290,11 +599,20 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
 
     textRoot.setAttribute('font-size', fs);
     /** 부가 문구 있을 때: 하단 여백·최소 높이를 줄여 메인 텍스트~박스 간격 확실히 축소 (overflow:visible로 획 여유) */
-    const bottomPad = secondary ? 8 : 18;
-    const minSvgH = secondary ? 44 : 56;
+    const bottomPad = showAux ? 8 : 18;
+    const minSvgH = showAux ? 44 : 56;
     const vbH = Math.max(minSvgH, topPad + fsNum + bottomPad);
     textSvg.setAttribute('viewBox', `0 0 340 ${vbH}`);
     textSvg.setAttribute('height', String(vbH));
+
+    if (showWelcomeCharts) {
+        attendanceWelcomeSlideIdx = 0;
+        renderAttendanceWelcomeChartsArea();
+        attendanceContent?.classList.add('attendance-popup-welcome-charts');
+    } else {
+        document.getElementById('attendancePopupWelcomeCharts')?.classList.add('hidden');
+        attendanceContent?.classList.remove('attendance-popup-welcome-charts');
+    }
 
     document.body.classList.remove('attendance-popup-anim');
     popup.classList.remove('hidden');

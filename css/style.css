@@ -1707,6 +1707,58 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
     margin-top: calc(0.15625rem * 2);
 }
 
+/* 웰컴(기록 있음): 최근 1주 도넛 — 차트 ↔ 닫기 간격 */
+#attendancePopupContent.attendance-popup-welcome-charts #attendancePopupCloseBtn {
+    margin-top: calc(0.15625rem * 2);
+}
+/* 연속 기록 문구 ↔ 차트 박스 세로 간격 약 1/2로 */
+#attendancePopupContent.attendance-popup-welcome-charts .attendance-popup-welcome-charts-wrap {
+    margin-top: -0.55rem;
+}
+.attendance-welcome-chart-shell {
+    backdrop-filter: blur(2px);
+}
+button.attendance-welcome-kind-btn.attendance-welcome-kind--active {
+    background: rgb(16 185 129);
+    color: #fff;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+}
+button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
+    color: rgb(51 65 85);
+}
+.attendance-welcome-chart-viewport {
+    touch-action: manipulation;
+    cursor: grab;
+}
+.attendance-welcome-chart-viewport:active {
+    cursor: grabbing;
+}
+.attendance-welcome-legend-swatch {
+    width: 0.45rem;
+    height: 0.45rem;
+    min-width: 0.45rem;
+}
+.attendance-welcome-legend::-webkit-scrollbar {
+    width: 4px;
+}
+.attendance-welcome-legend::-webkit-scrollbar-thumb {
+    background: rgb(203 213 225);
+    border-radius: 9999px;
+}
+.attendance-welcome-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: rgb(100 116 139);
+    transition:
+        background 0.2s ease,
+        transform 0.2s ease;
+}
+.attendance-welcome-dot--active {
+    background: rgb(5 122 85);
+    transform: scale(1.15);
+}
+
 /* 기록 완료·웰컴 문구 흰 윤곽 두께 — 이모지(-webkit-text-stroke)와 동일 값 공유 */
 #successPopupContent,
 #attendancePopupContent {

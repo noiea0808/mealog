@@ -1,11 +1,11 @@
 /**
  * 출석/연속 기록 팝업 — 어제(로컬)까지 이어진 연속 일수(dailyStats ∪ mealHistory). 어제 무기록이면 0.
- * 노출 빈도: 관리자 설정 noRecordFrequency / hasRecordFrequency — 접속 시마다(세션당 1회) 또는 하루 한 번(localStorage).
+ * 노출 빈도: 케이스별(기록 없음·연속 없음·1일·2일+) 관리자 설정 — 접속마다(sessionStorage) 또는 하루 1회(localStorage).
  * 관리자 설정(adminSettings/config.attendancePopup)으로 기록 유무·환경별 문구·노출(끔 포함).
  */
 import { authFlowManager } from './auth-flow.js';
 import { isDemoUser } from './demo-account.js';
-import { db, appId } from './firebase.js';
+import { appCheckInitPromise, db, appId, refreshAppCheckTokenBeforeFirestore } from './firebase.js';
 import { showAttendancePopup } from './ui.js';
 import { getMealogClientEnv, toLocalDateString } from './utils.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
@@ -96,28 +96,20 @@ export function resolveRecordCompletePopupMessage(wasNewRecord, mealDateIso) {
     return `${n + 1}일 연속 기록!`;
 }
 
-/** @param {number} streak */
-function formatAttendanceStreakHeadline(streak) {
-    if (streak <= 0) return '0일 연속 기록중!!';
-    if (streak === 1) return '2일 연속 기록 도전중!!';
-    if (streak === 2) return '2일 연속 기록 중!';
-    return `${streak}일 연속 기록 중!`;
-}
-
 let lastAttendanceUid = null;
-let attendanceShownForUidSession = false;
 /** 로컬 날짜가 바뀌면 세션 노출 플래그를 리셋(장시간 열린 탭에서도 자정 이후 재노출 가능) */
 let welcomePopupLocalDay = null;
 let attendanceDebounceTimer = null;
 
 const WELCOME_DAY_LS_PREFIX = 'mealog_welcome_shown_';
+const WELCOME_SESS_PREFIX = 'mealog_welcome_sess_';
 
-/** @param {'no'|'has'} kind */
+/** @param {'no'|'ns'|'s1'|'s2p'} kind */
 function welcomeDayStorageKey(uid, kind) {
     return `${WELCOME_DAY_LS_PREFIX}${uid}_${kind}`;
 }
 
-/** @param {'no'|'has'} kind */
+/** @param {'no'|'ns'|'s1'|'s2p'} kind */
 function wasWelcomeShownToday(uid, kind) {
     const today = toLocalDateString(new Date());
     try {
@@ -127,7 +119,7 @@ function wasWelcomeShownToday(uid, kind) {
     }
 }
 
-/** @param {'no'|'has'} kind */
+/** @param {'no'|'ns'|'s1'|'s2p'} kind */
 function markWelcomeShownToday(uid, kind) {
     const today = toLocalDateString(new Date());
     try {
@@ -137,25 +129,82 @@ function markWelcomeShownToday(uid, kind) {
     }
 }
 
+function welcomeSessionKey(uid, kind) {
+    return `${WELCOME_SESS_PREFIX}${uid}_${kind}`;
+}
+
+/** @param {'no'|'ns'|'s1'|'s2p'} kind */
+function wasWelcomeShownThisSession(uid, kind) {
+    try {
+        return sessionStorage.getItem(welcomeSessionKey(uid, kind)) === '1';
+    } catch {
+        return false;
+    }
+}
+
+/** @param {'no'|'ns'|'s1'|'s2p'} kind */
+function markWelcomeShownThisSession(uid, kind) {
+    try {
+        sessionStorage.setItem(welcomeSessionKey(uid, kind), '1');
+    } catch {
+        /* ignore */
+    }
+}
+
+/**
+ * @param {'no'|'ns'|'s1'|'s2p'} kind
+ * @param {'off'|'once_per_day'|'every_session'} frequency
+ */
+function passesWelcomeFrequency(uid, kind, frequency) {
+    if (frequency === 'off') return false;
+    if (frequency === 'once_per_day') return !wasWelcomeShownToday(uid, kind);
+    if (frequency === 'every_session') return !wasWelcomeShownThisSession(uid, kind);
+    return false;
+}
+
+/**
+ * @param {'no'|'ns'|'s1'|'s2p'} kind
+ * @param {'once_per_day'|'every_session'} frequency
+ */
+function markWelcomeForFrequency(uid, kind, frequency) {
+    if (frequency === 'once_per_day') markWelcomeShownToday(uid, kind);
+    else if (frequency === 'every_session') markWelcomeShownThisSession(uid, kind);
+}
+
 function resetWelcomePopupGateIfNewLocalDay() {
     const t = toLocalDateString(new Date());
     if (welcomePopupLocalDay !== t) {
         welcomePopupLocalDay = t;
-        attendanceShownForUidSession = false;
     }
 }
 
-/** @type {Record<string, unknown> | null} */
-let cachedAttendancePopupRoot = null;
+/** in-flight만 공유 — 완료 후 비워서 매번 최신 adminSettings 반영(관리자 저장 직후 다른 탭 앱도 다음 팝업 시도에서 재조회) */
 let attendancePopupConfigPromise = null;
 
 export function invalidateAttendancePopupConfigCache() {
-    cachedAttendancePopupRoot = null;
     attendancePopupConfigPromise = null;
 }
 
 const DEFAULT_NO_RECORD_L1 = '우리 오늘부터';
 const DEFAULT_NO_RECORD_L2 = '시작하는거죠?!';
+
+const DEFAULT_HEADLINE_NO_STREAK = '밀로그하기 좋은 날!!';
+const DEFAULT_HEADLINE_STREAK_ONE = '2일 연속 기록 도전중!!';
+const DEFAULT_HEADLINE_STREAK_MULTI = '{streak}일 연속 기록 중!';
+
+/**
+ * @param {{ message?: string|null }} sub message만 사용(빈도는 호출부에서 이미 반영)
+ * @param {'noStreak'|'streakOne'|'streakTwoOrMore'} slot
+ * @param {number} streak 어제부터 이어진 연속 일수(2일 이상 문구용)
+ */
+function resolveHasRecordHeadline(sub, slot, streak) {
+    const raw = sub?.message;
+    const trimmed = raw != null ? String(raw).trim() : '';
+    if (slot === 'noStreak') return trimmed || DEFAULT_HEADLINE_NO_STREAK;
+    if (slot === 'streakOne') return trimmed || DEFAULT_HEADLINE_STREAK_ONE;
+    const base = trimmed || DEFAULT_HEADLINE_STREAK_MULTI;
+    return base.replace(/\{streak\}/g, String(streak));
+}
 
 /**
  * @param {Record<string, unknown>} raw
@@ -178,21 +227,44 @@ function pickScenarioApplyTo(v, fallback) {
     return fallback;
 }
 
-/** @returns {{ staging: EnvAttendanceBlock, production: EnvAttendanceBlock }} */
+/** @typedef {{ message: string|null, stagingFrequency: 'off'|'once_per_day'|'every_session', productionFrequency: 'off'|'once_per_day'|'every_session' }} UnifiedScenarioRow */
+/** @typedef {{ noRecord: UnifiedScenarioRow, noStreak: UnifiedScenarioRow, streakOne: UnifiedScenarioRow, streakTwoOrMore: UnifiedScenarioRow }} AttendancePopupUnified */
+
+/** @returns {AttendancePopupUnified} 문구 공통, 노출 빈도만 스테이징/운영 분리 */
 function attendancePopupDefaults() {
-    const block = () => ({
-        noRecord: {
-            frequency: /** @type {'every_session'} */ ('every_session'),
-            message: /** @type {string|null} */ (null)
-        },
-        hasRecord: {
-            frequency: /** @type {'every_session'} */ ('every_session'),
-            message: ''
-        }
+    const row = () => ({
+        message: /** @type {string|null} */ (null),
+        stagingFrequency: /** @type {'every_session'} */ ('every_session'),
+        productionFrequency: /** @type {'every_session'} */ ('every_session')
     });
     return {
-        staging: block(),
-        production: block()
+        noRecord: { ...row(), message: null },
+        noStreak: row(),
+        streakOne: row(),
+        streakTwoOrMore: row()
+    };
+}
+
+/**
+ * @param {UnifiedScenarioRow} row
+ * @param {string} env getMealogClientEnv()
+ */
+function pickFrequencyForEnv(row, env) {
+    if (!row) return 'off';
+    return env === 'staging'
+        ? pickFrequencyWithOff(row.stagingFrequency, 'every_session')
+        : pickFrequencyWithOff(row.productionFrequency, 'every_session');
+}
+
+/**
+ * @param {UnifiedScenarioRow} row
+ * @param {string} env
+ * @returns {{ frequency: string, message: string|null }}
+ */
+function scenarioForClient(row, env) {
+    return {
+        frequency: pickFrequencyForEnv(row, env),
+        message: row?.message ?? null
     };
 }
 
@@ -208,61 +280,201 @@ function pickFrequencyWithOff(v, fallback = 'every_session') {
     return fallback;
 }
 
+/** 문구 공통 + staging/production 빈도 분리 저장 형식(4행 중 하나라도 있으면 통합으로 처리) */
+function isAttendancePopupUnified(raw) {
+    if (!raw || typeof raw !== 'object') return false;
+    const keys = ['noRecord', 'noStreak', 'streakOne', 'streakTwoOrMore'];
+    return keys.some((k) => {
+        if (!Object.prototype.hasOwnProperty.call(raw, k)) return false;
+        const row = raw[k];
+        if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+        return (
+            Object.prototype.hasOwnProperty.call(row, 'stagingFrequency') ||
+            Object.prototype.hasOwnProperty.call(row, 'productionFrequency') ||
+            Object.prototype.hasOwnProperty.call(row, 'message')
+        );
+    });
+}
+
+/** 구형: staging / production 각각에 frequency·message */
+function isAttendancePopupNestedV3(raw) {
+    return (
+        raw.staging &&
+        typeof raw.staging === 'object' &&
+        typeof raw.staging.noRecord === 'object' &&
+        raw.staging.noRecord != null &&
+        'frequency' in raw.staging.noRecord
+    );
+}
+
 /**
- * 스테이징/운영 × 기록 유무 4블록 형식인지
+ * @param {{ staging: Record<string, unknown>, production: Record<string, unknown> }} nested
+ * @returns {AttendancePopupUnified}
+ */
+function nestedV3ToUnified(nested) {
+    const keys = ['noRecord', 'noStreak', 'streakOne', 'streakTwoOrMore'];
+    /** @type {AttendancePopupUnified} */
+    const out = {
+        noRecord: { message: null, stagingFrequency: 'every_session', productionFrequency: 'every_session' },
+        noStreak: { message: null, stagingFrequency: 'every_session', productionFrequency: 'every_session' },
+        streakOne: { message: null, stagingFrequency: 'every_session', productionFrequency: 'every_session' },
+        streakTwoOrMore: { message: null, stagingFrequency: 'every_session', productionFrequency: 'every_session' }
+    };
+    for (const k of keys) {
+        const st = nested.staging?.[k];
+        const pr = nested.production?.[k];
+        const msgSt = st?.message;
+        const msgPr = pr?.message;
+        let message = null;
+        if (msgSt != null && String(msgSt).trim() !== '') message = String(msgSt);
+        else if (msgPr != null && String(msgPr).trim() !== '') message = String(msgPr);
+        else message = null;
+        out[k] = {
+            message,
+            stagingFrequency: pickFrequencyWithOff(st?.frequency, 'every_session'),
+            productionFrequency: pickFrequencyWithOff(pr?.frequency, 'every_session')
+        };
+    }
+    return out;
+}
+
+/**
+ * 구 v2: noRecord + hasRecord 만 있는 형식
  * @param {Record<string, unknown>} raw
  */
-function isAttendancePopupV2(raw) {
+function isAttendancePopupLegacyBinary(raw) {
     if (!raw.staging || typeof raw.staging !== 'object' || !raw.production || typeof raw.production !== 'object') {
         return false;
     }
     const st = raw.staging;
-    const pr = raw.production;
+    if (st.noStreak) return false;
     return (
         typeof st.noRecord === 'object' &&
         st.noRecord != null &&
         typeof st.hasRecord === 'object' &&
         st.hasRecord != null &&
-        typeof pr.noRecord === 'object' &&
-        pr.noRecord != null &&
-        typeof pr.hasRecord === 'object' &&
-        pr.hasRecord != null
+        typeof raw.production.noRecord === 'object' &&
+        typeof raw.production.hasRecord === 'object'
     );
 }
 
 /**
- * @param {Record<string, unknown>} raw
- * @returns {{ staging: EnvAttendanceBlock, production: EnvAttendanceBlock }}
+ * @param {{ frequency: string, message: string|null }} def
+ * @param {unknown} inc
  */
-function mergeV2AttendancePopup(raw) {
-    const d = attendancePopupDefaults();
-    /** @param {typeof d.staging} defEnv @param {Record<string, unknown>} incEnv */
-    const mergeEnv = (defEnv, incEnv) => ({
-        noRecord: {
-            frequency: pickFrequencyWithOff(incEnv?.noRecord?.frequency, defEnv.noRecord.frequency),
-            message:
-                incEnv?.noRecord && Object.prototype.hasOwnProperty.call(incEnv.noRecord, 'message')
-                    ? incEnv.noRecord.message == null
-                        ? null
-                        : String(incEnv.noRecord.message)
-                    : defEnv.noRecord.message
-        },
-        hasRecord: {
-            frequency: pickFrequencyWithOff(incEnv?.hasRecord?.frequency, defEnv.hasRecord.frequency),
-            message:
-                incEnv?.hasRecord && Object.prototype.hasOwnProperty.call(incEnv.hasRecord, 'message')
-                    ? String(incEnv.hasRecord.message ?? '')
-                    : defEnv.hasRecord.message
-        }
-    });
+function mergeNestedScenarioRow(def, inc) {
+    const incOb = inc && typeof inc === 'object' ? inc : {};
     return {
-        staging: mergeEnv(d.staging, raw.staging && typeof raw.staging === 'object' ? raw.staging : {}),
-        production: mergeEnv(d.production, raw.production && typeof raw.production === 'object' ? raw.production : {})
+        frequency: pickFrequencyWithOff(incOb.frequency, def.frequency),
+        message: Object.prototype.hasOwnProperty.call(incOb, 'message')
+            ? incOb.message == null
+                ? null
+                : String(incOb.message)
+            : def.message
     };
 }
 
 /**
- * 구 flat 한 덩어리 → 스테이징/운영별 블록 (끔 = frequency off)
+ * @param {UnifiedScenarioRow} def
+ * @param {unknown} inc
+ * @returns {UnifiedScenarioRow}
+ */
+function mergeUnifiedScenarioRow(def, inc) {
+    const incOb = inc && typeof inc === 'object' ? inc : {};
+    return {
+        message: Object.prototype.hasOwnProperty.call(incOb, 'message')
+            ? incOb.message == null
+                ? null
+                : String(incOb.message)
+            : def.message,
+        stagingFrequency: pickFrequencyWithOff(incOb.stagingFrequency, def.stagingFrequency),
+        productionFrequency: pickFrequencyWithOff(incOb.productionFrequency, def.productionFrequency)
+    };
+}
+
+/**
+ * @param {Record<string, unknown>} raw
+ * @returns {{ staging: object, production: object }}
+ */
+function mergeNestedV3AttendancePopup(raw) {
+    const d = attendancePopupDefaults();
+    const emptyNested = () => ({
+        noRecord: { frequency: 'every_session', message: null },
+        noStreak: { frequency: 'every_session', message: null },
+        streakOne: { frequency: 'every_session', message: null },
+        streakTwoOrMore: { frequency: 'every_session', message: null }
+    });
+    const stDef = emptyNested();
+    const prDef = emptyNested();
+    /** @param {typeof stDef} defEnv @param {Record<string, unknown>} incEnv */
+    const mergeEnv = (defEnv, incEnv) => ({
+        noRecord: mergeNestedScenarioRow(defEnv.noRecord, incEnv?.noRecord),
+        noStreak: mergeNestedScenarioRow(defEnv.noStreak, incEnv?.noStreak),
+        streakOne: mergeNestedScenarioRow(defEnv.streakOne, incEnv?.streakOne),
+        streakTwoOrMore: mergeNestedScenarioRow(defEnv.streakTwoOrMore, incEnv?.streakTwoOrMore)
+    });
+    return {
+        staging: mergeEnv(stDef, raw.staging && typeof raw.staging === 'object' ? raw.staging : {}),
+        production: mergeEnv(prDef, raw.production && typeof raw.production === 'object' ? raw.production : {})
+    };
+}
+
+/**
+ * @param {Record<string, unknown>} raw
+ */
+function mergeUnifiedAttendancePopup(raw) {
+    const d = attendancePopupDefaults();
+    return {
+        noRecord: mergeUnifiedScenarioRow(d.noRecord, raw.noRecord),
+        noStreak: mergeUnifiedScenarioRow(d.noStreak, raw.noStreak),
+        streakOne: mergeUnifiedScenarioRow(d.streakOne, raw.streakOne),
+        streakTwoOrMore: mergeUnifiedScenarioRow(d.streakTwoOrMore, raw.streakTwoOrMore)
+    };
+}
+
+/**
+ * @param {{ noRecord: { frequency: string, message: string|null }, hasRecord: { frequency: string, message: string } }} env
+ */
+function upgradeLegacyBinaryEnvToV3(env) {
+    const fq = pickFrequencyWithOff(env.hasRecord?.frequency, 'every_session');
+    const msg = String(env.hasRecord?.message ?? '').trim();
+    return {
+        noRecord: env.noRecord,
+        noStreak: { frequency: fq, message: null },
+        streakOne: { frequency: fq, message: null },
+        streakTwoOrMore: { frequency: fq, message: msg || null }
+    };
+}
+
+/**
+ * @param {Record<string, unknown>} raw
+ */
+function mergeLegacyBinaryAttendancePopup(raw) {
+    const emptyPair = () => ({
+        noRecord: { frequency: 'every_session', message: null },
+        hasRecord: { frequency: 'every_session', message: '' }
+    });
+    /** @param {ReturnType<typeof emptyPair>} defEnv @param {Record<string, unknown>} incEnv */
+    const mergeEnv = (defEnv, incEnv) => ({
+        noRecord: mergeNestedScenarioRow(defEnv.noRecord, incEnv?.noRecord),
+        hasRecord: {
+            frequency: pickFrequencyWithOff(incEnv?.hasRecord?.frequency, 'every_session'),
+            message:
+                incEnv?.hasRecord && Object.prototype.hasOwnProperty.call(incEnv.hasRecord, 'message')
+                    ? String(incEnv.hasRecord.message ?? '')
+                    : ''
+        }
+    });
+    const pairStaging = mergeEnv(emptyPair(), raw.staging && typeof raw.staging === 'object' ? raw.staging : {});
+    const pairProd = mergeEnv(emptyPair(), raw.production && typeof raw.production === 'object' ? raw.production : {});
+    return {
+        staging: upgradeLegacyBinaryEnvToV3(pairStaging),
+        production: upgradeLegacyBinaryEnvToV3(pairProd)
+    };
+}
+
+/**
+ * 구 flat 한 덩어리 → 통합 블록 (끔 = frequency off)
  * @param {{
  *   noRecordApplyTo: 'all'|'staging'|'production'|'off',
  *   hasRecordApplyTo: 'all'|'staging'|'production'|'off',
@@ -271,33 +483,48 @@ function mergeV2AttendancePopup(raw) {
  *   noRecordFrequency: 'once_per_day'|'every_session',
  *   hasRecordFrequency: 'once_per_day'|'every_session'
  * }} f
+ * @returns {AttendancePopupUnified}
  */
-function flatAttendanceToNested(f) {
+function flatAttendanceToUnified(f) {
     const fn = pickAttendanceShowFrequency(f.noRecordFrequency);
     const fh = pickAttendanceShowFrequency(f.hasRecordFrequency);
     const noStagingOff = f.noRecordApplyTo === 'production' || f.noRecordApplyTo === 'off';
     const noProdOff = f.noRecordApplyTo === 'staging' || f.noRecordApplyTo === 'off';
     const hasStagingOff = f.hasRecordApplyTo === 'production' || f.hasRecordApplyTo === 'off';
     const hasProdOff = f.hasRecordApplyTo === 'staging' || f.hasRecordApplyTo === 'off';
+    const hMsg = f.hasRecordMessage != null ? String(f.hasRecordMessage) : '';
     return {
-        staging: {
-            noRecord: { frequency: noStagingOff ? 'off' : fn, message: f.noRecordMessage },
-            hasRecord: { frequency: hasStagingOff ? 'off' : fh, message: f.hasRecordMessage ?? '' }
+        noRecord: {
+            message: f.noRecordMessage,
+            stagingFrequency: noStagingOff ? 'off' : fn,
+            productionFrequency: noProdOff ? 'off' : fn
         },
-        production: {
-            noRecord: { frequency: noProdOff ? 'off' : fn, message: f.noRecordMessage },
-            hasRecord: { frequency: hasProdOff ? 'off' : fh, message: f.hasRecordMessage ?? '' }
+        noStreak: {
+            message: null,
+            stagingFrequency: hasStagingOff ? 'off' : fh,
+            productionFrequency: hasProdOff ? 'off' : fh
+        },
+        streakOne: {
+            message: null,
+            stagingFrequency: hasStagingOff ? 'off' : fh,
+            productionFrequency: hasProdOff ? 'off' : fh
+        },
+        streakTwoOrMore: {
+            message: hMsg || null,
+            stagingFrequency: hasStagingOff ? 'off' : fh,
+            productionFrequency: hasProdOff ? 'off' : fh
         }
     };
 }
 
 /**
- * adminSettings/config.attendancePopup — v2(스테이징·운영 × 기록 유무) + 구 flat·레거시 호환
- * @returns {{ staging: { noRecord: { frequency: 'off'|'once_per_day'|'every_session', message: string|null }, hasRecord: { frequency: 'off'|'once_per_day'|'every_session', message: string } }, production: same }}
+ * adminSettings/config.attendancePopup — v3(4케이스) + 구 v2·flat·레거시 호환
  */
 export function normalizeAttendancePopup(raw) {
     if (!raw || typeof raw !== 'object') return attendancePopupDefaults();
-    if (isAttendancePopupV2(raw)) return mergeV2AttendancePopup(raw);
+    if (isAttendancePopupUnified(raw)) return mergeUnifiedAttendancePopup(raw);
+    if (isAttendancePopupNestedV3(raw)) return nestedV3ToUnified(mergeNestedV3AttendancePopup(raw));
+    if (isAttendancePopupLegacyBinary(raw)) return nestedV3ToUnified(mergeLegacyBinaryAttendancePopup(raw));
 
     const hasLegacy =
         (raw.staging != null && typeof raw.staging === 'object') ||
@@ -382,7 +609,7 @@ export function normalizeAttendancePopup(raw) {
         hasRecordApplyTo = 'off';
     }
 
-    return flatAttendanceToNested({
+    return flatAttendanceToUnified({
         noRecordApplyTo,
         hasRecordApplyTo,
         noRecordMessage,
@@ -393,29 +620,32 @@ export function normalizeAttendancePopup(raw) {
 }
 
 async function fetchAttendancePopupRoot() {
-    if (cachedAttendancePopupRoot !== null) return cachedAttendancePopupRoot;
     if (!attendancePopupConfigPromise) {
         attendancePopupConfigPromise = (async () => {
             try {
+                await appCheckInitPromise;
+                await refreshAppCheckTokenBeforeFirestore();
                 const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
                 const snap = await getDoc(configRef);
                 const ap =
                     snap.exists() && snap.data().attendancePopup && typeof snap.data().attendancePopup === 'object'
                         ? snap.data().attendancePopup
                         : {};
-                cachedAttendancePopupRoot = normalizeAttendancePopup(ap);
+                return normalizeAttendancePopup(ap);
             } catch {
-                cachedAttendancePopupRoot = normalizeAttendancePopup({});
+                return normalizeAttendancePopup({});
             }
-            return cachedAttendancePopupRoot;
         })();
     }
-    return attendancePopupConfigPromise;
+    try {
+        return await attendancePopupConfigPromise;
+    } finally {
+        attendancePopupConfigPromise = null;
+    }
 }
 
 export function resetAttendanceCheckSessionForTesting() {
     lastAttendanceUid = null;
-    attendanceShownForUidSession = false;
     welcomePopupLocalDay = null;
 }
 
@@ -436,52 +666,79 @@ export function scheduleAttendanceCheckIfNeeded() {
 
     if (user.uid !== lastAttendanceUid) {
         lastAttendanceUid = user.uid;
-        attendanceShownForUidSession = false;
     }
 
     if (attendanceDebounceTimer) clearTimeout(attendanceDebounceTimer);
+    window._attendancePopupResolutionPending = true;
     attendanceDebounceTimer = setTimeout(() => {
         attendanceDebounceTimer = null;
         void (async () => {
-            if (!window.currentUser || window.currentUser.uid !== user.uid || window.currentUser.isAnonymous) return;
-            if (!authFlowManager.hasCompleted) return;
-            const mainEl = document.getElementById('mainApp');
-            if (!mainEl || mainEl.classList.contains('hidden')) return;
-            if (isDemoUser(window.currentUser)) return;
+            try {
+                if (!window.currentUser || window.currentUser.uid !== user.uid || window.currentUser.isAnonymous) return;
+                if (!authFlowManager.hasCompleted) return;
+                const mainEl = document.getElementById('mainApp');
+                if (!mainEl || mainEl.classList.contains('hidden')) return;
+                if (isDemoUser(window.currentUser)) return;
 
-            const cfg = await fetchAttendancePopupRoot();
-            const env = getMealogClientEnv();
-            const uid = user.uid;
-            const envBlock = env === 'staging' ? cfg.staging : cfg.production;
-            if (!envBlock) return;
+                const cfg = await fetchAttendancePopupRoot();
+                const env = getMealogClientEnv();
+                const uid = user.uid;
 
-            const dates = collectRecordedDateSet();
+                const dates = collectRecordedDateSet();
 
-            if (dates.size === 0) {
-                const sub = envBlock.noRecord;
+                if (dates.size === 0) {
+                    const sub = scenarioForClient(cfg.noRecord, env);
+                    if (!sub || sub.frequency === 'off') return;
+                    if (!passesWelcomeFrequency(uid, 'no', sub.frequency)) return;
+                    const noRecRaw = sub.message != null ? String(sub.message).trim() : '';
+                    const noRecordBody =
+                        noRecRaw || `${DEFAULT_NO_RECORD_L1}\n${DEFAULT_NO_RECORD_L2}`;
+                    markWelcomeForFrequency(uid, 'no', sub.frequency);
+                    showAttendancePopup(noRecordBody, '', 'noRecord');
+                    return;
+                }
+                const streak = computeConsecutiveStreakDays(dates);
+                /** @type {{ row: UnifiedScenarioRow, slot: 'noStreak'|'streakOne'|'streakTwoOrMore', welcomeIcon: 'hasRecordRestart'|'hasRecord', markKind: 'ns'|'s1'|'s2p' }} */
+                let picked;
+                if (streak <= 0) {
+                    picked = {
+                        row: cfg.noStreak,
+                        slot: 'noStreak',
+                        welcomeIcon: 'hasRecordRestart',
+                        markKind: 'ns'
+                    };
+                } else if (streak === 1) {
+                    picked = {
+                        row: cfg.streakOne,
+                        slot: 'streakOne',
+                        welcomeIcon: 'hasRecord',
+                        markKind: 's1'
+                    };
+                } else {
+                    picked = {
+                        row: cfg.streakTwoOrMore,
+                        slot: 'streakTwoOrMore',
+                        welcomeIcon: 'hasRecord',
+                        markKind: 's2p'
+                    };
+                }
+                const sub = scenarioForClient(picked.row, env);
                 if (!sub || sub.frequency === 'off') return;
-                const freqNo = sub.frequency;
-                const noRecRaw = sub.message != null ? String(sub.message).trim() : '';
-                const noRecordBody =
-                    noRecRaw || `${DEFAULT_NO_RECORD_L1}\n${DEFAULT_NO_RECORD_L2}`;
-                if (freqNo === 'once_per_day' && wasWelcomeShownToday(uid, 'no')) return;
-                if (freqNo === 'every_session' && attendanceShownForUidSession) return;
-                attendanceShownForUidSession = true;
-                if (freqNo === 'once_per_day') markWelcomeShownToday(uid, 'no');
-                showAttendancePopup(noRecordBody, '', 'noRecord');
-                return;
+                if (!passesWelcomeFrequency(uid, picked.markKind, sub.frequency)) return;
+                const streakHead = resolveHasRecordHeadline(sub, picked.slot, streak);
+                markWelcomeForFrequency(uid, picked.markKind, sub.frequency);
+                showAttendancePopup(streakHead, '', picked.welcomeIcon);
+            } finally {
+                window._attendancePopupResolutionPending = false;
+                const ap = document.getElementById('attendancePopup');
+                if (!ap || ap.classList.contains('hidden')) {
+                    try {
+                        if (typeof window.flushPendingContentPopup === 'function') window.flushPendingContentPopup();
+                    } catch (_) {
+                        /* ignore */
+                    }
+                }
             }
-            const subHas = envBlock.hasRecord;
-            if (!subHas || subHas.frequency === 'off') return;
-            const freqHas = subHas.frequency;
-            const streakExtra = String(subHas.message ?? '').trim();
-            if (freqHas === 'once_per_day' && wasWelcomeShownToday(uid, 'has')) return;
-            if (freqHas === 'every_session' && attendanceShownForUidSession) return;
-            attendanceShownForUidSession = true;
-            if (freqHas === 'once_per_day') markWelcomeShownToday(uid, 'has');
-            const streak = computeConsecutiveStreakDays(dates);
-            const streakHead = formatAttendanceStreakHeadline(streak);
-            showAttendancePopup(streakHead, streakExtra, 'hasRecord');
         })();
     }, 450);
 }

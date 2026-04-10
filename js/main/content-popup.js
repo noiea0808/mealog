@@ -119,8 +119,28 @@ export function recordBannerClick() {
 }
 
 export function registerContentPopup() {
+    window.flushPendingContentPopup = function () {
+        const tab = window._pendingContentPopupTab;
+        if (tab == null) return;
+        window._pendingContentPopupTab = null;
+        setTimeout(() => {
+            if (typeof window.checkAndShowContentPopup === 'function') {
+                window.checkAndShowContentPopup(tab);
+            }
+        }, 0);
+    };
+
     window.checkAndShowContentPopup = async function(tab) {
         if (sessionStorage.getItem('loginBannerLandingNoticeId')) return;
+        if (window._attendancePopupResolutionPending) {
+            window._pendingContentPopupTab = tab;
+            return;
+        }
+        const attendancePopupEl = document.getElementById('attendancePopup');
+        if (attendancePopupEl && !attendancePopupEl.classList.contains('hidden')) {
+            window._pendingContentPopupTab = tab;
+            return;
+        }
         const modal = document.getElementById('contentPopupModal');
         const prevBtn = document.getElementById('contentPopupPrevBtn');
         const nextBtn = document.getElementById('contentPopupNextBtn');

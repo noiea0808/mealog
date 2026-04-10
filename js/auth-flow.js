@@ -12,11 +12,14 @@ import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 
 /** hasCompleted 직후 호출 — onDataUpdate가 더 이상 안 오는 경우에도 출석 팝업이 뜨도록 */
 function queueAttendanceCheck() {
-    queueMicrotask(() => {
+    const run = () => {
         import('./attendance-check.js')
             .then((m) => m.scheduleAttendanceCheckIfNeeded())
-            .catch(() => {});
-    });
+            .catch((e) => console.warn('웰컴 출석 체크 모듈 로드/실행 실패:', e));
+    };
+    queueMicrotask(run);
+    /** hasCompleted 직전에만 onDataUpdate가 끝난 경우 1회 재시도 (로컬·캐시 타이밍) */
+    setTimeout(run, 650);
 }
 
 /** Firebase에서 방금 만든 계정의 첫 로그인(creation≈lastSignIn) — Auth만 재생성·Firestore 설정은 남은 고아 문서일 때 온보딩 재요청 */

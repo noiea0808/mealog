@@ -431,9 +431,10 @@
                         </g>
                     </svg>
                 </div>
-                <!-- 기록 있을 때 웰컴: 따봉 -->
+                <!-- 기록 있을 때 웰컴: 연속 있음 따봉 / 어제 끊김(새 출발) 새싹 — 동일 화이트 헤일로 -->
                 <div id="attendancePopupIconClap" class="hidden shrink-0 flex h-[73px] w-[73px] items-center justify-center" aria-hidden="true">
-                    <span class="attendance-popup-thumbs-emoji select-none text-[3.25rem] leading-none" role="img" aria-label="따봉">👍</span>
+                    <span id="attendancePopupEmojiThumbs" class="attendance-popup-thumbs-emoji select-none text-[3.25rem] leading-none" role="img" aria-label="따봉">👍</span>
+                    <span id="attendancePopupEmojiRestart" class="hidden attendance-popup-thumbs-emoji select-none text-[3.25rem] leading-none" role="img" aria-label="새 출발">🌱</span>
                 </div>
             </div>
             <svg id="attendancePopupTextSvg" width="340" height="60" viewBox="0 0 340 60" overflow="visible" class="max-w-full w-full shrink-0" aria-hidden="true" style="height:auto">
@@ -441,6 +442,51 @@
             </svg>
             <div id="attendancePopupAuxWrap" class="hidden w-full max-w-[19rem] shrink-0 px-1 box-border attendance-popup-aux-wrap">
                 <p id="attendancePopupAuxBox" class="attendance-popup-aux-box text-center"></p>
+            </div>
+            <div id="attendancePopupWelcomeCharts" class="hidden w-full max-w-[19rem] shrink-0 px-1 box-border attendance-popup-welcome-charts-wrap">
+                <div class="attendance-welcome-chart-shell relative flex w-full flex-col items-stretch rounded-xl border border-slate-200/90 bg-white/80 shadow-sm overflow-hidden">
+                    <div class="flex w-full flex-col items-center gap-0.5 px-2 pt-2 pb-1">
+                        <div
+                            id="attendanceWelcomeMealSnackSwitch"
+                            class="flex items-center gap-0 rounded-lg border border-slate-200/80 bg-slate-100/95 p-0.5 shadow-sm"
+                            role="group"
+                            aria-label="식사 또는 간식"
+                        >
+                            <button
+                                type="button"
+                                id="attendanceWelcomeBtnMeal"
+                                class="attendance-welcome-kind-btn rounded-md px-2.5 py-1 text-[13px] font-bold text-slate-500 transition-colors"
+                            >
+                                식사
+                            </button>
+                            <button
+                                type="button"
+                                id="attendanceWelcomeBtnSnack"
+                                class="attendance-welcome-kind-btn rounded-md px-2.5 py-1 text-[13px] font-bold text-slate-500 transition-colors"
+                            >
+                                간식
+                            </button>
+                        </div>
+                        <p id="attendanceWelcomeRecordCount" class="m-0 w-full text-center text-[11px] font-bold leading-tight text-slate-700 tabular-nums" aria-live="polite">기록 0회</p>
+                    </div>
+                    <div id="attendanceWelcomeChartViewport" class="attendance-welcome-chart-viewport relative w-full overflow-hidden select-none pt-0 pb-0">
+                        <div id="attendanceWelcomeChartTrack" class="flex transition-transform duration-300 ease-out will-change-transform"></div>
+                    </div>
+                    <div class="flex w-full flex-col items-center gap-1.5 px-2 pb-2 pt-1">
+                        <button
+                            type="button"
+                            id="attendanceWelcomeAnalysisMore"
+                            class="border-0 bg-transparent p-0 text-[11px] font-bold text-emerald-700 underline decoration-emerald-500/80 underline-offset-2 hover:text-emerald-900"
+                        >
+                            분석 더보기
+                        </button>
+                        <div
+                            id="attendanceWelcomeChartDots"
+                            class="attendance-welcome-chart-dots flex w-full justify-center gap-1.5"
+                            aria-hidden="true"
+                        ></div>
+                    </div>
+                </div>
             </div>
             <button type="button" id="attendancePopupCloseBtn" class="popup-celebrate-ring popup-celebrate-ring--btn">
                 닫기
