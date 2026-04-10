@@ -416,12 +416,23 @@ async function saveFcmToken(uid, token) {
       try {
         const payload = { token };
         if (tokenEnv) payload.env = tokenEnv;
+        await refreshAppCheckTokenBeforeFirestore();
         await callableFunctions.registerFcmToken(payload);
         onSaved();
         return;
       } catch (e3) {
-        onFailed(e3?.message || String(e3));
-        return;
+        try {
+          await new Promise((r) => setTimeout(r, 500));
+          await refreshAppCheckTokenBeforeFirestore();
+          const payload = { token };
+          if (tokenEnv) payload.env = tokenEnv;
+          await callableFunctions.registerFcmToken(payload);
+          onSaved();
+          return;
+        } catch (e4) {
+          onFailed(e4?.message || String(e4));
+          return;
+        }
       }
     }
     onFailed(msg);

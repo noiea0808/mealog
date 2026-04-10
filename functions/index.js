@@ -599,13 +599,7 @@ async function resolveNicknameToUid(nickname) {
   const snap = await db.collection('artifacts').doc(APP_ID).collection('nicknameClaims').doc(docId).get();
   if (!snap.exists) return null;
   const uid = snap.data().userId;
-  if (!uid || typeof uid !== 'string') return null;
-  const settingsSnap = await db.doc(`artifacts/${APP_ID}/users/${uid}/config/settings`).get();
-  const liveNorm = normalizeNicknameForClaimServer(
-    settingsSnap.exists ? settingsSnap.data()?.profile?.nickname : null
-  );
-  if (liveNorm !== norm) return null;
-  return uid;
+  return uid && typeof uid === 'string' ? uid : null;
 }
 
 /**
@@ -2648,15 +2642,7 @@ exports.saveArtifactUserSettings = onCall({ region: REGION }, wrapFunction('save
       if (claimSnap.exists) {
         const owner = claimSnap.data()?.userId;
         if (owner && owner !== uid) {
-          const ownerSettingsRef = db.doc(`artifacts/${APP_ID}/users/${owner}/config/settings`);
-          const ownerSettingsSnap = await transaction.get(ownerSettingsRef);
-          const ownerNorm = normalizeNicknameForClaimServer(
-            ownerSettingsSnap.exists ? ownerSettingsSnap.data()?.profile?.nickname : null
-          );
-          if (ownerNorm === normNew) {
-            throw new HttpsError('already-exists', '이미 사용 중인 닉네임입니다.');
-          }
-          transaction.delete(newClaimRef);
+          throw new HttpsError('already-exists', '이미 사용 중인 닉네임입니다.');
         }
       }
     }
@@ -2687,149 +2673,6 @@ exports.saveArtifactUserSettings = onCall({ region: REGION }, wrapFunction('save
   }
 
   return { ok: true };
-}));
-
-/**
- * 식사 기록(meals) 저장 — 클라이언트 Firestore 직접 쓰기가 permission-denied일 때 Admin 폴백
- * (로컬·App Check·WebChannel 등으로 Firestore만 막히는 경우 대비)
- */
-function stripUndefinedDeepAdmin(value) {
-  if (value === undefined) return undefined;
-  if (value === null) return null;
-  if (typeof value !== 'object') return value;
-  if (value instanceof Timestamp) return value;
-  if (Array.isArray(value)) {
-    return value.map(stripUndefinedDeepAdmin).filter((v) => v !== undefined);
-  }
-  const out = {};
-  for (const [k, v] of Object.entries(value)) {
-    if (v === undefined) continue;
-    const next = stripUndefinedDeepAdmin(v);
-    if (next !== undefined) out[k] = next;
-  }
-  return out;
-}
-
-function reviveFirestoreTimestampsAdmin(value) {
-  if (value == null || typeof value !== 'object') return value;
-  if (Array.isArray(value)) return value.map(reviveFirestoreTimestampsAdmin);
-  if (
-    typeof value.seconds === 'number' &&
-    (typeof value.nanoseconds === 'number' || typeof value.nanoseconds === 'undefined')
-  ) {
-    return new Timestamp(value.seconds, value.nanoseconds || 0);
-  }
-  if (typeof value._seconds === 'number') {
-    return new Timestamp(value._seconds, typeof value._nanoseconds === 'number' ? value._nanoseconds : 0);
-  }
-  const out = {};
-  for (const [k, v] of Object.entries(value)) {
-    out[k] = reviveFirestoreTimestampsAdmin(v);
-  }
-  return out;
-}
-
-exports.saveArtifactUserMeal = onCall({ region: REGION }, wrapFunction('saveArtifactUserMeal', async (request) => {
-  if (!request.auth?.uid) {
-    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
-  }
-  const tokenEmail = request.auth.token?.email;
-  if (tokenEmail && String(tokenEmail).toLowerCase().trim() === READ_ONLY_DEMO_EMAIL) {
-    throw new HttpsError('permission-denied', '샘플 계정에서는 기록을 저장할 수 없습니다.');
-  }
-  if (request.auth.token?.demoBrowse === true) {
-    throw new HttpsError('permission-denied', '샘플 계정에서는 기록을 저장할 수 없습니다.');
-  }
-  const uid = request.auth.uid;
-  const body = request.data || {};
-  let meal = body.meal;
-  const mealIdRaw = body.mealId;
-  const mealId =
-    typeof mealIdRaw === 'string' && mealIdRaw.trim() && mealIdRaw.length <= 256 ? mealIdRaw.trim() : '';
-  if (!meal || typeof meal !== 'object' || Array.isArray(meal)) {
-    throw new HttpsError('invalid-argument', 'meal 객체가 필요합니다.');
-  }
-  meal = reviveFirestoreTimestampsAdmin(meal);
-  if (meal && typeof meal === 'object' && Object.prototype.hasOwnProperty.call(meal, 'id')) {
-    delete meal.id;
-  }
-  meal = stripUndefinedDeepAdmin(meal);
-  let payloadSize = 0;
-  try {
-    payloadSize = JSON.stringify(meal).length;
-  } catch {
-    throw new HttpsError('invalid-argument', 'meal을 직렬화할 수 없습니다.');
-  }
-  if (payloadSize > 600000) {
-    throw new HttpsError('invalid-argument', 'meal 데이터가 너무 큽니다.');
-  }
-
-  const mealsCol = db.collection('artifacts').doc(APP_ID).collection('users').doc(uid).collection('meals');
-
-  if (mealId) {
-    const ref = mealsCol.doc(mealId);
-    const existing = await ref.get();
-    if (!existing.exists) {
-      throw new HttpsError('not-found', '기록을 찾을 수 없습니다.');
-    }
-    await ref.set(meal, { merge: false });
-    return { mealId };
-  }
-
-  const ref = mealsCol.doc();
-  await ref.set(meal);
-  try {
-    await db.doc(`artifacts/${APP_ID}/users/${uid}`).set({ mealCount: FieldValue.increment(1) }, { merge: true });
-  } catch (e) {
-    logger.warn('saveArtifactUserMeal: mealCount increment skipped', { uid, err: e?.message });
-  }
-  return { mealId: ref.id };
-}));
-
-/**
- * 식사 기록 삭제 — 클라이언트 deleteDoc 이 permission-denied 일 때 Admin 폴백 (와일드카드·App Check 등)
- */
-exports.deleteArtifactUserMeal = onCall({ region: REGION }, wrapFunction('deleteArtifactUserMeal', async (request) => {
-  if (!request.auth?.uid) {
-    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
-  }
-  const tokenEmail = request.auth.token?.email;
-  if (tokenEmail && String(tokenEmail).toLowerCase().trim() === READ_ONLY_DEMO_EMAIL) {
-    throw new HttpsError('permission-denied', '샘플 계정에서는 기록을 삭제할 수 없습니다.');
-  }
-  if (request.auth.token?.demoBrowse === true) {
-    throw new HttpsError('permission-denied', '샘플 계정에서는 기록을 삭제할 수 없습니다.');
-  }
-  const uid = request.auth.uid;
-  const mealIdRaw = request.data?.mealId;
-  const mealId =
-    typeof mealIdRaw === 'string' && mealIdRaw.trim() && mealIdRaw.length <= 256 ? mealIdRaw.trim() : '';
-  if (!mealId) {
-    throw new HttpsError('invalid-argument', 'mealId가 필요합니다.');
-  }
-
-  const mealRef = db.doc(`artifacts/${APP_ID}/users/${uid}/meals/${mealId}`);
-  const mealSnap = await mealRef.get();
-  if (!mealSnap.exists) {
-    return { ok: true, deleted: false };
-  }
-
-  const sharedSnap = await db
-    .collection('artifacts')
-    .doc(APP_ID)
-    .collection('sharedPhotos')
-    .where('userId', '==', uid)
-    .where('entryId', '==', mealId)
-    .get();
-
-  const batch = db.batch();
-  batch.delete(mealRef);
-  sharedSnap.docs.forEach((d) => batch.delete(d.ref));
-  const userRef = db.doc(`artifacts/${APP_ID}/users/${uid}`);
-  batch.set(userRef, { mealCount: FieldValue.increment(-1) }, { merge: true });
-  await batch.commit();
-
-  return { ok: true, deleted: true };
 }));
 
 /**

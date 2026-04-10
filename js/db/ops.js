@@ -575,6 +575,7 @@ export const dbOps = {
         // photosToShare가 있으면 공유 설정 (기존 문서 삭제 + 새 문서 추가)
         
         try {
+            await refreshAppCheckTokenBeforeFirestore();
             const result = await callableFunctions.sharePhotos({
                 photosToShare: photosToShare || [],
                 mealData: mealData || {}
@@ -585,6 +586,25 @@ export const dbOps = {
             return result.data;
         } catch (e) {
             console.error("Share Photos Error:", e);
+            const msg = String(e?.message || e?.details || '');
+            const isPerm =
+                e?.code === 'permission-denied' ||
+                /permission|app check|forbidden/i.test(msg);
+            if (isPerm) {
+                try {
+                    await refreshAppCheckTokenBeforeFirestore();
+                    await new Promise((r) => setTimeout(r, 400));
+                    const result = await callableFunctions.sharePhotos({
+                        photosToShare: photosToShare || [],
+                        mealData: mealData || {}
+                    });
+                    const action = photosToShare && photosToShare.length > 0 ? '공유' : '공유 해제';
+                    console.log(`${action} 완료 (재시도, entryId: ${mealData?.id || 'null'})`);
+                    return result.data;
+                } catch (e2) {
+                    console.error('Share Photos 재시도 실패:', e2);
+                }
+            }
             const errorMessage = e.message || e.details || "사진 공유에 실패했습니다.";
             showToast(errorMessage, 'error');
             throw e;

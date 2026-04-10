@@ -1,5 +1,5 @@
 // Firestore 리스너 설정 (읽기 비용 절감: user/tags 세션당 1회, meals 기간·limit 등)
-import { db, appId } from '../firebase.js';
+import { db, appId, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, startAfter, getDocs, getDocsFromServer, documentId, enableNetwork } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from '../constants.js';
 import { dbOps } from './ops.js';
@@ -604,9 +604,11 @@ export function setupListeners(userId, callbacks) {
     );
     const statsUnsubscribe = () => statsUnsubscribes.forEach(fn => fn());
     
-    // 최근 7일 초기 로드 (스크롤·loadMoreMeals로 추가 로드). 트래커 점은 dailyStats(별도 리스너)로 표시
+    // 최근 N일 초기 로드 (스크롤·loadMoreMeals로 추가). 트래커 점은 dailyStats(별도 리스너)로 표시
+    // 기간이 짧으면 오래된 기록이 메모리에 없어 수정 모달이 비는 경우가 있어 21일로 완화
+    void refreshAppCheckTokenBeforeFirestore();
     const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - 7);
+    cutoffDate.setDate(cutoffDate.getDate() - 21);
     const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
     const todayStr = new Date().toISOString().split('T')[0];
     

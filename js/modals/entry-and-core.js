@@ -8,7 +8,7 @@ import { showToast, showSuccessPopup } from '../ui.js';
 import { resolveRecordCompletePopupMessage } from '../attendance-check.js';
 import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed } from '../render/index.js';
 import { getDashboardData } from '../analytics.js';
-import { callableFunctions, db, appId } from '../firebase.js';
+import { callableFunctions, db, appId, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import { isDemoUser } from '../demo-account.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { applyDemoDateShiftToMealRecord } from '../demo-date-shift.js';
@@ -536,26 +536,44 @@ export async function openModal(date, slotId, entryId = null) {
             savedRecord = window.mealHistory.find(m => m.id === entryId);
         }
         // 타임라인 DOM은 loadedDates로 갱신이 스킵될 수 있어, 카드의 id와 mealHistory가 어긋나면 빈 모달이 됨 → 단건 조회
+        // App Check 토큰 지연 시 permission-denied → 토큰 갱신 후 1회 재시도
         if (entryId && !savedRecord && window.currentUser?.uid) {
-            try {
-                const ref = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals', entryId);
-                const snap = await getDoc(ref);
-                if (snap.exists()) {
-                    let rec = { id: snap.id, ...snap.data() };
-                    const shift = isDemoUser(window.currentUser) ? Number(window.__demoDateShiftDays) || 0 : 0;
-                    if (shift) rec = applyDemoDateShiftToMealRecord(rec, shift);
-                    savedRecord = rec;
-                    const hist = window.mealHistory || [];
-                    if (!hist.some((m) => m.id === entryId)) {
-                        window.mealHistory = [...hist, rec].sort(
-                            (a, b) =>
-                                (b.date || '').localeCompare(a.date || '') ||
-                                (b.time || '').localeCompare(a.time || '')
-                        );
-                    }
+            const ref = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals', entryId);
+            const mergeRec = (snap) => {
+                if (!snap.exists()) return;
+                let rec = { id: snap.id, ...snap.data() };
+                const shift = isDemoUser(window.currentUser) ? Number(window.__demoDateShiftDays) || 0 : 0;
+                if (shift) rec = applyDemoDateShiftToMealRecord(rec, shift);
+                savedRecord = rec;
+                const hist = window.mealHistory || [];
+                if (!hist.some((m) => m.id === entryId)) {
+                    window.mealHistory = [...hist, rec].sort(
+                        (a, b) =>
+                            (b.date || '').localeCompare(a.date || '') ||
+                            (b.time || '').localeCompare(a.time || '')
+                    );
                 }
+            };
+            try {
+                await refreshAppCheckTokenBeforeFirestore();
+                const snap = await getDoc(ref);
+                mergeRec(snap);
             } catch (e) {
-                console.warn('openModal: meal 단건 조회 실패', entryId, e);
+                const isPerm =
+                    e?.code === 'permission-denied' ||
+                    e?.code === 'PERMISSION_DENIED' ||
+                    /permission/i.test(String(e?.message || ''));
+                if (isPerm) {
+                    try {
+                        await refreshAppCheckTokenBeforeFirestore();
+                        await new Promise((r) => setTimeout(r, 400));
+                        mergeRec(await getDoc(ref));
+                    } catch (e2) {
+                        console.warn('openModal: meal 단건 조회 실패', entryId, e2);
+                    }
+                } else {
+                    console.warn('openModal: meal 단건 조회 실패', entryId, e);
+                }
             }
         }
         

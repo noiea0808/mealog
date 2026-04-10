@@ -1,5 +1,5 @@
 // 밀톡 피드 전용 — boardPosts와 분리 (게시판 목록·상세와 데이터 공유 안 함)
-import { db, appId, callableFunctions } from '../firebase.js';
+import { db, appId, callableFunctions, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import {
     collection,
     query,
@@ -124,11 +124,29 @@ export const feedOperations = {
                 replyToPostId != null && String(replyToPostId).trim()
                     ? String(replyToPostId).trim()
                     : undefined;
-            const result = await callableFunctions.createFeedPost({
+            const payload = {
                 text: typeof text === 'string' ? text : '',
                 imageUrls: Array.isArray(imageUrls) ? imageUrls : [],
                 ...(rid ? { replyToPostId: rid } : {})
-            });
+            };
+            await refreshAppCheckTokenBeforeFirestore();
+            let result;
+            try {
+                result = await callableFunctions.createFeedPost(payload);
+            } catch (e1) {
+                const m = String(e1?.message || e1?.details || '');
+                if (
+                    e1?.code === 'permission-denied' ||
+                    e1?.code === 'functions/permission-denied' ||
+                    /permission|app check|forbidden/i.test(m)
+                ) {
+                    await refreshAppCheckTokenBeforeFirestore();
+                    await new Promise((r) => setTimeout(r, 400));
+                    result = await callableFunctions.createFeedPost(payload);
+                } else {
+                    throw e1;
+                }
+            }
             showToast('메시지를 보냈어요.', 'success');
             return result.data;
         } catch (e) {
