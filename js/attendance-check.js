@@ -481,11 +481,7 @@ export function scheduleAttendanceCheckIfNeeded() {
             if (freqHas === 'once_per_day') markWelcomeShownToday(uid, 'has');
             const streak = computeConsecutiveStreakDays(dates);
             const streakHead = formatAttendanceStreakHeadline(streak);
-            showAttendancePopup(
-                streakExtra ? `${streakHead}\n${streakExtra}` : streakHead,
-                '',
-                'hasRecord'
-            );
+            showAttendancePopup(streakHead, streakExtra, 'hasRecord');
         })();
     }, 450);
 }

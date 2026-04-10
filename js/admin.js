@@ -41,6 +41,7 @@ import { registerRestaurantStats } from './admin/restaurant-stats.js';
 import { loadMealogComments, showCharacterListView } from './admin/persona.js';
 import { runAdminStatsBackfillForUid } from './admin/stats-backfill.js';
 import { loadAdminLogTab } from './admin/ops-log.js';
+import { bindAdminWelcomeApiOnce } from './admin/welcome-api.js';
 import { invalidateAttendancePopupConfigCache, normalizeAttendancePopup } from './attendance-check.js';
 // 모니터링(모먼트·밀톡·게시판): HTML onclick용 window.* 등록
 import './admin/feed-moderation.js';
@@ -578,38 +579,65 @@ window.switchAlertsSidebar = function (section) {
     }
 };
 
-// 사이드바 전환
-window.switchContentSidebar = function(section) {
+/** 콘텐츠 상단 탭: 웰컴메시지(settings) vs 관리자명(displayName) — 동일 메인 영역(content-main-settings) */
+function syncSettingsWelcomeTopTabs(sub) {
+    const settingsBtn = document.getElementById('content-sidebar-settings');
+    const displayNameBtn = document.getElementById('content-sidebar-displayName');
+    if (!settingsBtn || !displayNameBtn) return;
+    const off = ['text-slate-500', 'bg-white', 'border-slate-200', 'hover:bg-slate-50'];
+    const on = ['text-emerald-600', 'bg-emerald-50', 'border-emerald-200'];
+    [settingsBtn, displayNameBtn].forEach((btn) => {
+        btn.classList.remove('text-emerald-600', 'bg-emerald-50', 'border-emerald-200', ...off);
+        btn.classList.add(...off);
+    });
+    const target = sub === 'displayName' ? displayNameBtn : settingsBtn;
+    off.forEach((c) => target.classList.remove(c));
+    on.forEach((c) => target.classList.add(c));
+}
+
+// 사이드바 전환 (settings일 때 opts.sub: 'welcome' | 'welcome_api' | 'displayName')
+window.switchContentSidebar = function (section, opts) {
     if (ALERTS_SIDEBAR_SECTIONS.includes(section)) {
         window.switchAdminTab('alerts');
         setTimeout(() => window.switchAlertsSidebar(section), 0);
         return;
     }
     // 모든 사이드바 버튼 비활성화
-    document.querySelectorAll('[id^="content-sidebar-"]').forEach(btn => {
+    document.querySelectorAll('[id^="content-sidebar-"]').forEach((btn) => {
         btn.classList.remove('text-emerald-600', 'bg-emerald-50', 'border-emerald-200');
         btn.classList.add('text-slate-500', 'bg-white', 'border-slate-200', 'hover:bg-slate-50');
     });
-    
+
     // 모든 메인 섹션 숨기기
-    document.querySelectorAll('.content-main-section').forEach(sec => {
+    document.querySelectorAll('.content-main-section').forEach((sec) => {
         sec.classList.add('hidden');
     });
-    
-    // 선택한 사이드바 버튼 활성화
+
+    if (section === 'settings') {
+        const activeMainSection = document.getElementById('content-main-settings');
+        if (activeMainSection) activeMainSection.classList.remove('hidden');
+        bindAdminSettingsSubnavOnce();
+        loadAdminSettings();
+        const sub = (opts && opts.sub) || 'welcome';
+        window.switchAdminSettingsSub(sub);
+        syncSettingsWelcomeTopTabs(sub);
+        resetAdminScrollTop();
+        return;
+    }
+
     const activeSidebarBtn = document.getElementById(`content-sidebar-${section}`);
     const activeMainSection = document.getElementById(`content-main-${section}`);
-    
+
     if (activeSidebarBtn) {
         activeSidebarBtn.classList.add('text-emerald-600', 'bg-emerald-50', 'border-emerald-200');
         activeSidebarBtn.classList.remove('text-slate-500', 'bg-white', 'border-slate-200', 'hover:bg-slate-50');
     }
-    
+
     if (activeMainSection) {
         activeMainSection.classList.remove('hidden');
     }
     resetAdminScrollTop();
-    
+
     // 섹션별 데이터 로드
     if (section === 'mealog') {
         loadMealogComments();
@@ -633,9 +661,6 @@ window.switchContentSidebar = function(section) {
         renderPopups();
     } else if (section === 'loginBanner') {
         loadLoginBannerConfig();
-    } else if (section === 'settings') {
-        bindAdminSettingsSubnavOnce();
-        loadAdminSettings();
     }
 };
 
@@ -656,7 +681,7 @@ function bindAdminSettingsSubnavOnce() {
 }
 
 window.switchAdminSettingsSub = function (sub) {
-    if (sub !== 'displayName' && sub !== 'welcome') return;
+    if (sub !== 'displayName' && sub !== 'welcome' && sub !== 'welcome_api') return;
     document.querySelectorAll('.admin-settings-subnav-btn').forEach((btn) => {
         const on = btn.dataset.settingsSub === sub;
         btn.classList.toggle('text-emerald-600', on);
@@ -671,6 +696,10 @@ window.switchAdminSettingsSub = function (sub) {
         const key = panel.id.replace('adminSettingsSub-', '');
         panel.classList.toggle('hidden', key !== sub);
     });
+    if (sub === 'welcome_api') {
+        bindAdminWelcomeApiOnce();
+    }
+    syncSettingsWelcomeTopTabs(sub);
 };
 
 

@@ -235,7 +235,11 @@ export const callableFunctions = {
     patchArtifactUserRoot: httpsCallable(functions, 'patchArtifactUserRoot'),
     /** 식사 기록 — 클라이언트 Firestore permission-denied 시 Admin 폴백 */
     saveArtifactUserMeal: httpsCallable(functions, 'saveArtifactUserMeal'),
-    deleteArtifactUserMeal: httpsCallable(functions, 'deleteArtifactUserMeal')
+    deleteArtifactUserMeal: httpsCallable(functions, 'deleteArtifactUserMeal'),
+    /** 관리자: 웰컴 API — 전일(서울) 기준 연속 기록 N일 이상 사용자 목록 + 3일 요약 */
+    adminWelcomeStreakUsers: httpsCallable(functions, 'adminWelcomeStreakUsers'),
+    /** 관리자: 웰컴용 제미나이 한 줄 코멘트(메뉴+응원, 서버에서 길이 상한 적용) */
+    adminWelcomeGeminiComment: httpsCallable(functions, 'adminWelcomeGeminiComment')
 };
 
 /**

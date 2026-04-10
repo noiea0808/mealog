@@ -1250,27 +1250,32 @@
                 <div class="flex flex-col gap-4">
                     <div class="w-full">
                         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
-                            <div class="flex gap-2 overflow-x-auto scrollbar-hide">
-                                <button onclick="window.switchContentSidebar('mealog')" id="content-sidebar-mealog" class="w-auto px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors">
-                                    <i class="fa-solid fa-robot mr-2"></i>MEALOG
-                                </button>
-                                <button onclick="window.switchContentSidebar('characters')" id="content-sidebar-characters" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
-                                    <i class="fa-solid fa-user-astronaut mr-2"></i>AI 캐릭터
-                                </button>
-                                <button onclick="window.switchContentSidebar('terms')" id="content-sidebar-terms" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
-                                    <i class="fa-solid fa-file-contract mr-2"></i>약관
-                                </button>
-                                <button onclick="window.switchContentSidebar('demoGuide')" id="content-sidebar-demoGuide" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
-                                    <i class="fa-solid fa-compass mr-2"></i>체험 가이드
-                                </button>
-                                <button onclick="window.switchContentSidebar('tags')" id="content-sidebar-tags" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
-                                    <i class="fa-solid fa-tags mr-2"></i>태그관리
-                                </button>
-                                <button onclick="window.switchContentSidebar('apk')" id="content-sidebar-apk" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                            <div class="flex items-center gap-2">
+                                <div class="flex gap-2 overflow-x-auto flex-1 min-w-0 scrollbar-hide">
+                                    <button onclick="window.switchContentSidebar('mealog')" id="content-sidebar-mealog" class="w-auto px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors">
+                                        <i class="fa-solid fa-robot mr-2"></i>MEALOG
+                                    </button>
+                                    <button onclick="window.switchContentSidebar('characters')" id="content-sidebar-characters" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                        <i class="fa-solid fa-user-astronaut mr-2"></i>AI 캐릭터
+                                    </button>
+                                    <button onclick="window.switchContentSidebar('terms')" id="content-sidebar-terms" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                        <i class="fa-solid fa-file-contract mr-2"></i>약관
+                                    </button>
+                                    <button onclick="window.switchContentSidebar('demoGuide')" id="content-sidebar-demoGuide" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                        <i class="fa-solid fa-compass mr-2"></i>체험 가이드
+                                    </button>
+                                    <button onclick="window.switchContentSidebar('tags')" id="content-sidebar-tags" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                        <i class="fa-solid fa-tags mr-2"></i>태그관리
+                                    </button>
+                                    <button type="button" onclick="window.switchContentSidebar('settings', { sub: 'welcome' })" id="content-sidebar-settings" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                        <i class="fa-solid fa-message mr-2"></i>웰컴메시지
+                                    </button>
+                                    <button type="button" onclick="window.switchContentSidebar('settings', { sub: 'displayName' })" id="content-sidebar-displayName" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                        <i class="fa-solid fa-user-tag mr-2"></i>관리자명
+                                    </button>
+                                </div>
+                                <button onclick="window.switchContentSidebar('apk')" id="content-sidebar-apk" class="shrink-0 w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                     <i class="fa-solid fa-mobile-screen mr-2"></i>APK 배포
-                                </button>
-                                <button onclick="window.switchContentSidebar('settings')" id="content-sidebar-settings" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
-                                    <i class="fa-solid fa-gear mr-2"></i>관리자 설정
                                 </button>
                             </div>
                         </div>
@@ -1610,16 +1615,16 @@
                             </div>
                         </div>
                         
-                        <!-- 관리자 설정 -->
+                        <!-- 웰컴메시지 (좌측: 문구/API · 상단 탭: 관리자명) -->
                         <div id="content-main-settings" class="content-main-section hidden">
-                            <div class="flex flex-col lg:flex-row gap-4">
-                                <aside class="w-full lg:w-44 shrink-0 flex flex-col gap-1.5 bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
+                            <div class="flex flex-col lg:flex-row gap-4 lg:gap-8">
+                                <aside class="w-full lg:w-32 shrink-0 flex flex-col gap-1.5 bg-white rounded-2xl shadow-sm border border-slate-100 p-3 lg:pr-2">
                                     <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide px-1 mb-0.5">메뉴</p>
-                                    <button type="button" data-settings-sub="welcome" class="admin-settings-subnav-btn w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold border transition-colors text-emerald-600 bg-emerald-50 border-emerald-200">
+                                    <button type="button" data-settings-sub="welcome" class="admin-settings-subnav-btn w-full text-left px-4 py-2 rounded-xl text-sm font-bold border transition-colors text-emerald-600 bg-emerald-50 border-emerald-200">
                                         웰컴메시지
                                     </button>
-                                    <button type="button" data-settings-sub="displayName" class="admin-settings-subnav-btn w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold border transition-colors text-slate-600 bg-white border-slate-200 hover:bg-slate-50">
-                                        관리자명
+                                    <button type="button" data-settings-sub="welcome_api" class="admin-settings-subnav-btn w-full text-left px-4 py-2 rounded-xl text-sm font-bold border transition-colors text-slate-500 bg-white border-slate-200 hover:bg-slate-50">
+                                        웰컴_API
                                     </button>
                                 </aside>
                                 <div class="flex-1 min-w-0 flex flex-col gap-4">
@@ -1730,6 +1735,75 @@
                                                         </div>
                                                     </div>
                                                 </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="adminSettingsSub-welcome_api" class="admin-settings-subpanel hidden bg-white rounded-2xl shadow-sm border border-slate-100">
+                                        <div class="p-6 border-b border-slate-100 flex flex-col gap-4">
+                                            <div>
+                                                <h2 class="text-lg font-black text-slate-800">웰컴_API</h2>
+                                                <p class="text-xs text-slate-500 mt-1">전일(서울 기준)까지 이어진 연속 일수 기준입니다. 서버는 <strong>2일 이상</strong>만 조회하고, 3·4·5일은 같은 목록에서 화면만 좁힙니다(목록을 다시 불러오기 전까지 캐시). 최근 3일 기록은 <strong>전일 포함</strong> 3일(전일·전전일·그전일)입니다. 집계는 <code class="text-[11px] bg-slate-100 px-1 rounded">config/stats/years</code>, 기록 상세는 <code class="text-[11px] bg-slate-100 px-1 rounded">meals</code>입니다.</p>
+                                            </div>
+                                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                                <div class="flex flex-wrap items-center gap-4 min-w-0">
+                                                    <span class="text-sm font-bold text-slate-700 shrink-0">연속 기록일 (전일 기준)</span>
+                                                    <div class="inline-flex flex-wrap gap-3" role="radiogroup" aria-label="연속 일수 필터">
+                                                        <label class="inline-flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                                                            <input type="radio" name="adminWelcomeApiStreak" value="2" class="rounded-full border-slate-300 text-emerald-600 focus:ring-emerald-500" checked>
+                                                            2일 이상
+                                                        </label>
+                                                        <label class="inline-flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                                                            <input type="radio" name="adminWelcomeApiStreak" value="3" class="rounded-full border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                                                            3일 이상
+                                                        </label>
+                                                        <label class="inline-flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                                                            <input type="radio" name="adminWelcomeApiStreak" value="4" class="rounded-full border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                                                            4일 이상
+                                                        </label>
+                                                        <label class="inline-flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                                                            <input type="radio" name="adminWelcomeApiStreak" value="5" class="rounded-full border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                                                            5일 이상
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
+                                                    <button type="button" id="adminWelcomeApiGeminiBtn" class="inline-flex items-center justify-center gap-2 min-h-[2.5rem] px-4 py-2 bg-violet-600 text-white rounded-xl text-sm font-bold hover:bg-violet-700 transition-colors disabled:opacity-50 disabled:pointer-events-none">
+                                                        제미나이 코멘트 생성
+                                                    </button>
+                                                    <button type="button" id="adminWelcomeApiRefreshBtn" class="inline-flex items-center justify-center gap-2 min-h-[2.5rem] px-4 py-2 bg-slate-800 text-white rounded-xl text-sm font-bold hover:bg-slate-900 transition-colors disabled:opacity-50 disabled:pointer-events-none">
+                                                        목록 불러오기
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="p-6 space-y-4">
+                                            <p id="adminWelcomeApiStatus" class="text-xs text-slate-500"></p>
+                                            <div class="overflow-x-auto rounded-xl border border-slate-200">
+                                                <table class="min-w-[52rem] w-full table-auto text-sm text-left">
+                                                    <thead class="bg-slate-50 text-slate-700 text-xs uppercase tracking-wide align-middle">
+                                                        <tr>
+                                                            <th scope="col" class="px-2 py-2.5 align-middle w-10 text-center whitespace-nowrap">번호</th>
+                                                            <th scope="col" class="px-2 py-2.5 align-middle normal-case font-bold text-slate-800">사용자 정보</th>
+                                                            <th scope="col" class="px-2 py-2.5 align-middle text-center whitespace-nowrap w-[5.5rem] leading-tight">총 기록일수<br>연속 기록</th>
+                                                            <th scope="col" class="px-2 py-2.5 align-middle min-w-[14rem]">최근 3일 기록 요약<br><span class="normal-case font-normal text-slate-500">(전일 기준·5줄 미리보기·더보기)</span></th>
+                                                            <th scope="col" class="px-2 py-2.5 align-middle min-w-[11rem]">제미나이 코멘트<br><span class="normal-case font-normal text-slate-500">(웰컴용·최대 50자·행별 생성)</span></th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="adminWelcomeApiTableBody" class="divide-y divide-slate-100 bg-white align-middle">
+                                                        <tr><td colspan="5" class="px-3 py-6 align-middle text-center text-sm text-slate-500">목록 불러오기 버튼을 누르면 사용자 목록을 가져옵니다.</td></tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                        <div id="adminWelcomeApiSummaryModal" class="hidden fixed inset-0 z-[600] bg-slate-900/50 flex items-center justify-center p-4" aria-hidden="true" role="dialog" aria-labelledby="adminWelcomeApiSummaryModalTitle">
+                                            <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col border border-slate-200">
+                                                <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 shrink-0">
+                                                    <h3 id="adminWelcomeApiSummaryModalTitle" class="text-sm font-black text-slate-800">기록 요약 전체</h3>
+                                                    <button type="button" id="adminWelcomeApiSummaryModalClose" class="p-2 rounded-lg text-slate-500 hover:bg-slate-100" aria-label="닫기">
+                                                        <i class="fa-solid fa-xmark text-lg"></i>
+                                                    </button>
+                                                </div>
+                                                <div id="adminWelcomeApiSummaryModalBody" class="px-4 py-3 overflow-y-auto text-xs text-slate-700 whitespace-pre-wrap break-words flex-1 min-h-0 leading-relaxed"></div>
                                             </div>
                                         </div>
                                     </div>

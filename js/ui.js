@@ -204,38 +204,61 @@ function ensureAttendancePopupCloseBound() {
  */
 export function closeAttendancePopup() {
     const popup = document.getElementById('attendancePopup');
+    const attendanceContent = document.getElementById('attendancePopupContent');
+    if (attendanceContent) attendanceContent.classList.remove('attendance-popup-has-aux');
     document.body.classList.remove('attendance-popup-anim');
     if (popup) popup.classList.add('hidden');
 }
 
 const ATTENDANCE_POPUP_SVG_NS = 'http://www.w3.org/2000/svg';
-const ATTENDANCE_POPUP_MAX_LINES = 8;
+const ATTENDANCE_POPUP_MAX_AUX_LINES = 12;
 
 /**
- * 출석/연속 기록 중앙 팝업 — 기록 완료와 동일 계열 SVG 텍스트(흰 윤곽 stroke) (컨페티 없음)
- * 줄바꿈(\n)으로 여러 줄. line2는 선택(구 호환).
- * @param {string} line1 첫 블록 또는 전체 멀티라인 문자열
- * @param {string} [line2] 추가 블록(멀티라인 가능)
+ * 출석/연속 기록 중앙 팝업 — 메인 문구는 SVG(Yeon Sung + 흰 stroke), 부가 문구는 본문 기본 폰트 박스.
+ * line1의 첫 줄만 메인; 나머지 줄 + line2는 부가(박스).
+ * @param {string} line1 메인(첫 줄) 또는 멀티라인(첫 줄=메인, 이후=부가)
+ * @param {string} [line2] 부가 블록(멀티라인 가능)
  * @param {'noRecord'|'hasRecord'} [welcomeIcon] 기록 없음 웰컴은 하트, 그 외(연속 기록)는 박수 이모지
  */
 export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord') {
-    const lines = [];
-    const pushBlock = (s) => {
-        if (s == null || s === '') return;
+    const splitLines = (s) => {
+        const out = [];
+        if (s == null || s === '') return out;
         for (const seg of String(s).split(/\r?\n/)) {
             const t = seg.trim();
-            if (t) lines.push(t);
+            if (t) out.push(t);
         }
+        return out;
     };
-    pushBlock(line1);
-    pushBlock(line2);
-    const trimmed = lines.slice(0, ATTENDANCE_POPUP_MAX_LINES);
-    if (trimmed.length === 0) return;
+    const from1 = splitLines(line1);
+    const from2 = splitLines(line2);
+    if (from1.length === 0 && from2.length === 0) return;
+
+    const primary = from1.length > 0 ? from1[0] : from2[0];
+    const auxParts = [];
+    if (from1.length > 1) auxParts.push(...from1.slice(1));
+    if (from1.length > 0) auxParts.push(...from2);
+    else auxParts.push(...from2.slice(1));
+    const secondary = auxParts
+        .slice(0, ATTENDANCE_POPUP_MAX_AUX_LINES)
+        .join('\n')
+        .trim();
 
     const popup = document.getElementById('attendancePopup');
     const textRoot = document.getElementById('attendancePopupTextRoot');
     const textSvg = document.getElementById('attendancePopupTextSvg');
+    const auxWrap = document.getElementById('attendancePopupAuxWrap');
+    const auxBox = document.getElementById('attendancePopupAuxBox');
     if (!popup || !textRoot || !textSvg) return;
+
+    if (auxWrap && auxBox) {
+        auxBox.textContent = secondary;
+        auxWrap.classList.toggle('hidden', !secondary);
+    }
+    const attendanceContent = document.getElementById('attendancePopupContent');
+    if (attendanceContent) {
+        attendanceContent.classList.toggle('attendance-popup-has-aux', Boolean(secondary));
+    }
 
     const iconHeart = document.getElementById('attendancePopupIconHeart');
     const iconClap = document.getElementById('attendancePopupIconClap');
@@ -251,27 +274,25 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
         textRoot.removeChild(textRoot.firstChild);
     }
 
-    const maxLen = Math.max(...trimmed.map((l) => l.length), 1);
+    const maxLen = Math.max(String(primary).length, 1);
     /** 짧은 문구 최대 35px, 길면 단계적으로 축소(340px 뷰 안에 맞춤) */
     const fs =
         maxLen > 24 ? '22' : maxLen > 20 ? '26' : maxLen > 16 ? '31' : '35';
     const fsNum = Number(fs);
-    const lineGap = Math.max(26, Math.round(fsNum * 1.38));
     const topPad = 6;
     const startY = topPad + Math.round(fsNum * 0.75);
 
-    trimmed.forEach((text, i) => {
-        const tsp = document.createElementNS(ATTENDANCE_POPUP_SVG_NS, 'tspan');
-        tsp.setAttribute('x', '170');
-        if (i === 0) tsp.setAttribute('y', String(startY));
-        else tsp.setAttribute('dy', String(lineGap));
-        tsp.textContent = text;
-        textRoot.appendChild(tsp);
-    });
+    const tsp = document.createElementNS(ATTENDANCE_POPUP_SVG_NS, 'tspan');
+    tsp.setAttribute('x', '170');
+    tsp.setAttribute('y', String(startY));
+    tsp.textContent = primary;
+    textRoot.appendChild(tsp);
 
     textRoot.setAttribute('font-size', fs);
-    const n = trimmed.length;
-    const vbH = Math.max(56, topPad + (n - 1) * lineGap + fsNum + 18);
+    /** 부가 문구 있을 때: 하단 여백·최소 높이를 줄여 메인 텍스트~박스 간격 확실히 축소 (overflow:visible로 획 여유) */
+    const bottomPad = secondary ? 8 : 18;
+    const minSvgH = secondary ? 44 : 56;
+    const vbH = Math.max(minSvgH, topPad + fsNum + bottomPad);
     textSvg.setAttribute('viewBox', `0 0 340 ${vbH}`);
     textSvg.setAttribute('height', String(vbH));
 
