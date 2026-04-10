@@ -28,6 +28,7 @@ import {
 } from './auth.js';
 import { authFlowManager } from './auth-flow.js';
 import { scheduleAttendanceCheckIfNeeded } from './attendance-check.js';
+window.scheduleAttendanceCheckIfNeeded = scheduleAttendanceCheckIfNeeded;
 import { isDemoUser, markUserHasRealLogin } from './demo-account.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
@@ -1501,7 +1502,11 @@ function applyLoginBannerLandingNotice() {
     } catch (_) {}
 }
 window.addEventListener('mealog:mainScreenShown', applyLoginBannerLandingNotice);
+window.addEventListener('mealog:mainScreenShown', () => scheduleAttendanceCheckIfNeeded());
 window.__onMainScreenShown = applyLoginBannerLandingNotice;
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') scheduleAttendanceCheckIfNeeded();
+});
 
 // 스크롤 방향에 따른 헤더·하단 네비 숨김·표시 (트위터/인스타 스타일)
 // 아래로 스크롤 시 헤더·하단 네비 숨김, 위로 스크롤 시 다시 표시

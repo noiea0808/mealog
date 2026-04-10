@@ -1140,6 +1140,13 @@ export function closeTermsModal() {
     if (modal) {
         modal.classList.add('hidden');
     }
+    try {
+        if (typeof window.scheduleAttendanceCheckIfNeeded === 'function') {
+            queueMicrotask(() => window.scheduleAttendanceCheckIfNeeded());
+        }
+    } catch (_) {
+        /* ignore */
+    }
 }
 
 // 약관 동의 취소 (로그아웃)
@@ -1345,6 +1352,13 @@ export function closeProfileSetupModal() {
     const modal = document.getElementById('profileSetupModal');
     if (modal) {
         modal.classList.add('hidden');
+    }
+    try {
+        if (typeof window.scheduleAttendanceCheckIfNeeded === 'function') {
+            queueMicrotask(() => window.scheduleAttendanceCheckIfNeeded());
+        }
+    } catch (_) {
+        /* ignore */
     }
 }
 

@@ -410,7 +410,8 @@
     </div>
 
     <!-- 출석/연속 기록: 중앙 팝업 (기록 완료와 동일 텍스트 스타일, 테스트 시 세션당 1회) -->
-    <div id="attendancePopup" class="hidden fixed inset-0 z-[9480] flex items-center justify-center">
+    <!-- 로딩 오버레이(z-9999)보다 위에 두어 웰컴·차트가 가려지지 않게 함 -->
+    <div id="attendancePopup" class="hidden fixed inset-0 z-[10050] flex items-center justify-center">
         <div id="attendancePopupBackdrop" class="absolute inset-0 bg-slate-900/25"></div>
         <div id="attendancePopupContent" class="relative z-10 w-[92%] max-w-[22rem] bg-transparent flex flex-col items-center gap-[0.15625rem] px-2 py-2">
             <div class="popup-celebrate-ring popup-celebrate-ring--check flex items-center justify-center min-h-[4.75rem]" aria-hidden="true">

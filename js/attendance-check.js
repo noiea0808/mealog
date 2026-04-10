@@ -3,7 +3,6 @@
  * 노출 빈도: 케이스별(기록 없음·연속 없음·1일·2일+) 관리자 설정 — 접속마다(sessionStorage) 또는 하루 1회(localStorage).
  * 관리자 설정(adminSettings/config.attendancePopup)으로 기록 유무·환경별 문구·노출(끔 포함).
  */
-import { authFlowManager } from './auth-flow.js';
 import { isDemoUser } from './demo-account.js';
 import { appCheckInitPromise, db, appId, refreshAppCheckTokenBeforeFirestore } from './firebase.js';
 import { showAttendancePopup } from './ui.js';
@@ -101,8 +100,21 @@ let lastAttendanceUid = null;
 let welcomePopupLocalDay = null;
 let attendanceDebounceTimer = null;
 
-const WELCOME_DAY_LS_PREFIX = 'mealog_welcome_shown_';
-const WELCOME_SESS_PREFIX = 'mealog_welcome_sess_';
+/** v3: 이전 세션/일일 키에 걸려 영구 미노출된 경우 초기화 */
+const WELCOME_DAY_LS_PREFIX = 'mealog_welcome_shown_v3_';
+const WELCOME_SESS_PREFIX = 'mealog_welcome_sess_v3_';
+
+/** 로컬 개발: sessionStorage는 탭 내 새로고침(F5)에도 유지되어 ‘접속마다’ 테스트가 막힘 → 풀 리로드마다 새 ID로 분리 */
+const WELCOME_SESS_PAGE_ID =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+
+function isWelcomeLocalDevHost() {
+    if (typeof window === 'undefined') return false;
+    const h = window.location.hostname || '';
+    return h === 'localhost' || h === '127.0.0.1' || h.startsWith('192.168.');
+}
 
 /** @param {'no'|'ns'|'s1'|'s2p'} kind */
 function welcomeDayStorageKey(uid, kind) {
@@ -130,7 +142,8 @@ function markWelcomeShownToday(uid, kind) {
 }
 
 function welcomeSessionKey(uid, kind) {
-    return `${WELCOME_SESS_PREFIX}${uid}_${kind}`;
+    const base = `${WELCOME_SESS_PREFIX}${uid}_${kind}`;
+    return isWelcomeLocalDevHost() ? `${base}_pl_${WELCOME_SESS_PAGE_ID}` : base;
 }
 
 /** @param {'no'|'ns'|'s1'|'s2p'} kind */
@@ -183,6 +196,25 @@ let attendancePopupConfigPromise = null;
 
 export function invalidateAttendancePopupConfigCache() {
     attendancePopupConfigPromise = null;
+}
+
+/** 메인 화면만 보면 스케줄(인증 hasCompleted·모달은 표시 직전에만 검사) */
+function isMainScreenVisibleForWelcome() {
+    if (typeof document === 'undefined') return false;
+    const mainApp = document.getElementById('mainApp');
+    return Boolean(mainApp && !mainApp.classList.contains('hidden'));
+}
+
+/** 실제 표시 직전: 온보딩·모달이 가리면 스킵. 로딩은 z가 더 낮아 웰컴이 위에 그려지므로 여기서 막지 않음(막으면 로딩과 타이밍만 겹쳐도 영구 미노출). */
+function shouldShowWelcomeNow() {
+    if (typeof document === 'undefined') return false;
+    const wiz = document.getElementById('signupWizard');
+    if (wiz && !wiz.classList.contains('hidden')) return false;
+    const terms = document.getElementById('termsModal');
+    if (terms && !terms.classList.contains('hidden')) return false;
+    const prof = document.getElementById('profileSetupModal');
+    if (prof && !prof.classList.contains('hidden')) return false;
+    return true;
 }
 
 const DEFAULT_NO_RECORD_L1 = '우리 오늘부터';
@@ -644,6 +676,16 @@ async function fetchAttendancePopupRoot() {
     }
 }
 
+/** App Check·네트워크 지연 시 getDoc 무한 대기로 _attendancePopupResolutionPending이 고착되는 것 방지 */
+async function fetchAttendancePopupRootWithTimeout() {
+    const fallback = attendancePopupDefaults();
+    const ms = 12000;
+    return await Promise.race([
+        fetchAttendancePopupRoot(),
+        new Promise((resolve) => setTimeout(() => resolve(fallback), ms))
+    ]);
+}
+
 export function resetAttendanceCheckSessionForTesting() {
     lastAttendanceUid = null;
     welcomePopupLocalDay = null;
@@ -658,9 +700,7 @@ export function scheduleAttendanceCheckIfNeeded() {
     const user = window.currentUser;
     if (!user?.uid || user.isAnonymous) return;
     if (isDemoUser(user)) return;
-    if (!authFlowManager.hasCompleted) return;
-    const mainApp = document.getElementById('mainApp');
-    if (!mainApp || mainApp.classList.contains('hidden')) return;
+    if (!isMainScreenVisibleForWelcome()) return;
 
     resetWelcomePopupGateIfNewLocalDay();
 
@@ -669,18 +709,17 @@ export function scheduleAttendanceCheckIfNeeded() {
     }
 
     if (attendanceDebounceTimer) clearTimeout(attendanceDebounceTimer);
-    window._attendancePopupResolutionPending = true;
     attendanceDebounceTimer = setTimeout(() => {
         attendanceDebounceTimer = null;
         void (async () => {
-            try {
-                if (!window.currentUser || window.currentUser.uid !== user.uid || window.currentUser.isAnonymous) return;
-                if (!authFlowManager.hasCompleted) return;
-                const mainEl = document.getElementById('mainApp');
-                if (!mainEl || mainEl.classList.contains('hidden')) return;
-                if (isDemoUser(window.currentUser)) return;
+            if (!window.currentUser || window.currentUser.uid !== user.uid || window.currentUser.isAnonymous) return;
+            if (!isMainScreenVisibleForWelcome()) return;
+            if (isDemoUser(window.currentUser)) return;
 
-                const cfg = await fetchAttendancePopupRoot();
+            /** 콘텐츠 팝업이 이 플래그로 대기함 — 디바운스 전에 켜면 getDoc 지연 시 영구 대기하므로 조회 직전에만 설정 */
+            window._attendancePopupResolutionPending = true;
+            try {
+                const cfg = await fetchAttendancePopupRootWithTimeout();
                 const env = getMealogClientEnv();
                 const uid = user.uid;
 
@@ -690,11 +729,13 @@ export function scheduleAttendanceCheckIfNeeded() {
                     const sub = scenarioForClient(cfg.noRecord, env);
                     if (!sub || sub.frequency === 'off') return;
                     if (!passesWelcomeFrequency(uid, 'no', sub.frequency)) return;
+                    if (!shouldShowWelcomeNow()) return;
                     const noRecRaw = sub.message != null ? String(sub.message).trim() : '';
                     const noRecordBody =
                         noRecRaw || `${DEFAULT_NO_RECORD_L1}\n${DEFAULT_NO_RECORD_L2}`;
-                    markWelcomeForFrequency(uid, 'no', sub.frequency);
-                    showAttendancePopup(noRecordBody, '', 'noRecord');
+                    if (showAttendancePopup(noRecordBody, '', 'noRecord')) {
+                        markWelcomeForFrequency(uid, 'no', sub.frequency);
+                    }
                     return;
                 }
                 const streak = computeConsecutiveStreakDays(dates);
@@ -725,9 +766,11 @@ export function scheduleAttendanceCheckIfNeeded() {
                 const sub = scenarioForClient(picked.row, env);
                 if (!sub || sub.frequency === 'off') return;
                 if (!passesWelcomeFrequency(uid, picked.markKind, sub.frequency)) return;
+                if (!shouldShowWelcomeNow()) return;
                 const streakHead = resolveHasRecordHeadline(sub, picked.slot, streak);
-                markWelcomeForFrequency(uid, picked.markKind, sub.frequency);
-                showAttendancePopup(streakHead, '', picked.welcomeIcon);
+                if (showAttendancePopup(streakHead, '', picked.welcomeIcon)) {
+                    markWelcomeForFrequency(uid, picked.markKind, sub.frequency);
+                }
             } finally {
                 window._attendancePopupResolutionPending = false;
                 const ap = document.getElementById('attendancePopup');
@@ -740,5 +783,5 @@ export function scheduleAttendanceCheckIfNeeded() {
                 }
             }
         })();
-    }, 450);
+    }, 180);
 }

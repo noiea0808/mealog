@@ -1582,6 +1582,10 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
         0 4px 0 #fff, 0 -4px 0 #fff, 5px 0 0 #fff, -5px 0 0 #fff, 0 5px 0 #fff, 0 -5px 0 #fff, 6px 0 0 #fff,
         -6px 0 0 #fff, 0 6px 0 #fff, 0 -6px 0 #fff, 7px 0 0 #fff, -7px 0 0 #fff, 0 7px 0 #fff, 0 -7px 0 #fff;
 }
+/* 위 규칙이 .hidden(display:none)보다 구체성이 높아 숨김이 깨짐 → 따봉/새싹 동시 노출 방지 */
+#attendancePopupContent .attendance-popup-thumbs-emoji.hidden {
+    display: none !important;
+}
 .attendance-popup-anim #attendancePopupContent .attendance-popup-thumbs-emoji {
     transform-origin: 55% 88%;
     animation: attendancePopupThumbs 0.92s ease-in-out 0.25s infinite;

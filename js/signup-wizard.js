@@ -418,6 +418,13 @@ export function openSignupWizard(options = {}) {
 export function closeSignupWizard() {
     const wizard = getEl('signupWizard');
     if (wizard) wizard.classList.add('hidden');
+    try {
+        if (typeof window.scheduleAttendanceCheckIfNeeded === 'function') {
+            queueMicrotask(() => window.scheduleAttendanceCheckIfNeeded());
+        }
+    } catch (_) {
+        /* ignore */
+    }
 }
 
 window.openSignupWizard = openSignupWizard;

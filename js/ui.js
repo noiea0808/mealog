@@ -56,6 +56,13 @@ export function hideLoading() {
             loadingOverlayTimeout = null;
         }
         loadingHideTimeout = null;
+        try {
+            if (typeof window.scheduleAttendanceCheckIfNeeded === 'function') {
+                queueMicrotask(() => window.scheduleAttendanceCheckIfNeeded());
+            }
+        } catch (_) {
+            /* ignore */
+        }
     };
     // 메시지가 표시된 경우 최소 500ms 보여주기 (너무 빠른 로드 시 사용자가 못 봄)
     const minShowMs = 500;
@@ -518,6 +525,7 @@ const ATTENDANCE_POPUP_MAX_AUX_LINES = 12;
  * @param {string} line1 메인(첫 줄) 또는 멀티라인(첫 줄=메인, 이후=부가)
  * @param {string} [line2] 부가 블록(멀티라인 가능)
  * @param {'noRecord'|'hasRecord'|'hasRecordRestart'} [welcomeIcon] 기록 없음=하트, 연속 있음=따봉, 어제 끊김=새싹
+ * @returns {boolean} 실제로 팝업을 띄웠으면 true(빈 문구·DOM 없음 등으로 스킵이면 false)
  */
 export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord') {
     const splitLines = (s) => {
@@ -531,7 +539,7 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
     };
     const from1 = splitLines(line1);
     const from2 = splitLines(line2);
-    if (from1.length === 0 && from2.length === 0) return;
+    if (from1.length === 0 && from2.length === 0) return false;
 
     const primary = from1.length > 0 ? from1[0] : from2[0];
     const auxParts = [];
@@ -548,7 +556,7 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
     const textSvg = document.getElementById('attendancePopupTextSvg');
     const auxWrap = document.getElementById('attendancePopupAuxWrap');
     const auxBox = document.getElementById('attendancePopupAuxBox');
-    if (!popup || !textRoot || !textSvg) return;
+    if (!popup || !textRoot || !textSvg) return false;
 
     const showWelcomeCharts = welcomeIcon === 'hasRecord' || welcomeIcon === 'hasRecordRestart';
     const showAux = Boolean(secondary) && !showWelcomeCharts;
@@ -618,6 +626,7 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
     popup.classList.remove('hidden');
     void popup.offsetHeight;
     document.body.classList.add('attendance-popup-anim');
+    return true;
 }
 
 const LANDING_EXIT_MS = 280;
