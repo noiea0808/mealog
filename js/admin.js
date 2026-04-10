@@ -1373,18 +1373,11 @@ window.saveDemoGuide = async function() {
 // 관리자 표시 이름 캐시 (공지·댓글 작성 시 사용)
 let cachedAdminDisplayName = '관리자';
 
-function fillAttendanceScenarioRadios(name, value) {
+function fillTriFreq(name, value) {
     const v =
-        value === 'staging' || value === 'production' || value === 'all' || value === 'off'
+        value === 'off' || value === 'once_per_day' || value === 'every_session'
             ? value
-            : 'all';
-    document.querySelectorAll(`input[name="${name}"]`).forEach((r) => {
-        r.checked = r.value === v;
-    });
-}
-
-function fillAttendanceFrequencyRadios(name, value) {
-    const v = value === 'once_per_day' || value === 'every_session' ? value : 'every_session';
+            : 'every_session';
     document.querySelectorAll(`input[name="${name}"]`).forEach((r) => {
         r.checked = r.value === v;
     });
@@ -1392,19 +1385,27 @@ function fillAttendanceFrequencyRadios(name, value) {
 
 function fillAttendancePopupForm(rawAp) {
     const n = normalizeAttendancePopup(rawAp && typeof rawAp === 'object' ? rawAp : {});
-    fillAttendanceScenarioRadios('attendanceNoRecordApplyTo', n.noRecordApplyTo);
-    fillAttendanceScenarioRadios('attendanceHasRecordApplyTo', n.hasRecordApplyTo);
-    fillAttendanceFrequencyRadios('attendanceNoRecordFrequency', n.noRecordFrequency);
-    fillAttendanceFrequencyRadios('attendanceHasRecordFrequency', n.hasRecordFrequency);
-    const noTa = document.getElementById('attendanceNoRecordMessage');
-    if (noTa) {
-        noTa.value =
-            n.noRecordMessage === null || n.noRecordMessage === undefined
-                ? ATT_DEFAULT_NO_RECORD_COMBINED
-                : String(n.noRecordMessage);
+    fillTriFreq('attendanceStagingHasFreq', n.staging.hasRecord.frequency);
+    fillTriFreq('attendanceStagingNoFreq', n.staging.noRecord.frequency);
+    fillTriFreq('attendanceProductionHasFreq', n.production.hasRecord.frequency);
+    fillTriFreq('attendanceProductionNoFreq', n.production.noRecord.frequency);
+
+    const stagingNo = document.getElementById('attendanceStagingNoMessage');
+    if (stagingNo) {
+        const msg = n.staging.noRecord.message;
+        stagingNo.value =
+            msg === null || msg === undefined ? ATT_DEFAULT_NO_RECORD_COMBINED : String(msg);
     }
-    const hasTa = document.getElementById('attendanceHasRecordMessage');
-    if (hasTa) hasTa.value = n.hasRecordMessage != null ? String(n.hasRecordMessage) : '';
+    const prodNo = document.getElementById('attendanceProductionNoMessage');
+    if (prodNo) {
+        const msg = n.production.noRecord.message;
+        prodNo.value =
+            msg === null || msg === undefined ? ATT_DEFAULT_NO_RECORD_COMBINED : String(msg);
+    }
+    const stagingHas = document.getElementById('attendanceStagingHasMessage');
+    if (stagingHas) stagingHas.value = n.staging.hasRecord.message != null ? String(n.staging.hasRecord.message) : '';
+    const prodHas = document.getElementById('attendanceProductionHasMessage');
+    if (prodHas) prodHas.value = n.production.hasRecord.message != null ? String(n.production.hasRecord.message) : '';
 }
 
 async function loadAdminSettings() {
@@ -1442,15 +1443,9 @@ window.saveAdminDisplayName = async function() {
     }
 };
 
-function readAttendanceScenarioApply(name) {
+function readTriFreq(name) {
     const v = document.querySelector(`input[name="${name}"]:checked`)?.value;
-    if (v === 'staging' || v === 'production' || v === 'all' || v === 'off') return v;
-    return 'all';
-}
-
-function readAttendanceFrequency(name) {
-    const v = document.querySelector(`input[name="${name}"]:checked`)?.value;
-    if (v === 'once_per_day' || v === 'every_session') return v;
+    if (v === 'off' || v === 'once_per_day' || v === 'every_session') return v;
     return 'every_session';
 }
 
@@ -1458,12 +1453,26 @@ window.saveAttendancePopupSettings = async function () {
     try {
         const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
         const payload = {
-            noRecordApplyTo: readAttendanceScenarioApply('attendanceNoRecordApplyTo'),
-            hasRecordApplyTo: readAttendanceScenarioApply('attendanceHasRecordApplyTo'),
-            noRecordFrequency: readAttendanceFrequency('attendanceNoRecordFrequency'),
-            hasRecordFrequency: readAttendanceFrequency('attendanceHasRecordFrequency'),
-            noRecordMessage: document.getElementById('attendanceNoRecordMessage')?.value?.trim() ?? '',
-            hasRecordMessage: document.getElementById('attendanceHasRecordMessage')?.value?.trim() ?? ''
+            staging: {
+                hasRecord: {
+                    frequency: readTriFreq('attendanceStagingHasFreq'),
+                    message: document.getElementById('attendanceStagingHasMessage')?.value?.trim() ?? ''
+                },
+                noRecord: {
+                    frequency: readTriFreq('attendanceStagingNoFreq'),
+                    message: document.getElementById('attendanceStagingNoMessage')?.value?.trim() ?? ''
+                }
+            },
+            production: {
+                hasRecord: {
+                    frequency: readTriFreq('attendanceProductionHasFreq'),
+                    message: document.getElementById('attendanceProductionHasMessage')?.value?.trim() ?? ''
+                },
+                noRecord: {
+                    frequency: readTriFreq('attendanceProductionNoFreq'),
+                    message: document.getElementById('attendanceProductionNoMessage')?.value?.trim() ?? ''
+                }
+            }
         };
         await setDoc(configRef, { attendancePopup: payload }, { merge: true });
         invalidateAttendancePopupConfigCache();

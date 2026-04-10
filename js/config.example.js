@@ -7,6 +7,10 @@
 // 네이티브 구글 로그인용 (Firebase Console > Authentication > Sign-in method > Google > Web SDK configuration > Web client ID)
 export const GOOGLE_WEB_CLIENT_ID = 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com';
 
+// 로컬 웹(localhost 등) App Check 디버그 — firestore.rules 가 아니라 App Check 콘솔(웹 앱 mealog → 디버그 토큰)에 동일 문자열 등록.
+// npm run build 시 scripts/build-config.js 가 덮어쓰므로, 루트 .env / functions/.env 에 APPCHECK_DEBUG_TOKEN=... 두는 편이 안전.
+export const APPCHECK_DEBUG_TOKEN = '';
+
 // 카카오 로그인 — 반드시 「JavaScript 키」(REST 키 아님). 웹 전용; 네이티브 앱 카카오는 미사용
 // 로컬: 루트 .env 또는 functions/.env 에 KAKAO_JAVASCRIPT_KEY=... 후 npm run build → js/config.js 생성
 export const KAKAO_JAVASCRIPT_KEY = 'YOUR_KAKAO_JAVASCRIPT_KEY';

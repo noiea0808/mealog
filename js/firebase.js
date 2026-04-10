@@ -95,13 +95,93 @@ function createFirestore() {
         } catch (e) {
             const msg = String(e?.message || e);
             if (msg.includes('already') || msg.includes('Already')) {
-                return getFirestore(app);
+                return getFirestore(app, '(default)');
             }
             console.warn('Firestore initializeFirestore 실패, getFirestore로 대체:', msg);
         }
     }
-    return getFirestore(app);
+    return getFirestore(app, '(default)');
 }
+
+/** @type {import('firebase/app-check').AppCheck | null} */
+export let firebaseAppCheck = null;
+
+async function resolveAppCheckDebugTokenForLocalhost() {
+    try {
+        const mod = await import('./config.js');
+        if (mod.APPCHECK_DEBUG_TOKEN && String(mod.APPCHECK_DEBUG_TOKEN).trim()) {
+            return String(mod.APPCHECK_DEBUG_TOKEN).trim();
+        }
+    } catch (_) {}
+    try {
+        const def = await import('./config.default.js');
+        if (def.APPCHECK_DEBUG_TOKEN && String(def.APPCHECK_DEBUG_TOKEN).trim()) {
+            return String(def.APPCHECK_DEBUG_TOKEN).trim();
+        }
+    } catch (_) {}
+    return '';
+}
+
+export const appCheckInitPromise = (async () => {
+    try {
+        if (typeof window === 'undefined') return;
+        const isCapNative =
+            typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.();
+        const h = window.location.hostname;
+        const isLocalhost =
+            h === 'localhost' ||
+            h === '127.0.0.1' ||
+            h === '0.0.0.0' ||
+            h.startsWith('192.168.') ||
+            (!isCapNative && h === '');
+        if (isLocalhost) {
+            const fixed = await resolveAppCheckDebugTokenForLocalhost();
+            if (fixed) {
+                window.FIREBASE_APPCHECK_DEBUG_TOKEN = fixed;
+                console.info(
+                    '🔧 App Check: config의 APPCHECK_DEBUG_TOKEN 사용 중. Firebase Console → App Check → 웹 앱에 동일 토큰이 등록돼 있어야 합니다.'
+                );
+            } else {
+                window.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+                console.warn(
+                    '🔧 로컬 App Check: 아래 콘솔에 찍힌 디버그 토큰을 Firebase Console → App Check → 해당 웹 앱 → 디버그 토큰에 등록하세요. ' +
+                        '매번 바뀌면 번거로우니 UUID 하나를 만들어 config.js에 APPCHECK_DEBUG_TOKEN으로 넣고, 그 문자열을 콘솔에도 등록하세요. ' +
+                        '미등록 시 exchangeDebugToken 403 → Firestore permission-denied가 납니다.'
+                );
+            }
+        }
+        const { initializeAppCheck, ReCaptchaV3Provider, getToken } = await import(
+            'https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js'
+        );
+        const appCheck = initializeAppCheck(app, {
+            provider: new ReCaptchaV3Provider('6LdjYVUsAAAAAP7RvrJgOEp-7wvDpmoC8Bll9-Kw'),
+            isTokenAutoRefreshEnabled: true
+        });
+        firebaseAppCheck = appCheck;
+        await getToken(appCheck, false);
+        console.log('✅ App Check 초기화 완료');
+    } catch (e) {
+        console.warn('⚠️ App Check 초기화 실패 (계속 진행):', e);
+    }
+})();
+
+/**
+ * App Check 강제 시, 초기화 직후 첫 Firestore 쓰기가 토큰 없이 나가 permission-denied 나는 경우 완화
+ */
+export async function refreshAppCheckTokenBeforeFirestore() {
+    await appCheckInitPromise;
+    if (!firebaseAppCheck || typeof window === 'undefined') return;
+    try {
+        const { getToken } = await import('https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js');
+        await getToken(firebaseAppCheck, true);
+    } catch (_) {
+        /* ignore */
+    }
+}
+
+// 공식 가이드: App Check를 Firestore 등보다 먼저 초기화. 기존에는 getFirestore가 먼저라 강제 적용 시 쓰기에 토큰이 안 붙을 수 있음.
+await appCheckInitPromise;
+
 export const db = createFirestore();
 export const storage = getStorage(app);
 
@@ -152,88 +232,15 @@ export const callableFunctions = {
     /** 클라이언트 Firestore permission-denied 시 설정+닉네임클레임 저장 폴백 (Admin) */
     saveArtifactUserSettings: httpsCallable(functions, 'saveArtifactUserSettings'),
     /** users/{uid} 루트 문서(lastLoginAt·createdAt·providerId·email) — 클라이언트 쓰기 거절 시 Admin 병합 */
-    patchArtifactUserRoot: httpsCallable(functions, 'patchArtifactUserRoot')
+    patchArtifactUserRoot: httpsCallable(functions, 'patchArtifactUserRoot'),
+    /** 식사 기록 — 클라이언트 Firestore permission-denied 시 Admin 폴백 */
+    saveArtifactUserMeal: httpsCallable(functions, 'saveArtifactUserMeal'),
+    deleteArtifactUserMeal: httpsCallable(functions, 'deleteArtifactUserMeal')
 };
 
 /**
- * App Check — Firestore 강제 시 토큰 없으면 permission-denied.
- * initAuth는 appCheckInitPromise를 카카오 OAuth보다 먼저 await.
+ * App Check / Firestore: initAuth 등은 appCheckInitPromise를 카카오 OAuth보다 먼저 await.
  */
-/** @type {import('firebase/app-check').AppCheck | null} */
-export let firebaseAppCheck = null;
-
-/**
- * App Check 강제 시, 초기화 직후 첫 Firestore 쓰기가 토큰 없이 나가 permission-denied 나는 경우 완화
- */
-export async function refreshAppCheckTokenBeforeFirestore() {
-    await appCheckInitPromise;
-    if (!firebaseAppCheck || typeof window === 'undefined') return;
-    try {
-        const { getToken } = await import('https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js');
-        await getToken(firebaseAppCheck, true);
-    } catch (_) {
-        /* ignore */
-    }
-}
-
-async function resolveAppCheckDebugTokenForLocalhost() {
-    try {
-        const mod = await import('./config.js');
-        if (mod.APPCHECK_DEBUG_TOKEN && String(mod.APPCHECK_DEBUG_TOKEN).trim()) {
-            return String(mod.APPCHECK_DEBUG_TOKEN).trim();
-        }
-    } catch (_) {}
-    try {
-        const def = await import('./config.default.js');
-        if (def.APPCHECK_DEBUG_TOKEN && String(def.APPCHECK_DEBUG_TOKEN).trim()) {
-            return String(def.APPCHECK_DEBUG_TOKEN).trim();
-        }
-    } catch (_) {}
-    return '';
-}
-
-export const appCheckInitPromise = (async () => {
-    try {
-        if (typeof window === 'undefined') return;
-        const isCapNative =
-            typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.();
-        // 빈 hostname은 일부 WebView에서만 나오며 디버그 토큰 경로로 보냄. 네이티브는 보통 https://localhost 등으로
-        // reCAPTCHA 경로를 쓰는 편이라, 네이티브+빈 hostname일 때만 디버그 강제를 피함(exchangeDebugToken 403 완화).
-        const isLocalhost =
-            window.location.hostname === 'localhost' ||
-            window.location.hostname === '127.0.0.1' ||
-            window.location.hostname === '0.0.0.0' ||
-            (!isCapNative && window.location.hostname === '');
-        if (isLocalhost) {
-            const fixed = await resolveAppCheckDebugTokenForLocalhost();
-            if (fixed) {
-                window.FIREBASE_APPCHECK_DEBUG_TOKEN = fixed;
-                console.info(
-                    '🔧 App Check: config의 APPCHECK_DEBUG_TOKEN 사용 중. Firebase Console → App Check → 웹 앱에 동일 토큰이 등록돼 있어야 합니다.'
-                );
-            } else {
-                window.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
-                console.warn(
-                    '🔧 로컬 App Check: 아래 콘솔에 찍힌 디버그 토큰을 Firebase Console → App Check → 해당 웹 앱 → 디버그 토큰에 등록하세요. ' +
-                        '매번 바뀌면 번거로우니 UUID 하나를 만들어 config.js에 APPCHECK_DEBUG_TOKEN으로 넣고, 그 문자열을 콘솔에도 등록하세요. ' +
-                        '미등록 시 exchangeDebugToken 403 → Firestore permission-denied가 납니다.'
-                );
-            }
-        }
-        const { initializeAppCheck, ReCaptchaV3Provider, getToken } = await import(
-            'https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js'
-        );
-        const appCheck = initializeAppCheck(app, {
-            provider: new ReCaptchaV3Provider('6LdjYVUsAAAAAP7RvrJgOEp-7wvDpmoC8Bll9-Kw'),
-            isTokenAutoRefreshEnabled: true
-        });
-        firebaseAppCheck = appCheck;
-        await getToken(appCheck, false);
-        console.log('✅ App Check 초기화 완료');
-    } catch (e) {
-        console.warn('⚠️ App Check 초기화 실패 (계속 진행):', e);
-    }
-})();
 
 // 에러 리포팅 시스템 초기화
 (async () => {

@@ -178,14 +178,21 @@ function pickScenarioApplyTo(v, fallback) {
     return fallback;
 }
 
+/** @returns {{ staging: EnvAttendanceBlock, production: EnvAttendanceBlock }} */
 function attendancePopupDefaults() {
+    const block = () => ({
+        noRecord: {
+            frequency: /** @type {'every_session'} */ ('every_session'),
+            message: /** @type {string|null} */ (null)
+        },
+        hasRecord: {
+            frequency: /** @type {'every_session'} */ ('every_session'),
+            message: ''
+        }
+    });
     return {
-        noRecordApplyTo: /** @type {'all'} */ ('all'),
-        hasRecordApplyTo: /** @type {'all'} */ ('all'),
-        noRecordMessage: /** @type {string|null} */ (null),
-        hasRecordMessage: '',
-        noRecordFrequency: /** @type {'every_session'} */ ('every_session'),
-        hasRecordFrequency: /** @type {'every_session'} */ ('every_session')
+        staging: block(),
+        production: block()
     };
 }
 
@@ -195,12 +202,102 @@ function pickAttendanceShowFrequency(v) {
     return 'every_session';
 }
 
+/** @param {unknown} v @param {'off'|'once_per_day'|'every_session'} fallback */
+function pickFrequencyWithOff(v, fallback = 'every_session') {
+    if (v === 'off' || v === 'once_per_day' || v === 'every_session') return v;
+    return fallback;
+}
+
 /**
- * adminSettings/config.attendancePopup — 구버전(단일 applyTo·streakLine2·enabled) + 신규(기록 유무별 적용·끔) 호환
- * @returns {{ noRecordApplyTo: 'all'|'staging'|'production'|'off', hasRecordApplyTo: 'all'|'staging'|'production'|'off', noRecordMessage: string|null, hasRecordMessage: string, noRecordFrequency: 'once_per_day'|'every_session', hasRecordFrequency: 'once_per_day'|'every_session' }}
+ * 스테이징/운영 × 기록 유무 4블록 형식인지
+ * @param {Record<string, unknown>} raw
+ */
+function isAttendancePopupV2(raw) {
+    if (!raw.staging || typeof raw.staging !== 'object' || !raw.production || typeof raw.production !== 'object') {
+        return false;
+    }
+    const st = raw.staging;
+    const pr = raw.production;
+    return (
+        typeof st.noRecord === 'object' &&
+        st.noRecord != null &&
+        typeof st.hasRecord === 'object' &&
+        st.hasRecord != null &&
+        typeof pr.noRecord === 'object' &&
+        pr.noRecord != null &&
+        typeof pr.hasRecord === 'object' &&
+        pr.hasRecord != null
+    );
+}
+
+/**
+ * @param {Record<string, unknown>} raw
+ * @returns {{ staging: EnvAttendanceBlock, production: EnvAttendanceBlock }}
+ */
+function mergeV2AttendancePopup(raw) {
+    const d = attendancePopupDefaults();
+    /** @param {typeof d.staging} defEnv @param {Record<string, unknown>} incEnv */
+    const mergeEnv = (defEnv, incEnv) => ({
+        noRecord: {
+            frequency: pickFrequencyWithOff(incEnv?.noRecord?.frequency, defEnv.noRecord.frequency),
+            message:
+                incEnv?.noRecord && Object.prototype.hasOwnProperty.call(incEnv.noRecord, 'message')
+                    ? incEnv.noRecord.message == null
+                        ? null
+                        : String(incEnv.noRecord.message)
+                    : defEnv.noRecord.message
+        },
+        hasRecord: {
+            frequency: pickFrequencyWithOff(incEnv?.hasRecord?.frequency, defEnv.hasRecord.frequency),
+            message:
+                incEnv?.hasRecord && Object.prototype.hasOwnProperty.call(incEnv.hasRecord, 'message')
+                    ? String(incEnv.hasRecord.message ?? '')
+                    : defEnv.hasRecord.message
+        }
+    });
+    return {
+        staging: mergeEnv(d.staging, raw.staging && typeof raw.staging === 'object' ? raw.staging : {}),
+        production: mergeEnv(d.production, raw.production && typeof raw.production === 'object' ? raw.production : {})
+    };
+}
+
+/**
+ * 구 flat 한 덩어리 → 스테이징/운영별 블록 (끔 = frequency off)
+ * @param {{
+ *   noRecordApplyTo: 'all'|'staging'|'production'|'off',
+ *   hasRecordApplyTo: 'all'|'staging'|'production'|'off',
+ *   noRecordMessage: string|null,
+ *   hasRecordMessage: string,
+ *   noRecordFrequency: 'once_per_day'|'every_session',
+ *   hasRecordFrequency: 'once_per_day'|'every_session'
+ * }} f
+ */
+function flatAttendanceToNested(f) {
+    const fn = pickAttendanceShowFrequency(f.noRecordFrequency);
+    const fh = pickAttendanceShowFrequency(f.hasRecordFrequency);
+    const noStagingOff = f.noRecordApplyTo === 'production' || f.noRecordApplyTo === 'off';
+    const noProdOff = f.noRecordApplyTo === 'staging' || f.noRecordApplyTo === 'off';
+    const hasStagingOff = f.hasRecordApplyTo === 'production' || f.hasRecordApplyTo === 'off';
+    const hasProdOff = f.hasRecordApplyTo === 'staging' || f.hasRecordApplyTo === 'off';
+    return {
+        staging: {
+            noRecord: { frequency: noStagingOff ? 'off' : fn, message: f.noRecordMessage },
+            hasRecord: { frequency: hasStagingOff ? 'off' : fh, message: f.hasRecordMessage ?? '' }
+        },
+        production: {
+            noRecord: { frequency: noProdOff ? 'off' : fn, message: f.noRecordMessage },
+            hasRecord: { frequency: hasProdOff ? 'off' : fh, message: f.hasRecordMessage ?? '' }
+        }
+    };
+}
+
+/**
+ * adminSettings/config.attendancePopup — v2(스테이징·운영 × 기록 유무) + 구 flat·레거시 호환
+ * @returns {{ staging: { noRecord: { frequency: 'off'|'once_per_day'|'every_session', message: string|null }, hasRecord: { frequency: 'off'|'once_per_day'|'every_session', message: string } }, production: same }}
  */
 export function normalizeAttendancePopup(raw) {
     if (!raw || typeof raw !== 'object') return attendancePopupDefaults();
+    if (isAttendancePopupV2(raw)) return mergeV2AttendancePopup(raw);
 
     const hasLegacy =
         (raw.staging != null && typeof raw.staging === 'object') ||
@@ -220,7 +317,6 @@ export function normalizeAttendancePopup(raw) {
         Object.prototype.hasOwnProperty.call(raw, 'noRecordApplyTo') ||
         Object.prototype.hasOwnProperty.call(raw, 'hasRecordApplyTo');
 
-    /** 구버전 상위 스위치(off)만 있는 경우 → 아래에서 양쪽 끔으로 승격 */
     let legacyMasterOff = false;
     /** @type {'all'|'staging'|'production'} */
     let legacyApply = 'all';
@@ -286,23 +382,14 @@ export function normalizeAttendancePopup(raw) {
         hasRecordApplyTo = 'off';
     }
 
-    return {
+    return flatAttendanceToNested({
         noRecordApplyTo,
         hasRecordApplyTo,
         noRecordMessage,
         hasRecordMessage,
         noRecordFrequency: pickAttendanceShowFrequency(raw.noRecordFrequency),
         hasRecordFrequency: pickAttendanceShowFrequency(raw.hasRecordFrequency)
-    };
-}
-
-/** @param {'all'|'staging'|'production'|'off'} mode @param {'staging'|'production'} env */
-function envMatchesScenario(mode, env) {
-    if (mode === 'off') return false;
-    if (mode === 'all') return true;
-    if (mode === 'staging') return env === 'staging';
-    if (mode === 'production') return env === 'production';
-    return true;
+    });
 }
 
 async function fetchAttendancePopupRoot() {
@@ -365,18 +452,18 @@ export function scheduleAttendanceCheckIfNeeded() {
             const cfg = await fetchAttendancePopupRoot();
             const env = getMealogClientEnv();
             const uid = user.uid;
+            const envBlock = env === 'staging' ? cfg.staging : cfg.production;
+            if (!envBlock) return;
 
             const dates = collectRecordedDateSet();
-            const noRecRaw = cfg.noRecordMessage != null ? String(cfg.noRecordMessage).trim() : '';
-            const noRecordBody =
-                noRecRaw || `${DEFAULT_NO_RECORD_L1}\n${DEFAULT_NO_RECORD_L2}`;
-            const streakExtra = String(cfg.hasRecordMessage ?? '').trim();
-
-            const freqNo = cfg.noRecordFrequency ?? 'every_session';
-            const freqHas = cfg.hasRecordFrequency ?? 'every_session';
 
             if (dates.size === 0) {
-                if (!envMatchesScenario(cfg.noRecordApplyTo, env)) return;
+                const sub = envBlock.noRecord;
+                if (!sub || sub.frequency === 'off') return;
+                const freqNo = sub.frequency;
+                const noRecRaw = sub.message != null ? String(sub.message).trim() : '';
+                const noRecordBody =
+                    noRecRaw || `${DEFAULT_NO_RECORD_L1}\n${DEFAULT_NO_RECORD_L2}`;
                 if (freqNo === 'once_per_day' && wasWelcomeShownToday(uid, 'no')) return;
                 if (freqNo === 'every_session' && attendanceShownForUidSession) return;
                 attendanceShownForUidSession = true;
@@ -384,7 +471,10 @@ export function scheduleAttendanceCheckIfNeeded() {
                 showAttendancePopup(noRecordBody, '', 'noRecord');
                 return;
             }
-            if (!envMatchesScenario(cfg.hasRecordApplyTo, env)) return;
+            const subHas = envBlock.hasRecord;
+            if (!subHas || subHas.frequency === 'off') return;
+            const freqHas = subHas.frequency;
+            const streakExtra = String(subHas.message ?? '').trim();
             if (freqHas === 'once_per_day' && wasWelcomeShownToday(uid, 'has')) return;
             if (freqHas === 'every_session' && attendanceShownForUidSession) return;
             attendanceShownForUidSession = true;

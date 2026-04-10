@@ -52,17 +52,39 @@ const demoAccountPassword = process.env.DEMO_ACCOUNT_PASSWORD || '';
 const kakaoJavascriptKey = process.env.KAKAO_JAVASCRIPT_KEY || '';
 const outPath = path.join(__dirname, '..', 'js', 'config.js');
 
+/**
+ * 로컬 App Check 디버그 토큰 — 빌드가 config.js 전체를 덮어쓰므로 여기서 반드시 다시 넣어야 함.
+ * 우선순위: APPCHECK_DEBUG_TOKEN 환경 변수 → 기존 js/config.js 에 있던 값(수동 편집 보존)
+ */
+function readExistingAppCheckDebugToken() {
+  try {
+    if (!fs.existsSync(outPath)) return '';
+    const text = fs.readFileSync(outPath, 'utf8');
+    const m = text.match(/export const APPCHECK_DEBUG_TOKEN\s*=\s*['"]([^'"]*)['"]/);
+    return m ? m[1] : '';
+  } catch (_) {
+    return '';
+  }
+}
+const appcheckDebugToken =
+  (process.env.APPCHECK_DEBUG_TOKEN && String(process.env.APPCHECK_DEBUG_TOKEN).trim()) ||
+  readExistingAppCheckDebugToken() ||
+  '';
+
 // Gemini는 클라이언트에 노출하지 않음 → Firebase Functions callGemini + GEMINI_API_KEY(Functions 환경 변수)
 const content = `// API 설정 - 빌드 시 환경 변수에서 주입 (Vercel 등)
 export const GOOGLE_WEB_CLIENT_ID = '${escapeJsSingleQuotedString(googleWebClientId)}';
 export const DEMO_ACCOUNT_EMAIL = '${escapeJsSingleQuotedString(demoAccountEmail)}';
 export const DEMO_ACCOUNT_PASSWORD = '${escapeJsSingleQuotedString(demoAccountPassword)}';
 export const KAKAO_JAVASCRIPT_KEY = '${escapeJsSingleQuotedString(kakaoJavascriptKey)}';
+export const APPCHECK_DEBUG_TOKEN = '${escapeJsSingleQuotedString(appcheckDebugToken)}';
 `;
 
 fs.mkdirSync(path.dirname(outPath), { recursive: true });
 fs.writeFileSync(outPath, content);
-console.log('✅ js/config.js created (GOOGLE_WEB_CLIENT_ID, DEMO_ACCOUNT_*, KAKAO_JAVASCRIPT_KEY)');
+console.log(
+  '✅ js/config.js created (GOOGLE_WEB_CLIENT_ID, DEMO_ACCOUNT_*, KAKAO_JAVASCRIPT_KEY, APPCHECK_DEBUG_TOKEN)'
+);
 if (!kakaoJavascriptKey) {
   console.log(
     'ℹ️  KAKAO_JAVASCRIPT_KEY 비어 있음 → 웹 카카오 로그인용. 로컬: 루트 .env / functions/.env 에 추가 후 npm run build. Vercel: Environment Variables'

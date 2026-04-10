@@ -28,24 +28,38 @@ import { normalizeNicknameForClaim, nicknameClaimDocId } from './nickname-claims
 
 /** Firestore에 undefined가 들어가면 쓰기 실패할 수 있어 제거 */
 /**
- * Firestore 쓰기 직전: 로그인 직후(카카오 커스텀 토큰 등) auth.currentUser 반영 레이스 완화
+ * Firestore 쓰기용: 반드시 auth.currentUser만 반환.
+ * window.currentUser만 있고 auth가 비어 있으면 경로 uid는 맞아도 JWT가 안 붙어 permission-denied가 난다.
  */
 async function resolveUserForFirestoreWrite() {
-    try {
-        if (auth && typeof auth.authStateReady === 'function') {
-            await auth.authStateReady();
+    const waitReady = async () => {
+        try {
+            if (auth && typeof auth.authStateReady === 'function') {
+                await auth.authStateReady();
+            }
+        } catch (_) {
+            /* ignore */
         }
-    } catch (_) {
-        /* ignore */
-    }
+    };
+    await waitReady();
     let u = auth.currentUser;
     if (u && !u.isAnonymous) return u;
+    await new Promise((r) => setTimeout(r, 120));
+    await waitReady();
+    u = auth.currentUser;
+    if (u && !u.isAnonymous) return u;
+    await new Promise((r) => setTimeout(r, 400));
+    await waitReady();
+    u = auth.currentUser;
+    if (u && !u.isAnonymous) return u;
+
     const w = typeof window !== 'undefined' ? window.currentUser : null;
     if (w && !w.isAnonymous) {
-        console.warn('[dbOps] auth.currentUser 없음 → window.currentUser 사용 (로그인 직후일 수 있음)');
-        return w;
+        console.warn(
+            '[dbOps] auth.currentUser 없음 — Firestore 쓰기에는 Firebase Auth JWT가 필요합니다. window만 있으면 항상 permission-denied입니다.'
+        );
     }
-    return u || null;
+    return null;
 }
 
 function stripUndefinedDeep(value) {
@@ -114,29 +128,70 @@ export const dbOps = {
                 }
                 const docId = dataToSave.id;
                 delete dataToSave.id;
+                const cleaned = stripUndefinedDeep(dataToSave);
                 const coll = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meals');
-                logger.log('식사 기록 저장 시도:', { userId: currentUser.uid, docId, dataToSave });
-                if (docId) {
-                    await setDoc(doc(coll, docId), dataToSave);
-                    if (!silent) {
-                        showToast("기록이 수정되었습니다.", 'success');
+                logger.log('식사 기록 저장 시도:', { userId: currentUser.uid, docId, dataToSave: cleaned });
+                const mealPathHint = docId
+                    ? `artifacts/${appId}/users/${currentUser.uid}/meals/${docId}`
+                    : `artifacts/${appId}/users/${currentUser.uid}/meals/(addDoc)`;
+                try {
+                    if (docId) {
+                        await setDoc(doc(coll, docId), cleaned);
+                        if (!silent) {
+                            showToast("기록이 수정되었습니다.", 'success');
+                        }
+                        return docId;
                     }
-                    return docId;
+                    const docRef = await addDoc(coll, cleaned);
+                    await bumpUserMealCount(currentUser.uid, 1);
+                    logger.log('식사 기록 저장 성공:', docRef.id);
+                    if (!silent) {
+                        showToast("식사가 기록되었습니다.", 'success');
+                    }
+                    return docRef.id;
+                } catch (wErr) {
+                    if (wErr?.code === 'permission-denied') {
+                        // 직접 쓰기 실패는 흔히 App Check/WebChannel 이슈이며, 아래 Callable 폴백으로 정상 저장됨 → error로 찍지 않음
+                        logger.warn('[dbOps] Firestore 직접 저장 불가 → 서버(saveArtifactUserMeal) 폴백 시도', {
+                            path: mealPathHint,
+                            appId,
+                            uid: currentUser.uid
+                        });
+                        try {
+                            let serializable;
+                            try {
+                                serializable = JSON.parse(JSON.stringify(cleaned));
+                            } catch {
+                                serializable = cleaned;
+                            }
+                            const res = await callableFunctions.saveArtifactUserMeal({
+                                meal: serializable,
+                                mealId: docId || null
+                            });
+                            const mid = res?.data?.mealId;
+                            if (typeof mid === 'string' && mid) {
+                                logger.log('[dbOps] saveArtifactUserMeal 폴백 성공:', mid);
+                                if (!silent) {
+                                    showToast(
+                                        docId ? "기록이 수정되었습니다." : "식사가 기록되었습니다.",
+                                        'success'
+                                    );
+                                }
+                                return mid;
+                            }
+                        } catch (fbErr) {
+                            logger.error('[dbOps] saveArtifactUserMeal 폴백 실패:', fbErr?.code || fbErr?.message || fbErr);
+                        }
+                    }
+                    throw wErr;
                 }
-                const docRef = await addDoc(coll, dataToSave);
-                await bumpUserMealCount(currentUser.uid, 1);
-                logger.log('식사 기록 저장 성공:', docRef.id);
-                if (!silent) {
-                    showToast("식사가 기록되었습니다.", 'success');
-                }
-                return docRef.id;
             };
 
             try {
                 return await runWrite();
             } catch (e1) {
                 if (e1?.code === 'permission-denied') {
-                    logger.warn('[dbOps] 저장 permission-denied → 토큰·App Check 갱신 후 1회 재시도');
+                    logger.log('[dbOps] Firestore 직접 저장 재시도 1회 (토큰·App Check 갱신)');
                     currentUser = (await resolveUserForFirestoreWrite()) || currentUser;
                     if (typeof currentUser?.getIdToken === 'function') {
                         await currentUser.getIdToken(true);
@@ -172,7 +227,10 @@ export const dbOps = {
         }
     },
     async delete(id) {
-        const currentUser = auth.currentUser || window.currentUser;
+        let currentUser = await resolveUserForFirestoreWrite();
+        if (auth.currentUser && window.currentUser && auth.currentUser.uid !== window.currentUser.uid) {
+            currentUser = auth.currentUser;
+        }
         if (!currentUser || currentUser.isAnonymous) {
             const error = new Error("로그인이 필요합니다.");
             throw error;
@@ -185,6 +243,12 @@ export const dbOps = {
             const error = new Error("삭제할 항목이 없습니다.");
             throw error;
         }
+        const uid = currentUser.uid;
+        const tryDeleteViaCallable = async () => {
+            const res = await callableFunctions.deleteArtifactUserMeal({ mealId: id });
+            const deleted = res?.data?.deleted === true;
+            logger.log('[dbOps] deleteArtifactUserMeal 폴백:', deleted ? '삭제됨' : '문서 없음');
+        };
         try {
             if (typeof currentUser.getIdToken === 'function') {
                 await currentUser.getIdToken(true);
@@ -192,26 +256,36 @@ export const dbOps = {
             await appCheckInitPromise;
             await refreshAppCheckTokenBeforeFirestore();
 
-            await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'meals', id));
-            await bumpUserMealCount(currentUser.uid, -1);
+            let deletedViaCallable = false;
+            try {
+                await deleteDoc(doc(db, 'artifacts', appId, 'users', uid, 'meals', id));
+            } catch (docErr) {
+                if (docErr?.code === 'permission-denied') {
+                    await tryDeleteViaCallable();
+                    deletedViaCallable = true;
+                } else {
+                    throw docErr;
+                }
+            }
 
-            // 모먼트(sharedPhotos)에서 해당 기록의 공유 문서도 삭제 — 기록 삭제 시 모먼트에 남지 않도록
-            const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-            const sharedQuery = query(
-                sharedColl,
-                where('entryId', '==', id),
-                where('userId', '==', currentUser.uid)
-            );
-            const sharedSnap = await getDocs(sharedQuery);
-            if (!sharedSnap.empty) {
-                const batch = writeBatch(db);
-                sharedSnap.docs.forEach((d) => batch.delete(d.ref));
-                await batch.commit();
+            if (!deletedViaCallable) {
+                await bumpUserMealCount(uid, -1);
+                const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+                const sharedQuery = query(
+                    sharedColl,
+                    where('entryId', '==', id),
+                    where('userId', '==', uid)
+                );
+                const sharedSnap = await getDocs(sharedQuery);
+                if (!sharedSnap.empty) {
+                    const batch = writeBatch(db);
+                    sharedSnap.docs.forEach((d) => batch.delete(d.ref));
+                    await batch.commit();
+                }
             }
             // 성공 토스트는 호출자에서 표시
         } catch (e) {
             console.error("Delete Error:", e);
-            // 에러만 throw하고 토스트는 호출자에서 표시
             throw e;
         }
     },
@@ -324,7 +398,25 @@ export const dbOps = {
                         if (claimSnap.exists()) {
                             const owner = claimSnap.data()?.userId;
                             if (owner && owner !== currentUser.uid) {
-                                throw new Error('NICKNAME_TAKEN');
+                                const ownerSettingsRef = doc(
+                                    db,
+                                    'artifacts',
+                                    appId,
+                                    'users',
+                                    owner,
+                                    'config',
+                                    'settings'
+                                );
+                                const ownerSettingsSnap = await transaction.get(ownerSettingsRef);
+                                const ownerNorm = normalizeNicknameForClaim(
+                                    ownerSettingsSnap.exists()
+                                        ? ownerSettingsSnap.data()?.profile?.nickname
+                                        : null
+                                );
+                                if (ownerNorm === normNew) {
+                                    throw new Error('NICKNAME_TAKEN');
+                                }
+                                transaction.delete(newClaimRef);
                             }
                         }
                     }
@@ -530,6 +622,12 @@ export const dbOps = {
         
         const userId = window.currentUser.uid;
         try {
+            const settingsRef = doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings');
+            const settingsSnap = await getDoc(settingsRef);
+            const normNick = settingsSnap.exists()
+                ? normalizeNicknameForClaim(settingsSnap.data()?.profile?.nickname)
+                : null;
+
             // 1. 모든 meals 삭제
             const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
             const mealsSnapshot = await getDocs(mealsColl);
@@ -541,11 +639,23 @@ export const dbOps = {
                 await mealsBatch.commit();
             }
             
-            // 2. settings 삭제
-            const settingsRef = doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings');
+            // 2. 닉네임 클레임 제거 (설정 삭제 전, 탈퇴 후에도 닉 재사용 가능하도록)
+            if (normNick) {
+                const claimRef = doc(db, 'artifacts', appId, 'nicknameClaims', nicknameClaimDocId(normNick));
+                try {
+                    const cSnap = await getDoc(claimRef);
+                    if (cSnap.exists() && cSnap.data()?.userId === userId) {
+                        await deleteDoc(claimRef);
+                    }
+                } catch (e) {
+                    console.warn('nickname claim 삭제 실패 (무시하고 계속):', e?.code || e?.message || e);
+                }
+            }
+
+            // 3. settings 삭제
             await deleteDoc(settingsRef);
             
-            // 3. 공유된 사진 삭제
+            // 4. 공유된 사진 삭제
             const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
             const sharedQuery = query(sharedColl, where('userId', '==', userId));
             const sharedSnapshot = await getDocs(sharedQuery);
@@ -557,7 +667,7 @@ export const dbOps = {
                 await sharedBatch.commit();
             }
             
-            // 4. 프로필 사진 삭제 (Storage)
+            // 5. 프로필 사진 삭제 (Storage)
             if (window.userSettings?.profile?.photoUrl) {
                 try {
                     const { storage } = await import('../firebase.js');

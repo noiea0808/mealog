@@ -1,7 +1,7 @@
 /**
  * 관리자 모니터링: 모먼트(타임라인) 공유·신고·일괄 처리
  */
-import { db, appId } from '../firebase.js';
+import { db, appId, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import { getReportsAggregateByGroupKeys } from '../db.js';
 import { REPORT_REASONS } from '../constants.js';
 import { escapeHtml, fetchAdminEmailsForUserIds, runAdminRefreshAction } from './utils.js';
@@ -31,6 +31,20 @@ let feedCurrentPage = 1;
 const feedPageSize = 20;
 let feedLastDocsByPage = {};
 let feedTotalCount = 0;
+/** false면 getCountFromServer 실패 등 — 목록은 있으나 전체 건수·번호 역산 불가 */
+let feedMealTotalCountKnown = true;
+/** 마지막 페이지 쿼리가 pageSize만큼 찼는지(다음 페이지 존재 추정) */
+let feedLastPageHasMore = false;
+/** 현재 페이지에 실제로 표시되는 행 수(필터 전 원본 페이지 기준은 getFeedPage에서 docs.length) */
+let feedLastPageRowCount = 0;
+
+function computeFeedAdminTotalPages() {
+    if (feedMealTotalCountKnown) {
+        return Math.max(1, Math.ceil(feedTotalCount / feedPageSize));
+    }
+    return Math.max(1, feedCurrentPage + (feedLastPageHasMore ? 1 : 0));
+}
+
 /** 모먼트 목록을 한 번이라도 성공적으로 불러온 뒤에만 필터·페이지 이동이 Firestore를 다시 칩니다 */
 let adminFeedMonitoringLoaded = false;
 // 공유 키 캐시 — ensureSharedKeysForMeals에서 채움; 무효화 시 null
@@ -47,6 +61,7 @@ function invalidateAdminFeedMonitoringCache() {
     feedReportsAggCache = { ts: 0, map: null };
     feedUserSettingsCache.clear();
     feedSharedKeysCache = null;
+    feedMealTotalCountKnown = true;
 }
 
 function feedQueryCacheKey(page) {
@@ -73,6 +88,10 @@ async function getFeedPageWithCache(page) {
     if (ent && now - ent.ts < ADMIN_FEED_CACHE_TTL_MS) {
         if (page === 1) feedTotalCount = ent.totalCount;
         if (ent.lastDoc) feedLastDocsByPage[page] = ent.lastDoc;
+        if (typeof ent.countKnown === 'boolean') feedMealTotalCountKnown = ent.countKnown;
+        feedLastPageHasMore = Array.isArray(ent.items) && ent.items.length >= feedPageSize;
+        feedLastPageRowCount =
+            typeof ent.rowCount === 'number' ? ent.rowCount : Array.isArray(ent.items) ? ent.items.length : 0;
         return ent.items;
     }
     const { items } = await getFeedPage({ page, pageSize: feedPageSize });
@@ -80,7 +99,9 @@ async function getFeedPageWithCache(page) {
         ts: now,
         items,
         totalCount: feedTotalCount,
-        lastDoc: feedLastDocsByPage[page] ?? null
+        lastDoc: feedLastDocsByPage[page] ?? null,
+        countKnown: feedMealTotalCountKnown,
+        rowCount: feedLastPageRowCount
     });
     return items;
 }
@@ -103,15 +124,28 @@ async function getFeedPage(options = {}) {
         : [orderBy('date', 'desc')];
 
     try {
+        await refreshAppCheckTokenBeforeFirestore();
         if (page === 1) {
-            const countSnap = await getCountFromServer(query(mealsGroup, ...orderParts));
-            feedTotalCount = countSnap.data().count;
+            try {
+                const countSnap = await getCountFromServer(query(mealsGroup, ...orderParts));
+                feedTotalCount = countSnap.data().count;
+                feedMealTotalCountKnown = true;
+            } catch (cntErr) {
+                console.warn(
+                    '[관리자 모먼트] 전체 개수 집계(getCount) 실패 — 목록만 조회합니다.',
+                    cntErr?.code || cntErr?.message || cntErr
+                );
+                feedMealTotalCountKnown = false;
+                feedTotalCount = 0;
+            }
         }
         const listQ = startAfterDoc
             ? query(mealsGroup, ...orderParts, startAfter(startAfterDoc), limit(pageSize))
             : query(mealsGroup, ...orderParts, limit(pageSize));
         const snapshot = await getDocs(listQ);
         const docs = snapshot.docs;
+        feedLastPageRowCount = docs.length;
+        feedLastPageHasMore = docs.length === pageSize;
         const lastDoc = docs.length > 0 ? docs[docs.length - 1] : null;
         if (lastDoc) feedLastDocsByPage[page] = lastDoc;
 
@@ -208,7 +242,9 @@ async function renderFeedManagement() {
             return true;
         });
         
-        console.log(`✅ 필터 적용 후: ${filteredMeals.length}개 (페이지 ${feedCurrentPage} / 총 ${feedTotalCount}개)`);
+        console.log(
+            `✅ 필터 적용 후: ${filteredMeals.length}개 (페이지 ${feedCurrentPage}${feedMealTotalCountKnown ? ` / 총 ${feedTotalCount}개` : ' / 전체 수 집계 생략'})`
+        );
         
         // 서버가 date+time 순이면 이미 맞음. 동일 시각·구문서 보정용으로 페이지 내 한 번 더 정렬
         filteredMeals.sort((a, b) => {
@@ -264,7 +300,7 @@ async function renderFeedManagement() {
         });
         
         // 페이지 단위 로드 결과에서만 표시
-        const totalPages = Math.max(1, Math.ceil(feedTotalCount / feedPageSize));
+        const totalPages = computeFeedAdminTotalPages();
         const paginatedMeals = filteredMeals;
         
         // 사용자 정보 가져오기 (타임라인 게시물은 설정에서 닉네임/아이콘 조회)
@@ -399,7 +435,9 @@ async function renderFeedManagement() {
             const rowBg = hasDataMismatch ? 'bg-yellow-50' : (isBanned ? 'bg-red-50' : '');
             const dateTime = fmtDateTimeParts(meal);
             const newestOrder = (feedCurrentPage - 1) * feedPageSize + rowIdx + 1;
-            const oldFirstNumber = Math.max(1, (feedTotalCount || 0) - newestOrder + 1);
+            const oldFirstNumber = feedMealTotalCountKnown
+                ? Math.max(1, (feedTotalCount || 0) - newestOrder + 1)
+                : '—';
             const slotKey = String(meal.slotId || '').toLowerCase();
             const slotLabelMap = {
                 pre_morning: '아침전',
@@ -577,8 +615,13 @@ function renderFeedPagination(totalPages) {
         return;
     }
     const start = (feedCurrentPage - 1) * feedPageSize + 1;
-    const end = Math.min(feedCurrentPage * feedPageSize, feedTotalCount);
-    let html = `<span class="text-sm text-slate-500 mr-2">${start}-${end} / ${feedTotalCount}개</span>`;
+    const end = feedMealTotalCountKnown
+        ? Math.min(feedCurrentPage * feedPageSize, feedTotalCount)
+        : start + Math.max(0, feedLastPageRowCount - 1);
+    const rangeLabel = feedMealTotalCountKnown
+        ? `${start}-${end} / ${feedTotalCount}개`
+        : `${start}-${end} (전체 수 미집계)`;
+    let html = `<span class="text-sm text-slate-500 mr-2">${rangeLabel}</span>`;
     if (feedCurrentPage > 1) {
         html += `<button onclick="window.feedGoToPage(${feedCurrentPage - 1})" class="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors">이전</button>`;
     }
@@ -633,7 +676,7 @@ window.toggleFeedFilter = function(filterType) {
 window.feedGoToPage = async function(page) {
     if (!adminFeedMonitoringLoaded) return;
     if (page < 1) return;
-    const totalPages = Math.max(1, Math.ceil(feedTotalCount / feedPageSize));
+    const totalPages = computeFeedAdminTotalPages();
     const targetPage = Math.min(page, totalPages);
     for (let p = 2; p < targetPage; p++) {
         if (!feedLastDocsByPage[p]) await getFeedPageWithCache(p);

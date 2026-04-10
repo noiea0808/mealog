@@ -7,7 +7,7 @@ window.moduleLoading = true;
 import { appState, getState } from './state.js';
 import { auth, db, appId, refreshAppCheckTokenBeforeFirestore } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { dbOps, setupListeners, loadSharedPhotosPage, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, subscribeToMyPostComments, boardOperations, feedOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
+import { dbOps, setupListeners, loadSharedPhotosPage, loadSharedPhotosPageReliable, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, subscribeToMyPostComments, boardOperations, feedOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { callableFunctions } from './firebase.js';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer, enableNetwork } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -112,7 +112,8 @@ window.reloadMomentFeed = async function reloadMomentFeed() {
         appState.galleryUserProfileSharedHasMore = true;
         appState.galleryUserProfileSharedDocSnaps = new Map();
         try {
-            await renderGallery();
+            invalidateGalleryRenderSession();
+            await renderGallery({ forceReload: true });
         } catch (e) {
             console.error('모먼트(프로필) 다시 불러오기 렌더 실패:', e);
         }
@@ -124,17 +125,19 @@ window.reloadMomentFeed = async function reloadMomentFeed() {
     appState.sharedPhotosFeedHasMore = false;
     showLoading('모먼트 불러오는 중...');
     try {
-        const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);
+        const { docs, lastDoc, hasMore } = await loadSharedPhotosPageReliable(10);
         appState.galleryFeedNetworkError = false;
         window.sharedPhotosFeed = docs;
         appState.sharedPhotosFeedLastDoc = lastDoc;
         appState.sharedPhotosFeedHasMore = hasMore;
         appState.sharedPhotosFeedPrefetchedAt = Date.now();
-        await renderGallery();
+        invalidateGalleryRenderSession();
+        await renderGallery({ forceReload: true });
     } catch (e) {
         console.error('공유 사진 로드 실패:', e);
         appState.galleryFeedNetworkError = true;
-        await renderGallery();
+        invalidateGalleryRenderSession();
+        await renderGallery({ forceReload: true });
     } finally {
         hideLoading();
         if (typeof renderFeed === 'function') renderFeed();

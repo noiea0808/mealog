@@ -31,8 +31,8 @@ export function containsProfanity(nickname) {
 }
 
 /**
- * 닉네임이 중복되는지 확인 (nicknameClaims 인덱스 1회 읽기, NFKC+소문자 기준 중복)
- * 기존 사용자는 설정 저장 시 또는 backfill 스크립트로 인덱스가 채워짐.
+ * 닉네임이 중복되는지 확인 (nicknameClaims + 소유자 설정 정합성)
+ * 탈퇴·닉네임 변경 후 남은 오래된 클레임은 무시한다.
  * @param {string} nickname - 확인할 닉네임
  * @param {string} currentUserId - 현재 사용자 ID (자신의 닉네임은 제외)
  * @returns {Promise<boolean>} 중복되면 true
@@ -50,6 +50,13 @@ export async function isNicknameDuplicate(nickname, currentUserId = null) {
         const owner = snap.data()?.userId;
         if (!owner) return false;
         if (currentUserId && owner === currentUserId) return false;
+
+        const ownerSettingsRef = doc(db, 'artifacts', appId, 'users', owner, 'config', 'settings');
+        const ownerSnap = await getDoc(ownerSettingsRef);
+        const ownerNorm = normalizeNicknameForClaim(
+            ownerSnap.exists() ? ownerSnap.data()?.profile?.nickname : null
+        );
+        if (ownerNorm !== norm) return false;
         return true;
     } catch (e) {
         console.error('닉네임 중복 체크 실패:', e);

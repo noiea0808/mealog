@@ -1,6 +1,6 @@
 // Firestore 리스너 설정 (읽기 비용 절감: user/tags 세션당 1회, meals 기간·limit 등)
 import { db, appId } from '../firebase.js';
-import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, startAfter, getDocs, getDocsFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, startAfter, getDocs, getDocsFromServer, documentId, enableNetwork } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from '../constants.js';
 import { dbOps } from './ops.js';
 import { hideLoading, showNetworkErrorOverlay, isLikelyNetworkError } from '../ui.js';
@@ -999,6 +999,32 @@ export async function loadSharedPhotosPage(targetPosts = 10, startAfterDoc = nul
 
     const shifted = applyDemoShiftToSharedDocsIfNeeded(docsToReturn);
     return { docs: shifted, lastDoc: returnLastDoc, hasMore: hasMorePosts };
+}
+
+/**
+ * 모먼트 피드 첫 로드/재시도용: 오프라인·불안정 직후 getDocsFromServer 일시 실패 시 재시도.
+ * (다시 불러오기·당겨서 새로고침에서 공통 사용)
+ */
+export async function loadSharedPhotosPageReliable(targetPosts = 10, startAfterDoc = null, opts = {}) {
+    const maxAttempts = opts.maxAttempts ?? 3;
+    const baseDelayMs = opts.baseDelayMs ?? 320;
+    let lastErr;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+            if (attempt > 0) {
+                await new Promise((r) => setTimeout(r, baseDelayMs * attempt));
+            }
+            try {
+                await enableNetwork(db);
+            } catch (_) {
+                /* ignore */
+            }
+            return await loadSharedPhotosPage(targetPosts, startAfterDoc);
+        } catch (e) {
+            lastErr = e;
+        }
+    }
+    throw lastErr;
 }
 
 /** 본인 공유만 조회 (타임라인 공유 표시, 일간/베스트/인사이트 공유 확인용)

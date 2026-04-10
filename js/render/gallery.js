@@ -271,9 +271,10 @@ async function appendGalleryPosts(docs, loadMoreWrap) {
 
 export async function renderGallery(options = {}) {
     const skipScrollToTop = options.skipScrollToTop === true; // 더보기 시 스크롤 위치 유지
+    const forceReload = options.forceReload === true; // 다시 불러오기: 뮤텍스 조기 반환으로 UI가 안 갱신되는 것 방지
     const savedScrollY = skipScrollToTop ? window.scrollY : 0; // 더보기 시 복원용
     // 중복 실행 방지 (완료 후 pending이 있으면 한 번 더 실행)
-    if (isRenderingGallery) {
+    if (!forceReload && isRenderingGallery) {
         galleryRenderPending = true;
         console.log('[renderGallery] 이미 실행 중 — 완료 후 재실행 예약');
         return;

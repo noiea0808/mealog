@@ -18,11 +18,13 @@ service cloud.firestore {
       return request.auth != null;
     }
     
-    // 공용 데모 계정(샘플 데이터) — 클라이언트 쓰기 차단 (js/config·demo-account 이메일과 동일)
+    // 공용 데모(둘러보기 커스텀 토큰의 demoBrowse) + 이메일 데모(dummy@mealog.net) — 클라이언트 쓰기 차단
+    // 이메일만으로 판별 시 토큰 이상 시 오판 가능해, 둘러보기는 demoBrowse를 우선한다.
     function isReadOnlyDemoAccount() {
-      return request.auth != null &&
-        request.auth.token.email != null &&
-        request.auth.token.email == 'dummy@mealog.net';
+      return request.auth != null && (
+        request.auth.token.demoBrowse == true ||
+        request.auth.token.email == 'dummy@mealog.net'
+      );
     }
     
     // 리소스의 userId가 현재 사용자인지 확인
@@ -439,10 +441,7 @@ service cloud.firestore {
       allow write: if false; // Cloud Functions만 쓰기 가능 (admin SDK 사용)
     }
 
-    // ============================================
-    // Collection group 'meals' — 관리자 피드(타임라인 전체) 조회용
-    // 경로 규칙과 별도로, collection group 쿼리·집계에 필요 (쓰기는 기존 users/meals 규칙만 사용)
-    // ============================================
+    // collectionGroup('meals')·관리자 집계용 읽기만 보강. 여기에 allow write 를 두면 중첩 meals 규칙과 겹쳐 본인 삭제·수정까지 막힐 수 있음(쓰기는 명시하지 않음).
     match /{path=**}/meals/{mealId} {
       allow read: if isAdmin();
     }
