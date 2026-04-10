@@ -1205,6 +1205,36 @@ export async function saveEntry() {
                 return;
             }
         }
+
+        // 메인 칩 미선택 + 입력/서브칩만 있는 경우 → 분석·집계는「기타」로 통일
+        const categoryChip = getT('categoryChips');
+        const withChipBase = isS ? getT('snackWithChips') : getT('withChips');
+        const snackTypeChip = getT('snackTypeChips');
+        const hasMenuSub = collectActiveSubChipLabels('menuSuggestions').length > 0;
+        const hasPeopleSubMain = collectActiveSubChipLabels(isS ? 'snackPeopleSuggestions' : 'peopleSuggestions').length > 0;
+        const hasSnackSub = collectActiveSubChipLabels('snackSuggestions').length > 0;
+
+        let mealTypeResolved = mealType;
+        if (!isS && !isSk && !(mealType || '').trim() && (placeInputVal || '').trim()) {
+            mealTypeResolved = '기타';
+        }
+        let categoryResolved = categoryChip;
+        if (!isS && !isSk && !(categoryChip || '').trim() && ((menuInputVal || '').trim() || hasMenuSub)) {
+            categoryResolved = '기타';
+        }
+        let withWhomResolved = withChipBase;
+        if (!isSk && !(withChipBase || '').trim() && (((isS ? snackWithInputVal : withInputVal) || '').trim() || hasPeopleSubMain)) {
+            withWhomResolved = '기타';
+        }
+        let snackTypeResolved = snackTypeChip;
+        if (isS && !(snackTypeChip || '').trim() && ((snackInputVal || '').trim() || hasSnackSub)) {
+            snackTypeResolved = '기타';
+        }
+        const selectedSnackPlaceMain = appState.selectedSnackPlaceMainTag || null;
+        let snackPlaceMainResolved = '';
+        if (isS && !isSk) {
+            snackPlaceMainResolved = selectedSnackPlaceMain || ((snackPlaceInputVal || '').trim() ? '기타' : '');
+        }
         
         // 디버깅: 간식 입력값 확인
         if (isS) {
@@ -1228,12 +1258,11 @@ export async function saveEntry() {
         
         let tagsChanged = false;
         if (placeInputVal && !newSettings.subTags.place.find(t => (t.text || t) === placeInputVal)) {
-            newSettings.subTags.place.push({ text: placeInputVal, parent: mealType });
+            newSettings.subTags.place.push({ text: placeInputVal, parent: mealTypeResolved });
             tagsChanged = true;
         }
-        const selectedSnackPlaceMain = appState.selectedSnackPlaceMainTag || null;
         if (isS && snackPlaceInputVal && !newSettings.subTags.place.find(t => (t.text || t) === snackPlaceInputVal)) {
-            newSettings.subTags.place.push({ text: snackPlaceInputVal, parent: selectedSnackPlaceMain || snackPlaceInputVal });
+            newSettings.subTags.place.push({ text: snackPlaceInputVal, parent: snackPlaceMainResolved || snackPlaceInputVal });
             tagsChanged = true;
         }
         // 메뉴 상세 태그는 다중 선택 가능 (쉼표로 구분)
@@ -1241,7 +1270,7 @@ export async function saveEntry() {
             const menuValues = menuInputVal.split(',').map(v => v.trim()).filter(v => v);
             menuValues.forEach(val => {
                 if (!newSettings.subTags.menu.find(t => (t.text || t) === val)) {
-                    newSettings.subTags.menu.push({ text: val, parent: getT('categoryChips') });
+                    newSettings.subTags.menu.push({ text: val, parent: categoryResolved });
                     tagsChanged = true;
                 }
             });
@@ -1250,16 +1279,15 @@ export async function saveEntry() {
         const withInputValToSave = isS ? snackWithInputVal : withInputVal;
         if (withInputValToSave) {
             const withValues = withInputValToSave.split(',').map(v => v.trim()).filter(v => v);
-            const parentChipId = isS ? 'snackWithChips' : 'withChips';
             withValues.forEach(val => {
                 if (!newSettings.subTags.people.find(t => (t.text || t) === val)) {
-                    newSettings.subTags.people.push({ text: val, parent: getT(parentChipId) });
+                    newSettings.subTags.people.push({ text: val, parent: withWhomResolved });
                     tagsChanged = true;
                 }
             });
         }
         if (isS && snackInputVal && !newSettings.subTags.snack.find(t => (t.text || t) === snackInputVal)) {
-            newSettings.subTags.snack.push({ text: snackInputVal, parent: getT('snackTypeChips') });
+            newSettings.subTags.snack.push({ text: snackInputVal, parent: snackTypeResolved });
             tagsChanged = true;
         }
         
@@ -1331,12 +1359,12 @@ export async function saveEntry() {
             id: idToUse,
             date: state.currentEditingDate,
             slotId: state.currentEditingSlotId,
-            mealType,
-            withWhom: isS ? getT('snackWithChips') : getT('withChips'),
+            mealType: mealTypeResolved,
+            withWhom: withWhomResolved,
             withWhomDetail: isSk ? '' : (isS ? snackWithInputVal : withInputVal),
-            category: getT('categoryChips'),
+            category: categoryResolved,
             placeType: '',
-            snackType: getT('snackTypeChips'),
+            snackType: snackTypeResolved,
             photoAspectRatio: state.recordPhotoAspectRatio || '1:1',
             // Firestore에는 URL만 저장하고, base64는 저장 직후 Storage로 업로드 후 치환한다.
             photos: existingPhotoUrls,
@@ -1347,6 +1375,9 @@ export async function saveEntry() {
             satiety: isSk ? null : (satOn ? state.currentSatiety : null),
             time: new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' })
         };
+        if (isS && !isSk && snackPlaceMainResolved) {
+            record.snackPlaceMain = snackPlaceMainResolved;
+        }
 
         if (!isS && !isSk && mealType === '배달/포장') {
             record.deliveryVendor = deliveryVendorVal;

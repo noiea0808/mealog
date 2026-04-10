@@ -751,9 +751,13 @@ function analyzeMealData(filteredData, dateRangeText) {
             categoryCount[meal.category] = (categoryCount[meal.category] || 0) + 1;
         }
         if (meal.menuDetail) menuDetails.push(meal.menuDetail);
-        const companion = meal.withWhomDetail || meal.withWhom;
-        if (companion && companion !== '혼자') {
-            withWhomCount[companion] = (withWhomCount[companion] || 0) + 1;
+        if (meal.withWhom === '기타') {
+            withWhomCount['기타'] = (withWhomCount['기타'] || 0) + 1;
+        } else {
+            const companion = meal.withWhomDetail || meal.withWhom;
+            if (companion && companion !== '혼자') {
+                withWhomCount[companion] = (withWhomCount[companion] || 0) + 1;
+            }
         }
     });
     
@@ -779,7 +783,7 @@ function analyzeMealData(filteredData, dateRangeText) {
     snacks.forEach(meal => {
         const st = meal.snackType || meal.category;
         if (st) snackTypeCount[st] = (snackTypeCount[st] || 0) + 1;
-        const pl = meal.place;
+        const pl = (meal.snackPlaceMain || meal.place || '').trim();
         if (pl) snackPlaceCount[pl] = (snackPlaceCount[pl] || 0) + 1;
     });
     
@@ -815,12 +819,17 @@ function analyzeMealData(filteredData, dateRangeText) {
                 if (meal.mealType && meal.mealType !== 'Skip') mealTypeCountS[meal.mealType] = (mealTypeCountS[meal.mealType] || 0) + 1;
                 if (meal.category) categoryCountS[meal.category] = (categoryCountS[meal.category] || 0) + 1;
                 if (meal.menuDetail) menuDetailsS.push(meal.menuDetail);
-                const c = meal.withWhomDetail || meal.withWhom;
-                if (c && c !== '혼자') withWhomCountS[c] = (withWhomCountS[c] || 0) + 1;
+                if (meal.withWhom === '기타') {
+                    withWhomCountS['기타'] = (withWhomCountS['기타'] || 0) + 1;
+                } else {
+                    const c = meal.withWhomDetail || meal.withWhom;
+                    if (c && c !== '혼자') withWhomCountS[c] = (withWhomCountS[c] || 0) + 1;
+                }
             } else {
                 const st = meal.snackType || meal.category;
                 if (st) snackTypeCountS[st] = (snackTypeCountS[st] || 0) + 1;
-                if (meal.place) placeCountS[meal.place] = (placeCountS[meal.place] || 0) + 1;
+                const pls = (meal.snackPlaceMain || meal.place || '').trim();
+                if (pls) placeCountS[pls] = (placeCountS[pls] || 0) + 1;
             }
         });
         const entry = {

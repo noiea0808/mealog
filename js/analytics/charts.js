@@ -137,12 +137,16 @@ function aggregateProportionData(data, key) {
 
     const counts = {};
     const getVal = (m) => {
-        if (key === 'snackPlace') return String(m.place ?? '').trim() || '미입력';
+        if (key === 'snackPlace') {
+            const sm = String(m.snackPlaceMain ?? '').trim();
+            if (sm) return sm;
+            return String(m.place ?? '').trim() || '미입력';
+        }
         return String(m[key] ?? '').trim() || '미입력';
     };
     data.forEach(m => {
         let val = getVal(m);
-        if (allowedTags && val !== '미입력' && !allowedTags.has(val)) {
+        if (allowedTags && val !== '미입력' && val !== '기타' && !allowedTags.has(val)) {
             val = '미입력';
         }
         counts[val] = (counts[val] || 0) + 1;
@@ -160,7 +164,9 @@ function aggregateProportionData(data, key) {
             .filter(tag => counts[tag] > 0)
             .map(tag => [tag, counts[tag]])
             .sort((a, b) => b[1] - a[1]);
+        if (counts['기타'] > 0 && !allowedTags.has('기타')) tagEntries.push(['기타', counts['기타']]);
         if (counts['미입력'] > 0) tagEntries.push(['미입력', counts['미입력']]);
+        tagEntries.sort((a, b) => b[1] - a[1]);
         sorted = tagEntries;
     } else {
         const entries = Object.entries(counts);
@@ -471,6 +477,8 @@ export function openDetailModal(key, title) {
     
     const getValue = (m) => {
         if (key === 'snackPlace') {
+            const sm = String(m.snackPlaceMain ?? '').trim();
+            if (sm) return sm;
             return String(m.place ?? '').trim() || '미입력';
         }
         if (key === 'satiety' || key === 'snackSatiety') {
@@ -502,7 +510,7 @@ export function openDetailModal(key, title) {
         const globalCounts = {};
         dataForSlots.forEach(m => {
             let val = getValue(m);
-            if (allowedTags && val !== '미입력' && !allowedTags.has(val)) val = '미입력';
+            if (allowedTags && val !== '미입력' && val !== '기타' && !allowedTags.has(val)) val = '미입력';
             globalCounts[val] = (globalCounts[val] || 0) + 1;
         });
         let globalSorted;
@@ -512,7 +520,9 @@ export function openDetailModal(key, title) {
                 .filter(tag => globalCounts[tag] > 0)
                 .map(tag => [tag, globalCounts[tag]])
                 .sort((a, b) => b[1] - a[1]);
+            if (globalCounts['기타'] > 0 && !allowedTags.has('기타')) tagEntries.push(['기타', globalCounts['기타']]);
             if (globalCounts['미입력'] > 0) tagEntries.push(['미입력', globalCounts['미입력']]);
+            tagEntries.sort((a, b) => b[1] - a[1]);
             globalSorted = tagEntries;
         } else {
             const entries = Object.entries(globalCounts);
@@ -546,7 +556,7 @@ export function openDetailModal(key, title) {
         const counts = {};
         slotData.forEach(m => {
             let val = getValue(m);
-            if (allowedTags && val !== '미입력' && !allowedTags.has(val)) val = '미입력';
+            if (allowedTags && val !== '미입력' && val !== '기타' && !allowedTags.has(val)) val = '미입력';
             counts[val] = (counts[val] || 0) + 1;
         });
         
@@ -560,7 +570,9 @@ export function openDetailModal(key, title) {
                 .filter(tag => counts[tag] > 0)
                 .map(tag => [tag, counts[tag]])
                 .sort((a, b) => b[1] - a[1]);
+            if (counts['기타'] > 0 && !allowedTags.has('기타')) tagEntries.push(['기타', counts['기타']]);
             if (counts['미입력'] > 0) tagEntries.push(['미입력', counts['미입력']]);
+            tagEntries.sort((a, b) => b[1] - a[1]);
             sorted = tagEntries;
         } else {
             const entries = Object.entries(counts);
