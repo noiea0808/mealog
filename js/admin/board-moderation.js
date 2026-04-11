@@ -19,7 +19,7 @@ import {
     where,
     orderBy,
     limit
-} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
 const ADMIN_BOARD_CACHE_TTL_MS = 3 * 60 * 1000;
 const boardListCache = new Map();

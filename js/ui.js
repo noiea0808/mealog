@@ -421,6 +421,18 @@ function bindAttendanceWelcomeChartsOnce() {
         }
     };
 
+    const applySwipeFromDx = (dx) => {
+        if (Math.abs(dx) < 36) return;
+        const n = Number(vp.dataset.slideCount || 0);
+        if (n < 2) return;
+        if (dx < 0) {
+            attendanceWelcomeSlideIdx = Math.min(attendanceWelcomeSlideIdx + 1, n - 1);
+        } else {
+            attendanceWelcomeSlideIdx = Math.max(attendanceWelcomeSlideIdx - 1, 0);
+        }
+        applyAttendanceWelcomeSlideTransform();
+    };
+
     const onPointerUp = (e) => {
         if (attendanceWelcomeDragStartX == null) return;
         const dx = e.clientX - attendanceWelcomeDragStartX;
@@ -437,20 +449,23 @@ function bindAttendanceWelcomeChartsOnce() {
         } catch (_) {
             /* ignore */
         }
-        if (Math.abs(dx) < 36) return;
-        const n = Number(vp.dataset.slideCount || 0);
-        if (n < 2) return;
-        if (dx < 0) {
-            attendanceWelcomeSlideIdx = Math.min(attendanceWelcomeSlideIdx + 1, n - 1);
-        } else {
-            attendanceWelcomeSlideIdx = Math.max(attendanceWelcomeSlideIdx - 1, 0);
-        }
-        applyAttendanceWelcomeSlideTransform();
+        applySwipeFromDx(dx);
+    };
+
+    /** 일부 WebView에서 touch의 pointerup이 누락되는 경우 대비 */
+    const onTouchEnd = (e) => {
+        if (attendanceWelcomeDragStartX == null) return;
+        const t = e.changedTouches && e.changedTouches[0];
+        if (!t) return;
+        const dx = t.clientX - attendanceWelcomeDragStartX;
+        attendanceWelcomeDragStartX = null;
+        applySwipeFromDx(dx);
     };
 
     vp.addEventListener('pointerdown', onPointerDown);
     vp.addEventListener('pointerup', onPointerUp);
     vp.addEventListener('pointercancel', clearDrag);
+    vp.addEventListener('touchend', onTouchEnd, { passive: true });
 }
 
 function renderAttendanceWelcomeChartsArea() {

@@ -1730,8 +1730,12 @@ button.attendance-welcome-kind-btn.attendance-welcome-kind--active {
 button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     color: rgb(51 65 85);
 }
+/* 터치는 시작 요소의 touch-action이 적용됨 — 자식(SVG 등)이 auto면 가로 팬이 브라우저 스크롤로 소모되어 스와이프가 취소됨. pan-y만 허용해 가로 드래그는 JS(Pointer)로 처리 */
+.attendance-welcome-chart-viewport,
+.attendance-welcome-chart-viewport * {
+    touch-action: pan-y;
+}
 .attendance-welcome-chart-viewport {
-    touch-action: manipulation;
     cursor: grab;
 }
 .attendance-welcome-chart-viewport:active {

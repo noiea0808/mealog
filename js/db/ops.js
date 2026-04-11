@@ -20,11 +20,26 @@ import {
     writeBatch,
     runTransaction,
     increment
-} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { showToast } from '../ui.js';
 import { logger } from '../utils.js';
 import { isDemoUser } from '../demo-account.js';
 import { normalizeNicknameForClaim, nicknameClaimDocId } from './nickname-claims.js';
+
+/** Callable(httpsCallable) 오류 — 긴 스택·gRPC 본문이 토스트에 그대로 나오지 않게 */
+function formatCallableErrorForToast(err, fallback = '요청에 실패했습니다.') {
+    const code = err && err.code != null ? String(err.code) : '';
+    const raw = err && err.message != null ? String(err.message) : String(err || '');
+    if (/functions\/internal|internal/i.test(code) || /INTERNAL/i.test(raw)) {
+        return '서버 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.';
+    }
+    if (/unauthenticated|permission|denied|forbidden|app check/i.test(code + raw)) {
+        return '권한 또는 로그인 문제로 처리할 수 없습니다. 다시 로그인한 뒤 시도해 주세요.';
+    }
+    const one = raw.split('\n')[0].trim();
+    if (one.length > 160) return `${one.slice(0, 157)}…`;
+    return one || fallback;
+}
 
 /** Firestore에 undefined가 들어가면 쓰기 실패할 수 있어 제거 */
 /**
@@ -605,31 +620,40 @@ export const dbOps = {
                     console.error('Share Photos 재시도 실패:', e2);
                 }
             }
-            const errorMessage = e.message || e.details || "사진 공유에 실패했습니다.";
-            showToast(errorMessage, 'error');
+            showToast(formatCallableErrorForToast(e, '사진 공유에 실패했습니다.'), 'error');
             throw e;
         }
     },
     // 공유 사진 해제 (Cloud Functions 사용)
-    async unsharePhotos(photos, entryId, isBestShare = false, isDailyShare = false, isInsightShare = false) {
+    /** @param {{ mealEntryId: string, mealSharedPhotos: string[] } | null} [mealSync] 일반 식사 공유 취소 시 서버에서 meals.sharedPhotos 병합(클라 setDoc 생략) */
+    async unsharePhotos(photos, entryId, isBestShare = false, isDailyShare = false, isInsightShare = false, mealSync = null) {
         if (!window.currentUser || !photos || photos.length === 0) return;
         if (isDemoUser(window.currentUser)) {
             showToast('샘플 계정에서는 공유를 해제할 수 없습니다.', 'error');
             throw new Error('read-only-demo');
         }
         try {
-            const result = await callableFunctions.unsharePhotos({
+            const payload = {
                 photos,
                 entryId,
                 isBestShare,
                 isDailyShare,
                 isInsightShare
-            });
+            };
+            if (
+                mealSync &&
+                typeof mealSync.mealEntryId === 'string' &&
+                mealSync.mealEntryId.trim() &&
+                Array.isArray(mealSync.mealSharedPhotos)
+            ) {
+                payload.mealEntryId = mealSync.mealEntryId.trim();
+                payload.mealSharedPhotos = mealSync.mealSharedPhotos;
+            }
+            const result = await callableFunctions.unsharePhotos(payload);
             return result.data;
         } catch (e) {
             console.error("Unshare Photos Error:", e);
-            const errorMessage = e.message || e.details || "사진 공유 해제에 실패했습니다.";
-            showToast(errorMessage, 'error');
+            showToast(formatCallableErrorForToast(e, '사진 공유 해제에 실패했습니다.'), 'error');
             throw e;
         }
     },
@@ -691,7 +715,7 @@ export const dbOps = {
             if (window.userSettings?.profile?.photoUrl) {
                 try {
                     const { storage } = await import('../firebase.js');
-                    const { ref, deleteObject } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js");
+                    const { ref, deleteObject } = await import("https://www.gstatic.com/firebasejs/11.10.0/firebase-storage.js");
                     // photoUrl에서 경로 추출
                     const photoUrl = window.userSettings.profile.photoUrl;
                     const urlMatch = photoUrl.match(/users%2F([^%]+)%2Fprofile%2F(.+)/);

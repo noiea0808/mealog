@@ -31,7 +31,7 @@ export function syncBoardFeedComposerVisibility() {
 
 async function getNotices() {
     try {
-        const { collection, getDocs, query, orderBy, where } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+        const { collection, getDocs, query, orderBy, where } = await import("https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js");
         const { db, appId } = await import('../firebase.js');
         const noticesColl = collection(db, 'artifacts', appId, 'notices');
         const q = query(noticesColl, orderBy('timestamp', 'desc'));

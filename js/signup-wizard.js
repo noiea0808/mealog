@@ -3,7 +3,7 @@
  * 1페이지: 이메일/비번/비번확인  2페이지: 닉네임  3페이지: 생년월일/성별/라이프스타일  4페이지: 약관
  */
 import { auth } from './firebase.js';
-import { createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+import { createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS } from './constants.js';
 import { normalizeBirthdateRaw, setupBirthdateInputFormatting } from './utils.js';
@@ -149,7 +149,7 @@ async function submitWizard() {
     if (state.isEmailSignup) {
         showLoading('가입 중...', { skipOnLoginScreen: false });
         try {
-            const { createUserWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js');
+            const { createUserWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js');
             await createUserWithEmailAndPassword(auth, state.data.email, state.data.password);
             window._recordsLoadHidePending = true;
             showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });

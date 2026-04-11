@@ -17,7 +17,7 @@ import {
     orderBy,
     serverTimestamp,
     deleteField
-} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { sanitizeAdminLogHtml } from '../render/utils.js';
 import { getTodayDateString } from './utils.js';
 

@@ -410,7 +410,7 @@ export async function renderGallery(options = {}) {
             try {
                 const userSettings = await getUserSettings(filterUserId);
                 const { db, appId } = await import('../firebase.js');
-                const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js");
                 const userDocSnap = await getDoc(doc(db, 'artifacts', appId, 'users', filterUserId));
                 const existingHeader = container.querySelector('.gallery-user-profile-header');
                 if (!existingHeader) return;

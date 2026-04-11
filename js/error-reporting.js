@@ -28,7 +28,7 @@ export async function initErrorReporting() {
 
         // Firebase Performance Monitoring 초기화
         try {
-            const { getPerformance } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-performance.js");
+            const { getPerformance } = await import("https://www.gstatic.com/firebasejs/11.10.0/firebase-performance.js");
             const { app } = await import('./firebase.js');
             const perf = getPerformance(app);
             console.log('✅ Firebase Performance Monitoring 초기화 완료');
@@ -158,7 +158,7 @@ async function logErrorToFirestore(errorInfo) {
 
     try {
         const { db, appId } = await import('./firebase.js');
-        const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+        const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js");
         
         // 에러 로그 컬렉션 (관리자만 읽을 수 있도록 Rules 설정 필요)
         const errorLogsColl = collection(db, 'artifacts', appId, 'errorLogs');

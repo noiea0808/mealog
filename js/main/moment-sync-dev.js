@@ -13,7 +13,7 @@ import {
     where,
     limit,
     getDocsFromServer
-} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { updateTimelineShareIndicators, renderGallery, renderFeed } from '../render/index.js';
 
 export function registerMomentSyncDevTools() {

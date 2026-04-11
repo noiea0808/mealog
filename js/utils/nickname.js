@@ -1,6 +1,6 @@
 // 닉네임 검증 관련 유틸리티 함수들
 import { db, appId } from '../firebase.js';
-import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { normalizeNicknameForClaim, nicknameClaimDocId } from '../db/nickname-claims.js';
 
 // 비속어 필터링 리스트 (기본적인 비속어들)

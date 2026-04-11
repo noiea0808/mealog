@@ -3,7 +3,7 @@
  */
 import { appState, getState } from '../state.js';
 import { auth, db, appId } from '../firebase.js';
-import { signOut } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+import { signOut } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import {
     dbOps,
     setupListeners,
@@ -32,8 +32,8 @@ import {
     orderBy,
     getDocs,
     getDocsFromServer
-} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
-import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
+import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from '../ui.js';
 import {
     getDisplayProfile,
@@ -541,24 +541,19 @@ window.deleteFeedPost = async (entryId, photoUrls, isBestShare = false, isDailyS
         setTimeout(() => { window._feedPostDeleteInProgress = false; }, 1000);
     }
     
-    // 서버는 백그라운드에서 호출
-    dbOps.unsharePhotos(photoUrlArray, validEntryId, isBestShare, isDailyShare, isInsightShare)
-        .then(() => {
-            if (record && prevRecordSharedPhotos !== null) {
-                dbOps.save(record, true).catch((e) => {
-                    console.error("sharedPhotos 필드 업데이트 실패:", e);
-                    showToast("공유 취소는 되었으나 기록 반영에 실패했습니다.", 'error');
-                });
-            }
-        })
-        .catch(() => {
-            if (window.sharedPhotos) window.sharedPhotos = prevSharedPhotos;
-            if (record && prevRecordSharedPhotos !== null) record.sharedPhotos = prevRecordSharedPhotos;
-            if (appState.currentTab === 'timeline') {
-                updateTimelineShareIndicators();
-                renderTimeline();
-            }
-            if (appState.currentTab === 'gallery') renderGallery();
-        });
+    const mealSync =
+        record && validEntryId && !isBestShare && !isDailyShare && !isInsightShare
+            ? { mealEntryId: validEntryId, mealSharedPhotos: record.sharedPhotos || [] }
+            : null;
+
+    dbOps.unsharePhotos(photoUrlArray, validEntryId, isBestShare, isDailyShare, isInsightShare, mealSync).catch(() => {
+        if (window.sharedPhotos) window.sharedPhotos = prevSharedPhotos;
+        if (record && prevRecordSharedPhotos !== null) record.sharedPhotos = prevRecordSharedPhotos;
+        if (appState.currentTab === 'timeline') {
+            updateTimelineShareIndicators();
+            renderTimeline();
+        }
+        if (appState.currentTab === 'gallery') renderGallery();
+    });
 };
 }

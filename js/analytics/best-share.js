@@ -1054,7 +1054,7 @@ export async function shareBestToFeed() {
         
         try {
             // Firestore에서 해당 베스트 공유 문서 찾아서 업데이트
-            const { collection, query, where, getDocs, updateDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+            const { collection, query, where, getDocs, updateDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js");
             const { db: firestoreDb, appId } = await import('../firebase.js');
             const sharedColl = collection(firestoreDb, 'artifacts', appId, 'sharedPhotos');
             

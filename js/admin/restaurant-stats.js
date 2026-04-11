@@ -11,7 +11,7 @@ import {
     where,
     getDocs,
     collectionGroup
-} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { getTodayDateString, escapeHtml, runAdminRefreshAction } from './utils.js';
 
 const RESTAURANT_STATS_REF = () => doc(db, 'artifacts', appId, 'adminSettings', 'restaurantStats');

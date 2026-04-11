@@ -1,6 +1,6 @@
 // ADMIN 기본 태그(끼니·함께·카테고리 등) 편집
 import { db, appId } from '../firebase.js';
-import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { escapeHtml } from './utils.js';
 
 // 태그 콘텐츠 로드

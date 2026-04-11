@@ -1,7 +1,7 @@
 // ADMIN 사용자 관리 관련 함수들
 import { app, db, appId, functions, auth } from '../firebase.js';
-import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js';
-import { collection, getDocs, query, orderBy, limit, startAfter, doc, getDoc, setDoc, where, addDoc, serverTimestamp, getCountFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js';
+import { collection, getDocs, query, orderBy, limit, startAfter, doc, getDoc, setDoc, where, addDoc, serverTimestamp, getCountFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { getCurrentTermsVersion } from '../utils-terms.js';
 import { escapeHtml, runAdminRefreshAction } from './utils.js';
 

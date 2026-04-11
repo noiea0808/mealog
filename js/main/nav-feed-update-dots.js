@@ -14,7 +14,7 @@ import {
     orderBy,
     limit,
     getDocsFromServer
-} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
 const LS_MOMENT = 'mealog_nav_moment_seen_ms_';
 const LS_BOARD = 'mealog_nav_board_seen_ms_';

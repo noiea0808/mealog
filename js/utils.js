@@ -1,6 +1,6 @@
 // 유틸리티 함수들
 import { storage } from './firebase.js';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-storage.js";
 
 // 프로덕션 환경 감지 (localhost 또는 127.0.0.1이 아니면 프로덕션)
 const isProduction = () => {

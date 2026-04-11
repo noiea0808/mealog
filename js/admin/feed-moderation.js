@@ -19,7 +19,7 @@ import {
     where,
     writeBatch,
     Timestamp
-} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
 // 피드 관리 렌더링
 let feedFilters = {

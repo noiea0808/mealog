@@ -11,10 +11,10 @@ import {
   refreshAppCheckTokenBeforeFirestore,
   callableFunctions
 } from './firebase.js';
-import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import { showToast } from './ui.js';
-import { doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
-import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+import { doc, getDocFromServer, setDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
+import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
 const FCM_TOKENS_DOC = 'fcmTokens';
 if (typeof window !== 'undefined') {
@@ -357,9 +357,40 @@ function isFirestorePermissionDenied(err) {
   );
 }
 
+/**
+ * Firestore JS SDK 11.x에서 간헐적으로 나는 Watch 스트림 내부 단언 실패 등.
+ * 클라이언트 직접 쓰기 대신 Callable(Admin) 폴백으로 우회하는 것이 안전함.
+ */
+function isFirestoreInternalClientGlitch(err) {
+  const msg = err && err.message ? String(err.message) : String(err || '');
+  return (
+    /INTERNAL ASSERTION FAILED/i.test(msg) ||
+    /Unexpected state/i.test(msg) ||
+    /WatchChangeAggregator/i.test(msg)
+  );
+}
+
+/** 토스트용: 스택 트레이스·내부 ID 노출 방지 */
+function formatPushTokenSaveErrorForUser(err) {
+  const raw = err && err.message ? String(err.message) : String(err || '');
+  if (isFirestoreInternalClientGlitch(err)) {
+    return '일시적인 동기화 오류로 알림 등록에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+  }
+  if (/permission|insufficient|PERMISSION_DENIED/i.test(raw)) {
+    return '권한 문제로 알림 등록에 실패했습니다. 잠시 후 다시 시도하거나 다시 로그인해 주세요.';
+  }
+  if (/network|offline|fetch|QUIC|Failed to fetch/i.test(raw)) {
+    return '네트워크 불안정으로 알림 등록에 실패했습니다. 연결을 확인한 뒤 다시 시도해 주세요.';
+  }
+  const oneLine = raw.split('\n')[0].trim();
+  if (oneLine.length > 140) return `${oneLine.slice(0, 137)}…`;
+  return oneLine || '알 수 없음';
+}
+
 async function saveFcmTokenToFirestoreClient(uid, token, tokenEnv) {
   const ref = doc(db, 'artifacts', appId, 'users', uid, 'config', FCM_TOKENS_DOC);
-  const snap = await getDoc(ref);
+  /** 로컬 캐시/리스너와 어긋난 상태에서 내부 단언이 날 수 있어 서버 스냅샷 우선 */
+  const snap = await getDocFromServer(ref);
   const prev = (snap.data() && snap.data().tokens) || {};
   await setDoc(
     ref,
@@ -388,55 +419,51 @@ async function saveFcmToken(uid, token) {
     if (typeof window.__onPushTokenSaved === 'function') window.__onPushTokenSaved();
   };
 
-  const onFailed = (msg) => {
-    setPushDebug({ tokenSaved: false, lastError: msg });
-    console.warn('⚠️ FCM 토큰 저장 실패:', msg);
-    if (typeof window.__onPushTokenSavedError === 'function') window.__onPushTokenSavedError(msg);
+  const onFailed = (err) => {
+    const friendly = formatPushTokenSaveErrorForUser(err);
+    setPushDebug({ tokenSaved: false, lastError: friendly });
+    console.warn('⚠️ FCM 토큰 저장 실패:', err);
+    if (typeof window.__onPushTokenSavedError === 'function') window.__onPushTokenSavedError(friendly);
   };
 
-  try {
-    await appCheckInitPromise;
-    await waitForAuthReady(auth);
+  const tryCallable = async () => {
+    const payload = { token };
+    if (tokenEnv) payload.env = tokenEnv;
     await refreshAppCheckTokenBeforeFirestore();
-    await saveFcmTokenToFirestoreClient(uid, token, tokenEnv);
-    onSaved();
-  } catch (e) {
-    const msg = e?.message || String(e);
-    if (isFirestorePermissionDenied(e)) {
-      try {
-        await waitForAuthReady(auth);
-        await refreshAppCheckTokenBeforeFirestore();
-        await new Promise((r) => setTimeout(r, 450));
-        await saveFcmTokenToFirestoreClient(uid, token, tokenEnv);
-        onSaved();
-        return;
-      } catch (e2) {
-        /* fall through to callable */
-      }
-      try {
-        const payload = { token };
-        if (tokenEnv) payload.env = tokenEnv;
-        await refreshAppCheckTokenBeforeFirestore();
-        await callableFunctions.registerFcmToken(payload);
-        onSaved();
-        return;
-      } catch (e3) {
-        try {
-          await new Promise((r) => setTimeout(r, 500));
-          await refreshAppCheckTokenBeforeFirestore();
-          const payload = { token };
-          if (tokenEnv) payload.env = tokenEnv;
-          await callableFunctions.registerFcmToken(payload);
-          onSaved();
-          return;
-        } catch (e4) {
-          onFailed(e4?.message || String(e4));
-          return;
-        }
-      }
+    await callableFunctions.registerFcmToken(payload);
+  };
+
+  let lastErr = null;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await appCheckInitPromise;
+      await waitForAuthReady(auth);
+      await refreshAppCheckTokenBeforeFirestore();
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 450));
+      await saveFcmTokenToFirestoreClient(uid, token, tokenEnv);
+      onSaved();
+      return;
+    } catch (e) {
+      lastErr = e;
+      console.warn(`FCM 토큰 클라이언트 저장 실패 (${attempt + 1}/2):`, e?.message || e);
     }
-    onFailed(msg);
   }
+
+  /** 클라이언트 실패 시: Admin Callable로 동일 경로 병합(Watch 스트림 버그·권한 이슈 우회) */
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 500));
+      await tryCallable();
+      onSaved();
+      return;
+    } catch (e) {
+      lastErr = e;
+      console.warn(`FCM registerFcmToken Callable 실패 (${attempt + 1}/2):`, e?.message || e);
+    }
+  }
+
+  onFailed(lastErr || new Error('알 수 없음'));
 }
 
 /**

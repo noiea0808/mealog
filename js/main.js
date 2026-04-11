@@ -6,11 +6,11 @@ window.moduleLoading = true;
 
 import { appState, getState } from './state.js';
 import { auth, db, appId, refreshAppCheckTokenBeforeFirestore } from './firebase.js';
-import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { signOut } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import { dbOps, setupListeners, loadSharedPhotosPage, loadSharedPhotosPageReliable, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, subscribeToMyPostComments, boardOperations, feedOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { callableFunctions } from './firebase.js';
-import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer, enableNetwork } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer, enableNetwork } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import {
     switchScreen,
     showToast,

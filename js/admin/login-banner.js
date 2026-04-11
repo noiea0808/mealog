@@ -1,6 +1,6 @@
 // ADMIN 로그인 배너 설정
 import { db, appId } from '../firebase.js';
-import { collection, query, orderBy, getDocs, doc, getDoc, setDoc, deleteField } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, query, orderBy, getDocs, doc, getDoc, setDoc, deleteField } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { escapeHtml, runAdminRefreshAction } from './utils.js';
 import { uploadLoginBannerImage } from '../utils.js';
 

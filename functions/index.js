@@ -1767,32 +1767,56 @@ exports.unsharePhotos = onCall({ region: REGION }, async (request) => {
     querySnap = await sharedColl.where('userId', '==', auth.uid).get();
   }
   const query = querySnap;
-  
+
   const photosToDelete = [];
-  
+
   query.docs.forEach((docSnap) => {
-    const data = docSnap.data();
-    const photoUrlMatch = photos.some(photoUrl => {
-      if (photoUrl === data.photoUrl) return true;
+    let docData;
+    try {
+      docData = docSnap.data() || {};
+    } catch (e) {
+      logger.warn('unsharePhotos: doc read skip', { id: docSnap.id, err: e?.message });
+      return;
+    }
+    /** photoUrl 누락·비문자열이면 .split에서 TypeError → 전체 Callable 500 방지 */
+    const storedPhotoUrl = typeof docData.photoUrl === 'string' ? docData.photoUrl : '';
+    const photoUrlMatch = photos.some((photoUrl) => {
+      if (typeof photoUrl !== 'string' || !photoUrl) return false;
+      if (!storedPhotoUrl) return false;
+      if (photoUrl === storedPhotoUrl) return true;
       const photoUrlBase = photoUrl.split('?')[0];
-      const dataUrlBase = data.photoUrl.split('?')[0];
+      const dataUrlBase = storedPhotoUrl.split('?')[0];
       if (photoUrlBase === dataUrlBase) return true;
       const photoFileName = photoUrlBase.split('/').pop();
       const dataFileName = dataUrlBase.split('/').pop();
       return photoFileName === dataFileName && photoFileName !== '';
     });
-    
-    if (photoUrlMatch) {
-      if (isBestShare && data.type === 'best') {
+
+    /** URL 필드 누락 문서: 동일 entryId면 삭제 대상 (스토리지 URL 불일치로 매칭 실패 방지) */
+    let matched = photoUrlMatch;
+    if (
+      !matched &&
+      !isBestShare &&
+      !isDailyShare &&
+      !isInsightShare &&
+      entryId &&
+      docData.entryId === entryId &&
+      !storedPhotoUrl
+    ) {
+      matched = true;
+    }
+
+    if (matched) {
+      if (isBestShare && docData.type === 'best') {
         photosToDelete.push(docSnap.id);
-      } else if (isDailyShare && data.type === 'daily') {
+      } else if (isDailyShare && docData.type === 'daily') {
         photosToDelete.push(docSnap.id);
-      } else if (isInsightShare && data.type === 'insight') {
+      } else if (isInsightShare && docData.type === 'insight') {
         photosToDelete.push(docSnap.id);
       } else if (!isBestShare && !isDailyShare && !isInsightShare) {
         let shouldDelete = false;
         if (entryId) {
-          if (data.entryId === entryId || !data.entryId || data.entryId === null) {
+          if (docData.entryId === entryId || !docData.entryId || docData.entryId === null) {
             shouldDelete = true;
           }
         } else {
@@ -1812,6 +1836,29 @@ exports.unsharePhotos = onCall({ region: REGION }, async (request) => {
       batch.delete(docRef);
     });
     await batch.commit();
+  }
+
+  /** 클라이언트 setDoc 직후 Watch 스트림에서 Firestore INTERNAL ASSERTION(b815)가 나는 경우가 있어, 식사 문서는 Admin으로만 병합 */
+  const mealEntryIdRaw = data && data.mealEntryId;
+  const mealEntryId = typeof mealEntryIdRaw === 'string' ? mealEntryIdRaw.trim() : '';
+  const msp = data && data.mealSharedPhotos;
+  if (
+    mealEntryId &&
+    Array.isArray(msp) &&
+    !isBestShare &&
+    !isDailyShare &&
+    !isInsightShare
+  ) {
+    const safeUrls = msp
+      .filter((u) => typeof u === 'string' && u.length > 0 && u.length < 4096 && !u.startsWith('data:'))
+      .slice(0, 80);
+    const mealRef = db.doc(`artifacts/${APP_ID}/users/${auth.uid}/meals/${mealEntryId}`);
+    const mealSnap = await mealRef.get();
+    if (mealSnap.exists) {
+      await mealRef.set({ sharedPhotos: safeUrls }, { merge: true });
+    } else {
+      logger.warn('unsharePhotos: meals 문서 없음 — sharedPhotos 스킵', { mealEntryId });
+    }
   }
 
   return { success: true, deletedCount: photosToDelete.length };

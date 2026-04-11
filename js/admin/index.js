@@ -47,7 +47,7 @@ import {
 } from './auth.js';
 
 import { db, appId } from '../firebase.js';
-import { doc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 
 // 공유 게시물 삭제 관련
 let currentDeletePhotoId = null;

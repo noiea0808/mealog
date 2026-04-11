@@ -1,10 +1,10 @@
 // Firebase 초기화 및 설정
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAnalytics, logEvent as analyticsLogEvent, setUserId, setUserProperties } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
-import { getAuth, initializeAuth, setPersistence, browserLocalPersistence, indexedDBLocalPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, initializeFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { getStorage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
-import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
+import { getAnalytics, logEvent as analyticsLogEvent, setUserId, setUserProperties } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-analytics.js";
+import { getAuth, initializeAuth, setPersistence, browserLocalPersistence, indexedDBLocalPersistence } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
+import { getFirestore, initializeFirestore } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { getStorage } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-storage.js";
+import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyDMhxZHK7CgtiUACy9fOIiT7IDUW1uAWBc",
@@ -83,22 +83,19 @@ if (!(typeof window.Capacitor !== 'undefined' && window.Capacitor?.isNativePlatf
 // 이메일 인증·비밀번호 재설정 메일을 한글로 발송
 auth.languageCode = 'ko';
 
-// Android WebView 등에서 firestore.googleapis.com QUIC(WebChannel) 오류(ERR_QUIC_*)로 쓰기 실패하는 경우가 있어
-// 네이티브 앱에서는 장폴링을 강제해 FCM 토큰 저장·실시간 구독 안정화
+// WebChannel·Watch 스트림에서 간헐적 INTERNAL ASSERTION(b815 등)이 나는 환경이 있어
+// 장폴링을 기본 사용(네이티브·웹 공통). 실패 시에만 기본 getFirestore.
 function createFirestore() {
-    const native = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.();
-    if (native) {
-        try {
-            return initializeFirestore(app, {
-                experimentalForceLongPolling: true
-            });
-        } catch (e) {
-            const msg = String(e?.message || e);
-            if (msg.includes('already') || msg.includes('Already')) {
-                return getFirestore(app, '(default)');
-            }
-            console.warn('Firestore initializeFirestore 실패, getFirestore로 대체:', msg);
+    try {
+        return initializeFirestore(app, {
+            experimentalForceLongPolling: true
+        });
+    } catch (e) {
+        const msg = String(e?.message || e);
+        if (msg.includes('already') || msg.includes('Already')) {
+            return getFirestore(app, '(default)');
         }
+        console.warn('Firestore initializeFirestore 실패, getFirestore로 대체:', msg);
     }
     return getFirestore(app, '(default)');
 }
@@ -134,7 +131,8 @@ export const appCheckInitPromise = (async () => {
             h === '0.0.0.0' ||
             h.startsWith('192.168.') ||
             (!isCapNative && h === '');
-        if (isLocalhost) {
+        /** Capacitor WebView는 호스트가 localhost인 경우가 많아, 디버그 토큰을 켜면 exchangeDebugToken 403이 난다(콘솔 미등록). 네이티브는 reCAPTCHA만 사용 */
+        if (isLocalhost && !isCapNative) {
             const fixed = await resolveAppCheckDebugTokenForLocalhost();
             if (fixed) {
                 window.FIREBASE_APPCHECK_DEBUG_TOKEN = fixed;
@@ -151,7 +149,7 @@ export const appCheckInitPromise = (async () => {
             }
         }
         const { initializeAppCheck, ReCaptchaV3Provider, getToken } = await import(
-            'https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js'
+            'https://www.gstatic.com/firebasejs/11.10.0/firebase-app-check.js'
         );
         const appCheck = initializeAppCheck(app, {
             provider: new ReCaptchaV3Provider('6LdjYVUsAAAAAP7RvrJgOEp-7wvDpmoC8Bll9-Kw'),
@@ -172,7 +170,7 @@ export async function refreshAppCheckTokenBeforeFirestore() {
     await appCheckInitPromise;
     if (!firebaseAppCheck || typeof window === 'undefined') return;
     try {
-        const { getToken } = await import('https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js');
+        const { getToken } = await import('https://www.gstatic.com/firebasejs/11.10.0/firebase-app-check.js');
         await getToken(firebaseAppCheck, true);
     } catch (_) {
         /* ignore */

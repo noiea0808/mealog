@@ -8,7 +8,7 @@ import { isDemoUser } from './demo-account.js';
 import { appCheckInitPromise, db, appId, refreshAppCheckTokenBeforeFirestore } from './firebase.js';
 import { showAttendancePopup } from './ui.js';
 import { addCalendarDaysSeoulYmd, getMealogClientEnv, toLocalDateString, toSeoulDateString } from './utils.js';
-import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
 function isValidYmd(s) {
     return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);

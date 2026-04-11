@@ -5,7 +5,7 @@
 export async function getUserSettings(userId) {
     try {
         const { db, appId } = await import('../firebase.js');
-        const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+        const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js");
         const settingsDoc = doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings');
         const settingsSnap = await getDoc(settingsDoc);
         if (settingsSnap.exists()) {

@@ -6,7 +6,7 @@ import {
     signInWithEmailAndPassword,
     signInWithCustomToken,
     signOut
-} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 
 const INTRO_SEEN_KEY = 'mealog_demo_intro_seen';
 const AUTO_DEMO_OFF_KEY = 'mealog_auto_demo_off';

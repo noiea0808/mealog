@@ -4,7 +4,7 @@ import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { dbOps } from '../db.js';
 import { db, appId, callableFunctions } from '../firebase.js';
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { captureWithGhostStrategy, toLocalDateString } from '../utils.js';
 import { getWeekRange } from './date-utils.js';
 import { logUsageMetric } from '../usage-metrics.js';
@@ -1720,7 +1720,7 @@ export async function shareInsightToFeed() {
         
         try {
             // Firestore에서 해당 인사이트 공유 문서 찾아서 업데이트
-            const { collection, query, where, getDocs, updateDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+            const { collection, query, where, getDocs, updateDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js");
             const { db: firestoreDb, appId } = await import('../firebase.js');
             const sharedColl = collection(firestoreDb, 'artifacts', appId, 'sharedPhotos');
             

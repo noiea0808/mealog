@@ -4,7 +4,7 @@
 import { appState } from '../state.js';
 import { db } from '../firebase.js';
 import { loadSharedPhotosPageReliable } from '../db.js';
-import { enableNetwork } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { enableNetwork } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { showToast } from '../ui.js';
 import { renderGallery, invalidateGalleryRenderSession, updateTimelineShareIndicators } from '../render/index.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';

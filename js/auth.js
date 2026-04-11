@@ -1,6 +1,6 @@
 // 인증 관련 함수들
 import { auth, setAnalyticsUserId, callableFunctions, appCheckInitPromise } from './firebase.js';
-import { GoogleAuthProvider, signInWithPopup, getRedirectResult, signInWithCredential, signInWithCustomToken, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { GoogleAuthProvider, signInWithPopup, getRedirectResult, signInWithCredential, signInWithCustomToken, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
 import { dbOps } from './db.js';
@@ -1098,7 +1098,7 @@ export async function showTermsModal() {
                             isExistingUser = authFlowManager._cachedExistingUser;
                         } else {
                             // 캐시가 없으면 약관 모달에서만 확인 (로그인 플로우를 지연시키지 않음)
-                            const { collection, query, limit, getDocs } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                            const { collection, query, limit, getDocs } = await import("https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js");
                             const { db, appId } = await import('./firebase.js');
                             const mealsColl = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meals');
                             const mealsSnapshot = await getDocs(query(mealsColl, limit(1)));

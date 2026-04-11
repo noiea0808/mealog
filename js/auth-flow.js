@@ -70,7 +70,7 @@ async function openSignupWizardWithKakaoStaleGuard(user, wizardOptions = {}) {
                 // main.js onAuthStateChanged가 비의도적 로그아웃으로 무시하지 않도록
                 sessionStorage.setItem('explicitLogout', 'true');
             } catch (_) {}
-            const { signOut } = await import('https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js');
+            const { signOut } = await import('https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js');
             await signOut(auth);
             window._recordsLoadHidePending = false;
             switchScreen(false);
@@ -286,7 +286,7 @@ export class AuthFlowManager {
      */
     async checkExistingUser(uid) {
         try {
-            const { collection, query, limit, getDocs } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+            const { collection, query, limit, getDocs } = await import("https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js");
             const { db, appId } = await import('./firebase.js');
             const mealsColl = collection(db, 'artifacts', appId, 'users', uid, 'meals');
             const mealsSnapshot = await getDocs(query(mealsColl, limit(1)));

@@ -340,7 +340,7 @@ export function openSettings() {
                 (async () => {
                     try {
                         const { doc, getDoc } = await import(
-                            'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js'
+                            'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js'
                         );
                         const { db, appId } = await import('../firebase.js');
                         const snap = await getDoc(doc(db, 'artifacts', appId, 'users', window.currentUser.uid));
@@ -883,7 +883,7 @@ export async function saveProfileSettings() {
             // 사진 파일이 있으면 업로드, 없으면 기존 photoUrl 유지
             if (window.settingsPhotoFile) {
                 const { storage } = await import('../firebase.js');
-                const { ref, uploadBytes, getDownloadURL } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js");
+                const { ref, uploadBytes, getDownloadURL } = await import("https://www.gstatic.com/firebasejs/11.10.0/firebase-storage.js");
                 const timestamp = Date.now();
                 const fileName = `photo_${timestamp}.jpg`;
                 const photoRef = ref(storage, `users/${window.currentUser.uid}/profile/${fileName}`);

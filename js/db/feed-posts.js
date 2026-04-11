@@ -15,7 +15,7 @@ import {
     setDoc,
     serverTimestamp,
     writeBatch
-} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { showToast } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
 

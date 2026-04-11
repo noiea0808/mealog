@@ -1,6 +1,6 @@
 // ADMIN 공통 유틸리티 함수들
 import { db, appId } from '../firebase.js';
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 
 /** sharedPhotos 문서를 게시물(포스트) 단위로 그룹하기 위한 키 (listeners.js와 동일 로직) */
 export function getSharedPhotoGroupKey(data) {

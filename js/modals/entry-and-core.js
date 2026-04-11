@@ -10,7 +10,7 @@ import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, rend
 import { getDashboardData } from '../analytics.js';
 import { callableFunctions, db, appId, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import { isDemoUser } from '../demo-account.js';
-import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { applyDemoDateShiftToMealRecord } from '../demo-date-shift.js';
 // ⚠️ initPushNotifications import 제거 - 크래시 문제로 인해 비활성화
 

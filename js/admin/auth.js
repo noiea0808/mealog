@@ -1,6 +1,6 @@
 // ADMIN 인증 관련 함수들 — 앱과 동일한 `auth` 인스턴스 사용(영속성·세션 일치)
 import { auth } from '../firebase.js';
-import { signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import { checkAdminStatus } from './utils.js';
 
 // 관리자 로그인

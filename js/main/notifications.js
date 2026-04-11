@@ -3,7 +3,7 @@
  */
 import { appState } from '../state.js';
 import { db, appId } from '../firebase.js';
-import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import {
     postInteractions,
     subscribeToMyPostComments,

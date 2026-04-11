@@ -3,7 +3,7 @@
  */
 import { appState, getState } from '../state.js';
 import { auth, db, appId } from '../firebase.js';
-import { signOut } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+import { signOut } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import {
     dbOps,
     setupListeners,
@@ -33,8 +33,8 @@ import {
     orderBy,
     getDocs,
     getDocsFromServer
-} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
-import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
+import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from '../ui.js';
 import {
     getDisplayProfile,

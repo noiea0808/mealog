@@ -2,7 +2,7 @@
 import { app, db, appId, auth } from '../firebase.js';
 import {
     collection, query, orderBy, getDocs, doc, getDoc, setDoc, addDoc, deleteDoc, getCountFromServer
-} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { escapeHtml } from './utils.js';
 import { sanitizeFormattedText, renderFormattedContent, stripDangerousTagsOnly } from '../render/utils.js';
 import { uploadNoticeImages } from '../utils.js';

@@ -10,7 +10,7 @@ import {
     getDocs,
     getDocsFromServer,
     onSnapshot
-} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
 function mapFeedNotifDoc(d) {
     const data = d.data() || {};
