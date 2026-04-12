@@ -16,7 +16,7 @@ import {
     startAfter,
     getDocs,
     getCountFromServer
-} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
 const LOUNGE_PAGE_SIZE = 50;
 const ADMIN_LOUNGE_CACHE_TTL_MS = 3 * 60 * 1000;

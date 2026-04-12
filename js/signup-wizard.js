@@ -3,24 +3,12 @@
  * 1페이지: 이메일/비번/비번확인  2페이지: 닉네임  3페이지: 생년월일/성별/라이프스타일  4페이지: 약관
  */
 import { auth } from './firebase.js';
-import { createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+import { createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS } from './constants.js';
 import { normalizeBirthdateRaw, setupBirthdateInputFormatting } from './utils.js';
 
 const WIZARD_STEPS = 4;
-
-// 인디언식 닉네임 추천 목록 (늑대와 함께 춤을 같은 스타일)
-const NICKNAME_SUGGESTIONS = [
-    '늑대와 함께 춤을', '독수리가 날개를 펼 때', '바람이 말을 타고', '달이 호수를 비출 때',
-    '별이 내려앉는 밤', '산이 노래할 때', '강이 바다를 만날 때', '불꽃이 춤추는 밤',
-    '눈이 내리는 숲', '해가 뜨는 평원', '번개가 하늘을 가를 때', '구름이 산을 감싸면',
-    '나무가 말을 걸 때', '물이 돌을 닮을 때', '새벽이 잠에서 깨면'
-];
-
-function pickRandomNickname() {
-    return NICKNAME_SUGGESTIONS[Math.floor(Math.random() * NICKNAME_SUGGESTIONS.length)];
-}
 
 let state = {
     currentStep: 1,
@@ -99,14 +87,17 @@ async function validateStep2() {
         showToast('닉네임은 20자 이하로 입력해주세요.', 'error');
         return false;
     }
-    const { containsProfanity, isNicknameDuplicate } = await import('./utils/nickname.js');
+    const { containsProfanity, isNicknameDuplicate, pickUnusedRandomNickname } = await import('./utils/nickname.js');
     if (containsProfanity(nickname)) {
         showToast('사용할 수 없는 닉네임입니다.', 'error');
         return false;
     }
     const duplicate = await isNicknameDuplicate(nickname, auth.currentUser?.uid || null);
     if (duplicate) {
-        showToast('이미 사용 중인 닉네임입니다.', 'error');
+        const alt = await pickUnusedRandomNickname(auth.currentUser?.uid || null);
+        const nickInput = getEl('wizardNickname');
+        if (nickInput) nickInput.value = alt;
+        showToast('이미 사용 중인 닉네임이에요. 사용 가능한 조합으로 바꿔 두었어요. 확인 후 다시 눌러 주세요.', 'info');
         return false;
     }
     state.data.nickname = nickname;
@@ -150,10 +141,15 @@ async function validateCurrentStep() {
 }
 
 async function submitWizard() {
+    const nextBtn = getEl('signupWizardNextBtn');
+    const restoreNextBtn = () => {
+        if (nextBtn) nextBtn.disabled = false;
+    };
+
     if (state.isEmailSignup) {
         showLoading('가입 중...', { skipOnLoginScreen: false });
         try {
-            const { createUserWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js');
+            const { createUserWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js');
             await createUserWithEmailAndPassword(auth, state.data.email, state.data.password);
             window._recordsLoadHidePending = true;
             showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
@@ -170,6 +166,7 @@ async function submitWizard() {
     const { dbOps } = await import('./db.js');
     if (!window.userSettings) window.userSettings = { ...DEFAULT_USER_SETTINGS };
 
+    let needsPersist = false;
     if (user && !user.isAnonymous) {
         if (!state.isTermsOnly && (state.data.nickname != null || state.data.birthdate != null)) {
             window.userSettings.profile = window.userSettings.profile || {};
@@ -188,8 +185,7 @@ async function submitWizard() {
                 window.userSettings.providerId = window.userSettings.providerId || user.providerData[0].providerId;
                 if (user.email) window.userSettings.email = window.userSettings.email || user.email;
             }
-            await dbOps.saveSettings(window.userSettings);
-            if (typeof window.ensureUserRegistered === 'function') await window.ensureUserRegistered();
+            needsPersist = true;
         }
         if (state.currentStep === 4 || state.isTermsOnly) {
             window.userSettings.termsAgreed = true;
@@ -200,9 +196,26 @@ async function submitWizard() {
                 window.userSettings.providerId = window.userSettings.providerId || user.providerData[0].providerId;
                 if (user.email) window.userSettings.email = window.userSettings.email || user.email;
             }
+            needsPersist = true;
+        }
+    }
+
+    if (needsPersist) {
+        if (nextBtn) nextBtn.disabled = true;
+        const showSpinner = !state.isEmailSignup;
+        if (showSpinner) {
+            showLoading('설정을 저장하는 중...', { skipOnLoginScreen: false });
+        }
+        try {
             await dbOps.saveSettings(window.userSettings);
             if (typeof window.ensureUserRegistered === 'function') await window.ensureUserRegistered();
+        } catch (e) {
+            if (showSpinner) hideLoading();
+            restoreNextBtn();
+            return;
         }
+        if (showSpinner) hideLoading();
+        restoreNextBtn();
     }
 
     closeSignupWizard();
@@ -303,9 +316,19 @@ function initWizardUI() {
     const nicknameSuggestBtn = getEl('wizardNicknameSuggestBtn');
     if (nicknameSuggestBtn && !nicknameSuggestBtn._wizardBound) {
         nicknameSuggestBtn._wizardBound = true;
-        nicknameSuggestBtn.addEventListener('click', () => {
+        nicknameSuggestBtn.addEventListener('click', async () => {
             const input = getEl('wizardNickname');
-            if (input) input.value = pickRandomNickname();
+            if (!input) return;
+            nicknameSuggestBtn.disabled = true;
+            try {
+                const { pickUnusedRandomNickname } = await import('./utils/nickname.js');
+                input.value = await pickUnusedRandomNickname(auth.currentUser?.uid || null);
+            } catch (e) {
+                console.warn('추천 닉네임 생성 실패:', e);
+                showToast('추천 닉네임을 불러오지 못했습니다. 다시 시도해 주세요.', 'error');
+            } finally {
+                nicknameSuggestBtn.disabled = false;
+            }
         });
     }
     const birthdateInput = getEl('wizardBirthdate');
@@ -341,7 +364,22 @@ export function openSignupWizard(options = {}) {
     getEl('wizardPassword').value = '';
     getEl('wizardPasswordConfirm').value = '';
     const nicknameEl = getEl('wizardNickname');
-    if (nicknameEl) nicknameEl.value = startStep <= 2 ? pickRandomNickname() : '';
+    if (nicknameEl) {
+        if (startStep <= 2) {
+            nicknameEl.value = '';
+            import('./utils/nickname.js').then(({ pickUnusedRandomNickname }) =>
+                pickUnusedRandomNickname(auth.currentUser?.uid || null)
+            ).then((name) => {
+                if (nicknameEl && wizard && !wizard.classList.contains('hidden')) {
+                    nicknameEl.value = name;
+                }
+            }).catch((e) => {
+                console.warn('초기 추천 닉네임 실패:', e);
+            });
+        } else {
+            nicknameEl.value = '';
+        }
+    }
     getEl('wizardBirthdate').value = '';
     getEl('wizardLifestyle').value = '';
     document.querySelectorAll('.wizard-gender-btn').forEach(b => {
@@ -380,6 +418,13 @@ export function openSignupWizard(options = {}) {
 export function closeSignupWizard() {
     const wizard = getEl('signupWizard');
     if (wizard) wizard.classList.add('hidden');
+    try {
+        if (typeof window.scheduleAttendanceCheckIfNeeded === 'function') {
+            queueMicrotask(() => window.scheduleAttendanceCheckIfNeeded());
+        }
+    } catch (_) {
+        /* ignore */
+    }
 }
 
 window.openSignupWizard = openSignupWizard;

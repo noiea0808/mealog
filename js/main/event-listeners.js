@@ -6,6 +6,7 @@ import { showToast } from '../ui.js';
 import { addCompositionAwareInput, setupBirthdateInputFormatting } from '../utils.js';
 import {
     handleGoogleLogin,
+    handleKakaoLogin,
     startGuest,
     openEmailModal,
     closeEmailModal,
@@ -31,6 +32,7 @@ import {
 } from '../auth.js';
 import { registerDemoIntroModalHandlers } from '../demo-account.js';
 import { registerEscapeCloseModals } from './escape-close-modals.js';
+import { kakaoTalkLogoSvgHtml } from '../utils/kakao-brand.js';
 import {
     registerDemoNavGuideHandlers,
     handleDemoAwareNavClick,
@@ -135,6 +137,17 @@ export function initEventListeners() {
     const googleLoginBtn = document.getElementById('googleLoginBtn');
     if (googleLoginBtn) {
         googleLoginBtn.addEventListener('click', handleGoogleLogin);
+    }
+
+    const kakaoLoginBtn = document.getElementById('kakaoLoginBtn');
+    if (kakaoLoginBtn) {
+        if (!kakaoLoginBtn.querySelector('[data-kakao-brand-logo]')) {
+            kakaoLoginBtn.insertAdjacentHTML(
+                'afterbegin',
+                kakaoTalkLogoSvgHtml({ className: 'w-[22px] h-[22px]' })
+            );
+        }
+        kakaoLoginBtn.addEventListener('click', handleKakaoLogin);
     }
 
     const emailLoginBtn = document.getElementById('emailLoginBtn');
@@ -590,7 +603,7 @@ export function initEventListeners() {
             const canAdd = Math.max(0, 5 - total);
             const files = Array.from(e.target.files || []).slice(0, canAdd);
             if (files.length === 0) {
-                if ((e.target.files || []).length > canAdd && canAdd === 0) showToast('사진은 최대 5장까지 추가할 수 있습니다.', 'info');
+                if ((e.target.files || []).length > canAdd && canAdd === 0) showToast('사진은 최대 5장까지 추가할 수 있습니다.', 'error');
                 e.target.value = '';
                 return;
             }

@@ -193,8 +193,9 @@ export function renderTimeline() {
                         } else {
                             titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span>`;
                         }
-                        // 두 번째 줄: 메뉴
-                        titleLine2 = escapeHtml(m || '');
+                        // 두 번째 줄: 메뉴 (본식 카테고리만 있을 때도 한 줄 표시)
+                        const menuLine = (m || '').trim() || (r.category && String(r.category).trim()) || '';
+                        titleLine2 = escapeHtml(menuLine);
                         const tags = [];
                         if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
                         if (r.withWhomDetail) tags.push(r.withWhomDetail);

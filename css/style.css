@@ -1513,7 +1513,7 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
 .attendance-popup-anim .success-check__circle-bg,
 .attendance-popup-anim .success-check__mark-bg {
     stroke: #ffffff;
-    stroke-width: 20;
+    stroke-width: 12.5;
     stroke-linecap: round;
     stroke-linejoin: round;
 }
@@ -1534,13 +1534,86 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
     stroke-dashoffset: 48;
     animation: successCheckMark 220ms 120ms ease-out forwards;
 }
+/* 웰컴 팝업: 붉은 하트 + 흰 보더, 등장 후 가볍게 두근(회전·스케일) 반복 */
+.attendance-popup-anim #attendancePopupContent .attendance-popup-heart-path {
+    opacity: 0;
+    animation: attendancePopupHeartIn 260ms 110ms cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
+}
+.attendance-popup-anim #attendancePopupContent .attendance-popup-heart-flutter {
+    transform-origin: 12px 11px;
+    animation: attendancePopupHeartFlutter 1.15s ease-in-out 380ms infinite;
+}
+@keyframes attendancePopupHeartIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+@keyframes attendancePopupHeartFlutter {
+    0%,
+    100% {
+        transform: rotate(-5deg) scale(1);
+    }
+    25% {
+        transform: rotate(4deg) scale(1.06);
+    }
+    50% {
+        transform: rotate(-3deg) scale(1);
+    }
+    75% {
+        transform: rotate(5deg) scale(1.05);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .attendance-popup-anim #attendancePopupContent .attendance-popup-heart-flutter {
+        animation: none;
+    }
+}
+/* 웰컴(기록 있음): 따봉 — 컬러 이모지는 text-stroke 미적용이라 text-shadow만 사용.
+   문구 대비 이전 근사 두께의 50%, 십자 방향만(대각 제거)으로 덜 지저분하게 */
+#attendancePopupContent .attendance-popup-thumbs-emoji {
+    display: inline-block;
+    color: inherit;
+    text-shadow:
+        1px 0 0 #fff, -1px 0 0 #fff, 0 1px 0 #fff, 0 -1px 0 #fff, 2px 0 0 #fff, -2px 0 0 #fff, 0 2px 0 #fff,
+        0 -2px 0 #fff, 3px 0 0 #fff, -3px 0 0 #fff, 0 3px 0 #fff, 0 -3px 0 #fff, 4px 0 0 #fff, -4px 0 0 #fff,
+        0 4px 0 #fff, 0 -4px 0 #fff, 5px 0 0 #fff, -5px 0 0 #fff, 0 5px 0 #fff, 0 -5px 0 #fff, 6px 0 0 #fff,
+        -6px 0 0 #fff, 0 6px 0 #fff, 0 -6px 0 #fff, 7px 0 0 #fff, -7px 0 0 #fff, 0 7px 0 #fff, 0 -7px 0 #fff;
+}
+/* 위 규칙이 .hidden(display:none)보다 구체성이 높아 숨김이 깨짐 → 따봉/새싹 동시 노출 방지 */
+#attendancePopupContent .attendance-popup-thumbs-emoji.hidden {
+    display: none !important;
+}
+.attendance-popup-anim #attendancePopupContent .attendance-popup-thumbs-emoji {
+    transform-origin: 55% 88%;
+    animation: attendancePopupThumbs 0.92s ease-in-out 0.25s infinite;
+}
+@keyframes attendancePopupThumbs {
+    0%,
+    100% {
+        transform: rotate(-7deg) translateY(0) scale(1);
+    }
+    40% {
+        transform: rotate(9deg) translateY(-3px) scale(1.07);
+    }
+    70% {
+        transform: rotate(-4deg) translateY(-1px) scale(1.03);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .attendance-popup-anim #attendancePopupContent .attendance-popup-thumbs-emoji {
+        animation: none;
+    }
+}
 .success-check svg {
     overflow: visible;
 }
 .success-popup-anim .success-check__circle-bg,
 .success-popup-anim .success-check__mark-bg {
     stroke: #ffffff;
-    stroke-width: 20;
+    stroke-width: 12.5;
     stroke-linecap: round;
     stroke-linejoin: round;
 }
@@ -1562,17 +1635,173 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
     animation: successCheckMark 220ms 120ms ease-out forwards;
 }
 
-/* 텍스트 보더라인(25px 흰색): SVG text stroke로 "글자 윤곽"만 */
-.success-popup-text-outline {
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
-    font-size: 21px;
-    font-weight: 800;
-    letter-spacing: -0.01em;
-    fill: #0f172a; /* slate-900 */
+/* 기록 완료·출석: 패널/박스 없음 — 체크·버튼만 링 보더. 문구는 SVG 글자 stroke만 */
+.popup-celebrate-ring {
+    background: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+/* 체크: 래퍼 보더 없음 — 흰 윤곽은 SVG circle-bg / mark-bg stroke 12.5·#fff */
+.popup-celebrate-ring--check {
+    flex-shrink: 0;
+    border-radius: 9999px;
+    /* 아래 패딩만 줄여 체크와 문구 SVG 사이 시각 거리 축소 */
+    padding: 0.38rem 0.38rem 0.1rem;
+    border: none;
+    box-shadow: none;
+}
+/* 흰 stroke가 overflow로 아래로 퍼져 문구 보더와 겹칠 때 — 레이아웃 슬롯은 유지하고 그림만 위로 */
+#successPopupContent .popup-celebrate-ring--check,
+#attendancePopupContent .popup-celebrate-ring--check {
+    transform: translateY(-0.45rem);
+}
+.popup-celebrate-ring--btn {
+    box-sizing: border-box;
+    margin-top: 0.075rem;
+    width: 100%;
+    max-width: 8rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.85rem;
+    font-size: 0.875rem;
+    font-weight: 900;
+    line-height: 1.25;
+    color: #fff;
+    text-align: center;
+    cursor: pointer;
+    background: #047857;
+    border: 3px solid #ffffff;
+    box-shadow: none;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    transition: background 0.2s ease, transform 0.12s ease;
+}
+.popup-celebrate-ring--btn:hover {
+    background: #065f46;
+    border-color: #ffffff;
+}
+.popup-celebrate-ring--btn:active {
+    transform: scale(0.98);
+}
+.popup-celebrate-ring--btn:focus {
+    outline: none;
+}
+.popup-celebrate-ring--btn:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.85);
+    outline-offset: 3px;
+}
+
+/* 두꺼운 stroke가 viewBox 밖으로 나가도 잘리지 않게 */
+#successPopupTextSvg,
+#attendancePopupTextSvg {
+    overflow: visible;
+}
+/* flex gap만 줄여도 SVG 박스·출석 topPad 때문에 거의 안 줄어듦 → 위로 당겨 체크와 문구 간격 축소 */
+#successPopupContent #successPopupTextSvg,
+#attendancePopupContent #attendancePopupTextSvg {
+    margin-top: -0.5rem;
+}
+
+/* 부가 문구 있을 때: 메인 SVG와 박스 사이 — JS에서 vbH·하단 패딩 축소 + 살짝 당김, +10px 여유 */
+#attendancePopupContent.attendance-popup-has-aux .attendance-popup-aux-wrap {
+    margin-top: calc(-0.3rem + 10px);
+}
+
+/* 부가 박스 ↔ 닫기: flex gap(0.15625rem) 한 칸 기준으로 세로 간격 약 300%(= gap의 3배) */
+#attendancePopupContent.attendance-popup-has-aux #attendancePopupCloseBtn {
+    margin-top: calc(0.15625rem * 2);
+}
+
+/* 웰컴(기록 있음): 최근 1주 도넛 — 차트 ↔ 닫기 간격 */
+#attendancePopupContent.attendance-popup-welcome-charts #attendancePopupCloseBtn {
+    margin-top: calc(0.15625rem * 2);
+}
+/* 연속 기록 문구 ↔ 차트 박스 세로 간격 약 1/2로 */
+#attendancePopupContent.attendance-popup-welcome-charts .attendance-popup-welcome-charts-wrap {
+    margin-top: -0.55rem;
+}
+.attendance-welcome-chart-shell {
+    backdrop-filter: blur(2px);
+}
+button.attendance-welcome-kind-btn.attendance-welcome-kind--active {
+    background: rgb(16 185 129);
+    color: #fff;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+}
+button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
+    color: rgb(51 65 85);
+}
+/* 터치는 시작 요소의 touch-action이 적용됨 — 자식(SVG 등)이 auto면 가로 팬이 브라우저 스크롤로 소모되어 스와이프가 취소됨. pan-y만 허용해 가로 드래그는 JS(Pointer)로 처리 */
+.attendance-welcome-chart-viewport,
+.attendance-welcome-chart-viewport * {
+    touch-action: pan-y;
+}
+.attendance-welcome-chart-viewport {
+    cursor: grab;
+}
+.attendance-welcome-chart-viewport:active {
+    cursor: grabbing;
+}
+.attendance-welcome-legend-swatch {
+    width: 0.45rem;
+    height: 0.45rem;
+    min-width: 0.45rem;
+}
+.attendance-welcome-legend::-webkit-scrollbar {
+    width: 4px;
+}
+.attendance-welcome-legend::-webkit-scrollbar-thumb {
+    background: rgb(203 213 225);
+    border-radius: 9999px;
+}
+.attendance-welcome-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: rgb(100 116 139);
+    transition:
+        background 0.2s ease,
+        transform 0.2s ease;
+}
+.attendance-welcome-dot--active {
+    background: rgb(5 122 85);
+    transform: scale(1.15);
+}
+
+/* 기록 완료·웰컴 문구 흰 윤곽 두께 — 이모지(-webkit-text-stroke)와 동일 값 공유 */
+#successPopupContent,
+#attendancePopupContent {
+    --celebrate-popup-text-outline: calc(36px * 0.42);
+}
+/* 기록 완료·웰컴: 동일 Yeon Sung + 흰 stroke — font-size는 showSuccessPopup / showAttendancePopup에서 지정 */
+.success-popup-text-core,
+.attendance-popup-text-core {
+    font-family: 'Yeon Sung', serif;
+    font-weight: 600;
+    font-synthesis: none;
+    letter-spacing: 0.04em;
+    fill: #0f172a;
     stroke: #ffffff;
-    stroke-width: 20;
     stroke-linejoin: round;
     paint-order: stroke fill;
+    stroke-width: var(--celebrate-popup-text-outline);
+}
+
+/* 웰컴 팝업 부가 문구: 본문과 동일 Pretendard·기본 크기, 테두리 박스 */
+#attendancePopupAuxBox.attendance-popup-aux-box {
+    margin: 0;
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+    font-size: 1rem;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: 1.45;
+    color: #334155;
+    white-space: pre-wrap;
+    word-break: keep-all;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    border: 1px solid rgb(226 232 240);
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 }
 
 /* 기록 완료 컨페티 */

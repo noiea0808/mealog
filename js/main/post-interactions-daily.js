@@ -3,7 +3,7 @@
  */
 import { appState, getState } from '../state.js';
 import { auth, db, appId } from '../firebase.js';
-import { signOut } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+import { signOut } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import {
     dbOps,
     setupListeners,
@@ -32,8 +32,8 @@ import {
     orderBy,
     getDocs,
     getDocsFromServer
-} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
-import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
+import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from '../ui.js';
 import {
     getDisplayProfile,
@@ -177,7 +177,7 @@ window.shareDailySummary = async (dateStr) => {
         }
         const uid = window.currentUser?.uid;
         if (!uid) {
-            showToast('로그인이 필요합니다.', 'info');
+            showToast('로그인이 필요합니다.', 'error');
             if (typeof window.requestLogin === 'function') window.requestLogin();
             return;
         }
@@ -721,7 +721,7 @@ export function registerMainPostInteractions() {
 // 로그인 요청 함수
 window.requestLogin = () => {
     if (!window.currentUser || window.currentUser.isAnonymous) {
-        showToast("로그인이 필요합니다. 로그인해주세요.", 'info');
+        showToast("로그인이 필요합니다. 로그인해주세요.", 'error');
         // 설정 페이지를 열어서 로그인 유도
         setTimeout(() => {
             window.openSettings();
@@ -760,7 +760,7 @@ window.toggleLike = async (postId) => {
         return;
     }
     if (isDemoUser(window.currentUser)) {
-        showToast(DEMO_TOAST_CANNOT_LIKE, 'info');
+        showToast(DEMO_TOAST_CANNOT_LIKE, 'error');
         return;
     }
     
@@ -801,7 +801,7 @@ window.toggleBookmark = async (postId) => {
         return;
     }
     if (isDemoUser(window.currentUser)) {
-        showToast(DEMO_TOAST_CANNOT_BOOKMARK, 'info');
+        showToast(DEMO_TOAST_CANNOT_BOOKMARK, 'error');
         return;
     }
     

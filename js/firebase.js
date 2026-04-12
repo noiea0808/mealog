@@ -1,10 +1,10 @@
 // Firebase 초기화 및 설정
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAnalytics, logEvent as analyticsLogEvent, setUserId, setUserProperties } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
-import { getAuth, initializeAuth, setPersistence, browserLocalPersistence, indexedDBLocalPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, initializeFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { getStorage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
-import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
+import { getAnalytics, logEvent as analyticsLogEvent, setUserId, setUserProperties } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-analytics.js";
+import { getAuth, initializeAuth, setPersistence, browserLocalPersistence, indexedDBLocalPersistence } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
+import { getFirestore, initializeFirestore } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { getStorage } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-storage.js";
+import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyDMhxZHK7CgtiUACy9fOIiT7IDUW1uAWBc",
@@ -83,25 +83,103 @@ if (!(typeof window.Capacitor !== 'undefined' && window.Capacitor?.isNativePlatf
 // 이메일 인증·비밀번호 재설정 메일을 한글로 발송
 auth.languageCode = 'ko';
 
-// Android WebView 등에서 firestore.googleapis.com QUIC(WebChannel) 오류(ERR_QUIC_*)로 쓰기 실패하는 경우가 있어
-// 네이티브 앱에서는 장폴링을 강제해 FCM 토큰 저장·실시간 구독 안정화
+// WebChannel·Watch 스트림에서 간헐적 INTERNAL ASSERTION(b815 등)이 나는 환경이 있어
+// 장폴링을 기본 사용(네이티브·웹 공통). 실패 시에만 기본 getFirestore.
 function createFirestore() {
-    const native = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.();
-    if (native) {
-        try {
-            return initializeFirestore(app, {
-                experimentalForceLongPolling: true
-            });
-        } catch (e) {
-            const msg = String(e?.message || e);
-            if (msg.includes('already') || msg.includes('Already')) {
-                return getFirestore(app);
-            }
-            console.warn('Firestore initializeFirestore 실패, getFirestore로 대체:', msg);
+    try {
+        return initializeFirestore(app, {
+            experimentalForceLongPolling: true
+        });
+    } catch (e) {
+        const msg = String(e?.message || e);
+        if (msg.includes('already') || msg.includes('Already')) {
+            return getFirestore(app, '(default)');
         }
+        console.warn('Firestore initializeFirestore 실패, getFirestore로 대체:', msg);
     }
-    return getFirestore(app);
+    return getFirestore(app, '(default)');
 }
+
+/** @type {import('firebase/app-check').AppCheck | null} */
+export let firebaseAppCheck = null;
+
+async function resolveAppCheckDebugTokenForLocalhost() {
+    try {
+        const mod = await import('./config.js');
+        if (mod.APPCHECK_DEBUG_TOKEN && String(mod.APPCHECK_DEBUG_TOKEN).trim()) {
+            return String(mod.APPCHECK_DEBUG_TOKEN).trim();
+        }
+    } catch (_) {}
+    try {
+        const def = await import('./config.default.js');
+        if (def.APPCHECK_DEBUG_TOKEN && String(def.APPCHECK_DEBUG_TOKEN).trim()) {
+            return String(def.APPCHECK_DEBUG_TOKEN).trim();
+        }
+    } catch (_) {}
+    return '';
+}
+
+export const appCheckInitPromise = (async () => {
+    try {
+        if (typeof window === 'undefined') return;
+        const isCapNative =
+            typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.();
+        const h = window.location.hostname;
+        const isLocalhost =
+            h === 'localhost' ||
+            h === '127.0.0.1' ||
+            h === '0.0.0.0' ||
+            h.startsWith('192.168.') ||
+            (!isCapNative && h === '');
+        /** Capacitor WebView는 호스트가 localhost인 경우가 많아, 디버그 토큰을 켜면 exchangeDebugToken 403이 난다(콘솔 미등록). 네이티브는 reCAPTCHA만 사용 */
+        if (isLocalhost && !isCapNative) {
+            const fixed = await resolveAppCheckDebugTokenForLocalhost();
+            if (fixed) {
+                window.FIREBASE_APPCHECK_DEBUG_TOKEN = fixed;
+                console.info(
+                    '🔧 App Check: config의 APPCHECK_DEBUG_TOKEN 사용 중. Firebase Console → App Check → 웹 앱에 동일 토큰이 등록돼 있어야 합니다.'
+                );
+            } else {
+                window.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+                console.warn(
+                    '🔧 로컬 App Check: 아래 콘솔에 찍힌 디버그 토큰을 Firebase Console → App Check → 해당 웹 앱 → 디버그 토큰에 등록하세요. ' +
+                        '매번 바뀌면 번거로우니 UUID 하나를 만들어 config.js에 APPCHECK_DEBUG_TOKEN으로 넣고, 그 문자열을 콘솔에도 등록하세요. ' +
+                        '미등록 시 exchangeDebugToken 403 → Firestore permission-denied가 납니다.'
+                );
+            }
+        }
+        const { initializeAppCheck, ReCaptchaV3Provider, getToken } = await import(
+            'https://www.gstatic.com/firebasejs/11.10.0/firebase-app-check.js'
+        );
+        const appCheck = initializeAppCheck(app, {
+            provider: new ReCaptchaV3Provider('6LdjYVUsAAAAAP7RvrJgOEp-7wvDpmoC8Bll9-Kw'),
+            isTokenAutoRefreshEnabled: true
+        });
+        firebaseAppCheck = appCheck;
+        await getToken(appCheck, false);
+        console.log('✅ App Check 초기화 완료');
+    } catch (e) {
+        console.warn('⚠️ App Check 초기화 실패 (계속 진행):', e);
+    }
+})();
+
+/**
+ * App Check 강제 시, 초기화 직후 첫 Firestore 쓰기가 토큰 없이 나가 permission-denied 나는 경우 완화
+ */
+export async function refreshAppCheckTokenBeforeFirestore() {
+    await appCheckInitPromise;
+    if (!firebaseAppCheck || typeof window === 'undefined') return;
+    try {
+        const { getToken } = await import('https://www.gstatic.com/firebasejs/11.10.0/firebase-app-check.js');
+        await getToken(firebaseAppCheck, true);
+    } catch (_) {
+        /* ignore */
+    }
+}
+
+// 공식 가이드: App Check를 Firestore 등보다 먼저 초기화. 기존에는 getFirestore가 먼저라 강제 적용 시 쓰기에 토큰이 안 붙을 수 있음.
+await appCheckInitPromise;
+
 export const db = createFirestore();
 export const storage = getStorage(app);
 
@@ -142,36 +220,29 @@ export const callableFunctions = {
     getSharedEntryComments: httpsCallable(functions, 'getSharedEntryComments'),
     backfillSharedPhotosComments: httpsCallable(functions, 'backfillSharedPhotosComments'),
     /** 둘러보기 전용 — 비로그인 호출 (데모 UID 커스텀 토큰) */
-    signInAsDemo: httpsCallable(functions, 'signInAsDemo')
+    signInAsDemo: httpsCallable(functions, 'signInAsDemo'),
+    /** 카카오 액세스 토큰 → Firebase 커스텀 토큰 (비로그인 호출) */
+    signInWithKakao: httpsCallable(functions, 'signInWithKakao'),
+    /** 네이티브 앱: 카카오 인가 페이지 URL (REST 키는 Functions에서만 사용) */
+    getKakaoOAuthAuthorizeUrl: httpsCallable(functions, 'getKakaoOAuthAuthorizeUrl'),
+    /** FCM 토큰 문서 저장 폴백 (클라이언트 Firestore/App Check 거절 시) */
+    registerFcmToken: httpsCallable(functions, 'registerFcmToken'),
+    /** 클라이언트 Firestore permission-denied 시 설정+닉네임클레임 저장 폴백 (Admin) */
+    saveArtifactUserSettings: httpsCallable(functions, 'saveArtifactUserSettings'),
+    /** users/{uid} 루트 문서(lastLoginAt·createdAt·providerId·email) — 클라이언트 쓰기 거절 시 Admin 병합 */
+    patchArtifactUserRoot: httpsCallable(functions, 'patchArtifactUserRoot'),
+    /** 식사 기록 — 클라이언트 Firestore permission-denied 시 Admin 폴백 */
+    saveArtifactUserMeal: httpsCallable(functions, 'saveArtifactUserMeal'),
+    deleteArtifactUserMeal: httpsCallable(functions, 'deleteArtifactUserMeal'),
+    /** 관리자: 웰컴 API — 전일(서울) 기준 연속 기록 N일 이상 사용자 목록 + 3일 요약 */
+    adminWelcomeStreakUsers: httpsCallable(functions, 'adminWelcomeStreakUsers'),
+    /** 관리자: 웰컴용 제미나이 한 줄 코멘트(메뉴+응원, 서버에서 길이 상한 적용) */
+    adminWelcomeGeminiComment: httpsCallable(functions, 'adminWelcomeGeminiComment')
 };
 
-// App Check 초기화 (reCAPTCHA v3 사용)
-// 로컬 개발 환경에서는 App Check를 비활성화 (localhost, 127.0.0.1, 0.0.0.0)
-// 에러가 발생해도 앱이 계속 작동하도록 try-catch로 감쌈
-(async () => {
-    try {
-        // 로컬 개발 환경 체크
-        const isLocalhost = window.location.hostname === 'localhost' || 
-                           window.location.hostname === '127.0.0.1' || 
-                           window.location.hostname === '0.0.0.0' ||
-                           window.location.hostname === '';
-        
-        if (isLocalhost) {
-            console.log('🔧 로컬 개발 환경: App Check 비활성화');
-            return;
-        }
-        
-        const { initializeAppCheck, ReCaptchaV3Provider } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js");
-        const appCheck = initializeAppCheck(app, {
-            provider: new ReCaptchaV3Provider('6LdjYVUsAAAAAP7RvrJgOEp-7wvDpmoC8Bll9-Kw'),
-            isTokenAutoRefreshEnabled: true
-        });
-        console.log('✅ App Check 초기화 완료');
-    } catch (e) {
-        console.warn('⚠️ App Check 초기화 실패 (계속 진행):', e);
-        // App Check 실패해도 앱은 계속 작동
-    }
-})();
+/**
+ * App Check / Firestore: initAuth 등은 appCheckInitPromise를 카카오 OAuth보다 먼저 await.
+ */
 
 // 에러 리포팅 시스템 초기화
 (async () => {

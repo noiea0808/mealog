@@ -1,6 +1,6 @@
 // Firestore 리스너 설정 (읽기 비용 절감: user/tags 세션당 1회, meals 기간·limit 등)
-import { db, appId } from '../firebase.js';
-import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, startAfter, getDocs, getDocsFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { db, appId, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
+import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, startAfter, getDocs, getDocsFromServer, documentId, enableNetwork } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from '../constants.js';
 import { dbOps } from './ops.js';
 import { hideLoading, showNetworkErrorOverlay, isLikelyNetworkError } from '../ui.js';
@@ -604,9 +604,11 @@ export function setupListeners(userId, callbacks) {
     );
     const statsUnsubscribe = () => statsUnsubscribes.forEach(fn => fn());
     
-    // 최근 7일 초기 로드 (스크롤·loadMoreMeals로 추가 로드). 트래커 점은 dailyStats(별도 리스너)로 표시
+    // 최근 N일 초기 로드 (스크롤·loadMoreMeals로 추가). 트래커 점은 dailyStats(별도 리스너)로 표시
+    // 기간이 짧으면 오래된 기록이 메모리에 없어 수정 모달이 비는 경우가 있어 21일로 완화
+    void refreshAppCheckTokenBeforeFirestore();
     const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - 7);
+    cutoffDate.setDate(cutoffDate.getDate() - 21);
     const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
     const todayStr = new Date().toISOString().split('T')[0];
     
@@ -999,6 +1001,32 @@ export async function loadSharedPhotosPage(targetPosts = 10, startAfterDoc = nul
 
     const shifted = applyDemoShiftToSharedDocsIfNeeded(docsToReturn);
     return { docs: shifted, lastDoc: returnLastDoc, hasMore: hasMorePosts };
+}
+
+/**
+ * 모먼트 피드 첫 로드/재시도용: 오프라인·불안정 직후 getDocsFromServer 일시 실패 시 재시도.
+ * (다시 불러오기·당겨서 새로고침에서 공통 사용)
+ */
+export async function loadSharedPhotosPageReliable(targetPosts = 10, startAfterDoc = null, opts = {}) {
+    const maxAttempts = opts.maxAttempts ?? 3;
+    const baseDelayMs = opts.baseDelayMs ?? 320;
+    let lastErr;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+            if (attempt > 0) {
+                await new Promise((r) => setTimeout(r, baseDelayMs * attempt));
+            }
+            try {
+                await enableNetwork(db);
+            } catch (_) {
+                /* ignore */
+            }
+            return await loadSharedPhotosPage(targetPosts, startAfterDoc);
+        } catch (e) {
+            lastErr = e;
+        }
+    }
+    throw lastErr;
 }
 
 /** 본인 공유만 조회 (타임라인 공유 표시, 일간/베스트/인사이트 공유 확인용)

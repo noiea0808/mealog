@@ -15,7 +15,7 @@ import {
     where,
     limit,
     orderBy
-} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
 // 페르소나 사이드바 전환
 // switchPersonaSidebar는 더 이상 사용하지 않음 (콘텐츠 관리로 이동)

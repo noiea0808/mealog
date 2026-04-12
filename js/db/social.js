@@ -1,7 +1,7 @@
 // 소셜 기능 (좋아요, 댓글, 북마크, 신고)
 import { db, appId, auth, callableFunctions } from '../firebase.js';
 import { isDemoUser } from '../demo-account.js';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, addDoc, query, orderBy, where, getDocs, getDocsFromServer, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, addDoc, query, orderBy, where, getDocs, getDocsFromServer, onSnapshot } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 
 // 좋아요, 댓글, 북마크 관련 함수들
 export const postInteractions = {

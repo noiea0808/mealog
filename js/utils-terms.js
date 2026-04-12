@@ -1,7 +1,7 @@
 // 약관 버전 유틸리티 함수
 // Firestore에서 현재 약관 버전을 가져오는 함수
 
-import { doc, getDoc, collection, query, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, collection, query, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { db, appId } from './firebase.js';
 import { CURRENT_TERMS_VERSION } from './constants.js';
 

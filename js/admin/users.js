@@ -1,7 +1,7 @@
 // ADMIN 사용자 관리 관련 함수들
 import { app, db, appId, functions, auth } from '../firebase.js';
-import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js';
-import { collection, getDocs, query, orderBy, limit, startAfter, doc, getDoc, setDoc, where, addDoc, serverTimestamp, getCountFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js';
+import { collection, getDocs, query, orderBy, limit, startAfter, doc, getDoc, setDoc, where, addDoc, serverTimestamp, getCountFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { getCurrentTermsVersion } from '../utils-terms.js';
 import { escapeHtml, runAdminRefreshAction } from './utils.js';
 
@@ -93,13 +93,14 @@ function computeSignupToLastLoginMs(createdAt, lastLoginAt) {
     return lt - ct;
 }
 
-/** 활동일수 셀: `0일 / 00시간` 형식 (시간은 2자리 패딩) */
-function formatSignupToLastLoginActivity(ms) {
-    if (ms == null || !Number.isFinite(ms) || ms < 0) return '-';
+/** 활동일수 셀 HTML: 일과 시간을 두 줄로 (시간은 2자리 패딩) */
+function formatSignupToLastLoginActivityHtml(ms) {
+    if (ms == null || !Number.isFinite(ms) || ms < 0) return escapeHtml('-');
     const totalHours = Math.floor(ms / (1000 * 60 * 60));
     const days = Math.floor(totalHours / 24);
     const hours = totalHours % 24;
-    return `${days}일 / ${String(hours).padStart(2, '0')}시간`;
+    const h = `${String(hours).padStart(2, '0')}시간`;
+    return `<span class="flex flex-col items-center justify-center leading-tight tabular-nums"><span>${days}일</span><span>${escapeHtml(h)}</span></span>`;
 }
 
 /** 생년월일 문자열을 정렬용 키로 변환 (없으면 null) */
@@ -309,18 +310,18 @@ async function getUsers(options = {}) {
         const boardPostsColl = collection(db, 'artifacts', appId, 'boardPosts');
         const deleteRequestsColl = collection(db, 'artifacts', appId, 'deleteUserRequests');
 
-        // 1) 첫 페이지만 전체 사용자 수 조회 — 목록 쿼리와 동일한 조건(createdAt 있음)으로 카운트
+        // 1) 첫 페이지만 전체 사용자 수 조회 — lastLoginAt 기준(프로필 미완료·카카오만 로그인한 사용자도 포함)
         let totalCount = adminUsersTotalCount;
         if (page === 1) {
-            const countQuery = query(usersColl, orderBy('createdAt', 'desc'));
+            const countQuery = query(usersColl, orderBy('lastLoginAt', 'desc'));
             const countSnap = await getCountFromServer(countQuery);
             totalCount = countSnap.data().count;
             adminUsersTotalCount = totalCount;
         }
 
-        // 2) users 컬렉션 페이지 단위 쿼리 (가입일 내림차순)
-        let usersQuery = query(usersColl, orderBy('createdAt', 'desc'), limit(pageSize));
-        if (startAfterDoc) usersQuery = query(usersColl, orderBy('createdAt', 'desc'), limit(pageSize), startAfter(startAfterDoc));
+        // 2) users 컬렉션 페이지 단위 쿼리 (최근 로그인순 — createdAt 없이 문서만 있는 경우도 목록에 포함)
+        let usersQuery = query(usersColl, orderBy('lastLoginAt', 'desc'), limit(pageSize));
+        if (startAfterDoc) usersQuery = query(usersColl, orderBy('lastLoginAt', 'desc'), limit(pageSize), startAfter(startAfterDoc));
         const usersSnapshot = await getDocs(usersQuery);
         const userIds = usersSnapshot.docs.map(d => d.id);
         const lastDoc = usersSnapshot.docs.length > 0 ? usersSnapshot.docs[usersSnapshot.docs.length - 1] : null;
@@ -411,6 +412,7 @@ async function getUsers(options = {}) {
 
             let loginMethod = '게스트';
             if (providerId === 'google.com') loginMethod = '구글';
+            else if (providerId === 'kakao.com') loginMethod = '카카오';
             else if (email) loginMethod = '이메일';
 
             const ban = userBansMap.get(userId);
@@ -620,12 +622,14 @@ export async function renderUsers(options = {}) {
                 : '-';
             const signupToLastLoginLabel =
                 user.loginMethod === '게스트'
-                    ? '-'
-                    : formatSignupToLastLoginActivity(user.signupToLastLoginMs);
+                    ? escapeHtml('-')
+                    : formatSignupToLastLoginActivityHtml(user.signupToLastLoginMs);
             
             let loginMethodBadge = 'bg-slate-100 text-slate-700';
             if (user.loginMethod === '구글') {
                 loginMethodBadge = 'bg-red-100 text-red-700';
+            } else if (user.loginMethod === '카카오') {
+                loginMethodBadge = 'bg-[#FEE500] text-[#191919]';
             } else if (user.loginMethod === '이메일') {
                 loginMethodBadge = 'bg-blue-100 text-blue-700';
             }
@@ -685,7 +689,7 @@ export async function renderUsers(options = {}) {
                         <span class="text-sm text-slate-600 leading-snug">${lastLoginDate}</span>
                     </td>
                     <td data-page="1" class="px-2 py-2.5 text-center">
-                        <span class="text-sm text-slate-600 tabular-nums font-medium">${signupToLastLoginLabel}</span>
+                        <div class="text-sm text-slate-600 font-medium">${signupToLastLoginLabel}</div>
                     </td>
                     <td data-page="1" class="px-1.5 py-2.5 min-w-[3.25rem] max-w-[4rem] text-center">${activityBanCell}</td>
                     <td data-page="2" class="px-3 py-2.5 text-center tabular-nums">
@@ -984,6 +988,7 @@ export async function adminUserBanWrite(value) {
 export async function refreshUsers() {
     await runAdminRefreshAction(document.getElementById('adminUsersRefreshBtn'), async () => {
         invalidateUsersTableCache();
-        await renderUsers({ forceNetwork: true });
+        // 가입일(createdAt) 기준 정렬은 전역 순서가 필요해 전체 로드 후 클라이언트에서 정렬(lastLoginAt만으로 페이지네이션하면 이전 페이지가 섞임)
+        await renderUsers({ forceNetwork: true, loadFullListForSort: true });
     });
 }

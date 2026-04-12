@@ -1,7 +1,7 @@
 // ADMIN 브로드캐스트 푸시 (즉시 발송 / 예약)
 import { app, db, appId, functions, auth } from '../firebase.js';
-import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js';
-import { collection, query, orderBy, getDocs, limit, doc, setDoc, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js';
+import { collection, query, orderBy, getDocs, limit, doc, setDoc, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { escapeHtml, runAdminRefreshAction } from './utils.js';
 
 // ========== 푸시메시지 관리 (관리자 브로드캐스트) ==========

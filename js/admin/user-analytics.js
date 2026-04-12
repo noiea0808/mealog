@@ -54,9 +54,15 @@ function activitySpanBucket(user) {
     return '1년 초과';
 }
 
+/** UI·집계와 동일한 6종 + 미입력 (그 외 문자열은 기타로 묶음) */
+const LIFESTYLE_ORDER = ['직장인', '프리랜서', '자영업', '주부', '학생', '기타', '미입력'];
+const LIFESTYLE_EXACT = new Set(['직장인', '프리랜서', '자영업', '주부', '학생', '기타']);
+
 function lifestyleLabel(user) {
     const v = user.lifestyle != null ? String(user.lifestyle).trim() : '';
-    return v || '미입력';
+    if (!v) return '미입력';
+    if (LIFESTYLE_EXACT.has(v)) return v;
+    return '기타';
 }
 
 function genderLabel(user) {
@@ -74,6 +80,42 @@ function mapToSortedEntries(map) {
     return [...map.entries()].sort((a, b) => b[1] - a[1]);
 }
 
+/** 고정 순서 + 없으면 0명. 맵에만 있고 순서에 없는 키는 뒤에 인원 많은 순 */
+function entriesInFixedOrder(map, orderedKeys) {
+    const used = new Set(orderedKeys);
+    const base = orderedKeys.map((k) => [k, map.get(k) || 0]);
+    const extra = [...map.entries()]
+        .filter(([k]) => !used.has(k))
+        .sort((a, b) => b[1] - a[1]);
+    return extra.length ? base.concat(extra) : base;
+}
+
+const GENDER_ORDER = ['남', '여', '미입력'];
+
+/** 로그인: 구글 → 이메일 → 카카오 → 게스트(앱에 존재) → 미입력 */
+const LOGIN_ORDER = ['구글', '이메일', '카카오', '게스트', '미입력'];
+
+/** 활동일수: 긴 구간 → 짧은 구간 → 정보 없음 계열 */
+const ACTIVITY_ORDER = [
+    '1년 초과',
+    '31일~1년',
+    '8~30일',
+    '1~7일',
+    '0일(24시간 미만)',
+    '게스트',
+    '가입/로그인 정보 없음'
+];
+
+const AGE_BAND_MISS = '미입력·알 수 없음';
+
+/** 나이대: 인원 많은 순, 단 미입력·알 수 없음 은 항상 맨 아래 */
+function entriesAgeBandOrdered(map) {
+    const rest = [...map.entries()].filter(([k]) => k !== AGE_BAND_MISS);
+    rest.sort((a, b) => b[1] - a[1]);
+    rest.push([AGE_BAND_MISS, map.get(AGE_BAND_MISS) || 0]);
+    return rest;
+}
+
 function renderBarRow(label, count, total, pct) {
     const safeLabel = escapeHtml(label);
     return `
@@ -89,8 +131,8 @@ function renderBarRow(label, count, total, pct) {
     `;
 }
 
-function renderSection(title, map, total) {
-    const entries = mapToSortedEntries(map);
+function renderSection(title, map, total, orderedEntries) {
+    const entries = orderedEntries != null ? orderedEntries : mapToSortedEntries(map);
     if (total === 0) {
         return `
             <section class="bg-white border border-slate-100 rounded-xl p-4 shadow-sm">
@@ -169,11 +211,16 @@ export async function refreshAdminUserAnalytics() {
     const agg = buildAggregates(users);
     mount.innerHTML = `
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            ${renderSection('라이프스타일', agg.lifestyle, n)}
-            ${renderSection('나이대', agg.ageBand, n)}
-            ${renderSection('성별', agg.gender, n)}
-            ${renderSection('로그인 방법', agg.loginMethod, n)}
-            ${renderSection('활동일수(가입~마지막 로그인)', agg.activity, n)}
+            ${renderSection('라이프스타일', agg.lifestyle, n, entriesInFixedOrder(agg.lifestyle, LIFESTYLE_ORDER))}
+            ${renderSection('나이대', agg.ageBand, n, entriesAgeBandOrdered(agg.ageBand))}
+            ${renderSection('성별', agg.gender, n, entriesInFixedOrder(agg.gender, GENDER_ORDER))}
+            ${renderSection('로그인 방법', agg.loginMethod, n, entriesInFixedOrder(agg.loginMethod, LOGIN_ORDER))}
+            ${renderSection(
+                '활동일수(가입~마지막 로그인)',
+                agg.activity,
+                n,
+                entriesInFixedOrder(agg.activity, ACTIVITY_ORDER)
+            )}
         </div>
         <p class="text-xs text-slate-500 mt-4 leading-relaxed">
             집계 대상 <strong class="text-slate-700">전체 ${n.toLocaleString('ko-KR')}명</strong> (Firestore <code class="text-[11px] bg-slate-100 px-1 rounded">users</code> 기준 전원).

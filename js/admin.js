@@ -14,7 +14,8 @@ import {
     renderDashboardStats,
     updateStatistics,
     refreshDashboardStats,
-    renderSharedPhotos
+    renderSharedPhotos,
+    switchDashboardSubtab
 } from './admin/dashboard.js';
 import {
     switchAdminUsersPage,
@@ -40,6 +41,7 @@ import { registerRestaurantStats } from './admin/restaurant-stats.js';
 import { loadMealogComments, showCharacterListView } from './admin/persona.js';
 import { runAdminStatsBackfillForUid } from './admin/stats-backfill.js';
 import { loadAdminLogTab } from './admin/ops-log.js';
+import { bindAdminWelcomeApiOnce } from './admin/welcome-api.js';
 import { invalidateAttendancePopupConfigCache, normalizeAttendancePopup } from './attendance-check.js';
 // 모니터링(모먼트·밀톡·게시판): HTML onclick용 window.* 등록
 import './admin/feed-moderation.js';
@@ -47,10 +49,10 @@ import './admin/lounge-chat-moderation.js';
 import './admin/board-moderation.js';
 
 import { app, db, appId, callableFunctions, auth } from './firebase.js';
-import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 
 // Firestore 규칙·Callable은 기본 Auth만 인식 — 메인 앱과 동일한 `auth` 인스턴스 사용
-import { collection, collectionGroup, getDocs, query, orderBy, limit, startAfter, doc, deleteDoc, getDoc, setDoc, where, writeBatch, addDoc, serverTimestamp, getCountFromServer, Timestamp, deleteField } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, collectionGroup, getDocs, query, orderBy, limit, startAfter, doc, deleteDoc, getDoc, setDoc, where, writeBatch, addDoc, serverTimestamp, getCountFromServer, Timestamp, deleteField } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { uploadImageToStorage, uploadPersonaImageToStorage, uploadNoticeImages, uploadPopupImages, uploadLoginBannerImage } from './utils.js';
 import { invalidateAdminDisplayNameCache } from './db.js';
 import { getCurrentTermsVersion, invalidateTermsVersionCache } from './utils-terms.js';
@@ -160,6 +162,7 @@ window.switchAdminTab = function(tab) {
 
 // 대시보드 통계 새로고침 (전체 집계 후 캐시 문서에 저장)
 window.refreshDashboardStats = refreshDashboardStats;
+window.switchDashboardSubtab = switchDashboardSubtab;
 
 // 공유 게시물 새로고침
 window.refreshSharedPhotos = async function() {
@@ -576,38 +579,65 @@ window.switchAlertsSidebar = function (section) {
     }
 };
 
-// 사이드바 전환
-window.switchContentSidebar = function(section) {
+/** 콘텐츠 상단 탭: 웰컴메시지(settings) vs 관리자명(displayName) — 동일 메인 영역(content-main-settings) */
+function syncSettingsWelcomeTopTabs(sub) {
+    const settingsBtn = document.getElementById('content-sidebar-settings');
+    const displayNameBtn = document.getElementById('content-sidebar-displayName');
+    if (!settingsBtn || !displayNameBtn) return;
+    const off = ['text-slate-500', 'bg-white', 'border-slate-200', 'hover:bg-slate-50'];
+    const on = ['text-emerald-600', 'bg-emerald-50', 'border-emerald-200'];
+    [settingsBtn, displayNameBtn].forEach((btn) => {
+        btn.classList.remove('text-emerald-600', 'bg-emerald-50', 'border-emerald-200', ...off);
+        btn.classList.add(...off);
+    });
+    const target = sub === 'displayName' ? displayNameBtn : settingsBtn;
+    off.forEach((c) => target.classList.remove(c));
+    on.forEach((c) => target.classList.add(c));
+}
+
+// 사이드바 전환 (settings일 때 opts.sub: 'welcome' | 'welcome_api' | 'displayName')
+window.switchContentSidebar = function (section, opts) {
     if (ALERTS_SIDEBAR_SECTIONS.includes(section)) {
         window.switchAdminTab('alerts');
         setTimeout(() => window.switchAlertsSidebar(section), 0);
         return;
     }
     // 모든 사이드바 버튼 비활성화
-    document.querySelectorAll('[id^="content-sidebar-"]').forEach(btn => {
+    document.querySelectorAll('[id^="content-sidebar-"]').forEach((btn) => {
         btn.classList.remove('text-emerald-600', 'bg-emerald-50', 'border-emerald-200');
         btn.classList.add('text-slate-500', 'bg-white', 'border-slate-200', 'hover:bg-slate-50');
     });
-    
+
     // 모든 메인 섹션 숨기기
-    document.querySelectorAll('.content-main-section').forEach(sec => {
+    document.querySelectorAll('.content-main-section').forEach((sec) => {
         sec.classList.add('hidden');
     });
-    
-    // 선택한 사이드바 버튼 활성화
+
+    if (section === 'settings') {
+        const activeMainSection = document.getElementById('content-main-settings');
+        if (activeMainSection) activeMainSection.classList.remove('hidden');
+        bindAdminSettingsSubnavOnce();
+        loadAdminSettings();
+        const sub = (opts && opts.sub) || 'welcome';
+        window.switchAdminSettingsSub(sub);
+        syncSettingsWelcomeTopTabs(sub);
+        resetAdminScrollTop();
+        return;
+    }
+
     const activeSidebarBtn = document.getElementById(`content-sidebar-${section}`);
     const activeMainSection = document.getElementById(`content-main-${section}`);
-    
+
     if (activeSidebarBtn) {
         activeSidebarBtn.classList.add('text-emerald-600', 'bg-emerald-50', 'border-emerald-200');
         activeSidebarBtn.classList.remove('text-slate-500', 'bg-white', 'border-slate-200', 'hover:bg-slate-50');
     }
-    
+
     if (activeMainSection) {
         activeMainSection.classList.remove('hidden');
     }
     resetAdminScrollTop();
-    
+
     // 섹션별 데이터 로드
     if (section === 'mealog') {
         loadMealogComments();
@@ -631,14 +661,12 @@ window.switchContentSidebar = function(section) {
         renderPopups();
     } else if (section === 'loginBanner') {
         loadLoginBannerConfig();
-    } else if (section === 'settings') {
-        bindAdminSettingsSubnavOnce();
-        loadAdminSettings();
     }
 };
 
 const ATT_DEFAULT_NO_L1 = '우리 오늘부터';
 const ATT_DEFAULT_NO_L2 = '시작하는거죠?!';
+const ATT_DEFAULT_NO_RECORD_COMBINED = `${ATT_DEFAULT_NO_L1}\n${ATT_DEFAULT_NO_L2}`;
 
 let adminSettingsSubnavBound = false;
 function bindAdminSettingsSubnavOnce() {
@@ -653,7 +681,7 @@ function bindAdminSettingsSubnavOnce() {
 }
 
 window.switchAdminSettingsSub = function (sub) {
-    if (sub !== 'displayName' && sub !== 'welcome') return;
+    if (sub !== 'displayName' && sub !== 'welcome' && sub !== 'welcome_api') return;
     document.querySelectorAll('.admin-settings-subnav-btn').forEach((btn) => {
         const on = btn.dataset.settingsSub === sub;
         btn.classList.toggle('text-emerald-600', on);
@@ -668,6 +696,10 @@ window.switchAdminSettingsSub = function (sub) {
         const key = panel.id.replace('adminSettingsSub-', '');
         panel.classList.toggle('hidden', key !== sub);
     });
+    if (sub === 'welcome_api') {
+        bindAdminWelcomeApiOnce();
+    }
+    syncSettingsWelcomeTopTabs(sub);
 };
 
 
@@ -711,16 +743,16 @@ window.uploadApkFile = async function() {
     const statusEl = document.getElementById('apkUploadStatus');
     const versionInput = document.getElementById('apkVersionInput');
     if (!input?.files?.length) {
-        if (typeof showToast === 'function') showToast('APK 파일을 선택해주세요.');
+        if (typeof showToast === 'function') showToast('APK 파일을 선택해주세요.', 'error');
         return;
     }
     const file = input.files[0];
     if (!file.name.toLowerCase().endsWith('.apk')) {
-        if (typeof showToast === 'function') showToast('APK 파일만 업로드할 수 있습니다.');
+        if (typeof showToast === 'function') showToast('APK 파일만 업로드할 수 있습니다.', 'error');
         return;
     }
     if (file.size > 100 * 1024 * 1024) {
-        if (typeof showToast === 'function') showToast('파일 크기는 100MB 이하여야 합니다.');
+        if (typeof showToast === 'function') showToast('파일 크기는 100MB 이하여야 합니다.', 'error');
         return;
     }
     try {
@@ -764,7 +796,7 @@ window.uploadApkFile = async function() {
             statusEl.textContent = '업로드 실패: ' + (e.message || '알 수 없는 오류');
             statusEl.classList.remove('hidden');
         }
-        if (typeof showToast === 'function') showToast('업로드 실패: ' + (e.message || '알 수 없는 오류'));
+        if (typeof showToast === 'function') showToast('업로드 실패: ' + (e.message || '알 수 없는 오류'), 'error');
     } finally {
         uploadBtn.disabled = false;
     }
@@ -1370,22 +1402,47 @@ window.saveDemoGuide = async function() {
 // 관리자 표시 이름 캐시 (공지·댓글 작성 시 사용)
 let cachedAdminDisplayName = '관리자';
 
+function fillTriFreq(name, value) {
+    const v =
+        value === 'off' || value === 'once_per_day' || value === 'every_session'
+            ? value
+            : 'every_session';
+    document.querySelectorAll(`input[name="${name}"]`).forEach((r) => {
+        r.checked = r.value === v;
+    });
+}
+
 function fillAttendancePopupForm(rawAp) {
     const n = normalizeAttendancePopup(rawAp && typeof rawAp === 'object' ? rawAp : {});
-    const en = document.getElementById('attendanceEnabled');
-    if (en) en.checked = n.enabled !== false;
-    const apply = n.applyTo === 'staging' || n.applyTo === 'production' ? n.applyTo : 'all';
-    document.querySelectorAll('input[name="attendanceApplyTo"]').forEach((r) => {
-        r.checked = r.value === apply;
-    });
-    const setInput = (id, val, defStr) => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.value = val != null && String(val).trim() !== '' ? String(val) : defStr;
-    };
-    setInput('attendanceNoRecordLine1', n.noRecordLine1, ATT_DEFAULT_NO_L1);
-    setInput('attendanceNoRecordLine2', n.noRecordLine2, ATT_DEFAULT_NO_L2);
-    setInput('attendanceStreakLine2', n.streakLine2, '');
+    const keys = ['noRecord', 'noStreak', 'streakOne', 'streakTwoOrMore'];
+    const stagingFreqNames = [
+        'attendanceNoRecordStagingFreq',
+        'attendanceNoStreakStagingFreq',
+        'attendanceStreakOneStagingFreq',
+        'attendanceStreakMultiStagingFreq'
+    ];
+    const prodFreqNames = [
+        'attendanceNoRecordProductionFreq',
+        'attendanceNoStreakProductionFreq',
+        'attendanceStreakOneProductionFreq',
+        'attendanceStreakMultiProductionFreq'
+    ];
+    const msgIds = ['attendanceNoMessage', 'attendanceNoStreakMessage', 'attendanceStreakOneMessage', 'attendanceStreakMultiMessage'];
+    for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        const row = n[k];
+        fillTriFreq(stagingFreqNames[i], row.stagingFrequency);
+        fillTriFreq(prodFreqNames[i], row.productionFrequency);
+        const msgEl = document.getElementById(msgIds[i]);
+        const v = row.message;
+        if (msgEl) {
+            if (i === 0) {
+                msgEl.value = v === null || v === undefined ? ATT_DEFAULT_NO_RECORD_COMBINED : String(v);
+            } else {
+                msgEl.value = v == null ? '' : String(v);
+            }
+        }
+    }
 }
 
 async function loadAdminSettings() {
@@ -1423,18 +1480,36 @@ window.saveAdminDisplayName = async function() {
     }
 };
 
+function readTriFreq(name) {
+    const v = document.querySelector(`input[name="${name}"]:checked`)?.value;
+    if (v === 'off' || v === 'once_per_day' || v === 'every_session') return v;
+    return 'every_session';
+}
+
 window.saveAttendancePopupSettings = async function () {
     try {
         const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
-        const applyEl = document.querySelector('input[name="attendanceApplyTo"]:checked');
-        let applyTo = applyEl?.value;
-        if (applyTo !== 'staging' && applyTo !== 'production') applyTo = 'all';
         const payload = {
-            enabled: document.getElementById('attendanceEnabled')?.checked === true,
-            applyTo,
-            noRecordLine1: document.getElementById('attendanceNoRecordLine1')?.value?.trim() ?? '',
-            noRecordLine2: document.getElementById('attendanceNoRecordLine2')?.value?.trim() ?? '',
-            streakLine2: document.getElementById('attendanceStreakLine2')?.value?.trim() ?? ''
+            noRecord: {
+                message: document.getElementById('attendanceNoMessage')?.value?.trim() ?? '',
+                stagingFrequency: readTriFreq('attendanceNoRecordStagingFreq'),
+                productionFrequency: readTriFreq('attendanceNoRecordProductionFreq')
+            },
+            noStreak: {
+                message: document.getElementById('attendanceNoStreakMessage')?.value?.trim() ?? '',
+                stagingFrequency: readTriFreq('attendanceNoStreakStagingFreq'),
+                productionFrequency: readTriFreq('attendanceNoStreakProductionFreq')
+            },
+            streakOne: {
+                message: document.getElementById('attendanceStreakOneMessage')?.value?.trim() ?? '',
+                stagingFrequency: readTriFreq('attendanceStreakOneStagingFreq'),
+                productionFrequency: readTriFreq('attendanceStreakOneProductionFreq')
+            },
+            streakTwoOrMore: {
+                message: document.getElementById('attendanceStreakMultiMessage')?.value?.trim() ?? '',
+                stagingFrequency: readTriFreq('attendanceStreakMultiStagingFreq'),
+                productionFrequency: readTriFreq('attendanceStreakMultiProductionFreq')
+            }
         };
         await setDoc(configRef, { attendancePopup: payload }, { merge: true });
         invalidateAttendancePopupConfigCache();

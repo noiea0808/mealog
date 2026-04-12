@@ -1767,32 +1767,56 @@ exports.unsharePhotos = onCall({ region: REGION }, async (request) => {
     querySnap = await sharedColl.where('userId', '==', auth.uid).get();
   }
   const query = querySnap;
-  
+
   const photosToDelete = [];
-  
+
   query.docs.forEach((docSnap) => {
-    const data = docSnap.data();
-    const photoUrlMatch = photos.some(photoUrl => {
-      if (photoUrl === data.photoUrl) return true;
+    let docData;
+    try {
+      docData = docSnap.data() || {};
+    } catch (e) {
+      logger.warn('unsharePhotos: doc read skip', { id: docSnap.id, err: e?.message });
+      return;
+    }
+    /** photoUrl 누락·비문자열이면 .split에서 TypeError → 전체 Callable 500 방지 */
+    const storedPhotoUrl = typeof docData.photoUrl === 'string' ? docData.photoUrl : '';
+    const photoUrlMatch = photos.some((photoUrl) => {
+      if (typeof photoUrl !== 'string' || !photoUrl) return false;
+      if (!storedPhotoUrl) return false;
+      if (photoUrl === storedPhotoUrl) return true;
       const photoUrlBase = photoUrl.split('?')[0];
-      const dataUrlBase = data.photoUrl.split('?')[0];
+      const dataUrlBase = storedPhotoUrl.split('?')[0];
       if (photoUrlBase === dataUrlBase) return true;
       const photoFileName = photoUrlBase.split('/').pop();
       const dataFileName = dataUrlBase.split('/').pop();
       return photoFileName === dataFileName && photoFileName !== '';
     });
-    
-    if (photoUrlMatch) {
-      if (isBestShare && data.type === 'best') {
+
+    /** URL 필드 누락 문서: 동일 entryId면 삭제 대상 (스토리지 URL 불일치로 매칭 실패 방지) */
+    let matched = photoUrlMatch;
+    if (
+      !matched &&
+      !isBestShare &&
+      !isDailyShare &&
+      !isInsightShare &&
+      entryId &&
+      docData.entryId === entryId &&
+      !storedPhotoUrl
+    ) {
+      matched = true;
+    }
+
+    if (matched) {
+      if (isBestShare && docData.type === 'best') {
         photosToDelete.push(docSnap.id);
-      } else if (isDailyShare && data.type === 'daily') {
+      } else if (isDailyShare && docData.type === 'daily') {
         photosToDelete.push(docSnap.id);
-      } else if (isInsightShare && data.type === 'insight') {
+      } else if (isInsightShare && docData.type === 'insight') {
         photosToDelete.push(docSnap.id);
       } else if (!isBestShare && !isDailyShare && !isInsightShare) {
         let shouldDelete = false;
         if (entryId) {
-          if (data.entryId === entryId || !data.entryId || data.entryId === null) {
+          if (docData.entryId === entryId || !docData.entryId || docData.entryId === null) {
             shouldDelete = true;
           }
         } else {
@@ -1812,6 +1836,29 @@ exports.unsharePhotos = onCall({ region: REGION }, async (request) => {
       batch.delete(docRef);
     });
     await batch.commit();
+  }
+
+  /** 클라이언트 setDoc 직후 Watch 스트림에서 Firestore INTERNAL ASSERTION(b815)가 나는 경우가 있어, 식사 문서는 Admin으로만 병합 */
+  const mealEntryIdRaw = data && data.mealEntryId;
+  const mealEntryId = typeof mealEntryIdRaw === 'string' ? mealEntryIdRaw.trim() : '';
+  const msp = data && data.mealSharedPhotos;
+  if (
+    mealEntryId &&
+    Array.isArray(msp) &&
+    !isBestShare &&
+    !isDailyShare &&
+    !isInsightShare
+  ) {
+    const safeUrls = msp
+      .filter((u) => typeof u === 'string' && u.length > 0 && u.length < 4096 && !u.startsWith('data:'))
+      .slice(0, 80);
+    const mealRef = db.doc(`artifacts/${APP_ID}/users/${auth.uid}/meals/${mealEntryId}`);
+    const mealSnap = await mealRef.get();
+    if (mealSnap.exists) {
+      await mealRef.set({ sharedPhotos: safeUrls }, { merge: true });
+    } else {
+      logger.warn('unsharePhotos: meals 문서 없음 — sharedPhotos 스킵', { mealEntryId });
+    }
   }
 
   return { success: true, deletedCount: photosToDelete.length };
@@ -2018,8 +2065,30 @@ exports.onMealWritten = onDocumentWritten(
 );
 
 /**
+ * artifacts/{APP_ID}/users/{uid} 문서 및 모든 하위 컬렉션(meals, config/settings, …) 삭제
+ * 부모 문서만 delete() 하면 하위는 고아로 남아 재가입 시 온보딩이 건너뛰어질 수 있음
+ */
+async function recursiveDeleteArtifactUser(userId) {
+  const uid = String(userId);
+  const userRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(uid);
+  try {
+    await db.recursiveDelete(userRef);
+    logger.info('recursiveDeleteArtifactUser: subtree removed', { userId: uid });
+  } catch (e) {
+    const msg = String(e?.message || e);
+    if (e?.code === 5 || /not found/i.test(msg)) {
+      logger.info('recursiveDeleteArtifactUser: no user doc to delete', { userId: uid });
+      return;
+    }
+    logger.error('recursiveDeleteArtifactUser failed', { userId: uid, err: msg });
+    throw e;
+  }
+}
+
+/**
  * 관리자 사용자 삭제 요청 처리 (Firestore 문서 생성 시 트리거)
- * deleteUserRequests/{requestId} 문서가 생성되면 requestedBy가 관리자인지 확인 후 Auth 사용자 삭제
+ * deleteUserRequests/{requestId} 문서가 생성되면 requestedBy가 관리자인지 확인 후
+ * Firestore users/{uid} 전체(하위 포함) 삭제 → Firebase Auth 삭제
  */
 exports.onDeleteUserRequest = onDocumentCreated(
   {
@@ -2041,22 +2110,21 @@ exports.onDeleteUserRequest = onDocumentCreated(
       await snap.ref.delete();
       return;
     }
-    const userRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(String(userId));
+    try {
+      await recursiveDeleteArtifactUser(userId);
+    } catch (e) {
+      logger.error('onDeleteUserRequest: Firestore subtree delete failed', { userId, err: e?.message });
+      return;
+    }
     try {
       await auth.deleteUser(String(userId));
-      logger.info('onDeleteUserRequest: user deleted', { userId, requestedBy });
+      logger.info('onDeleteUserRequest: Auth user deleted', { userId, requestedBy });
     } catch (err) {
       if (err.code !== 'auth/user-not-found') {
         logger.error('onDeleteUserRequest: deleteUser failed', { userId, err: err.message });
         return;
       }
       logger.info('onDeleteUserRequest: user already gone in Auth', { userId });
-    }
-    try {
-      await userRef.delete();
-      logger.info('onDeleteUserRequest: Firestore user doc deleted', { userId });
-    } catch (e) {
-      logger.warn('onDeleteUserRequest: Firestore user doc delete failed (may not exist)', { userId, err: e.message });
     }
     await snap.ref.delete();
   }
@@ -2231,6 +2299,606 @@ exports.signInAsDemo = onCall({ region: REGION }, wrapFunction('signInAsDemo', a
   }
   const customToken = await auth.createCustomToken(userRecord.uid, { demoBrowse: true });
   return { customToken };
+}));
+
+/** 카카오 OIDC id_token(JWT) 페이로드에서 email (openid 스코프·콘솔 OIDC 설정 시) */
+function parseKakaoIdTokenEmail(jwt) {
+  if (!jwt || typeof jwt !== 'string') return '';
+  try {
+    const parts = jwt.split('.');
+    if (parts.length < 2) return '';
+    let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const json = Buffer.from(b64, 'base64').toString('utf8');
+    const pl = JSON.parse(json);
+    const em = typeof pl.email === 'string' ? pl.email.trim().toLowerCase() : '';
+    if (em && em.includes('@')) return em.slice(0, 254);
+  } catch (e) {
+    logger.warn('parseKakaoIdTokenEmail', { err: e?.message });
+  }
+  return '';
+}
+
+/**
+ * Capacitor 앱용 카카오 인가 URL (REST API 키는 서버에서만 사용)
+ * redirectUri는 Kakao 콘솔에 등록된 값과 동일해야 하며, signInWithKakao 토큰 교환 시에도 동일 문자열 필요
+ */
+exports.getKakaoOAuthAuthorizeUrl = onCall(
+  { region: REGION },
+  wrapFunction('getKakaoOAuthAuthorizeUrl', async (request) => {
+    const data = request.data || {};
+    const redirectUri = typeof data.redirectUri === 'string' ? data.redirectUri.trim() : '';
+    if (!redirectUri || redirectUri.length > 2048) {
+      throw new HttpsError('invalid-argument', 'redirectUri가 필요합니다.');
+    }
+    if (!/^https:\/\//i.test(redirectUri) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(redirectUri)) {
+      throw new HttpsError('invalid-argument', 'redirectUri 형식이 올바르지 않습니다.');
+    }
+    const stateRaw = data.state;
+    const state =
+      typeof stateRaw === 'string' && stateRaw.length > 0 && stateRaw.length <= 512 ? stateRaw.trim() : '';
+    const clientId = kakaoRestApiKey.value();
+    if (!clientId) {
+      throw new HttpsError(
+        'failed-precondition',
+        'KAKAO_REST_API_KEY가 설정되지 않았습니다. functions/.env에 설정 후 재배포하세요.'
+      );
+    }
+    const u = new URL('https://kauth.kakao.com/oauth/authorize');
+    u.searchParams.set('client_id', clientId);
+    u.searchParams.set('redirect_uri', redirectUri);
+    u.searchParams.set('response_type', 'code');
+    u.searchParams.set(
+      'scope',
+      'profile_nickname profile_image account_email openid'
+    );
+    if (state) {
+      u.searchParams.set('state', state);
+    }
+    return { authorizeUrl: u.toString() };
+  })
+);
+
+/**
+ * 카카오 로그인: (1) 인가 코드 → kauth 토큰 교환 또는 (2) 액세스 토큰 직접 검증 후 Firebase 커스텀 토큰
+ * UID 형식 kakao_{카카오회원번호} — 비로그인 호출 허용
+ * 토큰 교환에는 REST API 키(client_id) 사용. 앱에서 클라이언트 시크릿을 켠 경우 functions/.env KAKAO_CLIENT_SECRET
+ */
+exports.signInWithKakao = onCall({ region: REGION }, wrapFunction('signInWithKakao', async (request) => {
+  const data = request.data || {};
+  let accessToken = typeof data.accessToken === 'string' ? data.accessToken.trim() : '';
+  let idTokenFromKauth = '';
+  const code = typeof data.code === 'string' ? data.code.trim() : '';
+  const redirectUri = typeof data.redirectUri === 'string' ? data.redirectUri.trim() : '';
+
+  if (code) {
+    if (!redirectUri || redirectUri.length > 2048) {
+      throw new HttpsError('invalid-argument', 'redirectUri가 필요합니다.');
+    }
+    if (!/^https:\/\//i.test(redirectUri) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(redirectUri)) {
+      throw new HttpsError('invalid-argument', 'redirectUri 형식이 올바르지 않습니다.');
+    }
+    const clientId = kakaoRestApiKey.value();
+    if (!clientId) {
+      throw new HttpsError(
+        'failed-precondition',
+        'KAKAO_REST_API_KEY가 설정되지 않았습니다. functions/.env에 설정 후 재배포하세요.'
+      );
+    }
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      code
+    });
+    const clientSecret = process.env.KAKAO_CLIENT_SECRET;
+    if (clientSecret) {
+      body.append('client_secret', clientSecret);
+    }
+    const tokenRes = await fetch('https://kauth.kakao.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8' },
+      body
+    });
+    const tokenJson = await tokenRes.json().catch(() => ({}));
+    if (!tokenRes.ok) {
+      logger.warn('signInWithKakao: token exchange failed', {
+        status: tokenRes.status,
+        err: tokenJson?.error,
+        desc: tokenJson?.error_description
+      });
+      const kakaoErr = tokenJson?.error;
+      const kakaoDesc = String(tokenJson?.error_description || '');
+      let clientMsg =
+        tokenJson?.error_description || tokenJson?.error || '카카오 토큰 발급에 실패했습니다.';
+      if (kakaoErr === 'invalid_client' || /bad client credentials/i.test(kakaoDesc)) {
+        clientMsg =
+          '카카오 서버 인증 실패: Firebase Functions의 KAKAO_REST_API_KEY는 반드시 같은 앱의 REST API 키여야 합니다. ' +
+          '카카오 개발자 콘솔에서 클라이언트 시크릿을 사용 중이면 KAKAO_CLIENT_SECRET도 설정·재배포하세요.';
+      }
+      throw new HttpsError('unauthenticated', clientMsg);
+    }
+    accessToken = tokenJson.access_token || '';
+    idTokenFromKauth = typeof tokenJson.id_token === 'string' ? tokenJson.id_token.trim() : '';
+    logger.info('signInWithKakao token meta', {
+      scope: typeof tokenJson.scope === 'string' ? tokenJson.scope.slice(0, 160) : '',
+      hasIdToken: !!idTokenFromKauth
+    });
+  }
+
+  if (!accessToken || accessToken.length > 4096) {
+    throw new HttpsError('invalid-argument', '유효한 로그인 정보가 없습니다. 다시 시도해 주세요.');
+  }
+
+  // 이메일: POST(property_keys) → 실패 시 GET. 동의·앱 설정에 따라 한쪽만 값이 오는 경우가 있음
+  const propertyKeys = JSON.stringify(['kakao_account.profile', 'kakao_account.email']);
+  let meRes = await fetch('https://kapi.kakao.com/v2/user/me', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8'
+    },
+    body: new URLSearchParams({ property_keys: propertyKeys }).toString()
+  });
+  if (!meRes.ok) {
+    meRes = await fetch('https://kapi.kakao.com/v2/user/me', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+  }
+  if (!meRes.ok) {
+    const body = await meRes.text().catch(() => '');
+    logger.warn('signInWithKakao: kapi user/me failed', { status: meRes.status, body: body.slice(0, 200) });
+    throw new HttpsError('unauthenticated', '카카오 로그인이 만료되었거나 유효하지 않습니다.');
+  }
+  let me = await meRes.json();
+  const kaProbe = me?.kakao_account || {};
+  if (typeof kaProbe.email !== 'string' || !String(kaProbe.email).includes('@')) {
+    const getRes = await fetch('https://kapi.kakao.com/v2/user/me', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (getRes.ok) {
+      const meGet = await getRes.json().catch(() => ({}));
+      const kaG = meGet?.kakao_account || {};
+      if (typeof kaG.email === 'string' && String(kaG.email).includes('@')) {
+        me = meGet;
+      }
+    }
+  }
+  const kakaoId = me?.id;
+  if (kakaoId == null || (typeof kakaoId !== 'number' && typeof kakaoId !== 'string')) {
+    throw new HttpsError('internal', '카카오 사용자 정보를 확인할 수 없습니다.');
+  }
+  const uid = `kakao_${kakaoId}`;
+  const ka = me?.kakao_account || {};
+  logger.info('signInWithKakao kakao_account', {
+    has_email: ka.has_email === true,
+    email_needs_agreement: ka.email_needs_agreement === true,
+    is_email_valid: ka.is_email_valid,
+    hasEmailString: typeof ka.email === 'string' && ka.email.includes('@')
+  });
+  const profile = ka.profile;
+  const nickname =
+    profile && typeof profile.nickname === 'string' ? profile.nickname.trim().slice(0, 64) : '';
+  let photoURL;
+  if (profile && typeof profile.thumbnail_image_url === 'string' && profile.thumbnail_image_url.length < 2048) {
+    photoURL = profile.thumbnail_image_url;
+  } else if (profile && typeof profile.profile_image_url === 'string' && profile.profile_image_url.length < 2048) {
+    photoURL = profile.profile_image_url;
+  }
+
+  let email = '';
+  if (typeof ka.email === 'string') {
+    const t = ka.email.trim().toLowerCase();
+    if (t && t.includes('@') && ka.is_email_valid !== false) {
+      email = t.slice(0, 254);
+    }
+  }
+  if (!email && idTokenFromKauth) {
+    email = parseKakaoIdTokenEmail(idTokenFromKauth);
+    if (email) {
+      logger.info('signInWithKakao: email from id_token');
+    }
+  }
+  // openid 스코프 시 /v2/user/me에 없어도 OIDC userinfo에 email이 올 수 있음 (콘솔에서 OIDC 활성화 필요)
+  if (!email) {
+    const oiRes = await fetch('https://kapi.kakao.com/v1/oidc/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (oiRes.ok) {
+      const oi = await oiRes.json().catch(() => ({}));
+      const em = typeof oi.email === 'string' ? oi.email.trim().toLowerCase() : '';
+      if (em && em.includes('@')) {
+        email = em.slice(0, 254);
+        logger.info('signInWithKakao: email from OIDC userinfo');
+      } else if (oi && typeof oi === 'object') {
+        logger.info('signInWithKakao oidc userinfo keys', { keys: Object.keys(oi).join(',') });
+      }
+    } else {
+      const ob = await oiRes.text().catch(() => '');
+      logger.warn('signInWithKakao: oidc userinfo failed', {
+        status: oiRes.status,
+        body: ob.slice(0, 180)
+      });
+    }
+  }
+
+  let existing;
+  try {
+    existing = await auth.getUser(uid);
+  } catch (e) {
+    if (e.code !== 'auth/user-not-found') {
+      logger.error('signInWithKakao getUser', e);
+      throw new HttpsError('internal', '사용자 조회에 실패했습니다.');
+    }
+    existing = null;
+  }
+
+  const createPayload = { uid, disabled: false };
+  if (nickname) createPayload.displayName = nickname;
+  if (photoURL) createPayload.photoURL = photoURL;
+  if (email) {
+    createPayload.email = email;
+    if (ka.is_email_verified === true) {
+      createPayload.emailVerified = true;
+    }
+  }
+
+  if (!existing) {
+    try {
+      await auth.createUser(createPayload);
+    } catch (ce) {
+      if (ce.code === 'auth/email-already-exists' && createPayload.email) {
+        delete createPayload.email;
+        delete createPayload.emailVerified;
+        try {
+          await auth.createUser(createPayload);
+        } catch (ce2) {
+          logger.error('signInWithKakao createUser', ce2);
+          throw new HttpsError('internal', '계정 생성에 실패했습니다.');
+        }
+      } else {
+        logger.error('signInWithKakao createUser', ce);
+        throw new HttpsError('internal', '계정 생성에 실패했습니다.');
+      }
+    }
+  } else {
+    const patch = {};
+    if (nickname && nickname !== (existing.displayName || '')) {
+      patch.displayName = nickname;
+    }
+    if (photoURL && photoURL !== (existing.photoURL || '')) {
+      patch.photoURL = photoURL;
+    }
+    const prevEmail = (existing.email || '').toLowerCase();
+    if (email && email !== prevEmail) {
+      patch.email = email;
+      patch.emailVerified = ka.is_email_verified === true;
+    }
+    if (Object.keys(patch).length) {
+      try {
+        await auth.updateUser(uid, patch);
+      } catch (ue) {
+        if (ue.code === 'auth/email-already-exists' && patch.email) {
+          delete patch.email;
+          delete patch.emailVerified;
+          if (Object.keys(patch).length) {
+            try {
+              await auth.updateUser(uid, patch);
+            } catch (ue2) {
+              logger.warn('signInWithKakao updateUser', ue2);
+            }
+          }
+        } else {
+          logger.warn('signInWithKakao updateUser', ue);
+        }
+      }
+    }
+  }
+
+  const customToken = await auth.createCustomToken(uid, { kakao: true });
+  return {
+    customToken,
+    kakaoEmail: email || null,
+    kakaoEmailNeedsAgreement: ka.email_needs_agreement === true
+  };
+}));
+
+function normalizeNicknameForClaimServer(nickname) {
+  if (!nickname || typeof nickname !== 'string') return null;
+  const t = nickname.trim();
+  if (!t || t === '게스트') return null;
+  try {
+    return t.normalize('NFKC').toLowerCase();
+  } catch {
+    return t.toLowerCase();
+  }
+}
+
+function nicknameClaimDocIdServer(normalized) {
+  if (!normalized) return '';
+  const clipped = normalized.length > 200 ? normalized.slice(0, 200) : normalized;
+  return encodeURIComponent(clipped);
+}
+
+/**
+ * artifacts/{APP_ID}/users/{uid} 루트 문서 병합 (Admin) — 클라이언트 setDoc이 permission-denied일 때 폴백
+ */
+exports.patchArtifactUserRoot = onCall({ region: REGION }, wrapFunction('patchArtifactUserRoot', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const tokenEmail = request.auth.token?.email;
+  if (tokenEmail && String(tokenEmail).toLowerCase().trim() === READ_ONLY_DEMO_EMAIL) {
+    throw new HttpsError('permission-denied', '샘플 계정에서는 사용할 수 없습니다.');
+  }
+  const uid = request.auth.uid;
+  const body = request.data || {};
+  const ref = db.doc(`artifacts/${APP_ID}/users/${uid}`);
+  const patch = {
+    lastLoginAt: FieldValue.serverTimestamp()
+  };
+  if (body.setCreatedAt === true) {
+    patch.createdAt = FieldValue.serverTimestamp();
+  }
+  if (typeof body.providerId === 'string' && body.providerId.trim()) {
+    patch.providerId = body.providerId.trim();
+  }
+  if (typeof body.email === 'string' && body.email.includes('@')) {
+    patch.email = String(body.email).trim().toLowerCase().slice(0, 254);
+  }
+  await ref.set(patch, { merge: true });
+  return { ok: true };
+}));
+
+/**
+ * 사용자 설정 + 닉네임 클레임을 Admin으로 저장 (클라이언트 Firestore/App Check permission-denied 시 폴백)
+ */
+exports.saveArtifactUserSettings = onCall({ region: REGION }, wrapFunction('saveArtifactUserSettings', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const tokenEmail = request.auth.token?.email;
+  if (tokenEmail && String(tokenEmail).toLowerCase().trim() === READ_ONLY_DEMO_EMAIL) {
+    throw new HttpsError('permission-denied', '샘플 계정에서는 설정을 변경할 수 없습니다.');
+  }
+  const uid = request.auth.uid;
+  const settings = request.data?.settings;
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+    throw new HttpsError('invalid-argument', 'settings 객체가 필요합니다.');
+  }
+  let payloadSize = 0;
+  try {
+    payloadSize = JSON.stringify(settings).length;
+  } catch {
+    throw new HttpsError('invalid-argument', 'settings를 직렬화할 수 없습니다.');
+  }
+  if (payloadSize > 400000) {
+    throw new HttpsError('invalid-argument', 'settings 크기가 너무 큽니다.');
+  }
+
+  const settingsRef = db.doc(`artifacts/${APP_ID}/users/${uid}/config/settings`);
+  const oldSnap = await settingsRef.get();
+  const oldData = oldSnap.exists ? oldSnap.data() : {};
+  const normOld = normalizeNicknameForClaimServer(oldData.profile?.nickname);
+  const normNew = normalizeNicknameForClaimServer(settings.profile?.nickname);
+
+  await db.runTransaction(async (transaction) => {
+    if (normNew) {
+      const newClaimRef = db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normNew)}`);
+      const claimSnap = await transaction.get(newClaimRef);
+      if (claimSnap.exists) {
+        const owner = claimSnap.data()?.userId;
+        if (owner && owner !== uid) {
+          throw new HttpsError('already-exists', '이미 사용 중인 닉네임입니다.');
+        }
+      }
+    }
+    if (normOld && normOld !== normNew) {
+      const oldClaimRef = db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normOld)}`);
+      const oldClaimSnap = await transaction.get(oldClaimRef);
+      if (oldClaimSnap.exists && oldClaimSnap.data()?.userId === uid) {
+        transaction.delete(oldClaimRef);
+      }
+    }
+    transaction.set(settingsRef, settings, { merge: true });
+    if (normNew) {
+      const newClaimRef = db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normNew)}`);
+      const displayNickname = String(settings.profile?.nickname || '').trim();
+      transaction.set(newClaimRef, {
+        userId: uid,
+        normalizedNickname: normNew,
+        displayNickname: displayNickname || normNew,
+        updatedAt: new Date().toISOString()
+      });
+    }
+  });
+
+  try {
+    await db.doc(`artifacts/${APP_ID}/users/${uid}`).set({ uid }, { merge: true });
+  } catch (e) {
+    logger.warn('saveArtifactUserSettings: user root set skipped', { uid, err: e?.message });
+  }
+
+  return { ok: true };
+}));
+
+/** Callable meal 페이로드: undefined 제거 (Admin 쓰기용) */
+function stripUndefinedDeepMealPayload(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== 'object') return value;
+  if (Array.isArray(value)) {
+    return value.map(stripUndefinedDeepMealPayload).filter((v) => v !== undefined);
+  }
+  const out = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (v === undefined) continue;
+    const next = stripUndefinedDeepMealPayload(v);
+    if (next !== undefined) out[k] = next;
+  }
+  return out;
+}
+
+function sanitizeMealPhotosForServer(meal) {
+  const m = meal && typeof meal === 'object' ? { ...meal } : {};
+  const san = (arr) => {
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((p) => typeof p === 'string' && p && !p.startsWith('data:image'));
+  };
+  if (Object.prototype.hasOwnProperty.call(m, 'photos')) m.photos = san(m.photos);
+  if (Object.prototype.hasOwnProperty.call(m, 'sharedPhotos')) m.sharedPhotos = san(m.sharedPhotos);
+  return m;
+}
+
+/**
+ * 식사 기록 저장 (Callable) — 클라이언트 Firestore permission-denied 시 Admin 폴백
+ */
+exports.saveArtifactUserMeal = onCall({ region: REGION }, wrapFunction('saveArtifactUserMeal', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  assertNotReadOnlyDemoAuth(request.auth);
+  const uid = request.auth.uid;
+  const ban = await getUserBan(uid);
+  if (ban.bannedWrite) {
+    throw new HttpsError('permission-denied', '기록 작성이 제한된 계정입니다.');
+  }
+  await checkRateLimit(uid, 'interaction', request);
+
+  const rawMeal = request.data?.meal;
+  if (!rawMeal || typeof rawMeal !== 'object' || Array.isArray(rawMeal)) {
+    throw new HttpsError('invalid-argument', 'meal 객체가 필요합니다.');
+  }
+  let payloadSize = 0;
+  try {
+    payloadSize = JSON.stringify(rawMeal).length;
+  } catch {
+    throw new HttpsError('invalid-argument', 'meal을 직렬화할 수 없습니다.');
+  }
+  if (payloadSize > 900000) {
+    throw new HttpsError('invalid-argument', 'meal 데이터가 너무 큽니다.');
+  }
+
+  const mealIdRaw = request.data?.mealId;
+  const mealIdStr =
+    typeof mealIdRaw === 'string' && mealIdRaw.trim()
+      ? mealIdRaw.trim()
+      : null;
+
+  let cleaned = sanitizeMealPhotosForServer(stripUndefinedDeepMealPayload(rawMeal));
+  if (Object.prototype.hasOwnProperty.call(cleaned, 'id')) {
+    delete cleaned.id;
+  }
+
+  const coll = db.collection('artifacts').doc(APP_ID).collection('users').doc(uid).collection('meals');
+  const mealRef = mealIdStr ? coll.doc(mealIdStr) : coll.doc();
+  const existedBefore = mealIdStr ? (await mealRef.get()).exists : false;
+
+  await mealRef.set(cleaned, { merge: false });
+
+  if (!mealIdStr || !existedBefore) {
+    try {
+      await db.doc(`artifacts/${APP_ID}/users/${uid}`).set(
+        { mealCount: FieldValue.increment(1) },
+        { merge: true }
+      );
+    } catch (e) {
+      logger.warn('saveArtifactUserMeal: mealCount increment skipped', { uid, err: e?.message });
+    }
+  }
+
+  return { mealId: mealRef.id };
+}));
+
+/**
+ * 식사 기록 삭제 (Callable) — 클라이언트 Firestore permission-denied 시 Admin 폴백
+ */
+exports.deleteArtifactUserMeal = onCall({ region: REGION }, wrapFunction('deleteArtifactUserMeal', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  assertNotReadOnlyDemoAuth(request.auth);
+  const uid = request.auth.uid;
+  const ban = await getUserBan(uid);
+  if (ban.bannedWrite) {
+    throw new HttpsError('permission-denied', '기록 삭제가 제한된 계정입니다.');
+  }
+
+  const mealId = typeof request.data?.mealId === 'string' ? request.data.mealId.trim() : '';
+  if (!mealId) {
+    throw new HttpsError('invalid-argument', 'mealId가 필요합니다.');
+  }
+
+  const mealRef = db.doc(`artifacts/${APP_ID}/users/${uid}/meals/${mealId}`);
+  const mealSnap = await mealRef.get();
+  if (!mealSnap.exists) {
+    return { deleted: false };
+  }
+
+  await mealRef.delete();
+
+  try {
+    await db.doc(`artifacts/${APP_ID}/users/${uid}`).set(
+      { mealCount: FieldValue.increment(-1) },
+      { merge: true }
+    );
+  } catch (e) {
+    logger.warn('deleteArtifactUserMeal: mealCount decrement skipped', { uid, err: e?.message });
+  }
+
+  try {
+    const sharedQ = await db
+      .collection('artifacts')
+      .doc(APP_ID)
+      .collection('sharedPhotos')
+      .where('entryId', '==', mealId)
+      .where('userId', '==', uid)
+      .get();
+    if (!sharedQ.empty) {
+      const batch = db.batch();
+      sharedQ.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+  } catch (e) {
+    logger.warn('deleteArtifactUserMeal: sharedPhotos cleanup failed', { uid, mealId, err: e?.message });
+  }
+
+  return { deleted: true };
+}));
+
+/**
+ * FCM 토큰 등록 (클라이언트 Firestore/App Check permission-denied 시 폴백, Admin 병합)
+ */
+exports.registerFcmToken = onCall({ region: REGION }, wrapFunction('registerFcmToken', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  assertNotReadOnlyDemoAuth(request.auth);
+  const uid = request.auth.uid;
+  const token = typeof request.data?.token === 'string' ? request.data.token.trim() : '';
+  const envRaw = request.data?.env;
+  const env =
+    typeof envRaw === 'string' && envRaw.trim()
+      ? envRaw.trim().slice(0, 32)
+      : '';
+  if (!token || token.length < 20 || token.length > 4096) {
+    throw new HttpsError('invalid-argument', '유효한 FCM 토큰이 필요합니다.');
+  }
+  const ref = db.doc(`artifacts/${APP_ID}/users/${uid}/config/fcmTokens`);
+  const snap = await ref.get();
+  const prev = (snap.exists && snap.data().tokens && typeof snap.data().tokens === 'object') ? snap.data().tokens : {};
+  const entry = { updatedAt: FieldValue.serverTimestamp() };
+  if (env) entry.env = env;
+  await ref.set(
+    {
+      tokens: {
+        ...prev,
+        [token]: entry
+      }
+    },
+    { merge: true }
+  );
+  return { ok: true };
 }));
 
 /**
@@ -2425,10 +3093,17 @@ exports.processDeleteUserRequests = onCall(
         await docSnap.ref.delete();
         continue;
       }
-      const userRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(String(userId));
+      try {
+        await recursiveDeleteArtifactUser(userId);
+      } catch (e) {
+        failed++;
+        errors.push(`${userId}: Firestore ${e.message || e}`);
+        logger.error('processDeleteUserRequests: recursive delete failed', { userId, err: e?.message });
+        continue;
+      }
       try {
         await auth.deleteUser(String(userId));
-        logger.info('processDeleteUserRequests: user deleted from Auth', { userId, requestedBy });
+        logger.info('processDeleteUserRequests: Auth user deleted', { userId, requestedBy });
       } catch (err) {
         if (err.code === 'auth/user-not-found') {
           logger.info('processDeleteUserRequests: user already gone in Auth', { userId });
@@ -2438,12 +3113,6 @@ exports.processDeleteUserRequests = onCall(
           logger.error('processDeleteUserRequests: deleteUser failed', { userId, err: err.message });
           continue;
         }
-      }
-      try {
-        await userRef.delete();
-        logger.info('processDeleteUserRequests: Firestore user doc deleted', { userId });
-      } catch (e) {
-        logger.warn('processDeleteUserRequests: Firestore user doc delete failed', { userId, err: e.message });
       }
       processed++;
       await docSnap.ref.delete();
@@ -3051,4 +3720,642 @@ exports.scheduledNoticeDailyPush = onSchedule(
       }
     }
   }
+);
+
+// --- 웰컴 API: 전일(서울) 기준 연속 기록 N일 사용자 (관리자 전용) ---
+
+function adminSeoulYmdFromDate(date) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date);
+}
+
+function adminYmdAddDays(ymd, delta) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const ms = Date.UTC(y, m - 1, d, 12, 0, 0) + delta * 86400000;
+  return adminSeoulYmdFromDate(new Date(ms));
+}
+
+function adminBuildRecordedDateSetFromDaily(daily) {
+  const set = new Set();
+  if (!daily || typeof daily !== 'object') return set;
+  for (const [iso, day] of Object.entries(daily)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) continue;
+    const c = day && typeof day === 'object' ? Number(day.count) || 0 : 0;
+    if (c > 0) set.add(iso);
+  }
+  return set;
+}
+
+/** 앱 출석 팝업(attendance-check)과 동일: 오늘(서울) 기준 어제부터 역순 연속 일수 */
+function adminComputeStreakFromYesterday(dateSet, todaySeoulYmd) {
+  const yesterday = adminYmdAddDays(todaySeoulYmd, -1);
+  if (!dateSet.has(yesterday)) return 0;
+  let streak = 0;
+  let cursor = yesterday;
+  while (dateSet.has(cursor)) {
+    streak++;
+    cursor = adminYmdAddDays(cursor, -1);
+  }
+  return streak;
+}
+
+async function adminLoadMergedDaily(uid) {
+  const yearsSnap = await db
+    .collection('artifacts')
+    .doc(APP_ID)
+    .collection('users')
+    .doc(uid)
+    .collection('config')
+    .doc('stats')
+    .collection('years')
+    .get();
+  const merged = {};
+  yearsSnap.docs.forEach((doc) => {
+    const daily = doc.data().daily;
+    if (daily && typeof daily === 'object') Object.assign(merged, daily);
+  });
+  return merged;
+}
+
+async function adminListAllUserIds() {
+  const usersRef = db.collection('artifacts').doc(APP_ID).collection('users');
+  const ids = [];
+  const pageSize = 800;
+  let lastDoc = null;
+  for (;;) {
+    let q = usersRef.orderBy(FieldPath.documentId()).limit(pageSize);
+    if (lastDoc) q = q.startAfter(lastDoc);
+    const snap = await q.get();
+    if (snap.empty) break;
+    snap.docs.forEach((d) => ids.push(d.id));
+    if (snap.size < pageSize) break;
+    lastDoc = snap.docs[snap.docs.length - 1];
+  }
+  return ids;
+}
+
+/** 전일(서울) 기준 최근 3개 일자: 3일 전 ~ 전일 */
+function adminThreeSeoulDatesEndingYesterday(todaySeoulYmd) {
+  const y1 = adminYmdAddDays(todaySeoulYmd, -1);
+  const y2 = adminYmdAddDays(todaySeoulYmd, -2);
+  const y3 = adminYmdAddDays(todaySeoulYmd, -3);
+  return [y3, y2, y1];
+}
+
+function adminSlotLabelKr(slotId) {
+  const m = {
+    morning: '아침',
+    lunch: '점심',
+    dinner: '저녁',
+    pre_morning: '새참',
+    snack1: '간식',
+    snack2: '간식',
+    night: '야식'
+  };
+  return m[slotId] || (slotId ? String(slotId) : '');
+}
+
+function adminTruncateText(s, max) {
+  const t = (s == null ? '' : String(s)).trim();
+  if (!t) return '';
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+}
+
+/**
+ * 무엇을(메뉴/상세): 모니터링(feed-moderation)과 동일하게 menuDetail 우선, 없으면 snackDetail.
+ * 구버전·간식 기록은 snackDetail만 있는 경우가 많음.
+ */
+function adminMealMenuDetailText(d) {
+  const fromMenu = (d.menuDetail != null ? String(d.menuDetail) : '').trim();
+  if (fromMenu) return fromMenu;
+  return (d.snackDetail != null ? String(d.snackDetail) : '').trim();
+}
+
+/** 어디서: place 우선, 간식은 snackPlace */
+function adminMealPlaceText(d) {
+  const p = (d.place != null ? String(d.place) : '').trim();
+  if (p) return p;
+  return (d.snackPlace != null ? String(d.snackPlace) : '').trim();
+}
+
+/** 한 줄 요약(웰컴 API 표시용): 입력창 메뉴·메모 등 포함 */
+function adminMealShortLine(d) {
+  const mt = (d.mealType || '').trim();
+  if (mt === 'Skip' || mt === '건너뜀') return '건너뜀';
+  const bits = [mt];
+  if (d.category) bits.push(String(d.category).trim());
+  const st = (d.snackType || '').trim();
+  if (st) bits.push(st);
+  const md = adminTruncateText(adminMealMenuDetailText(d), 56);
+  if (md) bits.push(`메뉴:${md}`);
+  const whom = (d.withWhomDetail || d.withWhom || '').trim();
+  if (whom) {
+    bits.push(adminTruncateText(whom, 24));
+  }
+  const pl = adminMealPlaceText(d);
+  if (pl) bits.push(pl);
+  const dv = (d.deliveryVendor || '').trim();
+  if (dv) bits.push(`배달:${adminTruncateText(dv, 20)}`);
+  const cm = adminTruncateText(d.comment, 40);
+  if (cm) bits.push(`메모:${cm}`);
+  return bits.filter(Boolean).slice(0, 9).join('·');
+}
+
+/** 제미나이용: 슬롯별 상세(메뉴 입력·메모 등 전부 활용) */
+function adminMealSlotDetailForGemini(d) {
+  const mt = (d.mealType || '').trim();
+  if (mt === 'Skip' || mt === '건너뜀') return '건너뜀';
+  const lines = [];
+  const top = [];
+  if (mt) top.push(mt);
+  if (d.category) top.push(String(d.category).trim());
+  const st = (d.snackType || '').trim();
+  if (st) top.push(`간식:${st}`);
+  if (top.length) lines.push(top.join(' · '));
+  const menuFull = adminMealMenuDetailText(d);
+  if (menuFull) lines.push(`메뉴: ${menuFull}`);
+  const pl = adminMealPlaceText(d);
+  if (pl) lines.push(`장소: ${pl}`);
+  const placeSub = (d.placeDetail || d.placeMemo || '').trim();
+  if (placeSub) lines.push(`장소 상세: ${placeSub.length > 80 ? `${placeSub.slice(0, 78)}…` : placeSub}`);
+  const whom = (d.withWhomDetail || d.withWhom || '').trim();
+  if (whom) lines.push(`함께: ${whom}`);
+  const dv = (d.deliveryVendor || '').trim();
+  if (dv) lines.push(`배달/업체: ${dv}`);
+  const cm = (d.comment != null ? String(d.comment) : '').trim();
+  if (cm) lines.push(`메모: ${cm.length > 200 ? `${cm.slice(0, 198)}…` : cm}`);
+  return lines.join('\n    ');
+}
+
+async function adminFetchMealsForDates(uid, datesYmd) {
+  if (!datesYmd || datesYmd.length === 0) return [];
+  const mealsRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(uid).collection('meals');
+  const snap = await mealsRef.where('date', 'in', datesYmd).get();
+  return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+}
+
+function adminFormatMealsSummary(meals, datesChronologicalAsc) {
+  const byDate = {};
+  datesChronologicalAsc.forEach((d) => {
+    byDate[d] = [];
+  });
+  for (const m of meals) {
+    const dt = m.date;
+    if (dt && byDate[dt]) byDate[dt].push(m);
+  }
+  const lines = [];
+  for (const dt of datesChronologicalAsc) {
+    const arr = byDate[dt];
+    if (!arr.length) {
+      lines.push(`${dt}: 기록 없음`);
+      continue;
+    }
+    arr.sort((a, b) => String(a.slotId || '').localeCompare(String(b.slotId || '')));
+    const parts = arr.map((x) => {
+      const sl = adminSlotLabelKr(x.slotId);
+      const line = adminMealShortLine(x);
+      return sl ? `${sl} ${line}`.trim() : line;
+    });
+    lines.push(`${dt}: ${parts.join(' / ')}`);
+  }
+  return lines.join('\n');
+}
+
+/** 제미나이 프롬프트용: 일자·슬롯 구분, 요약 통계 포함(연속 일수 등은 본문에 넣지 않음) */
+function adminFormatMealsForGemini(meals, datesChronologicalAsc, analysisAnchorSeoul) {
+  const dayLabels = ['그전 날', '전전일', '전일'];
+  const byDate = {};
+  datesChronologicalAsc.forEach((d) => {
+    byDate[d] = [];
+  });
+  for (const m of meals) {
+    const dt = m.date;
+    if (dt && byDate[dt]) byDate[dt].push(m);
+  }
+  let totalSlots = 0;
+  let skipSlots = 0;
+  let daysWithRecord = 0;
+  const blocks = [];
+  for (let i = 0; i < datesChronologicalAsc.length; i++) {
+    const dt = datesChronologicalAsc[i];
+    const tag = dayLabels[i] || '';
+    const arr = byDate[dt];
+    if (!arr.length) {
+      blocks.push(`■ ${dt}${tag ? ` (${tag})` : ''}\n  · 기록 없음`);
+      continue;
+    }
+    daysWithRecord += 1;
+    arr.sort((a, b) => String(a.slotId || '').localeCompare(String(b.slotId || '')));
+    const slotLines = [];
+    for (const x of arr) {
+      const sl = adminSlotLabelKr(x.slotId) || '슬롯';
+      const detail = adminMealSlotDetailForGemini(x);
+      totalSlots += 1;
+      if (detail === '건너뜀') skipSlots += 1;
+      slotLines.push(`  · ${sl}:\n    ${detail}`);
+    }
+    blocks.push(`■ ${dt}${tag ? ` (${tag})` : ''}\n${slotLines.join('\n')}`);
+  }
+  const stat = `【3일 요약】 기록이 있는 날 ${daysWithRecord}/3일 · 슬롯 ${totalSlots}건(건너뜀 ${skipSlots}건)`;
+  return [
+    '【제미나이 입력용 · 최근 3일 식사】',
+    `기준일(서울, 전일): ${analysisAnchorSeoul}`,
+    '',
+    ...blocks,
+    '',
+    stat
+  ].join('\n');
+}
+
+async function adminBuildRecentThreeDaysSummary(uid, todaySeoulYmd) {
+  const dates = adminThreeSeoulDatesEndingYesterday(todaySeoulYmd);
+  const meals = await adminFetchMealsForDates(uid, dates);
+  return adminFormatMealsSummary(meals, dates);
+}
+
+async function adminBuildRecentThreeDaysForGemini(uid, todaySeoulYmd, streakDays) {
+  void streakDays;
+  const dates = adminThreeSeoulDatesEndingYesterday(todaySeoulYmd);
+  const meals = await adminFetchMealsForDates(uid, dates);
+  const analysisAnchorSeoul = adminYmdAddDays(todaySeoulYmd, -1);
+  return adminFormatMealsForGemini(meals, dates, analysisAnchorSeoul);
+}
+
+/** 웰컴 제미나이 코멘트 저장 (관리자 화면 재조회 시 재사용) */
+const WELCOME_GEMINI_COMMENT_COLL = 'adminWelcomeGeminiComments';
+/** 웰컴 한 줄: 메뉴·동행 연상 + 오늘 응원 (공백 포함 글자 수 상한) */
+const WELCOME_GEMINI_COMMENT_MAX_CHARS = 50;
+
+function adminWelcomeGeminiCommentDocRef(uid) {
+  return db.collection('artifacts').doc(APP_ID).collection(WELCOME_GEMINI_COMMENT_COLL).doc(uid);
+}
+
+async function adminSaveWelcomeGeminiComment(uid, comment, analysisAnchorSeoul) {
+  const c = typeof comment === 'string' ? comment.trim() : '';
+  if (!uid || !c) return;
+  await adminWelcomeGeminiCommentDocRef(uid).set(
+    {
+      comment: c,
+      analysisAnchorSeoul: analysisAnchorSeoul || '',
+      updatedAt: FieldValue.serverTimestamp()
+    },
+    { merge: true }
+  );
+}
+
+/**
+ * @param {string[]} uids
+ * @param {string} analysisAnchorSeoul 전일(서울) — 다르면 저장분 무시
+ * @returns {Record<string, string>}
+ */
+async function adminLoadWelcomeGeminiCommentsForUids(uids, analysisAnchorSeoul) {
+  const out = {};
+  if (!uids || !uids.length || !analysisAnchorSeoul) return out;
+  const CHUNK = 100;
+  for (let i = 0; i < uids.length; i += CHUNK) {
+    const slice = uids.slice(i, i + CHUNK);
+    const refs = slice.map((uid) => adminWelcomeGeminiCommentDocRef(uid));
+    const snaps = await db.getAll(...refs);
+    snaps.forEach((snap, j) => {
+      if (!snap.exists) return;
+      const d = snap.data();
+      const c = typeof d.comment === 'string' ? d.comment.trim() : '';
+      const anchor = typeof d.analysisAnchorSeoul === 'string' ? d.analysisAnchorSeoul.trim() : '';
+      if (!c) return;
+      if (anchor !== analysisAnchorSeoul) return;
+      out[slice[j]] = c;
+    });
+  }
+  return out;
+}
+
+/** 모델이 금지 패턴을 넣은 경우 완화 정리(과도한 삭제 방지) */
+function adminSanitizeWelcomeGeminiOutput(text) {
+  const orig = String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  let t = orig;
+  const forbiddenWords = ['전일', '어제', '기록', '확인', '보고', '며칠째'];
+  for (const w of forbiddenWords) {
+    t = t.split(w).join('');
+  }
+  t = t.replace(/\d+\s*일\s*연속/gi, '');
+  t = t.replace(/연속\s*기록\s*\d+\s*일/gi, '');
+  t = t.replace(/\d+\s*일\s*째/g, '');
+  t = t.replace(/총\s*\d+\s*회/g, '');
+  t = t.replace(/\d{1,2}\s*월\s*\d{1,2}\s*일/g, '');
+  t = t.replace(/[0-9]+/g, '');
+  t = t.replace(/[\u201C\u201D\u2018\u2019"'`「」#*@&%^$+=|\\<>{}[\]/]/g, '');
+  t = t.replace(/[^\uAC00-\uD7A3\s.!?…\u00B7]/g, '');
+  t = t.replace(/\s*연속\s*$/g, '');
+  t = t.replace(/\s+/g, ' ').trim();
+  const maxLen = WELCOME_GEMINI_COMMENT_MAX_CHARS;
+  if (t.length > maxLen) t = t.slice(0, maxLen);
+  if (!t && orig) {
+    t = orig
+      .replace(/[0-9]+/g, '')
+      .replace(/[^\uAC00-\uD7A3\s.!?…\u00B7]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, maxLen);
+  }
+  return t;
+}
+
+async function adminGeminiWelcomeCommentInternal({
+  nickname,
+  streakDays,
+  summaryText,
+  analysisAnchorSeoul
+}) {
+  void streakDays;
+  void nickname;
+  void analysisAnchorSeoul;
+  const apiKey = geminiApiKey.value();
+  if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
+    throw new HttpsError('failed-precondition', 'GEMINI_API_KEY가 설정되지 않았습니다.');
+  }
+  const prompt = `[역할]
+너는 식단 기록 앱의 센스 있는 비서야. 아래 [식사 데이터]를 참고해 오늘 하루를 응원하는 한 줄만 쓴다.
+
+[작성 원칙 — 응원이 중심]
+
+문장의 목적은 오늘의 응원이다. "언제·어느 끼니에·무엇을 먹었다"처럼 식사를 시간 순으로 보고하거나 나열하는 문장은 절대 쓰지 말 것.
+
+금지에 가까운 표현(예시): ~먹었, ~먹었던, ~드셨, 아침에 OO를, 점심 때, 저녁으로, 한 끼를, 식사로 ~를 등 끼니·시간·섭취 서술.
+
+대신 데이터에 있는 메뉴명·장소 분위기·함께한 사람(동행)을 짧은 구절로만 짚어 이미지나 기운으로 연결하고, 곧바로 오늘을 응원할 것. 동행 정보가 없으면 메뉴만으로도 된다.
+
+길이: 공백 포함 최대 ${WELCOME_GEMINI_COMMENT_MAX_CHARS}자. 앞은 짧게, 뒤 응원은 완결되게.
+어투: ~했네요, ~함께했습니다 같은 보고체 금지. 권유·응원으로 끝낼 것(~해요, ~봐요, ~길, ~되세요 등).
+구성: [메뉴·동행 등 짧은 연상] + [오늘의 응원] 한 줄. 느낌표로 앞뒤를 나누는 방식을 써도 좋다.
+근거: 데이터에 없는 메뉴나 사실은 쓰지 말 것. 추측 금지.
+
+[절대 금지 키워드 — 생성 문장에 한 글자도 넣지 말 것]
+전일, 어제, 기록, 확인, 보고, 일수·연속 멘트, 모든 아라비아 숫자, 이름·닉네임·OO님 등 모든 호칭.
+이모지, 따옴표, 장식용 특수문자 금지. 한글·공백·마침표·느낌표·물음표·말줄임만 허용.
+
+[데이터 적용 예시 — 보고가 아니라 연상+응원]
+데이터: 제주은희네해장국, 내장탕
+결과: 제주해장국의 든든한 기운! 오늘도 속 편히 힘껏 보내요.
+
+데이터: 요거트, 나또
+결과: 나또와 요거트의 산뜻함! 오늘은 가볍고 상쾌한 하루 되세요.
+
+데이터: 황치즈크림빵
+결과: 달콤한 크림빵 에너지! 오늘 오후도 웃음 가득이길.
+
+데이터: 동료, 김치찌개
+결과: 동료와 김치찌개의 정! 오늘도 좋은 기운 이어 가요.
+
+(위는 톤 참고. 반드시 ${WELCOME_GEMINI_COMMENT_MAX_CHARS}자 이내로 맞출 것.)
+
+[식사 데이터 · 최근 3일 요약]
+${summaryText || '(요약 없음)'}
+
+출력: 조건을 만족하는 문장 한 줄만. 다른 글자 없음.`;
+
+  const requestBody = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.75,
+      topP: 0.9,
+      maxOutputTokens: 96
+    }
+  };
+  const model = 'gemini-2.5-flash-lite';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Referer: 'https://mealog-r0.web.app/'
+    },
+    body: JSON.stringify(requestBody)
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data?.error?.message || (await res.text().catch(() => ''));
+    throw new HttpsError('internal', `Gemini API 오류: ${res.status} - ${msg}`);
+  }
+  let text = '';
+  const cand = data?.candidates && data.candidates[0];
+  if (cand?.content?.parts?.[0]?.text) text = String(cand.content.parts[0].text).trim();
+  else if (cand?.text) text = String(cand.text).trim();
+  if (!text) throw new HttpsError('internal', 'Gemini 응답에 텍스트가 없습니다.');
+  text = adminSanitizeWelcomeGeminiOutput(text);
+  if (!text) throw new HttpsError('internal', 'Gemini 응답에 텍스트가 없습니다.');
+  return text;
+}
+
+exports.adminWelcomeStreakUsers = onCall(
+  { region: REGION, timeoutSeconds: 300, memory: '512MiB' },
+  wrapFunction('adminWelcomeStreakUsers', async (request) => {
+    const callerAuth = request.auth;
+    if (!callerAuth || !callerAuth.uid) {
+      throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    }
+    if (!(await isAdminByUid(callerAuth.uid))) {
+      throw new HttpsError('permission-denied', '관리자만 사용할 수 있습니다.');
+    }
+    const raw = request.data && request.data.streakDays;
+    const streakFilter = Number(raw);
+    if (![2, 3, 4, 5].includes(streakFilter)) {
+      throw new HttpsError('invalid-argument', 'streakDays는 2, 3, 4, 5 중 하나여야 합니다.');
+    }
+
+    const todaySeoul = adminSeoulYmdFromDate(new Date());
+    const t0 = Date.now();
+    const allIds = await adminListAllUserIds();
+
+    const CHUNK = 50;
+    const matches = [];
+    for (let i = 0; i < allIds.length; i += CHUNK) {
+      const slice = allIds.slice(i, i + CHUNK);
+      const partial = await Promise.all(
+        slice.map(async (uid) => {
+          try {
+            const merged = await adminLoadMergedDaily(uid);
+            const set = adminBuildRecordedDateSetFromDaily(merged);
+            const streak = adminComputeStreakFromYesterday(set, todaySeoul);
+            const totalDays = set.size;
+            if (streak < streakFilter) return null;
+            return { uid, streak, totalDays };
+          } catch (e) {
+            logger.warn('adminWelcomeStreakUsers: uid scan fail', { uid, message: e.message });
+            return null;
+          }
+        })
+      );
+      partial.forEach((p) => {
+        if (p) matches.push(p);
+      });
+    }
+
+    matches.sort((a, b) => b.totalDays - a.totalDays);
+
+    const usersOut = [];
+    const AUTH_BATCH = 100;
+    for (let i = 0; i < matches.length; i += AUTH_BATCH) {
+      const batch = matches.slice(i, i + AUTH_BATCH);
+      const uids = batch.map((m) => m.uid);
+      let authMap = {};
+      try {
+        const got = await auth.getUsers(uids.map((uid) => ({ uid })));
+        got.users.forEach((u) => {
+          const em = u.email || (u.providerData && u.providerData[0] && u.providerData[0].email) || '';
+          authMap[u.uid] = em || '';
+        });
+      } catch (e) {
+        logger.warn('adminWelcomeStreakUsers getUsers batch', { message: e.message });
+      }
+
+      for (const row of batch) {
+        const email = authMap[row.uid] || '';
+        let birthdate = '';
+        let genderRaw = '';
+        let joinDate = '-';
+        let nickname = '';
+        try {
+          const userDocSnap = await db.collection('artifacts').doc(APP_ID).collection('users').doc(row.uid).get();
+          if (userDocSnap.exists) {
+            const ud = userDocSnap.data();
+            if (ud.createdAt && ud.createdAt.toDate) {
+              joinDate = ud.createdAt.toDate().toISOString().slice(0, 10);
+            } else if (typeof ud.createdAt === 'string') {
+              joinDate = ud.createdAt.slice(0, 10);
+            }
+          }
+        } catch (_) {}
+        try {
+          const settingsSnap = await db
+            .collection('artifacts')
+            .doc(APP_ID)
+            .collection('users')
+            .doc(row.uid)
+            .collection('config')
+            .doc('settings')
+            .get();
+          if (settingsSnap.exists) {
+            const prof = settingsSnap.data().profile || {};
+            if (prof.nickname != null && String(prof.nickname).trim()) {
+              nickname = String(prof.nickname).trim();
+            }
+            if (prof.birthdate) birthdate = String(prof.birthdate).trim();
+            if (prof.gender === 'male' || prof.gender === 'female') genderRaw = prof.gender;
+          }
+        } catch (_) {}
+
+        const genderLabel = genderRaw === 'male' ? '남' : genderRaw === 'female' ? '여' : '-';
+        const analysisAnchorSeoul = adminYmdAddDays(todaySeoul, -1);
+        let recentThreeDaysSummary = '';
+        let recentThreeDaysForGemini = '';
+        try {
+          const dates = adminThreeSeoulDatesEndingYesterday(todaySeoul);
+          const meals = await adminFetchMealsForDates(row.uid, dates);
+          recentThreeDaysSummary = adminFormatMealsSummary(meals, dates);
+          recentThreeDaysForGemini = adminFormatMealsForGemini(meals, dates, analysisAnchorSeoul);
+        } catch (e) {
+          logger.warn('adminWelcomeStreakUsers summary fail', { uid: row.uid, message: e.message });
+          recentThreeDaysSummary = '(기록 요약을 불러오지 못했습니다)';
+          recentThreeDaysForGemini = recentThreeDaysSummary;
+        }
+        usersOut.push({
+          uid: row.uid,
+          email: email || '-',
+          nickname: nickname || '-',
+          birthdate: birthdate || '-',
+          gender: genderRaw || '',
+          genderLabel,
+          joinDate,
+          analysisAnchorSeoul,
+          recentThreeDaysSummary,
+          recentThreeDaysForGemini,
+          totalRecordDays: row.totalDays,
+          streakDays: row.streak
+        });
+      }
+    }
+
+    const anchorForComments = adminYmdAddDays(todaySeoul, -1);
+    const allUids = usersOut.map((u) => u.uid);
+    let gemFromDb = {};
+    try {
+      gemFromDb = await adminLoadWelcomeGeminiCommentsForUids(allUids, anchorForComments);
+    } catch (e) {
+      logger.warn('adminWelcomeStreakUsers load welcomeGeminiComment', { message: e.message });
+    }
+    usersOut.forEach((u) => {
+      const g = gemFromDb[u.uid];
+      if (g) u.welcomeGeminiComment = g;
+    });
+
+    return {
+      users: usersOut,
+      streakDaysMin: streakFilter,
+      scannedUserCount: allIds.length,
+      asOfSeoulDate: todaySeoul,
+      durationMs: Date.now() - t0
+    };
+  })
+);
+
+exports.adminWelcomeGeminiComment = onCall(
+  { region: REGION, timeoutSeconds: 120, memory: '512MiB' },
+  wrapFunction('adminWelcomeGeminiComment', async (request) => {
+    const callerAuth = request.auth;
+    if (!callerAuth || !callerAuth.uid) {
+      throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    }
+    if (!(await isAdminByUid(callerAuth.uid))) {
+      throw new HttpsError('permission-denied', '관리자만 사용할 수 있습니다.');
+    }
+    const d = request.data || {};
+    const userId = typeof d.userId === 'string' ? d.userId.trim() : '';
+    if (!userId) {
+      throw new HttpsError('invalid-argument', 'userId가 필요합니다.');
+    }
+    const streakDays = Number(d.streakDays);
+    if (!Number.isFinite(streakDays) || streakDays < 0) {
+      throw new HttpsError('invalid-argument', 'streakDays가 올바르지 않습니다.');
+    }
+    const nickname = d.nickname != null ? String(d.nickname).trim() : '';
+    let summaryText =
+      typeof d.summaryText === 'string' && d.summaryText.trim()
+        ? d.summaryText.trim()
+        : typeof d.recentThreeDaysForGemini === 'string' && d.recentThreeDaysForGemini.trim()
+          ? d.recentThreeDaysForGemini.trim()
+          : '';
+    const todaySeoul = adminSeoulYmdFromDate(new Date());
+    const analysisAnchorSeoul =
+      typeof d.analysisAnchorSeoul === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.analysisAnchorSeoul)
+        ? d.analysisAnchorSeoul
+        : adminYmdAddDays(todaySeoul, -1);
+
+    if (!summaryText) {
+      try {
+        summaryText = await adminBuildRecentThreeDaysForGemini(userId, todaySeoul, streakDays);
+      } catch (e) {
+        logger.warn('adminWelcomeGeminiComment rebuild summary', { userId, message: e.message });
+        throw new HttpsError('internal', '기록 요약을 만들 수 없습니다.');
+      }
+    }
+
+    const comment = await adminGeminiWelcomeCommentInternal({
+      nickname: nickname || '',
+      streakDays,
+      summaryText,
+      analysisAnchorSeoul
+    });
+    try {
+      await adminSaveWelcomeGeminiComment(userId, comment, analysisAnchorSeoul);
+    } catch (e) {
+      logger.warn('adminWelcomeGeminiComment save', { userId, message: e.message });
+    }
+    return { comment, analysisAnchorSeoul };
+  })
 );

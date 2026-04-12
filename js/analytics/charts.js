@@ -1,12 +1,14 @@
 // 차트 렌더링 관련 함수들
+import { logUsageMetric } from '../usage-metrics.js';
+import { effectiveChartTag } from './meal-analytics-tags.js';
 import { VIBRANT_COLORS, CUMULATIVE_BAR_GRADIENT, RATING_GRADIENT, SATIETY_DATA } from '../constants.js';
-import { generateColorMap } from '../utils.js';
+import { generateColorMap, toLocalDateString } from '../utils.js';
+import { getDayName } from './date-utils.js';
 
 const CUMULATIVE_KEYS = ['mealType', 'category', 'withWhom', 'snackType', 'snackPlace']; // 식사·간식 바차트 동일 색구성(빈도순 그라데이션)
 const DETAIL_MODAL_TAB_KEYS = ['mealType', 'category', 'withWhom', 'snackType', 'snackPlace', 'snackWithWhom']; // 상세보기 시 통계 + 세부 통계 탭 (간식 누구와 포함)
 const MEAL_SLOTS = ['morning', 'lunch', 'dinner'];
 const SNACK_SLOTS = ['pre_morning', 'snack1', 'snack2', 'night'];
-import { getDayName } from './date-utils.js';
 
 /** meal 기록에서 사용자 설정 태그(상세) 분석 - 테이블용. options.menuSlotsOnly: 'meal' | 'snack' */
 function getTop10RankingsFromMeals(mealRecords, options = {}) {
@@ -114,49 +116,51 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
-export function renderProportionChart(containerId, data, key) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    
-    // 사용자 설정 태그 목록 가져오기
+/**
+ * renderProportionChart / 웰컴 도넛 공통 — 집계·정렬·색상(막대와 동일 규칙)
+ * @returns {{ total: number, sorted: [string, number][], colorMap: Record<string, string> } | null}
+ */
+function aggregateProportionData(data, key) {
     const userTags = window.userSettings?.tags || {};
     let allowedTags = null;
-    
-    // 태그 필터링이 필요한 키인지 확인
-    if (key === 'mealType' && userTags.mealType) {
+
+    if (key === 'mealType' && Array.isArray(userTags.mealType) && userTags.mealType.length > 0) {
         allowedTags = new Set(userTags.mealType);
-    } else if (key === 'category' && userTags.category) {
+    } else if (key === 'category' && Array.isArray(userTags.category) && userTags.category.length > 0) {
         allowedTags = new Set(userTags.category);
-    } else if (key === 'withWhom' && userTags.withWhom) {
+    } else if (key === 'withWhom' && Array.isArray(userTags.withWhom) && userTags.withWhom.length > 0) {
         allowedTags = new Set(userTags.withWhom);
-    } else if (key === 'snackType' && userTags.snackType) {
+    } else if (key === 'snackType' && Array.isArray(userTags.snackType) && userTags.snackType.length > 0) {
         allowedTags = new Set(userTags.snackType);
-    } else if (key === 'snackPlace' && userTags.snackPlaceMain) {
+    } else if (key === 'snackPlace' && Array.isArray(userTags.snackPlaceMain) && userTags.snackPlaceMain.length > 0) {
         allowedTags = new Set(userTags.snackPlaceMain);
     }
-    // rating과 satiety는 숫자 값이므로 태그 필터링 불필요
-    
+
     const counts = {};
     const getVal = (m) => {
-        if (key === 'snackPlace') return String(m.place ?? '').trim() || '미입력';
+        if (key === 'snackPlace') {
+            const v = effectiveChartTag(m, 'snackPlace');
+            return v || '미입력';
+        }
+        if (key === 'mealType' || key === 'category' || key === 'withWhom' || key === 'snackType') {
+            const v = effectiveChartTag(m, key);
+            return v || '미입력';
+        }
         return String(m[key] ?? '').trim() || '미입력';
     };
     data.forEach(m => {
         let val = getVal(m);
-        // 차트는 메인태그만 표시 - 입력창 값(사용자설정태그)은 제외
-        if (allowedTags && val !== '미입력' && !allowedTags.has(val)) {
+        if (allowedTags && val !== '미입력' && val !== '기타' && !allowedTags.has(val)) {
             val = '미입력';
         }
         counts[val] = (counts[val] || 0) + 1;
     });
-    
+
     const total = data.length;
     if (total === 0 || Object.keys(counts).length === 0) {
-        container.innerHTML = '<div class="text-center py-4 px-5 text-slate-400 text-xs">데이터가 없습니다.</div>';
-        return;
+        return null;
     }
-    
-    // 사용자가 설정한 태그 순서대로 정렬 (데이터가 있는 것만, 미입력은 항상 마지막)
+
     let sorted;
     if (allowedTags) {
         const tagOrder = Array.from(allowedTags);
@@ -164,20 +168,21 @@ export function renderProportionChart(containerId, data, key) {
             .filter(tag => counts[tag] > 0)
             .map(tag => [tag, counts[tag]])
             .sort((a, b) => b[1] - a[1]);
+        if (counts['기타'] > 0 && !allowedTags.has('기타')) tagEntries.push(['기타', counts['기타']]);
         if (counts['미입력'] > 0) tagEntries.push(['미입력', counts['미입력']]);
+        tagEntries.sort((a, b) => b[1] - a[1]);
         sorted = tagEntries;
     } else {
         const entries = Object.entries(counts);
         const emptyEntry = entries.find(([name]) => name === '미입력');
         const nonEmptyEntries = entries.filter(([name]) => name !== '미입력');
-        
-        // 만족도나 포만감의 경우 값 순서대로 정렬 (높은 수준이 오른쪽)
+
         if (key === 'rating' || key === 'snackRating') {
             const ratingEntries = nonEmptyEntries.sort((a, b) => {
                 const aNum = parseInt(a[0]);
                 const bNum = parseInt(b[0]);
                 if (!isNaN(aNum) && !isNaN(bNum)) {
-                    return aNum - bNum; // 오름차순 (1점부터 5점까지)
+                    return aNum - bNum;
                 }
                 return 0;
             });
@@ -187,19 +192,162 @@ export function renderProportionChart(containerId, data, key) {
                 const aNum = parseInt(a[0]);
                 const bNum = parseInt(b[0]);
                 if (!isNaN(aNum) && !isNaN(bNum)) {
-                    return aNum - bNum; // 오름차순 (1부터 5까지)
+                    return aNum - bNum;
                 }
                 return 0;
             });
             sorted = emptyEntry ? [...satietyEntries, emptyEntry] : satietyEntries;
         } else {
-            // 다른 경우는 개수 내림차순으로 정렬
             const sortedEntries = nonEmptyEntries.sort((a, b) => b[1] - a[1]);
             sorted = emptyEntry ? [...sortedEntries, emptyEntry] : sortedEntries;
         }
     }
-    
+
     const colorMap = generateColorMap(data, key, VIBRANT_COLORS);
+    return { total, sorted, colorMap };
+}
+
+/** 막대·도넛 공통 표시용 라벨 */
+function proportionSegmentDisplayName(name, key) {
+    if (name === '미입력') return '미입력';
+    if (key === 'rating' || key === 'snackRating') {
+        const ratingNum = parseInt(name);
+        if (!isNaN(ratingNum)) {
+            return `${ratingNum}점`;
+        }
+    } else if (key === 'satiety' || key === 'snackSatiety') {
+        const satietyNum = parseInt(name);
+        if (!isNaN(satietyNum)) {
+            const satietyData = SATIETY_DATA.find(d => d.val === satietyNum);
+            if (satietyData) {
+                return satietyData.label;
+            }
+        }
+    }
+    return name;
+}
+
+/**
+ * 웰컴 팝업 도넛용 — 비율·색상은 분석 막대와 동일
+ * @returns {{ total: number, segments: { name: string, count: number, color: string, displayName: string, fraction: number }[] }}
+ */
+export function computeProportionSegmentsForAnalysis(data, key) {
+    const agg = aggregateProportionData(data, key);
+    if (!agg) {
+        return { total: 0, segments: [] };
+    }
+    const { total, sorted, colorMap } = agg;
+    const segments = [];
+    let cumulativeColorIndex = 0;
+
+    sorted.forEach(([name, count]) => {
+        if (count <= 0) return;
+        let bg = colorMap[name] || '#94a3b8';
+        if (name === '미입력') {
+            bg = '#e2e8f0';
+        } else if (CUMULATIVE_KEYS.includes(key)) {
+            bg = CUMULATIVE_BAR_GRADIENT[cumulativeColorIndex % CUMULATIVE_BAR_GRADIENT.length];
+            cumulativeColorIndex += 1;
+        } else if (key === 'rating' || key === 'snackRating') {
+            const ratingNum = parseInt(name);
+            if (!isNaN(ratingNum)) {
+                bg = RATING_GRADIENT[ratingNum - 1] || RATING_GRADIENT[0];
+            }
+        } else if (key === 'satiety' || key === 'snackSatiety') {
+            const satietyNum = parseInt(name);
+            if (!isNaN(satietyNum)) {
+                const satietyData = SATIETY_DATA.find(d => d.val === satietyNum);
+                if (satietyData) {
+                    bg = satietyData.chartColor;
+                }
+            }
+        }
+        segments.push({
+            name,
+            count,
+            color: bg,
+            displayName: proportionSegmentDisplayName(name, key),
+            fraction: count / total
+        });
+    });
+
+    return { total, segments };
+}
+
+/**
+ * @param {number} [days=7] 오늘 포함 최근 N일(로컬)
+ * @param {'meal'|'snack'} [kind='meal'] 식사(메인 슬롯) vs 간식 슬롯
+ */
+export function getWelcomeWeekDonutSlides(days = 7, kind = 'meal') {
+    const hist =
+        typeof window !== 'undefined' && window.mealHistory && Array.isArray(window.mealHistory)
+            ? window.mealHistory
+            : [];
+    const today = new Date();
+    const startDt = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (days - 1));
+    const start = toLocalDateString(startDt);
+    const end = toLocalDateString(today);
+    const week = hist.filter(m => m && typeof m.date === 'string' && m.date >= start && m.date <= end);
+
+    let spec;
+    if (kind === 'snack') {
+        const snackOnly = week.filter(m => SNACK_SLOTS.includes(m.slotId));
+        spec = [
+            { title: '어디서', key: 'snackPlace', data: snackOnly },
+            { title: '무엇을', key: 'snackType', data: snackOnly },
+            { title: '누구와', key: 'withWhom', data: snackOnly },
+            { title: '만족도', key: 'rating', data: snackOnly.filter(m => m.rating) },
+            { title: '포만감', key: 'satiety', data: snackOnly.filter(m => m.satiety) }
+        ];
+    } else {
+        const mainOnly = week.filter(m => MEAL_SLOTS.includes(m.slotId));
+        spec = [
+            { title: '어떻게', key: 'mealType', data: mainOnly },
+            { title: '무엇을', key: 'category', data: mainOnly },
+            { title: '함께', key: 'withWhom', data: mainOnly },
+            { title: '만족도', key: 'rating', data: mainOnly.filter(m => m.rating) },
+            { title: '포만감', key: 'satiety', data: week.filter(m => m.satiety) }
+        ];
+    }
+
+    return spec.map(({ title, key, data }) => {
+        const { total, segments } = computeProportionSegmentsForAnalysis(data, key);
+        return { title, key, total, segments };
+    });
+}
+
+/**
+ * 최근 N일(로컬) 구간에서 식사(메인 슬롯) 또는 간식 슬롯 **기록 건수**
+ * @param {number} [days=7]
+ * @param {'meal'|'snack'} [kind='meal']
+ */
+export function getWelcomeWeekSlotRecordCount(days = 7, kind = 'meal') {
+    const hist =
+        typeof window !== 'undefined' && window.mealHistory && Array.isArray(window.mealHistory)
+            ? window.mealHistory
+            : [];
+    const today = new Date();
+    const startDt = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (days - 1));
+    const start = toLocalDateString(startDt);
+    const end = toLocalDateString(today);
+    const week = hist.filter(m => m && typeof m.date === 'string' && m.date >= start && m.date <= end);
+    if (kind === 'snack') {
+        return week.filter(m => SNACK_SLOTS.includes(m.slotId)).length;
+    }
+    return week.filter(m => MEAL_SLOTS.includes(m.slotId)).length;
+}
+
+export function renderProportionChart(containerId, data, key) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const agg = aggregateProportionData(data, key);
+    if (!agg) {
+        container.innerHTML = '<div class="text-center py-4 px-5 text-slate-400 text-xs">데이터가 없습니다.</div>';
+        return;
+    }
+
+    const { total, sorted, colorMap } = agg;
     
     // 차트와 라벨을 감싸는 컨테이너 (헤더와 같은 수평 범위로 정렬)
     let html = '<div class="relative analytics-chart-wrap">';
@@ -293,6 +441,7 @@ export function renderProportionChart(containerId, data, key) {
 }
 
 export function openDetailModal(key, title) {
+    logUsageMetric('mealdang_analysis_detail_click').catch(() => {});
     document.getElementById('detailModalTitle').innerText = title;
     const container = document.getElementById('detailContent');
     
@@ -308,15 +457,15 @@ export function openDetailModal(key, title) {
     let allowedTags = null;
     
     // 태그 필터링이 필요한 키인지 확인
-    if (key === 'mealType' && userTags.mealType) {
+    if (key === 'mealType' && Array.isArray(userTags.mealType) && userTags.mealType.length > 0) {
         allowedTags = new Set(userTags.mealType);
-    } else if (key === 'category' && userTags.category) {
+    } else if (key === 'category' && Array.isArray(userTags.category) && userTags.category.length > 0) {
         allowedTags = new Set(userTags.category);
-    } else if (key === 'withWhom' && userTags.withWhom) {
+    } else if (key === 'withWhom' && Array.isArray(userTags.withWhom) && userTags.withWhom.length > 0) {
         allowedTags = new Set(userTags.withWhom);
-    } else if (key === 'snackType' && userTags.snackType) {
+    } else if (key === 'snackType' && Array.isArray(userTags.snackType) && userTags.snackType.length > 0) {
         allowedTags = new Set(userTags.snackType);
-    } else if (key === 'snackPlace' && userTags.snackPlaceMain) {
+    } else if (key === 'snackPlace' && Array.isArray(userTags.snackPlaceMain) && userTags.snackPlaceMain.length > 0) {
         allowedTags = new Set(userTags.snackPlaceMain);
     }
     // rating, snackRating, satiety는 숫자 값이므로 태그 필터링 불필요
@@ -332,7 +481,10 @@ export function openDetailModal(key, title) {
     
     const getValue = (m) => {
         if (key === 'snackPlace') {
-            return String(m.place ?? '').trim() || '미입력';
+            return effectiveChartTag(m, 'snackPlace') || '미입력';
+        }
+        if (key === 'mealType' || key === 'category' || key === 'withWhom' || key === 'snackType') {
+            return effectiveChartTag(m, key) || '미입력';
         }
         if (key === 'satiety' || key === 'snackSatiety') {
             const satietyNum = parseInt(m.satiety);
@@ -349,7 +501,7 @@ export function openDetailModal(key, title) {
             return '미입력';
         }
         if (key === 'snackWithWhom') {
-            return (m.withWhomDetail || m.withWhom) || '미입력';
+            return effectiveChartTag(m, 'withWhom') || '미입력';
         }
         return m[key] || '미입력';
     };
@@ -363,7 +515,7 @@ export function openDetailModal(key, title) {
         const globalCounts = {};
         dataForSlots.forEach(m => {
             let val = getValue(m);
-            if (allowedTags && val !== '미입력' && !allowedTags.has(val)) val = '미입력';
+            if (allowedTags && val !== '미입력' && val !== '기타' && !allowedTags.has(val)) val = '미입력';
             globalCounts[val] = (globalCounts[val] || 0) + 1;
         });
         let globalSorted;
@@ -373,7 +525,9 @@ export function openDetailModal(key, title) {
                 .filter(tag => globalCounts[tag] > 0)
                 .map(tag => [tag, globalCounts[tag]])
                 .sort((a, b) => b[1] - a[1]);
+            if (globalCounts['기타'] > 0 && !allowedTags.has('기타')) tagEntries.push(['기타', globalCounts['기타']]);
             if (globalCounts['미입력'] > 0) tagEntries.push(['미입력', globalCounts['미입력']]);
+            tagEntries.sort((a, b) => b[1] - a[1]);
             globalSorted = tagEntries;
         } else {
             const entries = Object.entries(globalCounts);
@@ -407,7 +561,7 @@ export function openDetailModal(key, title) {
         const counts = {};
         slotData.forEach(m => {
             let val = getValue(m);
-            if (allowedTags && val !== '미입력' && !allowedTags.has(val)) val = '미입력';
+            if (allowedTags && val !== '미입력' && val !== '기타' && !allowedTags.has(val)) val = '미입력';
             counts[val] = (counts[val] || 0) + 1;
         });
         
@@ -421,7 +575,9 @@ export function openDetailModal(key, title) {
                 .filter(tag => counts[tag] > 0)
                 .map(tag => [tag, counts[tag]])
                 .sort((a, b) => b[1] - a[1]);
+            if (counts['기타'] > 0 && !allowedTags.has('기타')) tagEntries.push(['기타', counts['기타']]);
             if (counts['미입력'] > 0) tagEntries.push(['미입력', counts['미입력']]);
+            tagEntries.sort((a, b) => b[1] - a[1]);
             sorted = tagEntries;
         } else {
             const entries = Object.entries(counts);

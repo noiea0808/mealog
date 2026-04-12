@@ -1,5 +1,5 @@
 // 밀톡 피드 전용 — boardPosts와 분리 (게시판 목록·상세와 데이터 공유 안 함)
-import { db, appId, callableFunctions } from '../firebase.js';
+import { db, appId, callableFunctions, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import {
     collection,
     query,
@@ -15,7 +15,7 @@ import {
     setDoc,
     serverTimestamp,
     writeBatch
-} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { showToast } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
 
@@ -124,11 +124,29 @@ export const feedOperations = {
                 replyToPostId != null && String(replyToPostId).trim()
                     ? String(replyToPostId).trim()
                     : undefined;
-            const result = await callableFunctions.createFeedPost({
+            const payload = {
                 text: typeof text === 'string' ? text : '',
                 imageUrls: Array.isArray(imageUrls) ? imageUrls : [],
                 ...(rid ? { replyToPostId: rid } : {})
-            });
+            };
+            await refreshAppCheckTokenBeforeFirestore();
+            let result;
+            try {
+                result = await callableFunctions.createFeedPost(payload);
+            } catch (e1) {
+                const m = String(e1?.message || e1?.details || '');
+                if (
+                    e1?.code === 'permission-denied' ||
+                    e1?.code === 'functions/permission-denied' ||
+                    /permission|app check|forbidden/i.test(m)
+                ) {
+                    await refreshAppCheckTokenBeforeFirestore();
+                    await new Promise((r) => setTimeout(r, 400));
+                    result = await callableFunctions.createFeedPost(payload);
+                } else {
+                    throw e1;
+                }
+            }
             showToast('메시지를 보냈어요.', 'success');
             return result.data;
         } catch (e) {
@@ -145,7 +163,7 @@ export const feedOperations = {
             throw new Error('auth');
         }
         if (isDemoUser(window.currentUser)) {
-            showToast('샘플 계정에서는 수정할 수 없습니다.', 'info');
+            showToast('샘플 계정에서는 수정할 수 없습니다.', 'error');
             throw new Error('read-only-demo');
         }
         const id = String(postId || '').trim();
@@ -195,7 +213,7 @@ export const feedOperations = {
             throw new Error('auth');
         }
         if (isDemoUser(window.currentUser)) {
-            showToast('샘플 계정에서는 삭제할 수 없습니다.', 'info');
+            showToast('샘플 계정에서는 삭제할 수 없습니다.', 'error');
             throw new Error('read-only-demo');
         }
         const id = String(postId || '').trim();
@@ -231,7 +249,7 @@ export const feedOperations = {
             throw new Error('auth');
         }
         if (isDemoUser(window.currentUser)) {
-            showToast("샘플 계정에서는 반응을 보낼 수 없습니다.", 'info');
+            showToast("샘플 계정에서는 반응을 보낼 수 없습니다.", 'error');
             throw new Error('read-only-demo');
         }
         const allowed = ['like', 'thumbs', 'check'];

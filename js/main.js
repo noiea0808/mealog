@@ -5,12 +5,12 @@ console.log('📦 main.js 모듈 로드 시작');
 window.moduleLoading = true;
 
 import { appState, getState } from './state.js';
-import { auth, db, appId } from './firebase.js';
-import { signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { dbOps, setupListeners, loadSharedPhotosPage, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, subscribeToMyPostComments, boardOperations, feedOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
+import { auth, db, appId, refreshAppCheckTokenBeforeFirestore } from './firebase.js';
+import { signOut } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
+import { dbOps, setupListeners, loadSharedPhotosPage, loadSharedPhotosPageReliable, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, subscribeToMyPostComments, boardOperations, feedOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { callableFunctions } from './firebase.js';
-import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer, enableNetwork } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer, enableNetwork } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import {
     switchScreen,
     showToast,
@@ -20,7 +20,7 @@ import {
 } from './ui.js';
 import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput, warmUpIME, sharePhotosToExternal, setupBirthdateInputFormatting } from './utils.js';
 import { 
-    initAuth, handleGoogleLogin, startGuest, openEmailModal, closeEmailModal,
+    initAuth, handleGoogleLogin, handleKakaoLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
     copyDomain, closeDomainModal, switchToLogin, showTermsModal, closeTermsModal, cancelTermsAgreement, confirmTermsAgreement,
     showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup, handleEmailSignupWithProfile, continueAsGuestFromProfileSetup, setProfileType, handleSetupPhotoUpload,
@@ -28,6 +28,7 @@ import {
 } from './auth.js';
 import { authFlowManager } from './auth-flow.js';
 import { scheduleAttendanceCheckIfNeeded } from './attendance-check.js';
+window.scheduleAttendanceCheckIfNeeded = scheduleAttendanceCheckIfNeeded;
 import { isDemoUser, markUserHasRealLogin } from './demo-account.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
@@ -112,7 +113,8 @@ window.reloadMomentFeed = async function reloadMomentFeed() {
         appState.galleryUserProfileSharedHasMore = true;
         appState.galleryUserProfileSharedDocSnaps = new Map();
         try {
-            await renderGallery();
+            invalidateGalleryRenderSession();
+            await renderGallery({ forceReload: true });
         } catch (e) {
             console.error('모먼트(프로필) 다시 불러오기 렌더 실패:', e);
         }
@@ -124,17 +126,19 @@ window.reloadMomentFeed = async function reloadMomentFeed() {
     appState.sharedPhotosFeedHasMore = false;
     showLoading('모먼트 불러오는 중...');
     try {
-        const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);
+        const { docs, lastDoc, hasMore } = await loadSharedPhotosPageReliable(10);
         appState.galleryFeedNetworkError = false;
         window.sharedPhotosFeed = docs;
         appState.sharedPhotosFeedLastDoc = lastDoc;
         appState.sharedPhotosFeedHasMore = hasMore;
         appState.sharedPhotosFeedPrefetchedAt = Date.now();
-        await renderGallery();
+        invalidateGalleryRenderSession();
+        await renderGallery({ forceReload: true });
     } catch (e) {
         console.error('공유 사진 로드 실패:', e);
         appState.galleryFeedNetworkError = true;
-        await renderGallery();
+        invalidateGalleryRenderSession();
+        await renderGallery({ forceReload: true });
     } finally {
         hideLoading();
         if (typeof renderFeed === 'function') renderFeed();
@@ -188,6 +192,8 @@ window.closeDomainModal = closeDomainModal;
 window.Mealog.closeDomainModal = closeDomainModal;
 window.handleGoogleLogin = handleGoogleLogin;
 window.Mealog.handleGoogleLogin = handleGoogleLogin;
+window.handleKakaoLogin = handleKakaoLogin;
+window.Mealog.handleKakaoLogin = handleKakaoLogin;
 window.startGuest = startGuest;
 window.Mealog.startGuest = startGuest;
 window.openEmailModal = openEmailModal;
@@ -562,7 +568,7 @@ window.setGalleryTraceFilter = (value) => {
     if (!value || value === 'collapse') return;
     const v = value === '' || value == null ? null : value;
     if (v && (!window.currentUser || window.currentUser.isAnonymous)) {
-        showToast('로그인이 필요합니다.', 'info');
+        showToast('로그인이 필요합니다.', 'error');
         window.requestLogin();
         return;
     }
@@ -710,6 +716,7 @@ async function updateUserDocument(user) {
     if (isDemoUser(user)) return;
 
     try {
+        await refreshAppCheckTokenBeforeFirestore();
         const userDocRef = doc(db, 'artifacts', appId, 'users', user.uid);
         const userDocSnap = await getDoc(userDocRef);
         
@@ -720,8 +727,14 @@ async function updateUserDocument(user) {
         if (!userDocSnap.exists()) {
             // 신규 사용자: 가입 완료(createdAt)는 프로필 설정 후에만 등록
             // providerId, email, lastLoginAt만 먼저 저장
-            if (user.providerData && user.providerData.length > 0) {
-                updateData.providerId = user.providerData[0].providerId;
+            {
+                let providerId = user.providerData?.[0]?.providerId;
+                if (!providerId && typeof user.uid === 'string' && user.uid.startsWith('kakao_')) {
+                    providerId = 'kakao.com';
+                }
+                if (providerId) {
+                    updateData.providerId = providerId;
+                }
             }
             if (user.email) {
                 updateData.email = user.email;
@@ -734,8 +747,14 @@ async function updateUserDocument(user) {
                 updateData.createdAt = serverTimestamp();
                 console.log('✅ 가입 완료(프로필 설정 후) 사용자 등록:', user.uid);
             }
-            if (!existingData.providerId && user.providerData && user.providerData.length > 0) {
-                updateData.providerId = user.providerData[0].providerId;
+            if (!existingData.providerId) {
+                let pid = user.providerData?.[0]?.providerId;
+                if (!pid && typeof user.uid === 'string' && user.uid.startsWith('kakao_')) {
+                    pid = 'kakao.com';
+                }
+                if (pid) {
+                    updateData.providerId = pid;
+                }
             }
             if (!existingData.email && user.email) {
                 updateData.email = user.email;
@@ -745,7 +764,25 @@ async function updateUserDocument(user) {
             }
         }
         
-        await setDoc(userDocRef, updateData, { merge: true });
+        try {
+            await setDoc(userDocRef, updateData, { merge: true });
+        } catch (writeErr) {
+            const wcode = writeErr?.code || '';
+            if (wcode === 'permission-denied' && callableFunctions?.patchArtifactUserRoot) {
+                try {
+                    await callableFunctions.patchArtifactUserRoot({
+                        setCreatedAt: !!updateData.createdAt,
+                        providerId: updateData.providerId ?? null,
+                        email: updateData.email ?? null
+                    });
+                    console.log('✅ 사용자 문서 서버 폴백 저장:', user.uid);
+                } catch (fe) {
+                    console.error('❌ 사용자 문서 서버 폴백 실패:', fe?.code || fe?.message || fe);
+                }
+            } else {
+                throw writeErr;
+            }
+        }
     } catch (e) {
         console.error('❌ 사용자 문서 업데이트 실패:', e);
         // 에러가 발생해도 계속 진행 (비중요한 정보이므로)
@@ -988,7 +1025,6 @@ initAuth(async (user) => {
         }
 
         if (user && !user.isAnonymous && !isDemoUser(user)) {
-          window.__onPushTokenSaved = () => showToast('알림 등록됨', 'success');
           window.__onPushTokenSavedError = (msg) => showToast('알림 등록 실패: ' + (msg || '알 수 없음'), 'error');
           // 네이티브 앱만: FCM 등록·토큰 Firestore 저장 (설정 토글 제거 이후 이 경로가 유일함)
           if (typeof window.Capacitor !== 'undefined' && window.Capacitor.isNativePlatform?.()) {
@@ -1466,7 +1502,11 @@ function applyLoginBannerLandingNotice() {
     } catch (_) {}
 }
 window.addEventListener('mealog:mainScreenShown', applyLoginBannerLandingNotice);
+window.addEventListener('mealog:mainScreenShown', () => scheduleAttendanceCheckIfNeeded());
 window.__onMainScreenShown = applyLoginBannerLandingNotice;
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') scheduleAttendanceCheckIfNeeded();
+});
 
 // 스크롤 방향에 따른 헤더·하단 네비 숨김·표시 (트위터/인스타 스타일)
 // 아래로 스크롤 시 헤더·하단 네비 숨김, 위로 스크롤 시 다시 표시

@@ -1,6 +1,6 @@
 // 데이터 로딩 관련 함수들
 import { db, appId } from '../firebase.js';
-import { collection, query, where, orderBy, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, query, where, orderBy, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { toLocalDateString, uploadBase64ToStorage } from '../utils.js';
 import { showToast } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
@@ -229,7 +229,7 @@ export async function migrateBase64ImagesToStorage() {
                 const newPhotos = [...existingUrls, ...uploadedUrls];
                 
                 // Firestore 업데이트
-                const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js");
                 const mealRef = doc(mealsColl, mealId);
                 await setDoc(mealRef, { ...meal, photos: newPhotos }, { merge: true });
                 

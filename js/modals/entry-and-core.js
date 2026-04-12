@@ -5,11 +5,12 @@ import { setVal, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from '../render/index.js';
 import { dbOps } from '../db.js';
 import { showToast, showSuccessPopup } from '../ui.js';
+import { resolveRecordCompletePopupMessage } from '../attendance-check.js';
 import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, renderFeed } from '../render/index.js';
 import { getDashboardData } from '../analytics.js';
-import { callableFunctions, db, appId } from '../firebase.js';
+import { callableFunctions, db, appId, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import { isDemoUser } from '../demo-account.js';
-import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { applyDemoDateShiftToMealRecord } from '../demo-date-shift.js';
 // ⚠️ initPushNotifications import 제거 - 크래시 문제로 인해 비활성화
 
@@ -18,6 +19,31 @@ let settingsSaveTimeout = null;
 let entryGaugeSaveTimeout = null;
 
 const PHOTO_ASPECT_OPTIONS = ['1:1', '3:4', '4:3'];
+
+/** 활성 서브칩 라벨 (입력란 동기화·검증용) */
+function collectActiveSubChipLabels(containerId) {
+    const root = document.getElementById(containerId);
+    if (!root) return [];
+    return [...root.querySelectorAll('button.sub-chip.active')].map((el) =>
+        el.textContent.replace(/\s*★\s*$/, '').trim()
+    ).filter(Boolean);
+}
+
+/** 입력란이 비어 있을 때만 활성 서브칩을 쉼표로 합쳐 넣음 (태그만 선택한 저장 대비) */
+function mergeActiveSubChipsIntoInputs() {
+    const merge = (containerId, inputId) => {
+        const input = document.getElementById(inputId);
+        if (!input || input.value.trim()) return;
+        const labels = collectActiveSubChipLabels(containerId);
+        if (labels.length) input.value = labels.join(', ');
+    };
+    merge('menuSuggestions', 'menuDetailInput');
+    merge('peopleSuggestions', 'withWhomInput');
+    merge('snackSuggestions', 'snackDetailInput');
+    merge('snackPeopleSuggestions', 'snackWithWhomInput');
+    merge('restaurantSuggestions', 'placeInput');
+    merge('snackPlaceSuggestions', 'snackPlaceInput');
+}
 
 /** 배달/포장일 때만 '어디서 가져오셨나요' 입력란 표시 (다른 유형으로 바꾸면 값 초기화) */
 export function syncDeliveryVendorSectionVisibility() {
@@ -510,26 +536,44 @@ export async function openModal(date, slotId, entryId = null) {
             savedRecord = window.mealHistory.find(m => m.id === entryId);
         }
         // 타임라인 DOM은 loadedDates로 갱신이 스킵될 수 있어, 카드의 id와 mealHistory가 어긋나면 빈 모달이 됨 → 단건 조회
+        // App Check 토큰 지연 시 permission-denied → 토큰 갱신 후 1회 재시도
         if (entryId && !savedRecord && window.currentUser?.uid) {
-            try {
-                const ref = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals', entryId);
-                const snap = await getDoc(ref);
-                if (snap.exists()) {
-                    let rec = { id: snap.id, ...snap.data() };
-                    const shift = isDemoUser(window.currentUser) ? Number(window.__demoDateShiftDays) || 0 : 0;
-                    if (shift) rec = applyDemoDateShiftToMealRecord(rec, shift);
-                    savedRecord = rec;
-                    const hist = window.mealHistory || [];
-                    if (!hist.some((m) => m.id === entryId)) {
-                        window.mealHistory = [...hist, rec].sort(
-                            (a, b) =>
-                                (b.date || '').localeCompare(a.date || '') ||
-                                (b.time || '').localeCompare(a.time || '')
-                        );
-                    }
+            const ref = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals', entryId);
+            const mergeRec = (snap) => {
+                if (!snap.exists()) return;
+                let rec = { id: snap.id, ...snap.data() };
+                const shift = isDemoUser(window.currentUser) ? Number(window.__demoDateShiftDays) || 0 : 0;
+                if (shift) rec = applyDemoDateShiftToMealRecord(rec, shift);
+                savedRecord = rec;
+                const hist = window.mealHistory || [];
+                if (!hist.some((m) => m.id === entryId)) {
+                    window.mealHistory = [...hist, rec].sort(
+                        (a, b) =>
+                            (b.date || '').localeCompare(a.date || '') ||
+                            (b.time || '').localeCompare(a.time || '')
+                    );
                 }
+            };
+            try {
+                await refreshAppCheckTokenBeforeFirestore();
+                const snap = await getDoc(ref);
+                mergeRec(snap);
             } catch (e) {
-                console.warn('openModal: meal 단건 조회 실패', entryId, e);
+                const isPerm =
+                    e?.code === 'permission-denied' ||
+                    e?.code === 'PERMISSION_DENIED' ||
+                    /permission/i.test(String(e?.message || ''));
+                if (isPerm) {
+                    try {
+                        await refreshAppCheckTokenBeforeFirestore();
+                        await new Promise((r) => setTimeout(r, 400));
+                        mergeRec(await getDoc(ref));
+                    } catch (e2) {
+                        console.warn('openModal: meal 단건 조회 실패', entryId, e2);
+                    }
+                } else {
+                    console.warn('openModal: meal 단건 조회 실패', entryId, e);
+                }
             }
         }
         
@@ -824,8 +868,8 @@ export async function openModal(date, slotId, entryId = null) {
                         }
                     }
                     
-                    // 메뉴 상세 (menuDetail) - sub-chip (다중 선택 가능, 쉼표로 구분)
-                    if (r.menuDetail) {
+                    // 메뉴 상세 (본식 menuDetail) - sub-chip (다중 선택 가능, 쉼표로 구분)
+                    if (!isS && r.menuDetail) {
                         const menuSuggestions = document.getElementById('menuSuggestions');
                         const menuDetailInput = document.getElementById('menuDetailInput');
                         if (menuSuggestions && menuDetailInput) {
@@ -848,9 +892,30 @@ export async function openModal(date, slotId, entryId = null) {
                             }
                         }
                     }
+                    // 간식 무엇을 (menuDetail → snackDetailInput / snackSuggestions)
+                    if (isS && r.menuDetail) {
+                        const snackSuggestions = document.getElementById('snackSuggestions');
+                        const snackDetailInput = document.getElementById('snackDetailInput');
+                        if (snackSuggestions && snackDetailInput) {
+                            const detailValues = r.menuDetail.split(',').map(v => v.trim()).filter(v => v);
+                            const activeValues = [];
+                            snackSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
+                                const chipText = ch.innerText.trim();
+                                if (detailValues.includes(chipText)) {
+                                    ch.classList.add('active');
+                                    activeValues.push(chipText);
+                                }
+                            });
+                            if (activeValues.length > 0) {
+                                snackDetailInput.value = activeValues.join(', ');
+                            } else {
+                                snackDetailInput.value = r.menuDetail;
+                            }
+                        }
+                    }
                     
-                    // 함께한 사람 상세 (withWhomDetail) - sub-chip (다중 선택 가능)
-                    if (r.withWhomDetail) {
+                    // 함께한 사람 상세 (본식 withWhomDetail) - sub-chip (다중 선택 가능)
+                    if (!isS && r.withWhomDetail) {
                         const peopleSuggestions = document.getElementById('peopleSuggestions');
                         const withWhomInput = document.getElementById('withWhomInput');
                         if (peopleSuggestions && withWhomInput) {
@@ -867,6 +932,25 @@ export async function openModal(date, slotId, entryId = null) {
                             // input에 선택된 값들 저장
                             if (activeValues.length > 0) {
                                 withWhomInput.value = activeValues.join(', ');
+                            }
+                        }
+                    }
+                    // 간식 누구와 상세 (snackPeopleSuggestions)
+                    if (isS && r.withWhomDetail) {
+                        const snackPeopleSuggestions = document.getElementById('snackPeopleSuggestions');
+                        const snackWithWhomInput = document.getElementById('snackWithWhomInput');
+                        if (snackPeopleSuggestions && snackWithWhomInput) {
+                            const detailValues = r.withWhomDetail.split(',').map(v => v.trim()).filter(v => v);
+                            const activeValues = [];
+                            snackPeopleSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
+                                const chipText = ch.innerText.trim();
+                                if (detailValues.includes(chipText)) {
+                                    ch.classList.add('active');
+                                    activeValues.push(chipText);
+                                }
+                            });
+                            if (activeValues.length > 0) {
+                                snackWithWhomInput.value = activeValues.join(', ');
                             }
                         }
                     }
@@ -924,11 +1008,14 @@ export async function openModal(date, slotId, entryId = null) {
                     }
                 }
                 
-                document.getElementById('btnDelete')?.classList.remove('hidden');
             }
         } else {
             window.setRating(3);
             window.setSatiety(3);
+        }
+
+        if (entryId && window.currentUser && !window.currentUser.isAnonymous && !isDemoUser(window.currentUser)) {
+            document.getElementById('btnDelete')?.classList.remove('hidden');
         }
         
         // 간식 모드일 때 초기 추천 태그 표시
@@ -1071,6 +1158,7 @@ export async function saveEntry() {
         const isS = slot.type === 'snack';
         const mealType = getT('typeChips');
         const isSk = mealType === 'Skip' || mealType === '건너뜀';
+        mergeActiveSubChipsIntoInputs();
         const placeInputVal = document.getElementById('placeInput')?.value || '';
         const menuInputVal = document.getElementById('menuDetailInput')?.value || '';
         const withInputVal = document.getElementById('withWhomInput')?.value || '';
@@ -1091,15 +1179,78 @@ export async function saveEntry() {
         if (!isSk) {
             const hasHow = !isS && Boolean((mealType || '').trim());
             const hasWhat = isS
-                ? Boolean((getT('snackTypeChips') || '').trim() || (snackInputVal || '').trim())
-                : Boolean((getT('categoryChips') || '').trim() || (menuInputVal || '').trim());
+                ? Boolean(
+                      (getT('snackTypeChips') || '').trim() ||
+                          (snackInputVal || '').trim() ||
+                          collectActiveSubChipLabels('snackSuggestions').length
+                  )
+                : Boolean(
+                      (getT('categoryChips') || '').trim() ||
+                          (menuInputVal || '').trim() ||
+                          collectActiveSubChipLabels('menuSuggestions').length
+                  );
             const hasWith = isS
-                ? Boolean((getT('snackWithChips') || '').trim() || (snackWithInputVal || '').trim())
-                : Boolean((getT('withChips') || '').trim() || (withInputVal || '').trim());
+                ? Boolean(
+                      (getT('snackWithChips') || '').trim() ||
+                          (snackWithInputVal || '').trim() ||
+                          collectActiveSubChipLabels('snackPeopleSuggestions').length
+                  )
+                : Boolean(
+                      (getT('withChips') || '').trim() ||
+                          (withInputVal || '').trim() ||
+                          collectActiveSubChipLabels('peopleSuggestions').length
+                  );
             if (!hasHow && !hasWhat && !hasWith) {
                 if (loadingOverlay) loadingOverlay.classList.add('hidden');
                 return;
             }
+        }
+
+        // 메인 칩 미선택 + (해당 축) 입력·서브칩만 있으면 → 분석·집계는「기타」
+        const categoryChip = getT('categoryChips');
+        const withChipBase = isS ? getT('snackWithChips') : getT('withChips');
+        const snackTypeChip = getT('snackTypeChips');
+        const hasMenuSub = collectActiveSubChipLabels('menuSuggestions').length > 0;
+        const hasPeopleSubMain = collectActiveSubChipLabels(isS ? 'snackPeopleSuggestions' : 'peopleSuggestions').length > 0;
+        const hasSnackSub = collectActiveSubChipLabels('snackSuggestions').length > 0;
+        const hasRestaurantSub = !isS ? collectActiveSubChipLabels('restaurantSuggestions').length > 0 : 0;
+        const hasSnackPlaceSub = isS ? collectActiveSubChipLabels('snackPlaceSuggestions').length > 0 : 0;
+
+        let mealTypeResolved = mealType;
+        if (!isS && !isSk && !(mealType || '').trim()) {
+            const hasAnyHowAxis =
+                (placeInputVal || '').trim() ||
+                hasRestaurantSub ||
+                (menuInputVal || '').trim() ||
+                hasMenuSub ||
+                (withInputVal || '').trim() ||
+                hasPeopleSubMain;
+            if (hasAnyHowAxis) mealTypeResolved = '기타';
+        }
+        let categoryResolved = categoryChip;
+        if (!isS && !isSk && !(categoryChip || '').trim() && ((menuInputVal || '').trim() || hasMenuSub)) {
+            categoryResolved = '기타';
+        }
+        let withWhomResolved = withChipBase;
+        if (!isSk && !(withChipBase || '').trim() && (((isS ? snackWithInputVal : withInputVal) || '').trim() || hasPeopleSubMain)) {
+            withWhomResolved = '기타';
+        }
+        let snackTypeResolved = snackTypeChip;
+        if (isS && !(snackTypeChip || '').trim()) {
+            const hasSnackAnyAxis =
+                (snackInputVal || '').trim() ||
+                hasSnackSub ||
+                (snackWithInputVal || '').trim() ||
+                hasPeopleSubMain ||
+                (snackPlaceInputVal || '').trim() ||
+                hasSnackPlaceSub;
+            if (hasSnackAnyAxis) snackTypeResolved = '기타';
+        }
+        const selectedSnackPlaceMain = appState.selectedSnackPlaceMainTag || null;
+        let snackPlaceMainResolved = '';
+        if (isS && !isSk) {
+            const hasPlaceBody = (snackPlaceInputVal || '').trim() || hasSnackPlaceSub;
+            snackPlaceMainResolved = selectedSnackPlaceMain || (hasPlaceBody ? '기타' : '');
         }
         
         // 디버깅: 간식 입력값 확인
@@ -1124,12 +1275,11 @@ export async function saveEntry() {
         
         let tagsChanged = false;
         if (placeInputVal && !newSettings.subTags.place.find(t => (t.text || t) === placeInputVal)) {
-            newSettings.subTags.place.push({ text: placeInputVal, parent: mealType });
+            newSettings.subTags.place.push({ text: placeInputVal, parent: mealTypeResolved });
             tagsChanged = true;
         }
-        const selectedSnackPlaceMain = appState.selectedSnackPlaceMainTag || null;
         if (isS && snackPlaceInputVal && !newSettings.subTags.place.find(t => (t.text || t) === snackPlaceInputVal)) {
-            newSettings.subTags.place.push({ text: snackPlaceInputVal, parent: selectedSnackPlaceMain || snackPlaceInputVal });
+            newSettings.subTags.place.push({ text: snackPlaceInputVal, parent: snackPlaceMainResolved || snackPlaceInputVal });
             tagsChanged = true;
         }
         // 메뉴 상세 태그는 다중 선택 가능 (쉼표로 구분)
@@ -1137,7 +1287,7 @@ export async function saveEntry() {
             const menuValues = menuInputVal.split(',').map(v => v.trim()).filter(v => v);
             menuValues.forEach(val => {
                 if (!newSettings.subTags.menu.find(t => (t.text || t) === val)) {
-                    newSettings.subTags.menu.push({ text: val, parent: getT('categoryChips') });
+                    newSettings.subTags.menu.push({ text: val, parent: categoryResolved });
                     tagsChanged = true;
                 }
             });
@@ -1146,16 +1296,15 @@ export async function saveEntry() {
         const withInputValToSave = isS ? snackWithInputVal : withInputVal;
         if (withInputValToSave) {
             const withValues = withInputValToSave.split(',').map(v => v.trim()).filter(v => v);
-            const parentChipId = isS ? 'snackWithChips' : 'withChips';
             withValues.forEach(val => {
                 if (!newSettings.subTags.people.find(t => (t.text || t) === val)) {
-                    newSettings.subTags.people.push({ text: val, parent: getT(parentChipId) });
+                    newSettings.subTags.people.push({ text: val, parent: withWhomResolved });
                     tagsChanged = true;
                 }
             });
         }
         if (isS && snackInputVal && !newSettings.subTags.snack.find(t => (t.text || t) === snackInputVal)) {
-            newSettings.subTags.snack.push({ text: snackInputVal, parent: getT('snackTypeChips') });
+            newSettings.subTags.snack.push({ text: snackInputVal, parent: snackTypeResolved });
             tagsChanged = true;
         }
         
@@ -1227,12 +1376,12 @@ export async function saveEntry() {
             id: idToUse,
             date: state.currentEditingDate,
             slotId: state.currentEditingSlotId,
-            mealType,
-            withWhom: isS ? getT('snackWithChips') : getT('withChips'),
+            mealType: mealTypeResolved,
+            withWhom: withWhomResolved,
             withWhomDetail: isSk ? '' : (isS ? snackWithInputVal : withInputVal),
-            category: getT('categoryChips'),
+            category: categoryResolved,
             placeType: '',
-            snackType: getT('snackTypeChips'),
+            snackType: snackTypeResolved,
             photoAspectRatio: state.recordPhotoAspectRatio || '1:1',
             // Firestore에는 URL만 저장하고, base64는 저장 직후 Storage로 업로드 후 치환한다.
             photos: existingPhotoUrls,
@@ -1243,6 +1392,9 @@ export async function saveEntry() {
             satiety: isSk ? null : (satOn ? state.currentSatiety : null),
             time: new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' })
         };
+        if (isS && !isSk && snackPlaceMainResolved) {
+            record.snackPlaceMain = snackPlaceMainResolved;
+        }
 
         if (!isS && !isSk && mealType === '배달/포장') {
             record.deliveryVendor = deliveryVendorVal;
@@ -1515,7 +1667,6 @@ export async function saveEntry() {
             }
 
             console.log('저장 완료');
-            showSuccessPopup('기록 완료', 800);
             // 낙관적 반영: 리스너 도착 전에 mealHistory에 즉시 반영해 스크롤·렌더가 최신 데이터 기준으로 동작
             if (record.id && window.mealHistory && Array.isArray(window.mealHistory)) {
                 const idx = window.mealHistory.findIndex(m => m.id === record.id);
@@ -1527,6 +1678,8 @@ export async function saveEntry() {
                 }
                 window.mealHistory.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''));
             }
+            // 기록 완료 문구는 mealHistory 반영 후에만 계산 (그날 첫 기록 여부·연속일수가 맞아야 함)
+            showSuccessPopup(resolveRecordCompletePopupMessage(wasNewRecord, record.date), 800);
             // 저장 직후 잠깐 타임라인 전체 재렌더를 막아, jumpToDate·스크롤이 리스너 재렌더에 덮이지 않게 함
             window._timelineRerenderFreezeUntil = Date.now() + 800;
             

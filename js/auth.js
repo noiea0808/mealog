@@ -1,6 +1,6 @@
 // 인증 관련 함수들
-import { auth, setAnalyticsUserId } from './firebase.js';
-import { GoogleAuthProvider, signInWithPopup, getRedirectResult, signInWithCredential, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { auth, setAnalyticsUserId, callableFunctions, appCheckInitPromise } from './firebase.js';
+import { GoogleAuthProvider, signInWithPopup, getRedirectResult, signInWithCredential, signInWithCustomToken, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
 import { dbOps } from './db.js';
@@ -18,6 +18,470 @@ async function getGoogleWebClientId() {
     } catch (_) {}
     const { GOOGLE_WEB_CLIENT_ID } = await import('./config.default.js');
     return GOOGLE_WEB_CLIENT_ID || '';
+}
+
+async function getKakaoJavascriptKey() {
+    try {
+        const config = await import('./config.js');
+        if (config.KAKAO_JAVASCRIPT_KEY != null && String(config.KAKAO_JAVASCRIPT_KEY).trim() !== '') {
+            return String(config.KAKAO_JAVASCRIPT_KEY).trim();
+        }
+    } catch (_) {}
+    const { KAKAO_JAVASCRIPT_KEY } = await import('./config.default.js');
+    return (KAKAO_JAVASCRIPT_KEY && String(KAKAO_JAVASCRIPT_KEY).trim()) || '';
+}
+
+/**
+ * 브라우저 주소 기준 OAuth Redirect URI (카카오 콘솔 값과 글자 단위로 같아야 함)
+ * 루트는 끝에 `/` 유지 (예: https://www.mealog.net/)
+ */
+export function getKakaoOAuthRedirectUri() {
+    const u = new URL(window.location.href);
+    const path = u.pathname || '/';
+    if (path === '/') {
+        return `${u.origin}/`;
+    }
+    return `${u.origin}${path}`;
+}
+
+/** config.js의 KAKAO_OAUTH_REDIRECT_URI가 있으면 우선 (로컬에서 `/`만 등록했을 때 등) */
+async function resolveKakaoOAuthRedirectUri() {
+    try {
+        const c = await import('./config.js');
+        const o = c.KAKAO_OAUTH_REDIRECT_URI;
+        if (o != null && String(o).trim() !== '') {
+            return String(o).trim();
+        }
+    } catch (_) {
+        /* no config.js */
+    }
+    try {
+        const d = await import('./config.default.js');
+        const o = d.KAKAO_OAUTH_REDIRECT_URI;
+        if (o != null && String(o).trim() !== '') {
+            return String(o).trim();
+        }
+    } catch (_) {
+        /* ignore */
+    }
+    return getKakaoOAuthRedirectUri();
+}
+
+/** 스테이징(Vercel) — Kakao Developers Redirect URI와 문자 단위로 동일해야 함 */
+const STAGING_KAKAO_APP_OAUTH_BRIDGE_URL = 'https://staging-mealog.vercel.app/kakao-app-oauth-bridge.html';
+
+function shouldUseStagingKakaoOAuthBridge() {
+    try {
+        if (typeof window === 'undefined') return false;
+        const host = String(window.location.hostname || '').toLowerCase();
+        if (host === 'staging-mealog.vercel.app' || host === 'www.staging-mealog.vercel.app') {
+            return true;
+        }
+        if (!window.Capacitor?.isNativePlatform?.()) {
+            return false;
+        }
+        const capId = String(window.Capacitor?.config?.appId || '').trim();
+        if (capId === 'com.mealog.app.staging' || capId.includes('staging')) {
+            return true;
+        }
+        /** 번들 APK(server.url 없음): 호스트는 localhost 등 — copy:www 가 넣은 APP_ENV 로 판별 */
+        if (window.APP_ENV === 'staging') {
+            return true;
+        }
+        return false;
+    } catch (_) {
+        return false;
+    }
+}
+
+async function resolveKakaoAppOAuthBridgeUrl() {
+    try {
+        const c = await import('./config.js');
+        const o = c.KAKAO_APP_OAUTH_BRIDGE_URL;
+        if (o != null && String(o).trim() !== '') {
+            return String(o).trim();
+        }
+    } catch (_) {
+        /* no config.js */
+    }
+    if (shouldUseStagingKakaoOAuthBridge()) {
+        return STAGING_KAKAO_APP_OAUTH_BRIDGE_URL;
+    }
+    try {
+        const d = await import('./config.default.js');
+        const o = d.KAKAO_APP_OAUTH_BRIDGE_URL;
+        if (o != null && String(o).trim() !== '') {
+            return String(o).trim();
+        }
+    } catch (_) {
+        /* ignore */
+    }
+    return '';
+}
+
+function isNativeKakaoOAuthCallbackUrl(url) {
+    if (!url || typeof url !== 'string') return false;
+    try {
+        const u = new URL(url);
+        return u.protocol === 'mealogapp:' && u.hostname === 'kakao-oauth';
+    } catch {
+        return false;
+    }
+}
+
+async function finalizeKakaoSignInWithCode(code, redirectUri) {
+    showLoading('카카오 로그인 처리 중...', { skipOnLoginScreen: false });
+    try {
+        const res = await callableFunctions.signInWithKakao({ code, redirectUri });
+        const data = res?.data || {};
+        const customToken = data.customToken;
+        if (!customToken) {
+            showToast('서버에서 로그인 토큰을 받지 못했습니다.', 'error');
+            hideLoading();
+            return;
+        }
+        if (data.kakaoEmailNeedsAgreement === true) {
+            showToast('카카오에서 이메일 제공 동의가 필요합니다. 카카오 로그아웃 후 다시 로그인해 동의 화면을 완료해 주세요.', 'error');
+        } else if (!data.kakaoEmail) {
+            try {
+                const h = window.location.hostname || '';
+                if (h === 'localhost' || h === '127.0.0.1' || h.endsWith('.localhost')) {
+                    console.info(
+                        '[카카오 로그인] 서버가 카카오에서 이메일을 받지 못했습니다. 카카오 콘솔: 카카오 로그인 → OpenID Connect 활성화, 동의항목 account_email, Functions 로그(oidc userinfo·kakao_account)를 확인하세요.'
+                    );
+                }
+            } catch (_) {}
+        }
+        await signInWithCustomToken(auth, customToken);
+        try {
+            if (typeof auth.authStateReady === 'function') {
+                await auth.authStateReady();
+            }
+        } catch (_) {}
+        try {
+            if (auth.currentUser) await auth.currentUser.reload();
+        } catch (_) {}
+        const ke = typeof data.kakaoEmail === 'string' ? data.kakaoEmail.trim() : '';
+        if (ke && ke.includes('@')) {
+            try {
+                await callableFunctions.patchArtifactUserRoot({
+                    setCreatedAt: false,
+                    email: ke,
+                    providerId: 'kakao.com'
+                });
+            } catch (_) {}
+            try {
+                if (!window.userSettings) window.userSettings = {};
+                window.userSettings.email = window.userSettings.email || ke;
+            } catch (_) {}
+        }
+        try {
+            sessionStorage.setItem('mealog_kakaoProfileSetupGate', '1');
+        } catch (_) {}
+        window._recordsLoadHidePending = true;
+        showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
+        showToast('카카오 로그인 성공!', 'success');
+    } catch (error) {
+        console.warn('[카카오 OAuth] 오류:', error?.code, error?.message, error);
+        const msg = error?.message || '';
+        const max = 240;
+        const short = msg.length > max ? `${msg.slice(0, max)}…` : msg || '카카오 로그인에 실패했습니다.';
+        showToast(short, 'error');
+        hideLoading();
+    }
+}
+
+let nativeKakaoOAuthCallbackBusy = false;
+let nativeKakaoAppUrlOpenListenerRegistered = false;
+
+async function handleNativeKakaoOAuthCallback(url) {
+    if (!url || nativeKakaoOAuthCallbackBusy) return;
+    nativeKakaoOAuthCallbackBusy = true;
+    try {
+        let parsed;
+        try {
+            parsed = new URL(url);
+        } catch {
+            return;
+        }
+        const params = parsed.searchParams;
+        const oauthError = params.get('error');
+        const code = params.get('code');
+        const state = params.get('state') || '';
+        let expectedState = '';
+        let redirectUri = '';
+        try {
+            expectedState = sessionStorage.getItem('mealog_kakao_oauth_state') || '';
+            redirectUri = sessionStorage.getItem('mealog_kakao_oauth_redirect_uri') || '';
+        } catch (_) {
+            /* ignore */
+        }
+
+        const Browser = window.Capacitor?.Plugins?.Browser;
+        try {
+            await Browser?.close?.();
+        } catch (_) {
+            /* ignore */
+        }
+
+        if (oauthError) {
+            try {
+                sessionStorage.removeItem('mealog_kakao_oauth_state');
+                sessionStorage.removeItem('mealog_kakao_oauth_redirect_uri');
+            } catch (_) {}
+            if (oauthError !== 'access_denied') {
+                showToast(
+                    ('카카오 로그인 오류: ' + (params.get('error_description') || oauthError)).slice(0, 120),
+                    'error'
+                );
+            }
+            return;
+        }
+        if (!code || !String(code).trim()) return;
+
+        if (!expectedState || state !== expectedState) {
+            try {
+                sessionStorage.removeItem('mealog_kakao_oauth_state');
+                sessionStorage.removeItem('mealog_kakao_oauth_redirect_uri');
+            } catch (_) {}
+            showToast('카카오 로그인 세션이 만료되었습니다. 다시 시도해 주세요.', 'error');
+            return;
+        }
+        if (!redirectUri) {
+            showToast('카카오 로그인 설정 오류입니다. 다시 로그인을 시도해 주세요.', 'error');
+            return;
+        }
+        try {
+            sessionStorage.removeItem('mealog_kakao_oauth_state');
+            sessionStorage.removeItem('mealog_kakao_oauth_redirect_uri');
+        } catch (_) {}
+
+        await finalizeKakaoSignInWithCode(String(code).trim(), redirectUri);
+    } finally {
+        nativeKakaoOAuthCallbackBusy = false;
+    }
+}
+
+function registerNativeKakaoDeepLinkListeners() {
+    if (!isNativePlatform() || nativeKakaoAppUrlOpenListenerRegistered) return;
+    const App = window.Capacitor?.Plugins?.App;
+    if (!App?.addListener) return;
+    nativeKakaoAppUrlOpenListenerRegistered = true;
+    App.addListener('appUrlOpen', ({ url }) => {
+        if (url && isNativeKakaoOAuthCallbackUrl(url)) {
+            void handleNativeKakaoOAuthCallback(url);
+        }
+    });
+}
+
+async function startNativeKakaoOAuthFlow() {
+    showLoading('카카오 로그인 중...', { skipOnLoginScreen: false });
+    try {
+        const bridgeUrl = await resolveKakaoAppOAuthBridgeUrl();
+        if (!bridgeUrl) {
+            showToast(
+                '앱 카카오 로그인용 브리지 URL(KAKAO_APP_OAUTH_BRIDGE_URL)이 비어 있습니다. config를 확인해 주세요.',
+                'error'
+            );
+            hideLoading();
+            return;
+        }
+        const Browser = window.Capacitor?.Plugins?.Browser;
+        if (!Browser?.open) {
+            console.warn('[카카오 로그인] Browser 플러그인(@capacitor/browser)을 찾을 수 없습니다.');
+            showToast('카카오 로그인을 시작할 수 없습니다. 앱을 다시 설치하거나 업데이트해 주세요.', 'error');
+            hideLoading();
+            return;
+        }
+        let state = '';
+        try {
+            if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+                state = crypto.randomUUID();
+            } else {
+                state = `s${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+            }
+        } catch (_) {
+            state = `s${Date.now()}`;
+        }
+        try {
+            sessionStorage.setItem('mealog_kakao_oauth_state', state);
+            sessionStorage.setItem('mealog_kakao_oauth_redirect_uri', bridgeUrl);
+        } catch (e) {
+            console.warn('[카카오 로그인] sessionStorage 저장 실패:', e);
+            showToast('로그인 세션을 저장할 수 없습니다.', 'error');
+            hideLoading();
+            return;
+        }
+        const authRes = await callableFunctions.getKakaoOAuthAuthorizeUrl({
+            redirectUri: bridgeUrl,
+            state
+        });
+        const authorizeUrl = authRes?.data?.authorizeUrl;
+        if (!authorizeUrl) {
+            showToast('카카오 로그인 주소를 받지 못했습니다. 잠시 후 다시 시도해 주세요.', 'error');
+            hideLoading();
+            return;
+        }
+        await Browser.open({ url: authorizeUrl });
+        hideLoading();
+    } catch (error) {
+        console.warn('[카카오 로그인] 네이티브 시작 오류:', error?.message, error);
+        const msg = error?.message || '카카오 로그인을 시작하지 못했습니다.';
+        showToast(msg.length > 120 ? `${msg.slice(0, 120)}…` : msg, 'error');
+        hideLoading();
+    }
+}
+
+const KAKAO_SDK_URL = 'https://t1.kakaocdn.net/kakao_js_sdk/2.8.0/kakao.min.js';
+let kakaoSdkLoadPromise = null;
+
+/** 스크립트만 로드됨(init 전에는 Kakao.Auth가 아직 없음 — SDK가 init 안에서 Auth를 붙임) */
+function isKakaoSdkScriptPresent() {
+    return typeof window !== 'undefined' && window.Kakao && typeof window.Kakao.init === 'function';
+}
+
+function isKakaoLoginReadyAfterInit() {
+    return typeof window?.Kakao?.Auth?.authorize === 'function';
+}
+
+function loadKakaoJavascriptSdk() {
+    if (isKakaoSdkScriptPresent()) {
+        return Promise.resolve();
+    }
+    if (kakaoSdkLoadPromise) return kakaoSdkLoadPromise;
+    kakaoSdkLoadPromise = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = KAKAO_SDK_URL;
+        s.async = true;
+        s.dataset.mealogKakaoSdk = '1';
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('카카오 SDK 로드 실패'));
+        document.head.appendChild(s);
+    });
+    return kakaoSdkLoadPromise;
+}
+
+function stripKakaoOAuthParamsFromUrl() {
+    try {
+        const u = new URL(window.location.href);
+        ['code', 'state', 'error', 'error_description'].forEach((k) => u.searchParams.delete(k));
+        const q = u.searchParams.toString();
+        const path = u.pathname + (q ? `?${q}` : '') + u.hash;
+        history.replaceState({}, '', path);
+    } catch (_) {
+        /* ignore */
+    }
+}
+
+/**
+ * 카카오 로그인 후 redirectUri로 돌아온 URL의 ?code= 처리 (페이지 1회)
+ */
+export async function tryCompleteKakaoOAuthReturn() {
+    if (isNativePlatform() || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const oauthError = params.get('error');
+    const code = params.get('code');
+    if (oauthError) {
+        stripKakaoOAuthParamsFromUrl();
+        if (oauthError !== 'access_denied') {
+            showToast(
+                '카카오 로그인 오류: ' + (params.get('error_description') || oauthError).slice(0, 120),
+                'error'
+            );
+        }
+        return;
+    }
+    if (!code || !code.trim()) return;
+
+    const redirectUri = await resolveKakaoOAuthRedirectUri();
+    try {
+        await finalizeKakaoSignInWithCode(code.trim(), redirectUri);
+    } finally {
+        stripKakaoOAuthParamsFromUrl();
+    }
+}
+
+export async function handleKakaoLogin() {
+    if (isNativePlatform()) {
+        await startNativeKakaoOAuthFlow();
+        return;
+    }
+    showLoading('카카오 로그인 중...', { skipOnLoginScreen: false });
+    try {
+        const appKey = await getKakaoJavascriptKey();
+        if (!appKey) {
+            showToast(
+                '웹 카카오 로그인: KAKAO_JAVASCRIPT_KEY가 필요합니다. 루트에 .env 를 두고 npm run build 하거나, js/config.js에 직접 넣으세요. (설치형 앱은 Browser 플로우로 이 키를 쓰지 않습니다.)',
+                'error'
+            );
+            hideLoading();
+            return;
+        }
+        await loadKakaoJavascriptSdk();
+        const Kakao = window.Kakao;
+        if (!isKakaoSdkScriptPresent()) {
+            showToast('카카오 로그인 SDK를 불러오지 못했습니다.', 'error');
+            hideLoading();
+            return;
+        }
+        try {
+            if (typeof Kakao.isInitialized === 'function' && Kakao.isInitialized()) {
+                /* noop */
+            } else {
+                Kakao.init(appKey);
+            }
+        } catch (initErr) {
+            const already = String(initErr?.message || initErr).toLowerCase().includes('already');
+            if (!already) throw initErr;
+        }
+        if (!isKakaoLoginReadyAfterInit()) {
+            showToast('카카오 SDK 초기화에 실패했습니다. 앱 키(JavaScript 키)를 확인해 주세요.', 'error');
+            hideLoading();
+            return;
+        }
+        const redirectUri = await resolveKakaoOAuthRedirectUri();
+        console.info(
+            '[카카오 로그인] redirectUri:',
+            redirectUri,
+            '→ Kakao Developers > 플랫폼 키 > JavaScript 키 > Redirect URI·JavaScript SDK 도메인에 동일하게 등록했는지 확인하세요.'
+        );
+        // PC 브라우저에서 throughTalk: true 는 카카오톡 간편로그인 경로를 타며, 환경에 따라 kauth 400이 날 수 있음
+        const preferTalkEasyLogin = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+        const host = window.location.hostname || '';
+        const isLocalDev =
+            host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host.endsWith('.localhost');
+        // 로컬에서 is_popup=false 전체 이동 시 kauth 400이 나는 환경이 있어 팝업 플로우 시도
+        // 동의 항목: 카카오 개발자 콘솔 > 앱 > 카카오 로그인 > 동의항목에서도 활성화 필요 (특히 카카오계정 이메일)
+        const authorizeOpts = {
+            redirectUri,
+            throughTalk: preferTalkEasyLogin,
+            // openid: 토큰 응답의 id_token(JWT)에 email 클레임이 올 수 있음 — 카카오 콘솔에서 OpenID Connect 활성화 필요할 수 있음
+            scope: 'profile_nickname,profile_image,account_email,openid'
+        };
+        if (isLocalDev) {
+            authorizeOpts.isPopup = true;
+            console.info('[카카오 로그인] 로컬: 팝업 창이 열립니다. 차단 시 주소창에서 팝업을 허용해 주세요.');
+        }
+        await Kakao.Auth.authorize(authorizeOpts);
+        /* 성공 시 카카오로 리다이렉트되어 이후 코드는 실행되지 않음 */
+    } catch (error) {
+        console.warn('[카카오 로그인] 오류:', error?.code, error?.error, error?.message, error);
+        const msg =
+            error?.message ||
+            error?.error_description ||
+            (typeof error?.error === 'string' ? error.error : '') ||
+            '';
+        const cancelled =
+            msg.includes('cancel') ||
+            msg.includes('취소') ||
+            error?.error === 'access_denied' ||
+            error?.error === 'user_cancelled';
+        if (!cancelled) {
+            const short = msg.length > 80 ? `${msg.slice(0, 80)}…` : msg || '로그인에 실패했습니다.';
+            showToast(short, 'error');
+        }
+        hideLoading();
+    }
 }
 
 export async function handleGoogleLogin() {
@@ -564,7 +1028,25 @@ export async function switchToLogin() {
 }
 
 export async function initAuth(onAuthStateChangedCallback) {
-    // Redirect 로그인 복귀 시 결과 처리 (웹에서만 사용, 네이티브는 SocialLogin 사용)
+    // 카카오 OAuth·로그인보다 먼저: 토큰 확보 전 Firestore 쓰기 시 permission-denied 방지
+    await appCheckInitPromise;
+    if (isNativePlatform()) {
+        registerNativeKakaoDeepLinkListeners();
+        try {
+            const App = window.Capacitor?.Plugins?.App;
+            if (App?.getLaunchUrl) {
+                const { url } = await App.getLaunchUrl();
+                if (url && isNativeKakaoOAuthCallbackUrl(url)) {
+                    await handleNativeKakaoOAuthCallback(url);
+                }
+            }
+        } catch (_) {
+            /* cold start 딥링크 없음 등 */
+        }
+    } else {
+        await tryCompleteKakaoOAuthReturn();
+    }
+    // Redirect 로그인 복귀 시 결과 처리 (웹 전용; 네이티브 구글은 SocialLogin, 카카오는 Browser+딥링크)
     if (isNativePlatform()) {
         try {
             const result = await getRedirectResult(auth);
@@ -616,7 +1098,7 @@ export async function showTermsModal() {
                             isExistingUser = authFlowManager._cachedExistingUser;
                         } else {
                             // 캐시가 없으면 약관 모달에서만 확인 (로그인 플로우를 지연시키지 않음)
-                            const { collection, query, limit, getDocs } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                            const { collection, query, limit, getDocs } = await import("https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js");
                             const { db, appId } = await import('./firebase.js');
                             const mealsColl = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meals');
                             const mealsSnapshot = await getDocs(query(mealsColl, limit(1)));
@@ -657,6 +1139,13 @@ export function closeTermsModal() {
     const modal = document.getElementById('termsModal');
     if (modal) {
         modal.classList.add('hidden');
+    }
+    try {
+        if (typeof window.scheduleAttendanceCheckIfNeeded === 'function') {
+            queueMicrotask(() => window.scheduleAttendanceCheckIfNeeded());
+        }
+    } catch (_) {
+        /* ignore */
     }
 }
 
@@ -863,6 +1352,13 @@ export function closeProfileSetupModal() {
     const modal = document.getElementById('profileSetupModal');
     if (modal) {
         modal.classList.add('hidden');
+    }
+    try {
+        if (typeof window.scheduleAttendanceCheckIfNeeded === 'function') {
+            queueMicrotask(() => window.scheduleAttendanceCheckIfNeeded());
+        }
+    } catch (_) {
+        /* ignore */
     }
 }
 

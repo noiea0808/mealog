@@ -9,6 +9,7 @@ const www = path.join(root, 'www');
 
 const toCopy = [
   'index.html',
+  'kakao-app-oauth-bridge.html',
   'privacy.html',
   'manifest.json',
   'sw.js',
@@ -72,6 +73,7 @@ const splashScreenPlugin = path.join(root, 'node_modules', '@capacitor', 'splash
 const sharePlugin = path.join(root, 'node_modules', '@capacitor', 'share', 'dist', 'plugin.js');
 const filesystemPlugin = path.join(root, 'node_modules', '@capacitor', 'filesystem', 'dist', 'plugin.js');
 const appPlugin = path.join(root, 'node_modules', '@capacitor', 'app', 'dist', 'plugin.js');
+const browserPlugin = path.join(root, 'node_modules', '@capacitor', 'browser', 'dist', 'plugin.js');
 const pushNotificationsPlugin = path.join(root, 'node_modules', '@capacitor', 'push-notifications', 'dist', 'plugin.js');
 const hapticsPlugin = path.join(root, 'node_modules', '@capacitor', 'haptics', 'dist', 'plugin.js');
 copyCapacitorAsset(capacitorCore, 'capacitor.js');
@@ -80,6 +82,7 @@ copyCapacitorAsset(splashScreenPlugin, 'capacitor-splash-screen-plugin.js');
 copyCapacitorAsset(sharePlugin, 'capacitor-share-plugin.js');
 copyCapacitorAsset(filesystemPlugin, 'capacitor-filesystem-plugin.js');
 copyCapacitorAsset(appPlugin, 'capacitor-app-plugin.js');
+copyCapacitorAsset(browserPlugin, 'capacitor-browser-plugin.js');
 copyCapacitorAsset(pushNotificationsPlugin, 'capacitor-push-notifications-plugin.js');
 copyCapacitorAsset(hapticsPlugin, 'capacitor-haptics-plugin.js');
 const badgePlugin = path.join(root, 'node_modules', '@capawesome', 'capacitor-badge', 'dist', 'plugin.js');

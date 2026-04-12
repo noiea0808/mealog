@@ -51,7 +51,7 @@ function getMealDelta(meal, increment) {
     if (meal.rating != null) add(delta.main.rating, String(meal.rating), String(meal.rating));
     if (meal.satiety != null) add(delta.main.satiety, String(meal.satiety), String(meal.satiety));
   } else if (isSnack) {
-    const place = (meal.place || '').trim();
+    const place = ((meal.snackPlaceMain || meal.place) || '').trim();
     if (place) add(delta.snack.place, place, place);
     const st = (meal.snackType || '').trim();
     if (st) add(delta.snack.snackType, st, st);

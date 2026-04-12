@@ -3,7 +3,7 @@
  */
 import { appState, getState } from '../state.js';
 import { auth, db, appId } from '../firebase.js';
-import { signOut } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+import { signOut } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import {
     dbOps,
     setupListeners,
@@ -33,8 +33,8 @@ import {
     orderBy,
     getDocs,
     getDocsFromServer
-} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
-import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
+import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from '../ui.js';
 import {
     getDisplayProfile,
@@ -172,6 +172,7 @@ import {
     selectKakaoPlace
 } from '../modals.js';
 import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from '../constants.js';
+import { logUsageMetric } from '../usage-metrics.js';
 import { normalizeUrl } from '../utils.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';
 
@@ -190,6 +191,8 @@ window.switchBoardListSubTab = (sub) => {
         return;
     }
     appState.boardListSubTab = next;
+    if (next === 'feed') logUsageMetric('lounge_mealtalk').catch(() => {});
+    else logUsageMetric('lounge_board').catch(() => {});
     renderBoard(window.currentBoardCategory || 'all');
     try {
         if (next === 'feed' && typeof window.markBoardFeedSubtabSeen === 'function') {
@@ -421,7 +424,7 @@ window.submitBoardPost = async () => {
         return;
     }
     if (isDemoUser(window.currentUser)) {
-        showToast('샘플 계정에서는 글을 작성할 수 없습니다.', 'info');
+        showToast('샘플 계정에서는 글을 작성할 수 없습니다.', 'error');
         return;
     }
     // 모바일 IME(한글 등) 조합 중인 텍스트가 반영되도록 blur 후 대기
@@ -625,7 +628,7 @@ window.toggleBoardLike = async (postId, isLike) => {
         return;
     }
     if (isDemoUser(window.currentUser)) {
-        showToast(DEMO_TOAST_CANNOT_LIKE, 'info');
+        showToast(DEMO_TOAST_CANNOT_LIKE, 'error');
         return;
     }
     
@@ -662,7 +665,7 @@ window.toggleBoardBookmark = async (postId) => {
         return;
     }
     if (isDemoUser(window.currentUser)) {
-        showToast(DEMO_TOAST_CANNOT_BOOKMARK, 'info');
+        showToast(DEMO_TOAST_CANNOT_BOOKMARK, 'error');
         return;
     }
     
@@ -755,7 +758,7 @@ window.toggleNoticeLike = async (noticeId, isLike = true) => {
         return;
     }
     if (isDemoUser(window.currentUser)) {
-        showToast(DEMO_TOAST_CANNOT_LIKE, 'info');
+        showToast(DEMO_TOAST_CANNOT_LIKE, 'error');
         return;
     }
     
@@ -791,7 +794,7 @@ window.toggleNoticeBookmark = async (noticeId) => {
         return;
     }
     if (isDemoUser(window.currentUser)) {
-        showToast(DEMO_TOAST_CANNOT_BOOKMARK, 'info');
+        showToast(DEMO_TOAST_CANNOT_BOOKMARK, 'error');
         return;
     }
     

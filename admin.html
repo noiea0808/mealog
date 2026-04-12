@@ -126,8 +126,18 @@
 
             <!-- 대시보드 탭 (현황판: 캐시 문서 1회만 조회, 통계 새로고침 시에만 전체 집계) -->
             <div id="admin-tab-content-dashboard" class="admin-tab-content">
-                <!-- 기간별 통계 테이블 -->
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 mb-3">
+                    <div class="flex gap-2 overflow-x-auto scrollbar-hide">
+                        <button type="button" onclick="window.switchDashboardSubtab('trend')" id="dashboard-subtab-trend" class="px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors">
+                            <i class="fa-solid fa-chart-line mr-2" aria-hidden="true"></i>트렌드
+                        </button>
+                        <button type="button" onclick="window.switchDashboardSubtab('page')" id="dashboard-subtab-page" class="px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                            <i class="fa-solid fa-table-columns mr-2" aria-hidden="true"></i>페이지별
+                        </button>
+                    </div>
+                </div>
+                <!-- 트렌드: 기존 기간별 통계 -->
+                <div id="dashboard-panel-trend" class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-4">
                     <div class="overflow-x-auto">
                         <table id="adminDashboardStatsTable" class="min-w-max w-full text-left text-sm border-separate border-spacing-0">
                             <thead>
@@ -291,12 +301,42 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="px-4 py-3 border-t border-slate-100 bg-slate-50/50 flex flex-wrap items-center justify-end gap-3">
-                        <span id="dashboardStatsUpdatedAt" class="text-xs text-slate-500">마지막 업데이트: -</span>
-                        <button type="button" id="dashboardStatsRefreshBtn" onclick="window.refreshDashboardStats()" class="inline-flex items-center justify-center gap-2 px-4 py-2 min-w-[9.5rem] bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors shrink-0 disabled:opacity-90 disabled:cursor-wait" aria-live="polite">
-                            <i class="fa-solid fa-rotate-right" aria-hidden="true"></i><span>통계 새로고침</span>
-                        </button>
+                </div>
+                <!-- 페이지별: 화면·클릭 수 (usageDaily) -->
+                <div id="dashboard-panel-page" class="hidden bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-4">
+                    <p class="px-4 pt-4 pb-2 text-xs text-slate-500 leading-relaxed"><span class="font-bold text-slate-600">탭 방문</span> 행은 하단 네비로 해당 메인 화면에 들어올 때마다 1회씩 올라가는 <span class="font-bold text-slate-600">페이지 방문 수</span>입니다. <span class="font-bold text-slate-600">그 외 행</span>은 코멘트·상세 모달·설정 하위 탭·라운지 서브탭 등 <span class="font-bold text-slate-600">조작(클릭) 횟수</span>입니다. 「전체」는 누적,「최근 7일」은 일별입니다.</p>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-max w-full text-left text-sm border-separate border-spacing-0" id="adminDashboardPageUsageTable">
+                            <thead>
+                                <tr class="border-b border-slate-200 bg-slate-50" id="dashboardPageHeadRow1">
+                                    <th rowspan="2" class="px-2 py-1.5 font-black text-slate-700 uppercase text-xs sticky left-0 z-30 bg-slate-50 w-[7.5rem] min-w-[7.5rem] max-w-[7.5rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.15)] border-r border-slate-200/90 align-middle">구분 · 항목</th>
+                                    <th rowspan="2" class="px-2 py-1.5 font-black text-slate-700 uppercase text-center text-xs min-w-[4rem] sticky left-[7.5rem] z-30 bg-slate-50 shadow-[4px_0_12px_-6px_rgba(0,0,0,0.15)] border-r border-slate-200/90 align-middle">전체</th>
+                                    <th colspan="8" id="dashboardPageHead7dTop" class="px-2 py-1.5 font-black text-slate-700 uppercase text-center border-x border-slate-200 bg-slate-100/80 text-xs tracking-wide align-middle">최근 7일</th>
+                                </tr>
+                                <tr class="border-b border-slate-200 bg-slate-50/90 text-[11px]" id="dashboardPageHeadRow2">
+                                    <th id="pageDashboard7dSumHead" class="px-2 py-1 text-center font-bold text-slate-600 min-w-[3rem] border-l border-slate-200 bg-slate-50/90">7일 합</th>
+                                    <th id="pageDashboard7dHead0" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
+                                    <th id="pageDashboard7dHead1" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
+                                    <th id="pageDashboard7dHead2" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
+                                    <th id="pageDashboard7dHead3" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
+                                    <th id="pageDashboard7dHead4" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
+                                    <th id="pageDashboard7dHead5" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
+                                    <th id="pageDashboard7dHead6" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] border-r border-slate-200 bg-slate-50/90">—</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dashboardPageUsageTableBody"></tbody>
+                        </table>
                     </div>
+                    <div class="px-4 py-3 border-t border-slate-100 bg-slate-50/90">
+                        <p class="text-xs font-bold text-slate-600 mb-1">통계에서 제외한 UID</p>
+                        <p class="text-xs font-mono text-slate-600 break-all leading-relaxed" id="dashboardPageUsageExcludedUidList"></p>
+                    </div>
+                </div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 flex flex-wrap items-center justify-end gap-3 mb-8">
+                    <span id="dashboardStatsUpdatedAt" class="text-xs text-slate-500">마지막 업데이트: -</span>
+                    <button type="button" id="dashboardStatsRefreshBtn" onclick="window.refreshDashboardStats()" class="inline-flex items-center justify-center gap-2 px-4 py-2 min-w-[9.5rem] bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors shrink-0 disabled:opacity-90 disabled:cursor-wait" aria-live="polite">
+                        <i class="fa-solid fa-rotate-right" aria-hidden="true"></i><span>통계 새로고침</span>
+                    </button>
                 </div>
             </div>
 
@@ -1210,27 +1250,32 @@
                 <div class="flex flex-col gap-4">
                     <div class="w-full">
                         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
-                            <div class="flex gap-2 overflow-x-auto scrollbar-hide">
-                                <button onclick="window.switchContentSidebar('mealog')" id="content-sidebar-mealog" class="w-auto px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors">
-                                    <i class="fa-solid fa-robot mr-2"></i>MEALOG
-                                </button>
-                                <button onclick="window.switchContentSidebar('characters')" id="content-sidebar-characters" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
-                                    <i class="fa-solid fa-user-astronaut mr-2"></i>AI 캐릭터
-                                </button>
-                                <button onclick="window.switchContentSidebar('terms')" id="content-sidebar-terms" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
-                                    <i class="fa-solid fa-file-contract mr-2"></i>약관
-                                </button>
-                                <button onclick="window.switchContentSidebar('demoGuide')" id="content-sidebar-demoGuide" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
-                                    <i class="fa-solid fa-compass mr-2"></i>체험 가이드
-                                </button>
-                                <button onclick="window.switchContentSidebar('tags')" id="content-sidebar-tags" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
-                                    <i class="fa-solid fa-tags mr-2"></i>태그관리
-                                </button>
-                                <button onclick="window.switchContentSidebar('apk')" id="content-sidebar-apk" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                            <div class="flex items-center gap-2">
+                                <div class="flex gap-2 overflow-x-auto flex-1 min-w-0 scrollbar-hide">
+                                    <button onclick="window.switchContentSidebar('mealog')" id="content-sidebar-mealog" class="w-auto px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors">
+                                        <i class="fa-solid fa-robot mr-2"></i>MEALOG
+                                    </button>
+                                    <button onclick="window.switchContentSidebar('characters')" id="content-sidebar-characters" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                        <i class="fa-solid fa-user-astronaut mr-2"></i>AI 캐릭터
+                                    </button>
+                                    <button onclick="window.switchContentSidebar('terms')" id="content-sidebar-terms" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                        <i class="fa-solid fa-file-contract mr-2"></i>약관
+                                    </button>
+                                    <button onclick="window.switchContentSidebar('demoGuide')" id="content-sidebar-demoGuide" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                        <i class="fa-solid fa-compass mr-2"></i>체험 가이드
+                                    </button>
+                                    <button onclick="window.switchContentSidebar('tags')" id="content-sidebar-tags" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                        <i class="fa-solid fa-tags mr-2"></i>태그관리
+                                    </button>
+                                    <button type="button" onclick="window.switchContentSidebar('settings', { sub: 'welcome' })" id="content-sidebar-settings" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                        <i class="fa-solid fa-message mr-2"></i>웰컴메시지
+                                    </button>
+                                    <button type="button" onclick="window.switchContentSidebar('settings', { sub: 'displayName' })" id="content-sidebar-displayName" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                        <i class="fa-solid fa-user-tag mr-2"></i>관리자명
+                                    </button>
+                                </div>
+                                <button onclick="window.switchContentSidebar('apk')" id="content-sidebar-apk" class="shrink-0 w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                     <i class="fa-solid fa-mobile-screen mr-2"></i>APK 배포
-                                </button>
-                                <button onclick="window.switchContentSidebar('settings')" id="content-sidebar-settings" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
-                                    <i class="fa-solid fa-gear mr-2"></i>관리자 설정
                                 </button>
                             </div>
                         </div>
@@ -1570,20 +1615,191 @@
                             </div>
                         </div>
                         
-                        <!-- 관리자 설정 -->
+                        <!-- 웰컴메시지 (좌측: 문구/API · 상단 탭: 관리자명) -->
                         <div id="content-main-settings" class="content-main-section hidden">
-                            <div class="flex flex-col lg:flex-row gap-4">
-                                <aside class="w-full lg:w-44 shrink-0 flex flex-col gap-1.5 bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
+                            <div class="flex flex-col lg:flex-row gap-4 lg:gap-8">
+                                <aside class="w-full lg:w-32 shrink-0 flex flex-col gap-1.5 bg-white rounded-2xl shadow-sm border border-slate-100 p-3 lg:pr-2">
                                     <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide px-1 mb-0.5">메뉴</p>
-                                    <button type="button" data-settings-sub="displayName" class="admin-settings-subnav-btn w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold border transition-colors text-emerald-600 bg-emerald-50 border-emerald-200">
-                                        관리자명
-                                    </button>
-                                    <button type="button" data-settings-sub="welcome" class="admin-settings-subnav-btn w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold border transition-colors text-slate-600 bg-white border-slate-200 hover:bg-slate-50">
+                                    <button type="button" data-settings-sub="welcome" class="admin-settings-subnav-btn w-full text-left px-4 py-2 rounded-xl text-sm font-bold border transition-colors text-emerald-600 bg-emerald-50 border-emerald-200">
                                         웰컴메시지
+                                    </button>
+                                    <button type="button" data-settings-sub="welcome_api" class="admin-settings-subnav-btn w-full text-left px-4 py-2 rounded-xl text-sm font-bold border transition-colors text-slate-500 bg-white border-slate-200 hover:bg-slate-50">
+                                        웰컴_API
                                     </button>
                                 </aside>
                                 <div class="flex-1 min-w-0 flex flex-col gap-4">
-                                    <div id="adminSettingsSub-displayName" class="admin-settings-subpanel bg-white rounded-2xl shadow-sm border border-slate-100">
+                                    <div id="adminSettingsSub-welcome" class="admin-settings-subpanel bg-white rounded-2xl shadow-sm border border-slate-100">
+                                        <div class="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                                            <h2 class="text-lg font-black text-slate-800">웰컴메시지</h2>
+                                            <button type="button" onclick="window.saveAttendancePopupSettings()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                                저장
+                                            </button>
+                                        </div>
+                                        <div class="p-6 space-y-4">
+                                            <p class="text-sm text-slate-600 leading-relaxed">문구는 스테이징·운영 공통입니다. 연속 2일 이상에는 <code class="text-sm px-1.5 py-0.5 rounded bg-slate-100">{streak}</code>을 넣으면 어제까지 이어진 일수로 바뀝니다. 빈 칸은 앱 기본 문구를 씁니다.</p>
+                                            <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                                                <table class="w-full min-w-[52rem] text-sm border-collapse table-fixed">
+                                                    <thead>
+                                                        <tr class="border-b border-slate-200 bg-slate-50/95 text-left text-sm font-black text-slate-600">
+                                                            <th class="px-3 py-3 w-[24%] align-middle">케이스</th>
+                                                            <th class="px-1 py-3 w-[15%] align-middle text-center">노출 빈도<br><span class="text-amber-700 font-bold">스테이징</span></th>
+                                                            <th class="px-1 py-3 w-[15%] align-middle text-center">노출 빈도<br><span class="text-slate-700 font-bold">운영</span></th>
+                                                            <th class="px-2 py-3 w-[8%] align-middle text-center font-bold text-slate-500">이모티콘</th>
+                                                            <th class="px-3 py-3 align-middle">문구 <span class="font-normal text-slate-400">(공통)</span></th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody class="divide-y divide-slate-100 text-sm">
+                                                        <tr>
+                                                            <td class="px-3 py-3 align-top font-bold text-slate-800 leading-snug">기록이 없는 경우</td>
+                                                            <td class="px-1 py-2 align-top">
+                                                                <div class="attendance-welcome-freq-switch inline-flex w-max max-w-full mx-auto justify-center shrink-0 p-1 rounded-xl bg-amber-50/90 ring-1 ring-amber-200/70 gap-0.5" role="radiogroup" aria-label="기록 없음·스테이징 빈도">
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceNoRecordStagingFreq" value="off" class="peer sr-only"><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-amber-900 peer-checked:shadow-sm">안 함</span></label>
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceNoRecordStagingFreq" value="once_per_day" class="peer sr-only"><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-sm">하루 1회</span></label>
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceNoRecordStagingFreq" value="every_session" class="peer sr-only" checked><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-sm">접속마다</span></label>
+                                                                </div>
+                                                            </td>
+                                                            <td class="px-1 py-2 align-top">
+                                                                <div class="attendance-welcome-freq-switch inline-flex w-max max-w-full mx-auto justify-center shrink-0 p-1 rounded-xl bg-slate-100/95 ring-1 ring-slate-200/80 gap-0.5" role="radiogroup" aria-label="기록 없음·운영 빈도">
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceNoRecordProductionFreq" value="off" class="peer sr-only"><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-slate-900 peer-checked:shadow-sm">안 함</span></label>
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceNoRecordProductionFreq" value="once_per_day" class="peer sr-only"><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-sm">하루 1회</span></label>
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceNoRecordProductionFreq" value="every_session" class="peer sr-only" checked><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-sm">접속마다</span></label>
+                                                                </div>
+                                                            </td>
+                                                            <td class="px-1 py-2 align-middle text-center"><span class="inline-block origin-center scale-[0.72] text-2xl leading-none select-none" title="앱 웰컴과 동일" aria-hidden="true">❤️</span></td>
+                                                            <td class="px-3 py-2 align-top"><textarea id="attendanceNoMessage" rows="2" maxlength="500" placeholder="예: 우리 오늘부터&#10;시작하는거죠?!" class="w-full min-w-0 px-2.5 py-2 border border-slate-200 rounded-lg text-sm leading-snug outline-none focus:border-emerald-500 bg-white resize-y min-h-[3rem] font-sans"></textarea></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td class="px-3 py-3 align-top font-bold text-slate-800 leading-snug">연속 기록이 없는 경우 <span class="block text-xs font-semibold text-slate-500 mt-0.5 font-normal">(어제 기록 없음)</span></td>
+                                                            <td class="px-1 py-2 align-top">
+                                                                <div class="attendance-welcome-freq-switch inline-flex w-max max-w-full mx-auto justify-center shrink-0 p-1 rounded-xl bg-amber-50/90 ring-1 ring-amber-200/70 gap-0.5" role="radiogroup" aria-label="연속 없음·스테이징">
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceNoStreakStagingFreq" value="off" class="peer sr-only"><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-amber-900 peer-checked:shadow-sm">안 함</span></label>
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceNoStreakStagingFreq" value="once_per_day" class="peer sr-only"><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-sm">하루 1회</span></label>
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceNoStreakStagingFreq" value="every_session" class="peer sr-only" checked><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-sm">접속마다</span></label>
+                                                                </div>
+                                                            </td>
+                                                            <td class="px-1 py-2 align-top">
+                                                                <div class="attendance-welcome-freq-switch inline-flex w-max max-w-full mx-auto justify-center shrink-0 p-1 rounded-xl bg-slate-100/95 ring-1 ring-slate-200/80 gap-0.5" role="radiogroup" aria-label="연속 없음·운영">
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceNoStreakProductionFreq" value="off" class="peer sr-only"><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-slate-900 peer-checked:shadow-sm">안 함</span></label>
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceNoStreakProductionFreq" value="once_per_day" class="peer sr-only"><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-sm">하루 1회</span></label>
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceNoStreakProductionFreq" value="every_session" class="peer sr-only" checked><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-sm">접속마다</span></label>
+                                                                </div>
+                                                            </td>
+                                                            <td class="px-1 py-2 align-middle text-center"><span class="inline-block origin-center scale-[0.72] text-2xl leading-none select-none" title="앱 웰컴과 동일" aria-hidden="true">🌱</span></td>
+                                                            <td class="px-3 py-2 align-top"><textarea id="attendanceNoStreakMessage" rows="2" maxlength="500" placeholder="밀로그하기 좋은 날!!" class="w-full min-w-0 px-2.5 py-2 border border-slate-200 rounded-lg text-sm leading-snug outline-none focus:border-emerald-500 bg-white resize-y min-h-[3rem] font-sans"></textarea></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td class="px-3 py-3 align-top font-bold text-slate-800 leading-snug">연속 기록이 1일인 경우</td>
+                                                            <td class="px-1 py-2 align-top">
+                                                                <div class="attendance-welcome-freq-switch inline-flex w-max max-w-full mx-auto justify-center shrink-0 p-1 rounded-xl bg-amber-50/90 ring-1 ring-amber-200/70 gap-0.5" role="radiogroup" aria-label="연속 1일·스테이징">
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceStreakOneStagingFreq" value="off" class="peer sr-only"><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-amber-900 peer-checked:shadow-sm">안 함</span></label>
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceStreakOneStagingFreq" value="once_per_day" class="peer sr-only"><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-sm">하루 1회</span></label>
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceStreakOneStagingFreq" value="every_session" class="peer sr-only" checked><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-sm">접속마다</span></label>
+                                                                </div>
+                                                            </td>
+                                                            <td class="px-1 py-2 align-top">
+                                                                <div class="attendance-welcome-freq-switch inline-flex w-max max-w-full mx-auto justify-center shrink-0 p-1 rounded-xl bg-slate-100/95 ring-1 ring-slate-200/80 gap-0.5" role="radiogroup" aria-label="연속 1일·운영">
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceStreakOneProductionFreq" value="off" class="peer sr-only"><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-slate-900 peer-checked:shadow-sm">안 함</span></label>
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceStreakOneProductionFreq" value="once_per_day" class="peer sr-only"><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-sm">하루 1회</span></label>
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceStreakOneProductionFreq" value="every_session" class="peer sr-only" checked><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-sm">접속마다</span></label>
+                                                                </div>
+                                                            </td>
+                                                            <td class="px-1 py-2 align-middle text-center"><span class="inline-block origin-center scale-[0.72] text-2xl leading-none select-none" title="앱 웰컴과 동일" aria-hidden="true">👍</span></td>
+                                                            <td class="px-3 py-2 align-top"><textarea id="attendanceStreakOneMessage" rows="2" maxlength="500" placeholder="2일 연속 기록 도전중!!" class="w-full min-w-0 px-2.5 py-2 border border-slate-200 rounded-lg text-sm leading-snug outline-none focus:border-emerald-500 bg-white resize-y min-h-[3rem] font-sans"></textarea></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td class="px-3 py-3 align-top font-bold text-slate-800 leading-snug">연속 기록이 2일 이상인 경우</td>
+                                                            <td class="px-1 py-2 align-top">
+                                                                <div class="attendance-welcome-freq-switch inline-flex w-max max-w-full mx-auto justify-center shrink-0 p-1 rounded-xl bg-amber-50/90 ring-1 ring-amber-200/70 gap-0.5" role="radiogroup" aria-label="연속 2일+·스테이징">
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceStreakMultiStagingFreq" value="off" class="peer sr-only"><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-amber-900 peer-checked:shadow-sm">안 함</span></label>
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceStreakMultiStagingFreq" value="once_per_day" class="peer sr-only"><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-sm">하루 1회</span></label>
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceStreakMultiStagingFreq" value="every_session" class="peer sr-only" checked><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-sm">접속마다</span></label>
+                                                                </div>
+                                                            </td>
+                                                            <td class="px-1 py-2 align-top">
+                                                                <div class="attendance-welcome-freq-switch inline-flex w-max max-w-full mx-auto justify-center shrink-0 p-1 rounded-xl bg-slate-100/95 ring-1 ring-slate-200/80 gap-0.5" role="radiogroup" aria-label="연속 2일+·운영">
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceStreakMultiProductionFreq" value="off" class="peer sr-only"><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-slate-900 peer-checked:shadow-sm">안 함</span></label>
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceStreakMultiProductionFreq" value="once_per_day" class="peer sr-only"><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-sm">하루 1회</span></label>
+                                                                    <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceStreakMultiProductionFreq" value="every_session" class="peer sr-only" checked><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-sm">접속마다</span></label>
+                                                                </div>
+                                                            </td>
+                                                            <td class="px-1 py-2 align-middle text-center"><span class="inline-block origin-center scale-[0.72] text-2xl leading-none select-none" title="앱 웰컴과 동일" aria-hidden="true">👍</span></td>
+                                                            <td class="px-3 py-2 align-top"><textarea id="attendanceStreakMultiMessage" rows="2" maxlength="500" placeholder="{streak}일 연속 기록 중!" class="w-full min-w-0 px-2.5 py-2 border border-slate-200 rounded-lg text-sm leading-snug outline-none focus:border-emerald-500 bg-white resize-y min-h-[3rem] font-sans"></textarea></td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="adminSettingsSub-welcome_api" class="admin-settings-subpanel hidden bg-white rounded-2xl shadow-sm border border-slate-100">
+                                        <div class="p-6 border-b border-slate-100 flex flex-col gap-4">
+                                            <div>
+                                                <h2 class="text-lg font-black text-slate-800">웰컴_API</h2>
+                                                <p class="text-xs text-slate-500 mt-1">전일(서울 기준)까지 이어진 연속 일수 기준입니다. 서버는 <strong>2일 이상</strong>만 조회하고, 3·4·5일은 같은 목록에서 화면만 좁힙니다(목록을 다시 불러오기 전까지 캐시). 최근 3일 기록은 <strong>전일 포함</strong> 3일(전일·전전일·그전일)입니다. 집계는 <code class="text-[11px] bg-slate-100 px-1 rounded">config/stats/years</code>, 기록 상세는 <code class="text-[11px] bg-slate-100 px-1 rounded">meals</code>입니다.</p>
+                                            </div>
+                                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                                <div class="flex flex-wrap items-center gap-4 min-w-0">
+                                                    <span class="text-sm font-bold text-slate-700 shrink-0">연속 기록일 (전일 기준)</span>
+                                                    <div class="inline-flex flex-wrap gap-3" role="radiogroup" aria-label="연속 일수 필터">
+                                                        <label class="inline-flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                                                            <input type="radio" name="adminWelcomeApiStreak" value="2" class="rounded-full border-slate-300 text-emerald-600 focus:ring-emerald-500" checked>
+                                                            2일 이상
+                                                        </label>
+                                                        <label class="inline-flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                                                            <input type="radio" name="adminWelcomeApiStreak" value="3" class="rounded-full border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                                                            3일 이상
+                                                        </label>
+                                                        <label class="inline-flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                                                            <input type="radio" name="adminWelcomeApiStreak" value="4" class="rounded-full border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                                                            4일 이상
+                                                        </label>
+                                                        <label class="inline-flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                                                            <input type="radio" name="adminWelcomeApiStreak" value="5" class="rounded-full border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                                                            5일 이상
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
+                                                    <button type="button" id="adminWelcomeApiGeminiBtn" class="inline-flex items-center justify-center gap-2 min-h-[2.5rem] px-4 py-2 bg-violet-600 text-white rounded-xl text-sm font-bold hover:bg-violet-700 transition-colors disabled:opacity-50 disabled:pointer-events-none">
+                                                        제미나이 코멘트 생성
+                                                    </button>
+                                                    <button type="button" id="adminWelcomeApiRefreshBtn" class="inline-flex items-center justify-center gap-2 min-h-[2.5rem] px-4 py-2 bg-slate-800 text-white rounded-xl text-sm font-bold hover:bg-slate-900 transition-colors disabled:opacity-50 disabled:pointer-events-none">
+                                                        목록 불러오기
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="p-6 space-y-4">
+                                            <p id="adminWelcomeApiStatus" class="text-xs text-slate-500"></p>
+                                            <div class="overflow-x-auto rounded-xl border border-slate-200">
+                                                <table class="min-w-[52rem] w-full table-auto text-sm text-left">
+                                                    <thead class="bg-slate-50 text-slate-700 text-xs uppercase tracking-wide align-middle">
+                                                        <tr>
+                                                            <th scope="col" class="px-2 py-2.5 align-middle w-10 text-center whitespace-nowrap">번호</th>
+                                                            <th scope="col" class="px-2 py-2.5 align-middle normal-case font-bold text-slate-800">사용자 정보</th>
+                                                            <th scope="col" class="px-2 py-2.5 align-middle text-center whitespace-nowrap w-[5.5rem] leading-tight">총 기록일수<br>연속 기록</th>
+                                                            <th scope="col" class="px-2 py-2.5 align-middle min-w-[14rem]">최근 3일 기록 요약<br><span class="normal-case font-normal text-slate-500">(전일 기준·5줄 미리보기·더보기)</span></th>
+                                                            <th scope="col" class="px-2 py-2.5 align-middle min-w-[11rem]">제미나이 코멘트<br><span class="normal-case font-normal text-slate-500">(웰컴용·최대 50자·행별 생성)</span></th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="adminWelcomeApiTableBody" class="divide-y divide-slate-100 bg-white align-middle">
+                                                        <tr><td colspan="5" class="px-3 py-6 align-middle text-center text-sm text-slate-500">목록 불러오기 버튼을 누르면 사용자 목록을 가져옵니다.</td></tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                        <div id="adminWelcomeApiSummaryModal" class="hidden fixed inset-0 z-[600] bg-slate-900/50 flex items-center justify-center p-4" aria-hidden="true" role="dialog" aria-labelledby="adminWelcomeApiSummaryModalTitle">
+                                            <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col border border-slate-200">
+                                                <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 shrink-0">
+                                                    <h3 id="adminWelcomeApiSummaryModalTitle" class="text-sm font-black text-slate-800">기록 요약 전체</h3>
+                                                    <button type="button" id="adminWelcomeApiSummaryModalClose" class="p-2 rounded-lg text-slate-500 hover:bg-slate-100" aria-label="닫기">
+                                                        <i class="fa-solid fa-xmark text-lg"></i>
+                                                    </button>
+                                                </div>
+                                                <div id="adminWelcomeApiSummaryModalBody" class="px-4 py-3 overflow-y-auto text-xs text-slate-700 whitespace-pre-wrap break-words flex-1 min-h-0 leading-relaxed"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="adminSettingsSub-displayName" class="admin-settings-subpanel hidden bg-white rounded-2xl shadow-sm border border-slate-100">
                                         <div class="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
                                             <h2 class="text-lg font-black text-slate-800">관리자명</h2>
                                         </div>
@@ -1603,58 +1819,6 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <div id="adminSettingsSub-welcome" class="admin-settings-subpanel hidden bg-white rounded-2xl shadow-sm border border-slate-100">
-                                        <div class="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
-                                            <h2 class="text-lg font-black text-slate-800">웰컴메시지</h2>
-                                            <button type="button" onclick="window.saveAttendancePopupSettings()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
-                                                저장
-                                            </button>
-                                        </div>
-                                        <div class="p-6 space-y-6">
-                                            <p class="text-sm text-slate-500 leading-relaxed">
-                                                로그인 후 메인 화면에서 한 번 표시되는 <strong class="text-slate-700">연속 기록 알림</strong> 팝업입니다. 아래 문구는 <strong class="text-slate-700">한 벌</strong>만 설정하고, <strong class="text-slate-700">적용 환경</strong>에서 스테이징만 / 운영만 / 전체 중 어디에 쓸지 고릅니다.
-                                            </p>
-                                            <div class="rounded-xl p-5 border border-slate-200 bg-slate-50 space-y-5">
-                                                <div class="flex flex-wrap items-center justify-between gap-3">
-                                                    <span class="text-sm font-bold text-slate-800">연속 기록 팝업 사용</span>
-                                                    <label class="inline-flex items-center gap-3 cursor-pointer select-none">
-                                                        <input type="checkbox" id="attendanceEnabled" role="switch" class="peer sr-only" checked>
-                                                        <span class="relative w-11 h-6 rounded-full bg-slate-300 transition-colors peer-checked:bg-emerald-500 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-400 peer-focus-visible:ring-offset-2 shrink-0 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5" aria-hidden="true"></span>
-                                                    </label>
-                                                </div>
-                                                <div>
-                                                    <p class="text-xs font-bold text-slate-600 mb-2">적용 환경</p>
-                                                    <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="웰컴 팝업 적용 환경">
-                                                        <label class="cursor-pointer inline-flex">
-                                                            <input type="radio" name="attendanceApplyTo" value="all" class="peer sr-only" checked>
-                                                            <span class="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-600 peer-checked:border-emerald-500 peer-checked:bg-emerald-50 peer-checked:text-emerald-800">전체</span>
-                                                        </label>
-                                                        <label class="cursor-pointer inline-flex">
-                                                            <input type="radio" name="attendanceApplyTo" value="staging" class="peer sr-only">
-                                                            <span class="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-600 peer-checked:border-amber-500 peer-checked:bg-amber-50 peer-checked:text-amber-900">스테이징</span>
-                                                        </label>
-                                                        <label class="cursor-pointer inline-flex">
-                                                            <input type="radio" name="attendanceApplyTo" value="production" class="peer sr-only">
-                                                            <span class="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-600 peer-checked:border-slate-600 peer-checked:bg-slate-100 peer-checked:text-slate-900">운영</span>
-                                                        </label>
-                                                    </div>
-                                                    <p class="text-xs text-slate-500 mt-2">스테이징·운영 구분은 앱 패키지, <code class="text-slate-600">APP_ENV</code>, 로컬 호스트 등 기존 앱과 동일한 기준입니다.</p>
-                                                </div>
-                                            </div>
-                                            <div class="rounded-xl p-5 border border-slate-200 space-y-4">
-                                                <h3 class="text-sm font-black text-slate-800">메시지</h3>
-                                                <div class="space-y-3">
-                                                    <p class="text-xs font-bold text-slate-600">기록이 없을 때 (첫 줄 / 둘째 줄)</p>
-                                                    <input type="text" id="attendanceNoRecordLine1" maxlength="60" placeholder="예: 우리 오늘부터" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 bg-white">
-                                                    <input type="text" id="attendanceNoRecordLine2" maxlength="60" placeholder="예: 시작하는거죠?!" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 bg-white">
-                                                </div>
-                                                <div class="space-y-2">
-                                                    <p class="text-xs font-bold text-slate-600">연속 기록이 있을 때 — 둘째 줄 (비우면 「N일 연속 기록!!」만 표시)</p>
-                                                    <input type="text" id="attendanceStreakLine2" maxlength="60" placeholder="부가 문구 (선택)" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 bg-white">
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1666,7 +1830,7 @@
             <!-- 관리 로그 탭 (날짜별 운영 메모) -->
             <div id="admin-tab-content-adminLog" class="admin-tab-content hidden">
                 <div class="flex flex-col lg:flex-row gap-4">
-                    <aside class="w-full lg:w-max lg:max-w-[min(100%,26rem)] shrink-0 flex flex-col gap-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
+                    <aside class="w-full lg:w-max lg:max-w-[min(100%,26rem)] shrink-0 min-w-0 flex flex-col gap-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
                         <button type="button" id="adminLogAddBtn" class="w-full py-2.5 px-3 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2">
                             <i class="fa-solid fa-plus"></i>추가
                         </button>

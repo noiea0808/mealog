@@ -2,7 +2,9 @@
  * 모먼트 갤러리 당겨서 새로고침 (터치·마우스)
  */
 import { appState } from '../state.js';
-import { loadSharedPhotosPage } from '../db.js';
+import { db } from '../firebase.js';
+import { loadSharedPhotosPageReliable } from '../db.js';
+import { enableNetwork } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { showToast } from '../ui.js';
 import { renderGallery, invalidateGalleryRenderSession, updateTimelineShareIndicators } from '../render/index.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';
@@ -31,37 +33,45 @@ export function setupGalleryPullToRefresh() {
 
         try {
             invalidateGalleryRenderSession();
+            try {
+                await enableNetwork(db);
+            } catch (_) {
+                /* ignore */
+            }
             if (appState.galleryFilterUserId) {
                 appState.galleryUserProfileSharedDocs = null;
                 appState.galleryUserProfileSharedLastSnap = null;
                 appState.galleryUserProfileSharedHasMore = true;
                 appState.galleryUserProfileSharedDocSnaps = new Map();
-                await renderGallery();
+                invalidateGalleryRenderSession();
+                await renderGallery({ forceReload: true });
             } else {
                 const synced = await syncOrphanedSharesToMoment();
                 if (synced > 0) {
                     updateTimelineShareIndicators();
                     showToast('모먼트에 반영되었습니다.', 'success');
                 }
-                const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);
+                const { docs, lastDoc, hasMore } = await loadSharedPhotosPageReliable(10);
                 appState.galleryFeedNetworkError = false;
                 window.sharedPhotosFeed = docs;
                 appState.sharedPhotosFeedLastDoc = lastDoc;
                 appState.sharedPhotosFeedHasMore = hasMore;
                 appState.sharedPhotosFeedPrefetchedAt = Date.now();
-                await renderGallery();
+                invalidateGalleryRenderSession();
+                await renderGallery({ forceReload: true });
             }
         } catch (e) {
             console.error('갤러리 새로고침 실패:', e);
             if (!appState.galleryFilterUserId) {
                 appState.galleryFeedNetworkError = true;
                 try {
-                    await renderGallery();
+                    invalidateGalleryRenderSession();
+                    await renderGallery({ forceReload: true });
                 } catch (_) {
                     /* ignore */
                 }
             }
-            if (typeof showToast === 'function') showToast('새로고침에 실패했습니다.');
+            if (typeof showToast === 'function') showToast('새로고침에 실패했습니다.', 'error');
         } finally {
             isRefreshing = false;
             indicator.classList.remove('refreshing');

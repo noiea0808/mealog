@@ -4,9 +4,17 @@ import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { dbOps } from '../db.js';
 import { db, appId, callableFunctions } from '../firebase.js';
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { captureWithGhostStrategy, toLocalDateString } from '../utils.js';
 import { getWeekRange } from './date-utils.js';
+import { logUsageMetric } from '../usage-metrics.js';
+import {
+    effectiveMealTypeForAnalytics,
+    effectiveCategoryForAnalytics,
+    effectiveWithWhomForAnalytics,
+    effectiveSnackTypeForAnalytics,
+    effectiveSnackPlaceForAnalytics
+} from './meal-analytics-tags.js';
 
 // escapeHtml 함수 (필요한 경우)
 function escapeHtml(text) {
@@ -603,6 +611,7 @@ export async function updateInsightComment(filteredData, dateRangeText = '') {
 
 // 코멘트 생성 버튼 클릭 시 (COMMENT 버튼 클릭 시에만 AI 호출)
 export async function generateInsightComment() {
+    logUsageMetric('mealdang_comment_click').catch(() => {});
     if (!window.getDashboardData) {
         console.error('getDashboardData 함수를 찾을 수 없습니다.');
         return;
@@ -735,23 +744,32 @@ function analyzeMealData(filteredData, dateRangeText) {
         const slot = SLOTS.find(s => s.id === m.slotId && s.type === 'snack');
         return slot;
     });
+
+    const snackPlaceMainSetForInsight = (() => {
+        const arr = typeof window !== 'undefined' ? window.userSettings?.tags?.snackPlaceMain : null;
+        return Array.isArray(arr) && arr.length > 0 ? new Set(arr) : null;
+    })();
     
-    // 본식 분석
+    // 본식 분석 (옛 기록 포함: 메인 태그 비어 있고 상세만 있으면 effective* → 기타)
     const mealTypeCount = {};
     const categoryCount = {};
     const menuDetails = [];
     const withWhomCount = {};
     mainMeals.forEach(meal => {
-        if (meal.mealType && meal.mealType !== 'Skip') {
-            mealTypeCount[meal.mealType] = (mealTypeCount[meal.mealType] || 0) + 1;
+        const mt = effectiveMealTypeForAnalytics(meal);
+        if (mt && mt !== 'Skip' && mt !== '건너뜀') {
+            mealTypeCount[mt] = (mealTypeCount[mt] || 0) + 1;
         }
-        if (meal.category) {
-            categoryCount[meal.category] = (categoryCount[meal.category] || 0) + 1;
+        const cat = effectiveCategoryForAnalytics(meal);
+        if (cat) {
+            categoryCount[cat] = (categoryCount[cat] || 0) + 1;
         }
         if (meal.menuDetail) menuDetails.push(meal.menuDetail);
-        const companion = meal.withWhomDetail || meal.withWhom;
-        if (companion && companion !== '혼자') {
-            withWhomCount[companion] = (withWhomCount[companion] || 0) + 1;
+        const wEff = effectiveWithWhomForAnalytics(meal);
+        if (wEff === '기타') {
+            withWhomCount['기타'] = (withWhomCount['기타'] || 0) + 1;
+        } else if (wEff && wEff !== '혼자') {
+            withWhomCount[wEff] = (withWhomCount[wEff] || 0) + 1;
         }
     });
     
@@ -775,9 +793,9 @@ function analyzeMealData(filteredData, dateRangeText) {
     const snackTypeCount = {};
     const snackPlaceCount = {};
     snacks.forEach(meal => {
-        const st = meal.snackType || meal.category;
+        const st = effectiveSnackTypeForAnalytics(meal) || (meal.category || '').trim();
         if (st) snackTypeCount[st] = (snackTypeCount[st] || 0) + 1;
-        const pl = meal.place;
+        const pl = effectiveSnackPlaceForAnalytics(meal, snackPlaceMainSetForInsight);
         if (pl) snackPlaceCount[pl] = (snackPlaceCount[pl] || 0) + 1;
     });
     
@@ -810,15 +828,24 @@ function analyzeMealData(filteredData, dateRangeText) {
         const withWhomCountS = {};
         recs.forEach(meal => {
             if (isMain) {
-                if (meal.mealType && meal.mealType !== 'Skip') mealTypeCountS[meal.mealType] = (mealTypeCountS[meal.mealType] || 0) + 1;
-                if (meal.category) categoryCountS[meal.category] = (categoryCountS[meal.category] || 0) + 1;
+                const mt = effectiveMealTypeForAnalytics(meal);
+                if (mt && mt !== 'Skip' && mt !== '건너뜀') {
+                    mealTypeCountS[mt] = (mealTypeCountS[mt] || 0) + 1;
+                }
+                const cat = effectiveCategoryForAnalytics(meal);
+                if (cat) categoryCountS[cat] = (categoryCountS[cat] || 0) + 1;
                 if (meal.menuDetail) menuDetailsS.push(meal.menuDetail);
-                const c = meal.withWhomDetail || meal.withWhom;
-                if (c && c !== '혼자') withWhomCountS[c] = (withWhomCountS[c] || 0) + 1;
+                const wEff = effectiveWithWhomForAnalytics(meal);
+                if (wEff === '기타') {
+                    withWhomCountS['기타'] = (withWhomCountS['기타'] || 0) + 1;
+                } else if (wEff && wEff !== '혼자') {
+                    withWhomCountS[wEff] = (withWhomCountS[wEff] || 0) + 1;
+                }
             } else {
-                const st = meal.snackType || meal.category;
+                const st = effectiveSnackTypeForAnalytics(meal) || (meal.category || '').trim();
                 if (st) snackTypeCountS[st] = (snackTypeCountS[st] || 0) + 1;
-                if (meal.place) placeCountS[meal.place] = (placeCountS[meal.place] || 0) + 1;
+                const pls = effectiveSnackPlaceForAnalytics(meal, snackPlaceMainSetForInsight);
+                if (pls) placeCountS[pls] = (placeCountS[pls] || 0) + 1;
             }
         });
         const entry = {
@@ -1693,7 +1720,7 @@ export async function shareInsightToFeed() {
         
         try {
             // Firestore에서 해당 인사이트 공유 문서 찾아서 업데이트
-            const { collection, query, where, getDocs, updateDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+            const { collection, query, where, getDocs, updateDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js");
             const { db: firestoreDb, appId } = await import('../firebase.js');
             const sharedColl = collection(firestoreDb, 'artifacts', appId, 'sharedPhotos');
             

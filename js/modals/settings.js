@@ -1,10 +1,60 @@
 import { DEFAULT_USER_SETTINGS } from '../constants.js';
+import { kakaoTalkLogoSvgHtml } from '../utils/kakao-brand.js';
 import { appState } from '../state.js';
 import { addCompositionAwareInput, normalizeBirthdateRaw } from '../utils.js';
 import { renderTagManager } from '../render/index.js';
 import { dbOps } from '../db.js';
 import { showToast, updateHeaderUI } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
+import { logUsageMetric } from '../usage-metrics.js';
+
+/**
+ * 설정 > 로그인 정보 표시용.
+ * 카카오는 커스텀 토큰 로그인이라 Firebase에 email·providerData가 없을 수 있어,
+ * 이메일 없을 때 기본 문구를 "Google 계정"으로 두면 오해를 부름.
+ */
+function getSettingsAccountLoginDisplay(user) {
+    const googleIcon = '<i class="fa-brands fa-google text-lg" aria-hidden="true"></i>';
+    const emailIcon = '<i class="fa-solid fa-envelope text-lg" aria-hidden="true"></i>';
+    const kakaoBadge = kakaoTalkLogoSvgHtml({
+        className: 'w-6 h-6 text-emerald-700',
+        title: '카카오 로그인'
+    });
+
+    const uid = user?.uid || '';
+    const isKakaoUid = uid.startsWith('kakao_');
+    const providerId = user?.providerData?.[0]?.providerId;
+    const savedPid = window.userSettings?.providerId;
+    const isKakao = isKakaoUid || savedPid === 'kakao.com';
+
+    if (isKakao) {
+        const mail = user.email || window.userSettings?.email || '';
+        const nick = window.userSettings?.profile?.nickname || '';
+        const kakaoMemberId =
+            typeof uid === 'string' && uid.startsWith('kakao_') ? uid.slice(7) : '';
+        let line;
+        if (mail) {
+            line = mail;
+        } else {
+            const parts = [];
+            if (nick && nick !== '게스트') parts.push(nick);
+            if (kakaoMemberId) parts.push(`회원번호 ${kakaoMemberId}`);
+            line = parts.length ? `${parts.join(' · ')} (이메일 미연동)` : '(이메일 미연동)';
+        }
+        return { icon: kakaoBadge, line };
+    }
+
+    if (user.email) {
+        const icon = providerId === 'google.com' ? googleIcon : emailIcon;
+        return { icon, line: user.email };
+    }
+
+    if (providerId === 'google.com') {
+        return { icon: googleIcon, line: 'Google 계정' };
+    }
+
+    return { icon: emailIcon, line: '로그인된 계정' };
+}
 
 /** 설정 하단 로그아웃 버튼 — 샘플 계정만 '홈으로' + 초록 스타일 */
 function syncProfileLogoutFooterButton() {
@@ -265,12 +315,10 @@ export function openSettings() {
             const deleteArea = document.getElementById('deleteAccountBtnArea');
             if (deleteArea) deleteArea.classList.add('hidden');
         } else {
-            const email = window.currentUser.email || 'Google 계정';
-            const providerIcon = window.currentUser.providerData[0]?.providerId === 'google.com' ? 
-                '<i class="fa-brands fa-google"></i>' : '<i class="fa-solid fa-envelope"></i>';
+            const { icon: providerIcon, line: loginLine } = getSettingsAccountLoginDisplay(window.currentUser);
             accountHtml = `<div class="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 mb-6">
                 <h3 class="text-xs font-black text-emerald-600 mb-2 uppercase tracking-widest">로그인 정보</h3>
-                <div class="flex items-center gap-2 text-emerald-700 font-bold text-sm">${providerIcon} ${email}</div>
+                <div class="flex items-center gap-2 text-emerald-700 font-bold text-sm" id="settingsLoginInfoRow">${providerIcon}<span class="break-all">${loginLine}</span></div>
             </div>`;
             document.getElementById('logoutBtnArea').classList.remove('hidden');
             syncProfileLogoutFooterButton();
@@ -278,6 +326,41 @@ export function openSettings() {
             if (deleteArea) deleteArea.classList.toggle('hidden', isDemoUser(window.currentUser));
         }
         accountSection.innerHTML = accountHtml;
+        // 카카오: 이메일은 users/{uid} 루트(patchArtifactUserRoot)에만 있고 Auth·settings에 없을 수 있음 → 루트에서 보강
+        if (
+            window.currentUser &&
+            !window.currentUser.isAnonymous &&
+            typeof window.currentUser.uid === 'string' &&
+            window.currentUser.uid.startsWith('kakao_')
+        ) {
+            const hasMail =
+                (window.currentUser.email || '').includes('@') ||
+                (window.userSettings?.email || '').includes('@');
+            if (!hasMail) {
+                (async () => {
+                    try {
+                        const { doc, getDoc } = await import(
+                            'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js'
+                        );
+                        const { db, appId } = await import('../firebase.js');
+                        const snap = await getDoc(doc(db, 'artifacts', appId, 'users', window.currentUser.uid));
+                        const rootEmail =
+                            snap.exists() && snap.data().email ? String(snap.data().email).trim() : '';
+                        if (rootEmail.includes('@')) {
+                            window.userSettings = window.userSettings || {};
+                            if (!window.userSettings.email) window.userSettings.email = rootEmail;
+                            const row = document.getElementById('settingsLoginInfoRow');
+                            if (row && window.currentUser) {
+                                const { icon: pi, line: ll } = getSettingsAccountLoginDisplay(window.currentUser);
+                                row.innerHTML = `${pi}<span class="break-all">${ll}</span>`;
+                            }
+                        }
+                    } catch (_) {
+                        /* ignore */
+                    }
+                })();
+            }
+        }
         
         // 게스트 모드일 때 로그인하기 버튼에 이벤트 리스너 추가
         if (window.currentUser && window.currentUser.isAnonymous) {
@@ -396,6 +479,7 @@ export function switchSettingsTab(tab) {
             profileTab.textContent = '프로필';
         }
         if (profileContent) profileContent.classList.remove('hidden');
+        logUsageMetric('settings_profile').catch(() => {});
     } else if (tab === 'tags') {
         // 태그 관리 탭 활성화
         if (tagsTab) {
@@ -403,6 +487,7 @@ export function switchSettingsTab(tab) {
             tagsTab.textContent = '태그 관리';
         }
         if (tagsContent) tagsContent.classList.remove('hidden');
+        logUsageMetric('settings_tags').catch(() => {});
     } else if (tab === 'shortcuts') {
         // 밀당 메모 탭 활성화
         if (shortcutsTab) {
@@ -410,6 +495,7 @@ export function switchSettingsTab(tab) {
             shortcutsTab.textContent = '밀당 메모';
         }
         if (shortcutsContent) shortcutsContent.classList.remove('hidden');
+        logUsageMetric('settings_mealdang_memo').catch(() => {});
     } else if (tab === 'notifications') {
         if (notificationsTab) {
             notificationsTab.className = settingsTabActiveClass;
@@ -417,6 +503,7 @@ export function switchSettingsTab(tab) {
         }
         if (notificationsContent) notificationsContent.classList.remove('hidden');
         syncPushPreferencesFormFromUserSettings();
+        logUsageMetric('settings_push').catch(() => {});
     }
 }
 
@@ -796,7 +883,7 @@ export async function saveProfileSettings() {
             // 사진 파일이 있으면 업로드, 없으면 기존 photoUrl 유지
             if (window.settingsPhotoFile) {
                 const { storage } = await import('../firebase.js');
-                const { ref, uploadBytes, getDownloadURL } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js");
+                const { ref, uploadBytes, getDownloadURL } = await import("https://www.gstatic.com/firebasejs/11.10.0/firebase-storage.js");
                 const timestamp = Date.now();
                 const fileName = `photo_${timestamp}.jpg`;
                 const photoRef = ref(storage, `users/${window.currentUser.uid}/profile/${fileName}`);
@@ -1122,7 +1209,6 @@ export function initPushPreferencesControlsOnce() {
     const persist = async (partial) => {
         if (!window.currentUser || window.currentUser.isAnonymous) return;
         if (isDemoUser(window.currentUser)) {
-            showToast('샘플 계정에서는 변경할 수 없습니다.', 'info');
             syncPushPreferencesFormFromUserSettings();
             return;
         }

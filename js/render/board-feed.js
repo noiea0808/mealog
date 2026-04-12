@@ -183,7 +183,7 @@ async function downloadFeedLightboxImage(url) {
         URL.revokeObjectURL(objectUrl);
         showToast('다운로드를 시작했어요.', 'success');
     } catch (_) {
-        showToast('브라우저에서 저장이 막혀 새 탭으로 열었어요.', 'info');
+        showToast('브라우저에서 저장이 막혀 새 탭으로 열었어요.', 'error');
         window.open(url, '_blank', 'noopener,noreferrer');
     }
 }
@@ -489,6 +489,41 @@ function getPostTimestampMs(post) {
     return new Date(post.timestamp || 0).getTime();
 }
 
+/** 로컬 달력 일자 비교용 (날짜 구분선) */
+function postTimestampToLocalDate(post) {
+    if (!post.timestamp) return new Date();
+    if (post.timestamp.toDate && typeof post.timestamp.toDate === 'function') {
+        return post.timestamp.toDate();
+    }
+    if (typeof post.timestamp === 'string') {
+        const d = new Date(post.timestamp);
+        return isNaN(d.getTime()) ? new Date() : d;
+    }
+    if (post.timestamp instanceof Date) {
+        return isNaN(post.timestamp.getTime()) ? new Date() : post.timestamp;
+    }
+    const d = new Date(post.timestamp || 0);
+    return isNaN(d.getTime()) ? new Date() : d;
+}
+
+function feedLocalDayKey(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** 밀톡 타임라인: 날짜가 바뀔 때 카카오톡식 중앙 배너 (배경은 --board-feed-bg 녹색) */
+function feedDateSeparatorHtml(date) {
+    const label = date.toLocaleDateString('ko-KR', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        weekday: 'long'
+    });
+    return `
+        <div class="feed-date-separator flex w-full shrink-0 justify-center py-2" role="separator" aria-label="${escapeHtml(label)}">
+            <span class="max-w-[min(92vw,20rem)] truncate rounded-full bg-black/20 px-3 py-1 text-center text-[11px] font-medium text-white/95 shadow-sm backdrop-blur-[1px]">${escapeHtml(label)}</span>
+        </div>`;
+}
+
 function paintFeedTimeline(root, posts) {
     cleanupFeedScrollResizeObserver();
     if (!posts.length) {
@@ -506,20 +541,27 @@ function paintFeedTimeline(root, posts) {
     }
     const chronological = [...posts].sort((a, b) => getPostTimestampMs(a) - getPostTimestampMs(b));
     const uid = window.currentUser?.uid;
-    const rowsHtml = chronological
-        .map((p, i) => {
-            const prev = i > 0 ? chronological[i - 1] : null;
-            const isMine = !!(uid && p.authorId === uid);
-            let showAuthorHeader = true;
-            if (!isMine && prev) {
-                const id = String(p.authorId || '');
-                const prevId = String(prev.authorId || '');
-                const sameAuthor = id !== '' && prevId === id;
-                showAuthorHeader = !sameAuthor;
-            }
-            return feedBubbleHtml(p, { showAuthorHeader });
-        })
-        .join('');
+    const rowParts = [];
+    for (let i = 0; i < chronological.length; i++) {
+        const p = chronological[i];
+        const prev = i > 0 ? chronological[i - 1] : null;
+        const d = postTimestampToLocalDate(p);
+        const dayKey = feedLocalDayKey(d);
+        const prevDayKey = prev ? feedLocalDayKey(postTimestampToLocalDate(prev)) : null;
+        if (prevDayKey !== dayKey) {
+            rowParts.push(feedDateSeparatorHtml(d));
+        }
+        const isMine = !!(uid && p.authorId === uid);
+        let showAuthorHeader = true;
+        if (!isMine && prev) {
+            const id = String(p.authorId || '');
+            const prevId = String(prev.authorId || '');
+            const sameAuthor = id !== '' && prevId === id;
+            showAuthorHeader = !sameAuthor;
+        }
+        rowParts.push(feedBubbleHtml(p, { showAuthorHeader }));
+    }
+    const rowsHtml = rowParts.join('');
     root.innerHTML = `
         <div class="feed-timeline-stack flex min-h-full flex-col justify-end">
             <div class="feed-timeline flex w-full flex-col justify-end gap-2 pb-0 pt-1">${rowsHtml}</div>

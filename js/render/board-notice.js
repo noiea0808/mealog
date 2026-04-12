@@ -31,7 +31,7 @@ export function syncBoardFeedComposerVisibility() {
 
 async function getNotices() {
     try {
-        const { collection, getDocs, query, orderBy, where } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+        const { collection, getDocs, query, orderBy, where } = await import("https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js");
         const { db, appId } = await import('../firebase.js');
         const noticesColl = collection(db, 'artifacts', appId, 'notices');
         const q = query(noticesColl, orderBy('timestamp', 'desc'));
@@ -390,66 +390,82 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
         `;
         return;
     }
-    container.innerHTML = filteredPosts.map(post => {
-                // timestamp 안전하게 변환 (Firestore Timestamp 객체 또는 문자열 지원)
-                let postDate;
-                if (!post.timestamp) {
-                    postDate = new Date();
-                } else if (post.timestamp.toDate && typeof post.timestamp.toDate === 'function') {
-                    // Firestore Timestamp 객체
-                    postDate = post.timestamp.toDate();
-                } else if (typeof post.timestamp === 'string') {
-                    // ISO 문자열
-                    postDate = new Date(post.timestamp);
-                } else if (post.timestamp instanceof Date) {
-                    // 이미 Date 객체
-                    postDate = post.timestamp;
-                } else {
-                    // 기타 경우 (숫자 등)
-                    postDate = new Date(post.timestamp);
-                }
-                
-                // 유효하지 않은 날짜인지 확인
-                if (isNaN(postDate.getTime())) {
-                    console.warn('Invalid timestamp for post:', post.id, post.timestamp);
-                    postDate = new Date(); // 기본값으로 현재 시간 사용
-                }
-                
-                const dateStr = postDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
-                const timeStr = postDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-                
-                const categoryLabels = {
-                    'serious': '무거운',
-                    'chat': '가벼운',
-                    'food': '먹는',
-                    'admin': '치프에게'
-                };
-                
-                const categoryColors = {
-                    'serious': 'bg-slate-100 text-slate-700',
-                    'chat': 'bg-blue-100 text-blue-700',
-                    'food': 'bg-emerald-100 text-emerald-700',
-                    'admin': 'bg-orange-100 text-orange-700'
-                };
-                
-                // "치프에게" 카테고리 특별 처리: 작성자 이외에는 제목/내용 미리보기 숨김
-                const isAuthor = window.currentUser && post.authorId === window.currentUser.uid;
-                const isAdminCategory = post.category === 'admin';
-                const shouldHideContent = isAdminCategory && !isAuthor;
-                const isLiked = likedPostIds.has(post.id);
-                const isBookmarked = bookmarkedPostIds.has(post.id);
-                const authorDisplay = getDisplayProfile(post.authorId, { nickname: post.authorNickname, icon: post.authorIcon, photoUrl: post.authorPhotoUrl });
-                const authorAvatar = getProfileAvatarDisplay(authorDisplay);
-                
-                const hasImages = Array.isArray(post.imageUrls) && post.imageUrls.length > 0;
-                const isPendingPost = post.id && String(post.id).startsWith('pending-');
-                const onClick =
-                    isPendingPost
-                        ? ''
-                        : shouldHideContent
-                          ? `event.preventDefault(); event.stopPropagation(); window.showToast ? window.showToast('이 게시물은 작성자만 볼 수 있습니다', 'error') : null`
-                          : `window.openBoardDetail('${post.id}')`;
-                return `
+    const postTimestampToDate = (post) => {
+        let postDate;
+        if (!post.timestamp) {
+            postDate = new Date();
+        } else if (post.timestamp.toDate && typeof post.timestamp.toDate === 'function') {
+            postDate = post.timestamp.toDate();
+        } else if (typeof post.timestamp === 'string') {
+            postDate = new Date(post.timestamp);
+        } else if (post.timestamp instanceof Date) {
+            postDate = post.timestamp;
+        } else {
+            postDate = new Date(post.timestamp);
+        }
+        if (isNaN(postDate.getTime())) {
+            console.warn('Invalid timestamp for post:', post.id, post.timestamp);
+            postDate = new Date();
+        }
+        return postDate;
+    };
+    const localDayKey = (d) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    const categoryLabels = {
+        'serious': '무거운',
+        'chat': '가벼운',
+        'food': '먹는',
+        'admin': '치프에게'
+    };
+    const categoryColors = {
+        'serious': 'bg-slate-100 text-slate-700',
+        'chat': 'bg-blue-100 text-blue-700',
+        'food': 'bg-emerald-100 text-emerald-700',
+        'admin': 'bg-orange-100 text-orange-700'
+    };
+
+    const chunks = [];
+    let prevDayKey = null;
+    for (const post of filteredPosts) {
+        const postDate = postTimestampToDate(post);
+        const dayKey = localDayKey(postDate);
+        if (prevDayKey !== dayKey) {
+            prevDayKey = dayKey;
+            const dayBannerLabel = postDate.toLocaleDateString('ko-KR', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                weekday: 'long'
+            });
+            chunks.push(`
+                <div class="flex justify-center py-2.5 px-3" role="separator" aria-label="${escapeHtml(dayBannerLabel)}">
+                    <span class="text-[11px] font-medium text-slate-500 bg-slate-100/95 px-3.5 py-1 rounded-full shadow-sm">${escapeHtml(dayBannerLabel)}</span>
+                </div>
+            `);
+        }
+
+        const dateStr = postDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+        const timeStr = postDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+        // "치프에게" 카테고리 특별 처리: 작성자 이외에는 제목/내용 미리보기 숨김
+        const isAuthor = window.currentUser && post.authorId === window.currentUser.uid;
+        const isAdminCategory = post.category === 'admin';
+        const shouldHideContent = isAdminCategory && !isAuthor;
+        const isLiked = likedPostIds.has(post.id);
+        const isBookmarked = bookmarkedPostIds.has(post.id);
+        const authorDisplay = getDisplayProfile(post.authorId, { nickname: post.authorNickname, icon: post.authorIcon, photoUrl: post.authorPhotoUrl });
+        const authorAvatar = getProfileAvatarDisplay(authorDisplay);
+
+        const hasImages = Array.isArray(post.imageUrls) && post.imageUrls.length > 0;
+        const isPendingPost = post.id && String(post.id).startsWith('pending-');
+        const onClick =
+            isPendingPost
+                ? ''
+                : shouldHideContent
+                  ? `event.preventDefault(); event.stopPropagation(); window.showToast ? window.showToast('이 게시물은 작성자만 볼 수 있습니다', 'error') : null`
+                  : `window.openBoardDetail('${post.id}')`;
+        chunks.push(`
                     <div onclick="${onClick}" class="board-list-card pt-4 px-5 pb-1.5 ${isPendingPost || shouldHideContent ? 'cursor-default' : 'cursor-pointer'} active:scale-[0.98] transition-all mb-2 ${isPendingPost ? 'ring-2 ring-amber-200 bg-amber-50/50' : ''}">
                         <div class="flex items-start gap-3 mb-1.5">
                             <div class="flex-1 min-w-0">
@@ -493,8 +509,9 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
                             </div>
                     </div>
                 </div>
-            `;
-        }).join('');
+            `);
+    }
+    container.innerHTML = chunks.join('');
 }
 
 // 게시판 상세 렌더링
