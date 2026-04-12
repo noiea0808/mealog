@@ -2722,6 +2722,150 @@ exports.saveArtifactUserSettings = onCall({ region: REGION }, wrapFunction('save
   return { ok: true };
 }));
 
+/** Callable meal 페이로드: undefined 제거 (Admin 쓰기용) */
+function stripUndefinedDeepMealPayload(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== 'object') return value;
+  if (Array.isArray(value)) {
+    return value.map(stripUndefinedDeepMealPayload).filter((v) => v !== undefined);
+  }
+  const out = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (v === undefined) continue;
+    const next = stripUndefinedDeepMealPayload(v);
+    if (next !== undefined) out[k] = next;
+  }
+  return out;
+}
+
+function sanitizeMealPhotosForServer(meal) {
+  const m = meal && typeof meal === 'object' ? { ...meal } : {};
+  const san = (arr) => {
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((p) => typeof p === 'string' && p && !p.startsWith('data:image'));
+  };
+  if (Object.prototype.hasOwnProperty.call(m, 'photos')) m.photos = san(m.photos);
+  if (Object.prototype.hasOwnProperty.call(m, 'sharedPhotos')) m.sharedPhotos = san(m.sharedPhotos);
+  return m;
+}
+
+/**
+ * 식사 기록 저장 (Callable) — 클라이언트 Firestore permission-denied 시 Admin 폴백
+ */
+exports.saveArtifactUserMeal = onCall({ region: REGION }, wrapFunction('saveArtifactUserMeal', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  assertNotReadOnlyDemoAuth(request.auth);
+  const uid = request.auth.uid;
+  const ban = await getUserBan(uid);
+  if (ban.bannedWrite) {
+    throw new HttpsError('permission-denied', '기록 작성이 제한된 계정입니다.');
+  }
+  await checkRateLimit(uid, 'interaction', request);
+
+  const rawMeal = request.data?.meal;
+  if (!rawMeal || typeof rawMeal !== 'object' || Array.isArray(rawMeal)) {
+    throw new HttpsError('invalid-argument', 'meal 객체가 필요합니다.');
+  }
+  let payloadSize = 0;
+  try {
+    payloadSize = JSON.stringify(rawMeal).length;
+  } catch {
+    throw new HttpsError('invalid-argument', 'meal을 직렬화할 수 없습니다.');
+  }
+  if (payloadSize > 900000) {
+    throw new HttpsError('invalid-argument', 'meal 데이터가 너무 큽니다.');
+  }
+
+  const mealIdRaw = request.data?.mealId;
+  const mealIdStr =
+    typeof mealIdRaw === 'string' && mealIdRaw.trim()
+      ? mealIdRaw.trim()
+      : null;
+
+  let cleaned = sanitizeMealPhotosForServer(stripUndefinedDeepMealPayload(rawMeal));
+  if (Object.prototype.hasOwnProperty.call(cleaned, 'id')) {
+    delete cleaned.id;
+  }
+
+  const coll = db.collection('artifacts').doc(APP_ID).collection('users').doc(uid).collection('meals');
+  const mealRef = mealIdStr ? coll.doc(mealIdStr) : coll.doc();
+  const existedBefore = mealIdStr ? (await mealRef.get()).exists : false;
+
+  await mealRef.set(cleaned, { merge: false });
+
+  if (!mealIdStr || !existedBefore) {
+    try {
+      await db.doc(`artifacts/${APP_ID}/users/${uid}`).set(
+        { mealCount: FieldValue.increment(1) },
+        { merge: true }
+      );
+    } catch (e) {
+      logger.warn('saveArtifactUserMeal: mealCount increment skipped', { uid, err: e?.message });
+    }
+  }
+
+  return { mealId: mealRef.id };
+}));
+
+/**
+ * 식사 기록 삭제 (Callable) — 클라이언트 Firestore permission-denied 시 Admin 폴백
+ */
+exports.deleteArtifactUserMeal = onCall({ region: REGION }, wrapFunction('deleteArtifactUserMeal', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  assertNotReadOnlyDemoAuth(request.auth);
+  const uid = request.auth.uid;
+  const ban = await getUserBan(uid);
+  if (ban.bannedWrite) {
+    throw new HttpsError('permission-denied', '기록 삭제가 제한된 계정입니다.');
+  }
+
+  const mealId = typeof request.data?.mealId === 'string' ? request.data.mealId.trim() : '';
+  if (!mealId) {
+    throw new HttpsError('invalid-argument', 'mealId가 필요합니다.');
+  }
+
+  const mealRef = db.doc(`artifacts/${APP_ID}/users/${uid}/meals/${mealId}`);
+  const mealSnap = await mealRef.get();
+  if (!mealSnap.exists) {
+    return { deleted: false };
+  }
+
+  await mealRef.delete();
+
+  try {
+    await db.doc(`artifacts/${APP_ID}/users/${uid}`).set(
+      { mealCount: FieldValue.increment(-1) },
+      { merge: true }
+    );
+  } catch (e) {
+    logger.warn('deleteArtifactUserMeal: mealCount decrement skipped', { uid, err: e?.message });
+  }
+
+  try {
+    const sharedQ = await db
+      .collection('artifacts')
+      .doc(APP_ID)
+      .collection('sharedPhotos')
+      .where('entryId', '==', mealId)
+      .where('userId', '==', uid)
+      .get();
+    if (!sharedQ.empty) {
+      const batch = db.batch();
+      sharedQ.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+  } catch (e) {
+    logger.warn('deleteArtifactUserMeal: sharedPhotos cleanup failed', { uid, mealId, err: e?.message });
+  }
+
+  return { deleted: true };
+}));
+
 /**
  * FCM 토큰 등록 (클라이언트 Firestore/App Check permission-denied 시 폴백, Admin 병합)
  */
