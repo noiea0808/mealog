@@ -1,8 +1,14 @@
 // 타임라인 및 미니 캘린더 렌더링
-import { SLOTS, SLOT_STYLES, SATIETY_DATA } from '../constants.js';
+import { SLOTS, SLOT_STYLES, SATIETY_DATA, SNACK_TIMELINE_VIEW_STORAGE_KEY } from '../constants.js';
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
 import { formatMealMenuDisplayLine } from '../utils/meal-display-line.js';
+
+/** false면 타임라인 첫 날짜 헤더의 간식보기(태그/카드) 전환 UI를 숨김 (기능은 유지, 재노출 시 true로) */
+const SNACK_TIMELINE_VIEW_TOGGLE_VISIBLE = false;
+
+/** true면 간식은 항상 태그 행으로만 표시 (localStorage의 카드 설정 무시, 재개 시 false로) */
+const SNACK_TIMELINE_FORCE_TAGS_MODE = true;
 
 // entryId가 실제로 공유되었는지 확인하는 헬퍼 함수
 // record: meal 문서 (sharedPhotos 필드 있음). sharedPhotos 컬렉션과 meal 문서가 불일치할 수 있어 둘 다 확인
@@ -17,6 +23,195 @@ function isEntryShared(entryId, record) {
         return window.sharedPhotos.some(photo => photo.entryId === entryId);
     }
     return false;
+}
+
+function getSnackTimelineView() {
+    if (SNACK_TIMELINE_FORCE_TAGS_MODE) return 'tags';
+    try {
+        const v = localStorage.getItem(SNACK_TIMELINE_VIEW_STORAGE_KEY);
+        if (v === 'cards' || v === 'tags') return v;
+    } catch (_) {}
+    return 'tags';
+}
+
+function buildSnackTimelineViewSelectHtml(current) {
+    const tagsSel = current === 'tags' ? ' selected' : '';
+    const cardsSel = current === 'cards' ? ' selected' : '';
+    return `<div class="flex flex-col items-center gap-0.5 flex-shrink-0">
+            <label for="snackTimelineViewSelect" class="text-[10px] font-bold text-slate-500 leading-tight whitespace-nowrap text-center">간식보기</label>
+            <select id="snackTimelineViewSelect" class="snack-timeline-view-select text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1 max-w-[min(100%,9rem)] shadow-sm" title="간식보기: 태그 또는 카드">
+                <option value="tags"${tagsSel}>태그</option>
+                <option value="cards"${cardsSel}>카드</option>
+            </select>
+        </div>`;
+}
+
+function getDailyShareButtonHtmlForDate(dateStr) {
+    if (appState.viewMode !== 'page') return '';
+    const dailyShare =
+        window.sharedPhotos && Array.isArray(window.sharedPhotos)
+            ? window.sharedPhotos.find(
+                  (photo) =>
+                      photo.type === 'daily' && photo.date === dateStr && photo.userId === window.currentUser?.uid
+              )
+            : null;
+    const isShared = !!dailyShare;
+    return `<button type="button" data-mealog-daily="share" data-mealog-date="${dateStr}" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-slate-800 text-white' : 'text-slate-600'}">
+        <i class="fa-solid fa-share text-[12px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
+    </button>`;
+}
+
+/**
+ * 트래커 바로 아래 첫 날짜 헤더: 날짜 오른쪽에 간식 표시 방식 드롭다운 (일간 보기 시 공유 버튼 유지)
+ */
+export function syncSnackViewDropdown(container) {
+    const timeline = container || document.getElementById('timelineContainer');
+    if (!timeline) return;
+    const sections = Array.from(timeline.querySelectorAll(':scope > [id^="date-"]'));
+    sections.forEach((section, index) => {
+        const header = section.querySelector('.date-section-header');
+        if (!header) return;
+        const h3 = header.querySelector('h3');
+        if (!h3) return;
+        const h3Html = h3.outerHTML;
+        const dateStr = section.id.replace(/^date-/, '');
+        const dObj = new Date(dateStr + 'T00:00:00');
+        const dayOfWeek = dObj.getDay();
+        const dayColorClass = dayOfWeek === 0 || dayOfWeek === 6 ? 'text-rose-400' : 'text-slate-800';
+        const shareHtml = getDailyShareButtonHtmlForDate(dateStr);
+
+        if (index === 0 && SNACK_TIMELINE_VIEW_TOGGLE_VISIBLE) {
+            const view = getSnackTimelineView();
+            header.className = `date-section-header text-sm font-black ${dayColorClass} px-4 flex items-center justify-between gap-2 flex-wrap`;
+            header.innerHTML = `
+                <div class="min-w-0">${h3Html}</div>
+                <div class="flex items-center justify-end gap-2 flex-shrink-0">
+                    ${buildSnackTimelineViewSelectHtml(view)}
+                    ${shareHtml}
+                </div>`;
+        } else {
+            header.className = `date-section-header text-sm font-black ${dayColorClass} px-4 flex items-center justify-between`;
+            header.innerHTML = shareHtml ? `${h3Html}<div class="flex-shrink-0">${shareHtml}</div>` : h3Html;
+        }
+    });
+}
+
+function buildSnackTimelineCardHtml(dateStr, slot, r, specificStyle, cardMbClass = 'mb-1.5') {
+    const p = r.snackPlace || r.place || '';
+    const m = formatMealMenuDisplayLine(r);
+    const menuLine =
+        (m || '').trim() ||
+        String(r.menuDetail || r.snackType || '').trim() ||
+        (r.category && String(r.category).trim()) ||
+        '';
+    const safeSlotLabel = escapeHtml(slot.label);
+    const safePlace = escapeHtml(p);
+    let titleLine1 = '';
+    if (p) {
+        titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span> <span class="text-xs font-bold text-slate-400">@ ${safePlace}</span>`;
+    } else {
+        titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span>`;
+    }
+    const titleLine2 = escapeHtml(menuLine);
+    const tags = [];
+    if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
+    if (r.snackType && String(r.snackType).trim() && !tags.includes(r.snackType)) tags.push(r.snackType);
+    if (r.withWhomDetail) tags.push(r.withWhomDetail);
+    else if (r.withWhom && r.withWhom !== '혼자') tags.push(r.withWhom);
+    if (r.satiety) {
+        const sData = SATIETY_DATA.find((d) => d.val === r.satiety);
+        if (sData) tags.push(sData.label);
+    }
+    let tagsHtml = '';
+    if (tags.length > 0) {
+        tagsHtml = `<div class="mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
+            .map((t) => `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${t}</span>`)
+            .join('')}</div>`;
+    }
+    let iconHtml = '';
+    if (r.photos && Array.isArray(r.photos) && r.photos[0]) {
+        iconHtml = `<img src="${r.photos[0]}" class="w-full h-full object-cover" alt="">`;
+    } else if (r.photos && !Array.isArray(r.photos)) {
+        iconHtml = `<img src="${r.photos}" class="w-full h-full object-cover" alt="">`;
+    } else if (r.mealType === 'Skip') {
+        iconHtml = `<i class="fa-solid fa-ban text-2xl text-slate-600" aria-hidden="true"></i>`;
+    } else {
+        iconHtml = `<i class="fa-solid fa-cookie-bite text-2xl text-slate-400" aria-hidden="true"></i>`;
+    }
+    const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
+    return `<div onclick="window.openModal('${dateStr}', '${slot.id}', '${r.id}')" class="card ${cardMbClass} border border-slate-200 cursor-pointer active:scale-[0.98] transition-all !rounded-none" data-entry-id="${r.id}">
+        <div class="flex">
+            <div class="w-[140px] h-[140px] bg-slate-100 border-slate-200 ${specificStyle.iconText} flex-shrink-0 flex items-center justify-center overflow-hidden border-r">
+                ${iconHtml}
+            </div>
+            <div class="flex-1 min-w-0 flex flex-col justify-center p-4">
+                <div class="flex justify-between items-start gap-2">
+                    <div class="flex-1 min-w-0 overflow-hidden">
+                        <h4 class="leading-tight mb-0 truncate">${titleLine1}</h4>
+                        ${titleLine2 ? `<p class="text-sm text-slate-600 font-bold mt-1.5 mb-0 truncate">${titleLine2}</p>` : ''}
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0 ml-2">
+                        <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
+                        <span class="text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-300 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                            <span class="text-[13px]">⭐</span>
+                            <span class="text-[12px] font-black">${ratingVal}</span>
+                        </span>
+                    </div>
+                </div>
+                ${r.comment ? `<p class="text-xs text-slate-400 mt-1.5 mb-0 line-clamp-1 whitespace-pre-line">"${escapeHtml(r.comment).replace(/\n/g, '<br>')}"</p>` : ''}
+                ${tagsHtml}
+            </div>
+        </div>
+    </div>`;
+}
+
+function buildSnackEmptySlotCardHtml(dateStr, slot, specificStyle) {
+    const safeLabel = escapeHtml(slot.label);
+    /** 행 높이만 본식 카드(140px)의 1/3 — 사진 열 너비는 식사 카드와 동일 140px */
+    const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
+    return `<div onclick="window.openModal('${dateStr}', '${slot.id}', null)" class="card mb-1.5 border border-slate-200 opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+        <div class="flex ${hThird}">
+            <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 bg-slate-100 border-slate-200 ${specificStyle.iconText} flex items-center justify-center overflow-hidden border-r">
+                <span class="text-3xl font-bold text-slate-400 leading-none" aria-hidden="true">+</span>
+            </div>
+            <div class="flex-1 min-w-0 flex items-center px-4 py-0.5">
+                <p class="mb-0 truncate text-xs leading-tight">
+                    <span class="font-bold ${specificStyle.iconText}">${safeLabel}</span>
+                    <span class="text-slate-400 font-normal"> · 기록하기</span>
+                </p>
+            </div>
+        </div>
+    </div>`;
+}
+
+function refreshTimelineAfterSnackViewChange() {
+    const container = document.getElementById('timelineContainer');
+    if (!container) return;
+    container.querySelectorAll(':scope > [id^="date-"]').forEach((el) => el.remove());
+    const dc = document.getElementById('dailyCommentSection');
+    if (dc) dc.remove();
+    const lm = document.getElementById('loadMoreMealsBtn');
+    if (lm) lm.remove();
+    window.loadedDates = [];
+    renderTimeline();
+}
+
+let snackTimelineViewDelegationBound = false;
+function ensureSnackTimelineViewDelegation() {
+    if (snackTimelineViewDelegationBound) return;
+    snackTimelineViewDelegationBound = true;
+    document.addEventListener(
+        'change',
+        (e) => {
+            const t = e.target;
+            if (!t || !t.classList || !t.classList.contains('snack-timeline-view-select')) return;
+            try {
+                localStorage.setItem(SNACK_TIMELINE_VIEW_STORAGE_KEY, t.value);
+            } catch (_) {}
+            refreshTimelineAfterSnackViewChange();
+        },
+        true
+    );
 }
 
 /** 타임라인에서 공유 화살표만 즉시 갱신 (기존 DOM만 업데이트, 풀 렌더 없음) */
@@ -111,27 +306,7 @@ export function renderTimeline() {
         // 일간보기 모드에서는 기존 섹션이 있어도 공유 버튼만 업데이트
         const existingSection = document.getElementById(`date-${dateStr}`);
         if (existingSection && state.viewMode === 'page') {
-            // 공유 버튼만 업데이트
-            const headerEl = existingSection.querySelector('.date-section-header');
-            if (headerEl) {
-                const dailyShare = window.sharedPhotos && Array.isArray(window.sharedPhotos) 
-                    ? window.sharedPhotos.find(photo => 
-                        photo.type === 'daily' && 
-                        photo.date === dateStr && 
-                        photo.userId === window.currentUser?.uid
-                    )
-                    : null;
-                const isShared = !!dailyShare;
-                
-                const shareButton = `<button type="button" data-mealog-daily="share" data-mealog-date="${dateStr}" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-slate-800 text-white' : 'text-slate-600'}">
-                    <i class="fa-solid fa-share text-[12px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
-                </button>`;
-                
-                const h3El = headerEl.querySelector('h3');
-                if (h3El) {
-                    headerEl.innerHTML = h3El.outerHTML + shareButton;
-                }
-            }
+            // 헤더(공유·간식 드롭다운)는 renderTimeline 끝에서 syncSnackViewDropdown으로 갱신
             return;
         }
         
@@ -256,7 +431,35 @@ export function renderTimeline() {
                     </div>
                 </div>`;
             } else {
-                html += `<div class="snack-row mb-1.5 flex items-center">
+                const snackView = getSnackTimelineView();
+                const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
+                if (snackView === 'cards') {
+                    if (records.length > 0) {
+                        html += `<div class="snack-slot-card-group">`;
+                        records.forEach((r, idx) => {
+                            const isLast = idx === records.length - 1;
+                            const cardHtml = buildSnackTimelineCardHtml(
+                                dateStr,
+                                slot,
+                                r,
+                                specificStyle,
+                                isLast ? 'mb-0' : 'mb-1.5'
+                            );
+                            if (isLast) {
+                                html += `<div class="relative mb-1.5">
+                                ${cardHtml}
+                                <button type="button" onclick="event.stopPropagation(); window.openModal('${dateStr}', '${slot.id}')" class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
+                            </div>`;
+                            } else {
+                                html += cardHtml;
+                            }
+                        });
+                        html += `</div>`;
+                    } else {
+                        html += buildSnackEmptySlotCardHtml(dateStr, slot, specificStyle);
+                    }
+                } else {
+                    html += `<div class="snack-row mb-1.5 flex items-center">
                     <span class="text-xs font-black text-slate-400 uppercase mr-3 flex-shrink-0 px-4">${slot.label}</span>
                     <div class="flex-1 flex flex-wrap gap-2 items-center">
                         ${records.length > 0 ? records.map(r => 
@@ -272,6 +475,7 @@ export function renderTimeline() {
                         <button onclick="window.openModal('${dateStr}', '${slot.id}')" class="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-colors">+ 추가</button>
                     </div>
                 </div>`;
+                }
             }
         });
         section.innerHTML = html;
@@ -375,6 +579,9 @@ export function renderTimeline() {
             if (existingBtn) existingBtn.remove();
         }
     }
+
+    ensureSnackTimelineViewDelegation();
+    syncSnackViewDropdown(container);
 
     if (typeof window.bindMealogDailyTimelineDelegation === 'function') {
         window.bindMealogDailyTimelineDelegation();

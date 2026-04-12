@@ -28,6 +28,9 @@ export const CUMULATIVE_BAR_GRADIENT = ['#F06292', '#FF9800', '#FFC107', '#9CCC6
 export const RATING_SATIETY_GRADIENT = ['#5C6BC0', '#26C6DA', '#66BB6A', '#FFC107', '#F06292'];
 export const RATING_GRADIENT = RATING_SATIETY_GRADIENT;
 
+/** 타임라인 간식 표시: localStorage 키 — 값은 'tags' | 'cards' */
+export const SNACK_TIMELINE_VIEW_STORAGE_KEY = 'mealog_snack_timeline_view';
+
 export const SATIETY_DATA = [
     { val: 1, icon: 'fa-cookie-bite', label: '한입만', color: 'text-slate-400', chartColor: '#5C6BC0' },
     { val: 2, icon: 'fa-face-smile-wink', label: '가볍게', color: 'text-blue-400', chartColor: '#26C6DA' },
