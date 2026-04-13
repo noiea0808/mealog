@@ -9,7 +9,7 @@ import { auth, db, appId, refreshAppCheckTokenBeforeFirestore } from './firebase
 import { signOut } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import { dbOps, setupListeners, loadSharedPhotosPage, loadSharedPhotosPageReliable, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, subscribeToMyPostComments, boardOperations, feedOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { callableFunctions } from './firebase.js';
-import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer, enableNetwork } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import {
     switchScreen,
@@ -45,7 +45,7 @@ import {
 } from './modals.js';
 import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from './constants.js';
 import { normalizeUrl } from './utils.js';
-import { registerMainNetworkListeners } from './main/network.js';
+import { registerMainNetworkListeners, runMealogNetworkRecovery } from './main/network.js';
 import { registerMainCleanup } from './main/cleanup.js';
 import { syncOrphanedSharesToMoment } from './main/shares-sync.js';
 import { startNotificationListeners, stopNotificationListeners } from './main/notifications.js';
@@ -102,7 +102,7 @@ window.Mealog.switchGalleryFilterTab = switchGalleryFilterTab;
 window.reloadMomentFeed = async function reloadMomentFeed() {
     invalidateGalleryRenderSession();
     try {
-        await enableNetwork(db);
+        await runMealogNetworkRecovery();
     } catch (_) {
         /* 오프라인 복귀 시도만 하고 실패해도 getDocsFromServer로 재시도 */
     }
@@ -145,6 +145,7 @@ window.reloadMomentFeed = async function reloadMomentFeed() {
     }
 };
 window.Mealog.reloadMomentFeed = window.reloadMomentFeed;
+window.Mealog.runNetworkRecovery = runMealogNetworkRecovery;
 // 밀톡에서 작성자 클릭 시 사용자 프로필 화면(모먼트와 동일)으로 이동, 밀톡 탭 선택 상태로 표시. 뒤로가기 시 밀톡으로 복귀하기 위해 진입 탭 저장
 window.openUserProfileFromBoard = (userId) => {
     if (!userId) return;

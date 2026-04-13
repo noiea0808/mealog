@@ -12,6 +12,7 @@ import { callableFunctions, db, appId, refreshAppCheckTokenBeforeFirestore } fro
 import { isDemoUser } from '../demo-account.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { applyDemoDateShiftToMealRecord } from '../demo-date-shift.js';
+import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 // ⚠️ initPushNotifications import 제거 - 크래시 문제로 인해 비활성화
 
 // 설정 저장 디바운싱을 위한 타이머
@@ -1573,7 +1574,7 @@ export async function saveEntry() {
         // 저장 실행 (모달과 로딩 오버레이가 이미 닫힌 상태에서)
         // 새 레코드인 경우 ID를 먼저 확보해야 공유 시 entryId를 올바르게 설정할 수 있음
         try {
-            const savedId = await dbOps.save(record);
+            const savedId = await dbOps.save(record, true);
             // 새 레코드인 경우 생성된 ID를 record에 설정
             if (!record.id && savedId) {
                 record.id = savedId;
@@ -1651,7 +1652,7 @@ export async function saveEntry() {
                     }
                 } catch (uploadError) {
                     console.error('사진 업로드 실패:', uploadError);
-                    showToast("사진 업로드 중 오류가 발생해 일부 사진이 저장되지 않았습니다.", 'error');
+                    showToast(getUserFacingErrorMessage(uploadError, 'save'), 'error');
                     // 업로드 실패 시 기존 URL 사진만 유지하여 저장
                     record.photos = existingPhotoUrls;
                     photosToShare = (!isShareBanned && wantsToShare && existingPhotoUrls.length > 0)
@@ -1678,11 +1679,15 @@ export async function saveEntry() {
                 }
                 window.mealHistory.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''));
             }
-            // 기록 완료 문구는 mealHistory 반영 후에만 계산 (그날 첫 기록 여부·연속일수가 맞아야 함)
-            showSuccessPopup(resolveRecordCompletePopupMessage(wasNewRecord, record.date), 800);
+            // 기록 완료 중앙 팝업 — 신규 기록에만 (수정 시에는 아래 토스트만)
+            if (wasNewRecord) {
+                showSuccessPopup(resolveRecordCompletePopupMessage(wasNewRecord, record.date), 800);
+            }
             // 저장 직후 잠깐 타임라인 전체 재렌더를 막아, jumpToDate·스크롤이 리스너 재렌더에 덮이지 않게 함
             window._timelineRerenderFreezeUntil = Date.now() + 800;
             
+            /** 모먼트(sharedPhotos 컬렉션) 동기화 실패 시 공유 성공 토스트를 막기 위함 */
+            let shareSyncFailed = false;
             // 공유 처리 (ID 확보 후 실행, 비동기로 떼어 두어 체감 속도 개선)
             // sharePhotos 함수가 기존 문서 삭제 + 새 문서 추가 + record.sharedPhotos 필드 업데이트를 모두 처리
             // 공유 상태가 변경되었을 때만 호출 (공유 설정 또는 공유 해제)
@@ -1742,14 +1747,32 @@ export async function saveEntry() {
                         if (appState.currentTab === 'gallery') renderGallery();
                         if (document.getElementById('feedContent')) renderFeed();
                     } catch (e) {
+                        shareSyncFailed = true;
                         console.error("공유 처리 실패:", e);
-                        showToast("사진 공유 처리 중 오류가 발생했습니다.", 'error');
+                        showToast(getUserFacingErrorMessage(e, 'share'), 'error');
                     }
+                }
+            }
+
+            if (!wasNewRecord) {
+                const finalShare = !!(photosToShare && photosToShare.length > 0);
+                const shareStateChanged =
+                    (!hadSharedPhotos && finalShare) || (hadSharedPhotos && !finalShare);
+                if (shareSyncFailed) {
+                    /* 공유 동기화 오류 토스트만 (위에서 이미 표시). 저장 성공 토스트는 중복 방지 */
+                } else if (shareStateChanged) {
+                    if (!hadSharedPhotos && finalShare) {
+                        showToast('기록을 공유했습니다.', 'success');
+                    } else {
+                        showToast('공유를 취소했습니다.', 'success');
+                    }
+                } else {
+                    showToast('수정했습니다.', 'success');
                 }
             }
         } catch (saveError) {
             console.error('dbOps.save 오류:', saveError);
-            // dbOps.save()에서 이미 에러 토스트를 표시하므로 여기서는 추가 처리 불필요
+            // dbOps.save(..., true) 사용 시 성공 토스트 없음 — 에러는 아래에서 처리
             // 로딩 오버레이는 이미 숨겨졌으므로 추가 처리 불필요
             return; // 저장 실패 시 여기서 종료
         }
@@ -1809,7 +1832,7 @@ export async function saveEntry() {
     } catch (e) {
         console.error('saveEntry 오류:', e);
         console.error('오류 스택:', e.stack);
-        showToast("저장 실패", 'error');
+        showToast(getUserFacingErrorMessage(e, 'save'), 'error');
         // 오류 발생 시에도 로딩 오버레이 숨김
         if (loadingOverlay) {
             loadingOverlay.classList.add('hidden');
@@ -1841,6 +1864,90 @@ export async function saveEntry() {
     }
 }
 
+const DELETE_OPT_MAIN = new Set(['morning', 'lunch', 'dinner']);
+const DELETE_OPT_SNACK = new Set(['pre_morning', 'snack1', 'snack2', 'night']);
+
+/**
+ * 기록 삭제 낙관적 반영 — mealHistory·dailyStats·모먼트 캐시에서 즉시 제거
+ * @returns {{ meal: object, prevDayStats: object | null, dateIso: string, hadShared: boolean } | null}
+ */
+function applyOptimisticMealDelete(mealId) {
+    const meal = window.mealHistory?.find((m) => m.id === mealId);
+    if (!meal) return null;
+    const dateIso = typeof meal.date === 'string' ? meal.date : '';
+    const slotId = meal.slotId || '';
+    let prevDayStats = null;
+
+    window.mealHistory = window.mealHistory.filter((m) => m.id !== mealId);
+
+    if (dateIso && window.dailyStats && typeof window.dailyStats === 'object') {
+        const day = window.dailyStats[dateIso];
+        if (day && typeof day === 'object') {
+            prevDayStats = JSON.parse(JSON.stringify(day));
+            const count = Math.max(0, (day.count || 0) - 1);
+            if (count <= 0) {
+                const next = { ...window.dailyStats };
+                delete next[dateIso];
+                window.dailyStats = next;
+            } else {
+                let mainCount = day.mainCount || 0;
+                let snackCount = day.snackCount || 0;
+                if (DELETE_OPT_MAIN.has(slotId) && mainCount > 0) mainCount -= 1;
+                else if (DELETE_OPT_SNACK.has(slotId) && snackCount > 0) snackCount -= 1;
+                window.dailyStats = {
+                    ...window.dailyStats,
+                    [dateIso]: { ...day, count, mainCount, snackCount }
+                };
+            }
+        }
+    }
+
+    const hadShared = Array.isArray(meal.sharedPhotos) && meal.sharedPhotos.length > 0;
+    if (hadShared && window.sharedPhotos) {
+        window.sharedPhotos = window.sharedPhotos.filter((p) => p.entryId !== mealId);
+    }
+    if (window.sharedPhotosFeed) {
+        window.sharedPhotosFeed = window.sharedPhotosFeed.filter((p) => p.entryId !== mealId);
+    }
+
+    return { meal, prevDayStats, dateIso, hadShared };
+}
+
+function rollbackOptimisticMealDelete(ctx) {
+    if (!ctx?.meal) return;
+    const m = ctx.meal;
+    window.mealHistory = [...(window.mealHistory || []), m].sort(
+        (a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || '')
+    );
+    if (ctx.dateIso && ctx.prevDayStats && window.dailyStats && typeof window.dailyStats === 'object') {
+        window.dailyStats = { ...window.dailyStats, [ctx.dateIso]: ctx.prevDayStats };
+    }
+    if (ctx.hadShared && Array.isArray(m.sharedPhotos) && m.sharedPhotos.length && window.currentUser?.uid) {
+        if (!window.sharedPhotos) window.sharedPhotos = [];
+        const uid = window.currentUser.uid;
+        const entries = m.sharedPhotos.map((photoUrl) => ({ entryId: m.id, photoUrl, userId: uid }));
+        window.sharedPhotos = window.sharedPhotos.filter((p) => p.entryId !== m.id).concat(entries);
+    }
+}
+
+function rerenderAfterMealDelete(mealDate) {
+    window._timelineRerenderFreezeUntil = Date.now() + 2000;
+    try {
+        if (appState.currentTab === 'timeline' && mealDate && typeof window.jumpToDate === 'function') {
+            window.jumpToDate(mealDate);
+        }
+    } catch (_) {}
+    try {
+        renderTimeline();
+        renderMiniCalendar();
+        updateTimelineShareIndicators();
+        if (appState.currentTab === 'gallery') renderGallery();
+        if (document.getElementById('feedContent')) renderFeed();
+    } catch (e) {
+        console.warn('삭제 후 렌더:', e);
+    }
+}
+
 export async function deleteEntry() {
     const state = appState;
     if (!state.currentEditingId) {
@@ -1861,44 +1968,43 @@ export async function deleteEntry() {
         showToast("로그인이 필요합니다.", 'error');
         return;
     }
+    if (isDemoUser(window.currentUser)) {
+        showToast('샘플 계정에서는 삭제할 수 없습니다.', 'error');
+        return;
+    }
     
     // 모달을 먼저 닫기 (사용자 경험 개선)
     window.closeModal();
-    
-    const loadingOverlay = document.getElementById('loadingOverlay');
-    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
-    
+
+    const optimisticCtx = applyOptimisticMealDelete(entryIdToDelete);
+    if (!optimisticCtx) {
+        showToast('삭제할 기록을 찾을 수 없습니다.', 'error');
+        return;
+    }
+
+    rerenderAfterMealDelete(optimisticCtx.meal.date);
+
     try {
         await dbOps.delete(entryIdToDelete);
-        // 삭제 성공 - Firestore 리스너가 자동으로 타임라인을 업데이트함
-        // 모먼트 캐시에서도 해당 기록 제거 (즉시 반영)
-        if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-            window.sharedPhotos = window.sharedPhotos.filter((p) => p.entryId !== entryIdToDelete);
-        }
-        if (window.sharedPhotosFeed && Array.isArray(window.sharedPhotosFeed)) {
-            window.sharedPhotosFeed = window.sharedPhotosFeed.filter((p) => p.entryId !== entryIdToDelete);
-        }
-        if (appState.currentTab === 'gallery') {
-            try { renderGallery(); } catch (e) { console.warn('갤러리 갱신:', e); }
-        }
         showToast("기록이 삭제되었습니다.", 'success');
     } catch (error) {
         console.error('삭제 오류:', error);
-        let errorMessage = "삭제 실패: ";
-        if (error.code === 'permission-denied') {
-            errorMessage += "권한이 없습니다.";
-        } else if (error.code === 'unavailable') {
-            errorMessage += "네트워크 연결을 확인해주세요.";
-        } else if (error.message && error.message.includes('로그인이 필요')) {
-            errorMessage = "로그인이 필요합니다.";
-        } else if (error.message) {
-            errorMessage += error.message;
-        } else {
-            errorMessage += "알 수 없는 오류가 발생했습니다.";
+        rollbackOptimisticMealDelete(optimisticCtx);
+        try {
+            const { loadSharedPhotosPage } = await import('../db.js');
+            const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);
+            window.sharedPhotosFeed = docs;
+            appState.sharedPhotosFeedLastDoc = lastDoc;
+            appState.sharedPhotosFeedHasMore = hasMore;
+        } catch (_) {
+            /* ignore */
         }
-        showToast(errorMessage, 'error');
-    } finally {
-        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+        rerenderAfterMealDelete(optimisticCtx.meal.date);
+        if (error.message && String(error.message).includes('로그인이 필요')) {
+            showToast('로그인이 필요합니다.', 'error');
+        } else {
+            showToast(getUserFacingErrorMessage(error, 'delete'), 'error');
+        }
     }
 }
 

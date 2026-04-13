@@ -2,9 +2,8 @@
  * 모먼트 갤러리 당겨서 새로고침 (터치·마우스)
  */
 import { appState } from '../state.js';
-import { db } from '../firebase.js';
 import { loadSharedPhotosPageReliable } from '../db.js';
-import { enableNetwork } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { runMealogNetworkRecovery } from './network.js';
 import { showToast } from '../ui.js';
 import { renderGallery, invalidateGalleryRenderSession, updateTimelineShareIndicators } from '../render/index.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';
@@ -34,7 +33,7 @@ export function setupGalleryPullToRefresh() {
         try {
             invalidateGalleryRenderSession();
             try {
-                await enableNetwork(db);
+                await runMealogNetworkRecovery();
             } catch (_) {
                 /* ignore */
             }

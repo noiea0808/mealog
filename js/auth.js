@@ -180,7 +180,7 @@ async function finalizeKakaoSignInWithCode(code, redirectUri) {
         } catch (_) {}
         window._recordsLoadHidePending = true;
         showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
-        showToast('카카오 로그인 성공!', 'success');
+        /* 성공 토스트 생략 — 메인 진입 후 웰컴(출석) 팝업과 겹침 */
     } catch (error) {
         console.warn('[카카오 OAuth] 오류:', error?.code, error?.message, error);
         const msg = error?.message || '';
@@ -536,7 +536,7 @@ export async function handleGoogleLogin() {
         });
         window._recordsLoadHidePending = true;
         showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
-        showToast("구글 로그인 성공!", "success");
+        /* 성공 토스트 생략 — 메인 진입 후 웰컴(출석) 팝업과 겹침 */
     } catch (error) {
         console.warn('[구글 로그인] 오류:', error?.code, error?.message, error);
         if (error?.code === 'auth/unauthorized-domain' || error?.message?.includes('unauthorized-domain')) {
@@ -720,7 +720,7 @@ export async function handleEmailAuth() {
             });
             window._recordsLoadHidePending = true;
             showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
-            showToast("로그인되었습니다.", "success");
+            /* 성공 토스트 생략 — 메인 진입 후 웰컴(출석) 팝업과 겹침 */
             if (document.getElementById('rememberEmailCheck').checked) {
                 localStorage.setItem('savedEmail', email);
             } else {
@@ -1054,7 +1054,7 @@ export async function initAuth(onAuthStateChangedCallback) {
                 console.log('🔐 구글 Redirect 로그인 성공:', result.user.uid);
                 window._recordsLoadHidePending = true;
                 showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
-                showToast("구글 로그인 성공!", "success");
+                /* 성공 토스트 생략 — 메인 진입 후 웰컴(출석) 팝업과 겹침 */
             }
         } catch (error) {
             // 네이티브에서는 리다이렉트 미사용 → 에러는 무시(콘솔만), 사용자에게 토스트 안 띄움

@@ -3,6 +3,7 @@ import { SLOTS, SLOT_STYLES, SATIETY_DATA, SNACK_TIMELINE_VIEW_STORAGE_KEY } fro
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
 import { formatMealMenuDisplayLine } from '../utils/meal-display-line.js';
+import { getRecordCountForIso } from '../meal-record-count.js';
 
 /** false면 타임라인 첫 날짜 헤더의 간식보기(태그/카드) 전환 UI를 숨김 (기능은 유지, 재노출 시 true로) */
 const SNACK_TIMELINE_VIEW_TOGGLE_VISIBLE = false;
@@ -592,16 +593,6 @@ let miniCalendarPointerDragBound = false;
 let miniCalendarScrollTitleBound = false;
 let trackerMonthTitleRaf = null;
 let trackerMonthCalendarModalBound = false;
-
-/** 트래커·월 팝업 공통: 일별 기록 건수 (dailyStats ∪ mealHistory) */
-function getRecordCountForIso(iso) {
-    const statsCount = (window.dailyStats && window.dailyStats[iso]?.count) ?? 0;
-    const historyCount =
-        window.mealHistory && Array.isArray(window.mealHistory)
-            ? window.mealHistory.filter((m) => m.date === iso).length
-            : 0;
-    return Math.max(statsCount, historyCount);
-}
 
 function pad2(n) {
     return String(n).padStart(2, '0');

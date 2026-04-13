@@ -23,22 +23,21 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { showToast } from '../ui.js';
 import { logger } from '../utils.js';
+import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import { isDemoUser } from '../demo-account.js';
 import { normalizeNicknameForClaim, nicknameClaimDocId } from './nickname-claims.js';
 
-/** Callable(httpsCallable) 오류 — 긴 스택·gRPC 본문이 토스트에 그대로 나오지 않게 */
-function formatCallableErrorForToast(err, fallback = '요청에 실패했습니다.') {
+/** Callable(httpsCallable) 오류 — 짧은 안내 문구만 */
+function formatCallableErrorForToast(err) {
     const code = err && err.code != null ? String(err.code) : '';
     const raw = err && err.message != null ? String(err.message) : String(err || '');
-    if (/functions\/internal|internal/i.test(code) || /INTERNAL/i.test(raw)) {
-        return '서버 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.';
+    if (/unauthenticated|user-not-found/i.test(code + raw)) {
+        return '다시 로그인한 뒤 시도해 주세요.';
     }
-    if (/unauthenticated|permission|denied|forbidden|app check/i.test(code + raw)) {
-        return '권한 또는 로그인 문제로 처리할 수 없습니다. 다시 로그인한 뒤 시도해 주세요.';
+    if (/forbidden|app check/i.test(code + raw) && !/permission-denied/i.test(code)) {
+        return '다시 로그인한 뒤 시도해 주세요.';
     }
-    const one = raw.split('\n')[0].trim();
-    if (one.length > 160) return `${one.slice(0, 157)}…`;
-    return one || fallback;
+    return getUserFacingErrorMessage(err, 'share');
 }
 
 /** Firestore에 undefined가 들어가면 쓰기 실패할 수 있어 제거 */
@@ -224,20 +223,7 @@ export const dbOps = {
                 errorCode: e.code, 
                 errorMessage: e.message 
             });
-            // 에러 메시지 생성
-            let errorMessage = "저장 실패: ";
-            if (e.code === 'permission-denied') {
-                errorMessage += "권한이 없습니다.";
-            } else if (e.code === 'unavailable') {
-                errorMessage += "네트워크 연결을 확인해주세요.";
-            } else if (e.message && e.message.includes('Quota exceeded')) {
-                errorMessage = "Firebase 할당량이 초과되었습니다.";
-            } else if (e.message) {
-                errorMessage += e.message;
-            } else {
-                errorMessage += "알 수 없는 오류가 발생했습니다.";
-            }
-            showToast(errorMessage, 'error');
+            showToast(getUserFacingErrorMessage(e, 'save'), 'error');
             throw e;
         }
     },
@@ -515,21 +501,11 @@ export const dbOps = {
                 errorCode: e.code, 
                 errorMessage: e.message 
             });
-            let errorMessage = "설정 저장 실패: ";
             if (e.message === 'NICKNAME_TAKEN') {
-                errorMessage = "이미 사용 중인 닉네임입니다.";
-            } else if (e.code === 'permission-denied') {
-                errorMessage += '권한이 없습니다. 잠시 후 다시 시도하거나 로그아웃 후 다시 로그인해 주세요. (계속되면 Firestore 규칙 배포 여부를 확인하세요.)';
-            } else if (e.code === 'unavailable') {
-                errorMessage += "네트워크 연결을 확인해주세요.";
-            } else if (e.message && e.message.includes('Quota exceeded')) {
-                errorMessage = "Firebase 할당량이 초과되었습니다.";
-            } else if (e.message) {
-                errorMessage += e.message;
+                showToast('이미 사용 중인 닉네임입니다.', 'error');
             } else {
-                errorMessage += "알 수 없는 오류가 발생했습니다.";
+                showToast(getUserFacingErrorMessage(e, 'settings'), 'error');
             }
-            showToast(errorMessage, 'error');
             throw e;
         }
     },
@@ -620,7 +596,7 @@ export const dbOps = {
                     console.error('Share Photos 재시도 실패:', e2);
                 }
             }
-            showToast(formatCallableErrorForToast(e, '사진 공유에 실패했습니다.'), 'error');
+            showToast(formatCallableErrorForToast(e), 'error');
             throw e;
         }
     },
@@ -653,7 +629,7 @@ export const dbOps = {
             return result.data;
         } catch (e) {
             console.error("Unshare Photos Error:", e);
-            showToast(formatCallableErrorForToast(e, '사진 공유 해제에 실패했습니다.'), 'error');
+            showToast(formatCallableErrorForToast(e), 'error');
             throw e;
         }
     },

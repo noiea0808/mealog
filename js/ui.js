@@ -78,17 +78,41 @@ export function hideLoading() {
 const TOAST_DURATION_MS = 3500;
 
 /**
- * 토스트 — 실패·에러(type === 'error')일 때만 표시. success / info 는 무시.
+ * 기록 완료·웰컴(출석) 등 전면 중앙 팝업이 열려 있는지 — 이중 피드백 방지용
+ */
+function isFullScreenMealogOverlayVisible() {
+    try {
+        const sp = document.getElementById('successPopup');
+        if (sp && !sp.classList.contains('hidden')) return true;
+        const ap = document.getElementById('attendancePopup');
+        if (ap && !ap.classList.contains('hidden')) return true;
+    } catch (_) {
+        /* ignore */
+    }
+    return false;
+}
+
+/**
+ * 토스트 — type: error(빨강) | success(에메랄드) | info(슬레이트)
+ * 전면 축하/웰컴 팝업과 겹치면 success·info 는 생략 (에러는 항상 표시)
  */
 export function showToast(message, type = 'info') {
     if (!message) return;
-    if (type !== 'error') return;
+    if (type !== 'error' && type !== 'success' && type !== 'info') return;
+    if ((type === 'success' || type === 'info') && isFullScreenMealogOverlayVisible()) {
+        return;
+    }
     const container = document.getElementById('toastContainer');
     if (!container) return;
     const toast = document.createElement('div');
-    toast.setAttribute('role', 'alert');
-    toast.className =
-        'animate-toast px-4 py-3 rounded-xl text-sm font-medium text-white shadow-lg max-w-full bg-red-500';
+    toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    const bg =
+        type === 'error'
+            ? 'bg-red-500'
+            : type === 'success'
+              ? 'bg-emerald-600'
+              : 'bg-slate-600';
+    toast.className = `animate-toast px-4 py-3 rounded-xl text-sm font-medium text-white shadow-lg max-w-full ${bg}`;
     toast.textContent = message;
     container.appendChild(toast);
     const remove = () => {
@@ -801,7 +825,19 @@ function bindNetworkErrorOverlayButtons() {
     const dismissBtn = document.getElementById('networkErrorDismissBtn');
     if (!reloadBtn || !dismissBtn) return;
     networkErrorOverlayButtonsBound = true;
-    reloadBtn.addEventListener('click', () => {
+    reloadBtn.addEventListener('click', async () => {
+        try {
+            if (typeof window.Mealog?.runNetworkRecovery === 'function') {
+                await window.Mealog.runNetworkRecovery();
+            }
+        } catch (_) {}
+        hideNetworkErrorOverlay();
+        try {
+            if (typeof window.reloadMomentFeed === 'function') {
+                await window.reloadMomentFeed();
+                return;
+            }
+        } catch (_) {}
         try {
             window.location.reload();
         } catch (_) {}
