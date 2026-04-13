@@ -121,7 +121,7 @@ export const dbOps = {
         try {
             const runWrite = async () => {
                 if (typeof currentUser.getIdToken === 'function') {
-                    await currentUser.getIdToken(true);
+                    await currentUser.getIdToken(false);
                 }
                 await appCheckInitPromise;
                 await refreshAppCheckTokenBeforeFirestore();
@@ -210,7 +210,7 @@ export const dbOps = {
                     if (typeof currentUser?.getIdToken === 'function') {
                         await currentUser.getIdToken(true);
                     }
-                    await refreshAppCheckTokenBeforeFirestore();
+                    await refreshAppCheckTokenBeforeFirestore({ force: true });
                     return await runWrite();
                 }
                 throw e1;
@@ -252,7 +252,7 @@ export const dbOps = {
         };
         try {
             if (typeof currentUser.getIdToken === 'function') {
-                await currentUser.getIdToken(true);
+                await currentUser.getIdToken(false);
             }
             await appCheckInitPromise;
             await refreshAppCheckTokenBeforeFirestore();
@@ -300,9 +300,9 @@ export const dbOps = {
             return;
         }
         try {
-            // OAuth·커스텀 토큰 직후 Firestore가 옛 토큰으로 요청하면 permission-denied가 날 수 있음
+            // OAuth·커스텀 토큰 직후: 재시도 경로에서만 강제 갱신(연속 저장 체감 개선)
             if (typeof currentUser.getIdToken === 'function') {
-                await currentUser.getIdToken(true);
+                await currentUser.getIdToken(false);
             }
             await appCheckInitPromise;
             await refreshAppCheckTokenBeforeFirestore();
@@ -380,6 +380,8 @@ export const dbOps = {
             const claimsColl = collection(db, 'artifacts', appId, 'nicknameClaims');
             const normNew = normalizeNicknameForClaim(settingsToSave.profile?.nickname);
             const normOld = normalizeNicknameForClaim(existingSettings.profile?.nickname);
+            /** 닉네임 정규화 값이 동일하면 클레임 이동 불필요 → 트랜잭션 생략(왕복·락 비용 감소) */
+            const nicknameNormalizedUnchanged = normNew === normOld;
 
             const userRootRef = doc(db, 'artifacts', appId, 'users', currentUser.uid);
             const payloadForWrite = stripUndefinedDeep(settingsToSave);
@@ -390,6 +392,11 @@ export const dbOps = {
                     await setDoc(userRootRef, { uid: currentUser.uid }, { merge: true });
                 } catch (e) {
                     console.warn('사용자 루트 문서 생성/갱신 실패 (설정 저장 계속):', e?.code || e?.message || e);
+                }
+
+                if (nicknameNormalizedUnchanged) {
+                    await setDoc(settingsRef, payloadForWrite, { merge: true });
+                    return;
                 }
 
                 await runTransaction(db, async (transaction) => {
@@ -458,7 +465,7 @@ export const dbOps = {
                         if (typeof currentUser.getIdToken === 'function') {
                             await currentUser.getIdToken(true);
                         }
-                        await refreshAppCheckTokenBeforeFirestore();
+                        await refreshAppCheckTokenBeforeFirestore({ force: true });
                         const res = await callableFunctions.saveArtifactUserSettings({
                             settings: payloadForWrite
                         });
@@ -583,7 +590,7 @@ export const dbOps = {
                 /permission|app check|forbidden/i.test(msg);
             if (isPerm) {
                 try {
-                    await refreshAppCheckTokenBeforeFirestore();
+                    await refreshAppCheckTokenBeforeFirestore({ force: true });
                     await new Promise((r) => setTimeout(r, 400));
                     const result = await callableFunctions.sharePhotos({
                         photosToShare: photosToShare || [],

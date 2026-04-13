@@ -194,15 +194,24 @@ export const appCheckInitPromise = (async () => {
     }
 })();
 
+/** 연속 저장·삭제 시 매번 getToken(true) 하지 않도록 완화(재시도·force 시에만 강제) */
+let lastAppCheckForceRefreshAt = 0;
+const APPCHECK_FORCE_MIN_INTERVAL_MS = 4000;
+
 /**
- * App Check 강제 시, 초기화 직후 첫 Firestore 쓰기가 토큰 없이 나가 permission-denied 나는 경우 완화
+ * App Check: Firestore 쓰기 직전 호출. 기본은 캐시 우선(빠름), 일정 간격마다만 강제 갱신.
+ * @param {{ force?: boolean }} [opts] — permission-denied 재시도 시 `force: true` 권장
  */
-export async function refreshAppCheckTokenBeforeFirestore() {
+export async function refreshAppCheckTokenBeforeFirestore(opts = {}) {
     await appCheckInitPromise;
     if (!firebaseAppCheck || typeof window === 'undefined') return;
     try {
         const { getToken } = await import('https://www.gstatic.com/firebasejs/11.10.0/firebase-app-check.js');
-        await getToken(firebaseAppCheck, true);
+        const now = Date.now();
+        const force =
+            opts.force === true || now - lastAppCheckForceRefreshAt >= APPCHECK_FORCE_MIN_INTERVAL_MS;
+        await getToken(firebaseAppCheck, force);
+        if (force) lastAppCheckForceRefreshAt = now;
     } catch (_) {
         /* ignore */
     }

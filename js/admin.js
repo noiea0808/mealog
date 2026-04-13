@@ -617,11 +617,14 @@ window.switchContentSidebar = function (section, opts) {
         const activeMainSection = document.getElementById('content-main-settings');
         if (activeMainSection) activeMainSection.classList.remove('hidden');
         bindAdminSettingsSubnavOnce();
-        loadAdminSettings();
         const sub = (opts && opts.sub) || 'welcome';
         window.switchAdminSettingsSub(sub);
         syncSettingsWelcomeTopTabs(sub);
-        resetAdminScrollTop();
+        // loadAdminSettings가 끝날 때 fillAttendancePopupForm으로 라디오를 덮어쓰므로,
+        // 로드 완료 전 클릭은 첫 번째 선택이 무효화되는 것처럼 보임 → 로드 후 스크롤·입력 허용
+        void loadAdminSettings().finally(() => {
+            resetAdminScrollTop();
+        });
         return;
     }
 
@@ -1445,9 +1448,17 @@ function fillAttendancePopupForm(rawAp) {
     }
 }
 
+let loadAdminSettingsGen = 0;
+
 async function loadAdminSettings() {
     const inputEl = document.getElementById('adminDisplayNameInput');
     if (!inputEl) return;
+    const gen = ++loadAdminSettingsGen;
+    const settingsShell = document.getElementById('content-main-settings');
+    if (settingsShell) {
+        settingsShell.classList.add('pointer-events-none', 'opacity-90', 'cursor-wait');
+        settingsShell.setAttribute('aria-busy', 'true');
+    }
     try {
         const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
         const snap = await getDoc(configRef);
@@ -1461,6 +1472,11 @@ async function loadAdminSettings() {
     } catch (e) {
         console.warn('관리자 설정 로드 실패:', e);
         inputEl.value = cachedAdminDisplayName;
+    } finally {
+        if (gen === loadAdminSettingsGen && settingsShell) {
+            settingsShell.classList.remove('pointer-events-none', 'opacity-90', 'cursor-wait');
+            settingsShell.removeAttribute('aria-busy');
+        }
     }
 }
 

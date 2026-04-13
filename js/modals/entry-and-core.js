@@ -1871,8 +1871,10 @@ const DELETE_OPT_SNACK = new Set(['pre_morning', 'snack1', 'snack2', 'night']);
  * 기록 삭제 낙관적 반영 — mealHistory·dailyStats·모먼트 캐시에서 즉시 제거
  * @returns {{ meal: object, prevDayStats: object | null, dateIso: string, hadShared: boolean } | null}
  */
-function applyOptimisticMealDelete(mealId) {
-    const meal = window.mealHistory?.find((m) => m.id === mealId);
+function applyOptimisticMealDelete(mealId, preloadedMeal = null) {
+    const meal =
+        (preloadedMeal && preloadedMeal.id === mealId ? preloadedMeal : null) ||
+        window.mealHistory?.find((m) => m.id === mealId);
     if (!meal) return null;
     const dateIso = typeof meal.date === 'string' ? meal.date : '';
     const slotId = meal.slotId || '';
@@ -1962,7 +1964,33 @@ export async function deleteEntry() {
     
     // 삭제할 ID를 미리 저장 (모달 닫기 전에)
     const entryIdToDelete = state.currentEditingId;
-    
+
+    /** closeModal 전에 캐시에서 확보 — 닫은 뒤에는 편집 id가 비워져 찾기 실패하는 경우 방지 */
+    let mealForDelete = window.mealHistory?.find((m) => m.id === entryIdToDelete);
+    if (!mealForDelete && entryIdToDelete && window.currentUser?.uid) {
+        try {
+            await refreshAppCheckTokenBeforeFirestore();
+            const ref = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals', entryIdToDelete);
+            const snap = await getDoc(ref);
+            if (snap.exists()) {
+                let rec = { id: snap.id, ...snap.data() };
+                const shift = isDemoUser(window.currentUser) ? Number(window.__demoDateShiftDays) || 0 : 0;
+                if (shift) rec = applyDemoDateShiftToMealRecord(rec, shift);
+                mealForDelete = rec;
+                const hist = window.mealHistory || [];
+                if (!hist.some((m) => m.id === entryIdToDelete)) {
+                    window.mealHistory = [...hist, rec].sort(
+                        (a, b) =>
+                            (b.date || '').localeCompare(a.date || '') ||
+                            (b.time || '').localeCompare(a.time || '')
+                    );
+                }
+            }
+        } catch (e) {
+            console.warn('deleteEntry: 단건 조회 실패', entryIdToDelete, e);
+        }
+    }
+
     // 로그인 상태 확인
     if (!window.currentUser) {
         showToast("로그인이 필요합니다.", 'error');
@@ -1972,11 +2000,11 @@ export async function deleteEntry() {
         showToast('샘플 계정에서는 삭제할 수 없습니다.', 'error');
         return;
     }
-    
+
     // 모달을 먼저 닫기 (사용자 경험 개선)
     window.closeModal();
 
-    const optimisticCtx = applyOptimisticMealDelete(entryIdToDelete);
+    const optimisticCtx = applyOptimisticMealDelete(entryIdToDelete, mealForDelete);
     if (!optimisticCtx) {
         showToast('삭제할 기록을 찾을 수 없습니다.', 'error');
         return;

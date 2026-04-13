@@ -1,15 +1,21 @@
 // 타임라인 및 미니 캘린더 렌더링
-import { SLOTS, SLOT_STYLES, SATIETY_DATA, SNACK_TIMELINE_VIEW_STORAGE_KEY } from '../constants.js';
+import {
+    SLOTS,
+    SLOT_STYLES,
+    SATIETY_DATA,
+    SNACK_TIMELINE_VIEW_STORAGE_KEY,
+    MEAL_TIMELINE_VIEW_STORAGE_KEY
+} from '../constants.js';
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
 import { formatMealMenuDisplayLine } from '../utils/meal-display-line.js';
 import { getRecordCountForIso } from '../meal-record-count.js';
 
-/** false면 타임라인 첫 날짜 헤더의 간식보기(태그/카드) 전환 UI를 숨김 (기능은 유지, 재노출 시 true로) */
-const SNACK_TIMELINE_VIEW_TOGGLE_VISIBLE = false;
+/** false면 타임라인 첫 날짜 헤더의 간식보기(태그/카드) 전환 UI를 숨김 */
+const SNACK_TIMELINE_VIEW_TOGGLE_VISIBLE = true;
 
-/** true면 간식은 항상 태그 행으로만 표시 (localStorage의 카드 설정 무시, 재개 시 false로) */
-const SNACK_TIMELINE_FORCE_TAGS_MODE = true;
+/** true면 간식은 항상 태그 행으로만 표시 (localStorage의 카드 설정 무시) */
+const SNACK_TIMELINE_FORCE_TAGS_MODE = false;
 
 // entryId가 실제로 공유되었는지 확인하는 헬퍼 함수
 // record: meal 문서 (sharedPhotos 필드 있음). sharedPhotos 컬렉션과 meal 문서가 불일치할 수 있어 둘 다 확인
@@ -30,19 +36,68 @@ function getSnackTimelineView() {
     if (SNACK_TIMELINE_FORCE_TAGS_MODE) return 'tags';
     try {
         const v = localStorage.getItem(SNACK_TIMELINE_VIEW_STORAGE_KEY);
-        if (v === 'cards' || v === 'tags') return v;
+        if (v === 'cards' || v === 'tags' || v === 'list') return v;
     } catch (_) {}
     return 'tags';
+}
+
+function getMealTimelineView() {
+    try {
+        const v = localStorage.getItem(MEAL_TIMELINE_VIEW_STORAGE_KEY);
+        if (v === 'cards' || v === 'list') return v;
+    } catch (_) {}
+    return 'cards';
+}
+
+/** 같은 날·같은 간식 슬롯: 기록 시간 오름차순 — 번호 1=먼저 기록, 추가분은 후순(아래·큰 번호) */
+function mealRecordTimeSortMs(r) {
+    if (!r) return 0;
+    const date = typeof r.date === 'string' ? r.date : '';
+    let timeStr = typeof r.time === 'string' && r.time.trim() ? r.time.trim() : '12:00:00';
+    if (timeStr.length === 5 && /^\d{1,2}:\d{2}$/.test(timeStr)) timeStr = `${timeStr}:00`;
+    const ms = Date.parse(`${date}T${timeStr}`);
+    if (!Number.isNaN(ms)) return ms;
+    const ts = r.timestamp;
+    if (ts && typeof ts.toDate === 'function') return ts.toDate().getTime();
+    if (ts && typeof ts === 'object' && typeof ts.seconds === 'number') return ts.seconds * 1000;
+    if (typeof ts === 'string' || typeof ts === 'number') {
+        const t = new Date(ts).getTime();
+        if (!Number.isNaN(t)) return t;
+    }
+    return 0;
+}
+
+function sortSnackSlotRecordsChronological(records) {
+    return [...records].sort((a, b) => {
+        const da = mealRecordTimeSortMs(a);
+        const db = mealRecordTimeSortMs(b);
+        if (da !== db) return da - db;
+        return String(a.id || '').localeCompare(String(b.id || ''));
+    });
+}
+
+function buildMealTimelineViewSelectHtml(current) {
+    const cardsSel = current === 'cards' ? ' selected' : '';
+    const listSel = current === 'list' ? ' selected' : '';
+    return `<div class="flex flex-col items-center gap-0.5 flex-shrink-0">
+            <label for="mealTimelineViewSelect" class="text-[10px] font-bold text-slate-500 leading-tight whitespace-nowrap text-center">식사보기</label>
+            <select id="mealTimelineViewSelect" class="meal-timeline-view-select text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1 max-w-[min(100%,8rem)] shadow-sm" title="식사보기: 카드·목록">
+                <option value="cards"${cardsSel}>카드</option>
+                <option value="list"${listSel}>목록</option>
+            </select>
+        </div>`;
 }
 
 function buildSnackTimelineViewSelectHtml(current) {
     const tagsSel = current === 'tags' ? ' selected' : '';
     const cardsSel = current === 'cards' ? ' selected' : '';
+    const listSel = current === 'list' ? ' selected' : '';
     return `<div class="flex flex-col items-center gap-0.5 flex-shrink-0">
             <label for="snackTimelineViewSelect" class="text-[10px] font-bold text-slate-500 leading-tight whitespace-nowrap text-center">간식보기</label>
-            <select id="snackTimelineViewSelect" class="snack-timeline-view-select text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1 max-w-[min(100%,9rem)] shadow-sm" title="간식보기: 태그 또는 카드">
+            <select id="snackTimelineViewSelect" class="snack-timeline-view-select text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1 max-w-[min(100%,10rem)] shadow-sm" title="간식보기: 태그·카드·목록">
                 <option value="tags"${tagsSel}>태그</option>
                 <option value="cards"${cardsSel}>카드</option>
+                <option value="list"${listSel}>목록</option>
             </select>
         </div>`;
 }
@@ -82,12 +137,14 @@ export function syncSnackViewDropdown(container) {
         const shareHtml = getDailyShareButtonHtmlForDate(dateStr);
 
         if (index === 0 && SNACK_TIMELINE_VIEW_TOGGLE_VISIBLE) {
-            const view = getSnackTimelineView();
+            const snackView = getSnackTimelineView();
+            const mealView = getMealTimelineView();
             header.className = `date-section-header text-sm font-black ${dayColorClass} px-4 flex items-center justify-between gap-2 flex-wrap`;
             header.innerHTML = `
                 <div class="min-w-0">${h3Html}</div>
-                <div class="flex items-center justify-end gap-2 flex-shrink-0">
-                    ${buildSnackTimelineViewSelectHtml(view)}
+                <div class="flex items-center justify-end gap-2 flex-shrink-0 flex-wrap">
+                    ${buildMealTimelineViewSelectHtml(mealView)}
+                    ${buildSnackTimelineViewSelectHtml(snackView)}
                     ${shareHtml}
                 </div>`;
         } else {
@@ -97,7 +154,15 @@ export function syncSnackViewDropdown(container) {
     });
 }
 
-function buildSnackTimelineCardHtml(dateStr, slot, r, specificStyle, cardMbClass = 'mb-1.5') {
+function buildSnackTimelineCardHtml(
+    dateStr,
+    slot,
+    r,
+    specificStyle,
+    cardMbClass = 'mb-1.5',
+    ordinal1Based = 1,
+    totalInSlot = 1
+) {
     const p = r.snackPlace || r.place || '';
     const m = formatMealMenuDisplayLine(r);
     const menuLine =
@@ -105,7 +170,9 @@ function buildSnackTimelineCardHtml(dateStr, slot, r, specificStyle, cardMbClass
         String(r.menuDetail || r.snackType || '').trim() ||
         (r.category && String(r.category).trim()) ||
         '';
-    const safeSlotLabel = escapeHtml(slot.label);
+    const showOrdinal = totalInSlot > 1;
+    const slotTitleForCard = showOrdinal ? `${slot.label}${ordinal1Based}` : slot.label;
+    const safeSlotLabel = escapeHtml(slotTitleForCard);
     const safePlace = escapeHtml(p);
     let titleLine1 = '';
     if (p) {
@@ -137,10 +204,10 @@ function buildSnackTimelineCardHtml(dateStr, slot, r, specificStyle, cardMbClass
     } else if (r.mealType === 'Skip') {
         iconHtml = `<i class="fa-solid fa-ban text-2xl text-slate-600" aria-hidden="true"></i>`;
     } else {
-        iconHtml = `<i class="fa-solid fa-cookie-bite text-2xl text-slate-400" aria-hidden="true"></i>`;
+        iconHtml = `<i class="fa-solid fa-mug-saucer text-2xl text-slate-400" aria-hidden="true"></i>`;
     }
     const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
-    return `<div onclick="window.openModal('${dateStr}', '${slot.id}', '${r.id}')" class="card ${cardMbClass} border border-slate-200 cursor-pointer active:scale-[0.98] transition-all !rounded-none" data-entry-id="${r.id}">
+    return `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})' class="card ${cardMbClass} border border-slate-200 cursor-pointer active:scale-[0.98] transition-all !rounded-none" data-entry-id="${escapeHtml(String(r.id))}">
         <div class="flex">
             <div class="w-[140px] h-[140px] bg-slate-100 border-slate-200 ${specificStyle.iconText} flex-shrink-0 flex items-center justify-center overflow-hidden border-r">
                 ${iconHtml}
@@ -170,16 +237,168 @@ function buildSnackEmptySlotCardHtml(dateStr, slot, specificStyle) {
     const safeLabel = escapeHtml(slot.label);
     /** 행 높이만 본식 카드(140px)의 1/3 — 사진 열 너비는 식사 카드와 동일 140px */
     const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
-    return `<div onclick="window.openModal('${dateStr}', '${slot.id}', null)" class="card mb-1.5 border border-slate-200 opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+    return `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, null)' class="card mb-1.5 border border-slate-200 opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
         <div class="flex ${hThird}">
             <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 bg-slate-100 border-slate-200 ${specificStyle.iconText} flex items-center justify-center overflow-hidden border-r">
-                <span class="text-3xl font-bold text-slate-400 leading-none" aria-hidden="true">+</span>
+                <span class="text-3xl font-semibold text-slate-400 leading-none" aria-hidden="true">+</span>
             </div>
             <div class="flex-1 min-w-0 flex items-center px-4 py-0.5">
                 <p class="mb-0 truncate text-xs leading-tight">
                     <span class="font-bold ${specificStyle.iconText}">${safeLabel}</span>
-                    <span class="text-slate-400 font-normal"> · 기록하기</span>
+                    <span class="text-slate-400 font-normal"> <span class="font-bold">+</span> 기록하기</span>
                 </p>
+            </div>
+        </div>
+    </div>`;
+}
+
+/** 목록형: 기록 없음 — 좌 슬롯명, 우측 `+ 기록하기` */
+function buildSnackListEmptyRowHtml(dateStr, slot, specificStyle) {
+    const safeLabel = escapeHtml(slot.label);
+    const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
+    return `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, null)' class="card mb-1.5 border border-slate-200 opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+        <div class="flex ${hThird}">
+            <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex items-center justify-center overflow-hidden border-r px-2 text-center">
+                <span class="text-sm font-bold leading-tight">${safeLabel}</span>
+            </div>
+            <div class="flex-1 min-w-0 flex items-center justify-center gap-1.5 px-4">
+                <span class="text-xl font-semibold text-slate-400 leading-none" aria-hidden="true">+</span>
+                <span class="text-xs text-slate-400 font-normal">기록하기</span>
+            </div>
+        </div>
+    </div>`;
+}
+
+/** 본식 목록형: 기록 없음 */
+function buildMainMealListEmptyRowHtml(dateStr, slot, specificStyle) {
+    const safeLabel = escapeHtml(slot.label);
+    const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
+    return `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, null)' class="card mb-1.5 border border-slate-200 opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+        <div class="flex ${hThird}">
+            <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex items-center justify-center overflow-hidden border-r px-2 text-center">
+                <span class="text-sm font-bold leading-tight">${safeLabel}</span>
+            </div>
+            <div class="flex-1 min-w-0 flex items-center justify-center gap-1.5 px-4">
+                <span class="text-xl font-semibold text-slate-400 leading-none" aria-hidden="true">+</span>
+                <span class="text-xs text-slate-400 font-normal">기록하기</span>
+            </div>
+        </div>
+    </div>`;
+}
+
+/** 본식 목록형: 기록 있음 — 간식 목록과 동일 레이아웃(좌 슬롯·@장소 / 우 메뉴·코멘트·태그) */
+function buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, cardMbClass = 'mb-1.5') {
+    const p = String(r.place || '').trim();
+    const safePlaceLine = escapeHtml(p || '—');
+    const safeSlotTitle = escapeHtml(slot.label);
+    const m = formatMealMenuDisplayLine(r);
+    const menuLine =
+        r.mealType === 'Skip'
+            ? 'Skip'
+            : (m || '').trim() || (r.category && String(r.category).trim()) || '';
+    const safeMenu = escapeHtml(menuLine);
+
+    const tags = [];
+    if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
+    if (r.withWhomDetail) tags.push(r.withWhomDetail);
+    else if (r.withWhom && r.withWhom !== '혼자') tags.push(r.withWhom);
+    if (r.satiety) {
+        const sData = SATIETY_DATA.find((d) => d.val === r.satiety);
+        if (sData) tags.push(sData.label);
+    }
+    let tagsHtml = '';
+    if (tags.length > 0) {
+        tagsHtml = `<div class="mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
+            .map((t) => `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${escapeHtml(t)}</span>`)
+            .join('')}</div>`;
+    }
+
+    const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
+
+    return `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})' class="card ${cardMbClass} border border-slate-200 cursor-pointer active:scale-[0.98] transition-all !rounded-none" data-entry-id="${escapeHtml(String(r.id))}">
+        <div class="flex items-stretch">
+            <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
+                <span class="text-sm font-bold leading-tight break-words">${safeSlotTitle}</span>
+                <span class="text-xs font-bold text-slate-500 leading-snug">@ ${safePlaceLine}</span>
+            </div>
+            <div class="flex-1 min-w-0 relative py-2 pl-3 pr-2">
+                <div class="absolute top-2 right-2 z-10 flex flex-row items-center gap-1.5">
+                    <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
+                    <span class="text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-300 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                        <span class="text-[13px]">⭐</span>
+                        <span class="text-[12px] font-black">${ratingVal}</span>
+                    </span>
+                </div>
+                <div class="min-w-0 pr-[4.25rem]">
+                    <p class="text-sm font-bold text-slate-800 leading-snug mb-0">${safeMenu}</p>
+                    ${r.comment ? `<p class="text-xs text-slate-400 mt-1.5 mb-0 line-clamp-1 whitespace-pre-line">"${escapeHtml(r.comment).replace(/\n/g, '<br>')}"</p>` : ''}
+                    ${tagsHtml}
+                </div>
+            </div>
+        </div>
+    </div>`;
+}
+
+/** 목록형: 기록 있음 — 좌: 슬롯(+동일슬롯 다건일 때만 1,2,3) / 줄바꿈 / @ 장소 · 우: 메뉴 → 코멘트(1줄) → 태그, 공유·별점은 우상단 */
+function buildSnackListFilledRowHtml(
+    dateStr,
+    slot,
+    r,
+    specificStyle,
+    cardMbClass = 'mb-1.5',
+    ordinal1Based = 1,
+    totalInSlot = 1
+) {
+    const p = String(r.snackPlace || r.place || '').trim();
+    const m = formatMealMenuDisplayLine(r);
+    const menuLine =
+        (m || '').trim() ||
+        String(r.menuDetail || r.snackType || '').trim() ||
+        (r.category && String(r.category).trim()) ||
+        '';
+    const showOrdinal = totalInSlot > 1;
+    const slotTitle = showOrdinal ? `${slot.label}${ordinal1Based}` : slot.label;
+    const safeSlotTitle = escapeHtml(slotTitle);
+    const safePlaceLine = escapeHtml(p || '—');
+
+    const tags = [];
+    if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
+    if (r.snackType && String(r.snackType).trim() && !tags.includes(r.snackType)) tags.push(r.snackType);
+    if (r.withWhomDetail) tags.push(r.withWhomDetail);
+    else if (r.withWhom && r.withWhom !== '혼자') tags.push(r.withWhom);
+    if (r.satiety) {
+        const sData = SATIETY_DATA.find((d) => d.val === r.satiety);
+        if (sData) tags.push(sData.label);
+    }
+    let tagsHtml = '';
+    if (tags.length > 0) {
+        tagsHtml = `<div class="mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
+            .map((t) => `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${escapeHtml(t)}</span>`)
+            .join('')}</div>`;
+    }
+
+    const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
+    const safeMenu = escapeHtml(menuLine || '간식');
+
+    return `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})' class="card ${cardMbClass} border border-slate-200 cursor-pointer active:scale-[0.98] transition-all !rounded-none" data-entry-id="${escapeHtml(String(r.id))}">
+        <div class="flex items-stretch">
+            <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
+                <span class="text-sm font-bold leading-tight break-words">${safeSlotTitle}</span>
+                <span class="text-xs font-bold text-slate-500 leading-snug">@ ${safePlaceLine}</span>
+            </div>
+            <div class="flex-1 min-w-0 relative py-2 pl-3 pr-2">
+                <div class="absolute top-2 right-2 z-10 flex flex-row items-center gap-1.5">
+                    <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
+                    <span class="text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-300 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                        <span class="text-[13px]">⭐</span>
+                        <span class="text-[12px] font-black">${ratingVal}</span>
+                    </span>
+                </div>
+                <div class="min-w-0 pr-[4.25rem]">
+                    <p class="text-sm font-bold text-slate-800 leading-snug mb-0">${safeMenu}</p>
+                    ${r.comment ? `<p class="text-xs text-slate-400 mt-1.5 mb-0 line-clamp-1 whitespace-pre-line">"${escapeHtml(r.comment).replace(/\n/g, '<br>')}"</p>` : ''}
+                    ${tagsHtml}
+                </div>
             </div>
         </div>
     </div>`;
@@ -197,19 +416,28 @@ function refreshTimelineAfterSnackViewChange() {
     renderTimeline();
 }
 
-let snackTimelineViewDelegationBound = false;
-function ensureSnackTimelineViewDelegation() {
-    if (snackTimelineViewDelegationBound) return;
-    snackTimelineViewDelegationBound = true;
+let timelineViewSelectDelegationBound = false;
+function ensureTimelineViewSelectDelegation() {
+    if (timelineViewSelectDelegationBound) return;
+    timelineViewSelectDelegationBound = true;
     document.addEventListener(
         'change',
         (e) => {
             const t = e.target;
-            if (!t || !t.classList || !t.classList.contains('snack-timeline-view-select')) return;
-            try {
-                localStorage.setItem(SNACK_TIMELINE_VIEW_STORAGE_KEY, t.value);
-            } catch (_) {}
-            refreshTimelineAfterSnackViewChange();
+            if (!t || !t.classList) return;
+            if (t.classList.contains('snack-timeline-view-select')) {
+                try {
+                    localStorage.setItem(SNACK_TIMELINE_VIEW_STORAGE_KEY, t.value);
+                } catch (_) {}
+                refreshTimelineAfterSnackViewChange();
+                return;
+            }
+            if (t.classList.contains('meal-timeline-view-select')) {
+                try {
+                    localStorage.setItem(MEAL_TIMELINE_VIEW_STORAGE_KEY, t.value);
+                } catch (_) {}
+                refreshTimelineAfterSnackViewChange();
+            }
         },
         true
     );
@@ -345,10 +573,19 @@ export function renderTimeline() {
         </div>`;
 
         SLOTS.forEach(slot => {
-            const records = window.mealHistory.filter(m => m.date === dateStr && m.slotId === slot.id);
+            const recordsRaw = window.mealHistory.filter(m => m.date === dateStr && m.slotId === slot.id);
+            const records = slot.type === 'snack' ? sortSnackSlotRecordsChronological(recordsRaw) : recordsRaw;
             if (slot.type === 'main') {
                 const r = records[0];
                 const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
+                const mealView = getMealTimelineView();
+                if (mealView === 'list') {
+                    if (r) {
+                        html += buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, 'mb-1.5');
+                    } else {
+                        html += buildMainMealListEmptyRowHtml(dateStr, slot, specificStyle);
+                    }
+                } else {
                 let containerClass = r ? 'border-slate-200' : 'border-slate-200 opacity-80';
                 let titleClass = r ? 'text-slate-800' : 'text-slate-300';
                 let iconBoxClass = `bg-slate-100 border-slate-200 ${specificStyle.iconText}`;
@@ -389,7 +626,7 @@ export function renderTimeline() {
                 } else {
                     // 기록되지 않은 카드에도 끼니 표시
                     titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span>`;
-                    titleLine2 = '<span class="text-xs text-slate-400">기록하기</span>';
+                    titleLine2 = '<span class="text-xs text-slate-400"><span class="font-bold">+</span> 기록하기</span>';
                 }
                 let iconHtml = '';
                 if (!r) {
@@ -407,7 +644,7 @@ export function renderTimeline() {
                 } else {
                     iconHtml = `<i class="fa-solid fa-utensils text-2xl text-slate-400"></i>`;
                 }
-                html += `<div onclick="window.openModal('${dateStr}', '${slot.id}', ${r ? `'${r.id}'` : null})" class="card mb-1.5 border ${containerClass} cursor-pointer active:scale-[0.98] transition-all !rounded-none" ${r ? `data-entry-id="${r.id}"` : ''}>
+                html += `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${r ? JSON.stringify(r.id) : 'null'})' class="card mb-1.5 border ${containerClass} cursor-pointer active:scale-[0.98] transition-all !rounded-none" ${r ? `data-entry-id="${escapeHtml(String(r.id))}"` : ''}>
                     <div class="flex">
                         <div class="w-[140px] h-[140px] ${iconBoxClass} flex-shrink-0 flex items-center justify-center overflow-hidden border-r">
                             ${iconHtml}
@@ -431,6 +668,7 @@ export function renderTimeline() {
                         </div>
                     </div>
                 </div>`;
+                }
             } else {
                 const snackView = getSnackTimelineView();
                 const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
@@ -444,12 +682,14 @@ export function renderTimeline() {
                                 slot,
                                 r,
                                 specificStyle,
-                                isLast ? 'mb-0' : 'mb-1.5'
+                                isLast ? 'mb-0' : 'mb-1.5',
+                                idx + 1,
+                                records.length
                             );
                             if (isLast) {
                                 html += `<div class="relative mb-1.5">
                                 ${cardHtml}
-                                <button type="button" onclick="event.stopPropagation(); window.openModal('${dateStr}', '${slot.id}')" class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
+                                <button type="button" onclick='event.stopPropagation(); window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)})' class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
                             </div>`;
                             } else {
                                 html += cardHtml;
@@ -459,12 +699,39 @@ export function renderTimeline() {
                     } else {
                         html += buildSnackEmptySlotCardHtml(dateStr, slot, specificStyle);
                     }
+                } else if (snackView === 'list') {
+                    if (records.length > 0) {
+                        html += `<div class="snack-slot-list-group">`;
+                        records.forEach((r, idx) => {
+                            const isLast = idx === records.length - 1;
+                            const rowHtml = buildSnackListFilledRowHtml(
+                                dateStr,
+                                slot,
+                                r,
+                                specificStyle,
+                                isLast ? 'mb-0' : 'mb-1.5',
+                                idx + 1,
+                                records.length
+                            );
+                            if (isLast) {
+                                html += `<div class="relative mb-1.5">
+                                    ${rowHtml}
+                                    <button type="button" onclick='event.stopPropagation(); window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)})' class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
+                                </div>`;
+                            } else {
+                                html += rowHtml;
+                            }
+                        });
+                        html += `</div>`;
+                    } else {
+                        html += buildSnackListEmptyRowHtml(dateStr, slot, specificStyle);
+                    }
                 } else {
                     html += `<div class="snack-row mb-1.5 flex items-center">
                     <span class="text-xs font-black text-slate-400 uppercase mr-3 flex-shrink-0 px-4">${slot.label}</span>
                     <div class="flex-1 flex flex-wrap gap-2 items-center">
                         ${records.length > 0 ? records.map(r => 
-                            `<div onclick="window.openModal('${dateStr}', '${slot.id}', '${r.id}')" class="snack-tag cursor-pointer active:bg-slate-50" data-entry-id="${r.id}">
+                            `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})' class="snack-tag cursor-pointer active:bg-slate-50" data-entry-id="${escapeHtml(String(r.id))}">
                                 ${r.menuDetail || r.snackType || '간식'} 
                                 <span class="timeline-share-arrow" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share text-slate-500 text-[8px] ml-1" title="게시됨"></i></span>
                                 ${r.rating ? `<span class="text-[10px] font-black text-yellow-600 bg-yellow-50 border border-yellow-300 px-1 py-0.5 rounded-full ml-1.5 flex items-center gap-0.5">
@@ -473,7 +740,7 @@ export function renderTimeline() {
                                 </span>` : ''}
                             </div>`
                         ).join('') : `<span class="text-xs text-slate-400 italic">기록없음</span>`}
-                        <button onclick="window.openModal('${dateStr}', '${slot.id}')" class="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-colors">+ 추가</button>
+                        <button onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)})' class="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-colors">+ 추가</button>
                     </div>
                 </div>`;
                 }
@@ -581,7 +848,7 @@ export function renderTimeline() {
         }
     }
 
-    ensureSnackTimelineViewDelegation();
+    ensureTimelineViewSelectDelegation();
     syncSnackViewDropdown(container);
 
     if (typeof window.bindMealogDailyTimelineDelegation === 'function') {

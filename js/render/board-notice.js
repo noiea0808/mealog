@@ -409,8 +409,6 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
         }
         return postDate;
     };
-    const localDayKey = (d) =>
-        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
     const categoryLabels = {
         'serious': '무거운',
@@ -426,24 +424,8 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
     };
 
     const chunks = [];
-    let prevDayKey = null;
     for (const post of filteredPosts) {
         const postDate = postTimestampToDate(post);
-        const dayKey = localDayKey(postDate);
-        if (prevDayKey !== dayKey) {
-            prevDayKey = dayKey;
-            const dayBannerLabel = postDate.toLocaleDateString('ko-KR', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                weekday: 'long'
-            });
-            chunks.push(`
-                <div class="flex justify-center py-2.5 px-3" role="separator" aria-label="${escapeHtml(dayBannerLabel)}">
-                    <span class="text-[11px] font-medium text-slate-500 bg-slate-100/95 px-3.5 py-1 rounded-full shadow-sm">${escapeHtml(dayBannerLabel)}</span>
-                </div>
-            `);
-        }
 
         const dateStr = postDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
         const timeStr = postDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });

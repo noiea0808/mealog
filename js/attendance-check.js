@@ -97,6 +97,24 @@ let attendanceDebounceTimer = null;
 /** v3: 이전 세션/일일 키에 걸려 영구 미노출된 경우 초기화 */
 const WELCOME_DAY_LS_PREFIX = 'mealog_welcome_shown_v3_';
 const WELCOME_SESS_PREFIX = 'mealog_welcome_sess_v3_';
+/**
+ * 기록 있음 분기(ns/s1/s2p)는 각각 다른 localStorage 키를 쓰면,
+ * meals/dailyStats 로드 전·후로 연속 일수 분기가 바뀔 때 같은 날 웰컴이 여러 번 뜸.
+ * `once_per_day`일 때는 시나리오와 무관하게 하루 1회만(rec)으로 통합한다. (기록 없음 `no`는 별도)
+ */
+const WELCOME_RECORD_DAY_KIND = 'rec';
+
+/**
+ * @param {'no'|'ns'|'s1'|'s2p'} kind
+ * @param {'off'|'once_per_day'|'every_session'} frequency
+ * @returns {'no'|'ns'|'s1'|'s2p'|'rec'}
+ */
+function resolveWelcomeDayStorageKind(kind, frequency) {
+    if (frequency === 'once_per_day' && (kind === 'ns' || kind === 's1' || kind === 's2p')) {
+        return WELCOME_RECORD_DAY_KIND;
+    }
+    return kind;
+}
 
 /** 로컬 개발: sessionStorage는 탭 내 새로고침(F5)에도 유지되어 ‘접속마다’ 테스트가 막힘 → 풀 리로드마다 새 ID로 분리 */
 const WELCOME_SESS_PAGE_ID =
@@ -164,7 +182,10 @@ function markWelcomeShownThisSession(uid, kind) {
  */
 function passesWelcomeFrequency(uid, kind, frequency) {
     if (frequency === 'off') return false;
-    if (frequency === 'once_per_day') return !wasWelcomeShownToday(uid, kind);
+    if (frequency === 'once_per_day') {
+        const dayKind = resolveWelcomeDayStorageKind(kind, frequency);
+        return !wasWelcomeShownToday(uid, dayKind);
+    }
     if (frequency === 'every_session') return !wasWelcomeShownThisSession(uid, kind);
     return false;
 }
@@ -174,8 +195,12 @@ function passesWelcomeFrequency(uid, kind, frequency) {
  * @param {'once_per_day'|'every_session'} frequency
  */
 function markWelcomeForFrequency(uid, kind, frequency) {
-    if (frequency === 'once_per_day') markWelcomeShownToday(uid, kind);
-    else if (frequency === 'every_session') markWelcomeShownThisSession(uid, kind);
+    if (frequency === 'once_per_day') {
+        const dayKind = resolveWelcomeDayStorageKind(kind, frequency);
+        markWelcomeShownToday(uid, dayKind);
+    } else if (frequency === 'every_session') {
+        markWelcomeShownThisSession(uid, kind);
+    }
 }
 
 function resetWelcomePopupGateIfNewLocalDay() {
@@ -187,9 +212,12 @@ function resetWelcomePopupGateIfNewLocalDay() {
 
 /** in-flight만 공유 — 완료 후 비워서 매번 최신 adminSettings 반영(관리자 저장 직후 다른 탭 앱도 다음 팝업 시도에서 재조회) */
 let attendancePopupConfigPromise = null;
+/** 마지막으로 성공적으로 정규화한 웰컴 설정 — getDoc 지연으로 타임아웃 시 기본값(every_session)으로 떨어져 접속마다 노출되는 것 방지 */
+let lastResolvedAttendancePopupConfig = null;
 
 export function invalidateAttendancePopupConfigCache() {
     attendancePopupConfigPromise = null;
+    lastResolvedAttendancePopupConfig = null;
 }
 
 /** 메인 화면만 보면 스케줄(인증 hasCompleted·모달은 표시 직전에만 검사) */
@@ -657,9 +685,13 @@ async function fetchAttendancePopupRoot() {
                     snap.exists() && snap.data().attendancePopup && typeof snap.data().attendancePopup === 'object'
                         ? snap.data().attendancePopup
                         : {};
-                return normalizeAttendancePopup(ap);
+                const normalized = normalizeAttendancePopup(ap);
+                lastResolvedAttendancePopupConfig = normalized;
+                return normalized;
             } catch {
-                return normalizeAttendancePopup({});
+                const normalized = normalizeAttendancePopup({});
+                lastResolvedAttendancePopupConfig = normalized;
+                return normalized;
             }
         })();
     }
@@ -672,11 +704,14 @@ async function fetchAttendancePopupRoot() {
 
 /** App Check·네트워크 지연 시 getDoc 무한 대기로 _attendancePopupResolutionPending이 고착되는 것 방지 */
 async function fetchAttendancePopupRootWithTimeout() {
-    const fallback = attendancePopupDefaults();
     const ms = 12000;
     return await Promise.race([
         fetchAttendancePopupRoot(),
-        new Promise((resolve) => setTimeout(() => resolve(fallback), ms))
+        new Promise((resolve) =>
+            setTimeout(() => {
+                resolve(lastResolvedAttendancePopupConfig || attendancePopupDefaults());
+            }, ms)
+        )
     ]);
 }
 

@@ -143,9 +143,10 @@ export function setupListeners(userId, callbacks) {
             console.log('📞 onSettingsUpdate 콜백 호출 (초기)');
             if (onSettingsUpdate) onSettingsUpdate();
             
-            // user doc 생성·관리자 태그는 백그라운드에서 처리 (초기 로딩 지연 최소화)
+            // user doc 보장과 관리자 태그 로드를 병렬로 처리 (첫 화면 이후 갱신 지연 최소화)
             Promise.resolve().then(async () => {
-                if (userDocEnsureDoneForUid !== userId) {
+                const ensureUserDocIfNeeded = async () => {
+                    if (userDocEnsureDoneForUid === userId) return;
                     try {
                         const userDocRef = doc(db, 'artifacts', appId, 'users', userId);
                         const userDocSnap = await getDoc(userDocRef);
@@ -160,8 +161,9 @@ export function setupListeners(userId, callbacks) {
                     } catch (e) {
                         console.warn('users/{userId} 문서 생성 실패:', e);
                     }
-                }
-                try {
+                };
+
+                const loadAndMergeAdminTags = async () => {
                     if (cachedDefaultTags) {
                         if (cachedDefaultTags.mealType?.length) window.userSettings.tags.mealType = [...cachedDefaultTags.mealType];
                         if (cachedDefaultTags.withWhom?.length) window.userSettings.tags.withWhom = [...cachedDefaultTags.withWhom];
@@ -170,29 +172,32 @@ export function setupListeners(userId, callbacks) {
                         if (cachedDefaultTags.subTagsPlaceSnack?.length) {
                             window.userSettings.tags.snackPlaceMain = [...cachedDefaultTags.subTagsPlaceSnack];
                         }
-                    } else {
-                        const tagsDoc = doc(db, 'artifacts', appId, 'content', 'defaultTags');
-                        const tagsSnap = await getDoc(tagsDoc);
-                        if (tagsSnap.exists()) {
-                            const adminTags = tagsSnap.data();
-                            cachedDefaultTags = {
-                                mealType: adminTags.mealType,
-                                withWhom: adminTags.withWhom,
-                                category: adminTags.category,
-                                snackType: adminTags.snackType,
-                                subTagsPlaceSnack: adminTags.subTagsPlaceSnack
-                            };
-                            if (adminTags.mealType?.length) window.userSettings.tags.mealType = [...adminTags.mealType];
-                            if (adminTags.withWhom?.length) window.userSettings.tags.withWhom = [...adminTags.withWhom];
-                            if (adminTags.category?.length) window.userSettings.tags.category = [...adminTags.category];
-                            if (adminTags.snackType?.length) window.userSettings.tags.snackType = [...adminTags.snackType];
-                            // 간식 어디서: 관리자 메인태그 순서대로 사용 (메인태그는 칩으로, 개별 태그는 사용자 설정에서 등록)
-                            if (adminTags.subTagsPlaceSnack && Array.isArray(adminTags.subTagsPlaceSnack) && adminTags.subTagsPlaceSnack.length > 0) {
-                                window.userSettings.tags.snackPlaceMain = [...adminTags.subTagsPlaceSnack];
-                            }
-                            console.log('✅ 관리자 태그 병합 완료 (캐시 저장)');
-                        }
+                        return;
                     }
+                    const tagsDoc = doc(db, 'artifacts', appId, 'content', 'defaultTags');
+                    const tagsSnap = await getDoc(tagsDoc);
+                    if (tagsSnap.exists()) {
+                        const adminTags = tagsSnap.data();
+                        cachedDefaultTags = {
+                            mealType: adminTags.mealType,
+                            withWhom: adminTags.withWhom,
+                            category: adminTags.category,
+                            snackType: adminTags.snackType,
+                            subTagsPlaceSnack: adminTags.subTagsPlaceSnack
+                        };
+                        if (adminTags.mealType?.length) window.userSettings.tags.mealType = [...adminTags.mealType];
+                        if (adminTags.withWhom?.length) window.userSettings.tags.withWhom = [...adminTags.withWhom];
+                        if (adminTags.category?.length) window.userSettings.tags.category = [...adminTags.category];
+                        if (adminTags.snackType?.length) window.userSettings.tags.snackType = [...adminTags.snackType];
+                        if (adminTags.subTagsPlaceSnack && Array.isArray(adminTags.subTagsPlaceSnack) && adminTags.subTagsPlaceSnack.length > 0) {
+                            window.userSettings.tags.snackPlaceMain = [...adminTags.subTagsPlaceSnack];
+                        }
+                        console.log('✅ 관리자 태그 병합 완료 (캐시 저장)');
+                    }
+                };
+
+                try {
+                    await Promise.all([ensureUserDocIfNeeded(), loadAndMergeAdminTags()]);
                     if (onSettingsUpdate) onSettingsUpdate();
                 } catch (e) {
                     console.warn('⚠️ 관리자 태그 로드 실패 (기본값 사용):', e);
