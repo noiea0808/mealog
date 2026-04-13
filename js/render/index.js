@@ -5,6 +5,8 @@ export {
     renderTimeline,
     renderMiniCalendar,
     updateTimelineShareIndicators,
+    updateTimelineMealEntryPendingIndicators,
+    invalidateTimelineDateSection,
     openTrackerMonthCalendar,
     refreshTrackerMonthCalendarPopupIfOpen
 } from './timeline.js';

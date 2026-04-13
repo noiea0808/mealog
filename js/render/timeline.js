@@ -10,6 +10,183 @@ import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
 import { formatMealMenuDisplayLine } from '../utils/meal-display-line.js';
 import { getRecordCountForIso } from '../meal-record-count.js';
+import {
+    isMealEntryPendingSync,
+    isMealEntrySaveFailed,
+    isMealEntryDeleting,
+    isMealEntryRowBlocked,
+    clearStuckMealPendingFlags
+} from '../utils/meal-entry-pending.js';
+
+/** 서버 반영 대기 중 타임라인 행에 쓰는 인라인 스피너(텍스트 줄 높이에 맞춤) */
+const MEAL_ROW_SPINNER_HTML =
+    '<span class="inline-flex h-[1em] w-[1em] shrink-0 items-center justify-center text-emerald-600 leading-none" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[0.9em]"></i></span><span class="sr-only">등록 중</span>';
+
+const MEAL_ROW_DELETE_SPINNER_HTML =
+    '<span class="inline-flex h-[1em] w-[1em] shrink-0 items-center justify-center text-emerald-600 leading-none" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[0.9em]"></i></span><span class="sr-only">삭제 중</span>';
+
+const MEAL_ROW_FAIL_HTML =
+    '<span class="inline-flex h-[1em] w-[1em] shrink-0 items-center justify-center text-red-600 leading-none" aria-hidden="true"><i class="fa-solid fa-circle-exclamation text-[0.9em]"></i></span><span class="sr-only">등록 실패</span>';
+
+function mealEntryDeletingOverlayHtml() {
+    return '<div class="meal-entry-deleting-overlay absolute inset-0 z-20 flex flex-col items-center justify-center rounded-md bg-white/75 backdrop-blur-[1px] pointer-events-none border border-slate-200/80" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-emerald-600 text-xl mb-1"></i><span class="text-xs font-extrabold text-slate-700">삭제 중</span><span class="sr-only">삭제 중</span></div>';
+}
+
+function mealEntrySyncLeadHtml(record) {
+    if (!record) return '';
+    if (isMealEntrySaveFailed(record)) return MEAL_ROW_FAIL_HTML;
+    if (isMealEntryDeleting(record)) return MEAL_ROW_DELETE_SPINNER_HTML;
+    if (isMealEntryPendingSync(record)) return MEAL_ROW_SPINNER_HTML;
+    return '';
+}
+
+function mealEntryRowPointerClass(record) {
+    if (!record) return 'cursor-pointer active:scale-[0.98]';
+    if (isMealEntrySaveFailed(record)) return 'cursor-pointer active:scale-[0.98]';
+    if (isMealEntryDeleting(record) || isMealEntryPendingSync(record)) {
+        return 'cursor-wait pointer-events-none opacity-[0.93]';
+    }
+    return 'cursor-pointer active:scale-[0.98]';
+}
+
+const MEAL_ROW_POINTER_CLASS_TOKENS = new Set([
+    'cursor-pointer',
+    'active:scale-[0.98]',
+    'cursor-wait',
+    'pointer-events-none',
+    'opacity-[0.93]'
+]);
+
+function stripMealRowPointerClasses(className) {
+    return className
+        .split(/\s+/)
+        .filter((c) => c && !MEAL_ROW_POINTER_CLASS_TOKENS.has(c))
+        .join(' ')
+        .trim();
+}
+
+/** invalidate 후 renderTimeline이 targetDates에 해당 날짜를 넣지 못하면 섹션이 영구히 비어 실패 아이콘이 안 그려질 수 있음 */
+const pendingTimelineSectionRebuildDates = new Set();
+
+function patchTimelineCardLeadIcon(el, record) {
+    const h4Candidates = [
+        el.querySelector('h4.leading-tight.mb-0.flex.items-center'),
+        el.querySelector('h4.flex.items-center.min-w-0'),
+        el.querySelector('h4.flex.items-center')
+    ].filter(Boolean);
+    for (const titleEl of h4Candidates) {
+        const menuSpan = titleEl.querySelector('span.min-w-0');
+        if (!menuSpan) continue;
+        titleEl.innerHTML = mealEntrySyncLeadHtml(record) + menuSpan.outerHTML;
+        return true;
+    }
+    const pCandidates = [
+        el.querySelector('p.text-sm.font-bold.text-slate-800.leading-snug.mb-0.flex.items-center.min-w-0'),
+        el.querySelector('p.text-sm.font-bold.text-slate-800.leading-snug.mb-0.flex.items-center'),
+        el.querySelector('p.leading-snug.mb-0.flex.items-center.min-w-0'),
+        el.querySelector('p.flex.items-center.min-w-0')
+    ].filter(Boolean);
+    for (const pLine of pCandidates) {
+        const menuSpan = pLine.querySelector('span.min-w-0');
+        if (!menuSpan) continue;
+        pLine.innerHTML = mealEntrySyncLeadHtml(record) + menuSpan.outerHTML;
+        return true;
+    }
+    return false;
+}
+
+function applySnackTagPendingUi(tagEl, record) {
+    const deleting = isMealEntryDeleting(record);
+    const failed = isMealEntrySaveFailed(record);
+    const pending = isMealEntryPendingSync(record);
+    tagEl.querySelectorAll(':scope > div.absolute.inset-0').forEach((n) => n.remove());
+    let cls = 'snack-tag relative inline-flex items-center gap-0.5 rounded-md ';
+    if (deleting) cls += 'cursor-wait pointer-events-none opacity-90';
+    else if (failed) cls += 'cursor-pointer active:bg-slate-50 ring-1 ring-red-200/90';
+    else if (pending) cls += 'cursor-wait pointer-events-none opacity-90';
+    else cls += 'cursor-pointer active:bg-slate-50';
+    tagEl.className = cls;
+    if (deleting || pending) {
+        tagEl.removeAttribute('onclick');
+    } else {
+        tagEl.setAttribute(
+            'onclick',
+            `window.openModal(${JSON.stringify(record.date)}, ${JSON.stringify(record.slotId)}, ${JSON.stringify(record.id)})`
+        );
+    }
+    if (failed) {
+        tagEl.insertAdjacentHTML(
+            'beforeend',
+            '<div class="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-red-50/85 pointer-events-none" aria-hidden="true"><i class="fa-solid fa-circle-exclamation text-red-600 text-sm"></i></div>'
+        );
+    } else if (deleting) {
+        tagEl.insertAdjacentHTML(
+            'beforeend',
+            '<div class="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-md bg-white/75 backdrop-blur-[1px] pointer-events-none border border-slate-200/60" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-emerald-600 text-sm mb-0.5"></i><span class="text-[10px] font-extrabold text-slate-700 leading-none">삭제 중</span></div>'
+        );
+    } else if (pending) {
+        tagEl.insertAdjacentHTML(
+            'beforeend',
+            '<div class="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-white/65 pointer-events-none" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-emerald-600 text-sm"></i></div>'
+        );
+    }
+}
+
+function syncMealEntryDeletingOverlayOnCard(cardEl, record) {
+    if (!cardEl.classList.contains('card')) return;
+    const overlay = cardEl.querySelector(':scope > .meal-entry-deleting-overlay');
+    if (isMealEntryDeleting(record)) {
+        if (!cardEl.classList.contains('relative')) cardEl.classList.add('relative');
+        if (!overlay) cardEl.insertAdjacentHTML('beforeend', mealEntryDeletingOverlayHtml());
+    } else if (overlay) {
+        overlay.remove();
+    }
+}
+
+function applyCardRowPointerAndClick(rowEl, record) {
+    if (!rowEl.classList.contains('card')) return;
+    rowEl.className = `${stripMealRowPointerClasses(rowEl.className)} ${mealEntryRowPointerClass(record)}`.replace(/\s+/g, ' ').trim();
+    if (isMealEntryRowBlocked(record)) {
+        rowEl.removeAttribute('onclick');
+    } else {
+        rowEl.setAttribute(
+            'onclick',
+            `window.openModal(${JSON.stringify(record.date)}, ${JSON.stringify(record.slotId)}, ${JSON.stringify(record.id)})`
+        );
+    }
+    syncMealEntryDeletingOverlayOnCard(rowEl, record);
+}
+
+/**
+ * 이미 DOM에 그려진 날짜 섹션은 renderTimeline이 건너뛰므로, 대기 플래그만 바뀐 경우 스피너·클릭 상태가 남을 수 있음.
+ * mealHistory와 동기화해 data-entry-id 행만 갱신한다.
+ */
+export function updateTimelineMealEntryPendingIndicators() {
+    if (!window.currentUser) return;
+    /* 탭이 타임라인이 아니어도 DOM이 남아 있으면 갱신(저장 실패 직후 다른 탭에 있을 때 스피너·실패 아이콘 동기화) */
+    if (window.currentSearchQuery && window.currentSearchQuery.trim()) return;
+    const container = document.getElementById('timelineContainer');
+    if (!container) return;
+    clearStuckMealPendingFlags();
+
+    container.querySelectorAll('[data-entry-id]').forEach((el) => {
+        const entryId = el.getAttribute('data-entry-id');
+        if (!entryId) return;
+        const record = window.mealHistory?.find((m) => m && String(m.id) === String(entryId));
+        if (!record) return;
+
+        if (el.classList.contains('snack-tag')) {
+            applySnackTagPendingUi(el, record);
+            return;
+        }
+
+        patchTimelineCardLeadIcon(el, record);
+
+        if (el.classList.contains('card')) {
+            applyCardRowPointerAndClick(el, record);
+        }
+    });
+}
 
 /** false면 타임라인 첫 날짜 헤더의 간식보기(태그/카드) 전환 UI를 숨김 */
 const SNACK_TIMELINE_VIEW_TOGGLE_VISIBLE = true;
@@ -234,7 +411,12 @@ function buildSnackTimelineCardHtml(
         iconHtml = `<i class="fa-solid fa-mug-saucer text-2xl text-slate-400" aria-hidden="true"></i>`;
     }
     const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
-    return `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})' class="card ${cardMbClass} border border-slate-200 cursor-pointer active:scale-[0.98] transition-all !rounded-none" data-entry-id="${escapeHtml(String(r.id))}">
+    const blockOpen = isMealEntryRowBlocked(r);
+    const openClick = blockOpen
+        ? ''
+        : `onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})'`;
+    const relDel = isMealEntryDeleting(r) ? 'relative' : '';
+    return `<div ${openClick} class="card ${cardMbClass} border border-slate-200 ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${relDel}" data-entry-id="${escapeHtml(String(r.id))}">
         <div class="flex">
             <div class="w-[140px] h-[140px] bg-slate-100 border-slate-200 ${specificStyle.iconText} flex-shrink-0 flex items-center justify-center overflow-hidden border-r">
                 ${iconHtml}
@@ -242,7 +424,7 @@ function buildSnackTimelineCardHtml(
             <div class="flex-1 min-w-0 flex flex-col justify-center p-4">
                 <div class="flex justify-between items-start gap-2">
                     <div class="flex-1 min-w-0 overflow-hidden">
-                        <h4 class="leading-tight mb-0 truncate">${titleLine1}</h4>
+                        <h4 class="leading-tight mb-0 flex items-center gap-1.5 min-w-0">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 truncate">${titleLine1}</span></h4>
                         ${titleLine2 ? `<p class="text-sm text-slate-600 font-bold mt-1.5 mb-0 truncate">${titleLine2}</p>` : ''}
                     </div>
                     <div class="flex items-center gap-2 flex-shrink-0 ml-2">
@@ -257,6 +439,7 @@ function buildSnackTimelineCardHtml(
                 ${tagsHtml}
             </div>
         </div>
+        ${isMealEntryDeleting(r) ? mealEntryDeletingOverlayHtml() : ''}
     </div>`;
 }
 
@@ -341,8 +524,13 @@ function buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, cardMbC
     }
 
     const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
+    const blockMainList = isMealEntryRowBlocked(r);
+    const openClickMainList = blockMainList
+        ? ''
+        : `onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})'`;
+    const relMainList = isMealEntryDeleting(r) ? 'relative' : '';
 
-    return `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})' class="card ${cardMbClass} border border-slate-200 cursor-pointer active:scale-[0.98] transition-all !rounded-none" data-entry-id="${escapeHtml(String(r.id))}">
+    return `<div ${openClickMainList} class="card ${cardMbClass} border border-slate-200 ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${relMainList}" data-entry-id="${escapeHtml(String(r.id))}">
         <div class="flex items-stretch">
             <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
                 <span class="text-sm font-bold leading-tight break-words">${safeSlotTitle}</span>
@@ -357,12 +545,13 @@ function buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, cardMbC
                     </span>
                 </div>
                 <div class="min-w-0 pr-[4.25rem]">
-                    <p class="text-sm font-bold text-slate-800 leading-snug mb-0">${safeMenu}</p>
+                    <p class="text-sm font-bold text-slate-800 leading-snug mb-0 flex items-center gap-1.5 min-w-0">${mealEntrySyncLeadHtml(r)}<span class="min-w-0">${safeMenu}</span></p>
                     ${r.comment ? `<p class="text-xs text-slate-400 mt-1.5 mb-0 line-clamp-1 whitespace-pre-line">"${escapeHtml(r.comment).replace(/\n/g, '<br>')}"</p>` : ''}
                     ${tagsHtml}
                 </div>
             </div>
         </div>
+        ${isMealEntryDeleting(r) ? mealEntryDeletingOverlayHtml() : ''}
     </div>`;
 }
 
@@ -406,8 +595,13 @@ function buildSnackListFilledRowHtml(
 
     const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
     const safeMenu = escapeHtml(menuLine || '간식');
+    const pendingSnackList = isMealEntryRowBlocked(r);
+    const openClickSnackList = pendingSnackList
+        ? ''
+        : `onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})'`;
+    const relSnackList = isMealEntryDeleting(r) ? 'relative' : '';
 
-    return `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})' class="card ${cardMbClass} border border-slate-200 cursor-pointer active:scale-[0.98] transition-all !rounded-none" data-entry-id="${escapeHtml(String(r.id))}">
+    return `<div ${openClickSnackList} class="card ${cardMbClass} border border-slate-200 ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${relSnackList}" data-entry-id="${escapeHtml(String(r.id))}">
         <div class="flex items-stretch">
             <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
                 <span class="text-sm font-bold leading-tight break-words">${safeSlotTitle}</span>
@@ -422,12 +616,13 @@ function buildSnackListFilledRowHtml(
                     </span>
                 </div>
                 <div class="min-w-0 pr-[4.25rem]">
-                    <p class="text-sm font-bold text-slate-800 leading-snug mb-0">${safeMenu}</p>
+                    <p class="text-sm font-bold text-slate-800 leading-snug mb-0 flex items-center gap-1.5 min-w-0">${mealEntrySyncLeadHtml(r)}<span class="min-w-0">${safeMenu}</span></p>
                     ${r.comment ? `<p class="text-xs text-slate-400 mt-1.5 mb-0 line-clamp-1 whitespace-pre-line">"${escapeHtml(r.comment).replace(/\n/g, '<br>')}"</p>` : ''}
                     ${tagsHtml}
                 </div>
             </div>
         </div>
+        ${isMealEntryDeleting(r) ? mealEntryDeletingOverlayHtml() : ''}
     </div>`;
 }
 
@@ -470,6 +665,22 @@ function ensureTimelineViewSelectDelegation() {
     );
 }
 
+/**
+ * 해당 날짜의 타임라인 섹션을 제거하고 loadedDates에서 빼 다음 renderTimeline에서 다시 그린다.
+ * 저장 후 temp_* → 실제 id로 바뀌어도 기존 DOM이 건너뛰기되어 스피너가 영구 표시되는 문제를 막는다.
+ * @param {string} dateStr YYYY-MM-DD
+ */
+export function invalidateTimelineDateSection(dateStr) {
+    if (!dateStr || typeof dateStr !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return;
+    pendingTimelineSectionRebuildDates.add(dateStr);
+    const el = document.getElementById(`date-${dateStr}`);
+    if (el?.parentNode) el.remove();
+    if (window.loadedDates && Array.isArray(window.loadedDates)) {
+        const idx = window.loadedDates.indexOf(dateStr);
+        if (idx >= 0) window.loadedDates.splice(idx, 1);
+    }
+}
+
 /** 타임라인에서 공유 화살표만 즉시 갱신 (기존 DOM만 업데이트, 풀 렌더 없음) */
 export function updateTimelineShareIndicators() {
     const state = appState;
@@ -491,6 +702,7 @@ export function renderTimeline() {
     if (!window.currentUser || state.currentTab !== 'timeline') return;
     /* 검색 모드일 때는 타임라인 렌더하지 않음 (검색 결과만 표시) */
     if (window.currentSearchQuery && window.currentSearchQuery.trim()) return;
+    clearStuckMealPendingFlags();
     const container = document.getElementById('timelineContainer');
     if (!container) return;
     
@@ -557,7 +769,20 @@ export function renderTimeline() {
         // 오늘 날짜가 아직 추가되지 않았다면 강제로 맨 앞에 추가
         sortedTargetDates.unshift(todayStr);
     }
-    
+
+    if (pendingTimelineSectionRebuildDates.size > 0) {
+        const extra = [...pendingTimelineSectionRebuildDates].filter(
+            (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && !sortedTargetDates.includes(d)
+        );
+        if (extra.length) {
+            sortedTargetDates = [...sortedTargetDates, ...extra].sort((a, b) => b.localeCompare(a));
+            if (state.viewMode === 'list' && sortedTargetDates.includes(todayStr)) {
+                sortedTargetDates = sortedTargetDates.filter((d) => d !== todayStr);
+                sortedTargetDates.unshift(todayStr);
+            }
+        }
+    }
+
     sortedTargetDates.forEach(dateStr => {
         // 일간보기 모드에서는 기존 섹션이 있어도 공유 버튼만 업데이트
         const existingSection = document.getElementById(`date-${dateStr}`);
@@ -671,7 +896,13 @@ export function renderTimeline() {
                         iconHtml = `<i class="fa-solid fa-utensils text-2xl text-slate-400"></i>`;
                     }
                 }
-                html += `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${r ? JSON.stringify(r.id) : 'null'})' class="card mb-1.5 border ${containerClass} cursor-pointer active:scale-[0.98] transition-all !rounded-none" ${r ? `data-entry-id="${escapeHtml(String(r.id))}"` : ''}>
+                const mainBlockOpen = r && isMealEntryRowBlocked(r);
+                const mainOpenClick = mainBlockOpen
+                    ? ''
+                    : `onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${r ? JSON.stringify(r.id) : 'null'})'`;
+                const mainPointer = !r ? 'cursor-pointer active:scale-[0.98]' : mealEntryRowPointerClass(r);
+                const mainRelDel = r && isMealEntryDeleting(r) ? 'relative' : '';
+                html += `<div ${mainOpenClick} class="card mb-1.5 border ${containerClass} ${mainPointer} transition-all !rounded-none ${mainRelDel}" ${r ? `data-entry-id="${escapeHtml(String(r.id))}"` : ''}>
                     <div class="flex">
                         <div class="w-[140px] h-[140px] ${iconBoxClass} flex-shrink-0 flex items-center justify-center overflow-hidden border-r">
                             ${iconHtml}
@@ -679,7 +910,7 @@ export function renderTimeline() {
                         <div class="flex-1 min-w-0 flex flex-col justify-center p-4">
                             <div class="flex justify-between items-start gap-2">
                                 <div class="flex-1 min-w-0 overflow-hidden">
-                                    <h4 class="leading-tight mb-0 truncate">${titleLine1}</h4>
+                                    <h4 class="leading-tight mb-0 flex items-center gap-1.5 min-w-0">${r ? mealEntrySyncLeadHtml(r) : ''}<span class="min-w-0 truncate">${titleLine1}</span></h4>
                                     ${titleLine2 ? (r ? `<p class="text-sm text-slate-600 font-bold mt-1.5 mb-0 truncate">${titleLine2}</p>` : `<p class="mt-1.5 mb-0 truncate">${titleLine2}</p>`) : ''}
                                 </div>
                                 ${r ? `<div class="flex items-center gap-2 flex-shrink-0 ml-2">
@@ -694,6 +925,7 @@ export function renderTimeline() {
                             ${tagsHtml}
                         </div>
                     </div>
+                    ${r && isMealEntryDeleting(r) ? mealEntryDeletingOverlayHtml() : ''}
                 </div>`;
                 }
             } else {
@@ -757,16 +989,38 @@ export function renderTimeline() {
                     html += `<div class="snack-row mb-1.5 flex items-center">
                     <span class="text-xs font-black text-slate-400 uppercase mr-3 flex-shrink-0 px-4">${slot.label}</span>
                     <div class="flex-1 flex flex-wrap gap-2 items-center">
-                        ${records.length > 0 ? records.map(r => 
-                            `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})' class="snack-tag cursor-pointer active:bg-slate-50" data-entry-id="${escapeHtml(String(r.id))}">
-                                ${r.menuDetail || r.snackType || '간식'} 
+                        ${records.length > 0 ? records.map((r) => {
+                            const tagDeleting = isMealEntryDeleting(r);
+                            const tagPending = isMealEntryPendingSync(r);
+                            const tagFailed = isMealEntrySaveFailed(r);
+                            const tagBusy = tagDeleting || tagPending;
+                            const tagClick = tagBusy
+                                ? ''
+                                : `onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})'`;
+                            const tagCls = tagDeleting
+                                ? 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-wait pointer-events-none opacity-90'
+                                : tagPending
+                                  ? 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-wait pointer-events-none opacity-90'
+                                  : tagFailed
+                                    ? 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-pointer active:bg-slate-50 ring-1 ring-red-200/90'
+                                    : 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-pointer active:bg-slate-50';
+                            const tagOverlay = tagFailed
+                                ? '<div class="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-red-50/85 pointer-events-none" aria-hidden="true"><i class="fa-solid fa-circle-exclamation text-red-600 text-sm"></i></div>'
+                                : tagDeleting
+                                  ? '<div class="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-md bg-white/75 backdrop-blur-[1px] pointer-events-none border border-slate-200/60" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-emerald-600 text-sm mb-0.5"></i><span class="text-[10px] font-extrabold text-slate-700 leading-none">삭제 중</span></div>'
+                                  : tagPending
+                                    ? '<div class="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-white/65 pointer-events-none" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-emerald-600 text-sm"></i></div>'
+                                    : '';
+                            return `<div ${tagClick} class="${tagCls}" data-entry-id="${escapeHtml(String(r.id))}">
+                                ${r.menuDetail || r.snackType || '간식'}
                                 <span class="timeline-share-arrow" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share text-slate-500 text-[8px] ml-1" title="게시됨"></i></span>
                                 ${r.rating ? `<span class="text-[10px] font-black text-yellow-600 bg-yellow-50 border border-yellow-300 px-1 py-0.5 rounded-full ml-1.5 flex items-center gap-0.5">
                                     <span class="text-[11px]">⭐</span>
                                     <span class="text-[11px] font-black">${r.rating}</span>
                                 </span>` : ''}
-                            </div>`
-                        ).join('') : `<span class="text-xs text-slate-400 italic">기록없음</span>`}
+                                ${tagOverlay}
+                            </div>`;
+                        }).join('') : `<span class="text-xs text-slate-400 italic">기록없음</span>`}
                         <button onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)})' class="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-colors">+ 추가</button>
                     </div>
                 </div>`;
@@ -775,6 +1029,7 @@ export function renderTimeline() {
         });
         section.innerHTML = html;
         container.appendChild(section);
+        pendingTimelineSectionRebuildDates.delete(dateStr);
     });
     
     // 일간보기 모드일 때 하루 전체 Comment 입력 영역 추가
@@ -881,6 +1136,8 @@ export function renderTimeline() {
     if (typeof window.bindMealogDailyTimelineDelegation === 'function') {
         window.bindMealogDailyTimelineDelegation();
     }
+
+    updateTimelineMealEntryPendingIndicators();
 }
 
 let miniCalendarPointerDragBound = false;

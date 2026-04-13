@@ -373,6 +373,10 @@ function isFirestoreInternalClientGlitch(err) {
 /** 토스트용: 스택 트레이스·내부 ID 노출 방지 */
 function formatPushTokenSaveErrorForUser(err) {
   const raw = err && err.message ? String(err.message) : String(err || '');
+  const code = err && err.code != null ? String(err.code) : '';
+  if (/^internal$|functions\/internal/i.test(code) || /^internal$/i.test(raw.trim())) {
+    return '일시적인 동기화 오류로 알림 등록에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+  }
   if (isFirestoreInternalClientGlitch(err)) {
     return '일시적인 동기화 오류로 알림 등록에 실패했습니다. 잠시 후 다시 시도해 주세요.';
   }

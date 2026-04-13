@@ -16,6 +16,75 @@ import {
     todayLocalYmd
 } from '../demo-date-shift.js';
 import { processPhotosToGroups } from '../render/post-group-utils.js';
+import {
+    clearStuckMealPendingFlags,
+    clearMealOptimisticSavePending,
+    onMealDocFirestoreServerAcknowledged
+} from '../utils/meal-entry-pending.js';
+
+/** 서버 스냅샷 병합 시 로컬 저장 실패 표시 유지 (낙관적 UI와 충돌 방지) */
+function mergePreserveLocalSaveFailed(docData, localRecord) {
+    const id = docData?.id != null ? String(docData.id) : '';
+    const fromLocal = localRecord?._localSaveFailed === true;
+    const fromMap = typeof window !== 'undefined' && id && window._mealEntrySaveFailedIds?.[id];
+    if (!fromLocal && !fromMap) return docData;
+    return { ...docData, _localSaveFailed: true };
+}
+
+const MAIN_MEAL_SLOTS_FOR_TEMP_DEDUP = new Set(['morning', 'lunch', 'dinner']);
+
+/** 본식 슬롯: 서버 문서가 이미 있는데 temp_* 행이 같이 남은 경우 제거 */
+function dedupeMainSlotDuplicateTemps(mealsArr) {
+    if (!Array.isArray(mealsArr)) return mealsArr;
+    return mealsArr.filter((m, _, arr) => {
+        if (!m?.id || !String(m.id).startsWith('temp_')) return true;
+        if (!MAIN_MEAL_SLOTS_FOR_TEMP_DEDUP.has(m.slotId)) return true;
+        const hasReal = arr.some(
+            (o) =>
+                o &&
+                o !== m &&
+                !String(o.id).startsWith('temp_') &&
+                o.date === m.date &&
+                o.slotId === m.slotId
+        );
+        if (hasReal) {
+            try {
+                delete window._pendingPhotoUploadByEntryId?.[m.id];
+                delete window._pendingPhotoUploadBySlotKey?.[`${m.date || ''}__${m.slotId || ''}`];
+                clearMealOptimisticSavePending(m.id);
+            } catch (_) {
+                /* ignore */
+            }
+            return false;
+        }
+        return true;
+    });
+}
+
+/**
+ * 초기/폴백 등 전체 스냅샷으로 mealHistory를 바꿀 때,
+ * 서버에 아직 없는 temp_*·저장 실패·업로드 대기 행을 이전 배열에서 보존한다.
+ */
+function mergeServerMealRowsWithLocalOrphans(serverRows, prevHist) {
+    const serverIds = new Set((serverRows || []).map((m) => String(m?.id)));
+    const prev = Array.isArray(prevHist) ? prevHist : [];
+    const orphans = prev.filter((m) => {
+        if (!m?.id) return false;
+        const id = String(m.id);
+        if (serverIds.has(id)) return false;
+        if (id.startsWith('temp_')) return true;
+        if (m._localSaveFailed === true) return true;
+        if (typeof window !== 'undefined' && window._mealEntrySaveFailedIds?.[id]) return true;
+        if (window._pendingPhotoUploadByEntryId?.[id]) return true;
+        if (window._mealOptimisticPendingTempIds?.[id]) return true;
+        return false;
+    });
+    const merged = [...(serverRows || []), ...orphans].sort(
+        (a, b) =>
+            (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || '')
+    );
+    return dedupeMainSlotDuplicateTemps(merged);
+}
 
 /** 세션당 1회만 실행 (Firestore 읽기 절감) */
 let userDocEnsureDoneForUid = null;
@@ -688,10 +757,25 @@ export function setupListeners(userId, callbacks) {
         }
         if (isInitialLoad) {
             // 초기 로드: 최근 7일(최대 50건) 데이터
-            window.mealHistory = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+            const prevForMerge = Array.isArray(window.mealHistory) ? window.mealHistory : [];
+            const serverMapped = snap.docs
+                .map((d) => {
+                    const row = { id: d.id, ...d.data() };
+                    const sid = String(d.id);
+                    if (typeof window !== 'undefined' && window._mealEntrySaveFailedIds?.[sid]) {
+                        row._localSaveFailed = true;
+                    }
+                    return row;
+                })
                 .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+            window.mealHistory = mergeServerMealRowsWithLocalOrphans(serverMapped, prevForMerge);
             window.loadedMealsDateRange = { start: cutoffDateStr, end: todayStr };
             isInitialLoad = false;
+            snap.docs.forEach((d) => {
+                if (!d.metadata.hasPendingWrites) {
+                    onMealDocFirestoreServerAcknowledged(d.id, null);
+                }
+            });
         } else {
             // 이후 변경사항: 변경된 문서만 처리
             const changes = snap.docChanges();
@@ -706,6 +790,7 @@ export function setupListeners(userId, callbacks) {
                 }
                 const docData = { id: change.doc.id, ...change.doc.data() };
                 if (change.type === 'added' || change.type === 'modified') {
+                    const serverAcked = !change.doc.metadata.hasPendingWrites;
                     const index = window.mealHistory.findIndex(m => m.id === docData.id);
                     const slotKey = `${docData.date || ''}__${docData.slotId || ''}`;
                     const isPendingUpload = Boolean(
@@ -726,11 +811,19 @@ export function setupListeners(userId, callbacks) {
                         const shouldKeepLocalPreview = isPendingUpload && hasLocalBase64Preview;
                         
                         // 낙관 반영 직후 1차 스냅샷(photos 비어있음)으로 미리보기가 사라지는 깜빡임 방지
+                        let mergedRow;
                         if (shouldKeepLocalPreview) {
-                            window.mealHistory[index] = { ...docData, photos: [...localPhotos] };
+                            const merged = { ...docData, photos: [...localPhotos] };
+                            mergedRow = mergePreserveLocalSaveFailed(merged, localRecord);
                         } else {
-                            window.mealHistory[index] = docData;
+                            mergedRow = mergePreserveLocalSaveFailed(docData, localRecord);
                         }
+                        if (serverAcked) {
+                            mergedRow = { ...mergedRow };
+                            delete mergedRow._localSaveFailed;
+                            onMealDocFirestoreServerAcknowledged(docData.id, null);
+                        }
+                        window.mealHistory[index] = mergedRow;
                     } else {
                         // 신규 저장 직후: 임시 ID 낙관 레코드(temp_*)를 실제 서버 ID로 치환해 깜빡임/중복 방지
                         const tempIdx = window.mealHistory.findIndex((m) =>
@@ -751,9 +844,16 @@ export function setupListeners(userId, callbacks) {
                                 (p) => typeof p === 'string' && p.startsWith('data:image')
                             );
                             const keepTempPreview = (isPendingUpload || Boolean(window._pendingPhotoUploadByEntryId?.[tempRecord.id])) && hasTempBase64;
-                            window.mealHistory[tempIdx] = keepTempPreview
+                            const mergedTemp = keepTempPreview
                                 ? { ...docData, photos: [...tempPhotos] }
                                 : docData;
+                            let mergedRow = mergePreserveLocalSaveFailed(mergedTemp, tempRecord);
+                            if (serverAcked) {
+                                mergedRow = { ...mergedRow };
+                                delete mergedRow._localSaveFailed;
+                                onMealDocFirestoreServerAcknowledged(docData.id, tempRecord.id);
+                            }
+                            window.mealHistory[tempIdx] = mergedRow;
                             if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
                                 window.sharedPhotos = window.sharedPhotos.map((p) => (
                                     p.entryId === tempRecord.id ? { ...p, entryId: docData.id } : p
@@ -766,6 +866,9 @@ export function setupListeners(userId, callbacks) {
                         } else {
                             // 새로 추가된 문서 (1개월 범위 내)
                             window.mealHistory.push(docData);
+                            if (serverAcked) {
+                                onMealDocFirestoreServerAcknowledged(docData.id, null);
+                            }
                         }
                     }
                     hasChanges = true;
@@ -774,9 +877,11 @@ export function setupListeners(userId, callbacks) {
             
             if (hasChanges) {
                 window.mealHistory.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+                window.mealHistory = dedupeMainSlotDuplicateTemps(window.mealHistory);
             }
         }
-        
+
+        clearStuckMealPendingFlags();
         if (onDataUpdate) onDataUpdate();
     }, (error) => {
         console.error("Meals Listener Error:", error);
@@ -848,8 +953,23 @@ export function setupListeners(userId, callbacks) {
                         }).catch(() => {});
                     }).catch(() => {});
                 } else {
-                    window.mealHistory = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                    const prevForMerge = Array.isArray(window.mealHistory) ? window.mealHistory : [];
+                    const serverMapped = snap.docs
+                        .map((d) => {
+                            const row = { id: d.id, ...d.data() };
+                            const sid = String(d.id);
+                            if (typeof window !== 'undefined' && window._mealEntrySaveFailedIds?.[sid]) {
+                                row._localSaveFailed = true;
+                            }
+                            return row;
+                        })
                         .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+                    window.mealHistory = mergeServerMealRowsWithLocalOrphans(serverMapped, prevForMerge);
+                    snap.docs.forEach((d) => {
+                        if (!d.metadata.hasPendingWrites) {
+                            onMealDocFirestoreServerAcknowledged(d.id, null);
+                        }
+                    });
                 }
                 if (onDataUpdate) onDataUpdate();
             },
