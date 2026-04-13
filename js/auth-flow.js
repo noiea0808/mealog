@@ -31,6 +31,27 @@ function isLikelyFirstSessionAfterAccountCreate(user) {
     return Math.abs(l - c) < 120000;
 }
 
+/**
+ * 오프라인·캐시 미스 시 meals 조회가 비어도 "신규 가입"으로 오인하지 않기 위한 힌트.
+ * (비행기 모드에서 기존 회원이 가입 위저드로 떨어지는 문제 완화)
+ */
+function isLikelyReturningUserFromLocalSettings() {
+    const ws = typeof window !== 'undefined' ? window.userSettings : null;
+    if (ws && typeof ws === 'object') {
+        if (ws.profileCompleted === true) return true;
+        const nick = ws.profile && typeof ws.profile.nickname === 'string' ? ws.profile.nickname.trim() : '';
+        if (ws.termsAgreed === true && nick && nick !== '게스트') return true;
+    }
+    try {
+        if (typeof localStorage !== 'undefined' && localStorage.getItem('mealog_seen_real_login') === '1') {
+            return true;
+        }
+    } catch (_) {
+        /* ignore */
+    }
+    return false;
+}
+
 /** 카카오 웹 로그인 직후 1회만 자동 가입 위저드 허용 (auth.js에서 OAuth 성공 시 설정) */
 const KAKAO_PROFILE_SETUP_GATE_KEY = 'mealog_kakaoProfileSetupGate';
 
@@ -162,7 +183,8 @@ export class AuthFlowManager {
                 this._cachedExistingUser = isExistingUser;
             } catch (e) {
                 console.warn('기존 사용자 확인 실패:', e);
-                isExistingUser = false;
+                isExistingUser = isLikelyReturningUserFromLocalSettings();
+                if (isExistingUser) this._cachedExistingUser = true;
             }
         }
         
@@ -286,13 +308,28 @@ export class AuthFlowManager {
      */
     async checkExistingUser(uid) {
         try {
-            const { collection, query, limit, getDocs } = await import("https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js");
+            const { collection, query, limit, getDocs, doc, getDoc } = await import(
+                'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js'
+            );
             const { db, appId } = await import('./firebase.js');
             const mealsColl = collection(db, 'artifacts', appId, 'users', uid, 'meals');
             const mealsSnapshot = await getDocs(query(mealsColl, limit(1)));
-            return !mealsSnapshot.empty;
+            if (!mealsSnapshot.empty) return true;
+            // meals 캐시가 비어 있어도(첫 설치 직후·오프라인) settings 캐시로 기존 회원 판별
+            const settingsRef = doc(db, 'artifacts', appId, 'users', uid, 'config', 'settings');
+            const settingsSnap = await getDoc(settingsRef);
+            if (settingsSnap.exists()) {
+                const d = settingsSnap.data();
+                if (d && d.profileCompleted === true) return true;
+                const nick =
+                    d && d.profile && typeof d.profile.nickname === 'string' ? d.profile.nickname.trim() : '';
+                if (d && d.termsAgreed === true && nick && nick !== '게스트') return true;
+            }
+            if (isLikelyReturningUserFromLocalSettings()) return true;
+            return false;
         } catch (e) {
             console.error('기존 사용자 확인 실패:', e);
+            if (isLikelyReturningUserFromLocalSettings()) return true;
             return false;
         }
     }
@@ -407,8 +444,8 @@ export class AuthFlowManager {
                     console.log('✅ 프로필 확인: 기존 사용자 확인 완료', { isExistingUser });
                 } catch (e) {
                     console.warn('기존 사용자 확인 실패 (프로필 확인):', e);
-                    // 에러 발생 시 신규 사용자로 간주
-                    isExistingUser = false;
+                    isExistingUser = isLikelyReturningUserFromLocalSettings();
+                    if (isExistingUser) this._cachedExistingUser = true;
                 } finally {
                     this._existingUserCheckInProgress = false;
                 }
@@ -512,14 +549,15 @@ export class AuthFlowManager {
             } else {
                 if (!this._existingUserCheckInProgress) {
                     this._existingUserCheckInProgress = true;
-                    try {
-                        isExistingUser = await this.checkExistingUser(user.uid);
-                        this._cachedExistingUser = isExistingUser;
-                        console.log('✅ 기존 사용자 확인 완료', { isExistingUser });
-                    } catch (e) {
-                        console.warn('기존 사용자 확인 실패:', e);
-                        isExistingUser = false;
-                    } finally {
+                try {
+                    isExistingUser = await this.checkExistingUser(user.uid);
+                    this._cachedExistingUser = isExistingUser;
+                    console.log('✅ 기존 사용자 확인 완료', { isExistingUser });
+                } catch (e) {
+                    console.warn('기존 사용자 확인 실패:', e);
+                    isExistingUser = isLikelyReturningUserFromLocalSettings();
+                    if (isExistingUser) this._cachedExistingUser = true;
+                } finally {
                         this._existingUserCheckInProgress = false;
                     }
                 } else {

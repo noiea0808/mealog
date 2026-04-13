@@ -625,7 +625,9 @@ export function setupListeners(userId, callbacks) {
         );
     
     let isInitialLoad = true;
-    const dataUnsubscribe = onSnapshot(mealsQuery, (snap) => {
+    /** primary 또는 fallback 중 현재 활성 meals onSnapshot 해제 함수 (fallback 시 이전 Watch 반드시 해제) */
+    let mealsListenerUnsub = null;
+    mealsListenerUnsub = onSnapshot(mealsQuery, (snap) => {
         // 사용자 ID 재확인 (리스너 내부에서)
         if (window.currentUser && userId !== window.currentUser.uid) {
             console.error('⚠️ ⚠️ ⚠️ 데이터 리스너 콜백: 사용자 ID 불일치 감지!', {
@@ -691,6 +693,12 @@ export function setupListeners(userId, callbacks) {
             let hasChanges = false;
             
             changes.forEach(change => {
+                if (change.type === 'removed') {
+                    const rid = change.doc.id;
+                    window.mealHistory = window.mealHistory.filter((m) => m.id !== rid);
+                    hasChanges = true;
+                    return;
+                }
                 const docData = { id: change.doc.id, ...change.doc.data() };
                 if (change.type === 'added' || change.type === 'modified') {
                     const index = window.mealHistory.findIndex(m => m.id === docData.id);
@@ -756,9 +764,6 @@ export function setupListeners(userId, callbacks) {
                         }
                     }
                     hasChanges = true;
-                } else if (change.type === 'removed') {
-                    window.mealHistory = window.mealHistory.filter(m => m.id !== docData.id);
-                    hasChanges = true;
                 }
             });
             
@@ -782,8 +787,13 @@ export function setupListeners(userId, callbacks) {
         }
         // 인덱스가 없을 경우 fallback: 전체 컬렉션 사용 (경고만 표시)
         console.warn("날짜 범위 쿼리 실패, 전체 컬렉션으로 fallback");
+        try {
+            if (mealsListenerUnsub) mealsListenerUnsub();
+        } catch (_) {
+            /* 이미 끊긴 리스너일 수 있음 */
+        }
         const fallbackQuery = collection(db, 'artifacts', appId, 'users', userId, 'meals');
-        return onSnapshot(
+        mealsListenerUnsub = onSnapshot(
             fallbackQuery,
             (snap) => {
                 // 사용자 ID 재확인 (fallback 리스너 내부에서)
@@ -847,7 +857,16 @@ export function setupListeners(userId, callbacks) {
             }
         );
     });
-    
+
+    const dataUnsubscribe = () => {
+        try {
+            if (mealsListenerUnsub) mealsListenerUnsub();
+        } catch (_) {
+            /* noop */
+        }
+        mealsListenerUnsub = null;
+    };
+
     return { settingsUnsubscribe, dataUnsubscribe, statsUnsubscribe };
 }
 

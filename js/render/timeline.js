@@ -804,7 +804,11 @@ function setupMiniCalendarScrollTitle(container) {
 function setupMiniCalendarPointerDrag(container) {
     if (miniCalendarPointerDragBound) return;
     miniCalendarPointerDragBound = true;
-    const DRAG_THRESHOLD = 5;
+    /** 이 이상 움직여야 가로 스크롤(드래그)으로 간주 — 너무 낮으면 클릭이 미세 떨림에 막힘 */
+    const DRAG_THRESHOLD = 10;
+    /** pointerup 시 이 이상 이동했거나 스크롤이 바뀌었을 때만 날짜 클릭 취소 */
+    const CLICK_CANCEL_MOVE_PX = 14;
+    const CLICK_CANCEL_SCROLL_PX = 2;
     let startX = 0;
     let startScrollLeft = 0;
     let active = false;
@@ -833,13 +837,16 @@ function setupMiniCalendarPointerDrag(container) {
         if (!active || e.pointerId !== activePointerId) return;
         const dx = e.clientX - startX;
         if (Math.abs(dx) > DRAG_THRESHOLD) {
-            suppressClick = true;
             container.scrollLeft = startScrollLeft - dx;
         }
     });
 
     const end = (e) => {
         if (!active || e.pointerId !== activePointerId) return;
+        const totalMove = Math.abs(e.clientX - startX);
+        const scrollDelta = Math.abs(container.scrollLeft - startScrollLeft);
+        suppressClick =
+            totalMove > CLICK_CANCEL_MOVE_PX || scrollDelta > CLICK_CANCEL_SCROLL_PX;
         active = false;
         activePointerId = null;
         container.classList.remove('calendar-scroll-dragging');

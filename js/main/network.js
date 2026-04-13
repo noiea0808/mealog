@@ -2,8 +2,7 @@
  * 메인 앱 네트워크 상태 (오프라인 오버레이) + 온라인/포그라운드 복구
  */
 import { showNetworkErrorOverlay, hideNetworkErrorOverlay } from '../ui.js';
-import { db, auth, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
-import { enableNetwork } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
+import { auth, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 
 function mealogMainAppVisible() {
     try {
@@ -18,17 +17,14 @@ let recoveryTimer = null;
 let recoveryInFlight = null;
 
 /**
- * Firestore 재연결 + App Check·Auth 토큰 갱신.
- * 불안정한 연결 후 복귀 시 앱 재시작 없이 동작하도록 한다.
+ * App Check·Auth 토큰 갱신.
+ * 주의: 앱에서 disableNetwork를 쓰지 않으므로 enableNetwork는 호출하지 않는다.
+ * (매 visibility/복귀마다 enableNetwork → Watch 재구독 → Firestore ca9/b815 assertion 폭주)
  */
-export async function runMealogNetworkRecovery() {
+export async function runMealogNetworkRecovery(options = {}) {
+    const forceAuthRefresh = options.forceAuthRefresh === true;
     if (recoveryInFlight) return recoveryInFlight;
     recoveryInFlight = (async () => {
-        try {
-            await enableNetwork(db);
-        } catch (e) {
-            console.warn('[mealog] enableNetwork:', e?.message || e);
-        }
         try {
             await refreshAppCheckTokenBeforeFirestore();
         } catch (_) {
@@ -37,7 +33,7 @@ export async function runMealogNetworkRecovery() {
         try {
             const u = auth.currentUser;
             if (u && typeof u.getIdToken === 'function') {
-                await u.getIdToken(true);
+                await u.getIdToken(forceAuthRefresh);
             }
         } catch (_) {
             /* ignore */
@@ -50,11 +46,11 @@ export async function runMealogNetworkRecovery() {
     }
 }
 
-export function scheduleMealogNetworkRecovery(delayMs = 0) {
+export function scheduleMealogNetworkRecovery(delayMs = 0, options = {}) {
     if (recoveryTimer) clearTimeout(recoveryTimer);
     recoveryTimer = setTimeout(() => {
         recoveryTimer = null;
-        void runMealogNetworkRecovery();
+        void runMealogNetworkRecovery(options);
     }, delayMs);
 }
 
@@ -64,7 +60,7 @@ function registerForegroundRecovery() {
         () => {
             if (document.visibilityState !== 'visible') return;
             if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
-            scheduleMealogNetworkRecovery(350);
+            scheduleMealogNetworkRecovery(500, { forceAuthRefresh: false });
         },
         { passive: true }
     );
@@ -74,7 +70,7 @@ function registerForegroundRecovery() {
             if (App?.addListener) {
                 await App.addListener('resume', () => {
                     if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
-                    scheduleMealogNetworkRecovery(300);
+                    scheduleMealogNetworkRecovery(400, { forceAuthRefresh: false });
                 });
             }
         } catch (_) {
@@ -95,7 +91,7 @@ export function registerMainNetworkListeners() {
     });
     window.addEventListener('online', () => {
         hideNetworkErrorOverlay();
-        scheduleMealogNetworkRecovery(200);
+        scheduleMealogNetworkRecovery(250, { forceAuthRefresh: true });
     });
     registerForegroundRecovery();
 }

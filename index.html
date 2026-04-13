@@ -292,6 +292,12 @@
                 }
             }
             
+            // Firestore JS SDK 내부 Watch assertion(b815/ca9 등) — 스팸·리포트만 줄임(앱 로직 오류 아님)
+            const errMsg = String(e.message || e.error?.message || '');
+            if (errMsg.includes('FIRESTORE') && errMsg.includes('INTERNAL ASSERTION FAILED')) {
+                return;
+            }
+            
             // 실제 JavaScript 오류만 로깅
             if (e.error || (e.filename && e.filename.endsWith('.js'))) {
                 console.error('=== JavaScript 오류 발생 ===');
@@ -344,6 +350,10 @@
             var msg = (e.reason && e.reason.message) ? String(e.reason.message) : '';
             // Android Capacitor 푸시 플러그인 알려진 오류 — 무시 (push-notifications.js에서 처리)
             if (msg.indexOf('PushNotifications') !== -1 && msg.indexOf('is not implemented') !== -1) {
+                e.preventDefault();
+                return;
+            }
+            if (msg.indexOf('FIRESTORE') !== -1 && msg.indexOf('INTERNAL ASSERTION FAILED') !== -1) {
                 e.preventDefault();
                 return;
             }

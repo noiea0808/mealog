@@ -2,7 +2,14 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
 import { getAnalytics, logEvent as analyticsLogEvent, setUserId, setUserProperties } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-analytics.js";
 import { getAuth, initializeAuth, setPersistence, browserLocalPersistence, indexedDBLocalPersistence } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
-import { getFirestore, initializeFirestore } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import {
+    getFirestore,
+    initializeFirestore,
+    setLogLevel,
+    memoryLocalCache,
+    persistentLocalCache,
+    persistentSingleTabManager
+} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { getStorage } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-storage.js";
 import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
 
@@ -83,19 +90,43 @@ if (!(typeof window.Capacitor !== 'undefined' && window.Capacitor?.isNativePlatf
 // 이메일 인증·비밀번호 재설정 메일을 한글로 발송
 auth.languageCode = 'ko';
 
-// WebChannel·Watch 스트림에서 간헐적 INTERNAL ASSERTION(b815 등)이 나는 환경이 있어
-// 장폴링을 기본 사용(네이티브·웹 공통). 실패 시에만 기본 getFirestore.
+// 이전에는 experimentalForceLongPolling으로 b815를 완화하려 했으나,
+// 동일 설정이 Watch(ca9/b815)와 충돌해 오류가 **반복**되는 사례가 있음(GitHub firebase-js-sdk #9267 등).
+// 강제 장폴링 대신 자동 감지: 필요할 때만 장폴링, 그 외에는 WebChannel(기본).
+//
+// 영구 로컬 캐시(IndexedDB): 네트워크 불안정 시에도 setDoc/addDoc 등 Firestore 쓰기가 로컬에 쌓였다가
+// 온라인 시 서버로 동기화됨(공식 오프라인 동작). 모먼트·Callable 폴백 등 HTTP 경로는 별도.
+//
+// 로컬 PC(localhost) + 네트워크 정상이어도 Watch(ca9/b815)가 콘솔에 쌓이는 경우가 있어,
+// 개발 시에는 memoryLocalCache만 사용(IndexedDB·멀티탭 상태와의 조합 완화). 스테이징·앱은 영구 캐시 유지.
+function isLocalhostWebDev() {
+    if (typeof window === 'undefined') return false;
+    if (window.Capacitor?.isNativePlatform?.()) return false;
+    const h = window.location.hostname;
+    return h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0' || h === '';
+}
+
 function createFirestore() {
+    const transport = { experimentalAutoDetectLongPolling: true };
+    const localCache = isLocalhostWebDev()
+        ? memoryLocalCache()
+        : persistentLocalCache({ tabManager: persistentSingleTabManager() });
     try {
         return initializeFirestore(app, {
-            experimentalForceLongPolling: true
+            localCache,
+            ...transport
         });
     } catch (e) {
         const msg = String(e?.message || e);
         if (msg.includes('already') || msg.includes('Already')) {
             return getFirestore(app, '(default)');
         }
-        console.warn('Firestore initializeFirestore 실패, getFirestore로 대체:', msg);
+        console.warn('Firestore 영구 캐시 초기화 실패(사생활 보호 모드 등), 캐시 없이 재시도:', msg);
+        try {
+            return initializeFirestore(app, { ...transport });
+        } catch (e2) {
+            console.warn('Firestore initializeFirestore 실패, getFirestore로 대체:', String(e2?.message || e2));
+        }
     }
     return getFirestore(app, '(default)');
 }
@@ -181,6 +212,11 @@ export async function refreshAppCheckTokenBeforeFirestore() {
 await appCheckInitPromise;
 
 export const db = createFirestore();
+try {
+    setLogLevel('error');
+} catch (_) {
+    /* SDK 내부 assertion 등은 여전히 error로 찍힐 수 있음 */
+}
 export const storage = getStorage(app);
 
 // Functions 초기화 (리전 명시: us-central1)

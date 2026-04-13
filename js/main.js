@@ -1927,6 +1927,10 @@ setTimeout(() => {
 
 // 에러 핸들링
 window.addEventListener('error', (e) => {
+    const em = String(e.message || e.error?.message || '');
+    if (em.includes('FIRESTORE') && em.includes('INTERNAL ASSERTION FAILED')) {
+        return;
+    }
     console.error('JavaScript 에러:', e);
     console.error('에러 파일:', e.filename);
     console.error('에러 메시지:', e.message);
