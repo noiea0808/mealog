@@ -4,6 +4,7 @@
  */
 import { auth } from './firebase.js';
 import { createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
+import { getRecordsPendingLoadingMessage } from './auth.js';
 import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS } from './constants.js';
 import { normalizeBirthdateRaw, setupBirthdateInputFormatting } from './utils.js';
@@ -152,7 +153,7 @@ async function submitWizard() {
             const { createUserWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js');
             await createUserWithEmailAndPassword(auth, state.data.email, state.data.password);
             window._recordsLoadHidePending = true;
-            showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
+            showLoading(getRecordsPendingLoadingMessage(auth.currentUser), { dimBackground: false, skipOnLoginScreen: false });
             showToast('회원가입 성공! 환영합니다.', 'success');
         } catch (e) {
             hideLoading();

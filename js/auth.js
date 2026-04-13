@@ -7,6 +7,21 @@ import { dbOps } from './db.js';
 import { normalizeBirthdateRaw } from './utils.js';
 import { isDemoUser } from './demo-account.js';
 
+/**
+ * Firebase 계정 생성 직후 첫 로그인으로 보이면 "기록" 대신 준비 멘트 (auth-flow `isLikelyFirstSessionAfterAccountCreate`와 동일 기준).
+ * @param {import('https://www.gstatic.com/firebasejs/11.10.0/firebase-auth').User | null | undefined} user
+ */
+export function getRecordsPendingLoadingMessage(user) {
+    if (!user?.metadata?.creationTime || !user?.metadata?.lastSignInTime) {
+        return '기록을 불러오고 있어요';
+    }
+    const c = new Date(user.metadata.creationTime).getTime();
+    const l = new Date(user.metadata.lastSignInTime).getTime();
+    if (!Number.isFinite(c) || !Number.isFinite(l)) return '기록을 불러오고 있어요';
+    if (Math.abs(l - c) < 120000) return '시작을 준비중입니다.';
+    return '기록을 불러오고 있어요';
+}
+
 function isNativePlatform() {
     return typeof window.Capacitor !== 'undefined' && window.Capacitor?.isNativePlatform?.();
 }
@@ -179,8 +194,8 @@ async function finalizeKakaoSignInWithCode(code, redirectUri) {
             sessionStorage.setItem('mealog_kakaoProfileSetupGate', '1');
         } catch (_) {}
         window._recordsLoadHidePending = true;
-        showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
-        showToast('카카오 로그인 성공!', 'success');
+        showLoading(getRecordsPendingLoadingMessage(auth.currentUser), { dimBackground: false, skipOnLoginScreen: false });
+        /* 성공 토스트 생략 — 메인 진입 후 웰컴(출석) 팝업과 겹침 */
     } catch (error) {
         console.warn('[카카오 OAuth] 오류:', error?.code, error?.message, error);
         const msg = error?.message || '';
@@ -535,8 +550,8 @@ export async function handleGoogleLogin() {
             providerData: result.user.providerData.map(p => p.providerId)
         });
         window._recordsLoadHidePending = true;
-        showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
-        showToast("구글 로그인 성공!", "success");
+        showLoading(getRecordsPendingLoadingMessage(result.user), { dimBackground: false, skipOnLoginScreen: false });
+        /* 성공 토스트 생략 — 메인 진입 후 웰컴(출석) 팝업과 겹침 */
     } catch (error) {
         console.warn('[구글 로그인] 오류:', error?.code, error?.message, error);
         if (error?.code === 'auth/unauthorized-domain' || error?.message?.includes('unauthorized-domain')) {
@@ -708,7 +723,7 @@ export async function handleEmailAuth() {
                 providerData: result.user.providerData.map(p => p.providerId)
             });
             window._recordsLoadHidePending = true;
-            showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
+            showLoading(getRecordsPendingLoadingMessage(result.user), { dimBackground: false, skipOnLoginScreen: false });
             showToast("회원가입 성공! 환영합니다.", "success");
         } else {
             result = await signInWithEmailAndPassword(auth, email, password);
@@ -719,8 +734,8 @@ export async function handleEmailAuth() {
                 providerData: result.user.providerData.map(p => p.providerId)
             });
             window._recordsLoadHidePending = true;
-            showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
-            showToast("로그인되었습니다.", "success");
+            showLoading(getRecordsPendingLoadingMessage(result.user), { dimBackground: false, skipOnLoginScreen: false });
+            /* 성공 토스트 생략 — 메인 진입 후 웰컴(출석) 팝업과 겹침 */
             if (document.getElementById('rememberEmailCheck').checked) {
                 localStorage.setItem('savedEmail', email);
             } else {
@@ -1053,8 +1068,8 @@ export async function initAuth(onAuthStateChangedCallback) {
             if (result?.user) {
                 console.log('🔐 구글 Redirect 로그인 성공:', result.user.uid);
                 window._recordsLoadHidePending = true;
-                showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
-                showToast("구글 로그인 성공!", "success");
+                showLoading(getRecordsPendingLoadingMessage(result.user), { dimBackground: false, skipOnLoginScreen: false });
+                /* 성공 토스트 생략 — 메인 진입 후 웰컴(출석) 팝업과 겹침 */
             }
         } catch (error) {
             // 네이티브에서는 리다이렉트 미사용 → 에러는 무시(콘솔만), 사용자에게 토스트 안 띄움
@@ -1539,7 +1554,7 @@ export async function handleEmailSignupWithProfile() {
         const result = await createUserWithEmailAndPassword(auth, email, password);
         console.log('🔐 이메일 회원가입 성공:', { uid: result.user.uid, email: result.user.email });
         window._recordsLoadHidePending = true;
-        showLoading('기록을 불러오고 있어요', { dimBackground: false, skipOnLoginScreen: false });
+        showLoading(getRecordsPendingLoadingMessage(result.user), { dimBackground: false, skipOnLoginScreen: false });
         showToast("회원가입 성공! 약관에 동의해주세요.", "success");
         
         window._pendingEmailSignupProfile = {

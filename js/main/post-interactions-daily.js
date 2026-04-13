@@ -35,6 +35,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from '../ui.js';
+import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import {
     getDisplayProfile,
     uploadBoardImages,
@@ -492,12 +493,11 @@ window.confirmDailyShare = async (dateStr, ev) => {
                 if (appState.currentTab === 'timeline') renderTimeline();
                 if (appState.currentTab === 'gallery') renderGallery();
             }
-            showToast(e?.message || e?.details || '공유 반영에 실패했습니다. 다시 시도해 주세요.', 'error');
+            showToast(getUserFacingErrorMessage(e, 'share'), 'error');
         });
     } catch (e) {
         console.error('일간보기 공유 실패:', e);
-        const errorMessage = e.message || e.details || '공유 중 오류가 발생했습니다.';
-        showToast(errorMessage, 'error');
+        showToast(getUserFacingErrorMessage(e, 'share'), 'error');
         window.closeDailySharePreviewModal();
     } finally {
         const modal = document.getElementById('dailySharePreviewModal');
@@ -942,7 +942,7 @@ window.addCommentToPost = async (postId) => {
         }
     } catch (e) {
         console.error("댓글 추가 실패:", e);
-        showToast("댓글 추가 중 오류가 발생했습니다: " + (e.message || e), 'error');
+        showToast(getUserFacingErrorMessage(e, 'comment'), 'error');
         
         // 낙관적 업데이트 롤백
         if (commentCountEl) {

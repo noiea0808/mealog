@@ -6,25 +6,13 @@
  */
 import { isDemoUser } from './demo-account.js';
 import { appCheckInitPromise, db, appId, refreshAppCheckTokenBeforeFirestore } from './firebase.js';
+import { getRecordCountForIso } from './meal-record-count.js';
 import { showAttendancePopup } from './ui.js';
 import { addCalendarDaysSeoulYmd, getMealogClientEnv, toLocalDateString, toSeoulDateString } from './utils.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
 function isValidYmd(s) {
     return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
-}
-
-/**
- * 트래커·타임라인과 동일: 해당 일에 실제 기록 건수 (dailyStats.count ∪ mealHistory)
- * dailyStats에 main/snack 키만 있고 count·실데이터가 없으면 0으로 본다 (빈 객체 오탐 방지).
- */
-function getRecordCountForIso(iso) {
-    const statsCount = (window.dailyStats && window.dailyStats[iso]?.count) ?? 0;
-    const historyCount =
-        window.mealHistory && Array.isArray(window.mealHistory)
-            ? window.mealHistory.filter((m) => m.date === iso).length
-            : 0;
-    return Math.max(statsCount, historyCount);
 }
 
 /** @returns {Set<string>} */

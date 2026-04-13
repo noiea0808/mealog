@@ -58,6 +58,10 @@ export async function initErrorReporting() {
 function setupGlobalErrorHandlers() {
     // JavaScript 에러 캐치
     window.addEventListener('error', (event) => {
+        const em = String(event.message || event.error?.message || '');
+        if (isFirestoreSdkInternalAssertion(em)) {
+            return;
+        }
         // favicon.ico 같은 리소스 로드 실패는 무시
         if (event.target && (event.target.tagName === 'LINK' || event.target.tagName === 'IMG' || event.target.tagName === 'SCRIPT')) {
             const src = event.target.src || event.target.href || '';
@@ -85,6 +89,10 @@ function setupGlobalErrorHandlers() {
 
     // Promise rejection 캐치
     window.addEventListener('unhandledrejection', (event) => {
+        const em = String(event.reason?.message || event.reason || '');
+        if (isFirestoreSdkInternalAssertion(em)) {
+            return;
+        }
         reportError({
             message: event.reason?.message || String(event.reason) || 'Unhandled promise rejection',
             reason: event.reason,
@@ -97,10 +105,21 @@ function setupGlobalErrorHandlers() {
     });
 }
 
+/** Firestore JS SDK 내부 Watch/WebChannel assertion — 앱 버그가 아니라 SDK/전송 계층 이슈로 간주 */
+function isFirestoreSdkInternalAssertion(message) {
+    const m = String(message || '');
+    return m.includes('FIRESTORE') && m.includes('INTERNAL ASSERTION FAILED');
+}
+
 /**
  * 에러 리포팅
  */
 export function reportError(errorInfo) {
+    const msg = String(errorInfo?.message || errorInfo?.error?.message || '');
+    if (isFirestoreSdkInternalAssertion(msg)) {
+        return;
+    }
+
     // 초기화 전이면 큐에 저장
     if (!errorReportingInitialized) {
         if (errorQueue.length < MAX_QUEUE_SIZE) {
