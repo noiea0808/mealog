@@ -1663,14 +1663,14 @@
                             <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">어떻게</span>
                             <div id="typeChips" class="flex flex-wrap gap-1"></div>
                         </div>
-                        <div class="mt-2 px-4">
+                        <div class="mt-2 px-4 min-w-0">
                             <div class="relative">
                                 <button type="button" id="kakaoSearchBtn" onclick="window.openKakaoPlaceSearch()" class="absolute left-2 top-1/2 -translate-y-1/2 w-[1.8rem] h-[1.8rem] flex items-center justify-center bg-slate-500 text-white rounded-md z-10 border border-slate-500 hover:bg-slate-600 hover:border-slate-600 transition-colors" aria-label="장소 검색">
                                     <i class="fa-solid fa-magnifying-glass text-[11px] text-white"></i>
                                 </button>
                                 <input id="placeInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full py-[0.6rem] pl-[46px] pr-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
                             </div>
-                            <div id="restaurantSuggestions" class="flex gap-1 mt-0.5 overflow-x-auto pb-0 whitespace-nowrap"></div>
+                            <div id="restaurantSuggestions" class="entry-subtag-suggestions"></div>
                         </div>
                     </div>
                     
@@ -1680,8 +1680,8 @@
                                 <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">무엇을</span>
                                 <div id="categoryChips" class="flex flex-wrap gap-1"></div>
                             </div>
-                            <div class="mt-2 px-4">
-                                <div id="mealWhatInputArea" class="w-full">
+                            <div class="mt-2 px-4 min-w-0">
+                                <div id="mealWhatInputArea" class="w-full min-w-0">
                                     <div id="deliveryVendorSection" class="hidden">
                                         <div class="relative w-full">
                                             <button type="button" onclick="window.openKakaoPlaceSearch('deliveryVendor')" class="absolute left-2 top-1/2 -translate-y-1/2 w-[1.8rem] h-[1.8rem] flex items-center justify-center bg-slate-500 text-white rounded-md z-10 border border-slate-500 hover:bg-slate-600 hover:border-slate-600 transition-colors" aria-label="식당 검색">
@@ -1692,7 +1692,7 @@
                                     </div>
                                     <div id="menuDetailInputRow" class="w-full">
                                         <input id="menuDetailInput" type="text" placeholder="무엇을 드셨나요? (예: 파스타, 된장찌개)" class="w-full py-[0.6rem] px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
-                                        <div id="menuSuggestions" class="flex gap-1 mt-0.5 overflow-x-auto pb-0 whitespace-nowrap"></div>
+                                        <div id="menuSuggestions" class="entry-subtag-suggestions"></div>
                                     </div>
                                 </div>
                             </div>
@@ -1703,9 +1703,9 @@
                                 <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">누구와</span>
                                 <div id="withChips" class="flex flex-wrap gap-1"></div>
                             </div>
-                            <div class="mt-2 px-4">
+                            <div class="mt-2 px-4 min-w-0">
                                 <input id="withWhomInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full py-[0.6rem] px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
-                                <div id="peopleSuggestions" class="flex gap-1 mt-0.5 overflow-x-auto pb-0 whitespace-nowrap"></div>
+                                <div id="peopleSuggestions" class="entry-subtag-suggestions"></div>
                             </div>
                         </div>
                     </div>
@@ -1820,14 +1820,14 @@
                             <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">어디서</span>
                             <div id="snackPlaceTypeChips" class="flex flex-wrap gap-1"></div>
                         </div>
-                        <div class="mt-2 px-4">
+                        <div class="mt-2 px-4 min-w-0">
                             <div class="relative">
                                 <button type="button" id="snackKakaoSearchBtn" onclick="window.openKakaoPlaceSearch('snack')" class="absolute left-2 top-1/2 -translate-y-1/2 w-[1.8rem] h-[1.8rem] flex items-center justify-center bg-slate-500 text-white rounded-md z-10 border border-slate-500 hover:bg-slate-600 hover:border-slate-600 transition-colors" aria-label="장소 검색">
                                     <i class="fa-solid fa-magnifying-glass text-[11px] text-white"></i>
                                 </button>
                                 <input id="snackPlaceInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full py-[0.6rem] pl-[46px] pr-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
                             </div>
-                            <div id="snackPlaceSuggestions" class="flex flex-wrap gap-1 mt-0.5 overflow-x-auto pb-0 items-center" data-input-id="snackPlaceInput"></div>
+                            <div id="snackPlaceSuggestions" class="entry-subtag-suggestions" data-input-id="snackPlaceInput"></div>
                         </div>
                     </div>
                     <div class="space-y-2">
@@ -1836,9 +1836,9 @@
                             <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">무엇을</span>
                             <div id="snackTypeChips" class="flex flex-wrap gap-1"></div>
                         </div>
-                        <div class="mt-2 px-4">
+                        <div class="mt-2 px-4 min-w-0">
                             <input id="snackDetailInput" type="text" placeholder="무엇을 드셨나요?" class="w-full py-[0.6rem] px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
-                            <div id="snackSuggestions" class="flex gap-1 mt-0.5 overflow-x-auto pb-0 whitespace-nowrap"></div>
+                            <div id="snackSuggestions" class="entry-subtag-suggestions"></div>
                         </div>
                     </div>
                     <div class="pt-3 pb-[3px] -mx-4 bg-blue-50/50 border-b border-blue-100 rounded-none mb-2">
@@ -1846,9 +1846,9 @@
                             <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">누구와</span>
                             <div id="snackWithChips" class="flex flex-wrap gap-1"></div>
                         </div>
-                        <div class="mt-2 px-4">
+                        <div class="mt-2 px-4 min-w-0">
                             <input id="snackWithWhomInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full py-[0.6rem] px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
-                            <div id="snackPeopleSuggestions" class="flex gap-1 mt-0.5 overflow-x-auto pb-0 whitespace-nowrap" data-input-id="snackWithWhomInput"></div>
+                            <div id="snackPeopleSuggestions" class="entry-subtag-suggestions" data-input-id="snackWithWhomInput"></div>
                         </div>
                     </div>
                     </div>
@@ -1943,8 +1943,12 @@
                     <button type="button" id="btnSave" class="flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-900 text-white text-base font-bold hover:bg-slate-800 active:bg-slate-800 transition-colors">
                         <span>기록 완료</span>
                     </button>
-                    <button id="sharePhotoIndicator" onclick="window.toggleSharePhoto()" class="hidden flex-1 flex items-center justify-center px-2.5 py-3.5 bg-slate-50 text-slate-400 active:bg-slate-100 transition-colors">
-                        <i class="fa-solid fa-share text-lg"></i>
+                    <button type="button" id="sharePhotoIndicator" onclick="window.toggleSharePhoto()" aria-label="모먼트 공유" class="hidden flex-1 flex items-center justify-center gap-3 px-2 py-3.5 bg-slate-50 text-slate-400 active:bg-slate-100 transition-colors min-w-0">
+                        <i class="fa-solid fa-share text-lg shrink-0" aria-hidden="true"></i>
+                        <span class="text-center leading-tight font-extrabold text-xs tracking-tight min-w-0">
+                            <span class="block">모먼트</span>
+                            <span class="block">공유</span>
+                        </span>
                     </button>
                 </div>
             </div>

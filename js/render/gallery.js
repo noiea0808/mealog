@@ -19,6 +19,10 @@ import {
     enqueuePostInteractionLoad,
     clearMomentPostInteractionQueue
 } from './moment-post-interactions.js';
+import { ensureMomentFeedPinchDelegate } from '../main/moment-feed-pinch.js';
+import { applyCollapsedCaptionToElement } from './comment-caption-layout.js';
+
+ensureMomentFeedPinchDelegate();
 
 /** 사용자 프로필 모먼트 그리드: 3열 × 5행 = 15게시물 단위 */
 const USER_PROFILE_MOMENT_GRID_PAGE_SIZE = 15;
@@ -116,6 +120,18 @@ export function invalidateGalleryRenderSession() {
     }
     isRenderingGallery = false;
     galleryRenderPending = false;
+}
+
+/** 본문 코멘트: 본문+더보기 합쳐 3줄 레이아웃 적용 */
+function applyMomentCaptionLayoutForRange(startInclusive, endExclusive) {
+    requestAnimationFrame(() => {
+        for (let idx = startInclusive; idx < endExclusive; idx++) {
+            const collapsedEl = document.getElementById(`post-caption-collapsed-${idx}`);
+            if (collapsedEl && collapsedEl.querySelector('[data-comment-collapsed-mount]')) {
+                applyCollapsedCaptionToElement(collapsedEl);
+            }
+        }
+    });
 }
 
 function setupGalleryEventListeners(container, sortedGroups, opts = null) {
@@ -257,9 +273,11 @@ async function appendGalleryPosts(docs, loadMoreWrap) {
     while (tempDiv.firstChild) fragment.appendChild(tempDiv.firstChild);
     loadMoreWrap.parentNode.insertBefore(fragment, loadMoreWrap);
     const fullSortedGroups = processPhotosToGroups(window.sharedPhotosFeed || []);
+    const appendedEnd = existingCount + newGroups.length;
     setTimeout(() => {
         setupGalleryEventListeners(container, fullSortedGroups, { startIndex: existingCount });
         fetchMissingSharedComments(container).catch(() => {});
+        applyMomentCaptionLayoutForRange(existingCount, appendedEnd);
         if (window.postInteractions && intersectionObserver) {
             container.querySelectorAll('.instagram-post').forEach((post, i) => {
                 if (i >= existingCount && document.contains(post)) intersectionObserver.observe(post);
@@ -1050,23 +1068,10 @@ export async function renderGallery(options = {}) {
                     setupLazyPostRenderer(container, sortedGroups, INITIAL_POSTS_COUNT, abortSignal);
                 }, 200);
                 
-                // Comment "더 보기" 버튼 표시 여부 확인 및 위치 조정
+                // Comment 「더 보기」: 3줄 초과 시 본문 뒤 인라인으로만 표시
                 setTimeout(() => {
                     if (abortSignal.aborted) return;
-                    initialPosts.forEach((photoGroup, idx) => {
-                        const collapsedEl = document.getElementById(`post-caption-collapsed-${idx}`);
-                        const toggleBtn = document.getElementById(`post-caption-toggle-${idx}`);
-                        
-                        if (collapsedEl && toggleBtn) {
-                            const collapsedHeight = collapsedEl.scrollHeight;
-                            const lineHeight = parseFloat(getComputedStyle(collapsedEl).lineHeight) || 20;
-                            const maxHeight = lineHeight * 2;
-                            
-                            if (collapsedHeight > maxHeight + 2 && toggleBtn.classList.contains('hidden')) {
-                                toggleBtn.classList.remove('hidden');
-                            }
-                        }
-                    });
+                    applyMomentCaptionLayoutForRange(0, initialPosts.length);
                 }, 100);
                 
                 // 갤러리 렌더링 완료 후: 초기 진입은 맨 위로, 더보기 시에는 스크롤 위치 복원
@@ -1100,7 +1105,9 @@ export async function renderGallery(options = {}) {
         }
         postsInsertPoint.appendChild(fragment);
         
-        renderedIndex += POSTS_PER_BATCH;
+        const batchSize = batch.length;
+        renderedIndex += batchSize;
+        applyMomentCaptionLayoutForRange(renderedIndex - batchSize, renderedIndex);
         
         // 다음 배치를 다음 프레임에서 실행 (브라우저가 렌더링할 시간을 줌)
         requestAnimationFrame(() => {
@@ -1194,7 +1201,11 @@ export async function renderGallery(options = {}) {
                             placeholder.parentNode.insertBefore(fragment, placeholder);
                         }
                         
-                        renderedCount += POSTS_PER_BATCH;
+                        const batchSize = batch.length;
+                        renderedCount += batchSize;
+                        applyMomentCaptionLayoutForRange(renderedCount - batchSize, renderedCount);
+                        // 초기 10건 이후 삽입분에도 공유 기록 코멘트 플레이스홀더 일괄 조회 (최초 1회 fetch에는 아직 DOM에 없었음)
+                        fetchMissingSharedComments(container).catch(() => {});
                         
                         // Placeholder 높이 조정
                         const remaining = sortedGroups.length - renderedCount;

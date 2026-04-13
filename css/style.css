@@ -455,6 +455,49 @@ header .mealog-title {
     margin-bottom: 2px;
     padding: 5px 8px;
 }
+#entryModal .sub-chip-wrapper {
+    margin-right: 2px;
+    margin-bottom: 2px;
+}
+#entryModal .sub-chip-wrapper .sub-chip {
+    margin-right: 0;
+    margin-bottom: 0;
+}
+/* 기록 모달 서브태그 줄: 칩 전체 라벨 유지, 넘치면 가로 스크롤 (식사·간식 공통) */
+#entryModal .entry-subtag-suggestions {
+    display: flex;
+    flex-flow: row nowrap;
+    align-items: center;
+    gap: 4px;
+    margin-top: 2px;
+    padding-bottom: 2px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+}
+#entryModal .entry-subtag-suggestions .sub-chip-wrapper {
+    flex-shrink: 0;
+    margin-right: 0;
+    margin-bottom: 0;
+}
+#entryModal .entry-subtag-suggestions .sub-chip {
+    white-space: nowrap;
+    max-width: none;
+    margin-right: 0;
+    margin-bottom: 0;
+}
+/* 기록 모달 서브태그: 선택 시 슬레이트 600 (이전 대비 배경 살짝 연함) */
+#entryModal .entry-subtag-suggestions .sub-chip.active {
+    background: #475569 !important;
+    color: #fff !important;
+    border-color: #475569 !important;
+}
+#entryModal .entry-subtag-suggestions .sub-chip.active .fa-star {
+    color: #fff !important;
+}
 .sub-chip { 
     display: inline-flex; 
     align-items: center; 
@@ -1947,6 +1990,13 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
+.line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
 /* 기간 표시 높이 통일 */
 #periodDisplay {
     min-height: 1.75rem;
@@ -3246,6 +3296,41 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     min-width: 3.25rem;
     max-width: 4rem;
     width: auto;
+}
+
+/* 관리자 대시보드 > 페이지별 (usageDaily) 테이블: 짙은 보더, 행 단위 줄무늬, 7일 합 열 강조 */
+#adminDashboardPageUsageTable th,
+#adminDashboardPageUsageTable td {
+    border-color: #94a3b8 !important;
+}
+#adminDashboardPageUsageTable thead th {
+    background-color: #e8eef4;
+}
+#adminDashboardPageUsageTable thead tr:first-child th {
+    border-bottom-color: #94a3b8 !important;
+}
+#adminDashboardPageUsageTable #pageDashboard7dSumHead {
+    background-color: #cbd5e1 !important;
+    color: #334155;
+}
+#adminDashboardPageUsageTable tbody tr:nth-child(odd) td {
+    background-color: #ffffff;
+}
+#adminDashboardPageUsageTable tbody tr:nth-child(even) td {
+    background-color: #f1f5f9;
+}
+#adminDashboardPageUsageTable tbody tr:nth-child(odd) td[data-page-dash-7block-start] {
+    background-color: #e2e8f0;
+}
+#adminDashboardPageUsageTable tbody tr:nth-child(even) td[data-page-dash-7block-start] {
+    background-color: #cbd5e1;
+}
+#adminDashboardPageUsageTable tbody tr:hover td {
+    background-color: #e2e8f0 !important;
+}
+#adminDashboardPageUsageTable tbody tr:hover td[data-page-dash-7block-start] {
+    background-color: #94a3b8 !important;
+    color: #0f172a;
 }
 
 /* 콘텐츠 팝업: 이미지 좌우 꽉 채움 (박스 폭 100%), 세로는 비율 유지 */

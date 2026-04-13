@@ -2216,6 +2216,30 @@ function initWheelDialsOnce() {
 // entry 모달이 열리고 나면 휠 이벤트를 1회 바인딩
 setTimeout(initWheelDialsOnce, 0);
 
+/** 서브 칩 오른쪽 × — data-chip-delete(JSON) 위임 (특수문자·따옴표 안전) */
+function initEntryModalSubChipDeleteDelegation() {
+    const root = document.getElementById('entryModal');
+    if (!root || root._subChipDeleteDelegationBound) return;
+    root._subChipDeleteDelegationBound = true;
+    root.addEventListener('click', (e) => {
+        const delBtn = e.target.closest('[data-chip-delete]');
+        if (!delBtn || !root.contains(delBtn)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        let payload;
+        try {
+            payload = JSON.parse(decodeURIComponent(delBtn.getAttribute('data-chip-delete')));
+        } catch (err) {
+            console.warn('sub-chip delete: invalid payload', err);
+            return;
+        }
+        if (payload.kind === 'recent' && typeof window.deleteSubTag === 'function') {
+            window.deleteSubTag(payload.subTagKey, payload.text, payload.containerId, payload.inputId, payload.parentFilter);
+        }
+    });
+}
+setTimeout(initEntryModalSubChipDeleteDelegation, 0);
+
 export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subContainerId = null) {
     const container = btn.parentElement.closest('.sub-chip-wrapper') ? btn.parentElement.parentElement : btn.parentElement;
     const isActive = btn.classList.contains('active');

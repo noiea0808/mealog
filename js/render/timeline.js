@@ -76,6 +76,34 @@ function sortSnackSlotRecordsChronological(records) {
     });
 }
 
+/** 타임라인 썸네일: photos 배열·단일 문자열·photoUrl */
+function getMealPhotoUrlsForTimeline(r) {
+    if (!r) return [];
+    if (Array.isArray(r.photos) && r.photos.length > 0) {
+        return r.photos.map((u) => String(u || '').trim()).filter(Boolean);
+    }
+    if (r.photos && !Array.isArray(r.photos)) {
+        const s = String(r.photos).trim();
+        if (s) return [s];
+    }
+    if (r.photoUrl && String(r.photoUrl).trim()) {
+        return [String(r.photoUrl).trim()];
+    }
+    return [];
+}
+
+/** 좌측 140×140 사진 칸: 첫 장 + 다중 등록 시 우상단 1/n */
+function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover') {
+    const first = urls[0];
+    if (!first) return '';
+    const n = urls.length;
+    const badge =
+        n > 1
+            ? `<span class="absolute top-1 right-1 z-10 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-bold leading-none pointer-events-none shadow-sm">1/${n}</span>`
+            : '';
+    return `<span class="relative block w-full h-full"><img src="${escapeHtml(first)}" class="absolute inset-0 w-full h-full ${imgClass}" alt="">${badge}</span>`;
+}
+
 function buildMealTimelineViewSelectHtml(current) {
     const cardsSel = current === 'cards' ? ' selected' : '';
     const listSel = current === 'list' ? ' selected' : '';
@@ -197,10 +225,9 @@ function buildSnackTimelineCardHtml(
             .join('')}</div>`;
     }
     let iconHtml = '';
-    if (r.photos && Array.isArray(r.photos) && r.photos[0]) {
-        iconHtml = `<img src="${r.photos[0]}" class="w-full h-full object-cover" alt="">`;
-    } else if (r.photos && !Array.isArray(r.photos)) {
-        iconHtml = `<img src="${r.photos}" class="w-full h-full object-cover" alt="">`;
+    const snackPhotoUrls = getMealPhotoUrlsForTimeline(r);
+    if (snackPhotoUrls.length > 0) {
+        iconHtml = buildTimelinePhotoCellInnerHtml(snackPhotoUrls, 'object-cover');
     } else if (r.mealType === 'Skip') {
         iconHtml = `<i class="fa-solid fa-ban text-2xl text-slate-600" aria-hidden="true"></i>`;
     } else {
@@ -634,15 +661,15 @@ export function renderTimeline() {
                         <span class="text-3xl font-bold text-slate-400 mb-1">+</span>
                         <span class="text-[10px] text-slate-400 leading-tight">입력해주세요</span>
                     </div>`;
-                } else if (r.photos && Array.isArray(r.photos) && r.photos[0]) {
-                    iconHtml = `<img src="${r.photos[0]}" class="w-full h-full object-cover">`;
-                } else if (r.photos && !Array.isArray(r.photos)) {
-                    // photos가 배열이 아닌 경우 (문자열 등) 처리
-                    iconHtml = `<img src="${r.photos}" class="w-full h-full object-cover">`;
-                } else if (r.mealType === 'Skip') {
-                    iconHtml = `<i class="fa-solid fa-ban text-2xl text-slate-600"></i>`;
                 } else {
-                    iconHtml = `<i class="fa-solid fa-utensils text-2xl text-slate-400"></i>`;
+                    const mainPhotoUrls = getMealPhotoUrlsForTimeline(r);
+                    if (mainPhotoUrls.length > 0) {
+                        iconHtml = buildTimelinePhotoCellInnerHtml(mainPhotoUrls, 'object-cover');
+                    } else if (r.mealType === 'Skip') {
+                        iconHtml = `<i class="fa-solid fa-ban text-2xl text-slate-600"></i>`;
+                    } else {
+                        iconHtml = `<i class="fa-solid fa-utensils text-2xl text-slate-400"></i>`;
+                    }
                 }
                 html += `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${r ? JSON.stringify(r.id) : 'null'})' class="card mb-1.5 border ${containerClass} cursor-pointer active:scale-[0.98] transition-all !rounded-none" ${r ? `data-entry-id="${escapeHtml(String(r.id))}"` : ''}>
                     <div class="flex">

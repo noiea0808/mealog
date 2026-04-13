@@ -2,6 +2,7 @@
  * 공유 기록 코멘트 lazy 일괄 조회 (Callable)
  */
 import { escapeHtml } from './utils.js';
+import { applyCollapsedCaptionToElement } from './comment-caption-layout.js';
 
 // 공유 게시물 코멘트 캐시 (lazy 로드 시 재요청 방지)
 const sharedCommentsCache = new Map();
@@ -76,18 +77,16 @@ function applyCommentToPlaceholder(el, div, comment) {
     const postId = div.getAttribute('data-post-id');
     div.classList.remove('shared-comment-fetch-placeholder');
     if (comment) {
-        const lineBreaks = (comment.match(/\n/g) || []).length;
-        const estimatedLines = Math.ceil(comment.length / 30);
-        const shouldShowToggle = lineBreaks >= 2 || estimatedLines > 2;
-        const toggleBtnClass = shouldShowToggle ? '' : 'hidden';
         div.innerHTML = `
-            <span id="post-caption-collapsed-${groupIdx}" class="whitespace-pre-line line-clamp-2 inline">${escapeHtml(comment).replace(/\n/g, '<br>')}</span>
-            <button onclick="window.togglePostCaption(${groupIdx})" id="post-caption-toggle-${groupIdx}" class="inline text-xs text-emerald-600 font-bold hover:text-emerald-700 active:text-emerald-800 transition-colors ml-1 ${toggleBtnClass}">더 보기</button>
-            <div id="post-caption-expanded-${groupIdx}" class="whitespace-pre-line hidden">
-                ${escapeHtml(comment).replace(/\n/g, '<br>')}
-                <button onclick="window.togglePostCaption(${groupIdx})" id="post-caption-collapse-${groupIdx}" class="inline text-xs text-emerald-600 font-bold hover:text-emerald-700 active:text-emerald-800 transition-colors ml-1">접기</button>
+            <div id="post-caption-collapsed-${groupIdx}" class="min-h-[1em]" data-comment-raw="${encodeURIComponent(comment)}" data-caption-variant="moment" data-group-idx="${groupIdx}">
+                <div data-comment-collapsed-mount class="leading-snug"></div>
             </div>
+            <div id="post-caption-expanded-${groupIdx}" class="hidden whitespace-pre-line break-words leading-snug cursor-pointer" onclick="window.togglePostCaption(${groupIdx})">${escapeHtml(comment).replace(/\n/g, '<br>')}</div>
         `;
+        requestAnimationFrame(() => {
+            const collapsed = document.getElementById(`post-caption-collapsed-${groupIdx}`);
+            if (collapsed) applyCollapsedCaptionToElement(collapsed);
+        });
         const commentSection = el.querySelector(`#comment-section-${CSS.escape(postId)}`);
         if (commentSection) commentSection.classList.remove('comments-empty'), commentSection.classList.add('border-t', 'border-slate-200');
     } else {

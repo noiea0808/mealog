@@ -67,29 +67,66 @@ function addDocDataToPageTotals(data, into) {
     }
 }
 
-/** 행 정의가 바뀌면 tbody를 다시 생성 */
-let _pageUsageTableBuiltRowCount = 0;
+/** 행 정의·레이아웃이 바뀌면 tbody를 다시 생성 */
+let _pageUsageTableBuildKey = '';
+
+function computePageUsageSectionRowspans() {
+    const n = PAGE_USAGE_METRIC_DEFS.length;
+    /** @type {number[]} rowspan > 0 = 첫 행에 출력, -1 = 구분 셀 생략(위 행 rowspan) */
+    const spans = new Array(n).fill(0);
+    for (let i = 0; i < n; i++) {
+        const sec = PAGE_USAGE_METRIC_DEFS[i].section;
+        if (i > 0 && PAGE_USAGE_METRIC_DEFS[i - 1].section === sec) {
+            spans[i] = -1;
+        } else {
+            let c = 1;
+            for (let j = i + 1; j < n && PAGE_USAGE_METRIC_DEFS[j].section === sec; j++) c++;
+            spans[i] = c;
+        }
+    }
+    return spans;
+}
 
 function ensurePageUsageTableBody() {
     const tb = document.getElementById('dashboardPageUsageTableBody');
     if (!tb) return;
     const n = PAGE_USAGE_METRIC_DEFS.length;
-    if (_pageUsageTableBuiltRowCount === n && tb.querySelector('tr')) return;
+    const buildKey = `${n}-v4-stripe-bg`;
+    if (_pageUsageTableBuildKey === buildKey && tb.querySelector('tr')) return;
+
+    const rowSpans = computePageUsageSectionRowspans();
+    const sectionCellClass =
+        'px-2 py-2 text-sm sticky left-0 z-20 w-[4.5rem] min-w-[4.5rem] max-w-[4.5rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-300 align-middle text-center';
+    const labelCellClass =
+        'px-2 py-2 text-xs font-semibold text-slate-700 sticky left-[4.5rem] z-20 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-300 align-middle leading-snug';
+
     tb.innerHTML = PAGE_USAGE_METRIC_DEFS.map((def, rowIdx) => {
         const cells = [];
-        cells.push(`<td class="px-2 py-2 text-sm sticky left-0 z-20 bg-white group-hover:bg-slate-50/50 w-[7.5rem] min-w-[7.5rem] max-w-[7.5rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle">
-            <span class="block text-[10px] font-semibold text-slate-400 leading-tight">${escapeHtml(def.section)}</span>
-            <span class="block text-sm font-bold text-slate-800 leading-tight mt-0.5">${escapeHtml(def.label)}</span>
-        </td>`);
-        cells.push(`<td class="px-2 py-2 text-center text-sm font-bold text-slate-800 sticky left-[7.5rem] z-20 bg-white group-hover:bg-slate-50/50 min-w-[4rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="pageUsageRow_${rowIdx}_all">—</td>`);
-        cells.push(`<td data-page-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100 bg-slate-50/50" id="pageUsageRow_${rowIdx}_7Sum">—</td>`);
-        for (let i = 0; i < 7; i++) {
-            const border = i === 6 ? ' border-r border-slate-100' : '';
-            cells.push(`<td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums${border}" id="pageUsageRow_${rowIdx}_7d${i}">—</td>`);
+        const rs = rowSpans[rowIdx];
+        if (rs > 0) {
+            const rowspanAttr = rs > 1 ? ` rowspan="${rs}"` : '';
+            cells.push(
+                `<td${rowspanAttr} class="${sectionCellClass}"><span class="block text-base font-black text-slate-800 leading-tight">${escapeHtml(def.section)}</span></td>`
+            );
         }
-        return `<tr class="group border-b border-slate-100 hover:bg-slate-50/50">${cells.join('')}</tr>`;
+        cells.push(
+            `<td class="${labelCellClass}">${escapeHtml(def.label)}</td>`
+        );
+        cells.push(
+            `<td class="px-2 py-2 text-center text-sm font-bold text-slate-800 sticky left-[12.5rem] z-20 min-w-[4rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-300 align-middle" id="pageUsageRow_${rowIdx}_all">—</td>`
+        );
+        cells.push(
+            `<td data-page-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-300" id="pageUsageRow_${rowIdx}_7Sum">—</td>`
+        );
+        for (let i = 0; i < 7; i++) {
+            const border = i === 6 ? ' border-r border-slate-300' : '';
+            cells.push(
+                `<td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums${border}" id="pageUsageRow_${rowIdx}_7d${i}">—</td>`
+            );
+        }
+        return `<tr class="group border-b border-slate-300">${cells.join('')}</tr>`;
     }).join('');
-    _pageUsageTableBuiltRowCount = n;
+    _pageUsageTableBuildKey = buildKey;
 }
 
 function renderPageUsage7dHeaders(dates) {

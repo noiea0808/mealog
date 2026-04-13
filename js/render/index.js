@@ -41,6 +41,7 @@ export {
     switchGalleryFilterTab
 } from './gallery.js';
 export { fetchMissingSharedComments } from './shared-entry-comments.js';
+export { applyCollapsedCaptionToElement, computeCollapsedCaptionHtml } from './comment-caption-layout.js';
 export { renderFeed, toggleFeedComment } from './feed.js';
 
 // 나머지 함수들은 render.js에서 re-export

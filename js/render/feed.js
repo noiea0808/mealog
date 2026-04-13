@@ -1,13 +1,17 @@
 /**
  * 타임라인 옆 피드 탭 (`feedContent`) 렌더링
  */
+import { ensureMomentFeedPinchDelegate } from '../main/moment-feed-pinch.js';
 import { SLOTS, SLOT_STYLES } from '../constants.js';
+
+ensureMomentFeedPinchDelegate();
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
 import { normalizeUrl, getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
 import { getPostIdFromPhotoGroup, preloadAdjacentGalleryImages } from './post-group-utils.js';
 import { fetchUserProfiles } from './user-profiles.js';
 import { formatMealMenuDisplayLine, mergeMealDisplayFields } from '../utils/meal-display-line.js';
+import { applyCollapsedCaptionToElement } from './comment-caption-layout.js';
 
 export async function renderFeed() {
     const container = document.getElementById('feedContent');
@@ -261,21 +265,32 @@ export async function renderFeed() {
         let aspectRatio = photo.photoAspectRatio || (entryId && window.mealHistory ? (window.mealHistory.find(m => m.id === entryId)?.photoAspectRatio) : null) || '1:1';
         if (aspectRatio !== '1:1' && aspectRatio !== '3:4' && aspectRatio !== '4:3') aspectRatio = '1:1';
         const momentAspectCss = (aspectRatio === '3:4' ? '3/4' : aspectRatio === '4:3' ? '4/3' : '1');
+        const momentUrlsEncoded = encodeURIComponent(
+            JSON.stringify(photoGroup.map((p) => p.photoUrl).filter(Boolean))
+        );
         const photosHtml = photoGroup.map((p, idx) => {
             const isBest = p.type === 'best';
             const isDaily = p.type === 'daily';
             const isInsight = p.type === 'insight';
             const photoBanned = p.banned === true;
-            return `
-            <div class="flex-shrink-0 w-full snap-start relative ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
-                ${(isBest || isDaily || isInsight) ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full h-auto object-contain ${photoBanned ? 'opacity-50' : ''}" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx <= 1 ? 'eager' : 'lazy'}">` : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="absolute inset-0 w-full h-full object-cover ${photoBanned ? 'opacity-50' : ''}" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`}
-                ${photoBanned && !(isBest || isDaily || isInsight) ? `
-                    <div class="absolute inset-0 bg-orange-500/20 flex items-center justify-center">
+            const inner =
+                (isBest || isDaily || isInsight)
+                    ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo w-full h-auto object-contain ${photoBanned ? 'opacity-50' : ''}" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx <= 1 ? 'eager' : 'lazy'}">`
+                    : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-cover ${photoBanned ? 'opacity-50' : ''}" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`;
+            const bannedOverlay =
+                photoBanned && !(isBest || isDaily || isInsight)
+                    ? `
+                    <div class="absolute inset-0 bg-orange-500/20 flex items-center justify-center pointer-events-none">
                         <div class="bg-orange-600 text-white px-3 py-1.5 rounded-lg">
                             <i class="fa-solid fa-ban mr-1"></i>공유 금지
                         </div>
                     </div>
-                ` : ''}
+                `
+                    : '';
+            return `
+            <div class="flex-shrink-0 w-full snap-start relative ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" data-moment-i="${idx}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
+                <div class="moment-feed-pinch-host relative w-full">${inner}</div>
+                ${bannedOverlay}
             </div>
         `;
         }).join('');
@@ -309,7 +324,7 @@ export async function renderFeed() {
                     </div>
                 </div>
                 <div class="relative overflow-hidden ${(isDailyShare || isInsightShare) ? 'bg-white' : 'bg-slate-100'}">
-                    <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gallery-photo-scroll" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
+                    <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gallery-photo-scroll" data-moment-urls="${momentUrlsEncoded}" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
                         ${photosHtml}
                     </div>
                     ${photoCount > 1 ? `
@@ -319,25 +334,14 @@ export async function renderFeed() {
                     ` : ''}
                 </div>
                 ${caption ? `<div class="px-4 py-2 text-sm font-bold text-slate-800">${caption}</div>` : ''}
-                ${comment && !isBestShare && !isDailyShare && !isInsightShare ? (() => {
-                    // comment의 줄바꿈 개수 확인
-                    const lineBreaks = (comment.match(/\n/g) || []).length;
-                    // 대략적인 텍스트 길이로도 확인 (한 줄에 약 30자 정도로 가정)
-                    const estimatedLines = Math.ceil(comment.length / 30);
-                    const shouldShowToggle = lineBreaks >= 2 || estimatedLines > 2;
-                    const toggleBtnClass = shouldShowToggle ? '' : 'hidden';
-                    
-                    return `
+                ${comment && !isBestShare && !isDailyShare && !isInsightShare ? `
                     <div class="px-4 pb-3 text-sm text-slate-600">
-                        <span id="feed-comment-collapsed-${groupIdx}" class="comment-text whitespace-pre-line line-clamp-2 inline">${escapeHtml(comment).replace(/\n/g, '<br>')}</span>
-                        <button onclick="window.toggleFeedComment(${groupIdx})" id="feed-comment-toggle-${groupIdx}" class="inline text-xs text-blue-600 font-bold hover:text-blue-700 active:text-blue-800 transition-colors ml-1 ${toggleBtnClass}">더 보기</button>
-                        <div id="feed-comment-expanded-${groupIdx}" class="comment-text whitespace-pre-line hidden">
-                            ${escapeHtml(comment).replace(/\n/g, '<br>')}
-                            <button onclick="window.toggleFeedComment(${groupIdx})" id="feed-comment-collapse-${groupIdx}" class="inline text-xs text-blue-600 font-bold hover:text-blue-700 active:text-blue-800 transition-colors ml-1">접기</button>
+                        <div id="feed-comment-collapsed-${groupIdx}" class="comment-text min-h-[1em]" data-comment-raw="${encodeURIComponent(comment)}" data-caption-variant="feed" data-group-idx="${groupIdx}">
+                            <div data-comment-collapsed-mount class="leading-snug"></div>
                         </div>
+                        <div id="feed-comment-expanded-${groupIdx}" class="comment-text hidden whitespace-pre-line break-words leading-snug cursor-pointer" onclick="window.toggleFeedComment(${groupIdx})">${escapeHtml(comment).replace(/\n/g, '<br>')}</div>
                     </div>
-                `;
-                })() : ''}
+                ` : ''}
             </div>
         `;
     }).join('');
@@ -482,52 +486,11 @@ export async function renderFeed() {
             }
         });
         
-        // Feed Comment "더 보기" 버튼 표시 여부 확인 및 위치 조정 (DOM 렌더링 후)
+        // Feed 코멘트: 본문+더보기 합쳐 3줄 레이아웃 (측정 후 마운트)
         setTimeout(() => {
-            sortedGroups.forEach((photoGroup, idx) => {
+            sortedGroups.forEach((_, idx) => {
                 const collapsedEl = document.getElementById(`feed-comment-collapsed-${idx}`);
-                const expandedEl = document.getElementById(`feed-comment-expanded-${idx}`);
-                const toggleBtn = document.getElementById(`feed-comment-toggle-${idx}`);
-                const collapseBtn = document.getElementById(`feed-comment-collapse-${idx}`);
-                
-                if (collapsedEl && toggleBtn) {
-                    // 실제 렌더링된 높이 측정
-                    const collapsedHeight = collapsedEl.scrollHeight;
-                    const lineHeight = parseFloat(getComputedStyle(collapsedEl).lineHeight) || 20;
-                    const maxHeight = lineHeight * 2; // 2줄 높이
-                    
-                    // 실제 높이가 두 줄을 넘으면 "더 보기" 버튼 표시
-                    if (collapsedHeight > maxHeight + 2 && toggleBtn.classList.contains('hidden')) {
-                        toggleBtn.classList.remove('hidden');
-                    }
-                    
-                    // 버튼 위치 조정: 텍스트의 마지막 줄과 같은 높이로
-                    if (!toggleBtn.classList.contains('hidden')) {
-                        const computedStyle = getComputedStyle(collapsedEl);
-                        const textLineHeight = parseFloat(computedStyle.lineHeight) || 20;
-                        // 마지막 줄의 baseline 위치 계산
-                        const lastLineBottom = textLineHeight * 2; // line-clamp-2이므로 2줄
-                        // 버튼 높이를 고려하여 위치 조정
-                        const btnHeight = toggleBtn.offsetHeight || 16;
-                        const offset = (textLineHeight - btnHeight) / 2; // 수직 중앙 정렬
-                        const bottomPosition = (lastLineBottom - btnHeight - offset);
-                        toggleBtn.style.bottom = `${Math.max(0, bottomPosition)}px`;
-                    }
-                    
-                    // 접기 버튼 위치도 동일하게 조정 (확장된 텍스트가 보일 때)
-                    if (expandedEl && collapseBtn && !expandedEl.classList.contains('hidden')) {
-                        const expandedStyle = getComputedStyle(expandedEl);
-                        const expandedLineHeight = parseFloat(expandedStyle.lineHeight) || 20;
-                        const expandedHeight = expandedEl.scrollHeight;
-                        const btnHeight = collapseBtn.offsetHeight || 16;
-                        // 확장된 텍스트의 마지막 줄 위치
-                        const lastLineNumber = Math.ceil(expandedHeight / expandedLineHeight);
-                        const lastLineBottom = expandedLineHeight * lastLineNumber;
-                        const offset = (expandedLineHeight - btnHeight) / 2;
-                        const bottomPosition = (lastLineBottom - btnHeight - offset);
-                        collapseBtn.style.bottom = `${Math.max(0, bottomPosition)}px`;
-                    }
-                }
+                if (collapsedEl) applyCollapsedCaptionToElement(collapsedEl);
             });
         }, 300);
         
@@ -604,54 +567,18 @@ export async function renderFeed() {
 }
 
 export function toggleFeedComment(groupIdx) {
-    const collapsedEl = document.getElementById(`feed-comment-collapsed-${groupIdx}`);
-    const expandedEl = document.getElementById(`feed-comment-expanded-${groupIdx}`);
-    const toggleBtn = document.getElementById(`feed-comment-toggle-${groupIdx}`);
-    const collapseBtn = document.getElementById(`feed-comment-collapse-${groupIdx}`);
-    
-    if (collapsedEl && expandedEl && toggleBtn && collapseBtn) {
-        const isCollapsed = !collapsedEl.classList.contains('hidden');
-        if (isCollapsed) {
-            // 확장
-            collapsedEl.classList.add('hidden');
-            expandedEl.classList.remove('hidden');
-            toggleBtn.classList.add('hidden');
-            collapseBtn.classList.remove('hidden');
-            
-            // 접기 버튼 위치 조정: 확장된 텍스트의 마지막 줄과 같은 높이로
-            setTimeout(() => {
-                if (expandedEl && collapseBtn) {
-                    const expandedStyle = getComputedStyle(expandedEl);
-                    const expandedLineHeight = parseFloat(expandedStyle.lineHeight) || 20;
-                    const expandedHeight = expandedEl.scrollHeight;
-                    const btnHeight = collapseBtn.offsetHeight || 16;
-                    // 확장된 텍스트의 마지막 줄 위치
-                    const lastLineNumber = Math.ceil(expandedHeight / expandedLineHeight);
-                    const lastLineBottom = expandedLineHeight * lastLineNumber;
-                    const offset = (expandedLineHeight - btnHeight) / 2;
-                    const bottomPosition = (lastLineBottom - btnHeight - offset);
-                    collapseBtn.style.bottom = `${Math.max(0, bottomPosition)}px`;
-                }
-            }, 10);
-        } else {
-            // 축소
-            collapsedEl.classList.remove('hidden');
-            expandedEl.classList.add('hidden');
-            toggleBtn.classList.remove('hidden');
-            collapseBtn.classList.add('hidden');
-            
-            // 더 보기 버튼 위치 조정: collapsed 텍스트의 마지막 줄과 같은 높이로
-            setTimeout(() => {
-                if (collapsedEl && toggleBtn) {
-                    const computedStyle = getComputedStyle(collapsedEl);
-                    const textLineHeight = parseFloat(computedStyle.lineHeight) || 20;
-                    const lastLineBottom = textLineHeight * 2; // line-clamp-2이므로 2줄
-                    const btnHeight = toggleBtn.offsetHeight || 16;
-                    const offset = (textLineHeight - btnHeight) / 2;
-                    const bottomPosition = (lastLineBottom - btnHeight - offset);
-                    toggleBtn.style.bottom = `${Math.max(0, bottomPosition)}px`;
-                }
-            }, 10);
-        }
+    const id = groupIdx != null && groupIdx !== '' ? String(groupIdx) : '';
+    if (!id) return;
+    const collapsedEl = document.getElementById(`feed-comment-collapsed-${id}`);
+    const expandedEl = document.getElementById(`feed-comment-expanded-${id}`);
+    if (!collapsedEl || !expandedEl) return;
+
+    const isCollapsed = !collapsedEl.classList.contains('hidden');
+    if (isCollapsed) {
+        collapsedEl.classList.add('hidden');
+        expandedEl.classList.remove('hidden');
+    } else {
+        expandedEl.classList.add('hidden');
+        collapsedEl.classList.remove('hidden');
     }
 }

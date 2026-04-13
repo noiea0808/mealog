@@ -431,7 +431,16 @@ async function renderFeedManagement() {
             const withSubTag = meal.withWhomDetail || '';
             const ratingVal = meal.snackRating ?? meal.rating;
             const satietyVal = meal.satiety;
-            const firstPhoto = meal.photoUrl || (Array.isArray(meal.photos) ? meal.photos[0] : '');
+            const photoUrls = (() => {
+                if (Array.isArray(meal.photos) && meal.photos.length > 0) {
+                    return meal.photos.map((u) => String(u || '').trim()).filter(Boolean);
+                }
+                if (meal.photoUrl && String(meal.photoUrl).trim()) {
+                    return [String(meal.photoUrl).trim()];
+                }
+                return [];
+            })();
+            const firstPhoto = photoUrls[0] || '';
             const rowBg = hasDataMismatch ? 'bg-yellow-50' : (isBanned ? 'bg-red-50' : '');
             const dateTime = fmtDateTimeParts(meal);
             const newestOrder = (feedCurrentPage - 1) * feedPageSize + rowIdx + 1;
@@ -513,8 +522,19 @@ async function renderFeedManagement() {
                         </div>
                     </td>
                     <td class="px-2 py-3 align-middle text-center w-[208px] min-w-[208px] border-r border-slate-200">
-                        ${hasPhotos && firstPhoto
-                            ? `<img src="${firstPhoto}" alt="사진" class="mx-auto w-[200px] h-[200px] object-contain rounded-lg border border-slate-200 bg-white">`
+                        ${photoUrls.length > 0
+                            ? `<div class="relative inline-block mx-auto max-w-full">
+                                <button type="button" class="group p-0 border-0 bg-transparent cursor-zoom-in rounded-lg" onclick='window.openAdminFeedPhotoViewer(${JSON.stringify(photoUrls)}, 0)' title="클릭하여 원본 크기로 보기" aria-label="사진 원본 보기">
+                                    <span class="relative block mx-auto w-[200px] h-[200px] rounded-lg border border-slate-200 bg-white overflow-hidden">
+                                        <img src="${escapeHtml(firstPhoto)}" alt="" class="absolute inset-0 w-full h-full object-contain pointer-events-none">
+                                        ${
+                                            photoUrls.length > 1
+                                                ? `<span class="absolute top-1 right-1 z-10 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-bold leading-none pointer-events-none shadow-sm">1/${photoUrls.length}</span>`
+                                                : ''
+                                        }
+                                    </span>
+                                </button>
+                            </div>`
                             : '<span class="text-slate-300 text-xs">-</span>'}
                     </td>
                     <td class="px-3 py-3 align-middle w-[240px] min-w-[240px] border-r border-slate-200">
@@ -1285,6 +1305,102 @@ window.bulkUnbanPosts = async function() {
         alert("일괄 금지 해제 중 오류가 발생했습니다.");
     }
 }
+
+let adminFeedPhotoViewerState = { urls: [], index: 0 };
+
+function ensureAdminFeedPhotoViewerModal() {
+    let el = document.getElementById('adminFeedPhotoViewerModal');
+    if (el) return el;
+    el = document.createElement('div');
+    el.id = 'adminFeedPhotoViewerModal';
+    el.className = 'fixed inset-0 z-[9999] hidden';
+    el.innerHTML = `
+        <div class="admin-feed-photo-viewer-backdrop absolute inset-0 bg-black/80" data-close="1"></div>
+        <div class="absolute inset-0 flex flex-col items-center justify-center p-4 pointer-events-none">
+            <div class="pointer-events-auto max-w-full max-h-full flex flex-col items-center gap-2">
+                <div class="flex items-center justify-end w-full max-w-[min(96vw,1200px)] px-1 min-h-[2rem]">
+                    <button type="button" id="adminFeedPhotoViewerClose" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white">닫기</button>
+                </div>
+                <div class="relative flex items-center justify-center max-h-[85vh] max-w-[96vw]">
+                    <button type="button" id="adminFeedPhotoViewerPrev" class="absolute left-0 z-10 p-3 rounded-full bg-black/50 text-white hover:bg-black/70 hidden" aria-label="이전 사진"><i class="fa-solid fa-chevron-left"></i></button>
+                    <div class="relative inline-block max-w-[96vw] max-h-[85vh]">
+                        <img id="adminFeedPhotoViewerImg" src="" alt="" class="max-w-[96vw] max-h-[85vh] w-auto h-auto object-contain rounded-lg shadow-2xl bg-black/20 block">
+                        <span id="adminFeedPhotoViewerCounter" class="absolute top-2 right-2 z-20 px-2 py-1 rounded-md bg-black/70 text-white text-xs font-bold leading-none pointer-events-none shadow-sm"></span>
+                    </div>
+                    <button type="button" id="adminFeedPhotoViewerNext" class="absolute right-0 z-10 p-3 rounded-full bg-black/50 text-white hover:bg-black/70 hidden" aria-label="다음 사진"><i class="fa-solid fa-chevron-right"></i></button>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(el);
+    el.querySelector('.admin-feed-photo-viewer-backdrop')?.addEventListener('click', () => closeAdminFeedPhotoViewer());
+    el.querySelector('#adminFeedPhotoViewerClose')?.addEventListener('click', () => closeAdminFeedPhotoViewer());
+    el.querySelector('#adminFeedPhotoViewerPrev')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        adminFeedPhotoViewerStep(-1);
+    });
+    el.querySelector('#adminFeedPhotoViewerNext')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        adminFeedPhotoViewerStep(1);
+    });
+    document.addEventListener('keydown', adminFeedPhotoViewerKeydown);
+    return el;
+}
+
+function adminFeedPhotoViewerKeydown(e) {
+    const modal = document.getElementById('adminFeedPhotoViewerModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    if (e.key === 'Escape') closeAdminFeedPhotoViewer();
+    if (e.key === 'ArrowLeft') adminFeedPhotoViewerStep(-1);
+    if (e.key === 'ArrowRight') adminFeedPhotoViewerStep(1);
+}
+
+function closeAdminFeedPhotoViewer() {
+    const el = document.getElementById('adminFeedPhotoViewerModal');
+    if (el) el.classList.add('hidden');
+}
+
+function adminFeedPhotoViewerStep(delta) {
+    const s = adminFeedPhotoViewerState;
+    if (!s.urls.length) return;
+    s.index = (s.index + delta + s.urls.length) % s.urls.length;
+    updateAdminFeedPhotoViewer();
+}
+
+function updateAdminFeedPhotoViewer() {
+    const img = document.getElementById('adminFeedPhotoViewerImg');
+    const counter = document.getElementById('adminFeedPhotoViewerCounter');
+    const prev = document.getElementById('adminFeedPhotoViewerPrev');
+    const next = document.getElementById('adminFeedPhotoViewerNext');
+    const s = adminFeedPhotoViewerState;
+    if (!img || !s.urls.length) return;
+    img.src = s.urls[s.index];
+    const n = s.urls.length;
+    if (counter) {
+        if (n > 1) {
+            counter.textContent = `${s.index + 1}/${n}`;
+            counter.classList.remove('hidden');
+        } else {
+            counter.textContent = '';
+            counter.classList.add('hidden');
+        }
+    }
+    const showNav = n > 1;
+    if (prev) prev.classList.toggle('hidden', !showNav);
+    if (next) next.classList.toggle('hidden', !showNav);
+}
+
+window.openAdminFeedPhotoViewer = function (urls, startIndex = 0) {
+    if (!urls || !Array.isArray(urls) || urls.length === 0) return;
+    const list = urls.map((u) => String(u || '').trim()).filter(Boolean);
+    if (!list.length) return;
+    adminFeedPhotoViewerState = {
+        urls: list,
+        index: Math.max(0, Math.min(Number(startIndex) || 0, list.length - 1)),
+    };
+    const modal = ensureAdminFeedPhotoViewerModal();
+    modal.classList.remove('hidden');
+    updateAdminFeedPhotoViewer();
+};
 
 /** 모니터링에서 '모먼트' 탭으로 들어올 때 호출: date+time 인덱스 배포 후에도 폴백만 쓰던 세션을 한 번 되살림 */
 export function refreshAdminMealsFeedSortMode() {

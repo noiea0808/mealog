@@ -1364,26 +1364,21 @@ async function loadPostComments(postId) {
 window.loadPostComments = loadPostComments;
 window.Mealog.loadPostComments = loadPostComments;
 
-// 포스트 캡션 토글 (더 보기/접기)
+// 포스트 캡션 토글 (접힘 ↔ 전체; 펼친 뒤에는 본문 탭으로 접기 — 별도 「접기」 문구 없음)
 window.togglePostCaption = (idx) => {
-    const collapsedEl = document.getElementById(`post-caption-collapsed-${idx}`);
-    const expandedEl = document.getElementById(`post-caption-expanded-${idx}`);
-    const toggleBtn = document.getElementById(`post-caption-toggle-${idx}`);
-    const collapseBtn = document.getElementById(`post-caption-collapse-${idx}`);
-    
-    if (collapsedEl && expandedEl && toggleBtn && collapseBtn) {
-        const isCollapsed = !collapsedEl.classList.contains('hidden');
-        if (isCollapsed) {
-            collapsedEl.classList.add('hidden');
-            expandedEl.classList.remove('hidden');
-            toggleBtn.classList.add('hidden');
-            collapseBtn.classList.remove('hidden');
-        } else {
-            collapsedEl.classList.remove('hidden');
-            expandedEl.classList.add('hidden');
-            toggleBtn.classList.remove('hidden');
-            collapseBtn.classList.add('hidden');
-        }
+    const id = idx != null && idx !== '' ? String(idx) : '';
+    if (!id) return;
+    const collapsedEl = document.getElementById(`post-caption-collapsed-${id}`);
+    const expandedEl = document.getElementById(`post-caption-expanded-${id}`);
+    if (!collapsedEl || !expandedEl) return;
+
+    const isCollapsed = !collapsedEl.classList.contains('hidden');
+    if (isCollapsed) {
+        collapsedEl.classList.add('hidden');
+        expandedEl.classList.remove('hidden');
+    } else {
+        expandedEl.classList.add('hidden');
+        collapsedEl.classList.remove('hidden');
     }
 };
 }
