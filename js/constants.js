@@ -15,10 +15,10 @@ export const SLOTS = [
 ];
 
 export const SLOT_STYLES = {
-    'morning': { iconBg: 'bg-amber-50', iconText: 'text-amber-600', border: 'border-amber-200', text: 'text-amber-600' },
-    'lunch': { iconBg: 'bg-emerald-50', iconText: 'text-emerald-600', border: 'border-emerald-200', text: 'text-emerald-600' },
-    'dinner': { iconBg: 'bg-sky-50', iconText: 'text-sky-600', border: 'border-sky-200', text: 'text-sky-600' },
-    'default': { iconBg: 'bg-slate-50', iconText: 'text-slate-400', border: 'border-slate-100', text: 'text-slate-400' }
+    'morning': { iconBg: 'bg-amber-50', iconText: 'text-amber-600', border: 'border-amber-200', text: 'text-amber-600', listLeft: 'border-l-[4px] border-l-amber-600/60' },
+    'lunch': { iconBg: 'bg-emerald-50', iconText: 'text-emerald-600', border: 'border-emerald-200', text: 'text-emerald-600', listLeft: 'border-l-[4px] border-l-emerald-600/60' },
+    'dinner': { iconBg: 'bg-sky-50', iconText: 'text-sky-600', border: 'border-sky-200', text: 'text-sky-600', listLeft: 'border-l-[4px] border-l-sky-600/60' },
+    'default': { iconBg: 'bg-slate-50', iconText: 'text-slate-400', border: 'border-slate-100', text: 'text-slate-400', listLeft: 'border-l-[4px] border-l-slate-400/60' }
 };
 
 export const VIBRANT_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'];

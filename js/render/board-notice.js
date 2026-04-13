@@ -422,7 +422,6 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
         'food': 'bg-emerald-100 text-emerald-700',
         'admin': 'bg-orange-100 text-orange-700'
     };
-
     const chunks = [];
     for (const post of filteredPosts) {
         const postDate = postTimestampToDate(post);

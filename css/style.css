@@ -2952,7 +2952,8 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     background: #fff !important;
     border-top: 1px solid #e2e8f0;
     border-bottom: 1px solid #e2e8f0;
-    border-left: 6px solid #64748b;
+    /* 일반 게시글 전용: 회색 4px · 30% (공지는 .notice-accent-* 가 덮음) */
+    border-left: 4px solid rgb(100 116 139 / 0.3);
     border-right: none;
     border-radius: 0 !important;
     margin-left: 0;
@@ -2971,15 +2972,15 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
         0 1px 2px rgba(15, 23, 42, 0.05),
         0 2px 6px rgba(15, 23, 42, 0.06);
 }
-/* 공지 타입별 왼쪽 강조선 (일반글 slate-500 대비 선명하게) */
+/* 공지: 타입별 색상 왼쪽 강조선 4px · 30% 투명 (일반 글은 슬레이트 회색 동일 투명) */
 .board-list-card.notice-accent-important {
-    border-left: 6px solid #ef4444;
+    border-left: 4px solid rgb(239 68 68 / 0.3);
 }
 .board-list-card.notice-accent-notice {
-    border-left: 6px solid #3b82f6;
+    border-left: 4px solid rgb(59 130 246 / 0.3);
 }
 .board-list-card.notice-accent-light {
-    border-left: 6px solid #eab308;
+    border-left: 4px solid rgb(234 179 8 / 0.3);
 }
 
 /* 밀톡 게시글 상세: 전체/헤더/본문 간격 25% 수준 */

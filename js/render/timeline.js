@@ -466,7 +466,8 @@ function buildSnackEmptySlotCardHtml(dateStr, slot, specificStyle) {
 function buildSnackListEmptyRowHtml(dateStr, slot, specificStyle) {
     const safeLabel = escapeHtml(slot.label);
     const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
-    return `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, null)' class="card mb-1.5 border border-slate-200 opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+    const listLeft = specificStyle.listLeft || SLOT_STYLES.default.listLeft;
+    return `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, null)' class="card mb-1.5 border border-slate-200 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
         <div class="flex ${hThird}">
             <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex items-center justify-center overflow-hidden border-r px-2 text-center">
                 <span class="text-sm font-bold leading-tight">${safeLabel}</span>
@@ -483,7 +484,8 @@ function buildSnackListEmptyRowHtml(dateStr, slot, specificStyle) {
 function buildMainMealListEmptyRowHtml(dateStr, slot, specificStyle) {
     const safeLabel = escapeHtml(slot.label);
     const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
-    return `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, null)' class="card mb-1.5 border border-slate-200 opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+    const listLeft = specificStyle.listLeft || SLOT_STYLES.default.listLeft;
+    return `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, null)' class="card mb-1.5 border border-slate-200 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
         <div class="flex ${hThird}">
             <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex items-center justify-center overflow-hidden border-r px-2 text-center">
                 <span class="text-sm font-bold leading-tight">${safeLabel}</span>
@@ -524,13 +526,14 @@ function buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, cardMbC
     }
 
     const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
+    const listLeft = specificStyle.listLeft || SLOT_STYLES.default.listLeft;
     const blockMainList = isMealEntryRowBlocked(r);
     const openClickMainList = blockMainList
         ? ''
         : `onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})'`;
     const relMainList = isMealEntryDeleting(r) ? 'relative' : '';
 
-    return `<div ${openClickMainList} class="card ${cardMbClass} border border-slate-200 ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${relMainList}" data-entry-id="${escapeHtml(String(r.id))}">
+    return `<div ${openClickMainList} class="card ${cardMbClass} border border-slate-200 ${listLeft} ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${relMainList}" data-entry-id="${escapeHtml(String(r.id))}">
         <div class="flex items-stretch">
             <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
                 <span class="text-sm font-bold leading-tight break-words">${safeSlotTitle}</span>
@@ -545,7 +548,7 @@ function buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, cardMbC
                     </span>
                 </div>
                 <div class="min-w-0 pr-[4.25rem]">
-                    <p class="text-sm font-bold text-slate-800 leading-snug mb-0 flex items-center gap-1.5 min-w-0">${mealEntrySyncLeadHtml(r)}<span class="min-w-0">${safeMenu}</span></p>
+                    <p class="text-sm font-bold text-slate-800 leading-snug mb-0 flex items-center gap-1.5 min-w-0 pl-2">${mealEntrySyncLeadHtml(r)}<span class="min-w-0">${safeMenu}</span></p>
                     ${r.comment ? `<p class="text-xs text-slate-400 mt-1.5 mb-0 line-clamp-1 whitespace-pre-line">"${escapeHtml(r.comment).replace(/\n/g, '<br>')}"</p>` : ''}
                     ${tagsHtml}
                 </div>
@@ -595,13 +598,14 @@ function buildSnackListFilledRowHtml(
 
     const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
     const safeMenu = escapeHtml(menuLine || '간식');
+    const listLeft = specificStyle.listLeft || SLOT_STYLES.default.listLeft;
     const pendingSnackList = isMealEntryRowBlocked(r);
     const openClickSnackList = pendingSnackList
         ? ''
         : `onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})'`;
     const relSnackList = isMealEntryDeleting(r) ? 'relative' : '';
 
-    return `<div ${openClickSnackList} class="card ${cardMbClass} border border-slate-200 ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${relSnackList}" data-entry-id="${escapeHtml(String(r.id))}">
+    return `<div ${openClickSnackList} class="card ${cardMbClass} border border-slate-200 ${listLeft} ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${relSnackList}" data-entry-id="${escapeHtml(String(r.id))}">
         <div class="flex items-stretch">
             <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
                 <span class="text-sm font-bold leading-tight break-words">${safeSlotTitle}</span>
@@ -616,7 +620,7 @@ function buildSnackListFilledRowHtml(
                     </span>
                 </div>
                 <div class="min-w-0 pr-[4.25rem]">
-                    <p class="text-sm font-bold text-slate-800 leading-snug mb-0 flex items-center gap-1.5 min-w-0">${mealEntrySyncLeadHtml(r)}<span class="min-w-0">${safeMenu}</span></p>
+                    <p class="text-sm font-bold text-slate-800 leading-snug mb-0 flex items-center gap-1.5 min-w-0 pl-2">${mealEntrySyncLeadHtml(r)}<span class="min-w-0">${safeMenu}</span></p>
                     ${r.comment ? `<p class="text-xs text-slate-400 mt-1.5 mb-0 line-clamp-1 whitespace-pre-line">"${escapeHtml(r.comment).replace(/\n/g, '<br>')}"</p>` : ''}
                     ${tagsHtml}
                 </div>
