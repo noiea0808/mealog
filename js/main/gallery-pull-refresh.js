@@ -3,6 +3,7 @@
  */
 import { appState } from '../state.js';
 import { loadSharedPhotosPageReliable } from '../db.js';
+import { recoverFirestoreAfterWatchAssertion } from '../firebase.js';
 import { runMealogNetworkRecovery } from './network.js';
 import { showToast } from '../ui.js';
 import { renderGallery, invalidateGalleryRenderSession, updateTimelineShareIndicators } from '../render/index.js';
@@ -32,6 +33,11 @@ export function setupGalleryPullToRefresh() {
 
         try {
             invalidateGalleryRenderSession();
+            try {
+                await recoverFirestoreAfterWatchAssertion('galleryPullRefresh', { force: true });
+            } catch (e) {
+                console.warn('갤러리 새로고침: Firestore 복구 실패(이어서 시도):', e?.message || e);
+            }
             try {
                 await runMealogNetworkRecovery();
             } catch (_) {

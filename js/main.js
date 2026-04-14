@@ -5,7 +5,14 @@ console.log('📦 main.js 모듈 로드 시작');
 window.moduleLoading = true;
 
 import { appState, getState } from './state.js';
-import { auth, db, appId, refreshAppCheckTokenBeforeFirestore } from './firebase.js';
+import {
+    auth,
+    db,
+    appId,
+    refreshAppCheckTokenBeforeFirestore,
+    registerFirestoreListenersRebind,
+    recoverFirestoreAfterWatchAssertion
+} from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import { dbOps, setupListeners, loadSharedPhotosPage, loadSharedPhotosPageReliable, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, subscribeToMyPostComments, boardOperations, feedOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { callableFunctions } from './firebase.js';
@@ -101,6 +108,11 @@ window.Mealog.switchGalleryFilterTab = switchGalleryFilterTab;
 /** 네트워크 오류 등으로 모먼트 피드 로드가 실패했을 때 '다시 불러오기'로 호출. 전체 피드/사용자 필터 모드 모두 처리 */
 window.reloadMomentFeed = async function reloadMomentFeed() {
     invalidateGalleryRenderSession();
+    try {
+        await recoverFirestoreAfterWatchAssertion('reloadMomentFeed', { force: true });
+    } catch (e) {
+        console.warn('모먼트: Firestore 인스턴스 복구 실패(이어서 로드 시도):', e?.message || e);
+    }
     try {
         await runMealogNetworkRecovery();
     } catch (_) {
@@ -1098,6 +1110,7 @@ initAuth(async (user) => {
         // ✅ 게스트(익명) 모드: meals/settings/stats 리스너 없음(기록·설정 제한).
         // 모먼트 피드는 탭 진입 시 loadSharedPhotosPage, 타임라인 공유 표시는 loadMyShares 등 getDocs로 로드.
         if (user.isAnonymous) {
+            registerFirestoreListenersRebind(null);
             if (appState.settingsUnsubscribe) {
                 appState.settingsUnsubscribe();
                 appState.settingsUnsubscribe = null;
@@ -1122,7 +1135,11 @@ initAuth(async (user) => {
         } else {
             // 리스너 설정 (이전 리스너는 setupListeners 내부에서 해제됨)
             let dataUpdateTimer = null; // 공유 시 meals 이중 리스너 방지용 디바운스
-            const { settingsUnsubscribe, dataUnsubscribe, statsUnsubscribe } = setupListeners(user.uid, {
+            const attachMealDataListeners = () => {
+                const cur = auth.currentUser;
+                if (!cur || cur.isAnonymous) return;
+                stopNotificationListeners();
+                const { settingsUnsubscribe, dataUnsubscribe, statsUnsubscribe } = setupListeners(cur.uid, {
                 onSettingsUpdate: () => {
                     // 헤더 UI 업데이트 (디바운싱됨)
                     updateHeaderUI();
@@ -1138,10 +1155,13 @@ initAuth(async (user) => {
                     // 단, 이미 완료되었거나 처리 중인 경우는 건너뛰기
                     if (!authFlowManager.hasCompleted && !authFlowManager.isProcessing && window.userSettings) {
                         console.log('✅ 설정 업데이트 완료. 인증 플로우 실행...');
-                        authFlowManager.handleAuthState(user).catch(e => {
-                            console.error('❌ 인증 플로우 처리 실패:', e);
-                            hideLoading();
-                        });
+                        const u = auth.currentUser;
+                        if (u) {
+                            authFlowManager.handleAuthState(u).catch(e => {
+                                console.error('❌ 인증 플로우 처리 실패:', e);
+                                hideLoading();
+                            });
+                        }
                     }
                     // 약관 모달은 auth-flow.js에서만 관리하므로 여기서는 닫지 않음
                     // onSettingsUpdate에서 약관 모달을 닫으면 타이밍 이슈로 인해 모달이 잠깐 표시되었다가 사라질 수 있음
@@ -1225,6 +1245,9 @@ initAuth(async (user) => {
             setTimeout(() => {
                 retryPendingMealEntriesOnAppReady().catch(() => {});
             }, 4000);
+            };
+            attachMealDataListeners();
+            registerFirestoreListenersRebind(attachMealDataListeners);
 
             // 공유 피드: sharedPhotos 실시간 리스너 없음 — loadSharedPhotosPage / loadMyShares로 필요 시 로드
             window.sharedPhotos = [];
@@ -1413,6 +1436,7 @@ initAuth(async (user) => {
         }
         // ⚠️ 중요: 알림 리스너도 해제 (로그아웃 시 permission-denied 에러 방지)
         stopNotificationListeners();
+        registerFirestoreListenersRebind(null);
         hideLoading();
         };
 

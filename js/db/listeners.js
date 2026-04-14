@@ -1,6 +1,6 @@
 // Firestore 리스너 설정 (읽기 비용 절감: user/tags 세션당 1회, meals 기간·limit 등)
 import { db, appId, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
-import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, startAfter, getDocs, getDocsFromServer, documentId, enableNetwork } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, startAfter, getDocs, getDocsFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from '../constants.js';
 import { dbOps } from './ops.js';
 import { hideLoading, showNetworkErrorOverlay, isLikelyNetworkError } from '../ui.js';
@@ -1175,11 +1175,6 @@ export async function loadSharedPhotosPageReliable(targetPosts = 10, startAfterD
         try {
             if (attempt > 0) {
                 await new Promise((r) => setTimeout(r, baseDelayMs * attempt));
-            }
-            try {
-                await enableNetwork(db);
-            } catch (_) {
-                /* ignore */
             }
             return await loadSharedPhotosPage(targetPosts, startAfterDoc);
         } catch (e) {
