@@ -36,7 +36,7 @@ import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, rend
 import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
-    openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
+    openModal, closeModal, saveEntry, deleteEntry, retryMealEntrySync, retryPendingMealEntriesOnAppReady, setRating, setSatiety, selectTag,
     handleMultipleImages, removePhoto, movePhotoOrder, updateShareIndicator, toggleSharePhoto,
     openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, setSettingsProfileType, handlePhotoUpload, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
     syncPushPreferencesFormFromUserSettings,
@@ -245,6 +245,8 @@ window.saveEntry = saveEntry;
 window.Mealog.saveEntry = saveEntry;
 window.deleteEntry = deleteEntry;
 window.Mealog.deleteEntry = deleteEntry;
+window.retryMealEntrySync = retryMealEntrySync;
+window.Mealog.retryMealEntrySync = retryMealEntrySync;
 window.setRating = setRating;
 window.Mealog.setRating = setRating;
 window.setSatiety = setSatiety;
@@ -1168,11 +1170,8 @@ initAuth(async (user) => {
                     dataUpdateTimer = setTimeout(() => {
                         dataUpdateTimer = null;
                         if (appState.currentTab !== 'timeline') return; // 대기 중 탭 바뀌면 스킵
-                        if (appState.viewMode === 'list') {
-                            const today = new Date();
-                            today.setHours(0, 0, 0, 0);
-                            appState.pageDate = today;
-                        }
+                        // 리스트 모드에서도 pageDate는 jumpToDate·미니캘 선택값을 유지 (매 동기화마다 오늘로 덮으면
+                        // 다른 날짜를 보는 중에 헤더/스크롤이 엇나감)
                         // 데이터 동기화(낙관→서버) 시 전체 재렌더해도, 이미 타임라인 초기 스크롤을 마친 뒤면
                         // hasScrolledToToday를 리셋하지 않고 스크롤 Y만 복원 → 오늘로 재스크롤·화면 흔들림 방지
                         const preserveTimelineScroll = window.hasScrolledToToday === true;
@@ -1188,7 +1187,28 @@ initAuth(async (user) => {
                         if (preserveTimelineScroll) {
                             requestAnimationFrame(() => {
                                 requestAnimationFrame(() => {
-                                    window.scrollTo({ top: savedScrollY, behavior: 'instant' });
+                                    let anchored = false;
+                                    const pd = appState.pageDate;
+                                    if (pd instanceof Date && !isNaN(+pd)) {
+                                        const y = pd.getFullYear();
+                                        const mo = String(pd.getMonth() + 1).padStart(2, '0');
+                                        const d = String(pd.getDate()).padStart(2, '0');
+                                        const iso = `${y}-${mo}-${d}`;
+                                        const el = document.getElementById(`date-${iso}`);
+                                        if (el) {
+                                            const trackerSection = document.getElementById('trackerSection');
+                                            const trackerHeight = trackerSection ? trackerSection.offsetHeight : 0;
+                                            const headerHeight = 73;
+                                            const totalOffset = headerHeight + trackerHeight;
+                                            const elementTop = el.getBoundingClientRect().top + window.pageYOffset;
+                                            const offsetPosition = elementTop - totalOffset - 16;
+                                            window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'instant' });
+                                            anchored = true;
+                                        }
+                                    }
+                                    if (!anchored) {
+                                        window.scrollTo({ top: savedScrollY, behavior: 'instant' });
+                                    }
                                 });
                             });
                         }
@@ -1201,6 +1221,10 @@ initAuth(async (user) => {
             appState.dataUnsubscribe = dataUnsubscribe;
             appState.statsUnsubscribe = statsUnsubscribe;
             if (document.visibilityState === 'visible') startNotificationListeners();
+
+            setTimeout(() => {
+                retryPendingMealEntriesOnAppReady().catch(() => {});
+            }, 4000);
 
             // 공유 피드: sharedPhotos 실시간 리스너 없음 — loadSharedPhotosPage / loadMyShares로 필요 시 로드
             window.sharedPhotos = [];

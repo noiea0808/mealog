@@ -24,9 +24,31 @@ export function clearMealOptimisticSavePending(tempId) {
     if (window._mealOptimisticPendingTempIds) delete window._mealOptimisticPendingTempIds[String(tempId)];
 }
 
+/** 수정 저장 등 실제 id로 서버 요청 중일 때 타임라인 스피너용 */
+export function markMealEntrySaveInFlight(entryId) {
+    if (typeof window === 'undefined' || entryId == null || entryId === '') return;
+    if (!window._mealEntrySaveInFlightIds) window._mealEntrySaveInFlightIds = {};
+    window._mealEntrySaveInFlightIds[String(entryId)] = true;
+}
+
+export function clearMealEntrySaveInFlight(entryId) {
+    if (typeof window === 'undefined' || entryId == null || entryId === '') return;
+    if (window._mealEntrySaveInFlightIds) delete window._mealEntrySaveInFlightIds[String(entryId)];
+}
+
+export function isMealEntrySaveInFlight(record) {
+    if (!record?.id || typeof window === 'undefined') return false;
+    return !!window._mealEntrySaveInFlightIds?.[String(record.id)];
+}
+
+/**
+ * 사진 업로드·슬롯 대기 플래그만 정리한다.
+ * 타임라인 스피너(등록 중)는 Firestore 스냅샷에서 서버 반영(hasPendingWrites false)일 때
+ * onMealDocFirestoreServerAcknowledged에서만 해제한다 — setDoc/addDoc Promise만으로는 큐에만 쌓인 경우가 있어
+ * 모달 전환 후 스피너가 사라지는 문제를 막는다.
+ */
 export function markMealEntryServerWorkComplete(recordId, optimisticTempId, optimisticSlotKey) {
     if (typeof window === 'undefined') return;
-    clearMealOptimisticSavePending(optimisticTempId);
     if (!window._pendingPhotoUploadByEntryId) window._pendingPhotoUploadByEntryId = {};
     if (recordId != null && recordId !== '') {
         delete window._pendingPhotoUploadByEntryId[String(recordId)];
@@ -52,32 +74,110 @@ function clearPendingFlagsForEntryId(record) {
 }
 
 /** findIndex 실패 등으로 meal 레코드에 못 붙일 때만 쓰는 보조 실패 표시 (오프라인 등) */
+const MEAL_SYNC_ERROR_IDS_KEY = 'mealog_mealSyncErrorIds_v1';
+
+function persistMealSyncErrorIdToStorage(entryId) {
+    if (typeof window === 'undefined' || !window.localStorage || entryId == null || entryId === '') return;
+    try {
+        const raw = window.localStorage.getItem(MEAL_SYNC_ERROR_IDS_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        const s = String(entryId);
+        if (!Array.isArray(arr)) return;
+        if (!arr.includes(s)) {
+            arr.push(s);
+            window.localStorage.setItem(MEAL_SYNC_ERROR_IDS_KEY, JSON.stringify(arr));
+        }
+    } catch (_) {
+        /* ignore */
+    }
+}
+
+function unpersistMealSyncErrorIdFromStorage(entryId) {
+    if (typeof window === 'undefined' || !window.localStorage || entryId == null || entryId === '') return;
+    try {
+        const raw = window.localStorage.getItem(MEAL_SYNC_ERROR_IDS_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(arr)) return;
+        const s = String(entryId);
+        const next = arr.filter((x) => x !== s);
+        window.localStorage.setItem(MEAL_SYNC_ERROR_IDS_KEY, JSON.stringify(next));
+    } catch (_) {
+        /* ignore */
+    }
+}
+
+/**
+ * 새로고침 후에도 동기화 실패(느낌표) 상태를 복원하기 위해 id 목록을 localStorage에 보관한다.
+ * setupListeners / mealHistory 병합 전에 한 번 호출한다.
+ */
+export function hydrateMealSyncErrorIdsFromStorage() {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    try {
+        const raw = window.localStorage.getItem(MEAL_SYNC_ERROR_IDS_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(arr)) return;
+        if (!window._mealEntrySaveFailedIds) window._mealEntrySaveFailedIds = {};
+        for (const id of arr) {
+            if (id != null && id !== '') window._mealEntrySaveFailedIds[String(id)] = true;
+        }
+    } catch (_) {
+        /* ignore */
+    }
+}
+
 export function markMealEntrySaveFailedById(entryId) {
     if (typeof window === 'undefined' || entryId == null || entryId === '') return;
     if (!window._mealEntrySaveFailedIds) window._mealEntrySaveFailedIds = {};
     window._mealEntrySaveFailedIds[String(entryId)] = true;
+    persistMealSyncErrorIdToStorage(entryId);
 }
 
 export function clearMealEntrySaveFailedById(entryId) {
     if (typeof window === 'undefined' || entryId == null || entryId === '') return;
     if (window._mealEntrySaveFailedIds) delete window._mealEntrySaveFailedIds[String(entryId)];
+    unpersistMealSyncErrorIdFromStorage(entryId);
 }
 
-/** Firestore 스냅샷에서 해당 문서가 반영됨(hasPendingWrites false)일 때 — 실패 느낌표·temp 낙관만 정리 */
+/**
+ * Firestore 스냅샷에서 해당 문서가 반영됨(hasPendingWrites false)일 때 — 스피너·temp 낙관 정리.
+ * 등록 실패(느낌표)는 _mealEntrySaveFailedIds / is_sync_error 로 남을 수 있는데,
+ * 편집 저장이 네트워크로 실패해도 서버에는 **이전 버전 문서**가 그대로 있어 스냅샷이 자주 온다.
+ * 그때마다 실패 플래그를 지우면 느낌표를 한 번도 못 보게 된다.
+ * → 실패로 표시 중인 id는 여기서 지우지 않고, 저장/재시도 성공 시에만 clearMealEntrySaveFailedById 한다.
+ */
 export function onMealDocFirestoreServerAcknowledged(docId, optimisticTempId) {
     if (typeof window === 'undefined' || docId == null || docId === '') return;
-    clearMealEntrySaveFailedById(String(docId));
+    clearMealEntrySaveInFlight(String(docId));
+    const sid = String(docId);
+    const row =
+        Array.isArray(window.mealHistory) ? window.mealHistory.find((m) => m && String(m.id) === sid) : null;
+    const rowIndicatesFailure =
+        row?._localSaveFailed === true ||
+        row?.is_sync_error === true;
+    if (!rowIndicatesFailure && !window._mealEntrySaveFailedIds?.[sid]) {
+        clearMealEntrySaveFailedById(sid);
+    }
     if (optimisticTempId != null && optimisticTempId !== '') {
         clearMealOptimisticSavePending(String(optimisticTempId));
-        clearMealEntrySaveFailedById(String(optimisticTempId));
+        const tid = String(optimisticTempId);
+        const tempRow =
+            Array.isArray(window.mealHistory) ? window.mealHistory.find((m) => m && String(m.id) === tid) : null;
+        const tempRowFailed =
+            tempRow?._localSaveFailed === true ||
+            tempRow?.is_sync_error === true;
+        if (!tempRowFailed && !window._mealEntrySaveFailedIds?.[tid]) {
+            clearMealEntrySaveFailedById(tid);
+        }
     }
 }
 
 export function isMealEntryPendingSync(record) {
-    if (!record || record._localSaveFailed) return false;
+    if (!record || record._localSaveFailed === true || record.is_sync_error === true) return false;
     if (record.id == null || record.id === '') return false;
     const id = String(record.id);
     if (typeof window !== 'undefined' && window._mealEntrySaveFailedIds?.[id]) return false;
+
+    if (typeof window !== 'undefined' && window._mealEntrySaveInFlightIds?.[id]) return true;
 
     if (id.startsWith('temp_')) {
         return !!(typeof window !== 'undefined' && window._mealOptimisticPendingTempIds?.[id]);
@@ -98,6 +198,7 @@ export function isMealEntryPendingSync(record) {
 export function isMealEntrySaveFailed(record) {
     if (!record) return false;
     if (record._localSaveFailed === true) return true;
+    if (record.is_sync_error === true) return true;
     if (record.id == null || record.id === '') return false;
     return !!(typeof window !== 'undefined' && window._mealEntrySaveFailedIds?.[String(record.id)]);
 }

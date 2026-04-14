@@ -19,16 +19,38 @@ import { processPhotosToGroups } from '../render/post-group-utils.js';
 import {
     clearStuckMealPendingFlags,
     clearMealOptimisticSavePending,
-    onMealDocFirestoreServerAcknowledged
+    onMealDocFirestoreServerAcknowledged,
+    hydrateMealSyncErrorIdsFromStorage
 } from '../utils/meal-entry-pending.js';
+
+/**
+ * meals onSnapshot에서 '서버 반영 완료'로 동기화 도트를 풀지 여부.
+ * - 기본 onSnapshot은 데이터 변경이 없으면 콜백이 안 올라와, 온라인에서 서버 커밋 직후(hasPendingWrites만 false로 바뀜) onMealDoc이 영원히 안 불리는 문제가 있다 → includeMetadataChanges 필수.
+ * - 오프라인·일부 캐시 스냅샷에서는 hasPendingWrites가 false로만 오는 경우가 있어, navigator.onLine일 때만 서버 ack로 인정한다.
+ */
+function mealDocSnapshotAppearsServerAcked(metadata) {
+    if (!metadata || metadata.hasPendingWrites) return false;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+    return true;
+}
+
+/** 리스너 병합 시 서버 스냅샷이 실패 뱃지·플래그를 지우지 않도록 — 맵만 보면 레코드와 어긋날 수 있음 */
+function shouldPreserveMealSaveFailureOnMerge(localRecord, docDataId) {
+    const did = docDataId != null ? String(docDataId) : '';
+    if (typeof window !== 'undefined' && did && window._mealEntrySaveFailedIds?.[did]) return true;
+    const lid = localRecord?.id != null ? String(localRecord.id) : '';
+    if (typeof window !== 'undefined' && lid && window._mealEntrySaveFailedIds?.[lid]) return true;
+    if (localRecord?._localSaveFailed === true || localRecord?.is_sync_error === true) return true;
+    return false;
+}
 
 /** 서버 스냅샷 병합 시 로컬 저장 실패 표시 유지 (낙관적 UI와 충돌 방지) */
 function mergePreserveLocalSaveFailed(docData, localRecord) {
     const id = docData?.id != null ? String(docData.id) : '';
-    const fromLocal = localRecord?._localSaveFailed === true;
+    const fromLocal = localRecord?._localSaveFailed === true || localRecord?.is_sync_error === true;
     const fromMap = typeof window !== 'undefined' && id && window._mealEntrySaveFailedIds?.[id];
     if (!fromLocal && !fromMap) return docData;
-    return { ...docData, _localSaveFailed: true };
+    return { ...docData, _localSaveFailed: true, is_sync_error: true };
 }
 
 const MAIN_MEAL_SLOTS_FOR_TEMP_DEDUP = new Set(['morning', 'lunch', 'dinner']);
@@ -73,7 +95,7 @@ function mergeServerMealRowsWithLocalOrphans(serverRows, prevHist) {
         const id = String(m.id);
         if (serverIds.has(id)) return false;
         if (id.startsWith('temp_')) return true;
-        if (m._localSaveFailed === true) return true;
+        if (m._localSaveFailed === true || m.is_sync_error === true) return true;
         if (typeof window !== 'undefined' && window._mealEntrySaveFailedIds?.[id]) return true;
         if (window._pendingPhotoUploadByEntryId?.[id]) return true;
         if (window._mealOptimisticPendingTempIds?.[id]) return true;
@@ -112,6 +134,7 @@ function mergeEntryModalGaugesIntoUserSettings() {
 }
 
 export function setupListeners(userId, callbacks) {
+    hydrateMealSyncErrorIdsFromStorage();
     const { onSettingsUpdate, onDataUpdate, settingsUnsubscribe: oldSettingsUnsubscribe, dataUnsubscribe: oldDataUnsubscribe } = callbacks;
     
     // 사용자 ID 확인 및 로깅
@@ -701,7 +724,10 @@ export function setupListeners(userId, callbacks) {
     let isInitialLoad = true;
     /** primary 또는 fallback 중 현재 활성 meals onSnapshot 해제 함수 (fallback 시 이전 Watch 반드시 해제) */
     let mealsListenerUnsub = null;
-    mealsListenerUnsub = onSnapshot(mealsQuery, (snap) => {
+    mealsListenerUnsub = onSnapshot(
+        mealsQuery,
+        { includeMetadataChanges: true },
+        (snap) => {
         // 사용자 ID 재확인 (리스너 내부에서)
         if (window.currentUser && userId !== window.currentUser.uid) {
             console.error('⚠️ ⚠️ ⚠️ 데이터 리스너 콜백: 사용자 ID 불일치 감지!', {
@@ -764,6 +790,7 @@ export function setupListeners(userId, callbacks) {
                     const sid = String(d.id);
                     if (typeof window !== 'undefined' && window._mealEntrySaveFailedIds?.[sid]) {
                         row._localSaveFailed = true;
+                        row.is_sync_error = true;
                     }
                     return row;
                 })
@@ -772,7 +799,7 @@ export function setupListeners(userId, callbacks) {
             window.loadedMealsDateRange = { start: cutoffDateStr, end: todayStr };
             isInitialLoad = false;
             snap.docs.forEach((d) => {
-                if (!d.metadata.hasPendingWrites) {
+                if (mealDocSnapshotAppearsServerAcked(d.metadata)) {
                     onMealDocFirestoreServerAcknowledged(d.id, null);
                 }
             });
@@ -790,7 +817,7 @@ export function setupListeners(userId, callbacks) {
                 }
                 const docData = { id: change.doc.id, ...change.doc.data() };
                 if (change.type === 'added' || change.type === 'modified') {
-                    const serverAcked = !change.doc.metadata.hasPendingWrites;
+                    const serverAcked = mealDocSnapshotAppearsServerAcked(change.doc.metadata);
                     const index = window.mealHistory.findIndex(m => m.id === docData.id);
                     const slotKey = `${docData.date || ''}__${docData.slotId || ''}`;
                     const isPendingUpload = Boolean(
@@ -820,7 +847,11 @@ export function setupListeners(userId, callbacks) {
                         }
                         if (serverAcked) {
                             mergedRow = { ...mergedRow };
-                            delete mergedRow._localSaveFailed;
+                            const lockFail = shouldPreserveMealSaveFailureOnMerge(localRecord, docData.id);
+                            if (!lockFail) {
+                                delete mergedRow._localSaveFailed;
+                                delete mergedRow.is_sync_error;
+                            }
                             onMealDocFirestoreServerAcknowledged(docData.id, null);
                         }
                         window.mealHistory[index] = mergedRow;
@@ -850,7 +881,11 @@ export function setupListeners(userId, callbacks) {
                             let mergedRow = mergePreserveLocalSaveFailed(mergedTemp, tempRecord);
                             if (serverAcked) {
                                 mergedRow = { ...mergedRow };
-                                delete mergedRow._localSaveFailed;
+                                const lockFail = shouldPreserveMealSaveFailureOnMerge(tempRecord, docData.id);
+                                if (!lockFail) {
+                                    delete mergedRow._localSaveFailed;
+                                    delete mergedRow.is_sync_error;
+                                }
                                 onMealDocFirestoreServerAcknowledged(docData.id, tempRecord.id);
                             }
                             window.mealHistory[tempIdx] = mergedRow;
@@ -867,6 +902,13 @@ export function setupListeners(userId, callbacks) {
                             // 새로 추가된 문서 (1개월 범위 내)
                             window.mealHistory.push(docData);
                             if (serverAcked) {
+                                const lockFail = shouldPreserveMealSaveFailureOnMerge(null, docData.id);
+                                const row = { ...docData };
+                                if (!lockFail) {
+                                    delete row._localSaveFailed;
+                                    delete row.is_sync_error;
+                                }
+                                window.mealHistory[window.mealHistory.length - 1] = row;
                                 onMealDocFirestoreServerAcknowledged(docData.id, null);
                             }
                         }
@@ -905,6 +947,7 @@ export function setupListeners(userId, callbacks) {
         const fallbackQuery = collection(db, 'artifacts', appId, 'users', userId, 'meals');
         mealsListenerUnsub = onSnapshot(
             fallbackQuery,
+            { includeMetadataChanges: true },
             (snap) => {
                 // 사용자 ID 재확인 (fallback 리스너 내부에서)
                 if (window.currentUser && userId !== window.currentUser.uid) {
@@ -960,13 +1003,14 @@ export function setupListeners(userId, callbacks) {
                             const sid = String(d.id);
                             if (typeof window !== 'undefined' && window._mealEntrySaveFailedIds?.[sid]) {
                                 row._localSaveFailed = true;
+                                row.is_sync_error = true;
                             }
                             return row;
                         })
                         .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
                     window.mealHistory = mergeServerMealRowsWithLocalOrphans(serverMapped, prevForMerge);
                     snap.docs.forEach((d) => {
-                        if (!d.metadata.hasPendingWrites) {
+                        if (mealDocSnapshotAppearsServerAcked(d.metadata)) {
                             onMealDocFirestoreServerAcknowledged(d.id, null);
                         }
                     });

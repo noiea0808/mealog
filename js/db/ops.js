@@ -223,7 +223,9 @@ export const dbOps = {
                 errorCode: e.code, 
                 errorMessage: e.message 
             });
-            showToast(getUserFacingErrorMessage(e, 'save'), 'error');
+            if (!silent) {
+                showToast(getUserFacingErrorMessage(e, 'save'), 'error');
+            }
             throw e;
         }
     },
