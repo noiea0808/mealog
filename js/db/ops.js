@@ -24,6 +24,22 @@ import {
 import { showToast } from '../ui.js';
 import { logger } from '../utils.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
+
+/**
+ * 식사 저장 결과 — Callable(Admin) 폴백 시 Firestore 로컬 큐가 비지 않아 waitForPendingWrites·리스너 ack와 무관함.
+ * @typedef {{ mealId: string, savedViaCallableFallback: boolean }} MealSaveResult
+ */
+
+/** @param {unknown} r @returns {MealSaveResult} */
+export function unwrapMealSaveResult(r) {
+    if (r && typeof r === 'object' && r.mealId != null) {
+        return { mealId: String(r.mealId || ''), savedViaCallableFallback: !!r.savedViaCallableFallback };
+    }
+    if (r != null && typeof r !== 'object') {
+        return { mealId: String(r), savedViaCallableFallback: false };
+    }
+    return { mealId: '', savedViaCallableFallback: false };
+}
 import { isDemoUser } from '../demo-account.js';
 import { normalizeNicknameForClaim, nicknameClaimDocId } from './nickname-claims.js';
 
@@ -104,6 +120,11 @@ async function bumpUserMealCount(uid, delta) {
 }
 
 export const dbOps = {
+    /**
+     * @param {object} record
+     * @param {boolean} [silent]
+     * @returns {Promise<MealSaveResult>}
+     */
     async save(record, silent = false) {
         let currentUser = await resolveUserForFirestoreWrite();
         if (auth.currentUser && window.currentUser && auth.currentUser.uid !== window.currentUser.uid) {
@@ -154,7 +175,7 @@ export const dbOps = {
                         if (!silent) {
                             showToast("기록이 수정되었습니다.", 'success');
                         }
-                        return docId;
+                        return { mealId: String(docId), savedViaCallableFallback: false };
                     }
                     const docRef = await addDoc(coll, cleaned);
                     await bumpUserMealCount(currentUser.uid, 1);
@@ -162,14 +183,17 @@ export const dbOps = {
                     if (!silent) {
                         showToast("식사가 기록되었습니다.", 'success');
                     }
-                    return docRef.id;
+                    return { mealId: docRef.id, savedViaCallableFallback: false };
                 } catch (wErr) {
                     if (wErr?.code === 'permission-denied') {
                         // 직접 쓰기 실패는 흔히 App Check/WebChannel 이슈이며, 아래 Callable 폴백으로 정상 저장됨 → error로 찍지 않음
+                        const msg = wErr?.message != null ? String(wErr.message) : '';
                         logger.warn('[dbOps] Firestore 직접 저장 불가 → 서버(saveArtifactUserMeal) 폴백 시도', {
                             path: mealPathHint,
                             appId,
-                            uid: currentUser.uid
+                            uid: currentUser.uid,
+                            firestoreCode: wErr?.code,
+                            firestoreMessage: msg.length > 400 ? `${msg.slice(0, 400)}…` : msg
                         });
                         try {
                             let serializable;
@@ -191,7 +215,7 @@ export const dbOps = {
                                         'success'
                                     );
                                 }
-                                return mid;
+                                return { mealId: mid, savedViaCallableFallback: true };
                             }
                         } catch (fbErr) {
                             logger.error('[dbOps] saveArtifactUserMeal 폴백 실패:', fbErr?.code || fbErr?.message || fbErr);

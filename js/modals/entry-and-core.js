@@ -3,7 +3,7 @@ import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS, DEFAULT_USER_SETT
 import { appState } from '../state.js';
 import { setVal, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage, normalizeBirthdateRaw } from '../utils.js';
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from '../render/index.js';
-import { dbOps } from '../db.js';
+import { dbOps, unwrapMealSaveResult } from '../db.js';
 import { showToast, showSuccessPopup } from '../ui.js';
 import { resolveRecordCompletePopupMessage } from '../attendance-check.js';
 import {
@@ -37,22 +37,24 @@ import {
     markMealEntrySaveInFlight,
     clearMealEntrySaveInFlight,
     clearMealEntryServerSynced,
-    onMealDocFirestorePendingWritesResolved,
     markMealEntrySyncAbandonedById,
     clearMealEntrySyncAbandonedById,
     clearMealSyncGraceTimer,
     scheduleMealSyncGraceAbandon,
     isMealEntrySyncAbandoned,
-    applyOfflineAfterLocalSaveUi
+    applyOfflineAfterLocalSaveUi,
+    onMealDocFirestoreServerAcknowledged
 } from '../utils/meal-entry-pending.js';
 import { getMealSyncManager } from '../utils/meal-sync-manager.js';
 import { saveWithTimeout } from '../utils/save-with-timeout.js';
 // ⚠️ initPushNotifications import 제거 - 크래시 문제로 인해 비활성화
 
 /**
- * onSnapshot(메타)만으로는 App Check 오류 등으로 서버 ack 이벤트가 안 올 때 주황이 고정될 수 있음.
- * waitForPendingWrites는 로컬 큐 flush 확인용으로만 쓰고, 초록 도트·grace 해제는 리스너의 onMealDocFirestoreServerAcknowledged에 맡긴다.
- * 오프라인이면 호출하지 않음(대기 큐는 리스너 복귀 후 처리).
+ * 증분 onSnapshot(docChanges)에서는 mealDocSnapshotAppearsServerAcked가 fromCache 스냅샷을 서버 ack로 보지 않는다.
+ * 저장 직후 리스너가 캐시에서 먼저 오면 onMealDocFirestoreServerAcknowledged가 안 불려 주황(await_server_ack)이 고정된다.
+ * waitForPendingWrites()는 서버가 해당 쓰기를 확인했을 때 resolve되므로, 성공 시 리스너와 동일하게 초록·grace 해제를 적용한다.
+ * Callable 폴백만 성공한 경우에는 로컬 Firestore 큐가 없어 이 함수를 생략하고 저장 직후 onMealDocFirestoreServerAcknowledged만 쓴다.
+ * 오프라인이면 호출하지 않음.
  */
 function scheduleMealServerAckAfterPendingWrites(mealId, optimisticTempId, dateStr, currentTabVal) {
     if (!mealId) return;
@@ -70,7 +72,7 @@ function scheduleMealServerAckAfterPendingWrites(mealId, optimisticTempId, dateS
     void (async () => {
         try {
             await waitForPendingWrites(db);
-            onMealDocFirestorePendingWritesResolved(String(mealId), optimisticTempId || null);
+            onMealDocFirestoreServerAcknowledged(String(mealId), optimisticTempId || null);
             if (dateStr) invalidateTimelineDateSection(dateStr);
             if (currentTabVal === 'timeline') {
                 try {
@@ -1785,13 +1787,17 @@ export async function saveEntry() {
         // 새 레코드인 경우 ID를 먼저 확보해야 공유 시 entryId를 올바르게 설정할 수 있음
         const SAVE_FIRESTORE_TIMEOUT_MS = 10000;
         try {
-            const savedId = await saveWithTimeout(() => dbOps.save(record, true), {
-                timeoutMs: SAVE_FIRESTORE_TIMEOUT_MS,
-                onTimeout: () => {
-                    const mid = record.id || optimisticTempId;
-                    if (mid) getMealSyncManager().onSaveUiTimedOut(String(mid), optimisticTempId);
-                }
-            });
+            const saveResult = unwrapMealSaveResult(
+                await saveWithTimeout(() => dbOps.save(record, true), {
+                    timeoutMs: SAVE_FIRESTORE_TIMEOUT_MS,
+                    onTimeout: () => {
+                        const mid = record.id || optimisticTempId;
+                        if (mid) getMealSyncManager().onSaveUiTimedOut(String(mid), optimisticTempId);
+                    }
+                })
+            );
+            const savedId = saveResult.mealId;
+            const savedViaCallableFallback = saveResult.savedViaCallableFallback;
             if (optimisticTempId) clearMealEntrySaveFailedById(optimisticTempId);
             if (savedId) clearMealEntrySaveFailedById(savedId);
             // 새 레코드인 경우 생성된 ID를 record에 설정
@@ -1809,15 +1815,16 @@ export async function saveEntry() {
                 }
             }
             const effectiveMealId = savedId || (record && record.id);
-            /* setDoc/addDoc는 오프라인·지속성 사용 시 로컬 큐에만 써도 resolve될 수 있다.
-             * 초록(서버 반영 완료)은 db/listeners 스냅샷(hasPendingWrites false)에서만 처리한다. */
+            /* Firestore 직접 쓰기: 초록은 리스너 ack + waitForPendingWrites. Callable 폴백만 성공 시 로컬 큐가 없어 즉시 ack. */
             if (optimisticTempId) clearMealOptimisticSavePending(optimisticTempId);
-            if (effectiveMealId) {
+            if (savedViaCallableFallback && effectiveMealId) {
+                onMealDocFirestoreServerAcknowledged(String(effectiveMealId), optimisticTempId);
+            } else if (effectiveMealId) {
                 clearMealEntryServerSynced(String(effectiveMealId));
                 markMealEntrySaveInFlight(String(effectiveMealId));
             }
             /* base64 업로드 후 재저장이 있으면 그때만 대기(1차만 기다리면 2차 쓰기와 순서가 어긋날 수 있음) */
-            if (!hasPendingBase64Photos) {
+            if (!savedViaCallableFallback && !hasPendingBase64Photos) {
                 scheduleMealServerAckAfterPendingWrites(effectiveMealId, optimisticTempId, record.date, currentTab);
             }
             if (hasPendingBase64Photos && wasNewRecord && optimisticTempId && savedId) {
@@ -1873,6 +1880,7 @@ export async function saveEntry() {
                     img.onerror = () => { clearTimeout(timer); finish(false); };
                     img.src = url;
                 });
+                let photoPhaseSavedViaCallable = false;
                 try {
                     await saveWithTimeout(
                         () =>
@@ -1898,7 +1906,11 @@ export async function saveEntry() {
                                         : [];
                                     record.sharedPhotos = photosToShare;
 
-                                    await dbOps.save(record, true);
+                                    const photoSaveRes = unwrapMealSaveResult(await dbOps.save(record, true));
+                                    photoPhaseSavedViaCallable = photoSaveRes.savedViaCallableFallback;
+                                    if (photoSaveRes.savedViaCallableFallback && record.id) {
+                                        onMealDocFirestoreServerAcknowledged(String(record.id), optimisticTempId);
+                                    }
                                     await preloadImage(finalPhotoUrls[0]);
                                     if (window.mealHistory && Array.isArray(window.mealHistory)) {
                                         const localIdx = window.mealHistory.findIndex(m => m.id === record.id);
@@ -1930,7 +1942,11 @@ export async function saveEntry() {
                                         }
                                     }
                                     try {
-                                        await dbOps.save(record, true);
+                                        const recoverRes = unwrapMealSaveResult(await dbOps.save(record, true));
+                                        photoPhaseSavedViaCallable = recoverRes.savedViaCallableFallback;
+                                        if (recoverRes.savedViaCallableFallback && record.id) {
+                                            onMealDocFirestoreServerAcknowledged(String(record.id), optimisticTempId);
+                                        }
                                     } catch (recoverErr) {
                                         console.warn('사진 유지 상태 재저장 실패(로컬 보존):', recoverErr?.message || recoverErr);
                                     }
@@ -1945,7 +1961,7 @@ export async function saveEntry() {
                     );
                     if (record.date) invalidateTimelineDateSection(record.date);
                     markMealEntryServerWorkComplete(record?.id, optimisticTempId, optimisticSlotKey);
-                    if (record?.id) {
+                    if (record?.id && !photoPhaseSavedViaCallable) {
                         scheduleMealServerAckAfterPendingWrites(record.id, optimisticTempId, record.date, currentTab);
                     }
                     refreshTimelineAfterMealSaveResult();
@@ -2466,17 +2482,21 @@ export async function retryMealEntrySync(entryIdRaw) {
 
         if (isTemp) {
             delete payload.id;
-            const savedId = await Promise.race([
-                dbOps.save(payload, true),
-                new Promise((_, reject) => {
-                    setTimeout(() => {
-                        const e = new Error('deadline-exceeded');
-                        e.code = 'deadline-exceeded';
-                        e.__mealogSaveTimeout = true;
-                        reject(e);
-                    }, MEAL_SYNC_RETRY_TIMEOUT_MS);
-                })
-            ]);
+            const retrySaveRes = unwrapMealSaveResult(
+                await Promise.race([
+                    dbOps.save(payload, true),
+                    new Promise((_, reject) => {
+                        setTimeout(() => {
+                            const e = new Error('deadline-exceeded');
+                            e.code = 'deadline-exceeded';
+                            e.__mealogSaveTimeout = true;
+                            reject(e);
+                        }, MEAL_SYNC_RETRY_TIMEOUT_MS);
+                    })
+                ])
+            );
+            const savedId = retrySaveRes.mealId;
+            const retryViaCallable = retrySaveRes.savedViaCallableFallback;
             if (savedId && window.mealHistory && Array.isArray(window.mealHistory)) {
                 const ix = window.mealHistory.findIndex((m) => m && String(m.id) === entryId);
                 if (ix >= 0) {
@@ -2498,27 +2518,33 @@ export async function retryMealEntrySync(entryIdRaw) {
             if (savedId) {
                 clearMealEntrySaveInFlight(entryId);
                 clearMealOptimisticSavePending(entryId);
-                clearMealEntryServerSynced(String(savedId));
-                markMealEntrySaveInFlight(String(savedId));
+                if (retryViaCallable) {
+                    onMealDocFirestoreServerAcknowledged(String(savedId), entryId);
+                } else {
+                    clearMealEntryServerSynced(String(savedId));
+                    markMealEntrySaveInFlight(String(savedId));
+                }
             } else {
                 clearMealEntrySaveInFlight(entryId);
             }
             markMealEntryServerWorkComplete(savedId, entryId, `${record.date || ''}__${record.slotId || ''}`);
-            if (savedId) {
+            if (savedId && !retryViaCallable) {
                 scheduleMealServerAckAfterPendingWrites(savedId, entryId, record.date, appState.currentTab);
             }
         } else {
-            await Promise.race([
-                dbOps.save(payload, true),
-                new Promise((_, reject) => {
-                    setTimeout(() => {
-                        const e = new Error('deadline-exceeded');
-                        e.code = 'deadline-exceeded';
-                        e.__mealogSaveTimeout = true;
-                        reject(e);
-                    }, MEAL_SYNC_RETRY_TIMEOUT_MS);
-                })
-            ]);
+            const retryElseRes = unwrapMealSaveResult(
+                await Promise.race([
+                    dbOps.save(payload, true),
+                    new Promise((_, reject) => {
+                        setTimeout(() => {
+                            const e = new Error('deadline-exceeded');
+                            e.code = 'deadline-exceeded';
+                            e.__mealogSaveTimeout = true;
+                            reject(e);
+                        }, MEAL_SYNC_RETRY_TIMEOUT_MS);
+                    })
+                ])
+            );
             clearMealEntrySaveFailedById(entryId);
             if (window.mealHistory && Array.isArray(window.mealHistory)) {
                 const ix = window.mealHistory.findIndex((m) => m && String(m.id) === entryId);
@@ -2530,7 +2556,11 @@ export async function retryMealEntrySync(entryIdRaw) {
                 }
             }
             markMealEntryServerWorkComplete(entryId, null, `${record.date || ''}__${record.slotId || ''}`);
-            scheduleMealServerAckAfterPendingWrites(entryId, null, record.date, appState.currentTab);
+            if (retryElseRes.savedViaCallableFallback && entryId) {
+                onMealDocFirestoreServerAcknowledged(String(entryId), null);
+            } else {
+                scheduleMealServerAckAfterPendingWrites(entryId, null, record.date, appState.currentTab);
+            }
         }
         showToast('서버에 등록했습니다.', 'success');
         invalidateTimelineDateSection(record.date);

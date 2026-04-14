@@ -19,9 +19,10 @@ service cloud.firestore {
     }
     
     // 공용 데모 계정(샘플 데이터) — 클라이언트 쓰기 차단 (js/config·demo-account 이메일과 동일)
+    // email 클레임이 없는 계정(카카오 커스텀 토큰 등)에서 token.email 직접 접근 시 평가 오류 방지
     function isReadOnlyDemoAccount() {
       return request.auth != null &&
-        request.auth.token.email != null &&
+        request.auth.token.keys().hasAll(['email']) &&
         request.auth.token.email == 'dummy@mealog.net';
     }
     

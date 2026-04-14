@@ -1,5 +1,11 @@
 // 인증 관련 함수들
-import { auth, setAnalyticsUserId, callableFunctions, appCheckInitPromise } from './firebase.js';
+import {
+    auth,
+    setAnalyticsUserId,
+    callableFunctions,
+    appCheckInitPromise,
+    refreshAppCheckTokenBeforeFirestore
+} from './firebase.js';
 import { GoogleAuthProvider, signInWithPopup, getRedirectResult, signInWithCredential, signInWithCustomToken, signInAnonymously, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
@@ -176,6 +182,13 @@ async function finalizeKakaoSignInWithCode(code, redirectUri) {
         try {
             if (auth.currentUser) await auth.currentUser.reload();
         } catch (_) {}
+        /* 커스텀 토큰 직후 첫 Firestore 쓰기가 App Check 미부착으로 permission-denied 나는 경우 완화 */
+        try {
+            await appCheckInitPromise;
+            await refreshAppCheckTokenBeforeFirestore({ force: true });
+        } catch (e) {
+            console.warn('[카카오 로그인] App Check 갱신 실패(무시):', e?.message || e);
+        }
         const ke = typeof data.kakaoEmail === 'string' ? data.kakaoEmail.trim() : '';
         if (ke && ke.includes('@')) {
             try {
