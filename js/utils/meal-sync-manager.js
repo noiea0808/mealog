@@ -1,7 +1,13 @@
 /**
  * 식사 Firestore 동기화 UI 상태 단일 소스.
  * window.* 맵에 의존하지 않는다 — 외부는 getMealSyncManager()와 meal-entry-pending re-export만 사용.
+ *
+ * 오케스트레이션(저장 직후 waitForPendingWrites, 리스너 스냅샷이 서버 ack로 보이는지 등)도 이 모듈에 둔다.
+ * 모달·리스너는 명령/이벤트만 넘기고 판단은 여기서만 한다.
  */
+
+import { db } from '../firebase.js';
+import { waitForPendingWrites } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
 const MEAL_SYNC_ERROR_IDS_KEY = 'mealog_mealSyncErrorIds_v1';
 const MEAL_ABANDONED_IDS_KEY = 'mealog_mealSyncAbandonedIds_v1';
@@ -98,6 +104,38 @@ async function refreshTimelineFull(dateStr, currentTab) {
         }
     });
     void notifyTimelineAndFab();
+}
+
+/**
+ * meals onSnapshot 메타데이터가 서버 반영(동기화 도트 해제 후보)으로 보이는지.
+ * @param {*} metadata Firestore SnapshotMetadata
+ * @param {{ allowFromCacheAck?: boolean }} [options]
+ */
+export function mealDocSnapshotAppearsServerAcked(metadata, options = {}) {
+    if (!metadata || metadata.hasPendingWrites) return false;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+    const allowCache = options.allowFromCacheAck === true;
+    if (!allowCache && metadata.fromCache === true) return false;
+    return true;
+}
+
+/** 리스너 병합 시 서버 스냅샷이 실패 뱃지를 지우지 않도록 */
+export function shouldPreserveMealSaveFailureOnMerge(localRecord, docDataId) {
+    const mgr = getMealSyncManager();
+    const did = docDataId != null ? String(docDataId) : '';
+    if (did && mgr.hasErrorId(did)) return true;
+    const lid = localRecord?.id != null ? String(localRecord.id) : '';
+    if (lid && mgr.hasErrorId(lid)) return true;
+    if (localRecord?._localSaveFailed === true || localRecord?.is_sync_error === true) return true;
+    return false;
+}
+
+export function mergePreserveLocalSaveFailed(docData, localRecord) {
+    const id = docData?.id != null ? String(docData.id) : '';
+    const fromLocal = localRecord?._localSaveFailed === true || localRecord?.is_sync_error === true;
+    const fromMap = id && getMealSyncManager().hasErrorId(id);
+    if (!fromLocal && !fromMap) return docData;
+    return { ...docData, _localSaveFailed: true, is_sync_error: true };
 }
 
 export const MEAL_SYNC_GRACE_MS = 10000;
@@ -629,6 +667,43 @@ export class MealSyncManager {
         this.clearGraceTimer(entryId);
         if (optimisticTempId) this.clearGraceTimer(String(optimisticTempId));
         this._bump();
+    }
+
+    /**
+     * Firestore 직접 쓰기 직후: grace → (온라인) waitForPendingWrites → 서버 ack와 타임라인 갱신.
+     * Callable 폴백만 성공한 경우 호출하지 않는다(모달에서 즉시 onServerDocumentAcknowledged만).
+     */
+    scheduleServerAckAfterPendingWrites(mealId, optimisticTempId, dateStr, currentTabVal) {
+        if (!mealId) return;
+        this.scheduleGraceAbandon(String(mealId), {
+            optimisticTempId: optimisticTempId || null,
+            dateStr,
+            currentTab: currentTabVal
+        });
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            this.applyOfflineUnconfirmed(String(mealId), optimisticTempId || null, dateStr, currentTabVal, {
+                forceUnconfirmedUi: true
+            });
+            return;
+        }
+        const self = this;
+        void (async () => {
+            try {
+                await waitForPendingWrites(db);
+                self.onServerDocumentAcknowledged(String(mealId), optimisticTempId || null);
+                void refreshTimelineFull(dateStr, currentTabVal);
+            } catch (e) {
+                console.warn('waitForPendingWrites(동기화 도트):', e?.message || e);
+                self.markAbandoned(String(mealId));
+                self.clearInFlight(String(mealId));
+                if (optimisticTempId) {
+                    const ot = String(optimisticTempId);
+                    self.markAbandoned(ot);
+                    self.clearOptimisticPending(ot);
+                }
+                void refreshTimelineFull(dateStr, currentTabVal);
+            }
+        })();
     }
 }
 

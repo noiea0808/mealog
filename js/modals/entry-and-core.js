@@ -18,7 +18,7 @@ import {
 import { getDashboardData } from '../analytics.js';
 import { callableFunctions, db, appId, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import { isDemoUser } from '../demo-account.js';
-import { doc, getDoc, waitForPendingWrites } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
+import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { applyDemoDateShiftToMealRecord } from '../demo-date-shift.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import {
@@ -43,68 +43,13 @@ import {
     scheduleMealSyncGraceAbandon,
     isMealEntrySyncAbandoned,
     applyOfflineAfterLocalSaveUi,
-    onMealDocFirestoreServerAcknowledged
+    onMealDocFirestoreServerAcknowledged,
+    scheduleMealServerAckAfterPendingWrites
 } from '../utils/meal-entry-pending.js';
 import { getMealSyncManager } from '../utils/meal-sync-manager.js';
 import { saveWithTimeout } from '../utils/save-with-timeout.js';
 // ⚠️ initPushNotifications import 제거 - 크래시 문제로 인해 비활성화
-
-/**
- * 증분 onSnapshot(docChanges)에서는 mealDocSnapshotAppearsServerAcked가 fromCache 스냅샷을 서버 ack로 보지 않는다.
- * 저장 직후 리스너가 캐시에서 먼저 오면 onMealDocFirestoreServerAcknowledged가 안 불려 주황(await_server_ack)이 고정된다.
- * waitForPendingWrites()는 서버가 해당 쓰기를 확인했을 때 resolve되므로, 성공 시 리스너와 동일하게 초록·grace 해제를 적용한다.
- * Callable 폴백만 성공한 경우에는 로컬 Firestore 큐가 없어 이 함수를 생략하고 저장 직후 onMealDocFirestoreServerAcknowledged만 쓴다.
- * 오프라인이면 호출하지 않음.
- */
-function scheduleMealServerAckAfterPendingWrites(mealId, optimisticTempId, dateStr, currentTabVal) {
-    if (!mealId) return;
-    scheduleMealSyncGraceAbandon(String(mealId), {
-        optimisticTempId: optimisticTempId || null,
-        dateStr,
-        currentTab: currentTabVal
-    });
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-        applyOfflineAfterLocalSaveUi(String(mealId), optimisticTempId || null, dateStr, currentTabVal, {
-            forceUnconfirmedUi: true
-        });
-        return;
-    }
-    void (async () => {
-        try {
-            await waitForPendingWrites(db);
-            onMealDocFirestoreServerAcknowledged(String(mealId), optimisticTempId || null);
-            if (dateStr) invalidateTimelineDateSection(dateStr);
-            if (currentTabVal === 'timeline') {
-                try {
-                    renderTimeline();
-                } catch (_) {
-                    /* ignore */
-                }
-            } else {
-                updateTimelineMealEntryPendingIndicators();
-            }
-        } catch (e) {
-            console.warn('waitForPendingWrites(동기화 도트):', e?.message || e);
-            markMealEntrySyncAbandonedById(String(mealId));
-            clearMealEntrySaveInFlight(String(mealId));
-            if (optimisticTempId) {
-                const ot = String(optimisticTempId);
-                markMealEntrySyncAbandonedById(ot);
-                clearMealOptimisticSavePending(ot);
-            }
-            if (dateStr) invalidateTimelineDateSection(dateStr);
-            if (currentTabVal === 'timeline') {
-                try {
-                    renderTimeline();
-                } catch (_) {
-                    /* ignore */
-                }
-            } else {
-                updateTimelineMealEntryPendingIndicators();
-            }
-        }
-    })();
-}
+// 저장 직후 동기화 도트(waitForPendingWrites 등)는 meal-sync-manager.scheduleServerAckAfterPendingWrites (meal-entry-pending re-export)
 
 // 설정 저장 디바운싱을 위한 타이머
 let settingsSaveTimeout = null;

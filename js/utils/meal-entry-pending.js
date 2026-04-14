@@ -47,6 +47,10 @@ export function clearMealSyncGraceTimer(entryId) {
 export function scheduleMealSyncGraceAbandon(entryId, opts = {}) {
     mgr().scheduleGraceAbandon(entryId, opts);
 }
+/** 저장 직후 waitForPendingWrites·서버 ack UI — 로직은 meal-sync-manager 단일 소스 */
+export function scheduleMealServerAckAfterPendingWrites(mealId, optimisticTempId, dateStr, currentTabVal) {
+    mgr().scheduleServerAckAfterPendingWrites(mealId, optimisticTempId, dateStr, currentTabVal);
+}
 export function applyMealSyncAbandonOnOffline() {
     mgr().applyAbandonOnOffline();
 }

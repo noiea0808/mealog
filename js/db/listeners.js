@@ -6,60 +6,17 @@ import { dbOps } from './ops.js';
 import { hideLoading, showNetworkErrorOverlay, isLikelyNetworkError } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
 import {
-    addDaysToYmd,
     applyDemoDateShiftToDailyComments,
     applyDemoDateShiftToDailyStats,
-    applyDemoDateShiftToMeals,
     applyDemoDateShiftToSharedPhoto,
-    computeDemoDateShiftDays,
-    computeDemoDateShiftDaysFromKeyedObject,
-    todayLocalYmd
+    computeDemoDateShiftDaysFromKeyedObject
 } from '../demo-date-shift.js';
 import { processPhotosToGroups } from '../render/post-group-utils.js';
 import {
-    clearStuckMealPendingFlags,
-    onMealDocFirestoreServerAcknowledged,
     hydrateMealSyncErrorIdsFromStorage,
-    hydrateMealSyncAbandonedIdsFromStorage,
-    markMealEntryServerSynced
+    hydrateMealSyncAbandonedIdsFromStorage
 } from '../utils/meal-entry-pending.js';
-import { findUniqueMeals, dedupeMealListOnly } from '../utils/find-unique-meals.js';
-import { getMealSyncManager } from '../utils/meal-sync-manager.js';
-
-/**
- * meals onSnapshot에서 '서버 반영 완료'로 동기화 도트를 풀지 여부.
- * - 기본 onSnapshot은 데이터 변경이 없으면 콜백이 안 올라와, 온라인에서 서버 커밋 직후(hasPendingWrites만 false로 바뀜) onMealDoc이 영원히 안 불리는 문제가 있다 → includeMetadataChanges 필수.
- * - 오프라인·일부 캐시 스냅샷에서는 hasPendingWrites가 false로만 오는 경우가 있어, navigator.onLine일 때만 서버 ack로 인정한다.
- * - 증분(docChanges)에서는 fromCache만으로 초록 처리하면 저장 직후 가짜 ack가 나와 grace(레드닷)가 막힌다 → 기본은 서버에서 온 스냅샷(fromCache 아님)만 인정.
- * @param {{ allowFromCacheAck?: boolean }} [options] — 초기/폴백 전체 스냅샷 1회만 true 권장
- */
-function mealDocSnapshotAppearsServerAcked(metadata, options = {}) {
-    if (!metadata || metadata.hasPendingWrites) return false;
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
-    const allowCache = options.allowFromCacheAck === true;
-    if (!allowCache && metadata.fromCache === true) return false;
-    return true;
-}
-
-/** 리스너 병합 시 서버 스냅샷이 실패 뱃지·플래그를 지우지 않도록 — MealSyncManager.errorIds·행 플래그 기준 */
-function shouldPreserveMealSaveFailureOnMerge(localRecord, docDataId) {
-    const mgr = getMealSyncManager();
-    const did = docDataId != null ? String(docDataId) : '';
-    if (did && mgr.hasErrorId(did)) return true;
-    const lid = localRecord?.id != null ? String(localRecord.id) : '';
-    if (lid && mgr.hasErrorId(lid)) return true;
-    if (localRecord?._localSaveFailed === true || localRecord?.is_sync_error === true) return true;
-    return false;
-}
-
-/** 서버 스냅샷 병합 시 로컬 저장 실패 표시 유지 (낙관적 UI와 충돌 방지) */
-function mergePreserveLocalSaveFailed(docData, localRecord) {
-    const id = docData?.id != null ? String(docData.id) : '';
-    const fromLocal = localRecord?._localSaveFailed === true || localRecord?.is_sync_error === true;
-    const fromMap = id && getMealSyncManager().hasErrorId(id);
-    if (!fromLocal && !fromMap) return docData;
-    return { ...docData, _localSaveFailed: true, is_sync_error: true };
-}
+import { applyMealsSnapshotPrimary, applyMealsSnapshotFallback } from '../utils/meals-snapshot-apply.js';
 
 /** 세션당 1회만 실행 (Firestore 읽기 절감) */
 let userDocEnsureDoneForUid = null;
@@ -682,211 +639,20 @@ export function setupListeners(userId, callbacks) {
         mealsQuery,
         { includeMetadataChanges: true },
         (snap) => {
-        // 사용자 ID 재확인 (리스너 내부에서)
-        if (window.currentUser && userId !== window.currentUser.uid) {
-            console.error('⚠️ ⚠️ ⚠️ 데이터 리스너 콜백: 사용자 ID 불일치 감지!', {
-                listenerUserId: userId,
-                currentUserUid: window.currentUser.uid,
-                email: window.currentUser.email
+            const loadState = { isInitialLoad };
+            const r = applyMealsSnapshotPrimary({
+                snap,
+                demo,
+                userId,
+                cutoffDateStr,
+                todayStr,
+                loadState,
+                mergeStatsIntoDaily,
+                onDataUpdate
             });
-            // 잘못된 사용자의 리스너이므로 무시
-            return;
-        }
-        if (demo) {
-            const rawMeals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-            const shift = computeDemoDateShiftDays(rawMeals);
-            window.__demoDateShiftDays = shift;
-            window.mealHistory = applyDemoDateShiftToMeals(rawMeals, shift).sort(
-                (a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)
-            );
-            const rawDates = rawMeals
-                .map((m) => m.date)
-                .filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d));
-            if (rawDates.length && shift) {
-                const minRaw = rawDates.reduce((a, b) => (a < b ? a : b));
-                window.loadedMealsDateRange = {
-                    start: addDaysToYmd(minRaw, shift),
-                    end: todayLocalYmd()
-                };
-            } else if (rawDates.length) {
-                const minRaw = rawDates.reduce((a, b) => (a < b ? a : b));
-                const maxRaw = rawDates.reduce((a, b) => (a > b ? a : b));
-                window.loadedMealsDateRange = { start: minRaw, end: maxRaw };
-            } else {
-                const tl = todayLocalYmd();
-                window.loadedMealsDateRange = { start: tl, end: tl };
-            }
-            if (window.userSettings && window.__demoRawDailyComments) {
-                window.userSettings.dailyComments = applyDemoDateShiftToDailyComments(
-                    window.__demoRawDailyComments,
-                    shift
-                );
-            }
-            mergeStatsIntoDaily();
-            snap.docs.forEach((d) => {
-                if (mealDocSnapshotAppearsServerAcked(d.metadata, { allowFromCacheAck: true })) {
-                    markMealEntryServerSynced(d.id);
-                }
-            });
-            isInitialLoad = false;
-            if (onDataUpdate) onDataUpdate();
-            import('../db.js').then(({ loadMyShares }) => {
-                loadMyShares().then((list) => {
-                    window.sharedPhotos = list;
-                    if (typeof window.updateTimelineShareIndicators === 'function') {
-                        window.updateTimelineShareIndicators();
-                    }
-                }).catch(() => {});
-            }).catch(() => {});
-            return;
-        }
-        if (isInitialLoad) {
-            // 초기 로드: 최근 7일(최대 50건) 데이터
-            const prevForMerge = Array.isArray(window.mealHistory) ? window.mealHistory : [];
-            const serverMapped = snap.docs
-                .map((d) => {
-                    const row = { id: d.id, ...d.data() };
-                    const sid = String(d.id);
-                    if (getMealSyncManager().hasErrorId(sid)) {
-                        row._localSaveFailed = true;
-                        row.is_sync_error = true;
-                    }
-                    return row;
-                })
-                .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-            window.mealHistory = findUniqueMeals(serverMapped, prevForMerge);
-            window.loadedMealsDateRange = { start: cutoffDateStr, end: todayStr };
-            isInitialLoad = false;
-            snap.docs.forEach((d) => {
-                if (mealDocSnapshotAppearsServerAcked(d.metadata, { allowFromCacheAck: true })) {
-                    onMealDocFirestoreServerAcknowledged(d.id, null);
-                }
-            });
-        } else {
-            // 이후 변경사항: 변경된 문서만 처리
-            const changes = snap.docChanges();
-            let hasChanges = false;
-            
-            changes.forEach(change => {
-                if (change.type === 'removed') {
-                    const rid = change.doc.id;
-                    window.mealHistory = window.mealHistory.filter((m) => m.id !== rid);
-                    hasChanges = true;
-                    return;
-                }
-                const docData = { id: change.doc.id, ...change.doc.data() };
-                if (change.type === 'added' || change.type === 'modified') {
-                    const serverAcked = mealDocSnapshotAppearsServerAcked(change.doc.metadata, {
-                        allowFromCacheAck: false
-                    });
-                    const index = window.mealHistory.findIndex(m => m.id === docData.id);
-                    const slotKey = `${docData.date || ''}__${docData.slotId || ''}`;
-                    const mgrSync = getMealSyncManager();
-                    const isPendingUpload = Boolean(
-                        mgrSync.hasPendingPhotoEntry(docData.id) || mgrSync.hasPendingPhotoSlot(slotKey)
-                    );
-                    if (index >= 0) {
-                        const localRecord = window.mealHistory[index];
-                        const incomingPhotos = Array.isArray(docData.photos)
-                            ? docData.photos
-                            : (docData.photos ? [docData.photos] : []);
-                        const localPhotos = Array.isArray(localRecord?.photos)
-                            ? localRecord.photos
-                            : (localRecord?.photos ? [localRecord.photos] : []);
-                        const hasLocalBase64Preview = localPhotos.some(
-                            (p) => typeof p === 'string' && p.startsWith('data:image')
-                        );
-                        const shouldKeepLocalPreview = isPendingUpload && hasLocalBase64Preview;
-                        
-                        // 낙관 반영 직후 1차 스냅샷(photos 비어있음)으로 미리보기가 사라지는 깜빡임 방지
-                        let mergedRow;
-                        if (shouldKeepLocalPreview) {
-                            const merged = { ...docData, photos: [...localPhotos] };
-                            mergedRow = mergePreserveLocalSaveFailed(merged, localRecord);
-                        } else {
-                            mergedRow = mergePreserveLocalSaveFailed(docData, localRecord);
-                        }
-                        if (serverAcked) {
-                            mergedRow = { ...mergedRow };
-                            const lockFail = shouldPreserveMealSaveFailureOnMerge(localRecord, docData.id);
-                            if (!lockFail) {
-                                delete mergedRow._localSaveFailed;
-                                delete mergedRow.is_sync_error;
-                            }
-                            onMealDocFirestoreServerAcknowledged(docData.id, null);
-                        }
-                        window.mealHistory[index] = mergedRow;
-                    } else {
-                        // 신규 저장 직후: 임시 ID 낙관 레코드(temp_*)를 실제 서버 ID로 치환해 깜빡임/중복 방지
-                        const tempIdx = window.mealHistory.findIndex((m) =>
-                            typeof m?.id === 'string' &&
-                            m.id.startsWith('temp_') &&
-                            m.date === docData.date &&
-                            m.slotId === docData.slotId
-                        );
-                        if (tempIdx >= 0) {
-                            const tempRecord = window.mealHistory[tempIdx];
-                            const incomingPhotos = Array.isArray(docData.photos)
-                                ? docData.photos
-                                : (docData.photos ? [docData.photos] : []);
-                            const tempPhotos = Array.isArray(tempRecord?.photos)
-                                ? tempRecord.photos
-                                : (tempRecord?.photos ? [tempRecord.photos] : []);
-                            const hasTempBase64 = tempPhotos.some(
-                                (p) => typeof p === 'string' && p.startsWith('data:image')
-                            );
-                            const keepTempPreview =
-                                (isPendingUpload || mgrSync.hasPendingPhotoEntry(tempRecord.id)) && hasTempBase64;
-                            const mergedTemp = keepTempPreview
-                                ? { ...docData, photos: [...tempPhotos] }
-                                : docData;
-                            let mergedRow = mergePreserveLocalSaveFailed(mergedTemp, tempRecord);
-                            if (serverAcked) {
-                                mergedRow = { ...mergedRow };
-                                const lockFail = shouldPreserveMealSaveFailureOnMerge(tempRecord, docData.id);
-                                if (!lockFail) {
-                                    delete mergedRow._localSaveFailed;
-                                    delete mergedRow.is_sync_error;
-                                }
-                                onMealDocFirestoreServerAcknowledged(docData.id, tempRecord.id);
-                            }
-                            window.mealHistory[tempIdx] = mergedRow;
-                            if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                                window.sharedPhotos = window.sharedPhotos.map((p) => (
-                                    p.entryId === tempRecord.id ? { ...p, entryId: docData.id } : p
-                                ));
-                            }
-                            if (mgrSync.hasPendingPhotoEntry(tempRecord.id)) {
-                                mgrSync.movePendingPhotoTempToReal(tempRecord.id, docData.id);
-                            }
-                        } else {
-                            // 새로 추가된 문서 (1개월 범위 내)
-                            window.mealHistory.push(docData);
-                            if (serverAcked) {
-                                const lockFail = shouldPreserveMealSaveFailureOnMerge(null, docData.id);
-                                const row = { ...docData };
-                                if (!lockFail) {
-                                    delete row._localSaveFailed;
-                                    delete row.is_sync_error;
-                                }
-                                window.mealHistory[window.mealHistory.length - 1] = row;
-                                onMealDocFirestoreServerAcknowledged(docData.id, null);
-                            }
-                        }
-                    }
-                    hasChanges = true;
-                }
-            });
-            
-            if (hasChanges) {
-                window.mealHistory.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-                window.mealHistory = dedupeMealListOnly(window.mealHistory);
-            }
-        }
-
-        clearStuckMealPendingFlags();
-        if (onDataUpdate) onDataUpdate();
-    }, (error) => {
+            isInitialLoad = loadState.isInitialLoad;
+            if (r.uidMismatch) return;
+        }, (error) => {
         console.error("Meals Listener Error:", error);
         // 사용자 ID 재확인
         if (window.currentUser && userId !== window.currentUser.uid) {
@@ -906,88 +672,20 @@ export function setupListeners(userId, callbacks) {
             /* 이미 끊긴 리스너일 수 있음 */
         }
         const fallbackQuery = collection(db, 'artifacts', appId, 'users', userId, 'meals');
-        let fallbackMealsFirstSnapshot = true;
+        const fallbackFirstSnapshotState = { value: true };
         mealsListenerUnsub = onSnapshot(
             fallbackQuery,
             { includeMetadataChanges: true },
             (snap) => {
-                // 사용자 ID 재확인 (fallback 리스너 내부에서)
-                if (window.currentUser && userId !== window.currentUser.uid) {
-                    console.error('⚠️ Fallback 리스너: 사용자 ID 불일치! 무시');
-                    return;
-                }
-                if (demo) {
-                    let rawMeals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-                    rawMeals.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-                    rawMeals = rawMeals.slice(0, 50);
-                    const shift = computeDemoDateShiftDays(rawMeals);
-                    window.__demoDateShiftDays = shift;
-                    window.mealHistory = applyDemoDateShiftToMeals(rawMeals, shift).sort(
-                        (a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)
-                    );
-                    const rawDates = rawMeals
-                        .map((m) => m.date)
-                        .filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d));
-                    if (rawDates.length && shift) {
-                        const minRaw = rawDates.reduce((a, b) => (a < b ? a : b));
-                        window.loadedMealsDateRange = {
-                            start: addDaysToYmd(minRaw, shift),
-                            end: todayLocalYmd()
-                        };
-                    } else if (rawDates.length) {
-                        const minRaw = rawDates.reduce((a, b) => (a < b ? a : b));
-                        const maxRaw = rawDates.reduce((a, b) => (a > b ? a : b));
-                        window.loadedMealsDateRange = { start: minRaw, end: maxRaw };
-                    } else {
-                        const tl = todayLocalYmd();
-                        window.loadedMealsDateRange = { start: tl, end: tl };
-                    }
-                    if (window.userSettings && window.__demoRawDailyComments) {
-                        window.userSettings.dailyComments = applyDemoDateShiftToDailyComments(
-                            window.__demoRawDailyComments,
-                            shift
-                        );
-                    }
-                    mergeStatsIntoDaily();
-                    snap.docs.forEach((d) => {
-                        if (mealDocSnapshotAppearsServerAcked(d.metadata, { allowFromCacheAck: true })) {
-                            markMealEntryServerSynced(d.id);
-                        }
-                    });
-                    import('../db.js').then(({ loadMyShares }) => {
-                        loadMyShares().then((list) => {
-                            window.sharedPhotos = list;
-                            if (typeof window.updateTimelineShareIndicators === 'function') {
-                                window.updateTimelineShareIndicators();
-                            }
-                        }).catch(() => {});
-                    }).catch(() => {});
-                } else {
-                    const prevForMerge = Array.isArray(window.mealHistory) ? window.mealHistory : [];
-                    const serverMapped = snap.docs
-                        .map((d) => {
-                            const row = { id: d.id, ...d.data() };
-                            const sid = String(d.id);
-                            if (getMealSyncManager().hasErrorId(sid)) {
-                                row._localSaveFailed = true;
-                                row.is_sync_error = true;
-                            }
-                            return row;
-                        })
-                        .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-                    window.mealHistory = findUniqueMeals(serverMapped, prevForMerge);
-                    snap.docs.forEach((d) => {
-                        if (
-                            mealDocSnapshotAppearsServerAcked(d.metadata, {
-                                allowFromCacheAck: fallbackMealsFirstSnapshot
-                            })
-                        ) {
-                            onMealDocFirestoreServerAcknowledged(d.id, null);
-                        }
-                    });
-                    fallbackMealsFirstSnapshot = false;
-                }
-                if (onDataUpdate) onDataUpdate();
+                const r = applyMealsSnapshotFallback({
+                    snap,
+                    demo,
+                    userId,
+                    mergeStatsIntoDaily,
+                    onDataUpdate,
+                    firstSnapshotState: fallbackFirstSnapshotState
+                });
+                if (r.uidMismatch) return;
             },
             (err2) => {
                 console.error('Meals fallback listener error:', err2);
