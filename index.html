@@ -1531,6 +1531,11 @@
                 </span>
             </button>
         </nav>
+        <!-- 미전송 식사 기록 일괄 재전송: 하단 네비 위 플로팅(게시판 글쓰기 FAB와 동일 계열) -->
+        <button type="button" id="mealSyncResendBtn" class="meal-sync-resend-fab hidden" aria-label="등록 재시도·삭제 실패 동기화" title="등록 미확인·실패 또는 삭제 실패 항목을 다시 서버에 반영합니다">
+            <i class="fa-solid fa-cloud-arrow-up text-lg" aria-hidden="true"></i>
+            <span id="mealSyncResendBadge" class="meal-sync-resend-fab__badge hidden" aria-hidden="true">0</span>
+        </button>
 
         <div id="demoNavGuideBackdrop" class="hidden fixed inset-0 z-[120] pointer-events-none" aria-hidden="true"></div>
         <div id="demoNavGuidePanel" class="demo-nav-guide-panel hidden fixed z-[125] rounded-lg border border-amber-200 bg-amber-50 pl-4 pr-9 py-3 shadow-md" role="status" aria-labelledby="demoNavGuideTitle">

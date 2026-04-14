@@ -18,6 +18,7 @@ import {
     getCountFromServer,
     where,
     writeBatch,
+    deleteDoc,
     Timestamp
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
@@ -62,6 +63,26 @@ function invalidateAdminFeedMonitoringCache() {
     feedUserSettingsCache.clear();
     feedSharedKeysCache = null;
     feedMealTotalCountKnown = true;
+}
+
+/**
+ * 모먼트 관리: 기록·공유 문서 삭제 (일반 = users/…/meals + sharedPhotos, 베스트/일간/인사이트 = sharedPhotos만)
+ */
+async function adminDeleteFeedPostInternal({ mealId, userId, isBest, isDaily, isInsight }) {
+    if (!mealId || !userId) throw new Error('mealId 또는 userId가 없습니다.');
+    await refreshAppCheckTokenBeforeFirestore();
+    if (isBest || isDaily || isInsight) {
+        await deleteDoc(doc(db, 'artifacts', appId, 'sharedPhotos', mealId));
+        return;
+    }
+    const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+    const sharedQuery = query(sharedColl, where('userId', '==', userId), where('entryId', '==', mealId));
+    const sharedSnap = await getDocs(sharedQuery);
+    for (const d of sharedSnap.docs) {
+        await deleteDoc(d.ref);
+    }
+    const mealRef = doc(db, 'artifacts', appId, 'users', userId, 'meals', mealId);
+    await deleteDoc(mealRef);
 }
 
 function feedQueryCacheKey(page) {
@@ -551,6 +572,9 @@ async function renderFeedManagement() {
                             ${hasDataMismatch ? `<button onclick="window.syncSharedPhotos('${meal.id}', '${meal.userId}')" class="px-2 py-0.5 bg-yellow-600 text-white rounded text-xs font-bold hover:bg-yellow-700 transition-colors">동기화</button>` : ''}
                         </div>
                     </td>
+                    <td class="px-2 py-3 align-middle text-center w-[56px] min-w-[56px]">
+                        <button type="button" class="admin-feed-row-delete px-2 py-1 bg-red-50 text-red-700 text-xs font-bold rounded hover:bg-red-100 border border-red-200 transition-colors" data-meal-id="${meal.id}" data-user-id="${meal.userId}" ${meal.isBestShare ? 'data-is-best="true"' : ''} ${meal.isDailyShare ? 'data-is-daily="true"' : ''} ${meal.isInsightShare ? 'data-is-insight="true"' : ''}>삭제</button>
+                    </td>
                 </tr>
             `;
         }).join('');
@@ -571,13 +595,21 @@ async function renderFeedManagement() {
                             <th class="px-3 py-3 font-bold text-center w-[92px] whitespace-nowrap border-r border-slate-200">만족도/포만감</th>
                             <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[208px] min-w-[208px] border-r border-slate-200">사진</th>
                             <th class="px-3 py-3 font-bold text-center whitespace-nowrap w-[240px] min-w-[240px] border-r border-slate-200">코멘트</th>
-                            <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[72px] min-w-[72px]">상태/신고</th>
+                            <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[72px] min-w-[72px] border-r border-slate-200">상태/신고</th>
+                            <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[56px] min-w-[56px]">삭제</th>
                         </tr>
                     </thead>
                     <tbody>${rowsHtml}</tbody>
                 </table>
             </div>
         `;
+
+        container.querySelectorAll('.admin-feed-row-delete').forEach((btn) => {
+            btn.addEventListener('click', (ev) => {
+                ev.preventDefault();
+                void window.adminDeleteSingleFeedPost(btn);
+            });
+        });
         
         // 페이지네이션 렌더링
         renderFeedPagination(totalPages);
@@ -1304,7 +1336,83 @@ window.bulkUnbanPosts = async function() {
         console.error("일괄 금지 해제 실패:", e);
         alert("일괄 금지 해제 중 오류가 발생했습니다.");
     }
-}
+};
+
+/** 행의 삭제 버튼(data-*) 기준 단일 삭제 */
+window.adminDeleteSingleFeedPost = async function (btn) {
+    if (!(btn instanceof HTMLElement)) return;
+    const mealId = btn.dataset.mealId;
+    const userId = btn.dataset.userId;
+    const isBest = btn.dataset.isBest === 'true';
+    const isDaily = btn.dataset.isDaily === 'true';
+    const isInsight = btn.dataset.isInsight === 'true';
+    if (!mealId || !userId) {
+        alert('식별 정보가 없습니다.');
+        return;
+    }
+    const onlyShared = isBest || isDaily || isInsight;
+    const msg = onlyShared
+        ? '이 모먼트(베스트·일간·인사이트) 전용 공유 문서를 삭제합니다. 복구할 수 없습니다. 진행할까요?'
+        : '이 기록의 사용자 meals 문서와 모먼트 공유 문서를 삭제합니다. 사용자 타임라인에서도 사라집니다. 복구할 수 없습니다. 진행할까요?';
+    if (!confirm(msg)) return;
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    try {
+        await adminDeleteFeedPostInternal({ mealId, userId, isBest, isDaily, isInsight });
+        invalidateAdminFeedMonitoringCache();
+        await renderFeedManagement();
+    } catch (e) {
+        console.error('모먼트 삭제 실패:', e);
+        alert('삭제 중 오류가 발생했습니다: ' + (e?.message || e));
+    } finally {
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+    }
+};
+
+/** 체크된 행 일괄 삭제 */
+window.bulkDeleteFeedPosts = async function () {
+    const checkedBoxes = document.querySelectorAll('.feed-item-checkbox:checked');
+    if (checkedBoxes.length === 0) {
+        alert('선택된 게시물이 없습니다.');
+        return;
+    }
+    if (
+        !confirm(
+            `선택한 ${checkedBoxes.length}건을 삭제합니다.\n\n일반 기록: 사용자 meals 문서와 모먼트 공유 문서가 삭제됩니다.\n베스트·일간·인사이트: 모먼트 전용 공유 문서만 삭제됩니다.\n모두 복구할 수 없습니다. 계속하시겠습니까?`
+        )
+    ) {
+        return;
+    }
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    let ok = 0;
+    let fail = 0;
+    try {
+        for (const checkbox of checkedBoxes) {
+            const mealId = checkbox.dataset.mealId;
+            const userId = checkbox.dataset.userId;
+            const isBest = checkbox.dataset.isBest === 'true';
+            const isDaily = checkbox.dataset.isDaily === 'true';
+            const isInsight = checkbox.dataset.isInsight === 'true';
+            if (!mealId || !userId) continue;
+            try {
+                await adminDeleteFeedPostInternal({ mealId, userId, isBest, isDaily, isInsight });
+                ok++;
+            } catch (e) {
+                console.error(`삭제 실패 (${mealId}):`, e);
+                fail++;
+            }
+        }
+        invalidateAdminFeedMonitoringCache();
+        await renderFeedManagement();
+        alert(`삭제 완료: ${ok}건${fail ? `, 실패: ${fail}건` : ''}`);
+    } catch (e) {
+        console.error('일괄 삭제 실패:', e);
+        alert('일괄 삭제 중 오류가 발생했습니다: ' + (e?.message || e));
+    } finally {
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+    }
+};
 
 let adminFeedPhotoViewerState = { urls: [], index: 0 };
 

@@ -631,7 +631,8 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
 }
 /* 기록 모달 열림(entry-modal-open은 JS에서 토글): 네비는 가려지므로 액션 패딩에 바 높이를 이중으로 넣지 않음 */
 body.entry-modal-open .bottom-nav,
-body.entry-modal-open #navigationBarOverlay {
+body.entry-modal-open #navigationBarOverlay,
+body.entry-modal-open #mealSyncResendBtn.meal-sync-resend-fab {
     visibility: hidden !important;
     pointer-events: none !important;
 }
@@ -2527,6 +2528,66 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 #boardWriteBtn.board-write-fab.hidden {
     display: none !important;
     pointer-events: none;
+}
+
+/* 식사 기록 미전송 일괄 재전송 FAB — bottom-nav 위·글쓰기 FAB와 동일 위치(밀톡 탭일 때는 위로 겹침) */
+#mealSyncResendBtn.meal-sync-resend-fab {
+    position: fixed;
+    bottom: calc(72px + var(--safe-bottom));
+    right: calc(50% - min(46vw, 13rem) + 1.25rem);
+    z-index: 39;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(145deg, #f59e0b, #d97706) !important;
+    color: white !important;
+    box-shadow: 0 2px 12px rgba(217, 119, 6, 0.45);
+    border: none;
+    transition: box-shadow 0.2s, transform 0.15s, bottom 0.2s;
+}
+#mealSyncResendBtn.meal-sync-resend-fab:hover {
+    box-shadow: 0 4px 16px rgba(217, 119, 6, 0.5);
+}
+#mealSyncResendBtn.meal-sync-resend-fab:active {
+    transform: scale(0.96);
+}
+#mealSyncResendBtn.meal-sync-resend-fab.hidden {
+    display: none !important;
+    pointer-events: none;
+}
+/* 밀톡 화면에서 글쓰기 FAB( z-40 )와 겹치지 않도록 한 단 올림 */
+#mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--stacked {
+    bottom: calc(128px + var(--safe-bottom));
+}
+#mealSyncResendBtn.meal-sync-resend-fab .meal-sync-resend-fab__badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    min-width: 1.1rem;
+    height: 1.1rem;
+    padding: 0 4px;
+    border-radius: 9999px;
+    background: #b45309;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 0 2px #fff;
+}
+#mealSyncResendBtn.meal-sync-resend-fab .meal-sync-resend-fab__badge.hidden {
+    display: none !important;
+}
+/* 재시도·삭제실패만 남았을 때(주황 대기 0) — 배지 톤만 살짝 구분 */
+#mealSyncResendBtn.meal-sync-resend-fab .meal-sync-resend-fab__badge.meal-sync-resend-fab__badge--retry-only {
+    background: #b91c1c;
+    box-shadow: 0 0 0 2px #fff;
 }
 
 /* 밀톡 글쓰기: 하단 취소/등록 버튼이 네비에 가려지지 않도록 */

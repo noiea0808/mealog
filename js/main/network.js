@@ -3,6 +3,8 @@
  */
 import { showNetworkErrorOverlay, hideNetworkErrorOverlay } from '../ui.js';
 import { auth, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
+import { applyMealSyncAbandonOnOffline } from '../utils/meal-entry-pending.js';
+import { refreshMealSyncResendNavButton } from './meal-sync-resend-header.js';
 
 function mealogMainAppVisible() {
     try {
@@ -82,6 +84,23 @@ function registerForegroundRecovery() {
 /** main.js 초기화 시 한 번 호출 */
 export function registerMainNetworkListeners() {
     window.addEventListener('offline', () => {
+        try {
+            applyMealSyncAbandonOnOffline();
+            void import('../render/timeline.js').then((m) => {
+                try {
+                    m.updateTimelineMealEntryPendingIndicators();
+                } catch (_) {
+                    /* ignore */
+                }
+            });
+            try {
+                refreshMealSyncResendNavButton();
+            } catch (_) {
+                /* ignore */
+            }
+        } catch (_) {
+            /* ignore */
+        }
         if (mealogMainAppVisible() && window.currentUser) {
             showNetworkErrorOverlay({
                 message:
@@ -92,6 +111,26 @@ export function registerMainNetworkListeners() {
     window.addEventListener('online', () => {
         hideNetworkErrorOverlay();
         scheduleMealogNetworkRecovery(250, { forceAuthRefresh: true });
+        void import('../utils/meal-entry-pending.js').then((m) => {
+            try {
+                if (typeof m.clearStuckMealPendingFlags === 'function' && m.clearStuckMealPendingFlags()) {
+                    void import('../render/timeline.js').then((tl) => {
+                        try {
+                            tl.updateTimelineMealEntryPendingIndicators();
+                        } catch (_) {
+                            /* ignore */
+                        }
+                    });
+                }
+            } catch (_) {
+                /* ignore */
+            }
+        });
+        try {
+            refreshMealSyncResendNavButton();
+        } catch (_) {
+            /* ignore */
+        }
     });
     registerForegroundRecovery();
 }

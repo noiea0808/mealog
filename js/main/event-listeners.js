@@ -32,6 +32,7 @@ import {
 } from '../auth.js';
 import { registerDemoIntroModalHandlers } from '../demo-account.js';
 import { registerEscapeCloseModals } from './escape-close-modals.js';
+import { bindMealSyncResendNavButtonOnce } from './meal-sync-resend-header.js';
 import { kakaoTalkLogoSvgHtml } from '../utils/kakao-brand.js';
 import {
     registerDemoNavGuideHandlers,
@@ -680,5 +681,6 @@ export function initEventListeners() {
         deleteAccountConfirmActionBtn.addEventListener('click', confirmDeleteAccountAction);
     }
 
+    bindMealSyncResendNavButtonOnce();
     registerEscapeCloseModals();
 }

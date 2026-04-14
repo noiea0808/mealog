@@ -18,28 +18,36 @@ import {
 import { processPhotosToGroups } from '../render/post-group-utils.js';
 import {
     clearStuckMealPendingFlags,
-    clearMealOptimisticSavePending,
     onMealDocFirestoreServerAcknowledged,
-    hydrateMealSyncErrorIdsFromStorage
+    hydrateMealSyncErrorIdsFromStorage,
+    hydrateMealSyncAbandonedIdsFromStorage,
+    markMealEntryServerSynced
 } from '../utils/meal-entry-pending.js';
+import { findUniqueMeals, dedupeMealListOnly } from '../utils/find-unique-meals.js';
+import { getMealSyncManager } from '../utils/meal-sync-manager.js';
 
 /**
  * meals onSnapshot에서 '서버 반영 완료'로 동기화 도트를 풀지 여부.
  * - 기본 onSnapshot은 데이터 변경이 없으면 콜백이 안 올라와, 온라인에서 서버 커밋 직후(hasPendingWrites만 false로 바뀜) onMealDoc이 영원히 안 불리는 문제가 있다 → includeMetadataChanges 필수.
  * - 오프라인·일부 캐시 스냅샷에서는 hasPendingWrites가 false로만 오는 경우가 있어, navigator.onLine일 때만 서버 ack로 인정한다.
+ * - 증분(docChanges)에서는 fromCache만으로 초록 처리하면 저장 직후 가짜 ack가 나와 grace(레드닷)가 막힌다 → 기본은 서버에서 온 스냅샷(fromCache 아님)만 인정.
+ * @param {{ allowFromCacheAck?: boolean }} [options] — 초기/폴백 전체 스냅샷 1회만 true 권장
  */
-function mealDocSnapshotAppearsServerAcked(metadata) {
+function mealDocSnapshotAppearsServerAcked(metadata, options = {}) {
     if (!metadata || metadata.hasPendingWrites) return false;
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+    const allowCache = options.allowFromCacheAck === true;
+    if (!allowCache && metadata.fromCache === true) return false;
     return true;
 }
 
-/** 리스너 병합 시 서버 스냅샷이 실패 뱃지·플래그를 지우지 않도록 — 맵만 보면 레코드와 어긋날 수 있음 */
+/** 리스너 병합 시 서버 스냅샷이 실패 뱃지·플래그를 지우지 않도록 — MealSyncManager.errorIds·행 플래그 기준 */
 function shouldPreserveMealSaveFailureOnMerge(localRecord, docDataId) {
+    const mgr = getMealSyncManager();
     const did = docDataId != null ? String(docDataId) : '';
-    if (typeof window !== 'undefined' && did && window._mealEntrySaveFailedIds?.[did]) return true;
+    if (did && mgr.hasErrorId(did)) return true;
     const lid = localRecord?.id != null ? String(localRecord.id) : '';
-    if (typeof window !== 'undefined' && lid && window._mealEntrySaveFailedIds?.[lid]) return true;
+    if (lid && mgr.hasErrorId(lid)) return true;
     if (localRecord?._localSaveFailed === true || localRecord?.is_sync_error === true) return true;
     return false;
 }
@@ -48,64 +56,9 @@ function shouldPreserveMealSaveFailureOnMerge(localRecord, docDataId) {
 function mergePreserveLocalSaveFailed(docData, localRecord) {
     const id = docData?.id != null ? String(docData.id) : '';
     const fromLocal = localRecord?._localSaveFailed === true || localRecord?.is_sync_error === true;
-    const fromMap = typeof window !== 'undefined' && id && window._mealEntrySaveFailedIds?.[id];
+    const fromMap = id && getMealSyncManager().hasErrorId(id);
     if (!fromLocal && !fromMap) return docData;
     return { ...docData, _localSaveFailed: true, is_sync_error: true };
-}
-
-const MAIN_MEAL_SLOTS_FOR_TEMP_DEDUP = new Set(['morning', 'lunch', 'dinner']);
-
-/** 본식 슬롯: 서버 문서가 이미 있는데 temp_* 행이 같이 남은 경우 제거 */
-function dedupeMainSlotDuplicateTemps(mealsArr) {
-    if (!Array.isArray(mealsArr)) return mealsArr;
-    return mealsArr.filter((m, _, arr) => {
-        if (!m?.id || !String(m.id).startsWith('temp_')) return true;
-        if (!MAIN_MEAL_SLOTS_FOR_TEMP_DEDUP.has(m.slotId)) return true;
-        const hasReal = arr.some(
-            (o) =>
-                o &&
-                o !== m &&
-                !String(o.id).startsWith('temp_') &&
-                o.date === m.date &&
-                o.slotId === m.slotId
-        );
-        if (hasReal) {
-            try {
-                delete window._pendingPhotoUploadByEntryId?.[m.id];
-                delete window._pendingPhotoUploadBySlotKey?.[`${m.date || ''}__${m.slotId || ''}`];
-                clearMealOptimisticSavePending(m.id);
-            } catch (_) {
-                /* ignore */
-            }
-            return false;
-        }
-        return true;
-    });
-}
-
-/**
- * 초기/폴백 등 전체 스냅샷으로 mealHistory를 바꿀 때,
- * 서버에 아직 없는 temp_*·저장 실패·업로드 대기 행을 이전 배열에서 보존한다.
- */
-function mergeServerMealRowsWithLocalOrphans(serverRows, prevHist) {
-    const serverIds = new Set((serverRows || []).map((m) => String(m?.id)));
-    const prev = Array.isArray(prevHist) ? prevHist : [];
-    const orphans = prev.filter((m) => {
-        if (!m?.id) return false;
-        const id = String(m.id);
-        if (serverIds.has(id)) return false;
-        if (id.startsWith('temp_')) return true;
-        if (m._localSaveFailed === true || m.is_sync_error === true) return true;
-        if (typeof window !== 'undefined' && window._mealEntrySaveFailedIds?.[id]) return true;
-        if (window._pendingPhotoUploadByEntryId?.[id]) return true;
-        if (window._mealOptimisticPendingTempIds?.[id]) return true;
-        return false;
-    });
-    const merged = [...(serverRows || []), ...orphans].sort(
-        (a, b) =>
-            (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || '')
-    );
-    return dedupeMainSlotDuplicateTemps(merged);
 }
 
 /** 세션당 1회만 실행 (Firestore 읽기 절감) */
@@ -135,6 +88,7 @@ function mergeEntryModalGaugesIntoUserSettings() {
 
 export function setupListeners(userId, callbacks) {
     hydrateMealSyncErrorIdsFromStorage();
+    hydrateMealSyncAbandonedIdsFromStorage();
     const { onSettingsUpdate, onDataUpdate, settingsUnsubscribe: oldSettingsUnsubscribe, dataUnsubscribe: oldDataUnsubscribe } = callbacks;
     
     // 사용자 ID 확인 및 로깅
@@ -769,6 +723,11 @@ export function setupListeners(userId, callbacks) {
                 );
             }
             mergeStatsIntoDaily();
+            snap.docs.forEach((d) => {
+                if (mealDocSnapshotAppearsServerAcked(d.metadata, { allowFromCacheAck: true })) {
+                    markMealEntryServerSynced(d.id);
+                }
+            });
             isInitialLoad = false;
             if (onDataUpdate) onDataUpdate();
             import('../db.js').then(({ loadMyShares }) => {
@@ -788,18 +747,18 @@ export function setupListeners(userId, callbacks) {
                 .map((d) => {
                     const row = { id: d.id, ...d.data() };
                     const sid = String(d.id);
-                    if (typeof window !== 'undefined' && window._mealEntrySaveFailedIds?.[sid]) {
+                    if (getMealSyncManager().hasErrorId(sid)) {
                         row._localSaveFailed = true;
                         row.is_sync_error = true;
                     }
                     return row;
                 })
                 .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-            window.mealHistory = mergeServerMealRowsWithLocalOrphans(serverMapped, prevForMerge);
+            window.mealHistory = findUniqueMeals(serverMapped, prevForMerge);
             window.loadedMealsDateRange = { start: cutoffDateStr, end: todayStr };
             isInitialLoad = false;
             snap.docs.forEach((d) => {
-                if (mealDocSnapshotAppearsServerAcked(d.metadata)) {
+                if (mealDocSnapshotAppearsServerAcked(d.metadata, { allowFromCacheAck: true })) {
                     onMealDocFirestoreServerAcknowledged(d.id, null);
                 }
             });
@@ -817,12 +776,14 @@ export function setupListeners(userId, callbacks) {
                 }
                 const docData = { id: change.doc.id, ...change.doc.data() };
                 if (change.type === 'added' || change.type === 'modified') {
-                    const serverAcked = mealDocSnapshotAppearsServerAcked(change.doc.metadata);
+                    const serverAcked = mealDocSnapshotAppearsServerAcked(change.doc.metadata, {
+                        allowFromCacheAck: false
+                    });
                     const index = window.mealHistory.findIndex(m => m.id === docData.id);
                     const slotKey = `${docData.date || ''}__${docData.slotId || ''}`;
+                    const mgrSync = getMealSyncManager();
                     const isPendingUpload = Boolean(
-                        window._pendingPhotoUploadByEntryId?.[docData.id] ||
-                        window._pendingPhotoUploadBySlotKey?.[slotKey]
+                        mgrSync.hasPendingPhotoEntry(docData.id) || mgrSync.hasPendingPhotoSlot(slotKey)
                     );
                     if (index >= 0) {
                         const localRecord = window.mealHistory[index];
@@ -874,7 +835,8 @@ export function setupListeners(userId, callbacks) {
                             const hasTempBase64 = tempPhotos.some(
                                 (p) => typeof p === 'string' && p.startsWith('data:image')
                             );
-                            const keepTempPreview = (isPendingUpload || Boolean(window._pendingPhotoUploadByEntryId?.[tempRecord.id])) && hasTempBase64;
+                            const keepTempPreview =
+                                (isPendingUpload || mgrSync.hasPendingPhotoEntry(tempRecord.id)) && hasTempBase64;
                             const mergedTemp = keepTempPreview
                                 ? { ...docData, photos: [...tempPhotos] }
                                 : docData;
@@ -894,9 +856,8 @@ export function setupListeners(userId, callbacks) {
                                     p.entryId === tempRecord.id ? { ...p, entryId: docData.id } : p
                                 ));
                             }
-                            if (window._pendingPhotoUploadByEntryId?.[tempRecord.id]) {
-                                window._pendingPhotoUploadByEntryId[docData.id] = true;
-                                delete window._pendingPhotoUploadByEntryId[tempRecord.id];
+                            if (mgrSync.hasPendingPhotoEntry(tempRecord.id)) {
+                                mgrSync.movePendingPhotoTempToReal(tempRecord.id, docData.id);
                             }
                         } else {
                             // 새로 추가된 문서 (1개월 범위 내)
@@ -919,7 +880,7 @@ export function setupListeners(userId, callbacks) {
             
             if (hasChanges) {
                 window.mealHistory.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-                window.mealHistory = dedupeMainSlotDuplicateTemps(window.mealHistory);
+                window.mealHistory = dedupeMealListOnly(window.mealHistory);
             }
         }
 
@@ -945,6 +906,7 @@ export function setupListeners(userId, callbacks) {
             /* 이미 끊긴 리스너일 수 있음 */
         }
         const fallbackQuery = collection(db, 'artifacts', appId, 'users', userId, 'meals');
+        let fallbackMealsFirstSnapshot = true;
         mealsListenerUnsub = onSnapshot(
             fallbackQuery,
             { includeMetadataChanges: true },
@@ -987,6 +949,11 @@ export function setupListeners(userId, callbacks) {
                         );
                     }
                     mergeStatsIntoDaily();
+                    snap.docs.forEach((d) => {
+                        if (mealDocSnapshotAppearsServerAcked(d.metadata, { allowFromCacheAck: true })) {
+                            markMealEntryServerSynced(d.id);
+                        }
+                    });
                     import('../db.js').then(({ loadMyShares }) => {
                         loadMyShares().then((list) => {
                             window.sharedPhotos = list;
@@ -1001,19 +968,24 @@ export function setupListeners(userId, callbacks) {
                         .map((d) => {
                             const row = { id: d.id, ...d.data() };
                             const sid = String(d.id);
-                            if (typeof window !== 'undefined' && window._mealEntrySaveFailedIds?.[sid]) {
+                            if (getMealSyncManager().hasErrorId(sid)) {
                                 row._localSaveFailed = true;
                                 row.is_sync_error = true;
                             }
                             return row;
                         })
                         .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-                    window.mealHistory = mergeServerMealRowsWithLocalOrphans(serverMapped, prevForMerge);
+                    window.mealHistory = findUniqueMeals(serverMapped, prevForMerge);
                     snap.docs.forEach((d) => {
-                        if (mealDocSnapshotAppearsServerAcked(d.metadata)) {
+                        if (
+                            mealDocSnapshotAppearsServerAcked(d.metadata, {
+                                allowFromCacheAck: fallbackMealsFirstSnapshot
+                            })
+                        ) {
                             onMealDocFirestoreServerAcknowledged(d.id, null);
                         }
                     });
+                    fallbackMealsFirstSnapshot = false;
                 }
                 if (onDataUpdate) onDataUpdate();
             },

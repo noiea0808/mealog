@@ -11,16 +11,21 @@ import { escapeHtml } from './utils.js';
 import { formatMealMenuDisplayLine } from '../utils/meal-display-line.js';
 import { getRecordCountForIso } from '../meal-record-count.js';
 import {
+    getMealRowSyncLeadKind,
     isMealEntryPendingSync,
     isMealEntrySaveFailed,
+    isMealEntrySyncAbandoned,
+    isMealEntrySyncRedoable,
     isMealEntryDeleting,
+    isMealEntryDeleteFailed,
     isMealEntryRowBlocked,
     clearStuckMealPendingFlags
 } from '../utils/meal-entry-pending.js';
+import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.js';
 
 /**
  * 기록 행 제목 왼쪽: 신호등형 동기화 도트(항상 표시)
- * 주황 = 등록/삭제 처리 중, 초록 = 서버 반영 완료, 빨강 = 실패(탭 시 재시도)
+ * 주황 = 대기/미확인, 초록 = 서버 반영 확인됨, 빨강 = 등록 실패 또는 오프라인 등 미확인(탭 시 재시도)
  */
 function mealEntrySyncLeadHtml(record) {
     if (!record || record.id == null || record.id === '') return '';
@@ -28,16 +33,31 @@ function mealEntrySyncLeadHtml(record) {
     const dot = (bg) =>
         `<span class="inline-block h-[7.8px] w-[7.8px] shrink-0 rounded-full ${bg} ring-1 ring-white/90 ring-inset" aria-hidden="true"></span>`;
 
-    if (isMealEntrySaveFailed(record)) {
-        return `<span class="meal-sync-retry-btn inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none cursor-pointer" data-meal-sync-retry="${eid}" role="button" tabindex="0" title="서버 등록 실패 — 탭하여 재등록" aria-label="등록 실패, 탭하여 재등록">${dot('bg-red-500')}</span><span class="sr-only">등록 실패</span>`;
+    const kind = getMealRowSyncLeadKind(record);
+    switch (kind) {
+        case 'deleting':
+            return `<span class="inline-flex shrink-0 items-center text-[10px] font-semibold leading-none text-orange-600" title="삭제 반영 중" aria-label="삭제 반영 중">삭제중</span>`;
+        case 'delete_failed':
+            return `<span class="inline-flex shrink-0 items-center text-[10px] font-semibold leading-none text-red-600" title="삭제에 실패했습니다. 기록을 열어 다시 시도할 수 있습니다." aria-label="삭제 실패">삭제실패</span>`;
+        case 'redoable_failed': {
+            const title = '서버 등록 실패 — 탭하여 재등록';
+            const sr = '등록 실패';
+            return `<span class="meal-sync-retry-btn inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none cursor-pointer" data-meal-sync-retry="${eid}" role="button" tabindex="0" title="${escapeHtml(title)}" aria-label="${escapeHtml(sr)}, 탭하여 재시도">${dot('bg-red-500')}</span><span class="sr-only">${escapeHtml(sr)}</span>`;
+        }
+        case 'redoable_abandoned': {
+            const title = '연결 끊김 · 서버 미확인 — 탭하여 재시도';
+            const sr = '등록 미확인';
+            return `<span class="meal-sync-retry-btn inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none cursor-pointer" data-meal-sync-retry="${eid}" role="button" tabindex="0" title="${escapeHtml(title)}" aria-label="${escapeHtml(sr)}, 탭하여 재시도">${dot('bg-red-500')}</span><span class="sr-only">${escapeHtml(sr)}</span>`;
+        }
+        case 'pending':
+            return `<span class="inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none" title="등록 반영 중" aria-label="등록 반영 중">${dot('bg-orange-500')}</span><span class="sr-only">등록 반영 중</span>`;
+        case 'await_server_ack':
+            return `<span class="inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none" title="서버 반영 확인 전" aria-label="서버 반영 확인 전">${dot('bg-orange-500')}</span><span class="sr-only">서버 반영 확인 전</span>`;
+        case 'synced':
+            return `<span class="inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none" title="서버 반영 완료" aria-label="서버 반영 완료">${dot('bg-emerald-500')}</span><span class="sr-only">서버 반영 완료</span>`;
+        default:
+            return '';
     }
-    if (isMealEntryDeleting(record)) {
-        return `<span class="inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none" title="삭제 반영 중" aria-label="삭제 반영 중">${dot('bg-orange-500')}</span><span class="sr-only">삭제 반영 중</span>`;
-    }
-    if (isMealEntryPendingSync(record)) {
-        return `<span class="inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none" title="등록 반영 중" aria-label="등록 반영 중">${dot('bg-orange-500')}</span><span class="sr-only">등록 반영 중</span>`;
-    }
-    return `<span class="inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none" title="서버 반영 완료" aria-label="서버 반영 완료">${dot('bg-emerald-500')}</span><span class="sr-only">서버 반영 완료</span>`;
 }
 
 function mealCardRelativeClass(record) {
@@ -47,10 +67,11 @@ function mealCardRelativeClass(record) {
 
 function mealEntryRowPointerClass(record) {
     if (!record) return 'cursor-pointer active:scale-[0.98]';
-    if (isMealEntrySaveFailed(record)) return 'cursor-pointer active:scale-[0.98]';
     if (isMealEntryDeleting(record) || isMealEntryPendingSync(record)) {
         return 'cursor-wait pointer-events-none opacity-[0.93]';
     }
+    if (isMealEntryDeleteFailed(record)) return 'cursor-pointer active:scale-[0.98]';
+    if (isMealEntrySyncRedoable(record)) return 'cursor-pointer active:scale-[0.98]';
     return 'cursor-pointer active:scale-[0.98]';
 }
 
@@ -130,13 +151,15 @@ function buildSnackTagRowInnerHtml(r) {
 
 function applySnackTagPendingUi(tagEl, record) {
     const deleting = isMealEntryDeleting(record);
-    const failed = isMealEntrySaveFailed(record);
+    const deleteFailed = isMealEntryDeleteFailed(record);
+    const redoable = isMealEntrySyncRedoable(record);
     const pending = isMealEntryPendingSync(record);
     tagEl.innerHTML = buildSnackTagRowInnerHtml(record);
     tagEl.querySelectorAll('.meal-entry-deleting-overlay').forEach((n) => n.remove());
     let cls = 'snack-tag relative inline-flex items-center gap-0.5 rounded-md ';
     if (deleting) cls += 'cursor-wait pointer-events-none opacity-90';
-    else if (failed) cls += 'cursor-pointer active:bg-slate-50 ring-1 ring-red-200/90';
+    else if (deleteFailed) cls += 'cursor-pointer active:bg-slate-50 ring-1 ring-amber-200/90';
+    else if (redoable) cls += 'cursor-pointer active:bg-slate-50 ring-1 ring-red-200/90';
     else if (pending) cls += 'cursor-wait pointer-events-none opacity-90';
     else cls += 'cursor-pointer active:bg-slate-50';
     tagEl.className = cls;
@@ -175,11 +198,32 @@ function applyCardRowPointerAndClick(rowEl, record) {
  * mealHistory와 동기화해 data-entry-id 행만 갱신한다.
  */
 export function updateTimelineMealEntryPendingIndicators() {
-    if (!window.currentUser) return;
+    if (!window.currentUser) {
+        try {
+            refreshMealSyncResendNavButton();
+        } catch (_) {
+            /* ignore */
+        }
+        return;
+    }
     /* 탭이 타임라인이 아니어도 DOM이 남아 있으면 갱신(저장 실패 직후 다른 탭에 있을 때 도트·재시도 버튼 동기화) */
-    if (window.currentSearchQuery && window.currentSearchQuery.trim()) return;
+    if (window.currentSearchQuery && window.currentSearchQuery.trim()) {
+        try {
+            refreshMealSyncResendNavButton();
+        } catch (_) {
+            /* ignore */
+        }
+        return;
+    }
     const container = document.getElementById('timelineContainer');
-    if (!container) return;
+    if (!container) {
+        try {
+            refreshMealSyncResendNavButton();
+        } catch (_) {
+            /* ignore */
+        }
+        return;
+    }
     clearStuckMealPendingFlags();
 
     container.querySelectorAll('[data-entry-id]').forEach((el) => {
@@ -199,6 +243,11 @@ export function updateTimelineMealEntryPendingIndicators() {
             applyCardRowPointerAndClick(el, record);
         }
     });
+    try {
+        refreshMealSyncResendNavButton();
+    } catch (_) {
+        /* ignore */
+    }
 }
 
 let mealSyncRetryDelegationBound = false;
@@ -1026,17 +1075,20 @@ export function renderTimeline() {
                     <div class="flex-1 flex flex-wrap gap-2 items-center">
                         ${records.length > 0 ? records.map((r) => {
                             const tagDeleting = isMealEntryDeleting(r);
+                            const tagDeleteFailed = isMealEntryDeleteFailed(r);
                             const tagPending = isMealEntryPendingSync(r);
-                            const tagFailed = isMealEntrySaveFailed(r);
+                            const tagRedoable = isMealEntrySyncRedoable(r);
                             const tagBusy = tagDeleting || tagPending;
                             const tagClick = tagBusy
                                 ? ''
                                 : `onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})'`;
                             const tagCls = tagDeleting
                                 ? 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-wait pointer-events-none opacity-90'
+                                : tagDeleteFailed
+                                  ? 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-pointer active:bg-slate-50 ring-1 ring-amber-200/90'
                                 : tagPending
                                   ? 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-wait pointer-events-none opacity-90'
-                                  : tagFailed
+                                  : tagRedoable
                                     ? 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-pointer active:bg-slate-50 ring-1 ring-red-200/90'
                                     : 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-pointer active:bg-slate-50';
                             return `<div ${tagClick} class="${tagCls}" data-entry-id="${escapeHtml(String(r.id))}">
