@@ -790,18 +790,27 @@ export function updateHeaderUI() {
 window.showLoading = showLoading;
 window.hideLoading = hideLoading;
 
-/** Firestore / fetch 등에서 네트워크성 오류로 추정되는지 (인덱스·권한 오류는 제외) */
-export function isLikelyNetworkError(err) {
+/**
+ * 전송 계층( fetch / Firestore / Auth HTTP ) 실패로 보이는지 — navigator.onLine 은 보지 않음.
+ * 앱 로컬 오프라인 플래그 강제 시에 사용.
+ */
+export function isLikelyNetworkTransportFailure(err) {
     if (!err) return false;
-    try {
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
-    } catch (_) {}
     const code = String(err.code || '');
-    const msg = String(err.message || (typeof err.toString === 'function' ? err.toString() : '') || '').toLowerCase();
+    const rawMsg = String(err.message || (typeof err.toString === 'function' ? err.toString() : '') || '');
+    const msg = rawMsg.toLowerCase();
     const networkCodes = ['unavailable', 'deadline-exceeded', 'resource-exhausted'];
     if (networkCodes.includes(code)) return true;
+    if (code === 'auth/network-request-failed') return true;
     if (code === 'failed-precondition') return false;
     if (code === 'permission-denied') return false;
+    if (
+        /err_internet_disconnected|err_network_changed|err_name_not_resolved|err_connection_timed_out|err_connection_reset|err_network_io_suspended|net::err_/i.test(
+            rawMsg
+        )
+    ) {
+        return true;
+    }
     if (
         /failed to fetch|networkerror|network request failed|load failed|fetcherror/i.test(msg) ||
         /connection.*(refused|reset|aborted)|err_connection|net::err|quic|econnreset|enotfound|etimedout|timeout/i.test(
@@ -812,6 +821,15 @@ export function isLikelyNetworkError(err) {
         return true;
     }
     return false;
+}
+
+/** Firestore / fetch 등에서 네트워크성 오류로 추정되는지 (인덱스·권한 오류는 제외) */
+export function isLikelyNetworkError(err) {
+    if (!err) return false;
+    try {
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+    } catch (_) {}
+    return isLikelyNetworkTransportFailure(err);
 }
 
 const DEFAULT_NETWORK_ERROR_MESSAGE =

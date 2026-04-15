@@ -41,6 +41,7 @@ import {
     tryCloseDemoNavGuideFromBack
 } from '../demo-nav-guide.js';
 import { setupGalleryPullToRefresh } from './gallery-pull-refresh.js';
+import { ensureMomentImageLightbox } from './moment-image-lightbox.js';
 import {
     openSettings,
     switchSettingsTab,
@@ -434,6 +435,7 @@ export function initEventListeners() {
         });
     }
     setupGalleryPullToRefresh();
+    ensureMomentImageLightbox();
 
     const navBoard = document.getElementById('nav-board');
     if (navBoard) {

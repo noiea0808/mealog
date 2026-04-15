@@ -24,9 +24,49 @@ import {
 import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.js';
 
 /**
- * 기록 행 제목 왼쪽: 신호등형 동기화 도트(항상 표시)
- * 주황 = 대기/미확인, 초록 = 서버 반영 확인됨, 빨강 = 등록 실패 또는 오프라인 등 미확인(탭 시 재시도)
+ * 기록 행 제목 왼쪽: 동기화 표시
+ * — 삭제예정·등록예정: 밝은 칩 / 삭제 진행·등록 진행(온라인): 빨간 도트 / 동기화 필요: 재시도 도트
  */
+function mealLeadChip(text, title, variant = 'neutral') {
+    const styles = {
+        neutral: 'border-slate-400 text-slate-800 bg-white',
+        /* 예정·안내 칩 — 보더·글자 모두 한 톤 밝게 */
+        warn: 'border-amber-200 text-amber-700 bg-amber-50',
+        danger: 'border-red-500 text-red-800 bg-red-50'
+    };
+    const cls = styles[variant] || styles.neutral;
+    const t = escapeHtml(title);
+    const x = escapeHtml(text);
+    return `<span class="inline-flex shrink-0 items-center rounded px-1 py-0.5 text-[10px] font-semibold leading-tight border border-solid ${cls}" title="${t}" aria-label="${t}">${x}</span>`;
+}
+
+/**
+ * 오프라인 UI 분기 — navigator.onLine 만으로는 부족함(끊겼는데도 true인 경우 다수).
+ * 연결 불가 전체 오버레이가 떠 있으면 동일하게 ‘예정’ 칩을 쓴다.
+ */
+function isMealSyncUiEffectiveOffline() {
+    if (appState.localNetworkForcedOffline) return true;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+    try {
+        const el = document.getElementById('networkErrorOverlay');
+        if (el && !el.classList.contains('hidden')) return true;
+    } catch (_) {
+        /* ignore */
+    }
+    return false;
+}
+
+/** 동기화 진행(재시도 버튼 아님) — 빨간 도트 */
+function mealLeadSyncRedDot(srLabel, title) {
+    const dot = (bg) =>
+        `<span class="inline-block h-[7.8px] w-[7.8px] shrink-0 rounded-full ${bg} ring-1 ring-white/90 ring-inset" aria-hidden="true"></span>`;
+    const t = escapeHtml(title);
+    const sr = escapeHtml(srLabel);
+    return `<span class="inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none" title="${t}" aria-label="${sr}">${dot(
+        'bg-red-500'
+    )}</span><span class="sr-only">${sr}</span>`;
+}
+
 function mealEntrySyncLeadHtml(record) {
     if (!record || record.id == null || record.id === '') return '';
     const eid = escapeHtml(String(record.id));
@@ -34,25 +74,58 @@ function mealEntrySyncLeadHtml(record) {
         `<span class="inline-block h-[7.8px] w-[7.8px] shrink-0 rounded-full ${bg} ring-1 ring-white/90 ring-inset" aria-hidden="true"></span>`;
 
     const kind = getMealRowSyncLeadKind(record);
+    const offline = isMealSyncUiEffectiveOffline();
+
+    if (offline) {
+        switch (kind) {
+            case 'delete_scheduled':
+            case 'delete_inflight':
+                return mealLeadChip(
+                    '삭제예정',
+                    '오프라인이라 서버로 삭제가 아직 진행되지 않았어요. 연결되면 반영돼요.',
+                    'warn'
+                );
+            case 'pending':
+            case 'await_server_ack':
+            case 'register_scheduled':
+                return mealLeadChip(
+                    '등록예정',
+                    '오프라인이라 서버에 등록·수정이 아직 반영되지 않았어요. 연결되면 반영돼요.',
+                    'warn'
+                );
+            default:
+                break;
+        }
+    }
+
     switch (kind) {
-        case 'deleting':
-            return `<span class="inline-flex shrink-0 items-center text-[10px] font-semibold leading-none text-orange-600" title="삭제 반영 중" aria-label="삭제 반영 중">삭제중</span>`;
-        case 'delete_failed':
-            return `<span class="inline-flex shrink-0 items-center text-[10px] font-semibold leading-none text-red-600" title="삭제에 실패했습니다. 기록을 열어 다시 시도할 수 있습니다." aria-label="삭제 실패">삭제실패</span>`;
-        case 'redoable_failed': {
-            const title = '서버 등록 실패 — 탭하여 재등록';
-            const sr = '등록 실패';
-            return `<span class="meal-sync-retry-btn inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none cursor-pointer" data-meal-sync-retry="${eid}" role="button" tabindex="0" title="${escapeHtml(title)}" aria-label="${escapeHtml(sr)}, 탭하여 재시도">${dot('bg-red-500')}</span><span class="sr-only">${escapeHtml(sr)}</span>`;
-        }
-        case 'redoable_abandoned': {
-            const title = '연결 끊김 · 서버 미확인 — 탭하여 재시도';
-            const sr = '등록 미확인';
-            return `<span class="meal-sync-retry-btn inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none cursor-pointer" data-meal-sync-retry="${eid}" role="button" tabindex="0" title="${escapeHtml(title)}" aria-label="${escapeHtml(sr)}, 탭하여 재시도">${dot('bg-red-500')}</span><span class="sr-only">${escapeHtml(sr)}</span>`;
-        }
+        case 'delete_scheduled':
+            return mealLeadChip(
+                '삭제예정',
+                '삭제는 예약된 상태예요. 서버에 반영되면 목록에서 사라져요.',
+                'warn'
+            );
+        case 'delete_inflight':
+            return mealLeadSyncRedDot('삭제 중', '삭제를 서버에 보내는 중이에요.');
+        case 'register_scheduled':
+            return mealLeadChip(
+                '등록예정',
+                '서버에 아직 반영되지 않았어요. 연결이 안정되면 자동으로 반영되거나, 동기화 버튼으로 다시 보낼 수 있어요.',
+                'warn'
+            );
         case 'pending':
-            return `<span class="inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none" title="등록 반영 중" aria-label="등록 반영 중">${dot('bg-orange-500')}</span><span class="sr-only">등록 반영 중</span>`;
+            return mealLeadSyncRedDot('등록 중', '등록·수정 내용을 서버에 보내는 중이에요.');
         case 'await_server_ack':
-            return `<span class="inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none" title="서버 반영 확인 전" aria-label="서버 반영 확인 전">${dot('bg-orange-500')}</span><span class="sr-only">서버 반영 확인 전</span>`;
+            return mealLeadSyncRedDot('서버 반영 대기', '서버 반영을 확인하는 중이에요.');
+        case 'delete_failed':
+        case 'redoable_failed':
+        case 'redoable_abandoned': {
+            const title = '서버와 동기화되지 않았어요. 탭하면 다시 시도해요.';
+            const sr = '동기화 필요';
+            return `<span class="meal-sync-retry-btn inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none cursor-pointer" data-meal-sync-retry="${eid}" role="button" tabindex="0" title="${escapeHtml(title)}" aria-label="${escapeHtml(sr)}, 탭하여 재시도">${dot(
+                'bg-red-500'
+            )}</span><span class="sr-only">${escapeHtml(sr)}</span>`;
+        }
         case 'synced':
             return `<span class="inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none" title="서버 반영 완료" aria-label="서버 반영 완료">${dot('bg-emerald-500')}</span><span class="sr-only">서버 반영 완료</span>`;
         default:
@@ -260,7 +333,16 @@ function ensureMealSyncRetryClickDelegation() {
             const btn = e.target?.closest?.('.meal-sync-retry-btn');
             if (!btn || !document.getElementById('timelineContainer')?.contains(btn)) return;
             const id = btn.getAttribute('data-meal-sync-retry');
-            if (!id || typeof window.retryMealEntrySync !== 'function') return;
+            if (!id) return;
+            const rec = window.mealHistory?.find((m) => m && String(m.id) === String(id));
+            if (rec && isMealEntryDeleteFailed(rec)) {
+                if (typeof window.retryMealEntryDeleteSync !== 'function') return;
+                e.preventDefault();
+                e.stopPropagation();
+                window.retryMealEntryDeleteSync(id);
+                return;
+            }
+            if (typeof window.retryMealEntrySync !== 'function') return;
             e.preventDefault();
             e.stopPropagation();
             window.retryMealEntrySync(id);

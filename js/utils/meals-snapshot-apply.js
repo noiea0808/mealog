@@ -20,8 +20,11 @@ import {
 import {
     clearStuckMealPendingFlags,
     markMealEntryServerSynced,
+    markMealEntryDeleteComplete,
     onMealDocFirestoreServerAcknowledged
 } from './meal-entry-pending.js';
+import { applyOptimisticMealDelete } from './meal-delete-optimistic.js';
+import { showToast } from '../ui.js';
 
 function triggerLoadMyShares() {
     void import('../db.js').then(({ loadMyShares }) => {
@@ -135,14 +138,34 @@ export function applyMealsSnapshotPrimary(p) {
         changes.forEach((change) => {
             if (change.type === 'removed') {
                 const rid = change.doc.id;
-                window.mealHistory = window.mealHistory.filter((m) => m.id !== rid);
+                /** 로컬 큐만 반영된 removed(오프라인·hasPendingWrites)면 행을 유지해 삭제 예정·FAB가 맞게 동작 */
+                const serverAckedRemove = mealDocSnapshotAppearsServerAcked(change.doc.metadata, {
+                    allowFromCacheAck: true
+                });
+                if (!serverAckedRemove) {
+                    return;
+                }
+                const prev = window.mealHistory.find((m) => m.id === rid);
+                const showDeleteToast = !!(prev && getMealSyncManager().isDeleting(prev));
+                markMealEntryDeleteComplete(rid);
+                if (prev) {
+                    const ctx = applyOptimisticMealDelete(rid, prev);
+                    if (ctx) {
+                        if (showDeleteToast) showToast('기록이 삭제되었습니다.', 'success');
+                    } else {
+                        window.mealHistory = window.mealHistory.filter((m) => m.id !== rid);
+                    }
+                } else {
+                    window.mealHistory = window.mealHistory.filter((m) => m.id !== rid);
+                }
                 hasChanges = true;
                 return;
             }
             const docData = { id: change.doc.id, ...change.doc.data() };
             if (change.type === 'added' || change.type === 'modified') {
                 const serverAcked = mealDocSnapshotAppearsServerAcked(change.doc.metadata, {
-                    allowFromCacheAck: false
+                    /* 초기 로드와 동일: 캐시 메타만 온 modified에서도 서버 반영 완료로 인정 (그렇지 않으면 ack 누락 → 초록 도트가 재시작 전까지 갱신 안 됨) */
+                    allowFromCacheAck: true
                 });
                 const index = window.mealHistory.findIndex((m) => m.id === docData.id);
                 const slotKey = `${docData.date || ''}__${docData.slotId || ''}`;

@@ -4,8 +4,6 @@
  */
 import { getMealSyncManager } from './meal-sync-manager.js';
 
-const MAIN_MEAL_SLOTS = new Set(['morning', 'lunch', 'dinner']);
-
 function sortMealsDesc(a, b) {
     return (
         (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || '')
@@ -23,15 +21,17 @@ function isOrphanCandidate(m, serverIds) {
     if (mgr.hasAbandonedId(id)) return true;
     if (mgr.hasPendingPhotoEntry(id)) return true;
     if (mgr.hasOptimisticTemp(id)) return true;
+    if (mgr.isDeleting(m) || mgr.isDeleteInFlight(m) || mgr.isDeleteFailed(m)) return true;
     return false;
 }
 
+/** 동일 date+slot에 이미 서버 id 행이 있으면 temp_* 행 제거(본식·간식 공통) — 오프라인 큐 동기화 후 중복 방지 */
 function dedupeMainSlotTemps(mealsArr) {
     if (!Array.isArray(mealsArr)) return mealsArr;
     const mgr = getMealSyncManager();
     return mealsArr.filter((m, _, arr) => {
         if (!m?.id || !String(m.id).startsWith('temp_')) return true;
-        if (!MAIN_MEAL_SLOTS.has(m.slotId)) return true;
+        if (!m.date || !m.slotId) return true;
         const hasReal = arr.some(
             (o) =>
                 o &&
@@ -48,6 +48,7 @@ function dedupeMainSlotTemps(mealsArr) {
     });
 }
 
+/** 동일 date+slot에 실제 id가 두 개면 하나만 유지(본식·간식 공통) */
 function dedupeMainSlotRealIds(mealsArr) {
     if (!Array.isArray(mealsArr)) return mealsArr;
     const mgr = getMealSyncManager();
@@ -56,7 +57,7 @@ function dedupeMainSlotRealIds(mealsArr) {
         if (!m?.id) return true;
         const id = String(m.id);
         if (id.startsWith('temp_')) return true;
-        if (!m.date || !MAIN_MEAL_SLOTS.has(m.slotId)) return true;
+        if (!m.date || !m.slotId) return true;
         const key = `${m.date}__${m.slotId}`;
         if (seen.has(key)) {
             mgr.clearDuplicateRealIdSideEffects(id);

@@ -64,7 +64,9 @@ service cloud.firestore {
       match /meals/{mealId} {
         // 서브컬렉션에서 부모 경로의 userId 변수 참조는 지원되지만, 명시적으로 작성하여 안정성 확보
         allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
-        allow create, update, delete: if request.auth != null && request.auth.uid == userId && !isReadOnlyDemoAccount();
+        allow create, update: if request.auth != null && request.auth.uid == userId && !isReadOnlyDemoAccount();
+        // 삭제: 본인 또는 관리자(모먼트 관리 등에서 타 사용자 기록 정리)
+        allow delete: if isAdmin() || (request.auth != null && request.auth.uid == userId && !isReadOnlyDemoAccount());
       }
       
       // 사용자 설정 (config 서브컬렉션)

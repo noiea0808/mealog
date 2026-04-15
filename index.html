@@ -521,8 +521,27 @@
     <!-- 네트워크 단절·서버 연결 실패 시: 안내 + 전체 다시 불러오기 -->
     <div id="networkErrorOverlay" class="hidden fixed inset-0 bg-slate-900/85 z-[10000] flex flex-col items-center justify-center p-6" role="alertdialog" aria-modal="true" aria-labelledby="networkErrorOverlayTitle">
         <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 text-center">
-            <div class="w-14 h-14 mx-auto rounded-full bg-amber-100 flex items-center justify-center mb-4">
-                <i class="fa-solid fa-wifi-slash text-2xl text-amber-700" aria-hidden="true"></i>
+            <div
+                class="w-14 h-14 mx-auto rounded-full bg-amber-100 flex items-center justify-center mb-4 text-amber-700"
+                aria-hidden="true"
+            >
+                <svg
+                    class="h-7 w-7 shrink-0"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                >
+                    <line x1="2" y1="2" x2="22" y2="22" />
+                    <path d="M8.5 16.429a5 5 0 0 1 7 0" />
+                    <path d="M18 11.5a9 9 0 0 0-2.636-2.253" />
+                    <path d="M10.71 5.05A16 16 0 0 1 22.39 9" />
+                    <path d="M5.341 9.935a16 16 0 0 1 1.545-1.742" />
+                    <path d="M12 20h.01" />
+                </svg>
             </div>
             <h2 id="networkErrorOverlayTitle" class="text-lg font-black text-slate-800 mb-2">연결할 수 없습니다</h2>
             <p id="networkErrorOverlayMessage" class="text-sm text-slate-600 leading-relaxed mb-6">
@@ -532,7 +551,7 @@
                 <i class="fa-solid fa-rotate-right mr-2" aria-hidden="true"></i>다시 불러오기
             </button>
             <button type="button" id="networkErrorDismissBtn" class="mt-3 w-full py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700">
-                닫기
+                오프라인으로 보기
             </button>
         </div>
     </div>
@@ -1533,7 +1552,8 @@
         </nav>
         <!-- 미전송 식사 기록 일괄 재전송: 하단 네비 위 플로팅(게시판 글쓰기 FAB와 동일 계열) -->
         <button type="button" id="mealSyncResendBtn" class="meal-sync-resend-fab hidden" aria-label="등록 재시도·삭제 실패 동기화" title="등록 미확인·실패 또는 삭제 실패 항목을 다시 서버에 반영합니다">
-            <i class="fa-solid fa-cloud-arrow-up text-lg" aria-hidden="true"></i>
+            <i class="fa-solid fa-cloud-arrow-up meal-sync-resend-fab__icon text-lg" aria-hidden="true"></i>
+            <i class="fa-solid fa-spinner meal-sync-resend-fab__spinner text-lg fa-spin" aria-hidden="true"></i>
             <span id="mealSyncResendBadge" class="meal-sync-resend-fab__badge hidden" aria-hidden="true">0</span>
         </button>
 
@@ -1941,19 +1961,16 @@
             </div>
             <div id="entryModalActions" class="shrink-0 border-t border-slate-200 bg-white overflow-hidden">
                 <div class="flex items-stretch divide-x divide-slate-200">
-                    <button id="btnDelete" onclick="window.deleteEntry()" class="hidden flex-1 flex items-center justify-center gap-2 px-2.5 py-3.5 bg-rose-50 text-rose-700 hover:bg-rose-100/90 active:bg-rose-100 transition-colors">
-                        <i class="fa-solid fa-trash-can text-sm"></i>
-                        <span class="text-sm font-bold">삭제</span>
+                    <button id="btnDelete" onclick="window.deleteEntry()" class="hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2.5 py-2.5 bg-rose-50 text-rose-700 hover:bg-rose-100/90 active:bg-rose-100 transition-colors">
+                        <i class="fa-solid fa-trash-can text-sm" aria-hidden="true"></i>
+                        <span class="text-xs font-bold leading-tight">삭제</span>
                     </button>
                     <button type="button" id="btnSave" class="flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-900 text-white text-base font-bold hover:bg-slate-800 active:bg-slate-800 transition-colors">
                         <span>기록 완료</span>
                     </button>
-                    <button type="button" id="sharePhotoIndicator" onclick="window.toggleSharePhoto()" aria-label="모먼트 공유" class="hidden flex-1 flex items-center justify-center gap-3 px-2 py-3.5 bg-slate-50 text-slate-400 active:bg-slate-100 transition-colors min-w-0">
-                        <i class="fa-solid fa-share text-lg shrink-0" aria-hidden="true"></i>
-                        <span class="text-center leading-tight font-extrabold text-xs tracking-tight min-w-0">
-                            <span class="block">모먼트</span>
-                            <span class="block">공유</span>
-                        </span>
+                    <button type="button" id="sharePhotoIndicator" onclick="window.toggleSharePhoto()" aria-label="모먼트 공유" class="hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 bg-slate-50 text-slate-400 active:bg-slate-100 transition-colors min-w-0">
+                        <i class="fa-solid fa-share text-sm shrink-0" aria-hidden="true"></i>
+                        <span class="text-xs font-bold text-center leading-tight min-w-0">모먼트 공유</span>
                     </button>
                 </div>
             </div>

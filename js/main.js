@@ -43,7 +43,7 @@ import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, rend
 import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
-    openModal, closeModal, saveEntry, deleteEntry, retryMealEntrySync, retryPendingMealEntriesOnAppReady, setRating, setSatiety, selectTag,
+    openModal, closeModal, saveEntry, deleteEntry, retryMealEntrySync, retryMealEntryDeleteSync, retryPendingMealEntriesOnAppReady, setRating, setSatiety, selectTag,
     handleMultipleImages, removePhoto, movePhotoOrder, updateShareIndicator, toggleSharePhoto,
     openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, setSettingsProfileType, handlePhotoUpload, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
     syncPushPreferencesFormFromUserSettings,
@@ -259,6 +259,8 @@ window.deleteEntry = deleteEntry;
 window.Mealog.deleteEntry = deleteEntry;
 window.retryMealEntrySync = retryMealEntrySync;
 window.Mealog.retryMealEntrySync = retryMealEntrySync;
+window.retryMealEntryDeleteSync = retryMealEntryDeleteSync;
+window.Mealog.retryMealEntryDeleteSync = retryMealEntryDeleteSync;
 window.setRating = setRating;
 window.Mealog.setRating = setRating;
 window.setSatiety = setSatiety;

@@ -24,6 +24,8 @@ export const appState = {
     sharedPhotosFeedByUserLastDoc: null,
     sharedPhotosFeedByUserHasMore: false,
     galleryFeedNetworkError: false, // 모먼트 피드 로드 시 네트워크 단절 등으로 실패했을 때 true
+    /** fetch/Firestore 등이 끊김 계열로 실패했을 때 true (navigator.onLine 과 무관하게 설정) */
+    localNetworkForcedOffline: false,
     tempSettings: null,
     
     // UI 상태

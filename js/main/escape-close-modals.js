@@ -21,6 +21,7 @@ import { closeShareBestModal, closeBestSharePeriodNotice } from '../analytics/be
 import { closeSignupWizard } from '../signup-wizard.js';
 import { dismissDemoIntroModal } from '../demo-account.js';
 import { tryCloseDemoNavGuideFromBack } from '../demo-nav-guide.js';
+import { closeMomentImageLightbox } from './moment-image-lightbox.js';
 
 /** termsModal 제외 — 동적 생성 kakaoPlaceSearchModal 포함 */
 const ESCAPE_OVERLAY_IDS = [
@@ -41,6 +42,7 @@ const ESCAPE_OVERLAY_IDS = [
     'bestShareModal',
     'insightShareModal',
     'photoEditModal',
+    'momentImageLightbox',
     'emailAuthModal',
     'logoutConfirmModal',
     'deleteAccountConfirmModal',
@@ -120,6 +122,9 @@ function closeOverlayById(id) {
             break;
         case 'photoEditModal':
             if (typeof window.closePhotoEditModal === 'function') window.closePhotoEditModal();
+            break;
+        case 'momentImageLightbox':
+            closeMomentImageLightbox();
             break;
         case 'emailAuthModal':
             closeEmailModal();

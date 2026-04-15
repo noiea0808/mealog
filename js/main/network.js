@@ -2,9 +2,11 @@
  * 메인 앱 네트워크 상태 (오프라인 오버레이) + 온라인/포그라운드 복구
  */
 import { showNetworkErrorOverlay, hideNetworkErrorOverlay } from '../ui.js';
-import { auth, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
+import { auth, db, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import { applyMealSyncAbandonOnOffline } from '../utils/meal-entry-pending.js';
+import { installFetchFailureAppOfflineBridge, clearLocalNetworkForcedOffline } from '../utils/network-reachability.js';
 import { refreshMealSyncResendNavButton } from './meal-sync-resend-header.js';
+import { waitForPendingWrites } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
 function mealogMainAppVisible() {
     try {
@@ -83,6 +85,7 @@ function registerForegroundRecovery() {
 
 /** main.js 초기화 시 한 번 호출 */
 export function registerMainNetworkListeners() {
+    installFetchFailureAppOfflineBridge();
     window.addEventListener('offline', () => {
         try {
             applyMealSyncAbandonOnOffline();
@@ -109,23 +112,34 @@ export function registerMainNetworkListeners() {
         }
     });
     window.addEventListener('online', () => {
+        clearLocalNetworkForcedOffline();
         hideNetworkErrorOverlay();
         scheduleMealogNetworkRecovery(250, { forceAuthRefresh: true });
-        void import('../utils/meal-entry-pending.js').then((m) => {
+        void (async () => {
             try {
+                await waitForPendingWrites(db);
+            } catch (_) {
+                /* ignore */
+            }
+            try {
+                const m = await import('../utils/meal-entry-pending.js');
+                if (typeof m.reconcileMealSyncUiAfterWriteQueueFlush === 'function') {
+                    m.reconcileMealSyncUiAfterWriteQueueFlush();
+                }
                 if (typeof m.clearStuckMealPendingFlags === 'function' && m.clearStuckMealPendingFlags()) {
-                    void import('../render/timeline.js').then((tl) => {
-                        try {
-                            tl.updateTimelineMealEntryPendingIndicators();
-                        } catch (_) {
-                            /* ignore */
-                        }
-                    });
+                    /* clearStuck만으로도 bump됨 — 아래에서 도트 재패치 */
                 }
             } catch (_) {
                 /* ignore */
             }
-        });
+            void import('../render/timeline.js').then((tl) => {
+                try {
+                    tl.updateTimelineMealEntryPendingIndicators();
+                } catch (_) {
+                    /* ignore */
+                }
+            });
+        })();
         try {
             refreshMealSyncResendNavButton();
         } catch (_) {

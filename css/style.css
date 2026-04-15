@@ -655,6 +655,28 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 #entryModal.keyboard-open #modalScrollArea {
     padding-bottom: 0 !important;
 }
+/* 모먼트 피드: 사진 탭 시 확대(라이트박스) 가능함을 표시 */
+#galleryContainer .moment-feed-photo {
+    cursor: zoom-in;
+}
+/* 기록 등록 모달: 텍스트 입력 중(커서 깜박임) 옅은 노란색 강조 */
+#entryModal #modalScrollArea input[type="text"]:focus,
+#entryModal #modalScrollArea input[type="text"]:focus-visible,
+#entryModal #modalScrollArea textarea:focus,
+#entryModal #modalScrollArea textarea:focus-visible {
+    background-color: #fffbeb;
+    border-color: #fde68a;
+    box-shadow: inset 0 0 0 1px rgba(254, 243, 199, 0.9);
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease,
+        box-shadow 0.15s ease;
+}
+/* 배달 업체 입력은 기본 투명 배경 — 포커스 시에만 노란 톤이 보이도록 */
+#entryModal #modalScrollArea #deliveryVendorInput:focus,
+#entryModal #modalScrollArea #deliveryVendorInput:focus-visible {
+    background-color: #fffbeb;
+}
 /* 캡쳐 3종세트 모달: 좌우 여백 확보(좁은 기기에서 캐릭터·입력창 잘림 방지), 가로 스크롤 방지 */
 #bestShareModal,
 #insightShareModal,
@@ -2543,17 +2565,44 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(145deg, #f59e0b, #d97706) !important;
-    color: white !important;
-    box-shadow: 0 2px 12px rgba(217, 119, 6, 0.45);
-    border: none;
-    transition: box-shadow 0.2s, transform 0.15s, bottom 0.2s;
+    background: #0f172a !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.35);
+    border: 1px solid #020617;
+    transition: box-shadow 0.2s, transform 0.12s, bottom 0.2s, background-color 0.2s, opacity 0.15s;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+#mealSyncResendBtn.meal-sync-resend-fab .meal-sync-resend-fab__spinner {
+    display: none;
+    position: absolute;
+}
+#mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--busy {
+    cursor: wait;
+    pointer-events: none;
+    transform: scale(0.98);
+    box-shadow: 0 2px 16px rgba(15, 23, 42, 0.5), 0 0 0 3px rgba(96, 165, 250, 0.35);
+}
+#mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--busy .meal-sync-resend-fab__icon {
+    display: none !important;
+}
+#mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--busy .meal-sync-resend-fab__spinner {
+    display: flex !important;
+}
+#mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--busy .meal-sync-resend-fab__badge {
+    opacity: 0.35;
+}
+@media (prefers-reduced-motion: reduce) {
+    #mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--busy {
+        box-shadow: 0 2px 12px rgba(15, 23, 42, 0.35);
+    }
 }
 #mealSyncResendBtn.meal-sync-resend-fab:hover {
-    box-shadow: 0 4px 16px rgba(217, 119, 6, 0.5);
+    background: #1e293b !important;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.45);
 }
-#mealSyncResendBtn.meal-sync-resend-fab:active {
-    transform: scale(0.96);
+#mealSyncResendBtn.meal-sync-resend-fab:active:not(:disabled):not(.meal-sync-resend-fab--busy) {
+    transform: scale(0.94);
 }
 #mealSyncResendBtn.meal-sync-resend-fab.hidden {
     display: none !important;
@@ -2571,7 +2620,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     height: 1.1rem;
     padding: 0 4px;
     border-radius: 9999px;
-    background: #b45309;
+    background: #1e293b;
     color: #fff;
     font-size: 10px;
     font-weight: 800;

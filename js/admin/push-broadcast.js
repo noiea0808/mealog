@@ -9,6 +9,9 @@ const adminBroadcastPushNowFn = httpsCallable(functions, 'adminBroadcastPushNow'
 const scheduleAdminBroadcastPushFn = httpsCallable(functions, 'scheduleAdminBroadcastPush');
 const cancelAdminScheduledPushFn = httpsCallable(functions, 'cancelAdminScheduledPush');
 const deleteAdminBroadcastHistoryFn = httpsCallable(functions, 'deleteAdminBroadcastHistory');
+/** Cloud Functions `ADMIN_BROADCAST_*_MAX` 와 동일 */
+const ADMIN_BROADCAST_TITLE_MAX = 120;
+const ADMIN_BROADCAST_BODY_MAX = 240;
 const ADMIN_PUSH_LANDING_LABELS = {
     dashboard: '밀당',
     timeline: '밀로그',
@@ -36,6 +39,132 @@ const ADMIN_PUSH_TARGET_ENV_LABELS = {
     staging: '스테이징'
 };
 
+const WEEKDAY_LABELS = ['', '월', '화', '수', '목', '금', '토', '일'];
+
+function sortWeeklySlots(ws) {
+    return [...(ws || [])].sort((a, b) => (Number(a.weekday) || 0) - (Number(b.weekday) || 0));
+}
+
+function tsToMillis(ts) {
+    if (ts == null) return NaN;
+    if (typeof ts.toMillis === 'function') return ts.toMillis();
+    if (typeof ts.toDate === 'function') return ts.toDate().getTime();
+    if (typeof ts.seconds === 'number') return ts.seconds * 1000;
+    return NaN;
+}
+
+/** 서버 `kstYmdFromMillis` / `addOneKstYmd` / `kstWeekdayMon1Sun7FromYmd` 와 동일 규칙 (발송일 나열용) */
+function kstYmdFromMsClient(ms) {
+    return new Date(ms).toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
+}
+
+function addOneKstYmdClient(ymd) {
+    const [y, m, d] = ymd.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d + 1, 12, 0, 0));
+    return dt.toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
+}
+
+function kstWeekdayMon1Sun7FromYmdClient(ymd) {
+    const [Y, M, D] = ymd.split('-').map(Number);
+    const noonUtc = Date.UTC(Y, M - 1, D, 3, 0, 0);
+    const dowSun0 = new Date(noonUtc).getUTCDay();
+    return dowSun0 === 0 ? 7 : dowSun0;
+}
+
+/**
+ * 반복 기간(recurringStartAt~recurringEndAt) 안에서 weeklySchedule 요일에 해당하는 모든 날짜
+ * @returns {string[]} 예: ['4/20 (월)', '4/27 (월)']
+ */
+function listWeeklyOccurrenceDateLabels(ws, recurringStartAt, recurringEndAt, maxRows = 24) {
+    const slots = sortWeeklySlots(ws || []);
+    if (!slots.length) return [];
+    const slotWds = new Set(slots.map((s) => Number(s.weekday)));
+    const rangeStartMs = tsToMillis(recurringStartAt);
+    const rangeEndMs = tsToMillis(recurringEndAt);
+    if (!Number.isFinite(rangeStartMs) || !Number.isFinite(rangeEndMs)) return [];
+    const rangeEndYmd = kstYmdFromMsClient(rangeEndMs);
+    const labels = [];
+    let ymd = kstYmdFromMsClient(rangeStartMs);
+    for (let guard = 0; guard < 400 && ymd <= rangeEndYmd && labels.length < maxRows; guard++) {
+        const wd = kstWeekdayMon1Sun7FromYmdClient(ymd);
+        if (slotWds.has(wd)) {
+            const [Y, Mo, D] = ymd.split('-').map(Number);
+            const noonUtc = Date.UTC(Y, Mo - 1, D, 12, 0, 0);
+            const wdKo = new Intl.DateTimeFormat('ko-KR', {
+                timeZone: 'Asia/Seoul',
+                weekday: 'short'
+            }).format(new Date(noonUtc));
+            labels.push(`${Mo}/${D} (${wdKo})`);
+        }
+        if (ymd >= rangeEndYmd) break;
+        ymd = addOneKstYmdClient(ymd);
+    }
+    return labels;
+}
+
+function formatWeeklyReservationDatesCellHtml(r, ws) {
+    const labels = listWeeklyOccurrenceDateLabels(ws, r.recurringStartAt, r.recurringEndAt, 24);
+    if (!labels.length) return escapeHtml(formatAdminPushScheduledCell(r));
+    const lines = labels.map((l) => `<div class="tabular-nums">${escapeHtml(l)}</div>`).join('');
+    return `<div class="flex flex-col gap-0.5 leading-snug">${lines}</div>`;
+}
+
+/** 발송 기록 테이블 — 요일별 행의 랜딩 열 (슬롯별 값 요약) */
+function summarizeWeeklyLandingTabs(ws) {
+    if (!ws || !Array.isArray(ws) || ws.length === 0) return '—';
+    const keys = [...new Set(ws.map((s) => String(s.landingTab || 'timeline').trim()))];
+    return keys.map((k) => ADMIN_PUSH_LANDING_LABELS[k] || k).join(' · ') || '—';
+}
+
+/** 발송 기록 테이블 — 요일별 행의 대상 환경 열 */
+function summarizeWeeklyTargetEnvs(ws) {
+    if (!ws || !Array.isArray(ws) || ws.length === 0) return '—';
+    const keys = [
+        ...new Set(
+            ws.map((s) => (s.targetEnv === 'production' || s.targetEnv === 'staging' ? s.targetEnv : 'all'))
+        )
+    ];
+    return keys.map((k) => ADMIN_PUSH_TARGET_ENV_LABELS[k] || k).join(' · ') || '—';
+}
+
+/** 제목 열: 슬롯이 하나면 그 제목, 모두 동일 제목이면 동일, 다르면 안내 문구 */
+function weeklyScheduleTitleSummary(ws) {
+    if (!ws || !Array.isArray(ws) || ws.length === 0) return '요일별 발송';
+    const sorted = sortWeeklySlots(ws);
+    const titles = sorted.map((s) => String(s.title || '').trim()).filter(Boolean);
+    if (!titles.length) return '요일별 발송';
+    const unique = [...new Set(titles)];
+    if (unique.length === 1) return unique[0];
+    return `요일별 · 제목 ${unique.length}종`;
+}
+
+/**
+ * 내용 열 — 푸시 본문만. 요일·시각·랜딩·환경은 각각 예약일시·랜딩·대상환경 열에 있으므로
+ * 슬롯 1개일 때는 메타 줄을 넣지 않는다. (여러 슬롯일 때만 요일·시각으로 구분)
+ */
+function formatWeeklyScheduleBodyHtml(ws) {
+    if (!ws || !Array.isArray(ws) || ws.length === 0) return '—';
+    const sorted = sortWeeklySlots(ws);
+    const multi = sorted.length > 1;
+    if (!multi) {
+        const sole = sorted[0];
+        const b = escapeHtml((sole.body || '').trim() || '—');
+        return `<span class="text-xs text-slate-600 whitespace-pre-wrap break-words">${b}</span>`;
+    }
+    return sorted
+        .map((s) => {
+            const wd = WEEKDAY_LABELS[s.weekday] || s.weekday;
+            const b = escapeHtml((s.body || '').trim() || '—');
+            const meta = `<div class="text-[10px] text-slate-500">${escapeHtml(wd)} ${escapeHtml(s.time || '')}</div>`;
+            const titleLine = `<div class="mt-0.5 text-xs font-bold text-slate-800">${escapeHtml(
+                (s.title || '').trim() || '(제목 없음)'
+            )}</div>`;
+            const bodyBlock = `<div class="mt-0.5 text-xs text-slate-600 whitespace-pre-wrap break-words">${b}</div>`;
+            return `<div class="mb-2 last:mb-0 pb-2 last:pb-0 border-b border-slate-100/80 last:border-0">${meta}${titleLine}${bodyBlock}</div>`;
+        })
+        .join('');
+}
+
 function formatAdminPushDate(ts) {
     if (!ts) return '—';
     try {
@@ -47,6 +176,47 @@ function formatAdminPushDate(ts) {
     }
 }
 
+function formatAdminPushDateDay(ts) {
+    if (!ts) return '—';
+    try {
+        const d = typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts);
+        if (Number.isNaN(d.getTime())) return '—';
+        return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch {
+        return '—';
+    }
+}
+
+/** 상태 뱃지: 초록=완료 · 노랑=대기/진행 · 빨강=실패·취소 */
+function adminPushStatusBadgeClass(st) {
+    if (st === 'sent' || st === 'completed') return 'bg-green-600 text-white';
+    if (st === 'pending' || st === 'sending') return 'bg-yellow-400 text-gray-900';
+    if (st === 'failed' || st === 'cancelled') return 'bg-red-600 text-white';
+    return 'bg-yellow-400 text-gray-900';
+}
+
+/** 예약(또는 다음 발송) 시각 — 즉시 발송 이력은 예약 없음 */
+function formatAdminPushScheduledCell(r) {
+    const scheduleType = r.scheduleType || 'once';
+    if (scheduleType === 'now') return '—';
+    return formatAdminPushDate(r.scheduledAt);
+}
+
+/** 실제 발송 완료 시각 */
+function formatAdminPushSentCell(r) {
+    const st = r.status || 'pending';
+    if (st === 'failed' && r.failedAt) return formatAdminPushDate(r.failedAt);
+    if (st === 'pending' || st === 'sending') return '—';
+    return formatAdminPushDate(r.sentAt || r.lastSentAt);
+}
+
+function escapeAttr(s) {
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+}
+
 function datetimeLocalMinAhead(minutesAhead = 1) {
     const pad = (n) => String(n).padStart(2, '0');
     const d = new Date(Date.now() + minutesAhead * 60 * 1000);
@@ -55,14 +225,64 @@ function datetimeLocalMinAhead(minutesAhead = 1) {
 
 function setAdminPushScheduleMinDatetime() {
     const minVal = datetimeLocalMinAhead(1);
-    ['adminPushScheduleWhen', 'adminPushRecurringStart'].forEach((id) => {
-        const el = document.getElementById(id);
-        if (el) el.min = minVal;
-    });
+    const el = document.getElementById('adminPushScheduleWhen');
+    if (el) el.min = minVal;
+}
+
+function initAdminPushWeeklyDateRange() {
+    const startEl = document.getElementById('adminPushWeeklyRangeStart');
+    const endEl = document.getElementById('adminPushWeeklyRangeEnd');
+    if (!startEl || !endEl) return;
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const endStr = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}`;
+    startEl.min = today;
+    endEl.min = today;
+    if (!startEl.value) startEl.value = today;
+    if (!endEl.value) endEl.value = endStr;
+}
+
+function collectWeeklyScheduleFromRows() {
+    const out = [];
+    for (let wd = 1; wd <= 7; wd++) {
+        const timeEl = document.getElementById(`adminPushWd${wd}Time`);
+        const titleEl = document.getElementById(`adminPushWd${wd}Title`);
+        const bodyEl = document.getElementById(`adminPushWd${wd}Body`);
+        const landEl = document.getElementById(`adminPushWd${wd}Landing`);
+        const envEl = document.getElementById(`adminPushWd${wd}TargetEnv`);
+        const time = (timeEl?.value || '').trim();
+        const title = (titleEl?.value || '').trim();
+        const body = (bodyEl?.value || '').trim();
+        if (!time || !title || !body) continue;
+        let hm = time;
+        if (/^\d{1}:\d{2}$/.test(hm)) hm = `0${hm}`;
+        out.push({
+            weekday: wd,
+            time: hm.length === 5 ? hm : time,
+            landingTab: landEl?.value || 'timeline',
+            targetEnv: envEl?.value || 'staging',
+            title: title.slice(0, ADMIN_BROADCAST_TITLE_MAX),
+            body: body.slice(0, ADMIN_BROADCAST_BODY_MAX)
+        });
+    }
+    return out;
+}
+
+function clearAdminPushWeeklyForm() {
+    for (let wd = 1; wd <= 7; wd++) {
+        const timeEl = document.getElementById(`adminPushWd${wd}Time`);
+        const titleEl = document.getElementById(`adminPushWd${wd}Title`);
+        const bodyEl = document.getElementById(`adminPushWd${wd}Body`);
+        if (timeEl) timeEl.value = '';
+        if (titleEl) titleEl.value = '';
+        if (bodyEl) bodyEl.value = '';
+    }
 }
 
 /**
- * 예약 발송 하위: 특정 일시 1회 vs 주기적
+ * 예약 발송 하위: 특정 일시 1회 vs 요일별 주기
  * @param {'once'|'recurring'} kind
  */
 window.setAdminPushScheduleKind = function(kind) {
@@ -99,6 +319,7 @@ window.setAdminPushScheduleKind = function(kind) {
     if (recBlock) recBlock.classList.toggle('hidden', isOnce);
 
     setAdminPushScheduleMinDatetime();
+    if (!isOnce) initAdminPushWeeklyDateRange();
 };
 
 /**
@@ -156,6 +377,7 @@ export async function loadAdminPushMessagesPage() {
     if (schLandingEl) schLandingEl.value = 'timeline';
     if (schTargetEnvEl) schTargetEnvEl.value = 'staging';
     setAdminPushScheduleMinDatetime();
+    initAdminPushWeeklyDateRange();
     await refreshAdminScheduledPushesCore();
 }
 
@@ -172,52 +394,100 @@ async function refreshAdminScheduledPushesCore() {
             return;
         }
         const rows = snap.docs.map((d) => ({ ...d.data(), id: d.id }));
-        container.innerHTML = `<div class="divide-y divide-slate-200 bg-white">${rows.map((r) => {
+        const thead = `
+            <thead>
+                <tr class="bg-slate-100/90 text-left text-[11px] font-bold text-slate-600 uppercase tracking-wide border-b border-slate-200">
+                    <th class="px-3 py-2.5 whitespace-nowrap">대상환경</th>
+                    <th class="px-3 py-2.5 whitespace-nowrap">상태</th>
+                    <th class="px-3 py-2.5 whitespace-nowrap min-w-[7rem]">예약일시</th>
+                    <th class="px-3 py-2.5 whitespace-nowrap min-w-[7rem]">발송일시</th>
+                    <th class="px-3 py-2.5 whitespace-nowrap text-right">수신자수</th>
+                    <th class="px-3 py-2.5 whitespace-nowrap">랜딩</th>
+                    <th class="px-3 py-2.5 min-w-[8rem]">제목</th>
+                    <th class="px-3 py-2.5 min-w-[12rem]">내용</th>
+                    <th class="px-3 py-2.5 whitespace-nowrap text-right">작업</th>
+                </tr>
+            </thead>`;
+        const tbody = rows.map((r) => {
             const st = r.status || 'pending';
             const stLabel = ADMIN_SCHEDULED_PUSH_STATUS_LABELS[st] || st;
-            const land = ADMIN_PUSH_LANDING_LABELS[r.landingTab] || r.landingTab || '—';
-            const canCancel = st === 'pending';
-            const canDelete = !canCancel;
-            const title = escapeHtml((r.title || '').slice(0, 80));
-            const bodyPreview = escapeHtml((r.body || '').slice(0, 120));
-            const err = r.errorMessage ? `<p class="text-xs text-red-500 mt-1">${escapeHtml(String(r.errorMessage).slice(0, 200))}</p>` : '';
-            const targetEnv = r.targetEnv === 'production' || r.targetEnv === 'staging' ? r.targetEnv : 'all';
-            const targetEnvLabel = ADMIN_PUSH_TARGET_ENV_LABELS[targetEnv] || ADMIN_PUSH_TARGET_ENV_LABELS.all;
             const scheduleType = r.scheduleType || 'once';
+            const isWeeklyByDay = r.recurringMode === 'weeklyByDay' && Array.isArray(r.weeklySchedule);
             const isRecurring = scheduleType === 'recurring';
             const isNow = scheduleType === 'now';
-            const intv = r.recurringInterval || 'daily';
-            const intvLabel = ADMIN_RECURRING_INTERVAL_LABELS[intv] || intv;
-            const recurMeta = isRecurring
-                ? `<span class="text-xs text-slate-500">주기: ${escapeHtml(intvLabel)} · 종료: ${formatAdminPushDate(r.recurringEndAt)}</span>`
-                : '';
-            const whenLabel = isNow
-                ? `즉시 발송: ${formatAdminPushDate(r.sentAt || r.createdAt || r.scheduledAt)}`
-                : (isRecurring && st === 'pending'
-                    ? `다음 발송: ${formatAdminPushDate(r.scheduledAt)}`
-                    : `예약: ${formatAdminPushDate(r.scheduledAt)}`);
+            const ws = isWeeklyByDay ? r.weeklySchedule : null;
+            const land = isWeeklyByDay
+                ? summarizeWeeklyLandingTabs(ws)
+                : (ADMIN_PUSH_LANDING_LABELS[r.landingTab] || r.landingTab || '—');
+            const canCancel = st === 'pending';
+            const canDelete = !canCancel;
+            const rawTitle = (r.title || '').trim() || '(제목 없음)';
+            const rawBody = (r.body || '').trim() || '—';
+            const summaryTitle = isWeeklyByDay ? weeklyScheduleTitleSummary(ws) : rawTitle;
+            const titleText = escapeHtml(summaryTitle);
+            const bodyHtml = isWeeklyByDay ? formatWeeklyScheduleBodyHtml(ws) : escapeHtml(rawBody);
+            const errTitle = r.errorMessage ? escapeHtml(String(r.errorMessage).slice(0, 300)) : '';
+            const targetEnv = r.targetEnv === 'production' || r.targetEnv === 'staging' ? r.targetEnv : 'all';
+            const targetEnvLabel = isWeeklyByDay
+                ? summarizeWeeklyTargetEnvs(ws)
+                : (ADMIN_PUSH_TARGET_ENV_LABELS[targetEnv] || ADMIN_PUSH_TARGET_ENV_LABELS.all);
+            const kindTag = isNow
+                ? '<span class="text-[10px] font-bold text-violet-700">즉시</span>'
+                : isWeeklyByDay
+                  ? '<span class="text-[10px] font-bold text-violet-700">요일별</span>'
+                  : isRecurring
+                    ? '<span class="text-[10px] font-bold text-slate-600">구주기</span>'
+                    : '<span class="text-[10px] font-bold text-slate-500">예약발송</span>';
+            let recurHint = '';
+            if (isWeeklyByDay) {
+                recurHint = '';
+            } else if (isRecurring && !isWeeklyByDay && r.recurringEndAt) {
+                const intv = r.recurringInterval || 'daily';
+                const intvLabel = ADMIN_RECURRING_INTERVAL_LABELS[intv] || intv;
+                recurHint = `<div class="text-[10px] text-slate-400 mt-0.5">주기 ${escapeHtml(intvLabel)} · 종료 ${formatAdminPushDate(r.recurringEndAt)}</div>`;
+            }
+            const rc = typeof r.recipientCount === 'number' && !Number.isNaN(r.recipientCount)
+                ? String(r.recipientCount)
+                : '—';
+            const actionBtns = [
+                canCancel ? `<button type="button" onclick='window.cancelAdminScheduledPush(${JSON.stringify(r.id)})' class="px-2 py-1 text-[11px] font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded border border-red-100">취소</button>` : '',
+                canDelete ? `<button type="button" onclick='window.deleteAdminBroadcastHistory(${JSON.stringify(r.id)})' class="px-2 py-1 text-[11px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded border border-slate-200">삭제</button>` : ''
+            ].filter(Boolean).join(' ');
+            const titleAttr = isWeeklyByDay
+                ? sortWeeklySlots(ws)
+                      .map((s) => `${WEEKDAY_LABELS[s.weekday] || ''} ${String(s.title || '').trim()}`.trim())
+                      .join(' · ')
+                      .slice(0, 400)
+                : rawTitle;
+            const titleCell = `<span class="line-clamp-2 text-slate-800 font-medium" title="${escapeAttr(titleAttr)}">${titleText}</span>`;
             return `
-            <div class="px-4 py-3 hover:bg-slate-50/80 transition-colors">
-                <div class="flex flex-wrap items-start justify-between gap-2">
-                    <div class="min-w-0 flex-1">
-                        <div class="flex flex-wrap items-center gap-2 mb-1">
-                            <span class="text-xs font-bold px-2 py-0.5 rounded-lg ${st === 'sent' || st === 'completed' ? 'bg-emerald-100 text-emerald-800' : st === 'pending' ? 'bg-amber-100 text-amber-800' : st === 'failed' ? 'bg-red-100 text-red-800' : st === 'cancelled' ? 'bg-slate-200 text-slate-600' : 'bg-slate-100 text-slate-700'}">${escapeHtml(stLabel)}</span>
-                            ${isNow ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-100 text-violet-800">즉시</span>' : (isRecurring ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-100 text-violet-800">주기</span>' : '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">1회</span>')}
-                            <span class="text-xs text-slate-500">${whenLabel}</span>
-                            <span class="text-xs text-violet-600 font-bold">→ ${escapeHtml(land)}</span>
-                            <span class="text-xs text-slate-500">대상: ${escapeHtml(targetEnvLabel)}</span>
-                        </div>
-                        ${recurMeta ? `<div class="mb-1">${recurMeta}</div>` : ''}
-                        <p class="text-sm font-bold text-slate-800 truncate">${title || '(제목 없음)'}</p>
-                        <p class="text-xs text-slate-600 line-clamp-2 mt-0.5">${bodyPreview}</p>
-                        ${st === 'sent' || st === 'completed' ? `<p class="text-[11px] text-slate-400 mt-1">마지막 발송: ${formatAdminPushDate(r.sentAt || r.lastSentAt)}</p>` : ''}
-                        ${err}
+            <tr class="border-b border-slate-100 hover:bg-slate-50/80 align-top">
+                <td class="px-3 py-2 text-xs text-slate-800 whitespace-nowrap">${escapeHtml(targetEnvLabel)}</td>
+                <td class="px-3 py-2 whitespace-nowrap">
+                    <div class="flex flex-col gap-0.5">
+                        <span class="inline-flex flex-wrap items-center gap-1">
+                            <span class="text-xs font-bold px-2 py-0.5 rounded-md ${adminPushStatusBadgeClass(st)}">${escapeHtml(stLabel)}</span>
+                            ${kindTag}
+                        </span>
+                        ${recurHint}
                     </div>
-                    ${canCancel ? `<button type="button" onclick='window.cancelAdminScheduledPush(${JSON.stringify(r.id)})' class="shrink-0 px-3 py-1.5 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-100 transition-colors">예약 취소</button>` : ''}
-                    ${canDelete ? `<button type="button" onclick='window.deleteAdminBroadcastHistory(${JSON.stringify(r.id)})' class="shrink-0 px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors">삭제</button>` : ''}
-                </div>
+                    ${errTitle ? `<div class="text-[10px] text-red-500 mt-1 max-w-[12rem]">${errTitle}</div>` : ''}
+                </td>
+                <td class="px-3 py-2 text-xs text-slate-700 ${isWeeklyByDay ? 'min-w-[5.5rem]' : 'whitespace-nowrap'}">${
+                    isWeeklyByDay ? formatWeeklyReservationDatesCellHtml(r, ws) : escapeHtml(formatAdminPushScheduledCell(r))
+                }</td>
+                <td class="px-3 py-2 text-xs text-slate-700 whitespace-nowrap">${formatAdminPushSentCell(r)}</td>
+                <td class="px-3 py-2 text-xs text-slate-800 text-right tabular-nums">${escapeHtml(rc)}</td>
+                <td class="px-3 py-2 text-xs text-violet-700 font-semibold whitespace-nowrap">${escapeHtml(land)}</td>
+                <td class="px-3 py-2 text-xs text-slate-800 max-w-[14rem]">${titleCell}</td>
+                <td class="px-3 py-2 text-xs text-slate-600 max-w-[28rem]">${isWeeklyByDay ? bodyHtml : `<span class="whitespace-pre-wrap break-words" title="${escapeAttr(rawBody)}">${bodyHtml}</span>`}</td>
+                <td class="px-3 py-2 text-right whitespace-nowrap">${actionBtns || '—'}</td>
+            </tr>`;
+        }).join('');
+        container.innerHTML = `
+            <div class="overflow-x-auto">
+                <table class="w-full min-w-[960px] text-left border-collapse">${thead}<tbody>${tbody}</tbody></table>
             </div>`;
-        }).join('')}</div>`;
     } catch (e) {
         console.error('예약 푸시 목록 실패:', e);
         container.innerHTML = `<p class="text-center py-8 text-red-400 text-sm px-4">목록을 불러오지 못했습니다. ${escapeHtml(e.message || '')}</p>`;
@@ -315,7 +585,12 @@ window.submitAdminPushNow = async function() {
         btn.textContent = '발송 중…';
     }
     try {
-        await adminBroadcastPushNowFn({ title, body, landingTab, targetEnv });
+        await adminBroadcastPushNowFn({
+            title: title.slice(0, ADMIN_BROADCAST_TITLE_MAX),
+            body: body.slice(0, ADMIN_BROADCAST_BODY_MAX),
+            landingTab,
+            targetEnv
+        });
         alert('발송 요청이 처리되었습니다.');
         if (titleEl) titleEl.value = '';
         if (bodyEl) bodyEl.value = '';
@@ -335,62 +610,45 @@ window.submitAdminPushSchedule = async function() {
     const recTab = document.getElementById('adminPushScheduleKindRecurring');
     const isRecurring = recTab && recTab.getAttribute('aria-selected') === 'true';
     const whenEl = document.getElementById('adminPushScheduleWhen');
-    const startEl = document.getElementById('adminPushRecurringStart');
-    const endEl = document.getElementById('adminPushRecurringEnd');
-    const intervalEl = document.getElementById('adminPushRecurringInterval');
     const titleEl = document.getElementById('adminPushScheduleTitle');
     const bodyEl = document.getElementById('adminPushScheduleBody');
     const landEl = document.getElementById('adminPushScheduleLanding');
     const targetEnvEl = document.getElementById('adminPushScheduleTargetEnv');
-    const btn = document.getElementById('adminPushScheduleBtn');
-    const title = (titleEl?.value || '').trim();
-    const body = (bodyEl?.value || '').trim();
-    const landingTab = landEl?.value || 'timeline';
-    const targetEnv = targetEnvEl?.value || 'staging';
-    if (!title || !body) {
-        alert('제목과 내용을 모두 입력해 주세요.');
-        return;
-    }
+    const btn = document.getElementById(isRecurring ? 'adminPushScheduleBtnWeekly' : 'adminPushScheduleBtnOnce');
     const minAhead = Date.now() + 50 * 1000;
     let payload;
 
     if (isRecurring) {
-        const sv = startEl?.value;
-        const ev = endEl?.value;
-        if (!sv || !ev) {
-            alert('주기 발송의 시작·종료 일시를 모두 선택해 주세요.');
+        const startDate = document.getElementById('adminPushWeeklyRangeStart')?.value;
+        const endDate = document.getElementById('adminPushWeeklyRangeEnd')?.value;
+        const weeklySchedule = collectWeeklyScheduleFromRows();
+        if (!startDate || !endDate) {
+            alert('시작일과 종료일을 선택해 주세요.');
             return;
         }
-        const startMs = new Date(sv).getTime();
-        const endMs = new Date(ev).getTime();
-        if (Number.isNaN(startMs) || Number.isNaN(endMs)) {
-            alert('시작·종료 일시가 올바르지 않습니다.');
+        if (endDate < startDate) {
+            alert('종료일은 시작일 이후여야 합니다.');
             return;
         }
-        if (endMs < startMs) {
-            alert('종료 일시는 시작 일시보다 이후여야 합니다.');
-            return;
-        }
-        if (startMs < minAhead) {
-            alert('시작 시각은 현재보다 최소 약 1분 이후로 설정해 주세요.');
-            return;
-        }
-        const recurringInterval = intervalEl?.value || 'daily';
-        if (!['daily', 'weekly', 'monthly'].includes(recurringInterval)) {
-            alert('주기 값이 올바르지 않습니다.');
+        if (weeklySchedule.length === 0) {
+            alert('최소 한 요일에 발송 시각·제목·내용을 모두 입력해 주세요. (비운 요일은 발송하지 않습니다.)');
             return;
         }
         payload = {
             scheduleType: 'recurring',
-            title: title.slice(0, 80),
-            body: body.slice(0, 240),
-            landingTab,
-            targetEnv,
-            recurringStartMs: startMs,
-            recurringEndMs: endMs,
-            recurringInterval
+            recurringStartDate: startDate,
+            recurringEndDate: endDate,
+            weeklySchedule
         };
     } else {
+        const title = (titleEl?.value || '').trim();
+        const body = (bodyEl?.value || '').trim();
+        const landingTab = landEl?.value || 'timeline';
+        const targetEnv = targetEnvEl?.value || 'staging';
+        if (!title || !body) {
+            alert('제목과 내용을 모두 입력해 주세요.');
+            return;
+        }
         const whenVal = whenEl?.value;
         if (!whenVal) {
             alert('발송 일시를 선택해 주세요.');
@@ -407,8 +665,8 @@ window.submitAdminPushSchedule = async function() {
         }
         payload = {
             scheduleType: 'once',
-            title: title.slice(0, 80),
-            body: body.slice(0, 240),
+            title: title.slice(0, ADMIN_BROADCAST_TITLE_MAX),
+            body: body.slice(0, ADMIN_BROADCAST_BODY_MAX),
             landingTab,
             targetEnv,
             scheduledAtMs: at.getTime()
@@ -422,16 +680,19 @@ window.submitAdminPushSchedule = async function() {
     }
     if (btn) {
         btn.disabled = true;
-        btn.textContent = '등록 중…';
+        btn.textContent = isRecurring ? '등록 중…' : '등록 중…';
     }
     try {
         await scheduleAdminBroadcastPushFn(payload);
         alert('예약이 등록되었습니다.');
-        if (titleEl) titleEl.value = '';
-        if (bodyEl) bodyEl.value = '';
-        if (whenEl) whenEl.value = '';
-        if (startEl) startEl.value = '';
-        if (endEl) endEl.value = '';
+        if (!isRecurring) {
+            if (titleEl) titleEl.value = '';
+            if (bodyEl) bodyEl.value = '';
+            if (whenEl) whenEl.value = '';
+        } else {
+            clearAdminPushWeeklyForm();
+            initAdminPushWeeklyDateRange();
+        }
         setAdminPushScheduleMinDatetime();
         await refreshAdminScheduledPushesCore();
     } catch (e) {
@@ -440,7 +701,7 @@ window.submitAdminPushSchedule = async function() {
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.textContent = '예약 등록';
+            btn.textContent = isRecurring ? '요일별 예약 등록' : '예약 등록';
         }
     }
 };

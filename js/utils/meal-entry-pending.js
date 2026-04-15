@@ -2,11 +2,18 @@
  * 식사 동기화 UI — 상태는 meal-sync-manager 단일 소스.
  * 이 파일은 기존 import 경로 유지용 얇은 래퍼 + 도트 종류 헬퍼.
  */
-import { getMealSyncManager, MEAL_SYNC_GRACE_MS as _GRACE } from './meal-sync-manager.js';
+import {
+    getMealSyncManager,
+    MEAL_SYNC_GRACE_MS as _GRACE,
+    MEAL_SYNC_GRACE_MS_NO_PHOTO,
+    MEAL_SYNC_GRACE_MS_WITH_PHOTO,
+    mealRecordHasBase64PendingPhotos
+} from './meal-sync-manager.js';
 
 const mgr = () => getMealSyncManager();
 
 export const MEAL_SYNC_GRACE_MS = _GRACE;
+export { MEAL_SYNC_GRACE_MS_NO_PHOTO, MEAL_SYNC_GRACE_MS_WITH_PHOTO, mealRecordHasBase64PendingPhotos };
 
 export function markMealOptimisticSavePending(tempId) {
     mgr().markOptimisticPending(tempId);
@@ -47,9 +54,9 @@ export function clearMealSyncGraceTimer(entryId) {
 export function scheduleMealSyncGraceAbandon(entryId, opts = {}) {
     mgr().scheduleGraceAbandon(entryId, opts);
 }
-/** 저장 직후 waitForPendingWrites·서버 ack UI — 로직은 meal-sync-manager 단일 소스 */
-export function scheduleMealServerAckAfterPendingWrites(mealId, optimisticTempId, dateStr, currentTabVal) {
-    mgr().scheduleServerAckAfterPendingWrites(mealId, optimisticTempId, dateStr, currentTabVal);
+/** 저장 직후 waitForPendingWrites·서버 ack UI — 로직은 meal-sync-manager 단일 소스 @returns {Promise<void>} */
+export function scheduleMealServerAckAfterPendingWrites(mealId, optimisticTempId, dateStr, currentTabVal, graceMs) {
+    return mgr().scheduleServerAckAfterPendingWrites(mealId, optimisticTempId, dateStr, currentTabVal, graceMs);
 }
 export function applyMealSyncAbandonOnOffline() {
     mgr().applyAbandonOnOffline();
@@ -90,11 +97,17 @@ export function countMealPendingSyncAndDeleteQueue() {
 export function countMealCloudFabManualRetryEntries() {
     return mgr().countCloudFabManualRetryEntries();
 }
+export function countMealSyncFabScheduledChipEntries() {
+    return mgr().countMealSyncFabScheduledChipEntries();
+}
 export function applyOfflineAfterLocalSaveUi(effectiveMealId, optimisticTempId, dateStr, currentTabVal, opts) {
     mgr().applyOfflineUnconfirmed(effectiveMealId, optimisticTempId, dateStr, currentTabVal, opts);
 }
 export function markMealEntryDeletePending(entryId) {
     mgr().markDeletePending(entryId);
+}
+export function markMealEntryDeleteInFlight(entryId) {
+    mgr().markDeleteInFlight(entryId);
 }
 export function markMealEntryDeleteComplete(entryId) {
     mgr().markDeleteComplete(entryId);
@@ -111,11 +124,19 @@ export function isMealEntryDeleteFailed(record) {
 export function isMealEntryDeleting(record) {
     return mgr().isDeleting(record);
 }
+export function isMealEntryDeleteInFlight(record) {
+    return mgr().isDeleteInFlight(record);
+}
 export function isMealEntryRowBlocked(record) {
     return mgr().isRowBlocked(record);
 }
 export function clearStuckMealPendingFlags() {
     return mgr().clearStuckMealPendingFlags();
+}
+
+/** waitForPendingWrites 성공 직후: 스냅샷 ack 누락 시 타임라인 동기화 표시 보정 */
+export function reconcileMealSyncUiAfterWriteQueueFlush() {
+    mgr().reconcileSyncUiAfterClientWriteQueueFlush();
 }
 
 /** 타임라인 도트 분기 단일화 — 레드닷 조건 꼬임 방지 */

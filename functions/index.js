@@ -257,18 +257,17 @@ function pickSingleFcmTokenForAdminBroadcast(tokensMap, tokenStrings) {
  * 특정 사용자의 FCM 토큰들에 푸시 알림 전송 (실패 시 로그만, 호출자 대기 안 함)
  * @param {string} userId - 수신자 uid
  * @param {{ title: string, body: string, data?: object }} payload
- */
-/**
  * @param {{ adminBroadcast?: boolean, pushCategory?: 'momentComment'|'boardComment'|'mealTalk'|'adminDefault' }} options - pushCategory 있으면 사용자 pushPreferences로 필터
+ * @returns {Promise<boolean>} 최소 1건 FCM 전송 성공 시 true
  */
 async function sendPushToUser(userId, payload, options = {}) {
-  if (!userId || !payload?.title) return;
+  if (!userId || !payload?.title) return false;
   const pushCategory = options.pushCategory;
   if (pushCategory) {
     const prefs = await getUserPushPreferences(userId);
     if (!isPushCategoryAllowedByPrefs(prefs, pushCategory)) {
       logger.info('sendPushToUser: skipped by pushPreferences', { userId, pushCategory });
-      return;
+      return false;
     }
   }
   try {
@@ -304,7 +303,7 @@ async function sendPushToUser(userId, payload, options = {}) {
     }
     if (tokens.length === 0) {
       logger.info('sendPushToUser: no FCM tokens for user', { userId, targetEnv: envFilter || 'all' });
-      return;
+      return false;
     }
     const messaging = getMessaging();
     const dataObj = { ...(payload.data && typeof payload.data === 'object' ? payload.data : {}) };
@@ -360,7 +359,17 @@ async function sendPushToUser(userId, payload, options = {}) {
     const results = await Promise.allSettled(
       tokens.map((token) => messaging.send({ ...message, token }))
     );
+    const fulfilled = results.filter((r) => r.status === 'fulfilled').length;
     const failed = results.filter((r) => r.status === 'rejected');
+    if (fulfilled === 0) {
+      const firstReason = failed[0]?.reason?.message || String(failed[0]?.reason);
+      logger.warn('sendPushToUser: all sends failed', {
+        userId,
+        total: tokens.length,
+        firstReason
+      });
+      return false;
+    }
     if (failed.length > 0) {
       const firstReason = failed[0]?.reason?.message || String(failed[0]?.reason);
       logger.warn('sendPushToUser: some sends failed', {
@@ -372,8 +381,10 @@ async function sendPushToUser(userId, payload, options = {}) {
     } else {
       logger.info('sendPushToUser: ok', { userId, tokenCount: tokens.length, targetEnv: envFilter || 'all' });
     }
+    return true;
   } catch (e) {
     logger.warn('sendPushToUser failed', { userId, message: e?.message });
+    return false;
   }
 }
 
@@ -3235,6 +3246,7 @@ function makeAdminBroadcastCollapseId(payload, targetEnvResolved) {
 }
 
 /** 관리자 푸시메시지: 상단 알림만, 탭 시 앱 내 탭 이동(data.type=adminBroadcast), 배지/빨간점 갱신 생략 */
+/** @returns {Promise<{ totalUsers: number, recipientCount: number }>} recipientCount: FCM 1건 이상 성공한 사용자 수 */
 async function broadcastAdminPushToAllUsers(payload) {
   const usersRef = db.collection('artifacts').doc(APP_ID).collection('users');
   const targetEnv = payload?.targetEnv === 'production' || payload?.targetEnv === 'staging'
@@ -3243,6 +3255,7 @@ async function broadcastAdminPushToAllUsers(payload) {
   const adminCollapseId = makeAdminBroadcastCollapseId(payload, targetEnv);
   let lastDoc = null;
   let totalUsers = 0;
+  let recipientCount = 0;
   const pageSize = 200;
   const concurrency = 25;
   for (;;) {
@@ -3254,7 +3267,7 @@ async function broadcastAdminPushToAllUsers(payload) {
     totalUsers += uids.length;
     for (let i = 0; i < uids.length; i += concurrency) {
       const batch = uids.slice(i, i + concurrency);
-      await Promise.all(
+      const outcomes = await Promise.all(
         batch.map((uid) =>
           sendPushToUser(uid, payload, {
             adminBroadcast: true,
@@ -3264,17 +3277,24 @@ async function broadcastAdminPushToAllUsers(payload) {
           })
         )
       );
+      for (const ok of outcomes) {
+        if (ok) recipientCount += 1;
+      }
     }
     lastDoc = snap.docs[snap.docs.length - 1];
     if (snap.size < pageSize) break;
   }
-  logger.info('broadcastAdminPushToAllUsers done', { totalUsers, targetEnv });
+  logger.info('broadcastAdminPushToAllUsers done', { totalUsers, recipientCount, targetEnv });
+  return { totalUsers, recipientCount };
 }
 
 const ADMIN_PUSH_LANDING_TABS = new Set(['dashboard', 'timeline', 'gallery', 'board', 'settings']);
 
 const ADMIN_RECURRING_INTERVALS = new Set(['daily', 'weekly', 'monthly']);
 const ADMIN_PUSH_TARGET_ENVS = new Set(['all', 'production', 'staging']);
+/** 관리자 브로드캐스트 제목·본문 (FCM 표시·Firestore, 즉시/예약/요일별 공통) */
+const ADMIN_BROADCAST_TITLE_MAX = 120;
+const ADMIN_BROADCAST_BODY_MAX = 240;
 
 /** 다음 주기 발송 시각(ms). monthly: 해당 월에 일이 없으면 말일로 보정 */
 function addRecurringNextMillis(fromMs, interval) {
@@ -3299,6 +3319,117 @@ function addRecurringNextMillis(fromMs, interval) {
   return d.getTime();
 }
 
+/** KST 기준 YYYY-MM-DD */
+function kstYmdFromMillis(ms) {
+  return new Date(ms).toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
+}
+
+function addOneKstYmd(ymd) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + 1, 12, 0, 0));
+  return dt.toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
+}
+
+/** 월=1 … 일=7 (JS getUTCDay: 일=0) */
+function kstWeekdayMon1Sun7FromYmd(ymd) {
+  const [Y, M, D] = ymd.split('-').map(Number);
+  const noonUtc = Date.UTC(Y, M - 1, D, 3, 0, 0);
+  const dowSun0 = new Date(noonUtc).getUTCDay();
+  return dowSun0 === 0 ? 7 : dowSun0;
+}
+
+function kstWeekdayMon1Sun7FromMillis(ms) {
+  return kstWeekdayMon1Sun7FromYmd(kstYmdFromMillis(ms));
+}
+
+function kstMillisForYmdHm(ymd, hm) {
+  const [y, mo, d] = ymd.split('-').map(Number);
+  const parts = String(hm || '').trim().split(':');
+  const h = parseInt(parts[0], 10);
+  const mi = parseInt(parts[1], 10);
+  if (Number.isNaN(h) || Number.isNaN(mi)) return NaN;
+  return Date.UTC(y, mo - 1, d, h - 9, mi, 0, 0);
+}
+
+function kstEndOfDayMillisFromYmd(ymd) {
+  const [y, mo, d] = ymd.split('-').map(Number);
+  return Date.UTC(y, mo - 1, d, 23 - 9, 59, 59, 999);
+}
+
+function kstHmFromMillis(ms) {
+  return new Date(ms).toLocaleTimeString('sv-SE', {
+    timeZone: 'Asia/Seoul',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+}
+
+function normalizeHm(hm) {
+  const p = String(hm || '').split(':');
+  const h = parseInt(p[0], 10);
+  const m = parseInt(p[1], 10);
+  if (Number.isNaN(h) || Number.isNaN(m)) return String(hm || '');
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function normalizeWeeklyScheduleEntries(rows) {
+  if (!Array.isArray(rows)) return [];
+  const out = [];
+  for (const row of rows) {
+    const weekday = Number(row.weekday);
+    if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) continue;
+    const time = normalizeHm(row.time);
+    if (!/^\d{2}:\d{2}$/.test(time)) continue;
+    const title = String(row.title || '').trim().slice(0, ADMIN_BROADCAST_TITLE_MAX);
+    const body = String(row.body || '').trim().slice(0, ADMIN_BROADCAST_BODY_MAX);
+    if (!title || !body) continue;
+    const tab = String(row.landingTab || 'dashboard').trim();
+    const landingTab = ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard';
+    const envRaw = String(row.targetEnv || 'all').trim();
+    const targetEnv = ADMIN_PUSH_TARGET_ENVS.has(envRaw) ? envRaw : 'all';
+    out.push({ weekday, time, landingTab, targetEnv, title, body });
+  }
+  return out;
+}
+
+/**
+ * 기간 [rangeStartMs, rangeEndMs] 안에서 fromMs 이후 가장 이른 발송 시각 (KST 요일·시각 일치)
+ */
+function computeNextWeeklySlotMillis(weeklySchedule, rangeStartMs, rangeEndMs, fromMs) {
+  const slots = normalizeWeeklyScheduleEntries(weeklySchedule);
+  if (slots.length === 0) return null;
+  const from = Math.max(fromMs, rangeStartMs);
+  if (from > rangeEndMs) return null;
+  const endYmd = kstYmdFromMillis(rangeEndMs);
+  let best = null;
+  let ymd = kstYmdFromMillis(from);
+  for (;;) {
+    if (ymd > endYmd) break;
+    const wd = kstWeekdayMon1Sun7FromYmd(ymd);
+    for (const slot of slots) {
+      if (slot.weekday !== wd) continue;
+      const ts = kstMillisForYmdHm(ymd, slot.time);
+      if (Number.isNaN(ts)) continue;
+      if (ts >= from && ts <= rangeEndMs) {
+        if (best === null || ts < best) best = ts;
+      }
+    }
+    if (ymd >= endYmd) break;
+    ymd = addOneKstYmd(ymd);
+  }
+  return best;
+}
+
+function findWeeklySlotForScheduledAt(weeklySchedule, scheduledAtTs) {
+  const ms = scheduledAtTs && typeof scheduledAtTs.toMillis === 'function' ? scheduledAtTs.toMillis() : 0;
+  if (!ms) return null;
+  const wd = kstWeekdayMon1Sun7FromMillis(ms);
+  const hm = normalizeHm(kstHmFromMillis(ms));
+  const slots = normalizeWeeklyScheduleEntries(weeklySchedule);
+  return slots.find((s) => s.weekday === wd && s.time === hm) || null;
+}
+
 function normalizeAdminBroadcastPayload(raw) {
   const title = String(raw?.title || '').trim();
   const body = String(raw?.body || '').trim();
@@ -3316,13 +3447,14 @@ async function appendAdminBroadcastHistory({
   landingTab,
   targetEnv = 'all',
   status = 'sent',
-  createdByUid = null
+  createdByUid = null,
+  recipientCount = null
 }) {
   const coll = db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes');
-  await coll.add({
+  const row = {
     scheduleType,
-    title: String(title || '').slice(0, 80),
-    body: String(body || '').slice(0, 240),
+    title: String(title || '').slice(0, ADMIN_BROADCAST_TITLE_MAX),
+    body: String(body || '').slice(0, ADMIN_BROADCAST_BODY_MAX),
     landingTab: ADMIN_PUSH_LANDING_TABS.has(String(landingTab || '').trim()) ? String(landingTab).trim() : 'dashboard',
     targetEnv: ADMIN_PUSH_TARGET_ENVS.has(String(targetEnv || '').trim()) ? String(targetEnv).trim() : 'all',
     status: String(status || 'sent'),
@@ -3330,7 +3462,11 @@ async function appendAdminBroadcastHistory({
     sentAt: FieldValue.serverTimestamp(),
     createdByUid: createdByUid || null,
     createdAt: FieldValue.serverTimestamp()
-  });
+  };
+  if (typeof recipientCount === 'number' && !Number.isNaN(recipientCount) && recipientCount >= 0) {
+    row.recipientCount = recipientCount;
+  }
+  await coll.add(row);
 }
 
 const ADMIN_PUSH_NOW_DEDUPE_MS = 55 * 1000;
@@ -3365,18 +3501,30 @@ exports.adminBroadcastPushNow = onCall(
       throw new HttpsError('permission-denied', '관리자만 발송할 수 있습니다.');
     }
     const { title, body, landingTab, targetEnv } = normalizeAdminBroadcastPayload(request.data || {});
-    if (!title || title.length > 80) {
-      throw new HttpsError('invalid-argument', '제목은 1~80자로 입력해 주세요.');
+    if (!title || title.length === 0) {
+      throw new HttpsError('invalid-argument', '제목을 입력해 주세요.');
     }
-    if (!body || body.length > 240) {
-      throw new HttpsError('invalid-argument', '내용은 1~240자로 입력해 주세요.');
+    if (title.length > ADMIN_BROADCAST_TITLE_MAX) {
+      throw new HttpsError(
+        'invalid-argument',
+        `제목은 ${ADMIN_BROADCAST_TITLE_MAX}자 이하로 입력해 주세요.`
+      );
+    }
+    if (!body || body.length === 0) {
+      throw new HttpsError('invalid-argument', '내용을 입력해 주세요.');
+    }
+    if (body.length > ADMIN_BROADCAST_BODY_MAX) {
+      throw new HttpsError(
+        'invalid-argument',
+        `내용은 ${ADMIN_BROADCAST_BODY_MAX}자 이하로 입력해 주세요.`
+      );
     }
     const skip = await adminPushNowDedupeShouldSkip({ callerUid, title, body, landingTab, targetEnv });
     if (skip) {
       logger.info('adminBroadcastPushNow: dedupe skip (same payload within window)');
       return { ok: true, deduped: true };
     }
-    await broadcastAdminPushToAllUsers({
+    const { recipientCount } = await broadcastAdminPushToAllUsers({
       title,
       body,
       targetEnv,
@@ -3390,7 +3538,8 @@ exports.adminBroadcastPushNow = onCall(
         landingTab,
         targetEnv,
         status: 'sent',
-        createdByUid: callerUid
+        createdByUid: callerUid,
+        recipientCount
       });
     } catch (historyErr) {
       logger.warn('adminBroadcastPushNow: history write failed', { message: historyErr?.message });
@@ -3418,17 +3567,59 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
   const land = ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard';
   const envRaw = String(targetEnv || 'all').trim();
   const target = ADMIN_PUSH_TARGET_ENVS.has(envRaw) ? envRaw : 'all';
-  if (!t || t.length > 80) {
-    throw new HttpsError('invalid-argument', '제목은 1~80자로 입력해 주세요.');
-  }
-  if (!b || b.length > 240) {
-    throw new HttpsError('invalid-argument', '내용은 1~240자로 입력해 주세요.');
-  }
   const serverNow = Date.now();
   const minLead = serverNow + 25 * 1000;
   const scheduleType = data.scheduleType === 'recurring' ? 'recurring' : 'once';
 
   if (scheduleType === 'recurring') {
+    const weeklyRows = data.weeklySchedule;
+    if (Array.isArray(weeklyRows) && weeklyRows.length > 0) {
+      const startDate = String(data.recurringStartDate || '').trim();
+      const endDate = String(data.recurringEndDate || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+        throw new HttpsError('invalid-argument', '요일별 발송: 시작일·종료일(YYYY-MM-DD)이 필요합니다.');
+      }
+      const weeklySchedule = normalizeWeeklyScheduleEntries(weeklyRows);
+      if (weeklySchedule.length === 0) {
+        throw new HttpsError('invalid-argument', '요일별 발송: 최소 1개 요일에 제목·내용·시각을 입력해 주세요.');
+      }
+      if (endDate < startDate) {
+        throw new HttpsError('invalid-argument', '종료일은 시작일 이후여야 합니다.');
+      }
+      const rangeStartMs = kstMillisForYmdHm(startDate, '00:00');
+      const rangeEndMs = kstEndOfDayMillisFromYmd(endDate);
+      if (Number.isNaN(rangeStartMs) || Number.isNaN(rangeEndMs)) {
+        throw new HttpsError('invalid-argument', '시작일·종료일이 올바르지 않습니다.');
+      }
+      if (rangeEndMs < rangeStartMs) {
+        throw new HttpsError('invalid-argument', '기간이 올바르지 않습니다.');
+      }
+      const firstAt = computeNextWeeklySlotMillis(weeklySchedule, rangeStartMs, rangeEndMs, minLead);
+      if (firstAt == null) {
+        throw new HttpsError(
+          'invalid-argument',
+          '선택한 기간·시각 안에 발송할 수 있는 일정이 없습니다. 기간을 넓히거나 시각을 확인해 주세요.'
+        );
+      }
+      const ref = await db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes').add({
+        scheduleType: 'recurring',
+        recurringMode: 'weeklyByDay',
+        weeklySchedule,
+        recurringStartAt: Timestamp.fromMillis(rangeStartMs),
+        recurringEndAt: Timestamp.fromMillis(rangeEndMs),
+        title: '요일별 발송',
+        body: '',
+        landingTab: 'dashboard',
+        targetEnv: 'all',
+        scheduledAt: Timestamp.fromMillis(firstAt),
+        occurrenceCount: 0,
+        status: 'pending',
+        createdByUid: callerUid,
+        createdAt: FieldValue.serverTimestamp()
+      });
+      return { ok: true, id: ref.id };
+    }
+
     const recurringStartMs =
       typeof data.recurringStartMs === 'number' && !Number.isNaN(data.recurringStartMs)
         ? data.recurringStartMs
@@ -3449,12 +3640,30 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
     if (recurringStartMs < minLead) {
       throw new HttpsError('invalid-argument', '시작 시각은 서버 기준 약 30초 이후로 설정해 주세요.');
     }
+    if (!t || t.length === 0) {
+      throw new HttpsError('invalid-argument', '주기 발송: 제목을 입력해 주세요.');
+    }
+    if (t.length > ADMIN_BROADCAST_TITLE_MAX) {
+      throw new HttpsError(
+        'invalid-argument',
+        `제목은 ${ADMIN_BROADCAST_TITLE_MAX}자 이하로 입력해 주세요.`
+      );
+    }
+    if (!b || b.length === 0) {
+      throw new HttpsError('invalid-argument', '주기 발송: 내용을 입력해 주세요.');
+    }
+    if (b.length > ADMIN_BROADCAST_BODY_MAX) {
+      throw new HttpsError(
+        'invalid-argument',
+        `내용은 ${ADMIN_BROADCAST_BODY_MAX}자 이하로 입력해 주세요.`
+      );
+    }
     const ref = await db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes').add({
       scheduleType: 'recurring',
       recurringInterval,
       recurringEndAt: Timestamp.fromMillis(recurringEndMs),
-      title: t.slice(0, 80),
-      body: b.slice(0, 240),
+      title: t.slice(0, ADMIN_BROADCAST_TITLE_MAX),
+      body: b.slice(0, ADMIN_BROADCAST_BODY_MAX),
       landingTab: land,
       targetEnv: target,
       scheduledAt: Timestamp.fromMillis(recurringStartMs),
@@ -3466,6 +3675,25 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
     return { ok: true, id: ref.id };
   }
 
+  if (!t || t.length === 0) {
+    throw new HttpsError('invalid-argument', '예약 발송: 제목을 입력해 주세요.');
+  }
+  if (t.length > ADMIN_BROADCAST_TITLE_MAX) {
+    throw new HttpsError(
+      'invalid-argument',
+      `제목은 ${ADMIN_BROADCAST_TITLE_MAX}자 이하로 입력해 주세요.`
+    );
+  }
+  if (!b || b.length === 0) {
+    throw new HttpsError('invalid-argument', '예약 발송: 내용을 입력해 주세요.');
+  }
+  if (b.length > ADMIN_BROADCAST_BODY_MAX) {
+    throw new HttpsError(
+      'invalid-argument',
+      `내용은 ${ADMIN_BROADCAST_BODY_MAX}자 이하로 입력해 주세요.`
+    );
+  }
+
   const ms = typeof data.scheduledAtMs === 'number' && !Number.isNaN(data.scheduledAtMs) ? data.scheduledAtMs : null;
   if (ms == null) {
     throw new HttpsError('invalid-argument', '예약 시각(scheduledAtMs)이 올바르지 않습니다.');
@@ -3475,8 +3703,8 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
   }
   const ref = await db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes').add({
     scheduleType: 'once',
-    title: t.slice(0, 80),
-    body: b.slice(0, 240),
+    title: t.slice(0, ADMIN_BROADCAST_TITLE_MAX),
+    body: b.slice(0, ADMIN_BROADCAST_BODY_MAX),
     landingTab: land,
     targetEnv: target,
     scheduledAt: Timestamp.fromMillis(ms),
@@ -3577,10 +3805,30 @@ exports.processScheduledAdminPushes = onSchedule(
         const d = after.data();
         if (!after.exists || d.status !== 'sending') continue;
 
-        const title = String(d.title || '').trim();
-        const body = String(d.body || '').trim();
-        const tab = String(d.landingTab || 'dashboard').trim();
-        const landingTab = ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard';
+        const isWeeklyByDay = d.recurringMode === 'weeklyByDay' && Array.isArray(d.weeklySchedule);
+        let title = String(d.title || '').trim();
+        let body = String(d.body || '').trim();
+        let landingTab = ADMIN_PUSH_LANDING_TABS.has(String(d.landingTab || '').trim())
+          ? String(d.landingTab).trim()
+          : 'dashboard';
+        let pushTargetEnv = d.targetEnv === 'production' || d.targetEnv === 'staging' ? d.targetEnv : 'all';
+
+        if (isWeeklyByDay) {
+          const slot = findWeeklySlotForScheduledAt(d.weeklySchedule, d.scheduledAt);
+          if (!slot) {
+            await ref.update({
+              status: 'failed',
+              errorMessage: '요일별 슬롯 매칭 실패',
+              failedAt: FieldValue.serverTimestamp()
+            });
+            continue;
+          }
+          title = slot.title;
+          body = slot.body;
+          landingTab = slot.landingTab;
+          pushTargetEnv = slot.targetEnv;
+        }
+
         if (!title || !body) {
           await ref.update({
             status: 'failed',
@@ -3590,41 +3838,81 @@ exports.processScheduledAdminPushes = onSchedule(
           continue;
         }
 
-        await broadcastAdminPushToAllUsers({
+        const { recipientCount } = await broadcastAdminPushToAllUsers({
           title,
           body,
-          targetEnv: d.targetEnv === 'production' || d.targetEnv === 'staging' ? d.targetEnv : 'all',
+          targetEnv: pushTargetEnv,
           data: { type: 'adminBroadcast', landingTab }
         });
 
         const scheduleType = d.scheduleType || 'once';
         if (scheduleType === 'recurring') {
-          const endMs = d.recurringEndAt && typeof d.recurringEndAt.toMillis === 'function' ? d.recurringEndAt.toMillis() : 0;
-          const intervalRaw = String(d.recurringInterval || 'daily').trim();
-          const interval = ADMIN_RECURRING_INTERVALS.has(intervalRaw) ? intervalRaw : 'daily';
-          const thisRunMs = d.scheduledAt && typeof d.scheduledAt.toMillis === 'function' ? d.scheduledAt.toMillis() : nowMs;
-          const nextMs = addRecurringNextMillis(thisRunMs, interval);
-          if (!endMs || nextMs > endMs) {
-            await ref.update({
-              status: 'completed',
-              sentAt: FieldValue.serverTimestamp(),
-              lastSentAt: FieldValue.serverTimestamp(),
-              occurrenceCount: FieldValue.increment(1)
-            });
-            logger.info('processScheduledAdminPushes: recurring completed', { id: docSnap.id });
+          if (isWeeklyByDay) {
+            const rangeStartMs =
+              d.recurringStartAt && typeof d.recurringStartAt.toMillis === 'function'
+                ? d.recurringStartAt.toMillis()
+                : 0;
+            const rangeEndMs =
+              d.recurringEndAt && typeof d.recurringEndAt.toMillis === 'function'
+                ? d.recurringEndAt.toMillis()
+                : 0;
+            const thisRunMs = d.scheduledAt && typeof d.scheduledAt.toMillis === 'function' ? d.scheduledAt.toMillis() : nowMs;
+            const nextMs = computeNextWeeklySlotMillis(
+              d.weeklySchedule,
+              rangeStartMs,
+              rangeEndMs,
+              thisRunMs + 60 * 1000
+            );
+            if (nextMs == null || !rangeEndMs || nextMs > rangeEndMs) {
+              await ref.update({
+                status: 'completed',
+                sentAt: FieldValue.serverTimestamp(),
+                lastSentAt: FieldValue.serverTimestamp(),
+                occurrenceCount: FieldValue.increment(1),
+                recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
+              });
+              logger.info('processScheduledAdminPushes: weeklyByDay completed', { id: docSnap.id });
+            } else {
+              await ref.update({
+                status: 'pending',
+                scheduledAt: Timestamp.fromMillis(nextMs),
+                lastSentAt: FieldValue.serverTimestamp(),
+                occurrenceCount: FieldValue.increment(1),
+                recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
+              });
+              logger.info('processScheduledAdminPushes: weeklyByDay next', { id: docSnap.id, nextMs });
+            }
           } else {
-            await ref.update({
-              status: 'pending',
-              scheduledAt: Timestamp.fromMillis(nextMs),
-              lastSentAt: FieldValue.serverTimestamp(),
-              occurrenceCount: FieldValue.increment(1)
-            });
-            logger.info('processScheduledAdminPushes: recurring next scheduled', { id: docSnap.id, nextMs });
+            const endMs = d.recurringEndAt && typeof d.recurringEndAt.toMillis === 'function' ? d.recurringEndAt.toMillis() : 0;
+            const intervalRaw = String(d.recurringInterval || 'daily').trim();
+            const interval = ADMIN_RECURRING_INTERVALS.has(intervalRaw) ? intervalRaw : 'daily';
+            const thisRunMs = d.scheduledAt && typeof d.scheduledAt.toMillis === 'function' ? d.scheduledAt.toMillis() : nowMs;
+            const nextMs = addRecurringNextMillis(thisRunMs, interval);
+            if (!endMs || nextMs > endMs) {
+              await ref.update({
+                status: 'completed',
+                sentAt: FieldValue.serverTimestamp(),
+                lastSentAt: FieldValue.serverTimestamp(),
+                occurrenceCount: FieldValue.increment(1),
+                recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
+              });
+              logger.info('processScheduledAdminPushes: recurring completed', { id: docSnap.id });
+            } else {
+              await ref.update({
+                status: 'pending',
+                scheduledAt: Timestamp.fromMillis(nextMs),
+                lastSentAt: FieldValue.serverTimestamp(),
+                occurrenceCount: FieldValue.increment(1),
+                recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
+              });
+              logger.info('processScheduledAdminPushes: recurring next scheduled', { id: docSnap.id, nextMs });
+            }
           }
         } else {
           await ref.update({
             status: 'sent',
-            sentAt: FieldValue.serverTimestamp()
+            sentAt: FieldValue.serverTimestamp(),
+            recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
           });
           logger.info('processScheduledAdminPushes: sent', { id: docSnap.id });
         }

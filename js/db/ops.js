@@ -24,6 +24,7 @@ import {
 import { showToast } from '../ui.js';
 import { logger } from '../utils.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
+import { tryMarkAppOfflineFromNetworkFailure } from '../utils/network-reachability.js';
 
 /**
  * 식사 저장 결과 — Callable(Admin) 폴백 시 Firestore 로컬 큐가 비지 않아 waitForPendingWrites·리스너 ack와 무관함.
@@ -240,6 +241,7 @@ export const dbOps = {
                 throw e1;
             }
         } catch (e) {
+            tryMarkAppOfflineFromNetworkFailure(e);
             console.error("Save Error:", e);
             const currentUser = auth.currentUser || window.currentUser;
             console.error("저장 실패 상세:", { 
@@ -312,6 +314,7 @@ export const dbOps = {
             }
             // 성공 토스트는 호출자에서 표시
         } catch (e) {
+            tryMarkAppOfflineFromNetworkFailure(e);
             console.error("Delete Error:", e);
             throw e;
         }
@@ -527,6 +530,7 @@ export const dbOps = {
                 });
             }
         } catch (e) {
+            tryMarkAppOfflineFromNetworkFailure(e);
             console.error("Settings Save Error:", e);
             const currentUser = auth.currentUser || window.currentUser;
             console.error("설정 저장 실패 상세:", { 

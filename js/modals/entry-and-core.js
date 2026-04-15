@@ -27,7 +27,7 @@ import {
     isMealEntrySaveFailed,
     markMealEntryServerWorkComplete,
     markMealEntryDeletePending,
-    markMealEntryDeleteComplete,
+    markMealEntryDeleteInFlight,
     markMealEntryDeleteFailed,
     clearMealEntryDeleteFailed,
     markMealEntrySaveFailedById,
@@ -42,14 +42,27 @@ import {
     clearMealSyncGraceTimer,
     scheduleMealSyncGraceAbandon,
     isMealEntrySyncAbandoned,
+    isMealEntryDeleteFailed,
     applyOfflineAfterLocalSaveUi,
     onMealDocFirestoreServerAcknowledged,
-    scheduleMealServerAckAfterPendingWrites
+    scheduleMealServerAckAfterPendingWrites,
+    MEAL_SYNC_GRACE_MS_NO_PHOTO,
+    MEAL_SYNC_GRACE_MS_WITH_PHOTO,
+    mealRecordHasBase64PendingPhotos,
+    getMealRowSyncLeadKind
 } from '../utils/meal-entry-pending.js';
 import { getMealSyncManager } from '../utils/meal-sync-manager.js';
+import { applyOptimisticMealDelete } from '../utils/meal-delete-optimistic.js';
 import { saveWithTimeout } from '../utils/save-with-timeout.js';
 // ⚠️ initPushNotifications import 제거 - 크래시 문제로 인해 비활성화
 // 저장 직후 동기화 도트(waitForPendingWrites 등)는 meal-sync-manager.scheduleServerAckAfterPendingWrites (meal-entry-pending re-export)
+
+function isMealActionEffectiveOffline() {
+    try {
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+    } catch (_) {}
+    return !!appState.localNetworkForcedOffline;
+}
 
 // 설정 저장 디바운싱을 위한 타이머
 let settingsSaveTimeout = null;
@@ -1531,8 +1544,14 @@ export async function saveEntry() {
         }
 
         const sourcePhotos = Array.isArray(state.currentPhotos) ? [...state.currentPhotos] : [];
-        const isBase64Photo = (photo) => typeof photo === 'string' && photo.startsWith('data:image');
-        const existingPhotoUrls = sourcePhotos.filter(photo => typeof photo === 'string' && photo && !isBase64Photo(photo));
+        /** 아직 Storage에 없는 로컬 이미지(data URL 또는 일부 환경의 blob URL) */
+        const isLocalPendingPhoto = (photo) =>
+            typeof photo === 'string' &&
+            photo &&
+            (photo.startsWith('data:image') || photo.startsWith('blob:'));
+        const existingPhotoUrls = sourcePhotos.filter(
+            (photo) => typeof photo === 'string' && photo && !isLocalPendingPhoto(photo)
+        );
 
         const rateOn = appState.entryGaugeRatingOn === true;
         const satOn = appState.entryGaugeSatietyOn === true;
@@ -1644,7 +1663,7 @@ export async function saveEntry() {
         const wasNewRecord = !record.id;
         const optimisticTempId = wasNewRecord ? `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` : null;
         const optimisticSlotKey = `${record.date || ''}__${record.slotId || ''}`;
-        const hasPendingBase64Photos = sourcePhotos.some(isBase64Photo);
+        const hasPendingBase64Photos = sourcePhotos.some(isLocalPendingPhoto);
         if (hasPendingBase64Photos) {
             getMealSyncManager().setPendingPhotoEntry(record.id || optimisticTempId || null, optimisticSlotKey, true);
         }
@@ -1731,6 +1750,10 @@ export async function saveEntry() {
         // 저장 실행 (모달은 닫힌 상태, 타임라인에 인라인 스피너 표시)
         // 새 레코드인 경우 ID를 먼저 확보해야 공유 시 entryId를 올바르게 설정할 수 있음
         const SAVE_FIRESTORE_TIMEOUT_MS = 10000;
+        /** 사진 N장 Storage + 재저장 상한 — grace 칩 전환(30초)과 동일 티밍 요청에 맞춤 */
+        const MEAL_PHOTO_UPLOAD_PHASE_TIMEOUT_MS = 30000;
+        /** 사진 Storage 업로드 실패·타임아웃 시에도 아래 '저장 완료' 병합이 성공으로 덮어쓰지 않도록 */
+        let photoUploadPhaseFailed = false;
         try {
             const saveResult = unwrapMealSaveResult(
                 await saveWithTimeout(() => dbOps.save(record, true), {
@@ -1770,7 +1793,13 @@ export async function saveEntry() {
             }
             /* base64 업로드 후 재저장이 있으면 그때만 대기(1차만 기다리면 2차 쓰기와 순서가 어긋날 수 있음) */
             if (!savedViaCallableFallback && !hasPendingBase64Photos) {
-                scheduleMealServerAckAfterPendingWrites(effectiveMealId, optimisticTempId, record.date, currentTab);
+                scheduleMealServerAckAfterPendingWrites(
+                    effectiveMealId,
+                    optimisticTempId,
+                    record.date,
+                    currentTab,
+                    MEAL_SYNC_GRACE_MS_NO_PHOTO
+                );
             }
             if (hasPendingBase64Photos && wasNewRecord && optimisticTempId && savedId) {
                 getMealSyncManager().movePendingPhotoTempToReal(optimisticTempId, savedId);
@@ -1782,7 +1811,7 @@ export async function saveEntry() {
                 updateTimelineShareIndicators();
             }
 
-            const base64Photos = sourcePhotos.filter(isBase64Photo);
+            const base64Photos = sourcePhotos.filter(isLocalPendingPhoto);
             // 추가 업로드 없음 — 클라이언트 Firestore 쓰기까지 끝나면 스피너 해제(오프라인 큐 동기화는 백그라운드)
             if (base64Photos.length === 0) {
                 markMealEntryServerWorkComplete(record?.id, optimisticTempId, optimisticSlotKey);
@@ -1796,8 +1825,9 @@ export async function saveEntry() {
                     console.warn('저장 직후 타임라인 갱신:', e);
                 }
             }
-            /* DevTools/웹뷰에서 onLine 갱신이 한 틱 늦는 경우 보정 */
+            /* DevTools/웹뷰에서 onLine 갱신이 한 틱 늦는 경우 보정 — 실제 오프라인·강제 오프라인이면 inFlight 유지(등록예정 칩) */
             queueMicrotask(() => {
+                if (isMealActionEffectiveOffline()) return;
                 try {
                     applyOfflineAfterLocalSaveUi(effectiveMealId, optimisticTempId, record.date, currentTab);
                 } catch (_) {
@@ -1831,12 +1861,17 @@ export async function saveEntry() {
                         () =>
                             (async () => {
                                 try {
+                                    const dataUrlsForUpload = await Promise.all(
+                                        base64Photos.map((photo) => ensureDataUrlForStorage(photo))
+                                    );
                                     const uploadedUrls = await Promise.all(
-                                        base64Photos.map((photo) => uploadBase64ToStorage(photo, window.currentUser.uid, record.id))
+                                        dataUrlsForUpload.map((photo) =>
+                                            uploadBase64ToStorage(photo, window.currentUser.uid, record.id)
+                                        )
                                     );
                                     let uploadedIndex = 0;
                                     const finalPhotoUrls = sourcePhotos.reduce((acc, photo) => {
-                                        if (isBase64Photo(photo)) {
+                                        if (isLocalPendingPhoto(photo)) {
                                             const uploaded = uploadedUrls[uploadedIndex++];
                                             if (uploaded) acc.push(uploaded);
                                             return acc;
@@ -1867,6 +1902,8 @@ export async function saveEntry() {
                                         }
                                     }
                                 } catch (uploadError) {
+                                    photoUploadPhaseFailed = true;
+                                    if (record.id) markMealEntrySaveFailedById(String(record.id));
                                     console.error('사진 업로드 실패:', uploadError);
                                     showToast(getUserFacingErrorMessage(uploadError, 'save'), 'error');
                                     // 네트워크 복구 후 재전송할 수 있도록 base64 원본 유지(URL만 있던 수정 건은 기존 URL 유지)
@@ -1898,26 +1935,38 @@ export async function saveEntry() {
                                 }
                             })(),
                         {
-                            timeoutMs: SAVE_FIRESTORE_TIMEOUT_MS,
+                            timeoutMs: MEAL_PHOTO_UPLOAD_PHASE_TIMEOUT_MS,
                             onTimeout: () => {
                                 if (record?.id) getMealSyncManager().onSaveUiTimedOut(String(record.id), optimisticTempId);
                             }
                         }
                     );
                     if (record.date) invalidateTimelineDateSection(record.date);
-                    markMealEntryServerWorkComplete(record?.id, optimisticTempId, optimisticSlotKey);
-                    if (record?.id && !photoPhaseSavedViaCallable) {
-                        scheduleMealServerAckAfterPendingWrites(record.id, optimisticTempId, record.date, currentTab);
+                    /* 업로드 실패 시에도 내부 catch가 throw하지 않아 여기까지 옴 — 성공 시에만 대기 해제·ack 스케줄 */
+                    if (!photoUploadPhaseFailed) {
+                        markMealEntryServerWorkComplete(record?.id, optimisticTempId, optimisticSlotKey);
+                        if (record?.id && !photoPhaseSavedViaCallable) {
+                            scheduleMealServerAckAfterPendingWrites(
+                                record.id,
+                                optimisticTempId,
+                                record.date,
+                                currentTab,
+                                MEAL_SYNC_GRACE_MS_WITH_PHOTO
+                            );
+                        }
+                        queueMicrotask(() => {
+                            if (isMealActionEffectiveOffline()) return;
+                            try {
+                                applyOfflineAfterLocalSaveUi(record.id, optimisticTempId, record.date, currentTab);
+                            } catch (_) {
+                                /* ignore */
+                            }
+                        });
                     }
                     refreshTimelineAfterMealSaveResult();
-                    queueMicrotask(() => {
-                        try {
-                            applyOfflineAfterLocalSaveUi(record.id, optimisticTempId, record.date, currentTab);
-                        } catch (_) {
-                            /* ignore */
-                        }
-                    });
                 } catch (uploadPhaseError) {
+                    photoUploadPhaseFailed = true;
+                    if (record?.id) markMealEntrySaveFailedById(String(record.id));
                     console.error('사진 업로드/재저장 단계 오류:', uploadPhaseError);
                     markMealEntryServerWorkComplete(record?.id, optimisticTempId, optimisticSlotKey);
                     if (uploadPhaseError?.__mealogSaveTimeout) {
@@ -1943,7 +1992,9 @@ export async function saveEntry() {
                     return;
                 }
             } else if (hasPendingBase64Photos && record?.id) {
-                // 업로드 분기 미진입(예: uid 미준비) — 서버 쪽으로는 1차 저장만 된 상태이므로 플래그는 제거
+                // 업로드 분기 미진입(예: uid 미준비) — 1차만 저장되고 사진은 서버에 없음 → 재시도 가능하도록 실패 표시
+                photoUploadPhaseFailed = true;
+                markMealEntrySaveFailedById(String(record.id));
                 if (record.date) invalidateTimelineDateSection(record.date);
                 markMealEntryServerWorkComplete(record.id, optimisticTempId, optimisticSlotKey);
                 if (currentTab === 'timeline') {
@@ -1955,13 +2006,47 @@ export async function saveEntry() {
                 }
             }
 
+            /* 업로드 분기는 성공했으나 https URL 개수가 부족하면(이상 케이스) 실패로 취급 — 완료 팝업·초록 도트 오인 방지 */
+            if (base64Photos.length > 0 && record.id && !photoUploadPhaseFailed) {
+                const httpsN = (Array.isArray(record.photos) ? record.photos : []).filter(
+                    (p) => typeof p === 'string' && /^https?:\/\//.test(p)
+                ).length;
+                if (httpsN < base64Photos.length) {
+                    photoUploadPhaseFailed = true;
+                    markMealEntrySaveFailedById(String(record.id));
+                    const preserve = sourcePhotos.filter((p) => typeof p === 'string' && p);
+                    record.photos = preserve.length ? preserve : existingPhotoUrls;
+                    photosToShare = (!isShareBanned && wantsToShare && existingPhotoUrls.length > 0)
+                        ? [...existingPhotoUrls]
+                        : [];
+                    record.sharedPhotos = photosToShare;
+                    if (window.mealHistory) {
+                        const hi = window.mealHistory.findIndex((m) => m && m.id === record.id);
+                        if (hi >= 0) {
+                            window.mealHistory[hi] = {
+                                ...window.mealHistory[hi],
+                                photos: [...record.photos],
+                                _localSaveFailed: true,
+                                is_sync_error: true
+                            };
+                        }
+                    }
+                }
+            }
+
             console.log('저장 완료');
             // 낙관적 반영: 리스너 도착 전에 mealHistory에 즉시 반영해 스크롤·렌더가 최신 데이터 기준으로 동작
             if (record.id && window.mealHistory && Array.isArray(window.mealHistory)) {
                 const idx = window.mealHistory.findIndex(m => m.id === record.id);
                 const merged = { ...record };
-                delete merged._localSaveFailed;
-                delete merged.is_sync_error;
+                if (photoUploadPhaseFailed) {
+                    merged._localSaveFailed = true;
+                    merged.is_sync_error = true;
+                    markMealEntrySaveFailedById(String(record.id));
+                } else {
+                    delete merged._localSaveFailed;
+                    delete merged.is_sync_error;
+                }
                 if (idx >= 0) {
                     window.mealHistory[idx] = merged;
                 } else {
@@ -1969,8 +2054,8 @@ export async function saveEntry() {
                 }
                 window.mealHistory.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''));
             }
-            // 기록 완료 중앙 팝업 — 신규 기록에만 (수정 시에는 아래 토스트만)
-            if (wasNewRecord) {
+            // 기록 완료 중앙 팝업 — 신규 기록에만 (사진 업로드 실패 시에는 오해 소지가 있어 띄우지 않음)
+            if (wasNewRecord && !photoUploadPhaseFailed) {
                 showSuccessPopup(resolveRecordCompletePopupMessage(wasNewRecord, record.date), 800);
             }
             // 저장 직후 잠깐 타임라인 전체 재렌더를 막아, jumpToDate·스크롤이 리스너 재렌더에 덮이지 않게 함
@@ -2167,75 +2252,6 @@ export async function saveEntry() {
     }
 }
 
-const DELETE_OPT_MAIN = new Set(['morning', 'lunch', 'dinner']);
-const DELETE_OPT_SNACK = new Set(['pre_morning', 'snack1', 'snack2', 'night']);
-
-/**
- * 기록 삭제 낙관적 반영 — mealHistory·dailyStats·모먼트 캐시에서 즉시 제거
- * @returns {{ meal: object, prevDayStats: object | null, dateIso: string, hadShared: boolean } | null}
- */
-function applyOptimisticMealDelete(mealId, preloadedMeal = null) {
-    if (mealId) clearMealEntrySaveFailedById(mealId);
-    const meal =
-        (preloadedMeal && preloadedMeal.id === mealId ? preloadedMeal : null) ||
-        window.mealHistory?.find((m) => m.id === mealId);
-    if (!meal) return null;
-    const dateIso = typeof meal.date === 'string' ? meal.date : '';
-    const slotId = meal.slotId || '';
-    let prevDayStats = null;
-
-    window.mealHistory = window.mealHistory.filter((m) => m.id !== mealId);
-
-    if (dateIso && window.dailyStats && typeof window.dailyStats === 'object') {
-        const day = window.dailyStats[dateIso];
-        if (day && typeof day === 'object') {
-            prevDayStats = JSON.parse(JSON.stringify(day));
-            const count = Math.max(0, (day.count || 0) - 1);
-            if (count <= 0) {
-                const next = { ...window.dailyStats };
-                delete next[dateIso];
-                window.dailyStats = next;
-            } else {
-                let mainCount = day.mainCount || 0;
-                let snackCount = day.snackCount || 0;
-                if (DELETE_OPT_MAIN.has(slotId) && mainCount > 0) mainCount -= 1;
-                else if (DELETE_OPT_SNACK.has(slotId) && snackCount > 0) snackCount -= 1;
-                window.dailyStats = {
-                    ...window.dailyStats,
-                    [dateIso]: { ...day, count, mainCount, snackCount }
-                };
-            }
-        }
-    }
-
-    const hadShared = Array.isArray(meal.sharedPhotos) && meal.sharedPhotos.length > 0;
-    if (hadShared && window.sharedPhotos) {
-        window.sharedPhotos = window.sharedPhotos.filter((p) => p.entryId !== mealId);
-    }
-    if (window.sharedPhotosFeed) {
-        window.sharedPhotosFeed = window.sharedPhotosFeed.filter((p) => p.entryId !== mealId);
-    }
-
-    return { meal, prevDayStats, dateIso, hadShared };
-}
-
-function rollbackOptimisticMealDelete(ctx) {
-    if (!ctx?.meal) return;
-    const m = ctx.meal;
-    window.mealHistory = [...(window.mealHistory || []), m].sort(
-        (a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || '')
-    );
-    if (ctx.dateIso && ctx.prevDayStats && window.dailyStats && typeof window.dailyStats === 'object') {
-        window.dailyStats = { ...window.dailyStats, [ctx.dateIso]: ctx.prevDayStats };
-    }
-    if (ctx.hadShared && Array.isArray(m.sharedPhotos) && m.sharedPhotos.length && window.currentUser?.uid) {
-        if (!window.sharedPhotos) window.sharedPhotos = [];
-        const uid = window.currentUser.uid;
-        const entries = m.sharedPhotos.map((photoUrl) => ({ entryId: m.id, photoUrl, userId: uid }));
-        window.sharedPhotos = window.sharedPhotos.filter((p) => p.entryId !== m.id).concat(entries);
-    }
-}
-
 function rerenderAfterMealDelete(mealDate) {
     window._timelineRerenderFreezeUntil = Date.now() + 2000;
     void (async () => {
@@ -2326,23 +2342,30 @@ export async function deleteEntry() {
 
     const mealDate = mealForDelete.date;
 
-    /* 오프라인: deleteDoc이 로컬 캐시/대기 큐에만 반영되어 성공으로 처리되며 목록에서 사라짐 — 서버 미삭제와 불일치 방지 */
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-        markMealEntryDeleteFailed(entryIdToDelete);
+    if (isMealActionEffectiveOffline()) {
+        showToast('연결되면 서버에 삭제가 반영돼요. 삭제 예약으로 표시됩니다.', 'info');
+    }
+
+    markMealEntryDeletePending(entryIdToDelete);
+    rerenderAfterMealDelete(mealDate);
+
+    /** 삭제예정 칩만 최대 10초 — 이후에도 진행 중이면 삭제 중(레드닷) */
+    const DELETE_SCHEDULED_CHIP_MS = 10000;
+    const DELETE_DOC_RACE_MS = 90000;
+    let inflightMarked = false;
+    let deleteSettled = false;
+    const inflightTimer = window.setTimeout(() => {
+        if (deleteSettled || inflightMarked) return;
+        inflightMarked = true;
+        markMealEntryDeleteInFlight(entryIdToDelete);
         try {
             updateTimelineMealEntryPendingIndicators();
         } catch (_) {
             /* ignore */
         }
         rerenderAfterMealDelete(mealDate);
-        showToast('인터넷에 연결되어 있지 않아 삭제할 수 없습니다. 연결 후 다시 시도해 주세요.', 'error');
-        return;
-    }
+    }, DELETE_SCHEDULED_CHIP_MS);
 
-    markMealEntryDeletePending(entryIdToDelete);
-    rerenderAfterMealDelete(mealDate);
-
-    const DELETE_PENDING_TIMEOUT_MS = 10000;
     try {
         await Promise.race([
             dbOps.delete(entryIdToDelete),
@@ -2352,19 +2375,18 @@ export async function deleteEntry() {
                     e.code = 'deadline-exceeded';
                     e.__mealogDeleteTimeout = true;
                     reject(e);
-                }, DELETE_PENDING_TIMEOUT_MS);
+                }, DELETE_DOC_RACE_MS);
             })
         ]);
+        deleteSettled = true;
+        window.clearTimeout(inflightTimer);
         clearMealEntryDeleteFailed(entryIdToDelete);
-        markMealEntryDeleteComplete(entryIdToDelete);
-        const optimisticCtx = applyOptimisticMealDelete(entryIdToDelete, mealForDelete);
-        if (!optimisticCtx) {
-            showToast('삭제는 반영되었으나 목록 동기화에 문제가 있습니다.', 'info');
-        } else {
-            showToast('기록이 삭제되었습니다.', 'success');
-        }
+        // Firestore deleteDoc는 로컬 큐 반영만으로도 resolve될 수 있음. 목록·동기화 맵 정리는
+        // meals-snapshot-apply에서 서버 ack된 removed일 때만 수행한다.
         rerenderAfterMealDelete(mealDate);
     } catch (error) {
+        deleteSettled = true;
+        window.clearTimeout(inflightTimer);
         console.error('삭제 오류:', error);
         markMealEntryDeleteFailed(entryIdToDelete);
         try {
@@ -2392,6 +2414,47 @@ export async function deleteEntry() {
 
 const MEAL_SYNC_RETRY_TIMEOUT_MS = 10000;
 
+/** data:image 또는 blob: → Storage 업로드용 data URL */
+async function ensureDataUrlForStorage(photo) {
+    if (typeof photo !== 'string' || !photo) return photo;
+    if (photo.startsWith('data:image')) return photo;
+    if (photo.startsWith('blob:')) {
+        const blob = await (await fetch(photo)).blob();
+        return await new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(r.result);
+            r.onerror = () => reject(new Error('blob 이미지 읽기 실패'));
+            r.readAsDataURL(blob);
+        });
+    }
+    return photo;
+}
+
+/**
+ * meal 레코드에 남아 있는 로컬(data:image·blob:) 사진을 Storage에 올린 뒤 photos/sharedPhotos를 https URL 기준으로 맞춘다.
+ * dbOps.save는 data URL을 저장하지 않으므로 재시도 경로에서 반드시 선행해야 한다.
+ */
+async function materializeBase64PhotosOnRecord(record, mealId) {
+    const uid = window.currentUser?.uid;
+    if (!record || !mealId || !uid) return record;
+    const photos = Array.isArray(record.photos) ? record.photos : [];
+    const needsUpload = (p) =>
+        typeof p === 'string' && (p.startsWith('data:image') || p.startsWith('blob:'));
+    const pendingList = photos.filter(needsUpload);
+    if (pendingList.length === 0) return record;
+    const normalized = await Promise.all(pendingList.map((p) => ensureDataUrlForStorage(p)));
+    const uploaded = await Promise.all(normalized.map((p) => uploadBase64ToStorage(p, uid, mealId)));
+    let i = 0;
+    const finalPhotos = photos
+        .map((p) => (needsUpload(p) ? uploaded[i++] : p))
+        .filter((p) => typeof p === 'string' && p);
+    const next = { ...record, photos: finalPhotos };
+    const httpsUrls = finalPhotos.filter((p) => typeof p === 'string' && /^https?:\/\//.test(p));
+    const hadShared = Array.isArray(record.sharedPhotos) && record.sharedPhotos.length > 0;
+    next.sharedPhotos = hadShared && httpsUrls.length > 0 ? httpsUrls : [];
+    return next;
+}
+
 /**
  * 동기 실패(느낌표) 기록만 서버에 다시 저장합니다.
  */
@@ -2412,7 +2475,13 @@ export async function retryMealEntrySync(entryIdRaw) {
         showToast('기록을 찾을 수 없습니다.', 'error');
         return;
     }
-    if (!isMealEntrySaveFailed(record) && !isMealEntrySyncAbandoned(record)) return;
+    if (
+        !isMealEntrySaveFailed(record) &&
+        !isMealEntrySyncAbandoned(record) &&
+        getMealRowSyncLeadKind(record) !== 'register_scheduled'
+    ) {
+        return;
+    }
 
     window._mealEntryRetryInFlight[entryId] = true;
     clearMealEntryServerSynced(entryId);
@@ -2426,60 +2495,106 @@ export async function retryMealEntrySync(entryIdRaw) {
         delete payload.is_sync_error;
 
         if (isTemp) {
-            delete payload.id;
-            const retrySaveRes = unwrapMealSaveResult(
-                await Promise.race([
-                    dbOps.save(payload, true),
-                    new Promise((_, reject) => {
-                        setTimeout(() => {
-                            const e = new Error('deadline-exceeded');
-                            e.code = 'deadline-exceeded';
-                            e.__mealogSaveTimeout = true;
-                            reject(e);
-                        }, MEAL_SYNC_RETRY_TIMEOUT_MS);
-                    })
-                ])
-            );
-            const savedId = retrySaveRes.mealId;
-            const retryViaCallable = retrySaveRes.savedViaCallableFallback;
-            if (savedId && window.mealHistory && Array.isArray(window.mealHistory)) {
-                const ix = window.mealHistory.findIndex((m) => m && String(m.id) === entryId);
-                if (ix >= 0) {
-                    window.mealHistory[ix] = {
-                        ...window.mealHistory[ix],
-                        id: savedId
-                    };
-                    delete window.mealHistory[ix]._localSaveFailed;
-                    delete window.mealHistory[ix].is_sync_error;
-                }
-            }
-            if (savedId && window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                window.sharedPhotos = window.sharedPhotos.map((p) =>
-                    p.entryId === entryId ? { ...p, entryId: savedId } : p
+            const slotKeyMerge = `${record.date || ''}__${record.slotId || ''}`;
+            const histMerge = window.mealHistory;
+            const existingRealForSlot =
+                Array.isArray(histMerge) &&
+                histMerge.find(
+                    (m) =>
+                        m &&
+                        String(m.id) !== entryId &&
+                        !String(m.id).startsWith('temp_') &&
+                        m.date === record.date &&
+                        m.slotId === record.slotId
                 );
-            }
-            clearMealEntrySaveFailedById(entryId);
-            clearMealEntrySaveFailedById(savedId);
-            if (savedId) {
+
+            if (existingRealForSlot) {
+                const realId = String(existingRealForSlot.id);
+                getMealSyncManager().removeTempRowSideEffects(record);
+                window.mealHistory = histMerge.filter((m) => m && String(m.id) !== entryId);
+                if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+                    window.sharedPhotos = window.sharedPhotos.map((p) =>
+                        p.entryId === entryId ? { ...p, entryId: realId } : p
+                    );
+                }
+                clearMealEntrySaveFailedById(entryId);
+                clearMealEntrySaveFailedById(realId);
                 clearMealEntrySaveInFlight(entryId);
                 clearMealOptimisticSavePending(entryId);
-                if (retryViaCallable) {
-                    onMealDocFirestoreServerAcknowledged(String(savedId), entryId);
-                } else {
-                    clearMealEntryServerSynced(String(savedId));
-                    markMealEntrySaveInFlight(String(savedId));
-                }
+                onMealDocFirestoreServerAcknowledged(realId, entryId);
+                markMealEntryServerWorkComplete(realId, entryId, slotKeyMerge);
             } else {
-                clearMealEntrySaveInFlight(entryId);
-            }
-            markMealEntryServerWorkComplete(savedId, entryId, `${record.date || ''}__${record.slotId || ''}`);
-            if (savedId && !retryViaCallable) {
-                scheduleMealServerAckAfterPendingWrites(savedId, entryId, record.date, appState.currentTab);
+                delete payload.id;
+                const retrySaveRes = unwrapMealSaveResult(
+                    await Promise.race([
+                        dbOps.save(payload, true),
+                        new Promise((_, reject) => {
+                            setTimeout(() => {
+                                const e = new Error('deadline-exceeded');
+                                e.code = 'deadline-exceeded';
+                                e.__mealogSaveTimeout = true;
+                                reject(e);
+                            }, MEAL_SYNC_RETRY_TIMEOUT_MS);
+                        })
+                    ])
+                );
+                const savedId = retrySaveRes.mealId;
+                const retryViaCallable = retrySaveRes.savedViaCallableFallback;
+                if (savedId && window.mealHistory && Array.isArray(window.mealHistory)) {
+                    const ix = window.mealHistory.findIndex((m) => m && String(m.id) === entryId);
+                    if (ix >= 0) {
+                        window.mealHistory[ix] = {
+                            ...window.mealHistory[ix],
+                            id: savedId
+                        };
+                        delete window.mealHistory[ix]._localSaveFailed;
+                        delete window.mealHistory[ix].is_sync_error;
+                    }
+                }
+                if (savedId && window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+                    window.sharedPhotos = window.sharedPhotos.map((p) =>
+                        p.entryId === entryId ? { ...p, entryId: savedId } : p
+                    );
+                }
+                clearMealEntrySaveFailedById(entryId);
+                clearMealEntrySaveFailedById(savedId);
+                if (savedId) {
+                    clearMealEntrySaveInFlight(entryId);
+                    clearMealOptimisticSavePending(entryId);
+                    if (retryViaCallable) {
+                        onMealDocFirestoreServerAcknowledged(String(savedId), entryId);
+                    } else {
+                        clearMealEntryServerSynced(String(savedId));
+                        markMealEntrySaveInFlight(String(savedId));
+                    }
+                } else {
+                    clearMealEntrySaveInFlight(entryId);
+                }
+                markMealEntryServerWorkComplete(savedId, entryId, `${record.date || ''}__${record.slotId || ''}`);
+                if (savedId && !retryViaCallable) {
+                    const retryGraceMs = mealRecordHasBase64PendingPhotos(record)
+                        ? MEAL_SYNC_GRACE_MS_WITH_PHOTO
+                        : MEAL_SYNC_GRACE_MS_NO_PHOTO;
+                    await scheduleMealServerAckAfterPendingWrites(
+                        savedId,
+                        entryId,
+                        record.date,
+                        appState.currentTab,
+                        retryGraceMs
+                    );
+                }
             }
         } else {
+            let payloadOut = { ...payload };
+            try {
+                payloadOut = await materializeBase64PhotosOnRecord(payloadOut, entryId);
+            } catch (upErr) {
+                console.error('retryMealEntrySync: 사진 Storage 업로드 실패', upErr);
+                throw upErr;
+            }
             const retryElseRes = unwrapMealSaveResult(
                 await Promise.race([
-                    dbOps.save(payload, true),
+                    dbOps.save(payloadOut, true),
                     new Promise((_, reject) => {
                         setTimeout(() => {
                             const e = new Error('deadline-exceeded');
@@ -2494,7 +2609,7 @@ export async function retryMealEntrySync(entryIdRaw) {
             if (window.mealHistory && Array.isArray(window.mealHistory)) {
                 const ix = window.mealHistory.findIndex((m) => m && String(m.id) === entryId);
                 if (ix >= 0) {
-                    const next = { ...window.mealHistory[ix] };
+                    const next = { ...window.mealHistory[ix], ...payloadOut, id: entryId };
                     delete next._localSaveFailed;
                     delete next.is_sync_error;
                     window.mealHistory[ix] = next;
@@ -2504,7 +2619,16 @@ export async function retryMealEntrySync(entryIdRaw) {
             if (retryElseRes.savedViaCallableFallback && entryId) {
                 onMealDocFirestoreServerAcknowledged(String(entryId), null);
             } else {
-                scheduleMealServerAckAfterPendingWrites(entryId, null, record.date, appState.currentTab);
+                const retryGraceMsElse = mealRecordHasBase64PendingPhotos(record)
+                    ? MEAL_SYNC_GRACE_MS_WITH_PHOTO
+                    : MEAL_SYNC_GRACE_MS_NO_PHOTO;
+                await scheduleMealServerAckAfterPendingWrites(
+                    entryId,
+                    null,
+                    record.date,
+                    appState.currentTab,
+                    retryGraceMsElse
+                );
             }
         }
         showToast('서버에 등록했습니다.', 'success');
@@ -2533,6 +2657,100 @@ export async function retryMealEntrySync(entryIdRaw) {
     }
 }
 
+/** 삭제 실패(오프라인 삭제 시도 등) — 서버에 다시 삭제 요청 */
+export async function retryMealEntryDeleteSync(entryIdRaw) {
+    const entryId = entryIdRaw != null ? String(entryIdRaw) : '';
+    if (!entryId || !window.currentUser || window.currentUser.isAnonymous) {
+        showToast('로그인이 필요합니다.', 'error');
+        return;
+    }
+    if (isDemoUser(window.currentUser)) {
+        showToast('샘플 계정에서는 사용할 수 없습니다.', 'error');
+        return;
+    }
+    if (!window._mealEntryDeleteRetryInFlight) window._mealEntryDeleteRetryInFlight = {};
+    if (window._mealEntryDeleteRetryInFlight[entryId]) return;
+
+    const record = window.mealHistory?.find((m) => m && String(m.id) === entryId);
+    if (!record) {
+        showToast('기록을 찾을 수 없습니다.', 'error');
+        return;
+    }
+    if (!isMealEntryDeleteFailed(record)) return;
+
+    const mealForDelete = record;
+    const mealDate = mealForDelete.date;
+    window._mealEntryDeleteRetryInFlight[entryId] = true;
+
+    if (isMealActionEffectiveOffline()) {
+        showToast('연결되면 서버에 삭제가 반영돼요. 삭제 예약으로 표시됩니다.', 'info');
+    }
+
+    markMealEntryDeletePending(entryId);
+    rerenderAfterMealDelete(mealDate);
+
+    const RETRY_DELETE_CHIP_MS = 10000;
+    const RETRY_DELETE_DOC_RACE_MS = 90000;
+    let inflightMarked = false;
+    let deleteSettled = false;
+    const inflightTimer = window.setTimeout(() => {
+        if (deleteSettled || inflightMarked) return;
+        inflightMarked = true;
+        markMealEntryDeleteInFlight(entryId);
+        try {
+            updateTimelineMealEntryPendingIndicators();
+        } catch (_) {
+            /* ignore */
+        }
+        rerenderAfterMealDelete(mealDate);
+    }, RETRY_DELETE_CHIP_MS);
+
+    try {
+        await Promise.race([
+            dbOps.delete(entryId),
+            new Promise((_, reject) => {
+                setTimeout(() => {
+                    const e = new Error('deadline-exceeded');
+                    e.code = 'deadline-exceeded';
+                    e.__mealogDeleteTimeout = true;
+                    reject(e);
+                }, RETRY_DELETE_DOC_RACE_MS);
+            })
+        ]);
+        deleteSettled = true;
+        window.clearTimeout(inflightTimer);
+        clearMealEntryDeleteFailed(entryId);
+        rerenderAfterMealDelete(mealDate);
+    } catch (error) {
+        deleteSettled = true;
+        window.clearTimeout(inflightTimer);
+        console.error('retryMealEntryDeleteSync:', error);
+        markMealEntryDeleteFailed(entryId);
+        try {
+            updateTimelineMealEntryPendingIndicators();
+        } catch (_) {
+            /* ignore */
+        }
+        try {
+            const { loadSharedPhotosPage } = await import('../db.js');
+            const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);
+            window.sharedPhotosFeed = docs;
+            appState.sharedPhotosFeedLastDoc = lastDoc;
+            appState.sharedPhotosFeedHasMore = hasMore;
+        } catch (_) {
+            /* ignore */
+        }
+        rerenderAfterMealDelete(mealDate);
+        if (error.message && String(error.message).includes('로그인이 필요')) {
+            showToast('로그인이 필요합니다.', 'error');
+        } else {
+            showToast(getUserFacingErrorMessage(error, 'delete'), 'error');
+        }
+    } finally {
+        delete window._mealEntryDeleteRetryInFlight[entryId];
+    }
+}
+
 /** 앱 로드·재접속 시 서버 미등록(실패) 기록을 순차 재시도 */
 export async function retryPendingMealEntriesOnAppReady() {
     if (!window.currentUser || window.currentUser.isAnonymous || isDemoUser(window.currentUser)) return;
@@ -2541,10 +2759,19 @@ export async function retryPendingMealEntriesOnAppReady() {
     const seen = new Set();
     for (const m of hist) {
         if (!m?.id || seen.has(String(m.id))) continue;
-        if (!isMealEntrySaveFailed(m) && !isMealEntrySyncAbandoned(m)) continue;
+        const deleteRedo = isMealEntryDeleteFailed(m);
+        const saveRedo =
+            isMealEntrySaveFailed(m) ||
+            isMealEntrySyncAbandoned(m) ||
+            getMealRowSyncLeadKind(m) === 'register_scheduled';
+        if (!deleteRedo && !saveRedo) continue;
         seen.add(String(m.id));
         try {
-            await retryMealEntrySync(m.id);
+            if (deleteRedo) {
+                await retryMealEntryDeleteSync(m.id);
+            } else {
+                await retryMealEntrySync(m.id);
+            }
         } catch (_) {
             /* 내부 토스트 처리 */
         }
