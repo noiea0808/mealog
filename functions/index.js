@@ -18,6 +18,20 @@ const auth = getAuth();
 
 const APP_ID = 'mealog-r0';
 
+/** settings 문서의 날짜 필드(Timestamp·ISO 문자열 등) → Date */
+function adminSettingsValueToDate(value) {
+  if (value == null || value === '') return null;
+  try {
+    if (value instanceof Timestamp) return value.toDate();
+    if (typeof value.toDate === 'function') return value.toDate();
+  } catch (_) {
+    /* ignore */
+  }
+  if (value instanceof Date) return value;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 /** 앱 공용 샘플 계정 — 클라이언트·Firestore 규칙과 동일 이메일 */
 const READ_ONLY_DEMO_EMAIL = 'dummy@mealog.net';
 
@@ -2724,10 +2738,52 @@ exports.saveArtifactUserSettings = onCall({ region: REGION }, wrapFunction('save
     }
   });
 
+  /** 약관 메타만 있고 termsAgreed 가 빠진 문서 보정 + 루트 createdAt 없으면 백필 (클라이언트 전용 쓰기 성공 시에도 루트만 누락되는 경우 대비) */
   try {
-    await db.doc(`artifacts/${APP_ID}/users/${uid}`).set({ uid }, { merge: true });
+    let mSnap = await settingsRef.get();
+    let m = mSnap.exists ? mSnap.data() : {};
+    const hasTermsMeta =
+      m.termsAgreedAt != null || (m.termsVersion != null && String(m.termsVersion).trim() !== '');
+    const termsAgreedNorm =
+      m.termsAgreed === true || m.termsAgreed === 'true' || m.termsAgreed === 1;
+    if (hasTermsMeta && !termsAgreedNorm) {
+      await settingsRef.set({ termsAgreed: true }, { merge: true });
+      mSnap = await settingsRef.get();
+      m = mSnap.exists ? mSnap.data() : {};
+    }
+
+    const rootRef = db.doc(`artifacts/${APP_ID}/users/${uid}`);
+    const rootSnap = await rootRef.get();
+    const rootCreated = rootSnap.exists && rootSnap.data().createdAt;
+    const hasTermsMeta2 =
+      m.termsAgreedAt != null || (m.termsVersion != null && String(m.termsVersion).trim() !== '');
+    const termsOk =
+      m.termsAgreed === true || m.termsAgreed === 'true' || m.termsAgreed === 1;
+    const shouldBackfillCreated =
+      !rootCreated && (m.profileCompleted === true || hasTermsMeta2 || termsOk);
+    if (shouldBackfillCreated) {
+      const pc = adminSettingsValueToDate(m.profileCompletedAt);
+      const ta = adminSettingsValueToDate(m.termsAgreedAt);
+      const cand = [pc, ta].filter((d) => d instanceof Date && !Number.isNaN(d.getTime()));
+      const earliest =
+        cand.length > 0 ? new Date(Math.min(...cand.map((d) => d.getTime()))) : null;
+      await rootRef.set(
+        {
+          uid,
+          createdAt: earliest ? Timestamp.fromDate(earliest) : FieldValue.serverTimestamp()
+        },
+        { merge: true }
+      );
+    } else {
+      await rootRef.set({ uid }, { merge: true });
+    }
   } catch (e) {
-    logger.warn('saveArtifactUserSettings: user root set skipped', { uid, err: e?.message });
+    logger.warn('saveArtifactUserSettings: post-save normalize / user root', { uid, err: e?.message });
+    try {
+      await db.doc(`artifacts/${APP_ID}/users/${uid}`).set({ uid }, { merge: true });
+    } catch (e2) {
+      logger.warn('saveArtifactUserSettings: user root set skipped', { uid, err: e2?.message });
+    }
   }
 
   return { ok: true };

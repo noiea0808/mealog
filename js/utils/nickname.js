@@ -188,12 +188,9 @@ export function generateRandomNicknameCombo() {
             base = pickNickWord(NICK_CREATURE) + pickNickWord(NICK_FOODISH);
         }
     }
-    if (Math.random() < 0.22 && base.length <= 14) {
-        base += String(Math.floor(Math.random() * 9000 + 1000));
-    }
     base = clipNickname(base, 20);
     if (containsProfanity(base)) {
-        base = clipNickname(pickNickWord(NICK_MOOD) + pickNickWord(NICK_CREATURE) + String(Math.floor(Math.random() * 99 + 1)), 20);
+        base = clipNickname(pickNickWord(NICK_MOOD) + pickNickWord(NICK_CREATURE), 20);
     }
     return base || '밀당친구';
 }
@@ -211,6 +208,5 @@ export async function pickUnusedRandomNickname(currentUserId = null, maxAttempts
         const dup = await isNicknameDuplicate(candidate, currentUserId);
         if (!dup) return candidate;
     }
-    const suffix = `${Date.now().toString(36)}${Math.floor(Math.random() * 999)}`;
-    return clipNickname(`밀당${suffix}`, 20);
+    return clipNickname(`밀당${pickNickWord(NICK_MOOD)}${pickNickWord(NICK_NATURE)}`, 20);
 }

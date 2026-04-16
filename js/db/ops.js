@@ -529,6 +529,18 @@ export const dbOps = {
                     nickname: settingsToSave.profile?.nickname
                 });
             }
+
+            if (
+                typeof window !== 'undefined' &&
+                typeof window.ensureUserRegistered === 'function' &&
+                (settingsToSave.termsAgreed === true || settingsToSave.profileCompleted === true)
+            ) {
+                try {
+                    await window.ensureUserRegistered();
+                } catch (eu) {
+                    console.warn('ensureUserRegistered 후행 호출 실패 (무시):', eu?.message || eu);
+                }
+            }
         } catch (e) {
             tryMarkAppOfflineFromNetworkFailure(e);
             console.error("Settings Save Error:", e);

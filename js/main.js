@@ -742,8 +742,8 @@ async function updateUserDocument(user) {
         };
         
         if (!userDocSnap.exists()) {
-            // 신규 사용자: 가입 완료(createdAt)는 프로필 설정 후에만 등록
-            // providerId, email, lastLoginAt만 먼저 저장
+            // 신규 사용자: 기본은 프로필 완료 후 ensureUserRegistered에서 createdAt 기록.
+            // 이미 프로필 완료 상태로 첫 저장이면(레이스) 같은 틱에 가입일을 넣는다.
             {
                 let providerId = user.providerData?.[0]?.providerId;
                 if (!providerId && typeof user.uid === 'string' && user.uid.startsWith('kakao_')) {
@@ -756,7 +756,12 @@ async function updateUserDocument(user) {
             if (user.email) {
                 updateData.email = user.email;
             }
-            console.log('✅ 신규 사용자 문서 생성 (프로필 설정 후 가입 완료):', { userId: user.uid });
+            if (window.userSettings?.profileCompleted === true) {
+                updateData.createdAt = serverTimestamp();
+                console.log('✅ 신규 사용자 문서 + 이미 프로필 완료 → 가입일 동시 기록:', user.uid);
+            } else {
+                console.log('✅ 신규 사용자 문서 생성 (가입일은 프로필 완료 후 등록):', { userId: user.uid });
+            }
         } else {
             const existingData = userDocSnap.data();
             // 프로필 설정 완료 시점에 가입 완료(createdAt) 등록
@@ -822,19 +827,49 @@ async function recordGuestVisit(uid) {
 }
 window.recordGuestVisit = recordGuestVisit;
 
-/** 프로필 설정 완료 시 가입 완료(createdAt) 등록. auth.js confirmProfileSetup에서 호출 */
+/** 프로필 설정 완료 시 가입 완료(createdAt) 등록. signup-wizard / auth에서 호출 */
 window.ensureUserRegistered = async function () {
     const user = auth.currentUser;
     if (!user || user.isAnonymous) return;
     if (!window.userSettings?.profileCompleted) return;
     try {
+        await refreshAppCheckTokenBeforeFirestore();
         const userDocRef = doc(db, 'artifacts', appId, 'users', user.uid);
         const userDocSnap = await getDoc(userDocRef);
-        if (!userDocSnap.exists()) return;
-        const data = userDocSnap.data();
+        const data = userDocSnap.exists() ? userDocSnap.data() : {};
         if (data.createdAt) return;
-        await setDoc(userDocRef, { createdAt: serverTimestamp() }, { merge: true });
-        console.log('✅ 가입 완료(프로필 설정 후) 사용자 등록:', user.uid);
+
+        let providerId = user.providerData?.[0]?.providerId;
+        if (!providerId && typeof user.uid === 'string' && user.uid.startsWith('kakao_')) {
+            providerId = 'kakao.com';
+        }
+        const payload = { createdAt: serverTimestamp() };
+        if (!userDocSnap.exists() || !data.uid) {
+            payload.uid = user.uid;
+        }
+        if (providerId && (!userDocSnap.exists() || !data.providerId)) {
+            payload.providerId = providerId;
+        }
+        if (user.email && (!userDocSnap.exists() || !data.email)) {
+            payload.email = user.email;
+        }
+
+        try {
+            await setDoc(userDocRef, payload, { merge: true });
+            console.log('✅ 가입 완료(프로필 설정 후) 사용자 등록:', user.uid);
+        } catch (writeErr) {
+            const wcode = writeErr?.code || '';
+            if (wcode === 'permission-denied' && callableFunctions?.patchArtifactUserRoot) {
+                await callableFunctions.patchArtifactUserRoot({
+                    setCreatedAt: true,
+                    providerId: providerId || null,
+                    email: user.email || null
+                });
+                console.log('✅ 가입일 서버 폴백 저장:', user.uid);
+            } else {
+                throw writeErr;
+            }
+        }
     } catch (e) {
         console.warn('ensureUserRegistered 실패:', e);
     }

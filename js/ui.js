@@ -559,10 +559,10 @@ const ATTENDANCE_POPUP_SVG_NS = 'http://www.w3.org/2000/svg';
 const ATTENDANCE_POPUP_MAX_AUX_LINES = 12;
 
 /**
- * 출석/연속 기록 중앙 팝업 — 메인 문구는 SVG(Yeon Sung + 흰 stroke), 부가 문구는 본문 기본 폰트 박스.
- * line1의 첫 줄만 메인; 나머지 줄 + line2는 부가(박스).
- * @param {string} line1 메인(첫 줄) 또는 멀티라인(첫 줄=메인, 이후=부가)
- * @param {string} [line2] 부가 블록(멀티라인 가능)
+ * 출석/연속 기록 중앙 팝업 — 문구는 모두 SVG(Yeon Sung + 흰 stroke). 멀티라인은 동일 스타일로 줄바꿈.
+ * (차트가 있는 기록 있음 분기는 첫 줄만 표시·나머지는 생략.)
+ * @param {string} line1 첫 블록(멀티라인 가능)
+ * @param {string} [line2] 추가 블록(멀티라인 가능)
  * @param {'noRecord'|'hasRecord'|'hasRecordRestart'} [welcomeIcon] 기록 없음=하트, 연속 있음=따봉, 어제 끊김=새싹
  * @returns {boolean} 실제로 팝업을 띄웠으면 true(빈 문구·DOM 없음 등으로 스킵이면 false)
  */
@@ -580,15 +580,17 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
     const from2 = splitLines(line2);
     if (from1.length === 0 && from2.length === 0) return false;
 
-    const primary = from1.length > 0 ? from1[0] : from2[0];
-    const auxParts = [];
-    if (from1.length > 1) auxParts.push(...from1.slice(1));
-    if (from1.length > 0) auxParts.push(...from2);
-    else auxParts.push(...from2.slice(1));
-    const secondary = auxParts
-        .slice(0, ATTENDANCE_POPUP_MAX_AUX_LINES)
-        .join('\n')
-        .trim();
+    const orderedLines = [];
+    if (from1.length > 0) {
+        orderedLines.push(...from1, ...from2);
+    } else {
+        orderedLines.push(...from2);
+    }
+    const displayLines = orderedLines
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .slice(0, ATTENDANCE_POPUP_MAX_AUX_LINES);
+    if (displayLines.length === 0) return false;
 
     const popup = document.getElementById('attendancePopup');
     const textRoot = document.getElementById('attendancePopupTextRoot');
@@ -598,15 +600,15 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
     if (!popup || !textRoot || !textSvg) return false;
 
     const showWelcomeCharts = welcomeIcon === 'hasRecord' || welcomeIcon === 'hasRecordRestart';
-    const showAux = Boolean(secondary) && !showWelcomeCharts;
+    const svgLines = showWelcomeCharts ? displayLines.slice(0, 1) : displayLines;
 
     if (auxWrap && auxBox) {
-        auxBox.textContent = showAux ? secondary : '';
-        auxWrap.classList.toggle('hidden', !showAux);
+        auxBox.textContent = '';
+        auxWrap.classList.add('hidden');
     }
     const attendanceContent = document.getElementById('attendancePopupContent');
     if (attendanceContent) {
-        attendanceContent.classList.toggle('attendance-popup-has-aux', showAux);
+        attendanceContent.classList.remove('attendance-popup-has-aux');
     }
 
     const iconHeart = document.getElementById('attendancePopupIconHeart');
@@ -630,7 +632,7 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
         textRoot.removeChild(textRoot.firstChild);
     }
 
-    const maxLen = Math.max(String(primary).length, 1);
+    const maxLen = Math.max(1, ...svgLines.map((l) => String(l).length));
     /** 짧은 문구 최대 35px, 길면 단계적으로 축소(340px 뷰 안에 맞춤) */
     const fs =
         maxLen > 24 ? '22' : maxLen > 20 ? '26' : maxLen > 16 ? '31' : '35';
@@ -638,17 +640,24 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
     const topPad = 6;
     const startY = topPad + Math.round(fsNum * 0.75);
 
-    const tsp = document.createElementNS(ATTENDANCE_POPUP_SVG_NS, 'tspan');
-    tsp.setAttribute('x', '170');
-    tsp.setAttribute('y', String(startY));
-    tsp.textContent = primary;
-    textRoot.appendChild(tsp);
+    svgLines.forEach((lineText, i) => {
+        const tsp = document.createElementNS(ATTENDANCE_POPUP_SVG_NS, 'tspan');
+        tsp.setAttribute('x', '170');
+        if (i === 0) {
+            tsp.setAttribute('y', String(startY));
+        } else {
+            tsp.setAttribute('dy', '1.22em');
+        }
+        tsp.textContent = lineText;
+        textRoot.appendChild(tsp);
+    });
 
     textRoot.setAttribute('font-size', fs);
-    /** 부가 문구 있을 때: 하단 여백·최소 높이를 줄여 메인 텍스트~박스 간격 확실히 축소 (overflow:visible로 획 여유) */
-    const bottomPad = showAux ? 8 : 18;
-    const minSvgH = showAux ? 44 : 56;
-    const vbH = Math.max(minSvgH, topPad + fsNum + bottomPad);
+    const n = svgLines.length;
+    const lineGap = (n - 1) * fsNum * 1.22;
+    const bottomPad = 18;
+    const minSvgH = n <= 1 ? 56 : 52;
+    const vbH = Math.max(minSvgH, Math.ceil(topPad + fsNum + lineGap + bottomPad));
     textSvg.setAttribute('viewBox', `0 0 340 ${vbH}`);
     textSvg.setAttribute('height', String(vbH));
 
@@ -862,6 +871,25 @@ function bindNetworkErrorOverlayButtons() {
     });
     dismissBtn.addEventListener('click', () => {
         hideNetworkErrorOverlay();
+        // 브라우저가 online 이벤트를 주지 않아도, 사용자가 닫을 때는 온라인이면 강제 오프라인 플래그 해제
+        try {
+            if (typeof navigator !== 'undefined' && navigator.onLine) {
+                void import('./utils/network-reachability.js').then((m) => {
+                    if (typeof m.clearLocalNetworkForcedOffline === 'function') m.clearLocalNetworkForcedOffline();
+                });
+                void import('./render/timeline.js').then((tl) => {
+                    try {
+                        if (typeof tl.updateTimelineMealEntryPendingIndicators === 'function') {
+                            tl.updateTimelineMealEntryPendingIndicators();
+                        }
+                    } catch (_) {
+                        /* ignore */
+                    }
+                });
+            }
+        } catch (_) {
+            /* ignore */
+        }
     });
 }
 

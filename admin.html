@@ -124,16 +124,27 @@
 
         <main class="max-w-7xl mx-auto px-2 sm:px-3 lg:px-4 admin-main-padding">
 
-            <!-- 대시보드 탭 (현황판: 캐시 문서 1회만 조회, 통계 새로고침 시에만 전체 집계) -->
+            <!-- 대시보드 탭 (현황판: 캐시 문서 1회만 조회, 새로고침 시에만 전체 집계) -->
             <div id="admin-tab-content-dashboard" class="admin-tab-content">
                 <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 mb-3">
-                    <div class="flex gap-2 overflow-x-auto scrollbar-hide">
-                        <button type="button" onclick="window.switchDashboardSubtab('trend')" id="dashboard-subtab-trend" class="px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors">
-                            <i class="fa-solid fa-chart-line mr-2" aria-hidden="true"></i>트렌드
-                        </button>
-                        <button type="button" onclick="window.switchDashboardSubtab('page')" id="dashboard-subtab-page" class="px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
-                            <i class="fa-solid fa-table-columns mr-2" aria-hidden="true"></i>페이지별
-                        </button>
+                    <div class="flex items-center gap-3 min-h-[2.75rem]">
+                        <div class="flex gap-2 overflow-x-auto scrollbar-hide min-w-0 flex-1">
+                            <button type="button" onclick="window.switchDashboardSubtab('trend')" id="dashboard-subtab-trend" class="px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors shrink-0">
+                                <i class="fa-solid fa-chart-line mr-2" aria-hidden="true"></i>트렌드
+                            </button>
+                            <button type="button" onclick="window.switchDashboardSubtab('page')" id="dashboard-subtab-page" class="px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors shrink-0">
+                                <i class="fa-solid fa-table-columns mr-2" aria-hidden="true"></i>페이지별
+                            </button>
+                            <button type="button" onclick="window.switchDashboardSubtab('excluded')" id="dashboard-subtab-excluded" class="px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors shrink-0">
+                                <i class="fa-solid fa-user-slash mr-2" aria-hidden="true"></i>통계 제외 UID
+                            </button>
+                        </div>
+                        <div class="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 shrink-0 ml-auto pl-2">
+                            <span id="dashboardStatsUpdatedAt" class="text-xs text-slate-500 text-right">마지막 업데이트: -</span>
+                            <button type="button" id="dashboardStatsRefreshBtn" onclick="window.refreshDashboardStats()" class="inline-flex items-center justify-center gap-2 px-4 py-2 min-w-[9.5rem] bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors shrink-0 disabled:opacity-90 disabled:cursor-wait" aria-live="polite">
+                                <i class="fa-solid fa-rotate-right" aria-hidden="true"></i><span>새로고침</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <!-- 트렌드: 기존 기간별 통계 -->
@@ -303,7 +314,7 @@
                     </div>
                 </div>
                 <!-- 페이지별: 화면·클릭 수 (usageDaily) -->
-                <div id="dashboard-panel-page" class="hidden bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-4">
+                <div id="dashboard-panel-page" class="hidden bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8">
                     <p class="px-4 pt-4 pb-2 text-xs text-slate-500 leading-relaxed"><span class="font-bold text-slate-600">탭 방문</span> 행은 하단 네비로 해당 메인 화면에 들어올 때마다 1회씩 올라가는 <span class="font-bold text-slate-600">페이지 방문 수</span>입니다. <span class="font-bold text-slate-600">그 외 행</span>은 코멘트·상세 모달·설정 하위 탭·라운지 서브탭 등 <span class="font-bold text-slate-600">조작(클릭) 횟수</span>입니다. 「전체」는 누적,「최근 7일」은 일별입니다.</p>
                     <div class="overflow-x-auto">
                         <table class="min-w-max w-full text-left text-sm border-separate border-spacing-0" id="adminDashboardPageUsageTable">
@@ -333,11 +344,37 @@
                         <p class="text-xs font-mono text-slate-600 break-all leading-relaxed" id="dashboardPageUsageExcludedUidList"></p>
                     </div>
                 </div>
-                <div class="rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 flex flex-wrap items-center justify-end gap-3 mb-8">
-                    <span id="dashboardStatsUpdatedAt" class="text-xs text-slate-500">마지막 업데이트: -</span>
-                    <button type="button" id="dashboardStatsRefreshBtn" onclick="window.refreshDashboardStats()" class="inline-flex items-center justify-center gap-2 px-4 py-2 min-w-[9.5rem] bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors shrink-0 disabled:opacity-90 disabled:cursor-wait" aria-live="polite">
-                        <i class="fa-solid fa-rotate-right" aria-hidden="true"></i><span>통계 새로고침</span>
-                    </button>
+
+                <!-- 통계 제외 UID 관리 -->
+                <div id="dashboard-panel-excluded" class="hidden bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8">
+                    <div class="px-4 pt-4 pb-2">
+                        <p class="text-sm text-slate-600 leading-relaxed">
+                            트렌드·페이지별 집계 및 앱 내 사용량 로깅에서 제외할 Firebase UID를 관리합니다. 변경 후 대시보드 <span class="font-bold text-slate-700">새로고침</span>으로 통계를 다시 집계하면 반영됩니다.
+                        </p>
+                    </div>
+                    <div class="px-4 pb-4 flex flex-wrap items-end gap-2 border-b border-slate-100">
+                        <div class="flex-1 min-w-[12rem]">
+                            <label for="dashboardExcludedUidInput" class="block text-xs font-bold text-slate-600 mb-1">UID 추가</label>
+                            <input type="text" id="dashboardExcludedUidInput" autocomplete="off" placeholder="Firebase UID" onkeydown="if(event.key==='Enter'){event.preventDefault();window.addDashboardExcludedUid();}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-mono focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 outline-none" />
+                        </div>
+                        <button type="button" onclick="window.addDashboardExcludedUid()" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors shrink-0">
+                            <i class="fa-solid fa-plus" aria-hidden="true"></i>제외 목록에 추가
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-left text-sm border-separate border-spacing-0">
+                            <thead>
+                                <tr class="border-b border-slate-200 bg-slate-50">
+                                    <th class="px-3 py-2 font-bold text-slate-700 text-xs uppercase w-[40%]">UID</th>
+                                    <th class="px-3 py-2 font-bold text-slate-700 text-xs uppercase">닉네임</th>
+                                    <th class="px-3 py-2 font-bold text-slate-700 text-xs uppercase text-right w-[8rem]">작업</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dashboardExcludedUidTableBody">
+                                <tr><td colspan="3" class="px-4 py-6 text-center text-slate-400 text-sm">탭을 열면 목록을 불러옵니다.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 

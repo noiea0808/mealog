@@ -81,6 +81,27 @@ function normalizeNumber(v) {
     return Number.isFinite(n) ? n : 0;
 }
 
+/** settings / 루트 문서에서 날짜 필드 파싱 (Timestamp·ISO 문자열) */
+function parseSettingsDate(v) {
+    if (v == null || v === '') return null;
+    if (typeof v?.toDate === 'function') return v.toDate();
+    if (v instanceof Date) return v;
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** users 루트에 createdAt 없을 때: 프로필 완료 시각·약관 동의 시각 중 이른 값으로 표시/정렬 보정 */
+function coalesceSignupDate(rootCreated, profileCompletedAt, termsAgreedAt) {
+    if (rootCreated) {
+        return rootCreated instanceof Date ? rootCreated : new Date(rootCreated);
+    }
+    const cands = [profileCompletedAt, termsAgreedAt].filter((x) => x != null);
+    if (!cands.length) return null;
+    const times = cands.map((d) => (d instanceof Date ? d : new Date(d)).getTime()).filter((t) => Number.isFinite(t));
+    if (!times.length) return null;
+    return new Date(Math.min(...times));
+}
+
 /** 가입일~마지막 로그인 사이 경과(ms). 둘 중 하나 없거나 역전이면 null. */
 function computeSignupToLastLoginMs(createdAt, lastLoginAt) {
     const c = createdAt ? (createdAt instanceof Date ? createdAt : new Date(createdAt)) : null;
@@ -155,9 +176,23 @@ function compareWithNullsLast(a, b, dir) {
     return dir === 'asc' ? cmp : -cmp;
 }
 
+function termsAgreedEvidence(user) {
+    if (user?.termsAgreed === true || user?.termsAgreed === 'true' || user?.termsAgreed === 1) return true;
+    const at = user?.termsAgreedAt;
+    if (at != null) {
+        if (typeof at?.toDate === 'function') return true;
+        if (at instanceof Date) return true;
+        const s = String(at).trim();
+        if (s && s !== '[object Object]') return true;
+    }
+    const ver = user?.termsVersion;
+    if (ver != null && String(ver).trim() !== '') return true;
+    return false;
+}
+
 function getTermsRank(user, currentVersion) {
     // 2: 최신 동의(또는 앱에서 재동의를 요구하지 않는 기존 사용자), 1: 구버전 동의(재동의 필요), 0: 미동의
-    const agreed = user?.termsAgreed === true;
+    const agreed = termsAgreedEvidence(user);
     if (!agreed) return 0;
     // termsVersion 없음 = 앱과 동일하게 기존 사용자로 간주 → 동의함
     const ver = user?.termsVersion;
@@ -212,6 +247,9 @@ function sortUsersForTable(users, currentVersion) {
                 bv = normalizeNumber(b?.[key]);
                 return compareWithNullsLast(av, bv, dir);
             case 'createdAt':
+                av = normalizeDateValue(a?.createdAtResolved ?? a?.createdAt);
+                bv = normalizeDateValue(b?.createdAtResolved ?? b?.createdAt);
+                return compareWithNullsLast(av, bv, dir);
             case 'lastLoginAt':
                 av = normalizeDateValue(a?.[key]);
                 bv = normalizeDateValue(b?.[key]);
@@ -377,6 +415,8 @@ async function getUsers(options = {}) {
             let termsAgreed = false;
             let termsAgreedAt = null;
             let termsVersion = null;
+            let profileCompleted = false;
+            let profileCompletedAt = null;
             let providerId = userDocData.providerId || null;
             let createdAt = null;
             let lastLoginAt = null;
@@ -403,9 +443,21 @@ async function getUsers(options = {}) {
                     if (settings.profile.lifestyle) lifestyle = String(settings.profile.lifestyle).trim();
                     if (settings.profile.gender === 'male' || settings.profile.gender === 'female') gender = settings.profile.gender;
                 } else nickname = '미설정';
-                termsAgreed = settings.termsAgreed === true;
-                termsAgreedAt = settings.termsAgreedAt || null;
-                termsVersion = settings.termsVersion || null;
+                termsAgreed =
+                    settings.termsAgreed === true ||
+                    settings.termsAgreed === 'true' ||
+                    settings.termsAgreed === 1;
+                termsAgreedAt = settings.termsAgreedAt ?? null;
+                termsVersion = settings.termsVersion ?? null;
+                profileCompleted = settings.profileCompleted === true;
+                profileCompletedAt = parseSettingsDate(settings.profileCompletedAt);
+                if (
+                    !termsAgreed &&
+                    (termsAgreedAt != null ||
+                        (termsVersion != null && String(termsVersion).trim() !== ''))
+                ) {
+                    termsAgreed = true;
+                }
                 if (settings.email) email = settings.email;
                 if (settings.providerId) providerId = settings.providerId;
             }
@@ -434,9 +486,11 @@ async function getUsers(options = {}) {
             const talkCount = talkCountMap.get(userId) ?? 0;
 
             const activityBanLevel = (bannedWrite ? 1 : 0) + (bannedShare ? 1 : 0);
+            const termsAgreedAtDate = parseSettingsDate(termsAgreedAt);
+            const createdAtResolved = coalesceSignupDate(createdAt, profileCompletedAt, termsAgreedAtDate);
             let signupToLastLoginMs = null;
             if (loginMethod !== '게스트') {
-                signupToLastLoginMs = computeSignupToLastLoginMs(createdAt, lastLoginAt);
+                signupToLastLoginMs = computeSignupToLastLoginMs(createdAtResolved || createdAt, lastLoginAt);
             }
 
             users.push({
@@ -451,10 +505,12 @@ async function getUsers(options = {}) {
                 termsAgreed,
                 termsAgreedAt,
                 termsVersion,
+                profileCompleted,
                 timelineCount,
                 albumShareCount,
                 talkCount,
                 createdAt,
+                createdAtResolved,
                 lastLoginAt,
                 bannedShare,
                 bannedWrite,
@@ -596,8 +652,11 @@ export async function renderUsers(options = {}) {
             // 앱은 식사 기록이 있는 사용자(기존 사용자)는 약관 버전을 검사하지 않으므로, 여기서도 timelineCount > 0 이면 재동의 필요로 표시하지 않음
             const hasVersion = user.termsVersion != null && String(user.termsVersion).trim() !== '';
             const isExistingUserByMeals = (user.timelineCount ?? 0) > 0;
-            const hasAgreedToLatest = user.termsAgreed && (!hasVersion || user.termsVersion === currentVersion || isExistingUserByMeals);
-            const hasAgreedToOld = user.termsAgreed && hasVersion && user.termsVersion !== currentVersion && !isExistingUserByMeals;
+            const agreedEv = termsAgreedEvidence(user);
+            const hasAgreedToLatest =
+                agreedEv && (!hasVersion || user.termsVersion === currentVersion || isExistingUserByMeals);
+            const hasAgreedToOld =
+                agreedEv && hasVersion && user.termsVersion !== currentVersion && !isExistingUserByMeals;
 
             let termsAgreedText;
             if (hasAgreedToLatest) {
@@ -608,10 +667,20 @@ export async function renderUsers(options = {}) {
                 termsAgreedText = `<span class="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded">미동의</span>`;
             }
             
-            const termsAgreedDate = user.termsAgreedAt ? 
-                new Date(user.termsAgreedAt).toLocaleDateString('ko-KR') : '-';
+            const termsAgreedAtParsed = parseSettingsDate(user.termsAgreedAt);
+            const termsAgreedDate = termsAgreedAtParsed
+                ? termsAgreedAtParsed.toLocaleDateString('ko-KR')
+                : '-';
             
-            const createdDt = user.createdAt ? (user.createdAt instanceof Date ? user.createdAt : new Date(user.createdAt)) : null;
+            const createdDt = user.createdAtResolved
+                ? user.createdAtResolved instanceof Date
+                    ? user.createdAtResolved
+                    : new Date(user.createdAtResolved)
+                : user.createdAt
+                  ? user.createdAt instanceof Date
+                      ? user.createdAt
+                      : new Date(user.createdAt)
+                  : null;
             const lastLoginDt = user.lastLoginAt ? (user.lastLoginAt instanceof Date ? user.lastLoginAt : new Date(user.lastLoginAt)) : null;
             const opts = { timeZone: 'Asia/Seoul' };
             const createdAtDate = createdDt
@@ -679,7 +748,7 @@ export async function renderUsers(options = {}) {
                     <td data-page="1" class="px-2 py-2.5 min-w-[8rem] max-w-[11rem] text-center">
                         <div class="flex flex-col gap-1 items-center">
                             ${termsAgreedText}
-                            ${user.termsAgreedAt ? `<span class="text-[10px] text-slate-500 leading-tight text-center">${termsAgreedDate}</span>` : ''}
+                            ${termsAgreedAtParsed ? `<span class="text-[10px] text-slate-500 leading-tight text-center">${termsAgreedDate}</span>` : ''}
                         </div>
                     </td>
                     <td data-page="1" class="px-3 py-2.5 text-center">

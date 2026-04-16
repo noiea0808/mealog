@@ -134,10 +134,15 @@ service cloud.firestore {
     }
     
     // 일별 메뉴/페이지 사용량 집계 — 관리자 대시보드「페이지별」용 (제외 UID·데모는 쓰기 불가)
+    // adminSettings/excludedAnalyticsUids 의 excludedUidMap 과 동기화. 문서 없을 때는 아래 3개 UID만 서버에서 차단(레거시).
     function isExcludedFromUsageWriting() {
-      return request.auth.uid == 'kakao_4833862234' ||
-        request.auth.uid == 'IYRL3bfBhKUrwJM6tb8h4BVX8DF3' ||
-        request.auth.uid == '4UDeI0Bts0gkwnnrt1WNRgjOQ5x2';
+      return (
+          exists(/databases/$(database)/documents/artifacts/$(appId)/adminSettings/excludedAnalyticsUids) &&
+          get(/databases/$(database)/documents/artifacts/$(appId)/adminSettings/excludedAnalyticsUids).data.excludedUidMap[request.auth.uid] == true
+        )
+        || request.auth.uid == 'kakao_4833862234'
+        || request.auth.uid == 'IYRL3bfBhKUrwJM6tb8h4BVX8DF3'
+        || request.auth.uid == '4UDeI0Bts0gkwnnrt1WNRgjOQ5x2';
     }
     match /artifacts/{appId}/usageDaily/{dateKey} {
       allow read: if isAdmin();

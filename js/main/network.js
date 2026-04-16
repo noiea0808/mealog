@@ -34,13 +34,21 @@ export async function runMealogNetworkRecovery(options = {}) {
         } catch (_) {
             /* ignore */
         }
+        let idTokenOk = false;
         try {
             const u = auth.currentUser;
             if (u && typeof u.getIdToken === 'function') {
                 await u.getIdToken(forceAuthRefresh);
+                idTokenOk = true;
+            } else {
+                idTokenOk = true;
             }
         } catch (_) {
             /* ignore */
+        }
+        // 강제 갱신으로 Google에 실제로 닿았다면 로컬 강제 오프라인 해제(위 fetch 성공과 별개로 보강)
+        if (forceAuthRefresh && idTokenOk) {
+            clearLocalNetworkForcedOffline();
         }
     })();
     try {
@@ -147,4 +155,34 @@ export function registerMainNetworkListeners() {
         }
     });
     registerForegroundRecovery();
+    registerConnectionChangeRecovery();
+}
+
+/** Network Information API: online 이벤트가 안 올 때도 연결 전환 시 복구 */
+let lastConnectionRecoverAt = 0;
+const CONNECTION_RECOVER_MIN_MS = 4000;
+
+function registerConnectionChangeRecovery() {
+    try {
+        const conn = typeof navigator !== 'undefined' ? navigator.connection : null;
+        if (!conn || typeof conn.addEventListener !== 'function') return;
+        conn.addEventListener(
+            'change',
+            () => {
+                try {
+                    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+                    const now = Date.now();
+                    if (now - lastConnectionRecoverAt < CONNECTION_RECOVER_MIN_MS) return;
+                    lastConnectionRecoverAt = now;
+                    clearLocalNetworkForcedOffline();
+                    scheduleMealogNetworkRecovery(250, { forceAuthRefresh: true });
+                } catch (_) {
+                    /* ignore */
+                }
+            },
+            { passive: true }
+        );
+    } catch (_) {
+        /* ignore */
+    }
 }

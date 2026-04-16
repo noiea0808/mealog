@@ -17,6 +17,8 @@ import {
     renderSharedPhotos,
     switchDashboardSubtab
 } from './admin/dashboard.js';
+import { ensureDefaultExcludedAnalyticsDocIfMissing } from './excluded-analytics-uids.js';
+import { addExcludedUidFromAdminInput } from './admin/excluded-analytics-admin.js';
 import {
     switchAdminUsersPage,
     switchAdminUsersListPage,
@@ -99,8 +101,15 @@ function showAdminPage(user) {
     // 로딩 오버레이 숨기기
     if (loadingOverlay) loadingOverlay.classList.add('hidden');
     
-    // 데이터 로드
-    updateStatistics();
+    // 데이터 로드 (통계 제외 UID 문서가 없으면 기본값으로 시드 — rules·클라이언트와 맞춤)
+    void (async () => {
+        try {
+            await ensureDefaultExcludedAnalyticsDocIfMissing();
+        } catch (e) {
+            console.warn('통계 제외 UID 기본 문서 확인 실패:', e);
+        }
+        updateStatistics();
+    })();
     renderSharedPhotos();
     switchAdminTab('dashboard');
 }
@@ -160,9 +169,10 @@ window.switchAdminTab = function(tab) {
 
 // handleAdminLogout은 이미 import되어 window에 노출됨
 
-// 대시보드 통계 새로고침 (전체 집계 후 캐시 문서에 저장)
+// 대시보드 새로고침 (전체 집계 후 캐시 문서에 저장)
 window.refreshDashboardStats = refreshDashboardStats;
 window.switchDashboardSubtab = switchDashboardSubtab;
+window.addDashboardExcludedUid = addExcludedUidFromAdminInput;
 
 // 공유 게시물 새로고침
 window.refreshSharedPhotos = async function() {
