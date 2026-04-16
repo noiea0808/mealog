@@ -22,6 +22,7 @@ import {
     clearStuckMealPendingFlags
 } from '../utils/meal-entry-pending.js';
 import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.js';
+import { isMealogTransportOffline } from '../utils/mealog-offline-ui.js';
 
 /**
  * 기록 행 제목 왼쪽: 동기화 표시
@@ -42,18 +43,9 @@ function mealLeadChip(text, title, variant = 'neutral') {
 
 /**
  * 오프라인 UI 분기 — navigator.onLine 만으로는 부족함(끊겼는데도 true인 경우 다수).
- * 연결 불가 전체 오버레이가 떠 있으면 동일하게 ‘예정’ 칩을 쓴다.
  */
 function isMealSyncUiEffectiveOffline() {
-    if (appState.localNetworkForcedOffline) return true;
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
-    try {
-        const el = document.getElementById('networkErrorOverlay');
-        if (el && !el.classList.contains('hidden')) return true;
-    } catch (_) {
-        /* ignore */
-    }
-    return false;
+    return isMealogTransportOffline();
 }
 
 /** 동기화 진행(재시도 버튼 아님) — 빨간 도트 */

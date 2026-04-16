@@ -3,7 +3,8 @@ import { db, appId, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, startAfter, getDocs, getDocsFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from '../constants.js';
 import { dbOps } from './ops.js';
-import { hideLoading, showNetworkErrorOverlay, isLikelyNetworkError } from '../ui.js';
+import { hideLoading, isLikelyNetworkError } from '../ui.js';
+import { notifyTransportOfflineUi } from '../utils/mealog-offline-ui.js';
 import { isDemoUser } from '../demo-account.js';
 import {
     applyDemoDateShiftToDailyComments,
@@ -499,7 +500,7 @@ export function setupListeners(userId, callbacks) {
 
         if (isLikelyNetworkError(error)) {
             hideLoading();
-            showNetworkErrorOverlay();
+            notifyTransportOfflineUi();
             return;
         }
 
@@ -661,7 +662,7 @@ export function setupListeners(userId, callbacks) {
         }
         if (isLikelyNetworkError(error)) {
             hideLoading();
-            showNetworkErrorOverlay();
+            notifyTransportOfflineUi();
             return;
         }
         // 인덱스가 없을 경우 fallback: 전체 컬렉션 사용 (경고만 표시)
@@ -691,7 +692,7 @@ export function setupListeners(userId, callbacks) {
                 console.error('Meals fallback listener error:', err2);
                 hideLoading();
                 if (isLikelyNetworkError(err2)) {
-                    showNetworkErrorOverlay();
+                    notifyTransportOfflineUi();
                 }
             }
         );

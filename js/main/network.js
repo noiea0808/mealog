@@ -1,7 +1,8 @@
 /**
  * 메인 앱 네트워크 상태 (오프라인 오버레이) + 온라인/포그라운드 복구
  */
-import { showNetworkErrorOverlay, hideNetworkErrorOverlay } from '../ui.js';
+import { hideNetworkErrorOverlay } from '../ui.js';
+import { notifyTransportOfflineUi, clearOfflineDraftFlagsOnMeals } from '../utils/mealog-offline-ui.js';
 import { auth, db, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import { applyMealSyncAbandonOnOffline } from '../utils/meal-entry-pending.js';
 import { installFetchFailureAppOfflineBridge, clearLocalNetworkForcedOffline } from '../utils/network-reachability.js';
@@ -109,6 +110,11 @@ function runForegroundMealSyncAndOverlayRecovery() {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     clearLocalNetworkForcedOffline();
     try {
+        clearOfflineDraftFlagsOnMeals();
+    } catch (_) {
+        /* ignore */
+    }
+    try {
         hideNetworkErrorOverlay();
     } catch (_) {
         /* ignore */
@@ -165,14 +171,16 @@ export function registerMainNetworkListeners() {
             /* ignore */
         }
         if (mealogMainAppVisible() && window.currentUser) {
-            showNetworkErrorOverlay({
-                message:
-                    '인터넷 연결이 끊어졌습니다. Wi-Fi 또는 데이터 연결을 확인한 뒤 다시 불러오기를 눌러 주세요.'
-            });
+            notifyTransportOfflineUi();
         }
     });
     window.addEventListener('online', () => {
         clearLocalNetworkForcedOffline();
+        try {
+            clearOfflineDraftFlagsOnMeals();
+        } catch (_) {
+            /* ignore */
+        }
         hideNetworkErrorOverlay();
         scheduleMealogNetworkRecovery(250, { forceAuthRefresh: true });
         void flushMealWriteQueueAndRefreshSyncUi();

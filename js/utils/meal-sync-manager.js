@@ -9,6 +9,7 @@
 import { db, appId } from '../firebase.js';
 import { waitForPendingWrites, doc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { appState } from '../state.js';
+import { isMealogTransportOffline } from './mealog-offline-ui.js';
 
 const MEAL_SYNC_ERROR_IDS_KEY = 'mealog_mealSyncErrorIds_v1';
 const MEAL_ABANDONED_IDS_KEY = 'mealog_mealSyncAbandonedIds_v1';
@@ -28,15 +29,7 @@ function mealPhotosHaveBase64(record) {
  * 오프라인일 때 `pending`·`await_server_ack`도 ‘등록예정’ 칩으로 보이므로 FAB 배지에 포함한다.
  */
 function isMealSyncUiEffectiveOfflineFab() {
-    if (appState.localNetworkForcedOffline) return true;
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
-    try {
-        const el = typeof document !== 'undefined' ? document.getElementById('networkErrorOverlay') : null;
-        if (el && !el.classList.contains('hidden')) return true;
-    } catch (_) {
-        /* ignore */
-    }
-    return false;
+    return isMealogTransportOffline();
 }
 
 /** 저장 grace(30초) 분기용 — entry-and-core 등에서 사용 */
@@ -515,6 +508,9 @@ export class MealSyncManager {
             dateStr,
             currentTab: currentTabVal
         });
+        const rowDraft =
+            Array.isArray(window.mealHistory) ? window.mealHistory.find((m) => m && String(m.id) === id) : null;
+        if (rowDraft) rowDraft._mealogOfflineDraft = true;
         const run = () => void refreshTimelineFull(dateStr, currentTabVal);
         run();
         if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(run);

@@ -518,38 +518,6 @@
         </div>
     </div>
 
-    <!-- 네트워크 단절·서버 연결 실패 시: 안내 + 전체 다시 불러오기 -->
-    <div id="networkErrorOverlay" class="hidden fixed inset-0 bg-slate-900/85 z-[10000] flex flex-col items-center justify-center p-6" role="alertdialog" aria-modal="true" aria-labelledby="networkErrorOverlayTitle">
-        <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 text-center">
-            <div
-                class="network-error-icon-circle w-14 h-14 mx-auto rounded-full flex items-center justify-center mb-4"
-                aria-hidden="true"
-            >
-                <!-- 인라인 SVG: 구름 1패스 + 대각선(클라우드 슬래시 조각 여러 개 겹침 방지) -->
-                <svg class="network-error-icon-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28" fill="none" aria-hidden="true">
-                    <path
-                        d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                    />
-                    <path d="M2 2 22 22" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-            </div>
-            <h2 id="networkErrorOverlayTitle" class="text-lg font-black text-slate-800 mb-2">연결할 수 없습니다</h2>
-            <p id="networkErrorOverlayMessage" class="text-sm text-slate-600 leading-relaxed mb-6">
-                네트워크 연결을 확인할 수 없습니다. Wi-Fi 또는 데이터 연결을 확인한 뒤 다시 시도해 주세요.
-            </p>
-            <button type="button" id="networkErrorReloadBtn" class="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-black shadow-md active:scale-[0.98] transition-transform">
-                <i class="fa-solid fa-rotate-right mr-2" aria-hidden="true"></i>다시 불러오기
-            </button>
-            <button type="button" id="networkErrorDismissBtn" class="mt-3 w-full py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700">
-                오프라인으로 보기
-            </button>
-        </div>
-    </div>
-
     <!-- 샘플(더미) 계정 안내: 첫 진입·둘러보기 후 표시 -->
     <div id="demoIntroModal" class="hidden fixed inset-0 z-[450] flex flex-col justify-center p-4 bg-slate-900/55 backdrop-blur-md" aria-modal="true" role="dialog" aria-labelledby="demoIntroTitle">
         <div class="bg-white rounded-2xl w-full max-w-[20rem] sm:max-w-[22rem] mx-auto shadow-2xl border border-slate-200/80 overflow-hidden max-h-[min(88vh,520px)] flex flex-col">
@@ -1544,8 +1512,10 @@
             </button>
         </nav>
         <!-- 미전송 식사 기록 일괄 재전송: 하단 네비 위 플로팅(게시판 글쓰기 FAB와 동일 계열) -->
-        <button type="button" id="mealSyncResendBtn" class="meal-sync-resend-fab hidden" aria-label="등록 재시도·삭제 실패 동기화" title="등록 미확인·실패 또는 삭제 실패 항목을 다시 서버에 반영합니다">
-            <i class="fa-solid fa-cloud-arrow-up meal-sync-resend-fab__icon text-lg" aria-hidden="true"></i>
+        <button type="button" id="mealSyncResendBtn" class="meal-sync-resend-fab hidden" aria-label="동기화" title="등록 미확인·실패 또는 삭제 실패 항목을 다시 서버에 반영합니다">
+            <i class="fa-solid fa-cloud-arrow-up meal-sync-resend-fab__icon meal-sync-resend-fab__icon--sync text-lg" aria-hidden="true"></i>
+            <i class="fa-solid fa-link-slash meal-sync-resend-fab__icon meal-sync-resend-fab__icon--off text-lg" aria-hidden="true"></i>
+            <i class="fa-solid fa-link meal-sync-resend-fab__icon meal-sync-resend-fab__icon--on text-lg" aria-hidden="true"></i>
             <i class="fa-solid fa-spinner meal-sync-resend-fab__spinner text-lg fa-spin" aria-hidden="true"></i>
             <span id="mealSyncResendBadge" class="meal-sync-resend-fab__badge hidden" aria-hidden="true">0</span>
         </button>

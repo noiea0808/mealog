@@ -1811,6 +1811,25 @@ export async function saveEntry() {
                 updateTimelineShareIndicators();
             }
 
+            if (isMealActionEffectiveOffline() && effectiveMealId) {
+                void import('../utils/mealog-offline-ui.js').then((m) => {
+                    try {
+                        if (typeof m.markMealOfflineDraftForRecord === 'function') {
+                            m.markMealOfflineDraftForRecord(effectiveMealId);
+                        }
+                    } catch (_) {
+                        /* ignore */
+                    }
+                    void import('../main/meal-sync-resend-header.js').then((h) => {
+                        try {
+                            if (typeof h.refreshMealSyncResendNavButton === 'function') h.refreshMealSyncResendNavButton();
+                        } catch (_) {
+                            /* ignore */
+                        }
+                    });
+                });
+            }
+
             const base64Photos = sourcePhotos.filter(isLocalPendingPhoto);
             // 추가 업로드 없음 — 클라이언트 Firestore 쓰기까지 끝나면 스피너 해제(오프라인 큐 동기화는 백그라운드)
             if (base64Photos.length === 0) {
@@ -1955,7 +1974,27 @@ export async function saveEntry() {
                             );
                         }
                         queueMicrotask(() => {
-                            if (isMealActionEffectiveOffline()) return;
+                            if (isMealActionEffectiveOffline()) {
+                                void import('../utils/mealog-offline-ui.js').then((m) => {
+                                    try {
+                                        if (record?.id && typeof m.markMealOfflineDraftForRecord === 'function') {
+                                            m.markMealOfflineDraftForRecord(record.id);
+                                        }
+                                    } catch (_) {
+                                        /* ignore */
+                                    }
+                                    void import('../main/meal-sync-resend-header.js').then((h) => {
+                                        try {
+                                            if (typeof h.refreshMealSyncResendNavButton === 'function') {
+                                                h.refreshMealSyncResendNavButton();
+                                            }
+                                        } catch (_) {
+                                            /* ignore */
+                                        }
+                                    });
+                                });
+                                return;
+                            }
                             try {
                                 applyOfflineAfterLocalSaveUi(record.id, optimisticTempId, record.date, currentTab);
                             } catch (_) {

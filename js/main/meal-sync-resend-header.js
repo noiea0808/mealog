@@ -1,5 +1,5 @@
 /**
- * 하단 네비 위 FAB: 서버 미반영 식사 기록 일괄 재전송
+ * 하단 네비 위 FAB: 전송 오프라인 시 체인(끊김)·오프라인 작성 건수, 온라인 시 미전송 일괄 재전송
  */
 import { isDemoUser } from '../demo-account.js';
 import {
@@ -10,8 +10,10 @@ import { showToast } from '../ui.js';
 import { appState } from '../state.js';
 import { db } from '../firebase.js';
 import { waitForPendingWrites } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
+import { countOfflineDraftMeals, isMealogTransportOffline } from '../utils/mealog-offline-ui.js';
 
 const MEAL_SYNC_FAB_ARIA_IDLE = '동기화가 필요한 기록 재시도';
+const MEAL_SYNC_FAB_ARIA_OFFLINE = '오프라인 — 저장 대기 기록 보기';
 
 /** 클릭 직후 즉시 반응(스피너·비활성) — 동적 import 전에 호출 */
 function setMealSyncFabBusy(btn, busy) {
@@ -29,6 +31,18 @@ function setMealSyncFabBusy(btn, busy) {
     }
 }
 
+function runChainRelinkAnimation(btn) {
+    if (!btn || btn.classList.contains('meal-sync-resend-fab--chain-relink')) return;
+    btn.classList.add('meal-sync-resend-fab--chain-relink');
+    window.setTimeout(() => {
+        try {
+            btn.classList.remove('meal-sync-resend-fab--chain-relink');
+        } catch (_) {
+            /* ignore */
+        }
+    }, 720);
+}
+
 export function refreshMealSyncResendNavButton() {
     const btn = document.getElementById('mealSyncResendBtn');
     const badge = document.getElementById('mealSyncResendBadge');
@@ -36,16 +50,41 @@ export function refreshMealSyncResendNavButton() {
     const u = window.currentUser;
     if (!u || u.isAnonymous || isDemoUser(u)) {
         btn.classList.add('hidden');
-        btn.classList.remove('meal-sync-resend-fab--stacked');
+        btn.classList.remove('meal-sync-resend-fab--stacked', 'meal-sync-resend-fab--transport-offline');
         return;
     }
+
+    const transportOff = isMealogTransportOffline();
+    const draftN = countOfflineDraftMeals();
     const scheduled = countMealSyncFabScheduledChipEntries();
     const retry = countMealCloudFabManualRetryEntries();
+
+    if (transportOff) {
+        btn.classList.remove('hidden');
+        btn.classList.add('meal-sync-resend-fab--transport-offline');
+        btn.classList.toggle('meal-sync-resend-fab--stacked', appState.currentTab === 'board');
+        btn.setAttribute('aria-label', MEAL_SYNC_FAB_ARIA_OFFLINE);
+        btn.setAttribute('title', '오프라인 — 연결되면 자동으로 동기화돼요');
+        if (badge) {
+            if (draftN > 0) {
+                badge.textContent = draftN > 99 ? '99+' : String(draftN);
+                badge.classList.remove('hidden', 'meal-sync-resend-fab__badge--retry-only');
+            } else {
+                badge.classList.add('hidden');
+                badge.classList.remove('meal-sync-resend-fab__badge--retry-only');
+            }
+        }
+        return;
+    }
+
+    btn.classList.remove('meal-sync-resend-fab--transport-offline');
     const showFab = scheduled > 0 || retry > 0;
     const badgeNum = scheduled > 0 ? scheduled : retry;
     if (showFab) {
         btn.classList.remove('hidden');
         btn.classList.toggle('meal-sync-resend-fab--stacked', appState.currentTab === 'board');
+        btn.setAttribute('aria-label', MEAL_SYNC_FAB_ARIA_IDLE);
+        btn.setAttribute('title', '등록 미확인·실패 또는 삭제 실패 항목을 다시 서버에 반영합니다');
         if (badge) {
             badge.textContent = badgeNum > 99 ? '99+' : String(badgeNum);
             badge.classList.remove('hidden');
@@ -67,9 +106,14 @@ export function bindMealSyncResendNavButtonOnce() {
     mealSyncResendNavBound = true;
     btn.addEventListener('click', () => {
         if (btn.disabled || btn.classList.contains('meal-sync-resend-fab--busy')) return;
+
+        if (btn.classList.contains('meal-sync-resend-fab--transport-offline')) {
+            runChainRelinkAnimation(btn);
+            return;
+        }
+
         const offline =
-            (typeof navigator !== 'undefined' && navigator.onLine === false) ||
-            !!appState.localNetworkForcedOffline;
+            (typeof navigator !== 'undefined' && navigator.onLine === false) || !!appState.localNetworkForcedOffline;
         if (offline) {
             showToast('오프라인 상태라 지금 등록할 수 없습니다. 네트워크 연결 후 다시 눌러 주세요.', 'info');
             return;

@@ -3,7 +3,8 @@
  * fetch / Firestore 쓰기 등이 끊김 계열로 실패하면 즉시 offline 으로 본다.
  */
 import { appState } from '../state.js';
-import { showNetworkErrorOverlay, isLikelyNetworkTransportFailure } from '../ui.js';
+import { isLikelyNetworkTransportFailure } from '../ui.js';
+import { notifyTransportOfflineUi } from './mealog-offline-ui.js';
 import { applyMealSyncAbandonOnOffline } from './meal-entry-pending.js';
 import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.js';
 
@@ -29,6 +30,13 @@ export function tryMarkAppOfflineFromNetworkFailure(err) {
     // Firestore·fetch 등이 동시에 여러 번 실패하면 오버레이·abandon·타임라인 갱신이 연속 호출되어
     // 팝업이 반복되고 UI가 멈춘 것처럼 보임 → 최초 1회만 무거운 처리 수행
     if (alreadyForced) {
+        void import('../main/meal-sync-resend-header.js').then((m) => {
+            try {
+                if (typeof m.refreshMealSyncResendNavButton === 'function') m.refreshMealSyncResendNavButton();
+            } catch (_) {
+                /* ignore */
+            }
+        });
         return true;
     }
     try {
@@ -38,13 +46,7 @@ export function tryMarkAppOfflineFromNetworkFailure(err) {
     }
     if (mealogMainAppVisible() && window.currentUser) {
         try {
-            const el = document.getElementById('networkErrorOverlay');
-            if (el && el.classList.contains('hidden')) {
-                showNetworkErrorOverlay({
-                    message:
-                        '인터넷 연결이 끊어졌습니다. Wi-Fi 또는 데이터 연결을 확인한 뒤 다시 불러오기를 눌러 주세요.'
-                });
-            }
+            notifyTransportOfflineUi();
         } catch (_) {
             /* ignore */
         }

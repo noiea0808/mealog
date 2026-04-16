@@ -849,96 +849,32 @@ export function isLikelyNetworkError(err) {
     return isLikelyNetworkTransportFailure(err);
 }
 
-const DEFAULT_NETWORK_ERROR_MESSAGE =
-    '네트워크 연결을 확인할 수 없습니다. Wi-Fi 또는 데이터 연결을 확인한 뒤 다시 시도해 주세요.';
-
-let networkErrorOverlayButtonsBound = false;
-
-function bindNetworkErrorOverlayButtons() {
-    if (networkErrorOverlayButtonsBound) return;
-    const reloadBtn = document.getElementById('networkErrorReloadBtn');
-    const dismissBtn = document.getElementById('networkErrorDismissBtn');
-    if (!reloadBtn || !dismissBtn) return;
-    networkErrorOverlayButtonsBound = true;
-    reloadBtn.addEventListener('click', async () => {
-        try {
-            if (typeof window.Mealog?.runNetworkRecovery === 'function') {
-                await window.Mealog.runNetworkRecovery();
-            }
-        } catch (_) {}
-        let reachable = false;
-        try {
-            const { probeMealogNetworkReachable } = await import('./utils/network-probe.js');
-            reachable = await probeMealogNetworkReachable();
-        } catch (_) {
-            reachable = false;
-        }
-        if (!reachable) {
-            showToast(
-                '아직 네트워크에 연결되지 않았습니다. Wi-Fi·데이터를 확인한 뒤 다시 눌러 주세요.',
-                'info'
-            );
-            return;
-        }
-        try {
-            const nr = await import('./utils/network-reachability.js');
-            if (typeof nr.clearLocalNetworkForcedOffline === 'function') nr.clearLocalNetworkForcedOffline();
-        } catch (_) {}
-        hideNetworkErrorOverlay();
-        try {
-            if (typeof window.reloadMomentFeed === 'function') {
-                await window.reloadMomentFeed();
-                return;
-            }
-        } catch (_) {}
-        try {
-            window.location.reload();
-        } catch (_) {}
-    });
-    dismissBtn.addEventListener('click', () => {
-        hideNetworkErrorOverlay();
-        // 브라우저가 online 이벤트를 주지 않아도, 사용자가 닫을 때는 온라인이면 강제 오프라인 플래그 해제
-        try {
-            if (typeof navigator !== 'undefined' && navigator.onLine) {
-                void import('./utils/network-reachability.js').then((m) => {
-                    if (typeof m.clearLocalNetworkForcedOffline === 'function') m.clearLocalNetworkForcedOffline();
-                });
-                void import('./render/timeline.js').then((tl) => {
-                    try {
-                        if (typeof tl.updateTimelineMealEntryPendingIndicators === 'function') {
-                            tl.updateTimelineMealEntryPendingIndicators();
-                        }
-                    } catch (_) {
-                        /* ignore */
-                    }
-                });
-            }
-        } catch (_) {
-            /* ignore */
-        }
-    });
-}
-
-/** 메인 콘텐츠(Firestore 등) 로드 실패 시 전체 화면 안내 */
+/** @deprecated 전면 연결 오류 팝업 제거됨 — 오프라인 FAB·토스트만 사용 */
 export function showNetworkErrorOverlay(options = {}) {
-    const overlay = document.getElementById('networkErrorOverlay');
-    if (!overlay) return;
-    bindNetworkErrorOverlayButtons();
-    const msgEl = document.getElementById('networkErrorOverlayMessage');
-    if (msgEl) {
-        msgEl.textContent =
-            typeof options.message === 'string' && options.message.trim()
-                ? options.message.trim()
-                : DEFAULT_NETWORK_ERROR_MESSAGE;
+    void options;
+    try {
+        hideLoading();
+    } catch (_) {
+        /* ignore */
     }
-    hideLoading();
-    overlay.classList.remove('hidden');
+    try {
+        const overlay = document.getElementById('networkErrorOverlay');
+        if (overlay) overlay.classList.add('hidden');
+    } catch (_) {
+        /* ignore */
+    }
+    void import('./utils/mealog-offline-ui.js').then((m) => {
+        if (typeof m.notifyTransportOfflineUi === 'function') m.notifyTransportOfflineUi();
+    });
 }
 
 export function hideNetworkErrorOverlay() {
-    const overlay = document.getElementById('networkErrorOverlay');
-    if (!overlay) return;
-    overlay.classList.add('hidden');
+    try {
+        const overlay = document.getElementById('networkErrorOverlay');
+        if (overlay) overlay.classList.add('hidden');
+    } catch (_) {
+        /* ignore */
+    }
 }
 
 window.isLikelyNetworkError = isLikelyNetworkError;

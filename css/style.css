@@ -32,16 +32,6 @@ html.platform-web {
 html.platform-web #navigationBarOverlay {
     display: none !important;
 }
-/* 전체 화면「연결할 수 없습니다」팝업: 원형 + 인라인 SVG (stroke = currentColor) */
-#networkErrorOverlay .network-error-icon-circle {
-    background-color: #e2e8f0;
-    color: #0f172a;
-}
-#networkErrorOverlay .network-error-icon-svg {
-    display: block;
-    flex-shrink: 0;
-    color: inherit;
-}
 /* 네이티브 앱: 상단·탭·설정 서브탭·알림 탭·하단 아이콘 등 메뉴성 UI만 글자/아이콘 최소 크기 보강 (브레이크포인트는 그대로) */
 html.platform-native-app .settings-subtab-row .settings-tab {
     font-size: 0.875rem;
@@ -2583,9 +2573,55 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
 }
+#mealSyncResendBtn.meal-sync-resend-fab .meal-sync-resend-fab__icon {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 1.125rem;
+    height: 1.125rem;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+#mealSyncResendBtn.meal-sync-resend-fab:not(.meal-sync-resend-fab--transport-offline) .meal-sync-resend-fab__icon--sync {
+    display: flex;
+}
+#mealSyncResendBtn.meal-sync-resend-fab--transport-offline:not(.meal-sync-resend-fab--chain-relink) .meal-sync-resend-fab__icon--off {
+    display: flex;
+}
+#mealSyncResendBtn.meal-sync-resend-fab--transport-offline.meal-sync-resend-fab--chain-relink .meal-sync-resend-fab__icon--on {
+    display: flex;
+    animation: mealSyncChainRelink 0.68s ease-out;
+}
+@keyframes mealSyncChainRelink {
+    0% {
+        transform: scale(0.82);
+        opacity: 0.55;
+    }
+    45% {
+        transform: scale(1.08);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    #mealSyncResendBtn.meal-sync-resend-fab--transport-offline.meal-sync-resend-fab--chain-relink .meal-sync-resend-fab__icon--on {
+        animation: none;
+    }
+}
+#mealSyncResendBtn.meal-sync-resend-fab--transport-offline {
+    background: #334155 !important;
+    border-color: #475569;
+    box-shadow: 0 2px 12px rgba(51, 65, 85, 0.45);
+}
 #mealSyncResendBtn.meal-sync-resend-fab .meal-sync-resend-fab__spinner {
     display: none;
     position: absolute;
+    inset: 0;
+    margin: auto;
 }
 #mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--busy {
     cursor: wait;
@@ -2593,7 +2629,9 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     transform: scale(0.98);
     box-shadow: 0 2px 16px rgba(15, 23, 42, 0.5), 0 0 0 3px rgba(96, 165, 250, 0.35);
 }
-#mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--busy .meal-sync-resend-fab__icon {
+#mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--busy .meal-sync-resend-fab__icon--sync,
+#mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--busy .meal-sync-resend-fab__icon--off,
+#mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--busy .meal-sync-resend-fab__icon--on {
     display: none !important;
 }
 #mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--busy .meal-sync-resend-fab__spinner {
