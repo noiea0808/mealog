@@ -1077,7 +1077,7 @@ initAuth(async (user) => {
         }
 
         if (user && !user.isAnonymous && !isDemoUser(user)) {
-          window.__onPushTokenSavedError = (msg) => showToast('알림 등록 실패: ' + (msg || '알 수 없음'), 'error');
+          // FCM 토큰 저장 실패는 콘솔·푸시 디버그로 충분 — 별도 토스트 생략
           // 네이티브 앱만: FCM 등록·토큰 Firestore 저장 (설정 토글 제거 이후 이 경로가 유일함)
           if (typeof window.Capacitor !== 'undefined' && window.Capacitor.isNativePlatform?.()) {
             const puid = user.uid;
@@ -1101,6 +1101,10 @@ initAuth(async (user) => {
               void syncPushRegistrationFromOs();
             }
           }
+        } else if (user) {
+          try {
+            delete window.__onPushTokenSavedError;
+          } catch (_) {}
         }
         
         console.log('🔐 인증 상태 변경:', {
@@ -1484,6 +1488,9 @@ initAuth(async (user) => {
         window.currentUser = null;
         window.__pushInitUid = null;
         window.__pushInitInFlight = false;
+        try {
+          delete window.__onPushTokenSavedError;
+        } catch (_) {}
         syncDemoNavGuideDots();
         clearNavFeedUpdateDots();
 

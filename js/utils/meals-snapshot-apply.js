@@ -25,6 +25,33 @@ import {
 } from './meal-entry-pending.js';
 import { applyOptimisticMealDelete } from './meal-delete-optimistic.js';
 import { showToast } from '../ui.js';
+import { mealRecordHasBase64PendingPhotos } from './meal-sync-manager.js';
+import { appState } from '../state.js';
+
+/** 전송 계층 오프라인만 — 연결 오버레이 표시만으로는 서버 removed 를 막지 않음(복구 직후 고착 방지) */
+function mealsSnapshotDeleteHoldWhileTransportOffline() {
+    if (appState.localNetworkForcedOffline === true) return true;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+    return false;
+}
+
+function countDataImageInPhotos(recordOrDoc) {
+    const arr = Array.isArray(recordOrDoc?.photos)
+        ? recordOrDoc.photos
+        : recordOrDoc?.photos
+          ? [recordOrDoc.photos]
+          : [];
+    return arr.filter((p) => typeof p === 'string' && p.startsWith('data:image')).length;
+}
+
+function countHttpsInPhotos(recordOrDoc) {
+    const arr = Array.isArray(recordOrDoc?.photos)
+        ? recordOrDoc.photos
+        : recordOrDoc?.photos
+          ? [recordOrDoc.photos]
+          : [];
+    return arr.filter((p) => typeof p === 'string' && /^https?:\/\//.test(p)).length;
+}
 
 function triggerLoadMyShares() {
     void import('../db.js').then(({ loadMyShares }) => {
@@ -138,15 +165,24 @@ export function applyMealsSnapshotPrimary(p) {
         changes.forEach((change) => {
             if (change.type === 'removed') {
                 const rid = change.doc.id;
-                /** 로컬 큐만 반영된 removed(오프라인·hasPendingWrites)면 행을 유지해 삭제 예정·FAB가 맞게 동작 */
-                const serverAckedRemove = mealDocSnapshotAppearsServerAcked(change.doc.metadata, {
+                const meta = change.doc.metadata;
+                const prev = window.mealHistory.find((m) => m.id === rid);
+                const mgrRm = getMealSyncManager();
+                const wasDeleteFlow = !!(prev && (mgrRm.isDeleting(prev) || mgrRm.isDeleteInFlight(prev)));
+                /**
+                 * 삭제 예약 중 + 앱이 오프라인으로 보일 때: 로컬 큐만 반영된 removed 로는 행을 유지(삭제예정 칩).
+                 * 온라인 복구 후에는 `allowFromCacheAck` 로 서버 삭제 반영(캐시 메타만 와도 처리) — fromCache===false 강제 시 레드닷 고착.
+                 */
+                if (wasDeleteFlow && mealsSnapshotDeleteHoldWhileTransportOffline()) {
+                    return;
+                }
+                const serverAckedRemove = mealDocSnapshotAppearsServerAcked(meta, {
                     allowFromCacheAck: true
                 });
                 if (!serverAckedRemove) {
                     return;
                 }
-                const prev = window.mealHistory.find((m) => m.id === rid);
-                const showDeleteToast = !!(prev && getMealSyncManager().isDeleting(prev));
+                const showDeleteToast = !!(prev && mgrRm.isDeleting(prev));
                 markMealEntryDeleteComplete(rid);
                 if (prev) {
                     const ctx = applyOptimisticMealDelete(rid, prev);
@@ -184,14 +220,24 @@ export function applyMealsSnapshotPrimary(p) {
                         (p) => typeof p === 'string' && p.startsWith('data:image')
                     );
                     const shouldKeepLocalPreview = isPendingUpload && hasLocalBase64Preview;
+                    const localB64N = countDataImageInPhotos({ photos: localPhotos });
+                    const docHttpsN = countHttpsInPhotos(docData);
+                    const serverMissingUploadedPhotos =
+                        localB64N > 0 && docHttpsN < localB64N && (isPendingUpload || hasLocalBase64Preview);
 
                     let mergedRow;
-                    if (shouldKeepLocalPreview) {
+                    if (shouldKeepLocalPreview || serverMissingUploadedPhotos) {
                         const merged = { ...docData, photos: [...localPhotos] };
                         mergedRow = mergePreserveLocalSaveFailed(merged, localRecord);
                     } else {
                         mergedRow = mergePreserveLocalSaveFailed(docData, localRecord);
                     }
+                    const deferAck =
+                        mealRecordHasBase64PendingPhotos(mergedRow) ||
+                        mealRecordHasBase64PendingPhotos(localRecord) ||
+                        mgrSync.hasPendingPhotoEntry(docData.id) ||
+                        mgrSync.hasPendingPhotoSlot(slotKey) ||
+                        (localB64N > 0 && docHttpsN < localB64N);
                     if (serverAcked) {
                         mergedRow = { ...mergedRow };
                         const lockFail = shouldPreserveMealSaveFailureOnMerge(localRecord, docData.id);
@@ -199,7 +245,9 @@ export function applyMealsSnapshotPrimary(p) {
                             delete mergedRow._localSaveFailed;
                             delete mergedRow.is_sync_error;
                         }
-                        onMealDocFirestoreServerAcknowledged(docData.id, null);
+                        if (!deferAck) {
+                            onMealDocFirestoreServerAcknowledged(docData.id, null);
+                        }
                     }
                     window.mealHistory[index] = mergedRow;
                 } else {
@@ -226,6 +274,12 @@ export function applyMealsSnapshotPrimary(p) {
                             ? { ...docData, photos: [...tempPhotos] }
                             : docData;
                         let mergedRow = mergePreserveLocalSaveFailed(mergedTemp, tempRecord);
+                        const deferAckTemp =
+                            mealRecordHasBase64PendingPhotos(mergedRow) ||
+                            mealRecordHasBase64PendingPhotos(tempRecord) ||
+                            mgrSync.hasPendingPhotoEntry(docData.id) ||
+                            mgrSync.hasPendingPhotoEntry(tempRecord.id) ||
+                            mgrSync.hasPendingPhotoSlot(slotKey);
                         if (serverAcked) {
                             mergedRow = { ...mergedRow };
                             const lockFail = shouldPreserveMealSaveFailureOnMerge(tempRecord, docData.id);
@@ -233,7 +287,9 @@ export function applyMealsSnapshotPrimary(p) {
                                 delete mergedRow._localSaveFailed;
                                 delete mergedRow.is_sync_error;
                             }
-                            onMealDocFirestoreServerAcknowledged(docData.id, tempRecord.id);
+                            if (!deferAckTemp) {
+                                onMealDocFirestoreServerAcknowledged(docData.id, tempRecord.id);
+                            }
                         }
                         window.mealHistory[tempIdx] = mergedRow;
                         if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {

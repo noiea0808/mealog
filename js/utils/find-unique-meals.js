@@ -1,8 +1,16 @@
 /**
- * 서버 스냅샷 행 + 로컬 전용(orphan) 행을 합치고 본식 슬롯 중복을 제거한다.
+ * 서버 스냅샷 행 + 로컬 전용(orphan) 행을 합치고 **본식 슬롯** 중복만 제거한다.
+ * 간식 슬롯(pre_morning·snack1·snack2·night)은 동일 시간대에 여러 건이 올 수 있음 — dedupe 대상에서 제외.
  * 최우선: serverRows(서버 확정 스냅샷) — orphan은 서버에 아직 없는 id만 유지.
  */
+import { SLOTS } from '../constants.js';
 import { getMealSyncManager } from './meal-sync-manager.js';
+
+const SNACK_SLOT_IDS = new Set(SLOTS.filter((s) => s.type === 'snack').map((s) => s.id));
+
+function allowsMultipleMealsPerDateSlot(slotId) {
+    return SNACK_SLOT_IDS.has(String(slotId || ''));
+}
 
 function sortMealsDesc(a, b) {
     return (
@@ -48,7 +56,7 @@ function dedupeMainSlotTemps(mealsArr) {
     });
 }
 
-/** 동일 date+slot에 실제 id가 두 개면 하나만 유지(본식·간식 공통) */
+/** 동일 date+slot에 실제 id가 두 개면 하나만 유지 — 본식(morning·lunch·dinner)만 (간식은 복수 허용) */
 function dedupeMainSlotRealIds(mealsArr) {
     if (!Array.isArray(mealsArr)) return mealsArr;
     const mgr = getMealSyncManager();
@@ -58,6 +66,7 @@ function dedupeMainSlotRealIds(mealsArr) {
         const id = String(m.id);
         if (id.startsWith('temp_')) return true;
         if (!m.date || !m.slotId) return true;
+        if (allowsMultipleMealsPerDateSlot(m.slotId)) return true;
         const key = `${m.date}__${m.slotId}`;
         if (seen.has(key)) {
             mgr.clearDuplicateRealIdSideEffects(id);

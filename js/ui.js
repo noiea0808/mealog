@@ -805,14 +805,22 @@ window.hideLoading = hideLoading;
  */
 export function isLikelyNetworkTransportFailure(err) {
     if (!err) return false;
+    if (err.name === 'AbortError') return false;
     const code = String(err.code || '');
     const rawMsg = String(err.message || (typeof err.toString === 'function' ? err.toString() : '') || '');
     const msg = rawMsg.toLowerCase();
-    const networkCodes = ['unavailable', 'deadline-exceeded', 'resource-exhausted'];
-    if (networkCodes.includes(code)) return true;
-    if (code === 'auth/network-request-failed') return true;
+
+    // Firestore/브라우저 내부 스트림 단언·버그 — 망 끊김과 무관, 오버레이 오탐 방지
+    if (/internal assertion failed|watchchangeaggregator|unexpected state/i.test(msg)) return false;
+
+    if (code === 'cancelled' || code === 'canceled') return false;
     if (code === 'failed-precondition') return false;
     if (code === 'permission-denied') return false;
+
+    // unavailable / deadline: 실제 단절·지연에 흔함. resource-exhausted(할당량)은 제외 — Wi-Fi 문제와 무관
+    const networkCodes = ['unavailable', 'deadline-exceeded'];
+    if (networkCodes.includes(code)) return true;
+    if (code === 'auth/network-request-failed') return true;
     if (
         /err_internet_disconnected|err_network_changed|err_name_not_resolved|err_connection_timed_out|err_connection_reset|err_network_io_suspended|net::err_/i.test(
             rawMsg
@@ -822,22 +830,22 @@ export function isLikelyNetworkTransportFailure(err) {
     }
     if (
         /failed to fetch|networkerror|network request failed|load failed|fetcherror/i.test(msg) ||
-        /connection.*(refused|reset|aborted)|err_connection|net::err|quic|econnreset|enotfound|etimedout|timeout/i.test(
-            msg
-        ) ||
-        /internet|offline|unreachable|host.*not.*found/i.test(msg)
+        /connection.*(refused|reset)|err_connection|net::err|quic|econnreset|\betimedout\b|etimedout/i.test(msg) ||
+        /\b(operation timed out|deadline exceeded)\b/i.test(msg)
     ) {
         return true;
     }
+    // 'timeout' 단독 매칭 제거 — 메시지 안 다른 단어에 포함돼 오탐(예: 내부 타임아웃 문구)
+    if (/client is offline|you are offline|the network.*unavailable|could not reach/i.test(msg)) return true;
+    if (/unreachable|host.*not.*found|dns.*(error|fail)|enotfound/i.test(msg)) return true;
     return false;
 }
 
 /** Firestore / fetch 등에서 네트워크성 오류로 추정되는지 (인덱스·권한 오류는 제외) */
 export function isLikelyNetworkError(err) {
     if (!err) return false;
-    try {
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
-    } catch (_) {}
+    // navigator.onLine === false 만으로는 판단하지 않음 — 모바일/WKWebView·전환 순간에 false 오판이 잦고,
+    // 그때 permission 등 다른 오류와 조합되면 '연결할 수 없습니다'가 오탐됨.
     return isLikelyNetworkTransportFailure(err);
 }
 
@@ -857,6 +865,24 @@ function bindNetworkErrorOverlayButtons() {
             if (typeof window.Mealog?.runNetworkRecovery === 'function') {
                 await window.Mealog.runNetworkRecovery();
             }
+        } catch (_) {}
+        let reachable = false;
+        try {
+            const { probeMealogNetworkReachable } = await import('./utils/network-probe.js');
+            reachable = await probeMealogNetworkReachable();
+        } catch (_) {
+            reachable = false;
+        }
+        if (!reachable) {
+            showToast(
+                '아직 네트워크에 연결되지 않았습니다. Wi-Fi·데이터를 확인한 뒤 다시 눌러 주세요.',
+                'info'
+            );
+            return;
+        }
+        try {
+            const nr = await import('./utils/network-reachability.js');
+            if (typeof nr.clearLocalNetworkForcedOffline === 'function') nr.clearLocalNetworkForcedOffline();
         } catch (_) {}
         hideNetworkErrorOverlay();
         try {

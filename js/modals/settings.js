@@ -810,7 +810,7 @@ export async function saveProfileSettings() {
                 showToast("닉네임은 20자 이하로 입력해주세요.", "error");
                 return;
             }
-            const { containsProfanity, isNicknameDuplicate, canChangeNickname, updateNicknameChangeDate } = await import('../utils/nickname.js');
+            const { containsProfanity, isNicknameDuplicate } = await import('../utils/nickname.js');
             if (containsProfanity(newNickname)) {
                 showToast("사용할 수 없는 닉네임입니다. 다른 닉네임을 입력해주세요.", "error");
                 return;
@@ -818,11 +818,6 @@ export async function saveProfileSettings() {
             const duplicate = await isNicknameDuplicate(newNickname, window.currentUser?.uid || null);
             if (duplicate) {
                 showToast("이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.", "error");
-                return;
-            }
-            const { canChange, daysUntilNextChange } = await canChangeNickname(window.currentUser?.uid || null);
-            if (!canChange) {
-                showToast(`닉네임은 한 달에 한 번만 변경할 수 있습니다. ${daysUntilNextChange}일 후에 다시 시도해주세요.`, "error");
                 return;
             }
         }
@@ -908,10 +903,6 @@ export async function saveProfileSettings() {
         }
         
         await dbOps.saveSettings(state.tempSettings);
-        if (nicknameChanged && window.currentUser?.uid) {
-            const { updateNicknameChangeDate } = await import('../utils/nickname.js');
-            await updateNicknameChangeDate(window.currentUser.uid);
-        }
         showToast("설정이 저장되었습니다.", 'success');
         
         // 헤더 업데이트

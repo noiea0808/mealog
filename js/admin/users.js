@@ -1,5 +1,5 @@
 // ADMIN 사용자 관리 관련 함수들
-import { app, db, appId, functions, auth } from '../firebase.js';
+import { app, db, appId, functions, auth, callableFunctions } from '../firebase.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js';
 import { collection, getDocs, query, orderBy, limit, startAfter, doc, getDoc, setDoc, where, addDoc, serverTimestamp, getCountFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { getCurrentTermsVersion } from '../utils-terms.js';
@@ -31,6 +31,12 @@ const USERS_SORT_DEFAULT_DIR = {
 };
 
 const USERS_PER_PAGE = 50;
+const ADMIN_USERS_SEARCH_DEBOUNCE_MS = 280;
+
+/** 닉네임·이메일·UID 부분 일치 검색(소문자) */
+let adminUsersSearchQuery = '';
+let adminUsersSearchHandlersBound = false;
+let adminUsersSearchDebounceTimer = null;
 
 /** Firestore `in` 쿼리 최대 30 — 페이지 사용자에 해당하는 문서만 조회 */
 async function fetchUserBansMap(userBansColl, userIds) {
@@ -74,6 +80,86 @@ let adminUsersDataLoaded = false;
 
 function normalizeString(v) {
     return (v === undefined || v === null) ? '' : String(v);
+}
+
+function adminUserMatchesSearch(user, needleLower) {
+    if (!needleLower) return true;
+    const nick = normalizeString(user?.nickname).toLowerCase();
+    const email = normalizeString(user?.email).toLowerCase();
+    const uid = normalizeString(user?.userId).toLowerCase();
+    return nick.includes(needleLower) || email.includes(needleLower) || uid.includes(needleLower);
+}
+
+function updateAdminUsersSearchHint(needleLower) {
+    const hint = document.getElementById('adminUsersSearchCountHint');
+    if (!hint) return;
+    if (!needleLower) {
+        hint.textContent = '';
+        hint.classList.add('hidden');
+        return;
+    }
+    const total =
+        usersFullListRaw !== null && Array.isArray(usersFullListRaw)
+            ? usersFullListRaw.length
+            : adminUsersTotalCount;
+    if (!total || total <= 0) {
+        hint.textContent = '';
+        hint.classList.add('hidden');
+        return;
+    }
+    hint.textContent = ` (전체 ${Number(total).toLocaleString('ko-KR')}명 중)`;
+    hint.classList.remove('hidden');
+}
+
+function ensureAdminUsersSearchHandlers() {
+    if (adminUsersSearchHandlersBound) return;
+    const inp = document.getElementById('adminUsersSearchInput');
+    const clr = document.getElementById('adminUsersSearchClearBtn');
+    if (!inp) return;
+    adminUsersSearchHandlersBound = true;
+
+    const runSearchRender = () => {
+        const q = (inp.value || '').trim();
+        adminUsersSearchQuery = q;
+        adminUsersListPage = 1;
+        if (clr) clr.classList.toggle('hidden', !q);
+        if (!adminUsersDataLoaded) return;
+        if (usersFullListRaw !== null && Array.isArray(usersFullListRaw)) {
+            void renderUsers({ lightRender: true });
+        } else {
+            void renderUsers();
+        }
+    };
+
+    inp.addEventListener('input', () => {
+        clearTimeout(adminUsersSearchDebounceTimer);
+        adminUsersSearchDebounceTimer = setTimeout(() => {
+            adminUsersSearchDebounceTimer = null;
+            runSearchRender();
+        }, ADMIN_USERS_SEARCH_DEBOUNCE_MS);
+    });
+    inp.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        clearTimeout(adminUsersSearchDebounceTimer);
+        adminUsersSearchDebounceTimer = null;
+        runSearchRender();
+    });
+    if (clr) {
+        clr.addEventListener('click', () => {
+            inp.value = '';
+            adminUsersSearchQuery = '';
+            clr.classList.add('hidden');
+            updateAdminUsersSearchHint('');
+            adminUsersListPage = 1;
+            if (!adminUsersDataLoaded) return;
+            if (usersFullListRaw !== null && Array.isArray(usersFullListRaw)) {
+                void renderUsers({ lightRender: true });
+            } else {
+                void renderUsers();
+            }
+        });
+    }
 }
 
 function normalizeNumber(v) {
@@ -305,6 +391,7 @@ export async function fetchAllUsersForAdminAnalytics() {
 
 export function ensureAdminUsersSortHandlers() {
     initUsersSortHandlers();
+    ensureAdminUsersSearchHandlers();
 }
 
 function initUsersSortHandlers() {
@@ -554,6 +641,14 @@ function invalidateUsersTableCache() {
     usersCache = null;
     usersFullListRaw = null;
     adminUsersLastDocsByPage = {};
+    adminUsersSearchQuery = '';
+    try {
+        const inp = document.getElementById('adminUsersSearchInput');
+        if (inp) inp.value = '';
+        const clr = document.getElementById('adminUsersSearchClearBtn');
+        if (clr) clr.classList.add('hidden');
+        updateAdminUsersSearchHint('');
+    } catch (_) { /* ignore */ }
 }
 
 // 사용자 목록 렌더링
@@ -570,20 +665,28 @@ export async function renderUsers(options = {}) {
             '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-rotate-right text-2xl mb-2 opacity-40" aria-hidden="true"></i><p class="text-sm">상단 <strong class="text-slate-600">새로고침</strong>으로 목록을 불러옵니다.</p></td></tr>';
         const navEl = document.getElementById('adminUsersListPagination');
         updateAdminUsersTotalCountDisplay(null);
+        updateAdminUsersSearchHint('');
         if (navEl) navEl.innerHTML = '';
         return;
     }
 
-    container.innerHTML =
-        '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
+    const needle = (adminUsersSearchQuery || '').trim().toLowerCase();
+    const lightRender = options?.lightRender === true && usersFullListRaw !== null && Array.isArray(usersFullListRaw);
+
+    if (!lightRender) {
+        container.innerHTML =
+            '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
+    }
 
     try {
         console.log('renderUsers 시작');
         // 헤더 정렬 핸들러는 한 번만 바인딩
         initUsersSortHandlers();
-        
+        ensureAdminUsersSearchHandlers();
+
         const loadFullListForSort = options?.loadFullListForSort === true;
-        if (loadFullListForSort && !usersFullListRaw) {
+        const needsFullList = loadFullListForSort || needle.length > 0;
+        if (needsFullList && !usersFullListRaw) {
             container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>전체 사용자 목록을 불러오는 중…</p></td></tr>';
             try {
                 usersFullListRaw = await fetchAllUsersEnriched();
@@ -612,36 +715,51 @@ export async function renderUsers(options = {}) {
             usersCache = users;
         }
         console.log('getUsers 결과:', users.length, '명 (페이지', adminUsersListPage, '/ 총', adminUsersTotalCount, '명)');
-        
-        if (users.length === 0) {
-            container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
-            updateAdminUsersListPagination(adminUsersTotalCount, Math.max(1, Math.ceil(adminUsersTotalCount / USERS_PER_PAGE)));
+
+        const hadAnyBeforeFilter = users.length > 0;
+        const filtered = needle.length > 0 ? users.filter((u) => adminUserMatchesSearch(u, needle)) : users;
+
+        if (filtered.length === 0) {
+            if (needle.length > 0 && hadAnyBeforeFilter) {
+                container.innerHTML =
+                    '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-magnifying-glass text-2xl mb-2 opacity-50" aria-hidden="true"></i><p>검색 조건에 맞는 사용자가 없습니다.</p><p class="text-xs mt-2 text-slate-500">닉네임·이메일·UID 일부만 입력해도 찾을 수 있습니다.</p></td></tr>';
+            } else {
+                container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
+            }
+            const emptyPagingTotal = needle.length > 0 ? 0 : adminUsersTotalCount;
+            updateAdminUsersListPagination(emptyPagingTotal, Math.max(1, Math.ceil(emptyPagingTotal / USERS_PER_PAGE)));
+            updateAdminUsersSearchHint(needle);
             try { applyAdminUsersPageVisibility(adminUsersCurrentPage); } catch (_) {}
             adminUsersDataLoaded = true;
             return;
         }
-        
+
         // 최신 약관 버전 가져오기
         const currentVersion = await getCurrentTermsVersion();
-        
-        const sortedUsers = sortUsersForTable(users, currentVersion);
+
+        const sortedUsers = sortUsersForTable(filtered, currentVersion);
         updateUsersSortHeaderUI();
-        
-        const totalCountForPaging = usersFullListRaw !== null && Array.isArray(usersFullListRaw)
-            ? usersFullListRaw.length
-            : adminUsersTotalCount;
+
+        const totalCountForPaging =
+            needle.length > 0
+                ? filtered.length
+                : usersFullListRaw !== null && Array.isArray(usersFullListRaw)
+                  ? usersFullListRaw.length
+                  : adminUsersTotalCount;
         const totalListPages = Math.max(1, Math.ceil(totalCountForPaging / USERS_PER_PAGE));
         if (adminUsersListPage > totalListPages) adminUsersListPage = totalListPages;
 
+        const useClientSlice = needle.length > 0 || (usersFullListRaw !== null && Array.isArray(usersFullListRaw));
         let usersToShow;
-        if (usersFullListRaw !== null && Array.isArray(usersFullListRaw)) {
+        if (useClientSlice) {
             const startIdx = (adminUsersListPage - 1) * USERS_PER_PAGE;
             usersToShow = sortedUsers.slice(startIdx, startIdx + USERS_PER_PAGE);
         } else {
             usersToShow = sortedUsers;
         }
-        
+
         updateAdminUsersListPagination(totalCountForPaging, totalListPages);
+        updateAdminUsersSearchHint(needle);
         
         const start = totalCountForPaging === 0 ? 0 : (adminUsersListPage - 1) * USERS_PER_PAGE + 1;
         const end = Math.min(adminUsersListPage * USERS_PER_PAGE, totalCountForPaging);
@@ -729,11 +847,20 @@ export async function renderUsers(options = {}) {
                     </td>
                     <td data-page="1 2" class="px-2 py-2.5 text-center text-slate-500 text-sm tabular-nums">${rowNum}</td>
                     <td data-page="1 2" class="px-3 py-2.5 text-left align-middle">${emailUserIdCell}</td>
-                    <td data-page="1 2" class="px-2 py-2.5 min-w-[6.5rem] max-w-[9.75rem] text-left">
-                        <div class="flex flex-col gap-0.5">
-                            <span class="font-bold text-slate-800 break-words text-sm leading-snug">${user.nickname || '익명'}</span>
-                            <span class="text-[11px] leading-snug break-words ${user.lifestyle && String(user.lifestyle).trim() !== '' ? 'text-slate-500' : 'text-slate-400'}">${user.lifestyle && String(user.lifestyle).trim() !== '' ? escapeHtml(String(user.lifestyle).trim()) : '-'}</span>
-                            ${deleteRequestedBadge ? `<div class="mt-0.5">${deleteRequestedBadge}</div>` : ''}
+                    <td data-page="1 2" class="px-2 py-2.5 min-w-[6.5rem] max-w-[9.75rem] text-center align-middle">
+                        <div class="flex flex-col items-center justify-center gap-0 min-h-[2.35rem]">
+                            ${
+                                user.deleteRequested
+                                    ? `<span class="font-bold text-slate-800 break-words text-sm leading-tight text-center max-w-full">${escapeHtml(user.nickname || '익명')}</span>`
+                                    : `<div class="flex flex-row items-center justify-center gap-1.5 w-full min-w-0">
+                                <span class="font-bold text-slate-800 break-words text-sm leading-tight text-center min-w-0">${escapeHtml(user.nickname || '익명')}</span>
+                                <button type="button" class="admin-user-edit-nick-btn shrink-0 p-1 rounded-md text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 border border-transparent hover:border-emerald-200 self-center" data-uid="${escapeHtml(user.userId)}" data-nick-enc="${encodeURIComponent(String(user.nickname || ''))}" title="닉네임 수정">
+                                    <i class="fa-solid fa-pen text-[11px]" aria-hidden="true"></i>
+                                </button>
+                            </div>`
+                            }
+                            <span class="block w-full text-[11px] leading-tight break-words text-center max-w-full -mt-px ${user.lifestyle && String(user.lifestyle).trim() !== '' ? 'text-slate-500' : 'text-slate-400'}">${user.lifestyle && String(user.lifestyle).trim() !== '' ? escapeHtml(String(user.lifestyle).trim()) : '-'}</span>
+                            ${deleteRequestedBadge ? `<div class="mt-0 flex justify-center w-full">${deleteRequestedBadge}</div>` : ''}
                         </div>
                     </td>
                     <td data-page="1 2" class="px-2 py-2.5 text-center">
@@ -773,6 +900,7 @@ export async function renderUsers(options = {}) {
                 </tr>
             `;
         }).join('');
+        ensureAdminUserNicknameEditDelegation();
         initAdminUsersSelectAll();
         applyAdminUsersPageVisibility(typeof adminUsersCurrentPage !== 'undefined' ? adminUsersCurrentPage : 1);
         adminUsersDataLoaded = true;
@@ -909,6 +1037,76 @@ function getSelectedUserIds() {
     return Array.from(document.querySelectorAll('.admin-user-checkbox:checked'))
         .map(cb => cb.getAttribute('data-user-id'))
         .filter(Boolean);
+}
+
+let adminNicknameEditDelegationBound = false;
+
+function ensureAdminUserNicknameEditDelegation() {
+    if (adminNicknameEditDelegationBound) return;
+    const tbody = document.getElementById('usersContainer');
+    if (!tbody) return;
+    adminNicknameEditDelegationBound = true;
+    tbody.addEventListener('click', (e) => {
+        const btn = e.target.closest('.admin-user-edit-nick-btn');
+        if (!btn || btn.disabled) return;
+        e.preventDefault();
+        const uid = btn.getAttribute('data-uid');
+        if (!uid) return;
+        const enc = btn.getAttribute('data-nick-enc') || '';
+        let current = '';
+        try {
+            current = decodeURIComponent(enc);
+        } catch (_) {
+            current = '';
+        }
+        void runAdminEditUserNickname(uid, current);
+    });
+}
+
+async function runAdminEditUserNickname(targetUid, currentLabel) {
+    if (!auth.currentUser) {
+        alert('관리자 로그인이 필요합니다.');
+        return;
+    }
+    const input = window.prompt('새 닉네임을 입력하세요. (20자 이하)', currentLabel);
+    if (input === null) return;
+    const trimmed = input.trim();
+    if (!trimmed) {
+        alert('닉네임을 입력해 주세요.');
+        return;
+    }
+    if (trimmed.length > 20) {
+        alert('닉네임은 20자 이하로 입력해 주세요.');
+        return;
+    }
+    if (trimmed === '게스트') {
+        alert('예약된 닉네임은 사용할 수 없습니다.');
+        return;
+    }
+    if (trimmed === currentLabel) return;
+    try {
+        if (!callableFunctions?.adminSetUserNickname) {
+            alert('닉네임 저장 기능을 불러올 수 없습니다. 페이지를 새로고침해 주세요.');
+            return;
+        }
+        await callableFunctions.adminSetUserNickname({ userId: targetUid, nickname: trimmed });
+        alert('닉네임이 저장되었습니다.');
+        invalidateUsersTableCache();
+        if (adminUsersDataLoaded) await renderUsers();
+    } catch (e) {
+        console.error('adminSetUserNickname', e);
+        const code = String(e?.code || '');
+        const msg = String(e?.message || e || '');
+        if (code.includes('already-exists') || msg.includes('already-exists') || msg.includes('이미 사용 중')) {
+            alert('이미 사용 중인 닉네임입니다.');
+        } else if (code.includes('permission-denied')) {
+            alert('권한이 없습니다.');
+        } else if (code.includes('invalid-argument')) {
+            alert(msg || '입력값을 확인해 주세요.');
+        } else {
+            alert('저장에 실패했습니다: ' + (msg || '알 수 없는 오류'));
+        }
+    }
 }
 
 // 대기 중인 삭제 요청 수동 처리 (트리거가 동작하지 않을 때 사용)

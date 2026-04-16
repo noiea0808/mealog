@@ -429,47 +429,58 @@ export const dbOps = {
                 }
 
                 await runTransaction(db, async (transaction) => {
-                    if (normNew) {
-                        const newClaimRef = doc(claimsColl, nicknameClaimDocId(normNew));
-                        const claimSnap = await transaction.get(newClaimRef);
-                        if (claimSnap.exists()) {
-                            const owner = claimSnap.data()?.userId;
-                            if (owner && owner !== currentUser.uid) {
-                                const ownerSettingsRef = doc(
-                                    db,
-                                    'artifacts',
-                                    appId,
-                                    'users',
-                                    owner,
-                                    'config',
-                                    'settings'
-                                );
-                                const ownerSettingsSnap = await transaction.get(ownerSettingsRef);
-                                const ownerNorm = normalizeNicknameForClaim(
-                                    ownerSettingsSnap.exists()
-                                        ? ownerSettingsSnap.data()?.profile?.nickname
-                                        : null
-                                );
-                                if (ownerNorm === normNew) {
-                                    throw new Error('NICKNAME_TAKEN');
-                                }
-                                transaction.delete(newClaimRef);
-                            }
+                    /** Firestore: 트랜잭션 내 모든 read(get)은 write(set/delete)보다 먼저 실행되어야 함 */
+                    const newClaimRef = normNew ? doc(claimsColl, nicknameClaimDocId(normNew)) : null;
+                    const oldClaimRef =
+                        normOld && normOld !== normNew ? doc(claimsColl, nicknameClaimDocId(normOld)) : null;
+
+                    const newClaimSnap = newClaimRef ? await transaction.get(newClaimRef) : null;
+                    const oldClaimSnap = oldClaimRef ? await transaction.get(oldClaimRef) : null;
+                    let ownerSettingsSnap = null;
+                    if (newClaimSnap && newClaimSnap.exists()) {
+                        const owner = newClaimSnap.data()?.userId;
+                        if (owner && owner !== currentUser.uid) {
+                            const ownerSettingsRef = doc(
+                                db,
+                                'artifacts',
+                                appId,
+                                'users',
+                                owner,
+                                'config',
+                                'settings'
+                            );
+                            ownerSettingsSnap = await transaction.get(ownerSettingsRef);
                         }
                     }
 
-                    if (normOld && normOld !== normNew) {
-                        const oldClaimRef = doc(claimsColl, nicknameClaimDocId(normOld));
-                        const oldSnap = await transaction.get(oldClaimRef);
-                        if (oldSnap.exists() && oldSnap.data()?.userId === currentUser.uid) {
-                            transaction.delete(oldClaimRef);
+                    if (normNew && newClaimSnap && newClaimSnap.exists()) {
+                        const owner = newClaimSnap.data()?.userId;
+                        if (owner && owner !== currentUser.uid) {
+                            const ownerNorm = normalizeNicknameForClaim(
+                                ownerSettingsSnap && ownerSettingsSnap.exists()
+                                    ? ownerSettingsSnap.data()?.profile?.nickname
+                                    : null
+                            );
+                            if (ownerNorm === normNew) {
+                                throw new Error('NICKNAME_TAKEN');
+                            }
+                            transaction.delete(newClaimRef);
                         }
+                    }
+
+                    if (
+                        normOld &&
+                        normOld !== normNew &&
+                        oldClaimSnap &&
+                        oldClaimSnap.exists() &&
+                        oldClaimSnap.data()?.userId === currentUser.uid
+                    ) {
+                        transaction.delete(oldClaimRef);
                     }
 
                     transaction.set(settingsRef, payloadForWrite, { merge: true });
 
-                    if (normNew) {
-                        const newClaimRef = doc(claimsColl, nicknameClaimDocId(normNew));
+                    if (normNew && newClaimRef) {
                         transaction.set(newClaimRef, {
                             userId: currentUser.uid,
                             normalizedNickname: normNew,

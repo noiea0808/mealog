@@ -32,6 +32,16 @@ html.platform-web {
 html.platform-web #navigationBarOverlay {
     display: none !important;
 }
+/* 전체 화면「연결할 수 없습니다」팝업: 원형 + 인라인 SVG (stroke = currentColor) */
+#networkErrorOverlay .network-error-icon-circle {
+    background-color: #e2e8f0;
+    color: #0f172a;
+}
+#networkErrorOverlay .network-error-icon-svg {
+    display: block;
+    flex-shrink: 0;
+    color: inherit;
+}
 /* 네이티브 앱: 상단·탭·설정 서브탭·알림 탭·하단 아이콘 등 메뉴성 UI만 글자/아이콘 최소 크기 보강 (브레이크포인트는 그대로) */
 html.platform-native-app .settings-subtab-row .settings-tab {
     font-size: 0.875rem;

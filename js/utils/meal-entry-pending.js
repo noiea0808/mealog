@@ -139,6 +139,11 @@ export function reconcileMealSyncUiAfterWriteQueueFlush() {
     mgr().reconcileSyncUiAfterClientWriteQueueFlush();
 }
 
+/** 삭제 예약 고착 시 서버에 문서 없음을 확인해 레드닷·행을 정리한다. @returns {Promise<void>} */
+export function reconcilePendingMealDeletesWithServer() {
+    return mgr().reconcilePendingDeletesWithServer();
+}
+
 /** 타임라인 도트 분기 단일화 — 레드닷 조건 꼬임 방지 */
 export function getMealRowSyncLeadKind(record) {
     return mgr().getRowSyncLeadKind(record);

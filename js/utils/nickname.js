@@ -1,6 +1,6 @@
 // 닉네임 검증 관련 유틸리티 함수들
 import { db, appId } from '../firebase.js';
-import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { normalizeNicknameForClaim, nicknameClaimDocId } from '../db/nickname-claims.js';
 
 // 비속어 필터링 리스트 (기본적인 비속어들)
@@ -31,11 +31,12 @@ export function containsProfanity(nickname) {
 }
 
 /**
- * 닉네임이 중복되는지 확인 (nicknameClaims + 소유자 설정 정합성)
- * 탈퇴·닉네임 변경 후 남은 오래된 클레임은 무시한다.
+ * 닉네임이 **다른 사용자가 지금 쓰는 것과** 겹치는지 확인 (nicknameClaims + 소유자 settings 정합성)
+ * - 본인 클레임(예: 예전에 쓰던 닉으로 되돌리기)은 중복이 아님
+ * - 탈퇴·변경 후 남은 **고아 클레임**(settings 닉과 불일치)은 무시
  * @param {string} nickname - 확인할 닉네임
- * @param {string} currentUserId - 현재 사용자 ID (자신의 닉네임은 제외)
- * @returns {Promise<boolean>} 중복되면 true
+ * @param {string|null} currentUserId - 현재 사용자 ID (본인 클레임 제외)
+ * @returns {Promise<boolean>} 다른 살아 있는 계정이 쓰면 true
  */
 export async function isNicknameDuplicate(nickname, currentUserId = null) {
     if (!nickname || typeof nickname !== 'string') return false;
@@ -65,63 +66,19 @@ export async function isNicknameDuplicate(nickname, currentUserId = null) {
 }
 
 /**
- * 닉네임 변경 가능 여부 확인 (한 달에 한 번 제한)
- * @param {string} userId - 사용자 ID
- * @returns {Promise<{canChange: boolean, lastChangedDate: Date|null, daysUntilNextChange: number}>}
+ * (레거시) 한 달 1회 제한 — 제거됨. 예전 닉네임 재사용·자유 변경을 위해 항상 허용.
+ * @returns {Promise<{canChange: boolean, lastChangedDate: null, daysUntilNextChange: number}>}
  */
 export async function canChangeNickname(userId) {
-    if (!userId) {
-        return { canChange: true, lastChangedDate: null, daysUntilNextChange: 0 };
-    }
-    
-    try {
-        const settingsRef = doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings');
-        const settingsSnap = await getDoc(settingsRef);
-        
-        if (!settingsSnap.exists()) {
-            return { canChange: true, lastChangedDate: null, daysUntilNextChange: 0 };
-        }
-        
-        const settings = settingsSnap.data();
-        const lastChanged = settings.nicknameLastChanged;
-        
-        if (!lastChanged) {
-            return { canChange: true, lastChangedDate: null, daysUntilNextChange: 0 };
-        }
-        
-        const lastChangedDate = new Date(lastChanged);
-        const now = new Date();
-        const daysDiff = Math.floor((now - lastChangedDate) / (1000 * 60 * 60 * 24));
-        const daysUntilNextChange = Math.max(0, 30 - daysDiff);
-        
-        return {
-            canChange: daysDiff >= 30,
-            lastChangedDate: lastChangedDate,
-            daysUntilNextChange: daysUntilNextChange
-        };
-    } catch (e) {
-        console.error('닉네임 변경 가능 여부 확인 실패:', e);
-        // 에러 발생 시 변경 가능한 것으로 간주
-        return { canChange: true, lastChangedDate: null, daysUntilNextChange: 0 };
-    }
+    void userId;
+    return { canChange: true, lastChangedDate: null, daysUntilNextChange: 0 };
 }
 
 /**
- * 닉네임 변경 날짜 업데이트
- * @param {string} userId - 사용자 ID
+ * (레거시) nicknameLastChanged 메타 — 더 이상 설정 저장 시 갱신하지 않음
  */
 export async function updateNicknameChangeDate(userId) {
-    if (!userId) return;
-    
-    try {
-        const settingsRef = doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings');
-        await updateDoc(settingsRef, {
-            nicknameLastChanged: new Date().toISOString()
-        });
-    } catch (e) {
-        console.error('닉네임 변경 날짜 업데이트 실패:', e);
-        // 실패해도 계속 진행 (중요하지 않은 메타데이터)
-    }
+    void userId;
 }
 
 /** 회원가입 추천용: 짧은 두 단어 풀 (무드·자연·생물·음식) + 긴 문장 풀 — 생성 비율은 generateRandomNicknameCombo에서 50:50 */

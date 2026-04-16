@@ -2707,29 +2707,54 @@ exports.saveArtifactUserSettings = onCall({ region: REGION }, wrapFunction('save
   const normOld = normalizeNicknameForClaimServer(oldData.profile?.nickname);
   const normNew = normalizeNicknameForClaimServer(settings.profile?.nickname);
 
+  const newClaimRefTx = normNew
+    ? db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normNew)}`)
+    : null;
+  const oldClaimRefTx =
+    normOld && normOld !== normNew
+      ? db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normOld)}`)
+      : null;
+
   await db.runTransaction(async (transaction) => {
-    if (normNew) {
-      const newClaimRef = db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normNew)}`);
-      const claimSnap = await transaction.get(newClaimRef);
-      if (claimSnap.exists) {
-        const owner = claimSnap.data()?.userId;
-        if (owner && owner !== uid) {
+    /** Firestore: 트랜잭션 내 모든 read(get)은 write(set/delete)보다 먼저 실행되어야 함 */
+    const newClaimSnap = newClaimRefTx ? await transaction.get(newClaimRefTx) : null;
+    const oldClaimSnap = oldClaimRefTx ? await transaction.get(oldClaimRefTx) : null;
+    let ownerSettingsSnap = null;
+    if (newClaimSnap && newClaimSnap.exists) {
+      const owner = newClaimSnap.data()?.userId;
+      if (owner && owner !== uid) {
+        const ownerSettingsRef = db.doc(`artifacts/${APP_ID}/users/${owner}/config/settings`);
+        ownerSettingsSnap = await transaction.get(ownerSettingsRef);
+      }
+    }
+
+    if (normNew && newClaimSnap && newClaimSnap.exists) {
+      const owner = newClaimSnap.data()?.userId;
+      if (owner && owner !== uid) {
+        const ownerNorm = normalizeNicknameForClaimServer(
+          ownerSettingsSnap && ownerSettingsSnap.exists
+            ? ownerSettingsSnap.data()?.profile?.nickname
+            : null
+        );
+        if (ownerNorm === normNew) {
           throw new HttpsError('already-exists', '이미 사용 중인 닉네임입니다.');
         }
+        transaction.delete(newClaimRefTx);
       }
     }
-    if (normOld && normOld !== normNew) {
-      const oldClaimRef = db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normOld)}`);
-      const oldClaimSnap = await transaction.get(oldClaimRef);
-      if (oldClaimSnap.exists && oldClaimSnap.data()?.userId === uid) {
-        transaction.delete(oldClaimRef);
-      }
+    if (
+      normOld &&
+      normOld !== normNew &&
+      oldClaimSnap &&
+      oldClaimSnap.exists &&
+      oldClaimSnap.data()?.userId === uid
+    ) {
+      transaction.delete(oldClaimRefTx);
     }
     transaction.set(settingsRef, settings, { merge: true });
-    if (normNew) {
-      const newClaimRef = db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normNew)}`);
+    if (normNew && newClaimRefTx) {
       const displayNickname = String(settings.profile?.nickname || '').trim();
-      transaction.set(newClaimRef, {
+      transaction.set(newClaimRefTx, {
         userId: uid,
         normalizedNickname: normNew,
         displayNickname: displayNickname || normNew,
@@ -2786,6 +2811,125 @@ exports.saveArtifactUserSettings = onCall({ region: REGION }, wrapFunction('save
     }
   }
 
+  return { ok: true };
+}));
+
+/**
+ * 관리자: 특정 사용자의 닉네임 변경 (Firestore rules상 타인 설정 직접 쓰기 불가 → Admin SDK)
+ */
+exports.adminSetUserNickname = onCall({ region: REGION }, wrapFunction('adminSetUserNickname', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const callerUid = request.auth.uid;
+  if (!(await isAdminByUid(callerUid))) {
+    throw new HttpsError('permission-denied', '관리자만 변경할 수 있습니다.');
+  }
+
+  const targetUid = typeof request.data?.userId === 'string' ? request.data.userId.trim() : '';
+  const rawNick = request.data?.nickname;
+  const nickname =
+    typeof rawNick === 'string'
+      ? rawNick.trim()
+      : rawNick != null && typeof rawNick !== 'object'
+        ? String(rawNick).trim()
+        : '';
+
+  if (!targetUid) {
+    throw new HttpsError('invalid-argument', 'userId가 필요합니다.');
+  }
+  if (!nickname) {
+    throw new HttpsError('invalid-argument', '닉네임을 입력해 주세요.');
+  }
+  if (nickname === '게스트') {
+    throw new HttpsError('invalid-argument', '사용할 수 없는 닉네임입니다.');
+  }
+  if (nickname.length > 20) {
+    throw new HttpsError('invalid-argument', '닉네임은 20자 이하입니다.');
+  }
+
+  const settingsRef = db.doc(`artifacts/${APP_ID}/users/${targetUid}/config/settings`);
+  const oldSnap = await settingsRef.get();
+  const oldData = oldSnap.exists ? oldSnap.data() : {};
+  const prevProfile =
+    oldData.profile && typeof oldData.profile === 'object' && !Array.isArray(oldData.profile)
+      ? { ...oldData.profile }
+      : {};
+  if (!prevProfile.icon) {
+    prevProfile.icon = '🐻';
+  }
+  prevProfile.nickname = nickname;
+
+  const mergedSettings = {
+    ...oldData,
+    profile: prevProfile
+  };
+
+  const normOld = normalizeNicknameForClaimServer(oldData.profile?.nickname);
+  const normNew = normalizeNicknameForClaimServer(nickname);
+
+  const newClaimRefAdmin = normNew
+    ? db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normNew)}`)
+    : null;
+  const oldClaimRefAdmin =
+    normOld && normOld !== normNew
+      ? db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normOld)}`)
+      : null;
+
+  await db.runTransaction(async (transaction) => {
+    /** Firestore: 트랜잭션 내 모든 read(get)은 write(set/delete)보다 먼저 실행되어야 함 */
+    const newClaimSnap = newClaimRefAdmin ? await transaction.get(newClaimRefAdmin) : null;
+    const oldClaimSnap = oldClaimRefAdmin ? await transaction.get(oldClaimRefAdmin) : null;
+    let ownerSettingsSnap = null;
+    if (newClaimSnap && newClaimSnap.exists) {
+      const owner = newClaimSnap.data()?.userId;
+      if (owner && owner !== targetUid) {
+        const ownerSettingsRef = db.doc(`artifacts/${APP_ID}/users/${owner}/config/settings`);
+        ownerSettingsSnap = await transaction.get(ownerSettingsRef);
+      }
+    }
+
+    if (normNew && newClaimSnap && newClaimSnap.exists) {
+      const owner = newClaimSnap.data()?.userId;
+      if (owner && owner !== targetUid) {
+        const ownerNorm = normalizeNicknameForClaimServer(
+          ownerSettingsSnap && ownerSettingsSnap.exists
+            ? ownerSettingsSnap.data()?.profile?.nickname
+            : null
+        );
+        if (ownerNorm === normNew) {
+          throw new HttpsError('already-exists', '이미 사용 중인 닉네임입니다.');
+        }
+        transaction.delete(newClaimRefAdmin);
+      }
+    }
+    if (
+      normOld &&
+      normOld !== normNew &&
+      oldClaimSnap &&
+      oldClaimSnap.exists &&
+      oldClaimSnap.data()?.userId === targetUid
+    ) {
+      transaction.delete(oldClaimRefAdmin);
+    }
+    transaction.set(settingsRef, mergedSettings, { merge: true });
+    if (normNew && newClaimRefAdmin) {
+      transaction.set(newClaimRefAdmin, {
+        userId: targetUid,
+        normalizedNickname: normNew,
+        displayNickname: nickname,
+        updatedAt: new Date().toISOString()
+      });
+    }
+  });
+
+  try {
+    await db.doc(`artifacts/${APP_ID}/users/${targetUid}`).set({ uid: targetUid }, { merge: true });
+  } catch (e) {
+    logger.warn('adminSetUserNickname: user root set', { targetUid, err: e?.message });
+  }
+
+  logger.info('adminSetUserNickname', { callerUid, targetUid, nicknameLen: nickname.length });
   return { ok: true };
 }));
 

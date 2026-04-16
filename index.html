@@ -522,25 +522,19 @@
     <div id="networkErrorOverlay" class="hidden fixed inset-0 bg-slate-900/85 z-[10000] flex flex-col items-center justify-center p-6" role="alertdialog" aria-modal="true" aria-labelledby="networkErrorOverlayTitle">
         <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 text-center">
             <div
-                class="w-14 h-14 mx-auto rounded-full bg-amber-100 flex items-center justify-center mb-4 text-amber-700"
+                class="network-error-icon-circle w-14 h-14 mx-auto rounded-full flex items-center justify-center mb-4"
                 aria-hidden="true"
             >
-                <svg
-                    class="h-7 w-7 shrink-0"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                >
-                    <line x1="2" y1="2" x2="22" y2="22" />
-                    <path d="M8.5 16.429a5 5 0 0 1 7 0" />
-                    <path d="M18 11.5a9 9 0 0 0-2.636-2.253" />
-                    <path d="M10.71 5.05A16 16 0 0 1 22.39 9" />
-                    <path d="M5.341 9.935a16 16 0 0 1 1.545-1.742" />
-                    <path d="M12 20h.01" />
+                <!-- 인라인 SVG: 구름 1패스 + 대각선(클라우드 슬래시 조각 여러 개 겹침 방지) -->
+                <svg class="network-error-icon-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28" fill="none" aria-hidden="true">
+                    <path
+                        d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    />
+                    <path d="M2 2 22 22" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
             </div>
             <h2 id="networkErrorOverlayTitle" class="text-lg font-black text-slate-800 mb-2">연결할 수 없습니다</h2>

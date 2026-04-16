@@ -66,13 +66,66 @@ export function scheduleMealogNetworkRecovery(delayMs = 0, options = {}) {
     }, delayMs);
 }
 
+/**
+ * Firestore 로컬 쓰기 큐가 비면 식사 동기화 UI(초록 도트)·삭제 완료 처리를 `reconcile`로 맞춤.
+ * `online` 이벤트가 안 오는 모바일·웹뷰에서도 `visibilitychange` / resume 경로에서 동일 호출.
+ */
+async function flushMealWriteQueueAndRefreshSyncUi() {
+    try {
+        await waitForPendingWrites(db);
+    } catch (_) {
+        /* ignore */
+    }
+    try {
+        const m = await import('../utils/meal-entry-pending.js');
+        if (typeof m.reconcileMealSyncUiAfterWriteQueueFlush === 'function') {
+            m.reconcileMealSyncUiAfterWriteQueueFlush();
+        }
+        if (typeof m.reconcilePendingMealDeletesWithServer === 'function') {
+            await m.reconcilePendingMealDeletesWithServer();
+        }
+        if (typeof m.clearStuckMealPendingFlags === 'function') {
+            m.clearStuckMealPendingFlags();
+        }
+    } catch (_) {
+        /* ignore */
+    }
+    void import('../render/timeline.js').then((tl) => {
+        try {
+            tl.updateTimelineMealEntryPendingIndicators();
+        } catch (_) {
+            /* ignore */
+        }
+    });
+    try {
+        refreshMealSyncResendNavButton();
+    } catch (_) {
+        /* ignore */
+    }
+}
+
+/** 화면 복귀 시: 브라우저가 온라인으로 보이면 강제 오프라인·오버레이를 풀고 동기화 UI를 재맞춤 */
+function runForegroundMealSyncAndOverlayRecovery() {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    clearLocalNetworkForcedOffline();
+    try {
+        hideNetworkErrorOverlay();
+    } catch (_) {
+        /* ignore */
+    }
+    scheduleMealogNetworkRecovery(400, { forceAuthRefresh: false });
+    void (async () => {
+        await new Promise((r) => setTimeout(r, 200));
+        await flushMealWriteQueueAndRefreshSyncUi();
+    })();
+}
+
 function registerForegroundRecovery() {
     document.addEventListener(
         'visibilitychange',
         () => {
             if (document.visibilityState !== 'visible') return;
-            if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
-            scheduleMealogNetworkRecovery(500, { forceAuthRefresh: false });
+            runForegroundMealSyncAndOverlayRecovery();
         },
         { passive: true }
     );
@@ -81,8 +134,7 @@ function registerForegroundRecovery() {
             const { App } = await import('@capacitor/app');
             if (App?.addListener) {
                 await App.addListener('resume', () => {
-                    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
-                    scheduleMealogNetworkRecovery(400, { forceAuthRefresh: false });
+                    runForegroundMealSyncAndOverlayRecovery();
                 });
             }
         } catch (_) {
@@ -123,36 +175,7 @@ export function registerMainNetworkListeners() {
         clearLocalNetworkForcedOffline();
         hideNetworkErrorOverlay();
         scheduleMealogNetworkRecovery(250, { forceAuthRefresh: true });
-        void (async () => {
-            try {
-                await waitForPendingWrites(db);
-            } catch (_) {
-                /* ignore */
-            }
-            try {
-                const m = await import('../utils/meal-entry-pending.js');
-                if (typeof m.reconcileMealSyncUiAfterWriteQueueFlush === 'function') {
-                    m.reconcileMealSyncUiAfterWriteQueueFlush();
-                }
-                if (typeof m.clearStuckMealPendingFlags === 'function' && m.clearStuckMealPendingFlags()) {
-                    /* clearStuck만으로도 bump됨 — 아래에서 도트 재패치 */
-                }
-            } catch (_) {
-                /* ignore */
-            }
-            void import('../render/timeline.js').then((tl) => {
-                try {
-                    tl.updateTimelineMealEntryPendingIndicators();
-                } catch (_) {
-                    /* ignore */
-                }
-            });
-        })();
-        try {
-            refreshMealSyncResendNavButton();
-        } catch (_) {
-            /* ignore */
-        }
+        void flushMealWriteQueueAndRefreshSyncUi();
     });
     registerForegroundRecovery();
     registerConnectionChangeRecovery();
@@ -176,6 +199,7 @@ function registerConnectionChangeRecovery() {
                     lastConnectionRecoverAt = now;
                     clearLocalNetworkForcedOffline();
                     scheduleMealogNetworkRecovery(250, { forceAuthRefresh: true });
+                    void flushMealWriteQueueAndRefreshSyncUi();
                 } catch (_) {
                     /* ignore */
                 }

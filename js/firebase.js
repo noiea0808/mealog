@@ -414,7 +414,9 @@ export const callableFunctions = {
     /** 관리자: 웰컴 API — 전일(서울) 기준 연속 기록 N일 이상 사용자 목록 + 3일 요약 */
     adminWelcomeStreakUsers: httpsCallable(functions, 'adminWelcomeStreakUsers'),
     /** 관리자: 웰컴용 제미나이 한 줄 코멘트(메뉴+응원, 서버에서 길이 상한 적용) */
-    adminWelcomeGeminiComment: httpsCallable(functions, 'adminWelcomeGeminiComment')
+    adminWelcomeGeminiComment: httpsCallable(functions, 'adminWelcomeGeminiComment'),
+    /** 관리자: 특정 UID 닉네임 수정 (settings + nicknameClaims) */
+    adminSetUserNickname: httpsCallable(functions, 'adminSetUserNickname')
 };
 
 /**

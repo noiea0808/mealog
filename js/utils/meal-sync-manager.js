@@ -6,8 +6,8 @@
  * 모달·리스너는 명령/이벤트만 넘기고 판단은 여기서만 한다.
  */
 
-import { db } from '../firebase.js';
-import { waitForPendingWrites } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
+import { db, appId } from '../firebase.js';
+import { waitForPendingWrites, doc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { appState } from '../state.js';
 
 const MEAL_SYNC_ERROR_IDS_KEY = 'mealog_mealSyncErrorIds_v1';
@@ -139,7 +139,7 @@ async function refreshTimelineFull(dateStr, currentTab) {
  */
 export function mealDocSnapshotAppearsServerAcked(metadata, options = {}) {
     if (!metadata || metadata.hasPendingWrites) return false;
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+    /** onLine 은 웹뷰·잠금 직후 오판이 잦음. 여기서 false 처리하면 removed/modified 가 영구히 미인정 → 삭제·초록 도트 고착 */
     const allowCache = options.allowFromCacheAck === true;
     if (!allowCache && metadata.fromCache === true) return false;
     return true;
@@ -577,9 +577,11 @@ export class MealSyncManager {
     reconcileSyncUiAfterClientWriteQueueFlush() {
         if (typeof window === 'undefined') return;
         if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
-        if (appState.localNetworkForcedOffline) return;
+        /** localNetworkForcedOffline 만으로 막지 않음 — `online` 이벤트 없이 복귀한 경우에도 큐 flush 후 초록 도트로 맞출 수 있어야 함 */
         const hist = window.mealHistory;
         if (!Array.isArray(hist) || hist.length === 0) return;
+        // waitForPendingWrites 직후에도 inFlight 플래그만 남아 '등록 중' 레드닷이 고착되는 경우가 있음
+        // (오프라인 저장 직후 이벤트 순서로 등록예정 칩으로 승격되지 않은 경로 등). 큐는 비었으므로 정리 후 ack.
         for (const m of hist) {
             if (!m?.id) continue;
             const id = String(m.id);
@@ -588,6 +590,21 @@ export class MealSyncManager {
             if (m._localSaveFailed === true || m.is_sync_error === true) continue;
             if (this.isDeleting(m)) continue;
             if (this.isDeleteFailed(m)) continue;
+            if (this.hasInFlight(id) && !this._registerScheduledChip.has(id)) {
+                this.clearInFlight(id);
+            }
+        }
+        for (const m of hist) {
+            if (!m?.id) continue;
+            const id = String(m.id);
+            if (id.startsWith('temp_')) continue;
+            if (this.hasErrorId(id)) continue;
+            if (m._localSaveFailed === true || m.is_sync_error === true) continue;
+            if (this.isDeleting(m)) continue;
+            if (this.isDeleteFailed(m)) continue;
+            if (mealRecordHasBase64PendingPhotos(m)) continue;
+            const slotKey = `${m.date || ''}__${m.slotId || ''}`;
+            if (this.hasPendingPhotoEntry(id) || this.hasPendingPhotoSlot(slotKey)) continue;
             const kind = this.getRowSyncLeadKind(m);
             if (kind === 'redoable_failed') continue;
             if (kind === 'register_scheduled') {
@@ -600,6 +617,50 @@ export class MealSyncManager {
             ) {
                 this.onServerDocumentAcknowledged(id, null);
             }
+        }
+    }
+
+    /**
+     * 삭제 예약/진행이 스냅샷 removed·메타 누락으로 고착될 때, 서버에 meal 문서가 없으면 삭제 완료로 맞춘다.
+     * `waitForPendingWrites` 직후에만 호출한다.
+     * @returns {Promise<void>}
+     */
+    async reconcilePendingDeletesWithServer() {
+        if (typeof window === 'undefined') return;
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+        const uid = window.currentUser?.uid;
+        if (!uid || window.currentUser?.isAnonymous) return;
+
+        const idSet = new Set();
+        for (const k of this._deletePending.keys()) idSet.add(String(k));
+        for (const k of this._deleteInFlight.keys()) idSet.add(String(k));
+        if (Array.isArray(window.mealHistory)) {
+            for (const m of window.mealHistory) {
+                if (!m?.id) continue;
+                const sid = String(m.id);
+                if (sid.startsWith('temp_')) continue;
+                if (this._deletePending.has(sid) || this._deleteInFlight.has(sid)) idSet.add(sid);
+            }
+        }
+        if (idSet.size === 0) return;
+
+        const { applyOptimisticMealDelete } = await import('./meal-delete-optimistic.js');
+
+        for (const id of idSet) {
+            if (!id || id.startsWith('temp_')) continue;
+            try {
+                const ref = doc(db, 'artifacts', appId, 'users', uid, 'meals', id);
+                const snap = await getDocFromServer(ref);
+                if (snap.exists()) continue;
+            } catch (_) {
+                continue;
+            }
+
+            const prev =
+                Array.isArray(window.mealHistory) ? window.mealHistory.find((m) => m && String(m.id) === id) : null;
+            this.markDeleteComplete(id);
+            this.clearDeleteFailed(id);
+            if (prev) applyOptimisticMealDelete(id, prev);
         }
     }
 

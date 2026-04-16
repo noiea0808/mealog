@@ -641,9 +641,15 @@
                         <div class="flex flex-wrap justify-between items-center admin-users-toolbar-inner gap-2">
                             <div class="flex flex-wrap items-baseline gap-2">
                                 <h2 class="text-base font-black text-slate-800">사용자 관리</h2>
-                                <span class="text-sm font-bold text-slate-500 tabular-nums" aria-live="polite">총 <span id="adminUsersTotalCountDisplay">—</span>명</span>
+                                <span class="text-sm font-bold text-slate-500 tabular-nums" aria-live="polite">총 <span id="adminUsersTotalCountDisplay">—</span>명<span id="adminUsersSearchCountHint" class="hidden font-normal text-slate-500"></span></span>
                             </div>
                             <div class="flex flex-wrap items-center gap-2">
+                                <div class="flex flex-wrap items-center gap-1.5 min-w-0 max-w-full sm:max-w-[22rem]">
+                                    <label for="adminUsersSearchInput" class="sr-only">닉네임 또는 이메일 검색</label>
+                                    <input type="search" id="adminUsersSearchInput" enterkeyhint="search" autocomplete="off" placeholder="닉네임·이메일·UID 검색" class="min-w-0 w-[min(100%,12rem)] sm:w-52 flex-1 sm:flex-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/30" />
+                                    <button type="button" id="adminUsersSearchClearBtn" class="hidden shrink-0 px-2.5 py-2 text-xs font-bold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 border border-slate-200">지우기</button>
+                                </div>
+                                <span class="hidden sm:inline w-px h-5 bg-slate-200" aria-hidden="true"></span>
                                 <div class="inline-flex rounded-lg bg-slate-100 p-0.5" role="group" aria-label="보기 전환">
                                     <button type="button" id="adminUsersPage1" onclick="window.switchAdminUsersPage(1)" class="admin-users-page-btn px-3 py-1.5 rounded-md text-sm font-bold transition-colors bg-emerald-100 text-emerald-800" aria-pressed="true">기본</button>
                                     <button type="button" id="adminUsersPage2" onclick="window.switchAdminUsersPage(2)" class="admin-users-page-btn px-3 py-1.5 rounded-md text-sm font-bold transition-colors bg-transparent text-slate-600 hover:bg-slate-200/50" aria-pressed="false">통계</button>
