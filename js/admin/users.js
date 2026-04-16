@@ -553,6 +553,8 @@ async function getUsers(options = {}) {
             if (providerId === 'google.com') loginMethod = '구글';
             else if (providerId === 'kakao.com') loginMethod = '카카오';
             else if (email) loginMethod = '이메일';
+            // 루트/settings에 providerId가 비어 있는 레거시·레이스 문서: 카카오 커스텀 토큰 UID(kakao_{id})는 앱과 동일하게 카카오로 표시
+            else if (typeof userId === 'string' && userId.startsWith('kakao_')) loginMethod = '카카오';
 
             const ban = userBansMap.get(userId);
             const bannedShare = ban?.bannedShare ?? false;

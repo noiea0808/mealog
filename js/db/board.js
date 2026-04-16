@@ -3,6 +3,7 @@ import { db, appId, callableFunctions } from '../firebase.js';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, query, orderBy, limit, where, getDocs, getDocsFromServer, onSnapshot, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { showToast } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
+import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
 
 // 게시판 관련 함수들
 export const boardOperations = {
@@ -14,6 +15,10 @@ export const boardOperations = {
         if (isDemoUser(window.currentUser)) {
             showToast('샘플 계정에서는 글을 작성할 수 없습니다.', 'error');
             throw new Error('read-only-demo');
+        }
+        if (!isUserSettingsReadyForContentWrites(window.userSettings)) {
+            showToast('약관 동의와 프로필(닉네임) 설정을 완료한 뒤 글을 작성할 수 있습니다.', 'error');
+            throw new Error('ONBOARDING_INCOMPLETE');
         }
         try {
             console.log('[boardOperations.createPost] 시작:', { title: postData.title, category: postData.category });
@@ -611,6 +616,10 @@ export const boardOperations = {
         if (isDemoUser(window.currentUser)) {
             showToast('샘플 계정에서는 댓글을 작성할 수 없습니다.', 'error');
             throw new Error('read-only-demo');
+        }
+        if (!isUserSettingsReadyForContentWrites(window.userSettings)) {
+            showToast('약관 동의와 프로필(닉네임) 설정을 완료한 뒤 댓글을 작성할 수 있습니다.', 'error');
+            throw new Error('ONBOARDING_INCOMPLETE');
         }
         try {
             console.log('[boardOperations.addComment] 시작:', { postId, contentLength: content?.length });

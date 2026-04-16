@@ -84,6 +84,7 @@ import {
     DEMO_TOAST_CANNOT_BOOKMARK
 } from '../demo-account.js';
 import { syncDemoNavGuideDots } from '../demo-nav-guide.js';
+import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
 import {
     renderTimeline,
     renderMiniCalendar,
@@ -291,6 +292,14 @@ window.confirmDailyShare = async (dateStr, ev) => {
     if (!uid) {
         showToast('로그인이 필요합니다.', 'error');
         if (typeof window.requestLogin === 'function') window.requestLogin();
+        return;
+    }
+    if (window.currentUser.isAnonymous) {
+        showToast('로그인이 필요합니다.', 'error');
+        return;
+    }
+    if (!isDemoUser(window.currentUser) && !isUserSettingsReadyForContentWrites(window.userSettings)) {
+        showToast('약관 동의와 프로필(닉네임) 설정을 완료한 뒤 공유할 수 있습니다.', 'error');
         return;
     }
 

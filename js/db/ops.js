@@ -43,6 +43,7 @@ export function unwrapMealSaveResult(r) {
 }
 import { isDemoUser } from '../demo-account.js';
 import { normalizeNicknameForClaim, nicknameClaimDocId } from './nickname-claims.js';
+import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
 
 /** Callable(httpsCallable) 오류 — 짧은 안내 문구만 */
 function formatCallableErrorForToast(err) {
@@ -139,6 +140,11 @@ export const dbOps = {
             const error = new Error("로그인이 필요합니다.");
             showToast("저장 실패: 로그인이 필요합니다.", 'error');
             throw error;
+        }
+        if (!isDemoUser(currentUser) && !isUserSettingsReadyForContentWrites(window.userSettings)) {
+            const msg = '약관 동의와 프로필(닉네임) 설정을 완료한 뒤 기록할 수 있습니다.';
+            if (!silent) showToast(msg, 'error');
+            throw new Error('ONBOARDING_INCOMPLETE');
         }
         try {
             const runWrite = async () => {
@@ -614,6 +620,10 @@ export const dbOps = {
         if (isDemoUser(window.currentUser)) {
             showToast('샘플 계정에서는 모먼트 공유를 변경할 수 없습니다.', 'error');
             throw new Error('read-only-demo');
+        }
+        if (!isUserSettingsReadyForContentWrites(window.userSettings)) {
+            showToast('약관 동의와 프로필(닉네임) 설정을 완료한 뒤 공유할 수 있습니다.', 'error');
+            throw new Error('ONBOARDING_INCOMPLETE');
         }
 
         // 공유 금지 체크

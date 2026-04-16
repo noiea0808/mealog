@@ -1,6 +1,8 @@
 // 소셜 기능 (좋아요, 댓글, 북마크, 신고)
 import { db, appId, auth, callableFunctions } from '../firebase.js';
 import { isDemoUser } from '../demo-account.js';
+import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
+import { showToast } from '../ui.js';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, addDoc, query, orderBy, where, getDocs, getDocsFromServer, onSnapshot } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 
 // 좋아요, 댓글, 북마크 관련 함수들
@@ -179,6 +181,10 @@ export const postInteractions = {
         }
         if (isDemoUser(window.currentUser)) {
             throw new Error('샘플 계정에서는 댓글을 작성할 수 없습니다.');
+        }
+        if (!isUserSettingsReadyForContentWrites(window.userSettings)) {
+            showToast('약관 동의와 프로필(닉네임) 설정을 완료한 뒤 댓글을 작성할 수 있습니다.', 'error');
+            throw new Error('ONBOARDING_INCOMPLETE');
         }
         try {
             console.log('[postInteractions.addComment] 시작:', { postId, commentLength: commentText?.length });
