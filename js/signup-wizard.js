@@ -3,8 +3,8 @@
  * 1페이지: 이메일/비번/비번확인  2페이지: 닉네임  3페이지: 생년월일/성별/라이프스타일  4페이지: 약관
  */
 import { auth } from './firebase.js';
-import { createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
-import { getRecordsPendingLoadingMessage } from './auth.js';
+import { createUserWithEmailAndPassword, deleteUser } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
+import { showRecordsPendingLoading } from './auth.js';
 import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS } from './constants.js';
 import { normalizeBirthdateRaw, setupBirthdateInputFormatting } from './utils.js';
@@ -56,6 +56,43 @@ function updateWizardTermsButton() {
     }
 }
 
+/**
+ * 닉네임 공통 검증 (비속어·중복). 실패 시 토스트 후 false.
+ * @param {string} nickname
+ * @param {string|null} excludeUserId — 본인 클레임 제외(Firestore uid)
+ */
+async function validateNicknameCore(nickname, excludeUserId = null) {
+    if (!nickname) {
+        showToast('닉네임을 입력해주세요.', 'error');
+        return false;
+    }
+    if (nickname.length > 20) {
+        showToast('닉네임은 20자 이하로 입력해주세요.', 'error');
+        return false;
+    }
+    const { containsProfanity, isNicknameDuplicate } = await import('./utils/nickname.js');
+    if (containsProfanity(nickname)) {
+        showToast('사용할 수 없는 닉네임입니다.', 'error');
+        return false;
+    }
+    const duplicate = await isNicknameDuplicate(nickname, excludeUserId);
+    if (duplicate) {
+        showToast('이미 사용 중인 닉네임입니다. 다른 닉네임을 입력하거나 추천을 눌러 주세요.', 'error');
+        return false;
+    }
+    return true;
+}
+
+/** 추천/자동 채움 직후 — 비속어·중복·길이를 닉 단계에서 확정하고 입력·state에 반영 */
+async function applyNicknameAfterSuggest(nickname, excludeUserId = null) {
+    const ok = await validateNicknameCore(nickname, excludeUserId);
+    if (!ok) return false;
+    const input = getEl('wizardNickname');
+    if (input) input.value = nickname;
+    state.data.nickname = nickname;
+    return true;
+}
+
 async function validateStep1() {
     const email = (getEl('wizardEmail')?.value || '').trim();
     const password = getEl('wizardPassword')?.value || '';
@@ -80,27 +117,8 @@ async function validateStep1() {
 
 async function validateStep2() {
     const nickname = (getEl('wizardNickname')?.value || '').trim();
-    if (!nickname) {
-        showToast('닉네임을 입력해주세요.', 'error');
-        return false;
-    }
-    if (nickname.length > 20) {
-        showToast('닉네임은 20자 이하로 입력해주세요.', 'error');
-        return false;
-    }
-    const { containsProfanity, isNicknameDuplicate, pickUnusedRandomNickname } = await import('./utils/nickname.js');
-    if (containsProfanity(nickname)) {
-        showToast('사용할 수 없는 닉네임입니다.', 'error');
-        return false;
-    }
-    const duplicate = await isNicknameDuplicate(nickname, auth.currentUser?.uid || null);
-    if (duplicate) {
-        const alt = await pickUnusedRandomNickname(auth.currentUser?.uid || null);
-        const nickInput = getEl('wizardNickname');
-        if (nickInput) nickInput.value = alt;
-        showToast('이미 사용 중인 닉네임이에요. 사용 가능한 조합으로 바꿔 두었어요. 확인 후 다시 눌러 주세요.', 'info');
-        return false;
-    }
+    const ok = await validateNicknameCore(nickname, auth.currentUser?.uid || null);
+    if (!ok) return false;
     state.data.nickname = nickname;
     return true;
 }
@@ -148,18 +166,40 @@ async function submitWizard() {
     };
 
     if (state.isEmailSignup) {
+        if (!validateStep4()) return;
+        const nickFinal = String(state.data.nickname || (getEl('wizardNickname')?.value || '')).trim();
+        if (!nickFinal) {
+            showToast('닉네임 단계에서 닉네임을 확인한 뒤 다시 시도해 주세요.', 'error');
+            return;
+        }
+        state.data.nickname = nickFinal;
+
         showLoading('가입 중...', { skipOnLoginScreen: false });
         try {
-            const { createUserWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js');
             await createUserWithEmailAndPassword(auth, state.data.email, state.data.password);
             window._recordsLoadHidePending = true;
-            showLoading(getRecordsPendingLoadingMessage(auth.currentUser), { dimBackground: false, skipOnLoginScreen: false });
-            showToast('회원가입 성공! 환영합니다.', 'success');
         } catch (e) {
             hideLoading();
             const msg = e.code === 'auth/email-already-in-use' ? '이미 사용 중인 이메일입니다.' : (e.message || '가입에 실패했습니다.');
             showToast(msg, 'error');
             return;
+        }
+
+        const afterCreate = auth.currentUser;
+        if (afterCreate && !afterCreate.isAnonymous) {
+            const nickAgain = (getEl('wizardNickname')?.value || '').trim() || state.data.nickname;
+            if (!(await validateNicknameCore(nickAgain, afterCreate.uid))) {
+                hideLoading();
+                try {
+                    await deleteUser(afterCreate);
+                } catch (delE) {
+                    console.warn('가입 롤백(계정 삭제) 실패:', delE);
+                    showToast('닉네임이 이미 사용 중입니다. 관리자에게 문의하거나 잠시 후 다시 시도해 주세요.', 'error');
+                }
+                restoreNextBtn();
+                return;
+            }
+            state.data.nickname = nickAgain;
         }
     }
 
@@ -209,14 +249,26 @@ async function submitWizard() {
         }
         try {
             await dbOps.saveSettings(window.userSettings);
-            if (typeof window.ensureUserRegistered === 'function') await window.ensureUserRegistered();
         } catch (e) {
-            if (showSpinner) hideLoading();
+            hideLoading();
+            if (state.isEmailSignup && auth.currentUser && !auth.currentUser.isAnonymous) {
+                try {
+                    await deleteUser(auth.currentUser);
+                } catch (delE) {
+                    console.warn('가입 롤백(계정 삭제) 실패:', delE);
+                    showToast('설정 저장에 실패했습니다. 같은 이메일로 다시 가입하려면 잠시 후 시도해 주세요.', 'error');
+                }
+            }
             restoreNextBtn();
             return;
         }
         if (showSpinner) hideLoading();
         restoreNextBtn();
+    }
+
+    if (state.isEmailSignup && auth.currentUser && !auth.currentUser.isAnonymous) {
+        showRecordsPendingLoading(auth.currentUser);
+        showToast('회원가입이 완료되었습니다. 환영합니다!', 'success');
     }
 
     closeSignupWizard();
@@ -323,10 +375,18 @@ function initWizardUI() {
             nicknameSuggestBtn.disabled = true;
             try {
                 const { pickUnusedRandomNickname } = await import('./utils/nickname.js');
-                input.value = await pickUnusedRandomNickname(auth.currentUser?.uid || null);
+                const uid = auth.currentUser?.uid || null;
+                const name = await pickUnusedRandomNickname(uid);
+                if (!(await applyNicknameAfterSuggest(name, uid))) {
+                    input.value = '';
+                }
             } catch (e) {
                 console.warn('추천 닉네임 생성 실패:', e);
-                showToast('추천 닉네임을 불러오지 못했습니다. 다시 시도해 주세요.', 'error');
+                const msg =
+                    e && e.code === 'NICKNAME_SUGGEST_EXHAUSTED'
+                        ? e.message || '추천 닉네임을 만들 수 없습니다. 직접 입력해 주세요.'
+                        : '추천 닉네임을 불러오지 못했습니다. 다시 시도해 주세요.';
+                showToast(msg, 'error');
             } finally {
                 nicknameSuggestBtn.disabled = false;
             }
@@ -368,15 +428,23 @@ export function openSignupWizard(options = {}) {
     if (nicknameEl) {
         if (startStep <= 2) {
             nicknameEl.value = '';
-            import('./utils/nickname.js').then(({ pickUnusedRandomNickname }) =>
-                pickUnusedRandomNickname(auth.currentUser?.uid || null)
-            ).then((name) => {
-                if (nicknameEl && wizard && !wizard.classList.contains('hidden')) {
-                    nicknameEl.value = name;
-                }
-            }).catch((e) => {
-                console.warn('초기 추천 닉네임 실패:', e);
-            });
+            const uid = auth.currentUser?.uid || null;
+            import('./utils/nickname.js')
+                .then(({ pickUnusedRandomNickname }) => pickUnusedRandomNickname(uid))
+                .then(async (name) => {
+                    if (!nicknameEl || !wizard || wizard.classList.contains('hidden')) return;
+                    const applied = await applyNicknameAfterSuggest(name, uid);
+                    if (!applied) nicknameEl.value = '';
+                })
+                .catch((e) => {
+                    console.warn('초기 추천 닉네임 실패:', e);
+                    if (e && e.code === 'NICKNAME_SUGGEST_EXHAUSTED') {
+                        showToast(
+                            e.message || '추천 닉네임을 준비하지 못했습니다. 직접 입력하거나 추천 버튼을 눌러 주세요.',
+                            'error'
+                        );
+                    }
+                });
         } else {
             nicknameEl.value = '';
         }

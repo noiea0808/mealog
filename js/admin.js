@@ -42,6 +42,7 @@ import { loadTagsContent } from './admin/tags.js';
 import { registerRestaurantStats } from './admin/restaurant-stats.js';
 import { loadMealogComments, showCharacterListView } from './admin/persona.js';
 import { runAdminStatsBackfillForUid } from './admin/stats-backfill.js';
+import { runAdminUserCreatedAtBackfill } from './admin/user-createdat-backfill.js';
 import { loadAdminLogTab } from './admin/ops-log.js';
 import { bindAdminWelcomeApiOnce } from './admin/welcome-api.js';
 import { invalidateAttendancePopupConfigCache, normalizeAttendancePopup } from './attendance-check.js';
@@ -189,6 +190,7 @@ window.adminUserBanShare = adminUserBanShare;
 window.adminUserBanWrite = adminUserBanWrite;
 window.refreshUsers = refreshUsers;
 window.runAdminStatsBackfillForUid = runAdminStatsBackfillForUid;
+window.runAdminUserCreatedAtBackfill = runAdminUserCreatedAtBackfill;
 window.switchAdminUsersSubmenu = switchAdminUsersSubmenu;
 window.refreshAdminUserAnalytics = refreshAdminUserAnalytics;
 

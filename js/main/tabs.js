@@ -230,7 +230,7 @@ export function registerMainTabSwitch() {
                         appState.sharedPhotosFeedLastDoc = null;
                         appState.sharedPhotosFeedHasMore = false;
                         appState.galleryFeedNetworkError = false;
-                        showLoading('모먼트 불러오는 중...');
+                        showLoading('모먼트 불러오는 중...', { dimBackground: false, recordsFab: true });
                         loadSharedPhotosPage(10)
                             .then(({ docs, lastDoc, hasMore }) => {
                                 appState.galleryFeedNetworkError = false;

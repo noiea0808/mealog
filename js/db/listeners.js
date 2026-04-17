@@ -217,6 +217,12 @@ export function setupListeners(userId, callbacks) {
                 
                 // 마이그레이션은 백그라운드에서 처리
                 Promise.resolve().then(async () => {
+                    try {
+                        const { maybeSeedNicknameFromAuthDisplayName } = await import('../auth-nickname-seed.js');
+                        await maybeSeedNicknameFromAuthDisplayName();
+                    } catch (e) {
+                        console.warn('Auth 닉네임 시드(리스너) 스킵:', e?.message || e);
+                    }
                     let needsSave = false;
                     // 깊은 복사로 기존 설정 보존
                     const settingsToSave = JSON.parse(JSON.stringify(window.userSettings));
@@ -233,21 +239,11 @@ export function setupListeners(userId, callbacks) {
                         console.log('⚠️ 닉네임이 "게스트"이거나 없습니다. 사용자가 직접 수정해야 합니다.');
                     }
 
-                    // ✅ profileCompleted 마이그레이션: 구버전 사용자는 플래그가 없을 수 있으므로,
-                    // 닉네임이 유효하면 완료로 간주하여 다음 로그인에서 프로필 모달이 뜨지 않게 한다.
-                    if (settingsToSave.profileCompleted !== true) {
-                        const nn = (settingsToSave.profile?.nickname || '').trim();
-                        if (nn && nn !== '게스트') {
-                            settingsToSave.profileCompleted = true;
-                            settingsToSave.profileCompletedAt = settingsToSave.profileCompletedAt || new Date().toISOString();
-                            needsSave = true;
-                            console.log('✅ 마이그레이션: profileCompleted=true 설정');
-                        } else if (settingsToSave.profileCompleted === undefined) {
-                            // 플래그 자체가 없고 닉네임도 미설정이면 false로 명시
-                            settingsToSave.profileCompleted = false;
-                            settingsToSave.profileCompletedAt = settingsToSave.profileCompletedAt || null;
-                            needsSave = true;
-                        }
+                    // profileCompleted 미정의만 명시(false) — 닉만 있고 플래그 없음으로 true 올리지 않음(온보딩 위저드와 정합)
+                    if (settingsToSave.profileCompleted === undefined) {
+                        settingsToSave.profileCompleted = false;
+                        settingsToSave.profileCompletedAt = settingsToSave.profileCompletedAt || null;
+                        needsSave = true;
                     }
                     
                     // providerId와 email 업데이트 (없을 때만 추가, 이미 있으면 유지)

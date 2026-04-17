@@ -1,7 +1,7 @@
 // ADMIN 사용자 관리 관련 함수들
 import { app, db, appId, functions, auth, callableFunctions } from '../firebase.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js';
-import { collection, getDocs, query, orderBy, limit, startAfter, doc, getDoc, setDoc, where, addDoc, serverTimestamp, getCountFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { collection, getDocs, getDocsFromServer, query, orderBy, limit, startAfter, doc, getDoc, getDocFromServer, setDoc, where, addDoc, serverTimestamp, getCountFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { getCurrentTermsVersion } from '../utils-terms.js';
 import { escapeHtml, runAdminRefreshAction } from './utils.js';
 
@@ -176,6 +176,49 @@ function parseSettingsDate(v) {
     return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/** users 루트 createdAt — Timestamp·Date·ISO·seconds 객체·ms 숫자 등 안전 파싱 (깨진 값은 null) */
+function parseRootTimestampField(raw) {
+    if (raw == null || raw === '') return null;
+    try {
+        if (typeof raw.toDate === 'function') {
+            const d = raw.toDate();
+            return d != null && !Number.isNaN(d.getTime()) ? d : null;
+        }
+        if (raw instanceof Date) {
+            return !Number.isNaN(raw.getTime()) ? raw : null;
+        }
+        if (typeof raw === 'number' && Number.isFinite(raw)) {
+            const d = new Date(raw);
+            return !Number.isNaN(d.getTime()) ? d : null;
+        }
+        if (typeof raw === 'object' && raw !== null) {
+            const secRaw = raw.seconds ?? raw._seconds;
+            const nanRaw = raw.nanoseconds ?? raw._nanoseconds ?? 0;
+            const sec =
+                typeof secRaw === 'number' && Number.isFinite(secRaw)
+                    ? secRaw
+                    : secRaw != null && secRaw !== ''
+                      ? Number(secRaw)
+                      : NaN;
+            const nan =
+                typeof nanRaw === 'number' && Number.isFinite(nanRaw)
+                    ? nanRaw
+                    : nanRaw != null && nanRaw !== ''
+                      ? Number(nanRaw)
+                      : 0;
+            if (Number.isFinite(sec)) {
+                const ms = sec * 1000 + (Number.isFinite(nan) ? nan / 1e6 : 0);
+                const d = new Date(ms);
+                return !Number.isNaN(d.getTime()) ? d : null;
+            }
+        }
+        const d = new Date(raw);
+        return !Number.isNaN(d.getTime()) ? d : null;
+    } catch (_) {
+        return null;
+    }
+}
+
 /** users 루트에 createdAt 없을 때: 프로필 완료 시각·약관 동의 시각 중 이른 값으로 표시/정렬 보정 */
 function coalesceSignupDate(rootCreated, profileCompletedAt, termsAgreedAt) {
     if (rootCreated) {
@@ -262,30 +305,20 @@ function compareWithNullsLast(a, b, dir) {
     return dir === 'asc' ? cmp : -cmp;
 }
 
+/** 앱과 동일: termsAgreed 불리언 true + termsVersion 문자열이 있어야 동의 기록으로 인정 */
 function termsAgreedEvidence(user) {
-    if (user?.termsAgreed === true || user?.termsAgreed === 'true' || user?.termsAgreed === 1) return true;
-    const at = user?.termsAgreedAt;
-    if (at != null) {
-        if (typeof at?.toDate === 'function') return true;
-        if (at instanceof Date) return true;
-        const s = String(at).trim();
-        if (s && s !== '[object Object]') return true;
-    }
+    const strict = user?.termsAgreed === true || user?.termsAgreed === 'true' || user?.termsAgreed === 1;
+    if (!strict) return false;
     const ver = user?.termsVersion;
-    if (ver != null && String(ver).trim() !== '') return true;
-    return false;
+    return ver != null && String(ver).trim() !== '';
 }
 
 function getTermsRank(user, currentVersion) {
-    // 2: 최신 동의(또는 앱에서 재동의를 요구하지 않는 기존 사용자), 1: 구버전 동의(재동의 필요), 0: 미동의
+    // 2: 최신 약관 버전과 일치, 1: 동의 기록은 있으나 구버전(재동의 필요), 0: 기록 없음
     const agreed = termsAgreedEvidence(user);
     if (!agreed) return 0;
-    // termsVersion 없음 = 앱과 동일하게 기존 사용자로 간주 → 동의함
     const ver = user?.termsVersion;
-    if (ver === null || ver === undefined || String(ver).trim() === '') return 2;
-    if (currentVersion && ver === currentVersion) return 2;
-    // 앱 정책: 식사 기록이 있는 사용자(기존 사용자)는 약관 버전을 검사하지 않고 동의한 것으로 처리 → 관리자 표시 일치
-    if ((user?.timelineCount ?? 0) > 0) return 2;
+    if (currentVersion && String(ver).trim() === String(currentVersion).trim()) return 2;
     return 1;
 }
 
@@ -447,7 +480,8 @@ async function getUsers(options = {}) {
         // 2) users 컬렉션 페이지 단위 쿼리 (최근 로그인순 — createdAt 없이 문서만 있는 경우도 목록에 포함)
         let usersQuery = query(usersColl, orderBy('lastLoginAt', 'desc'), limit(pageSize));
         if (startAfterDoc) usersQuery = query(usersColl, orderBy('lastLoginAt', 'desc'), limit(pageSize), startAfter(startAfterDoc));
-        const usersSnapshot = await getDocs(usersQuery);
+        /** 로컬 캐시만 보면 백필 직후에도 createdAt 이 비어 있는 것처럼 보일 수 있음 → 항상 서버 기준 */
+        const usersSnapshot = await getDocsFromServer(usersQuery);
         const userIds = usersSnapshot.docs.map(d => d.id);
         const lastDoc = usersSnapshot.docs.length > 0 ? usersSnapshot.docs[usersSnapshot.docs.length - 1] : null;
         if (lastDoc) adminUsersLastDocsByPage[page] = lastDoc;
@@ -484,7 +518,11 @@ async function getUsers(options = {}) {
 
         // 4) settings 조회 + 타임라인 건수: meals 서브컬렉션 집계(정확). users.mealCount는 백필/클라 증감용이며 불일치할 수 있음
         const [settingsDocs, mealCountSettled] = await Promise.all([
-            Promise.all(userIds.map(id => getDoc(doc(db, 'artifacts', appId, 'users', id, 'config', 'settings')))),
+            Promise.all(
+                userIds.map((id) =>
+                    getDocFromServer(doc(db, 'artifacts', appId, 'users', id, 'config', 'settings'))
+                )
+            ),
             Promise.allSettled(userIds.map(id => getCountFromServer(collection(db, 'artifacts', appId, 'users', id, 'meals'))))
         ]);
         const mealCounts = mealCountSettled.map(s => (s.status === 'fulfilled' ? s.value : null));
@@ -505,10 +543,8 @@ async function getUsers(options = {}) {
             let profileCompleted = false;
             let profileCompletedAt = null;
             let providerId = userDocData.providerId || null;
-            let createdAt = null;
-            let lastLoginAt = null;
-            if (userDocData.createdAt) createdAt = userDocData.createdAt.toDate ? userDocData.createdAt.toDate() : new Date(userDocData.createdAt);
-            if (userDocData.lastLoginAt) lastLoginAt = userDocData.lastLoginAt.toDate ? userDocData.lastLoginAt.toDate() : new Date(userDocData.lastLoginAt);
+            let createdAt = parseRootTimestampField(userDocData.createdAt);
+            let lastLoginAt = parseRootTimestampField(userDocData.lastLoginAt);
 
             if (sharedUserMap.has(userId)) {
                 const s = sharedUserMap.get(userId);
@@ -517,44 +553,39 @@ async function getUsers(options = {}) {
             }
 
             const settingsSnap = settingsDocs[i];
-            if (settingsSnap?.exists()) {
-                const settings = settingsSnap.data();
-                if (settings.profile) {
-                    if (settings.profileCompleted === true) {
-                        const pn = settings.profile.nickname;
-                        if (pn !== undefined && pn !== null && String(pn).trim() !== '' && pn !== '게스트') nickname = pn;
-                        else nickname = '미설정';
-                    } else nickname = '미설정';
-                    if (settings.profile.icon) icon = settings.profile.icon;
-                    if (settings.profile.birthdate) birthdate = String(settings.profile.birthdate).trim();
-                    if (settings.profile.lifestyle) lifestyle = String(settings.profile.lifestyle).trim();
-                    if (settings.profile.gender === 'male' || settings.profile.gender === 'female') gender = settings.profile.gender;
-                } else nickname = '미설정';
-                termsAgreed =
-                    settings.termsAgreed === true ||
-                    settings.termsAgreed === 'true' ||
-                    settings.termsAgreed === 1;
-                termsAgreedAt = settings.termsAgreedAt ?? null;
-                termsVersion = settings.termsVersion ?? null;
-                profileCompleted = settings.profileCompleted === true;
-                profileCompletedAt = parseSettingsDate(settings.profileCompletedAt);
-                if (
-                    !termsAgreed &&
-                    (termsAgreedAt != null ||
-                        (termsVersion != null && String(termsVersion).trim() !== ''))
-                ) {
-                    termsAgreed = true;
-                }
-                if (settings.email) email = settings.email;
-                if (settings.providerId) providerId = settings.providerId;
+            // 자가 탈퇴(deleteAllUserData) 등으로 settings 가 없으면 루트만 남은 고아 문서 → 목록에서 제외(닉네임만 익명으로 보이던 케이스)
+            if (!settingsSnap || !settingsSnap.exists()) {
+                continue;
             }
+            const settings = settingsSnap.data();
+            if (settings.profile) {
+                if (settings.profileCompleted === true) {
+                    const pn = settings.profile.nickname;
+                    if (pn !== undefined && pn !== null && String(pn).trim() !== '' && pn !== '게스트') nickname = pn;
+                    else nickname = '미설정';
+                } else nickname = '미설정';
+                if (settings.profile.icon) icon = settings.profile.icon;
+                if (settings.profile.birthdate) birthdate = String(settings.profile.birthdate).trim();
+                if (settings.profile.lifestyle) lifestyle = String(settings.profile.lifestyle).trim();
+                if (settings.profile.gender === 'male' || settings.profile.gender === 'female') gender = settings.profile.gender;
+            } else nickname = '미설정';
+            termsAgreed =
+                settings.termsAgreed === true ||
+                settings.termsAgreed === 'true' ||
+                settings.termsAgreed === 1;
+            termsAgreedAt = settings.termsAgreedAt ?? null;
+            termsVersion = settings.termsVersion ?? null;
+            profileCompleted = settings.profileCompleted === true;
+            profileCompletedAt = parseSettingsDate(settings.profileCompletedAt);
+            if (settings.email) email = settings.email;
+            if (settings.providerId) providerId = settings.providerId;
 
             let loginMethod = '게스트';
             if (providerId === 'google.com') loginMethod = '구글';
             else if (providerId === 'kakao.com') loginMethod = '카카오';
             else if (email) loginMethod = '이메일';
-            // 루트/settings에 providerId가 비어 있는 레거시·레이스 문서: 카카오 커스텀 토큰 UID(kakao_{id})는 앱과 동일하게 카카오로 표시
-            else if (typeof userId === 'string' && userId.startsWith('kakao_')) loginMethod = '카카오';
+            // 루트/settings에 providerId가 비어 있는 레거시·레이스 문서: 카카오 커스텀 토큰 UID(kakao_{id})는 앱과 동일하게 카카오로 표시 (대소문자 혼선 방지)
+            else if (typeof userId === 'string' && /^kakao_/i.test(userId)) loginMethod = '카카오';
 
             const ban = userBansMap.get(userId);
             const bannedShare = ban?.bannedShare ?? false;
@@ -768,15 +799,11 @@ export async function renderUsers(options = {}) {
         console.log(`${usersToShow.length}명 표시 (${start}-${end} / ${totalCountForPaging}명).`);
         container.innerHTML = usersToShow.map((user, index) => {
             const rowNum = start + index;
-            // 약관 동의 상태: 앱(auth-flow)과 동일 기준 — termsVersion 없으면 기존 사용자로 간주하여 동의함
-            // 앱은 식사 기록이 있는 사용자(기존 사용자)는 약관 버전을 검사하지 않으므로, 여기서도 timelineCount > 0 이면 재동의 필요로 표시하지 않음
-            const hasVersion = user.termsVersion != null && String(user.termsVersion).trim() !== '';
-            const isExistingUserByMeals = (user.timelineCount ?? 0) > 0;
             const agreedEv = termsAgreedEvidence(user);
-            const hasAgreedToLatest =
-                agreedEv && (!hasVersion || user.termsVersion === currentVersion || isExistingUserByMeals);
-            const hasAgreedToOld =
-                agreedEv && hasVersion && user.termsVersion !== currentVersion && !isExistingUserByMeals;
+            const verTrim = user.termsVersion != null ? String(user.termsVersion).trim() : '';
+            const curTrim = currentVersion != null ? String(currentVersion).trim() : '';
+            const hasAgreedToLatest = agreedEv && verTrim !== '' && curTrim !== '' && verTrim === curTrim;
+            const hasAgreedToOld = agreedEv && verTrim !== '' && (!curTrim || verTrim !== curTrim);
 
             let termsAgreedText;
             if (hasAgreedToLatest) {
@@ -881,7 +908,7 @@ export async function renderUsers(options = {}) {
                         </div>
                     </td>
                     <td data-page="1" class="px-3 py-2.5 text-center">
-                        <span class="text-sm text-slate-600 leading-snug">${user.loginMethod === '게스트' ? '-' : createdAtDate}</span>
+                        <span class="text-sm text-slate-600 leading-snug">${createdAtDate}</span>
                     </td>
                     <td data-page="1" class="px-3 py-2.5 text-center">
                         <span class="text-sm text-slate-600 leading-snug">${lastLoginDate}</span>

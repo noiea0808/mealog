@@ -5,14 +5,62 @@ import { getWelcomeWeekDonutSlides, getWelcomeWeekSlotRecordCount } from './anal
 let loadingOverlayTimeout = null;
 let loadingHideTimeout = null; // hideLoading 지연용
 let loadingShownAt = 0; // 메시지 표시 시 최소 표시 시간용
+let initialRecordsLoadFabClickBound = false;
+
+function ensureInitialRecordsLoadFabClickHandler() {
+    const fab = document.getElementById('initialRecordsLoadFab');
+    if (!fab || initialRecordsLoadFabClickBound) return;
+    initialRecordsLoadFabClickBound = true;
+    fab.addEventListener('click', () => {
+        if (fab.classList.contains('hidden')) return;
+        const msg = fab.getAttribute('aria-label') || '기록을 불러오고 있어요';
+        showToast(msg, 'info');
+    });
+}
 
 export function showLoading(message = '', options = {}) {
-    const { dimBackground = true, skipOnLoginScreen = true } = options;
+    const { dimBackground = true, skipOnLoginScreen = true, recordsFab = false } = options;
     const mainApp = document.getElementById('mainApp');
     const isOnLoginScreen = mainApp && mainApp.classList.contains('hidden');
     if (skipOnLoginScreen && isOnLoginScreen) return;
+
+    const fab = document.getElementById('initialRecordsLoadFab');
     const overlay = document.getElementById('loadingOverlay');
     const messageEl = document.getElementById('loadingOverlayMessage');
+
+    /** 로그인 직후 기록(meals) 로딩 — 전면이 아니라 하단 FAB 크기·위치에서만 음식 아이콘 순환 */
+    if (recordsFab && fab) {
+        if (overlay) overlay.classList.add('hidden');
+        fab.classList.remove('hidden');
+        fab.removeAttribute('aria-hidden');
+        fab.setAttribute('aria-busy', 'true');
+        const label = (message && String(message).trim()) || '기록을 불러오고 있어요';
+        fab.setAttribute('aria-label', label);
+        fab.title = label;
+        ensureInitialRecordsLoadFabClickHandler();
+        loadingShownAt = Date.now();
+        if (loadingOverlayTimeout) clearTimeout(loadingOverlayTimeout);
+        loadingOverlayTimeout = setTimeout(() => {
+            hideLoading();
+            console.warn('⏱️ 로딩 타임아웃: 10초 후 자동으로 숨김');
+        }, 10000);
+        queueMicrotask(() => {
+            import('./main/meal-sync-resend-header.js')
+                .then((m) => {
+                    if (typeof m.refreshMealSyncResendNavButton === 'function') m.refreshMealSyncResendNavButton();
+                })
+                .catch(() => {});
+        });
+        return;
+    }
+
+    if (fab) {
+        fab.classList.add('hidden');
+        fab.setAttribute('aria-hidden', 'true');
+        fab.removeAttribute('aria-busy');
+        fab.removeAttribute('title');
+    }
+
     if (overlay) {
         overlay.classList.remove('hidden');
         overlay.classList.toggle('bg-white/90', dimBackground);
@@ -25,7 +73,6 @@ export function showLoading(message = '', options = {}) {
             messageEl.classList.toggle('hidden', !message);
         }
         if (message) loadingShownAt = Date.now();
-        // 10초 타임아웃 (무한 대기 방지)
         if (loadingOverlayTimeout) clearTimeout(loadingOverlayTimeout);
         loadingOverlayTimeout = setTimeout(() => {
             hideLoading();
@@ -37,16 +84,25 @@ export function showLoading(message = '', options = {}) {
 export function hideLoading() {
     const overlay = document.getElementById('loadingOverlay');
     const messageEl = document.getElementById('loadingOverlayMessage');
-    if (!overlay) return;
+    const fab = document.getElementById('initialRecordsLoadFab');
+    if (!overlay && !fab) return;
     if (loadingHideTimeout) {
         clearTimeout(loadingHideTimeout);
         loadingHideTimeout = null;
     }
     const doHide = () => {
-        overlay.classList.add('hidden');
-        overlay.classList.add('bg-white/90');
-        overlay.classList.remove('bg-transparent');
-        overlay.classList.remove('pointer-events-none');
+        if (fab) {
+            fab.classList.add('hidden');
+            fab.setAttribute('aria-hidden', 'true');
+            fab.removeAttribute('aria-busy');
+            fab.removeAttribute('title');
+        }
+        if (overlay) {
+            overlay.classList.add('hidden');
+            overlay.classList.add('bg-white/90');
+            overlay.classList.remove('bg-transparent');
+            overlay.classList.remove('pointer-events-none');
+        }
         if (messageEl) {
             messageEl.textContent = '';
             messageEl.style.display = 'none';
@@ -64,7 +120,6 @@ export function hideLoading() {
             /* ignore */
         }
     };
-    // 메시지가 표시된 경우 최소 500ms 보여주기 (너무 빠른 로드 시 사용자가 못 봄)
     const minShowMs = 500;
     const elapsed = Date.now() - loadingShownAt;
     const delay = loadingShownAt && elapsed < minShowMs ? minShowMs - elapsed : 0;

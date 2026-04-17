@@ -14,13 +14,16 @@ const isProduction = () => {
  */
 export function getMealogClientEnv() {
     if (typeof window === 'undefined') return 'production';
+    // 네이티브는 패키지 ID가 최우선(WebView 호스트가 localhost여도 운영/스테이징 오판 방지)
     const capAppId = String(window.Capacitor?.config?.appId || '').trim();
     if (capAppId === 'com.mealog.app.staging') return 'staging';
     if (capAppId === 'com.mealog.app') return 'production';
     if (window.APP_ENV === 'staging') return 'staging';
-    const hostname = window.location.hostname || '';
+    const hostname = (window.location.hostname || '').toLowerCase();
+    // 스테이징 전용 웹 호스트(env.js 배지 로직과 동일)
+    if (hostname.includes('staging')) return 'staging';
     const isLocal =
-        hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
+        hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname.startsWith('192.168.');
     if (isLocal) return 'staging';
     return 'production';
 }

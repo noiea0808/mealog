@@ -57,7 +57,11 @@ export function renderEntryChips() {
         // 메인 태그가 선택되지 않았을 때는 나만의 태그를 표시하지 않음
         const currentInputVal = document.getElementById(inputId)?.value || '';
         // 함께한 사람·메뉴 상세 태그는 다중 선택 가능(쉼표 구분)이므로 배열로 처리
-        const isMultiSelect = id === 'peopleSuggestions' || id === 'menuSuggestions' || id === 'snackPeopleSuggestions';
+        const isMultiSelect =
+            id === 'peopleSuggestions' ||
+            id === 'menuSuggestions' ||
+            id === 'snackPeopleSuggestions' ||
+            id === 'snackSuggestions';
         const currentValues = isMultiSelect ? currentInputVal.split(',').map(v => v.trim()).filter(v => v) : [currentInputVal];
         
         if (!parentFilter) {

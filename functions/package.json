@@ -14,7 +14,8 @@
     "admin:set-nickname": "node scripts/admin-set-user-nickname.js",
     "shift-demo-dates": "node scripts/shift-demo-user-dates.js",
     "set-demo-password": "node scripts/set-demo-user-password.js",
-    "migrate:fixTermsAndCreatedAt": "node scripts/fix-settings-terms-and-user-createdAt.js"
+    "migrate:fixTermsAndCreatedAt": "node scripts/fix-settings-terms-and-user-createdAt.js",
+    "migrate:backfillCreatedAtFromAuth": "node scripts/backfill-user-root-createdAt-from-auth.js"
   },
   "engines": {
     "node": "20"

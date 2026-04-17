@@ -80,20 +80,23 @@ service cloud.firestore {
         allow read: if request.auth != null;
         allow create, update, delete: if request.auth != null && request.auth.uid == userId && !isReadOnlyDemoAccount();
       }
-      // stats 연도별 서브컬렉션 (config/stats/years/{year}) - Cloud Functions만 쓰기
+      // stats 연도별 서브컬렉션 (config/stats/years/{year}) — 집계는 CF만 생성·갱신, 탈퇴 시 본인만 삭제
       match /config/stats {
         allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
-        allow write: if false;
+        allow create, update: if false;
+        allow delete: if request.auth != null && request.auth.uid == userId && !isReadOnlyDemoAccount();
         match /years/{year} {
           allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
-          allow write: if false;
+          allow create, update: if false;
+          allow delete: if request.auth != null && request.auth.uid == userId && !isReadOnlyDemoAccount();
         }
       }
       
-      // 밀톡 알림 (답장·@언급) — Cloud Functions만 생성, 본인만 읽기
+      // 밀톡 알림 (답장·@언급) — 생성은 CF, 탈퇴 시 본인만 일괄 삭제
       match /feedNotifications/{notifId} {
         allow read: if isAuthenticated() && request.auth.uid == userId;
-        allow write: if false;
+        allow create, update: if false;
+        allow delete: if request.auth != null && request.auth.uid == userId && !isReadOnlyDemoAccount();
       }
     }
     

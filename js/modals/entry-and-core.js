@@ -3033,8 +3033,13 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
     const container = btn.parentElement.closest('.sub-chip-wrapper') ? btn.parentElement.parentElement : btn.parentElement;
     const isActive = btn.classList.contains('active');
     
-    // 함께한 사람 상세 태그(peopleSuggestions), 메뉴 상세 태그(menuSuggestions)는 다중 선택 가능 (쉼표로 구분)
-    const isMultiSelect = !isPrimary && (subContainerId === 'peopleSuggestions' || subContainerId === 'menuSuggestions');
+    // 서브태그: 본식 무엇을·누구와, 간식 무엇을·누구와 — 다중 선택(쉼표 구분)
+    const isMultiSelect =
+        !isPrimary &&
+        (subContainerId === 'peopleSuggestions' ||
+            subContainerId === 'menuSuggestions' ||
+            subContainerId === 'snackPeopleSuggestions' ||
+            subContainerId === 'snackSuggestions');
     
     if (!isMultiSelect) {
         // 단일 선택: 다른 태그 선택 해제

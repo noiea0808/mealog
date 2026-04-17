@@ -2253,6 +2253,340 @@ exports.adminBackfillUserStats = onCall(
 );
 
 /**
+ * 루트 문서 createdAt 이 Firestore Timestamp 로 **유효한 날짜**인 경우만 true (깨진 필드·빈 값은 백필 대상)
+ */
+function hasUsableRootCreatedAt(data) {
+  const v = data && data.createdAt;
+  if (v == null || v === '') return false;
+  try {
+    if (typeof v.toDate === 'function') {
+      const d = v.toDate();
+      return d != null && !Number.isNaN(d.getTime());
+    }
+    if (v instanceof Timestamp) {
+      const d = v.toDate();
+      return d != null && !Number.isNaN(d.getTime());
+    }
+  } catch (_) {
+    return false;
+  }
+  return false;
+}
+
+async function resolveAuthUserRecordForUid(uid) {
+  try {
+    return await auth.getUser(uid);
+  } catch (e) {
+    if (e && e.code === 'auth/user-not-found') return null;
+    throw e;
+  }
+}
+
+function createdAtTimestampFromAuthUserRecord(ur) {
+  const ct = ur && ur.metadata && ur.metadata.creationTime;
+  if (!ct) return null;
+  const dateObj = new Date(ct);
+  if (Number.isNaN(dateObj.getTime())) return null;
+  return Timestamp.fromDate(dateObj);
+}
+
+/**
+ * users 루트 문서 스냅샷 배열에 대해 createdAt 백필 적용 (공통 로직)
+ * @returns {{ updated: number, skippedHasDate: number, skippedNoAuth: number, errors: number, writeCount: number }}
+ */
+async function applyCreatedAtBackfillToUserDocs(docs, dryRun, overwrite) {
+  let updated = 0;
+  let skippedHasDate = 0;
+  let skippedNoAuth = 0;
+  let errors = 0;
+
+  const writeBatch = dryRun ? null : db.batch();
+  let writeCount = 0;
+
+  for (let offset = 0; offset < docs.length; offset += 100) {
+    const slice = docs.slice(offset, offset + 100);
+    const identifiers = slice.map((d) => ({ uid: d.id }));
+    let getRes;
+    try {
+      getRes = await auth.getUsers(identifiers);
+    } catch (e) {
+      logger.error('applyCreatedAtBackfillToUserDocs getUsers', e);
+      errors += slice.length;
+      continue;
+    }
+    const byUid = new Map(getRes.users.map((u) => [u.uid, u]));
+
+    for (const d of slice) {
+      const uid = d.id;
+      const rootData = d.data() || {};
+
+      if (hasUsableRootCreatedAt(rootData) && !overwrite) {
+        skippedHasDate++;
+        continue;
+      }
+
+      let ur = byUid.get(uid);
+      if (!ur) {
+        try {
+          ur = await resolveAuthUserRecordForUid(uid);
+        } catch (e) {
+          logger.warn('applyCreatedAtBackfillToUserDocs getUser fallback', uid, e.message);
+          errors++;
+          continue;
+        }
+      }
+      if (!ur) {
+        skippedNoAuth++;
+        continue;
+      }
+
+      const ts = createdAtTimestampFromAuthUserRecord(ur);
+      if (!ts) {
+        errors++;
+        continue;
+      }
+
+      updated++;
+      if (writeBatch) {
+        writeBatch.set(d.ref, { createdAt: ts, uid }, { merge: true });
+        writeCount++;
+      }
+    }
+  }
+
+  if (writeBatch && writeCount > 0) {
+    await writeBatch.commit();
+  }
+
+  return { updated, skippedHasDate, skippedNoAuth, errors, writeCount };
+}
+
+/**
+ * 관리자 전용: 단일 UID — users/{uid} 루트 createdAt 을 Auth 생성 시각으로 설정 (진단·수동 보정용)
+ */
+exports.adminBackfillUserRootCreatedAtForUid = onCall(
+  { region: REGION, timeoutSeconds: 120, memory: '256MiB' },
+  wrapFunction('adminBackfillUserRootCreatedAtForUid', async (request) => {
+    const authCtx = request.auth;
+    if (!authCtx || !authCtx.uid) {
+      throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    }
+    if (!(await isAdminByUid(authCtx.uid))) {
+      throw new HttpsError('permission-denied', '관리자만 사용할 수 있습니다.');
+    }
+    const body = request.data || {};
+    const dryRun = body.dryRun === true;
+    const overwrite = body.overwrite === true;
+    const raw = typeof body.targetUserId === 'string' ? body.targetUserId.trim() : '';
+    if (!raw || raw.length < 6) {
+      throw new HttpsError('invalid-argument', 'targetUserId(Firebase UID)를 입력해주세요.');
+    }
+
+    const userRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(raw);
+    const userSnap = await userRef.get();
+    if (!userSnap.exists) {
+      return {
+        ok: false,
+        reason: 'no_firestore_root',
+        message: 'users 루트 문서가 없습니다. (Firestore에 해당 UID 문서 없음)',
+        targetUserId: raw
+      };
+    }
+
+    const rootData = userSnap.data() || {};
+    if (hasUsableRootCreatedAt(rootData) && !overwrite) {
+      return {
+        ok: true,
+        skipped: true,
+        reason: 'already_has_createdAt',
+        targetUserId: raw,
+        dryRun
+      };
+    }
+
+    const ur = await resolveAuthUserRecordForUid(raw);
+    if (!ur) {
+      return {
+        ok: false,
+        reason: 'auth_user_not_found',
+        message: 'Firebase Auth에 해당 UID가 없습니다.',
+        targetUserId: raw
+      };
+    }
+
+    const ts = createdAtTimestampFromAuthUserRecord(ur);
+    if (!ts) {
+      return {
+        ok: false,
+        reason: 'auth_no_creation_time',
+        message: 'Auth metadata.creationTime 이 없습니다.',
+        targetUserId: raw
+      };
+    }
+
+    if (!dryRun) {
+      await userRef.set({ createdAt: ts, uid: raw }, { merge: true });
+    }
+
+    return {
+      ok: true,
+      skipped: false,
+      written: !dryRun,
+      targetUserId: raw,
+      dryRun,
+      createdAtIso: ts.toDate().toISOString()
+    };
+  })
+);
+
+/**
+ * 관리자 전용: users/{uid} 루트 createdAt 을 Auth UID 최초 생성 시각으로 백필 (페이지 단위)
+ * — 한 번에 전체 스캔하지 않고 batchSize(기본 100)씩; 클라이언트가 done 될 때까지 반복 호출
+ */
+exports.adminBackfillUserRootCreatedAtFromAuth = onCall(
+  { region: REGION, timeoutSeconds: 300, memory: '512MiB' },
+  wrapFunction('adminBackfillUserRootCreatedAtFromAuth', async (request) => {
+    const authCtx = request.auth;
+    if (!authCtx || !authCtx.uid) {
+      throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    }
+    if (!(await isAdminByUid(authCtx.uid))) {
+      throw new HttpsError('permission-denied', '관리자만 사용할 수 있습니다.');
+    }
+
+    const body = request.data || {};
+    const dryRun = body.dryRun === true;
+    const overwrite = body.overwrite === true;
+    let batchSize = Number(body.batchSize);
+    if (!Number.isFinite(batchSize) || batchSize < 1) batchSize = 100;
+    if (batchSize > 300) batchSize = 300;
+
+    const startAfterUid =
+      typeof body.startAfterUid === 'string' && body.startAfterUid.trim().length > 0
+        ? body.startAfterUid.trim()
+        : null;
+
+    const usersRef = db.collection('artifacts').doc(APP_ID).collection('users');
+    let q = usersRef.orderBy(FieldPath.documentId()).limit(batchSize);
+    if (startAfterUid) {
+      const cursorSnap = await usersRef.doc(startAfterUid).get();
+      if (!cursorSnap.exists) {
+        throw new HttpsError(
+          'invalid-argument',
+          '백필 커서(UID)가 유효하지 않습니다.「전체 백필(서버)」로 처음부터 다시 실행해 주세요.'
+        );
+      }
+      q = usersRef.orderBy(FieldPath.documentId()).startAfter(cursorSnap).limit(batchSize);
+    }
+    const snap = await q.get();
+    if (snap.empty) {
+      return {
+        done: true,
+        nextCursor: null,
+        dryRun,
+        overwrite,
+        batch: {
+          scanned: 0,
+          updated: 0,
+          skippedHasDate: 0,
+          skippedNoAuth: 0,
+          errors: 0
+        }
+      };
+    }
+
+    const docs = snap.docs;
+    const stats = await applyCreatedAtBackfillToUserDocs(docs, dryRun, overwrite);
+
+    const lastId = docs[docs.length - 1].id;
+    const done = docs.length < batchSize;
+
+    return {
+      done,
+      nextCursor: done ? null : lastId,
+      dryRun,
+      overwrite,
+      batch: {
+        scanned: docs.length,
+        updated: stats.updated,
+        skippedHasDate: stats.skippedHasDate,
+        skippedNoAuth: stats.skippedNoAuth,
+        errors: stats.errors
+      }
+    };
+  })
+);
+
+/**
+ * 관리자 전용: 서버에서 users 루트 전체를 순회해 createdAt 백필 (클라이언트 다중 호출 불필요)
+ */
+exports.adminBackfillUserRootCreatedAtFromAuthRunAll = onCall(
+  { region: REGION, timeoutSeconds: 540, memory: '512MiB' },
+  wrapFunction('adminBackfillUserRootCreatedAtFromAuthRunAll', async (request) => {
+    const authCtx = request.auth;
+    if (!authCtx || !authCtx.uid) {
+      throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    }
+    if (!(await isAdminByUid(authCtx.uid))) {
+      throw new HttpsError('permission-denied', '관리자만 사용할 수 있습니다.');
+    }
+
+    const body = request.data || {};
+    const dryRun = body.dryRun === true;
+    const overwrite = body.overwrite === true;
+    const batchSize = 100;
+
+    const usersRef = db.collection('artifacts').doc(APP_ID).collection('users');
+    const totals = {
+      scanned: 0,
+      updated: 0,
+      skippedHasDate: 0,
+      skippedNoAuth: 0,
+      errors: 0
+    };
+    let rounds = 0;
+    let afterDoc = null;
+    let lastBatchFull = false;
+    const MAX_ROUNDS = 2000;
+
+    while (rounds < MAX_ROUNDS) {
+      let q = usersRef.orderBy(FieldPath.documentId()).limit(batchSize);
+      if (afterDoc) {
+        q = usersRef.orderBy(FieldPath.documentId()).startAfter(afterDoc).limit(batchSize);
+      }
+      const snap = await q.get();
+      if (snap.empty) {
+        break;
+      }
+
+      const docs = snap.docs;
+      rounds++;
+      const stats = await applyCreatedAtBackfillToUserDocs(docs, dryRun, overwrite);
+      totals.scanned += docs.length;
+      totals.updated += stats.updated;
+      totals.skippedHasDate += stats.skippedHasDate;
+      totals.skippedNoAuth += stats.skippedNoAuth;
+      totals.errors += stats.errors;
+
+      afterDoc = docs[docs.length - 1];
+      lastBatchFull = docs.length >= batchSize;
+      if (docs.length < batchSize) {
+        break;
+      }
+    }
+
+    return {
+      ok: true,
+      dryRun,
+      overwrite,
+      rounds,
+      totals,
+      truncated: rounds >= MAX_ROUNDS && lastBatchFull
+    };
+  })
+);
+
+/**
  * main 끼니(아침/점심/저녁) 중복 문서 정리 - 동일 (date, slotId)당 1개만 유지
  * 삭제 시 onMealWritten 트리거로 stats 자동 보정
  */
@@ -2624,7 +2958,8 @@ exports.signInWithKakao = onCall({ region: REGION }, wrapFunction('signInWithKak
   return {
     customToken,
     kakaoEmail: email || null,
-    kakaoEmailNeedsAgreement: ka.email_needs_agreement === true
+    kakaoEmailNeedsAgreement: ka.email_needs_agreement === true,
+    kakaoNickname: nickname || null
   };
 }));
 
@@ -2663,7 +2998,17 @@ exports.patchArtifactUserRoot = onCall({ region: REGION }, wrapFunction('patchAr
     lastLoginAt: FieldValue.serverTimestamp()
   };
   if (body.setCreatedAt === true) {
-    patch.createdAt = FieldValue.serverTimestamp();
+    const ms =
+      typeof body.createdAtMillis === 'number' && Number.isFinite(body.createdAtMillis)
+        ? Math.floor(body.createdAtMillis)
+        : null;
+    const now = Date.now();
+    // 클라이언트가 Auth UID 생성 시각(ms)을 넘기면 그대로 기록(구버전·누락 시 serverTimestamp)
+    if (ms != null && ms >= 946684800000 && ms <= now + 7 * 86400000) {
+      patch.createdAt = Timestamp.fromMillis(ms);
+    } else {
+      patch.createdAt = FieldValue.serverTimestamp();
+    }
   }
   if (typeof body.providerId === 'string' && body.providerId.trim()) {
     patch.providerId = body.providerId.trim();
@@ -3621,6 +3966,35 @@ function computeNextWeeklySlotMillis(weeklySchedule, rangeStartMs, rangeEndMs, f
   return best;
 }
 
+/**
+ * 기간·요일별 슬롯을 모두 펼쳐 (minFromMs 이후) 발송 시각 목록 — 각각 별도 예약 문서로 등록할 때 사용
+ * @returns {{ ms: number, slot: object }[]}
+ */
+function enumerateWeeklyOccurrences(weeklySchedule, rangeStartMs, rangeEndMs, minFromMs) {
+  const slots = normalizeWeeklyScheduleEntries(weeklySchedule);
+  if (slots.length === 0) return [];
+  const from = Math.max(rangeStartMs, minFromMs);
+  if (from > rangeEndMs) return [];
+  const endYmd = kstYmdFromMillis(rangeEndMs);
+  let ymd = kstYmdFromMillis(from);
+  const out = [];
+  for (let guard = 0; guard < 800 && ymd <= endYmd; guard++) {
+    const wd = kstWeekdayMon1Sun7FromYmd(ymd);
+    for (const slot of slots) {
+      if (slot.weekday !== wd) continue;
+      const ts = kstMillisForYmdHm(ymd, slot.time);
+      if (Number.isNaN(ts)) continue;
+      if (ts >= from && ts <= rangeEndMs) {
+        out.push({ ms: ts, slot });
+      }
+    }
+    if (ymd >= endYmd) break;
+    ymd = addOneKstYmd(ymd);
+  }
+  out.sort((a, b) => a.ms - b.ms);
+  return out;
+}
+
 function findWeeklySlotForScheduledAt(weeklySchedule, scheduledAtTs) {
   const ms = scheduledAtTs && typeof scheduledAtTs.toMillis === 'function' ? scheduledAtTs.toMillis() : 0;
   if (!ms) return null;
@@ -3794,30 +4168,52 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
       if (rangeEndMs < rangeStartMs) {
         throw new HttpsError('invalid-argument', '기간이 올바르지 않습니다.');
       }
-      const firstAt = computeNextWeeklySlotMillis(weeklySchedule, rangeStartMs, rangeEndMs, minLead);
-      if (firstAt == null) {
+      const occurrences = enumerateWeeklyOccurrences(weeklySchedule, rangeStartMs, rangeEndMs, minLead);
+      if (occurrences.length === 0) {
         throw new HttpsError(
           'invalid-argument',
           '선택한 기간·시각 안에 발송할 수 있는 일정이 없습니다. 기간을 넓히거나 시각을 확인해 주세요.'
         );
       }
-      const ref = await db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes').add({
-        scheduleType: 'recurring',
-        recurringMode: 'weeklyByDay',
-        weeklySchedule,
-        recurringStartAt: Timestamp.fromMillis(rangeStartMs),
-        recurringEndAt: Timestamp.fromMillis(rangeEndMs),
-        title: '요일별 발송',
-        body: '',
-        landingTab: 'dashboard',
-        targetEnv: 'all',
-        scheduledAt: Timestamp.fromMillis(firstAt),
-        occurrenceCount: 0,
-        status: 'pending',
-        createdByUid: callerUid,
-        createdAt: FieldValue.serverTimestamp()
-      });
-      return { ok: true, id: ref.id };
+      const MAX_WEEKLY_EXPANDED = 500;
+      if (occurrences.length > MAX_WEEKLY_EXPANDED) {
+        throw new HttpsError(
+          'invalid-argument',
+          `요일별 예약은 한 번에 최대 ${MAX_WEEKLY_EXPANDED}건까지 등록할 수 있습니다. 기간을 줄이거나 요일을 나눠 주세요. (현재 ${occurrences.length}건)`
+        );
+      }
+      const batchGroupId = crypto.randomBytes(12).toString('hex');
+      const coll = db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes');
+      const ids = [];
+      let batch = db.batch();
+      let ops = 0;
+      for (const { ms, slot } of occurrences) {
+        const ref = coll.doc();
+        batch.set(ref, {
+          scheduleType: 'once',
+          scheduleSource: 'weeklyByDayExpanded',
+          weeklyBatchGroupId: batchGroupId,
+          title: slot.title,
+          body: slot.body,
+          landingTab: slot.landingTab,
+          targetEnv: slot.targetEnv,
+          scheduledAt: Timestamp.fromMillis(ms),
+          status: 'pending',
+          createdByUid: callerUid,
+          createdAt: FieldValue.serverTimestamp()
+        });
+        ids.push(ref.id);
+        ops++;
+        if (ops >= 450) {
+          await batch.commit();
+          batch = db.batch();
+          ops = 0;
+        }
+      }
+      if (ops > 0) {
+        await batch.commit();
+      }
+      return { ok: true, count: ids.length, batchGroupId, ids };
     }
 
     const recurringStartMs =

@@ -387,6 +387,12 @@ export const callableFunctions = {
     backfillUserStats: httpsCallable(functions, 'backfillUserStats'),
     /** 관리자 전용: 특정 UID의 daily stats 백필 */
     adminBackfillUserStats: httpsCallable(functions, 'adminBackfillUserStats'),
+    /** 관리자 전용: users 루트 createdAt 을 Auth UID 생성 시각으로 백필 */
+    adminBackfillUserRootCreatedAtFromAuth: httpsCallable(functions, 'adminBackfillUserRootCreatedAtFromAuth'),
+    /** 관리자 전용: 단일 UID 가입일(루트 createdAt) 보정 */
+    adminBackfillUserRootCreatedAtForUid: httpsCallable(functions, 'adminBackfillUserRootCreatedAtForUid'),
+    /** 관리자 전용: 가입일 백필 전체를 서버 한 번에 완료 */
+    adminBackfillUserRootCreatedAtFromAuthRunAll: httpsCallable(functions, 'adminBackfillUserRootCreatedAtFromAuthRunAll'),
     removeDuplicateMeals: httpsCallable(functions, 'removeDuplicateMeals'),
     callGemini: httpsCallable(functions, 'callGemini'),
     searchKakaoPlaces: httpsCallable(functions, 'searchKakaoPlaces'),

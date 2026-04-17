@@ -25,7 +25,17 @@ import {
     showLoading,
     hideLoading
 } from './ui.js';
-import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput, warmUpIME, sharePhotosToExternal, setupBirthdateInputFormatting } from './utils.js';
+import {
+    getDisplayProfile,
+    uploadBoardImages,
+    captureWithGhostStrategy,
+    addCompositionAwareInput,
+    warmUpIME,
+    sharePhotosToExternal,
+    setupBirthdateInputFormatting,
+    normalizeUrl,
+    getMealogClientEnv
+} from './utils.js';
 import { 
     initAuth, handleGoogleLogin, handleKakaoLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
@@ -37,6 +47,8 @@ import { authFlowManager } from './auth-flow.js';
 import { scheduleAttendanceCheckIfNeeded } from './attendance-check.js';
 window.scheduleAttendanceCheckIfNeeded = scheduleAttendanceCheckIfNeeded;
 import { isDemoUser, markUserHasRealLogin } from './demo-account.js';
+import { isUserSettingsReadyForContentWrites } from './utils/user-settings-write-guard.js';
+import { getAuthAccountCreatedTimestamp, getAuthAccountCreatedMillis } from './auth-created-at.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
 import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
@@ -51,7 +63,6 @@ import {
     openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace
 } from './modals.js';
 import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from './constants.js';
-import { normalizeUrl } from './utils.js';
 import { registerMainNetworkListeners, runMealogNetworkRecovery } from './main/network.js';
 import { registerMainCleanup } from './main/cleanup.js';
 import { syncOrphanedSharesToMoment } from './main/shares-sync.js';
@@ -136,7 +147,7 @@ window.reloadMomentFeed = async function reloadMomentFeed() {
     window.sharedPhotosFeed = [];
     appState.sharedPhotosFeedLastDoc = null;
     appState.sharedPhotosFeedHasMore = false;
-    showLoading('모먼트 불러오는 중...');
+    showLoading('모먼트 불러오는 중...', { dimBackground: false, recordsFab: true });
     try {
         const { docs, lastDoc, hasMore } = await loadSharedPhotosPageReliable(10);
         appState.galleryFeedNetworkError = false;
@@ -725,6 +736,14 @@ window.loadMoreMealsTimeline = async () => {
     }
 };
 
+/** users 루트 createdAt — Auth UID 최초 생성 시각(없을 때만 serverTimestamp) */
+function resolveUserRootCreatedAt(user) {
+    const t = getAuthAccountCreatedTimestamp(user);
+    if (t) return t;
+    console.warn('⚠️ Auth metadata.creationTime 없음 → 가입일에 serverTimestamp 사용');
+    return serverTimestamp();
+}
+
 /**
  * 사용자 문서 업데이트 (가입일, 마지막 로그인 날짜)
  */
@@ -741,6 +760,12 @@ async function updateUserDocument(user) {
             lastLoginAt: serverTimestamp()
         };
         
+        const canBackfillJoinDate = () => {
+            const s = window.userSettings;
+            if (!s) return false;
+            return isUserSettingsReadyForContentWrites(s);
+        };
+
         if (!userDocSnap.exists()) {
             // 신규 사용자: 기본은 프로필 완료 후 ensureUserRegistered에서 createdAt 기록.
             // 이미 프로필 완료 상태로 첫 저장이면(레이스) 같은 틱에 가입일을 넣는다.
@@ -756,18 +781,18 @@ async function updateUserDocument(user) {
             if (user.email) {
                 updateData.email = user.email;
             }
-            if (window.userSettings?.profileCompleted === true) {
-                updateData.createdAt = serverTimestamp();
-                console.log('✅ 신규 사용자 문서 + 이미 프로필 완료 → 가입일 동시 기록:', user.uid);
+            if (canBackfillJoinDate()) {
+                updateData.createdAt = resolveUserRootCreatedAt(user);
+                console.log('✅ 신규 사용자 문서 + 가입일(Auth UID 생성 시각) 동시 기록:', user.uid);
             } else {
-                console.log('✅ 신규 사용자 문서 생성 (가입일은 프로필 완료 후 등록):', { userId: user.uid });
+                console.log('✅ 신규 사용자 문서 생성 (가입일은 프로필/약관 충족 후 등록):', { userId: user.uid });
             }
         } else {
             const existingData = userDocSnap.data();
-            // 프로필 설정 완료 시점에 가입 완료(createdAt) 등록
-            if (!existingData.createdAt && window.userSettings?.profileCompleted === true) {
-                updateData.createdAt = serverTimestamp();
-                console.log('✅ 가입 완료(프로필 설정 후) 사용자 등록:', user.uid);
+            // 가입일 누락 백필: 유효 닉 + (프로필 완료 또는 약관 동의)
+            if (!existingData.createdAt && canBackfillJoinDate()) {
+                updateData.createdAt = resolveUserRootCreatedAt(user);
+                console.log('✅ 가입일 백필(Auth UID 생성 시각·닉·약관/프로필 기준):', user.uid);
             }
             if (!existingData.providerId) {
                 let pid = user.providerData?.[0]?.providerId;
@@ -794,6 +819,7 @@ async function updateUserDocument(user) {
                 try {
                     await callableFunctions.patchArtifactUserRoot({
                         setCreatedAt: !!updateData.createdAt,
+                        createdAtMillis: updateData.createdAt ? getAuthAccountCreatedMillis(user) : null,
                         providerId: updateData.providerId ?? null,
                         email: updateData.email ?? null
                     });
@@ -827,23 +853,48 @@ async function recordGuestVisit(uid) {
 }
 window.recordGuestVisit = recordGuestVisit;
 
+/** users 루트 createdAt → ms (탈퇴 후 동일 UID 재가입 시 Auth보다 이른 값 구분용) */
+function rootCreatedAtToMillis(v) {
+    if (v == null) return null;
+    if (typeof v.toMillis === 'function') {
+        const m = v.toMillis();
+        return Number.isFinite(m) ? m : null;
+    }
+    if (v instanceof Date) {
+        const t = v.getTime();
+        return Number.isFinite(t) ? t : null;
+    }
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'object' && typeof v.seconds === 'number') {
+        return v.seconds * 1000 + Math.floor((v.nanoseconds || 0) / 1e6);
+    }
+    return null;
+}
+
 /** 프로필 설정 완료 시 가입 완료(createdAt) 등록. signup-wizard / auth에서 호출 */
 window.ensureUserRegistered = async function () {
     const user = auth.currentUser;
     if (!user || user.isAnonymous) return;
-    if (!window.userSettings?.profileCompleted) return;
+    const s = window.userSettings;
+    if (!s || !isUserSettingsReadyForContentWrites(s)) return;
     try {
         await refreshAppCheckTokenBeforeFirestore();
         const userDocRef = doc(db, 'artifacts', appId, 'users', user.uid);
         const userDocSnap = await getDoc(userDocRef);
         const data = userDocSnap.exists() ? userDocSnap.data() : {};
-        if (data.createdAt) return;
+        const authMs = getAuthAccountCreatedMillis(user);
+        const existingMs = rootCreatedAtToMillis(data.createdAt);
+        const staleCreatedAt =
+            existingMs != null &&
+            authMs != null &&
+            existingMs < authMs - 5000;
+        if (data.createdAt && !staleCreatedAt) return;
 
         let providerId = user.providerData?.[0]?.providerId;
         if (!providerId && typeof user.uid === 'string' && user.uid.startsWith('kakao_')) {
             providerId = 'kakao.com';
         }
-        const payload = { createdAt: serverTimestamp() };
+        const payload = { createdAt: resolveUserRootCreatedAt(user) };
         if (!userDocSnap.exists() || !data.uid) {
             payload.uid = user.uid;
         }
@@ -856,12 +907,18 @@ window.ensureUserRegistered = async function () {
 
         try {
             await setDoc(userDocRef, payload, { merge: true });
-            console.log('✅ 가입 완료(프로필 설정 후) 사용자 등록:', user.uid);
+            console.log(
+                staleCreatedAt
+                    ? '✅ 가입 완료(동일 UID 재가입 — 가입일 Auth 기준으로 갱신):'
+                    : '✅ 가입 완료(프로필 설정 후) 사용자 등록:',
+                user.uid
+            );
         } catch (writeErr) {
             const wcode = writeErr?.code || '';
             if (wcode === 'permission-denied' && callableFunctions?.patchArtifactUserRoot) {
                 await callableFunctions.patchArtifactUserRoot({
                     setCreatedAt: true,
+                    createdAtMillis: getAuthAccountCreatedMillis(user),
                     providerId: providerId || null,
                     email: user.email || null
                 });
@@ -1365,9 +1422,7 @@ initAuth(async (user) => {
                     if (landingPage) landingPage.classList.remove('landing-banner-visible');
                     return;
                 }
-                const hostname = window.location.hostname || '';
-                const isLocal = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
-                const currentEnv = isLocal ? 'staging' : (window.APP_ENV || 'production');
+                const currentEnv = getMealogClientEnv();
                 const targetEnv = data.targetEnv || 'all';
                 if (targetEnv !== 'all' && targetEnv !== currentEnv) {
                     section.classList.add('hidden');

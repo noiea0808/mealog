@@ -399,6 +399,9 @@
                             <button onclick="window.switchMonitoringSidebar('statsBackfill')" id="monitoring-sidebar-statsBackfill" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                 <i class="fa-solid fa-database mr-2"></i>통계 백필
                             </button>
+                            <button onclick="window.switchMonitoringSidebar('userCreatedAtBackfill')" id="monitoring-sidebar-userCreatedAtBackfill" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                <i class="fa-solid fa-calendar-plus mr-2"></i>가입일 백필
+                            </button>
                         </div>
                     </div>
 
@@ -620,6 +623,43 @@
                                         </button>
                                     </div>
                                     <div id="adminStatsBackfillResult" class="text-sm min-h-0" aria-live="polite"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 가입일 백필 (Auth UID 생성 시각 → users 루트 createdAt) -->
+                        <div id="monitoring-main-userCreatedAtBackfill" class="monitoring-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <h3 class="text-base font-black text-slate-800">가입일(createdAt) 백필</h3>
+                                    <p class="text-sm text-slate-600 mt-2 leading-relaxed">
+                                        <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">artifacts/…/users/{uid}</code> 루트 문서에 대해,
+                                        Firebase Auth 계정의 <strong>최초 생성 시각</strong>(UID 발급 시각)을
+                                        <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">createdAt</code>으로 채웁니다.
+                                        사용자 수가 많으면 여러 배치로 나뉘어 자동 진행됩니다.
+                                    </p>
+                                </div>
+                                <div class="p-6 space-y-4">
+                                    <label class="flex items-center gap-2 text-sm text-slate-800 cursor-pointer">
+                                        <input type="checkbox" id="adminCreatedAtBackfillDryRun" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                                        <span>드라이런 (Firestore 쓰기 없이 시뮬레이션만)</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 text-sm text-slate-800 cursor-pointer">
+                                        <input type="checkbox" id="adminCreatedAtBackfillOverwrite" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                                        <span>이미 가입일이 있어도 Auth 시각으로 덮어쓰기 (주의)</span>
+                                    </label>
+                                    <div>
+                                        <label for="adminCreatedAtBackfillSingleUid" class="block text-sm font-bold text-slate-700 mb-2">특정 UID만 보정 (비우면 전체 배치)</label>
+                                        <input type="text" id="adminCreatedAtBackfillSingleUid" autocomplete="off" placeholder="예: kakao_4850485207" class="w-full max-w-xl px-4 py-3 border border-slate-200 rounded-xl text-sm font-mono outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500">
+                                        <p class="text-xs text-slate-500 mt-1">한 명만 고칠 때 사용. 전체 일괄은 비워 두고 실행하세요.</p>
+                                    </div>
+                                    <div>
+                                        <button type="button" id="adminCreatedAtBackfillRunBtn" onclick="window.runAdminUserCreatedAtBackfill()" class="inline-flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white text-sm font-black rounded-xl hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-60">
+                                            <i class="fa-solid fa-play" aria-hidden="true"></i>
+                                            백필 실행
+                                        </button>
+                                    </div>
+                                    <div id="adminCreatedAtBackfillResult" class="text-sm min-h-0" aria-live="polite"></div>
                                 </div>
                             </div>
                         </div>
@@ -1130,6 +1170,12 @@
                                             <button type="button" id="adminRefreshScheduledPushesBtn" onclick="window.refreshAdminScheduledPushes()" class="inline-flex shrink-0 items-center justify-center gap-1 text-xs font-bold text-slate-500 hover:text-violet-600 px-2 py-1 rounded-lg hover:bg-slate-100 transition-colors">
                                                 <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i><span>새로고침</span>
                                             </button>
+                                        </div>
+                                        <div class="flex flex-wrap items-center gap-2 mb-2 mt-1" role="tablist" aria-label="발송 기록 구분">
+                                            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-100/90 p-0.5 gap-0.5">
+                                                <button type="button" id="adminPushHistoryTabUpcoming" class="admin-push-history-tab px-3 py-1.5 text-xs font-bold rounded-md transition-colors bg-white text-violet-700 shadow-sm ring-1 ring-violet-200/80" data-tab="upcoming" aria-selected="true">발송예정 <span id="adminPushHistoryCountUpcoming" class="tabular-nums text-violet-600/90 font-extrabold">0</span></button>
+                                                <button type="button" id="adminPushHistoryTabDone" class="admin-push-history-tab px-3 py-1.5 text-xs font-bold rounded-md transition-colors text-slate-500 hover:text-slate-700 hover:bg-white/70" data-tab="done" aria-selected="false">발송완료 <span id="adminPushHistoryCountDone" class="tabular-nums text-slate-500 font-extrabold">0</span></button>
+                                            </div>
                                         </div>
                                         <div id="adminScheduledPushesContainer" class="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/30 min-h-[100px]">
                                             <p class="text-center py-8 text-slate-400 text-sm">목록을 불러오는 중…</p>

@@ -43,6 +43,16 @@ function runChainRelinkAnimation(btn) {
     }, 720);
 }
 
+function syncInitialRecordsLoadFabStacked() {
+    try {
+        const initialFab = document.getElementById('initialRecordsLoadFab');
+        if (!initialFab || initialFab.classList.contains('hidden')) return;
+        initialFab.classList.toggle('initial-records-load-fab--stacked', appState.currentTab === 'board');
+    } catch (_) {
+        /* ignore */
+    }
+}
+
 export function refreshMealSyncResendNavButton() {
     const btn = document.getElementById('mealSyncResendBtn');
     const badge = document.getElementById('mealSyncResendBadge');
@@ -51,6 +61,7 @@ export function refreshMealSyncResendNavButton() {
     if (!u || u.isAnonymous || isDemoUser(u)) {
         btn.classList.add('hidden');
         btn.classList.remove('meal-sync-resend-fab--stacked', 'meal-sync-resend-fab--transport-offline');
+        syncInitialRecordsLoadFabStacked();
         return;
     }
 
@@ -74,6 +85,7 @@ export function refreshMealSyncResendNavButton() {
                 badge.classList.remove('meal-sync-resend-fab__badge--retry-only');
             }
         }
+        syncInitialRecordsLoadFabStacked();
         return;
     }
 
@@ -95,6 +107,7 @@ export function refreshMealSyncResendNavButton() {
         btn.classList.remove('meal-sync-resend-fab--stacked');
         if (badge) badge.classList.add('hidden', 'meal-sync-resend-fab__badge--retry-only');
     }
+    syncInitialRecordsLoadFabStacked();
 }
 
 let mealSyncResendNavBound = false;
@@ -109,6 +122,10 @@ export function bindMealSyncResendNavButtonOnce() {
 
         if (btn.classList.contains('meal-sync-resend-fab--transport-offline')) {
             runChainRelinkAnimation(btn);
+            // 뱃지(오프라인 저장 대기 건수)가 없을 때만 — 탭으로 안내 토스트
+            if (countOfflineDraftMeals() === 0) {
+                showToast('잠시 오프라인 상태에요.', 'info');
+            }
             return;
         }
 

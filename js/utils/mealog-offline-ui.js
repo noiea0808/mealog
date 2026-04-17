@@ -13,10 +13,7 @@ export function isMealogTransportOffline() {
     return false;
 }
 
-let lastOfflineToastAt = 0;
-const OFFLINE_TOAST_COOLDOWN_MS = 6500;
-
-/** 네트워크 단절이 감지될 때 — FAB 갱신 후 토스트(쿨다운) */
+/** 네트워크 단절이 감지될 때 — FAB만 갱신(오프라인 안내 토스트는 FAB 탭 시·뱃지 없을 때만 meal-sync-resend-header에서 표시) */
 export function notifyTransportOfflineUi() {
     void import('../main/meal-sync-resend-header.js').then((m) => {
         try {
@@ -24,16 +21,6 @@ export function notifyTransportOfflineUi() {
         } catch (_) {
             /* ignore */
         }
-        const now = Date.now();
-        if (now - lastOfflineToastAt < OFFLINE_TOAST_COOLDOWN_MS) return;
-        lastOfflineToastAt = now;
-        void import('../ui.js').then(({ showToast }) => {
-            try {
-                showToast('잠시 오프라인 상태에요.', 'info');
-            } catch (_) {
-                /* ignore */
-            }
-        });
     });
 }
 

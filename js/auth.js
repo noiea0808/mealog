@@ -28,6 +28,15 @@ export function getRecordsPendingLoadingMessage(user) {
     return '기록을 불러오고 있어요';
 }
 
+/** 초기 로그인 후 meals 로딩 — 우하단 FAB 크기에서만 스피너(음식 아이콘) 표시 */
+export function showRecordsPendingLoading(user) {
+    showLoading(getRecordsPendingLoadingMessage(user), {
+        dimBackground: false,
+        skipOnLoginScreen: false,
+        recordsFab: true
+    });
+}
+
 function isNativePlatform() {
     return typeof window.Capacitor !== 'undefined' && window.Capacitor?.isNativePlatform?.();
 }
@@ -182,6 +191,17 @@ async function finalizeKakaoSignInWithCode(code, redirectUri) {
         try {
             if (auth.currentUser) await auth.currentUser.reload();
         } catch (_) {}
+        const kn = typeof data.kakaoNickname === 'string' ? data.kakaoNickname.trim() : '';
+        if (kn && auth.currentUser && !(auth.currentUser.displayName || '').trim()) {
+            try {
+                const { updateProfile } = await import(
+                    'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js'
+                );
+                await updateProfile(auth.currentUser, { displayName: kn.slice(0, 64) });
+            } catch (e) {
+                console.warn('[카카오 로그인] displayName 보조 설정 실패(무시):', e?.message || e);
+            }
+        }
         /* 커스텀 토큰 직후 첫 Firestore 쓰기가 App Check 미부착으로 permission-denied 나는 경우 완화 */
         try {
             await appCheckInitPromise;
@@ -207,7 +227,7 @@ async function finalizeKakaoSignInWithCode(code, redirectUri) {
             sessionStorage.setItem('mealog_kakaoProfileSetupGate', '1');
         } catch (_) {}
         window._recordsLoadHidePending = true;
-        showLoading(getRecordsPendingLoadingMessage(auth.currentUser), { dimBackground: false, skipOnLoginScreen: false });
+        showRecordsPendingLoading(auth.currentUser);
         /* 성공 토스트 생략 — 메인 진입 후 웰컴(출석) 팝업과 겹침 */
     } catch (error) {
         console.warn('[카카오 OAuth] 오류:', error?.code, error?.message, error);
@@ -563,7 +583,7 @@ export async function handleGoogleLogin() {
             providerData: result.user.providerData.map(p => p.providerId)
         });
         window._recordsLoadHidePending = true;
-        showLoading(getRecordsPendingLoadingMessage(result.user), { dimBackground: false, skipOnLoginScreen: false });
+        showRecordsPendingLoading(result.user);
         /* 성공 토스트 생략 — 메인 진입 후 웰컴(출석) 팝업과 겹침 */
     } catch (error) {
         console.warn('[구글 로그인] 오류:', error?.code, error?.message, error);
@@ -736,7 +756,7 @@ export async function handleEmailAuth() {
                 providerData: result.user.providerData.map(p => p.providerId)
             });
             window._recordsLoadHidePending = true;
-            showLoading(getRecordsPendingLoadingMessage(result.user), { dimBackground: false, skipOnLoginScreen: false });
+            showRecordsPendingLoading(result.user);
             showToast("회원가입 성공! 환영합니다.", "success");
         } else {
             result = await signInWithEmailAndPassword(auth, email, password);
@@ -747,7 +767,7 @@ export async function handleEmailAuth() {
                 providerData: result.user.providerData.map(p => p.providerId)
             });
             window._recordsLoadHidePending = true;
-            showLoading(getRecordsPendingLoadingMessage(result.user), { dimBackground: false, skipOnLoginScreen: false });
+            showRecordsPendingLoading(result.user);
             /* 성공 토스트 생략 — 메인 진입 후 웰컴(출석) 팝업과 겹침 */
             if (document.getElementById('rememberEmailCheck').checked) {
                 localStorage.setItem('savedEmail', email);
@@ -1081,7 +1101,7 @@ export async function initAuth(onAuthStateChangedCallback) {
             if (result?.user) {
                 console.log('🔐 구글 Redirect 로그인 성공:', result.user.uid);
                 window._recordsLoadHidePending = true;
-                showLoading(getRecordsPendingLoadingMessage(result.user), { dimBackground: false, skipOnLoginScreen: false });
+                showRecordsPendingLoading(result.user);
                 /* 성공 토스트 생략 — 메인 진입 후 웰컴(출석) 팝업과 겹침 */
             }
         } catch (error) {
@@ -1567,7 +1587,7 @@ export async function handleEmailSignupWithProfile() {
         const result = await createUserWithEmailAndPassword(auth, email, password);
         console.log('🔐 이메일 회원가입 성공:', { uid: result.user.uid, email: result.user.email });
         window._recordsLoadHidePending = true;
-        showLoading(getRecordsPendingLoadingMessage(result.user), { dimBackground: false, skipOnLoginScreen: false });
+        showRecordsPendingLoading(result.user);
         showToast("회원가입 성공! 약관에 동의해주세요.", "success");
         
         window._pendingEmailSignupProfile = {

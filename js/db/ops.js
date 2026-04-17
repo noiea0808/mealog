@@ -12,6 +12,8 @@ import {
     getDoc,
     setDoc,
     deleteDoc,
+    updateDoc,
+    deleteField,
     collection,
     addDoc,
     query,
@@ -42,8 +44,8 @@ export function unwrapMealSaveResult(r) {
     return { mealId: '', savedViaCallableFallback: false };
 }
 import { isDemoUser } from '../demo-account.js';
-import { normalizeNicknameForClaim, nicknameClaimDocId } from './nickname-claims.js';
 import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
+import { normalizeNicknameForClaim, nicknameClaimDocId } from './nickname-claims.js';
 
 /** Callable(httpsCallable) 오류 — 짧은 안내 문구만 */
 function formatCallableErrorForToast(err) {
@@ -550,7 +552,7 @@ export const dbOps = {
             if (
                 typeof window !== 'undefined' &&
                 typeof window.ensureUserRegistered === 'function' &&
-                (settingsToSave.termsAgreed === true || settingsToSave.profileCompleted === true)
+                isUserSettingsReadyForContentWrites(settingsToSave)
             ) {
                 try {
                     await window.ensureUserRegistered();
@@ -711,6 +713,20 @@ export const dbOps = {
         }
         
         const userId = window.currentUser.uid;
+
+        const deleteDocsInBatches = async (collRef, label) => {
+            const snap = await getDocs(collRef);
+            const max = 500;
+            for (let i = 0; i < snap.docs.length; i += max) {
+                const batch = writeBatch(db);
+                snap.docs.slice(i, i + max).forEach((d) => batch.delete(d.ref));
+                await batch.commit();
+            }
+            if (snap.docs.length) {
+                console.log(`🗑️ 탈퇴: ${label} ${snap.docs.length}건 삭제`);
+            }
+        };
+
         try {
             const settingsRef = doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings');
             const settingsSnap = await getDoc(settingsRef);
@@ -718,15 +734,31 @@ export const dbOps = {
                 ? normalizeNicknameForClaim(settingsSnap.data()?.profile?.nickname)
                 : null;
 
-            // 1. 모든 meals 삭제
+            // 1. 모든 meals 삭제 (500건 초과 시 배치 분할)
             const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
-            const mealsSnapshot = await getDocs(mealsColl);
-            const mealsBatch = writeBatch(db);
-            mealsSnapshot.docs.forEach(docSnap => {
-                mealsBatch.delete(docSnap.ref);
-            });
-            if (mealsSnapshot.docs.length > 0) {
-                await mealsBatch.commit();
+            await deleteDocsInBatches(mealsColl, 'meals');
+
+            // 1b. 연도별 dailyStats — 통계·트래커 달력·출석 등에 사용 (meals만 지우면 서버에 잔존)
+            const statsYearsColl = collection(db, 'artifacts', appId, 'users', userId, 'config', 'stats', 'years');
+            await deleteDocsInBatches(statsYearsColl, 'config/stats/years');
+            const statsParentRef = doc(db, 'artifacts', appId, 'users', userId, 'config', 'stats');
+            try {
+                await deleteDoc(statsParentRef);
+            } catch (e) {
+                console.warn('탈퇴: config/stats 문서 삭제 스킵:', e?.code || e?.message || e);
+            }
+
+            // 1c. 피드 알림 서브컬렉션
+            const feedNotifColl = collection(db, 'artifacts', appId, 'users', userId, 'feedNotifications');
+            await deleteDocsInBatches(feedNotifColl, 'feedNotifications');
+
+            // 1d. 기타 config 단일 문서
+            for (const docId of ['reportedPosts', 'fcmTokens']) {
+                try {
+                    await deleteDoc(doc(db, 'artifacts', appId, 'users', userId, 'config', docId));
+                } catch (e) {
+                    console.warn(`탈퇴: config/${docId} 삭제 스킵:`, e?.code || e?.message || e);
+                }
             }
             
             // 2. 닉네임 클레임 제거 (설정 삭제 전, 탈퇴 후에도 닉 재사용 가능하도록)
@@ -773,6 +805,23 @@ export const dbOps = {
                 } catch (storageError) {
                     console.warn('프로필 사진 삭제 중 오류 (무시하고 계속 진행):', storageError);
                 }
+            }
+
+            // 6. users 루트의 mealCount 등 집계 필드 제거(재가입 전까지 문서가 남는 경우 대비)
+            const userRootRef = doc(db, 'artifacts', appId, 'users', userId);
+            try {
+                const rootSnap = await getDoc(userRootRef);
+                if (rootSnap.exists()) {
+                    // 동일 UID 문자열 재가입(카카오 커스텀 등) 시 이전 가입일이 남지 않도록 제거
+                    await updateDoc(userRootRef, { mealCount: deleteField(), createdAt: deleteField() });
+                }
+            } catch (e) {
+                console.warn('탈퇴: users 루트 mealCount·createdAt 제거 스킵:', e?.code || e?.message || e);
+            }
+
+            if (typeof window !== 'undefined') {
+                window.dailyStats = {};
+                window.mealHistory = [];
             }
         } catch (e) {
             console.error("Delete All User Data Error:", e);

@@ -1,7 +1,7 @@
 /**
  * 출석/연속 기록 팝업 — 어제(서울 달력)까지 이어진 연속 일수(트래커와 동일: dailyStats ∪ mealHistory로 일자별 기록 유무; 전일 무기록이면 0).
  * (meals 쿼리는 최근 구간만 로드되므로 연속 일수는 전역 dailyStats와 합쳐 계산.)
- * 노출 빈도: 케이스별(기록 없음·연속 없음·1일·2일+) 관리자 설정 — 접속마다(sessionStorage) 또는 하루 1회(localStorage).
+ * 노출 빈도: 케이스별(기록 없음·연속 없음·1일·2일+) 관리자 설정 — 접속마다(sessionStorage) 또는 하루 1회(localStorage). 설정 미로드 시 기본은 하루 1회.
  * 관리자 설정(adminSettings/config.attendancePopup)으로 기록 유무·환경별 문구·노출(끔 포함).
  */
 import { isDemoUser } from './demo-account.js';
@@ -212,7 +212,7 @@ function resetWelcomePopupGateIfNewLocalDay() {
 
 /** in-flight만 공유 — 완료 후 비워서 매번 최신 adminSettings 반영(관리자 저장 직후 다른 탭 앱도 다음 팝업 시도에서 재조회) */
 let attendancePopupConfigPromise = null;
-/** 마지막으로 성공적으로 정규화한 웰컴 설정 — getDoc 지연으로 타임아웃 시 기본값(every_session)으로 떨어져 접속마다 노출되는 것 방지 */
+/** 마지막으로 성공적으로 정규화한 웰컴 설정 — getDoc 지연으로 타임아웃 시 캐시·기본값(하루 1회)으로 과도 노출 완화 */
 let lastResolvedAttendancePopupConfig = null;
 
 export function invalidateAttendancePopupConfigCache() {
@@ -288,8 +288,9 @@ function pickScenarioApplyTo(v, fallback) {
 function attendancePopupDefaults() {
     const row = () => ({
         message: /** @type {string|null} */ (null),
-        stagingFrequency: /** @type {'every_session'} */ ('every_session'),
-        productionFrequency: /** @type {'every_session'} */ ('every_session')
+        /** 설정 미로드·타임아웃 시 — every_session이면 접속마다 노출되어 운영 빈도와 불일치가 나기 쉬움 */
+        stagingFrequency: /** @type {'once_per_day'} */ ('once_per_day'),
+        productionFrequency: /** @type {'once_per_day'} */ ('once_per_day')
     });
     return {
         noRecord: { ...row(), message: null },
