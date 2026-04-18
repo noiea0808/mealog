@@ -46,6 +46,7 @@ import { runAdminUserCreatedAtBackfill } from './admin/user-createdat-backfill.j
 import { loadAdminLogTab } from './admin/ops-log.js';
 import { bindAdminWelcomeApiOnce } from './admin/welcome-api.js';
 import { invalidateAttendancePopupConfigCache, normalizeAttendancePopup } from './attendance-check.js';
+import { invalidateLoadingSpinnerConfigCache, normalizeLoadingSpinner } from './loading-spinner-config.js';
 // 모니터링(모먼트·밀톡·게시판): HTML onclick용 window.* 등록
 import './admin/feed-moderation.js';
 import './admin/lounge-chat-moderation.js';
@@ -607,7 +608,7 @@ function syncSettingsWelcomeTopTabs(sub) {
     on.forEach((c) => target.classList.add(c));
 }
 
-// 사이드바 전환 (settings일 때 opts.sub: 'welcome' | 'welcome_api' | 'displayName')
+// 사이드바 전환 (settings일 때 opts.sub: 'welcome' | 'spinner' | 'welcome_api' | 'displayName')
 window.switchContentSidebar = function (section, opts) {
     if (ALERTS_SIDEBAR_SECTIONS.includes(section)) {
         window.switchAdminTab('alerts');
@@ -696,7 +697,7 @@ function bindAdminSettingsSubnavOnce() {
 }
 
 window.switchAdminSettingsSub = function (sub) {
-    if (sub !== 'displayName' && sub !== 'welcome' && sub !== 'welcome_api') return;
+    if (sub !== 'displayName' && sub !== 'welcome' && sub !== 'welcome_api' && sub !== 'spinner') return;
     document.querySelectorAll('.admin-settings-subnav-btn').forEach((btn) => {
         const on = btn.dataset.settingsSub === sub;
         btn.classList.toggle('text-emerald-600', on);
@@ -715,6 +716,88 @@ window.switchAdminSettingsSub = function (sub) {
         bindAdminWelcomeApiOnce();
     }
     syncSettingsWelcomeTopTabs(sub);
+};
+
+function createAdminLoadingSpinnerMessageRow(text = '') {
+    const wrap = document.createElement('div');
+    wrap.className = 'admin-loading-spinner-msg-row flex gap-2 items-start';
+    const ta = document.createElement('textarea');
+    ta.className =
+        'admin-loading-spinner-msg-text flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 outline-none focus:border-emerald-500 bg-white resize-y min-h-[2.75rem] font-sans';
+    ta.rows = 2;
+    ta.maxLength = 200;
+    ta.placeholder = '예: 오늘도 맛있는 하루 보내세요';
+    ta.value = typeof text === 'string' ? text : '';
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className =
+        'admin-loading-spinner-msg-remove shrink-0 w-9 h-9 flex items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-red-50 hover:border-red-200 hover:text-red-600';
+    rm.title = '삭제';
+    rm.setAttribute('aria-label', '문구 삭제');
+    rm.innerHTML = '<i class="fa-solid fa-trash text-sm"></i>';
+    rm.addEventListener('click', () => {
+        wrap.remove();
+        const list = document.getElementById('adminLoadingSpinnerMessageList');
+        if (list && !list.querySelector('.admin-loading-spinner-msg-row')) {
+            list.appendChild(createAdminLoadingSpinnerMessageRow(''));
+        }
+    });
+    wrap.appendChild(ta);
+    wrap.appendChild(rm);
+    return wrap;
+}
+
+function fillAdminLoadingSpinnerForm(cfg) {
+    const secEl = document.getElementById('adminLoadingSpinnerSeconds');
+    if (secEl) secEl.value = String(cfg.iconCycleSeconds);
+    const list = document.getElementById('adminLoadingSpinnerMessageList');
+    if (!list) return;
+    list.innerHTML = '';
+    const msgs = cfg.messages.length > 0 ? cfg.messages : [''];
+    msgs.forEach((t) => list.appendChild(createAdminLoadingSpinnerMessageRow(t)));
+}
+
+window.addAdminLoadingSpinnerMessageRow = function () {
+    const list = document.getElementById('adminLoadingSpinnerMessageList');
+    if (!list) return;
+    list.appendChild(createAdminLoadingSpinnerMessageRow(''));
+};
+
+window.saveLoadingSpinnerSettings = async function () {
+    const secEl = document.getElementById('adminLoadingSpinnerSeconds');
+    let iconCycleSeconds = Number(secEl && secEl.value);
+    if (!Number.isFinite(iconCycleSeconds)) iconCycleSeconds = 1.8;
+    iconCycleSeconds = Math.min(10, Math.max(0.5, iconCycleSeconds));
+    const texts = [];
+    document.querySelectorAll('#adminLoadingSpinnerMessageList .admin-loading-spinner-msg-text').forEach((el) => {
+        const v = el.value;
+        if (v && String(v).trim()) texts.push(v);
+    });
+    try {
+        const ref = doc(db, 'artifacts', appId, 'config', 'loadingSpinner');
+        const payload = {
+            iconCycleSeconds,
+            messages: texts,
+            updatedAt: serverTimestamp(),
+        };
+        await setDoc(ref, payload, { merge: true });
+        /** 로그인 전에도 읽히는 공개 문서(로그인 배너와 동일 Rules)에 복제 — 앱이 순환문구를 확실히 불러옴 */
+        await setDoc(
+            doc(db, 'artifacts', appId, 'config', 'loginBanner'),
+            {
+                loadingSpinner: {
+                    messages: texts,
+                    iconCycleSeconds,
+                },
+            },
+            { merge: true }
+        );
+        invalidateLoadingSpinnerConfigCache();
+        alert('스피너 설정이 저장되었습니다.');
+    } catch (e) {
+        console.error('스피너 설정 저장 실패:', e);
+        alert('저장에 실패했습니다: ' + (e?.message || e));
+    }
 };
 
 
@@ -1481,6 +1564,15 @@ async function loadAdminSettings() {
 
         const ap = data.attendancePopup && typeof data.attendancePopup === 'object' ? data.attendancePopup : {};
         fillAttendancePopupForm(ap);
+
+        try {
+            const lsRef = doc(db, 'artifacts', appId, 'config', 'loadingSpinner');
+            const lsSnap = await getDoc(lsRef);
+            fillAdminLoadingSpinnerForm(normalizeLoadingSpinner(lsSnap.exists() ? lsSnap.data() : null));
+        } catch (e2) {
+            console.warn('스피너 설정 로드 실패:', e2);
+            fillAdminLoadingSpinnerForm(normalizeLoadingSpinner(null));
+        }
     } catch (e) {
         console.warn('관리자 설정 로드 실패:', e);
         inputEl.value = cachedAdminDisplayName;

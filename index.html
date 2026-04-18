@@ -505,16 +505,19 @@
         </div>
     </div>
 
-    <div id="loadingOverlay" class="hidden fixed inset-0 bg-white/90 z-[9999] flex flex-col items-center justify-center">
-        <div id="loadingOverlayBox" class="flex flex-col items-center justify-center px-6 py-5 bg-white rounded-2xl shadow-lg border border-slate-100">
-            <div class="loading-food-icons relative w-10 h-10 flex items-center justify-center text-3xl">
+    <div id="loadingOverlay" class="hidden fixed inset-0 bg-white/90 z-[9999] flex flex-col items-center justify-center p-4">
+        <div id="loadingOverlayBox" class="flex w-[90%] max-w-[22rem] flex-col items-center rounded-2xl border border-slate-100 bg-white px-6 py-7 shadow-lg sm:px-7 sm:py-8">
+            <div class="loading-food-icons relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden text-4xl">
                 <span class="loading-food-icon absolute" aria-hidden="true">🍴</span>
                 <span class="loading-food-icon absolute" aria-hidden="true">🍔</span>
                 <span class="loading-food-icon absolute" aria-hidden="true">🍕</span>
                 <span class="loading-food-icon absolute" aria-hidden="true">🍎</span>
                 <span class="loading-food-icon absolute" aria-hidden="true">🍦</span>
             </div>
-            <p id="loadingOverlayMessage" class="mt-4 text-base font-bold text-slate-800 whitespace-nowrap">기록을 불러오고 있어요</p>
+            <div class="mt-6 flex w-full min-w-0 flex-col items-center gap-3">
+                <p id="loadingOverlayMessage" class="w-full text-center text-base font-bold leading-relaxed text-slate-800 [white-space:pre-wrap] break-words px-1 min-h-[1.5em]" aria-live="polite">기록을 불러오고 있어요</p>
+                <p id="loadingOverlayStatus" class="hidden w-full text-center text-sm font-semibold leading-snug text-slate-500 whitespace-pre-wrap break-words px-1" aria-live="polite"></p>
+            </div>
         </div>
     </div>
 

@@ -1901,20 +1901,138 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     }
 }
 
-/* 로딩 오버레이: 음식 아이콘 순차 전환 (배민 스타일) */
-@keyframes loadingFoodCycle {
-    0% { opacity: 1; transform: scale(1); }
-    15% { opacity: 1; transform: scale(1.1); }
-    20% { opacity: 0; transform: scale(0.9); }
-    100% { opacity: 0; transform: scale(0.9); }
+/* 로딩 오버레이: 음식 아이콘 — 오른쪽에서 들어와 왼쪽으로 나가는 순환 — 주기는 관리자·기본값 */
+:root {
+    --loading-food-duration: 1.8s;
+}
+/* 한 아이콘당 한 슬롯(표시 구간) — 전체 한 바퀴(5아이콘) = calc(var(--loading-food-duration)*5) */
+@keyframes loadingFoodSlideRTL0 {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(2.5em);
+    }
+    2% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    4.4% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    6.8% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(-2.5em);
+    }
+    20%,
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(-2.5em);
+    }
+}
+@keyframes loadingFoodSlideRTL1 {
+    0%,
+    20% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(2.5em);
+    }
+    22% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    24.4% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    26.8% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(-2.5em);
+    }
+    40%,
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(-2.5em);
+    }
+}
+@keyframes loadingFoodSlideRTL2 {
+    0%,
+    40% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(2.5em);
+    }
+    42% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    44.4% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    46.8% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(-2.5em);
+    }
+    60%,
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(-2.5em);
+    }
+}
+@keyframes loadingFoodSlideRTL3 {
+    0%,
+    60% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(2.5em);
+    }
+    62% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    64.4% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    66.8% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(-2.5em);
+    }
+    80%,
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(-2.5em);
+    }
+}
+@keyframes loadingFoodSlideRTL4 {
+    0%,
+    80% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(2.5em);
+    }
+    82% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    84.4% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    86.8% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(-2.5em);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(-2.5em);
+    }
 }
 .loading-food-icons {
     overflow: hidden;
 }
 .loading-food-icon {
-    animation: loadingFoodCycle 1s ease-in-out infinite;
+    left: 50%;
+    top: 50%;
     opacity: 0;
     background: transparent;
+    will-change: transform, opacity;
     /* 이모지 주변 1px 검정 윤곽 (text-stroke는 이모지에서 미지원이라 text-shadow로 구현) */
     text-shadow:
         1px 0 0 #000,
@@ -1927,13 +2045,28 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
         -1px -1px 0 #000;
     line-height: 1;
 }
-.loading-food-icon:first-child {
-    animation-delay: 0s;
+.loading-food-icon:nth-child(1) {
+    animation: loadingFoodSlideRTL0 calc(var(--loading-food-duration, 1.8s) * 5) ease-in-out infinite;
 }
-.loading-food-icon:nth-child(2) { animation-delay: 0.2s; }
-.loading-food-icon:nth-child(3) { animation-delay: 0.4s; }
-.loading-food-icon:nth-child(4) { animation-delay: 0.6s; }
-.loading-food-icon:nth-child(5) { animation-delay: 0.8s; }
+.loading-food-icon:nth-child(2) {
+    animation: loadingFoodSlideRTL1 calc(var(--loading-food-duration, 1.8s) * 5) ease-in-out infinite;
+}
+.loading-food-icon:nth-child(3) {
+    animation: loadingFoodSlideRTL2 calc(var(--loading-food-duration, 1.8s) * 5) ease-in-out infinite;
+}
+.loading-food-icon:nth-child(4) {
+    animation: loadingFoodSlideRTL3 calc(var(--loading-food-duration, 1.8s) * 5) ease-in-out infinite;
+}
+.loading-food-icon:nth-child(5) {
+    animation: loadingFoodSlideRTL4 calc(var(--loading-food-duration, 1.8s) * 5) ease-in-out infinite;
+}
+
+/* 전면 로딩: 순환 문구 줄바꿈(관리자 textarea) */
+#loadingOverlayMessage {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: keep-all;
+}
 
 #landingPage { 
     position: fixed; 

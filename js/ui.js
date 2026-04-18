@@ -1,11 +1,26 @@
 // UI 관련 함수들
 import { getWelcomeWeekDonutSlides, getWelcomeWeekSlotRecordCount } from './analytics/charts.js';
+import {
+    getLoadingSpinnerConfig,
+    applyLoadingFoodIconDurationSeconds,
+    clearLoadingFoodIconInlineAnimation,
+    resolveSpinnerIconCycleSeconds,
+    getSpinnerMessageStepMs,
+} from './loading-spinner-config.js';
 
 // 로딩 오버레이 중앙 관리
 let loadingOverlayTimeout = null;
 let loadingHideTimeout = null; // hideLoading 지연용
 let loadingShownAt = 0; // 메시지 표시 시 최소 표시 시간용
+let loadingSpinnerMsgTimer = null;
 let initialRecordsLoadFabClickBound = false;
+
+function stopLoadingSpinnerMessageCycle() {
+    if (loadingSpinnerMsgTimer) {
+        clearInterval(loadingSpinnerMsgTimer);
+        loadingSpinnerMsgTimer = null;
+    }
+}
 
 function ensureInitialRecordsLoadFabClickHandler() {
     const fab = document.getElementById('initialRecordsLoadFab');
@@ -24,9 +39,12 @@ export function showLoading(message = '', options = {}) {
     const isOnLoginScreen = mainApp && mainApp.classList.contains('hidden');
     if (skipOnLoginScreen && isOnLoginScreen) return;
 
+    stopLoadingSpinnerMessageCycle();
+
     const fab = document.getElementById('initialRecordsLoadFab');
     const overlay = document.getElementById('loadingOverlay');
     const messageEl = document.getElementById('loadingOverlayMessage');
+    const statusEl = document.getElementById('loadingOverlayStatus');
 
     /** 로그인 직후 기록(meals) 로딩 — 전면이 아니라 하단 FAB 크기·위치에서만 음식 아이콘 순환 */
     if (recordsFab && fab) {
@@ -39,6 +57,9 @@ export function showLoading(message = '', options = {}) {
         fab.title = label;
         ensureInitialRecordsLoadFabClickHandler();
         loadingShownAt = Date.now();
+        void getLoadingSpinnerConfig().then((cfg) => {
+            applyLoadingFoodIconDurationSeconds(resolveSpinnerIconCycleSeconds(cfg.iconCycleSeconds), overlay);
+        });
         if (loadingOverlayTimeout) clearTimeout(loadingOverlayTimeout);
         loadingOverlayTimeout = setTimeout(() => {
             hideLoading();
@@ -66,13 +87,79 @@ export function showLoading(message = '', options = {}) {
         overlay.classList.toggle('bg-white/90', dimBackground);
         overlay.classList.toggle('bg-transparent', !dimBackground);
         overlay.classList.toggle('pointer-events-none', !dimBackground);
+        loadingShownAt = Date.now();
         if (messageEl) {
-            messageEl.textContent = message || '';
-            messageEl.style.display = message ? 'block' : 'none';
-            messageEl.style.visibility = message ? 'visible' : 'hidden';
-            messageEl.classList.toggle('hidden', !message);
+            messageEl.textContent = '';
+            messageEl.style.display = 'block';
+            messageEl.style.visibility = 'visible';
+            messageEl.classList.remove('hidden');
         }
-        if (message) loadingShownAt = Date.now();
+        if (statusEl) {
+            statusEl.textContent = '';
+            statusEl.classList.add('hidden');
+            statusEl.style.display = 'none';
+        }
+        void (async () => {
+            const cfg = await getLoadingSpinnerConfig();
+            /** 스피너「아이콘 전환 주기」= 한 아이콘 한 차례(D초); 순환 문구도 D초마다 */
+            const cycleSec = resolveSpinnerIconCycleSeconds(cfg.iconCycleSeconds);
+            applyLoadingFoodIconDurationSeconds(cycleSec, overlay);
+            if (!overlay || overlay.classList.contains('hidden') || !messageEl) return;
+            const trimmed = message && String(message).trim() ? String(message).trim() : '';
+            /** 위: 관리자 스피너 문구만 순환. 아래: showLoading()으로 넘긴 진행 상태(예: 카카오 로그인 처리 중). */
+            const cmsRaw = Array.isArray(cfg.messages) ? cfg.messages : [];
+            const merged = [];
+            const pushUnique = (s) => {
+                const t = typeof s === 'string' ? s.trim() : '';
+                if (t && !merged.includes(t)) merged.push(t);
+            };
+            for (const m of cmsRaw) pushUnique(m);
+
+            /** 관리자 > 스피너에 넣은 순환문구만 사용(보조·기본 문구 없음). */
+            const lines = merged;
+            /** 등록된 문구를 무작위 순서로 쓰되, 한 번 나온 문구는 남은 문구를 다 쓸 때까지 다시 나오지 않음(소진 후 풀을 다시 채움). */
+            const makeNoRepeatRandomPicker = (all) => {
+                let remaining = [];
+                return () => {
+                    if (remaining.length === 0) remaining = [...all];
+                    const idx = Math.floor(Math.random() * remaining.length);
+                    const [picked] = remaining.splice(idx, 1);
+                    return picked;
+                };
+            };
+            if (lines.length > 1) {
+                const pickNext = makeNoRepeatRandomPicker(lines);
+                messageEl.textContent = pickNext();
+                messageEl.style.display = 'block';
+                messageEl.style.visibility = 'visible';
+                messageEl.classList.remove('hidden');
+                const stepMs = getSpinnerMessageStepMs(cycleSec);
+                loadingSpinnerMsgTimer = setInterval(() => {
+                    messageEl.textContent = pickNext();
+                }, stepMs);
+            } else if (lines.length === 1) {
+                messageEl.textContent = lines[0];
+                messageEl.style.display = 'block';
+                messageEl.style.visibility = 'visible';
+                messageEl.classList.remove('hidden');
+            } else {
+                messageEl.textContent = '';
+                messageEl.style.display = 'none';
+                messageEl.classList.add('hidden');
+            }
+            if (statusEl) {
+                if (trimmed) {
+                    statusEl.textContent = trimmed;
+                    statusEl.classList.remove('hidden');
+                    statusEl.style.display = 'block';
+                    statusEl.style.visibility = 'visible';
+                } else {
+                    statusEl.textContent = '';
+                    statusEl.classList.add('hidden');
+                    statusEl.style.display = 'none';
+                }
+            }
+        })();
         if (loadingOverlayTimeout) clearTimeout(loadingOverlayTimeout);
         loadingOverlayTimeout = setTimeout(() => {
             hideLoading();
@@ -82,8 +169,10 @@ export function showLoading(message = '', options = {}) {
 }
 
 export function hideLoading() {
+    stopLoadingSpinnerMessageCycle();
     const overlay = document.getElementById('loadingOverlay');
     const messageEl = document.getElementById('loadingOverlayMessage');
+    const statusEl = document.getElementById('loadingOverlayStatus');
     const fab = document.getElementById('initialRecordsLoadFab');
     if (!overlay && !fab) return;
     if (loadingHideTimeout) {
@@ -91,6 +180,7 @@ export function hideLoading() {
         loadingHideTimeout = null;
     }
     const doHide = () => {
+        clearLoadingFoodIconInlineAnimation();
         if (fab) {
             fab.classList.add('hidden');
             fab.setAttribute('aria-hidden', 'true');
@@ -106,6 +196,11 @@ export function hideLoading() {
         if (messageEl) {
             messageEl.textContent = '';
             messageEl.style.display = 'none';
+        }
+        if (statusEl) {
+            statusEl.textContent = '';
+            statusEl.classList.add('hidden');
+            statusEl.style.display = 'none';
         }
         if (loadingOverlayTimeout) {
             clearTimeout(loadingOverlayTimeout);

@@ -414,6 +414,11 @@ service cloud.firestore {
         allow update, delete: if false;
       }
     }
+    // 전면 로딩(음식 아이콘) 문구·속도 — 로그인 전에도 읽기 가능
+    match /artifacts/{appId}/config/loadingSpinner {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
     match /artifacts/{appId}/config/{configId} {
       allow read, write: if isAdmin();
     }
