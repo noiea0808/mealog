@@ -1,6 +1,7 @@
 /**
  * 1) config/settings: termsAgreedAt 또는 termsVersion 이 있는데 termsAgreed 가 true 가 아니면 termsAgreed: true 로 보정
- * 2) users/{uid} 루트: createdAt 이 없고 설정에 프로필 완료·약관 시각이 있으면, 그중 이른 시각으로 createdAt 백필
+ * 2) config/settings: termsAgreed === true 인데 termsVersion 이 비어 있으면 content/terms 의 currentVersion 으로 백필
+ * 3) users/{uid} 루트: createdAt 이 없고 설정에 프로필 완료·약관 시각이 있으면, 그중 이른 시각으로 createdAt 백필
  *
  * 실행 (드라이런, 변경 없음):
  *   cd functions && node scripts/fix-settings-terms-and-user-createdAt.js --dry-run
@@ -86,11 +87,20 @@ async function main() {
     initializeApp({ credential: cert(serviceAccount) });
     const db = getFirestore();
 
+    const termsMetaRef = db.collection('artifacts').doc(APP_ID).collection('content').doc('terms');
+    const termsMetaSnap = await termsMetaRef.get();
+    const currentTermsVersionFromContent =
+        termsMetaSnap.exists && termsMetaSnap.data().currentVersion != null
+            ? String(termsMetaSnap.data().currentVersion).trim()
+            : '1.0';
+
     const usersRef = db.collection('artifacts').doc(APP_ID).collection('users');
     const snap = await usersRef.get();
     console.log(`사용자 문서 ${snap.size}건 스캔, 모드: ${dryRun ? 'DRY-RUN' : 'APPLY'}`);
+    console.log(`약관 버전 백필에 사용할 currentVersion: ${currentTermsVersionFromContent}`);
 
     let fixTerms = 0;
+    let fixTermsVersion = 0;
     let fixCreated = 0;
     let skipNoSettings = 0;
 
@@ -118,6 +128,15 @@ async function main() {
             }
         }
 
+        const verEmpty = s.termsVersion == null || String(s.termsVersion).trim() === '';
+        if (termsOk && verEmpty) {
+            console.log(`[termsVersion 백필] uid=${uid} → ${currentTermsVersionFromContent}`);
+            fixTermsVersion++;
+            if (!dryRun) {
+                await settingsRef.set({ termsVersion: currentTermsVersionFromContent }, { merge: true });
+            }
+        }
+
         const profileAt = toJsDate(s.profileCompletedAt);
         const termsAt = toJsDate(s.termsAgreedAt);
         const fallbackCreated = earliestDate(profileAt, termsAt);
@@ -135,7 +154,7 @@ async function main() {
     }
 
     console.log(
-        `완료: termsAgreed 보정 ${fixTerms}건, createdAt 백필 ${fixCreated}건, 루트만·설정 없음 스킵 ${skipNoSettings}건`
+        `완료: termsAgreed 보정 ${fixTerms}건, termsVersion 백필 ${fixTermsVersion}건, createdAt 백필 ${fixCreated}건, 루트만·설정 없음 스킵 ${skipNoSettings}건`
     );
     if (dryRun) {
         console.log('실제 반영하려면 인자에 --apply 를 추가하세요.');

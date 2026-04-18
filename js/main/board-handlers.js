@@ -45,7 +45,8 @@ import {
     addCompositionAwareInput,
     warmUpIME,
     sharePhotosToExternal,
-    setupBirthdateInputFormatting
+    setupBirthdateInputFormatting,
+    SEOUL_LOCALE_OPTIONS
 } from '../utils.js';
 import {
     initAuth,
@@ -930,8 +931,8 @@ window.addBoardComment = async (postId) => {
     
     // 낙관적 반영: 목록과 같은 포맷으로 바로 표시 (이전 포맷→변환 현상 제거)
     const commentDate = new Date();
-    const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
-    const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', ...SEOUL_LOCALE_OPTIONS });
+    const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, ...SEOUL_LOCALE_OPTIONS });
     const rowHtml = `
         <div class="mb-1 text-sm" data-comment-id="${tempCommentId}">
             <span class="font-bold text-slate-800">${escapeHtml(authorNickname)}</span>
@@ -1009,8 +1010,8 @@ window.deleteBoardComment = async (commentId, postId) => {
                         else if (comment.timestamp instanceof Date) commentDate = comment.timestamp;
                         else commentDate = new Date(comment.timestamp || 0);
                         if (isNaN(commentDate.getTime())) commentDate = new Date();
-                        const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
-                        const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                        const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', ...SEOUL_LOCALE_OPTIONS });
+                        const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, ...SEOUL_LOCALE_OPTIONS });
                         const isCommentAuthor = window.currentUser && comment.authorId === window.currentUser.uid;
                         const commentDisplay = getDisplayProfile(comment.authorId, { nickname: comment.authorNickname || comment.anonymousId });
                         const commentBody = comment.content ?? comment.text ?? '';

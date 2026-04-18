@@ -984,6 +984,9 @@ export function toSeoulDateString(date) {
     }).format(date);
 }
 
+/** 게시판·공지 등 UI 표시용 — 날짜·시각 모두 Asia/Seoul (로컬/OS 타임존과 무관) */
+export const SEOUL_LOCALE_OPTIONS = { timeZone: 'Asia/Seoul' };
+
 /**
  * 서울 YYYY-MM-DD에 delta일(음수 가능)을 더한 서울 달력 날짜.
  * functions/index.js adminYmdAddDays와 동일한 산술.

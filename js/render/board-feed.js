@@ -5,7 +5,7 @@ import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { escapeHtml } from './utils.js';
 import { fetchUserProfiles } from './user-profiles.js';
-import { getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
+import { getDisplayProfile, getProfileAvatarDisplay, toSeoulDateString, SEOUL_LOCALE_OPTIONS } from '../utils.js';
 import { isDemoUser } from '../demo-account.js';
 import { FEED_TIMELINE_BATCH_SIZE } from '../db/feed-posts.js';
 
@@ -358,7 +358,7 @@ function postTimeLabel(post) {
     else if (post.timestamp instanceof Date) d = post.timestamp;
     else d = new Date(post.timestamp || 0);
     if (isNaN(d.getTime())) d = new Date();
-    return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, ...SEOUL_LOCALE_OPTIONS });
 }
 
 /** 말풍선 본문: 이스케이프 후 줄 시작·공백 뒤 @닉네임만 볼드 (이메일 중간 @는 제외) */
@@ -506,8 +506,10 @@ function postTimestampToLocalDate(post) {
     return isNaN(d.getTime()) ? new Date() : d;
 }
 
-function feedLocalDayKey(d) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+/** 피드 날짜 구분선: 한국 달력 기준 (출석·관리자 API와 동일) */
+function feedSeoulDayKey(d) {
+    if (!d || !(d instanceof Date) || isNaN(d.getTime())) return toSeoulDateString(new Date());
+    return toSeoulDateString(d);
 }
 
 /** 밀톡 타임라인: 날짜가 바뀔 때 카카오톡식 중앙 배너 (배경은 --board-feed-bg 녹색) */
@@ -516,7 +518,8 @@ function feedDateSeparatorHtml(date) {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
-        weekday: 'long'
+        weekday: 'long',
+        ...SEOUL_LOCALE_OPTIONS
     });
     return `
         <div class="feed-date-separator flex w-full shrink-0 justify-center py-2" role="separator" aria-label="${escapeHtml(label)}">
@@ -546,8 +549,8 @@ function paintFeedTimeline(root, posts) {
         const p = chronological[i];
         const prev = i > 0 ? chronological[i - 1] : null;
         const d = postTimestampToLocalDate(p);
-        const dayKey = feedLocalDayKey(d);
-        const prevDayKey = prev ? feedLocalDayKey(postTimestampToLocalDate(prev)) : null;
+        const dayKey = feedSeoulDayKey(d);
+        const prevDayKey = prev ? feedSeoulDayKey(postTimestampToLocalDate(prev)) : null;
         if (prevDayKey !== dayKey) {
             rowParts.push(feedDateSeparatorHtml(d));
         }

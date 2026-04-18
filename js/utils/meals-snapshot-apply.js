@@ -28,6 +28,31 @@ import { showToast } from '../ui.js';
 import { mealRecordHasBase64PendingPhotos } from './meal-sync-manager.js';
 import { appState } from '../state.js';
 
+/** mealHistory에서 YYYY-MM-DD 최소일 (없으면 null). limit(50)으로 초기 스냅샷에 구멍이 생길 때 loaded 범위와 일치시키기 위함 */
+function minMealDateYmd(meals) {
+    if (!Array.isArray(meals) || !meals.length) return null;
+    let min = null;
+    for (const m of meals) {
+        const d = m?.date;
+        if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+            if (min == null || d < min) min = d;
+        }
+    }
+    return min;
+}
+
+function maxMealDateYmd(meals) {
+    if (!Array.isArray(meals) || !meals.length) return null;
+    let max = null;
+    for (const m of meals) {
+        const d = m?.date;
+        if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+            if (max == null || d > max) max = d;
+        }
+    }
+    return max;
+}
+
 /** 전송 계층 오프라인만 — 연결 오버레이 표시만으로는 서버 removed 를 막지 않음(복구 직후 고착 방지) */
 function mealsSnapshotDeleteHoldWhileTransportOffline() {
     if (appState.localNetworkForcedOffline === true) return true;
@@ -151,7 +176,10 @@ export function applyMealsSnapshotPrimary(p) {
             })
             .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
         window.mealHistory = findUniqueMeals(serverMapped, prevForMerge);
-        window.loadedMealsDateRange = { start: cutoffDateStr, end: todayStr };
+        // cutoff~오늘 "윈도우"와 limit(50) 때문에 실제 최소 일자는 cutoff보다 훨씬 늦을 수 있음.
+        // start를 cutoff로 두면 loadMore가 <cutoff만 당겨와 그 사이(예: 3/28~4/8)가 영구 구멍이 됨 → 실제 최소 일자 사용.
+        const minActual = minMealDateYmd(window.mealHistory);
+        window.loadedMealsDateRange = { start: minActual ?? cutoffDateStr, end: todayStr };
         loadState.isInitialLoad = false;
         snap.docs.forEach((d) => {
             if (mealDocSnapshotAppearsServerAcked(d.metadata, { allowFromCacheAck: true })) {
@@ -321,6 +349,10 @@ export function applyMealsSnapshotPrimary(p) {
         if (hasChanges) {
             window.mealHistory.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
             window.mealHistory = dedupeMealListOnly(window.mealHistory);
+            const minD = minMealDateYmd(window.mealHistory);
+            if (window.loadedMealsDateRange && minD) {
+                window.loadedMealsDateRange = { ...window.loadedMealsDateRange, start: minD };
+            }
         }
     }
 
@@ -359,6 +391,13 @@ export function applyMealsSnapshotFallback(p) {
         })
         .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
     window.mealHistory = findUniqueMeals(serverMapped, prevForMerge);
+    const minF = minMealDateYmd(window.mealHistory);
+    const maxF = maxMealDateYmd(window.mealHistory);
+    const tl = todayLocalYmd();
+    window.loadedMealsDateRange = {
+        start: minF ?? tl,
+        end: maxF ?? tl
+    };
     const allowFromCacheAck = firstSnapshotState.value;
     snap.docs.forEach((d) => {
         if (

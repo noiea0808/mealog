@@ -483,11 +483,6 @@ function checkSpam(content) {
     return { isSpam: true, reason: '과도한 링크가 포함되어 있습니다.' };
   }
 
-  // 반복 문자 체크 (예: "aaaaaa", "111111")
-  if (/(.)\1{10,}/.test(text)) {
-    return { isSpam: true, reason: '반복된 문자가 과도합니다.' };
-  }
-
   return { isSpam: false };
 }
 

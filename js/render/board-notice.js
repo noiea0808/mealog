@@ -3,7 +3,7 @@
  */
 import { appState } from '../state.js';
 import { escapeHtml, renderFormattedContent, getPlainTextPreview } from './utils.js';
-import { getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
+import { getDisplayProfile, getProfileAvatarDisplay, SEOUL_LOCALE_OPTIONS } from '../utils.js';
 import { getAdminDisplayName } from '../db.js';
 import { fetchUserProfiles } from './user-profiles.js';
 import { isDemoUser } from '../demo-account.js';
@@ -132,8 +132,8 @@ async function renderNotices() {
                 date = new Date();
             }
             
-            const dateStr = date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
-            const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+            const dateStr = date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', ...SEOUL_LOCALE_OPTIONS });
+            const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, ...SEOUL_LOCALE_OPTIONS });
             const noticeContent = notice.content || '';
             const formattedPreview = escapeHtml(getPlainTextPreview(noticeContent));
             const noticeType = notice.type || notice.noticeType || 'notice';
@@ -426,8 +426,8 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
     for (const post of filteredPosts) {
         const postDate = postTimestampToDate(post);
 
-        const dateStr = postDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
-        const timeStr = postDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+        const dateStr = postDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', ...SEOUL_LOCALE_OPTIONS });
+        const timeStr = postDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, ...SEOUL_LOCALE_OPTIONS });
 
         // "치프에게" 카테고리 특별 처리: 작성자 이외에는 제목/내용 미리보기 숨김
         const isAuthor = window.currentUser && post.authorId === window.currentUser.uid;
@@ -544,8 +544,8 @@ export async function renderBoardDetail(postId) {
             postDate = new Date(); // 기본값으로 현재 시간 사용
         }
         
-        const dateStr = postDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
-        const timeStr = postDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+        const dateStr = postDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short', ...SEOUL_LOCALE_OPTIONS });
+        const timeStr = postDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, ...SEOUL_LOCALE_OPTIONS });
         
         const categoryLabels = {
             'serious': '무거운',
@@ -676,8 +676,8 @@ export async function renderBoardDetail(postId) {
                                 commentDate = new Date(); // 기본값으로 현재 시간 사용
                             }
                             
-                            const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
-                            const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                            const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', ...SEOUL_LOCALE_OPTIONS });
+                            const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, ...SEOUL_LOCALE_OPTIONS });
                             const isCommentAuthor = window.currentUser && comment.authorId === window.currentUser.uid;
                             const commentNickname = comment.isAdminComment === true ? adminDisplayName : getDisplayProfile(comment.authorId, { nickname: comment.authorNickname || comment.anonymousId }).nickname;
                             const commentBody = comment.content ?? comment.text ?? '';
@@ -771,8 +771,8 @@ export async function renderNoticeDetail(noticeId) {
             date = new Date();
         }
         
-        const dateStr = date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
-        const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+        const dateStr = date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short', ...SEOUL_LOCALE_OPTIONS });
+        const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, ...SEOUL_LOCALE_OPTIONS });
         
         const noticeTypeLabels = { important: '중요', notice: '알림', light: '가벼운' };
         const noticeTypeColors = { important: 'bg-red-100 text-red-700', notice: 'bg-blue-100 text-blue-700', light: 'bg-slate-100 text-slate-700' };

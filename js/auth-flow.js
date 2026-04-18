@@ -48,8 +48,9 @@ async function hydrateUserSettingsFromServer(uid) {
 }
 
 /**
- * Firestore에 남은 값 기준으로 약관 동의가 **완결**됐는지 (관리자·앱 동일 엄격 기준)
- * — termsAgreed === true 이고, termsVersion 비어 있지 않고, **현재 서비스 약관 버전과 일치**
+ * 앱에서 약관 단계를 건너뛸 수 있는지 (온보딩·재동의 판별)
+ * — termsAgreed === true 이고 termsVersion 비어 있지 않으며 **현재 서비스 버전과 일치**
+ * — 버전만 다르면 재동의 (약관 업데이트)
  */
 async function isTermsAgreementRecordedAndCurrent(settings) {
     if (!settings || settings.termsAgreed !== true) return false;
@@ -62,6 +63,27 @@ async function isTermsAgreementRecordedAndCurrent(settings) {
         console.warn('isTermsAgreementRecordedAndCurrent: 현재 약관 버전 조회 실패, constants 로 비교', e);
     }
     return String(v).trim() === String(current).trim();
+}
+
+/**
+ * termsAgreed === true 인데 termsVersion 이 비어 있으면, 현재 서비스 버전으로 저장 (DB·레거시 스냅샷 정리)
+ * — 온보딩 위저드 없이 한 번만 merge 저장
+ */
+async function maybeBackfillTermsVersionFromAgreement(uid) {
+    if (!uid || typeof window === 'undefined') return;
+    if (auth.currentUser && isDemoUser(auth.currentUser)) return;
+    const ws = window.userSettings;
+    if (!ws || ws.termsAgreed !== true) return;
+    const v = ws.termsVersion;
+    if (v != null && String(v).trim() !== '') return;
+    try {
+        const current = await getCurrentTermsVersion();
+        window.userSettings = { ...ws, termsVersion: current };
+        await dbOps.saveSettings(window.userSettings);
+        console.log('✅ 약관 동의만 있고 버전 없음 → termsVersion 백필:', current);
+    } catch (e) {
+        console.warn('약관 버전 백필 저장 실패:', e?.message || e);
+    }
 }
 
 /** hasCompleted 직후 호출 — onDataUpdate가 더 이상 안 오는 경우에도 출석 팝업이 뜨도록 */
@@ -451,7 +473,12 @@ export class AuthFlowManager {
             } catch (e) {
                 console.warn('Auth 닉네임 시드(백그라운드) 스킵:', e?.message || e);
             }
-            
+            try {
+                await maybeBackfillTermsVersionFromAgreement(user.uid);
+            } catch (e) {
+                console.warn('약관 버전 백필(백그라운드) 스킵:', e?.message || e);
+            }
+
             // 기존 사용자 확인 (캐시 우선)
             let isExistingUser = false;
             if (this._cachedExistingUser !== undefined) {
@@ -678,12 +705,14 @@ export class AuthFlowManager {
 
             const uid = this.user?.uid;
             await hydrateUserSettingsFromServer(uid);
-            
+            await maybeBackfillTermsVersionFromAgreement(uid);
+
             // 프로필·약관(버전 포함) 상태 확인
             let readiness = await this.checkUserReadiness(this.user);
             if (!readiness.termsAgreed && uid) {
                 await new Promise((r) => setTimeout(r, 400));
                 await hydrateUserSettingsFromServer(uid);
+                await maybeBackfillTermsVersionFromAgreement(uid);
                 readiness = await this.checkUserReadiness(this.user);
             }
 
@@ -734,11 +763,13 @@ export class AuthFlowManager {
 
             const uid = this.user.uid;
             await hydrateUserSettingsFromServer(uid);
+            await maybeBackfillTermsVersionFromAgreement(uid);
 
             let readiness = await this.checkUserReadiness(this.user);
             if (!readiness.termsAgreed && uid) {
                 await new Promise((r) => setTimeout(r, 400));
                 await hydrateUserSettingsFromServer(uid);
+                await maybeBackfillTermsVersionFromAgreement(uid);
                 readiness = await this.checkUserReadiness(this.user);
             }
             if (!readiness.termsAgreed) {
