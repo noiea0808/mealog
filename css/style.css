@@ -49,7 +49,7 @@ html.platform-native-app .bottom-nav button i {
     font-size: 1.375rem;
 }
 html.platform-native-app #boardCategoryRow .board-category-btn {
-    font-size: 0.8125rem;
+    font-size: 18px;
 }
 /* 레이아웃 시프트 방지 */
 html {
@@ -1904,6 +1904,8 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 /* 로딩 오버레이: 음식 아이콘 — 오른쪽에서 들어와 왼쪽으로 나가는 순환 — 주기는 관리자·기본값 */
 :root {
     --loading-food-duration: 0.5s;
+    /* FAB 전용 — 전면 오버레이보다 빠른 아이콘 전환 */
+    --loading-food-fab-slot: 0.2s;
 }
 /* 한 아이콘당 한 슬롯(표시 구간) — 전체 한 바퀴(5아이콘) = calc(var(--loading-food-duration)*5) */
 /* 각 아이콘 슬롯 20% 중 대부분을 중앙 고정(표시), 입·출만 짧게 — 공백 구간 최소화 */
@@ -2008,6 +2010,18 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 .loading-food-icons {
     overflow: hidden;
 }
+/* 전면 로딩: 스피너 이모지 뒤 회색 원(박스와 동일 직경) */
+#loadingOverlay .loading-food-icons--overlay {
+    /* 기본 3.5rem(h-14) 대비 10% 큰 회색 원 */
+    width: calc(3.5rem * 1.1);
+    height: calc(3.5rem * 1.1);
+    min-width: calc(3.5rem * 1.1);
+    min-height: calc(3.5rem * 1.1);
+    border-radius: 9999px;
+    background-color: rgb(226 232 240 / 0.92);
+    box-shadow: inset 0 1px 2px rgb(15 23 42 / 0.07);
+    border: 1px solid rgb(203 213 225 / 0.8);
+}
 .loading-food-icon {
     left: 50%;
     top: 50%;
@@ -2040,6 +2054,23 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 }
 .loading-food-icon:nth-child(5) {
     animation: loadingFoodSlideRTL4 calc(var(--loading-food-duration, 0.5s) * 5) linear infinite;
+}
+
+/* 기록 로딩 FAB — 오버레이와 별도 슬롯(빠른 전환) */
+#initialRecordsLoadFab .loading-food-icon:nth-child(1) {
+    animation: loadingFoodSlideRTL0 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
+}
+#initialRecordsLoadFab .loading-food-icon:nth-child(2) {
+    animation: loadingFoodSlideRTL1 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
+}
+#initialRecordsLoadFab .loading-food-icon:nth-child(3) {
+    animation: loadingFoodSlideRTL2 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
+}
+#initialRecordsLoadFab .loading-food-icon:nth-child(4) {
+    animation: loadingFoodSlideRTL3 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
+}
+#initialRecordsLoadFab .loading-food-icon:nth-child(5) {
+    animation: loadingFoodSlideRTL4 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
 }
 
 /* 전면 로딩: 순환 문구 줄바꿈(관리자 textarea) */
@@ -2856,7 +2887,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     pointer-events: none;
 }
 
-/* 카테고리 필터: 보조 (chip) */
+/* 카테고리 필터 버튼 기본 (글쓰기 등 — #boardCategoryRow 아님) */
 .board-category-btn {
     padding: 0.375rem 0.75rem;
     font-weight: 600;
@@ -2872,6 +2903,68 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     background-color: #000000 !important;
     color: #ffffff !important;
     border-color: #000000 !important;
+}
+
+/* 게시판 목록·상세 카드 하단 해시태그 (#먹는, #사진있음) — Yeon Sung 16px */
+.board-category-hashtag {
+    font-family: 'Yeon Sung', serif;
+    font-size: 16px;
+    line-height: 1.35;
+    font-weight: 400;
+    color: #31966b;
+}
+
+/* 게시판 상단 카테고리 필터: 태그형 (#전체 #먹는 …) — 18px 검정 */
+#boardCategoryRow .board-category-btn {
+    padding: 0.2rem 0.35rem !important;
+    font-family: 'Yeon Sung', serif !important;
+    font-size: 18px !important;
+    font-weight: 400 !important;
+    line-height: 1.3;
+    background-color: transparent !important;
+    color: #000000 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    white-space: nowrap;
+}
+#boardCategoryRow .board-category-btn:hover:not(.active) {
+    background-color: transparent !important;
+    color: #475569 !important;
+}
+#boardCategoryRow .board-category-btn.active {
+    background-color: transparent !important;
+    color: #000000 !important;
+    border: none !important;
+    font-weight: 600 !important;
+    text-decoration: underline;
+    text-underline-offset: 0.2rem;
+    text-decoration-thickness: 1px;
+}
+
+/* 글쓰기 화면 카테고리 — 목록·본문 해시태그와 동일 색 (#31966b) */
+#boardWriteView .board-write-category-btn.board-category-btn {
+    padding: 0.2rem 0.35rem !important;
+    font-family: 'Yeon Sung', serif !important;
+    font-size: 16px !important;
+    font-weight: 400 !important;
+    line-height: 1.35;
+    background-color: transparent !important;
+    color: #31966b !important;
+    border: none !important;
+    border-radius: 0 !important;
+}
+#boardWriteView .board-write-category-btn.board-category-btn:hover:not(.active) {
+    background-color: transparent !important;
+    color: #287a56 !important;
+}
+#boardWriteView .board-write-category-btn.board-category-btn.active {
+    background-color: transparent !important;
+    color: #31966b !important;
+    border: none !important;
+    font-weight: 600 !important;
+    text-decoration: underline;
+    text-underline-offset: 0.2rem;
+    text-decoration-thickness: 1px;
 }
 
 #board-sort-latest.active,
@@ -3290,23 +3383,54 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     border-left: 4px solid rgb(234 179 8 / 0.3);
 }
 
-/* 밀톡 게시글 상세: 전체/헤더/본문 간격 25% 수준 */
+/* 밀톡 게시글 상세: 목록과 동일 풀폭·배경 */
 #boardDetailView.board-detail-view {
-    padding-top: 0.25rem !important;   /* py-3(0.75rem) → 25% */
+    padding-top: 0.25rem !important;
     padding-bottom: 0.25rem !important;
 }
 
-/* 밀톡 본문보기 바탕: 연한 연회색 */
+/* 밀톡 본문보기: 게시판 목록 패널과 동일 연회색 바탕, 카드만 풀폭 */
 #boardDetailContent {
-    background: #f8fafc !important; /* slate-50, 연한 연회색 */
+    background: rgb(241 245 249) !important;
     margin-left: -1rem;
     margin-right: -1rem;
-    margin-top: 0.125rem !important;  /* 헤더-본문 간격 25% */
-    padding: 0.5rem;
-    border-radius: 0.75rem 0.75rem 0 0;
+    margin-top: 0 !important;
+    padding: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    border-radius: 0;
+    width: calc(100% + 2rem);
+    max-width: none;
+    box-sizing: border-box;
 }
 
-/* 밀톡 본문보기 카드: 내부 화이트, 위아래 여백 25% 수준 */
+.board-detail-page-root {
+    width: 100%;
+}
+
+/* 상세 상단 글 카드: 목록 카드(.board-list-card)와 동일 스킨 — 클릭 시 눌림 효과만 약화 */
+.board-detail-post-card.board-list-card:active {
+    box-shadow:
+        0 1px 2px rgba(15, 23, 42, 0.06),
+        0 3px 10px rgba(15, 23, 42, 0.07),
+        0 0 0 1px rgba(15, 23, 42, 0.03);
+}
+
+/* 본문 보기 카드: 오른쪽 경계선(목록 카드는 border-right 없음 → 상세만 얇게 표시) */
+#boardDetailContent .board-detail-post-card.board-list-card {
+    border-right: 1px solid rgb(226 232 240);
+}
+
+/* 댓글 영역: 본문 카드와 동일 스킨 */
+#boardDetailContent .board-detail-comments-card.board-list-card {
+    border-right: 1px solid rgb(226 232 240);
+}
+
+#boardDetailContent .board-detail-comment-input:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+/* 글쓰기 등 다른 화면용 (밀톡 상세에서는 .board-list-card 사용) */
 .board-post-card {
     margin-top: 0.125rem;
     margin-bottom: 0.25rem;

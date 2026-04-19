@@ -180,26 +180,31 @@ import { syncOrphanedSharesToMoment } from './shares-sync.js';
 export function registerMainBoardHandlers() {
 
 window.switchBoardListSubTab = (sub) => {
-    const next = sub === 'board' ? 'board' : 'feed';
+    const next = sub === 'board' ? 'board' : sub === 'notice' ? 'notice' : 'feed';
     if (appState.boardListSubTab === next) {
         try {
             if (next === 'feed' && typeof window.markBoardFeedSubtabSeen === 'function') {
                 window.markBoardFeedSubtabSeen();
             } else if (next === 'board' && typeof window.markBoardBoardSubtabSeen === 'function') {
                 window.markBoardBoardSubtabSeen();
+            } else if (next === 'notice' && typeof window.markBoardNoticeSubtabSeen === 'function') {
+                window.markBoardNoticeSubtabSeen();
             }
         } catch (_) {}
         return;
     }
     appState.boardListSubTab = next;
     if (next === 'feed') logUsageMetric('lounge_mealtalk').catch(() => {});
-    else logUsageMetric('lounge_board').catch(() => {});
+    else if (next === 'board') logUsageMetric('lounge_board').catch(() => {});
+    else logUsageMetric('lounge_notice').catch(() => {});
     renderBoard(window.currentBoardCategory || 'all');
     try {
         if (next === 'feed' && typeof window.markBoardFeedSubtabSeen === 'function') {
             window.markBoardFeedSubtabSeen();
         } else if (next === 'board' && typeof window.markBoardBoardSubtabSeen === 'function') {
             window.markBoardBoardSubtabSeen();
+        } else if (next === 'notice' && typeof window.markBoardNoticeSubtabSeen === 'function') {
+            window.markBoardNoticeSubtabSeen();
         }
     } catch (_) {}
     if (typeof window.__resetBoardPanelScrollNav === 'function') window.__resetBoardPanelScrollNav();
@@ -240,15 +245,14 @@ window.openBoardWrite = () => {
     if (typeof window.renderBoardWritePreviews === 'function') window.renderBoardWritePreviews();
     
     // 입력 필드 초기화
-    document.getElementById('boardWriteTitle').value = '';
     const boardWriteContentEl = document.getElementById('boardWriteContent');
     if (boardWriteContentEl) {
         boardWriteContentEl.innerHTML = '';
         boardWriteContentEl.classList.add('format-editor-empty');
     }
-    document.getElementById('boardWriteCategory').value = 'serious';
+    document.getElementById('boardWriteCategory').value = 'chat';
     if (typeof window.setBoardWriteCategory === 'function') {
-        window.setBoardWriteCategory('serious');
+        window.setBoardWriteCategory('chat');
     }
 
     const prefill = window._boardWritePrefill;
@@ -260,11 +264,6 @@ window.openBoardWrite = () => {
         if (raw) {
             boardWriteContentEl.innerHTML = escapeHtml(raw).replace(/\n/g, '<br>');
             boardWriteContentEl.classList.remove('format-editor-empty');
-            const titleInput = document.getElementById('boardWriteTitle');
-            if (titleInput) {
-                const firstLine = raw.split(/\n/).map((s) => s.trim()).find(Boolean) || raw;
-                titleInput.value = firstLine.length > 100 ? `${firstLine.slice(0, 100)}…` : firstLine;
-            }
             if (prefill.category && typeof window.setBoardWriteCategory === 'function') {
                 window.setBoardWriteCategory(prefill.category);
             }
@@ -315,7 +314,7 @@ window.backToBoardList = (optimisticPost = null, options = null) => {
     if (boardListView) boardListView.classList.remove('hidden');
     if (boardDetailView) boardDetailView.classList.add('hidden');
     if (boardWriteView) boardWriteView.classList.add('hidden');
-    if (tracePanel && appState.currentTab === 'board' && appState.boardListSubTab !== 'feed') {
+    if (tracePanel && appState.currentTab === 'board' && appState.boardListSubTab === 'board') {
         tracePanel.classList.remove('hidden');
     }
     
@@ -435,9 +434,8 @@ window.submitBoardPost = async () => {
         active.blur();
         await new Promise(r => setTimeout(r, 80));
     }
-    const titleEl = document.getElementById('boardWriteTitle');
     const boardWriteContentEl = document.getElementById('boardWriteContent');
-    const title = (titleEl && titleEl.value) ? titleEl.value.trim() : '';
+    const title = '';
     const rawContent = boardWriteContentEl ? boardWriteContentEl.innerHTML : '';
     let content = sanitizeFormattedText(rawContent).trim();
     const categoryEl = document.getElementById('boardWriteCategory');
@@ -448,10 +446,6 @@ window.submitBoardPost = async () => {
     if (!content && boardWriteContentEl) {
         const plainText = (boardWriteContentEl.innerText || '').trim();
         if (plainText) content = plainText.replace(/\n/g, '<br>');
-    }
-    if (!title) {
-        showToast("제목을 입력해주세요.", 'error');
-        return;
     }
     if (!content) {
         showToast("내용을 입력해주세요.", 'error');
@@ -843,11 +837,17 @@ window.editBoardPost = async (postId) => {
         if (boardDetailView) boardDetailView.classList.add('hidden');
         if (boardWriteView) boardWriteView.classList.remove('hidden');
         
-        // 입력 필드에 기존 데이터 채우기
-        document.getElementById('boardWriteTitle').value = post.title || '';
+        // 입력 필드에 기존 데이터 채우기 — 구 제목은 본문 상단에 합쳐서 편집
         const boardWriteContentEl = document.getElementById('boardWriteContent');
         if (boardWriteContentEl) {
-            boardWriteContentEl.innerHTML = (post.content || '').replace(/\n/g, '<br>');
+            const legacyTitle = post.title && String(post.title).trim() ? String(post.title).trim() : '';
+            let bodyHtml = post.content || '';
+            if (bodyHtml && !/<[a-z]/i.test(bodyHtml.trim())) {
+                bodyHtml = escapeHtml(bodyHtml).replace(/\n/g, '<br>');
+            }
+            boardWriteContentEl.innerHTML = legacyTitle
+                ? `<p><strong>${escapeHtml(legacyTitle)}</strong></p>${bodyHtml}`
+                : bodyHtml;
             boardWriteContentEl.classList.remove('format-editor-empty');
         }
         document.getElementById('boardWriteCategory').value = post.category || 'serious';
@@ -902,6 +902,34 @@ window.deleteBoardPost = (postId) => {
 };
 
 const _boardCommentSubmitting = {};
+
+/** 게시판 상세 댓글 한 줄 — `renderBoardDetail` 마크업과 동일 */
+function buildBoardDetailCommentRowHtml({
+    commentId,
+    postId,
+    nickname,
+    body,
+    commentDateStr,
+    commentTimeStr,
+    showDelete
+}) {
+    const timePart =
+        commentDateStr && commentTimeStr
+            ? `<time class="text-xs text-slate-400 tabular-nums shrink-0 pt-0.5">${commentDateStr} ${commentTimeStr}</time>`
+            : '';
+    const deletePart = showDelete
+        ? `<div class="mt-2"><button type="button" onclick="window.deleteBoardComment('${commentId}', '${postId}')" class="text-xs font-semibold text-slate-400 hover:text-red-500 transition-colors">삭제</button></div>`
+        : '';
+    return `<div class="py-3 first:pt-0 last:pb-0 text-sm" data-comment-id="${commentId}">
+    <div class="flex items-start justify-between gap-2">
+      <span class="font-bold text-slate-800 shrink-0">${escapeHtml(nickname)}</span>
+      ${timePart}
+    </div>
+    <p class="text-sm text-slate-700 leading-relaxed mt-1.5 whitespace-pre-wrap break-words">${escapeHtml(body)}</p>
+    ${deletePart}
+  </div>`;
+}
+
 window.addBoardComment = async (postId) => {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         showToast("로그인이 필요합니다.", 'error');
@@ -933,22 +961,25 @@ window.addBoardComment = async (postId) => {
     const commentDate = new Date();
     const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', ...SEOUL_LOCALE_OPTIONS });
     const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, ...SEOUL_LOCALE_OPTIONS });
-    const rowHtml = `
-        <div class="mb-1 text-sm" data-comment-id="${tempCommentId}">
-            <span class="font-bold text-slate-800">${escapeHtml(authorNickname)}</span>
-            <span class="text-slate-800 ml-2">${escapeHtml(content)}</span>
-            <span class="text-xs text-slate-400 ml-2">${commentDateStr} ${commentTimeStr}</span>
-            <button onclick="window.deleteBoardComment('${tempCommentId}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>
-        </div>
-    `;
+    const rowHtml = buildBoardDetailCommentRowHtml({
+        commentId: tempCommentId,
+        postId,
+        nickname: authorNickname,
+        body: content,
+        commentDateStr,
+        commentTimeStr,
+        showDelete: true
+    });
     if (commentsListEl) {
+        commentsListEl.querySelector('.board-detail-comments-empty')?.remove();
+        commentsListEl.classList.add('divide-y', 'divide-slate-100');
         commentsListEl.insertAdjacentHTML('beforeend', rowHtml);
         const last = commentsListEl.lastElementChild;
         if (last) last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
     if (commentsCountEl) {
         const n = (parseInt(commentsCountEl.textContent, 10) || 0) + 1;
-        commentsCountEl.textContent = n;
+        commentsCountEl.textContent = String(n);
     }
     input.value = '';
     
@@ -969,10 +1000,15 @@ window.addBoardComment = async (postId) => {
         if (commentsListEl) {
             const tempRow = commentsListEl.querySelector(`[data-comment-id="${tempCommentId}"]`);
             if (tempRow) tempRow.remove();
+            if (commentsListEl.children.length === 0) {
+                commentsListEl.classList.remove('divide-y', 'divide-slate-100');
+                commentsListEl.innerHTML =
+                    '<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>';
+            }
         }
         if (commentsCountEl) {
             const n = Math.max(0, (parseInt(commentsCountEl.textContent, 10) || 0) - 1);
-            commentsCountEl.textContent = n || '';
+            commentsCountEl.textContent = String(n);
         }
     } finally {
         _boardCommentSubmitting[postId] = false;
@@ -988,7 +1024,12 @@ window.deleteBoardComment = async (commentId, postId) => {
     const prevCount = commentsCountEl ? (parseInt(commentsCountEl.textContent, 10) || 0) : 0;
     if (row) {
         row.remove();
-        if (commentsCountEl) commentsCountEl.textContent = Math.max(0, prevCount - 1);
+        if (commentsCountEl) commentsCountEl.textContent = String(Math.max(0, prevCount - 1));
+        if (commentsListEl && commentsListEl.children.length === 0) {
+            commentsListEl.classList.remove('divide-y', 'divide-slate-100');
+            commentsListEl.innerHTML =
+                '<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>';
+        }
     }
     
     try {
@@ -1002,6 +1043,7 @@ window.deleteBoardComment = async (commentId, postId) => {
             if (commentsListEl && commentsCountEl) {
                 commentsCountEl.textContent = comments.length;
                 if (comments.length > 0) {
+                    commentsListEl.classList.add('divide-y', 'divide-slate-100');
                     commentsListEl.innerHTML = comments.map(comment => {
                         let commentDate;
                         if (!comment.timestamp) commentDate = new Date();
@@ -1015,10 +1057,20 @@ window.deleteBoardComment = async (commentId, postId) => {
                         const isCommentAuthor = window.currentUser && comment.authorId === window.currentUser.uid;
                         const commentDisplay = getDisplayProfile(comment.authorId, { nickname: comment.authorNickname || comment.anonymousId });
                         const commentBody = comment.content ?? comment.text ?? '';
-                        return `<div class="mb-1 text-sm" data-comment-id="${comment.id}"><span class="font-bold text-slate-800">${escapeHtml(commentDisplay.nickname)}</span><span class="text-slate-800 ml-2">${escapeHtml(commentBody)}</span><span class="text-xs text-slate-400 ml-2">${commentDateStr} ${commentTimeStr}</span>${isCommentAuthor ? `<button onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}</div>`;
+                        return buildBoardDetailCommentRowHtml({
+                            commentId: comment.id,
+                            postId,
+                            nickname: commentDisplay.nickname,
+                            body: commentBody,
+                            commentDateStr,
+                            commentTimeStr,
+                            showDelete: isCommentAuthor
+                        });
                     }).join('');
                 } else {
-                    commentsListEl.innerHTML = '';
+                    commentsListEl.classList.remove('divide-y', 'divide-slate-100');
+                    commentsListEl.innerHTML =
+                        '<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>';
                 }
             }
         } catch (err) {
@@ -1029,11 +1081,15 @@ window.deleteBoardComment = async (commentId, postId) => {
 
 const boardSubtabFeed = document.getElementById('boardSubtabFeed');
 const boardSubtabBoard = document.getElementById('boardSubtabBoard');
+const boardSubtabNotice = document.getElementById('boardSubtabNotice');
 if (boardSubtabFeed) {
     boardSubtabFeed.addEventListener('click', () => window.switchBoardListSubTab('feed'));
 }
 if (boardSubtabBoard) {
     boardSubtabBoard.addEventListener('click', () => window.switchBoardListSubTab('board'));
+}
+if (boardSubtabNotice) {
+    boardSubtabNotice.addEventListener('click', () => window.switchBoardListSubTab('notice'));
 }
 
 const BOARD_SCROLLBAR_ACTIVE_MS = 750;

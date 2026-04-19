@@ -46,6 +46,7 @@ export const PAGE_USAGE_METRIC_DEFS = [
     { field: 'tab_mealog', section: '밀로그', label: '탭 방문' },
     { field: 'lounge_mealtalk', section: '라운지', label: '밀톡' },
     { field: 'lounge_board', section: '라운지', label: '게시판' },
+    { field: 'lounge_notice', section: '라운지', label: '공지' },
     { field: 'settings_profile', section: '사용자', label: '프로필' },
     { field: 'settings_tags', section: '사용자', label: '태그 관리' },
     { field: 'settings_mealdang_memo', section: '사용자', label: '밀당 메모' },

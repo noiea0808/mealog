@@ -20,11 +20,12 @@ const LS_MOMENT = 'mealog_nav_moment_seen_ms_';
 const LS_BOARD = 'mealog_nav_board_seen_ms_';
 const LS_BOARD_FEED = 'mealog_nav_board_feed_seen_ms_';
 const LS_BOARD_BOARD = 'mealog_nav_board_board_seen_ms_';
+const LS_BOARD_NOTICE = 'mealog_nav_board_notice_seen_ms_';
 /** visibility + pageshow가 연달아 올 때 한 번만 합치기 */
 const FOREGROUND_DEBOUNCE_MS = 280;
 
 let foregroundDebounceTimer = null;
-let _lastPeek = { moment: 0, feed: 0, board: 0 };
+let _lastPeek = { moment: 0, feed: 0, board: 0, notice: 0 };
 
 function storageUidKey() {
     const u = window.currentUser;
@@ -57,6 +58,24 @@ function getBoardPostTsMs(post) {
     if (typeof post.timestamp === 'string') return new Date(post.timestamp).getTime();
     if (post.timestamp instanceof Date) return post.timestamp.getTime();
     return new Date(post.timestamp || 0).getTime();
+}
+
+async function peekLatestNoticeTimestampMs() {
+    try {
+        const noticesColl = collection(db, 'artifacts', appId, 'notices');
+        const q = query(noticesColl, orderBy('timestamp', 'desc'), limit(1));
+        const snap = await getDocsFromServer(q);
+        if (!snap.docs.length) return 0;
+        const data = snap.docs[0].data();
+        const ts = data?.timestamp;
+        if (ts && typeof ts.toDate === 'function') return ts.toDate().getTime();
+        if (typeof ts === 'string') return new Date(ts).getTime();
+        if (ts instanceof Date) return ts.getTime();
+        return new Date(ts || 0).getTime();
+    } catch (e) {
+        console.warn('peekLatestNoticeTimestampMs:', e?.message || e);
+        return 0;
+    }
 }
 
 async function peekLatestBoardPostTimestampMs() {
@@ -103,7 +122,8 @@ function setDotVisible(tab, visible) {
 }
 
 function setBoardSubtabDotVisible(subtab, visible) {
-    const id = subtab === 'board' ? 'boardSubtabBoard' : 'boardSubtabFeed';
+    const id =
+        subtab === 'board' ? 'boardSubtabBoard' : subtab === 'notice' ? 'boardSubtabNotice' : 'boardSubtabFeed';
     const btn = document.getElementById(id);
     const dot = btn?.querySelector('.board-subtab-update-dot');
     if (!dot) return;
@@ -115,17 +135,20 @@ export function clearNavFeedUpdateDots() {
     setDotVisible('board', false);
     setBoardSubtabDotVisible('feed', false);
     setBoardSubtabDotVisible('board', false);
+    setBoardSubtabDotVisible('notice', false);
 }
 
-function applyBaselineAndCompare(uidKey, peekMoment, peekFeed, peekBoardPosts, peekBoardAny) {
+function applyBaselineAndCompare(uidKey, peekMoment, peekFeed, peekBoardPosts, peekNotice, peekBoardAny) {
     const mk = LS_MOMENT + uidKey;
     const bk = LS_BOARD + uidKey;
     const fk = LS_BOARD_FEED + uidKey;
     const pk = LS_BOARD_BOARD + uidKey;
+    const nk = LS_BOARD_NOTICE + uidKey;
     let mSeen = readSeen(mk);
     let bSeen = readSeen(bk);
     let fSeen = readSeen(fk);
     let pSeen = readSeen(pk);
+    let nSeen = readSeen(nk);
 
     if (mSeen === null) {
         if (peekMoment > 0) {
@@ -167,15 +190,27 @@ function applyBaselineAndCompare(uidKey, peekMoment, peekFeed, peekBoardPosts, p
             pSeen = now;
         }
     }
+    if (nSeen === null) {
+        if (peekNotice > 0) {
+            writeSeen(nk, peekNotice);
+            nSeen = peekNotice;
+        } else {
+            const now = Date.now();
+            writeSeen(nk, now);
+            nSeen = now;
+        }
+    }
 
     const momentHasNew = peekMoment > mSeen;
     const boardHasNew = peekBoardAny > bSeen;
     const feedHasNew = peekFeed > fSeen;
     const boardPostsHasNew = peekBoardPosts > pSeen;
+    const noticeHasNew = peekNotice > nSeen;
     setDotVisible('gallery', momentHasNew);
     setDotVisible('board', boardHasNew);
     setBoardSubtabDotVisible('feed', feedHasNew);
     setBoardSubtabDotVisible('board', boardPostsHasNew);
+    setBoardSubtabDotVisible('notice', noticeHasNew);
 }
 
 export async function refreshNavFeedUpdateDots() {
@@ -184,14 +219,24 @@ export async function refreshNavFeedUpdateDots() {
         clearNavFeedUpdateDots();
         return;
     }
-    const [peekMoment, peekFeed, peekBoardPosts] = await Promise.all([
+    const [peekMoment, peekFeed, peekBoardPosts, peekNotice] = await Promise.all([
         peekLatestSharedPhotoTimestampMs(),
         peekLatestFeedPostTimestampMs(),
-        peekLatestBoardPostTimestampMs()
+        peekLatestBoardPostTimestampMs(),
+        peekLatestNoticeTimestampMs()
     ]);
-    const peekBoardAny = Math.max(Number(peekFeed) || 0, Number(peekBoardPosts) || 0);
-    _lastPeek = { moment: Number(peekMoment) || 0, feed: Number(peekFeed) || 0, board: Number(peekBoardPosts) || 0 };
-    applyBaselineAndCompare(uk, _lastPeek.moment, _lastPeek.feed, _lastPeek.board, peekBoardAny);
+    const peekBoardAny = Math.max(
+        Number(peekFeed) || 0,
+        Number(peekBoardPosts) || 0,
+        Number(peekNotice) || 0
+    );
+    _lastPeek = {
+        moment: Number(peekMoment) || 0,
+        feed: Number(peekFeed) || 0,
+        board: Number(peekBoardPosts) || 0,
+        notice: Number(peekNotice) || 0
+    };
+    applyBaselineAndCompare(uk, _lastPeek.moment, _lastPeek.feed, _lastPeek.board, _lastPeek.notice, peekBoardAny);
 }
 
 function scheduleForegroundPeekRefresh() {
@@ -240,10 +285,19 @@ export function markBoardBoardSubtabSeen() {
     setBoardSubtabDotVisible('board', false);
 }
 
+/** 밀톡-공지(서브탭) 진입 시 호출 */
+export function markBoardNoticeSubtabSeen() {
+    const uk = storageUidKey();
+    if (!uk) return;
+    writeSeen(LS_BOARD_NOTICE + uk, Date.now());
+    setBoardSubtabDotVisible('notice', false);
+}
+
 window.markMomentFeedNavSeen = markMomentFeedNavSeen;
 window.markBoardNavSeen = markBoardNavSeen;
 window.markBoardFeedSubtabSeen = markBoardFeedSubtabSeen;
 window.markBoardBoardSubtabSeen = markBoardBoardSubtabSeen;
+window.markBoardNoticeSubtabSeen = markBoardNoticeSubtabSeen;
 window.scheduleRefreshNavFeedUpdateDots = scheduleRefreshNavFeedUpdateDots;
 window.refreshNavFeedUpdateDots = refreshNavFeedUpdateDots;
 window.clearNavFeedUpdateDots = clearNavFeedUpdateDots;

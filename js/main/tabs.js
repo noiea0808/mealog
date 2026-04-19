@@ -20,6 +20,7 @@ import {
     markBoardNavSeen,
     markBoardFeedSubtabSeen,
     markBoardBoardSubtabSeen,
+    markBoardNoticeSubtabSeen,
     refreshNavFeedUpdateDots
 } from './nav-feed-update-dots.js';
 import { logUsageMetric } from '../usage-metrics.js';
@@ -59,6 +60,7 @@ export function registerMainTabSwitch() {
                 else if (tab === 'timeline') logUsageMetric('tab_mealog').catch(() => {});
                 else if (tab === 'board') {
                     if (appState.boardListSubTab === 'board') logUsageMetric('lounge_board').catch(() => {});
+                    else if (appState.boardListSubTab === 'notice') logUsageMetric('lounge_notice').catch(() => {});
                     else logUsageMetric('lounge_mealtalk').catch(() => {});
                 }
             }
@@ -91,8 +93,10 @@ export function registerMainTabSwitch() {
                 markBoardNavSeen();
                 if (appState.boardListSubTab === 'feed') {
                     markBoardFeedSubtabSeen();
-                } else {
+                } else if (appState.boardListSubTab === 'board') {
                     markBoardBoardSubtabSeen();
+                } else if (appState.boardListSubTab === 'notice') {
+                    markBoardNoticeSubtabSeen();
                 }
                 if (boardListView) boardListView.classList.remove('hidden');
                 if (boardDetailView) boardDetailView.classList.add('hidden');

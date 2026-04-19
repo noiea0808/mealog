@@ -522,10 +522,11 @@ exports.createBoardPost = onCall({ region: REGION }, wrapFunction('createBoardPo
   }
 
   const { title, content, category, imageUrls } = data;
-  
-  if (!title || !content || !title.trim() || !content.trim()) {
-    throw new HttpsError('invalid-argument', '제목과 내용을 입력해주세요.');
+  const contentTrim = typeof content === 'string' ? content.trim() : '';
+  if (!contentTrim) {
+    throw new HttpsError('invalid-argument', '내용을 입력해주세요.');
   }
+  const titleTrim = typeof title === 'string' ? title.trim() : '';
 
   const sanitizedImageUrls = Array.isArray(imageUrls) ? imageUrls.slice(0, 5).filter(u => typeof u === 'string' && u) : [];
 
@@ -533,7 +534,7 @@ exports.createBoardPost = onCall({ region: REGION }, wrapFunction('createBoardPo
   await checkRateLimit(auth.uid, 'post', request);
 
   // 스팸 필터링
-  const spamCheck = checkSpam(title + ' ' + content);
+  const spamCheck = checkSpam(`${titleTrim} ${contentTrim}`);
   if (spamCheck.isSpam) {
     throw new HttpsError('invalid-argument', spamCheck.reason);
   }
@@ -552,8 +553,8 @@ exports.createBoardPost = onCall({ region: REGION }, wrapFunction('createBoardPo
   // 게시글 생성
   const postsRef = db.collection('artifacts').doc(APP_ID).collection('boardPosts');
   const newPost = {
-    title: title.trim(),
-    content: content.trim(),
+    title: titleTrim,
+    content: contentTrim,
     category: category || 'serious',
     imageUrls: sanitizedImageUrls,
     authorId: auth.uid,
@@ -825,10 +826,11 @@ exports.updateBoardPost = onCall({ region: REGION }, async (request) => {
   }
 
   const { postId, title, content, category, imageUrls } = data;
-  
-  if (!postId || !title || !content) {
+  const contentTrim = typeof content === 'string' ? content.trim() : '';
+  if (!postId || !contentTrim) {
     throw new HttpsError('invalid-argument', '필수 정보가 누락되었습니다.');
   }
+  const titleTrim = typeof title === 'string' ? title.trim() : '';
 
   // 게시글 존재 및 권한 확인
   const postRef = db.collection('artifacts').doc(APP_ID).collection('boardPosts').doc(postId);
@@ -846,15 +848,15 @@ exports.updateBoardPost = onCall({ region: REGION }, async (request) => {
   const sanitizedImageUrls = Array.isArray(imageUrls) ? imageUrls.slice(0, 5).filter(u => typeof u === 'string' && u) : (postData.imageUrls || []);
 
   // 스팸 필터링
-  const spamCheck = checkSpam(title + ' ' + content);
+  const spamCheck = checkSpam(`${titleTrim} ${contentTrim}`);
   if (spamCheck.isSpam) {
     throw new HttpsError('invalid-argument', spamCheck.reason);
   }
 
   // 게시글 업데이트
   await postRef.update({
-    title: title.trim(),
-    content: content.trim(),
+    title: titleTrim,
+    content: contentTrim,
     category: category || postData.category,
     imageUrls: sanitizedImageUrls,
     updatedAt: FieldValue.serverTimestamp()

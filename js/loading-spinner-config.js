@@ -10,8 +10,13 @@ import { doc, getDoc, getDocFromServer } from 'https://www.gstatic.com/firebasej
 /** 순환 스크립트(문구) 전환 주기 기본값(초) — 관리자 미설정 시 */
 export const LOADING_SPINNER_DEFAULT_SECONDS = 1.8;
 
-/** 음식 아이콘 한 칸 전환 — 항상 고정(초) */
-export const LOADING_SPINNER_ICON_SECONDS_FIXED = 0.5;
+/** 전면 로딩 오버레이: 음식 아이콘 한 슬롯(초) — 고정 */
+export const LOADING_SPINNER_OVERLAY_ICON_SECONDS = 0.5;
+/** 하단 FAB(기록 로딩): 오버레이와 별도로 빠른 전환(초) */
+export const LOADING_SPINNER_FAB_ICON_SECONDS = 0.2;
+
+/** @deprecated `LOADING_SPINNER_OVERLAY_ICON_SECONDS` 사용 */
+export const LOADING_SPINNER_ICON_SECONDS_FIXED = LOADING_SPINNER_OVERLAY_ICON_SECONDS;
 
 /** @deprecated 호환용 — 예전 메모리 캐시 제거 후에는 동작 없음(관리자 저장 후에도 안전). */
 export function invalidateLoadingSpinnerConfigCache() {}
@@ -131,10 +136,10 @@ export function resolveSpinnerMessageCycleSeconds(seconds) {
 }
 
 /**
- * @deprecated 아이콘 주기는 `LOADING_SPINNER_ICON_SECONDS_FIXED` 고정. 호환용으로 0.5만 반환.
+ * @deprecated `LOADING_SPINNER_OVERLAY_ICON_SECONDS` 고정. 호환용으로 0.5만 반환.
  */
 export function resolveSpinnerIconCycleSeconds(_seconds) {
-    return LOADING_SPINNER_ICON_SECONDS_FIXED;
+    return LOADING_SPINNER_OVERLAY_ICON_SECONDS;
 }
 
 /**
@@ -162,26 +167,33 @@ export function clearLoadingFoodIconInlineAnimation() {
 
 /**
  * 관리자 설정(초)을 각 아이콘 `animation` 인라인에 직접 넣음 — CSS 변수만으로는 적용이 묻히는 환경 대비
- * 아이콘 전환 주기는 항상 `LOADING_SPINNER_ICON_SECONDS_FIXED`(0.5초). 첫 인자는 호환용으로 무시.
+ * 전면 오버레이는 `LOADING_SPINNER_OVERLAY_ICON_SECONDS`, FAB는 `LOADING_SPINNER_FAB_ICON_SECONDS`.
+ * 첫 인자는 호환용으로 무시.
  * @param {number} [_secondsIgnored]
  * @param {HTMLElement | null} [overlayEl]
  */
 export function applyLoadingFoodIconDurationSeconds(_secondsIgnored, overlayEl = null) {
-    const s = LOADING_SPINNER_ICON_SECONDS_FIXED;
-    const v = `${s}s`;
-    document.documentElement.style.setProperty('--loading-food-duration', v);
+    const sOverlay = LOADING_SPINNER_OVERLAY_ICON_SECONDS;
+    const vOverlay = `${sOverlay}s`;
+    const sFab = LOADING_SPINNER_FAB_ICON_SECONDS;
+    const vFab = `${sFab}s`;
+
+    document.documentElement.style.setProperty('--loading-food-duration', vOverlay);
     if (overlayEl && overlayEl.style) {
-        overlayEl.style.setProperty('--loading-food-duration', v);
+        overlayEl.style.setProperty('--loading-food-duration', vOverlay);
     }
     const box = document.getElementById('loadingOverlayBox');
-    if (box && box.style) box.style.setProperty('--loading-food-duration', v);
+    if (box && box.style) box.style.setProperty('--loading-food-duration', vOverlay);
     try {
-        document.querySelectorAll('.loading-food-icons').forEach((el) => {
-            el.style.setProperty('--loading-food-duration', v);
-        });
+        if (overlayEl) {
+            overlayEl.querySelectorAll('.loading-food-icons').forEach((el) => {
+                el.style.setProperty('--loading-food-duration', vOverlay);
+            });
+        }
     } catch (_) {
         /* ignore */
     }
+
     const names = [
         'loadingFoodSlideRTL0',
         'loadingFoodSlideRTL1',
@@ -189,11 +201,23 @@ export function applyLoadingFoodIconDurationSeconds(_secondsIgnored, overlayEl =
         'loadingFoodSlideRTL3',
         'loadingFoodSlideRTL4',
     ];
-    const totalSec = 5 * s;
-    const vTotal = `${totalSec}s`;
-    const icons = document.querySelectorAll('.loading-food-icon');
-    icons.forEach((el, i) => {
-        const name = names[i] || names[0];
-        el.style.animation = `${name} ${vTotal} linear 0s infinite`;
-    });
+
+    const applyIcons = (root, slotSec) => {
+        const vTotal = `${5 * slotSec}s`;
+        root.querySelectorAll('.loading-food-icon').forEach((el, i) => {
+            const name = names[i] || names[0];
+            el.style.animation = `${name} ${vTotal} linear 0s infinite`;
+        });
+    };
+
+    const overlayRoot = overlayEl || document.getElementById('loadingOverlay');
+    if (overlayRoot) {
+        applyIcons(overlayRoot, sOverlay);
+    }
+
+    const fab = document.getElementById('initialRecordsLoadFab');
+    if (fab && fab.style) {
+        fab.style.setProperty('--loading-food-fab-slot', vFab);
+        applyIcons(fab, sFab);
+    }
 }

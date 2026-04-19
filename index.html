@@ -507,7 +507,7 @@
 
     <div id="loadingOverlay" class="hidden fixed inset-0 bg-white/55 backdrop-blur-sm z-[9999] flex flex-col items-center justify-center p-4">
         <div id="loadingOverlayBox" class="flex w-[90%] max-w-[22rem] flex-col items-center rounded-2xl border border-slate-100 bg-white px-6 py-7 shadow-lg sm:px-7 sm:py-8">
-            <div class="loading-food-icons relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden text-4xl">
+            <div class="loading-food-icons loading-food-icons--overlay relative flex shrink-0 items-center justify-center overflow-hidden text-4xl">
                 <span class="loading-food-icon absolute" aria-hidden="true">🍴</span>
                 <span class="loading-food-icon absolute" aria-hidden="true">🍔</span>
                 <span class="loading-food-icon absolute" aria-hidden="true">🍕</span>
@@ -995,26 +995,32 @@
                     <i class="fa-solid fa-pen text-lg"></i>
                 </button>
                 <div id="boardLoungeFrame" class="board-lounge-frame flex min-h-0 flex-1 flex-col">
-                <div class="board-mealtalk-subtabs flex w-full min-w-0 pt-2 pb-0" role="tablist" aria-label="라운지 — 밀톡·게시판">
-                    <button type="button" id="boardSubtabFeed" role="tab" aria-selected="true" class="board-list-subtab relative flex flex-1 items-center justify-center px-3 py-2.5 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors">
+                <div class="board-mealtalk-subtabs flex w-full min-w-0 pt-2 pb-0" role="tablist" aria-label="라운지 — 밀톡·게시판·공지">
+                    <button type="button" id="boardSubtabFeed" role="tab" aria-selected="true" class="board-list-subtab relative flex flex-1 items-center justify-center px-2 py-2.5 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors">
                         <span class="relative inline-block">
                             밀톡
                             <span class="board-subtab-update-dot hidden absolute right-0 top-0 h-1.5 w-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
                         </span>
                     </button>
-                    <button type="button" id="boardSubtabBoard" role="tab" aria-selected="false" class="board-list-subtab relative flex flex-1 items-center justify-center px-3 py-2.5 text-sm font-bold text-slate-500 border-b-2 border-transparent transition-colors">
+                    <button type="button" id="boardSubtabBoard" role="tab" aria-selected="false" class="board-list-subtab relative flex flex-1 items-center justify-center px-2 py-2.5 text-sm font-bold text-slate-500 border-b-2 border-transparent transition-colors">
                         <span class="relative inline-block">
                             게시판
                             <span class="board-subtab-update-dot hidden absolute right-0 top-0 h-1.5 w-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
                         </span>
                     </button>
+                    <button type="button" id="boardSubtabNotice" role="tab" aria-selected="false" class="board-list-subtab relative flex flex-1 items-center justify-center px-2 py-2.5 text-sm font-bold text-slate-500 border-b-2 border-transparent transition-colors">
+                        <span class="relative inline-block">
+                            공지
+                            <span class="board-subtab-update-dot hidden absolute right-0 top-0 h-1.5 w-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
+                        </span>
+                    </button>
                 </div>
-                <div id="boardCategoryRow" class="flex gap-2 overflow-x-auto scrollbar-hide hidden">
-                    <button id="board-category-all" class="board-category-btn active px-4 py-2 bg-black text-white border border-black rounded-lg text-xs font-bold whitespace-nowrap">전체</button>
-                    <button id="board-category-food" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">먹는</button>
-                    <button id="board-category-chat" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">가벼운</button>
-                    <button id="board-category-serious" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">무거운</button>
-                    <button id="board-category-admin" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">치프에게</button>
+                <div id="boardCategoryRow" class="flex gap-3 items-baseline overflow-x-auto scrollbar-hide hidden py-1">
+                    <button type="button" id="board-category-all" class="board-category-btn active whitespace-nowrap">#전체</button>
+                    <button type="button" id="board-category-food" class="board-category-btn whitespace-nowrap">#먹는</button>
+                    <button type="button" id="board-category-chat" class="board-category-btn whitespace-nowrap">#가벼운</button>
+                    <button type="button" id="board-category-serious" class="board-category-btn whitespace-nowrap">#무거운</button>
+                    <button type="button" id="board-category-admin" class="board-category-btn whitespace-nowrap">#치프에게</button>
                 </div>
                 <div id="boardLoungeScrollArea" class="board-lounge-scroll-area flex min-h-0 flex-1 flex-col overflow-y-auto">
                 <div id="boardFeedPanel" class="board-feed-panel">
@@ -1076,39 +1082,32 @@
                     </button>
                     <h2 class="sub-title text-lg text-slate-800 tracking-tight">글쓰기</h2>
                 </div>
-                <div class="space-y-4">
+                <div class="space-y-2">
                     <div>
-                        <label class="text-sm font-bold text-slate-600 block mb-2">카테고리</label>
-                        <input type="hidden" id="boardWriteCategory" value="serious">
-                        <div class="flex gap-2 overflow-x-auto scrollbar-hide">
-                            <button type="button" class="board-write-category-btn board-category-btn px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap" data-value="food" onclick="window.setBoardWriteCategory('food')">먹는</button>
-                            <button type="button" class="board-write-category-btn board-category-btn px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap" data-value="chat" onclick="window.setBoardWriteCategory('chat')">가벼운</button>
-                            <button type="button" class="board-write-category-btn board-category-btn active px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap" data-value="serious" onclick="window.setBoardWriteCategory('serious')">무거운</button>
-                            <button type="button" class="board-write-category-btn board-category-btn px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap" data-value="admin" onclick="window.setBoardWriteCategory('admin')">치프에게</button>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="text-sm font-bold text-slate-600 block mb-2">제목</label>
-                        <input type="text" id="boardWriteTitle" placeholder="제목을 입력하세요" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-slate-400 transition-colors">
-                    </div>
-                    <div>
-                        <label class="text-sm font-bold text-slate-600 block mb-2">사진 <span class="text-slate-400 font-normal">(최대 5장, 장당 500KB)</span></label>
-                        <input type="file" id="boardWriteImages" accept="image/*" multiple class="hidden">
                         <div class="flex items-center gap-2 mb-2">
-                            <button type="button" id="boardWriteAddPhotosBtn" class="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-bold hover:bg-slate-50 active:bg-slate-100 transition-colors">
-                                <i class="fa-solid fa-image mr-1"></i>사진 추가
+                            <div class="flex gap-1 flex-1 min-w-0 p-1.5 bg-slate-100 rounded-lg">
+                                <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors shrink-0" aria-label="굵게" data-format="bold"><i class="fa-solid fa-bold"></i></button>
+                                <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors shrink-0" aria-label="취소선" data-format="strikeThrough"><i class="fa-solid fa-strikethrough"></i></button>
+                                <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors shrink-0" aria-label="밑줄" data-format="underline"><i class="fa-solid fa-underline"></i></button>
+                            </div>
+                            <input type="file" id="boardWriteImages" accept="image/*" multiple class="hidden">
+                            <button type="button" id="boardWriteAddPhotosBtn" class="w-10 h-10 shrink-0 flex items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 active:bg-slate-100 transition-colors" aria-label="사진 추가" title="사진 추가">
+                                <i class="fa-solid fa-image text-lg"></i>
                             </button>
                         </div>
-                        <div id="boardWriteImagePreviews" class="flex flex-wrap gap-2 min-h-0"></div>
-                    </div>
-                    <div>
-                        <label class="text-sm font-bold text-slate-600 block mb-2">내용</label>
-                        <div class="flex gap-1 mb-2 p-1.5 bg-slate-100 rounded-lg w-fit">
-                            <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors" aria-label="굵게" data-format="bold"><i class="fa-solid fa-bold"></i></button>
-                            <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors" aria-label="취소선" data-format="strikeThrough"><i class="fa-solid fa-strikethrough"></i></button>
-                            <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors" aria-label="밑줄" data-format="underline"><i class="fa-solid fa-underline"></i></button>
+                        <div class="-mx-4 w-[calc(100%+2rem)] max-w-none box-border">
+                            <div id="boardWriteContent" contenteditable="true" data-placeholder="내용을 입력하세요" class="w-full min-h-[200px] px-3 py-3 bg-white border border-slate-200 rounded-none text-sm outline-none focus:border-slate-400 transition-colors overflow-y-auto" style="max-height: 40vh;"></div>
                         </div>
-                        <div id="boardWriteContent" contenteditable="true" data-placeholder="내용을 입력하세요" class="w-full min-h-[200px] p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-slate-400 transition-colors overflow-y-auto" style="max-height: 40vh;"></div>
+                        <div id="boardWriteImagePreviews" class="flex flex-wrap gap-2 min-h-0 mt-2"></div>
+                    </div>
+                    <div class="flex items-baseline gap-3 flex-nowrap overflow-x-auto scrollbar-hide pb-0.5 -mx-0.5 px-0.5">
+                        <input type="hidden" id="boardWriteCategory" value="chat">
+                        <div class="flex gap-3 flex-nowrap shrink-0 items-baseline">
+                            <button type="button" class="board-write-category-btn board-category-btn whitespace-nowrap" data-value="food" onclick="window.setBoardWriteCategory('food')">#먹는</button>
+                            <button type="button" class="board-write-category-btn board-category-btn active whitespace-nowrap" data-value="chat" onclick="window.setBoardWriteCategory('chat')">#가벼운</button>
+                            <button type="button" class="board-write-category-btn board-category-btn whitespace-nowrap" data-value="serious" onclick="window.setBoardWriteCategory('serious')">#무거운</button>
+                            <button type="button" class="board-write-category-btn board-category-btn whitespace-nowrap" data-value="admin" onclick="window.setBoardWriteCategory('admin')">#치프에게</button>
+                        </div>
                     </div>
                     <div class="flex gap-2 pt-3 border-t">
                         <button onclick="window.backToBoardList()" class="flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors">취소</button>
