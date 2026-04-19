@@ -1903,25 +1903,22 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 
 /* 로딩 오버레이: 음식 아이콘 — 오른쪽에서 들어와 왼쪽으로 나가는 순환 — 주기는 관리자·기본값 */
 :root {
-    --loading-food-duration: 1.8s;
+    --loading-food-duration: 0.5s;
 }
 /* 한 아이콘당 한 슬롯(표시 구간) — 전체 한 바퀴(5아이콘) = calc(var(--loading-food-duration)*5) */
+/* 각 아이콘 슬롯 20% 중 대부분을 중앙 고정(표시), 입·출만 짧게 — 공백 구간 최소화 */
 @keyframes loadingFoodSlideRTL0 {
     0% {
         opacity: 0;
         transform: translate(-50%, -50%) translateX(2.5em);
     }
-    2% {
+    2.5% {
         opacity: 1;
         transform: translate(-50%, -50%) translateX(0);
     }
-    4.4% {
+    17.5% {
         opacity: 1;
         transform: translate(-50%, -50%) translateX(0);
-    }
-    6.8% {
-        opacity: 0;
-        transform: translate(-50%, -50%) translateX(-2.5em);
     }
     20%,
     100% {
@@ -1935,17 +1932,13 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
         opacity: 0;
         transform: translate(-50%, -50%) translateX(2.5em);
     }
-    22% {
+    22.5% {
         opacity: 1;
         transform: translate(-50%, -50%) translateX(0);
     }
-    24.4% {
+    37.5% {
         opacity: 1;
         transform: translate(-50%, -50%) translateX(0);
-    }
-    26.8% {
-        opacity: 0;
-        transform: translate(-50%, -50%) translateX(-2.5em);
     }
     40%,
     100% {
@@ -1959,17 +1952,13 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
         opacity: 0;
         transform: translate(-50%, -50%) translateX(2.5em);
     }
-    42% {
+    42.5% {
         opacity: 1;
         transform: translate(-50%, -50%) translateX(0);
     }
-    44.4% {
+    57.5% {
         opacity: 1;
         transform: translate(-50%, -50%) translateX(0);
-    }
-    46.8% {
-        opacity: 0;
-        transform: translate(-50%, -50%) translateX(-2.5em);
     }
     60%,
     100% {
@@ -1983,17 +1972,13 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
         opacity: 0;
         transform: translate(-50%, -50%) translateX(2.5em);
     }
-    62% {
+    62.5% {
         opacity: 1;
         transform: translate(-50%, -50%) translateX(0);
     }
-    64.4% {
+    77.5% {
         opacity: 1;
         transform: translate(-50%, -50%) translateX(0);
-    }
-    66.8% {
-        opacity: 0;
-        transform: translate(-50%, -50%) translateX(-2.5em);
     }
     80%,
     100% {
@@ -2007,17 +1992,13 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
         opacity: 0;
         transform: translate(-50%, -50%) translateX(2.5em);
     }
-    82% {
+    82.5% {
         opacity: 1;
         transform: translate(-50%, -50%) translateX(0);
     }
-    84.4% {
+    97.5% {
         opacity: 1;
         transform: translate(-50%, -50%) translateX(0);
-    }
-    86.8% {
-        opacity: 0;
-        transform: translate(-50%, -50%) translateX(-2.5em);
     }
     100% {
         opacity: 0;
@@ -2046,19 +2027,19 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     line-height: 1;
 }
 .loading-food-icon:nth-child(1) {
-    animation: loadingFoodSlideRTL0 calc(var(--loading-food-duration, 1.8s) * 5) ease-in-out infinite;
+    animation: loadingFoodSlideRTL0 calc(var(--loading-food-duration, 0.5s) * 5) linear infinite;
 }
 .loading-food-icon:nth-child(2) {
-    animation: loadingFoodSlideRTL1 calc(var(--loading-food-duration, 1.8s) * 5) ease-in-out infinite;
+    animation: loadingFoodSlideRTL1 calc(var(--loading-food-duration, 0.5s) * 5) linear infinite;
 }
 .loading-food-icon:nth-child(3) {
-    animation: loadingFoodSlideRTL2 calc(var(--loading-food-duration, 1.8s) * 5) ease-in-out infinite;
+    animation: loadingFoodSlideRTL2 calc(var(--loading-food-duration, 0.5s) * 5) linear infinite;
 }
 .loading-food-icon:nth-child(4) {
-    animation: loadingFoodSlideRTL3 calc(var(--loading-food-duration, 1.8s) * 5) ease-in-out infinite;
+    animation: loadingFoodSlideRTL3 calc(var(--loading-food-duration, 0.5s) * 5) linear infinite;
 }
 .loading-food-icon:nth-child(5) {
-    animation: loadingFoodSlideRTL4 calc(var(--loading-food-duration, 1.8s) * 5) ease-in-out infinite;
+    animation: loadingFoodSlideRTL4 calc(var(--loading-food-duration, 0.5s) * 5) linear infinite;
 }
 
 /* 전면 로딩: 순환 문구 줄바꿈(관리자 textarea) */

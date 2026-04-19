@@ -4,7 +4,6 @@ import {
     getLoadingSpinnerConfig,
     applyLoadingFoodIconDurationSeconds,
     clearLoadingFoodIconInlineAnimation,
-    resolveSpinnerIconCycleSeconds,
     getSpinnerMessageStepMs,
 } from './loading-spinner-config.js';
 
@@ -57,8 +56,8 @@ export function showLoading(message = '', options = {}) {
         fab.title = label;
         ensureInitialRecordsLoadFabClickHandler();
         loadingShownAt = Date.now();
-        void getLoadingSpinnerConfig().then((cfg) => {
-            applyLoadingFoodIconDurationSeconds(resolveSpinnerIconCycleSeconds(cfg.iconCycleSeconds), overlay);
+        void getLoadingSpinnerConfig().then(() => {
+            applyLoadingFoodIconDurationSeconds(undefined, overlay);
         });
         if (loadingOverlayTimeout) clearTimeout(loadingOverlayTimeout);
         loadingOverlayTimeout = setTimeout(() => {
@@ -84,7 +83,8 @@ export function showLoading(message = '', options = {}) {
 
     if (overlay) {
         overlay.classList.remove('hidden');
-        overlay.classList.toggle('bg-white/90', dimBackground);
+        overlay.classList.toggle('bg-white/55', dimBackground);
+        overlay.classList.toggle('backdrop-blur-sm', dimBackground);
         overlay.classList.toggle('bg-transparent', !dimBackground);
         overlay.classList.toggle('pointer-events-none', !dimBackground);
         loadingShownAt = Date.now();
@@ -101,9 +101,8 @@ export function showLoading(message = '', options = {}) {
         }
         void (async () => {
             const cfg = await getLoadingSpinnerConfig();
-            /** 스피너「아이콘 전환 주기」= 한 아이콘 한 차례(D초); 순환 문구도 D초마다 */
-            const cycleSec = resolveSpinnerIconCycleSeconds(cfg.iconCycleSeconds);
-            applyLoadingFoodIconDurationSeconds(cycleSec, overlay);
+            /** 음식 아이콘 전환은 0.5초 고정. 순환 스크립트(문구)만 관리자 주기. */
+            applyLoadingFoodIconDurationSeconds(undefined, overlay);
             if (!overlay || overlay.classList.contains('hidden') || !messageEl) return;
             const trimmed = message && String(message).trim() ? String(message).trim() : '';
             /** 위: 관리자 스피너 문구만 순환. 아래: showLoading()으로 넘긴 진행 상태(예: 카카오 로그인 처리 중). */
@@ -133,7 +132,7 @@ export function showLoading(message = '', options = {}) {
                 messageEl.style.display = 'block';
                 messageEl.style.visibility = 'visible';
                 messageEl.classList.remove('hidden');
-                const stepMs = getSpinnerMessageStepMs(cycleSec);
+                const stepMs = getSpinnerMessageStepMs(cfg.messageCycleSeconds);
                 loadingSpinnerMsgTimer = setInterval(() => {
                     messageEl.textContent = pickNext();
                 }, stepMs);
@@ -189,7 +188,8 @@ export function hideLoading() {
         }
         if (overlay) {
             overlay.classList.add('hidden');
-            overlay.classList.add('bg-white/90');
+            overlay.classList.add('bg-white/55');
+            overlay.classList.add('backdrop-blur-sm');
             overlay.classList.remove('bg-transparent');
             overlay.classList.remove('pointer-events-none');
         }

@@ -1,23 +1,34 @@
 /**
  * 전면 로딩(음식 아이콘 순환) — Firestore `config/loadingSpinner` (비로그인 읽기 가능).
  * 매 호출마다 서버 우선 조회(관리자 저장 직후 반영). App Check 준비 후 읽어 권한 실패를 줄임.
+ *
+ * 아이콘 한 칸 전환 주기는 앱에서 **0.5초 고정**. 관리자 숫자는 **순환 스크립트(문구) 전환 주기**만 제어.
  */
 import { db, appId, refreshAppCheckTokenBeforeFirestore } from './firebase.js';
 import { doc, getDoc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
+/** 순환 스크립트(문구) 전환 주기 기본값(초) — 관리자 미설정 시 */
 export const LOADING_SPINNER_DEFAULT_SECONDS = 1.8;
+
+/** 음식 아이콘 한 칸 전환 — 항상 고정(초) */
+export const LOADING_SPINNER_ICON_SECONDS_FIXED = 0.5;
 
 /** @deprecated 호환용 — 예전 메모리 캐시 제거 후에는 동작 없음(관리자 저장 후에도 안전). */
 export function invalidateLoadingSpinnerConfigCache() {}
 
 /**
- * Firestore에 iconCycleSeconds 필드가 없을 때는 undefined — 병합 시 loginBanner 값이 가려지지 않게 함.
+ * 스크립트(순환 문구) 전환 주기 — `messageCycleSeconds` 우선, 구데이터는 `iconCycleSeconds`.
  * @param {unknown} raw
- * @returns {{ iconCycleSeconds?: number, messages: string[] }}
+ * @returns {number | undefined}
  */
-function extractIconCycleSecondsFromRaw(raw) {
+function extractMessageCycleSecondsFromRaw(raw) {
     if (!raw || typeof raw !== 'object') return undefined;
-    const rawSec = raw.iconCycleSeconds ?? raw.iconCycleSec ?? raw.cycleSeconds;
+    const rawSec =
+        raw.messageCycleSeconds ??
+        raw.scriptCycleSeconds ??
+        raw.iconCycleSeconds ??
+        raw.iconCycleSec ??
+        raw.cycleSeconds;
     if (rawSec === undefined || rawSec === null || rawSec === '') return undefined;
     const n = typeof rawSec === 'number' ? rawSec : parseFloat(String(rawSec).replace(',', '.'));
     if (Number.isFinite(n) && n >= 0.5 && n <= 10) return n;
@@ -42,13 +53,13 @@ function normalizeMessagesOnly(raw) {
 
 /**
  * @param {unknown} raw
- * @returns {{ iconCycleSeconds: number, messages: string[] }}
+ * @returns {{ messageCycleSeconds: number, messages: string[] }}
  */
 export function normalizeLoadingSpinner(raw) {
-    const iconOpt = extractIconCycleSecondsFromRaw(raw);
-    const iconCycleSeconds = iconOpt !== undefined ? iconOpt : LOADING_SPINNER_DEFAULT_SECONDS;
+    const msgOpt = extractMessageCycleSecondsFromRaw(raw);
+    const messageCycleSeconds = msgOpt !== undefined ? msgOpt : LOADING_SPINNER_DEFAULT_SECONDS;
     const messages = normalizeMessagesOnly(raw);
-    return { iconCycleSeconds, messages };
+    return { messageCycleSeconds, messages };
 }
 
 /**
@@ -99,33 +110,40 @@ export async function getLoadingSpinnerConfig() {
         (msgBanner.length ? msgBanner : null) || (msgDedicated.length ? msgDedicated : null) || [];
 
     /** 전용 문서에 주기 필드가 없으면(구데이터) loginBanner 복제본의 주기를 쓴다 */
-    let iconCycleSeconds =
-        extractIconCycleSecondsFromRaw(rawDedicated) ??
-        extractIconCycleSecondsFromRaw(rawBanner) ??
+    let messageCycleSeconds =
+        extractMessageCycleSecondsFromRaw(rawDedicated) ??
+        extractMessageCycleSecondsFromRaw(rawBanner) ??
         LOADING_SPINNER_DEFAULT_SECONDS;
-    iconCycleSeconds = Number(iconCycleSeconds);
-    if (!Number.isFinite(iconCycleSeconds)) iconCycleSeconds = LOADING_SPINNER_DEFAULT_SECONDS;
+    messageCycleSeconds = Number(messageCycleSeconds);
+    if (!Number.isFinite(messageCycleSeconds)) messageCycleSeconds = LOADING_SPINNER_DEFAULT_SECONDS;
 
-    return { messages, iconCycleSeconds };
+    return { messages, messageCycleSeconds };
 }
 
 /**
- * 관리자「아이콘 전환 주기(초)」— Firestore 값을 앱에서 쓰는 단일 기준으로 clamp
+ * 관리자「스크립트(순환 문구) 전환 주기(초)」— Firestore 값 clamp
  * @param {unknown} seconds
  * @returns {number}
  */
-export function resolveSpinnerIconCycleSeconds(seconds) {
+export function resolveSpinnerMessageCycleSeconds(seconds) {
     const parsed = Number(seconds);
     return Math.min(10, Math.max(0.5, Number.isFinite(parsed) ? parsed : LOADING_SPINNER_DEFAULT_SECONDS));
 }
 
 /**
- * 순환 문구 전환 간격(ms) — 관리자「아이콘 전환 주기」= 한 아이콘이 한 차례 지배하는 시간 D초와 동일.
- * @param {number} resolvedCycleSec `resolveSpinnerIconCycleSeconds` 결과(초)
+ * @deprecated 아이콘 주기는 `LOADING_SPINNER_ICON_SECONDS_FIXED` 고정. 호환용으로 0.5만 반환.
+ */
+export function resolveSpinnerIconCycleSeconds(_seconds) {
+    return LOADING_SPINNER_ICON_SECONDS_FIXED;
+}
+
+/**
+ * 순환 문구 전환 간격(ms) — 관리자「스크립트 전환 주기」와 동일.
+ * @param {number} resolvedMessageCycleSec `resolveSpinnerMessageCycleSeconds` 결과(초)
  * @returns {number}
  */
-export function getSpinnerMessageStepMs(resolvedCycleSec) {
-    const s = resolveSpinnerIconCycleSeconds(resolvedCycleSec);
+export function getSpinnerMessageStepMs(resolvedMessageCycleSec) {
+    const s = resolveSpinnerMessageCycleSeconds(resolvedMessageCycleSec);
     return s * 1000;
 }
 
@@ -144,11 +162,12 @@ export function clearLoadingFoodIconInlineAnimation() {
 
 /**
  * 관리자 설정(초)을 각 아이콘 `animation` 인라인에 직접 넣음 — CSS 변수만으로는 적용이 묻히는 환경 대비
- * @param {number} seconds
+ * 아이콘 전환 주기는 항상 `LOADING_SPINNER_ICON_SECONDS_FIXED`(0.5초). 첫 인자는 호환용으로 무시.
+ * @param {number} [_secondsIgnored]
  * @param {HTMLElement | null} [overlayEl]
  */
-export function applyLoadingFoodIconDurationSeconds(seconds, overlayEl = null) {
-    const s = resolveSpinnerIconCycleSeconds(seconds);
+export function applyLoadingFoodIconDurationSeconds(_secondsIgnored, overlayEl = null) {
+    const s = LOADING_SPINNER_ICON_SECONDS_FIXED;
     const v = `${s}s`;
     document.documentElement.style.setProperty('--loading-food-duration', v);
     if (overlayEl && overlayEl.style) {
@@ -175,6 +194,6 @@ export function applyLoadingFoodIconDurationSeconds(seconds, overlayEl = null) {
     const icons = document.querySelectorAll('.loading-food-icon');
     icons.forEach((el, i) => {
         const name = names[i] || names[0];
-        el.style.animation = `${name} ${vTotal} ease-in-out 0s infinite`;
+        el.style.animation = `${name} ${vTotal} linear 0s infinite`;
     });
 }

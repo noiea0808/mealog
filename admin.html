@@ -48,7 +48,7 @@
     </script>
 </head>
 <body class="bg-slate-50 min-h-screen">
-    <div id="loadingOverlay" class="hidden fixed inset-0 bg-white/90 z-[999] flex items-center justify-center">
+    <div id="loadingOverlay" class="hidden fixed inset-0 bg-white/55 backdrop-blur-sm z-[999] flex items-center justify-center">
         <div class="text-center">
             <div class="w-12 h-12 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mx-auto mb-4"></div>
             <p class="text-slate-600 font-bold">로딩 중...</p>
@@ -1904,12 +1904,12 @@
                                             </button>
                                         </div>
                                         <div class="p-6 space-y-5">
-                                            <p class="text-sm text-slate-600 leading-relaxed">앱에서는 아이콘 바로 아래 <strong class="text-slate-700">이곳에 등록한 문구만</strong> 순환합니다(무작위·한 라운드 중 중복 없음). 문구를 비우면 위쪽 순환 줄은 나오지 않습니다. 그 <strong class="text-slate-700">아래 줄</strong>에는 코드에서 넘기는 진행 상태만 표시됩니다(예: 카카오 로그인 처리 중). 전환 타이밍은 아이콘과 같습니다.</p>
+                                            <p class="text-sm text-slate-600 leading-relaxed">앱에서는 아이콘 바로 아래 <strong class="text-slate-700">이곳에 등록한 문구만</strong> 순환합니다(무작위·한 라운드 중 중복 없음). 문구를 비우면 위쪽 순환 줄은 나오지 않습니다. 그 <strong class="text-slate-700">아래 줄</strong>에는 코드에서 넘기는 진행 상태만 표시됩니다(예: 카카오 로그인 처리 중). 음식 아이콘 전환은 <strong class="text-slate-700">0.5초 고정</strong>이며, 아래 숫자는 <strong class="text-slate-700">순환 문구(스크립트)만</strong> 바꿉니다.</p>
                                             <div class="max-w-md">
-                                                <label for="adminLoadingSpinnerSeconds" class="block text-xs font-bold text-slate-600 mb-1.5">아이콘 전환 주기 (초)</label>
+                                                <label for="adminLoadingSpinnerSeconds" class="block text-xs font-bold text-slate-600 mb-1.5">스크립트 전환 주기 (초)</label>
                                                 <input type="number" id="adminLoadingSpinnerSeconds" min="0.5" max="10" step="0.1" value="1.8"
                                                        class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 bg-white"/>
-                                                <p class="text-xs text-slate-400 mt-1"><strong class="text-slate-500">한 아이콘이 한 차례 지배하는 시간</strong>(0.5~10초)입니다. 5개 아이콘이 한 바퀴 도는 데는 이 값의 5배가 걸리고, 순환 문구는 이 간격(한 아이콘당)마다 바뀝니다. (기본 앱: 1.8초)</p>
+                                                <p class="text-xs text-slate-400 mt-1"><strong class="text-slate-500">순환 문구가 바뀌는 간격</strong>(0.5~10초, 기본 1.8초)입니다. 음식 아이콘은 한 칸당 0.5초로 고정이라, 아이콘 한 바퀴(5칸)는 항상 2.5초입니다.</p>
                                             </div>
                                             <div>
                                                 <div class="flex flex-wrap items-center justify-between gap-2 mb-2">

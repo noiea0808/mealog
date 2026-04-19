@@ -749,7 +749,7 @@ function createAdminLoadingSpinnerMessageRow(text = '') {
 
 function fillAdminLoadingSpinnerForm(cfg) {
     const secEl = document.getElementById('adminLoadingSpinnerSeconds');
-    if (secEl) secEl.value = String(cfg.iconCycleSeconds);
+    if (secEl) secEl.value = String(cfg.messageCycleSeconds);
     const list = document.getElementById('adminLoadingSpinnerMessageList');
     if (!list) return;
     list.innerHTML = '';
@@ -765,9 +765,9 @@ window.addAdminLoadingSpinnerMessageRow = function () {
 
 window.saveLoadingSpinnerSettings = async function () {
     const secEl = document.getElementById('adminLoadingSpinnerSeconds');
-    let iconCycleSeconds = Number(secEl && secEl.value);
-    if (!Number.isFinite(iconCycleSeconds)) iconCycleSeconds = 1.8;
-    iconCycleSeconds = Math.min(10, Math.max(0.5, iconCycleSeconds));
+    let messageCycleSeconds = Number(secEl && secEl.value);
+    if (!Number.isFinite(messageCycleSeconds)) messageCycleSeconds = 1.8;
+    messageCycleSeconds = Math.min(10, Math.max(0.5, messageCycleSeconds));
     const texts = [];
     document.querySelectorAll('#adminLoadingSpinnerMessageList .admin-loading-spinner-msg-text').forEach((el) => {
         const v = el.value;
@@ -776,7 +776,7 @@ window.saveLoadingSpinnerSettings = async function () {
     try {
         const ref = doc(db, 'artifacts', appId, 'config', 'loadingSpinner');
         const payload = {
-            iconCycleSeconds,
+            messageCycleSeconds,
             messages: texts,
             updatedAt: serverTimestamp(),
         };
@@ -787,7 +787,7 @@ window.saveLoadingSpinnerSettings = async function () {
             {
                 loadingSpinner: {
                     messages: texts,
-                    iconCycleSeconds,
+                    messageCycleSeconds,
                 },
             },
             { merge: true }
