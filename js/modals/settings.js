@@ -299,8 +299,8 @@ export function openSettings() {
                             <span id="accountHeaderNickname" class="text-base font-bold text-slate-800 truncate min-w-0 flex-1 max-w-[min(100%,14rem)]">-</span>
                             <div id="accountNicknameInputHost" class="hidden min-w-0 flex-1 max-w-[min(100%,14rem)] flex justify-end items-center"></div>
                             <div id="accountNicknameActions" class="flex shrink-0 items-center gap-1">
-                                <button type="button" id="accountNicknameSaveBtn" class="hidden px-0 py-0 text-[10px] font-bold text-emerald-700 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="저장" aria-label="닉네임 저장">저장</button>
-                                <button type="button" id="accountNicknameCancelBtn" class="hidden px-0 py-0 text-[10px] font-bold text-slate-500 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="취소" aria-label="취소">취소</button>
+                                <button type="button" id="accountNicknameSaveBtn" class="hidden px-0 py-0 text-[12px] font-bold text-emerald-700 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="저장" aria-label="닉네임 저장">저장</button>
+                                <button type="button" id="accountNicknameCancelBtn" class="hidden px-0 py-0 text-[12px] font-bold text-slate-500 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="취소" aria-label="취소">취소</button>
                                 <button type="button" id="accountEditNicknameBtn" data-action="edit" class="p-1 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-100/80 transition inline-flex items-center justify-center" title="닉네임 수정" aria-label="닉네임 수정"><i class="fa-solid fa-pencil settings-pencil-icon"></i></button>
                             </div>
                         </div>
@@ -314,8 +314,8 @@ export function openSettings() {
                             <div id="accountBirthdateEditorRow" class="hidden w-full flex flex-row flex-wrap items-center justify-end gap-x-2 gap-y-1 min-w-0">
                                 <div id="accountBirthdateEditHost" class="min-w-0 flex max-w-full flex-wrap items-center justify-end gap-2"></div>
                                 <div id="accountBirthdateActionsEdit" class="shrink-0 flex items-center gap-1">
-                                    <button type="button" id="accountBirthdateSaveBtn" class="px-0 py-0 text-[10px] font-bold text-emerald-700 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="저장" aria-label="생년월일 저장">저장</button>
-                                    <button type="button" id="accountBirthdateCancelBtn" class="px-0 py-0 text-[10px] font-bold text-slate-500 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="취소" aria-label="취소">취소</button>
+                                    <button type="button" id="accountBirthdateSaveBtn" class="px-0 py-0 text-[12px] font-bold text-emerald-700 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="저장" aria-label="생년월일 저장">저장</button>
+                                    <button type="button" id="accountBirthdateCancelBtn" class="px-0 py-0 text-[12px] font-bold text-slate-500 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="취소" aria-label="취소">취소</button>
                                 </div>
                             </div>
                         </div>

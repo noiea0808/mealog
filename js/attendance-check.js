@@ -307,8 +307,8 @@ function attendancePopupDefaults() {
 function pickFrequencyForEnv(row, env) {
     if (!row) return 'off';
     return env === 'staging'
-        ? pickFrequencyWithOff(row.stagingFrequency, 'every_session')
-        : pickFrequencyWithOff(row.productionFrequency, 'every_session');
+        ? pickFrequencyWithOff(row.stagingFrequency, 'once_per_day')
+        : pickFrequencyWithOff(row.productionFrequency, 'once_per_day');
 }
 
 /**
@@ -323,15 +323,34 @@ function scenarioForClient(row, env) {
     };
 }
 
+/**
+ * Firestore/레거시에서 잘못된 문자열이면 알 수 없음(null) — 과거 기본이 every_session 이어서
+ * 운영에서 '하루 1회'로 저장해도 접속마다 노출되는 문제가 있었음. 폴백은 once_per_day 권장.
+ * @param {unknown} v
+ * @returns {'off'|'once_per_day'|'every_session'|null}
+ */
+function normalizeWelcomeFreqToken(v) {
+    if (v === 'off' || v === 'once_per_day' || v === 'every_session') return v;
+    if (v == null) return null;
+    const s = String(v).trim().toLowerCase();
+    if (s === 'off') return 'off';
+    /** 콘텐츠 팝업 등 레거시 */
+    if (s === 'once_per_day' || s === 'daily') return 'once_per_day';
+    if (s === 'every_session') return 'every_session';
+    return null;
+}
+
 /** @param {unknown} v @returns {'once_per_day'|'every_session'} */
 function pickAttendanceShowFrequency(v) {
-    if (v === 'once_per_day' || v === 'every_session') return v;
-    return 'every_session';
+    const n = normalizeWelcomeFreqToken(v);
+    if (n === 'once_per_day' || n === 'every_session') return n;
+    return 'once_per_day';
 }
 
 /** @param {unknown} v @param {'off'|'once_per_day'|'every_session'} fallback */
-function pickFrequencyWithOff(v, fallback = 'every_session') {
-    if (v === 'off' || v === 'once_per_day' || v === 'every_session') return v;
+function pickFrequencyWithOff(v, fallback = 'once_per_day') {
+    const n = normalizeWelcomeFreqToken(v);
+    if (n != null) return n;
     return fallback;
 }
 
@@ -370,10 +389,10 @@ function nestedV3ToUnified(nested) {
     const keys = ['noRecord', 'noStreak', 'streakOne', 'streakTwoOrMore'];
     /** @type {AttendancePopupUnified} */
     const out = {
-        noRecord: { message: null, stagingFrequency: 'every_session', productionFrequency: 'every_session' },
-        noStreak: { message: null, stagingFrequency: 'every_session', productionFrequency: 'every_session' },
-        streakOne: { message: null, stagingFrequency: 'every_session', productionFrequency: 'every_session' },
-        streakTwoOrMore: { message: null, stagingFrequency: 'every_session', productionFrequency: 'every_session' }
+        noRecord: { message: null, stagingFrequency: 'once_per_day', productionFrequency: 'once_per_day' },
+        noStreak: { message: null, stagingFrequency: 'once_per_day', productionFrequency: 'once_per_day' },
+        streakOne: { message: null, stagingFrequency: 'once_per_day', productionFrequency: 'once_per_day' },
+        streakTwoOrMore: { message: null, stagingFrequency: 'once_per_day', productionFrequency: 'once_per_day' }
     };
     for (const k of keys) {
         const st = nested.staging?.[k];
@@ -386,8 +405,8 @@ function nestedV3ToUnified(nested) {
         else message = null;
         out[k] = {
             message,
-            stagingFrequency: pickFrequencyWithOff(st?.frequency, 'every_session'),
-            productionFrequency: pickFrequencyWithOff(pr?.frequency, 'every_session')
+            stagingFrequency: pickFrequencyWithOff(st?.frequency, 'once_per_day'),
+            productionFrequency: pickFrequencyWithOff(pr?.frequency, 'once_per_day')
         };
     }
     return out;
@@ -454,10 +473,10 @@ function mergeUnifiedScenarioRow(def, inc) {
 function mergeNestedV3AttendancePopup(raw) {
     const d = attendancePopupDefaults();
     const emptyNested = () => ({
-        noRecord: { frequency: 'every_session', message: null },
-        noStreak: { frequency: 'every_session', message: null },
-        streakOne: { frequency: 'every_session', message: null },
-        streakTwoOrMore: { frequency: 'every_session', message: null }
+        noRecord: { frequency: 'once_per_day', message: null },
+        noStreak: { frequency: 'once_per_day', message: null },
+        streakOne: { frequency: 'once_per_day', message: null },
+        streakTwoOrMore: { frequency: 'once_per_day', message: null }
     });
     const stDef = emptyNested();
     const prDef = emptyNested();
@@ -491,7 +510,7 @@ function mergeUnifiedAttendancePopup(raw) {
  * @param {{ noRecord: { frequency: string, message: string|null }, hasRecord: { frequency: string, message: string } }} env
  */
 function upgradeLegacyBinaryEnvToV3(env) {
-    const fq = pickFrequencyWithOff(env.hasRecord?.frequency, 'every_session');
+    const fq = pickFrequencyWithOff(env.hasRecord?.frequency, 'once_per_day');
     const msg = String(env.hasRecord?.message ?? '').trim();
     return {
         noRecord: env.noRecord,
@@ -506,14 +525,14 @@ function upgradeLegacyBinaryEnvToV3(env) {
  */
 function mergeLegacyBinaryAttendancePopup(raw) {
     const emptyPair = () => ({
-        noRecord: { frequency: 'every_session', message: null },
-        hasRecord: { frequency: 'every_session', message: '' }
+        noRecord: { frequency: 'once_per_day', message: null },
+        hasRecord: { frequency: 'once_per_day', message: '' }
     });
     /** @param {ReturnType<typeof emptyPair>} defEnv @param {Record<string, unknown>} incEnv */
     const mergeEnv = (defEnv, incEnv) => ({
         noRecord: mergeNestedScenarioRow(defEnv.noRecord, incEnv?.noRecord),
         hasRecord: {
-            frequency: pickFrequencyWithOff(incEnv?.hasRecord?.frequency, 'every_session'),
+            frequency: pickFrequencyWithOff(incEnv?.hasRecord?.frequency, 'once_per_day'),
             message:
                 incEnv?.hasRecord && Object.prototype.hasOwnProperty.call(incEnv.hasRecord, 'message')
                     ? String(incEnv.hasRecord.message ?? '')

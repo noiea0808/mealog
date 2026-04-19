@@ -1103,7 +1103,11 @@ export async function openModal(date, slotId, entryId = null) {
             const snackType = document.querySelector('#snackTypeChips button.active')?.innerText;
             window.renderSecondary('snackSuggestions', subTags, 'snackDetailInput', snackType || null, 'snack');
         } else {
-            setTimeout(() => syncDeliveryVendorSectionVisibility(), 0);
+            /** 신규 기록만 즉시 동기화. 수정 모드는 tryActivateTags 끝에서 sync(배달 식당 필드 복원 후)하므로,
+             * 여기서 먼저 호출하면 칩이 아직 '배달/포장'이 아니어서 deliveryVendorInput 이 비워짐 */
+            if (!(entryId && savedRecord)) {
+                setTimeout(() => syncDeliveryVendorSectionVisibility(), 0);
+            }
         }
         
         // 입력 필드에 이벤트 리스너 추가 (간식 입력 시 추천 태그 업데이트)

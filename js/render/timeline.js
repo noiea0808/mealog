@@ -179,6 +179,8 @@ function insertTimelineDateSectionInChronologicalOrder(container, section, dateS
 
 function patchTimelineCardLeadIcon(el, record) {
     const titleEl =
+        el.querySelector('h4.mb-0.flex.min-w-0.items-center') ||
+        el.querySelector('h4.mb-0.leading-tight') ||
         el.querySelector('h4.leading-tight.mb-0.flex.items-center') ||
         el.querySelector('h4.flex.items-center.min-w-0') ||
         el.querySelector('h4.flex.items-center') ||
@@ -188,7 +190,10 @@ function patchTimelineCardLeadIcon(el, record) {
         el.querySelector('p.leading-snug.mb-0.flex.items-center.min-w-0') ||
         el.querySelector('p.flex.items-center.min-w-0');
     if (titleEl) {
-        let menuSpan = titleEl.querySelector(':scope > span.min-w-0');
+        let menuSpan =
+            titleEl.querySelector(':scope > span.min-w-0.flex-1.truncate') ||
+            titleEl.querySelector(':scope > span.break-words') ||
+            titleEl.querySelector(':scope > span.min-w-0');
         if (!menuSpan) {
             const kids = [...titleEl.children].filter((n) => n.tagName === 'SPAN');
             if (kids.length) menuSpan = kids[kids.length - 1];
@@ -552,7 +557,7 @@ function buildSnackTimelineCardHtml(
     }
     let tagsHtml = '';
     if (tags.length > 0) {
-        tagsHtml = `<div class="mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
+        tagsHtml = `<div class="clear-both mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
             .map((t) => `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${t}</span>`)
             .join('')}</div>`;
     }
@@ -575,21 +580,19 @@ function buildSnackTimelineCardHtml(
             <div class="w-[140px] h-[140px] bg-slate-100 border-slate-200 ${specificStyle.iconText} flex-shrink-0 flex items-center justify-center overflow-hidden border-r">
                 ${iconHtml}
             </div>
-            <div class="flex-1 min-w-0 flex flex-col justify-center p-4">
-                <div class="flex justify-between items-start gap-2">
-                    <div class="flex-1 min-w-0 overflow-hidden">
-                        <h4 class="leading-tight mb-0 flex items-center gap-1.5 min-w-0">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 truncate">${titleLine1}</span></h4>
-                        ${titleLine2 ? `<p class="text-sm text-slate-600 font-bold mt-1.5 mb-0 truncate">${titleLine2}</p>` : ''}
-                    </div>
-                    <div class="flex items-center gap-2 flex-shrink-0 ml-2">
+            <div class="flex min-w-0 flex-1 flex-col justify-center p-4">
+                <div class="min-w-0 overflow-hidden">
+                    <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-2">
                         <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
-                        <span class="text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-300 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                        <span class="flex items-center gap-0.5 rounded-full border border-yellow-300 bg-yellow-50 px-1.5 py-0.5 text-xs font-bold text-yellow-600">
                             <span class="text-[13px]">⭐</span>
                             <span class="text-[12px] font-black">${ratingVal}</span>
                         </span>
                     </div>
+                    <h4 class="mb-0 flex min-w-0 items-center gap-1.5 leading-tight">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${titleLine1}</span></h4>
+                    ${titleLine2 ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-sm font-bold text-slate-600">${titleLine2}</p>` : ''}
                 </div>
-                ${r.comment ? `<p class="text-xs text-slate-400 mt-1.5 mb-0 line-clamp-1 whitespace-pre-line">"${escapeHtml(r.comment).replace(/\n/g, '<br>')}"</p>` : ''}
+                ${r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-xs text-slate-400">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>` : ''}
                 ${tagsHtml}
             </div>
         </div>
@@ -651,7 +654,7 @@ function buildMainMealListEmptyRowHtml(dateStr, slot, specificStyle) {
     </div>`;
 }
 
-/** 본식 목록형: 기록 있음 — 간식 목록과 동일 레이아웃(좌 슬롯·@장소 / 우 메뉴·코멘트·태그) */
+/** 본식 목록형: 기록 있음 — 좌 슬롯·@장소 / 우 메뉴·코멘트·태그(카드형과 동일 float 배지 + 코멘트 clear) */
 function buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, cardMbClass = 'mb-1.5') {
     const p = String(r.place || '').trim();
     const safePlaceLine = escapeHtml(p || '—');
@@ -673,7 +676,7 @@ function buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, cardMbC
     }
     let tagsHtml = '';
     if (tags.length > 0) {
-        tagsHtml = `<div class="mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
+        tagsHtml = `<div class="clear-both mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
             .map((t) => `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${escapeHtml(t)}</span>`)
             .join('')}</div>`;
     }
@@ -690,17 +693,17 @@ function buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, cardMbC
                 <span class="text-sm font-bold leading-tight break-words">${safeSlotTitle}</span>
                 <span class="text-xs font-bold text-slate-500 leading-snug">@ ${safePlaceLine}</span>
             </div>
-            <div class="flex-1 min-w-0 relative py-2 pl-3 pr-2">
-                <div class="absolute top-2 right-2 z-10 flex flex-row items-center gap-1.5">
-                    <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
-                    <span class="text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-300 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                        <span class="text-[13px]">⭐</span>
-                        <span class="text-[12px] font-black">${ratingVal}</span>
-                    </span>
-                </div>
-                <div class="min-w-0 pr-[4.25rem]">
-                    <p class="text-sm font-bold text-slate-800 leading-snug mb-0 flex items-center gap-1.5 min-w-0 pl-2">${mealEntrySyncLeadHtml(r)}<span class="min-w-0">${safeMenu}</span></p>
-                    ${r.comment ? `<p class="text-xs text-slate-400 mt-1.5 mb-0 line-clamp-1 whitespace-pre-line">"${escapeHtml(r.comment).replace(/\n/g, '<br>')}"</p>` : ''}
+            <div class="flex min-w-0 flex-1 flex-col py-2 pl-3 pr-2">
+                <div class="min-w-0 overflow-hidden">
+                    <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-1.5">
+                        <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
+                        <span class="flex items-center gap-0.5 rounded-full border border-yellow-300 bg-yellow-50 px-1.5 py-0.5 text-xs font-bold text-yellow-600">
+                            <span class="text-[13px]">⭐</span>
+                            <span class="text-[12px] font-black">${ratingVal}</span>
+                        </span>
+                    </div>
+                    <p class="mb-0 flex min-w-0 items-center gap-1.5 pl-2 text-sm font-bold leading-snug text-slate-800">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${safeMenu}</span></p>
+                    ${r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-xs text-slate-400">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>` : ''}
                     ${tagsHtml}
                 </div>
             </div>
@@ -708,7 +711,7 @@ function buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, cardMbC
     </div>`;
 }
 
-/** 목록형: 기록 있음 — 좌: 슬롯(+동일슬롯 다건일 때만 1,2,3) / 줄바꿈 / @ 장소 · 우: 메뉴 → 코멘트(1줄) → 태그, 공유·별점은 우상단 */
+/** 목록형: 기록 있음 — 좌: 슬롯 / @ 장소 · 우: 메뉴·코멘트(한 줄+말줄임) → 태그 */
 function buildSnackListFilledRowHtml(
     dateStr,
     slot,
@@ -741,7 +744,7 @@ function buildSnackListFilledRowHtml(
     }
     let tagsHtml = '';
     if (tags.length > 0) {
-        tagsHtml = `<div class="mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
+        tagsHtml = `<div class="clear-both mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
             .map((t) => `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${escapeHtml(t)}</span>`)
             .join('')}</div>`;
     }
@@ -760,17 +763,17 @@ function buildSnackListFilledRowHtml(
                 <span class="text-sm font-bold leading-tight break-words">${safeSlotTitle}</span>
                 <span class="text-xs font-bold text-slate-500 leading-snug">@ ${safePlaceLine}</span>
             </div>
-            <div class="flex-1 min-w-0 relative py-2 pl-3 pr-2">
-                <div class="absolute top-2 right-2 z-10 flex flex-row items-center gap-1.5">
-                    <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
-                    <span class="text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-300 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                        <span class="text-[13px]">⭐</span>
-                        <span class="text-[12px] font-black">${ratingVal}</span>
-                    </span>
-                </div>
-                <div class="min-w-0 pr-[4.25rem]">
-                    <p class="text-sm font-bold text-slate-800 leading-snug mb-0 flex items-center gap-1.5 min-w-0 pl-2">${mealEntrySyncLeadHtml(r)}<span class="min-w-0">${safeMenu}</span></p>
-                    ${r.comment ? `<p class="text-xs text-slate-400 mt-1.5 mb-0 line-clamp-1 whitespace-pre-line">"${escapeHtml(r.comment).replace(/\n/g, '<br>')}"</p>` : ''}
+            <div class="flex min-w-0 flex-1 flex-col py-2 pl-3 pr-2">
+                <div class="min-w-0 overflow-hidden">
+                    <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-1.5">
+                        <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
+                        <span class="flex items-center gap-0.5 rounded-full border border-yellow-300 bg-yellow-50 px-1.5 py-0.5 text-xs font-bold text-yellow-600">
+                            <span class="text-[13px]">⭐</span>
+                            <span class="text-[12px] font-black">${ratingVal}</span>
+                        </span>
+                    </div>
+                    <p class="mb-0 flex min-w-0 items-center gap-1.5 pl-2 text-sm font-bold leading-snug text-slate-800">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${safeMenu}</span></p>
+                    ${r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-xs text-slate-400">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>` : ''}
                     ${tagsHtml}
                 </div>
             </div>
@@ -1029,7 +1032,7 @@ export function renderTimeline() {
                             if (sData) tags.push(sData.label);
                         }
                         if (tags.length > 0) {
-                            tagsHtml = `<div class="mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags.map(t => 
+                            tagsHtml = `<div class="clear-both mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags.map(t => 
                                 `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${t}</span>`
                             ).join('')}</div>`;
                         }
@@ -1066,21 +1069,22 @@ export function renderTimeline() {
                         <div class="w-[140px] h-[140px] ${iconBoxClass} flex-shrink-0 flex items-center justify-center overflow-hidden border-r">
                             ${iconHtml}
                         </div>
-                        <div class="flex-1 min-w-0 flex flex-col justify-center p-4">
-                            <div class="flex justify-between items-start gap-2">
-                                <div class="flex-1 min-w-0 overflow-hidden">
-                                    <h4 class="leading-tight mb-0 flex items-center gap-1.5 min-w-0">${r ? mealEntrySyncLeadHtml(r) : ''}<span class="min-w-0 truncate">${titleLine1}</span></h4>
-                                    ${titleLine2 ? (r ? `<p class="text-sm text-slate-600 font-bold mt-1.5 mb-0 truncate">${titleLine2}</p>` : `<p class="mt-1.5 mb-0 truncate">${titleLine2}</p>`) : ''}
-                                </div>
-                                ${r ? `<div class="flex items-center gap-2 flex-shrink-0 ml-2">
+                        <div class="flex min-w-0 flex-1 flex-col justify-center p-4">
+                            ${r ? `<div class="min-w-0 overflow-hidden">
+                                <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-2">
                                     <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
-                                    <span class="text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-300 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                    <span class="flex items-center gap-0.5 rounded-full border border-yellow-300 bg-yellow-50 px-1.5 py-0.5 text-xs font-bold text-yellow-600">
                                         <span class="text-[13px]">⭐</span>
                                         <span class="text-[12px] font-black">${r.rating || '-'}</span>
                                     </span>
-                                </div>` : ''}
-                            </div>
-                            ${r && r.comment ? `<p class="text-xs text-slate-400 mt-1.5 mb-0 line-clamp-1 whitespace-pre-line">"${escapeHtml(r.comment).replace(/\n/g, '<br>')}"</p>` : ''}
+                                </div>
+                                <h4 class="mb-0 flex min-w-0 items-center gap-1.5 leading-tight">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${titleLine1}</span></h4>
+                                ${titleLine2 ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-sm font-bold text-slate-600">${titleLine2}</p>` : ''}
+                            </div>` : `<div class="min-w-0">
+                                <h4 class="mb-0 leading-tight">${titleLine1}</h4>
+                                ${titleLine2 ? `<p class="mt-1.5 mb-0">${titleLine2}</p>` : ''}
+                            </div>`}
+                            ${r && r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-xs text-slate-400">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>` : ''}
                             ${tagsHtml}
                         </div>
                     </div>

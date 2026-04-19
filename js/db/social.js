@@ -305,7 +305,7 @@ export const postInteractions = {
                 const mealType = (data.mealType || '').trim();
                 let menuLine = menuDetail;
                 if (mealType === '배달/포장' && deliveryVendor && menuDetail) {
-                    menuLine = `${deliveryVendor} · ${menuDetail}`;
+                    menuLine = `${deliveryVendor} | ${menuDetail}`;
                 } else if (mealType === '배달/포장' && deliveryVendor) {
                     menuLine = deliveryVendor;
                 }

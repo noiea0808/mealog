@@ -1504,7 +1504,7 @@ function fillTriFreq(name, value) {
     const v =
         value === 'off' || value === 'once_per_day' || value === 'every_session'
             ? value
-            : 'every_session';
+            : 'once_per_day';
     document.querySelectorAll(`input[name="${name}"]`).forEach((r) => {
         r.checked = r.value === v;
     });
@@ -1603,7 +1603,7 @@ window.saveAdminDisplayName = async function() {
 function readTriFreq(name) {
     const v = document.querySelector(`input[name="${name}"]:checked`)?.value;
     if (v === 'off' || v === 'once_per_day' || v === 'every_session') return v;
-    return 'every_session';
+    return 'once_per_day';
 }
 
 window.saveAttendancePopupSettings = async function () {
