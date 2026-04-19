@@ -578,6 +578,11 @@ export function setupListeners(userId, callbacks) {
         } else {
             window.dailyStats = merged;
         }
+        try {
+            if (typeof window.fillProfileActivityStats === 'function') window.fillProfileActivityStats();
+        } catch (_) {
+            /* ignore */
+        }
     };
     const onStatsYearSnapshot = (year) => (snap) => {
         if (window.currentUser && userId !== window.currentUser.uid) return;

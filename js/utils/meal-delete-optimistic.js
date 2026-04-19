@@ -43,6 +43,12 @@ export function applyOptimisticMealDelete(mealId, preloadedMeal = null) {
         }
     }
 
+    try {
+        if (typeof window.fillProfileActivityStats === 'function') window.fillProfileActivityStats();
+    } catch (_) {
+        /* ignore */
+    }
+
     const hadShared = Array.isArray(meal.sharedPhotos) && meal.sharedPhotos.length > 0;
     if (hadShared && window.sharedPhotos) {
         window.sharedPhotos = window.sharedPhotos.filter((p) => p.entryId !== mealId);
@@ -68,5 +74,10 @@ export function rollbackOptimisticMealDelete(ctx) {
         const uid = window.currentUser.uid;
         const entries = m.sharedPhotos.map((photoUrl) => ({ entryId: m.id, photoUrl, userId: uid }));
         window.sharedPhotos = window.sharedPhotos.filter((p) => p.entryId !== m.id).concat(entries);
+    }
+    try {
+        if (typeof window.fillProfileActivityStats === 'function') window.fillProfileActivityStats();
+    } catch (_) {
+        /* ignore */
     }
 }

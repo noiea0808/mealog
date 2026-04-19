@@ -1,4 +1,4 @@
-import { DEFAULT_USER_SETTINGS } from '../constants.js';
+import { DEFAULT_USER_SETTINGS, SLOTS } from '../constants.js';
 import { kakaoTalkLogoSvgHtml } from '../utils/kakao-brand.js';
 import { appState } from '../state.js';
 import { addCompositionAwareInput, normalizeBirthdateRaw, setupBirthdateInputFormatting } from '../utils.js';
@@ -57,6 +57,106 @@ function getSettingsAccountLoginDisplay(user) {
     }
 
     return { icon: emailIcon, line: '로그인된 계정' };
+}
+
+/** dailyStats 일별 집계에서 본식·간식 건수 합산 (대시보드와 동일 규칙) */
+function sumMainSnackTotalsFromDailyStats(dailyStats) {
+    if (!dailyStats || typeof dailyStats !== 'object') return { main: 0, snack: 0 };
+    let mainCount = 0;
+    let snackCount = 0;
+    const sumCounts = (counts) =>
+        Object.values(counts || {}).reduce((a, c) => a + (typeof c === 'number' ? c : parseInt(c, 10) || 0), 0);
+    for (const dateStr of Object.keys(dailyStats)) {
+        const day = dailyStats[dateStr];
+        if (!day || typeof day !== 'object') continue;
+        if (day.main) {
+            const n =
+                day.mainCount != null
+                    ? day.mainCount
+                    : sumCounts(day.main.withWhom) ||
+                      sumCounts(day.main.mealType) ||
+                      sumCounts(day.main.category) ||
+                      0;
+            mainCount += n;
+        }
+        if (day.snack) {
+            snackCount +=
+                day.snackCount != null
+                    ? day.snackCount
+                    : sumCounts(day.snack.snackType) || sumCounts(day.snack.place) || 0;
+        }
+    }
+    return { main: mainCount, snack: snackCount };
+}
+
+/** mealHistory만 있을 때 slotId로 본식/간식 구분 (스냅샷이 짧을 때 보조) */
+function countMainSnackFromMealHistory(hist) {
+    const snackIds = new Set(SLOTS.filter((s) => s.type === 'snack').map((s) => s.id));
+    let main = 0;
+    let snack = 0;
+    if (!Array.isArray(hist)) return { main, snack };
+    for (const m of hist) {
+        if (!m?.slotId) continue;
+        if (snackIds.has(m.slotId)) snack++;
+        else main++;
+    }
+    return { main, snack };
+}
+
+/**
+ * 프로필 초록 박스 아래: 가입일·총 식사/간식 기록 표시
+ * — 집계는 dailyStats 우선, 없으면 mealHistory 기준
+ */
+export function fillProfileActivityStats() {
+    const joinEl = document.getElementById('profileStatJoin');
+    const mealEl = document.getElementById('profileStatMeal');
+    const snackEl = document.getElementById('profileStatSnack');
+    if (!joinEl || !mealEl || !snackEl) return;
+    if (!window.currentUser || window.currentUser.isAnonymous) return;
+
+    let { main, snack } = sumMainSnackTotalsFromDailyStats(window.dailyStats);
+    if (main === 0 && snack === 0 && window.mealHistory && window.mealHistory.length) {
+        const fb = countMainSnackFromMealHistory(window.mealHistory);
+        main = fb.main;
+        snack = fb.snack;
+    }
+    mealEl.textContent = `${main}회`;
+    snackEl.textContent = `${snack}회`;
+
+    const authCreated = window.currentUser.metadata?.creationTime;
+    if (authCreated) {
+        joinEl.textContent = new Date(authCreated).toLocaleDateString('ko-KR', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+    } else {
+        joinEl.textContent = '—';
+    }
+
+    void (async () => {
+        try {
+            const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js');
+            const { db, appId } = await import('../firebase.js');
+            const uid = window.currentUser?.uid;
+            if (!uid) return;
+            const snap = await getDoc(doc(db, 'artifacts', appId, 'users', uid));
+            const data = snap.exists() ? snap.data() : {};
+            const ca = data.createdAt;
+            if (ca && joinEl.isConnected) {
+                const d = typeof ca.toDate === 'function' ? ca.toDate() : new Date(ca);
+                if (!Number.isNaN(d.getTime())) {
+                    joinEl.textContent = d.toLocaleDateString('ko-KR', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit'
+                    });
+                }
+            }
+        } catch (_) {
+            /* ignore */
+        }
+    })();
 }
 
 /** 설정 하단 로그아웃 버튼 — 샘플 계정만 '홈으로' + 초록 스타일 */
@@ -321,6 +421,14 @@ export function openSettings() {
                         </div>
                     </div>
                 </div>
+            </div>
+            <div id="profileActivityStatsBox" class="mt-2 px-3 py-2.5 rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div class="flex flex-wrap justify-center items-center gap-x-1.5 gap-y-1 text-[11px] font-bold text-slate-500">
+                    <span>서비스 가입일</span><span class="text-slate-300" aria-hidden="true">|</span><span>총 식사기록</span><span class="text-slate-300" aria-hidden="true">|</span><span>총 간식 기록</span>
+                </div>
+                <div class="flex flex-wrap justify-center items-center gap-x-1.5 gap-y-0.5 mt-1.5 text-sm font-bold text-slate-800 tabular-nums">
+                    <span id="profileStatJoin">—</span><span class="text-slate-300" aria-hidden="true">|</span><span id="profileStatMeal">0회</span><span class="text-slate-300" aria-hidden="true">|</span><span id="profileStatSnack">0회</span>
+                </div>
             </div>`;
             document.getElementById('logoutBtnArea').classList.remove('hidden');
             syncProfileLogoutFooterButton();
@@ -328,6 +436,9 @@ export function openSettings() {
             if (deleteArea) deleteArea.classList.toggle('hidden', isDemoUser(window.currentUser));
         }
         accountSection.innerHTML = accountHtml;
+        if (window.currentUser && !window.currentUser.isAnonymous) {
+            fillProfileActivityStats();
+        }
         // 카카오: 이메일은 users/{uid} 루트(patchArtifactUserRoot)에만 있고 Auth·settings에 없을 수 있음 → 루트에서 보강
         if (
             window.currentUser &&

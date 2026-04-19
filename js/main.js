@@ -58,6 +58,7 @@ import {
     openModal, closeModal, saveEntry, deleteEntry, retryMealEntrySync, retryMealEntryDeleteSync, retryPendingMealEntriesOnAppReady, setRating, setSatiety, selectTag,
     handleMultipleImages, removePhoto, movePhotoOrder, updateShareIndicator, toggleSharePhoto,
     openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, setSettingsProfileType, handlePhotoUpload, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
+    fillProfileActivityStats,
     syncPushPreferencesFormFromUserSettings,
     setRecordPhotoAspectRatio,
     openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace
@@ -292,6 +293,8 @@ window.setRecordPhotoAspectRatio = setRecordPhotoAspectRatio;
 window.Mealog.setRecordPhotoAspectRatio = setRecordPhotoAspectRatio;
 window.openSettings = openSettings;
 window.Mealog.openSettings = openSettings;
+window.fillProfileActivityStats = fillProfileActivityStats;
+window.Mealog.fillProfileActivityStats = fillProfileActivityStats;
 window.closeSettings = closeSettings;
 window.Mealog.closeSettings = closeSettings;
 window.switchSettingsTab = switchSettingsTab;
