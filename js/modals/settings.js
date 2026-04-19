@@ -8,6 +8,9 @@ import { showToast, updateHeaderUI } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
 import { logUsageMetric } from '../usage-metrics.js';
 
+/** 프로필 아바타 모달: 파일 선택 후 저장 전까지 취소/저장 푸터 표시 */
+let profileAvatarPickPending = false;
+
 /**
  * 설정 > 로그인 정보 표시용.
  * 카카오는 커스텀 토큰 로그인이라 Firebase에 email·providerData가 없을 수 있어,
@@ -145,14 +148,7 @@ export function openSettings() {
     const selectedGender = (state.tempSettings?.profile?.gender || '').trim();
     const settingGenderEl = document.getElementById('settingGender');
     if (settingGenderEl) settingGenderEl.value = selectedGender;
-    document.querySelectorAll('.setting-gender-btn').forEach(btn => {
-        const v = btn.getAttribute('data-value') || '';
-        const active = v === selectedGender;
-        btn.classList.toggle('bg-black', active);
-        btn.classList.toggle('text-white', active);
-        btn.classList.toggle('bg-slate-50', !active);
-        btn.classList.toggle('text-slate-600', !active);
-    });
+    syncGenderButtonsUIFromHidden();
 
     // 생년월일 힌트 업데이트 (이미 1회 수정했으면 안내, 수정 모드일 때만 표시)
     const birthdateHint = document.getElementById('birthdateHint');
@@ -416,24 +412,32 @@ export function openSettings() {
                         showToast('샘플 계정은 읽기 전용입니다.', 'info');
                         return;
                     }
-                    if (
-                        (!appState.isProfileEditing || appState.profileEditScope !== 'full') &&
-                        typeof window.startProfileSettingsEdit === 'function'
-                    ) {
-                        window.startProfileSettingsEdit();
-                    }
                     requestAnimationFrame(() => photoInputEl.click());
+                };
+            }
+            const accountAvatarModalDiscardBtn = document.getElementById('accountAvatarModalDiscardBtn');
+            const accountAvatarModalApplyBtn = document.getElementById('accountAvatarModalApplyBtn');
+            if (accountAvatarModalDiscardBtn) {
+                accountAvatarModalDiscardBtn.onclick = (e) => {
+                    e.preventDefault();
+                    discardPendingAvatarPhotoSelection();
+                };
+            }
+            if (accountAvatarModalApplyBtn) {
+                accountAvatarModalApplyBtn.onclick = (e) => {
+                    e.preventDefault();
+                    void saveAvatarPhotoFromModal();
                 };
             }
             if (accountAvatarModalCloseBtn) {
                 accountAvatarModalCloseBtn.onclick = (e) => {
                     e.preventDefault();
-                    closeAccountAvatarModal();
+                    tryCloseAccountAvatarModalOrCancelInlineEdit();
                 };
             }
             if (accountAvatarModal) {
                 accountAvatarModal.onclick = (e) => {
-                    if (e.target === accountAvatarModal) closeAccountAvatarModal();
+                    if (e.target === accountAvatarModal) tryCloseAccountAvatarModalOrCancelInlineEdit();
                 };
             }
             const myPostsInAccount = document.getElementById('openMyPostsFromSettingsBtn');
@@ -648,7 +652,7 @@ function syncGenderButtonsUIFromHidden() {
         const v = btn.getAttribute('data-value') || '';
         const active = v === selectedGender;
         btn.classList.toggle('font-bold', active);
-        btn.classList.toggle('text-emerald-700', active);
+        btn.classList.toggle('text-slate-900', active);
         btn.classList.toggle('underline', active);
         btn.classList.toggle('decoration-2', active);
         btn.classList.toggle('underline-offset-2', active);
@@ -741,12 +745,17 @@ function unmountNicknameInline() {
     span?.classList.remove('hidden');
 }
 
+const SETTING_BIRTHDATE_INPUT_CLASSES_DEFAULT =
+    'profile-settings-input profile-settings-input-inline profile-settings-birthdate-input min-w-0 w-[9.5rem] max-w-full text-right';
+
 function unmountBirthdateInline() {
     const defaultParent = document.querySelector('#settingBirthdateRow .profile-settings-field.profile-settings-field-same');
     const edit = document.getElementById('settingBirthdateEdit');
     const host = document.getElementById('accountBirthdateEditHost');
     const viewRow = document.getElementById('accountBirthdateViewRow');
     const editorRow = document.getElementById('accountBirthdateEditorRow');
+    const bdInput = document.getElementById('settingBirthdate');
+    if (bdInput) bdInput.className = SETTING_BIRTHDATE_INPUT_CLASSES_DEFAULT;
     if (defaultParent && edit && !defaultParent.contains(edit)) {
         defaultParent.appendChild(edit);
     }
@@ -785,7 +794,12 @@ function mountBirthdateInline() {
     host.appendChild(edit);
     edit.classList.remove('hidden');
     const bdInput = document.getElementById('settingBirthdate');
-    if (bdInput) setupBirthdateInputFormatting(bdInput);
+    if (bdInput) {
+        bdInput.className =
+            'profile-settings-nickname-inline w-[9.5rem] max-w-full min-w-0 text-right text-sm font-bold text-slate-800 px-2 py-1.5';
+        setupBirthdateInputFormatting(bdInput);
+    }
+    syncGenderButtonsUIFromHidden();
     requestAnimationFrame(() => bdInput?.focus());
 }
 
@@ -969,15 +983,132 @@ function refreshAccountAvatarModalPreview() {
     }
 }
 
+function syncAccountAvatarModalFooter(showConfirm) {
+    const pick = document.getElementById('accountAvatarModalFooterPick');
+    const confirm = document.getElementById('accountAvatarModalFooterConfirm');
+    if (pick) pick.classList.toggle('hidden', !!showConfirm);
+    if (confirm) confirm.classList.toggle('hidden', !showConfirm);
+}
+
+function discardPendingAvatarPhotoSelection(options) {
+    const force = options && options.force === true;
+    if (!profileAvatarPickPending && !force) return;
+    const snap = appState._profileSettingsSnapshot;
+    if (snap?.profile) {
+        const p = JSON.parse(JSON.stringify(snap.profile));
+        appState.tempSettings.profile.photoUrl = p.photoUrl ?? null;
+        appState.tempSettings.profile.iconType = p.iconType;
+        appState.tempSettings.profile.icon = p.icon ?? null;
+    }
+    if (window.settingsPhotoUrl && String(window.settingsPhotoUrl).startsWith('blob:')) {
+        URL.revokeObjectURL(window.settingsPhotoUrl);
+    }
+    window.settingsPhotoFile = null;
+    window.settingsPhotoUrl = null;
+    const photoInput = document.getElementById('photoInput');
+    if (photoInput) photoInput.value = '';
+    profileAvatarPickPending = false;
+    const inferredType = appState.tempSettings?.profile?.photoUrl ? 'photo' : 'text';
+    let t = appState.tempSettings?.profile?.iconType || inferredType;
+    if (t === 'emoji') t = 'text';
+    window.settingsProfileType = t === 'photo' ? 'photo' : 'text';
+    setSettingsProfileType(window.settingsProfileType);
+    renderSettingsProfileAvatarPreview();
+    syncAccountAvatarModalFooter(false);
+    refreshAccountAvatarModalPreview();
+}
+
+window.notifyProfilePhotoEditClosed = function (savedFromEdit) {
+    if (!window.profilePhotoEditFromAvatarModal) return;
+    window.profilePhotoEditFromAvatarModal = false;
+    if (savedFromEdit) {
+        if (window.settingsPhotoUrl) {
+            appState.tempSettings.profile.photoUrl = window.settingsPhotoUrl;
+        }
+        profileAvatarPickPending = true;
+        renderSettingsProfileAvatarPreview();
+        refreshAccountAvatarModalPreview();
+        syncAccountAvatarModalFooter(true);
+    } else {
+        discardPendingAvatarPhotoSelection({ force: true });
+    }
+};
+
+async function saveAvatarPhotoFromModal() {
+    const state = appState;
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast('로그인 후 이용할 수 있습니다.', 'info');
+        return;
+    }
+    if (isDemoUser(window.currentUser)) {
+        showToast('샘플 계정은 읽기 전용입니다.', 'info');
+        return;
+    }
+    if (!profileAvatarPickPending || !window.settingsPhotoFile) {
+        showToast('저장할 사진을 먼저 선택해주세요.', 'info');
+        return;
+    }
+    try {
+        setSettingsProfileType('photo');
+        const { storage } = await import('../firebase.js');
+        const { ref, uploadBytes, getDownloadURL } = await import(
+            'https://www.gstatic.com/firebasejs/11.10.0/firebase-storage.js'
+        );
+        const timestamp = Date.now();
+        const fileName = `photo_${timestamp}.jpg`;
+        const photoRef = ref(storage, `users/${window.currentUser.uid}/profile/${fileName}`);
+        await uploadBytes(photoRef, window.settingsPhotoFile);
+        const photoUrl = await getDownloadURL(photoRef);
+        state.tempSettings.profile.photoUrl = photoUrl;
+        state.tempSettings.profile.iconType = 'photo';
+        state.tempSettings.profile.icon = null;
+        if (window.settingsPhotoUrl && String(window.settingsPhotoUrl).startsWith('blob:')) {
+            URL.revokeObjectURL(window.settingsPhotoUrl);
+        }
+        window.settingsPhotoFile = null;
+        window.settingsPhotoUrl = null;
+        const photoInput = document.getElementById('photoInput');
+        if (photoInput) photoInput.value = '';
+        await dbOps.saveSettings(state.tempSettings);
+        showToast('프로필 사진이 저장되었습니다.', 'success');
+        state._profileSettingsSnapshot = JSON.parse(JSON.stringify(state.tempSettings));
+        if (window.userSettings) window.userSettings = JSON.parse(JSON.stringify(state.tempSettings));
+        profileAvatarPickPending = false;
+        updateHeaderUI();
+        renderSettingsProfileAvatarPreview();
+        syncAccountAvatarModalFooter(false);
+        document.getElementById('accountAvatarModal')?.classList.add('hidden');
+    } catch (e) {
+        console.error('프로필 사진 저장 실패:', e);
+        showToast('저장 중 오류가 발생했습니다: ' + (e.message || e), 'error');
+    }
+}
+
 export function openAccountAvatarModal() {
     const modal = document.getElementById('accountAvatarModal');
     if (!modal) return;
     refreshAccountAvatarModalPreview();
+    syncAccountAvatarModalFooter(profileAvatarPickPending);
     modal.classList.remove('hidden');
 }
 
+/** 아바타 팝업: 인라인 사진 편집 중이면 편집만 취소, 아니면 팝업 닫기 */
+export function tryCloseAccountAvatarModalOrCancelInlineEdit() {
+    const editView = document.getElementById('accountAvatarModalEditView');
+    if (editView && !editView.classList.contains('hidden') && typeof window.closePhotoEditModal === 'function') {
+        window.closePhotoEditModal();
+        return;
+    }
+    closeAccountAvatarModal();
+}
+
 export function closeAccountAvatarModal() {
-    document.getElementById('accountAvatarModal')?.classList.add('hidden');
+    const modal = document.getElementById('accountAvatarModal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    if (profileAvatarPickPending) {
+        discardPendingAvatarPhotoSelection();
+    }
 }
 
 /**
@@ -1197,10 +1328,13 @@ window.cancelProfileSettingsEdit = () => {
     }
 
     // 편집 중 선택한 사진(미저장) 상태 초기화
+    profileAvatarPickPending = false;
+    window.profilePhotoEditFromAvatarModal = false;
     window.settingsPhotoFile = null;
     window.settingsPhotoUrl = null;
     const photoInput = document.getElementById('photoInput');
     if (photoInput) photoInput.value = '';
+    syncAccountAvatarModalFooter(false);
 
     // UI 재적용
     const inferredType = state.tempSettings?.profile?.photoUrl ? 'photo' : 'text';
@@ -1249,32 +1383,35 @@ window.handleProfileFieldPencilOrSave = handleProfileFieldPencilOrSave;
 window.syncSettingsGenderButtonsUI = syncGenderButtonsUIFromHidden;
 window.openAccountAvatarModal = openAccountAvatarModal;
 window.closeAccountAvatarModal = closeAccountAvatarModal;
+window.tryCloseAccountAvatarModalOrCancelInlineEdit = tryCloseAccountAvatarModalOrCancelInlineEdit;
 
-// 설정 페이지 사진 업로드 처리 (선택 → 편집 모달 → 저장 시 미리보기 반영)
+// 설정 페이지 사진 업로드 처리 (전체 편집: 편집 모달 / 아바타 모달: 선택 후 하단 저장)
 export async function handlePhotoUpload(event) {
-    if (!appState.isProfileEditing || appState.profileEditScope !== 'full') {
+    const avatarModal = document.getElementById('accountAvatarModal');
+    const fromAvatarModal = !!(avatarModal && !avatarModal.classList.contains('hidden'));
+
+    if (!fromAvatarModal && (!appState.isProfileEditing || appState.profileEditScope !== 'full')) {
         showToast('프로필 사진은 계정 영역에서 사진을 눌러 전체 편집으로 변경할 수 있습니다.', 'info');
         if (event?.target) event.target.value = '';
         return;
     }
     const file = event.target.files[0];
     if (!file) return;
-    
+
     if (!file.type.startsWith('image/')) {
         showToast("이미지 파일만 업로드할 수 있습니다.", "error");
         return;
     }
-    
+
     try {
         const { compressImageToBlob } = await import('../utils.js');
         const compressedBlob = await compressImageToBlob(file);
         const photoUrl = URL.createObjectURL(compressedBlob);
-        
+
         if (window.settingsProfileType !== 'photo') {
             setSettingsProfileType('photo');
         }
-        
-        // 미리보기 업데이트
+
         const photoPreview = document.getElementById('photoPreview');
         const photoDeleteBtn = document.getElementById('photoDeleteBtn');
         if (photoPreview) {
@@ -1283,7 +1420,10 @@ export async function handlePhotoUpload(event) {
             photoPreview.style.backgroundPosition = 'center';
             photoPreview.innerHTML = '';
             if (photoDeleteBtn) {
-                photoDeleteBtn.classList.remove('hidden');
+                photoDeleteBtn.classList.toggle(
+                    'hidden',
+                    !appState.isProfileEditing || appState.profileEditScope !== 'full'
+                );
             }
         }
         renderSettingsProfileAvatarPreview();
@@ -1291,10 +1431,13 @@ export async function handlePhotoUpload(event) {
         window.settingsPhotoUrl = photoUrl;
         window.settingsPhotoFile = compressedBlob;
 
+        if (fromAvatarModal) {
+            window.profilePhotoEditFromAvatarModal = true;
+            appState.tempSettings.profile.photoUrl = photoUrl;
+        }
         if (typeof window.openProfilePhotoEdit === 'function') {
             window.openProfilePhotoEdit(photoUrl);
         } else {
-            // 편집 기능이 없으면 바로 저장 가능하도록 설정
             appState.tempSettings.profile.photoUrl = photoUrl;
         }
     } catch (e) {

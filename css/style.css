@@ -1163,6 +1163,10 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     box-shadow: none !important;
     outline: none;
 }
+/* 생년월일 인라인 편집: 닉네임과 동일한 밑줄 입력 스타일 재사용 */
+#settingBirthdateEdit .profile-settings-nickname-inline {
+    box-sizing: border-box;
+}
 /* 소개 textarea: 포커스 시 하단 2px만(이중 라인 방지) */
 .profile-settings-textarea--bottomline:focus {
     box-shadow: none !important;

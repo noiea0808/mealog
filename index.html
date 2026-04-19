@@ -1371,11 +1371,13 @@
                         <div class="profile-settings-row profile-settings-row--bio-wide border-b border-slate-100">
                             <div class="w-full min-w-0 flex flex-col gap-2 py-1">
                                 <div class="profile-settings-label-row flex items-center gap-1 w-full min-w-0">
-                                    <span class="profile-settings-label profile-settings-label-inline mb-0 min-w-0 shrink">라이프 스타일</span>
-                                    <div class="flex items-center gap-1 shrink-0 ml-auto">
-                                        <button type="button" id="accountLifestyleSaveBtn" class="hidden px-0 py-0 text-[10px] font-bold text-emerald-700 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="저장" aria-label="라이프 스타일 저장">저장</button>
-                                        <button type="button" id="accountLifestyleCancelBtn" class="hidden px-0 py-0 text-[10px] font-bold text-slate-500 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="취소" aria-label="취소">취소</button>
-                                        <button type="button" id="accountEditLifestyleBtn" data-action="edit" class="p-0.5 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-slate-100 inline-flex items-center justify-center" title="라이프 스타일 수정" aria-label="라이프 스타일 수정"><i class="fa-solid fa-pencil settings-pencil-icon"></i></button>
+                                    <div class="flex items-center gap-1 min-w-0 shrink">
+                                        <span class="profile-settings-label profile-settings-label-inline mb-0 min-w-0 shrink">라이프 스타일</span>
+                                        <div class="flex items-center gap-1 shrink-0">
+                                            <button type="button" id="accountLifestyleSaveBtn" class="hidden px-0 py-0 text-[10px] font-bold text-emerald-700 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="저장" aria-label="라이프 스타일 저장">저장</button>
+                                            <button type="button" id="accountLifestyleCancelBtn" class="hidden px-0 py-0 text-[10px] font-bold text-slate-500 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="취소" aria-label="취소">취소</button>
+                                            <button type="button" id="accountEditLifestyleBtn" data-action="edit" class="p-0.5 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-slate-100 inline-flex items-center justify-center" title="라이프 스타일 수정" aria-label="라이프 스타일 수정"><i class="fa-solid fa-pencil settings-pencil-icon"></i></button>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="profile-settings-field py-2 w-full min-w-0">
@@ -1598,15 +1600,45 @@
     </div>
 
     <!-- 설정: 프로필 사진 미리보기 -->
-    <div id="accountAvatarModal" class="hidden fixed inset-0 z-[405] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-[2px]" aria-modal="true" role="dialog" aria-labelledby="accountAvatarModalTitle">
-        <div class="relative w-full max-w-xs rounded-2xl bg-white p-4 shadow-2xl border border-slate-100">
-            <button type="button" id="accountAvatarModalCloseBtn" class="absolute top-2 right-2 p-2 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="닫기"><i class="fa-solid fa-xmark text-lg"></i></button>
-            <h3 id="accountAvatarModalTitle" class="text-sm font-bold text-slate-800 text-center pr-8">프로필 사진</h3>
-            <div class="mx-auto mt-3 flex h-40 w-40 items-center justify-center overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200">
-                <img id="accountAvatarModalImg" class="hidden h-full w-full object-cover" alt="" />
-                <i id="accountAvatarModalIcon" class="fa-solid fa-user text-6xl text-slate-300"></i>
+    <div id="accountAvatarModal" class="hidden fixed inset-0 z-[405] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/50 backdrop-blur-[2px]" aria-modal="true" role="dialog" aria-label="프로필 사진">
+        <div class="relative w-full max-w-none sm:max-w-xs rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl border border-slate-100 border-b-0 sm:border-b overflow-hidden flex flex-col max-h-[min(90vh,32rem)]">
+            <div class="relative px-3 pt-2 pb-0 sm:px-4 sm:pt-3">
+                <button type="button" id="accountAvatarModalCloseBtn" class="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 z-10 p-2 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="닫기"><i class="fa-solid fa-xmark text-lg"></i></button>
+                <div id="accountAvatarModalStaticView">
+                    <div class="mx-auto mt-0.5 flex h-40 w-40 items-center justify-center overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200">
+                        <img id="accountAvatarModalImg" class="hidden h-full w-full object-cover" alt="" />
+                        <i id="accountAvatarModalIcon" class="fa-solid fa-user text-6xl text-slate-300"></i>
+                    </div>
+                </div>
+                <div id="accountAvatarModalEditView" class="hidden w-full">
+                    <div class="mx-auto h-40 w-40 rounded-full overflow-hidden bg-slate-100 ring-2 ring-emerald-500/35 shadow-inner">
+                        <div id="accountAvatarEditCanvasContainer" class="relative h-full w-full touch-none">
+                            <canvas id="accountAvatarEditCanvas" class="block h-full w-full"></canvas>
+                        </div>
+                    </div>
+                    <div class="mt-2 flex gap-1.5">
+                        <button type="button" onclick="window.zoomOutPhotoEdit()" class="flex-1 min-w-0 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i class="fa-solid fa-magnifying-glass-minus text-[10px]"></i> 축소</button>
+                        <button type="button" onclick="window.zoomInPhotoEdit()" class="flex-1 min-w-0 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i class="fa-solid fa-magnifying-glass-plus text-[10px]"></i> 확대</button>
+                        <button type="button" onclick="window.rotatePhotoEdit()" class="flex-1 min-w-0 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i class="fa-solid fa-rotate-right text-[10px]"></i> 회전</button>
+                    </div>
+                    <div class="mt-2 -mx-3 sm:-mx-4 grid grid-cols-3 border-t border-slate-200">
+                        <button type="button" onclick="window.resetPhotoEdit()" class="py-2.5 bg-slate-100 text-slate-800 text-xs sm:text-sm font-semibold border-r border-slate-200 active:bg-slate-200">초기화</button>
+                        <button type="button" onclick="window.closePhotoEditModal()" class="py-2.5 bg-slate-100 text-slate-800 text-xs sm:text-sm font-semibold border-r border-slate-200 active:bg-slate-200">취소</button>
+                        <button type="button" onclick="window.savePhotoEdit()" class="py-2.5 bg-emerald-600 text-white text-xs sm:text-sm font-bold active:bg-emerald-700">편집적용</button>
+                    </div>
+                </div>
             </div>
-            <button type="button" id="accountAvatarModalChangeBtn" class="mt-4 w-full rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 active:bg-emerald-800 transition-colors">사진 변경</button>
+            <div id="accountAvatarModalFooterPick" class="border-t border-slate-200">
+                <button type="button" id="accountAvatarModalChangeBtn" class="account-avatar-modal-footer-btn w-full py-3 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 transition-colors">사진 변경</button>
+            </div>
+            <div id="accountAvatarModalFooterConfirm" class="hidden grid grid-cols-2 border-t border-slate-200">
+                <button type="button" id="accountAvatarModalDiscardBtn" class="flex items-center justify-center px-2 py-3 bg-slate-100 hover:bg-slate-200/90 active:bg-slate-200 border-r border-slate-200 transition-colors">
+                    <span class="text-base font-bold text-slate-700">취소</span>
+                </button>
+                <button type="button" id="accountAvatarModalApplyBtn" class="flex items-center justify-center px-2 py-3 bg-emerald-50 hover:bg-emerald-100/90 active:bg-emerald-100 transition-colors">
+                    <span class="text-base font-bold text-emerald-800">저장</span>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -2095,7 +2127,7 @@
     </div>
 
     <!-- Photo Edit Modal -->
-    <div id="photoEditModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center p-4">
+    <div id="photoEditModal" class="hidden fixed inset-0 bg-slate-900/60 z-[410] flex items-center justify-center p-4">
         <div class="w-full max-w-md bg-white rounded-2xl flex flex-col max-h-[90vh] overflow-hidden">
             <div class="p-4 border-b border-slate-200 flex justify-between items-center shrink-0">
                 <h2 class="text-lg font-bold text-slate-800">사진 편집</h2>

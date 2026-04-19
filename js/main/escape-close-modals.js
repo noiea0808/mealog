@@ -40,6 +40,7 @@ const ESCAPE_OVERLAY_IDS = [
     'characterSelectModal',
     'bestShareModal',
     'insightShareModal',
+    'accountAvatarModal',
     'photoEditModal',
     'momentImageLightbox',
     'emailAuthModal',
@@ -115,6 +116,11 @@ function closeOverlayById(id) {
             break;
         case 'insightShareModal':
             closeShareInsightModal();
+            break;
+        case 'accountAvatarModal':
+            if (typeof window.tryCloseAccountAvatarModalOrCancelInlineEdit === 'function') {
+                window.tryCloseAccountAvatarModalOrCancelInlineEdit();
+            }
             break;
         case 'photoEditModal':
             if (typeof window.closePhotoEditModal === 'function') window.closePhotoEditModal();
