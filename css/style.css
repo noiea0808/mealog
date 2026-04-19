@@ -1018,8 +1018,8 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 }
 /* 로그인 정보(이메일) 박스: 상단 탭과 간격 */
 .profile-account-section {
-    margin-top: 1rem;
-    padding: 0 1rem;
+    margin-top: 0.5rem;
+    padding: 0 0.5rem;
 }
 .profile-account-section:empty {
     margin-top: 0;
@@ -1027,6 +1027,19 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 }
 .profile-settings-header {
     background: #fff;
+}
+/* 저장/취소 없을 때: 헤더 줄 높이 최소화 (녹색 박스 ↔ 소개 간격) */
+#settingsTabContentProfile .profile-settings-header {
+    min-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-bottom-color: transparent;
+}
+#settingsTabContentProfile .profile-settings-header.profile-settings-header--active {
+    min-height: 2.5rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom-color: #f1f5f9;
 }
 .profile-settings-row {
     display: flex;
@@ -1091,6 +1104,30 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     flex: 1 1 100%;
     min-width: 0;
 }
+/* 소개/라이프 스타일 제목 줄: 라벨+연필은 붙여서(왼쪽), 글자수만 제목 줄 오른쪽 */
+.profile-settings-label-row .profile-settings-label {
+    flex: 0 1 auto !important;
+    min-width: 0;
+    margin-bottom: 0 !important;
+}
+/* 설정 프로필 연필 — 기준 대비 약 70% 크기 */
+.settings-pencil-icon {
+    font-size: 0.65rem;
+    line-height: 1;
+    display: inline-block;
+    vertical-align: middle;
+}
+/* 소개·라이프스타일: 기본 행(좌우 1rem)보다 패딩만 줄여 입력 폭 확대 — 음수 마진·calc 폭은 body clip과 충돌 가능 */
+.profile-settings-row--bio-wide {
+    padding-left: 0.375rem;
+    padding-right: 0.375rem;
+}
+@media (min-width: 640px) {
+    .profile-settings-row--bio-wide {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+    }
+}
 .profile-settings-input {
     width: 100%;
     padding: 0.5rem 0.75rem;
@@ -1111,6 +1148,25 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     background: #f8fafc;
     border-bottom-color: #475569;
     box-shadow: 0 2px 0 0 #475569;
+}
+/* 닉네임 인라인(계정 카드): 하단 2px만, 라운드 없음 */
+.profile-settings-nickname-inline {
+    border: none !important;
+    border-bottom: 2px solid #94a3b8 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff;
+}
+.profile-settings-nickname-inline:focus {
+    background: #f8fafc;
+    border-bottom-color: #475569 !important;
+    box-shadow: none !important;
+    outline: none;
+}
+/* 소개 textarea: 포커스 시 하단 2px만(이중 라인 방지) */
+.profile-settings-textarea--bottomline:focus {
+    box-shadow: none !important;
+    border-bottom: 2px solid #475569;
 }
 /* 생년월일 + 성별 한 줄: 회색 영역 안에 입력란과 남/여 스위치 */
 .profile-settings-birthdate-row {
@@ -1138,6 +1194,35 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     background: transparent;
     border: none;
     box-shadow: none;
+}
+/* 계정 카드 등 컴팩트 생년월일 줄 + 성별 스위치 */
+.profile-settings-birthdate-row--compact {
+    padding: 0.2rem 0.35rem;
+    min-height: auto;
+    gap: 0.5rem;
+}
+.profile-settings-birthdate-row--compact .profile-settings-input:focus {
+    box-shadow: none !important;
+    border-bottom: 2px solid #475569 !important;
+}
+/* 생년월일 줄: 바깥 박스 언더라인 제거 — 입력칸 하단 2px만 */
+.profile-settings-birthdate-row--input-line-only {
+    border-bottom: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    min-height: auto !important;
+    padding: 0 !important;
+}
+.profile-settings-birthdate-row--input-line-only .profile-settings-input {
+    background: #fff;
+}
+.setting-gender-switch--compact .setting-gender-btn {
+    padding-left: 0.45rem;
+    padding-right: 0.45rem;
+    padding-top: 0.2rem;
+    padding-bottom: 0.2rem;
+    font-size: 0.7rem;
+    line-height: 1.2;
 }
 .profile-settings-textarea {
     min-height: 4rem;

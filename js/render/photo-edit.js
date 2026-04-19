@@ -599,11 +599,17 @@ export function savePhotoEdit() {
                         photoPreview.style.backgroundPosition = 'center';
                         photoPreview.innerHTML = '';
                         if (photoDeleteBtn) {
-                            photoDeleteBtn.classList.toggle('hidden', !appState.isProfileEditing);
+                            photoDeleteBtn.classList.toggle(
+                                'hidden',
+                                !appState.isProfileEditing || appState.profileEditScope !== 'full'
+                            );
                         }
                     }
                     if (typeof window.setSettingsProfileType === 'function') {
                         window.setSettingsProfileType('photo');
+                    }
+                    if (typeof window.renderSettingsProfileAvatarPreview === 'function') {
+                        window.renderSettingsProfileAvatarPreview();
                     }
                     closePhotoEditModal();
                     if (typeof window.showToast === 'function') window.showToast('사진이 적용되었습니다.', 'success');

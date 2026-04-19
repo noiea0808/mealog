@@ -10,6 +10,7 @@ export {
     loadSharedPhotosPage,
     loadSharedPhotosPageReliable,
     loadMyShares,
+    hasSharedPhotosForEntry,
     peekLatestSharedPhotoTimestampMs
 } from './db/listeners.js';
 export { postInteractions, subscribeToMyPostComments, getUserReportForPost, submitReport, withdrawReport, getReportsAggregateByGroupKeys } from './db/social.js';

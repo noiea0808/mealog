@@ -915,6 +915,32 @@ export async function loadMyShares() {
     }
 }
 
+/**
+ * 본인의 해당 식사 기록(entryId)에 대응하는 sharedPhotos 문서가 있는지 (최대 1건 읽기).
+ * 고아 동기화에서 loadMyShares(100)로 추론하지 않고 entryId 단위로 정확히 판별한다.
+ * @param {string} entryId
+ * @returns {Promise<boolean>}
+ */
+export async function hasSharedPhotosForEntry(entryId) {
+    if (!window.currentUser || window.currentUser.isAnonymous || !entryId) return false;
+    const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+    const uid = window.currentUser.uid;
+    try {
+        const q = query(
+            sharedColl,
+            where('userId', '==', uid),
+            where('entryId', '==', entryId),
+            limit(1)
+        );
+        const snap = await getDocsFromServer(q);
+        return snap.docs.length > 0;
+    } catch (e) {
+        console.warn('hasSharedPhotosForEntry 실패:', entryId, e?.message || e);
+        // 불확실할 때 재공유(타임스탬프 갱신)보다 동기화 생략이 안전
+        return true;
+    }
+}
+
 /** 프로필용: Firestore 한 번에 읽는 문서 수 (100장 한 방 X → 작은 배치) */
 const SHARED_PHOTOS_BY_USER_BATCH = 15;
 /** 한 번의 사용자 액션(첫 로드·더보기)에서 배치 루프 상한 */

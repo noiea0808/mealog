@@ -89,6 +89,14 @@
       ]
     },
     {
+      "collectionGroup": "sharedPhotos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "entryId", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "adminScheduledPushes",
       "queryScope": "COLLECTION",
       "fields": [
