@@ -6,6 +6,7 @@ import { loadSharedPhotosPageReliable } from '../db.js';
 import { recoverFirestoreAfterWatchAssertion } from '../firebase.js';
 import { runMealogNetworkRecovery } from './network.js';
 import { showToast } from '../ui.js';
+import { applyLoadingFoodIconDurationSeconds } from '../loading-spinner-config.js';
 import { renderGallery, invalidateGalleryRenderSession, updateTimelineShareIndicators } from '../render/index.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';
 
@@ -25,11 +26,16 @@ export function setupGalleryPullToRefresh() {
         if (isRefreshing) return;
         isRefreshing = true;
         indicator.classList.remove('pulling');
-        indicator.classList.add('refreshing');
-        const iconEl = indicator.querySelector('i');
-        const spanEl = indicator.querySelector('span');
-        if (iconEl) iconEl.classList.add('fa-spin');
-        if (spanEl) spanEl.textContent = '새로고침 중...';
+        const refreshFab = document.getElementById('galleryMomentsRefreshFab');
+        if (refreshFab) {
+            refreshFab.classList.remove('hidden');
+            refreshFab.setAttribute('aria-hidden', 'false');
+        }
+        try {
+            applyLoadingFoodIconDurationSeconds();
+        } catch (_) {
+            /* ignore */
+        }
 
         try {
             invalidateGalleryRenderSession();
@@ -79,10 +85,11 @@ export function setupGalleryPullToRefresh() {
             if (typeof showToast === 'function') showToast('새로고침에 실패했습니다.', 'error');
         } finally {
             isRefreshing = false;
-            indicator.classList.remove('refreshing');
-            const iconEl2 = indicator.querySelector('i');
+            if (refreshFab) {
+                refreshFab.classList.add('hidden');
+                refreshFab.setAttribute('aria-hidden', 'true');
+            }
             const spanEl2 = indicator.querySelector('span');
-            if (iconEl2) iconEl2.classList.remove('fa-spin');
             if (spanEl2) spanEl2.textContent = '당겨서 새로고침';
         }
     };

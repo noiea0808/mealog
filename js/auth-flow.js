@@ -4,8 +4,8 @@
 import { auth, db, appId } from './firebase.js';
 import { dbOps } from './db.js';
 import { showToast, switchScreen, showLoading, hideLoading } from './ui.js';
-import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION, DEFAULT_SUB_TAGS } from './constants.js';
-import { getCurrentTermsVersion } from './utils-terms.js';
+import { DEFAULT_USER_SETTINGS, DEFAULT_SUB_TAGS } from './constants.js';
+import { getCurrentTermsVersion, getLiveTermsCurrentVersionOrNull } from './utils-terms.js';
 import { showTermsModal, closeTermsModal } from './auth.js';
 import { isDemoUser, maybeShowDemoIntroModal } from './demo-account.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
@@ -51,18 +51,24 @@ async function hydrateUserSettingsFromServer(uid) {
  * 앱에서 약관 단계를 건너뛸 수 있는지 (온보딩·재동의 판별)
  * — termsAgreed === true 이고 termsVersion 비어 있지 않으며 **현재 서비스 버전과 일치**
  * — 버전만 다르면 재동의 (약관 업데이트)
+ * — `getCurrentTermsVersion()`은 타임아웃 시 constants(예: 1.0)로 폴백해, 최근 동의한 사용자도
+ *   저장된 버전과 불일치로 **또 동의**받는 경우가 있음 → 여기서는 서버에서 읽힌 버전만 사용하고,
+ *   읽기 실패(null)면 이미 동의·버전이 있으면 잠정 통과(네트워크·App Check 지연 완화).
  */
 async function isTermsAgreementRecordedAndCurrent(settings) {
     if (!settings || settings.termsAgreed !== true) return false;
     const v = settings.termsVersion;
     if (v == null || String(v).trim() === '') return false;
-    let current = CURRENT_TERMS_VERSION;
-    try {
-        current = await getCurrentTermsVersion();
-    } catch (e) {
-        console.warn('isTermsAgreementRecordedAndCurrent: 현재 약관 버전 조회 실패, constants 로 비교', e);
+    const userV = String(v).trim();
+    const live = await getLiveTermsCurrentVersionOrNull();
+    if (live != null && live !== '') {
+        return userV === live;
     }
-    return String(v).trim() === String(current).trim();
+    console.warn(
+        'isTermsAgreementRecordedAndCurrent: 서버 약관 버전 미확인 — 기존 동의(termsVersion) 유지로 재요청 생략',
+        { userV }
+    );
+    return true;
 }
 
 /**

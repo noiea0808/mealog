@@ -98,9 +98,10 @@ let attendanceDebounceTimer = null;
 const WELCOME_DAY_LS_PREFIX = 'mealog_welcome_shown_v3_';
 const WELCOME_SESS_PREFIX = 'mealog_welcome_sess_v3_';
 /**
- * 기록 있음 분기(ns/s1/s2p)는 각각 다른 localStorage 키를 쓰면,
- * meals/dailyStats 로드 전·후로 연속 일수 분기가 바뀔 때 같은 날 웰컴이 여러 번 뜸.
- * `once_per_day`일 때는 시나리오와 무관하게 하루 1회만(rec)으로 통합한다. (기록 없음 `no`는 별도)
+ * 기록 없음(no)·기록 있음(ns/s1/s2p)이 서로 다른 localStorage 키를 쓰면,
+ * meals/dailyStats 로드 전에는 기록 없음으로 팝업 → 마킹 후, 로드 후에는 연속일 분기로 다시 시도되어
+ * 같은 날 웰컴이 여러 번 뜸(운영 ‘하루 1회’ 설정과 불일치).
+ * `once_per_day`일 때는 시나리오와 무관하게 하루 1회만(rec)으로 통합한다.
  */
 const WELCOME_RECORD_DAY_KIND = 'rec';
 
@@ -110,7 +111,7 @@ const WELCOME_RECORD_DAY_KIND = 'rec';
  * @returns {'no'|'ns'|'s1'|'s2p'|'rec'}
  */
 function resolveWelcomeDayStorageKind(kind, frequency) {
-    if (frequency === 'once_per_day' && (kind === 'ns' || kind === 's1' || kind === 's2p')) {
+    if (frequency === 'once_per_day') {
         return WELCOME_RECORD_DAY_KIND;
     }
     return kind;

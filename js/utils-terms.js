@@ -137,3 +137,28 @@ export function invalidateTermsVersionCache() {
     cachedVersion = null;
     cacheTimestamp = null;
 }
+
+/**
+ * 재동의 판별 전용: 캐시·constants 폴백 없이 `content/terms.currentVersion`만 조회.
+ * 타임아웃/미존재 시 null — 이때 클라이언트가 `1.0` 등으로 비교하면 최근 동의 사용자가 오늘 또 동의받는 오판이 남.
+ * @returns {Promise<string|null>}
+ */
+export async function getLiveTermsCurrentVersionOrNull() {
+    const termsDoc = doc(db, 'artifacts', appId, 'content', 'terms');
+    const timeoutMs = 12000;
+    try {
+        const snap = await Promise.race([
+            getDoc(termsDoc),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), timeoutMs))
+        ]);
+        if (snap && snap.exists()) {
+            const cv = snap.data()?.currentVersion;
+            if (cv != null && String(cv).trim() !== '') {
+                return String(cv).trim();
+            }
+        }
+    } catch (e) {
+        console.warn('getLiveTermsCurrentVersionOrNull:', e?.message || e);
+    }
+    return null;
+}

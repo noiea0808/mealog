@@ -430,7 +430,7 @@ function sortSnackSlotRecordsChronological(records) {
 }
 
 /** 타임라인 썸네일: photos 배열·단일 문자열·photoUrl */
-function getMealPhotoUrlsForTimeline(r) {
+export function getMealPhotoUrlsForTimeline(r) {
     if (!r) return [];
     if (Array.isArray(r.photos) && r.photos.length > 0) {
         return r.photos.map((u) => String(u || '').trim()).filter(Boolean);
@@ -445,16 +445,120 @@ function getMealPhotoUrlsForTimeline(r) {
     return [];
 }
 
-/** 좌측 140×140 사진 칸: 첫 장 + 다중 등록 시 우상단 1/n */
-function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover') {
+/**
+ * 사진 뷰어용: 해당 날짜·SLOTS 순서 — 기록이 있는 슬롯만(본식 1행, 간식은 기록마다 1행)
+ * @returns {Array<{dateStr:string,slotId:string,recordId:string|null,slotTitle:string,urls:string[],menuLine:string,place:string,mealType:string|null,slotType:string,isEmptyRow:boolean}>}
+ */
+export function buildMealPhotoViewerRowsForDate(dateStr) {
+    const rows = [];
+    const history = window.mealHistory || [];
+    SLOTS.forEach((slot) => {
+        const recordsRaw = history.filter((m) => m.date === dateStr && m.slotId === slot.id);
+        const records = slot.type === 'snack' ? sortSnackSlotRecordsChronological(recordsRaw) : recordsRaw;
+        if (slot.type === 'main') {
+            const r = records[0];
+            if (r) rows.push(mealPhotoViewerRowFromRecord(dateStr, slot, r, 1, 1));
+        } else {
+            records.forEach((r, idx) => {
+                rows.push(mealPhotoViewerRowFromRecord(dateStr, slot, r, idx + 1, records.length));
+            });
+        }
+    });
+    return rows;
+}
+
+/**
+ * 해당 연·월(1~12)에 기록이 있는 날짜만, 날짜 내림차순(최신일이 위)으로 이어 붙인 뷰어 행
+ * @param {number} year
+ * @param {number} month 1~12
+ */
+export function buildMealPhotoViewerRowsForMonth(year, month) {
+    const history = window.mealHistory || [];
+    const ym = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-`;
+    const dates = [
+        ...new Set(
+            history.map((m) => (typeof m.date === 'string' ? m.date : '')).filter((d) => d.startsWith(ym))
+        )
+    ].sort((a, b) => b.localeCompare(a));
+    const rows = [];
+    for (const dateStr of dates) {
+        rows.push(...buildMealPhotoViewerRowsForDate(dateStr));
+    }
+    return rows;
+}
+
+/**
+ * @param {string|null|undefined} recordId
+ * @param {string|null|undefined} dateStr 같은 슬롯이 여러 날 있을 때(월 뷰) 날짜로 구분
+ */
+export function findMealPhotoViewerRowIndex(rows, slotId, recordId, dateStr = null) {
+    const rid = recordId == null || recordId === '' ? null : String(recordId);
+    const day = dateStr == null || dateStr === '' ? null : String(dateStr);
+    const idx = rows.findIndex((row) => {
+        const rowRid = row.recordId == null || row.recordId === '' ? null : String(row.recordId);
+        const dateOk = day == null || row.dateStr === day;
+        return dateOk && row.slotId === slotId && rowRid === rid;
+    });
+    return idx >= 0 ? idx : 0;
+}
+
+function mealPhotoViewerSlotTitle(slot, ordinal1Based, totalInSlot) {
+    return slot.type === 'snack' && totalInSlot > 1 ? `${slot.label}${ordinal1Based}` : slot.label;
+}
+
+function mealPhotoViewerRowFromRecord(dateStr, slot, r, ordinal1Based, totalInSlot) {
+    const urls = getMealPhotoUrlsForTimeline(r);
+    let place = '';
+    let menuLine = '';
+    if (slot.type === 'main') {
+        place = String(r.place || '').trim();
+        if (r.mealType === 'Skip') menuLine = 'Skip';
+        else {
+            const m = formatMealMenuDisplayLine(r);
+            menuLine = (m || '').trim() || (r.category && String(r.category).trim()) || '';
+        }
+    } else {
+        place = String(r.snackPlace || r.place || '').trim();
+        const m = formatMealMenuDisplayLine(r);
+        menuLine =
+            (m || '').trim() ||
+            String(r.menuDetail || r.snackType || '').trim() ||
+            (r.category && String(r.category).trim()) ||
+            '';
+    }
+    return {
+        dateStr,
+        slotId: slot.id,
+        recordId: r.id != null && r.id !== '' ? String(r.id) : null,
+        slotTitle: mealPhotoViewerSlotTitle(slot, ordinal1Based, totalInSlot),
+        urls,
+        menuLine,
+        place,
+        mealType: r.mealType || null,
+        slotType: slot.type,
+        isEmptyRow: false
+    };
+}
+
+/** 좌측 140×140 사진 칸: 첫 장 + 다중 등록 시 우상단 1/n — 탭 시 전역 사진 팝업(부모 카드 onclick 전파 차단) */
+function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCtx = null) {
     const first = urls[0];
     if (!first) return '';
     const n = urls.length;
+    const enc = encodeURIComponent(JSON.stringify(urls));
     const badge =
         n > 1
-            ? `<span class="absolute top-1 right-1 z-10 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-bold leading-none pointer-events-none shadow-sm">1/${n}</span>`
+            ? `<span class="absolute top-1 right-1 z-30 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-bold leading-none pointer-events-none shadow-sm">1/${n}</span>`
             : '';
-    return `<span class="relative block w-full h-full"><img src="${escapeHtml(first)}" class="absolute inset-0 w-full h-full ${imgClass}" alt="">${badge}</span>`;
+    const ctxAttrs =
+        viewCtx && viewCtx.dateStr && viewCtx.slotId
+            ? ` data-meal-view-date="${escapeHtml(String(viewCtx.dateStr))}" data-meal-view-slot="${escapeHtml(String(viewCtx.slotId))}" data-meal-view-record="${escapeHtml(viewCtx.recordId != null ? String(viewCtx.recordId) : '')}"`
+            : '';
+    return `<div class="absolute inset-0 overflow-hidden">
+        <img src="${escapeHtml(first)}" class="absolute inset-0 z-0 h-full w-full ${imgClass} select-none pointer-events-none" alt="" draggable="false">
+        ${badge}
+        <button type="button" class="timeline-meal-photo-tap absolute inset-0 z-20 h-full w-full cursor-zoom-in border-0 bg-transparent p-0 active:bg-white/5" style="-webkit-tap-highlight-color:transparent" aria-label="사진 ${n}장 보기"${ctxAttrs} data-photos="${enc}" onclick="event.stopPropagation();window.openTimelineMealPhotosPopup(this);"></button>
+    </div>`;
 }
 
 function buildMealTimelineViewSelectHtml(current) {
@@ -580,7 +684,7 @@ function buildSnackTimelineCardHtml(
     let iconHtml = '';
     const snackPhotoUrls = getMealPhotoUrlsForTimeline(r);
     if (snackPhotoUrls.length > 0) {
-        iconHtml = buildTimelinePhotoCellInnerHtml(snackPhotoUrls, 'object-cover');
+        iconHtml = buildTimelinePhotoCellInnerHtml(snackPhotoUrls, 'object-cover', { dateStr, slotId: slot.id, recordId: r.id });
     } else if (r.mealType === 'Skip') {
         iconHtml = `<i class="fa-solid fa-ban text-2xl text-slate-600" aria-hidden="true"></i>`;
     } else {
@@ -593,7 +697,7 @@ function buildSnackTimelineCardHtml(
         : `onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})'`;
     return `<div ${openClick} class="card ${cardMbClass} border border-slate-200 ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
         <div class="flex">
-            <div class="w-[140px] h-[140px] bg-slate-100 border-slate-200 ${specificStyle.iconText} flex-shrink-0 flex items-center justify-center overflow-hidden border-r">
+            <div class="relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden border-r border-slate-200 bg-slate-100 ${specificStyle.iconText} flex items-center justify-center">
                 ${iconHtml}
             </div>
             <div class="flex min-w-0 flex-1 flex-col justify-center p-4">
@@ -1067,7 +1171,11 @@ export function renderTimeline() {
                 } else {
                     const mainPhotoUrls = getMealPhotoUrlsForTimeline(r);
                     if (mainPhotoUrls.length > 0) {
-                        iconHtml = buildTimelinePhotoCellInnerHtml(mainPhotoUrls, 'object-cover');
+                        iconHtml = buildTimelinePhotoCellInnerHtml(mainPhotoUrls, 'object-cover', {
+                            dateStr,
+                            slotId: slot.id,
+                            recordId: r.id
+                        });
                     } else if (r.mealType === 'Skip') {
                         iconHtml = `<i class="fa-solid fa-ban text-2xl text-slate-600"></i>`;
                     } else {
@@ -1082,7 +1190,7 @@ export function renderTimeline() {
                 const mainRel = r ? mealCardRelativeClass(r) : '';
                 html += `<div ${mainOpenClick} class="card mb-1.5 border ${containerClass} ${mainPointer} transition-all !rounded-none ${mainRel}" ${r ? `data-entry-id="${escapeHtml(String(r.id))}"` : ''}>
                     <div class="flex">
-                        <div class="w-[140px] h-[140px] ${iconBoxClass} flex-shrink-0 flex items-center justify-center overflow-hidden border-r">
+                        <div class="relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden border-r ${iconBoxClass} flex items-center justify-center">
                             ${iconHtml}
                         </div>
                         <div class="flex min-w-0 flex-1 flex-col justify-center p-4">
@@ -1533,6 +1641,8 @@ function setupMiniCalendarPointerDrag(container) {
     let active = false;
     let activePointerId = null;
     let suppressClick = false;
+    /** pointerdown 직후 setPointerCapture 하면 클릭이 자식(날짜)까지 전달되지 않음 → 임계 초과 시에만 캡처 */
+    let captureActive = false;
 
     container.addEventListener(
         'pointerdown',
@@ -1542,12 +1652,9 @@ function setupMiniCalendarPointerDrag(container) {
             active = true;
             activePointerId = e.pointerId;
             suppressClick = false;
+            captureActive = false;
             startX = e.clientX;
             startScrollLeft = container.scrollLeft;
-            try {
-                container.setPointerCapture(e.pointerId);
-            } catch (_) {}
-            container.classList.add('calendar-scroll-dragging');
         },
         { passive: true }
     );
@@ -1555,8 +1662,15 @@ function setupMiniCalendarPointerDrag(container) {
     container.addEventListener('pointermove', (e) => {
         if (!active || e.pointerId !== activePointerId) return;
         const dx = e.clientX - startX;
-        if (Math.abs(dx) > DRAG_THRESHOLD) {
-            container.scrollLeft = startScrollLeft - dx;
+        if (!captureActive && Math.abs(dx) > DRAG_THRESHOLD) {
+            captureActive = true;
+            try {
+                container.setPointerCapture(e.pointerId);
+            } catch (_) {}
+            container.classList.add('calendar-scroll-dragging');
+        }
+        if (captureActive) {
+            container.scrollLeft = startScrollLeft - (e.clientX - startX);
         }
     });
 
@@ -1565,13 +1679,18 @@ function setupMiniCalendarPointerDrag(container) {
         const totalMove = Math.abs(e.clientX - startX);
         const scrollDelta = Math.abs(container.scrollLeft - startScrollLeft);
         suppressClick =
-            totalMove > CLICK_CANCEL_MOVE_PX || scrollDelta > CLICK_CANCEL_SCROLL_PX;
+            totalMove > CLICK_CANCEL_MOVE_PX ||
+            scrollDelta > CLICK_CANCEL_SCROLL_PX ||
+            captureActive;
+        if (captureActive) {
+            container.classList.remove('calendar-scroll-dragging');
+            try {
+                container.releasePointerCapture(e.pointerId);
+            } catch (_) {}
+        }
+        captureActive = false;
         active = false;
         activePointerId = null;
-        container.classList.remove('calendar-scroll-dragging');
-        try {
-            container.releasePointerCapture(e.pointerId);
-        } catch (_) {}
     };
 
     container.addEventListener('pointerup', end);

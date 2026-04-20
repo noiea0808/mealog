@@ -272,6 +272,13 @@ header .mealog-title {
     font-size: 1.2rem;
     font-weight: normal;
 }
+/* 타임라인 사진 팝업 하단 메뉴@장소 */
+.timeline-meal-photo-menu-bar {
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-size: 18px;
+    font-weight: normal;
+    line-height: 1.35;
+}
 /* 모먼트 캡션: 사진 하단을 복사해 블러 레이어로 쓰고, 그 위에 캡션 텍스트 */
 .gallery-caption-wrap {
     position: relative;
@@ -358,6 +365,42 @@ header .mealog-title {
     border: 2px solid #047857; 
     background: #ffffff; 
     color: #047857; 
+}
+/* 하단 메뉴 라벨 배경 50% 불투명 */
+#timelineMealPhotosOverlay .timeline-meal-photo-menu-bar {
+    background-color: rgba(0, 0, 0, 0.5) !important;
+}
+/* 사진 팝업: 날짜 휠(읽기 전용) — 사진 위 좌측 패딩 영역 */
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-vtrack {
+    padding-top: 2.75rem;
+}
+#timelineMealPhotosOverlay .meal-photo-wheel-viewport {
+    height: 32px;
+    width: 2.75rem;
+    flex: 0 0 2.75rem;
+    overflow: hidden;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.07);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%);
+}
+#timelineMealPhotosOverlay .meal-photo-wheel-col--slot {
+    width: 7rem;
+    flex: 0 0 7rem;
+    max-width: 7rem;
+}
+#timelineMealPhotosOverlay .timeline-meal-photos-wheelbar {
+    flex-wrap: nowrap;
+}
+#timelineMealPhotosOverlay .meal-photo-wheel-inner {
+    max-height: 320px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    touch-action: none;
+}
+#timelineMealPhotosOverlay .meal-photo-wheel-inner::-webkit-scrollbar {
+    display: none;
 }
 /* 트래커 월 팝업: 셀은 트래커와 동일 dot-* 클래스, 크기만 축소 */
 .tracker-month-cell {
@@ -633,7 +676,8 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
 body.entry-modal-open .bottom-nav,
 body.entry-modal-open #navigationBarOverlay,
 body.entry-modal-open #mealSyncResendBtn.meal-sync-resend-fab,
-body.entry-modal-open #initialRecordsLoadFab.initial-records-load-fab {
+body.entry-modal-open #initialRecordsLoadFab.initial-records-load-fab,
+body.entry-modal-open #galleryMomentsRefreshFab.initial-records-load-fab {
     visibility: hidden !important;
     pointer-events: none !important;
 }
@@ -787,8 +831,7 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     transition: max-height 0.2s, opacity 0.2s;
     pointer-events: none;
 }
-.gallery-pull-indicator.pulling,
-.gallery-pull-indicator.refreshing {
+.gallery-pull-indicator.pulling {
     max-height: 48px;
     opacity: 1;
 }
@@ -2146,19 +2189,24 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 }
 
 /* 기록 로딩 FAB — 오버레이와 별도 슬롯(빠른 전환) */
-#initialRecordsLoadFab .loading-food-icon:nth-child(1) {
+#initialRecordsLoadFab .loading-food-icon:nth-child(1),
+#galleryMomentsRefreshFab .loading-food-icon:nth-child(1) {
     animation: loadingFoodSlideRTL0 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
 }
-#initialRecordsLoadFab .loading-food-icon:nth-child(2) {
+#initialRecordsLoadFab .loading-food-icon:nth-child(2),
+#galleryMomentsRefreshFab .loading-food-icon:nth-child(2) {
     animation: loadingFoodSlideRTL1 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
 }
-#initialRecordsLoadFab .loading-food-icon:nth-child(3) {
+#initialRecordsLoadFab .loading-food-icon:nth-child(3),
+#galleryMomentsRefreshFab .loading-food-icon:nth-child(3) {
     animation: loadingFoodSlideRTL2 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
 }
-#initialRecordsLoadFab .loading-food-icon:nth-child(4) {
+#initialRecordsLoadFab .loading-food-icon:nth-child(4),
+#galleryMomentsRefreshFab .loading-food-icon:nth-child(4) {
     animation: loadingFoodSlideRTL3 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
 }
-#initialRecordsLoadFab .loading-food-icon:nth-child(5) {
+#initialRecordsLoadFab .loading-food-icon:nth-child(5),
+#galleryMomentsRefreshFab .loading-food-icon:nth-child(5) {
     animation: loadingFoodSlideRTL4 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
 }
 
@@ -2788,7 +2836,8 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 }
 
 /* 초기 기록 로딩 스피너 — mealSyncResendBtn 과 동일 위치·크기(48px), 음식 아이콘만 */
-#initialRecordsLoadFab.initial-records-load-fab {
+#initialRecordsLoadFab.initial-records-load-fab,
+#galleryMomentsRefreshFab.initial-records-load-fab {
     position: fixed;
     bottom: calc(72px + var(--safe-bottom));
     right: calc(50% - min(46vw, 13rem) + 1.25rem);
@@ -2809,12 +2858,20 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     -webkit-tap-highlight-color: transparent;
     cursor: pointer;
 }
-#initialRecordsLoadFab.initial-records-load-fab:active {
+#initialRecordsLoadFab.initial-records-load-fab:active,
+#galleryMomentsRefreshFab.initial-records-load-fab:active {
     transform: scale(0.94);
 }
-#initialRecordsLoadFab.initial-records-load-fab.hidden {
+#initialRecordsLoadFab.initial-records-load-fab.hidden,
+#galleryMomentsRefreshFab.initial-records-load-fab.hidden {
     display: none !important;
     pointer-events: none;
+}
+/* 갤러리 새로고침 전용: 표시만, 탭 불가 */
+#galleryMomentsRefreshFab.initial-records-load-fab {
+    pointer-events: none;
+    cursor: default;
+    z-index: 41;
 }
 /* 밀톡에서 글쓰기 FAB와 겹침 방지 — 동기화 FAB와 동일 규칙 */
 #initialRecordsLoadFab.initial-records-load-fab.initial-records-load-fab--stacked {

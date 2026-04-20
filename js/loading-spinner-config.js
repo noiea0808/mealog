@@ -220,4 +220,9 @@ export function applyLoadingFoodIconDurationSeconds(_secondsIgnored, overlayEl =
         fab.style.setProperty('--loading-food-fab-slot', vFab);
         applyIcons(fab, sFab);
     }
+    const galleryMomentsFab = document.getElementById('galleryMomentsRefreshFab');
+    if (galleryMomentsFab && galleryMomentsFab.style) {
+        galleryMomentsFab.style.setProperty('--loading-food-fab-slot', vFab);
+        applyIcons(galleryMomentsFab, sFab);
+    }
 }
