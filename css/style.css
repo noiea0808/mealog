@@ -397,6 +397,7 @@ header .mealog-title {
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-img {
     touch-action: pan-y;
+    transition: opacity 0.42s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     overscroll-behavior: none;
@@ -427,6 +428,13 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     padding-right: 0;
     pointer-events: auto;
     transition: top 0.04s ease-out;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-slide-caption-inner.timeline-meal-photo-menu-bar {
+    width: var(--meal-wheel-caption-inner-w, 100%);
+    max-width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
 }
 /* 사진 팝업 라벨 행(공통): 휠 모드에서만 아래 휠 규칙으로 덮어씀 */
 #timelineMealPhotosOverlay .timeline-meal-photos-slide-caption-inner.timeline-meal-photo-menu-bar {
@@ -460,16 +468,22 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
 }
 #timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-carousel-zone {
-    width: 100%;
-    min-width: min(100%, var(--meal-wheel-caption-inner-w, 0px));
+    width: var(--meal-wheel-caption-inner-w, 100%);
+    max-width: 100%;
+    min-width: 0;
     min-height: 0;
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    box-sizing: border-box;
 }
 #timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-carousel-frame {
     width: 100%;
@@ -482,6 +496,9 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+    box-sizing: border-box;
 }
 #timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-vslide-stage--wheel-only .timeline-meal-photo-img {
     width: 100%;
@@ -489,6 +506,7 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     height: auto;
     max-height: min(72vh, 520px);
     object-fit: contain;
+    transition: opacity 0.48s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 /* 휠 라벨 안: 피커 열 너비·구분 간격만 축소(숫자·요일 글자 크기는 그대로) */
 #timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label) {

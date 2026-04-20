@@ -18,35 +18,51 @@ const MEAL_PHOTO_VIEWER_INITIAL_PHOTOS = 8;
 const MEAL_PHOTO_SRC_PENDING =
     'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
+/** 인접 슬라이드·가로 이웃 URL 프리로드(브라우저 캐시) — 세로 스와이프 시 빈 화면 완화 */
+const _mealPhotoPreloadStarted = new Set();
+function preloadMealPhotoUrl(url) {
+    if (!url || typeof url !== 'string') return;
+    if (_mealPhotoPreloadStarted.has(url)) return;
+    _mealPhotoPreloadStarted.add(url);
+    const im = new Image();
+    im.decoding = 'async';
+    im.src = url;
+}
+
 /** 가로 스와이프로 이전/다음 사진으로 넘길 최소 이동(px) */
-const MEAL_PHOTO_SWIPE_THRESHOLD_PX = 48;
+const MEAL_PHOTO_SWIPE_THRESHOLD_PX = 36;
+
+/** body `max-w-md`와 동일 — 웹에서 넓은 창일 때 오버레이도 이 너비에 맞춤 */
+const MEAL_APP_COLUMN_MAX_REM = 28;
+
+function getMealogColumnMaxWidthPx() {
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    return MEAL_APP_COLUMN_MAX_REM * rem;
+}
 
 /**
- * 오버레이는 뷰포트 전체를 덮음. 사진/라벨 너비는 CSS로 좌우 패딩만큼 안쪽.
+ * 오버레이 사각형: 세로는 visualViewport(키보드 등), 가로는 앱 컬럼(최대 28rem) 안에 맞춤.
  */
 function getMealogContentOverlayRect() {
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const h = typeof window.visualViewport?.height === 'number' ? window.visualViewport.height : vh;
-    return { top: 0, left: 0, width: Math.max(1, vw), height: Math.max(120, h) };
+    const vv = window.visualViewport;
+    const innerW = window.innerWidth;
+    const innerH = window.innerHeight;
+    const colW = getMealogColumnMaxWidthPx();
+    const w = Math.min(innerW, colW);
+    const left = Math.max(0, (innerW - w) / 2);
+    const top = vv ? vv.offsetTop : 0;
+    const height = typeof vv?.height === 'number' ? vv.height : innerH;
+    return { top, left, width: Math.max(1, w), height: Math.max(120, height) };
 }
 
 function syncOverlayLayout() {
     const el = document.getElementById(OVERLAY_ID);
     if (!el || el.classList.contains('hidden')) return;
     const r = getMealogContentOverlayRect();
-    const vv = window.visualViewport;
-    if (vv) {
-        el.style.top = `${Math.round(vv.offsetTop)}px`;
-        el.style.left = `${Math.round(vv.offsetLeft)}px`;
-        el.style.width = `${Math.round(vv.width)}px`;
-        el.style.height = `${Math.round(vv.height)}px`;
-    } else {
-        el.style.top = `${Math.round(r.top)}px`;
-        el.style.left = `${Math.round(r.left)}px`;
-        el.style.width = `${Math.round(r.width)}px`;
-        el.style.height = `${Math.round(r.height)}px`;
-    }
+    el.style.top = `${Math.round(r.top)}px`;
+    el.style.left = `${Math.round(r.left)}px`;
+    el.style.width = `${Math.round(r.width)}px`;
+    el.style.height = `${Math.round(r.height)}px`;
     el.style.right = 'auto';
     el.style.bottom = 'auto';
     el._mealPhotosSync?.();
@@ -61,37 +77,17 @@ function syncOverlayLayout() {
     }
 }
 
-/** 닫기 버튼: 활성 사진 우상단 모서리 바깥(대각선 바깥)에 두어 잘 보이게 함 */
+/** 닫기 버튼: 오버레이(앱 컬럼) 우상단 고정 */
 function positionMealPhotoCloseButton(el) {
     if (!el || el.classList.contains('hidden')) return;
     const btn = el.querySelector('.timeline-meal-photos-close');
-    const vtrack = el._mealPhotosVTrack;
-    if (!btn || !vtrack) return;
-    const overlayRect = el.getBoundingClientRect();
-    const frame = getActiveCarouselFrame(vtrack);
-    const img = frame?.querySelector('img.timeline-meal-photo-img');
-    let ref = img?.getBoundingClientRect();
-    if (!ref || ref.width < 2 || ref.height < 2) {
-        ref = frame?.getBoundingClientRect();
-    }
-    const gap = 8;
-    if (!ref || ref.width < 1) {
-        btn.style.position = 'absolute';
-        btn.style.left = 'auto';
-        btn.style.removeProperty('transform');
-        btn.style.top = 'max(10px, env(safe-area-inset-top, 0px))';
-        btn.style.right = 'max(10px, env(safe-area-inset-right, 0px))';
-        btn.style.bottom = 'auto';
-        return;
-    }
-    const ax = ref.right - overlayRect.left + gap;
-    const ay = ref.top - overlayRect.top - gap;
+    if (!btn) return;
     btn.style.position = 'absolute';
-    btn.style.left = `${Math.round(ax)}px`;
-    btn.style.top = `${Math.round(ay)}px`;
-    btn.style.right = 'auto';
+    btn.style.left = 'auto';
+    btn.style.removeProperty('transform');
+    btn.style.top = 'max(8px, env(safe-area-inset-top, 0px))';
+    btn.style.right = 'max(8px, env(safe-area-inset-right, 0px))';
     btn.style.bottom = 'auto';
-    btn.style.transform = 'translate(-100%, -100%)';
 }
 
 function buildBottomCaption(row) {
@@ -361,7 +357,11 @@ function getCarouselRowForSlide(slide, el) {
     return findMealPhotoRowState(el, ds, sid, ra);
 }
 
-function applyCarouselIndex(slide, el, newIdx) {
+/**
+ * @param {object} [opts]
+ * @param {boolean} [opts.fade] — `false`이면 페이드 없이 즉시 교체(인접 세로 슬라이드 프리하이드용). 생략 시 기존 규칙(가로 넘김 등).
+ */
+function applyCarouselIndex(slide, el, newIdx, opts = {}) {
     const row = getCarouselRowForSlide(slide, el);
     const urls = row?.urls;
     if (!row || !Array.isArray(urls) || !urls.length) return;
@@ -375,10 +375,49 @@ function applyCarouselIndex(slide, el, newIdx) {
     const u = urls[idx];
     const img = frame.querySelector('img.timeline-meal-photo-img');
     if (img && u) {
-        delete img.dataset.mealSrcApplied;
-        img.src = MEAL_PHOTO_SRC_PENDING;
-        img.src = u;
-        img.dataset.mealSrcApplied = u;
+        if (img.dataset.mealSrcApplied === u) {
+            /* 이미 동일 URL이면 스킵 */
+        } else {
+            const prev = img.dataset.mealSrcApplied;
+            const allowFade =
+                opts.fade !== false &&
+                Boolean(prev) &&
+                prev !== u &&
+                typeof window.matchMedia === 'function' &&
+                !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            delete img.dataset.mealSrcApplied;
+            const applySrcAndFadeIn = () => {
+                img.removeAttribute('src');
+                img.src = MEAL_PHOTO_SRC_PENDING;
+                img.src = u;
+                img.dataset.mealSrcApplied = u;
+                if (allowFade) {
+                    const show = () => {
+                        img.style.opacity = '1';
+                    };
+                    if (img.complete && (img.naturalHeight || 0) > 0) {
+                        requestAnimationFrame(() => requestAnimationFrame(show));
+                    } else {
+                        img.addEventListener('load', () => requestAnimationFrame(() => requestAnimationFrame(show)), {
+                            once: true
+                        });
+                        img.addEventListener('error', () => requestAnimationFrame(() => requestAnimationFrame(show)), {
+                            once: true
+                        });
+                    }
+                } else {
+                    img.style.opacity = '';
+                }
+            };
+            if (allowFade) {
+                img.style.opacity = '0';
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(applySrcAndFadeIn);
+                });
+            } else {
+                applySrcAndFadeIn();
+            }
+        }
     }
     const nTotal = Array.isArray(row.allUrls) && row.allUrls.length > urls.length ? row.allUrls.length : urls.length;
     const badge = frame.querySelector('[data-carousel-badge]');
@@ -433,7 +472,7 @@ function bindCarouselSwipe(zone, el) {
     const trySwipeDx = (dx) => {
         if (Math.abs(dx) < MEAL_PHOTO_SWIPE_THRESHOLD_PX) return;
         const now = Date.now();
-        if (now - (zone._mealSwipeDedupeAt || 0) < 320) return;
+        if (now - (zone._mealSwipeDedupeAt || 0) < 90) return;
         zone._mealSwipeDedupeAt = now;
         stepCarouselPhoto(el, dx < 0 ? 1 : -1);
     };
@@ -535,6 +574,31 @@ function scrollDeltaToCenterSlideInVtrack(vtrack, slide) {
     return sMid - vMid;
 }
 
+/** 활성 캐러셀 프레임 크기가 바뀔 때(이미지 디코드·object-fit 레이아웃 후) 라벨 재정렬 — 첫 팝업 겹침 방지 */
+function bindMealPhotoWheelCaptionResizeObserver(el) {
+    if (!el?.classList.contains('timeline-meal-photos-overlay--wheel')) return;
+    const prev = el._mealPhotoWheelCaptionRO;
+    if (prev) {
+        prev.disconnect();
+        el._mealPhotoWheelCaptionRO = null;
+    }
+    const vtrack = el._mealPhotosVTrack;
+    const frame = getActiveCarouselFrame(vtrack);
+    if (!frame) return;
+    let raf = null;
+    const ro = new ResizeObserver(() => {
+        if (raf != null) cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => {
+            raf = null;
+            if (el.classList.contains('hidden')) return;
+            positionMealPhotoWheelCaption(el);
+            syncMealPhotoWheelCaptionPhotoMinWidth(el);
+        });
+    });
+    ro.observe(frame);
+    el._mealPhotoWheelCaptionRO = ro;
+}
+
 /** 휠 모드: 라벨은 스크롤에 묶이지 않고, 화면 중앙에 온 활성 사진 바로 아래 5px에만 둠 */
 function positionMealPhotoWheelCaption(el) {
     if (!el?.classList.contains('timeline-meal-photos-overlay--wheel')) return;
@@ -567,13 +631,16 @@ function positionMealPhotoWheelCaption(el) {
     cap.style.top = `${Math.round(Math.max(0, topPx))}px`;
 }
 
-/** 휠 모드: 라벨 박스보다 사진이 좁을 때 캐러셀 최소 너비를 라벨에 맞춤 */
+/** 휠 모드: 본문 패딩 안쪽 콘텐츠 너비를 고정값으로 두고 하단 라벨·사진 열을 동일 너비로 맞춤 */
 function syncMealPhotoWheelCaptionPhotoMinWidth(el) {
     if (!el?.classList.contains('timeline-meal-photos-overlay--wheel')) return;
-    const inner = el.querySelector('.timeline-meal-photos-slide-caption-inner');
-    if (!inner) return;
-    const w = Math.ceil(inner.getBoundingClientRect().width);
-    if (w < 40) return;
+    const body = el.querySelector('.meal-photos-overlay-body');
+    if (!body) return;
+    const cs = getComputedStyle(body);
+    const pl = parseFloat(cs.paddingLeft) || 0;
+    const pr = parseFloat(cs.paddingRight) || 0;
+    const br = body.getBoundingClientRect();
+    const w = Math.max(40, Math.floor(br.width - pl - pr));
     el.style.setProperty('--meal-wheel-caption-inner-w', `${w}px`);
 }
 
@@ -810,18 +877,53 @@ function getActiveCarouselFrame(vtrack) {
     return slides[i]?.querySelector('.timeline-meal-photos-carousel-frame') || null;
 }
 
-/** 현재 보이는 슬라이드의 캐러셀 한 장만 실제 URL 로드 */
+/** 이전·다음 세로 슬롯 및 가로 이웃 사진 URL을 미리 로드 */
+function preloadAdjacentMealPhotos(el) {
+    const vtrack = el?._mealPhotosVTrack;
+    if (!vtrack || el.classList.contains('hidden')) return;
+    const slides = vtrack.querySelectorAll('.timeline-meal-photos-vslide');
+    if (!slides.length) return;
+    const si = getVTrackActiveIndex(vtrack);
+    for (const ii of [si - 1, si + 1]) {
+        if (ii < 0 || ii >= slides.length) continue;
+        const slide = slides[ii];
+        const row = getCarouselRowForSlide(slide, el);
+        const urls = row?.urls;
+        if (!Array.isArray(urls) || !urls.length) continue;
+        const frame = slide.querySelector('.timeline-meal-photos-carousel-frame');
+        const pIdx = Math.min(urls.length - 1, Math.max(0, Number(frame?.dataset.photoIndex || 0)));
+        preloadMealPhotoUrl(urls[pIdx]);
+        if (urls[pIdx + 1]) preloadMealPhotoUrl(urls[pIdx + 1]);
+        if (urls[pIdx - 1]) preloadMealPhotoUrl(urls[pIdx - 1]);
+    }
+    const activeSlide = slides[si];
+    const activeRow = getCarouselRowForSlide(activeSlide, el);
+    const au = activeRow?.urls;
+    if (Array.isArray(au) && au.length > 1) {
+        const frame = activeSlide.querySelector('.timeline-meal-photos-carousel-frame');
+        const ci = Math.min(au.length - 1, Math.max(0, Number(frame?.dataset.photoIndex || 0)));
+        if (au[ci + 1]) preloadMealPhotoUrl(au[ci + 1]);
+        if (au[ci - 1]) preloadMealPhotoUrl(au[ci - 1]);
+    }
+}
+
+/** 활성 슬라이드 + 바로 위·아래 슬라이드의 `<img>`에 실제 URL 적용(빈 플레이스홀더 완화) */
 function hydrateMealPhotoVisibleImage(el) {
     const vtrack = el?._mealPhotosVTrack;
     if (!vtrack || el.classList.contains('hidden')) return;
     const slides = vtrack.querySelectorAll('.timeline-meal-photos-vslide');
     if (!slides.length) return;
     const si = getVTrackActiveIndex(vtrack);
-    const slide = slides[si];
-    const frame = slide?.querySelector('.timeline-meal-photos-carousel-frame');
-    if (!frame) return;
-    const idx = Number(frame.dataset.photoIndex || 0);
-    applyCarouselIndex(slide, el, idx);
+    const neighbors = [si - 1, si, si + 1].filter((i) => i >= 0 && i < slides.length);
+    for (const ii of neighbors) {
+        const slide = slides[ii];
+        const frame = slide.querySelector('.timeline-meal-photos-carousel-frame');
+        if (!frame) continue;
+        const idx = Number(frame.dataset.photoIndex || 0);
+        const isActive = ii === si;
+        applyCarouselIndex(slide, el, idx, isActive ? {} : { fade: false });
+    }
+    preloadAdjacentMealPhotos(el);
 }
 
 /**
@@ -847,15 +949,32 @@ function runMealPhotoWheelLabelLayoutWhenReady(el) {
         positionMealPhotoCloseButton(el);
         syncMealPhotoWheelCaptionPhotoMinWidth(el);
         requestAnimationFrame(() => syncMealPhotoWheelCaptionPhotoMinWidth(el));
+        bindMealPhotoWheelCaptionResizeObserver(el);
+    };
+    /** 이미지 실제 픽셀·object-fit 배치가 끝난 뒤 라벨 top 계산 */
+    const runFinishAfterPaint = () => {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(finish);
+        });
+    };
+    const runAfterDecodeIfPossible = () => {
+        const dec = img?.decode?.();
+        if (dec && typeof dec.then === 'function') {
+            dec.then(runFinishAfterPaint).catch(runFinishAfterPaint);
+        } else {
+            runFinishAfterPaint();
+        }
     };
     if (!img) {
-        requestAnimationFrame(finish);
+        runFinishAfterPaint();
         return;
     }
-    if (img.complete && (img.naturalHeight || 0) > 1) requestAnimationFrame(finish);
-    else {
-        img.addEventListener('load', () => requestAnimationFrame(finish), { once: true });
-        img.addEventListener('error', () => requestAnimationFrame(finish), { once: true });
+    if (img.complete && (img.naturalHeight || 0) > 1) {
+        runAfterDecodeIfPossible();
+    } else {
+        const onReady = () => runAfterDecodeIfPossible();
+        img.addEventListener('load', onReady, { once: true });
+        img.addEventListener('error', onReady, { once: true });
     }
 }
 
@@ -884,8 +1003,8 @@ function getOverlay() {
     el.setAttribute('aria-modal', 'true');
     el.setAttribute('aria-label', '기록 사진');
     el.innerHTML = `
-        <button type="button" class="timeline-meal-photos-close absolute z-[60] flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/50 bg-black/65 text-white shadow-lg ring-2 ring-white/40 backdrop-blur-sm hover:bg-black/80 active:scale-95 transition-colors" aria-label="닫기">
-            <i class="fa-solid fa-xmark text-lg" aria-hidden="true"></i>
+        <button type="button" class="timeline-meal-photos-close absolute z-[60] flex h-[35px] w-[35px] shrink-0 items-center justify-center rounded-full border border-white/50 bg-black/65 text-white shadow-lg ring-2 ring-white/40 backdrop-blur-sm hover:bg-black/80 active:scale-95 transition-colors" aria-label="닫기">
+            <i class="fa-solid fa-xmark text-sm" aria-hidden="true"></i>
         </button>
         <button type="button" class="timeline-meal-photos-prev absolute left-1 top-1/2 z-30 hidden items-center justify-center -translate-y-1/2 rounded-full bg-white/15 p-3 text-white hover:bg-white/25" aria-label="이전 사진">
             <i class="fa-solid fa-chevron-left text-lg" aria-hidden="true"></i>
@@ -934,9 +1053,8 @@ function getOverlay() {
             if (!el._mealPhotoWheelSuppressLabelSchedule) {
                 scheduleMealPhotoWheelLabelLayout(el, 80);
             }
-        } else {
-            hydrateMealPhotoVisibleImage(el);
         }
+        hydrateMealPhotoVisibleImage(el);
         positionMealPhotoCloseButton(el);
     };
 
@@ -1091,6 +1209,11 @@ function getOverlay() {
         });
         el._mealPhotoRows = null;
         el._mealPhotoLastYM = null;
+        _mealPhotoPreloadStarted.clear();
+        if (el._mealPhotoWheelCaptionRO) {
+            el._mealPhotoWheelCaptionRO.disconnect();
+            el._mealPhotoWheelCaptionRO = null;
+        }
         el._mealPhotosToggleNav?.();
         el._mealPhotosToggleVNav?.();
         vDragId = null;
@@ -1270,7 +1393,9 @@ export function openTimelineMealPhotosPopup(btn) {
             el._mealPhotosToggleVNav?.();
             clearTimeout(el._mealPhotoWheelLabelTimer);
             el._mealPhotoWheelLabelTimer = null;
-            requestAnimationFrame(() => runMealPhotoWheelLabelLayoutWhenReady(el));
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => runMealPhotoWheelLabelLayoutWhenReady(el));
+            });
         });
     } else {
         el.classList.remove('timeline-meal-photos-overlay--wheel');
