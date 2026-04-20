@@ -1133,6 +1133,7 @@ export async function openModal(date, slotId, entryId = null) {
         const entryModal = document.getElementById('entryModal');
         if (entryModal) {
             entryModal.classList.remove('hidden');
+            window.__entryModalOpenGeneration = (window.__entryModalOpenGeneration || 0) + 1;
             entryModal.classList.remove('keyboard-open');
             entryModal.style.height = '';
             entryModal.style.top = '';
@@ -1293,6 +1294,8 @@ export async function saveEntry() {
     // 로딩 오버레이 참조를 함수 시작 부분에서 가져옴
     const loadingOverlay = document.getElementById('loadingOverlay');
     const entryModal = document.getElementById('entryModal');
+    /** openModal이 열릴 때마다 증가. 저장 비동기 완료 시점에 사용자가 새 모달을 열었는지 구분 */
+    let saveStartedUnderModalGen = null;
     
     // 모바일 IME(한글 등) 조합 중인 텍스트가 input.value에 반영되도록 blur 후 대기
     // 스페이스/선택 전에 '기록 완료'를 누르면 조합 중인 글자가 누락되는 문제 방지
@@ -1577,7 +1580,13 @@ export async function saveEntry() {
             comment: isSk ? '' : (isS ? (document.getElementById('snackCommentInput')?.value || '') : (document.getElementById('generalCommentInput')?.value || '')),
             rating: isSk ? null : (rateOn ? state.currentRating : null),
             satiety: isSk ? null : (satOn ? state.currentSatiety : null),
-            time: new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' })
+            // 분 단위만 쓰면 같은 슬롯·같은 분 간식이 정렬·뒷번호(간식1,2…)에서 뒤섞일 수 있어 초 포함
+            time: new Date().toLocaleTimeString('ko-KR', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            })
         };
         if (isS && !isSk && snackPlaceMainResolved) {
             record.snackPlaceMain = snackPlaceMainResolved;
@@ -1654,6 +1663,8 @@ export async function saveEntry() {
         console.log('저장 시작:', record);
 
         // 진행 상태는 타임라인 슬롯 텍스트 왼쪽 인라인 스피너로만 표시 (전역 오버레이 미사용)
+        saveStartedUnderModalGen =
+            typeof window.__entryModalOpenGeneration === 'number' ? window.__entryModalOpenGeneration : 0;
         if (entryModal) {
             entryModal.classList.add('hidden');
             syncEntryModalBodyClass();
@@ -2270,11 +2281,16 @@ export async function saveEntry() {
             console.log('오류 발생 후 로딩 오버레이 숨김');
         }
         // 오류 발생 시에도 모달 닫기
-        const entryModal = document.getElementById('entryModal');
-        if (entryModal) {
-            entryModal.classList.add('hidden');
-            syncEntryModalBodyClass();
-            console.log('오류 발생 후 모달 닫기');
+        const entryModalErr = document.getElementById('entryModal');
+        if (entryModalErr) {
+            const gen = window.__entryModalOpenGeneration || 0;
+            const staleWouldCloseFresh =
+                saveStartedUnderModalGen != null && gen !== saveStartedUnderModalGen;
+            if (!staleWouldCloseFresh) {
+                entryModalErr.classList.add('hidden');
+                syncEntryModalBodyClass();
+                console.log('오류 발생 후 모달 닫기');
+            }
         }
         const state = appState;
         state.currentEditingId = null;
@@ -2285,12 +2301,17 @@ export async function saveEntry() {
             loadingOverlay.classList.add('hidden');
             console.log('finally 블록에서 로딩 오버레이 숨김');
         }
-        // finally 블록에서도 모달이 열려있으면 닫기
-        const entryModal = document.getElementById('entryModal');
-        if (entryModal && !entryModal.classList.contains('hidden')) {
-            entryModal.classList.add('hidden');
-            syncEntryModalBodyClass();
-            console.log('finally 블록에서 모달 닫기');
+        // finally: 저장 중 사용자가 '+ 추가' 등으로 새 모달을 연 경우(stale 완료)에는 닫지 않음
+        const entryModalFinally = document.getElementById('entryModal');
+        if (entryModalFinally && !entryModalFinally.classList.contains('hidden')) {
+            const gen = window.__entryModalOpenGeneration || 0;
+            const staleWouldCloseFresh =
+                saveStartedUnderModalGen != null && gen !== saveStartedUnderModalGen;
+            if (!staleWouldCloseFresh) {
+                entryModalFinally.classList.add('hidden');
+                syncEntryModalBodyClass();
+                console.log('finally 블록에서 모달 닫기');
+            }
         }
     }
 }

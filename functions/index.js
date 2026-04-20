@@ -1137,6 +1137,123 @@ exports.deleteBoardComment = onCall({ region: REGION }, async (request) => {
 });
 
 /**
+ * 공지 댓글 작성 (Callable)
+ */
+exports.addNoticeComment = onCall({ region: REGION }, wrapFunction('addNoticeComment', async (request) => {
+  const { auth, data } = request;
+
+  if (!auth || !auth.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  assertNotReadOnlyDemoAuth(auth);
+
+  const ban = await getUserBan(auth.uid);
+  if (ban.bannedWrite) {
+    throw new HttpsError('permission-denied', '댓글 작성이 제한된 계정입니다.');
+  }
+
+  const { noticeId, content } = data;
+
+  if (!noticeId || !content || !content.trim()) {
+    throw new HttpsError('invalid-argument', '댓글 내용을 입력해주세요.');
+  }
+
+  await checkRateLimit(auth.uid, 'comment', request);
+
+  const spamCheck = checkSpam(content);
+  if (spamCheck.isSpam) {
+    throw new HttpsError('invalid-argument', spamCheck.reason);
+  }
+
+  const userSettingsRef = db.collection('artifacts').doc(APP_ID)
+    .collection('users').doc(auth.uid)
+    .collection('config').doc('settings');
+  const userSettingsDoc = await userSettingsRef.get();
+
+  const profile = userSettingsDoc.exists ? (userSettingsDoc.data().profile || {}) : {};
+  const authorNickname = profile.nickname || '익명';
+  const authorPhotoUrl = profile.photoUrl || null;
+  const authorIcon = profile.icon || null;
+
+  const noticeRef = db.collection('artifacts').doc(APP_ID).collection('notices').doc(String(noticeId));
+  const noticeDoc = await noticeRef.get();
+  if (!noticeDoc.exists) {
+    throw new HttpsError('not-found', '공지를 찾을 수 없습니다.');
+  }
+  const nd = noticeDoc.data() || {};
+  if (nd.deleted === true || nd.hidden === true) {
+    throw new HttpsError('not-found', '공지를 찾을 수 없습니다.');
+  }
+
+  const commentsRef = db.collection('artifacts').doc(APP_ID).collection('noticeComments');
+  const newComment = {
+    noticeId: String(noticeId),
+    content: content.trim(),
+    authorId: auth.uid,
+    authorNickname,
+    authorPhotoUrl,
+    authorIcon,
+    timestamp: FieldValue.serverTimestamp()
+  };
+
+  const docRef = await commentsRef.add(newComment);
+
+  await noticeRef.update({
+    comments: FieldValue.increment(1)
+  });
+
+  return { id: docRef.id, ...newComment, timestamp: new Date().toISOString() };
+}));
+
+/**
+ * 공지 댓글 삭제 (Callable)
+ */
+exports.deleteNoticeComment = onCall({ region: REGION }, async (request) => {
+  const { auth, data } = request;
+
+  if (!auth || !auth.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+
+  const { commentId, noticeId } = data;
+
+  if (!commentId) {
+    throw new HttpsError('invalid-argument', '댓글 ID가 필요합니다.');
+  }
+
+  const commentRef = db.collection('artifacts').doc(APP_ID).collection('noticeComments').doc(commentId);
+  const commentDoc = await commentRef.get();
+
+  if (!commentDoc.exists) {
+    throw new HttpsError('not-found', '댓글을 찾을 수 없습니다.');
+  }
+
+  const commentData = commentDoc.data();
+  if (commentData.authorId !== auth.uid) {
+    throw new HttpsError('permission-denied', '본인의 댓글만 삭제할 수 있습니다.');
+  }
+
+  if (noticeId && String(commentData.noticeId || '') !== String(noticeId)) {
+    throw new HttpsError('invalid-argument', '공지와 댓글이 일치하지 않습니다.');
+  }
+
+  await commentRef.delete();
+
+  const nid = String(noticeId || commentData.noticeId || '');
+  if (nid) {
+    const noticeRef = db.collection('artifacts').doc(APP_ID).collection('notices').doc(nid);
+    const noticeSnap = await noticeRef.get();
+    if (noticeSnap.exists) {
+      await noticeRef.update({
+        comments: FieldValue.increment(-1)
+      });
+    }
+  }
+
+  return { success: true };
+});
+
+/**
  * 피드 댓글 작성 (Callable)
  */
 exports.addPostComment = onCall({ region: REGION }, wrapFunction('addPostComment', async (request) => {

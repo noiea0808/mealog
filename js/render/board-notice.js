@@ -128,18 +128,29 @@ async function renderNotices() {
             light: 'notice-accent-light'
         };
 
-        // 로그인 사용자의 공지 하트/북마크 상태
+        const noticeIds = sortedNotices.map((n) => n.id);
+
+        // 조회 수: 문서 필드가 아니라 notices/{id}/views 서브컬렉션(로그인 사용자별 1회) 집계
+        const viewCountMap =
+            window.noticeOperations?.getNoticeViewCountsForNoticeIds
+                ? await window.noticeOperations.getNoticeViewCountsForNoticeIds(noticeIds)
+                : new Map();
+
+        // 로그인 사용자의 공지 하트/북마크·댓글 여부
         let likedNoticeIds = new Set();
         let bookmarkedNoticeIds = new Set();
+        let commentedNoticeIds = new Set();
         if (window.currentUser && !window.currentUser.isAnonymous && window.noticeOperations) {
-            const [liked, bookmarkResults] = await Promise.all([
+            const [liked, bookmarkResults, commented] = await Promise.all([
                 window.noticeOperations.getNoticeIdsLikedByUser ? window.noticeOperations.getNoticeIdsLikedByUser(window.currentUser.uid) : [],
-                window.noticeOperations.isNoticeBookmarked ? Promise.all(sortedNotices.map(n => window.noticeOperations.isNoticeBookmarked(n.id, window.currentUser.uid))) : Promise.resolve([])
+                window.noticeOperations.isNoticeBookmarked ? Promise.all(sortedNotices.map(n => window.noticeOperations.isNoticeBookmarked(n.id, window.currentUser.uid))) : Promise.resolve([]),
+                window.noticeOperations.getNoticeIdsCommentedByUser ? window.noticeOperations.getNoticeIdsCommentedByUser(window.currentUser.uid) : []
             ]);
             likedNoticeIds = new Set(liked || []);
             bookmarkedNoticeIds = new Set(Array.isArray(bookmarkResults) ? sortedNotices.map((n, i) => bookmarkResults[i] ? n.id : null).filter(Boolean) : []);
+            commentedNoticeIds = new Set(Array.isArray(commented) ? commented : []);
         }
-        
+
         // 공지별 하트(좋아요) 카운트 - noticeInteractions에서 isLike=true만 계산
         const reactionCounts = await Promise.all(sortedNotices.map(async (n) => {
             try {
@@ -184,10 +195,12 @@ async function renderNotices() {
 
             const reactions = reactionMap.get(notice.id) || { likes: 0, dislikes: 0 };
             const likeCount = reactions.likes || 0;
-            const viewCount = Number(notice.views || notice.viewCount || notice.viewsCount || notice.viewCounts || 0) || 0;
+            const viewCount = viewCountMap.get(notice.id) ?? viewCountMap.get(String(notice.id)) ?? 0;
+            const commentCount = Number(notice.comments ?? 0) || 0;
             const isLiked = likedNoticeIds.has(notice.id);
             const isBookmarked = bookmarkedNoticeIds.has(notice.id);
-            
+            const userCommentedNotice = commentedNoticeIds.has(notice.id);
+
             return `
                 <div onclick="window.openNoticeDetail('${notice.id}')" class="board-list-card pt-4 px-5 pb-1.5 cursor-pointer active:scale-[0.98] transition-all mb-2 ${typeAccent}">
                     <div class="flex items-start gap-2 mb-1.5">
@@ -206,6 +219,10 @@ async function renderNotices() {
                             <span class="board-category-hashtag">${escapeHtml(`#${typeLabel}`)}</span>
                         </div>
                         <div class="flex items-center gap-2">
+                            <div class="flex items-center gap-1.5 text-slate-800 mr-1">
+                                <i class="fa-${userCommentedNotice ? 'solid' : 'regular'} fa-comment text-xl social-action-icon-stroke"></i>
+                                <span class="text-xs font-bold tabular-nums">${commentCount}</span>
+                            </div>
                             ${demo ? '' : `
                             <button onclick="event.stopPropagation(); window.toggleNoticeLike('${notice.id}', true)" class="board-post-like-btn flex items-center gap-1.5 active:scale-95 transition-transform ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-notice-id="${notice.id}" ${!window.currentUser ? 'disabled' : ''}>
                                 <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart text-xl ${isLiked ? 'text-red-500' : 'text-slate-800'} social-action-icon-stroke"></i>
@@ -722,7 +739,17 @@ export async function renderBoardDetail(postId) {
                             const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', ...SEOUL_LOCALE_OPTIONS });
                             const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, ...SEOUL_LOCALE_OPTIONS });
                             const isCommentAuthor = window.currentUser && comment.authorId === window.currentUser.uid;
-                            const commentNickname = comment.isAdminComment === true ? adminDisplayName : getDisplayProfile(comment.authorId, { nickname: comment.authorNickname || comment.anonymousId }).nickname;
+                            const commentNickname = comment.isAdminComment === true
+                                ? adminDisplayName
+                                : getDisplayProfile(
+                                      comment.authorId,
+                                      {
+                                          nickname: comment.authorNickname || comment.anonymousId,
+                                          icon: comment.authorIcon,
+                                          photoUrl: comment.authorPhotoUrl
+                                      },
+                                      { preferStoredNickname: true }
+                                  ).nickname;
                             const commentBody = comment.content ?? comment.text ?? '';
                             
                             return `
@@ -762,11 +789,11 @@ export async function renderBoardDetail(postId) {
     }
 }
 
-// 공지 상세 렌더링 (본문 페이지, 좋아요/싫어요만 표시, 신고/댓글 없음)
+// 공지 상세 렌더링 (본문, 조회·좋아요·북마크, 댓글)
 export async function renderNoticeDetail(noticeId) {
     const container = document.getElementById('boardDetailContent');
     if (!container || !window.noticeOperations) return;
-    
+
     container.innerHTML = `
         <div class="flex justify-center items-center py-12">
             <div class="text-center">
@@ -775,15 +802,16 @@ export async function renderNoticeDetail(noticeId) {
             </div>
         </div>
     `;
-    
+
     try {
-        const [notice, counts, userReaction, isBookmarked] = await Promise.all([
+        const [notice, counts, userReaction, isBookmarked, comments] = await Promise.all([
             window.noticeOperations.getNotice(noticeId),
             window.noticeOperations.getNoticeReactionCounts(noticeId),
             window.currentUser ? window.noticeOperations.getNoticeUserReaction(noticeId, window.currentUser.uid) : Promise.resolve(null),
-            window.currentUser && window.noticeOperations.isNoticeBookmarked ? window.noticeOperations.isNoticeBookmarked(noticeId, window.currentUser.uid) : Promise.resolve(false)
+            window.currentUser && window.noticeOperations.isNoticeBookmarked ? window.noticeOperations.isNoticeBookmarked(noticeId, window.currentUser.uid) : Promise.resolve(false),
+            window.noticeOperations.getNoticeComments ? window.noticeOperations.getNoticeComments(noticeId) : Promise.resolve([])
         ]);
-        
+
         if (!notice) {
             container.innerHTML = `
                 <div class="flex flex-col items-center justify-center py-12 text-center">
@@ -793,11 +821,19 @@ export async function renderNoticeDetail(noticeId) {
             `;
             return;
         }
+
+        const detailAuthorIds = [...new Set((comments || []).map((c) => c.authorId).filter(Boolean))];
+        await fetchUserProfiles(detailAuthorIds);
+
         if (window.noticeOperations?.recordNoticeView) {
-            window.noticeOperations.recordNoticeView(noticeId).catch(() => {});
+            await window.noticeOperations.recordNoticeView(noticeId).catch(() => {});
         }
+        const viewCount =
+            window.noticeOperations.getNoticeViewCount
+                ? await window.noticeOperations.getNoticeViewCount(noticeId)
+                : 0;
+
         let date = notice.timestamp ? (() => {
-            // timestamp 안전하게 변환
             if (notice.timestamp.toDate && typeof notice.timestamp.toDate === 'function') {
                 return notice.timestamp.toDate();
             } else if (typeof notice.timestamp === 'string') {
@@ -808,27 +844,72 @@ export async function renderNoticeDetail(noticeId) {
                 return new Date(notice.timestamp);
             }
         })() : new Date();
-        
-        // 유효하지 않은 날짜인지 확인
+
         if (isNaN(date.getTime())) {
             console.warn('Invalid timestamp for notice:', notice.id, notice.timestamp);
             date = new Date();
         }
-        
+
         const dateStr = date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short', ...SEOUL_LOCALE_OPTIONS });
         const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, ...SEOUL_LOCALE_OPTIONS });
-        
+
         const noticeTypeLabels = { important: '중요', notice: '알림', light: '가벼운' };
         const noticeType = notice.type || notice.noticeType || 'notice';
         const typeLabel = noticeTypeLabels[noticeType] || '알림';
-        
+
         const likes = counts?.likes ?? 0;
-        const viewCount = Number(notice.views || notice.viewCount || notice.viewsCount || notice.viewCounts || 0) || 0;
         const isLiked = userReaction === 'like';
-        
+        const demo = isDemoUser(window.currentUser);
+        const userCommentedDetail = window.currentUser && (comments || []).some((c) => c.authorId === window.currentUser.uid);
+        const commentList = comments || [];
+        const commentCountShown = commentList.length;
+
+        const safeNoticeId = String(noticeId).replace(/'/g, "\\'");
+        const commentsListHtml = commentList.length > 0
+            ? commentList.map((comment) => {
+                let commentDate;
+                if (!comment.timestamp) {
+                    commentDate = new Date();
+                } else if (comment.timestamp.toDate && typeof comment.timestamp.toDate === 'function') {
+                    commentDate = comment.timestamp.toDate();
+                } else if (typeof comment.timestamp === 'string') {
+                    commentDate = new Date(comment.timestamp);
+                } else if (comment.timestamp instanceof Date) {
+                    commentDate = comment.timestamp;
+                } else {
+                    commentDate = new Date(comment.timestamp);
+                }
+                if (isNaN(commentDate.getTime())) commentDate = new Date();
+                const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', ...SEOUL_LOCALE_OPTIONS });
+                const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, ...SEOUL_LOCALE_OPTIONS });
+                const isCommentAuthor = window.currentUser && comment.authorId === window.currentUser.uid;
+                const commentNickname = getDisplayProfile(
+                    comment.authorId,
+                    {
+                        nickname: comment.authorNickname || comment.anonymousId,
+                        icon: comment.authorIcon,
+                        photoUrl: comment.authorPhotoUrl
+                    },
+                    { preferStoredNickname: true }
+                ).nickname;
+                const commentBody = comment.content ?? comment.text ?? '';
+                const safeCid = String(comment.id || '').replace(/'/g, "\\'");
+                return `
+                                <div class="py-3 first:pt-0 last:pb-0 text-sm" data-comment-id="${String(comment.id)}">
+                                    <div class="flex items-start justify-between gap-2">
+                                        <span class="font-bold text-slate-800 shrink-0">${escapeHtml(commentNickname)}</span>
+                                        ${commentDateStr && commentTimeStr ? `<time class="text-xs text-slate-400 tabular-nums shrink-0 pt-0.5">${commentDateStr} ${commentTimeStr}</time>` : ''}
+                                    </div>
+                                    <p class="text-sm text-slate-700 leading-relaxed mt-1.5 whitespace-pre-wrap break-words">${escapeHtml(commentBody)}</p>
+                                    ${isCommentAuthor ? `<div class="mt-2"><button type="button" onclick="window.deleteNoticeComment('${safeCid}', '${safeNoticeId}')" class="text-xs font-semibold text-slate-400 hover:text-red-500 transition-colors">삭제</button></div>` : ''}
+                                </div>
+                            `;
+            }).join('')
+            : `<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>`;
+
         container.innerHTML = `
+            <div class="board-detail-page-root w-full">
             <div class="board-post-card space-y-4">
-                <!-- 상단: 뒤로가기 / 날짜·조회 / 제목 -->
                 <div class="flex items-start gap-2 pb-3 border-b border-slate-200">
                     <button onclick="window.backToBoardList()" class="w-8 h-8 flex items-center justify-center text-slate-400 active:bg-slate-100 rounded-full transition-colors flex-shrink-0 mt-0.5">
                         <i class="fa-solid fa-arrow-left text-lg"></i>
@@ -838,32 +919,58 @@ export async function renderNoticeDetail(noticeId) {
                         <h2 class="sub-title text-base text-slate-800 tracking-tight line-clamp-3">${escapeHtml(notice.title || '공지')}</h2>
                     </div>
                 </div>
-                
+
                 ${Array.isArray(notice.imageUrls) && notice.imageUrls.length > 0 ? `
                 <div class="flex flex-col gap-2 mb-4 -mx-4 px-2">
                     ${notice.imageUrls.map(url => `<img src="${url}" alt="공지 사진" class="w-full h-auto rounded-xl border border-slate-200 object-contain" loading="lazy">`).join('')}
                 </div>
                 ` : ''}
-                
-                <!-- 게시글 내용 -->
+
                 <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4 -mx-2 px-2">${renderFormattedContent(notice.content || '')}</div>
-                
-                <!-- 하단: 핀 · 카테고리 태그(왼쪽) | 하트·북마크(오른쪽) -->
+
                 <div class="flex items-center justify-between pt-3 border-t border-slate-200">
                     <div class="flex items-center gap-2 min-w-0">
                         ${notice.isPinned === true ? `<i class="fa-solid fa-thumbtack text-slate-600 text-xs shrink-0" title="고정"></i>` : ''}
                         <span class="board-category-hashtag">${escapeHtml(`#${typeLabel}`)}</span>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <button onclick="window.toggleNoticeLike('${noticeId}', true)" class="board-post-like-btn flex items-center gap-1.5 active:scale-95 transition-transform" data-notice-id="${noticeId}" ${!window.currentUser ? 'disabled' : ''}>
+                    <div class="flex items-center gap-3 shrink-0">
+                        <div class="flex items-center gap-1.5 text-slate-800">
+                            <i class="fa-${userCommentedDetail ? 'solid' : 'regular'} fa-comment text-xl social-action-icon-stroke"></i>
+                            <span class="text-xs font-bold">${commentCountShown}</span>
+                        </div>
+                        ${demo ? '' : `
+                        <button onclick="window.toggleNoticeLike('${safeNoticeId}', true)" class="board-post-like-btn flex items-center gap-1.5 active:scale-95 transition-transform" data-notice-id="${safeNoticeId}" ${!window.currentUser ? 'disabled' : ''}>
                             <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart text-xl ${isLiked ? 'text-red-500' : 'text-slate-800'} social-action-icon-stroke"></i>
                             <span class="text-xs font-bold text-slate-800">${likes}</span>
                         </button>
-                        <button onclick="window.toggleNoticeBookmark('${noticeId}')" class="board-post-bookmark-btn flex items-center gap-1.5 active:scale-95 transition-transform" data-notice-id="${noticeId}" ${!window.currentUser ? 'disabled' : ''}>
+                        <button onclick="window.toggleNoticeBookmark('${safeNoticeId}')" class="board-post-bookmark-btn flex items-center gap-1.5 active:scale-95 transition-transform" data-notice-id="${safeNoticeId}" ${!window.currentUser ? 'disabled' : ''}>
                             <i class="fa-${isBookmarked ? 'solid' : 'regular'} fa-bookmark text-xl text-slate-800 social-action-icon-stroke"></i>
                         </button>
+                        `}
                     </div>
                 </div>
+            </div>
+
+            <section class="board-detail-comments-section mt-2 pb-[calc(5.25rem+var(--safe-bottom,0px))]">
+                <article class="board-list-card board-detail-comments-card pt-4 px-5 pb-4">
+                    <div class="flex items-baseline justify-between gap-2 mb-3 pb-2 border-b border-slate-200">
+                        <h3 class="text-sm font-bold text-slate-800 tracking-tight">댓글 <span id="noticeCommentsCount" class="text-emerald-600 font-bold tabular-nums">${commentCountShown}</span></h3>
+                    </div>
+                    <div id="noticeCommentsList" class="board-detail-comments-list ${commentList.length > 0 ? 'divide-y divide-slate-100' : ''}">
+                        ${commentsListHtml}
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-slate-200">
+                        <div class="relative flex-1">
+                            <label class="sr-only" for="noticeCommentInput">댓글 입력</label>
+                            <input type="text" id="noticeCommentInput" placeholder="${demo ? '샘플 계정은 읽기 전용입니다' : (window.currentUser ? '댓글을 입력하세요…' : '로그인 후 댓글을 작성할 수 있습니다')}"
+                                   class="board-detail-comment-input w-full pl-3.5 pr-[4.25rem] py-2.5 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder:text-slate-400 bg-slate-50/80 focus:outline-none focus:bg-white focus:border-slate-300 focus:ring-2 focus:ring-emerald-500/15 transition-shadow"
+                                   ${(!window.currentUser || demo) ? 'disabled' : ''}
+                                   onkeypress="if(event.key === 'Enter' && window.currentUser && !event.shiftKey && !(${demo})) { event.preventDefault(); window.addNoticeComment('${safeNoticeId}'); }">
+                            ${demo ? `<span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">읽기</span>` : `<button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-colors shadow-sm" ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); if(window.currentUser) window.addNoticeComment('${safeNoticeId}')" onclick="if(window.currentUser) window.addNoticeComment('${safeNoticeId}')">게시</button>`}
+                        </div>
+                    </div>
+                </article>
+            </section>
             </div>
         `;
     } catch (e) {

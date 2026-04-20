@@ -3345,9 +3345,10 @@ body.feed-bubble-sheet-open {
 }
 
 /* 밀톡 피드 메시지 영역 테마 (--board-feed-bg + 말풍선) */
+/* 내 말풍선: 카카오톡 송신 버블 톤을 한 단계 연하게 */
 #boardListView #boardFeedPanelContent .feed-chat-bubble-mine {
-    background: #ecfdf5;
-    color: #064e3b;
+    background: #fff0a8;
+    color: #1a1a1a;
 }
 #boardListView #boardFeedPanelContent .feed-chat-bubble-other {
     background: #fff;

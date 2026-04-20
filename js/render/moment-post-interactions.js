@@ -196,7 +196,11 @@ export async function loadPostInteractions(postEl, postId) {
                             }
                         } catch (_) {}
                     }
-                    const commentDisplay = getDisplayProfile(c.userId, { nickname: c.userNickname });
+                    const commentDisplay = getDisplayProfile(
+                            c.userId,
+                            { nickname: c.userNickname, icon: c.userIcon },
+                            { preferStoredNickname: true }
+                        );
                     return `
                     <div class="mb-1 text-sm">
                         <span class="font-bold text-slate-800">${commentDisplay.nickname}</span>

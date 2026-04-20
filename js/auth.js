@@ -225,6 +225,11 @@ async function finalizeKakaoSignInWithCode(code, redirectUri) {
         }
         try {
             sessionStorage.setItem('mealog_kakaoProfileSetupGate', '1');
+            const uid = auth.currentUser?.uid;
+            // 다른 탭·새로고침 대비: sessionStorage는 탭마다 다름 → 동일 브라우저에서 짧게 공유
+            if (uid && String(uid).startsWith('kakao_')) {
+                localStorage.setItem(`mealog_kakaoProfileSetupGateUid_${uid}`, String(Date.now()));
+            }
         } catch (_) {}
         window._recordsLoadHidePending = true;
         showRecordsPendingLoading(auth.currentUser);

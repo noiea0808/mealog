@@ -128,11 +128,26 @@ export function normalizeUrl(url) {
  * 과거 게시물도 항상 현재 설정된 프로필(아이콘/닉네임)으로 표시됩니다.
  * @param {string} authorId - 작성자 userId
  * @param {{ nickname?: string, icon?: string, photoUrl?: string }} stored - 게시물에 저장된 프로필 (캐시 없을 때 fallback)
+ * @param {{ preferStoredNickname?: boolean }} [options] - 댓글 등: 문서에 스냅샷된 닉네임을 캐시·최신 프로필보다 우선 (탈퇴 후에도 표시 유지)
  * @returns {{ nickname: string, icon: string|null, photoUrl: string|null }}
  */
-export function getDisplayProfile(authorId, stored = {}) {
+export function getDisplayProfile(authorId, stored = {}, options = {}) {
+    const preferStored = options.preferStoredNickname === true;
+    const storedNick =
+        stored.nickname != null && String(stored.nickname).trim() !== '' ? String(stored.nickname).trim() : '';
+
     const isCurrentUser = typeof window !== 'undefined' && window.currentUser && authorId === window.currentUser.uid;
     const profile = window?.userSettings?.profile;
+
+    // 댓글 스냅샷: 탈퇴·설정 삭제 후에도 Firestore 댓글 문서의 닉네임만 보이게 (캐시가 카카오 실명 등으로 덮이지 않도록)
+    if (preferStored && storedNick) {
+        return {
+            nickname: storedNick,
+            icon: stored.icon ?? null,
+            photoUrl: stored.photoUrl ?? null
+        };
+    }
+
     if (isCurrentUser && profile) {
         return {
             nickname: profile.nickname || stored.nickname || '익명',

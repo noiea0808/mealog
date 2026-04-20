@@ -375,6 +375,8 @@ export const callableFunctions = {
     addBoardComment: httpsCallable(functions, 'addBoardComment'),
     addBoardCommentAsAdmin: httpsCallable(functions, 'addBoardCommentAsAdmin'),
     deleteBoardComment: httpsCallable(functions, 'deleteBoardComment'),
+    addNoticeComment: httpsCallable(functions, 'addNoticeComment'),
+    deleteNoticeComment: httpsCallable(functions, 'deleteNoticeComment'),
     addPostComment: httpsCallable(functions, 'addPostComment'),
     deletePostComment: httpsCallable(functions, 'deletePostComment'),
     submitPostReport: httpsCallable(functions, 'submitPostReport'),

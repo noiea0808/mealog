@@ -1015,6 +1015,200 @@ window.addBoardComment = async (postId) => {
     }
 };
 
+const _noticeCommentSubmitting = {};
+
+/** 공지 상세 댓글 한 줄 — `renderNoticeDetail` 마크업과 동일 */
+function buildNoticeDetailCommentRowHtml({
+    commentId,
+    noticeId,
+    nickname,
+    body,
+    commentDateStr,
+    commentTimeStr,
+    showDelete
+}) {
+    const timePart =
+        commentDateStr && commentTimeStr
+            ? `<time class="text-xs text-slate-400 tabular-nums shrink-0 pt-0.5">${commentDateStr} ${commentTimeStr}</time>`
+            : '';
+    const safeNid = String(noticeId || '').replace(/'/g, "\\'");
+    const safeCid = String(commentId || '').replace(/'/g, "\\'");
+    const deletePart = showDelete
+        ? `<div class="mt-2"><button type="button" onclick="window.deleteNoticeComment('${safeCid}', '${safeNid}')" class="text-xs font-semibold text-slate-400 hover:text-red-500 transition-colors">삭제</button></div>`
+        : '';
+    return `<div class="py-3 first:pt-0 last:pb-0 text-sm" data-comment-id="${String(commentId)}">
+    <div class="flex items-start justify-between gap-2">
+      <span class="font-bold text-slate-800 shrink-0">${escapeHtml(nickname)}</span>
+      ${timePart}
+    </div>
+    <p class="text-sm text-slate-700 leading-relaxed mt-1.5 whitespace-pre-wrap break-words">${escapeHtml(body)}</p>
+    ${deletePart}
+  </div>`;
+}
+
+window.addNoticeComment = async (noticeId) => {
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast('로그인이 필요합니다.', 'error');
+        window.requestLogin();
+        return;
+    }
+    if (isDemoUser(window.currentUser)) {
+        showToast('샘플 계정에서는 댓글을 작성할 수 없습니다.', 'error');
+        return;
+    }
+
+    const input = document.getElementById('noticeCommentInput');
+    if (!input) return;
+
+    const content = input.value.trim();
+    if (!content) {
+        showToast('댓글을 입력해주세요.', 'error');
+        return;
+    }
+    if (_noticeCommentSubmitting[noticeId]) return;
+    _noticeCommentSubmitting[noticeId] = true;
+
+    const commentsListEl = document.getElementById('noticeCommentsList');
+    const commentsCountEl = document.getElementById('noticeCommentsCount');
+    const authorNickname =
+        (window.userSettings && window.userSettings.profile && window.userSettings.profile.nickname) || '익명';
+    const tempCommentId = `temp-${Date.now()}`;
+
+    const commentDate = new Date();
+    const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', ...SEOUL_LOCALE_OPTIONS });
+    const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, ...SEOUL_LOCALE_OPTIONS });
+    const rowHtml = buildNoticeDetailCommentRowHtml({
+        commentId: tempCommentId,
+        noticeId,
+        nickname: authorNickname,
+        body: content,
+        commentDateStr,
+        commentTimeStr,
+        showDelete: true
+    });
+    if (commentsListEl) {
+        commentsListEl.querySelector('.board-detail-comments-empty')?.remove();
+        commentsListEl.classList.add('divide-y', 'divide-slate-100');
+        commentsListEl.insertAdjacentHTML('beforeend', rowHtml);
+        const last = commentsListEl.lastElementChild;
+        if (last) last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    if (commentsCountEl) {
+        const n = (parseInt(commentsCountEl.textContent, 10) || 0) + 1;
+        commentsCountEl.textContent = String(n);
+    }
+    input.value = '';
+
+    try {
+        const result = await noticeOperations.addNoticeComment(noticeId, content);
+        const realId = (result && (result.commentId ?? result.id)) || null;
+        if (realId && commentsListEl) {
+            const tempRow = commentsListEl.querySelector(`[data-comment-id="${tempCommentId}"]`);
+            if (tempRow) {
+                tempRow.setAttribute('data-comment-id', realId);
+                const btn = tempRow.querySelector('button[onclick*="deleteNoticeComment"]');
+                if (btn) {
+                    const safeNid = String(noticeId || '').replace(/'/g, "\\'");
+                    btn.setAttribute('onclick', `window.deleteNoticeComment('${String(realId).replace(/'/g, "\\'")}', '${safeNid}')`);
+                }
+            }
+        }
+    } catch (e) {
+        console.error('공지 댓글 작성 오류:', e);
+        showToast('댓글 작성에 실패했습니다.', 'error');
+        if (commentsListEl) {
+            const tempRow = commentsListEl.querySelector(`[data-comment-id="${tempCommentId}"]`);
+            if (tempRow) tempRow.remove();
+            if (commentsListEl.children.length === 0) {
+                commentsListEl.classList.remove('divide-y', 'divide-slate-100');
+                commentsListEl.innerHTML =
+                    '<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>';
+            }
+        }
+        if (commentsCountEl) {
+            const n = Math.max(0, (parseInt(commentsCountEl.textContent, 10) || 0) - 1);
+            commentsCountEl.textContent = String(n);
+        }
+    } finally {
+        _noticeCommentSubmitting[noticeId] = false;
+    }
+};
+
+window.deleteNoticeComment = async (commentId, noticeId) => {
+    if (!confirm('댓글을 삭제하시겠습니까?')) return;
+
+    const commentsListEl = document.getElementById('noticeCommentsList');
+    const commentsCountEl = document.getElementById('noticeCommentsCount');
+    const row = commentsListEl?.querySelector(`[data-comment-id="${commentId}"]`);
+    const prevCount = commentsCountEl ? parseInt(commentsCountEl.textContent, 10) || 0 : 0;
+    if (row) {
+        row.remove();
+        if (commentsCountEl) commentsCountEl.textContent = String(Math.max(0, prevCount - 1));
+        if (commentsListEl && commentsListEl.children.length === 0) {
+            commentsListEl.classList.remove('divide-y', 'divide-slate-100');
+            commentsListEl.innerHTML =
+                '<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>';
+        }
+    }
+
+    try {
+        await noticeOperations.deleteNoticeComment(commentId, noticeId);
+        showToast('댓글이 삭제되었습니다.', 'success');
+    } catch (e) {
+        console.error('공지 댓글 삭제 오류:', e);
+        showToast('댓글 삭제에 실패했습니다.', 'error');
+        try {
+            const comments = await noticeOperations.getNoticeComments(noticeId);
+            if (commentsListEl && commentsCountEl) {
+                commentsCountEl.textContent = String(comments.length);
+                if (comments.length > 0) {
+                    commentsListEl.classList.add('divide-y', 'divide-slate-100');
+                    commentsListEl.innerHTML = comments
+                        .map((comment) => {
+                            let commentDate;
+                            if (!comment.timestamp) commentDate = new Date();
+                            else if (comment.timestamp.toDate && typeof comment.timestamp.toDate === 'function') {
+                                commentDate = comment.timestamp.toDate();
+                            } else if (typeof comment.timestamp === 'string') commentDate = new Date(comment.timestamp);
+                            else if (comment.timestamp instanceof Date) commentDate = comment.timestamp;
+                            else commentDate = new Date(comment.timestamp || 0);
+                            if (isNaN(commentDate.getTime())) commentDate = new Date();
+                            const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', ...SEOUL_LOCALE_OPTIONS });
+                            const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, ...SEOUL_LOCALE_OPTIONS });
+                            const isCommentAuthor = window.currentUser && comment.authorId === window.currentUser.uid;
+                            const commentDisplay = getDisplayProfile(
+                                comment.authorId,
+                                {
+                                    nickname: comment.authorNickname || comment.anonymousId,
+                                    icon: comment.authorIcon,
+                                    photoUrl: comment.authorPhotoUrl
+                                },
+                                { preferStoredNickname: true }
+                            );
+                            const commentBody = comment.content ?? comment.text ?? '';
+                            return buildNoticeDetailCommentRowHtml({
+                                commentId: comment.id,
+                                noticeId,
+                                nickname: commentDisplay.nickname,
+                                body: commentBody,
+                                commentDateStr,
+                                commentTimeStr,
+                                showDelete: isCommentAuthor
+                            });
+                        })
+                        .join('');
+                } else {
+                    commentsListEl.classList.remove('divide-y', 'divide-slate-100');
+                    commentsListEl.innerHTML =
+                        '<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>';
+                }
+            }
+        } catch (err) {
+            console.error('공지 댓글 목록 새로고침 오류:', err);
+        }
+    }
+};
+
 window.deleteBoardComment = async (commentId, postId) => {
     if (!confirm("댓글을 삭제하시겠습니까?")) return;
     
@@ -1055,7 +1249,15 @@ window.deleteBoardComment = async (commentId, postId) => {
                         const commentDateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', ...SEOUL_LOCALE_OPTIONS });
                         const commentTimeStr = commentDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, ...SEOUL_LOCALE_OPTIONS });
                         const isCommentAuthor = window.currentUser && comment.authorId === window.currentUser.uid;
-                        const commentDisplay = getDisplayProfile(comment.authorId, { nickname: comment.authorNickname || comment.anonymousId });
+                        const commentDisplay = getDisplayProfile(
+                                comment.authorId,
+                                {
+                                    nickname: comment.authorNickname || comment.anonymousId,
+                                    icon: comment.authorIcon,
+                                    photoUrl: comment.authorPhotoUrl
+                                },
+                                { preferStoredNickname: true }
+                            );
                         const commentBody = comment.content ?? comment.text ?? '';
                         return buildBoardDetailCommentRowHtml({
                             commentId: comment.id,

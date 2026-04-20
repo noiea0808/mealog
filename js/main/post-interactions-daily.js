@@ -1045,7 +1045,11 @@ window.deleteCommentFromPost = async (commentId, postId) => {
                             const displayComments = comments.slice(0, 2);
                             const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
                             commentsListEl.innerHTML = displayComments.map(c => {
-                                const commentDisplay = getDisplayProfile(c.userId, { nickname: c.userNickname });
+                                const commentDisplay = getDisplayProfile(
+                                c.userId,
+                                { nickname: c.userNickname, icon: c.userIcon },
+                                { preferStoredNickname: true }
+                            );
                                 return `
                                 <div class="mb-1 text-sm">
                                     <span class="font-bold text-slate-800">${commentDisplay.nickname}</span>
@@ -1141,7 +1145,11 @@ window.viewAllComments = async (postId) => {
                     }
                     
                     const isMyComment = isLoggedIn && comment.userId === window.currentUser.uid;
-                    const commentDisplay = getDisplayProfile(comment.userId, { nickname: comment.userNickname });
+                    const commentDisplay = getDisplayProfile(
+                    comment.userId,
+                    { nickname: comment.userNickname, icon: comment.userIcon },
+                    { preferStoredNickname: true }
+                );
                     return `
                         <div class="mb-1 text-sm">
                             <span class="font-bold text-slate-800">${escapeHtml(commentDisplay.nickname)}</span>
@@ -1268,7 +1276,11 @@ window.submitComment = async (postId) => {
                     } catch (_) {}
                 }
                 const safeId = String(result.id).replace(/'/g, "\\'");
-                const commentDisplay = getDisplayProfile(window.currentUser?.uid, { nickname: result.userNickname });
+                const commentDisplay = getDisplayProfile(
+                    window.currentUser?.uid,
+                    { nickname: result.userNickname, icon: result.userIcon },
+                    { preferStoredNickname: true }
+                );
                 tempRow.outerHTML = `
                     <div class="mb-1 text-sm">
                         <span class="font-bold text-slate-800">${escapeHtml(commentDisplay.nickname)}</span>
@@ -1340,7 +1352,11 @@ async function loadPostComments(postId) {
                     
                     const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
                     const isMyComment = isLoggedIn && comment.userId === window.currentUser.uid;
-                    const commentDisplay = getDisplayProfile(comment.userId, { nickname: comment.userNickname });
+                    const commentDisplay = getDisplayProfile(
+                    comment.userId,
+                    { nickname: comment.userNickname, icon: comment.userIcon },
+                    { preferStoredNickname: true }
+                );
                     return `
                         <div class="mb-1 text-sm">
                             <span class="font-bold text-slate-800">${escapeHtml(commentDisplay.nickname)}</span>

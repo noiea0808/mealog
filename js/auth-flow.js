@@ -109,6 +109,54 @@ function isLikelyFirstSessionAfterAccountCreate(user) {
 
 /** 카카오 웹 로그인 직후 1회만 자동 가입 위저드 허용 (auth.js에서 OAuth 성공 시 설정) */
 const KAKAO_PROFILE_SETUP_GATE_KEY = 'mealog_kakaoProfileSetupGate';
+/** localStorage 타임스탬프 유효 시간 (OAuth 직후 다른 탭에서도 인정) */
+const KAKAO_PROFILE_GATE_TTL_MS = 30 * 60 * 1000;
+/** sessionStorage 없을 때 보조: 직전 로그인으로 간주하는 시간 (다른 탭·게이트 소비 타이밍 완화) */
+const KAKAO_PROFILE_GATE_RECENT_SIGNIN_MS = 25 * 60 * 1000;
+
+function kakaoProfileGateUidKey(uid) {
+    return `mealog_kakaoProfileSetupGateUid_${uid}`;
+}
+
+/**
+ * 카카오 프로필 온보딩 허용 여부 — sessionStorage + localStorage + 최근 로그인(보조)
+ */
+function isKakaoProfileSetupGateOpen(user) {
+    try {
+        if (sessionStorage.getItem(KAKAO_PROFILE_SETUP_GATE_KEY) === '1') return true;
+    } catch (_) {}
+    const uid = user?.uid;
+    if (!uid) return false;
+    try {
+        const raw = localStorage.getItem(kakaoProfileGateUidKey(uid));
+        if (raw) {
+            const ts = Number(raw);
+            if (Number.isFinite(ts) && Date.now() - ts <= KAKAO_PROFILE_GATE_TTL_MS) return true;
+            localStorage.removeItem(kakaoProfileGateUidKey(uid));
+        }
+    } catch (_) {}
+    try {
+        const last = user?.metadata?.lastSignInTime;
+        if (!last) return false;
+        const t = new Date(last).getTime();
+        if (!Number.isFinite(t)) return false;
+        if (Date.now() - t <= KAKAO_PROFILE_GATE_RECENT_SIGNIN_MS) return true;
+    } catch (_) {}
+    return false;
+}
+
+/** OAuth 직후 플래그 정리 — 가입 위저드 저장 완료 시 signup-wizard에서 호출 */
+export function consumeKakaoProfileSetupGate(user) {
+    try {
+        sessionStorage.removeItem(KAKAO_PROFILE_SETUP_GATE_KEY);
+    } catch (_) {}
+    const uid = user?.uid;
+    if (uid) {
+        try {
+            localStorage.removeItem(kakaoProfileGateUidKey(uid));
+        } catch (_) {}
+    }
+}
 
 function kakaoUidNeedsProfileWizardGuard(uid) {
     return typeof uid === 'string' && uid.startsWith('kakao_');
@@ -132,16 +180,8 @@ async function openSignupWizardWithKakaoStaleGuard(user, wizardOptions = {}) {
         signupWizardIsProfileOnboarding(wizardOptionsForWizard) &&
         !bypassKakaoGate
     ) {
-        let gate = false;
-        try {
-            gate = sessionStorage.getItem(KAKAO_PROFILE_SETUP_GATE_KEY) === '1';
-        } catch (_) {}
-        if (gate) {
-            try {
-                sessionStorage.removeItem(KAKAO_PROFILE_SETUP_GATE_KEY);
-            } catch (_) {}
-        } else {
-            console.log('🔐 카카오 가입: 직전 OAuth 리다이렉트가 아니어 로그아웃 후 로그인 화면부터 시작합니다.');
+        if (!isKakaoProfileSetupGateOpen(user)) {
+            console.log('🔐 카카오 가입: 직전 OAuth·최근 로그인 맥락이 아니어 로그아웃 후 로그인 화면부터 시작합니다.');
             try {
                 // main.js onAuthStateChanged가 비의도적 로그아웃으로 무시하지 않도록
                 sessionStorage.setItem('explicitLogout', 'true');

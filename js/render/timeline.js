@@ -404,11 +404,27 @@ function mealRecordTimeSortMs(r) {
     return 0;
 }
 
+/** date+time이 동일할 때(구버전 분 단위 등): 서버/문서 timestamp로 실제 생성 순 보조 정렬 */
+function mealRecordAuxChronoMs(r) {
+    if (!r) return 0;
+    const ts = r.timestamp;
+    if (ts && typeof ts.toDate === 'function') return ts.toDate().getTime();
+    if (ts && typeof ts === 'object' && typeof ts.seconds === 'number') return ts.seconds * 1000;
+    if (typeof ts === 'string' || typeof ts === 'number') {
+        const t = new Date(ts).getTime();
+        if (!Number.isNaN(t)) return t;
+    }
+    return 0;
+}
+
 function sortSnackSlotRecordsChronological(records) {
     return [...records].sort((a, b) => {
         const da = mealRecordTimeSortMs(a);
         const db = mealRecordTimeSortMs(b);
         if (da !== db) return da - db;
+        const ta = mealRecordAuxChronoMs(a);
+        const tb = mealRecordAuxChronoMs(b);
+        if (ta !== tb) return ta - tb;
         return String(a.id || '').localeCompare(String(b.id || ''));
     });
 }

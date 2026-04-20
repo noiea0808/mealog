@@ -271,6 +271,14 @@ async function submitWizard() {
         showToast('회원가입이 완료되었습니다. 환영합니다!', 'success');
     }
 
+    try {
+        const u = auth.currentUser;
+        if (u?.uid?.startsWith('kakao_')) {
+            const { consumeKakaoProfileSetupGate } = await import('./auth-flow.js');
+            consumeKakaoProfileSetupGate(u);
+        }
+    } catch (_) {}
+
     closeSignupWizard();
     hideLoading();
     const { authFlowManager } = await import('./auth-flow.js');

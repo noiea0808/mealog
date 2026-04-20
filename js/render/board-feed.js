@@ -339,9 +339,9 @@ function feedReplyQuoteHtml(replyTo, variant = 'mine') {
     const box =
         variant === 'other'
             ? 'border-l-2 border-slate-300 bg-slate-100/90'
-            : 'border-l-2 border-emerald-600/45 bg-emerald-100/70';
-    const nickC = variant === 'other' ? 'font-semibold text-slate-800' : 'font-bold text-emerald-900';
-    const prevC = variant === 'other' ? 'text-slate-600' : 'text-emerald-800/90';
+            : 'border-l-2 border-neutral-900/20 bg-black/5';
+    const nickC = variant === 'other' ? 'font-semibold text-slate-800' : 'font-bold text-neutral-900';
+    const prevC = variant === 'other' ? 'text-slate-600' : 'text-neutral-800/90';
     const nickData = encodeURIComponent(rawReplyNick);
     return `
         <div class="feed-reply-quote mb-1.5 min-w-0 max-w-full rounded-md px-2 py-1 ${box}">
@@ -385,7 +385,7 @@ function feedBubbleHtml(post, opts = {}) {
 
     const imgOnlyPendingSpinner =
         isMine && isPendingSend && hasImg && !hasBody
-            ? `<span class="pointer-events-none absolute left-2 top-2 z-[1] flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600/90 text-white shadow-sm" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[11px] leading-none" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`
+            ? `<span class="pointer-events-none absolute left-2 top-2 z-[1] flex h-5 w-5 items-center justify-center rounded-full bg-neutral-800/85 text-white shadow-sm" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[11px] leading-none" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`
             : '';
     const imgWrapClass = hasImg
         ? `${imgOnlyPendingSpinner ? 'relative' : ''} flex flex-col gap-1.5 overflow-hidden ${
@@ -410,7 +410,7 @@ function feedBubbleHtml(post, opts = {}) {
     if (isMine) {
         const replyQ = post.replyTo ? feedReplyQuoteHtml(post.replyTo, 'mine') : '';
         const reactRow = feedReactionRowHtml(post, true);
-        const pendingSpinnerLead = `<span class="pointer-events-none flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600/90 text-white shadow-sm" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[11px] leading-none" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`;
+        const pendingSpinnerLead = `<span class="pointer-events-none flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-800/85 text-white shadow-sm" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[11px] leading-none" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`;
         const bodyMine = hasBody
             ? isPendingSend
                 ? `<div class="flex min-w-0 max-w-full items-start gap-2 ${hasImg ? 'px-5 py-2' : ''}">${pendingSpinnerLead}<p class="m-0 min-w-0 flex-1 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem]">${body}</p></div>`

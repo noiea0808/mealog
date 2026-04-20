@@ -1,6 +1,6 @@
 // 게시판 및 공지 관련 함수들
 import { db, appId, callableFunctions } from '../firebase.js';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, query, orderBy, limit, where, getDocs, getDocsFromServer, onSnapshot, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, query, orderBy, limit, where, getDocs, getDocsFromServer, onSnapshot, serverTimestamp, writeBatch, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { showToast } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
 import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
@@ -835,6 +835,130 @@ export const noticeOperations = {
         } catch (e) {
             console.error("Get Notice Ids Liked By User Error:", e);
             return [];
+        }
+    },
+
+    /** 공지별 고유 조회(로그인 사용자 `notices/{id}/views/{uid}`) 건수 — 집계 쿼리 */
+    async getNoticeViewCount(noticeId) {
+        if (!noticeId) return 0;
+        try {
+            const coll = collection(db, 'artifacts', appId, 'notices', String(noticeId), 'views');
+            const snap = await getCountFromServer(coll);
+            return snap.data().count ?? 0;
+        } catch (e) {
+            console.warn('Get notice view count error:', noticeId, e);
+            return 0;
+        }
+    },
+
+    /** 공지 목록용: 여러 공지의 조회 수를 병렬 집계 */
+    async getNoticeViewCountsForNoticeIds(noticeIds) {
+        const ids = [...new Set((noticeIds || []).map((id) => String(id || '').trim()).filter(Boolean))];
+        if (ids.length === 0) return new Map();
+        const pairs = await Promise.all(
+            ids.map(async (id) => {
+                try {
+                    const coll = collection(db, 'artifacts', appId, 'notices', id, 'views');
+                    const snap = await getCountFromServer(coll);
+                    return [id, snap.data().count ?? 0];
+                } catch (e) {
+                    console.warn('Notice view count batch:', id, e);
+                    return [id, 0];
+                }
+            })
+        );
+        return new Map(pairs);
+    },
+
+    async getNoticeComments(noticeId) {
+        if (!noticeId) return [];
+        try {
+            const commentsColl = collection(db, 'artifacts', appId, 'noticeComments');
+            const q = query(commentsColl, where('noticeId', '==', String(noticeId)));
+            const snapshot = await getDocs(q);
+            const comments = snapshot.docs.map((d) => {
+                const data = d.data();
+                return {
+                    id: d.id,
+                    ...data,
+                    content: data.content ?? data.text ?? ''
+                };
+            });
+            const getCommentTimestamp = (comment) => {
+                if (!comment.timestamp) return 0;
+                if (comment.timestamp.toDate && typeof comment.timestamp.toDate === 'function') {
+                    return comment.timestamp.toDate().getTime();
+                }
+                if (typeof comment.timestamp === 'string') return new Date(comment.timestamp).getTime();
+                if (comment.timestamp instanceof Date) return comment.timestamp.getTime();
+                return new Date(comment.timestamp || 0).getTime();
+            };
+            comments.sort((a, b) => {
+                const tA = getCommentTimestamp(a);
+                const tB = getCommentTimestamp(b);
+                return tA - tB || String(a.id || '').localeCompare(String(b.id || ''));
+            });
+            return comments;
+        } catch (e) {
+            console.error('Get Notice Comments Error:', e);
+            return [];
+        }
+    },
+
+    async getNoticeIdsCommentedByUser(userId) {
+        if (!userId) return [];
+        try {
+            const commentsColl = collection(db, 'artifacts', appId, 'noticeComments');
+            const q = query(commentsColl, where('authorId', '==', userId));
+            const snapshot = await getDocs(q);
+            return [...new Set(snapshot.docs.map((d) => d.data().noticeId).filter(Boolean))];
+        } catch (e) {
+            console.error('Get Notice Ids Commented By User Error:', e);
+            return [];
+        }
+    },
+
+    async addNoticeComment(noticeId, content) {
+        if (!window.currentUser) {
+            throw new Error('로그인이 필요합니다.');
+        }
+        if (isDemoUser(window.currentUser)) {
+            showToast('샘플 계정에서는 댓글을 작성할 수 없습니다.', 'error');
+            throw new Error('read-only-demo');
+        }
+        if (!isUserSettingsReadyForContentWrites(window.userSettings)) {
+            showToast('약관 동의와 프로필(닉네임) 설정을 완료한 뒤 댓글을 작성할 수 있습니다.', 'error');
+            throw new Error('ONBOARDING_INCOMPLETE');
+        }
+        try {
+            const result = await callableFunctions.addNoticeComment({
+                noticeId: String(noticeId),
+                content
+            });
+            return result.data;
+        } catch (e) {
+            console.error('[noticeOperations.addNoticeComment] 에러:', e);
+            const errorMessage = e.message || e.details || e.code || '댓글 작성에 실패했습니다.';
+            showToast(errorMessage, 'error');
+            throw e;
+        }
+    },
+
+    async deleteNoticeComment(commentId, noticeId) {
+        if (!window.currentUser) {
+            throw new Error('로그인이 필요합니다.');
+        }
+        try {
+            const result = await callableFunctions.deleteNoticeComment({
+                commentId,
+                noticeId: noticeId != null ? String(noticeId) : ''
+            });
+            return result.data.success;
+        } catch (e) {
+            console.error('Delete Notice Comment Error:', e);
+            const errorMessage = e.message || e.details || '댓글 삭제에 실패했습니다.';
+            showToast(errorMessage, 'error');
+            throw e;
         }
     }
 };

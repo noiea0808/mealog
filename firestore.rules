@@ -260,6 +260,16 @@ service cloud.firestore {
     }
     
     // ============================================
+    // 공지 댓글 (noticeComments 컬렉션) — 생성/댓글 수 갱신은 Cloud Functions만
+    // ============================================
+    match /artifacts/{appId}/noticeComments/{commentId} {
+      allow read: if isAuthenticated();
+      allow create: if false;
+      allow update: if isAuthorOfResource() && !isReadOnlyDemoAccount();
+      allow delete: if isAdmin() || (isAuthorOfResource() && !isReadOnlyDemoAccount());
+    }
+    
+    // ============================================
     // 게시판 사용자 (boardUsers 컬렉션)
     // ============================================
     match /artifacts/{appId}/boardUsers/{userId} {
@@ -319,8 +329,9 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     // 공지 조회 기록 (같은 사용자 중복 1회) — 로그인 사용자만 자신의 문서 생성/병합
+    // 읽기: 집계(조회 수 카운트)에 필요. getCount/getDocs 시 다른 사용자 uid 문서도 읽기 가능(로그인 사용자 전원).
     match /artifacts/{appId}/notices/{noticeId}/views/{userId} {
-      allow read: if isAdmin();
+      allow read: if isAuthenticated();
       allow create, update: if isAuthenticated() && request.auth.uid == userId && !isReadOnlyDemoAccount();
       allow delete: if false;
     }
