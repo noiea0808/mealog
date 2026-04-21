@@ -12,6 +12,22 @@ import {
 
 const OVERLAY_ID = 'timelineMealPhotosOverlay';
 
+/** 캐러셀 마우스 축 잠금용 document 리스너 — add/remove 시 동일 객체 참조 필요 */
+const MEAL_PHOTO_CAROUSEL_DOC_CAPTURE = { passive: false, capture: true };
+function removeMealPhotoCarouselDocumentPointerListeners(overlayEl) {
+    if (!overlayEl?._mealCarouselDocAttached) return;
+    overlayEl._mealCarouselDocAttached = false;
+    const mv = overlayEl._mealCarouselDocMove;
+    const up = overlayEl._mealCarouselDocUp;
+    if (mv) document.removeEventListener('pointermove', mv, MEAL_PHOTO_CAROUSEL_DOC_CAPTURE);
+    if (up) {
+        document.removeEventListener('pointerup', up, true);
+        document.removeEventListener('pointercancel', up, true);
+    }
+    overlayEl._mealCarouselDocMove = null;
+    overlayEl._mealCarouselDocUp = null;
+}
+
 /** 한 게시물(행)에서 처음에 DOM에 넣을 사진 장 수 — 초과분은「더 보기」로 펼침 */
 const MEAL_PHOTO_VIEWER_INITIAL_PHOTOS = 8;
 
@@ -253,7 +269,7 @@ function buildCarouselZoneHtml(row, opts = {}) {
     return `<div class="timeline-meal-photos-carousel-zone flex w-full min-w-0 shrink-0 flex-col items-stretch">
             <div class="timeline-meal-photos-carousel-frame relative flex min-h-0 w-full min-w-0 flex-1 flex-col items-stretch justify-center p-1" data-photo-index="0" tabindex="0" role="region" aria-roledescription="carousel" aria-label="기록 사진">
                 <div class="timeline-meal-photos-carousel-viewport relative min-h-0 w-full min-w-0 flex-1">
-                    <div class="timeline-meal-photos-hstrip scrollbar-hide flex min-h-0 h-full w-full min-w-0 select-none flex-row overflow-x-auto overflow-y-hidden overscroll-x-contain snap-x snap-mandatory" style="-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y;scroll-snap-type:x mandatory" tabindex="-1">
+                    <div class="timeline-meal-photos-hstrip scrollbar-hide flex min-h-0 h-full w-full min-w-0 select-none flex-row overflow-x-auto overflow-y-hidden overscroll-x-contain snap-x snap-mandatory" style="-webkit-overflow-scrolling:touch;touch-action:pan-x;scroll-snap-type:x mandatory" tabindex="-1">
                         ${cellsHtml}
                     </div>
                     <div class="timeline-meal-photos-carousel-badge pointer-events-none absolute z-10 flex items-baseline gap-0 rounded bg-black/50 px-1.5 py-0.5 tabular-nums leading-none text-white${badgeHidden}" data-carousel-badge>${badgeInner}</div>
@@ -325,7 +341,7 @@ function buildMealPhotoGlobalCaptionFooterHtml() {
                     </div>
                 </div>
                 <span class="meal-photo-wheel-sep meal-photo-wheel-sep--colon shrink-0 select-none text-white/45">:</span>
-                <div class="meal-photo-wheel-col meal-photo-wheel-col--slot flex min-w-0 shrink-0 flex-col justify-center">
+                <div class="meal-photo-wheel-col meal-photo-wheel-col--slot flex min-w-0 shrink-0 flex-col items-center justify-center">
                     <div class="meal-photo-wheel-viewport meal-photo-wheel-viewport--label meal-photo-wheel-viewport--slot">
                         <div class="meal-photo-wheel-label-strip" data-wheel-label-strip="slot">
                             <span class="meal-photo-wheel-label-line">—</span>
@@ -650,13 +666,13 @@ function syncMealPhotoHstripIndexFromScroll(hstrip, frame, slide, el) {
     }
     preloadAdjacentMealPhotos(el);
     if (el.classList.contains('timeline-meal-photos-overlay--wheel') && !el._mealPhotoWheelSuppressLabelSchedule) {
-        scheduleMealPhotoWheelLabelLayout(el, 80);
+        scheduleMealPhotoWheelLabelLayout(el);
     }
 }
 
 /**
  * 다장: 가로 `snap-x` 스트립 + 마우스 드래그로 `scrollLeft` 조절(세로 vtrack과 동일한 조작감).
- * 터치는 네이티브 가로 스크롤·스냅 — 오버레이 CSS의 `touch-action: pan-y`가 이미지에서 가로를 막지 않도록 style.css에서 보완.
+ * 터치는 네이티브 가로 스크롤·스냅 — 캐러셀은 `touch-action: pan-x`만 두어 세로는 vtrack(기록 간 이동)으로 전달.
  */
 function bindCarouselSwipe(zone, el) {
     if (!zone || zone._mealCarouselBound) return;
@@ -702,16 +718,13 @@ function bindCarouselSwipe(zone, el) {
         } else if (e.shiftKey && absY > 0) {
             hstrip.scrollLeft += dy;
             handled = true;
-        } else if (absY > 0 && absY >= absX) {
-            hstrip.scrollLeft += dy;
-            handled = true;
         }
         if (handled) e.preventDefault();
     };
     hstrip.addEventListener('wheel', onWheelHstrip, { passive: false });
 
-    let hDragId = null;
-    let hLastX = 0;
+    /** 마우스/펜: pointerdown 직후 가로 캡처하지 않고 임계값으로 세로(vtrack)·가로(hstrip) 분기 */
+    const CAROUSEL_AXIS_LOCK_PX = 10;
     const snapHstripAfterDrag = () => {
         const w = hstrip.clientWidth;
         const n = Math.max(row.urls.length || 0, cellCount || 0);
@@ -730,56 +743,122 @@ function bindCarouselSwipe(zone, el) {
         }
         preloadAdjacentMealPhotos(el);
         if (el.classList.contains('timeline-meal-photos-overlay--wheel') && !el._mealPhotoWheelSuppressLabelSchedule) {
-            scheduleMealPhotoWheelLabelLayout(el, 80);
+            scheduleMealPhotoWheelLabelLayout(el);
         }
     };
-    const onHMove = (e) => {
-        if (hDragId == null || e.pointerId !== hDragId) return;
-        const dx = e.clientX - hLastX;
-        hLastX = e.clientX;
-        hstrip.scrollLeft -= dx;
+    const onHMoveFromEl = (e) => {
+        const hd = el._mealCarouselHStripDrag;
+        if (!hd || e.pointerId !== hd.pointerId) return;
+        const dx = e.clientX - hd.lastX;
+        hd.lastX = e.clientX;
+        hd.hstrip.scrollLeft -= dx;
         e.preventDefault();
     };
-    const docMoveOpts = { passive: false, capture: true };
-    const endHDrag = (e) => {
-        if (hDragId == null || (e && e.pointerId !== hDragId)) return;
-        const pid = hDragId;
-        hDragId = null;
-        document.removeEventListener('pointermove', onHMove, docMoveOpts);
-        document.removeEventListener('pointerup', endHDrag, true);
-        document.removeEventListener('pointercancel', endHDrag, true);
+
+    const endHStripDrag = (e) => {
+        const hd = el._mealCarouselHStripDrag;
+        if (!hd || (e && e.pointerId !== hd.pointerId)) return;
+        const pid = hd.pointerId;
+        const { hstrip: hs, frame: fr } = hd;
+        el._mealCarouselHStripDrag = null;
+        removeMealPhotoCarouselDocumentPointerListeners(el);
         try {
-            hstrip.releasePointerCapture(pid);
+            hs.releasePointerCapture(pid);
         } catch (_) {
             /* ignore */
         }
-        hstrip.classList.remove('cursor-grabbing');
-        frame.classList.remove('cursor-grabbing');
+        hs.classList.remove('cursor-grabbing');
+        fr.classList.remove('cursor-grabbing');
         snapHstripAfterDrag();
     };
+
+    const onCarouselOrHPointerMove = (e) => {
+        const g = el._mealCarouselAxisGesture;
+        if (!g || e.pointerId !== g.pointerId) {
+            if (el._mealCarouselHStripDrag && e.pointerId === el._mealCarouselHStripDrag.pointerId) {
+                onHMoveFromEl(e);
+            }
+            return;
+        }
+        const vtrack = el._mealPhotosVTrack;
+        if (g.phase === 'pending') {
+            const rdx = e.clientX - g.x0;
+            const rdy = e.clientY - g.y0;
+            if (Math.max(Math.abs(rdx), Math.abs(rdy)) < CAROUSEL_AXIS_LOCK_PX) return;
+            if (Math.abs(rdy) >= Math.abs(rdx)) {
+                g.phase = 'v';
+                g.lastY = e.clientY;
+                if (vtrack) e.preventDefault();
+                return;
+            }
+            el._mealCarouselAxisGesture = null;
+            el._mealCarouselHStripDrag = {
+                pointerId: g.pointerId,
+                lastX: e.clientX,
+                hstrip,
+                frame
+            };
+            hstrip.classList.add('cursor-grabbing');
+            frame.classList.add('cursor-grabbing');
+            try {
+                hstrip.setPointerCapture(g.pointerId);
+            } catch (_) {
+                /* ignore */
+            }
+            onHMoveFromEl(e);
+            return;
+        }
+        if (g.phase === 'v') {
+            if (!vtrack) return;
+            const ddy = e.clientY - g.lastY;
+            g.lastY = e.clientY;
+            vtrack.scrollTop += ddy;
+            e.preventDefault();
+        }
+    };
+
+    const onCarouselOrHPointerUp = (e) => {
+        const g = el._mealCarouselAxisGesture;
+        if (g && e.pointerId === g.pointerId) {
+            removeMealPhotoCarouselDocumentPointerListeners(el);
+            el._mealCarouselAxisGesture = null;
+            if (g.phase === 'v' && el.classList.contains('timeline-meal-photos-overlay--wheel')) {
+                scheduleMealPhotoWheelLabelLayout(el);
+            }
+        }
+        if (el._mealCarouselHStripDrag && e.pointerId === el._mealCarouselHStripDrag.pointerId) {
+            endHStripDrag(e);
+        }
+    };
+
+    const attachCarouselAxisDoc = () => {
+        if (el._mealCarouselDocAttached) return;
+        el._mealCarouselDocAttached = true;
+        el._mealCarouselDocMove = onCarouselOrHPointerMove;
+        el._mealCarouselDocUp = onCarouselOrHPointerUp;
+        document.addEventListener('pointermove', el._mealCarouselDocMove, MEAL_PHOTO_CAROUSEL_DOC_CAPTURE);
+        document.addEventListener('pointerup', el._mealCarouselDocUp, true);
+        document.addEventListener('pointercancel', el._mealCarouselDocUp, true);
+    };
+
     const onHDown = (e) => {
-        /* 터치: preventDefault 없이 hstrip 네이티브 overflow-x·snap-x 스와이프. 마우스·펜만 JS 드래그 */
+        /* 터치: 네이티브 가로 스트립 + 세로는 vtrack. 마우스·펜은 축 잠금 후 가로/세로 */
         if (e.pointerType === 'touch') return;
         if (e.pointerType === 'mouse' && e.button != null && e.button !== 0) return;
         if (e.target.closest?.('.timeline-meal-photo-expand')) return;
         if (!frame.contains(e.target)) return;
-        hDragId = e.pointerId;
-        hLastX = e.clientX;
-        hstrip.classList.add('cursor-grabbing');
-        frame.classList.add('cursor-grabbing');
-        try {
-            hstrip.setPointerCapture(e.pointerId);
-        } catch (_) {
-            /* ignore */
-        }
-        document.addEventListener('pointermove', onHMove, docMoveOpts);
-        document.addEventListener('pointerup', endHDrag, true);
-        document.addEventListener('pointercancel', endHDrag, true);
-        e.preventDefault();
-        e.stopPropagation();
+        if (el._mealCarouselAxisGesture || el._mealCarouselHStripDrag || el._mealCarouselDocAttached) return;
+        el._mealCarouselAxisGesture = {
+            pointerId: e.pointerId,
+            phase: 'pending',
+            x0: e.clientX,
+            y0: e.clientY,
+            lastY: e.clientY
+        };
+        attachCarouselAxisDoc();
     };
-    /* frame 캡처: 뷰포트·이미지 위에서도 가로 드래그가 잡히도록(hstrip만 두면 일부 환경에서 누락) */
-    frame.addEventListener('pointerdown', onHDown, true);
+    /* 버블: stopPropagation 없이 두어 vtrack(다장 시 세로 드래그는 제스처로만 처리) */
+    frame.addEventListener('pointerdown', onHDown, false);
 }
 
 function getVTrackActiveIndex(vtrack) {
@@ -1073,6 +1152,7 @@ function rebuildMealPhotoWheelPickers(el) {
     if (!bar || !footer || footer.classList.contains('hidden') || !Array.isArray(rows) || !rows.length) return;
     stripMealWheelInnerListeners(footer);
     el._mealPhotoWheelPrevSlideIndex = undefined;
+    el._mealPhotoWheelPrevDateKey = undefined;
     const { minY, maxY } = yearsRangeFromMealPhotoRows(rows);
     const yInner = bar.querySelector('[data-wheel-inner="year"]');
     const mInner = bar.querySelector('[data-wheel-inner="month"]');
@@ -1092,9 +1172,23 @@ function syncMealPhotoWheelFromVtrack(el, vtrack) {
     const slide = slides[i];
     if (!slide) return;
     const prevI = el._mealPhotoWheelPrevSlideIndex;
-    const shouldAnim = prevI !== undefined && prevI !== i;
-    const direction = shouldAnim && i > prevI ? 'forward' : 'backward';
-    const iso = slide.getAttribute('data-date-str');
+    const iso = slide.getAttribute('data-date-str') || '';
+    const slotId = slide.getAttribute('data-slot-id') || '';
+    const recordId = slide.getAttribute('data-record-id') || '';
+    const dateKey = `${iso}|${slotId}|${recordId}`;
+    const prevKey = el._mealPhotoWheelPrevDateKey;
+    const indexChanged = prevI !== undefined && prevI !== i;
+    const slideKeyChanged = prevKey !== undefined && prevKey !== dateKey;
+    const shouldAnim = indexChanged || slideKeyChanged;
+    let direction = 'backward';
+    if (shouldAnim) {
+        if (indexChanged) {
+            direction = i > prevI ? 'forward' : 'backward';
+        } else {
+            const prevIso = String(prevKey).split('|')[0];
+            direction = prevIso < iso ? 'forward' : 'backward';
+        }
+    }
     const slotTitleRaw = slide.getAttribute('data-slot-title') || '—';
     const slotStrip = bar.querySelector('[data-wheel-label-strip="slot"]');
     animateWheelTextStrip(slotStrip, compactMealWheelSlotTitle(slotTitleRaw), direction, shouldAnim);
@@ -1113,6 +1207,7 @@ function syncMealPhotoWheelFromVtrack(el, vtrack) {
         scrollWheelInnerToValue(bar.querySelector('[data-wheel-inner="day"]'), parts.day, { smooth });
     }
     el._mealPhotoWheelPrevSlideIndex = i;
+    el._mealPhotoWheelPrevDateKey = dateKey;
 }
 
 /** 활성 세로 슬라이드의 캐러셀 프레임(없으면 null) */
@@ -1282,31 +1377,20 @@ function ensureMealPhotoOverlayWheelRouting(overlayEl) {
 
             const slides = vtrack.querySelectorAll('.timeline-meal-photos-vslide');
             if (slides.length > 1) {
-                if (e.target.closest?.('.timeline-meal-photos-carousel-zone')) return;
+                if (e.target.closest?.('.timeline-meal-photos-carousel-zone')) {
+                    const { dx, dy } = normalizeWheelDeltaPx(e);
+                    const absX = Math.abs(dx);
+                    const absY = Math.abs(dy);
+                    const forCarousel = absX > absY || (e.shiftKey && absY > 0);
+                    if (forCarousel) return;
+                }
                 const { dy } = normalizeWheelDeltaPx(e);
                 if (Math.abs(dy) < 0.001) return;
-                vtrack.scrollTop -= dy;
+                /* WheelEvent: deltaY>0 = 아래로 휠 = 문서는 scrollTop 증가 — 브라우저 기본과 동일 */
+                vtrack.scrollTop += dy;
                 e.preventDefault();
                 e.stopPropagation();
                 return;
-            }
-
-            if (overlayEl._mealPhotoMomentNavState?.entries?.length > 1) {
-                if (overlayEl._mealPhotoMomentNavTransitionLock) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return;
-                }
-                if (e.target.closest?.('.timeline-meal-photos-caption-footer')) return;
-                const { dx, dy } = normalizeWheelDeltaPx(e);
-                const absX = Math.abs(dx);
-                const absY = Math.abs(dy);
-                if (absY < 0.05 && absX < 0.05) return;
-                if (absX > absY * 1.25) return;
-                e.preventDefault();
-                e.stopPropagation();
-                if (dy < 0) navigateMealPhotoMomentFeed(overlayEl, -1);
-                else navigateMealPhotoMomentFeed(overlayEl, 1);
             }
         },
         { passive: false }
@@ -1318,7 +1402,6 @@ function getOverlay() {
     if (el) {
         ensureMealPhotoOverlayBackdrop(el);
         ensureMealPhotoOverlayWheelRouting(el);
-        ensureMealPhotoMomentNavGestures(el);
         return el;
     }
     el = document.createElement('div');
@@ -1378,7 +1461,7 @@ function getOverlay() {
         el._mealPhotosToggleVNav?.();
         if (el.classList.contains('timeline-meal-photos-overlay--wheel')) {
             if (!el._mealPhotoWheelSuppressLabelSchedule) {
-                scheduleMealPhotoWheelLabelLayout(el, 80);
+                scheduleMealPhotoWheelLabelLayout(el);
             }
         }
         hydrateMealPhotoVisibleImage(el);
@@ -1486,7 +1569,7 @@ function getOverlay() {
         if (vDragId == null || e.pointerId !== vDragId || !vtrack) return;
         const dy = e.clientY - vLastY;
         vLastY = e.clientY;
-        vtrack.scrollTop -= dy;
+        vtrack.scrollTop += dy;
         try {
             e.preventDefault();
         } catch (_) {
@@ -1520,8 +1603,18 @@ function getOverlay() {
         el.classList.remove('timeline-meal-photos-overlay--wheel');
         document.body.classList.remove('meal-photo-moment-chrome-hidden');
         el._mealPhotoMomentNavState = null;
-        el._mealPhotoMomentNavTransitionLock = false;
         document.body.classList.remove('overflow-hidden');
+        const hdClose = el._mealCarouselHStripDrag;
+        if (hdClose?.hstrip) {
+            try {
+                hdClose.hstrip.releasePointerCapture(hdClose.pointerId);
+            } catch (_) {
+                /* ignore */
+            }
+        }
+        removeMealPhotoCarouselDocumentPointerListeners(el);
+        el._mealCarouselAxisGesture = null;
+        el._mealCarouselHStripDrag = null;
         vtrack?.querySelectorAll('.timeline-meal-photos-carousel-frame').forEach((fr) => {
             if (fr._mealPhotoBadgeAnchorRaf != null) {
                 cancelAnimationFrame(fr._mealPhotoBadgeAnchorRaf);
@@ -1544,6 +1637,7 @@ function getOverlay() {
         el.style.removeProperty('--meal-wheel-caption-inner-w');
         clearMealWheelInnerTilts(el);
         el._mealPhotoWheelPrevSlideIndex = undefined;
+        el._mealPhotoWheelPrevDateKey = undefined;
         el.querySelectorAll('[data-wheel-label-strip]').forEach((strip) => {
             if (strip._mealStripTid) {
                 clearTimeout(strip._mealStripTid);
@@ -1621,22 +1715,14 @@ function getOverlay() {
             e.preventDefault();
             stepCarouselPhoto(el, 1);
         } else if (e.key === 'ArrowUp') {
-            const nav = el._mealPhotoMomentNavState;
             if (rows > 1) {
                 e.preventDefault();
                 scrollVBy(-1);
-            } else if (nav?.entries?.length > 1) {
-                e.preventDefault();
-                navigateMealPhotoMomentFeed(el, -1);
             }
         } else if (e.key === 'ArrowDown') {
-            const nav = el._mealPhotoMomentNavState;
             if (rows > 1) {
                 e.preventDefault();
                 scrollVBy(1);
-            } else if (nav?.entries?.length > 1) {
-                e.preventDefault();
-                navigateMealPhotoMomentFeed(el, 1);
             }
         }
     };
@@ -1674,7 +1760,6 @@ function getOverlay() {
         });
     };
     ensureMealPhotoOverlayWheelRouting(el);
-    ensureMealPhotoMomentNavGestures(el);
     return el;
 }
 
@@ -1721,8 +1806,10 @@ export function openTimelineMealPhotosPopup(btn) {
         el.classList.remove('hidden');
         document.body.classList.add('overflow-hidden');
         el._mealPhotosLayout?.();
+        syncMealPhotoWheelCaptionPhotoMinWidth(el);
         requestAnimationFrame(() => {
             el._mealPhotosLayout?.();
+            syncMealPhotoWheelCaptionPhotoMinWidth(el);
             const slides = vtrack.querySelectorAll('.timeline-meal-photos-vslide');
             const target = slides[startRow];
             if (target) {
@@ -1798,268 +1885,10 @@ function collectMomentFeedWheelRowsFromDom(container) {
     return out;
 }
 
-function setupMealPhotoMomentFeedNav(el, sourceBtn) {
-    const container = sourceBtn?.closest?.('#galleryContainer, #feedContent');
-    if (!container) {
-        el._mealPhotoMomentNavState = null;
-        return;
-    }
-    const entries = collectMomentFeedWheelRowsFromDom(container);
-    if (entries.length < 2) {
-        el._mealPhotoMomentNavState = null;
-        return;
-    }
-    const card = sourceBtn.closest('.instagram-post');
-    const pid = card?.getAttribute('data-post-id') || '';
-    let index = entries.findIndex((e) => e.postId === pid);
-    if (index < 0) index = 0;
-    el._mealPhotoMomentNavState = { entries, index };
-}
-
-/** 모먼트 피드 게시물 간 전환(ms) — 퇴장·입장 CSS와 맞춤 */
-const MEAL_MOMENT_NAV_LEAVE_MS = 400;
-const MEAL_MOMENT_NAV_ENTER_MS = 460;
-
 /**
- * 모먼트 화면2 등: 공유 게시물 한 건을 타임라인 사진 팝업(휠 모드)과 동일한 DOM·레이아웃으로 전체 화면 표시
- * @param {object} row — `buildMealPhotoViewerRows*` 행과 동일 필드 (`urls`, `dateStr`, `slotId`, …)
- * @param {number} [startPhotoIndex]
- * @param {{ sourceBtn?: HTMLButtonElement | null, internalNav?: boolean, momentNavDir?: 1 | -1 }} [options]
+ * 모먼트 앨범: 타임라인 `openTimelineMealPhotosPopup` 일간·휠 모드와 동일하게
+ * 게시물마다 `buildVSlideHtml` 세로 슬라이드 + vtrack 스냅·스크롤로 전환.
  */
-function openMealPhotosWheelOverlayForSharedRow(row, startPhotoIndex = 0, options = {}) {
-    const internalNav = options.internalNav === true;
-    const momentNavDir = options.momentNavDir;
-    const el = getOverlay();
-    const vtrack = el._mealPhotosVTrack;
-    if (!vtrack || !row?.urls?.length) {
-        el._mealPhotoMomentNavTransitionLock = false;
-        return;
-    }
-    if (!internalNav) {
-        applyMomentOverlayChrome(true);
-    }
-    const prepared = prepareRowsWithPhotoCap([row]);
-    const r0 = prepared[0];
-
-    const applySwap = () => {
-        el._mealPhotoRows = prepared;
-        el._mealPhotoLastYM = null;
-        vtrack.innerHTML = buildVSlideHtml(r0, false);
-        el._mealPhotosBindRowTracks?.();
-        el.classList.add('timeline-meal-photos-overlay--wheel');
-        const capShow = el.querySelector('.timeline-meal-photos-caption-footer');
-        capShow?.classList.remove('hidden');
-        capShow?.classList.add('flex');
-        rebuildMealPhotoWheelPickers(el);
-        el.classList.remove('hidden');
-        document.body.classList.add('overflow-hidden');
-        el._mealPhotosLayout?.();
-    };
-
-    const finishPositionAndEnter = () => {
-        requestAnimationFrame(() => {
-            if (el.classList.contains('hidden')) {
-                el._mealPhotoMomentNavTransitionLock = false;
-                return;
-            }
-            el._mealPhotosLayout?.();
-            const slides = vtrack.querySelectorAll('.timeline-meal-photos-vslide');
-            const slide0 = slides[0];
-            if (slide0) {
-                vtrack.scrollTop += scrollDeltaToCenterSlideInVtrack(vtrack, slide0);
-            }
-            el._mealPhotosSync?.();
-            el._mealPhotosToggleNav?.();
-            el._mealPhotosToggleVNav?.();
-            clearTimeout(el._mealPhotoWheelLabelTimer);
-            el._mealPhotoWheelLabelTimer = null;
-            const n = r0.urls?.length || 0;
-            const si = n > 0 ? Math.min(n - 1, Math.max(0, Math.floor(Number(startPhotoIndex)) || 0)) : 0;
-            if (slide0 && n > 0) {
-                applyCarouselIndex(slide0, el, si, { fade: false });
-            }
-
-            const scheduleLabels = () => {
-                requestAnimationFrame(() => {
-                    requestAnimationFrame(() => runMealPhotoWheelLabelLayoutWhenReady(el));
-                });
-            };
-
-            const useEnterAnim =
-                internalNav &&
-                (momentNavDir === 1 || momentNavDir === -1) &&
-                slide0 &&
-                !mealPhotoOverlayPrefersReducedMotion();
-
-            if (!useEnterAnim) {
-                el._mealPhotoMomentNavTransitionLock = false;
-                scheduleLabels();
-                return;
-            }
-
-            const enterCls =
-                momentNavDir === 1
-                    ? 'timeline-meal-photos-slide--moment-enter-next'
-                    : 'timeline-meal-photos-slide--moment-enter-prev';
-            slide0.classList.add(enterCls);
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    slide0.classList.add('is-moment-enter-ready');
-                    let cleaned = false;
-                    const clean = () => {
-                        if (cleaned) return;
-                        cleaned = true;
-                        slide0.classList.remove(enterCls, 'is-moment-enter-ready');
-                        el._mealPhotoMomentNavTransitionLock = false;
-                    };
-                    const onEnterEnd = (e) => {
-                        if (e.target !== slide0) return;
-                        if (e.propertyName !== 'transform' && e.propertyName !== 'opacity') return;
-                        slide0.removeEventListener('transitionend', onEnterEnd);
-                        clearTimeout(tid);
-                        clean();
-                    };
-                    slide0.addEventListener('transitionend', onEnterEnd);
-                    const tid = setTimeout(() => {
-                        if (!el.classList.contains('hidden')) clean();
-                        else el._mealPhotoMomentNavTransitionLock = false;
-                    }, MEAL_MOMENT_NAV_ENTER_MS);
-                    scheduleLabels();
-                });
-            });
-        });
-    };
-
-    const wantExit =
-        internalNav &&
-        (momentNavDir === 1 || momentNavDir === -1) &&
-        !mealPhotoOverlayPrefersReducedMotion() &&
-        vtrack.querySelector('.timeline-meal-photos-vslide');
-
-    if (wantExit) {
-        el._mealPhotoMomentNavTransitionLock = true;
-        const slide = vtrack.querySelector('.timeline-meal-photos-vslide');
-        const leaveCls =
-            momentNavDir === 1
-                ? 'timeline-meal-photos-slide--moment-leave-next'
-                : 'timeline-meal-photos-slide--moment-leave-prev';
-        slide.classList.add(leaveCls);
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                slide.classList.add('is-moment-leave-active');
-            });
-        });
-        let swapped = false;
-        const done = () => {
-            if (swapped) return;
-            if (el.classList.contains('hidden')) {
-                slide.removeEventListener('transitionend', onLeaveEnd);
-                clearTimeout(leaveTid);
-                el._mealPhotoMomentNavTransitionLock = false;
-                return;
-            }
-            swapped = true;
-            slide.removeEventListener('transitionend', onLeaveEnd);
-            clearTimeout(leaveTid);
-            slide.classList.remove(leaveCls, 'is-moment-leave-active');
-            applySwap();
-            finishPositionAndEnter();
-        };
-        const onLeaveEnd = (e) => {
-            if (e.target !== slide) return;
-            if (e.propertyName !== 'transform' && e.propertyName !== 'opacity') return;
-            done();
-        };
-        slide.addEventListener('transitionend', onLeaveEnd);
-        const leaveTid = setTimeout(done, MEAL_MOMENT_NAV_LEAVE_MS);
-    } else {
-        applySwap();
-        finishPositionAndEnter();
-    }
-
-    if (!internalNav) {
-        const btn = options.sourceBtn;
-        if (btn) setupMealPhotoMomentFeedNav(el, btn);
-        else el._mealPhotoMomentNavState = null;
-    }
-}
-
-function navigateMealPhotoMomentFeed(el, dir) {
-    const state = el._mealPhotoMomentNavState;
-    if (!state?.entries?.length) return;
-    if (el._mealPhotoMomentNavTransitionLock) return;
-    const next = state.index + dir;
-    if (next < 0 || next >= state.entries.length) return;
-    state.index = next;
-    openMealPhotosWheelOverlayForSharedRow(state.entries[next].row, 0, { internalNav: true, momentNavDir: dir });
-}
-
-function ensureMealPhotoMomentNavGestures(overlayEl) {
-    if (overlayEl._mealMomentNavGesturesBound) return;
-    overlayEl._mealMomentNavGesturesBound = true;
-    let g = null;
-    const reset = () => {
-        g = null;
-    };
-    overlayEl.addEventListener(
-        'touchstart',
-        (ev) => {
-            if (overlayEl.classList.contains('hidden')) return;
-            if (!overlayEl._mealPhotoMomentNavState?.entries?.length) return;
-            if ((overlayEl._mealPhotoRows?.length || 0) !== 1) return;
-            const t = ev.touches[0];
-            if (!t) return;
-            g = { x0: t.clientX, y0: t.clientY, lock: null };
-        },
-        true
-    );
-    overlayEl.addEventListener(
-        'touchmove',
-        (ev) => {
-            if (!g) return;
-            const t = ev.touches[0];
-            if (!t) return;
-            const dx = t.clientX - g.x0;
-            const dy = t.clientY - g.y0;
-            if (!g.lock && (Math.abs(dx) > 14 || Math.abs(dy) > 14)) {
-                g.lock = Math.abs(dy) > Math.abs(dx) ? 'v' : 'h';
-            }
-            if (g.lock === 'v') {
-                try {
-                    ev.preventDefault();
-                } catch (_) {
-                    /* ignore */
-                }
-            }
-        },
-        { capture: true, passive: false }
-    );
-    overlayEl.addEventListener(
-        'touchend',
-        (ev) => {
-            if (!g || g.lock !== 'v') {
-                reset();
-                return;
-            }
-            const t = ev.changedTouches[0];
-            if (!t) {
-                reset();
-                return;
-            }
-            const dx = t.clientX - g.x0;
-            const dy = t.clientY - g.y0;
-            reset();
-            if (Math.abs(dy) < 52) return;
-            if (Math.abs(dy) < Math.abs(dx) * 1.15) return;
-            const dir = dy < 0 ? 1 : -1;
-            navigateMealPhotoMomentFeed(overlayEl, dir);
-        },
-        true
-    );
-    overlayEl.addEventListener('touchcancel', reset, true);
-}
-
-/** `data-meal-wheel-row` + `data-meal-start-idx` — 모먼트 피드 카드 사진 탭 */
 export function openMealPhotosWheelOverlayFromBtn(btn) {
     const raw = btn?.getAttribute?.('data-meal-wheel-row');
     const idxRaw = btn?.getAttribute?.('data-meal-start-idx');
@@ -2071,8 +1900,75 @@ export function openMealPhotosWheelOverlayFromBtn(btn) {
         return;
     }
     if (!row || !Array.isArray(row.urls) || !row.urls.length) return;
-    const startIdx = idxRaw != null ? parseInt(String(idxRaw), 10) : 0;
-    openMealPhotosWheelOverlayForSharedRow(row, Number.isFinite(startIdx) ? startIdx : 0, { sourceBtn: btn });
+
+    const el = getOverlay();
+    const vtrack = el._mealPhotosVTrack;
+    if (!vtrack) return;
+
+    const startPhotoIdx = idxRaw != null ? parseInt(String(idxRaw), 10) : 0;
+    const startPhotoSi = Number.isFinite(startPhotoIdx) ? startPhotoIdx : 0;
+
+    applyMomentOverlayChrome(true);
+    el._mealPhotoMomentNavState = null;
+
+    const container = btn.closest?.('#galleryContainer, #feedContent');
+    const entries = container ? collectMomentFeedWheelRowsFromDom(container) : [];
+    let rowsPayload;
+    let startRow = 0;
+    if (entries.length) {
+        rowsPayload = entries.map((e) => e.row);
+        const card = btn.closest('.instagram-post');
+        const pid = card?.getAttribute('data-post-id') || '';
+        const idx = entries.findIndex((e) => e.postId === pid);
+        startRow = idx >= 0 ? idx : 0;
+    } else {
+        rowsPayload = [row];
+    }
+
+    const prepared = prepareRowsWithPhotoCap(rowsPayload);
+    el._mealPhotoRows = prepared;
+    el._mealPhotoLastYM = null;
+    vtrack.innerHTML = prepared.map((r) => buildVSlideHtml(r, false)).join('');
+    el._mealPhotosBindRowTracks?.();
+    el.classList.add('timeline-meal-photos-overlay--wheel');
+    const capShow = el.querySelector('.timeline-meal-photos-caption-footer');
+    capShow?.classList.remove('hidden');
+    capShow?.classList.add('flex');
+    rebuildMealPhotoWheelPickers(el);
+    el.classList.remove('hidden');
+    document.body.classList.add('overflow-hidden');
+    el._mealPhotosLayout?.();
+    syncMealPhotoWheelCaptionPhotoMinWidth(el);
+
+    requestAnimationFrame(() => {
+        el._mealPhotosLayout?.();
+        syncMealPhotoWheelCaptionPhotoMinWidth(el);
+        const slides = vtrack.querySelectorAll('.timeline-meal-photos-vslide');
+        const target = slides[startRow];
+        if (target) {
+            vtrack.scrollTop += scrollDeltaToCenterSlideInVtrack(vtrack, target);
+        }
+        el._mealPhotosSync?.();
+        el._mealPhotosToggleNav?.();
+        el._mealPhotosToggleVNav?.();
+        clearTimeout(el._mealPhotoWheelLabelTimer);
+        el._mealPhotoWheelLabelTimer = null;
+        const rowAtStart = prepared[startRow];
+        const n = rowAtStart?.urls?.length || 0;
+        const si = n > 0 ? Math.min(n - 1, Math.max(0, startPhotoSi)) : 0;
+        if (target && n > 0) {
+            applyCarouselIndex(target, el, si, { fade: false });
+        }
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => runMealPhotoWheelLabelLayoutWhenReady(el));
+        });
+    });
+
+    try {
+        btn.blur();
+    } catch (_) {
+        /* ignore */
+    }
 }
 
 window.openTimelineMealPhotosPopup = openTimelineMealPhotosPopup;

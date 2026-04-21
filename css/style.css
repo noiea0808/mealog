@@ -373,8 +373,8 @@ header .mealog-title {
     background: #ffffff; 
     color: #047857; 
 }
-/* 하단 메뉴 라벨 배경 50% 불투명 */
-#timelineMealPhotosOverlay .timeline-meal-photo-menu-bar {
+/* 하단 메뉴 라벨 배경 50% 불투명 — 휠 전역 캡션 줄은 아래 짙은 회색·흰 글자 규칙 */
+#timelineMealPhotosOverlay .timeline-meal-photo-menu-bar:not(.timeline-meal-photos-slide-caption-inner) {
     background-color: rgba(0, 0, 0, 0.5) !important;
 }
 #timelineMealPhotosOverlay {
@@ -389,7 +389,7 @@ header .mealog-title {
     padding-left: max(var(--meal-photo-overlay-content-pad-x), env(safe-area-inset-left, 0px));
     padding-right: max(var(--meal-photo-overlay-content-pad-x), env(safe-area-inset-right, 0px));
 }
-/* 사진 팝업 열림: 뒤로 스크롤 전달 억제. 세로=vtrack(pan-y), 가로 스트립=pan-x+pan-y — 스크림 색은 백드롭 레이어 */
+/* 사진 팝업 열림: 뒤로 스크롤 전달 억제. 세로=vtrack(pan-y), 가로 스트립=pan-x만 — 세로 스와이프는 게시물(vtrack)로 전달 */
 #timelineMealPhotosOverlay:not(.hidden) {
     overscroll-behavior: contain;
     touch-action: none;
@@ -406,19 +406,27 @@ header .mealog-title {
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-zone,
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-frame {
-    touch-action: pan-x pan-y;
+    touch-action: pan-x;
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-viewport {
-    touch-action: pan-x pan-y;
+    touch-action: pan-x;
 }
-/* 가로 스트립: 터치 가로 스크롤·스냅 — 일반 규칙의 pan-y가 이미지에서 가로를 막던 문제 해소 */
+/* 가로 스트립: 터치 가로만 — 세로는 상위 vtrack(다음·이전 기록) */
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-hstrip,
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-hstrip .timeline-meal-photo-img {
-    touch-action: pan-x pan-y;
+    touch-action: pan-x;
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-img {
     touch-action: pan-y;
     transition: opacity 0.42s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+/* 모먼트 사진 팝업(라이트박스): 타임라인 사진 팝업과 동일한 전환 곡선·시간 */
+#momentImageLightbox:not(.hidden) .moment-lb-main-img {
+    transition: opacity 0.42s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+#momentImageLightbox:not(.hidden) [data-moment-lb-counter] {
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-weight: 400;
 }
 /* 가로 스트립 안 이미지: 일반 .timeline-meal-photo-img 규칙보다 우선 — 마우스 드래그·터치 가로 허용 */
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-hstrip .timeline-meal-photo-img {
@@ -474,7 +482,7 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     padding-right: 0;
     /* 바 전체는 투과 — 사진·가로 스와이프가 가려지지 않게. 휠/라벨만 다시 받음 */
     pointer-events: none;
-    transition: top 0.04s ease-out;
+    transition: top 0.02s ease-out;
 }
 #timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-caption-footer .timeline-meal-photos-slide-caption-inner {
     pointer-events: auto;
@@ -490,12 +498,26 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
 #timelineMealPhotosOverlay .timeline-meal-photos-slide-caption-inner.timeline-meal-photo-menu-bar {
     padding: 4px 0.5rem;
 }
-/* 휠 라벨 한 줄 높이: 숫자 뷰포트(28px)에 맞춤 */
+/* 휠 라벨 한 줄: 숫자 뷰포트(28px) — 짙은 회색 바·흰 글자 16px */
 #timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-slide-caption-inner.timeline-meal-photo-menu-bar {
     padding: 2px 0.5rem;
     gap: 2em;
     align-items: center;
     line-height: 1;
+    font-size: 16px;
+    background-color: rgba(38, 40, 46, 0.7) !important;
+    border-color: rgba(255, 255, 255, 0.14) !important;
+    color: #fff !important;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-slide-caption-inner .meal-photo-wheel-item,
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-slide-caption-inner .meal-photo-wheel-label-line {
+    color: rgba(255, 255, 255, 0.95);
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-slide-caption-inner [data-wheel-menu-caption] {
+    color: rgba(255, 255, 255, 0.95);
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-slide-caption-inner .meal-photo-wheel-sep--colon {
+    color: rgba(255, 255, 255, 0.45);
 }
 #timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel [data-wheel-menu-caption] {
     line-height: var(--meal-wheel-viewport-h);
@@ -504,6 +526,12 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     text-overflow: ellipsis;
     white-space: nowrap;
     align-self: center;
+    box-sizing: border-box;
+    /* 작은칸 배경 없음 — 부모 라벨 바(rgba(38,40,46,0.7))만 보이게 */
+    background: transparent;
+    border-radius: 0;
+    padding-left: 0;
+    padding-right: 0;
 }
 #timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-vslide--photo-only {
     height: 100%;
@@ -591,6 +619,24 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     justify-content: center;
     padding-left: 0;
     padding-right: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    box-sizing: border-box;
+}
+/* 가로 스트립 셀·뷰포트: 하단 라벨(--meal-wheel-caption-inner-w)과 같은 열 너비 — Tailwind p-1로 줄던 가로 여백 제거 */
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-carousel-viewport {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-hstrip {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photo-cell {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
     box-sizing: border-box;
 }
 #timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-vslide-stage--wheel-only .timeline-meal-photo-img {
@@ -613,13 +659,23 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     box-shadow: none;
     object-fit: cover;
 }
-/* 휠 라벨 안: 피커 열 너비·구분 간격만 축소(숫자·요일 글자 크기는 그대로) */
+/* 휠 라벨 안: 피커 열 너비·구분 간격만 축소 — 숫자칸·요일·슬롯 뷰포트 높이 동일(28px) */
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-caption-footer .meal-photo-wheel-viewport {
+    height: var(--meal-wheel-viewport-h);
+    min-height: var(--meal-wheel-viewport-h);
+    max-height: var(--meal-wheel-viewport-h);
+    box-sizing: border-box;
+}
 #timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label) {
     width: 2.125rem;
     flex: 0 0 2.125rem;
     touch-action: pan-y;
+    background: rgba(255, 255, 255, 0.2);
     -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 0.5%, #000 99.5%, transparent 100%);
     mask-image: linear-gradient(to bottom, transparent 0%, #000 0.5%, #000 99.5%, transparent 100%);
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label) .meal-photo-wheel-inner {
+    max-height: var(--meal-wheel-viewport-h);
 }
 #timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-inner {
     touch-action: pan-y;
@@ -633,7 +689,7 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     width: 2.625rem;
     flex: 0 0 2.625rem;
 }
-/* 요일·슬롯: 숫자 휠보다 살짝 더 투명한 칸 안에서만 릴 이동 */
+/* 요일·슬롯: 숫자 휠과 동일 높이 — 좌우 0.45em(약 반 글자씩) 여백 */
 #timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-viewport--label {
     width: auto;
     min-width: 0.875rem;
@@ -641,15 +697,20 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     touch-action: none;
     -webkit-mask-image: none;
     mask-image: none;
-    background: rgba(255, 255, 255, 0.035);
+    padding-left: 0.45em;
+    padding-right: 0.45em;
+    background: rgba(255, 255, 255, 0.2);
     border-radius: 6px;
-    border: none;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
     box-sizing: border-box;
     overflow: hidden;
     height: var(--meal-wheel-viewport-h);
     min-height: var(--meal-wheel-viewport-h);
     max-height: var(--meal-wheel-viewport-h);
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-viewport--label .meal-photo-wheel-label-strip {
+    flex: 1 1 auto;
+    min-height: 0;
+    justify-content: center;
 }
 /* 슬롯: 텍스트 너비에 맞춤(상한만), 메뉴@장소와는 부모 gap: 2em 으로 두 글자 이상 간격 */
 #timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-viewport--slot {
@@ -682,14 +743,14 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     font-size: inherit;
     font-weight: 400;
     font-variant-numeric: tabular-nums;
-    color: rgba(255, 255, 255, 0.88);
+    color: rgba(255, 255, 255, 0.95);
     white-space: nowrap;
 }
 #timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-viewport--slot .meal-photo-wheel-label-line {
     justify-content: center;
     text-align: center;
-    padding-left: 4px;
-    padding-right: 4px;
+    padding-left: 0;
+    padding-right: 0;
     width: max-content;
     max-width: 100%;
     overflow: hidden;

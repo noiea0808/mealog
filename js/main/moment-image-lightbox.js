@@ -24,6 +24,60 @@ const SWIPE_MAX_RATIO = 0.75;
 const SCALE_MIN = 1;
 const SCALE_MAX = 4;
 
+/** 타임라인 사진 팝업 `MEAL_PHOTO_SRC_PENDING`과 동일 — 교체 시 빈 프레임 방지 */
+const MOMENT_LB_SRC_PENDING =
+    'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
+/**
+ * 타임라인 `applyMealPhotoImgSrc`와 동일 규칙: 가로 넘김 시 opacity 페이드(reduce 시 생략).
+ * @param {HTMLImageElement} img
+ * @param {string} u
+ * @param {{ fade?: boolean }} [opts]
+ */
+function applyMomentLbImgSrc(img, u, opts = {}) {
+    if (!img || !u) return;
+    if (img.dataset.momentLbSrcApplied === u) return;
+    const prev = img.dataset.momentLbSrcApplied;
+    const allowFade =
+        opts.fade !== false &&
+        Boolean(prev) &&
+        prev !== u &&
+        typeof window.matchMedia === 'function' &&
+        !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    delete img.dataset.momentLbSrcApplied;
+    const applySrcAndFadeIn = () => {
+        img.removeAttribute('src');
+        img.src = MOMENT_LB_SRC_PENDING;
+        img.src = u;
+        img.dataset.momentLbSrcApplied = u;
+        if (allowFade) {
+            const show = () => {
+                img.style.opacity = '1';
+            };
+            if (img.complete && (img.naturalHeight || 0) > 0) {
+                requestAnimationFrame(() => requestAnimationFrame(show));
+            } else {
+                img.addEventListener('load', () => requestAnimationFrame(() => requestAnimationFrame(show)), {
+                    once: true
+                });
+                img.addEventListener('error', () => requestAnimationFrame(() => requestAnimationFrame(show)), {
+                    once: true
+                });
+            }
+        } else {
+            img.style.opacity = '';
+        }
+    };
+    if (allowFade) {
+        img.style.opacity = '0';
+        requestAnimationFrame(() => {
+            requestAnimationFrame(applySrcAndFadeIn);
+        });
+    } else {
+        applySrcAndFadeIn();
+    }
+}
+
 function getTransformEl() {
     return _overlay?.querySelector('[data-moment-lb-transform]');
 }
@@ -49,6 +103,8 @@ export function closeMomentImageLightbox() {
     if (img) {
         img.removeAttribute('src');
         img.alt = '';
+        delete img.dataset.momentLbSrcApplied;
+        img.style.opacity = '';
     }
     _urls = [];
     _index = 0;
@@ -74,7 +130,7 @@ function syncMomentLightboxUi() {
     const img = _overlay.querySelector('[data-moment-lb-img]');
     const u = _urls[_index];
     if (img && u) {
-        img.src = u;
+        applyMomentLbImgSrc(img, u);
         img.alt = `모먼트 사진 ${_index + 1}/${_urls.length}`;
     }
     const counter = _overlay.querySelector('[data-moment-lb-counter]');
@@ -258,7 +314,7 @@ export function openMomentImageLightbox(urlList, startIndex = 0) {
                 <div class="moment-lb-stage flex min-h-0 flex-1 cursor-default items-stretch justify-center overflow-hidden px-2 pb-[max(1rem,env(safe-area-inset-bottom))]" data-moment-lb-stage>
                     <div data-moment-lb-viewport class="moment-lb-viewport flex h-full w-full max-w-full touch-none items-center justify-center overflow-hidden">
                         <div data-moment-lb-transform class="will-change-transform">
-                            <img data-moment-lb-img alt="" class="max-h-[min(82vh,100dvh-6rem)] max-w-[min(100vw,28rem)] w-auto object-contain rounded-lg shadow-2xl select-none" draggable="false" />
+                            <img data-moment-lb-img alt="" decoding="async" class="moment-lb-main-img max-h-[min(82vh,100dvh-6rem)] max-w-[min(100vw,28rem)] w-auto object-contain rounded-lg shadow-2xl select-none" draggable="false" />
                         </div>
                     </div>
                 </div>
