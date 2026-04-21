@@ -11,6 +11,18 @@ import { isDemoUser, maybeShowDemoIntroModal } from './demo-account.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 import { isProfileWizardCompleted } from './profile-readiness.js';
 import { maybeSeedNicknameFromAuthDisplayName } from './auth-nickname-seed.js';
+import { appState } from './state.js';
+
+/**
+ * 로그인/인증 완료 시 기본 탭은 밀로그.
+ * 인증 콜백이 늦게 도착하기 전에 사용자가 이미 다른 탭(모먼트 등)을 눌렀다면 덮어쓰지 않음.
+ */
+function applyAuthDefaultMainTab(switchMainTab) {
+    if (typeof switchMainTab !== 'function') return;
+    if (appState.currentTab === 'timeline') {
+        switchMainTab('timeline');
+    }
+}
 
 /**
  * 설정 문서를 서버에서 한 번 읽어 window.userSettings를 맞춤.
@@ -388,9 +400,8 @@ export class AuthFlowManager {
             const profileSetupModal = document.getElementById('profileSetupModal');
             if (profileSetupModal) profileSetupModal.classList.add('hidden');
             switchScreen(true);
-            // ✅ 초기 진입에서도 타임라인 렌더가 되도록 탭을 명시적으로 세팅
-            const switchMainTab = window.switchMainTab;
-            if (switchMainTab) switchMainTab('timeline');
+            // ✅ 초기 진입에서도 타임라인 렌더가 되도록 탭을 명시적으로 세팅 (이미 다른 탭을 고른 경우 유지)
+            applyAuthDefaultMainTab(window.switchMainTab);
             this.hasCompleted = true;
             this.lastProcessedUserId = user?.uid;
             // 둘러보기 방문 기록 (main.js에서도 기록하지만, 게스트 화면 진입 시점에서 한 번 더 보장)
@@ -410,10 +421,9 @@ export class AuthFlowManager {
         // 일단 메인 화면으로 입장 (약관과 프로필은 백그라운드에서 확인)
         console.log('✅ 메인 화면으로 입장 (약관/프로필은 백그라운드에서 확인)');
         this.currentState = AuthState.READY;
-        const switchMainTab = window.switchMainTab;
         closeTermsModal();
         switchScreen(true);
-        if (switchMainTab) switchMainTab('timeline');
+        applyAuthDefaultMainTab(window.switchMainTab);
         // 로딩 즉시 해제 (meals 스냅샷 대기하지 않음 → 체감 로딩 시간 단축, 타임라인은 데이터 도착 시 onDataUpdate에서 채워짐)
         window._recordsLoadHidePending = false;
         hideLoading();
@@ -695,7 +705,7 @@ export class AuthFlowManager {
                     // 약관 모달이 열려있으면 닫기
                     closeTermsModal();
                     switchScreen(true);
-                    if (switchMainTab) switchMainTab('timeline');
+                    applyAuthDefaultMainTab(switchMainTab);
                     this.hasCompleted = true;
                     this.lastProcessedUserId = this.user?.uid;
                     queueAttendanceCheck();
@@ -705,7 +715,7 @@ export class AuthFlowManager {
                 case AuthState.GUEST:
                     // 게스트 모드: 메인 화면으로 전환, 완료 플래그 설정
                     switchScreen(true);
-                    if (switchMainTab) switchMainTab('timeline');
+                    applyAuthDefaultMainTab(switchMainTab);
                     this.hasCompleted = true;
                     this.lastProcessedUserId = this.user?.uid;
                     console.log('✅ 게스트 모드 완료');

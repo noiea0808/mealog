@@ -13,6 +13,7 @@ import { fetchUserProfiles } from './user-profiles.js';
 import { formatMealMenuDisplayLine, mergeMealDisplayFields } from '../utils/meal-display-line.js';
 import { applyCollapsedCaptionToElement } from './comment-caption-layout.js';
 import { getMomentsFeedView } from '../db.js';
+import { buildSharedMomentWheelOverlayRow } from './post-group-html.js';
 
 export async function renderFeed() {
     const container = document.getElementById('feedContent');
@@ -277,6 +278,26 @@ export async function renderFeed() {
         const momentUrlsEncoded = encodeURIComponent(
             JSON.stringify(photoGroup.map((p) => p.photoUrl).filter(Boolean))
         );
+
+        const cardOuter = `mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden instagram-post`;
+        const mealHistoryMap = new Map();
+        if (window.mealHistory && Array.isArray(window.mealHistory)) {
+            for (const r of window.mealHistory) {
+                if (r?.id) mealHistoryMap.set(r.id, r);
+            }
+        }
+        const wheelOverlayRow = layoutV2
+            ? buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMap, {
+                  entryId,
+                  isBestShare,
+                  isDailyShare,
+                  isInsightShare,
+                  isSnack,
+                  aspectRatio
+              })
+            : null;
+        const wheelRowEnc = wheelOverlayRow ? encodeURIComponent(JSON.stringify(wheelOverlayRow)) : '';
+
         const photosHtml = photoGroup.map((p, idx) => {
             const isBest = p.type === 'best';
             const isDaily = p.type === 'daily';
@@ -296,9 +317,13 @@ export async function renderFeed() {
                     </div>
                 `
                     : '';
+            const wheelTap =
+                layoutV2 && wheelRowEnc
+                    ? `<button type="button" class="timeline-meal-photo-tap absolute inset-0 z-20 h-full w-full cursor-zoom-in border-0 bg-transparent p-0 active:bg-white/5" style="-webkit-tap-highlight-color:transparent" aria-label="사진 ${photoCount}장 보기" data-meal-wheel-row="${wheelRowEnc}" data-meal-start-idx="${idx}" onclick="event.stopPropagation();window.openMealPhotosWheelOverlayFromBtn(this)"></button>`
+                    : '';
             return `
             <div class="flex-shrink-0 w-full snap-start relative ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" data-moment-i="${idx}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
-                <div class="moment-feed-pinch-host relative w-full">${inner}</div>
+                <div class="moment-feed-pinch-host relative w-full">${inner}${wheelTap}</div>
                 ${bannedOverlay}
             </div>
         `;
@@ -306,14 +331,11 @@ export async function renderFeed() {
         
         const userDisplay = getDisplayProfile(photo.userId, { nickname: photo.userNickname, icon: photo.userIcon, photoUrl: photo.userPhotoUrl });
         const avatarDisplay = getProfileAvatarDisplay(userDisplay);
-        const cardOuter = layoutV2
-            ? `mb-3 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-200/90'} rounded-xl overflow-hidden shadow-sm instagram-post`
-            : `mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden instagram-post`;
-        const headPad = layoutV2 ? 'px-3 py-2.5' : 'px-2 py-3';
-        const avSize = layoutV2 ? 'w-8 h-8' : 'w-10 h-10';
-        const avIconCls = layoutV2 ? 'text-sm' : 'text-lg';
+        const headPad = 'px-2 py-3';
+        const avSize = 'w-10 h-10';
+        const avIconCls = 'text-lg';
         return `
-            <div class="${cardOuter}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}">
+            <div class="${cardOuter}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}"${layoutV2 ? ' data-moment-card-layout="2"' : ''}>
                 <div class="${headPad} flex items-center gap-3 relative">
                     ${avatarDisplay.type === 'photo' ? `
                         <div class="${avSize} rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${avatarDisplay.value}); background-size: cover; background-position: center;">
@@ -338,7 +360,7 @@ export async function renderFeed() {
                         </button>
                     </div>
                 </div>
-                <div class="relative overflow-hidden ${(isDailyShare || isInsightShare) ? 'bg-white' : layoutV2 ? 'bg-slate-50' : 'bg-slate-100'}">
+                <div class="relative overflow-hidden ${(isDailyShare || isInsightShare) ? 'bg-white' : 'bg-slate-100'}">
                     <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gallery-photo-scroll" data-moment-urls="${momentUrlsEncoded}" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
                         ${photosHtml}
                     </div>
@@ -368,18 +390,24 @@ export async function renderFeed() {
             const counter = scrollContainer.parentElement.querySelector('.photo-counter-current');
             const photos = Array.from(scrollContainer.children);
             const photoCount = sortedGroups[idx]?.length || 0;
-            // 스크롤 종료 시 가장 가까운 사진으로 스냅 (한장한장 구분감)
+            const isVertical = scrollContainer.getAttribute('data-moment-carousel') === 'vertical';
             if (photoCount > 1) {
-                // 웹(데스크톱): 마우스 드래그로 사진 스와이프 (document에 리스너 등록해 빠른 드래그도 포착)
                 let isDragging = false;
                 let startX = 0;
+                let startY = 0;
                 let startScrollLeft = 0;
+                let startScrollTop = 0;
                 scrollContainer.style.cursor = 'grab';
                 const onMouseMove = (e) => {
                     if (!isDragging) return;
                     e.preventDefault();
-                    const dx = e.pageX - startX;
-                    scrollContainer.scrollLeft = Math.max(0, Math.min(scrollContainer.scrollWidth - scrollContainer.clientWidth, startScrollLeft - dx));
+                    if (isVertical) {
+                        const dy = e.pageY - startY;
+                        scrollContainer.scrollTop = Math.max(0, Math.min(scrollContainer.scrollHeight - scrollContainer.clientHeight, startScrollTop - dy));
+                    } else {
+                        const dx = e.pageX - startX;
+                        scrollContainer.scrollLeft = Math.max(0, Math.min(scrollContainer.scrollWidth - scrollContainer.clientWidth, startScrollLeft - dx));
+                    }
                 };
                 const endDrag = () => {
                     if (!isDragging) return;
@@ -394,7 +422,9 @@ export async function renderFeed() {
                     e.preventDefault();
                     isDragging = true;
                     startX = e.pageX;
+                    startY = e.pageY;
                     startScrollLeft = scrollContainer.scrollLeft;
+                    startScrollTop = scrollContainer.scrollTop;
                     scrollContainer.style.cursor = 'grabbing';
                     scrollContainer.style.userSelect = 'none';
                     document.addEventListener('mousemove', onMouseMove, { capture: true, passive: false });
@@ -402,18 +432,30 @@ export async function renderFeed() {
                 }, { passive: false });
 
                 const snapToNearest = () => {
-                    const sl = scrollContainer.scrollLeft;
-                    const cw = scrollContainer.clientWidth;
-                    let nearest = 0;
-                    let minDist = Infinity;
-                    photos.forEach((p, i) => {
-                        const pos = p.offsetLeft + p.offsetWidth / 2;
-                        const d = Math.abs(sl + cw / 2 - pos);
-                        if (d < minDist) { minDist = d; nearest = i; }
-                    });
-                    const target = photos[nearest]?.offsetLeft ?? 0;
-                    if (Math.abs(sl - target) > 2) {
-                        scrollContainer.scrollTo({ left: target, behavior: 'smooth' });
+                    if (isVertical) {
+                        const sl = scrollContainer.scrollTop;
+                        const ch = scrollContainer.clientHeight;
+                        let nearest = 0;
+                        let minDist = Infinity;
+                        photos.forEach((p, i) => {
+                            const pos = p.offsetTop + p.offsetHeight / 2;
+                            const d = Math.abs(sl + ch / 2 - pos);
+                            if (d < minDist) { minDist = d; nearest = i; }
+                        });
+                        const target = photos[nearest]?.offsetTop ?? 0;
+                        if (Math.abs(sl - target) > 2) scrollContainer.scrollTo({ top: target, behavior: 'smooth' });
+                    } else {
+                        const sl = scrollContainer.scrollLeft;
+                        const cw = scrollContainer.clientWidth;
+                        let nearest = 0;
+                        let minDist = Infinity;
+                        photos.forEach((p, i) => {
+                            const pos = p.offsetLeft + p.offsetWidth / 2;
+                            const d = Math.abs(sl + cw / 2 - pos);
+                            if (d < minDist) { minDist = d; nearest = i; }
+                        });
+                        const target = photos[nearest]?.offsetLeft ?? 0;
+                        if (Math.abs(sl - target) > 2) scrollContainer.scrollTo({ left: target, behavior: 'smooth' });
                     }
                     preloadAdjacentGalleryImages(scrollContainer);
                 };
@@ -437,22 +479,31 @@ export async function renderFeed() {
             if (counter && photoCount > 1) {
                 const slideEls = Array.from(scrollContainer.children);
                 const updateCounter = () => {
-                    const containerWidth = scrollContainer.clientWidth;
-                    const scrollLeft = scrollContainer.scrollLeft;
                     let currentIndex = 1;
-                    slideEls.forEach((slide, photoIdx) => {
-                        const photoCenter = slide.offsetLeft + slide.offsetWidth / 2;
-                        if (photoCenter >= scrollLeft && photoCenter <= scrollLeft + containerWidth) {
-                            currentIndex = photoIdx + 1;
-                        }
-                    });
+                    if (isVertical) {
+                        const containerHeight = scrollContainer.clientHeight;
+                        const scrollTop = scrollContainer.scrollTop;
+                        slideEls.forEach((slide, photoIdx) => {
+                            const c = slide.offsetTop + slide.offsetHeight / 2;
+                            if (c >= scrollTop && c <= scrollTop + containerHeight) currentIndex = photoIdx + 1;
+                        });
+                    } else {
+                        const containerWidth = scrollContainer.clientWidth;
+                        const scrollLeft = scrollContainer.scrollLeft;
+                        slideEls.forEach((slide, photoIdx) => {
+                            const photoCenter = slide.offsetLeft + slide.offsetWidth / 2;
+                            if (photoCenter >= scrollLeft && photoCenter <= scrollLeft + containerWidth) {
+                                currentIndex = photoIdx + 1;
+                            }
+                        });
+                    }
                     counter.textContent = currentIndex;
                 };
                 scrollContainer.addEventListener('scroll', updateCounter);
                 updateCounter();
             }
         });
-        
+
         // 피드 옵션 버튼에 이벤트 리스너 추가
         const feedOptionsButtons = container.querySelectorAll('.feed-options-btn');
         feedOptionsButtons.forEach(btn => {

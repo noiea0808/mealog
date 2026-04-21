@@ -447,7 +447,7 @@ export function getMealPhotoUrlsForTimeline(r) {
 
 /**
  * 사진 뷰어용: 해당 날짜·SLOTS 순서 — 기록이 있는 슬롯만(본식 1행, 간식은 기록마다 1행)
- * @returns {Array<{dateStr:string,slotId:string,recordId:string|null,slotTitle:string,urls:string[],menuLine:string,place:string,mealType:string|null,slotType:string,isEmptyRow:boolean}>}
+ * @returns {Array<{dateStr:string,slotId:string,recordId:string|null,slotTitle:string,urls:string[],menuLine:string,place:string,mealType:string|null,slotType:string,isEmptyRow:boolean,photoAspectRatio?:string}>}
  */
 export function buildMealPhotoViewerRowsForDate(dateStr) {
     const rows = [];
@@ -526,6 +526,8 @@ function mealPhotoViewerRowFromRecord(dateStr, slot, r, ordinal1Based, totalInSl
             (r.category && String(r.category).trim()) ||
             '';
     }
+    const ar = r.photoAspectRatio;
+    const photoAspectRatio = ar === '3:4' || ar === '4:3' ? ar : '1:1';
     return {
         dateStr,
         slotId: slot.id,
@@ -536,7 +538,8 @@ function mealPhotoViewerRowFromRecord(dateStr, slot, r, ordinal1Based, totalInSl
         place,
         mealType: r.mealType || null,
         slotType: slot.type,
-        isEmptyRow: false
+        isEmptyRow: false,
+        photoAspectRatio
     };
 }
 

@@ -193,6 +193,13 @@ body.keyboard-closed #boardWriteView {
     min-height: 60vh;
     padding: 0.75rem 1rem; /* py-3 px-4 */
 }
+/* 모먼트: 타임라인 사진 팝업(#timelineMealPhotosOverlay 본문)과 동일한 좌우 10px(+ safe-area)로 사진 가용 너비 정렬 */
+#galleryView.ui-tab-view {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    padding-left: max(10px, env(safe-area-inset-left, 0px));
+    padding-right: max(10px, env(safe-area-inset-right, 0px));
+}
 .ui-surface-soft { background: #f1f5f9; } /* slate-100 */
 .ui-stack-lg > * + * { margin-top: 1rem; }       /* space-y-4 */
 .ui-stack-md > * + * { margin-top: 0.75rem; }    /* space-y-3 */
@@ -382,22 +389,57 @@ header .mealog-title {
     padding-left: max(var(--meal-photo-overlay-content-pad-x), env(safe-area-inset-left, 0px));
     padding-right: max(var(--meal-photo-overlay-content-pad-x), env(safe-area-inset-right, 0px));
 }
-/* 사진 팝업 열림: 뒤로 스크롤 전달 억제. 캐러셀은 pan-y만 네이티브(세로=vtrack) — 가로 스와이프는 JS가 받음 */
+/* 사진 팝업 열림: 뒤로 스크롤 전달 억제. 세로=vtrack(pan-y), 가로 스트립=pan-x+pan-y — 스크림 색은 백드롭 레이어 */
 #timelineMealPhotosOverlay:not(.hidden) {
     overscroll-behavior: contain;
     touch-action: none;
+}
+/* 루트는 max-w-md 컬럼 폭만 쓰고, 좌우 끝까지 덮는 밝은 스크림(JS로 visualViewport 맞춤) */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-overlay-backdrop {
+    box-sizing: border-box;
+    background-color: rgba(255, 255, 255, 0.5);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-vtrack {
     touch-action: pan-y;
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-zone,
-#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-frame,
-#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-frame > .relative {
-    touch-action: pan-y;
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-frame {
+    touch-action: pan-x pan-y;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-viewport {
+    touch-action: pan-x pan-y;
+}
+/* 가로 스트립: 터치 가로 스크롤·스냅 — 일반 규칙의 pan-y가 이미지에서 가로를 막던 문제 해소 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-hstrip,
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-hstrip .timeline-meal-photo-img {
+    touch-action: pan-x pan-y;
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-img {
     touch-action: pan-y;
     transition: opacity 0.42s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+/* 가로 스트립 안 이미지: 일반 .timeline-meal-photo-img 규칙보다 우선 — 마우스 드래그·터치 가로 허용 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-hstrip .timeline-meal-photo-img {
+    -webkit-user-drag: none;
+    user-select: none;
+}
+/* 우상단 현재/전체: 하단 라벨(메뉴바)과 동일 서체 — 숫자·슬래시 2단계 크기 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-badge {
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-weight: 400;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-badge .carousel-badge-num {
+    font-size: 1.125rem;
+    line-height: 1;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-badge .carousel-badge-sep {
+    font-size: 0.6875rem;
+    opacity: 0.9;
+    padding: 0 0.1em;
+    font-family: inherit;
+    font-weight: 400;
 }
 body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     overscroll-behavior: none;
@@ -407,6 +449,10 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-caption-footer {
     touch-action: manipulation;
+}
+/* 루트 touch-action:none 아래서 날짜·슬롯 휠 스트립 세로 스크롤 허용 */
+#timelineMealPhotosOverlay:not(.hidden) .meal-photo-wheel-inner {
+    touch-action: pan-y;
 }
 /* 휠 모드: 세로 스냅으로 한 기록(한 장)만 뷰포트 중앙 / 라벨은 스크롤 밖·absolute로 활성 사진 아래 5px(JS) */
 #timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-stage--with-footer {
@@ -426,8 +472,12 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     box-sizing: border-box;
     padding-left: 0;
     padding-right: 0;
-    pointer-events: auto;
+    /* 바 전체는 투과 — 사진·가로 스와이프가 가려지지 않게. 휠/라벨만 다시 받음 */
+    pointer-events: none;
     transition: top 0.04s ease-out;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-caption-footer .timeline-meal-photos-slide-caption-inner {
+    pointer-events: auto;
 }
 #timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-slide-caption-inner.timeline-meal-photo-menu-bar {
     width: var(--meal-wheel-caption-inner-w, 100%);
@@ -461,6 +511,49 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     flex-shrink: 0;
     scroll-snap-align: center;
     scroll-snap-stop: always;
+}
+/* 모먼트 피드: 게시물 간 세로 전환(타임라인 다슬롯 스크롤과 비슷한 느낌) */
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-vslide.timeline-meal-photos-slide--moment-leave-next {
+    transition: transform 0.38s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.32s ease-out;
+    will-change: transform, opacity;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel
+    .timeline-meal-photos-vslide.timeline-meal-photos-slide--moment-leave-next.is-moment-leave-active {
+    transform: translateY(calc(-1 * min(36%, 280px)));
+    opacity: 0.18;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-vslide.timeline-meal-photos-slide--moment-leave-prev {
+    transition: transform 0.38s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.32s ease-out;
+    will-change: transform, opacity;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel
+    .timeline-meal-photos-vslide.timeline-meal-photos-slide--moment-leave-prev.is-moment-leave-active {
+    transform: translateY(min(36%, 280px));
+    opacity: 0.18;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-vslide.timeline-meal-photos-slide--moment-enter-next {
+    transform: translateY(min(38%, 300px));
+    opacity: 0.22;
+    transition: none;
+    will-change: transform, opacity;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel
+    .timeline-meal-photos-vslide.timeline-meal-photos-slide--moment-enter-next.is-moment-enter-ready {
+    transition: transform 0.42s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.36s ease-out;
+    transform: none;
+    opacity: 1;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-vslide.timeline-meal-photos-slide--moment-enter-prev {
+    transform: translateY(calc(-1 * min(38%, 300px)));
+    opacity: 0.22;
+    transition: none;
+    will-change: transform, opacity;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel
+    .timeline-meal-photos-vslide.timeline-meal-photos-slide--moment-enter-prev.is-moment-enter-ready {
+    transition: transform 0.42s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.36s ease-out;
+    transform: none;
+    opacity: 1;
 }
 #timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-vslide-stage--wheel-only {
     min-height: 100%;
@@ -507,6 +600,18 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     max-height: min(72vh, 520px);
     object-fit: contain;
     transition: opacity 0.48s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+/* 기록 사진 비율(1:1·3:4·4:3) 슬롯: 프레임 채우기 — 휠 모드 위 contain 규칙 덮어씀. 모서리·그림자는 슬롯만(이중 라운드/섀도 방지) */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-aspect-slot .timeline-meal-photo-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+    box-shadow: none;
+    object-fit: cover;
 }
 /* 휠 라벨 안: 피커 열 너비·구분 간격만 축소(숫자·요일 글자 크기는 그대로) */
 #timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label) {
@@ -923,6 +1028,16 @@ body.bottom-nav-scroll-hidden .bottom-nav {
 body.bottom-nav-scroll-hidden #navigationBarOverlay {
     transform: translateY(100%);
 }
+/* 모먼트 사진 휠 오버레이: 타이틀 헤더 위로·하단 앱 네비 아래로 (오버레이가 그 사이를 덮음) */
+body.meal-photo-moment-chrome-hidden #mainAppHeader {
+    transform: translateY(-100%);
+}
+body.meal-photo-moment-chrome-hidden .bottom-nav {
+    transform: translateX(-50%) translateY(calc(100% + 8px + var(--safe-bottom)));
+}
+body.meal-photo-moment-chrome-hidden #navigationBarOverlay {
+    transform: translateY(100%);
+}
 .prop-bar-container { 
     height: 28px; 
     border-radius: 8px; 
@@ -992,6 +1107,231 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 /* 모먼트 피드: 사진 탭 시 확대(라이트박스) 가능함을 표시 */
 #galleryContainer .moment-feed-photo {
     cursor: zoom-in;
+}
+/* 화면2: 라이트박스 없음 — 돋보기 커서 제거 */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-carousel-photo,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-carousel-photo {
+    cursor: default;
+}
+/* 모먼트 보기 2: 팝업형 한 장 캐러셀 + 사진/휠 라벨 분리 (타임라인 오버레이 휠과 동일 톤) */
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope {
+    --meal-wheel-viewport-h: 28px;
+    --meal-wheel-item-h: 28px;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .moment-v2-photo-shell,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .moment-v2-photo-shell {
+    overflow: hidden;
+    min-width: 0;
+    min-height: 0;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photos-carousel-zone,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photos-carousel-zone {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 0;
+    box-sizing: border-box;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photos-carousel-frame,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photos-carousel-frame {
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    max-height: min(72vh, 520px);
+    overflow: hidden;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photos-carousel-viewport,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photos-carousel-viewport {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    max-height: min(72vh, 520px);
+    overflow: hidden;
+}
+/* 화면2: 가로 스냅(게시물 내 사진) — 세로 제스처는 피드/타 게시물. gap 0으로 인덱스·스냅 일치 */
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .moment-v2-hstrip,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .moment-v2-hstrip {
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    gap: 0;
+    scroll-snap-type: x mandatory;
+    scroll-snap-stop: always;
+    touch-action: pan-x;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .moment-v2-hstrip .moment-v2-h-slide,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .moment-v2-hstrip .moment-v2-h-slide {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 100%;
+    height: 100%;
+    min-height: 0;
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photos-carousel-badge,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photos-carousel-badge {
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-weight: 400;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar {
+    padding: 2px 0.5rem;
+    gap: 2em;
+    align-items: center;
+    line-height: 1;
+    background-color: rgba(0, 0, 0, 0.5) !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row [data-wheel-menu-caption],
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row [data-wheel-menu-caption] {
+    line-height: var(--meal-wheel-viewport-h);
+    max-height: var(--meal-wheel-viewport-h);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    align-self: center;
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-size: 18px;
+    font-weight: normal;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label),
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label) {
+    width: 2.125rem;
+    flex: 0 0 2.125rem;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-col--year .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label),
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-col--year .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label) {
+    width: 2.625rem;
+    flex: 0 0 2.625rem;
+}
+/* 숫자 열만 팝업 휠과 같은 상·하 페이드(휠 피커 효과) */
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-viewport--static:not(.meal-photo-wheel-viewport--label),
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-viewport--static:not(.meal-photo-wheel-viewport--label) {
+    height: var(--meal-wheel-viewport-h);
+    width: 2.5rem;
+    flex: 0 0 2.5rem;
+    overflow: hidden;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.07);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 0.5%, #000 99.5%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 0.5%, #000 99.5%, transparent 100%);
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-col--year .meal-photo-wheel-viewport--static,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-col--year .meal-photo-wheel-viewport--static {
+    width: 3rem;
+    flex: 0 0 3rem;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-viewport--label.meal-photo-wheel-viewport--static,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-viewport--label.meal-photo-wheel-viewport--static {
+    width: auto;
+    min-width: 0.875rem;
+    flex: 0 0 auto;
+    height: var(--meal-wheel-viewport-h);
+    min-height: var(--meal-wheel-viewport-h);
+    max-height: var(--meal-wheel-viewport-h);
+    background: rgba(255, 255, 255, 0.035);
+    border-radius: 6px;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+    box-sizing: border-box;
+    overflow: hidden;
+    align-self: center;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-col--slot .meal-photo-wheel-viewport--label,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-col--slot .meal-photo-wheel-viewport--label {
+    flex: 0 0 auto;
+    width: fit-content;
+    min-width: 0;
+    max-width: 9rem;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-item,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-item {
+    box-sizing: border-box;
+    width: 100%;
+    height: var(--meal-wheel-item-h);
+    min-height: var(--meal-wheel-item-h);
+    line-height: var(--meal-wheel-item-h);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    color: rgba(255, 255, 255, 0.88);
+    font-size: inherit;
+    font-weight: 400;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-label-line,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-label-line {
+    box-sizing: border-box;
+    height: var(--meal-wheel-item-h);
+    min-height: var(--meal-wheel-item-h);
+    line-height: var(--meal-wheel-item-h);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: inherit;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.88);
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-sep--colon,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-sep--colon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: var(--meal-wheel-viewport-h);
+    min-height: var(--meal-wheel-viewport-h);
+    line-height: 1;
+    align-self: center;
+    padding: 0 1px;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photos-wheelbar-inner,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photos-wheelbar-inner {
+    flex-wrap: nowrap;
+    align-items: center;
+    min-width: 0;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-stage,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-stage {
+    position: relative;
+}
+/* 타임라인 휠 팝업과 동일: 라벨은 스크롤에 묶이지 않고 활성 사진 바로 아래 5px(JS top) */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-stage--with-footer,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-stage--with-footer {
+    overflow: visible;
+    padding-bottom: 2.75rem;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-caption-footer,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-caption-footer {
+    display: flex;
+    justify-content: center;
+    z-index: 12;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+    pointer-events: none;
+    transition: top 0.04s ease-out;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-caption-footer .moment-v2-wheel-caption-row,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-caption-footer .moment-v2-wheel-caption-row {
+    pointer-events: auto;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-strip,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-strip {
+    pointer-events: auto;
 }
 /* 기록 등록 모달: 텍스트 입력 중(커서 깜박임) 옅은 노란색 강조 */
 #entryModal #modalScrollArea input[type="text"]:focus,

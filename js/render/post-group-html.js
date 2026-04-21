@@ -8,7 +8,63 @@ import { getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
 import { getPostIdFromPhotoGroup } from './post-group-utils.js';
 import { formatMealMenuDisplayLine, mergeMealDisplayFields } from '../utils/meal-display-line.js';
 
-export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
+/** 모먼트 공유 → 타임라인 `#timelineMealPhotosOverlay` 휠 모드와 동일한 `row` 페이로드 */
+export function buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMap, ctx) {
+    const photo = photoGroup[0];
+    const urls = photoGroup.map((p) => p.photoUrl).filter(Boolean);
+    const { entryId, isBestShare, isDailyShare, isInsightShare, isSnack, aspectRatio } = ctx;
+    const dateStr = photo.date ? String(photo.date) : '';
+    const slotId = photo.slotId || '';
+    let recordId = null;
+    if (entryId && entryId !== '' && entryId !== 'null') recordId = String(entryId);
+    else if (photo.id) recordId = String(photo.id);
+
+    let slotTitle = '—';
+    if (isDailyShare) slotTitle = '일간';
+    else if (isBestShare) slotTitle = '베스트';
+    else if (isInsightShare) {
+        const r = String(photo.dateRangeText || '인사이트').replace(/\s+/g, ' ').trim();
+        slotTitle = r.length > 20 ? `${r.slice(0, 20)}…` : r || '인사이트';
+    } else if (photo.slotId) {
+        const slot = SLOTS.find((s) => s.id === photo.slotId);
+        slotTitle = slot ? slot.label : '—';
+    }
+
+    let menuLine = '';
+    const place = String(photo.place || '').trim();
+    if (isBestShare || isDailyShare || isInsightShare) {
+        menuLine = (photo.comment || '').replace(/<[^>]*>/g, '').trim() || '—';
+    } else if (isSnack) {
+        menuLine = String(photo.menuDetail || photo.snackType || '').trim() || '간식';
+    } else {
+        const mealForLine =
+            entryId && mealHistoryMap && mealHistoryMap.has(entryId)
+                ? mergeMealDisplayFields(photo, mealHistoryMap.get(entryId))
+                : photo;
+        menuLine = (formatMealMenuDisplayLine(mealForLine) || '').trim() || '—';
+    }
+
+    const slotMeta = photo.slotId ? SLOTS.find((s) => s.id === photo.slotId) : null;
+    const slotType = slotMeta?.type || 'main';
+    const ar = aspectRatio === '3:4' || aspectRatio === '4:3' ? aspectRatio : '1:1';
+
+    return {
+        dateStr,
+        slotId,
+        recordId,
+        slotTitle,
+        urls,
+        menuLine,
+        place,
+        mealType: photo.mealType || null,
+        slotType,
+        isEmptyRow: false,
+        photoAspectRatio: ar
+    };
+}
+
+export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, options = {}) {
+    const layoutV2 = options.layoutV2 === true;
     const photo = photoGroup[0];
     const photoCount = photoGroup.length;
     let entryId = photo.entryId;
@@ -86,15 +142,32 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
     if (aspectRatio !== '1:1' && aspectRatio !== '3:4' && aspectRatio !== '4:3') aspectRatio = '1:1';
     const momentAspectCss = (aspectRatio === '3:4' ? '3/4' : aspectRatio === '4:3' ? '4/3' : '1');
     const momentUrlsEncoded = encodeURIComponent(JSON.stringify(photoGroup.map((p) => p.photoUrl).filter(Boolean)));
+    const wheelOverlayRow = layoutV2
+        ? buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMap, {
+              entryId,
+              isBestShare,
+              isDailyShare,
+              isInsightShare,
+              isSnack,
+              aspectRatio
+          })
+        : null;
+    const wheelRowEnc = wheelOverlayRow ? encodeURIComponent(JSON.stringify(wheelOverlayRow)) : '';
     const photosHtml = photoGroup.map((p, idx) => {
-        const isBest = p.type === 'best', isDaily = p.type === 'daily', isInsight = p.type === 'insight';
+        const isBest = p.type === 'best',
+            isDaily = p.type === 'daily',
+            isInsight = p.type === 'insight';
         const inner =
             (isBest || isDaily || isInsight)
                 ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo w-full h-auto object-contain" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx <= 1 ? 'eager' : 'lazy'}">`
                 : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-cover" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`;
+        const wheelTap =
+            layoutV2 && wheelRowEnc
+                ? `<button type="button" class="timeline-meal-photo-tap absolute inset-0 z-20 h-full w-full cursor-zoom-in border-0 bg-transparent p-0 active:bg-white/5" style="-webkit-tap-highlight-color:transparent" aria-label="사진 ${photoCount}장 보기" data-meal-wheel-row="${wheelRowEnc}" data-meal-start-idx="${idx}" onclick="event.stopPropagation();window.openMealPhotosWheelOverlayFromBtn(this)"></button>`
+                : '';
         return `
             <div class="flex-shrink-0 w-full snap-start relative ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" data-moment-i="${idx}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
-                <div class="moment-feed-pinch-host w-full relative">${inner}</div>
+                <div class="moment-feed-pinch-host w-full relative">${inner}${wheelTap}</div>
             </div>
         `;
     }).join('');
@@ -114,7 +187,7 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
                     </button>`
         : '';
     return `
-            <div class="mb-2 bg-white border-b border-slate-200 instagram-post ${!hasBody ? 'post-no-body' : ''}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}">
+            <div class="mb-2 bg-white border-b border-slate-200 instagram-post ${!hasBody ? 'post-no-body' : ''}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}"${layoutV2 ? ' data-moment-card-layout="2"' : ''}>
                 <div class="px-3 py-3 flex items-center gap-2 relative">
                     ${profileBackBtn}
                     ${avatarDisplay.type === 'photo' ? `

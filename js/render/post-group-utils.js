@@ -76,17 +76,27 @@ export function processPhotosToGroups(photos) {
     });
 }
 
-/** 갤러리 가로 스크롤 시 현재 슬라이드 기준 이전 1장 + 다음 2장 캐시에 미리 로드 */
+/** 갤러리 가로/세로 스크롤 시 현재 슬라이드 기준 이전 1장 + 다음 2장 캐시에 미리 로드 */
 export function preloadAdjacentGalleryImages(scrollContainer) {
     const slides = Array.from(scrollContainer.children);
     if (slides.length <= 1) return;
-    const scrollLeft = scrollContainer.scrollLeft;
-    const containerWidth = scrollContainer.clientWidth;
+    const vertical = scrollContainer.getAttribute('data-moment-carousel') === 'vertical';
     let currentIndex = 0;
-    slides.forEach((slide, i) => {
-        const center = slide.offsetLeft + slide.offsetWidth / 2;
-        if (center >= scrollLeft && center <= scrollLeft + containerWidth) currentIndex = i;
-    });
+    if (vertical) {
+        const scrollTop = scrollContainer.scrollTop;
+        const containerHeight = scrollContainer.clientHeight;
+        slides.forEach((slide, i) => {
+            const center = slide.offsetTop + slide.offsetHeight / 2;
+            if (center >= scrollTop && center <= scrollTop + containerHeight) currentIndex = i;
+        });
+    } else {
+        const scrollLeft = scrollContainer.scrollLeft;
+        const containerWidth = scrollContainer.clientWidth;
+        slides.forEach((slide, i) => {
+            const center = slide.offsetLeft + slide.offsetWidth / 2;
+            if (center >= scrollLeft && center <= scrollLeft + containerWidth) currentIndex = i;
+        });
+    }
     const imgs = slides.map(s => s.querySelector('img')).filter(Boolean);
     const toPreload = [currentIndex - 1, currentIndex + 1, currentIndex + 2];
     toPreload.forEach(idx => {

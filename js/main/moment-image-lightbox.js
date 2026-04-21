@@ -310,6 +310,8 @@ export function ensureMomentImageLightbox() {
         if (e.target.closest?.('.feed-options-btn')) return;
         const imgHit = e.target.closest?.('.moment-feed-photo');
         if (!imgHit) return;
+        /* 화면2(모먼트 보기 2): 캐러셀·휠과 겹침 방지 — 탭 확대(라이트박스) 비활성 */
+        if (imgHit.closest?.('.moment-feed-v2-scope')) return;
 
         const scroll = imgHit.closest?.('.gallery-photo-scroll');
         if (!scroll || !root.contains(scroll)) return;

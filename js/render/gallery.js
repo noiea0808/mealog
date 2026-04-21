@@ -4,7 +4,7 @@
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
 import { normalizeUrl, getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
-import { loadSharedPhotosByUserUpToPostCount } from '../db.js';
+import { loadSharedPhotosByUserUpToPostCount, getMomentsFeedView } from '../db.js';
 import {
     getPostIdFromPhotoGroup,
     processPhotosToGroups,
@@ -23,6 +23,9 @@ import { ensureMomentFeedPinchDelegate } from '../main/moment-feed-pinch.js';
 import { applyCollapsedCaptionToElement } from './comment-caption-layout.js';
 
 ensureMomentFeedPinchDelegate();
+
+/** `momentsFeedView === 2` — renderGallery 완료 시점 기준 (appendGalleryPosts 등에서 재사용) */
+let galleryMomentLayoutV2 = false;
 
 /** 사용자 프로필 모먼트 그리드: 3열 × 5행 = 15게시물 단위 */
 const USER_PROFILE_MOMENT_GRID_PAGE_SIZE = 15;
@@ -143,16 +146,24 @@ function setupGalleryEventListeners(container, sortedGroups, opts = null) {
         const counter = scrollContainer.parentElement.querySelector('.photo-counter-current');
         const photos = Array.from(scrollContainer.children);
         const photoCount = sortedGroups[idx]?.length || 0;
+        const isVertical = scrollContainer.getAttribute('data-moment-carousel') === 'vertical';
         if (photoCount > 1) {
             let isDragging = false;
             let startX = 0;
+            let startY = 0;
             let startScrollLeft = 0;
+            let startScrollTop = 0;
             scrollContainer.style.cursor = 'grab';
             const onMouseMove = (e) => {
                 if (!isDragging) return;
                 e.preventDefault();
-                const dx = e.pageX - startX;
-                scrollContainer.scrollLeft = Math.max(0, Math.min(scrollContainer.scrollWidth - scrollContainer.clientWidth, startScrollLeft - dx));
+                if (isVertical) {
+                    const dy = e.pageY - startY;
+                    scrollContainer.scrollTop = Math.max(0, Math.min(scrollContainer.scrollHeight - scrollContainer.clientHeight, startScrollTop - dy));
+                } else {
+                    const dx = e.pageX - startX;
+                    scrollContainer.scrollLeft = Math.max(0, Math.min(scrollContainer.scrollWidth - scrollContainer.clientWidth, startScrollLeft - dx));
+                }
             };
             const endDrag = () => {
                 if (!isDragging) return;
@@ -167,24 +178,40 @@ function setupGalleryEventListeners(container, sortedGroups, opts = null) {
                 e.preventDefault();
                 isDragging = true;
                 startX = e.pageX;
+                startY = e.pageY;
                 startScrollLeft = scrollContainer.scrollLeft;
+                startScrollTop = scrollContainer.scrollTop;
                 scrollContainer.style.cursor = 'grabbing';
                 scrollContainer.style.userSelect = 'none';
                 document.addEventListener('mousemove', onMouseMove, { capture: true, passive: false });
                 document.addEventListener('mouseup', endDrag, { capture: true });
             }, { passive: false });
             const snapToNearest = () => {
-                const sl = scrollContainer.scrollLeft;
-                const cw = scrollContainer.clientWidth;
-                let nearest = 0;
-                let minDist = Infinity;
-                photos.forEach((p, i) => {
-                    const pos = p.offsetLeft + p.offsetWidth / 2;
-                    const d = Math.abs(sl + cw / 2 - pos);
-                    if (d < minDist) { minDist = d; nearest = i; }
-                });
-                const target = photos[nearest]?.offsetLeft ?? 0;
-                if (Math.abs(sl - target) > 2) scrollContainer.scrollTo({ left: target, behavior: 'smooth' });
+                if (isVertical) {
+                    const sl = scrollContainer.scrollTop;
+                    const ch = scrollContainer.clientHeight;
+                    let nearest = 0;
+                    let minDist = Infinity;
+                    photos.forEach((p, i) => {
+                        const pos = p.offsetTop + p.offsetHeight / 2;
+                        const d = Math.abs(sl + ch / 2 - pos);
+                        if (d < minDist) { minDist = d; nearest = i; }
+                    });
+                    const target = photos[nearest]?.offsetTop ?? 0;
+                    if (Math.abs(sl - target) > 2) scrollContainer.scrollTo({ top: target, behavior: 'smooth' });
+                } else {
+                    const sl = scrollContainer.scrollLeft;
+                    const cw = scrollContainer.clientWidth;
+                    let nearest = 0;
+                    let minDist = Infinity;
+                    photos.forEach((p, i) => {
+                        const pos = p.offsetLeft + p.offsetWidth / 2;
+                        const d = Math.abs(sl + cw / 2 - pos);
+                        if (d < minDist) { minDist = d; nearest = i; }
+                    });
+                    const target = photos[nearest]?.offsetLeft ?? 0;
+                    if (Math.abs(sl - target) > 2) scrollContainer.scrollTo({ left: target, behavior: 'smooth' });
+                }
                 preloadAdjacentGalleryImages(scrollContainer);
             };
             let snapTimeout = null;
@@ -208,13 +235,22 @@ function setupGalleryEventListeners(container, sortedGroups, opts = null) {
         }
         if (counter && photoCount > 1) {
             const updateCounter = () => {
-                const containerWidth = scrollContainer.clientWidth;
-                const scrollLeft = scrollContainer.scrollLeft;
                 let currentIndex = 1;
-                photos.forEach((photo, photoIdx) => {
-                    const photoCenter = photo.offsetLeft + photo.offsetWidth / 2;
-                    if (photoCenter >= scrollLeft && photoCenter <= scrollLeft + containerWidth) currentIndex = photoIdx + 1;
-                });
+                if (isVertical) {
+                    const containerHeight = scrollContainer.clientHeight;
+                    const scrollTop = scrollContainer.scrollTop;
+                    photos.forEach((photo, photoIdx) => {
+                        const c = photo.offsetTop + photo.offsetHeight / 2;
+                        if (c >= scrollTop && c <= scrollTop + containerHeight) currentIndex = photoIdx + 1;
+                    });
+                } else {
+                    const containerWidth = scrollContainer.clientWidth;
+                    const scrollLeft = scrollContainer.scrollLeft;
+                    photos.forEach((photo, photoIdx) => {
+                        const photoCenter = photo.offsetLeft + photo.offsetWidth / 2;
+                        if (photoCenter >= scrollLeft && photoCenter <= scrollLeft + containerWidth) currentIndex = photoIdx + 1;
+                    });
+                }
                 counter.textContent = currentIndex;
             };
             const abortController = new AbortController();
@@ -266,7 +302,9 @@ async function appendGalleryPosts(docs, loadMoreWrap) {
         window.mealHistory.forEach(meal => { if (meal.id) mealHistoryMap.set(meal.id, meal); });
     }
     const existingCount = container.querySelectorAll('.instagram-post').length;
-    const newPostsHtml = newGroups.map((photoGroup, i) => renderPostGroupHtml(photoGroup, existingCount + i, mealHistoryMap)).join('');
+    const newPostsHtml = newGroups
+        .map((photoGroup, i) => renderPostGroupHtml(photoGroup, existingCount + i, mealHistoryMap, { layoutV2: galleryMomentLayoutV2 }))
+        .join('');
     const fragment = document.createDocumentFragment();
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = newPostsHtml;
@@ -308,7 +346,15 @@ export async function renderGallery(options = {}) {
             console.warn('[renderGallery] galleryContainer를 찾을 수 없습니다');
             return;
         }
-        
+
+        try {
+            galleryMomentLayoutV2 = (await getMomentsFeedView()) === '2';
+        } catch (_) {
+            galleryMomentLayoutV2 = false;
+        }
+        container.classList.toggle('moment-feed-layout-v2', galleryMomentLayoutV2);
+        container.setAttribute('data-moment-feed-layout', galleryMomentLayoutV2 ? '2' : '1');
+
         // ===== STRICT CLEANUP: 모든 Observer와 비동기 작업을 먼저 정리 =====
         
         // 1. 이전 AbortController로 모든 비동기 작업 취소
@@ -657,7 +703,8 @@ export async function renderGallery(options = {}) {
             if (meal.id) mealHistoryMap.set(meal.id, meal);
         });
     }
-    const renderPostGroup = (photoGroup, groupIdx) => renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap);
+    const renderPostGroup = (photoGroup, groupIdx) =>
+        renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, { layoutV2: galleryMomentLayoutV2 });
     // 각 그룹 내 사진을 Firestore photoIndex 기준으로만 정렬 (글쓴이/다른 사용자 동일 순서 보장)
     const photoSortTieBreaker = (a, b) => {
         const aKey = String(a.id ?? normalizeUrl(a.photoUrl) ?? '');
@@ -1104,7 +1151,6 @@ export async function renderGallery(options = {}) {
             fragment.appendChild(tempDiv.firstChild);
         }
         postsInsertPoint.appendChild(fragment);
-        
         const batchSize = batch.length;
         renderedIndex += batchSize;
         applyMomentCaptionLayoutForRange(renderedIndex - batchSize, renderedIndex);
