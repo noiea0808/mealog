@@ -9,8 +9,11 @@ import {
     MEAL_SYNC_GRACE_MS_WITH_PHOTO,
     mealRecordHasBase64PendingPhotos
 } from './meal-sync-manager.js';
+import { isDemoUser } from '../demo-account.js';
 
 const mgr = () => getMealSyncManager();
+
+let _scheduleStaleDotsTimer = null;
 
 export const MEAL_SYNC_GRACE_MS = _GRACE;
 export { MEAL_SYNC_GRACE_MS_NO_PHOTO, MEAL_SYNC_GRACE_MS_WITH_PHOTO, mealRecordHasBase64PendingPhotos };
@@ -100,6 +103,9 @@ export function countMealCloudFabManualRetryEntries() {
 export function countMealSyncFabScheduledChipEntries() {
     return mgr().countMealSyncFabScheduledChipEntries();
 }
+export function countMealSyncFabRedDotTransportSyncEntries() {
+    return mgr().countMealSyncFabRedDotTransportSyncEntries();
+}
 export function applyOfflineAfterLocalSaveUi(effectiveMealId, optimisticTempId, dateStr, currentTabVal, opts) {
     mgr().applyOfflineUnconfirmed(effectiveMealId, optimisticTempId, dateStr, currentTabVal, opts);
 }
@@ -136,12 +142,31 @@ export function clearStuckMealPendingFlags() {
 
 /** waitForPendingWrites 성공 직후: 스냅샷 ack 누락 시 타임라인 동기화 표시 보정 */
 export function reconcileMealSyncUiAfterWriteQueueFlush() {
-    mgr().reconcileSyncUiAfterClientWriteQueueFlush();
+    return mgr().reconcileSyncUiAfterClientWriteQueueFlush();
 }
 
 /** 삭제 예약 고착 시 서버에 문서 없음을 확인해 레드닷·행을 정리한다. @returns {Promise<void>} */
 export function reconcilePendingMealDeletesWithServer() {
     return mgr().reconcilePendingDeletesWithServer();
+}
+
+/**
+ * 레드닷·삭제 진행 표시가 스냅샷과 어긋날 때 서버 문서 존재 여부로 보정한다.
+ * @returns {Promise<void>}
+ */
+export async function reconcileStaleMealSyncDotsAgainstServer() {
+    if (typeof window !== 'undefined' && window.currentUser && isDemoUser(window.currentUser)) return;
+    return mgr().reconcileStaleMealSyncDotsAgainstServer();
+}
+
+/** meals onSnapshot 직후 연속 호출을 묶어 getDoc 폭주를 줄인다. */
+export function scheduleReconcileStaleMealSyncDotsAfterSnapshot() {
+    if (typeof window === 'undefined') return;
+    if (_scheduleStaleDotsTimer) clearTimeout(_scheduleStaleDotsTimer);
+    _scheduleStaleDotsTimer = window.setTimeout(() => {
+        _scheduleStaleDotsTimer = null;
+        void reconcileStaleMealSyncDotsAgainstServer();
+    }, 500);
 }
 
 /** 타임라인 도트 분기 단일화 — 레드닷 조건 꼬임 방지 */

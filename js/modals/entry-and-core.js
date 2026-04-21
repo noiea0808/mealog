@@ -18,7 +18,7 @@ import {
 import { getDashboardData } from '../analytics.js';
 import { callableFunctions, db, appId, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import { isDemoUser } from '../demo-account.js';
-import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
+import { doc, getDoc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { applyDemoDateShiftToMealRecord } from '../demo-date-shift.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import {
@@ -2548,11 +2548,38 @@ export async function retryMealEntrySync(entryIdRaw) {
     }
 
     window._mealEntryRetryInFlight[entryId] = true;
-    clearMealEntryServerSynced(entryId);
-    clearMealEntrySyncAbandonedById(entryId);
-    clearMealSyncGraceTimer(entryId);
-    markMealEntrySaveInFlight(entryId);
     try {
+        /** 등록예정인데 서버 문서가 이미 있으면 재저장·inFlight 없이 ack만 — reconcile 직후 재시도에서 초록→레드 깜빡임 방지 */
+        if (getMealRowSyncLeadKind(record) === 'register_scheduled' && !entryId.startsWith('temp_')) {
+            const uid = window.currentUser?.uid;
+            if (uid) {
+                try {
+                    const ref = doc(db, 'artifacts', appId, 'users', uid, 'meals', entryId);
+                    const snap = await getDocFromServer(ref);
+                    if (snap.exists()) {
+                        onMealDocFirestoreServerAcknowledged(entryId, null);
+                        markMealEntryServerWorkComplete(entryId, null, `${record.date || ''}__${record.slotId || ''}`);
+                        invalidateTimelineDateSection(record.date);
+                        updateTimelineMealEntryPendingIndicators();
+                        if (appState.currentTab === 'timeline') renderTimeline();
+                        void import('../main/meal-sync-resend-header.js').then((m) => {
+                            try {
+                                if (typeof m.refreshMealSyncResendNavButton === 'function') m.refreshMealSyncResendNavButton();
+                            } catch (_) {
+                                /* ignore */
+                            }
+                        });
+                        return;
+                    }
+                } catch (chkErr) {
+                    console.warn('retryMealEntrySync server check:', chkErr?.message || chkErr);
+                }
+            }
+        }
+        clearMealEntryServerSynced(entryId);
+        clearMealEntrySyncAbandonedById(entryId);
+        clearMealSyncGraceTimer(entryId);
+        markMealEntrySaveInFlight(entryId);
         const isTemp = entryId.startsWith('temp_');
         const payload = { ...record };
         delete payload._localSaveFailed;

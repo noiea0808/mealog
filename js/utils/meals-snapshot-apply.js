@@ -21,7 +21,8 @@ import {
     clearStuckMealPendingFlags,
     markMealEntryServerSynced,
     markMealEntryDeleteComplete,
-    onMealDocFirestoreServerAcknowledged
+    onMealDocFirestoreServerAcknowledged,
+    scheduleReconcileStaleMealSyncDotsAfterSnapshot
 } from './meal-entry-pending.js';
 import { applyOptimisticMealDelete } from './meal-delete-optimistic.js';
 import { showToast } from '../ui.js';
@@ -358,6 +359,9 @@ export function applyMealsSnapshotPrimary(p) {
 
     clearStuckMealPendingFlags();
     if (onDataUpdate) onDataUpdate();
+    if (!demo) {
+        scheduleReconcileStaleMealSyncDotsAfterSnapshot();
+    }
     return { uidMismatch: false };
 }
 
@@ -410,6 +414,9 @@ export function applyMealsSnapshotFallback(p) {
     });
     firstSnapshotState.value = false;
     if (onDataUpdate) onDataUpdate();
+    if (!demo) {
+        scheduleReconcileStaleMealSyncDotsAfterSnapshot();
+    }
     return { uidMismatch: false };
 }
 

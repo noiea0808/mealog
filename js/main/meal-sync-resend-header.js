@@ -4,7 +4,8 @@
 import { isDemoUser } from '../demo-account.js';
 import {
     countMealCloudFabManualRetryEntries,
-    countMealSyncFabScheduledChipEntries
+    countMealSyncFabScheduledChipEntries,
+    countMealSyncFabRedDotTransportSyncEntries
 } from '../utils/meal-entry-pending.js';
 import { showToast } from '../ui.js';
 import { appState } from '../state.js';
@@ -69,6 +70,16 @@ export function refreshMealSyncResendNavButton() {
     const draftN = countOfflineDraftMeals();
     const scheduled = countMealSyncFabScheduledChipEntries();
     const retry = countMealCloudFabManualRetryEntries();
+    const redDotSync = countMealSyncFabRedDotTransportSyncEntries();
+
+    /** 온라인에서 Firestore 쓰기·삭제 진행(레드닷) 중에는 FAB 숨김 — 예정 칩 뱃지와 역할 분리 */
+    if (!transportOff && redDotSync > 0) {
+        btn.classList.add('hidden');
+        btn.classList.remove('meal-sync-resend-fab--stacked', 'meal-sync-resend-fab--transport-offline');
+        if (badge) badge.classList.add('hidden', 'meal-sync-resend-fab__badge--retry-only');
+        syncInitialRecordsLoadFabStacked();
+        return;
+    }
 
     if (transportOff) {
         btn.classList.remove('hidden');
@@ -76,10 +87,14 @@ export function refreshMealSyncResendNavButton() {
         btn.classList.toggle('meal-sync-resend-fab--stacked', appState.currentTab === 'board');
         btn.setAttribute('aria-label', MEAL_SYNC_FAB_ARIA_OFFLINE);
         btn.setAttribute('title', '오프라인 — 연결되면 자동으로 동기화돼요');
+        const offlineBadgeNum =
+            scheduled > 0 ? scheduled : retry > 0 ? retry : draftN;
         if (badge) {
-            if (draftN > 0) {
-                badge.textContent = draftN > 99 ? '99+' : String(draftN);
-                badge.classList.remove('hidden', 'meal-sync-resend-fab__badge--retry-only');
+            if (offlineBadgeNum > 0) {
+                badge.textContent = offlineBadgeNum > 99 ? '99+' : String(offlineBadgeNum);
+                badge.classList.remove('hidden');
+                if (scheduled === 0 && retry > 0) badge.classList.add('meal-sync-resend-fab__badge--retry-only');
+                else badge.classList.remove('meal-sync-resend-fab__badge--retry-only');
             } else {
                 badge.classList.add('hidden');
                 badge.classList.remove('meal-sync-resend-fab__badge--retry-only');
@@ -148,7 +163,10 @@ export function bindMealSyncResendNavButtonOnce() {
                 try {
                     const pend = await import('../utils/meal-entry-pending.js');
                     if (typeof pend.reconcileMealSyncUiAfterWriteQueueFlush === 'function') {
-                        pend.reconcileMealSyncUiAfterWriteQueueFlush();
+                        await pend.reconcileMealSyncUiAfterWriteQueueFlush();
+                    }
+                    if (typeof pend.reconcileStaleMealSyncDotsAgainstServer === 'function') {
+                        await pend.reconcileStaleMealSyncDotsAgainstServer();
                     }
                 } catch (_) {
                     /* ignore */

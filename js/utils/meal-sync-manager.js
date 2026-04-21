@@ -569,8 +569,10 @@ export class MealSyncManager {
     /**
      * 클라이언트 쓰기 큐가 비었는데도 스냅샷이 fromCache 등으로 ack를 놓치면 await_server_ack·pending이 남는다.
      * waitForPendingWrites 직후에만 호출한다.
+     * 서버에 meal 문서가 실제로 있을 때만 ack — 로컬만 앞서 간 상태에서 초록으로 잘못 올라가는 것을 막는다.
+     * @returns {Promise<void>}
      */
-    reconcileSyncUiAfterClientWriteQueueFlush() {
+    async reconcileSyncUiAfterClientWriteQueueFlush() {
         if (typeof window === 'undefined') return;
         if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
         /** localNetworkForcedOffline 만으로 막지 않음 — `online` 이벤트 없이 복귀한 경우에도 큐 flush 후 초록 도트로 맞출 수 있어야 함 */
@@ -590,6 +592,10 @@ export class MealSyncManager {
                 this.clearInFlight(id);
             }
         }
+
+        const uid = window.currentUser?.uid;
+        const candidates = [];
+        const seenCand = new Set();
         for (const m of hist) {
             if (!m?.id) continue;
             const id = String(m.id);
@@ -604,16 +610,39 @@ export class MealSyncManager {
             const kind = this.getRowSyncLeadKind(m);
             if (kind === 'redoable_failed') continue;
             if (kind === 'register_scheduled') {
-                this.onServerDocumentAcknowledged(id, null);
+                if (!seenCand.has(id)) {
+                    seenCand.add(id);
+                    candidates.push(id);
+                }
                 continue;
             }
             if (
                 (kind === 'await_server_ack' || kind === 'pending' || kind === 'redoable_abandoned') &&
                 !this.hasInFlight(id)
             ) {
-                this.onServerDocumentAcknowledged(id, null);
+                if (!seenCand.has(id)) {
+                    seenCand.add(id);
+                    candidates.push(id);
+                }
             }
         }
+
+        if (candidates.length === 0) return;
+        if (!uid) return;
+
+        await Promise.all(
+            candidates.map(async (id) => {
+                try {
+                    const ref = doc(db, 'artifacts', appId, 'users', uid, 'meals', id);
+                    const snap = await getDocFromServer(ref);
+                    if (snap.exists()) {
+                        this.onServerDocumentAcknowledged(id, null);
+                    }
+                } catch (e) {
+                    console.warn('reconcileSyncUi server verify:', id, e?.message || e);
+                }
+            })
+        );
     }
 
     /**
@@ -657,6 +686,84 @@ export class MealSyncManager {
             this.markDeleteComplete(id);
             this.clearDeleteFailed(id);
             if (prev) applyOptimisticMealDelete(id, prev);
+        }
+    }
+
+    /**
+     * 스냅샷 메타(hasPendingWrites·fromCache)와 어긋나 레드닷·삭제 표시가 고착된 경우,
+     * getDocFromServer으로 서버 실체와 맞춘다.
+     * @returns {Promise<void>}
+     */
+    async reconcileStaleMealSyncDotsAgainstServer() {
+        if (typeof window === 'undefined') return;
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+        if (appState.localNetworkForcedOffline === true) return;
+        const uid = window.currentUser?.uid;
+        if (!uid || window.currentUser?.isAnonymous) return;
+        const hist = window.mealHistory;
+        if (!Array.isArray(hist) || hist.length === 0) return;
+
+        const tasks = [];
+        const seen = new Set();
+        for (const m of hist) {
+            if (!m?.id) continue;
+            const id = String(m.id);
+            if (id.startsWith('temp_') || seen.has(id)) continue;
+            const kind = this.getRowSyncLeadKind(m);
+            if (
+                kind !== 'pending' &&
+                kind !== 'await_server_ack' &&
+                kind !== 'delete_inflight' &&
+                kind !== 'delete_scheduled'
+            ) {
+                continue;
+            }
+            seen.add(id);
+            tasks.push({ id, kind, record: m });
+        }
+        if (tasks.length === 0) return;
+
+        const { applyOptimisticMealDelete } = await import('./meal-delete-optimistic.js');
+
+        const reads = await Promise.all(
+            tasks.map(async ({ id, kind, record }) => {
+                try {
+                    const ref = doc(db, 'artifacts', appId, 'users', uid, 'meals', id);
+                    const snap = await getDocFromServer(ref);
+                    return { id, kind, record, exists: snap.exists() };
+                } catch (e) {
+                    console.warn('reconcileStaleMealSyncDotsAgainstServer read:', id, e?.message || e);
+                    return { id, kind, record, exists: null };
+                }
+            })
+        );
+
+        const deletes = reads.filter(
+            (r) => r.exists === false && (r.kind === 'delete_scheduled' || r.kind === 'delete_inflight')
+        );
+        const acks = reads.filter(
+            (r) => r.exists === true && (r.kind === 'pending' || r.kind === 'await_server_ack')
+        );
+        const fallbacks = reads.filter(
+            (r) => r.exists === false && (r.kind === 'pending' || r.kind === 'await_server_ack')
+        );
+
+        for (const r of deletes) {
+            const prev = window.mealHistory?.find((m) => m && String(m.id) === r.id);
+            this.markDeleteComplete(r.id);
+            this.clearDeleteFailed(r.id);
+            if (prev) applyOptimisticMealDelete(r.id, prev);
+        }
+
+        for (const r of acks) {
+            this.onServerDocumentAcknowledged(r.id, null);
+        }
+
+        for (const r of fallbacks) {
+            this.promoteToRegisterScheduledChip(r.id, {
+                dateStr: r.record?.date,
+                currentTab: appState.currentTab
+            });
         }
     }
 
@@ -805,6 +912,29 @@ export class MealSyncManager {
     }
 
     /** FAB 배지: 등록예정·삭제예정 칩(레드닷 진행 제외) 건수 */
+    /**
+     * 온라인일 때 레드닷 동기화 진행 중(pending / 서버 반영 대기 / 삭제 중) 건수.
+     * 이 동안에는 FAB를 숨겨 예정 칩 전용 뱃지와 역할이 겹치지 않게 한다.
+     */
+    countMealSyncFabRedDotTransportSyncEntries() {
+        if (typeof window === 'undefined' || !Array.isArray(window.mealHistory)) return 0;
+        if (isMealSyncUiEffectiveOfflineFab()) return 0;
+        const seen = new Set();
+        let n = 0;
+        for (const m of window.mealHistory) {
+            if (!m?.id) continue;
+            const id = String(m.id);
+            if (id.startsWith('temp_')) continue;
+            if (seen.has(id)) continue;
+            const k = this.getRowSyncLeadKind(m);
+            if (k === 'pending' || k === 'await_server_ack' || k === 'delete_inflight') {
+                seen.add(id);
+                n++;
+            }
+        }
+        return n;
+    }
+
     countMealSyncFabScheduledChipEntries() {
         if (typeof window === 'undefined' || !Array.isArray(window.mealHistory)) return 0;
         const effOff = isMealSyncUiEffectiveOfflineFab();

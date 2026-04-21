@@ -80,10 +80,13 @@ async function flushMealWriteQueueAndRefreshSyncUi() {
     try {
         const m = await import('../utils/meal-entry-pending.js');
         if (typeof m.reconcileMealSyncUiAfterWriteQueueFlush === 'function') {
-            m.reconcileMealSyncUiAfterWriteQueueFlush();
+            await m.reconcileMealSyncUiAfterWriteQueueFlush();
         }
         if (typeof m.reconcilePendingMealDeletesWithServer === 'function') {
             await m.reconcilePendingMealDeletesWithServer();
+        }
+        if (typeof m.reconcileStaleMealSyncDotsAgainstServer === 'function') {
+            await m.reconcileStaleMealSyncDotsAgainstServer();
         }
         if (typeof m.clearStuckMealPendingFlags === 'function') {
             m.clearStuckMealPendingFlags();

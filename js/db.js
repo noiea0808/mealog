@@ -14,7 +14,15 @@ export {
     peekLatestSharedPhotoTimestampMs
 } from './db/listeners.js';
 export { postInteractions, subscribeToMyPostComments, getUserReportForPost, submitReport, withdrawReport, getReportsAggregateByGroupKeys } from './db/social.js';
-export { boardOperations, noticeOperations, getAdminDisplayName, invalidateAdminDisplayNameCache, deleteBoardPostByAdmin, setBoardPostHidden } from './db/board.js';
+export {
+    boardOperations,
+    noticeOperations,
+    getAdminDisplayName,
+    getMomentsFeedView,
+    invalidateAdminDisplayNameCache,
+    deleteBoardPostByAdmin,
+    setBoardPostHidden
+} from './db/board.js';
 export {
     feedOperations,
     FEED_TIMELINE_BATCH_SIZE,

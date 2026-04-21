@@ -712,6 +712,10 @@ window.switchAdminSettingsSub = function (sub) {
         const key = panel.id.replace('adminSettingsSub-', '');
         panel.classList.toggle('hidden', key !== sub);
     });
+    const settingsAside = document.getElementById('adminSettingsMainAside');
+    if (settingsAside) {
+        settingsAside.classList.toggle('hidden', sub === 'displayName');
+    }
     if (sub === 'welcome_api') {
         bindAdminWelcomeApiOnce();
     }
@@ -1562,6 +1566,12 @@ async function loadAdminSettings() {
         cachedAdminDisplayName = displayName || '관리자';
         inputEl.value = cachedAdminDisplayName;
 
+        const mfv = data.momentsFeedView;
+        const mfvVal = mfv === 2 || mfv === '2' ? '2' : '1';
+        document.querySelectorAll('input[name="momentsFeedView"]').forEach((r) => {
+            r.checked = r.value === mfvVal;
+        });
+
         const ap = data.attendancePopup && typeof data.attendancePopup === 'object' ? data.attendancePopup : {};
         fillAttendancePopupForm(ap);
 
@@ -1588,9 +1598,11 @@ window.saveAdminDisplayName = async function() {
     const inputEl = document.getElementById('adminDisplayNameInput');
     if (!inputEl) return;
     const value = inputEl.value.trim() || '관리자';
+    const momentsFeedView =
+        document.querySelector('input[name="momentsFeedView"]:checked')?.value === '2' ? 2 : 1;
     try {
         const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
-        await setDoc(configRef, { displayName: value }, { merge: true });
+        await setDoc(configRef, { displayName: value, momentsFeedView }, { merge: true });
         cachedAdminDisplayName = value;
         invalidateAdminDisplayNameCache();
         alert('저장되었습니다.');

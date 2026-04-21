@@ -12,10 +12,19 @@ import { getPostIdFromPhotoGroup, preloadAdjacentGalleryImages } from './post-gr
 import { fetchUserProfiles } from './user-profiles.js';
 import { formatMealMenuDisplayLine, mergeMealDisplayFields } from '../utils/meal-display-line.js';
 import { applyCollapsedCaptionToElement } from './comment-caption-layout.js';
+import { getMomentsFeedView } from '../db.js';
 
 export async function renderFeed() {
     const container = document.getElementById('feedContent');
     if (!container) return;
+    let layoutV2 = false;
+    try {
+        layoutV2 = (await getMomentsFeedView()) === '2';
+    } catch (_) {
+        layoutV2 = false;
+    }
+    container.classList.toggle('moment-feed-layout-v2', layoutV2);
+    container.setAttribute('data-moment-feed-layout', layoutV2 ? '2' : '1');
     const photosToUse = window.sharedPhotosFeed || [];
     
     if (photosToUse.length === 0) {
@@ -297,16 +306,22 @@ export async function renderFeed() {
         
         const userDisplay = getDisplayProfile(photo.userId, { nickname: photo.userNickname, icon: photo.userIcon, photoUrl: photo.userPhotoUrl });
         const avatarDisplay = getProfileAvatarDisplay(userDisplay);
+        const cardOuter = layoutV2
+            ? `mb-3 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-200/90'} rounded-xl overflow-hidden shadow-sm instagram-post`
+            : `mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden instagram-post`;
+        const headPad = layoutV2 ? 'px-3 py-2.5' : 'px-2 py-3';
+        const avSize = layoutV2 ? 'w-8 h-8' : 'w-10 h-10';
+        const avIconCls = layoutV2 ? 'text-sm' : 'text-lg';
         return `
-            <div class="mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden instagram-post" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}">
-                <div class="px-2 py-3 flex items-center gap-3 relative">
+            <div class="${cardOuter}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}">
+                <div class="${headPad} flex items-center gap-3 relative">
                     ${avatarDisplay.type === 'photo' ? `
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${avatarDisplay.value}); background-size: cover; background-position: center;">
+                        <div class="${avSize} rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${avatarDisplay.value}); background-size: cover; background-position: center;">
                             ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
                         </div>
                     ` : `
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200 text-lg'}">
-                            ${isGuestPost ? '게' : (avatarDisplay.type === 'default' ? '<i class="fa-solid fa-user text-lg"></i>' : escapeHtml(avatarDisplay.value))}
+                        <div class="${avSize} rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200 ' + avIconCls}">
+                            ${isGuestPost ? '게' : (avatarDisplay.type === 'default' ? `<i class="fa-solid fa-user ${avIconCls}"></i>` : escapeHtml(avatarDisplay.value))}
                         </div>
                     `}
                     <div class="flex-1 min-w-0 mr-2">
@@ -323,7 +338,7 @@ export async function renderFeed() {
                         </button>
                     </div>
                 </div>
-                <div class="relative overflow-hidden ${(isDailyShare || isInsightShare) ? 'bg-white' : 'bg-slate-100'}">
+                <div class="relative overflow-hidden ${(isDailyShare || isInsightShare) ? 'bg-white' : layoutV2 ? 'bg-slate-50' : 'bg-slate-100'}">
                     <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gallery-photo-scroll" data-moment-urls="${momentUrlsEncoded}" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
                         ${photosHtml}
                     </div>

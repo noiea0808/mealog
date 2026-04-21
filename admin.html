@@ -1781,9 +1781,9 @@
                         </div>
                         
                         <!-- 웰컴메시지 (좌측: 문구/API · 상단 탭: 관리자명) -->
-                        <div id="content-main-settings" class="content-main-section hidden">
+                            <div id="content-main-settings" class="content-main-section hidden">
                             <div class="flex flex-col lg:flex-row gap-4 lg:gap-8">
-                                <aside class="w-full lg:w-32 shrink-0 flex flex-col gap-1.5 bg-white rounded-2xl shadow-sm border border-slate-100 p-3 lg:pr-2">
+                                <aside id="adminSettingsMainAside" class="w-full lg:w-32 shrink-0 flex flex-col gap-1.5 bg-white rounded-2xl shadow-sm border border-slate-100 p-3 lg:pr-2">
                                     <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide px-1 mb-0.5">메뉴</p>
                                     <button type="button" data-settings-sub="welcome" class="admin-settings-subnav-btn w-full text-left px-4 py-2 rounded-xl text-sm font-bold border transition-colors text-emerald-600 bg-emerald-50 border-emerald-200">
                                         웰컴메시지
@@ -2009,6 +2009,23 @@
                                                     <button type="button" onclick="window.saveAdminDisplayName()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
                                                         저장
                                                     </button>
+                                                </div>
+                                            </div>
+                                            <div class="bg-slate-50 rounded-xl p-6 border border-slate-200 mt-4">
+                                                <h3 class="text-base font-black text-slate-800 mb-2 flex items-center gap-2">
+                                                    <i class="fa-solid fa-images text-blue-600"></i>
+                                                    모먼트 보기 화면
+                                                </h3>
+                                                <p class="text-sm text-slate-500 mb-3">앱 모먼트 탭 피드 레이아웃입니다. <span class="font-bold text-slate-600">스테이징 앱·스테이징 웹에서만</span> 적용되며, 운영(프로덕션) 앱은 항상 화면 1(기존)입니다.</p>
+                                                <div class="flex flex-wrap gap-4 items-center" role="radiogroup" aria-label="모먼트 보기 화면">
+                                                    <label class="inline-flex items-center gap-2 cursor-pointer text-sm font-bold text-slate-700">
+                                                        <input type="radio" name="momentsFeedView" value="1" class="text-emerald-600 focus:ring-emerald-500" checked>
+                                                        화면 1 (기존)
+                                                    </label>
+                                                    <label class="inline-flex items-center gap-2 cursor-pointer text-sm font-bold text-slate-700">
+                                                        <input type="radio" name="momentsFeedView" value="2" class="text-emerald-600 focus:ring-emerald-500">
+                                                        화면 2 (New)
+                                                    </label>
                                                 </div>
                                             </div>
                                         </div>

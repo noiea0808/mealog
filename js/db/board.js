@@ -3,6 +3,7 @@ import { db, appId, callableFunctions } from '../firebase.js';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, query, orderBy, limit, where, getDocs, getDocsFromServer, onSnapshot, serverTimestamp, writeBatch, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { showToast } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
+import { getMealogClientEnv } from '../utils.js';
 import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
 
 // 게시판 관련 함수들
@@ -686,6 +687,8 @@ const ADMIN_DISPLAY_NAME_CACHE_MS = 60000; // 1분 캐시
 export function invalidateAdminDisplayNameCache() {
     cachedAdminDisplayName = null;
     cachedAdminDisplayNameAt = 0;
+    cachedMomentsFeedView = null;
+    cachedMomentsFeedViewAt = 0;
 }
 
 export async function getAdminDisplayName() {
@@ -703,6 +706,33 @@ export async function getAdminDisplayName() {
     } catch (e) {
         console.warn('관리자 표시 이름 로드 실패:', e);
         return cachedAdminDisplayName || '관리자';
+    }
+}
+
+/** 모먼트(갤러리) 피드 레이아웃 — adminSettings/config.momentsFeedView `1`(기본) | `2` */
+let cachedMomentsFeedView = null;
+let cachedMomentsFeedViewAt = 0;
+
+export async function getMomentsFeedView() {
+    /** 화면 2 등 분기는 스테이징 클라이언트에서만 적용. 운영·기타 환경은 항상 기존(화면 1). */
+    if (typeof window === 'undefined' || getMealogClientEnv() !== 'staging') {
+        return '1';
+    }
+    const now = Date.now();
+    if (cachedMomentsFeedView !== null && now - cachedMomentsFeedViewAt < ADMIN_DISPLAY_NAME_CACHE_MS) {
+        return cachedMomentsFeedView;
+    }
+    try {
+        const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
+        const snap = await getDoc(configRef);
+        const raw = snap.exists() ? snap.data().momentsFeedView : null;
+        const v = raw === 2 || raw === '2' ? '2' : '1';
+        cachedMomentsFeedView = v;
+        cachedMomentsFeedViewAt = now;
+        return v;
+    } catch (e) {
+        console.warn('모먼트 피드 화면 설정 로드 실패:', e);
+        return cachedMomentsFeedView || '1';
     }
 }
 
