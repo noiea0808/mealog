@@ -291,8 +291,9 @@ service cloud.firestore {
     // ============================================
     // 피드 북마크 (postBookmarks 컬렉션)
     // ============================================
+    // 좋아요(postLikes)와 동일: 게시물별 개수·동기화를 위해 로그인 사용자 전원 읽기 허용
     match /artifacts/{appId}/postBookmarks/{bookmarkId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated();
       allow create: if isOwnerOfRequestResource() && !isReadOnlyDemoAccount();
       allow update: if false;
       allow delete: if isOwnerOfResource() && !isReadOnlyDemoAccount();

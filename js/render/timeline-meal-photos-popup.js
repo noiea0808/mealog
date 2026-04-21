@@ -12,6 +12,96 @@ import {
 
 const OVERLAY_ID = 'timelineMealPhotosOverlay';
 
+window._mealPhotoOverlayOpenComment = (postId) => {
+    const o = document.getElementById(OVERLAY_ID);
+    o?._mealPhotosClose?.();
+    window.toggleCommentInput?.(postId);
+};
+
+/** 모먼트 카드와 동일한 좋아요·북마크 표시로 오버레이 버튼 초기 동기화 */
+function syncMealPhotoOverlaySocialFromFeed(overlayEl) {
+    if (!overlayEl?.querySelector) return;
+    overlayEl.querySelectorAll('.post-like-btn[data-post-id]').forEach((btn) => {
+        const pid = btn.getAttribute('data-post-id');
+        if (!pid) return;
+        const srcIcon = document.querySelector(`.instagram-post .post-like-btn[data-post-id="${pid}"] .post-like-icon`);
+        const dstIcon = btn.querySelector('.post-like-icon');
+        if (!srcIcon || !dstIcon) return;
+        const liked = srcIcon.classList.contains('fa-solid');
+        dstIcon.className =
+            'post-like-icon timeline-meal-photo-moment-social-icon ' +
+            (liked ? 'fa-solid fa-heart' : 'fa-regular fa-heart text-white/95');
+    });
+    overlayEl.querySelectorAll('.post-bookmark-btn[data-post-id]').forEach((btn) => {
+        const pid = btn.getAttribute('data-post-id');
+        if (!pid) return;
+        const srcIcon = document.querySelector(`.instagram-post .post-bookmark-btn[data-post-id="${pid}"] .post-bookmark-icon`);
+        const dstIcon = btn.querySelector('.post-bookmark-icon');
+        if (!srcIcon || !dstIcon) return;
+        const marked = srcIcon.classList.contains('fa-solid');
+        dstIcon.className =
+            'post-bookmark-icon timeline-meal-photo-moment-social-icon ' +
+            (marked ? 'fa-solid fa-bookmark' : 'fa-regular fa-bookmark text-white/95');
+    });
+    overlayEl.querySelectorAll('.post-like-count[data-post-id]').forEach((el) => {
+        const pid = el.getAttribute('data-post-id');
+        if (!pid) return;
+        const feed = document.querySelector(`.instagram-post .post-like-count[data-post-id="${pid}"]`);
+        if (feed) el.textContent = feed.textContent || '';
+    });
+}
+
+/** 서버에서 좋아요 수를 불러와 오버레이 숫자 갱신(북마크는 숫자 미표시) */
+async function hydrateMealPhotoOverlaySocialCounts(overlayEl) {
+    const pi = window.postInteractions;
+    if (!overlayEl?.querySelector || !pi?.getLikes) return;
+    const ids = [
+        ...new Set(
+            [...overlayEl.querySelectorAll('.post-like-count[data-post-id]')]
+                .map((el) => el.getAttribute('data-post-id'))
+                .filter(Boolean)
+        )
+    ];
+    for (const postId of ids) {
+        try {
+            const likes = await pi.getLikes(postId).catch(() => []);
+            const likeN = Array.isArray(likes) ? likes.length : 0;
+            overlayEl.querySelectorAll(`.post-like-count[data-post-id="${postId}"]`).forEach((el) => {
+                el.textContent = likeN > 0 ? String(likeN) : '';
+            });
+        } catch (_) {
+            /* ignore */
+        }
+    }
+}
+
+/** 휠 하단: 글 작성 시 넣은 기록 코멘트(소셜 댓글 아님) */
+function syncMealPhotoOverlayAuthorCommentLine(overlayEl, row) {
+    const footer = overlayEl?.querySelector?.('.timeline-meal-photos-caption-footer');
+    const band = footer?.querySelector?.('[data-meal-overlay-comment-band]');
+    const body = footer?.querySelector?.('[data-meal-overlay-comment-body]');
+    if (!band || !body) return;
+    let r = row;
+    if ((!r || !String(r.authorMealComment || '').trim()) && overlayEl?._mealPhotosVTrack) {
+        const vtrack = overlayEl._mealPhotosVTrack;
+        const slides = vtrack.querySelectorAll('.timeline-meal-photos-vslide');
+        const si = getVTrackActiveIndex(vtrack);
+        const slide = slides[si];
+        if (slide) {
+            const resolved = getCarouselRowForSlide(slide, overlayEl);
+            if (resolved) r = resolved;
+        }
+    }
+    const text = String(r?.authorMealComment || '').trim();
+    if (!text) {
+        band.classList.add('hidden');
+        body.innerHTML = '';
+        return;
+    }
+    band.classList.remove('hidden');
+    body.innerHTML = `<div class="whitespace-pre-wrap break-words">${escapeHtml(text)}</div>`;
+}
+
 /** 캐러셀 마우스 축 잠금용 document 리스너 — add/remove 시 동일 객체 참조 필요 */
 const MEAL_PHOTO_CAROUSEL_DOC_CAPTURE = { passive: false, capture: true };
 function removeMealPhotoCarouselDocumentPointerListeners(overlayEl) {
@@ -147,6 +237,41 @@ function buildPhotoIndexOnImageHtml(index1Based, nPhotos) {
     return `<div class="pointer-events-none absolute right-[3px] top-[3px] z-[3] rounded bg-black/75 px-1 py-0.5 text-[10px] font-black tabular-nums leading-none text-white">${index1Based}/${nPhotos}</div>`;
 }
 
+/** 모먼트 휠: 사진 위 좌상단 프로필·우상단 좋아요/댓글/북마크 */
+function buildMomentOverlayChromeHtml(row) {
+    const postId = row.overlayPostId;
+    const a = row.overlayAuthor;
+    if (!postId || !a) return '';
+    const nick = escapeHtml(String(a.nickname || ''));
+    const pidJson = JSON.stringify(String(postId));
+    let avatarBlock;
+    if (a.avatarType === 'photo' && a.avatarValue) {
+        const url = escapeHtml(String(a.avatarValue));
+        const inner = `<div class="timeline-meal-photo-moment-avatar h-8 w-8 rounded-full bg-slate-800/25 bg-cover bg-center shadow-inner" style="background-image:url('${url}')"></div>`;
+        avatarBlock = a.isGuestPost
+            ? `<div class="relative shrink-0">${inner}<span class="absolute bottom-0 right-0 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-white/40 bg-black/50 text-[7px] font-bold text-white">게</span></div>`
+            : inner;
+    } else if (a.avatarType === 'default') {
+        avatarBlock = `<div class="timeline-meal-photo-moment-avatar flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-800/30 shadow-inner"><i class="fa-solid fa-user text-sm text-white/90" aria-hidden="true"></i></div>`;
+    } else {
+        const ch = escapeHtml(String(a.avatarValue || '').slice(0, 1));
+        avatarBlock = `<div class="timeline-meal-photo-moment-avatar flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-800/30 text-sm font-medium text-white/95 shadow-inner">${ch}</div>`;
+    }
+    return `<div class="timeline-meal-photo-moment-chrome pointer-events-none absolute inset-0 z-[18] flex flex-col">
+            <div class="pointer-events-none flex justify-between gap-2 px-2 pt-[max(6px,env(safe-area-inset-top,0px))]">
+                <button type="button" class="timeline-meal-photo-moment-chrome-chip pointer-events-auto flex max-w-[min(100%,14rem)] items-center gap-2 rounded-full border border-white/35 bg-white/50 py-0 pl-1 pr-2.5 text-left shadow-sm backdrop-blur-sm active:bg-white/60" onclick='window.filterGalleryByUser && window.filterGalleryByUser(${JSON.stringify(String(a.userId || ''))}, ${JSON.stringify(String(a.nickname || ''))})'>
+                    ${avatarBlock}
+                    <span class="timeline-meal-photo-moment-nick truncate text-base font-bold text-slate-700">${nick}</span>
+                </button>
+                <div class="pointer-events-auto timeline-meal-photo-moment-social-row flex shrink-0 items-center">
+                    <button type="button" class="post-like-btn timeline-meal-photo-moment-social-btn timeline-meal-photo-moment-social-hit inline-flex h-9 min-h-9 shrink-0 items-center justify-center gap-0 rounded-full" data-post-id="${escapeHtml(String(postId))}" data-requires-login="true" onclick='window.toggleLike(${pidJson})' aria-label="좋아요"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-9 w-9 shrink-0 items-center justify-center" aria-hidden="true"><i class="fa-regular fa-heart text-white/95 post-like-icon timeline-meal-photo-moment-social-icon"></i></span><span class="post-like-count timeline-meal-photo-moment-social-count pointer-events-none tabular-nums" data-post-id="${escapeHtml(String(postId))}" aria-hidden="true"></span></button>
+                    <button type="button" class="post-comment-btn timeline-meal-photo-moment-social-btn flex h-9 w-9 shrink-0 items-center justify-center rounded-full" data-post-id="${escapeHtml(String(postId))}" data-requires-login="true" onclick='window._mealPhotoOverlayOpenComment && window._mealPhotoOverlayOpenComment(${pidJson})' aria-label="댓글"><i class="fa-regular fa-comment text-white/95 timeline-meal-photo-moment-social-icon" aria-hidden="true"></i></button>
+                    <button type="button" class="post-bookmark-btn timeline-meal-photo-moment-social-btn flex h-9 w-9 shrink-0 items-center justify-center rounded-full" data-post-id="${escapeHtml(String(postId))}" data-requires-login="true" onclick='window.toggleBookmark(${pidJson})' aria-label="북마크"><i class="fa-regular fa-bookmark text-white/95 post-bookmark-icon timeline-meal-photo-moment-social-icon" aria-hidden="true"></i></button>
+                </div>
+            </div>
+        </div>`;
+}
+
 function addCalendarMonth(year, month, delta) {
     const d = new Date(year, month - 1 + delta, 1);
     return { y: d.getFullYear(), mo: d.getMonth() + 1 };
@@ -262,6 +387,7 @@ function buildCarouselZoneHtml(row, opts = {}) {
             ? `<button type="button" class="timeline-meal-photo-expand timeline-meal-photo-expand--wheel-chip pointer-events-auto absolute bottom-1 left-1/2 z-[4] -translate-x-1/2 cursor-pointer rounded-full border border-white/25 bg-black/65 px-2 py-0.5 text-[10px] font-bold leading-none text-white shadow-sm hover:bg-black/80" data-expand-date="${escapeHtml(row.dateStr)}" data-expand-slot="${escapeHtml(row.slotId)}" data-expand-record="${escapeHtml(row.recordId || '')}" aria-label="사진 ${hidden}장 더 보기">+${hidden}장</button>`
             : '';
     const cellsHtml = buildHorizontalPhotoCellsHtml(row, urls, 0, nTotal, false, { omitPerCellIndex: true });
+    const momentChrome = buildMomentOverlayChromeHtml(row);
     const badgeInner =
         nTotal > 1
             ? `<span data-carousel-badge-cur class="carousel-badge-num leading-none">1</span><span class="carousel-badge-sep leading-none" aria-hidden="true">/</span><span data-carousel-badge-tot class="carousel-badge-num leading-none">${nTotal}</span>`
@@ -272,7 +398,8 @@ function buildCarouselZoneHtml(row, opts = {}) {
                     <div class="timeline-meal-photos-hstrip scrollbar-hide flex min-h-0 h-full w-full min-w-0 select-none flex-row overflow-x-auto overflow-y-hidden overscroll-x-contain snap-x snap-mandatory" style="-webkit-overflow-scrolling:touch;touch-action:pan-x;scroll-snap-type:x mandatory" tabindex="-1">
                         ${cellsHtml}
                     </div>
-                    <div class="timeline-meal-photos-carousel-badge pointer-events-none absolute z-10 flex items-baseline gap-0 rounded bg-black/50 px-1.5 py-0.5 tabular-nums leading-none text-white${badgeHidden}" data-carousel-badge>${badgeInner}</div>
+                    ${momentChrome}
+                    <div class="timeline-meal-photos-carousel-badge pointer-events-none absolute z-10 flex items-baseline gap-0 rounded-md border-0 bg-black/35 px-2 py-1 tabular-nums leading-none text-white/95 shadow-sm backdrop-blur-sm${badgeHidden}" data-carousel-badge>${badgeInner}</div>
                 </div>
                 ${expandMini}
             </div>
@@ -312,7 +439,7 @@ function buildMenuBarBelowPhotoHtml(row) {
 
 /** 휠 모드: 스테이지 하단 고정 라벨(날짜·슬롯 | 메뉴@장소) — DOM은 오버레이에 한 번만 두고 `syncMealPhotoWheelFromVtrack`로 갱신 */
 function buildMealPhotoGlobalCaptionFooterHtml() {
-    return `<div class="timeline-meal-photos-caption-footer hidden w-full shrink-0 justify-center px-0.5">
+    return `<div class="timeline-meal-photos-caption-footer hidden w-full shrink-0 flex flex-col justify-center gap-1 px-0.5">
             <div class="timeline-meal-photos-slide-caption-inner flex w-full max-w-full min-w-0 items-center rounded-md border border-white/10 bg-black/50 text-white timeline-meal-photo-menu-bar">
             <div class="timeline-meal-photos-wheelbar-inner flex min-w-0 flex-1 items-center gap-0">
                 <div class="meal-photo-wheel-col meal-photo-wheel-col--year flex shrink-0 flex-col items-center justify-center">
@@ -350,6 +477,9 @@ function buildMealPhotoGlobalCaptionFooterHtml() {
                 </div>
             </div>
             <div class="pointer-events-none min-w-0 max-w-[55%] shrink-0 text-right" data-wheel-menu-caption></div>
+            </div>
+            <div class="timeline-meal-photos-overlay-comment-band pointer-events-none hidden block w-full min-w-0 rounded-md border border-white/10 bg-black/45 px-1.5 py-1.5 text-left text-white backdrop-blur-sm" data-meal-overlay-comment-band>
+                <div class="timeline-meal-photos-overlay-comment-body max-h-[4.5rem] min-h-0 overflow-y-auto" data-meal-overlay-comment-body></div>
             </div>
         </div>`;
 }
@@ -425,12 +555,20 @@ function getCarouselRowForSlide(slide, el) {
         const r = el._mealPhotoRows?.[0];
         return r?.isLegacy ? r : null;
     }
+    const vtrack = el._mealPhotosVTrack;
+    const slides = vtrack?.querySelectorAll?.('.timeline-meal-photos-vslide');
+    const slideIndex = slides && slide ? Array.prototype.indexOf.call(slides, slide) : -1;
+    const rows = el._mealPhotoRows;
+    /* vtrack 안 슬라이드 순서와 _mealPhotoRows 인덱스는 동일 — date/slot 누락·불일치 시에도 overlayPostId 등 행 조회 */
+    if (slideIndex >= 0 && Array.isArray(rows) && slideIndex < rows.length && rows[slideIndex]) {
+        return rows[slideIndex];
+    }
     const ds = slide.getAttribute('data-date-str');
     const sid = slide.getAttribute('data-slot-id');
     const ra = slide.getAttribute('data-record-id');
     /* 모먼트 공유 등: date/slot이 비어도 휠 모드는 행이 1개뿐이면 _mealPhotoRows[0]이 해당 슬라이드 */
-    if ((!ds || !sid) && el._mealPhotoRows?.length === 1 && slide.classList.contains('timeline-meal-photos-vslide--photo-only')) {
-        const only = el._mealPhotoRows[0];
+    if ((!ds || !sid) && rows?.length === 1 && slide.classList.contains('timeline-meal-photos-vslide--photo-only')) {
+        const only = rows[0];
         if (only?.urls?.length) return only;
     }
     if (!ds || !sid) return null;
@@ -526,6 +664,7 @@ function anchorCarouselBadgeToActivePhoto(frame) {
         badge.style.removeProperty('right');
         badge.style.removeProperty('left');
         badge.style.removeProperty('bottom');
+        badge.style.removeProperty('transform');
         return;
     }
     const nCell = hstrip.querySelectorAll('.timeline-meal-photo-cell').length;
@@ -540,14 +679,15 @@ function anchorCarouselBadgeToActivePhoto(frame) {
     const ir = anchor.getBoundingClientRect();
     const vr = viewport.getBoundingClientRect();
     if (ir.width < 4 || ir.height < 4) return;
-    const inset = 3;
-    const top = ir.top - vr.top + inset;
-    const right = vr.right - ir.right + inset;
+    const inset = 8;
+    const bottom = vr.bottom - ir.bottom + inset;
+    const cx = (ir.left + ir.right) / 2 - vr.left;
     badge.style.position = 'absolute';
-    badge.style.top = `${Math.max(0, Math.round(top))}px`;
-    badge.style.right = `${Math.max(0, Math.round(right))}px`;
-    badge.style.left = 'auto';
-    badge.style.bottom = 'auto';
+    badge.style.top = 'auto';
+    badge.style.right = 'auto';
+    badge.style.bottom = `${Math.max(0, Math.round(bottom))}px`;
+    badge.style.left = `${Math.round(cx)}px`;
+    badge.style.transform = 'translateX(-50%)';
 }
 
 function scheduleCarouselBadgeAnchor(frame) {
@@ -1197,6 +1337,7 @@ function syncMealPhotoWheelFromVtrack(el, vtrack) {
     if (menuEl && row) {
         menuEl.innerHTML = buildBottomCaption(row);
     }
+    syncMealPhotoOverlayAuthorCommentLine(el, row);
     const wdStrip = bar.querySelector('[data-wheel-label-strip="weekday"]');
     animateWheelTextStrip(wdStrip, weekdayKoShortFromIso(iso), direction, shouldAnim);
     const parts = parseWheelIsoParts(iso);
@@ -1816,6 +1957,8 @@ export function openTimelineMealPhotosPopup(btn) {
                 vtrack.scrollTop += scrollDeltaToCenterSlideInVtrack(vtrack, target);
             }
             el._mealPhotosSync?.();
+            syncMealPhotoOverlaySocialFromFeed(el);
+            void hydrateMealPhotoOverlaySocialCounts(el);
             el._mealPhotosToggleNav?.();
             el._mealPhotosToggleVNav?.();
             clearTimeout(el._mealPhotoWheelLabelTimer);
@@ -1949,6 +2092,8 @@ export function openMealPhotosWheelOverlayFromBtn(btn) {
             vtrack.scrollTop += scrollDeltaToCenterSlideInVtrack(vtrack, target);
         }
         el._mealPhotosSync?.();
+        syncMealPhotoOverlaySocialFromFeed(el);
+        void hydrateMealPhotoOverlaySocialCounts(el);
         el._mealPhotosToggleNav?.();
         el._mealPhotosToggleVNav?.();
         clearTimeout(el._mealPhotoWheelLabelTimer);

@@ -433,17 +433,126 @@ header .mealog-title {
     -webkit-user-drag: none;
     user-select: none;
 }
-/* 우상단 현재/전체: 하단 라벨(메뉴바)과 동일 서체 — 숫자·슬래시 2단계 크기 */
+/* 현재/전체 뱃지: 사진 하단 중앙(JS로 translateX(-50%)) — 하단 라벨(메뉴바)과 동일 서체, 테두리 없음 */
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-badge {
     font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
     font-weight: 400;
+    border: none !important;
+}
+/* 모먼트 휠 팝업: 사진 위 프로필·소셜 칩 — 반투명·블러로 사진과 분리 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-chrome {
+    pointer-events: none;
+}
+/* 프로필+닉 칩: 아이콘(h-8=32px) + 4px = 36px → h-9 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-chrome-chip {
+    box-shadow: 0 1px 8px rgba(15, 23, 42, 0.2);
+    box-sizing: border-box;
+    min-height: calc(2rem + 4px);
+    height: calc(2rem + 4px);
+}
+/* 모먼트 팝업 프로필 아이콘: 1px 흰색 링 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-avatar {
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 255, 255, 0.92) !important;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-nick {
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-weight: 700;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-btn {
+    box-sizing: border-box;
+    border: none !important;
+    background-color: rgba(15, 23, 42, 0.4) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.28);
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-btn:active {
+    background-color: rgba(15, 23, 42, 0.52) !important;
+}
+/* 소셜 3열 간격 (아이콘 칩 사이) */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row {
+    gap: 0.5rem;
+    align-items: center;
+}
+/* 좋아요·북마크: 왼쪽 36px는 항상 아이콘 전용(선택 전과 동일), 숫자는 그 오른쪽에만 확장 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-hit {
+    box-sizing: border-box;
+    min-width: 2.25rem;
+    width: 2.25rem;
+    max-width: min(100%, 12rem);
+    padding: 0;
+    overflow: visible;
+    transition: width 0.18s ease, min-width 0.18s ease, padding 0.18s ease;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-icon-slot {
+    flex: 0 0 2.25rem;
+    width: 2.25rem;
+    min-width: 2.25rem;
+    height: 2.25rem;
+    box-sizing: border-box;
+}
+#timelineMealPhotosOverlay:not(.hidden) .post-like-btn.timeline-meal-photo-moment-social-hit:has(.post-like-count:not(:empty)) {
+    width: auto;
+    min-width: 2.25rem;
+    padding-left: 0;
+    padding-right: 0.5rem;
+    gap: 0 !important;
+    justify-content: flex-start;
+}
+/* FA regular: 추가 윤곽 없이 얇은 선체 — text-lg(18px) 대비 1px 작게 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-icon {
+    -webkit-text-stroke: 0 transparent;
+    paint-order: normal;
+    font-size: 17px;
+    line-height: 1;
+}
+/* 좋아요 선택: 윤곽선 0.5px(기존 대비 얇게) + 안쪽 빨강 fill α0.7, 아이콘 크기 17→16px */
+#timelineMealPhotosOverlay:not(.hidden) .post-like-btn.timeline-meal-photo-moment-social-btn.timeline-meal-photo-moment-social-hit {
+    overflow: visible;
+}
+#timelineMealPhotosOverlay:not(.hidden) .post-like-btn .post-like-icon.fa-solid.fa-heart.timeline-meal-photo-moment-social-icon {
+    color: rgba(239, 68, 68, 0.7);
+    -webkit-text-stroke: 0.5px rgba(255, 255, 255, 0.95);
+    paint-order: stroke fill;
+    font-size: 16px;
+}
+/* 북마크 선택: 안쪽 흰 채움 α0.7 */
+#timelineMealPhotosOverlay:not(.hidden) .post-bookmark-btn .post-bookmark-icon.fa-solid.fa-bookmark.timeline-meal-photo-moment-social-icon {
+    color: rgba(255, 255, 255, 0.7);
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-count {
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1;
+    min-width: 0.65rem;
+    color: rgba(255, 255, 255, 0.92);
+    text-shadow: 0 1px 2px rgba(15, 23, 42, 0.45);
+}
+/* 카운트 없을 때는 숨겨 레이아웃 폭 0 — 숫자 생기면 아이콘 옆 슬롯만 가로 확장 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-count:empty {
+    display: none;
+    width: 0;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+/* 휠 하단: 작성자 기록 코멘트 — 기존 text-xs(0.75rem) 대비 +2px, 좌측 1자 여백 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-overlay-comment-body {
+    -webkit-overflow-scrolling: touch;
+    padding-left: 1ch;
+    font-size: calc(0.75rem + 2px);
+    font-weight: 400;
+    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.9);
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-badge .carousel-badge-num {
-    font-size: 1.125rem;
+    font-size: 1rem;
     line-height: 1;
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-badge .carousel-badge-sep {
-    font-size: 0.6875rem;
+    font-size: 0.5625rem;
     opacity: 0.9;
     padding: 0 0.1em;
     font-family: inherit;

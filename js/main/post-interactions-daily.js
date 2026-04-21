@@ -775,26 +775,26 @@ window.toggleLike = async (postId) => {
     
     try {
         const result = await postInteractions.toggleLike(postId, window.currentUser.uid);
-        const likeBtn = document.querySelector(`.post-like-btn[data-post-id="${postId}"]`);
-        const likeIcon = likeBtn?.querySelector('.post-like-icon');
-        const likeCountEl = document.querySelector(`.post-like-count[data-post-id="${postId}"]`);
-        
-        if (likeBtn && likeIcon) {
+
+        document.querySelectorAll(`.post-like-btn[data-post-id="${postId}"]`).forEach((likeBtn) => {
+            const likeIcon = likeBtn.querySelector('.post-like-icon');
+            if (!likeIcon) return;
+            const inOverlay = Boolean(likeBtn.closest('#timelineMealPhotosOverlay'));
             if (result.liked) {
-                likeIcon.classList.remove('fa-regular', 'fa-heart', 'text-slate-800');
-                likeIcon.classList.add('fa-solid', 'fa-heart', 'text-red-500');
+                likeIcon.classList.remove('fa-regular', 'fa-heart', 'text-slate-800', 'text-white', 'text-white/95', 'text-red-500');
+                likeIcon.classList.add('fa-solid', 'fa-heart', ...(inOverlay ? [] : ['text-red-500']));
             } else {
-                likeIcon.classList.remove('fa-solid', 'fa-heart', 'text-red-500');
-                likeIcon.classList.add('fa-regular', 'fa-heart', 'text-slate-800');
+                likeIcon.classList.remove('fa-solid', 'fa-heart', 'text-red-500', 'text-red-400');
+                likeIcon.classList.add('fa-regular', 'fa-heart', inOverlay ? 'text-white/95' : 'text-slate-800');
             }
-        }
-        
-        // 실제 좋아요 수 다시 가져오기
-        if (likeCountEl) {
-            const likes = await postInteractions.getLikes(postId);
-            const likeCount = likes.length || 0;
-            likeCountEl.textContent = likeCount > 0 ? likeCount : '';
-        }
+        });
+
+        const likes = await postInteractions.getLikes(postId);
+        const likeCount = likes.length || 0;
+        const likeText = likeCount > 0 ? String(likeCount) : '';
+        document.querySelectorAll(`.post-like-count[data-post-id="${postId}"]`).forEach((el) => {
+            el.textContent = likeText;
+        });
     } catch (e) {
         console.error("좋아요 토글 실패:", e);
         showToast("좋아요 처리 중 오류가 발생했습니다.", 'error');
@@ -816,19 +816,29 @@ window.toggleBookmark = async (postId) => {
     
     try {
         const result = await postInteractions.toggleBookmark(postId, window.currentUser.uid);
-        const bookmarkBtn = document.querySelector(`.post-bookmark-btn[data-post-id="${postId}"]`);
-        const bookmarkIcon = bookmarkBtn?.querySelector('.post-bookmark-icon');
-        
-        if (bookmarkBtn && bookmarkIcon) {
+
+        document.querySelectorAll(`.post-bookmark-btn[data-post-id="${postId}"]`).forEach((bookmarkBtn) => {
+            const bookmarkIcon = bookmarkBtn.querySelector('.post-bookmark-icon');
+            if (!bookmarkIcon) return;
+            const inOverlay = Boolean(bookmarkBtn.closest('#timelineMealPhotosOverlay'));
             if (result.bookmarked) {
-                bookmarkIcon.classList.remove('fa-regular', 'fa-bookmark');
-                bookmarkIcon.classList.add('fa-solid', 'fa-bookmark', 'text-slate-800');
-                showToast("북마크에 추가되었습니다.", 'success');
+                bookmarkIcon.classList.remove('fa-regular', 'fa-bookmark', 'text-white', 'text-slate-800');
+                bookmarkIcon.classList.add('fa-solid', 'fa-bookmark', ...(inOverlay ? [] : ['text-slate-800']));
             } else {
-                bookmarkIcon.classList.remove('fa-solid', 'fa-bookmark', 'text-slate-800');
-                bookmarkIcon.classList.add('fa-regular', 'fa-bookmark');
-                showToast("북마크에서 제거되었습니다.", 'info');
+                bookmarkIcon.classList.remove('fa-solid', 'fa-bookmark', 'text-slate-800', 'text-white', 'text-white/95');
+                bookmarkIcon.classList.add('fa-regular', 'fa-bookmark', inOverlay ? 'text-white/95' : 'text-slate-800');
             }
+        });
+        const bookmarks = await postInteractions.getBookmarks(postId);
+        const bmCount = bookmarks.length || 0;
+        const bmText = bmCount > 0 ? String(bmCount) : '';
+        document.querySelectorAll(`.post-bookmark-count[data-post-id="${postId}"]`).forEach((el) => {
+            el.textContent = bmText;
+        });
+        if (result.bookmarked) {
+            showToast('북마크에 추가되었습니다.', 'success');
+        } else {
+            showToast('북마크에서 제거되었습니다.', 'info');
         }
     } catch (e) {
         console.error("북마크 토글 실패:", e);

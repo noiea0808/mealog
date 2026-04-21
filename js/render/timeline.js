@@ -536,6 +536,7 @@ function mealPhotoViewerRowFromRecord(dateStr, slot, r, ordinal1Based, totalInSl
         urls,
         menuLine,
         place,
+        authorMealComment: String(r.comment || '').trim(),
         mealType: r.mealType || null,
         slotType: slot.type,
         isEmptyRow: false,

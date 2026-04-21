@@ -286,6 +286,12 @@ export async function renderFeed() {
                 if (r?.id) mealHistoryMap.set(r.id, r);
             }
         }
+        const userDisplayForWheel = getDisplayProfile(photo.userId, {
+            nickname: photo.userNickname,
+            icon: photo.userIcon,
+            photoUrl: photo.userPhotoUrl
+        });
+        const avatarDisplayForWheel = getProfileAvatarDisplay(userDisplayForWheel);
         const wheelOverlayRow = layoutV2
             ? buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMap, {
                   entryId,
@@ -293,7 +299,15 @@ export async function renderFeed() {
                   isDailyShare,
                   isInsightShare,
                   isSnack,
-                  aspectRatio
+                  aspectRatio,
+                  overlayPostId: postId,
+                  overlayAuthor: {
+                      nickname: userDisplayForWheel.nickname,
+                      userId: photo.userId,
+                      avatarType: avatarDisplayForWheel.type,
+                      avatarValue: avatarDisplayForWheel.value,
+                      isGuestPost
+                  }
               })
             : null;
         const wheelRowEnc = wheelOverlayRow ? encodeURIComponent(JSON.stringify(wheelOverlayRow)) : '';
@@ -329,8 +343,8 @@ export async function renderFeed() {
         `;
         }).join('');
         
-        const userDisplay = getDisplayProfile(photo.userId, { nickname: photo.userNickname, icon: photo.userIcon, photoUrl: photo.userPhotoUrl });
-        const avatarDisplay = getProfileAvatarDisplay(userDisplay);
+        const userDisplay = userDisplayForWheel;
+        const avatarDisplay = avatarDisplayForWheel;
         const headPad = 'px-2 py-3';
         const avSize = 'w-10 h-10';
         const avIconCls = 'text-lg';

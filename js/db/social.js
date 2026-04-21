@@ -113,7 +113,27 @@ export const postInteractions = {
             throw e;
         }
     },
-    
+
+    /** 특정 게시물의 북마크 문서 목록 (개수 표시용, getLikes와 동일 패턴) */
+    async getBookmarks(postId) {
+        if (!postId) return [];
+        try {
+            const bookmarksColl = collection(db, 'artifacts', appId, 'postBookmarks');
+            const q = query(bookmarksColl, where('postId', '==', postId));
+            const snapshot = await getDocs(q);
+            const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+            list.sort((a, b) => {
+                const timeA = new Date(a.timestamp || 0).getTime();
+                const timeB = new Date(b.timestamp || 0).getTime();
+                return timeB - timeA;
+            });
+            return list;
+        } catch (e) {
+            console.error('Get Bookmarks Error:', e);
+            return [];
+        }
+    },
+
     // 사용자가 북마크 했는지 확인
     async isBookmarked(postId, userId) {
         if (!postId || !userId) return false;
