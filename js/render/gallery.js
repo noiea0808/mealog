@@ -288,6 +288,43 @@ function setupGalleryEventListeners(container, sortedGroups, opts = null) {
     });
 }
 
+/**
+ * 모먼트 휠 오버레이·더보기 공용: 다음 공유 페이지를 불러와 갤러리에 삽입.
+ * @param {{ syncFeed?: boolean }} opts — 피드 탭 DOM과 맞출 때 `syncFeed: true` (갤러리만 쓰는 경우 생략)
+ * @returns {Promise<{ ok: boolean, reason?: string, appended?: number }>}
+ */
+export async function appendMomentFeedNextPage(opts = {}) {
+    const syncFeed = opts.syncFeed === true;
+    const hasMore = appState.sharedPhotosFeedHasMore || appState.sharedPhotosFeedLastDoc;
+    if (!hasMore) return { ok: false, reason: 'no-more' };
+    try {
+        const { loadSharedPhotosPage } = await import('../db.js');
+        const { docs, lastDoc, hasMore: nextHasMore } = await loadSharedPhotosPage(10, appState.sharedPhotosFeedLastDoc);
+        appState.galleryFeedNetworkError = false;
+        window.sharedPhotosFeed = [...(window.sharedPhotosFeed || []), ...docs];
+        appState.sharedPhotosFeedLastDoc = lastDoc;
+        appState.sharedPhotosFeedHasMore = nextHasMore;
+
+        const loadMoreWrap = document.getElementById('galleryLoadMoreWrap');
+        if (docs.length && loadMoreWrap && loadMoreWrap.parentNode) {
+            await appendGalleryPosts(docs, loadMoreWrap);
+        }
+        if (!nextHasMore && loadMoreWrap && loadMoreWrap.parentNode) {
+            loadMoreWrap.remove();
+        }
+
+        if (syncFeed) {
+            const { renderFeed } = await import('./feed.js');
+            await renderFeed();
+        }
+        return { ok: true, appended: docs.length };
+    } catch (e) {
+        console.error('공유 사진 더보기 실패:', e);
+        appState.galleryFeedNetworkError = true;
+        return { ok: false, reason: 'error', error: e };
+    }
+}
+
 /** 더보기 시 새 포스트만 DOM에 추가 (전체 재렌더 없이 깜박임 방지) */
 async function appendGalleryPosts(docs, loadMoreWrap) {
     if (!docs || docs.length === 0 || !loadMoreWrap || !loadMoreWrap.parentNode) return;
@@ -1025,17 +1062,19 @@ export async function renderGallery(options = {}) {
             loadMoreBtn.disabled = true;
             loadMoreBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>로딩 중...';
             try {
-                const { loadSharedPhotosPage } = await import('../db.js');
-                const { docs, lastDoc, hasMore: nextHasMore } = await loadSharedPhotosPage(10, appState.sharedPhotosFeedLastDoc);
-                appState.galleryFeedNetworkError = false;
-                window.sharedPhotosFeed = [...(window.sharedPhotosFeed || []), ...docs];
-                appState.sharedPhotosFeedLastDoc = lastDoc;
-                appState.sharedPhotosFeedHasMore = nextHasMore;
+                const res = await appendMomentFeedNextPage();
                 loadMoreBtn.disabled = false;
-                loadMoreBtn.innerHTML = '<i class="fa-solid fa-chevron-down mr-1.5"></i>더보기';
-                if (!nextHasMore && loadMoreWrap) loadMoreWrap.remove();
-                // 전체 재렌더 대신 새 포스트만 추가 (깜박임 방지)
-                appendGalleryPosts(docs, loadMoreWrap);
+                if (res?.ok) {
+                    loadMoreBtn.innerHTML = '<i class="fa-solid fa-chevron-down mr-1.5"></i>더보기';
+                    if (!appState.sharedPhotosFeedHasMore) {
+                        document.getElementById('galleryLoadMoreWrap')?.remove();
+                    }
+                } else if (res?.reason === 'error') {
+                    if (typeof showToast === 'function') showToast('네트워크가 끊겼습니다. 연결을 확인한 뒤 다시 시도해 주세요.', 'error');
+                    loadMoreBtn.innerHTML = '<i class="fa-solid fa-chevron-down mr-1.5"></i>다시 시도';
+                } else {
+                    loadMoreBtn.innerHTML = '<i class="fa-solid fa-chevron-down mr-1.5"></i>더보기';
+                }
             } catch (e) {
                 console.error('공유 사진 더보기 실패:', e);
                 appState.galleryFeedNetworkError = true;

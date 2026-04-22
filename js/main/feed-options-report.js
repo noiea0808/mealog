@@ -163,31 +163,58 @@ import { syncOrphanedSharesToMoment } from './shares-sync.js';
 
 export function registerMainFeedOptionsReport() {
 // 피드 옵션 관련 함수
-window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '', photoSlotId = '', isDailyShare = false, postId = '', authorUserId = '', isInsightShare = false, dateRangeText = '', caption = '') => {
+window.showFeedOptions = (
+    entryId,
+    photoUrls,
+    isBestShare = false,
+    photoDate = '',
+    photoSlotId = '',
+    isDailyShare = false,
+    postId = '',
+    authorUserId = '',
+    isInsightShare = false,
+    dateRangeText = '',
+    caption = '',
+    placement = 'bottom'
+) => {
     const existingMenu = document.getElementById('feedOptionsMenu');
     if (existingMenu) existingMenu.remove();
     
     const menu = document.createElement('div');
     menu.id = 'feedOptionsMenu';
-    menu.className = 'fixed inset-0 z-[450]';
+    const isCenterPopup = placement === 'center';
+    /* 사진 휠 오버레이(z-310) 위에 두되, 가입 마법사 등(z-550)보다 낮을 수 있어 중앙 메뉴는 충분히 높게 */
+    menu.className = isCenterPopup
+        ? 'fixed inset-0 z-[580] flex items-center justify-center p-4'
+        : 'fixed inset-0 z-[450]';
     
     const isMyPost = window.currentUser && authorUserId && window.currentUser.uid === authorUserId;
     const deleteButtonText = '공유 취소';
     const deleteButtonIcon = 'fa-share';
     
     const bg = document.createElement('div');
-    bg.className = 'fixed inset-0 bg-black/40';
-    bg.onclick = () => menu.remove();
+    bg.className = isCenterPopup ? 'absolute inset-0 bg-black/45' : 'fixed inset-0 bg-black/40';
     
     const menuContainer = document.createElement('div');
-    menuContainer.className = 'fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white rounded-t-3xl p-4 pb-8 animate-fade-up z-[451]';
+    menuContainer.className = isCenterPopup
+        ? 'feed-options-center-panel relative z-[1] w-full max-w-[12rem] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl'
+        : 'fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white rounded-t-3xl p-4 pb-8 animate-fade-up z-[451]';
     
     const handlebar = document.createElement('div');
     handlebar.className = 'w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4';
     
     const buttonContainer = document.createElement('div');
     buttonContainer.className = 'space-y-2';
-    
+
+    function closeMenu() {
+        document.removeEventListener('keydown', onKey);
+        menu.remove();
+    }
+    const onKey = (e) => {
+        if (e.key === 'Escape') closeMenu();
+    };
+    bg.onclick = () => closeMenu();
+
     if (isMyPost) {
         // 1. 수정하기
         const editBtn = document.createElement('button');
@@ -195,7 +222,7 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
         editBtn.type = 'button';
         editBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            menu.remove();
+            closeMenu();
             setTimeout(() => {
                 if (isBestShare) {
                     const photoUrlArray = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(url => url.trim()).filter(url => url) : [];
@@ -234,7 +261,7 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
         externalShareBtn.type = 'button';
         externalShareBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            menu.remove();
+            closeMenu();
             const urls = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(u => u.trim()).filter(Boolean) : [];
             if (urls.length > 0) {
                 try {
@@ -258,7 +285,7 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
         deleteBtn.type = 'button';
         deleteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            menu.remove();
+            closeMenu();
             window.deleteFeedPost(entryId || '', photoUrls || '', isBestShare, isDailyShare, isInsightShare);
         });
         deleteBtn.innerHTML = `<div class="flex items-center gap-3"><i class="fa-solid ${deleteButtonIcon} text-red-500 text-lg"></i><span class="font-bold text-red-500">${deleteButtonText}</span></div>`;
@@ -270,7 +297,7 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
         externalShareBtn.type = 'button';
         externalShareBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            menu.remove();
+            closeMenu();
             const urls = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(u => u.trim()).filter(Boolean) : [];
             if (urls.length > 0) {
                 try {
@@ -293,7 +320,7 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
         reportBtn.type = 'button';
         reportBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            menu.remove();
+            closeMenu();
             const targetGroupKey = isBestShare ? `best_${postId || 'unknown'}` : isDailyShare ? `daily_${photoDate || 'nodate'}_${authorUserId || 'unknown'}` : isInsightShare ? `insight_${dateRangeText || 'no-range'}_${authorUserId || 'unknown'}` : `entry_${entryId || 'none'}_${authorUserId || 'unknown'}`;
             setTimeout(() => window.showReportModal(targetGroupKey), 100);
         });
@@ -303,11 +330,14 @@ window.showFeedOptions = (entryId, photoUrls, isBestShare = false, photoDate = '
     
     // 취소 버튼 없음: 바깥 영역(배경) 탭으로 닫기
     menuContainer.addEventListener('click', (e) => e.stopPropagation());
-    menuContainer.appendChild(handlebar);
+    if (!isCenterPopup) {
+        menuContainer.appendChild(handlebar);
+    }
     menuContainer.appendChild(buttonContainer);
     menu.appendChild(bg);
     menu.appendChild(menuContainer);
     document.body.appendChild(menu);
+    document.addEventListener('keydown', onKey);
 };
 
 // 신고 사유 라벨 (reason id, reasonOther -> 표시 문자열)

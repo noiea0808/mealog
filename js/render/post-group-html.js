@@ -88,6 +88,41 @@ export function buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMap, ctx
         base.overlayAuthor = ctx.overlayAuthor;
         const altIds = photoGroup.map((p) => p.id).filter(Boolean);
         base.overlayPostAlternateIds = [...new Set(altIds)].filter((id) => id !== ctx.overlayPostId);
+        const captionPlain = (() => {
+            if (isBestShare || isDailyShare || isInsightShare) {
+                return (photo.comment || '')
+                    .replace(/<[^>]*>/g, '')
+                    .replace(/&nbsp;/g, ' ')
+                    .replace(/&amp;/g, '&')
+                    .replace(/&lt;/g, '<')
+                    .replace(/&gt;/g, '>')
+                    .replace(/&quot;/g, '"')
+                    .trim();
+            }
+            if (isSnack) {
+                const m = photo.menuDetail || photo.snackType;
+                return photo.place && m ? `${m} @ ${photo.place}` : photo.place || m || '간식';
+            }
+            const mealForLine =
+                entryId && mealHistoryMap && mealHistoryMap.has(entryId)
+                    ? mergeMealDisplayFields(photo, mealHistoryMap.get(entryId))
+                    : photo;
+            const ml = formatMealMenuDisplayLine(mealForLine);
+            return photo.place && ml ? `${ml} @ ${photo.place}` : photo.place || ml || photo.mealType || '';
+        })();
+        base.overlayFeedOptions = {
+            entryId: entryId && entryId !== '' && entryId !== 'null' ? String(entryId) : '',
+            photoUrls: urls.join(','),
+            isBestShare,
+            isDailyShare,
+            isInsightShare,
+            photoDate: dateStr,
+            photoSlotId: slotId,
+            postId: String(ctx.overlayPostId || ''),
+            authorUserId: String((ctx.overlayAuthor && ctx.overlayAuthor.userId) || photo.userId || ''),
+            dateRangeText: String(photo.dateRangeText || ''),
+            captionPlain
+        };
     }
     return base;
 }
