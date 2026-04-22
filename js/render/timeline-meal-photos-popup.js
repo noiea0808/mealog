@@ -14,10 +14,178 @@ import {
 
 const OVERLAY_ID = 'timelineMealPhotosOverlay';
 
+/**
+ * 사진 팝업 소셜 댓글 아이콘 — `overlay` 댓글 박스 열림 시 `fa-solid`·채움, 아닐 때 `fa-regular`
+ * @param {string} postId
+ * @param {boolean} filled
+ */
+function setMealPhotoOverlayPostCommentIconFilled(overlayEl, postId, filled) {
+    if (!overlayEl?.querySelectorAll || !postId) return;
+    const p = String(postId);
+    let btn;
+    overlayEl.querySelectorAll('.post-comment-btn[data-post-id]').forEach((b) => {
+        if (b.getAttribute('data-post-id') === p) btn = b;
+    });
+    const icon = btn?.querySelector?.('.post-comment-icon');
+    if (!icon) return;
+    icon.classList.remove('fa-regular', 'fa-solid', 'text-white/95', 'text-slate-800');
+    if (filled) {
+        icon.classList.add('fa-solid', 'fa-comment', 'text-white/95', 'post-comment-icon', 'timeline-meal-photo-moment-social-icon');
+    } else {
+        icon.classList.add('fa-regular', 'fa-comment', 'text-white/95', 'post-comment-icon', 'timeline-meal-photo-moment-social-icon');
+    }
+}
+
+function getMealPhotoOverlayActiveRow(overlayEl) {
+    const vtrack = overlayEl?._mealPhotosVTrack;
+    if (!vtrack) return null;
+    const slides = vtrack.querySelectorAll('.timeline-meal-photos-vslide');
+    if (!slides.length) return null;
+    const si = getVTrackActiveIndex(vtrack);
+    return getCarouselRowForSlide(slides[si], overlayEl);
+}
+
+/** 댓글 패널 높이만큼 본문 `padding-bottom`에 맞출 값(px). flex 가운데 정렬로 잘리는 문제를 피하려고 예약 영역을 쓴다. */
+function updateMealPhotoOverlayPostCommentsReserve(overlayEl) {
+    if (!overlayEl) return;
+    if (!overlayEl._mealPhotoPostCommentsOpen) {
+        overlayEl.style.removeProperty('--meal-overlay-post-comments-reserve');
+        return;
+    }
+    const panel = overlayEl.querySelector('[data-meal-overlay-post-comments-panel]');
+    if (!panel || panel.classList.contains('hidden')) {
+        overlayEl.style.removeProperty('--meal-overlay-post-comments-reserve');
+        return;
+    }
+    const h = Math.round(panel.getBoundingClientRect().height);
+    if (h > 0) {
+        overlayEl.style.setProperty('--meal-overlay-post-comments-reserve', `${h}px`);
+    } else {
+        overlayEl.style.removeProperty('--meal-overlay-post-comments-reserve');
+    }
+}
+
+function ensureMealPhotoOverlayPostCommentsPanelReserveObserver(overlayEl) {
+    if (!overlayEl || overlayEl._mealPhotoPostCommentsReserveObserverBound) return;
+    const panel = overlayEl.querySelector('[data-meal-overlay-post-comments-panel]');
+    if (!panel) return;
+    overlayEl._mealPhotoPostCommentsReserveObserverBound = true;
+    const ro = new ResizeObserver(() => {
+        if (!overlayEl._mealPhotoPostCommentsOpen) return;
+        updateMealPhotoOverlayPostCommentsReserve(overlayEl);
+        if (overlayEl.classList.contains('timeline-meal-photos-overlay--wheel')) {
+            requestAnimationFrame(() => runMealPhotoWheelLabelLayoutWhenReady(overlayEl));
+        } else {
+            overlayEl._mealPhotosLayout?.();
+        }
+    });
+    ro.observe(panel);
+    overlayEl._mealPhotoPostCommentsPanelResizeObserver = ro;
+}
+
+function hideMealPhotoOverlayPostCommentsPanel(overlayEl) {
+    if (!overlayEl) return;
+    overlayEl.classList.remove('timeline-meal-photos-overlay--post-comments-open');
+    overlayEl.style.removeProperty('--meal-overlay-post-comments-reserve');
+    const panel = overlayEl.querySelector('[data-meal-overlay-post-comments-panel]');
+    if (panel) {
+        panel.classList.add('hidden');
+        panel.classList.remove('flex', 'flex-col');
+    }
+    const pid = overlayEl._mealPhotoPostCommentsPostId;
+    overlayEl._mealPhotoPostCommentsOpen = false;
+    overlayEl._mealPhotoPostCommentsPostId = null;
+    if (pid) setMealPhotoOverlayPostCommentIconFilled(overlayEl, pid, false);
+    const inp = overlayEl.querySelector('[data-meal-overlay-post-comments-input]');
+    if (inp) inp.value = '';
+    requestAnimationFrame(() => {
+        overlayEl._mealPhotosLayout?.();
+        if (overlayEl.classList.contains('timeline-meal-photos-overlay--wheel')) {
+            requestAnimationFrame(() => runMealPhotoWheelLabelLayoutWhenReady(overlayEl));
+        }
+    });
+}
+
+/**
+ * @param {string} postId
+ * @param {{ closeOnly?: boolean }} [opts] — `true`이면 켜져 있을 때 끄기(토글 닫힘)만
+ */
+function toggleMealPhotoOverlayPostCommentPanel(overlayEl, postId, opts = {}) {
+    if (!overlayEl || overlayEl.classList.contains('hidden') || !postId) return;
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        window.requestLogin?.();
+        return;
+    }
+    const closeOnly = opts.closeOnly === true;
+    const sameOpen =
+        overlayEl._mealPhotoPostCommentsOpen && String(overlayEl._mealPhotoPostCommentsPostId) === String(postId);
+    if (closeOnly) {
+        if (sameOpen) hideMealPhotoOverlayPostCommentsPanel(overlayEl);
+        return;
+    }
+    if (sameOpen) {
+        hideMealPhotoOverlayPostCommentsPanel(overlayEl);
+        return;
+    }
+
+    if (overlayEl._mealPhotoAuthorCommentBoxVisible) {
+        overlayEl._mealPhotoAuthorCommentBoxVisible = false;
+        const row = getMealPhotoOverlayActiveRow(overlayEl);
+        syncMealPhotoOverlayAuthorCommentLine(overlayEl, row);
+        updateMealPhotoCommentToggleUi(overlayEl);
+    }
+
+    const panel = overlayEl.querySelector('[data-meal-overlay-post-comments-panel]');
+    const list = overlayEl.querySelector('[data-meal-overlay-post-comments-list]');
+    const inp = overlayEl.querySelector('[data-meal-overlay-post-comments-input]');
+    if (!panel || !list || !inp) return;
+
+    overlayEl._mealPhotoPostCommentsOpen = true;
+    overlayEl._mealPhotoPostCommentsPostId = String(postId);
+    setMealPhotoOverlayPostCommentIconFilled(overlayEl, postId, true);
+
+    overlayEl.classList.add('timeline-meal-photos-overlay--post-comments-open');
+    panel.classList.remove('hidden');
+    panel.classList.add('flex', 'flex-col');
+    ensureMealPhotoOverlayPostCommentsPanelReserveObserver(overlayEl);
+    void window.loadPostCommentsForMealPhotoOverlayList?.(String(postId), list);
+    requestAnimationFrame(() => {
+        updateMealPhotoOverlayPostCommentsReserve(overlayEl);
+        overlayEl._mealPhotosLayout?.();
+        requestAnimationFrame(() => {
+            if (overlayEl.classList.contains('timeline-meal-photos-overlay--wheel')) {
+                runMealPhotoWheelLabelLayoutWhenReady(overlayEl);
+            }
+            requestAnimationFrame(() => {
+                updateMealPhotoOverlayPostCommentsReserve(overlayEl);
+            });
+        });
+        try {
+            inp.focus();
+        } catch (_) {
+            /* ignore */
+        }
+    });
+}
+
+function maybeCloseMealPhotoPostCommentsOnPostChange(overlayEl) {
+    if (!overlayEl?._mealPhotoPostCommentsOpen) return;
+    const row = getMealPhotoOverlayActiveRow(overlayEl);
+    const ap = row?.overlayPostId != null && String(row.overlayPostId) !== '' ? String(row.overlayPostId) : null;
+    const st = overlayEl._mealPhotoPostCommentsPostId != null ? String(overlayEl._mealPhotoPostCommentsPostId) : null;
+    if (!ap || !st || ap !== st) hideMealPhotoOverlayPostCommentsPanel(overlayEl);
+}
+
+/** 소셜 댓글 아이콘: 팝업 댓글 박스에 맞게 재동기화 */
+function syncMealPhotoOverlayPostCommentIconState(overlayEl) {
+    if (!overlayEl?._mealPhotoPostCommentsOpen || !overlayEl?._mealPhotoPostCommentsPostId) return;
+    setMealPhotoOverlayPostCommentIconFilled(overlayEl, overlayEl._mealPhotoPostCommentsPostId, true);
+}
+
 window._mealPhotoOverlayOpenComment = (postId) => {
     const o = document.getElementById(OVERLAY_ID);
-    o?._mealPhotosClose?.();
-    window.toggleCommentInput?.(postId);
+    if (!o || o.classList.contains('hidden')) return;
+    toggleMealPhotoOverlayPostCommentPanel(o, String(postId));
 };
 
 /** 모먼트 휠 오버레이 ⋮ 메뉴 — 피드와 동일 옵션을 중앙 팝업으로 */
@@ -79,31 +247,62 @@ function syncMealPhotoOverlaySocialFromFeed(overlayEl) {
     });
 }
 
-/** 서버에서 좋아요 수를 불러와 오버레이 숫자 갱신(북마크는 숫자 미표시) */
-async function hydrateMealPhotoOverlaySocialCounts(overlayEl) {
+/**
+ * 팝업만 피드 카드(`.instagram-post`)에 없을 때(타임라인 휠 등) — 서버·DOM 중 최종 상태로 아이콘·개수 갱신
+ * `syncMealPhotoOverlaySocialFromFeed` 후 호출(서버가 피드 미러보다 우선)
+ */
+async function hydrateMealPhotoOverlaySocial(overlayEl) {
     const pi = window.postInteractions;
     if (!overlayEl?.querySelector || !pi?.getLikes) return;
+    const u = window.currentUser;
+    const canUser = u && !u.isAnonymous;
     const ids = [
         ...new Set(
-            [...overlayEl.querySelectorAll('.post-like-count[data-post-id]')]
+            [...overlayEl.querySelectorAll('.post-like-btn[data-post-id], .post-bookmark-btn[data-post-id]')]
                 .map((el) => el.getAttribute('data-post-id'))
                 .filter(Boolean)
         )
     ];
     for (const postId of ids) {
         try {
-            const likes = await pi.getLikes(postId).catch(() => []);
+            const likesP = pi.getLikes(postId).catch(() => []);
+            const likedP = canUser && pi.isLiked ? pi.isLiked(postId, u.uid).catch(() => false) : Promise.resolve(false);
+            const markP = canUser && pi.isBookmarked ? pi.isBookmarked(postId, u.uid).catch(() => false) : Promise.resolve(false);
+            const [likes, isLiked, isMarked] = await Promise.all([likesP, likedP, markP]);
             const likeN = Array.isArray(likes) ? likes.length : 0;
             overlayEl.querySelectorAll(`.post-like-count[data-post-id="${postId}"]`).forEach((el) => {
                 el.textContent = likeN > 0 ? String(likeN) : '';
+            });
+            overlayEl.querySelectorAll(`.post-like-btn[data-post-id="${postId}"]`).forEach((likeBtn) => {
+                const likeIcon = likeBtn.querySelector('.post-like-icon');
+                if (!likeIcon) return;
+                if (isLiked) {
+                    likeIcon.classList.remove('fa-regular', 'fa-heart', 'text-slate-800', 'text-white', 'text-white/95', 'text-red-500');
+                    likeIcon.classList.add('fa-solid', 'fa-heart', 'timeline-meal-photo-moment-social-icon');
+                } else {
+                    likeIcon.classList.remove('fa-solid', 'fa-heart', 'text-red-500', 'text-red-400');
+                    likeIcon.classList.add('fa-regular', 'fa-heart', 'text-white/95', 'timeline-meal-photo-moment-social-icon');
+                }
+            });
+            overlayEl.querySelectorAll(`.post-bookmark-btn[data-post-id="${postId}"]`).forEach((bookmarkBtn) => {
+                const ic = bookmarkBtn.querySelector('.post-bookmark-icon');
+                if (!ic) return;
+                if (isMarked) {
+                    ic.classList.remove('fa-regular', 'fa-bookmark', 'text-white', 'text-slate-800', 'text-white/95');
+                    ic.classList.add('fa-solid', 'fa-bookmark', 'timeline-meal-photo-moment-social-icon');
+                } else {
+                    ic.classList.remove('fa-solid', 'fa-bookmark', 'text-slate-800', 'text-white', 'text-white/95');
+                    ic.classList.add('fa-regular', 'fa-bookmark', 'text-white/95', 'timeline-meal-photo-moment-social-icon');
+                }
             });
         } catch (_) {
             /* ignore */
         }
     }
+    syncMealPhotoOverlayPostCommentIconState(overlayEl);
 }
 
-/** 휠 하단: 글 작성 시 넣은 기록 코멘트(소셜 댓글 아님) */
+/** 휠 하단: 글 작성 시 넣은 기록 코멘트(소셜 댓글 아님) — 토글이 켜졌을 때만 밴드 표시 */
 function syncMealPhotoOverlayAuthorCommentLine(overlayEl, row) {
     const footer = overlayEl?.querySelector?.('.timeline-meal-photos-caption-footer');
     const band = footer?.querySelector?.('[data-meal-overlay-comment-band]');
@@ -124,10 +323,27 @@ function syncMealPhotoOverlayAuthorCommentLine(overlayEl, row) {
     if (!text) {
         band.classList.add('hidden');
         body.innerHTML = '';
+        updateMealPhotoCommentToggleUi(overlayEl);
         return;
     }
-    band.classList.remove('hidden');
     body.innerHTML = `<div class="whitespace-pre-wrap break-words">${escapeHtml(text)}</div>`;
+    if (overlayEl._mealPhotoAuthorCommentBoxVisible === true) {
+        band.classList.remove('hidden');
+    } else {
+        band.classList.add('hidden');
+    }
+    updateMealPhotoCommentToggleUi(overlayEl);
+}
+
+/** `comment` 토글 버튼(휠 모드) — 온/오프 UI 동기화 */
+function updateMealPhotoCommentToggleUi(overlayEl) {
+    if (!overlayEl?.querySelector) return;
+    const on = overlayEl._mealPhotoAuthorCommentBoxVisible === true;
+    overlayEl.querySelectorAll('[data-meal-photo-comment-toggle]').forEach((btn) => {
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        btn.classList.toggle('timeline-meal-photo-comment-toggle--on', on);
+        btn.classList.toggle('timeline-meal-photo-comment-toggle--off', !on);
+    });
 }
 
 /** 캐러셀 마우스 축 잠금용 document 리스너 — add/remove 시 동일 객체 참조 필요 */
@@ -265,13 +481,20 @@ function buildPhotoIndexOnImageHtml(index1Based, nPhotos) {
     return `<div class="pointer-events-none absolute right-[3px] top-[3px] z-[3] rounded bg-black/75 px-1 py-0.5 text-[10px] font-black tabular-nums leading-none text-white">${index1Based}/${nPhotos}</div>`;
 }
 
-/** 모먼트 휠: 사진 위 좌상단 프로필·우상단 좋아요/댓글/북마크 */
+/** 사진 팝업 오버레이: 좋아요·댓글·북마크 (캐러셀 하단앵커) */
+function buildMealPhotoOverlaySocialButtonsHtml(postId) {
+    const pid = escapeHtml(String(postId));
+    const pidJson = JSON.stringify(String(postId));
+    return `<button type="button" class="post-like-btn timeline-meal-photo-moment-social-btn timeline-meal-photo-moment-social-hit inline-flex h-8 min-h-8 shrink-0 items-center justify-center gap-0 rounded-full" data-post-id="${pid}" data-requires-login="true" onclick='window.toggleLike(${pidJson})' aria-label="좋아요"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-8 w-8 shrink-0 items-center justify-center" aria-hidden="true"><i class="fa-regular fa-heart text-white/95 post-like-icon timeline-meal-photo-moment-social-icon"></i></span><span class="post-like-count timeline-meal-photo-moment-social-count pointer-events-none tabular-nums" data-post-id="${pid}" aria-hidden="true"></span></button><button type="button" class="post-comment-btn timeline-meal-photo-moment-social-btn flex h-8 w-8 shrink-0 items-center justify-center rounded-full" data-post-id="${pid}" data-requires-login="true" onclick='window._mealPhotoOverlayOpenComment && window._mealPhotoOverlayOpenComment(${pidJson})' aria-label="댓글"><i class="fa-regular fa-comment post-comment-icon text-white/95 timeline-meal-photo-moment-social-icon" aria-hidden="true"></i></button><button type="button" class="post-bookmark-btn timeline-meal-photo-moment-social-btn flex h-8 w-8 shrink-0 items-center justify-center rounded-full" data-post-id="${pid}" data-requires-login="true" onclick='window.toggleBookmark(${pidJson})' aria-label="북마크"><i class="fa-regular fa-bookmark text-white/95 post-bookmark-icon timeline-meal-photo-moment-social-icon" aria-hidden="true"></i></button>`;
+}
+
+/** 모먼트 휠: 사진 위 좌상단 프로필·우상단 미트볼(옵션) — 소셜은 사진 하단 우측 앵커 */
 function buildMomentOverlayChromeHtml(row) {
     const postId = row.overlayPostId;
     const a = row.overlayAuthor;
     if (!postId || !a) return '';
     const nick = escapeHtml(String(a.nickname || ''));
-    const pidJson = JSON.stringify(String(postId));
+    const meatball = buildMealPhotoMeatballBtnHtml(row);
     let avatarBlock;
     if (a.avatarType === 'photo' && a.avatarValue) {
         const url = escapeHtml(String(a.avatarValue));
@@ -286,16 +509,12 @@ function buildMomentOverlayChromeHtml(row) {
         avatarBlock = `<div class="timeline-meal-photo-moment-avatar flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-800/30 text-sm font-medium text-white/95 shadow-inner">${ch}</div>`;
     }
     return `<div class="timeline-meal-photo-moment-chrome pointer-events-none absolute inset-0 z-[18] flex flex-col">
-            <div class="pointer-events-none flex justify-between gap-2 px-2 pt-1.5">
+            <div class="pointer-events-none flex items-center justify-between gap-2 px-2 pt-1.5">
                 <button type="button" class="timeline-meal-photo-moment-chrome-chip pointer-events-auto flex max-w-[min(100%,14rem)] items-center gap-2 rounded-full border border-white/35 bg-white/50 py-0 pl-1 pr-2.5 text-left shadow-sm backdrop-blur-sm active:bg-white/60" onclick='window.filterGalleryByUser && window.filterGalleryByUser(${JSON.stringify(String(a.userId || ''))}, ${JSON.stringify(String(a.nickname || ''))})'>
                     ${avatarBlock}
                     <span class="timeline-meal-photo-moment-nick truncate text-base font-bold text-slate-700">${nick}</span>
                 </button>
-                <div class="pointer-events-auto timeline-meal-photo-moment-social-row flex shrink-0 items-center">
-                    <button type="button" class="post-like-btn timeline-meal-photo-moment-social-btn timeline-meal-photo-moment-social-hit inline-flex h-9 min-h-9 shrink-0 items-center justify-center gap-0 rounded-full" data-post-id="${escapeHtml(String(postId))}" data-requires-login="true" onclick='window.toggleLike(${pidJson})' aria-label="좋아요"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-9 w-9 shrink-0 items-center justify-center" aria-hidden="true"><i class="fa-regular fa-heart text-white/95 post-like-icon timeline-meal-photo-moment-social-icon"></i></span><span class="post-like-count timeline-meal-photo-moment-social-count pointer-events-none tabular-nums" data-post-id="${escapeHtml(String(postId))}" aria-hidden="true"></span></button>
-                    <button type="button" class="post-comment-btn timeline-meal-photo-moment-social-btn flex h-9 w-9 shrink-0 items-center justify-center rounded-full" data-post-id="${escapeHtml(String(postId))}" data-requires-login="true" onclick='window._mealPhotoOverlayOpenComment && window._mealPhotoOverlayOpenComment(${pidJson})' aria-label="댓글"><i class="fa-regular fa-comment text-white/95 timeline-meal-photo-moment-social-icon" aria-hidden="true"></i></button>
-                    <button type="button" class="post-bookmark-btn timeline-meal-photo-moment-social-btn flex h-9 w-9 shrink-0 items-center justify-center rounded-full" data-post-id="${escapeHtml(String(postId))}" data-requires-login="true" onclick='window.toggleBookmark(${pidJson})' aria-label="북마크"><i class="fa-regular fa-bookmark text-white/95 post-bookmark-icon timeline-meal-photo-moment-social-icon" aria-hidden="true"></i></button>
-                </div>
+                ${meatball}
             </div>
         </div>`;
 }
@@ -400,12 +619,25 @@ function buildHorizontalPhotoCellsHtml(row, urlsSlice, globalStart0, nTotal, wit
         .join('');
 }
 
-/** 모먼트: 사진 영역 우하단 미트볼(가로 ⋯) — `overlayFeedOptions` 있을 때만 */
+/** 모먼트: 상단 오른쪽 ⋮ — `overlayFeedOptions` 있을 때만(absolute 아님, 크롬 행에 배치) */
 function buildMealPhotoMeatballBtnHtml(row) {
     const fo = row.overlayFeedOptions;
     if (!fo) return '';
     const attr = ` data-meal-feed-options="${encodeURIComponent(JSON.stringify(fo))}"`;
-    return `<button type="button" class="timeline-meal-photo-meatball-btn timeline-meal-photo-moment-social-btn pointer-events-auto absolute z-[11] flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-0"${attr} data-meal-photo-meatball="1" onclick="event.stopPropagation();window._openMealOverlayFeedOptions&&window._openMealOverlayFeedOptions(this)" aria-label="더보기" aria-haspopup="true"><i class="fa-solid fa-ellipsis timeline-meal-photo-meatball-icon text-white/95" aria-hidden="true"></i></button>`;
+    return `<button type="button" class="timeline-meal-photo-meatball-btn timeline-meal-photo-moment-social-btn pointer-events-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-0"${attr} data-meal-photo-meatball="1" onclick="event.stopPropagation();window._openMealOverlayFeedOptions&&window._openMealOverlayFeedOptions(this)" aria-label="더보기" aria-haspopup="true"><i class="fa-solid fa-ellipsis-vertical timeline-meal-photo-meatball-icon text-white/95" aria-hidden="true"></i></button>`;
+}
+
+/** 사진 하단 우측(구 미트볼자리)에 소셜 3개 앵커 — 프로필·게시가 있을 때만 */
+function buildMealPhotoSocialBarCornerHtml(row) {
+    const postId = row.overlayPostId;
+    const a = row.overlayAuthor;
+    if (!postId || !a) return '';
+    return `<div class="pointer-events-auto absolute z-[11] flex items-center" data-meal-photo-social-bubble><div class="timeline-meal-photo-moment-social-row flex shrink-0 items-center">${buildMealPhotoOverlaySocialButtonsHtml(postId)}</div></div>`;
+}
+
+/** 휠: 사진 좌하단「comment」— 하단 기록 코멘트 박스 표시 토글(기본 off·반전) */
+function buildMealPhotoCommentToggleBtnHtml() {
+    return `<button type="button" class="timeline-meal-photo-comment-toggle pointer-events-auto absolute z-[11] rounded-md px-2 py-1 text-[10px] font-bold uppercase leading-none tracking-wide transition-colors timeline-meal-photo-comment-toggle--off" data-meal-photo-comment-toggle aria-pressed="false" aria-label="기록 코멘트 보기">comment</button>`;
 }
 
 /** 한 번에 한 장만 보이는 캐러셀(프레임 + 펼침 칩) — 라벨은 `buildVSlideHtml`에서 프레임 아래에 둠 */
@@ -424,7 +656,8 @@ function buildCarouselZoneHtml(row, opts = {}) {
             : '';
     const cellsHtml = buildHorizontalPhotoCellsHtml(row, urls, 0, nTotal, false, { omitPerCellIndex: true });
     const momentChrome = buildMomentOverlayChromeHtml(row);
-    const meatballHtml = buildMealPhotoMeatballBtnHtml(row);
+    const socialBarHtml = buildMealPhotoSocialBarCornerHtml(row);
+    const commentToggleHtml = wheelViewport ? buildMealPhotoCommentToggleBtnHtml() : '';
     const badgeInner =
         nTotal > 1
             ? `<span data-carousel-badge-cur class="carousel-badge-num leading-none">1</span><span class="carousel-badge-sep leading-none" aria-hidden="true">/</span><span data-carousel-badge-tot class="carousel-badge-num leading-none">${nTotal}</span>`
@@ -436,7 +669,8 @@ function buildCarouselZoneHtml(row, opts = {}) {
                         ${cellsHtml}
                     </div>
                     ${momentChrome}
-                    ${meatballHtml}
+                    ${socialBarHtml}
+                    ${commentToggleHtml}
                     <div class="timeline-meal-photos-carousel-badge pointer-events-none absolute z-10 flex items-baseline gap-0 rounded-md border-0 bg-black/35 px-2 py-1 tabular-nums leading-none text-white/95 shadow-sm backdrop-blur-sm${badgeHidden}" data-carousel-badge>${badgeInner}</div>
                 </div>
                 ${expandMini}
@@ -479,7 +713,7 @@ function buildMenuBarBelowPhotoHtml(row) {
 function buildMealPhotoGlobalCaptionFooterHtml() {
     return `<div class="timeline-meal-photos-caption-footer hidden w-full shrink-0 flex flex-col justify-center gap-px px-0.5">
             <div class="timeline-meal-photos-slide-caption-inner flex w-full max-w-full min-w-0 items-center rounded-md border border-white/10 bg-black/50 text-white timeline-meal-photo-menu-bar">
-            <div class="timeline-meal-photos-wheelbar-inner flex min-w-0 flex-1 items-center gap-0">
+            <div class="timeline-meal-photos-wheelbar-inner flex min-w-0 shrink-0 items-center gap-0">
                 <div class="meal-photo-wheel-col meal-photo-wheel-col--year flex shrink-0 flex-col items-center justify-center">
                     <div class="meal-photo-wheel-viewport">
                         <div class="meal-photo-wheel-inner scrollbar-hide" data-wheel-inner="year" style="-webkit-overflow-scrolling:touch"></div>
@@ -691,12 +925,84 @@ function updateCarouselBadge(frame, row, idx, urls) {
     scheduleCarouselBadgeAnchor(frame);
 }
 
+/**
+ * 캐러셀에서 활성 셀의 사진(슬롯/img)·뷰포트 getBoundingClientRect
+ * @returns {{ ir: DOMRect, vr: DOMRect, viewport: Element, hstrip: Element } | null}
+ */
+function getMealPhotoCarouselImageAndViewportRects(frame) {
+    const viewport = frame?.querySelector?.('.timeline-meal-photos-carousel-viewport');
+    const hstrip = frame?.querySelector?.('.timeline-meal-photos-hstrip');
+    if (!viewport || !hstrip) return null;
+    const nCell = hstrip.querySelectorAll('.timeline-meal-photo-cell').length;
+    let idx = Math.floor(Number(frame?.dataset?.photoIndex || 0));
+    if (!Number.isFinite(idx)) idx = 0;
+    idx = Math.min(Math.max(0, nCell - 1), idx);
+    const cell = hstrip.querySelectorAll('.timeline-meal-photo-cell')[idx];
+    const slot = cell?.querySelector?.('.timeline-meal-photo-aspect-slot');
+    const img = cell?.querySelector?.('img.timeline-meal-photo-img');
+    const irSlot = slot ? slot.getBoundingClientRect() : null;
+    const irImg = img ? img.getBoundingClientRect() : null;
+    const slotOk = irSlot && irSlot.width > 2 && irSlot.height > 2;
+    const imgOk = irImg && irImg.width > 2 && irImg.height > 2;
+    /** `object-contain` 등으로 비트맵이 슬롯보다 작을 때 — 실제 보이는 사진 기준 */
+    let ir;
+    if (imgOk && slotOk) {
+        const wDiff = irSlot.width - irImg.width;
+        const hDiff = irSlot.height - irImg.height;
+        ir = wDiff > 1 || hDiff > 1 ? irImg : irSlot;
+    } else if (imgOk) ir = irImg;
+    else if (slotOk) ir = irSlot;
+    else return null;
+    const vr = viewport.getBoundingClientRect();
+    if (ir.width < 4 || ir.height < 4) return null;
+    return { ir, vr, viewport, hstrip, img, slot };
+}
+
+/**
+ * 사진 하단 `comment` / 페이지(뱃지) / 소셜 — 세로 중심을 한 줄에 맞춤.
+ * 소셜이 있으면 그 박스 중심, 없으면 `anchorMealPhotoSocialBar`와 동일 lane(이미지 하단 근처) — 뷰~이미지 띠 **중앙**은 쓰지 않음(레터박스 밖으로 떨어짐).
+ */
+function syncMealPhotoBottomOverlayRowCenters(frame) {
+    const ctx = getMealPhotoCarouselImageAndViewportRects(frame);
+    if (!ctx) return;
+    const { ir, vr } = ctx;
+    const social = frame?.querySelector?.('[data-meal-photo-social-bubble]');
+    const badge = frame?.querySelector?.('[data-carousel-badge]');
+    const comment = frame?.querySelector?.('[data-meal-photo-comment-toggle]');
+
+    let cY;
+    if (social) {
+        const r = social.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) cY = r.top + r.height / 2;
+    }
+    if (cY == null) {
+        const laneInset = 1;
+        const pickH = (el) =>
+            el && !el.classList?.contains('hidden') && el.getBoundingClientRect().height > 0.4
+                ? el.getBoundingClientRect().height
+                : 0;
+        const hRow = Math.max(pickH(badge), pickH(comment), 28);
+        cY = ir.bottom - laneInset - hRow * 0.5;
+    }
+
+    const applyBottom = (el) => {
+        if (!el) return;
+        if (el.classList?.contains('hidden')) return;
+        const h = el.getBoundingClientRect().height;
+        if (h < 0.5) return;
+        const b = Math.max(0, Math.round(vr.bottom - cY - h * 0.5));
+        el.style.bottom = `${b}px`;
+    };
+    applyBottom(social);
+    applyBottom(badge);
+    applyBottom(comment);
+}
+
 /** 활성 사진 `<img>`의 우상단에 맞춤 — 뷰포트 모서리가 아니라 실제 이미지 영역 안에 두기 */
 function anchorCarouselBadgeToActivePhoto(frame) {
     const badge = frame?.querySelector?.('[data-carousel-badge]');
-    const viewport = frame?.querySelector?.('.timeline-meal-photos-carousel-viewport');
-    const hstrip = frame?.querySelector?.('.timeline-meal-photos-hstrip');
-    if (!badge || !viewport || !hstrip) return;
+    if (!badge) return;
+    const ctx = getMealPhotoCarouselImageAndViewportRects(frame);
     if (badge.classList.contains('hidden')) {
         badge.style.removeProperty('top');
         badge.style.removeProperty('right');
@@ -705,19 +1011,9 @@ function anchorCarouselBadgeToActivePhoto(frame) {
         badge.style.removeProperty('transform');
         return;
     }
-    const nCell = hstrip.querySelectorAll('.timeline-meal-photo-cell').length;
-    let idx = Math.floor(Number(frame.dataset.photoIndex || 0));
-    if (!Number.isFinite(idx)) idx = 0;
-    idx = Math.min(Math.max(0, nCell - 1), idx);
-    const cell = hstrip.querySelectorAll('.timeline-meal-photo-cell')[idx];
-    const slot = cell?.querySelector?.('.timeline-meal-photo-aspect-slot');
-    const img = cell?.querySelector?.('img.timeline-meal-photo-img');
-    const anchor = slot || img;
-    if (!anchor) return;
-    const ir = anchor.getBoundingClientRect();
-    const vr = viewport.getBoundingClientRect();
-    if (ir.width < 4 || ir.height < 4) return;
-    const inset = 8;
+    if (!ctx) return;
+    const { ir, vr } = ctx;
+    const inset = 4;
     const bottom = vr.bottom - ir.bottom + inset;
     const cx = (ir.left + ir.right) / 2 - vr.left;
     badge.style.position = 'absolute';
@@ -734,29 +1030,20 @@ function scheduleCarouselBadgeAnchor(frame) {
     frame._mealPhotoBadgeAnchorRaf = requestAnimationFrame(() => {
         frame._mealPhotoBadgeAnchorRaf = null;
         anchorCarouselBadgeToActivePhoto(frame);
-        anchorMealPhotoMeatballToActivePhoto(frame);
+        anchorMealPhotoSocialBarToActivePhoto(frame);
+        anchorMealPhotoCommentToggleToActivePhoto(frame);
+        syncMealPhotoBottomOverlayRowCenters(frame);
     });
 }
 
-/** 미트볼 버튼을 활성 사진 슬롯의 우하단에 맞춤 — 뱃지와 동일한 기준 이미지 사각형 사용 */
-function anchorMealPhotoMeatballToActivePhoto(frame) {
-    const btn = frame?.querySelector?.('[data-meal-photo-meatball]');
-    const viewport = frame?.querySelector?.('.timeline-meal-photos-carousel-viewport');
-    const hstrip = frame?.querySelector?.('.timeline-meal-photos-hstrip');
-    if (!btn || !viewport || !hstrip) return;
-    const nCell = hstrip.querySelectorAll('.timeline-meal-photo-cell').length;
-    let idx = Math.floor(Number(frame.dataset.photoIndex || 0));
-    if (!Number.isFinite(idx)) idx = 0;
-    idx = Math.min(Math.max(0, nCell - 1), idx);
-    const cell = hstrip.querySelectorAll('.timeline-meal-photo-cell')[idx];
-    const slot = cell?.querySelector?.('.timeline-meal-photo-aspect-slot');
-    const img = cell?.querySelector?.('img.timeline-meal-photo-img');
-    const anchor = slot || img;
-    if (!anchor) return;
-    const ir = anchor.getBoundingClientRect();
-    const vr = viewport.getBoundingClientRect();
-    if (ir.width < 4 || ir.height < 4) return;
-    const inset = 8;
+/** 사진 하단 소셜 랩(구 미트볼 위치)을 활성 슬롯 사각형에 맞춤 — 뱃지·동일 앵커(세로는 `syncMealPhotoBottomOverlayRowCenters`) */
+function anchorMealPhotoSocialBarToActivePhoto(frame) {
+    const btn = frame?.querySelector?.('[data-meal-photo-social-bubble]');
+    const ctx = getMealPhotoCarouselImageAndViewportRects(frame);
+    if (!btn || !ctx) return;
+    const { ir, vr } = ctx;
+    /* 뱃지보다 약간 더 붙임 (페이지 표시·하단거리 1/2) */
+    const inset = 1;
     const bottom = vr.bottom - ir.bottom + inset;
     const right = vr.right - ir.right + inset;
     btn.style.position = 'absolute';
@@ -764,6 +1051,24 @@ function anchorMealPhotoMeatballToActivePhoto(frame) {
     btn.style.left = 'auto';
     btn.style.bottom = `${Math.max(0, Math.round(bottom))}px`;
     btn.style.right = `${Math.max(0, Math.round(right))}px`;
+    btn.style.transform = 'none';
+}
+
+/** 휠: 좌하단 comment 토글 — 가로만(세로는 `syncMealPhotoBottomOverlayRowCenters`가 소셜·뱃지와 맞춤) */
+function anchorMealPhotoCommentToggleToActivePhoto(frame) {
+    const btn = frame?.querySelector?.('[data-meal-photo-comment-toggle]');
+    const ctx = getMealPhotoCarouselImageAndViewportRects(frame);
+    if (!btn || !ctx) return;
+    const { ir, vr } = ctx;
+    const cornerPadX = 10;
+    const inset = 1;
+    const left = ir.left - vr.left + inset + cornerPadX;
+    btn.style.position = 'absolute';
+    btn.style.top = 'auto';
+    btn.style.right = 'auto';
+    const bottom = vr.bottom - ir.bottom + inset; /* `sync`가 세로 정렬로 덮어씀 */
+    btn.style.bottom = `${Math.max(0, Math.round(bottom))}px`;
+    btn.style.left = `${Math.max(0, Math.round(left))}px`;
     btn.style.transform = 'none';
 }
 
@@ -1626,11 +1931,37 @@ function ensureMealPhotoOverlayWheelRouting(overlayEl) {
     );
 }
 
+/**
+ *「comment」버튼: 기록 코멘트 박스 표시 토글(휠 모드). 기본 off = 반전 표시
+ */
+function ensureMealPhotoOverlayAuthorCommentToggle(overlayEl) {
+    if (overlayEl._mealPhotoAuthorCommentToggleBound) return;
+    overlayEl._mealPhotoAuthorCommentToggleBound = true;
+    overlayEl.addEventListener('click', (e) => {
+        const t = e.target.closest?.('[data-meal-photo-comment-toggle]');
+        if (!t) return;
+        e.stopPropagation();
+        e.preventDefault();
+        if (overlayEl._mealPhotoPostCommentsOpen) hideMealPhotoOverlayPostCommentsPanel(overlayEl);
+        overlayEl._mealPhotoAuthorCommentBoxVisible = overlayEl._mealPhotoAuthorCommentBoxVisible !== true;
+        const vtrack = overlayEl._mealPhotosVTrack;
+        if (!vtrack) {
+            updateMealPhotoCommentToggleUi(overlayEl);
+            return;
+        }
+        const slides = vtrack.querySelectorAll('.timeline-meal-photos-vslide');
+        const si = getVTrackActiveIndex(vtrack);
+        const row = getCarouselRowForSlide(slides[si], overlayEl);
+        syncMealPhotoOverlayAuthorCommentLine(overlayEl, row);
+    });
+}
+
 function getOverlay() {
     let el = document.getElementById(OVERLAY_ID);
     if (el) {
         ensureMealPhotoOverlayBackdrop(el);
         ensureMealPhotoOverlayWheelRouting(el);
+        ensureMealPhotoOverlayAuthorCommentToggle(el);
         return el;
     }
     el = document.createElement('div');
@@ -1656,9 +1987,40 @@ function getOverlay() {
                 <div class="timeline-meal-photos-vtrack scrollbar-hide flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain snap-y snap-mandatory" style="-webkit-overflow-scrolling:touch;touch-action:pan-y"></div>
                 ${buildMealPhotoGlobalCaptionFooterHtml()}
             </div>
+            <div class="timeline-meal-photos-post-comments-panel pointer-events-auto absolute bottom-0 left-0 right-0 z-20 hidden min-w-0 max-w-full max-h-[min(48vh,360px)] flex-col rounded-none text-left" data-meal-overlay-post-comments-panel aria-label="댓글 입력" role="region">
+                <div class="meal-overlay-post-comments-list timeline-meal-photos-overlay-post-comments-list-text scrollbar-hide max-h-[min(28vh,220px)] min-h-0 w-full min-w-0 overflow-y-auto overflow-x-hidden" data-meal-overlay-post-comments-list style="-webkit-overflow-scrolling:touch"></div>
+                <div class="mt-1.5 flex min-w-0 shrink-0 items-stretch gap-1.5 border-t border-white/10 pt-1.5" data-meal-overlay-post-comments-input-row>
+                    <input type="text" class="min-w-0 flex-1 rounded-none border border-white/15 bg-black/25 px-2 py-1.5 text-sm text-white placeholder:text-white/40 focus:border-white/30 focus:outline-none" placeholder="댓글을 입력하세요" autocomplete="off" data-meal-overlay-post-comments-input aria-label="댓글 입력" />
+                    <button type="button" class="shrink-0 rounded-none border border-white/20 bg-white/10 px-2.5 py-1.5 text-sm font-bold text-white hover:bg-white/20" data-meal-overlay-post-comments-submit>게시</button>
+                </div>
+            </div>
         </div>
     `;
     document.body.appendChild(el);
+
+    if (!el._mealPhotoPostCommentsUiBound) {
+        el._mealPhotoPostCommentsUiBound = true;
+        el.addEventListener('click', (e) => {
+            const sub = e.target.closest?.('[data-meal-overlay-post-comments-submit]');
+            if (!sub || !el.contains(sub)) return;
+            e.preventDefault();
+            const pid = el._mealPhotoPostCommentsPostId;
+            if (pid && typeof window.submitComment === 'function') window.submitComment(pid);
+        });
+        el.addEventListener(
+            'keydown',
+            (e) => {
+                if (e.key !== 'Enter' || e.isComposing) return;
+                if (!e.target?.matches?.('[data-meal-overlay-post-comments-input]') || !el.contains(e.target)) return;
+                const pid = el._mealPhotoPostCommentsPostId;
+                if (pid && typeof window.submitComment === 'function') {
+                    e.preventDefault();
+                    window.submitComment(pid);
+                }
+            },
+            true
+        );
+    }
 
     const vtrack = el.querySelector('.timeline-meal-photos-vtrack');
     const btnVPrev = el.querySelector('.timeline-meal-photos-vprev');
@@ -1703,6 +2065,7 @@ function getOverlay() {
         ) {
             maybeScheduleMomentFeedWheelExtend(el);
         }
+        maybeCloseMealPhotoPostCommentsOnPostChange(el);
     };
 
     vtrack?.addEventListener('scroll', syncMealPhotoChrome, { passive: true });
@@ -1837,6 +2200,7 @@ function getOverlay() {
     });
 
     const close = () => {
+        hideMealPhotoOverlayPostCommentsPanel(el);
         clearTimeout(el._mealPhotoWheelLabelTimer);
         el._mealPhotoWheelLabelTimer = null;
         el._mealPhotoWheelLayoutRunning = false;
@@ -2005,6 +2369,7 @@ function getOverlay() {
         });
     };
     ensureMealPhotoOverlayWheelRouting(el);
+    ensureMealPhotoOverlayAuthorCommentToggle(el);
     return el;
 }
 
@@ -2023,6 +2388,8 @@ export function openTimelineMealPhotosPopup(btn) {
     if (!Array.isArray(urls) || urls.length === 0) return;
 
     const el = getOverlay();
+    hideMealPhotoOverlayPostCommentsPanel(el);
+    el._mealPhotoAuthorCommentBoxVisible = false;
     const vtrack = el._mealPhotosVTrack;
     if (!vtrack) return;
 
@@ -2062,7 +2429,8 @@ export function openTimelineMealPhotosPopup(btn) {
             }
             el._mealPhotosSync?.();
             syncMealPhotoOverlaySocialFromFeed(el);
-            void hydrateMealPhotoOverlaySocialCounts(el);
+            void hydrateMealPhotoOverlaySocial(el);
+            updateMealPhotoCommentToggleUi(el);
             el._mealPhotosToggleNav?.();
             el._mealPhotosToggleVNav?.();
             clearTimeout(el._mealPhotoWheelLabelTimer);
@@ -2157,7 +2525,7 @@ function appendMomentFeedWheelSlides(el, rawRows) {
     syncMealPhotoWheelCaptionPhotoMinWidth(el);
     el._mealPhotosSync?.();
     syncMealPhotoOverlaySocialFromFeed(el);
-    void hydrateMealPhotoOverlaySocialCounts(el);
+    void hydrateMealPhotoOverlaySocial(el);
 }
 
 async function tryExtendMomentFeedWheel(el) {
@@ -2238,6 +2606,8 @@ export function openMealPhotosWheelOverlayFromBtn(btn) {
     if (!row || !Array.isArray(row.urls) || !row.urls.length) return;
 
     const el = getOverlay();
+    hideMealPhotoOverlayPostCommentsPanel(el);
+    el._mealPhotoAuthorCommentBoxVisible = false;
     const vtrack = el._mealPhotosVTrack;
     if (!vtrack) return;
 
@@ -2297,7 +2667,8 @@ export function openMealPhotosWheelOverlayFromBtn(btn) {
         }
         el._mealPhotosSync?.();
         syncMealPhotoOverlaySocialFromFeed(el);
-        void hydrateMealPhotoOverlaySocialCounts(el);
+        void hydrateMealPhotoOverlaySocial(el);
+        updateMealPhotoCommentToggleUi(el);
         el._mealPhotosToggleNav?.();
         el._mealPhotosToggleVNav?.();
         clearTimeout(el._mealPhotoWheelLabelTimer);

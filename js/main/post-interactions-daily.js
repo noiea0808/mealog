@@ -994,10 +994,17 @@ window.deleteCommentFromPost = async (commentId, postId) => {
     
     if (!confirm("댓글을 삭제하시겠습니까?")) return;
     
-    const commentsListEl = document.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
+    let commentsListEl = document.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
+    if (!commentsListEl) {
+        const mo = document.getElementById('timelineMealPhotosOverlay');
+        if (mo && !mo.classList.contains('hidden') && mo._mealPhotoPostCommentsOpen) {
+            commentsListEl = mo.querySelector('[data-meal-overlay-post-comments-list]');
+        }
+    }
     const commentCountEl = document.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
     const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
-    
+    const isMealPhotoOverlayList = Boolean(commentsListEl?.getAttribute?.('data-meal-overlay-post-comments-list'));
+
     // 낙관적 업데이트: 즉시 UI에서 제거
     const commentEl = commentsListEl?.querySelector(`[onclick*="deleteCommentFromPost('${commentId}'"]`)?.closest('.mb-1.text-sm');
     let wasVisible = false;
@@ -1017,7 +1024,7 @@ window.deleteCommentFromPost = async (commentId, postId) => {
         const remainingComments = commentsListEl.querySelectorAll('.mb-1.text-sm');
         if (remainingComments.length === 0) {
             commentsListEl.innerHTML = '';
-            commentsListEl.classList.remove('bg-slate-50');
+            if (!isMealPhotoOverlayList) commentsListEl.classList.remove('bg-slate-50');
             if (viewCommentsBtn) viewCommentsBtn.classList.add('hidden');
         } else {
             // 댓글 개수 업데이트
@@ -1044,8 +1051,9 @@ window.deleteCommentFromPost = async (commentId, postId) => {
                         commentCountEl.textContent = comments.length > 0 ? comments.length : '';
                     }
                     
-                    // 댓글 목록 업데이트
-                    if (commentsListEl) {
+                    if (commentsListEl && isMealPhotoOverlayList && typeof window.loadPostCommentsForMealPhotoOverlayList === 'function') {
+                        await window.loadPostCommentsForMealPhotoOverlayList(postId, commentsListEl);
+                    } else if (commentsListEl) {
                         if (comments.length === 0) {
                             commentsListEl.innerHTML = '';
                             commentsListEl.classList.remove('bg-slate-50');
@@ -1225,7 +1233,20 @@ window.submitComment = async (postId) => {
         return;
     }
 
-    const inputEl = document.getElementById(`comment-text-${postId}`);
+    const mealO = document.getElementById('timelineMealPhotosOverlay');
+    const overlayCommentOpen =
+        mealO &&
+        !mealO.classList.contains('hidden') &&
+        mealO._mealPhotoPostCommentsOpen &&
+        String(mealO._mealPhotoPostCommentsPostId) === String(postId);
+    /* 팝업 댓글 열림 시 피드에 숨겨진 `comment-text-*`가 먼저 잡혀 빈 값으로 처리되던 것 방지 — 오버레이 input 우선 */
+    let inputEl = null;
+    if (overlayCommentOpen) {
+        inputEl = mealO.querySelector('[data-meal-overlay-post-comments-input]');
+    }
+    if (!inputEl) {
+        inputEl = document.getElementById(`comment-text-${postId}`);
+    }
     if (!inputEl) return;
     
     const commentText = inputEl.value.trim();
@@ -1236,9 +1257,18 @@ window.submitComment = async (postId) => {
     if (_commentSubmitting[postId]) return;
     _commentSubmitting[postId] = true;
     
-    const commentsListEl = document.getElementById(`comments-list-${postId}`);
+    let commentsListEl = null;
+    if (overlayCommentOpen) {
+        commentsListEl = mealO.querySelector('[data-meal-overlay-post-comments-list]');
+    }
+    if (!commentsListEl) {
+        commentsListEl = document.getElementById(`comments-list-${postId}`);
+    }
     const commentCountEl = document.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
     const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
+    const isMealPhotoOverlayCommentsList = Boolean(
+        commentsListEl?.getAttribute?.('data-meal-overlay-post-comments-list') != null
+    );
     const userProfile = window.userSettings?.profile || {};
     const userNickname = userProfile?.nickname || '익명';
     const tempId = `temp-${Date.now()}`;
@@ -1248,12 +1278,20 @@ window.submitComment = async (postId) => {
     
     // 낙관적 업데이트: 댓글 한 줄 즉시 표시
     if (commentsListEl) {
-        commentsListEl.classList.add('bg-slate-50');
-        commentsListEl.insertAdjacentHTML('beforeend',
-            `<div class="mb-1 text-sm" data-temp-comment-id="${tempId}">
-                <span class="font-bold text-slate-800">${escapeHtml(userNickname)}</span>
-                <span class="text-slate-800 ml-2">${escapeHtml(commentText)}</span>
-            </div>`);
+        if (isMealPhotoOverlayCommentsList) {
+            commentsListEl.querySelector?.('[data-meal-overlay-comments-empty]')?.remove();
+        } else {
+            commentsListEl.classList.add('bg-slate-50');
+        }
+        const nickCls = isMealPhotoOverlayCommentsList ? 'font-bold text-white/95' : 'font-bold text-slate-800';
+        const bodyCls = isMealPhotoOverlayCommentsList ? 'text-white/90 ml-2' : 'text-slate-800 ml-2';
+        commentsListEl.insertAdjacentHTML(
+            'beforeend',
+            `<div class="mb-1 ${isMealPhotoOverlayCommentsList ? '' : 'text-sm'}" data-temp-comment-id="${tempId}">
+                <span class="${nickCls}">${escapeHtml(userNickname)}</span>
+                <span class="${bodyCls}">${escapeHtml(commentText)}</span>
+            </div>`
+        );
         const commentSection = document.getElementById(`comment-section-${postId}`);
         if (commentSection) commentSection.classList.remove('comments-empty');
     }
@@ -1291,12 +1329,18 @@ window.submitComment = async (postId) => {
                     { nickname: result.userNickname, icon: result.userIcon },
                     { preferStoredNickname: true }
                 );
+                const nickCls2 = isMealPhotoOverlayCommentsList ? 'font-bold text-white/95' : 'font-bold text-slate-800';
+                const bodyCls2 = isMealPhotoOverlayCommentsList ? 'text-white/90 ml-2' : 'text-slate-800 ml-2';
+                const dateCls = isMealPhotoOverlayCommentsList ? 'text-xs text-white/45 ml-2' : 'text-xs text-slate-400 ml-2';
+                const delCls = isMealPhotoOverlayCommentsList
+                    ? 'ml-2 text-white/50 text-xs hover:text-red-300'
+                    : 'ml-2 text-slate-400 text-xs hover:text-red-500';
                 tempRow.outerHTML = `
-                    <div class="mb-1 text-sm">
-                        <span class="font-bold text-slate-800">${escapeHtml(commentDisplay.nickname)}</span>
-                        <span class="text-slate-800 ml-2">${escapeHtml(result.comment || '')}</span>
-                        ${dateStr && timeStr ? `<span class="text-xs text-slate-400 ml-2">${dateStr} ${timeStr}</span>` : ''}
-                        <button onclick="window.deleteCommentFromPost('${safeId}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>
+                    <div class="mb-1 ${isMealPhotoOverlayCommentsList ? '' : 'text-sm'}">
+                        <span class="${nickCls2}">${escapeHtml(commentDisplay.nickname)}</span>
+                        <span class="${bodyCls2}">${escapeHtml(result.comment || '')}</span>
+                        ${dateStr && timeStr ? `<span class="${dateCls}">${dateStr} ${timeStr}</span>` : ''}
+                        <button onclick="window.deleteCommentFromPost('${safeId}', '${postId}')" class="${delCls}">삭제</button>
                     </div>`;
             }
         }
@@ -1309,7 +1353,7 @@ window.submitComment = async (postId) => {
             const tempRow = commentsListEl.querySelector(`[data-temp-comment-id="${tempId}"]`);
             if (tempRow) tempRow.remove();
             const left = commentsListEl.querySelectorAll('.mb-1.text-sm').length;
-            if (left === 0) commentsListEl.classList.remove('bg-slate-50');
+            if (left === 0 && !isMealPhotoOverlayCommentsList) commentsListEl.classList.remove('bg-slate-50');
         }
         if (commentCountEl) {
             const n = Math.max(0, (parseInt(commentCountEl.textContent || '0', 10) || 0) - 1);
@@ -1321,6 +1365,72 @@ window.submitComment = async (postId) => {
         _commentSubmitting[postId] = false;
     }
 };
+
+/** 사진 팝업 하단 댓글 박스 — 코멘트 밴드와 유사한 어두운 톤 */
+async function loadPostCommentsForMealPhotoOverlayList(postId, listEl) {
+    if (!listEl || !postId || !postInteractions?.getComments) return;
+    try {
+        const alternates = getAlternatePostIdsForPost(postId);
+        const comments = await postInteractions.getComments(postId, alternates);
+        if (comments.length === 0) {
+            listEl.innerHTML =
+                '<p class="py-1 text-white/50" data-meal-overlay-comments-empty>댓글이 없습니다.</p>';
+            return;
+        }
+        const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
+        listEl.innerHTML = comments
+            .map((comment) => {
+                let dateStr = '';
+                let timeStr = '';
+                if (comment.timestamp) {
+                    try {
+                        const commentDate =
+                            comment.timestamp instanceof Date
+                                ? comment.timestamp
+                                : comment.timestamp.toDate
+                                  ? comment.timestamp.toDate()
+                                  : new Date(comment.timestamp);
+                        if (!isNaN(commentDate.getTime())) {
+                            dateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+                            timeStr = commentDate.toLocaleTimeString('ko-KR', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                hour12: false
+                            });
+                        }
+                    } catch (_) {
+                        /* ignore */
+                    }
+                }
+                const commentDisplay = getDisplayProfile(
+                    comment.userId,
+                    { nickname: comment.userNickname, icon: comment.userIcon },
+                    { preferStoredNickname: true }
+                );
+                const isMyComment = isLoggedIn && comment.userId === window.currentUser.uid;
+                const del =
+                    isMyComment && comment.id
+                        ? `<button type="button" onclick="window.deleteCommentFromPost('${String(comment.id).replace(/'/g, "\\'")}', '${String(postId).replace(/'/g, "\\'")}')" class="ml-2 text-white/50 text-xs hover:text-red-300">삭제</button>`
+                        : '';
+                return `
+                    <div class="mb-1.5">
+                        <span class="font-bold text-white/95">${escapeHtml(commentDisplay.nickname)}</span>
+                        <span class="ml-2 text-white/90">${escapeHtml(comment.comment || '')}</span>
+                        ${
+                            dateStr && timeStr
+                                ? `<span class="ml-2 text-xs text-white/45">${dateStr} ${timeStr}</span>`
+                                : ''
+                        }
+                        ${del}
+                    </div>`;
+            })
+            .join('');
+    } catch (e) {
+        console.error('loadPostCommentsForMealPhotoOverlayList', e);
+        listEl.innerHTML = '<p class="py-1 text-sm text-red-300/90">댓글을 불러오지 못했습니다.</p>';
+    }
+}
+window.loadPostCommentsForMealPhotoOverlayList = loadPostCommentsForMealPhotoOverlayList;
 
 // 포스트 댓글 로드 함수
 async function loadPostComments(postId) {

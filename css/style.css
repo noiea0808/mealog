@@ -389,6 +389,67 @@ header .mealog-title {
     padding-left: max(var(--meal-photo-overlay-content-pad-x), env(safe-area-inset-left, 0px));
     padding-right: max(var(--meal-photo-overlay-content-pad-x), env(safe-area-inset-right, 0px));
 }
+/* 댓글 열림: flex 세로 가운데 정렬(overflow hidden으로 상·하 클립) 금지. JS 측정값(--meal-overlay-post-comments-reserve)으로 하단만 예약, 패널은 그 영역에 absolute */
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--post-comments-open:not(.hidden) .meal-photos-overlay-body {
+    min-height: 0;
+    overflow: visible; /* stage는 absolute 푸터로 overflow visible — 기본 body overflow:hidden이 라벨 하단을 잘리지 않게 */
+    /* 예약: 첫 측정 전 min(40vh,300px) — JS가 px로 덮어씀 */
+    padding-bottom: calc(1px + var(--meal-overlay-post-comments-reserve, min(40vh, 300px)));
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--post-comments-open:not(.hidden) .timeline-meal-photos-stage--with-footer {
+    min-height: 0;
+    /* 휠 기본 overflow:visible — 댓글 열릴 때 overflow:hidden 쓰면 absolute 푸터(하단라벨)가 잘림 */
+    overflow: visible;
+}
+/* 댓글 패널: 하단 예약(padding) 위에 겹쳐 올림. 너비·톤 = 하단라벨 열 + 코멘트 밴드 */
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--post-comments-open:not(.hidden) [data-meal-overlay-post-comments-panel]:not(.hidden) {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 25;
+    width: var(--meal-wheel-caption-inner-w, 100%);
+    max-width: 100%;
+    box-sizing: border-box;
+    margin-left: auto;
+    margin-right: auto;
+    max-height: min(48vh, 360px);
+    border-radius: 0;
+    box-shadow: none;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-color: rgba(0, 0, 0, 0.45);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    padding: 0.375rem 0.375rem;
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+    color: #fff;
+}
+/* 소셜 댓글 목록 — `data-meal-overlay-comment-band` 본문과 동일 서체·크기(라운드 없음, 패널은 위와 동일 border/bg) */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-overlay-post-comments-list-text {
+    padding-left: 1ch;
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-size: 18px;
+    font-weight: normal;
+    line-height: 1.35;
+    color: rgba(255, 255, 255, 0.9);
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-post-comments-panel:not(.hidden) .meal-overlay-post-comments-list {
+    max-height: min(5lh, calc(18px * 1.35 * 5));
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.38) transparent;
+    -webkit-overflow-scrolling: touch;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel
+    .timeline-meal-photos-post-comments-panel:not(.hidden)
+    .meal-overlay-post-comments-list::-webkit-scrollbar {
+    width: 2px;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel
+    .timeline-meal-photos-post-comments-panel:not(.hidden)
+    .meal-overlay-post-comments-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.38);
+    border-radius: 1px;
+}
 /* 사진 팝업 열림: 뒤로 스크롤 전달 억제. 세로=vtrack(pan-y), 캐러셀=pan-x pan-y(세로 스와이프가 vtrack으로 전달) */
 #timelineMealPhotosOverlay:not(.hidden) {
     overscroll-behavior: contain;
@@ -439,7 +500,7 @@ header .mealog-title {
     font-weight: 400;
     border: none !important;
 }
-/* 모먼트 휠 팝업: 사진 위 프로필·소셜 칩 — 반투명·블러로 사진과 분리 */
+/* 모먼트 휠 팝업: 사진 위 프로필 칩 / 소셜은 배경 없이 아이콘만 그림자로 대비 */
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-chrome {
     pointer-events: none;
 }
@@ -462,37 +523,28 @@ header .mealog-title {
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-btn {
     box-sizing: border-box;
     border: none !important;
-    background-color: rgba(15, 23, 42, 0.4) !important;
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.28);
+    background-color: transparent !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-btn:active {
-    background-color: rgba(15, 23, 42, 0.52) !important;
+    background-color: transparent !important;
 }
-/* 우하단 미트볼: 동일 칩 톤에서 불투명도 +0.2 */
-#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-meatball-btn.timeline-meal-photo-moment-social-btn {
-    background-color: rgba(15, 23, 42, 0.6) !important;
-}
-#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-meatball-btn.timeline-meal-photo-moment-social-btn:active {
-    background-color: rgba(15, 23, 42, 0.72) !important;
-}
-/* 소셜 3열 간격 (아이콘 칩 사이) */
+/* 소셜 3열: 히트(2rem)에 맞춤 — 행 gap 0(버튼끼리 맞닿이듯 좁힘) */
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row {
-    gap: 0.5rem;
+    gap: 0;
     align-items: center;
 }
-/* 사진 우하단 미트볼(⋯): 좋아요 칩과 동일 톤 — 아이콘만 가로 점세개 */
+/* 상단(크롬) / 예전 하단: 미트볼(세로 ⋮) — 배경 없음, 아이콘 그림자 */
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-meatball-btn {
     box-sizing: border-box;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-meatball-icon {
-    font-size: 17px;
+    font-size: calc(17px * 0.7);
     line-height: 1;
-    -webkit-text-stroke: 0 transparent;
-    paint-order: normal;
 }
 /* 모먼트 오버레이 ⋮ 메뉴: 너비 절반 + 유리 느낌(투명도) — 패널은 JS에서 class 부여 */
 .feed-options-center-panel button[type='button'] {
@@ -516,54 +568,106 @@ header .mealog-title {
     justify-content: center;
     width: 100%;
 }
-/* 좋아요·북마크: 왼쪽 36px는 항상 아이콘 전용(선택 전과 동일), 숫자는 그 오른쪽에만 확장 */
+/* 좋아요·북마크: 전체·숫자 약 115% (기본 2rem·17px/0.75rem 대비) */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row .post-bookmark-btn {
+    margin-right: 10px;
+}
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-hit {
     box-sizing: border-box;
-    min-width: 2.25rem;
-    width: 2.25rem;
+    min-width: calc(2rem * 1.15);
+    width: calc(2rem * 1.15);
     max-width: min(100%, 12rem);
     padding: 0;
     overflow: visible;
     transition: width 0.18s ease, min-width 0.18s ease, padding 0.18s ease;
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-icon-slot {
-    flex: 0 0 2.25rem;
-    width: 2.25rem;
-    min-width: 2.25rem;
-    height: 2.25rem;
+    flex: 0 0 calc(2rem * 1.15);
+    width: calc(2rem * 1.15);
+    min-width: calc(2rem * 1.15);
+    height: calc(2rem * 1.15);
     box-sizing: border-box;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row .post-like-btn,
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row .post-comment-btn,
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row .post-bookmark-btn {
+    min-height: calc(2rem * 1.15);
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row .post-comment-btn,
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row .post-bookmark-btn {
+    width: calc(2rem * 1.15);
+    height: calc(2rem * 1.15);
+    min-width: calc(2rem * 1.15);
+    flex-shrink: 0;
 }
 #timelineMealPhotosOverlay:not(.hidden) .post-like-btn.timeline-meal-photo-moment-social-hit:has(.post-like-count:not(:empty)) {
     width: auto;
-    min-width: 2.25rem;
+    min-width: calc(2rem * 1.15);
     padding-left: 0;
-    padding-right: 0.5rem;
-    gap: 0 !important;
+    padding-right: calc(0.125rem * 1.15);
+    gap: calc(0.125rem * 1.15);
     justify-content: flex-start;
 }
-/* FA regular: 추가 윤곽 없이 얇은 선체 — text-lg(18px) 대비 1px 작게 */
+#timelineMealPhotosOverlay:not(.hidden)
+    .post-like-btn.timeline-meal-photo-moment-social-hit:has(.post-like-count:not(:empty))
+    .timeline-meal-photo-moment-social-icon-slot {
+    flex: 0 0 calc(1.5rem * 1.15);
+    width: calc(1.5rem * 1.15);
+    min-width: calc(1.5rem * 1.15);
+    justify-content: flex-end;
+    padding-right: 0;
+}
+/* 소셜 FA: `-webkit-text-stroke` 쓰지 않음(이중 획처럼 됨) — 아이콘 실루엣은 `fa-regular`/`fa-solid` 글리프. 사진 대비는 그림자만 */
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-icon {
-    -webkit-text-stroke: 0 transparent;
+    display: inline-block;
+    -webkit-text-stroke: 0;
     paint-order: normal;
-    font-size: 17px;
+    filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.62)) drop-shadow(0 0 1px rgba(15, 23, 42, 0.48));
+    font-size: calc(17px * 1.15);
     line-height: 1;
 }
-/* 좋아요 선택: 윤곽선 0.5px(기존 대비 얇게) + 안쪽 빨강 fill α0.7, 아이콘 크기 17→16px */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-meatball-icon {
+    display: inline-block;
+    -webkit-text-stroke: 0 transparent;
+    paint-order: normal;
+    filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.62)) drop-shadow(0 0 1px rgba(15, 23, 42, 0.48));
+}
+/* 휠: 좌하단 comment — off: 흰 윤곽 + 안 흰 글자 / on: 흰 채움 + 짙은 회색 글자 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-comment-toggle {
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-comment-toggle--off {
+    background: transparent;
+    border: 2px solid rgba(255, 255, 255, 0.95);
+    color: rgba(255, 255, 255, 0.98);
+    filter: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-text-fill-color: rgba(255, 255, 255, 0.98);
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-comment-toggle--on {
+    background: #ffffff;
+    border: 2px solid #ffffff;
+    color: #64748b;
+    -webkit-text-fill-color: #64748b;
+    filter: none;
+    box-shadow: none;
+    backdrop-filter: none;
+}
+/* 좋아요·북마크 선택(fa-solid): 채움색 */
 #timelineMealPhotosOverlay:not(.hidden) .post-like-btn.timeline-meal-photo-moment-social-btn.timeline-meal-photo-moment-social-hit {
     overflow: visible;
 }
 #timelineMealPhotosOverlay:not(.hidden) .post-like-btn .post-like-icon.fa-solid.fa-heart.timeline-meal-photo-moment-social-icon {
     color: rgba(239, 68, 68, 0.7);
-    -webkit-text-stroke: 0.5px rgba(255, 255, 255, 0.95);
-    paint-order: stroke fill;
-    font-size: 16px;
+    font-size: calc(17px * 1.15);
 }
-/* 북마크 선택: 안쪽 흰 채움 α0.7 */
 #timelineMealPhotosOverlay:not(.hidden) .post-bookmark-btn .post-bookmark-icon.fa-solid.fa-bookmark.timeline-meal-photo-moment-social-icon {
-    color: rgba(255, 255, 255, 0.7);
+    color: rgba(16, 185, 129, 0.78);
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-count {
-    font-size: 0.75rem;
+    font-size: calc(0.75rem * 1.15);
     font-weight: 700;
     line-height: 1;
     min-width: 0.65rem;
@@ -674,7 +778,7 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
 /* 휠 라벨 한 줄: 숫자 뷰포트(30px) — 짙은 회색 바·흰 글자 18px */
 #timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-slide-caption-inner.timeline-meal-photo-menu-bar {
     padding: 2px 0.5rem;
-    gap: 2em;
+    gap: 1ch;
     align-items: center;
     line-height: 1;
     font-size: 18px;
@@ -699,6 +803,8 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     border-radius: 0;
     padding-left: 0;
     padding-right: 0;
+    min-width: 0;
+    text-align: right;
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
@@ -1424,13 +1530,15 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 #galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar {
     padding: 2px 0.5rem;
-    gap: 2em;
+    gap: 1ch;
     align-items: center;
     line-height: 1;
     background-color: rgba(0, 0, 0, 0.5) !important;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row [data-wheel-menu-caption],
 #feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row [data-wheel-menu-caption] {
+    min-width: 0;
+    text-align: right;
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
