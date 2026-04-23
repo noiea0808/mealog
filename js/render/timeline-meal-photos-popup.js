@@ -1481,6 +1481,11 @@ function positionMealPhotoWheelCaption(el) {
     };
 
     if (!placeFooterBelowPhoto()) return;
+    /* 모먼트 피드(화면2): 사진·라벨 블록을 세로 가운데로 올리지 않음 — 사진은 상단, 라벨은 사진 실제 하단(높이에 따라) */
+    if (el.classList.contains('timeline-meal-photos-overlay--moment-feed')) {
+        if (activeWheelStage) activeWheelStage.style.transform = '';
+        return;
+    }
     const footerH = cap.getBoundingClientRect().height;
     const offset = (footerH + MEAL_PHOTO_WHEEL_CAPTION_GAP_PX) / 2;
     if (activeWheelStage && offset > 0.5) {
@@ -2206,6 +2211,7 @@ function getOverlay() {
         el._mealPhotoWheelLayoutRunning = false;
         el.classList.add('hidden');
         el.classList.remove('timeline-meal-photos-overlay--wheel');
+        el.classList.remove('timeline-meal-photos-overlay--moment-feed');
         document.body.classList.remove('meal-photo-moment-chrome-hidden');
         el._mealPhotoMomentNavState = null;
         document.body.classList.remove('overflow-hidden');
@@ -2295,9 +2301,11 @@ function getOverlay() {
         if (!slides.length) return;
         const i = getVTrackActiveIndex(vtrack);
         const next = Math.min(slides.length - 1, Math.max(0, i + dir));
-        const delta = el.classList.contains('timeline-meal-photos-overlay--wheel')
-            ? scrollDeltaToCenterSlideInVtrack(vtrack, slides[next])
-            : scrollDeltaToAlignSlideTop(vtrack, slides[next]);
+        const delta =
+            el.classList.contains('timeline-meal-photos-overlay--wheel') &&
+            !el.classList.contains('timeline-meal-photos-overlay--moment-feed')
+                ? scrollDeltaToCenterSlideInVtrack(vtrack, slides[next])
+                : scrollDeltaToAlignSlideTop(vtrack, slides[next]);
         vtrack.scrollTo({ top: vtrack.scrollTop + delta, behavior: 'smooth' });
     };
     btnVPrev?.addEventListener('click', (e) => {
@@ -2388,6 +2396,7 @@ export function openTimelineMealPhotosPopup(btn) {
     if (!Array.isArray(urls) || urls.length === 0) return;
 
     const el = getOverlay();
+    el.classList.remove('timeline-meal-photos-overlay--moment-feed');
     hideMealPhotoOverlayPostCommentsPanel(el);
     el._mealPhotoAuthorCommentBoxVisible = false;
     const vtrack = el._mealPhotosVTrack;
@@ -2610,6 +2619,7 @@ export function openMealPhotosWheelOverlayFromBtn(btn) {
     el._mealPhotoAuthorCommentBoxVisible = false;
     const vtrack = el._mealPhotosVTrack;
     if (!vtrack) return;
+    el.classList.add('timeline-meal-photos-overlay--moment-feed');
 
     const startPhotoIdx = idxRaw != null ? parseInt(String(idxRaw), 10) : 0;
     const startPhotoSi = Number.isFinite(startPhotoIdx) ? startPhotoIdx : 0;
@@ -2663,7 +2673,7 @@ export function openMealPhotosWheelOverlayFromBtn(btn) {
         const slides = vtrack.querySelectorAll('.timeline-meal-photos-vslide');
         const target = slides[startRow];
         if (target) {
-            vtrack.scrollTop += scrollDeltaToCenterSlideInVtrack(vtrack, target);
+            vtrack.scrollTop += scrollDeltaToAlignSlideTop(vtrack, target);
         }
         el._mealPhotosSync?.();
         syncMealPhotoOverlaySocialFromFeed(el);

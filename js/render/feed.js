@@ -13,7 +13,9 @@ import { fetchUserProfiles } from './user-profiles.js';
 import { formatMealMenuDisplayLine, mergeMealDisplayFields } from '../utils/meal-display-line.js';
 import { applyCollapsedCaptionToElement } from './comment-caption-layout.js';
 import { getMomentsFeedView } from '../db.js';
+import { buildMomentFeedV2PhotoAndLabelHtml } from './moment-feed-v2.js';
 import { buildSharedMomentWheelOverlayRow } from './post-group-html.js';
+import { setupMomentFeedV2WheelLayout } from '../main/moment-feed-v2-wheel-layout.js';
 
 export async function renderFeed() {
     const container = document.getElementById('feedContent');
@@ -279,21 +281,21 @@ export async function renderFeed() {
             JSON.stringify(photoGroup.map((p) => p.photoUrl).filter(Boolean))
         );
 
-        const cardOuter = `mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden instagram-post`;
-        const mealHistoryMap = new Map();
-        if (window.mealHistory && Array.isArray(window.mealHistory)) {
-            for (const r of window.mealHistory) {
-                if (r?.id) mealHistoryMap.set(r.id, r);
-            }
-        }
+        const cardOuter = layoutV2
+            ? `mb-4 bg-slate-100 border ${isBanned ? 'border-orange-300' : 'border-slate-200'} rounded-2xl overflow-hidden instagram-post moment-v2-snap-item`
+            : `mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden instagram-post`;
         const userDisplayForWheel = getDisplayProfile(photo.userId, {
             nickname: photo.userNickname,
             icon: photo.userIcon,
             photoUrl: photo.userPhotoUrl
         });
         const avatarDisplayForWheel = getProfileAvatarDisplay(userDisplayForWheel);
+        const mealHistoryMapForWheel =
+            window.mealHistory && Array.isArray(window.mealHistory)
+                ? new Map(window.mealHistory.map((m) => [m.id, m]))
+                : new Map();
         const wheelOverlayRow = layoutV2
-            ? buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMap, {
+            ? buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMapForWheel, {
                   entryId,
                   isBestShare,
                   isDailyShare,
@@ -310,38 +312,54 @@ export async function renderFeed() {
                   }
               })
             : null;
-        const wheelRowEnc = wheelOverlayRow ? encodeURIComponent(JSON.stringify(wheelOverlayRow)) : '';
-
-        const photosHtml = photoGroup.map((p, idx) => {
-            const isBest = p.type === 'best';
-            const isDaily = p.type === 'daily';
-            const isInsight = p.type === 'insight';
-            const photoBanned = p.banned === true;
-            const inner =
-                (isBest || isDaily || isInsight)
-                    ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo w-full h-auto object-contain ${photoBanned ? 'opacity-50' : ''}" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx <= 1 ? 'eager' : 'lazy'}">`
-                    : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-cover ${photoBanned ? 'opacity-50' : ''}" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`;
-            const bannedOverlay =
-                photoBanned && !(isBest || isDaily || isInsight)
-                    ? `
+        const postIdJsFeed = JSON.stringify(String(postId || ''));
+        const v2PhotoLabelBlock = layoutV2
+            ? buildMomentFeedV2PhotoAndLabelHtml({
+                  photoGroup,
+                  momentUrlsEncoded,
+                  photo,
+                  aspectRatio,
+                  isBestShare,
+                  isDailyShare,
+                  isInsightShare,
+                  captionTextPlain: caption,
+                  overlayRow: wheelOverlayRow,
+                  postId,
+                  postIdJs: postIdJsFeed,
+                  mealHistoryMap: mealHistoryMapForWheel,
+                  groupEntryId: entryId
+              })
+            : '';
+        const photosHtml = layoutV2
+            ? ''
+            : photoGroup
+                  .map((p, idx) => {
+                      const isBest = p.type === 'best';
+                      const isDaily = p.type === 'daily';
+                      const isInsight = p.type === 'insight';
+                      const photoBanned = p.banned === true;
+                      const inner =
+                          (isBest || isDaily || isInsight)
+                              ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo w-full h-auto object-contain ${photoBanned ? 'opacity-50' : ''}" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx <= 1 ? 'eager' : 'lazy'}">`
+                              : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-cover ${photoBanned ? 'opacity-50' : ''}" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`;
+                      const bannedOverlay =
+                          photoBanned && !(isBest || isDaily || isInsight)
+                              ? `
                     <div class="absolute inset-0 bg-orange-500/20 flex items-center justify-center pointer-events-none">
                         <div class="bg-orange-600 text-white px-3 py-1.5 rounded-lg">
                             <i class="fa-solid fa-ban mr-1"></i>공유 금지
                         </div>
                     </div>
                 `
-                    : '';
-            const wheelTap =
-                layoutV2 && wheelRowEnc
-                    ? `<button type="button" class="timeline-meal-photo-tap absolute inset-0 z-20 h-full w-full cursor-zoom-in border-0 bg-transparent p-0 active:bg-white/5" style="-webkit-tap-highlight-color:transparent" aria-label="사진 ${photoCount}장 보기" data-meal-wheel-row="${wheelRowEnc}" data-meal-start-idx="${idx}" onclick="event.stopPropagation();window.openMealPhotosWheelOverlayFromBtn(this)"></button>`
-                    : '';
-            return `
+                              : '';
+                      return `
             <div class="flex-shrink-0 w-full snap-start relative ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" data-moment-i="${idx}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
-                <div class="moment-feed-pinch-host relative w-full">${inner}${wheelTap}</div>
+                <div class="moment-feed-pinch-host relative w-full">${inner}</div>
                 ${bannedOverlay}
             </div>
         `;
-        }).join('');
+                  })
+                  .join('');
         
         const userDisplay = userDisplayForWheel;
         const avatarDisplay = avatarDisplayForWheel;
@@ -350,7 +368,12 @@ export async function renderFeed() {
         const avIconCls = 'text-lg';
         return `
             <div class="${cardOuter}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}"${layoutV2 ? ' data-moment-card-layout="2"' : ''}>
-                <div class="${headPad} flex items-center gap-3 relative">
+                ${
+                    layoutV2
+                        ? isBanned
+                            ? `<div class="px-2 pt-2"><div class="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full inline-flex items-center"><i class="fa-solid fa-ban mr-1"></i>공유 금지</div></div>`
+                            : ''
+                        : `<div class="${headPad} flex items-center gap-3 relative">
                     ${avatarDisplay.type === 'photo' ? `
                         <div class="${avSize} rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${avatarDisplay.value}); background-size: cover; background-position: center;">
                             ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
@@ -373,8 +396,12 @@ export async function renderFeed() {
                             <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
                         </button>
                     </div>
-                </div>
-                <div class="relative overflow-hidden ${(isDailyShare || isInsightShare) ? 'bg-white' : 'bg-slate-100'}">
+                </div>`
+                }
+                ${
+                    layoutV2
+                        ? v2PhotoLabelBlock
+                        : `<div class="relative overflow-hidden ${(isDailyShare || isInsightShare) ? 'bg-white' : 'bg-slate-100'}">
                     <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gallery-photo-scroll" data-moment-urls="${momentUrlsEncoded}" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
                         ${photosHtml}
                     </div>
@@ -383,22 +410,30 @@ export async function renderFeed() {
                             <span class="photo-counter-current">1</span>/${photoCount}
                         </div>
                     ` : ''}
-                </div>
-                ${caption ? `<div class="px-4 py-2 text-sm font-bold text-slate-800">${caption}</div>` : ''}
-                ${comment && !isBestShare && !isDailyShare && !isInsightShare ? `
+                </div>`
+                }
+                ${caption && !layoutV2 ? `<div class="px-4 py-2 text-sm font-bold text-slate-800">${caption}</div>` : ''}
+                ${
+                    !layoutV2 && comment && !isBestShare && !isDailyShare && !isInsightShare
+                        ? `
                     <div class="px-4 pb-3 text-sm text-slate-600">
                         <div id="feed-comment-collapsed-${groupIdx}" class="comment-text min-h-[1em]" data-comment-raw="${encodeURIComponent(comment)}" data-caption-variant="feed" data-group-idx="${groupIdx}">
                             <div data-comment-collapsed-mount class="leading-snug"></div>
                         </div>
                         <div id="feed-comment-expanded-${groupIdx}" class="comment-text hidden whitespace-pre-line break-words leading-snug cursor-pointer" onclick="window.toggleFeedComment(${groupIdx})">${escapeHtml(comment).replace(/\n/g, '<br>')}</div>
                     </div>
-                ` : ''}
+                `
+                        : ''
+                }
             </div>
         `;
     }).join('');
     
     // 사진 카운터 업데이트를 위한 이벤트 리스너 추가 및 피드 옵션 버튼 이벤트 리스너 추가
     setTimeout(() => {
+        if (layoutV2) {
+            setupMomentFeedV2WheelLayout(container);
+        }
         const scrollContainers = container.querySelectorAll('.gallery-photo-scroll');
         scrollContainers.forEach((scrollContainer, idx) => {
             const counter = scrollContainer.parentElement.querySelector('.photo-counter-current');

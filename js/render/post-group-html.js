@@ -7,6 +7,7 @@ import { escapeHtml } from './utils.js';
 import { getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
 import { getPostIdFromPhotoGroup } from './post-group-utils.js';
 import { formatMealMenuDisplayLine, mergeMealDisplayFields } from '../utils/meal-display-line.js';
+import { buildMomentFeedV2PhotoAndLabelHtml } from './moment-feed-v2.js';
 
 /** 모먼트 공유 → 타임라인 `#timelineMealPhotosOverlay` 휠 모드와 동일한 `row` 페이로드 */
 export function buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMap, ctx) {
@@ -207,6 +208,8 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
     const momentAspectCss = (aspectRatio === '3:4' ? '3/4' : aspectRatio === '4:3' ? '4/3' : '1');
     const momentUrlsEncoded = encodeURIComponent(JSON.stringify(photoGroup.map((p) => p.photoUrl).filter(Boolean)));
     const postIdForWheel = getPostIdFromPhotoGroup(photoGroup);
+    const postId = postIdForWheel;
+    const postIdJs = JSON.stringify(String(postId || ''));
     const userDisplayForWheel = getDisplayProfile(photo.userId, {
         nickname: photo.userNickname,
         icon: photo.userIcon,
@@ -231,32 +234,48 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
               }
           })
         : null;
-    const wheelRowEnc = wheelOverlayRow ? encodeURIComponent(JSON.stringify(wheelOverlayRow)) : '';
-    const photosHtml = photoGroup.map((p, idx) => {
-        const isBest = p.type === 'best',
-            isDaily = p.type === 'daily',
-            isInsight = p.type === 'insight';
-        const inner =
-            (isBest || isDaily || isInsight)
-                ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo w-full h-auto object-contain" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx <= 1 ? 'eager' : 'lazy'}">`
-                : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-cover" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`;
-        const wheelTap =
-            layoutV2 && wheelRowEnc
-                ? `<button type="button" class="timeline-meal-photo-tap absolute inset-0 z-20 h-full w-full cursor-zoom-in border-0 bg-transparent p-0 active:bg-white/5" style="-webkit-tap-highlight-color:transparent" aria-label="사진 ${photoCount}장 보기" data-meal-wheel-row="${wheelRowEnc}" data-meal-start-idx="${idx}" onclick="event.stopPropagation();window.openMealPhotosWheelOverlayFromBtn(this)"></button>`
-                : '';
-        return `
+    const v2PhotoLabelBlock = layoutV2
+        ? buildMomentFeedV2PhotoAndLabelHtml({
+              photoGroup,
+              momentUrlsEncoded,
+              photo,
+              aspectRatio,
+              isBestShare,
+              isDailyShare,
+              isInsightShare,
+              captionTextPlain: captionText,
+              overlayRow: wheelOverlayRow,
+              postId,
+              postIdJs,
+              mealHistoryMap,
+              groupEntryId: entryId
+          })
+        : '';
+    const photosHtml = layoutV2
+        ? ''
+        : photoGroup
+              .map((p, idx) => {
+                  const isBest = p.type === 'best',
+                      isDaily = p.type === 'daily',
+                      isInsight = p.type === 'insight';
+                  const inner =
+                      (isBest || isDaily || isInsight)
+                          ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo w-full h-auto object-contain" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx <= 1 ? 'eager' : 'lazy'}">`
+                          : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-cover" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`;
+                  return `
             <div class="flex-shrink-0 w-full snap-start relative ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" data-moment-i="${idx}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
-                <div class="moment-feed-pinch-host w-full relative">${inner}${wheelTap}</div>
+                <div class="moment-feed-pinch-host w-full relative">${inner}</div>
             </div>
         `;
-    }).join('');
-    const postId = postIdForWheel;
-    const postIdJs = JSON.stringify(String(postId || ''));
+              })
+              .join('');
     const groupKey = postId;
     const alternatePostIds = photoGroup.map(p => p.id).filter(Boolean).join(',');
     const userDisplay = userDisplayForWheel;
     const avatarDisplay = avatarDisplayForWheel;
-    const hasBody = (caption && (isBestShare || isDailyShare || isInsightShare)) || (comment && !isBestShare && !isDailyShare && !isInsightShare);
+    const hasBody =
+        (caption && (isBestShare || isDailyShare || isInsightShare)) ||
+        (!layoutV2 && comment && !isBestShare && !isDailyShare && !isInsightShare);
     const showProfileMomentBack =
         appState.galleryFilterUserId &&
         appState.galleryFilterPostId &&
@@ -266,9 +285,29 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                         <i class="fa-solid fa-arrow-left text-lg" aria-hidden="true"></i>
                     </button>`
         : '';
+    const v2PostCaptionAndFetch =
+        layoutV2
+            ? [
+                  caption && (isBestShare || isDailyShare || isInsightShare)
+                      ? `<div class="px-3 pt-2 text-sm text-slate-800">${caption}</div>`
+                      : '',
+                  !isBestShare && !isDailyShare && !isInsightShare && entryId && photo.userId && !isMyPost
+                      ? `<div class="shared-comment-fetch-placeholder hidden h-0 overflow-hidden p-0" aria-hidden="true" data-post-id="${postId}" data-entry-id="${entryId}" data-owner-user-id="${photo.userId}" data-group-idx="${groupIdx}"></div>`
+                      : ''
+              ]
+                  .filter(Boolean)
+                  .join('')
+            : '';
     return `
-            <div class="mb-2 bg-white border-b border-slate-200 instagram-post ${!hasBody ? 'post-no-body' : ''}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}"${layoutV2 ? ' data-moment-card-layout="2"' : ''}>
-                <div class="px-3 py-3 flex items-center gap-2 relative">
+            <div class="mb-2 ${layoutV2 ? 'bg-slate-100' : 'bg-white'} border-b border-slate-200 instagram-post ${layoutV2 ? 'moment-v2-snap-item ' : ''}${!hasBody ? 'post-no-body' : ''}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}"${layoutV2 ? ' data-moment-card-layout="2"' : ''}>
+                ${
+                    layoutV2 && showProfileMomentBack
+                        ? `<div class="px-2 pt-2">${profileBackBtn}</div>`
+                        : ''
+                }
+                ${
+                    !layoutV2
+                        ? `<div class="px-3 py-3 flex items-center gap-2 relative">
                     ${profileBackBtn}
                     ${avatarDisplay.type === 'photo' ? `
                         <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${avatarDisplay.value}); background-size: cover; background-position: center;">
@@ -291,8 +330,13 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                             <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
                         </button>
                     </div>
-                </div>
-                <div class="relative overflow-hidden ${(isDailyShare || isInsightShare) ? 'bg-white' : 'bg-slate-100'}">
+                </div>`
+                        : ''
+                }
+                ${
+                    layoutV2
+                        ? `<div class="relative w-full moment-v2-media-wrap">${v2PhotoLabelBlock}</div>${v2PostCaptionAndFetch}`
+                        : `<div class="relative overflow-hidden ${(isDailyShare || isInsightShare) ? 'bg-white' : 'bg-slate-100'}">
                     <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gallery-photo-scroll" data-moment-urls="${momentUrlsEncoded}" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
                         ${photosHtml}
                     </div>
@@ -301,8 +345,9 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                             <span class="photo-counter-current">1</span>/${photoCount}
                         </div>
                     ` : ''}
-                </div>
-                ${!isBestShare && !isDailyShare && !isInsightShare && caption ? (() => {
+                </div>`
+                }
+                ${!isBestShare && !isDailyShare && !isInsightShare && caption && !layoutV2 ? (() => {
                     const firstPhotoUrl = photoGroup[0]?.photoUrl || '';
                     const urlForCss = firstPhotoUrl ? firstPhotoUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/\\/g, '\\\\').replace(/'/g, '\\27') : '';
                     return `
@@ -312,7 +357,10 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                 </div>
                 `;
                 })() : ''}
-                <div class="feed-post-actions px-3 py-3">
+                ${
+                    layoutV2
+                        ? ''
+                        : `<div class="feed-post-actions px-3 py-3">
                     <div class="feed-post-buttons flex items-center justify-between mb-2 pb-2 -mx-3 px-3 border-b border-slate-200">
                         <div class="flex items-center gap-4">
                             <button onclick='window.toggleLike(${postIdJs})' class="post-like-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
@@ -347,7 +395,8 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                             </div>
                         </div>
                     </div>
-                </div>
+                </div>`
+                }
             </div>
         `;
 }

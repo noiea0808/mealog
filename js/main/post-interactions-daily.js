@@ -1026,6 +1026,7 @@ window.deleteCommentFromPost = async (commentId, postId) => {
             commentsListEl.innerHTML = '';
             if (!isMealPhotoOverlayList) commentsListEl.classList.remove('bg-slate-50');
             if (viewCommentsBtn) viewCommentsBtn.classList.add('hidden');
+            collapseMomentV2SocialPanelIfListEmpty(String(postId));
         } else {
             // 댓글 개수 업데이트
             const newCount = parseInt(commentCountEl?.textContent) || 0;
@@ -1058,6 +1059,7 @@ window.deleteCommentFromPost = async (commentId, postId) => {
                             commentsListEl.innerHTML = '';
                             commentsListEl.classList.remove('bg-slate-50');
                             if (viewCommentsBtn) viewCommentsBtn.classList.add('hidden');
+                            collapseMomentV2SocialPanelIfListEmpty(String(postId));
                         } else {
                             commentsListEl.classList.add('bg-slate-50');
                             const displayComments = comments.slice(0, 2);
@@ -1129,6 +1131,27 @@ function getAlternatePostIdsForPost(postId) {
     return attr ? attr.split(',').filter(Boolean) : [];
 }
 
+function collapseMomentV2SocialPanelIfListEmpty(postId) {
+    const commentSection = document.getElementById(`comment-section-${postId}`);
+    if (!commentSection?.classList?.contains('moment-v2-social-comments-panel')) {
+        return;
+    }
+    const list = commentSection.querySelector && commentSection.querySelector('.post-comments-list');
+    const hasList =
+        list &&
+        list.innerHTML &&
+        list.innerHTML.replace(/&nbsp;|\s|<!--[\s\S]*?-->/g, '').length > 0;
+    if (hasList) {
+        return;
+    }
+    commentSection.classList.add('hidden');
+    const input = document.getElementById(`comment-input-${postId}`);
+    if (input) {
+        input.classList.add('hidden');
+    }
+    commentSection.classList.remove('comment-input-open');
+}
+
 // 댓글 모두 보기 함수
 window.viewAllComments = async (postId) => {
     try {
@@ -1186,6 +1209,14 @@ window.viewAllComments = async (postId) => {
                 viewCommentsBtn.classList.add('hidden');
             }
         }
+        const v2Section = document.getElementById(`comment-section-${postId}`);
+        if (
+            v2Section?.classList?.contains('moment-v2-social-comments-panel') &&
+            comments &&
+            comments.length > 0
+        ) {
+            v2Section.classList.remove('hidden');
+        }
     } catch (e) {
         console.error("댓글 로드 실패:", e);
         showToast("댓글을 불러오는 중 오류가 발생했습니다.", 'error');
@@ -1208,14 +1239,29 @@ window.toggleCommentInput = (postId) => {
         const isHidden = inputEl.classList.contains('hidden');
         if (isHidden) {
             inputEl.classList.remove('hidden');
-            if (commentSection) commentSection.classList.add('comment-input-open');
+            if (commentSection) {
+                commentSection.classList.add('comment-input-open');
+                if (commentSection.classList?.contains('moment-v2-social-comments-panel')) {
+                    commentSection.classList.remove('hidden');
+                }
+            }
             const textInput = document.getElementById(`comment-text-${postId}`);
             if (textInput) {
                 textInput.focus();
             }
+            if (commentSection?.classList?.contains('moment-v2-dockable-comment')) {
+                requestAnimationFrame(() => {
+                    commentSection.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                });
+            }
         } else {
             inputEl.classList.add('hidden');
-            if (commentSection) commentSection.classList.remove('comment-input-open');
+            if (commentSection) {
+                commentSection.classList.remove('comment-input-open');
+                if (commentSection.classList?.contains('moment-v2-social-comments-panel')) {
+                    collapseMomentV2SocialPanelIfListEmpty(postId);
+                }
+            }
         }
     }
 };
@@ -1293,7 +1339,12 @@ window.submitComment = async (postId) => {
             </div>`
         );
         const commentSection = document.getElementById(`comment-section-${postId}`);
-        if (commentSection) commentSection.classList.remove('comments-empty');
+        if (commentSection) {
+            commentSection.classList.remove('comments-empty');
+            if (commentSection.classList?.contains('moment-v2-social-comments-panel')) {
+                commentSection.classList.remove('hidden');
+            }
+        }
     }
     if (commentCountEl) {
         const n = (parseInt(commentCountEl.textContent || '0', 10) || 0) + 1;

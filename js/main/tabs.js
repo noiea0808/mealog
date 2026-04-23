@@ -221,6 +221,8 @@ export function registerMainTabSwitch() {
                 // 설정 탭 전환 시 폼 채우기는 nav-settings 클릭 시 openSettings()에서 수행
             } else if (tab === 'gallery') {
                 document.body.classList.remove('bottom-nav-scroll-hidden');
+                document.getElementById('mainAppHeader')?.classList.remove('header-scroll-hidden');
+                document.getElementById('trackerSection')?.classList.remove('tracker-header-hidden');
                 // 모먼트 네비 점: 새 글을 스크롤해 볼 필요 없이, 탭(아이콘)으로 들어오면 제거
                 markMomentFeedNavSeen();
                 if (!appState.galleryFilterUserId) {

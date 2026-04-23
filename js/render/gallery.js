@@ -21,6 +21,7 @@ import {
 } from './moment-post-interactions.js';
 import { ensureMomentFeedPinchDelegate } from '../main/moment-feed-pinch.js';
 import { applyCollapsedCaptionToElement } from './comment-caption-layout.js';
+import { setupMomentFeedV2WheelLayout } from '../main/moment-feed-v2-wheel-layout.js';
 
 ensureMomentFeedPinchDelegate();
 
@@ -286,6 +287,9 @@ function setupGalleryEventListeners(container, sortedGroups, opts = null) {
         if (!isLoggedIn) { btn.classList.add('opacity-50', 'cursor-not-allowed'); btn.title = '로그인이 필요합니다'; if (btn.tagName === 'INPUT') { btn.disabled = true; btn.placeholder = '로그인 후 댓글을 달아보세요'; } }
         else { btn.classList.remove('opacity-50', 'cursor-not-allowed'); btn.title = ''; if (btn.tagName === 'INPUT') { btn.disabled = false; btn.placeholder = '댓글 달기...'; } }
     });
+    if (container.classList.contains('moment-feed-layout-v2') || container.getAttribute('data-moment-feed-layout') === '2') {
+        setupMomentFeedV2WheelLayout(container);
+    }
 }
 
 /**

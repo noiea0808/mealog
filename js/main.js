@@ -1668,8 +1668,8 @@ window.addEventListener('scroll', () => {
     const mainApp = document.getElementById('mainApp');
     if (!mainApp || mainApp.classList.contains('hidden')) return;
     const header = document.getElementById('mainAppHeader');
+    if (!header) return;
     const tracker = document.getElementById('trackerSection');
-    if (!header || !tracker) return;
     const y = window.scrollY;
     if (_headerScrollRaf) cancelAnimationFrame(_headerScrollRaf);
     _headerScrollRaf = requestAnimationFrame(() => {
@@ -1679,13 +1679,16 @@ window.addEventListener('scroll', () => {
         const isScrollingDown = delta > scrollThreshold;
         const isScrollingUp = delta < -scrollThreshold;
         const atTop = y <= topThreshold;
+        const isGallery = appState.currentTab === 'gallery';
         if (isScrollingDown && !atTop) {
-            header.classList.add('header-scroll-hidden');
-            tracker.classList.add('tracker-header-hidden');
+            if (!isGallery) {
+                header.classList.add('header-scroll-hidden');
+                if (tracker) tracker.classList.add('tracker-header-hidden');
+            }
             document.body.classList.add('bottom-nav-scroll-hidden');
         } else if (isScrollingUp || atTop) {
             header.classList.remove('header-scroll-hidden');
-            tracker.classList.remove('tracker-header-hidden');
+            if (tracker) tracker.classList.remove('tracker-header-hidden');
             document.body.classList.remove('bottom-nav-scroll-hidden');
         }
         _lastScrollY = y;

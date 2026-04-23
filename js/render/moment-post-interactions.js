@@ -118,58 +118,80 @@ export async function loadPostInteractions(postEl, postId) {
         
         // 로그인한 사용자만 좋아요/북마크 버튼 상태 업데이트
         if (isLoggedIn) {
-            // 좋아요 버튼 업데이트
-            const likeBtn = postEl.querySelector(`.post-like-btn[data-post-id="${postId}"]`);
-            const likeIcon = likeBtn?.querySelector('.post-like-icon');
-            if (likeBtn && likeIcon) {
+            postEl.querySelectorAll(`.post-like-btn[data-post-id="${postId}"]`).forEach((likeBtn) => {
+                const likeIcon = likeBtn.querySelector('.post-like-icon');
+                if (!likeIcon) return;
+                const inPhoto = likeIcon.classList.contains('timeline-meal-photo-moment-social-icon');
                 if (isLiked) {
-                    likeIcon.classList.remove('fa-regular', 'fa-heart', 'text-slate-800');
-                    likeIcon.classList.add('fa-solid', 'fa-heart', 'text-red-500');
+                    likeIcon.classList.remove('fa-regular', 'fa-heart', 'text-slate-800', 'text-white/95');
+                    likeIcon.classList.add('fa-solid', 'fa-heart');
+                    if (inPhoto) {
+                        likeIcon.classList.add('text-white/95');
+                    } else {
+                        likeIcon.classList.add('text-red-500');
+                    }
                 } else {
-                    likeIcon.classList.remove('fa-solid', 'fa-heart', 'text-red-500');
-                    likeIcon.classList.add('fa-regular', 'fa-heart', 'text-slate-800');
+                    likeIcon.classList.remove('fa-solid', 'fa-heart', 'text-red-500', 'text-slate-800');
+                    likeIcon.classList.add('fa-regular', 'fa-heart');
+                    if (inPhoto) {
+                        likeIcon.classList.add('text-white/95');
+                    } else {
+                        likeIcon.classList.add('text-slate-800');
+                    }
                 }
-            }
-            
-            // 북마크 버튼 업데이트
-            const bookmarkBtn = postEl.querySelector(`.post-bookmark-btn[data-post-id="${postId}"]`);
-            const bookmarkIcon = bookmarkBtn?.querySelector('.post-bookmark-icon');
-            if (bookmarkBtn && bookmarkIcon) {
+            });
+
+            postEl.querySelectorAll(`.post-bookmark-btn[data-post-id="${postId}"]`).forEach((bookmarkBtn) => {
+                const bookmarkIcon = bookmarkBtn.querySelector('.post-bookmark-icon');
+                if (!bookmarkIcon) return;
+                const inPhoto = bookmarkIcon.classList.contains('timeline-meal-photo-moment-social-icon');
                 if (isBookmarked) {
-                    bookmarkIcon.classList.remove('fa-regular', 'fa-bookmark');
-                    bookmarkIcon.classList.add('fa-solid', 'fa-bookmark', 'text-slate-800');
+                    bookmarkIcon.classList.remove('fa-regular', 'fa-bookmark', 'text-slate-800');
+                    bookmarkIcon.classList.add('fa-solid', 'fa-bookmark');
+                    if (!inPhoto) bookmarkIcon.classList.add('text-slate-800');
                 } else {
                     bookmarkIcon.classList.remove('fa-solid', 'fa-bookmark', 'text-slate-800');
                     bookmarkIcon.classList.add('fa-regular', 'fa-bookmark');
                 }
-            }
+            });
         }
-        
+
         // 좋아요 수 업데이트
-        const likeCountEl = postEl.querySelector(`.post-like-count[data-post-id="${postId}"]`);
-        if (likeCountEl) {
-            const likeCount = likes && Array.isArray(likes) ? likes.length : 0;
+        const likeCount = likes && Array.isArray(likes) ? likes.length : 0;
+        postEl.querySelectorAll(`.post-like-count[data-post-id="${postId}"]`).forEach((likeCountEl) => {
             likeCountEl.textContent = likeCount > 0 ? likeCount : '';
-        }
-        
+        });
+
         // 댓글 수 업데이트
-        const commentCountEl = postEl.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
-        if (commentCountEl) {
-            const commentCount = comments && Array.isArray(comments) ? comments.length : 0;
+        const commentCount = comments && Array.isArray(comments) ? comments.length : 0;
+        postEl.querySelectorAll(`.post-comment-count[data-post-id="${postId}"]`).forEach((commentCountEl) => {
             commentCountEl.textContent = commentCount > 0 ? commentCount : '';
-        }
-        
+        });
+
         // 댓글 아이콘: 사용자가 댓글 단 경우 채우기 (fa-solid)
-        const commentIcon = postEl.querySelector(`.post-comment-icon`);
-        if (commentIcon && isLoggedIn && comments && Array.isArray(comments)) {
-            const hasCommented = comments.some(c => (c.userId || c.authorId) === window.currentUser?.uid);
-            if (hasCommented) {
-                commentIcon.classList.remove('fa-regular');
-                commentIcon.classList.add('fa-solid');
-            } else {
-                commentIcon.classList.remove('fa-solid');
-                commentIcon.classList.add('fa-regular');
-            }
+        if (isLoggedIn && comments && Array.isArray(comments)) {
+            const hasCommented = comments.some((c) => (c.userId || c.authorId) === window.currentUser?.uid);
+            postEl
+                .querySelectorAll(`.post-comment-btn[data-post-id="${postId}"] .post-comment-icon`)
+                .forEach((icon) => {
+                    if (icon.classList.contains('timeline-meal-photo-moment-social-icon')) {
+                        if (hasCommented) {
+                            icon.classList.remove('fa-regular');
+                            icon.classList.add('fa-solid', 'text-white/95');
+                        } else {
+                            icon.classList.remove('fa-solid');
+                            icon.classList.add('fa-regular', 'text-white/95');
+                        }
+                    } else {
+                        if (hasCommented) {
+                            icon.classList.remove('fa-regular', 'text-slate-800');
+                            icon.classList.add('fa-solid', 'text-slate-800');
+                        } else {
+                            icon.classList.remove('fa-solid', 'text-slate-800');
+                            icon.classList.add('fa-regular', 'text-slate-800');
+                        }
+                    }
+                });
         }
         
         // 댓글 표시 (최대 2개) — 등록 시간 포함

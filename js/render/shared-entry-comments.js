@@ -3,6 +3,7 @@
  */
 import { escapeHtml } from './utils.js';
 import { applyCollapsedCaptionToElement } from './comment-caption-layout.js';
+import { syncMomentV2AuthorCommentBand } from '../main/moment-v2-author-comment.js';
 
 // 공유 게시물 코멘트 캐시 (lazy 로드 시 재요청 방지)
 const sharedCommentsCache = new Map();
@@ -75,6 +76,35 @@ export async function fetchMissingSharedComments(container, commentsPromise) {
 function applyCommentToPlaceholder(el, div, comment) {
     const groupIdx = div.getAttribute('data-group-idx');
     const postId = div.getAttribute('data-post-id');
+    const v2Root = div.closest?.('[data-moment-v2-root]');
+    if (v2Root && postId) {
+        div.classList.remove('shared-comment-fetch-placeholder');
+        if (comment) {
+            const raw = v2Root.getAttribute('data-moment-v2-labels');
+            if (raw) {
+                try {
+                    const labels = JSON.parse(decodeURIComponent(raw));
+                    if (Array.isArray(labels)) {
+                        const c = String(comment).trim();
+                        labels.forEach((row) => {
+                            if (row && typeof row === 'object') row.ac = c;
+                        });
+                        v2Root.setAttribute('data-moment-v2-labels', encodeURIComponent(JSON.stringify(labels)));
+                        syncMomentV2AuthorCommentBand(v2Root);
+                    }
+                } catch (_) {
+                    /* ignore */
+                }
+            }
+            const commentSection = el.querySelector(`#comment-section-${CSS.escape(postId)}`);
+            if (commentSection) {
+                commentSection.classList.remove('comments-empty');
+                commentSection.classList.add('border-t', 'border-slate-200');
+            }
+        }
+        div.remove();
+        return;
+    }
     div.classList.remove('shared-comment-fetch-placeholder');
     if (comment) {
         div.innerHTML = `
