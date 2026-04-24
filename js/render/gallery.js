@@ -345,13 +345,18 @@ async function appendGalleryPosts(docs, loadMoreWrap) {
     }
     const existingCount = container.querySelectorAll('.instagram-post').length;
     const newPostsHtml = newGroups
-        .map((photoGroup, i) => renderPostGroupHtml(photoGroup, existingCount + i, mealHistoryMap, { layoutV2: galleryMomentLayoutV2 }))
+        .map((photoGroup, i) =>
+            renderPostGroupHtml(photoGroup, existingCount + i, mealHistoryMap, {
+                layoutV2: galleryMomentLayoutV2,
+                useGalleryPostGap: galleryMomentLayoutV2
+            })
+        )
         .join('');
     const fragment = document.createDocumentFragment();
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = newPostsHtml;
     while (tempDiv.firstChild) fragment.appendChild(tempDiv.firstChild);
-    // 첫 10+지연·placeholder와 동일한 부모(게시열) 안에 두어야 `mb-[3px]` 간격이 일관됨(형제 #galleryPostInsertPoint 래퍼에 붙이면 ‘위쪽 10은 넓다’ 체감)
+    // 게시물은 `#galleryPostsInsertPoint` 안에만 추가(화면2는 열 `gap`으로 간격 일관)
     const insert = document.getElementById('galleryPostsInsertPoint');
     if (insert) {
         insert.appendChild(fragment);
@@ -736,7 +741,10 @@ export async function renderGallery(options = {}) {
         });
     }
     const renderPostGroup = (photoGroup, groupIdx) =>
-        renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, { layoutV2: galleryMomentLayoutV2 });
+        renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, {
+            layoutV2: galleryMomentLayoutV2,
+            useGalleryPostGap: galleryMomentLayoutV2
+        });
     // 각 그룹 내 사진을 Firestore photoIndex 기준으로만 정렬 (글쓴이/다른 사용자 동일 순서 보장)
     const photoSortTieBreaker = (a, b) => {
         const aKey = String(a.id ?? normalizeUrl(a.photoUrl) ?? '');

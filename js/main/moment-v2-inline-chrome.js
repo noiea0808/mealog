@@ -17,10 +17,10 @@ function getV2FrameRects(frame) {
     const viewport = frame.querySelector('.moment-v2-carousel-viewport, .timeline-meal-photos-carousel-viewport');
     const hstrip = frame.querySelector('.moment-v2-hstrip');
     if (!viewport || !hstrip) return null;
-    let idx = Math.floor(Number(frame.dataset?.photoIndex || 0));
-    if (!Number.isFinite(idx)) idx = 0;
     const cells = hstrip.querySelectorAll('.moment-v2-h-slide');
     if (!cells.length) return null;
+    /* 스크롤 중에도 보이는 슬롯 기준 — dataset.photoIndex(스냅 후 갱신)만 쓰면 배지·닉 위치가 어긋남 */
+    let idx = v2ActiveIndexFromStrip(hstrip);
     idx = Math.min(Math.max(0, cells.length - 1), idx);
     const cell = cells[idx];
     const slot = cell?.querySelector?.('.timeline-meal-photo-aspect-slot');
@@ -248,14 +248,13 @@ export function ensureMomentV2InlineChromeForFrame(frame) {
 
     const applySettled = (relaxedSnap) => {
         if (hstrip) {
+            runMomentV2InlineChromeLayout(frame);
             const w = hstrip.clientWidth || 0;
-            if (w > 0 && !relaxedSnap) {
-                if (!isMomentV2HstripAtSnapPoint(hstrip, w)) {
-                    return;
-                }
+            if (w > 0 && !relaxedSnap && !isMomentV2HstripAtSnapPoint(hstrip, w)) {
+                return;
             }
-            const idx = v2ActiveIndexFromStrip(hstrip);
-            frame.dataset.photoIndex = String(idx);
+            frame.dataset.photoIndex = String(v2ActiveIndexFromStrip(hstrip));
+            return;
         }
         runMomentV2InlineChromeLayout(frame);
     };

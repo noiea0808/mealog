@@ -1,7 +1,7 @@
 /**
  * 모먼트 화면2: 가로 스냅 사진(게시물 내) + 휠 라벨(YY·메뉴@장소) + 영역(작성자 코멘트 + 소셜 댓글) —
  * - 용어: 글쓴이 본문 = 코멘트(기록) / 타인 소셜 답장 = 댓글(목록+입력)
- * - 세로: 게시물 전환 — `scrollIntoView` 등. 뷰포트 `translateY` 중앙 정렬은 사용하지 않음(레이아웃·겹침 안정).
+ * - 세로: 피드는 문서 스크롤(사진 영역에서 휠·세로 제스처로 인접 게시물 점프하지 않음).
  * - 가로: hstrip 사진 스와이프(x 스냅 + smooth). `data-moment-v2-swipe-photos-only` 는 하단 휠·기록 코멘트는 고정(첫 사진 기준), 닉/소셜만 활성 슬롯에 맞춤.
  */
 import { isMomentV2HstripAtSnapPoint } from './moment-v2-hstrip-snap.js';
@@ -9,6 +9,7 @@ import { ensureMomentV2InlineChromeForFrame } from './moment-v2-inline-chrome.js
 import {
     ensureMomentV2AuthorCommentToggleBound,
     onMomentV2ActivePhotoMaybeChangedForAuthorComment,
+    refreshAllMomentV2AuthorCommentBandsIn,
     syncMomentV2AuthorCommentBand
 } from './moment-v2-author-comment.js';
 
@@ -216,6 +217,19 @@ function escapeHtmlMomentV2Text(s) {
         .replace(/"/g, '&quot;');
 }
 
+/**
+ * 메뉴@장소: 첫 `@` 뒤에 `<wbr>`로 장소 줄 우선 분리(HTML 조각, 한 줄용 span 안에 삽입).
+ */
+export function buildMomentV2MenuLabelLineInnerHtml(raw) {
+    const s = raw == null ? '—' : String(raw);
+    const esc = escapeHtmlMomentV2Text;
+    const i = s.indexOf('@');
+    if (i < 0) return esc(s);
+    const pre = s.slice(0, i);
+    const suf = s.slice(i + 1);
+    return `<span class="moment-v2-wheel-menu-pre">${esc(pre)}</span><span class="moment-v2-wheel-menu-at-mark">@</span><wbr><span class="moment-v2-wheel-menu-suf">${esc(suf)}</span>`;
+}
+
 /** 애니 프레임은 타임라인 `animateWheelTextStrip`과 같이 `meal-photo-wheel-label-line`만 — Tailwind `leading-none`·`h-[30px]` 쓰면 한 줄(30px)과 translateY 거리가 어긋남 */
 function lineClassForMomentV2Strip(strip) {
     const t = strip?.getAttribute?.('data-moment-v2-stripe');
@@ -236,7 +250,11 @@ function setMomentV2StripImmediate(strip, text) {
     strip.style.transition = 'none';
     strip.style.transform = 'translateY(0)';
     const cls = lineClassForMomentV2Strip(strip);
-    strip.innerHTML = `<span class="${cls}">${escapeHtmlMomentV2Text(t)}</span>`;
+    const inner =
+        strip.getAttribute('data-moment-v2-stripe') === 'menu'
+            ? buildMomentV2MenuLabelLineInnerHtml(t)
+            : escapeHtmlMomentV2Text(t);
+    strip.innerHTML = `<span class="${cls}">${inner}</span>`;
 }
 
 /**
@@ -264,8 +282,9 @@ function animateMomentV2TextStrip(strip, newText, direction, shouldAnimate) {
         setMomentV2StripImmediate(strip, t);
         return;
     }
-    const enc = escapeHtmlMomentV2Text(t);
-    const encOld = escapeHtmlMomentV2Text(old);
+    const isMenu = strip.getAttribute('data-moment-v2-stripe') === 'menu';
+    const enc = isMenu ? buildMomentV2MenuLabelLineInnerHtml(t) : escapeHtmlMomentV2Text(t);
+    const encOld = isMenu ? buildMomentV2MenuLabelLineInnerHtml(old) : escapeHtmlMomentV2Text(old);
     strip.style.transition = 'none';
     if (direction === 'forward') {
         strip.innerHTML = `<span class="${cls}">${encOld}</span><span class="${cls}">${enc}</span>`;
@@ -396,6 +415,12 @@ function applyMomentV2CaptionPayload(stageEl, payload, animCtx) {
         root._momentV2PrevCaptionPayload = { ...payload };
     }
     commitMv2GlobalWheelCaptionFromPayload(currentPost, payload);
+    const staggerMs = (keys.length - 1) * staggerFieldMs;
+    if (staggerMs > 0) {
+        window.setTimeout(() => {
+            if (stageEl.isConnected) syncMomentV2WheelCaptionInnerWidth(stageEl);
+        }, staggerMs + 48);
+    }
 }
 
 function syncMomentV2WheelCaptionInnerWidth(stageEl) {
@@ -426,6 +451,94 @@ function syncMomentV2WheelCaptionInnerWidth(stageEl) {
         innerRow.style.marginLeft = 'auto';
         innerRow.style.marginRight = 'auto';
         innerRow.style.boxSizing = 'border-box';
+    });
+    syncMomentV2WheelMenuCompactLayoutForStage(stageEl);
+    requestAnimationFrame(() => syncMomentV2WheelMenuCompactLayoutForStage(stageEl));
+}
+
+/** `.meal-photo-wheel-label-line`은 overflow:hidden이라 scrollWidth로는 판단 불가 → 텍스트 실폭 측정 */
+function measureMomentV2WheelMenuNaturalWidth(line) {
+    if (!line || typeof document === 'undefined') return 0;
+    try {
+        const r = document.createRange();
+        r.selectNodeContents(line);
+        const br = r.getBoundingClientRect();
+        if (Number.isFinite(br.width) && br.width > 0.5) return br.width;
+    } catch (_) {}
+    const cs = window.getComputedStyle(line);
+    const probe = document.createElement('span');
+    probe.setAttribute('aria-hidden', 'true');
+    probe.style.cssText = [
+        'position:fixed',
+        'left:-99999px',
+        'top:0',
+        'visibility:hidden',
+        'white-space:nowrap',
+        'pointer-events:none',
+        `font-family:${cs.fontFamily}`,
+        `font-size:${cs.fontSize}`,
+        `font-weight:${cs.fontWeight}`,
+        `font-style:${cs.fontStyle}`,
+        `letter-spacing:${cs.letterSpacing || '0.05em'}`
+    ].join(';');
+    probe.textContent = line.textContent || '';
+    document.body.appendChild(probe);
+    const w = probe.offsetWidth;
+    probe.remove();
+    return w;
+}
+
+function clearMomentV2MenuPreZwsp(line) {
+    const pre = line?.querySelector?.('.moment-v2-wheel-menu-pre');
+    if (!pre) return;
+    pre.textContent = pre.textContent.replace(/\u200b/g, '');
+}
+
+/** 날짜 열과 겹치면 `@` 뒤 줄바꿈만으로는 부족 — 메뉴( @ 앞) 끝에서부터 ZWSP로 한 글자씩 줄 끊기 유도 */
+function applyMomentV2MenuTailZwspForWheelOverlap(captionRow, line) {
+    const wb = captionRow?.querySelector?.('.timeline-meal-photos-wheelbar-inner');
+    const pre = line?.querySelector?.('.moment-v2-wheel-menu-pre');
+    if (!wb || !pre || !line) return;
+    clearMomentV2MenuPreZwsp(line);
+    const thr = 4;
+    let n = 0;
+    while (n++ < 200) {
+        const lr = line.getBoundingClientRect();
+        const wr = wb.getBoundingClientRect();
+        if (lr.left >= wr.right - thr) break;
+        const plain = pre.textContent.replace(/\u200b/g, '');
+        if (plain.length <= 1) break;
+        const tail = plain.slice(-1);
+        const head = plain.slice(0, -1);
+        pre.textContent = `${head}\u200b${tail}`;
+    }
+}
+
+/** 메뉴@장소: 한 줄(20px)에 들어가면 유지, 아니면 18px·최대 두 줄(우정렬) */
+function syncMomentV2WheelMenuCompactLayoutForStage(stageEl) {
+    if (!stageEl) return;
+    const cap = getMomentV2CaptionForStage(stageEl);
+    const roots = [stageEl, cap].filter(Boolean);
+    const seen = new Set();
+    roots.forEach((root) => {
+        root.querySelectorAll?.('[data-wheel-menu-caption]').forEach((el) => {
+            if (seen.has(el)) return;
+            seen.add(el);
+            const line = el.querySelector('.moment-v2-wheel-menu-anim-line');
+            if (!line) return;
+            clearMomentV2MenuPreZwsp(line);
+            el.classList.remove('moment-v2-wheel-menu--compact');
+            const avail = el.clientWidth;
+            const naturalW = measureMomentV2WheelMenuNaturalWidth(line);
+            if (avail > 8 && naturalW > avail + 0.5) {
+                el.classList.add('moment-v2-wheel-menu--compact');
+                const captionRow = el.closest('.moment-v2-wheel-caption-row');
+                requestAnimationFrame(() => {
+                    const ln = el.querySelector('.moment-v2-wheel-menu-anim-line');
+                    applyMomentV2MenuTailZwspForWheelOverlap(captionRow, ln);
+                });
+            }
+        });
     });
 }
 
@@ -477,24 +590,6 @@ function normalizeWheelDelta2D(e, clientW, clientH) {
         dy *= clientH > 0 ? clientH : 1;
     }
     return { dx, dy };
-}
-
-/** 세로 휠/트랙패드 → 같은 컨테이너의 위·아래 게시물 */
-function scrollAdjacentInstagramPost(stageEl, deltaY) {
-    if (!deltaY) return;
-    const post = stageEl.closest('.instagram-post');
-    if (!post?.parentElement) return;
-    const posts = [...post.parentElement.querySelectorAll(':scope > .instagram-post')];
-    const i = posts.indexOf(post);
-    if (i < 0) return;
-    const dir = deltaY > 0 ? 1 : -1;
-    const next = posts[i + dir];
-    if (next) {
-        next.scrollIntoView({ behavior: 'auto', block: 'nearest' });
-    }
-    requestAnimationFrame(() => {
-        setTimeout(() => scheduleMomentV2SplitCaptionLayout(), 0);
-    });
 }
 
 function momentV2PrefersReducedMotion() {
@@ -638,9 +733,9 @@ function bindMomentV2HstripPointerDragForWeb(strip) {
 }
 
 /**
- * 가로 hstrip이 있으면 휠로 좌우, 없으면(세로 스크롤 전용) 세로 휠만 인접 게시물
+ * 가로 hstrip이 있으면 휠·트랙패드로 좌우만 가로 이동(세로 델타는 피드 스크롤에 맡김).
  */
-function bindMomentV2CarouselAreaWheel(photoShell, strip, stageEl) {
+function bindMomentV2CarouselAreaWheel(photoShell, strip, _stageEl) {
     if (!photoShell || photoShell._momentV2CarouselWheelBound) return;
     photoShell._momentV2CarouselWheelBound = true;
     const onWheel = (e) => {
@@ -664,46 +759,8 @@ function bindMomentV2CarouselAreaWheel(photoShell, strip, stageEl) {
                 return;
             }
         }
-        if (absY > absX && absY > 0) {
-            scrollAdjacentInstagramPost(stageEl, dy);
-            e.preventDefault();
-            e.stopPropagation();
-        }
     };
     photoShell.addEventListener('wheel', onWheel, { passive: false, capture: true });
-
-    /** 터치/포인터: 휠 이벤트가 없는 기기에서 사진 위 세로 스와이프 → 이전/다음 게시물 */
-    if (!photoShell._momentV2PointerVNav) {
-        photoShell._momentV2PointerVNav = true;
-        let pDown = null;
-        const onPD = (e) => {
-            if (e.pointerType === 'mouse' && e.button !== 0) return;
-            if (
-                strip &&
-                e.pointerType === 'mouse' &&
-                strip.scrollWidth > strip.clientWidth + 1 &&
-                e.target?.closest?.('.moment-v2-hstrip') === strip
-            ) {
-                return;
-            }
-            pDown = { x: e.clientX, y: e.clientY, id: e.pointerId };
-        };
-        const onPU = (e) => {
-            if (!pDown || e.pointerId !== pDown.id) return;
-            const dx = e.clientX - pDown.x;
-            const dy = e.clientY - pDown.y;
-            pDown = null;
-            if (Math.abs(dy) < 56) return;
-            if (Math.abs(dy) <= Math.abs(dx) * 1.12) return;
-            scrollAdjacentInstagramPost(stageEl, dy);
-        };
-        const onPC = (e) => {
-            if (pDown && e.pointerId === pDown.id) pDown = null;
-        };
-        photoShell.addEventListener('pointerdown', onPD, { passive: true, capture: true });
-        photoShell.addEventListener('pointerup', onPU, { passive: true, capture: true });
-        photoShell.addEventListener('pointercancel', onPC, { passive: true, capture: true });
-    }
 }
 
 function bindOneMomentV2WheelStage(stageEl) {
@@ -868,5 +925,6 @@ export function setupMomentFeedV2WheelLayout(scopeEl) {
     ensureMomentV2PrimaryCaptionGlobalListeners();
     scopeEl.querySelectorAll('.moment-v2-wheel-stage').forEach((stage) => bindOneMomentV2WheelStage(stage));
     scopeEl.querySelectorAll('.moment-feed-v2-scope').forEach((root) => syncMomentV2AuthorCommentBand(root));
+    requestAnimationFrame(() => requestAnimationFrame(() => refreshAllMomentV2AuthorCommentBandsIn(scopeEl)));
     scheduleMomentV2SplitCaptionLayout();
 }

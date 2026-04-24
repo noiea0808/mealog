@@ -1,5 +1,6 @@
 /**
  * 모먼트/피드 공통: 공유 사진 그룹(인스타 스타일) HTML
+ * @param {{ layoutV2?: boolean, useGalleryPostGap?: boolean }} [options] — `useGalleryPostGap`: 갤러리 화면2만, `#galleryPostsInsertPoint`의 `gap`과 맞추기 위해 카드 `mb`/바깥 배경 제거
  */
 import { SLOTS, SLOT_STYLES } from '../constants.js';
 import { appState } from '../state.js';
@@ -130,6 +131,8 @@ export function buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMap, ctx
 
 export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, options = {}) {
     const layoutV2 = options.layoutV2 === true;
+    /** 갤러리 화면2: `#galleryPostsInsertPoint`의 `gap`만으로 간격 — 카드 mb·바깥 배경 제거 */
+    const useGalleryPostGap = layoutV2 && options.useGalleryPostGap === true;
     const photo = photoGroup[0];
     const photoCount = photoGroup.length;
     let entryId = photo.entryId;
@@ -298,8 +301,21 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                   .filter(Boolean)
                   .join('')
             : '';
+    const v2AfterMediaBlock =
+        useGalleryPostGap && v2PostCaptionAndFetch.trim()
+            ? `<div class="moment-v2-gallery-post-aux">${v2PostCaptionAndFetch}</div>`
+            : v2PostCaptionAndFetch;
+    const cardMb = layoutV2 ? (useGalleryPostGap ? 'mb-0' : 'mb-[3px]') : 'mb-2';
+    const cardSkin =
+        layoutV2 && !useGalleryPostGap ? 'bg-slate-100 border-b border-slate-200' : !layoutV2 ? 'bg-white border-b border-slate-200' : '';
+    const galleryShellCls = useGalleryPostGap ? 'moment-v2-gallery-post-shell' : '';
+    const cardClassList = [cardMb, cardSkin, 'instagram-post', galleryShellCls, !hasBody ? 'post-no-body' : '']
+        .filter(Boolean)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
     return `
-            <div class="${layoutV2 ? 'mb-[3px]' : 'mb-2'} ${layoutV2 ? 'bg-slate-100' : 'bg-white'} border-b border-slate-200 instagram-post${!hasBody ? ' post-no-body' : ''}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}"${layoutV2 ? ' data-moment-card-layout="2"' : ''}>
+            <div class="${cardClassList}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}"${layoutV2 ? ' data-moment-card-layout="2"' : ''}>
                 ${
                     layoutV2 && showProfileMomentBack
                         ? `<div class="px-2 pt-2">${profileBackBtn}</div>`
@@ -335,7 +351,7 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                 }
                 ${
                     layoutV2
-                        ? `<div class="relative w-full moment-v2-media-wrap">${v2PhotoLabelBlock}</div>${v2PostCaptionAndFetch}`
+                        ? `<div class="relative w-full moment-v2-media-wrap">${v2PhotoLabelBlock}</div>${v2AfterMediaBlock}`
                         : `<div class="relative overflow-hidden ${(isDailyShare || isInsightShare) ? 'bg-white' : 'bg-slate-100'}">
                     <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gallery-photo-scroll" data-moment-urls="${momentUrlsEncoded}" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
                         ${photosHtml}

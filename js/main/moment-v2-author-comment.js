@@ -40,6 +40,34 @@ function getCaptionInRoot(root) {
     return root?.querySelector?.('[data-moment-v2-caption]') || null;
 }
 
+function refreshMomentV2AuthorCommentClampForBand(band) {
+    if (!band || band.classList.contains('hidden')) return;
+    const body = band.querySelector('[data-moment-v2-author-comment-body], [data-moment-v2-author-comment-body-unit]');
+    if (!body) return;
+    band.classList.remove('moment-v2-author-comment-band--expanded', 'moment-v2-author-comment-band--expandable');
+    band.removeAttribute('data-moment-v2-author-comment-overflow');
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            void body.offsetHeight;
+            const ch = body.clientHeight;
+            const sh = body.scrollHeight;
+            if (sh <= ch + 3) return;
+            band.classList.add('moment-v2-author-comment-band--expandable');
+            band.setAttribute('data-moment-v2-author-comment-overflow', '1');
+        });
+    });
+}
+
+/**
+ * @param {ParentNode | null | undefined} scopeEl — #galleryContainer, #feedContent 등
+ */
+export function refreshAllMomentV2AuthorCommentBandsIn(scopeEl) {
+    if (!scopeEl?.querySelectorAll) return;
+    scopeEl.querySelectorAll('[data-moment-v2-author-comment-band], [data-moment-v2-author-unit]').forEach((band) => {
+        if (!band.classList.contains('hidden')) refreshMomentV2AuthorCommentClampForBand(band);
+    });
+}
+
 /**
  * @param {HTMLElement} root — `.moment-feed-v2-scope`
  */
@@ -58,6 +86,8 @@ export function syncMomentV2AuthorCommentBand(root) {
     if (!hasAc) {
         body.innerHTML = '';
         band.classList.add('hidden');
+        band.classList.remove('moment-v2-author-comment-band--expanded', 'moment-v2-author-comment-band--expandable');
+        band.removeAttribute('data-moment-v2-author-comment-overflow');
         const stEmpty = root.querySelector('.moment-v2-wheel-stage');
         if (stEmpty && typeof stEmpty._momentV2RunLayout === 'function') {
             requestAnimationFrame(() => stEmpty._momentV2RunLayout());
@@ -66,6 +96,7 @@ export function syncMomentV2AuthorCommentBand(root) {
     }
     body.innerHTML = `<div class="whitespace-pre-wrap break-words">${escapeHtml(ac)}</div>`;
     band.classList.remove('hidden');
+    refreshMomentV2AuthorCommentClampForBand(band);
     const st = root.querySelector('.moment-v2-wheel-stage');
     if (st && typeof st._momentV2RunLayout === 'function') {
         requestAnimationFrame(() => st._momentV2RunLayout());
@@ -73,12 +104,30 @@ export function syncMomentV2AuthorCommentBand(root) {
 }
 
 /**
- * @param {ParentNode | null} scopeEl
+ * @param {ParentNode | null | undefined} scopeEl — 보통 `document.body` (한 번만 바인딩)
  */
 export function ensureMomentV2AuthorCommentToggleBound(scopeEl) {
     if (!scopeEl || scopeEl._momentV2AuthorCommentBound) return;
     scopeEl._momentV2AuthorCommentBound = true;
-    /* 화면2는 기록 코멘트 토글 없음(타임라인 휠 팝업만 `data-meal-photo-comment-toggle` 사용) */
+    document.body.addEventListener(
+        'click',
+        (ev) => {
+            const band = ev.target.closest('[data-moment-v2-author-comment-band], [data-moment-v2-author-unit]');
+            if (!band || band.classList.contains('hidden')) return;
+            const inMv2 =
+                band.closest('#galleryContainer.moment-feed-layout-v2') ||
+                band.closest('#feedContent[data-moment-feed-layout="2"]');
+            if (!inMv2) return;
+            if (!band.classList.contains('moment-v2-author-comment-band--expandable')) return;
+            if (ev.target.closest('button, a, input, textarea, [role="button"], [data-meal-feed-options]')) return;
+            band.classList.toggle('moment-v2-author-comment-band--expanded');
+            const st = band.closest('.moment-v2-wheel-stage');
+            if (st && typeof st._momentV2RunLayout === 'function') {
+                requestAnimationFrame(() => st._momentV2RunLayout());
+            }
+        },
+        true
+    );
 }
 
 /**
