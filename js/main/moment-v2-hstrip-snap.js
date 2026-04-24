@@ -1,11 +1,9 @@
 /**
- * 타임라인 휠 사진 팝업 `mealPhotoHstripScrollSettled`와 동일 규칙.
- * snap-x 캐러셀은 스냅 지점 **근처에 멈췄을 때만** 인덱스·하단 휠·배지를 갱신 — 중간에 뒤집히지 않게 함.
+ * CSS scroll-snap을 끈 뒤에도 `wheel-layout` / 인라인 크롬이 동일 조건을 쓰도록 유지.
+ * (구) 스냅 근처에서만 true → **항상 true** (스크롤 중에도 뱃지·휠 인덱스 갱신).
  */
 export function isMomentV2HstripAtSnapPoint(hstrip, w) {
-    if (!hstrip || w <= 0) return true;
-    const sl = hstrip.scrollLeft;
-    const nearest = Math.round(sl / w);
-    const tol = Math.max(8, Math.min(28, Math.floor(w * 0.035)));
-    return Math.abs(sl - nearest * w) <= tol;
+    void hstrip;
+    void w;
+    return true;
 }

@@ -317,13 +317,13 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         const wheelBlock = buildMomentV2WheelCaptionHtml(photoGroup[0], captionTextPlain, flags);
         return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root data-moment-v2-swipe-photos-only="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
     <div class="moment-v2-wheel-stage moment-v2-wheel-stage--with-footer moment-v2-wheel-stage--split-caption relative box-border w-full min-w-0 flex flex-col items-stretch overflow-hidden px-0.5" data-moment-v2-wheel-stage>
-        <div class="moment-v2-wheel-body flex w-full min-w-0 max-w-full flex-col items-stretch gap-[2px]" data-moment-v2-wheel-body>
+        <div class="moment-v2-wheel-body flex w-full min-w-0 max-w-full flex-col items-stretch gap-px" data-moment-v2-wheel-body>
         <div class="moment-v2-wheel-center-stack w-full min-w-0 flex flex-col items-stretch" data-moment-v2-center-stack>
     <div class="moment-v2-photo-shell w-full min-w-0 bg-transparent py-0">
     <div class="moment-v2-photo-swipe-zone timeline-meal-photos-carousel-zone flex w-full min-w-0 shrink-0 flex-col items-stretch">
         <div class="moment-v2-photo-strip-frame timeline-meal-photos-carousel-frame relative flex min-h-0 w-full min-w-0 flex-col items-stretch justify-center py-0 px-0" data-photo-index="0" tabindex="-1" data-moment-v2-legacy-strip="0" role="region" aria-label="게시물 사진">
             <div class="moment-v2-photo-strip-viewport timeline-meal-photos-carousel-viewport relative w-full min-w-0 min-h-0 flex-1 overflow-hidden">
-                <div class="moment-v2-hstrip scrollbar-hide flex min-h-0 w-full min-w-0 select-none flex-row overflow-x-auto overflow-y-hidden overscroll-x-contain snap-x snap-mandatory" style="-webkit-overflow-scrolling:touch" tabindex="-1">
+                <div class="moment-v2-hstrip scrollbar-hide flex min-h-0 w-full min-w-0 select-none flex-row overflow-x-auto overflow-y-hidden overscroll-x-contain" style="-webkit-overflow-scrolling:touch" tabindex="-1">
                 ${hSlides}
                 </div>
                 ${momentChrome}
@@ -339,7 +339,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         <div class="moment-v2-dock-slab w-full min-h-0 shrink-0 hidden" data-moment-v2-dock-slab aria-hidden="true"></div>
         <div class="moment-v2-caption-footer moment-v2-caption-footer--hstrip-below relative flex w-full min-w-0 max-w-full shrink-0 flex-col justify-center gap-0 px-0" data-moment-v2-caption>
         <div class="moment-v2-wheel-hstrip-label w-full min-w-0 max-w-full shrink-0" data-moment-v2-hstrip-footer-wheel>${wheelBlock}</div>
-        <div class="moment-v2-author-comment-band moment-v2-author-unit-band rounded-b-lg rounded-t-none border border-white/10 bg-black/45 px-1.5 py-1.5 text-left text-white shadow-none backdrop-blur-sm ${hasFirstAc ? '' : 'hidden'}" data-moment-v2-author-comment-band ${hasFirstAc ? '' : 'hidden'}">
+        <div class="moment-v2-author-comment-band moment-v2-author-unit-band rounded-b-lg rounded-t-none border border-white/10 bg-black/45 px-0 py-1.5 text-left text-white shadow-none backdrop-blur-sm ${hasFirstAc ? '' : 'hidden'}" data-moment-v2-author-comment-band ${hasFirstAc ? '' : 'hidden'}">
             <div class="moment-v2-author-comment-body moment-v2-label-font-body min-w-0 text-white/90" data-moment-v2-author-comment-body>${firstAcHtml}</div>
         </div>
         ${socialPanelBelow}
@@ -368,10 +368,10 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
                     : '';
             return `<div class="moment-v2-v-unit relative w-full min-w-0" data-moment-v2-v-unit data-moment-i="${idx}" data-moment-v2-n="${n}">
   ${bgBlock}
-  <div class="moment-v2-v-unit-stack relative z-[1] flex w-full min-w-0 flex-col gap-[2px] overflow-hidden rounded-t-lg rounded-b-lg">
+  <div class="moment-v2-v-unit-stack relative z-[1] flex w-full min-w-0 flex-col gap-px overflow-hidden rounded-t-lg rounded-b-lg">
     ${inner}
     ${wheel}
-    <div class="moment-v2-author-comment-band moment-v2-author-unit-band rounded-b-lg rounded-t-none border border-white/10 bg-black/45 px-1.5 py-1.5 text-left text-white shadow-none backdrop-blur-sm ${hasAc ? '' : 'hidden'}" data-moment-v2-author-unit ${hasAc ? '' : 'hidden'} aria-hidden="${hasAc ? 'false' : 'true'}">
+    <div class="moment-v2-author-comment-band moment-v2-author-unit-band rounded-b-lg rounded-t-none border border-white/10 bg-black/45 px-0 py-1.5 text-left text-white shadow-none backdrop-blur-sm ${hasAc ? '' : 'hidden'}" data-moment-v2-author-unit ${hasAc ? '' : 'hidden'} aria-hidden="${hasAc ? 'false' : 'true'}">
       <div class="moment-v2-author-comment-body moment-v2-label-font-body min-w-0 text-white/90" data-moment-v2-author-comment-body-unit>${acHtml}</div>
     </div>
   </div>
@@ -381,7 +381,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
 
     return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root data-moment-v2-vscroll="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
     <div class="moment-v2-wheel-stage moment-v2-wheel-stage--vscroll-photos moment-v2-wheel-stage--with-footer moment-v2-wheel-stage--split-caption relative box-border w-full min-w-0 flex flex-col items-stretch overflow-hidden px-0.5" data-moment-v2-wheel-stage>
-        <div class="moment-v2-wheel-body flex w-full min-w-0 max-w-full flex-col items-stretch gap-[2px]" data-moment-v2-wheel-body>
+        <div class="moment-v2-wheel-body flex w-full min-w-0 max-w-full flex-col items-stretch gap-px" data-moment-v2-wheel-body>
         <div class="moment-v2-wheel-center-stack w-full min-w-0 flex flex-col items-stretch" data-moment-v2-center-stack>
     <div class="moment-v2-photo-shell w-full min-w-0 bg-transparent py-0">
     <div class="timeline-meal-photos-carousel-zone flex w-full min-w-0 shrink-0 flex-col items-stretch">

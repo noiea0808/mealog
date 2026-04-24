@@ -2,7 +2,7 @@
  * 모먼트 화면2: 가로 스냅 사진(게시물 내) + 휠 라벨(YY·메뉴@장소) + 영역(작성자 코멘트 + 소셜 댓글) —
  * - 용어: 글쓴이 본문 = 코멘트(기록) / 타인 소셜 답장 = 댓글(목록+입력)
  * - 세로: 게시물 전환 — `scrollIntoView` 등. 뷰포트 `translateY` 중앙 정렬은 사용하지 않음(레이아웃·겹침 안정).
- * - 가로: hstrip만 사진 스와이프(한 장 스냅). `data-moment-v2-swipe-photos-only` 는 하단 휠·기록 코멘트는 고정(첫 사진 기준), 닉/소셜만 활성 슬롯에 맞춤.
+ * - 가로: hstrip만 사진 스와이프(CSS 스냅 없음, 마우스 드래그 지원). `data-moment-v2-swipe-photos-only` 는 하단 휠·기록 코멘트는 고정(첫 사진 기준), 닉/소셜만 활성 슬롯에 맞춤.
  */
 import { isMomentV2HstripAtSnapPoint } from './moment-v2-hstrip-snap.js';
 import { ensureMomentV2InlineChromeForFrame } from './moment-v2-inline-chrome.js';
@@ -518,6 +518,50 @@ function ensureMomentV2PrimaryCaptionGlobalListeners() {
 }
 
 /**
+ * 웹: 마우스로 hstrip `scrollLeft` 드래그(터치/트랙패드는 브라우저 기본).
+ */
+function bindMomentV2HstripPointerDragForWeb(strip) {
+    if (!strip || strip._mv2HstripMouseDrag) return;
+    strip._mv2HstripMouseDrag = true;
+    let drag = null;
+    const onDown = (e) => {
+        if (e.pointerType !== 'mouse' || e.button !== 0) return;
+        if (strip.scrollWidth <= strip.clientWidth + 1) return;
+        drag = { s0: strip.scrollLeft, x0: e.clientX, id: e.pointerId };
+        try {
+            strip.setPointerCapture(e.pointerId);
+        } catch (_) {}
+        strip.classList.add('moment-v2-hstrip--dragging');
+    };
+    const onMove = (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        if (e.pointerType !== 'mouse') return;
+        const dx = e.clientX - drag.x0;
+        strip.scrollLeft = drag.s0 - dx;
+        e.preventDefault();
+    };
+    const end = (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        try {
+            strip.releasePointerCapture(e.pointerId);
+        } catch (_) {}
+        drag = null;
+        strip.classList.remove('moment-v2-hstrip--dragging');
+    };
+    const onLost = (e) => {
+        if (drag && e.pointerId === drag.id) {
+            drag = null;
+            strip.classList.remove('moment-v2-hstrip--dragging');
+        }
+    };
+    strip.addEventListener('pointerdown', onDown);
+    strip.addEventListener('pointermove', onMove, { passive: false });
+    strip.addEventListener('pointerup', end);
+    strip.addEventListener('pointercancel', end);
+    strip.addEventListener('lostpointercapture', onLost);
+}
+
+/**
  * 가로 hstrip이 있으면 휠로 좌우, 없으면(세로 스크롤 전용) 세로 휠만 인접 게시물
  */
 function bindMomentV2CarouselAreaWheel(photoShell, strip, stageEl) {
@@ -558,6 +602,14 @@ function bindMomentV2CarouselAreaWheel(photoShell, strip, stageEl) {
         let pDown = null;
         const onPD = (e) => {
             if (e.pointerType === 'mouse' && e.button !== 0) return;
+            if (
+                strip &&
+                e.pointerType === 'mouse' &&
+                strip.scrollWidth > strip.clientWidth + 1 &&
+                e.target?.closest?.('.moment-v2-hstrip') === strip
+            ) {
+                return;
+            }
             pDown = { x: e.clientX, y: e.clientY, id: e.pointerId };
         };
         const onPU = (e) => {
@@ -673,6 +725,9 @@ function bindOneMomentV2WheelStage(stageEl) {
     const rafSync = () => requestAnimationFrame(runAfterIndexChange);
 
     bindMomentV2CarouselAreaWheel(photoShell, strip, stageEl);
+    if (strip) {
+        bindMomentV2HstripPointerDragForWeb(strip);
+    }
 
     if (strip) {
         strip.addEventListener('scroll', onHStripScrollSettled, { passive: true });
