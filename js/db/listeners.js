@@ -12,7 +12,7 @@ import {
     applyDemoDateShiftToSharedPhoto,
     computeDemoDateShiftDaysFromKeyedObject
 } from '../demo-date-shift.js';
-import { processPhotosToGroups } from '../render/post-group-utils.js';
+import { getSharedPhotoGroupKey, processPhotosToGroups } from '../render/post-group-utils.js';
 import {
     hydrateMealSyncErrorIdsFromStorage,
     hydrateMealSyncAbandonedIdsFromStorage
@@ -740,14 +740,8 @@ function profileMomentGridGroupCount(docs) {
 /** docs를 그룹화했을 때 포스트(그룹) 수 계산 (그룹 키만 세는 버전 — 피드 배치 로직용) */
 function countPostsFromDocs(docs) {
     const seen = new Set();
-    (docs || []).forEach(photo => {
-        let groupKey;
-        if (photo.type === 'daily') groupKey = `daily_${photo.date || 'no-date'}_${photo.userId}`;
-        else if (photo.type === 'best') groupKey = `best_${photo.id || 'no-id'}_${photo.userId}`;
-        else if (photo.type === 'insight') groupKey = `insight_${photo.dateRangeText || 'no-range'}_${photo.userId}`;
-        else if (photo.entryId) groupKey = `${photo.entryId}_${photo.userId}`;
-        else groupKey = `no-entry_${photo.userId}`;
-        seen.add(groupKey);
+    (docs || []).forEach((photo) => {
+        seen.add(getSharedPhotoGroupKey(photo));
     });
     return seen.size;
 }
@@ -758,12 +752,7 @@ function getDocsForFirstNPosts(docs, n) {
     let postCount = 0;
     const result = [];
     for (const photo of docs) {
-        let groupKey;
-        if (photo.type === 'daily') groupKey = `daily_${photo.date || 'no-date'}_${photo.userId}`;
-        else if (photo.type === 'best') groupKey = `best_${photo.id || 'no-id'}_${photo.userId}`;
-        else if (photo.type === 'insight') groupKey = `insight_${photo.dateRangeText || 'no-range'}_${photo.userId}`;
-        else if (photo.entryId) groupKey = `${photo.entryId}_${photo.userId}`;
-        else groupKey = `no-entry_${photo.userId}`;
+        const groupKey = getSharedPhotoGroupKey(photo);
         if (!seen.has(groupKey)) {
             if (postCount >= n) break;
             postCount++;

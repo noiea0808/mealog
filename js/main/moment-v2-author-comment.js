@@ -17,6 +17,10 @@ function getStripAndIdx(scope) {
     const stage = scope.querySelector('.moment-v2-wheel-stage');
     const strip = stage?.querySelector?.('.moment-v2-hstrip');
     if (!strip) return { strip: null, idx: 0 };
+    /* 다장·가로 사진만 스와이프: 기록 코멘트는 첫 사진(인덱스 0) 기준으로 고정 */
+    if (scope.getAttribute('data-moment-v2-swipe-photos-only') === '1') {
+        return { strip, idx: 0 };
+    }
     return { strip, idx: v2ActiveIndexFromStrip(strip) };
 }
 

@@ -2,7 +2,7 @@
  * 모먼트 화면2: 가로 스냅 사진(게시물 내) + 휠 라벨(YY·메뉴@장소) + 영역(작성자 코멘트 + 소셜 댓글) —
  * - 용어: 글쓴이 본문 = 코멘트(기록) / 타인 소셜 답장 = 댓글(목록+입력)
  * - 세로: 게시물 전환 — `scrollIntoView` 등. 뷰포트 `translateY` 중앙 정렬은 사용하지 않음(레이아웃·겹침 안정).
- * - 가로: hstrip만 사진 스와이프(한 장 스냅). 라벨·날짜는 캐러셀 밖 — 스냅 확정 후에만 갱신.
+ * - 가로: hstrip만 사진 스와이프(한 장 스냅). `data-moment-v2-swipe-photos-only` 는 하단 휠·기록 코멘트는 고정(첫 사진 기준), 닉/소셜만 활성 슬롯에 맞춤.
  */
 import { isMomentV2HstripAtSnapPoint } from './moment-v2-hstrip-snap.js';
 import { ensureMomentV2InlineChromeForFrame } from './moment-v2-inline-chrome.js';
@@ -163,7 +163,11 @@ function runMomentV2PrimaryFixedDock() {
             slab.style.height = '';
         }
         if (cap) {
-            if (post === primary) {
+            const swipePhotosOnly = root?.getAttribute?.('data-moment-v2-swipe-photos-only') === '1';
+            /* 다장: 휠+기록이 [data-moment-v2-caption]에 있음. 숨기면 스크롤할 때마다 ‘스냅’처럼 보임(단장은 휠이 v-unit 안에 있어 숨김 대상이 다름) */
+            if (swipePhotosOnly) {
+                cap.classList.remove('mv2-cap-inflow-hidden');
+            } else if (post === primary) {
                 cap.classList.remove('mv2-cap-inflow-hidden');
             } else {
                 cap.classList.add('mv2-cap-inflow-hidden');
@@ -595,8 +599,15 @@ function bindOneMomentV2WheelStage(stageEl) {
         }
         syncMomentV2WheelCaptionInnerWidth(stageEl);
         const labels = parseMomentV2Labels(root);
-        if (labels.length && strip && !isVScroll) {
-            const idx = getMomentV2CarouselActiveIndex(strip);
+        const photosOnlySwipe = root?.getAttribute?.('data-moment-v2-swipe-photos-only') === '1';
+        let idx = 0;
+        if (strip) {
+            idx = getMomentV2CarouselActiveIndex(strip);
+            const pageCur = stageEl.querySelector('[data-carousel-badge-cur]');
+            if (pageCur) pageCur.textContent = String(idx + 1);
+        }
+        /* 다장: 사진만 스와이프 — 휠 라벨/기록은 스냅 시 갱신하지 않음(단일·첫 슬롯과 동일) */
+        if (labels.length && strip && !isVScroll && !photosOnlySwipe) {
             const currentPost = stageEl.closest('.instagram-post');
             const prevIdx = root._momentV2PrevPhotoIndex;
             const prevPay = root._momentV2PrevCaptionPayload;
@@ -637,7 +648,7 @@ function bindOneMomentV2WheelStage(stageEl) {
                 });
             }
         }
-        if (!isVScroll) onMomentV2ActivePhotoMaybeChangedForAuthorComment(stageEl);
+        if (!isVScroll && !photosOnlySwipe) onMomentV2ActivePhotoMaybeChangedForAuthorComment(stageEl);
         syncMomentV2WheelCaptionInnerWidth(stageEl);
     };
 

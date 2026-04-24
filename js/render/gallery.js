@@ -12,6 +12,7 @@ import {
 } from './post-group-utils.js';
 import { fetchUserProfiles, getUserSettings } from './user-profiles.js';
 import { renderBoardPostList } from './board-notice.js';
+import { getSharedPhotoGroupKey } from './post-group-utils.js';
 import { renderPostGroupHtml } from './post-group-html.js';
 import { fetchMissingSharedComments } from './shared-entry-comments.js';
 import {
@@ -708,24 +709,8 @@ export async function renderGallery(options = {}) {
     // 중요: 하나의 게시물(entryId)은 앨범에 한 번만 표시되어야 하므로, entryId와 userId만 사용
     // 일간보기 공유(type: 'daily')는 date와 userId로 그룹화
     const groupedPhotos = {};
-    uniquePhotos.forEach(photo => {
-        let groupKey;
-        if (photo.type === 'daily') {
-            // 일간보기 공유: date_userId로 그룹화 (같은 날짜의 일간보기 공유는 하나로 묶음)
-            groupKey = `daily_${photo.date || 'no-date'}_${photo.userId}`;
-        } else if (photo.type === 'best') {
-            // 베스트 공유: id_userId로 그룹화 (베스트 공유는 각각 고유)
-            groupKey = `best_${photo.id || 'no-id'}_${photo.userId}`;
-        } else if (photo.type === 'insight') {
-            // 인사이트 공유: dateRangeText_userId로 그룹화 (같은 기간의 인사이트 공유는 하나로 묶음)
-            groupKey = `insight_${photo.dateRangeText || 'no-range'}_${photo.userId}`;
-        } else if (photo.entryId) {
-            // entryId가 있는 경우: entryId_userId로 그룹화
-            groupKey = `${photo.entryId}_${photo.userId}`;
-        } else {
-            // entryId가 없는 경우: no-entry_userId로 그룹화
-            groupKey = `no-entry_${photo.userId}`;
-        }
+    uniquePhotos.forEach((photo) => {
+        const groupKey = getSharedPhotoGroupKey(photo);
         if (!groupedPhotos[groupKey]) {
             groupedPhotos[groupKey] = [];
         }

@@ -1580,6 +1580,29 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     align-items: center;
     width: 100%;
 }
+/* 다장(가로 사진만 스와이프): 사진 영역·라벨 열 전체 너비 — 푸터는 사진 아래 고정 */
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-swipe-photos-only='1'] .moment-v2-wheel-stage--split-caption .moment-v2-wheel-center-stack,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-swipe-photos-only='1'] .moment-v2-wheel-stage--split-caption .moment-v2-wheel-center-stack {
+    align-items: stretch;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-swipe-photos-only='1'] .moment-v2-caption-footer--hstrip-below,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-swipe-photos-only='1'] .moment-v2-caption-footer--hstrip-below {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-swipe-photos-only='1'] .moment-v2-wheel-center-stack,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-swipe-photos-only='1'] .moment-v2-wheel-center-stack {
+    flex: 0 0 auto;
+    min-height: 0;
+}
+/* 사진 래퍼(일반/베스트·일간): 하단만 직각 — 라벨·박스와 수직 2px 간격(부모 column gap) */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-photo-surface,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-photo-surface,
+#moment-v2-fixed-caption-layer .moment-v2-photo-surface {
+    border-bottom-left-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+}
 #galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-stage--split-caption .moment-v2-dock-slab,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-stage--split-caption .moment-v2-dock-slab {
     width: var(--meal-wheel-caption-inner-w, 100%);
@@ -1686,6 +1709,8 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 #moment-v2-fixed-caption-layer .moment-feed-v2-scope .timeline-meal-photos-carousel-badge {
     font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
     font-weight: 400;
+    font-size: 20px;
+    line-height: 1.2;
 }
 /* 타임라인 휠 팝업 `.timeline-meal-photos-overlay--wheel .timeline-meal-photos-slide-caption-inner` 와 동일 톤 */
 #galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar,
@@ -1695,7 +1720,7 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     gap: 1ch;
     align-items: center;
     line-height: 1;
-    font-size: 18px;
+    font-size: 20px;
     background-color: rgba(38, 40, 46, 0.7) !important;
     border-color: rgba(255, 255, 255, 0.14) !important;
     color: #fff !important;
@@ -1722,7 +1747,7 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     text-overflow: ellipsis;
     align-self: center;
     font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
-    font-size: 18px;
+    font-size: 20px;
     font-weight: normal;
     color: rgba(255, 255, 255, 0.95) !important;
     background: transparent;
@@ -1733,7 +1758,7 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 #feedContent[data-moment-feed-layout='2'] .moment-v2-label-font-body,
 #moment-v2-fixed-caption-layer .moment-v2-label-font-body {
     font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
-    font-size: 18px;
+    font-size: 20px;
     font-weight: normal;
     line-height: 1.25;
     overflow-wrap: anywhere;
@@ -1742,10 +1767,14 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 /* 기록 코멘트: 4줄(모먼트2) — 팝업 오버레이 톤과 동일 스크롤 */
 #galleryContainer.moment-feed-layout-v2 [data-moment-v2-author-comment-body],
 #feedContent[data-moment-feed-layout='2'] [data-moment-v2-author-comment-body],
-#moment-v2-fixed-caption-layer [data-moment-v2-author-comment-body] {
-    padding-left: 1ch;
+#moment-v2-fixed-caption-layer [data-moment-v2-author-comment-body],
+#galleryContainer.moment-feed-layout-v2 [data-moment-v2-author-comment-body-unit],
+#feedContent[data-moment-feed-layout='2'] [data-moment-v2-author-comment-body-unit],
+#moment-v2-fixed-caption-layer [data-moment-v2-author-comment-body-unit] {
+    padding-left: 0.75rem;
+    text-indent: 0;
     font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
-    font-size: 18px;
+    font-size: 20px;
     font-weight: normal;
     line-height: 1.35;
     color: rgba(255, 255, 255, 0.9);
@@ -1754,18 +1783,24 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     overflow-wrap: anywhere;
     word-break: break-word;
     -webkit-overflow-scrolling: touch;
-    max-height: min(4lh, calc(18px * 1.35 * 4));
+    max-height: min(4lh, calc(20px * 1.35 * 4));
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.38) transparent;
 }
 #galleryContainer.moment-feed-layout-v2 [data-moment-v2-author-comment-body]::-webkit-scrollbar,
 #feedContent[data-moment-feed-layout='2'] [data-moment-v2-author-comment-body]::-webkit-scrollbar,
-#moment-v2-fixed-caption-layer [data-moment-v2-author-comment-body]::-webkit-scrollbar {
+#moment-v2-fixed-caption-layer [data-moment-v2-author-comment-body]::-webkit-scrollbar,
+#galleryContainer.moment-feed-layout-v2 [data-moment-v2-author-comment-body-unit]::-webkit-scrollbar,
+#feedContent[data-moment-feed-layout='2'] [data-moment-v2-author-comment-body-unit]::-webkit-scrollbar,
+#moment-v2-fixed-caption-layer [data-moment-v2-author-comment-body-unit]::-webkit-scrollbar {
     width: 2px;
 }
 #galleryContainer.moment-feed-layout-v2 [data-moment-v2-author-comment-body]::-webkit-scrollbar-thumb,
 #feedContent[data-moment-feed-layout='2'] [data-moment-v2-author-comment-body]::-webkit-scrollbar-thumb,
-#moment-v2-fixed-caption-layer [data-moment-v2-author-comment-body]::-webkit-scrollbar-thumb {
+#moment-v2-fixed-caption-layer [data-moment-v2-author-comment-body]::-webkit-scrollbar-thumb,
+#galleryContainer.moment-feed-layout-v2 [data-moment-v2-author-comment-body-unit]::-webkit-scrollbar-thumb,
+#feedContent[data-moment-feed-layout='2'] [data-moment-v2-author-comment-body-unit]::-webkit-scrollbar-thumb,
+#moment-v2-fixed-caption-layer [data-moment-v2-author-comment-body-unit]::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.38);
     border-radius: 1px;
 }
@@ -2104,6 +2139,7 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     flex-direction: column;
     justify-content: center;
     align-items: stretch;
+    gap: 2px;
     position: relative;
     z-index: 0;
     width: 100%;
@@ -2224,7 +2260,8 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 #feedContent[data-moment-feed-layout='2'] .moment-v2-caption-footer .moment-v2-author-comment-band,
 #moment-v2-fixed-caption-layer .moment-v2-caption-footer .moment-v2-author-comment-band {
     pointer-events: auto;
-    margin-top: 2px; /* 휠 라벨(한 줄) ↔ 기록 코멘트 */
+    /* 휠↔기록: footer column gap(2px)로 통일 */
+    margin-top: 0;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-caption-footer .moment-v2-social-comments-panel,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-caption-footer .moment-v2-social-comments-panel,
@@ -2234,7 +2271,7 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 /* 휠 라벨(한 줄) 바로 아래 소셜 댓글 박스 — 1px 간격(요청 고정) */
 #galleryContainer.moment-feed-layout-v2 .moment-v2-social-below-label,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-social-below-label {
-    margin-top: 1px;
+    margin-top: 2px;
 }
 /* primary 휠 푸터: body 하위 포털 — .bottom-nav(z-50) 아래, fixed는 캡션 요소 */
 #moment-v2-fixed-caption-layer {

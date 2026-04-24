@@ -8,7 +8,7 @@ ensureMomentFeedPinchDelegate();
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
 import { normalizeUrl, getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
-import { getPostIdFromPhotoGroup, preloadAdjacentGalleryImages } from './post-group-utils.js';
+import { getPostIdFromPhotoGroup, getSharedPhotoGroupKey, preloadAdjacentGalleryImages } from './post-group-utils.js';
 import { fetchUserProfiles } from './user-profiles.js';
 import { formatMealMenuDisplayLine, mergeMealDisplayFields } from '../utils/meal-display-line.js';
 import { applyCollapsedCaptionToElement } from './comment-caption-layout.js';
@@ -82,24 +82,8 @@ export async function renderFeed() {
     // 중요: 하나의 게시물(entryId)은 앨범에 한 번만 표시되어야 하므로, entryId와 userId만 사용
     // 일간보기 공유(type: 'daily')는 date와 userId로 그룹화
     const groupedPhotos = {};
-    uniquePhotos.forEach(photo => {
-        let groupKey;
-        if (photo.type === 'daily') {
-            // 일간보기 공유: date_userId로 그룹화 (같은 날짜의 일간보기 공유는 하나로 묶음)
-            groupKey = `daily_${photo.date || 'no-date'}_${photo.userId}`;
-        } else if (photo.type === 'best') {
-            // 베스트 공유: id_userId로 그룹화 (베스트 공유는 각각 고유)
-            groupKey = `best_${photo.id || 'no-id'}_${photo.userId}`;
-        } else if (photo.type === 'insight') {
-            // 인사이트 공유: dateRangeText_userId로 그룹화 (같은 기간의 인사이트 공유는 하나로 묶음)
-            groupKey = `insight_${photo.dateRangeText || 'no-range'}_${photo.userId}`;
-        } else if (photo.entryId) {
-            // entryId가 있는 경우: entryId_userId로 그룹화
-            groupKey = `${photo.entryId}_${photo.userId}`;
-        } else {
-            // entryId가 없는 경우: no-entry_userId로 그룹화
-            groupKey = `no-entry_${photo.userId}`;
-        }
+    uniquePhotos.forEach((photo) => {
+        const groupKey = getSharedPhotoGroupKey(photo);
         if (!groupedPhotos[groupKey]) {
             groupedPhotos[groupKey] = [];
         }
@@ -611,35 +595,8 @@ export async function renderFeed() {
         
         // 각 포스트의 좋아요, 북마크, 댓글 로드
         sortedGroups.forEach((photoGroup) => {
-            const photo = photoGroup[0];
-            // 그룹 키 생성 (postId 계산용)
-            let groupKey;
-            const isBestShare = photo.type === 'best';
-            const isDailyShare = photo.type === 'daily';
-            const isInsightShare = photo.type === 'insight';
-            if (isDailyShare) {
-                groupKey = `daily_${photo.date || 'no-date'}_${photo.userId || 'unknown'}`;
-            } else if (isBestShare) {
-                groupKey = `best_${photo.id || 'no-id'}_${photo.userId || 'unknown'}`;
-            } else if (isInsightShare) {
-                groupKey = `insight_${photo.dateRangeText || 'no-range'}_${photo.userId || 'unknown'}`;
-            } else {
-                groupKey = `${photo.entryId || 'no-entry'}_${photo.userId || 'unknown'}`;
-            }
-            
-            // postId 계산
-            let postId = photoGroup[0]?.id || photo.id || null;
-            if (!postId || postId === 'undefined' || postId === 'null') {
-                let hash = 0;
-                const ts = photo.timestamp || (photo.date ? photo.date + 'T12:00:00' : '') || '';
-                const keyForHash = `${groupKey}_${ts}`;
-                for (let i = 0; i < keyForHash.length; i++) {
-                    hash = ((hash << 5) - hash) + keyForHash.charCodeAt(i);
-                    hash = hash & hash;
-                }
-                postId = `post_${Math.abs(hash)}_${photo.userId || 'unknown'}`;
-            }
-            
+            const postId = getPostIdFromPhotoGroup(photoGroup);
+
             if (postId && window.postInteractions && window.currentUser && !window.currentUser.isAnonymous) {
                 // 좋아요 상태 및 수 로드
                 Promise.all([

@@ -3,6 +3,26 @@
  */
 import { normalizeUrl } from '../utils.js';
 
+/**
+ * 모먼트/피드 그룹 키 — 같은 식사·슬롯 다장은 한 게시물로 묶음.
+ * entryId는 문자열 정규화('null'·공백 제외). 없으면 date+slotId+userId.
+ */
+export function getSharedPhotoGroupKey(photo) {
+    if (!photo) return 'unknown';
+    if (photo.type === 'daily') return `daily_${photo.date || 'no-date'}_${photo.userId || ''}`;
+    if (photo.type === 'best') return `best_${photo.id || 'no-id'}_${photo.userId || ''}`;
+    if (photo.type === 'insight') return `insight_${photo.dateRangeText || 'no-range'}_${photo.userId || ''}`;
+    const raw = photo.entryId;
+    const eid =
+        raw != null && String(raw).trim() !== '' && String(raw).trim() !== 'null'
+            ? String(raw).trim()
+            : '';
+    if (eid) return `${eid}_${photo.userId || ''}`;
+    const d = photo.date || 'no-date';
+    const s = photo.slotId || 'no-slot';
+    return `slot_${d}_${s}_${photo.userId || 'unknown'}`;
+}
+
 // photoGroup에서 postId 계산 (갤러리 흔적 필터 및 댓글/좋아요 일관된 키용)
 // 모든 사용자가 동일한 postId를 보도록 entryId_userId 등 고정 키 사용 (첫 사진 문서 id 사용 시 사용자마다 달라져 댓글 미노출 문제 발생)
 export function getPostIdFromPhotoGroup(photoGroup) {
@@ -14,16 +34,7 @@ export function getPostIdFromPhotoGroup(photoGroup) {
     if (isDailyShare) return `daily_${photo.date || 'no-date'}_${photo.userId || 'unknown'}`;
     if (isBestShare) return `best_${photo.id || 'no-id'}_${photo.userId || 'unknown'}`;
     if (isInsightShare) return `insight_${(photo.dateRangeText || 'no-range').replace(/\s/g, '_')}_${photo.userId || 'unknown'}`;
-    if (photo.entryId && photo.userId) return `${photo.entryId}_${photo.userId}`;
-    let hash = 0;
-    const groupKey = `${photo.entryId || 'no-entry'}_${photo.userId || 'unknown'}`;
-    const ts = photo.timestamp || (photo.date ? photo.date + 'T12:00:00' : '') || '';
-    const keyForHash = `${groupKey}_${ts}`;
-    for (let i = 0; i < keyForHash.length; i++) {
-        hash = ((hash << 5) - hash) + keyForHash.charCodeAt(i);
-        hash = hash & hash;
-    }
-    return `post_${Math.abs(hash)}_${photo.userId || 'unknown'}`;
+    return getSharedPhotoGroupKey(photo);
 }
 
 /** photos 배열을 그룹화·정렬하여 sortedGroups 반환 (appendGalleryPosts에서 재사용) */
@@ -37,13 +48,8 @@ export function processPhotosToGroups(photos) {
         return true;
     });
     const groupedPhotos = {};
-    uniquePhotos.forEach(photo => {
-        let groupKey;
-        if (photo.type === 'daily') groupKey = `daily_${photo.date || 'no-date'}_${photo.userId}`;
-        else if (photo.type === 'best') groupKey = `best_${photo.id || 'no-id'}_${photo.userId}`;
-        else if (photo.type === 'insight') groupKey = `insight_${photo.dateRangeText || 'no-range'}_${photo.userId}`;
-        else if (photo.entryId) groupKey = `${photo.entryId}_${photo.userId}`;
-        else groupKey = `no-entry_${photo.userId}`;
+    uniquePhotos.forEach((photo) => {
+        const groupKey = getSharedPhotoGroupKey(photo);
         if (!groupedPhotos[groupKey]) groupedPhotos[groupKey] = [];
         groupedPhotos[groupKey].push(photo);
     });
