@@ -41,6 +41,7 @@ function getCaptionInRoot(root) {
  */
 export function syncMomentV2AuthorCommentBand(root) {
     if (!root?.querySelector) return;
+    if (root.getAttribute('data-moment-v2-vscroll') === '1') return;
     const cap = getCaptionInRoot(root);
     const band = cap?.querySelector?.('[data-moment-v2-author-comment-band]');
     const body = cap?.querySelector?.('[data-moment-v2-author-comment-body]');

@@ -1,6 +1,5 @@
 /**
- * 화면2 인라인: 사진 위 소셜 랩을 실제 이미지(또는 슬롯) 사각형 하단·우측에 맞춤 — 휠 팝업과 동일 앵커.
- * 가로 캐러셀: `isMomentV2HstripAtSnapPoint`로 스냅 확정 후에만 닉/배지/소셹 위치 갱신(timeline `syncMealPhotoHstripIndexFromScroll`과 동일).
+ * 화면2 인라인: 사진 위 닉/소셜 — 가로 hstrip 또는 세로 vscroll(`.moment-v2-v-photo-clip`마다) 앵커.
  */
 import { isMomentV2HstripAtSnapPoint } from './moment-v2-hstrip-snap.js';
 
@@ -41,6 +40,81 @@ function getV2FrameRects(frame) {
     const vr = viewport.getBoundingClientRect();
     if (ir.width < 4 || ir.height < 4) return null;
     return { ir, vr, viewport, hstrip, img, slot };
+}
+
+function getV2ClipRects(clip) {
+    if (!clip) return null;
+    const slot = clip.querySelector?.('.timeline-meal-photo-aspect-slot');
+    const img = clip.querySelector?.('img.timeline-meal-photo-img');
+    const irSlot = slot ? slot.getBoundingClientRect() : null;
+    const irImg = img ? img.getBoundingClientRect() : null;
+    const slotOk = irSlot && irSlot.width > 2 && irSlot.height > 2;
+    const imgOk = irImg && irImg.width > 2 && irImg.height > 2;
+    let ir;
+    if (imgOk && slotOk) {
+        const wDiff = irSlot.width - irImg.width;
+        const hDiff = irSlot.height - irImg.height;
+        ir = wDiff > 1 || hDiff > 1 ? irImg : irSlot;
+    } else if (imgOk) ir = irImg;
+    else if (slotOk) ir = irSlot;
+    else return null;
+    const vr = clip.getBoundingClientRect();
+    if (ir.width < 4 || ir.height < 4) return null;
+    return { ir, vr, viewport: clip, img, slot };
+}
+
+function positionChromeWrapFromCtx(wrap, ctx) {
+    if (!wrap || !ctx) return;
+    const { ir, vr } = ctx;
+    const pad = 4;
+    wrap.style.position = 'absolute';
+    wrap.style.left = `${Math.max(0, Math.round(ir.left - vr.left + pad))}px`;
+    wrap.style.right = `${Math.max(0, Math.round(vr.right - ir.right + pad))}px`;
+    wrap.style.top = `${Math.max(0, Math.round(ir.top - vr.top + pad))}px`;
+    wrap.style.width = 'auto';
+}
+
+function positionSocialFromCtx(btn, ctx) {
+    if (!btn || !ctx) return;
+    const { ir, vr } = ctx;
+    const inset = 1;
+    const bottom = vr.bottom - ir.bottom + inset;
+    const right = vr.right - ir.right + inset;
+    btn.style.position = 'absolute';
+    btn.style.top = 'auto';
+    btn.style.left = 'auto';
+    btn.style.bottom = `${Math.max(0, Math.round(bottom))}px`;
+    btn.style.right = `${Math.max(0, Math.round(right))}px`;
+    btn.style.transform = 'none';
+}
+
+function runVscrollClipLayout(clip) {
+    const ctx = getV2ClipRects(clip);
+    const wrap = clip?.querySelector?.('[data-moment-v2-chrome-top-wrap]');
+    if (wrap) {
+        if (!ctx) {
+            wrap.style.removeProperty('position');
+            wrap.style.removeProperty('left');
+            wrap.style.removeProperty('right');
+            wrap.style.removeProperty('top');
+            wrap.style.removeProperty('width');
+        } else {
+            positionChromeWrapFromCtx(wrap, ctx);
+        }
+    }
+    const btn = clip?.querySelector?.('[data-meal-photo-social-bubble]');
+    if (btn) {
+        if (!ctx) {
+            btn.style.removeProperty('position');
+            btn.style.removeProperty('left');
+            btn.style.removeProperty('right');
+            btn.style.removeProperty('bottom');
+            btn.style.removeProperty('top');
+            btn.style.removeProperty('transform');
+        } else {
+            positionSocialFromCtx(btn, ctx);
+        }
+    }
 }
 
 /** 닉/미트볼: 실제 사진(또는 aspect 슬롯) 사각형 좌·우·상단에 맞춤 — 휠 팝업과 동일 */
@@ -155,6 +229,10 @@ function anchorBadgeToPhoto(frame) {
  */
 export function runMomentV2InlineChromeLayout(frame) {
     if (!frame) return;
+    if (frame.querySelector?.('.moment-v2-v-photo-clip')) {
+        frame.querySelectorAll('.moment-v2-v-photo-clip').forEach((c) => runVscrollClipLayout(c));
+        return;
+    }
     applyTopChromeInPhoto(frame);
     anchorBadgeToPhoto(frame);
     applySocialAnchor(frame);
@@ -165,6 +243,7 @@ export function ensureMomentV2InlineChromeForFrame(frame) {
     if (!frame || frame._momentV2InlineChromeBound) return;
     frame._momentV2InlineChromeBound = true;
     const hstrip = frame.querySelector?.('.moment-v2-hstrip');
+    const vClips = frame.querySelectorAll?.('.moment-v2-v-photo-clip') || [];
     let scrollRaf = null;
 
     const applySettled = (relaxedSnap) => {
@@ -192,10 +271,14 @@ export function ensureMomentV2InlineChromeForFrame(frame) {
     if (typeof window !== 'undefined' && 'onscrollend' in window) {
         hstrip?.addEventListener('scrollend', () => applySettled(false), { passive: true });
     }
+    if (vClips.length) {
+        window.addEventListener('scroll', onHScroll, { passive: true });
+    }
     const onResize = () => applySettled(true);
     window.addEventListener('resize', onResize, { passive: true });
     const ro = new ResizeObserver(() => onResize());
     ro.observe(frame);
     if (hstrip) ro.observe(hstrip);
+    vClips.forEach((c) => ro.observe(c));
     applySettled(true);
 }

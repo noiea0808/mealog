@@ -1680,8 +1680,9 @@ window.addEventListener('scroll', () => {
         const isScrollingUp = delta < -scrollThreshold;
         const atTop = y <= topThreshold;
         const isGallery = appState.currentTab === 'gallery';
+        const galleryV2 = isGallery && document.getElementById('galleryContainer')?.classList?.contains('moment-feed-layout-v2');
         if (isScrollingDown && !atTop) {
-            if (!isGallery) {
+            if (!isGallery || galleryV2) {
                 header.classList.add('header-scroll-hidden');
                 if (tracker) tracker.classList.add('tracker-header-hidden');
             }

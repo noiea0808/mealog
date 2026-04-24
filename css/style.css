@@ -67,23 +67,20 @@ html {
     overflow-x: clip;
     overflow-y: auto;
 }
-/* 모먼트 화면2: 세로 scroll-snap으로 게시물 단위 ‘슬라이드’ 전환 + 부드러운 스크롤(세로·게시물 간 이동) */
+/* 모먼트 화면2: 자연 스크롤(게시물별 간격 10px). 캐러셀 제거·세로 나열. */
 html:has(#galleryView:not(.hidden) #galleryContainer.moment-feed-layout-v2) {
-    scroll-behavior: smooth;
-    scroll-snap-type: y mandatory;
-    /* 사진·게시물 상단이 #mainAppHeader(~max 60px) + safe + 사진 20px 여백이 보이도록 스냅 보정 */
-    scroll-padding-top: calc(var(--safe-top) + 3.75rem + var(--moment-v2-photo-below-header-gap, 20px));
+    scroll-behavior: auto;
+    scroll-snap-type: none;
+    scroll-padding-top: calc(var(--safe-top) + 3.75rem);
 }
 #galleryView:not(.hidden) #galleryContainer.moment-feed-layout-v2 .instagram-post.moment-v2-snap-item[data-moment-card-layout="2"],
 #feedContent[data-moment-feed-layout='2'] .instagram-post.moment-v2-snap-item[data-moment-card-layout="2"] {
-    scroll-snap-align: start;
-    scroll-snap-stop: always;
-    /* 짧은 사진이어도 한 스냅 = 한 뷰포트(짧은 min으로 다음 게시물이 밑에 비치지 않게). min(100dvh, …) 쓰면 항상 더 낮은 값만 적용돼 썸네일이 미리 보였음 */
     box-sizing: border-box;
     flex-shrink: 0;
-    overflow: hidden;
-    min-height: 100svh;
-    min-height: 100dvh;
+    overflow: visible;
+    min-height: 0;
+    scroll-snap-align: none;
+    scroll-snap-stop: normal;
 }
 body {
     width: 100%;
@@ -1608,6 +1605,45 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     max-height: min(88vh, calc(100dvh - 7rem));
     min-height: min-content;
     overflow: hidden;
+}
+/* 화면2 세로 스택: 단위마다 블러 배경(사진 확대·투명) */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-v-unit .moment-v2-v-unit-bg-wrap,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-v-unit .moment-v2-v-unit-bg-wrap {
+    border-radius: 0.5rem;
+    overflow: hidden;
+    z-index: 0;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-v-unit-bg-img,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-v-unit-bg-img {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    min-width: 100%;
+    min-height: 100%;
+    width: auto;
+    height: auto;
+    transform: translate(-50%, -50%) scale(1.22);
+    object-fit: cover;
+    filter: blur(32px) saturate(1.05);
+    opacity: 0.4;
+    pointer-events: none;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row--unit,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row--unit {
+    border-radius: 0 !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-v-unit .moment-v2-author-unit-band:not(.hidden),
+#feedContent[data-moment-feed-layout='2'] .moment-v2-v-unit .moment-v2-author-unit-band:not(.hidden) {
+    border-radius: 0 0 0.5rem 0.5rem;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-caption-footer--social-only,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-caption-footer--social-only {
+    pointer-events: auto;
+    margin-top: 0.25rem;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-center-stack,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-center-stack {
+    min-height: 0;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photos-carousel-viewport:not(.moment-v2-carousel-viewport--natural),
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photos-carousel-viewport:not(.moment-v2-carousel-viewport--natural),

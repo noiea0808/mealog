@@ -171,6 +171,9 @@ function runMomentV2PrimaryFixedDock() {
         }
     });
     if (!primary) return;
+    if (primary.querySelector?.('.moment-feed-v2-scope[data-moment-v2-skip-dock="1"]')) {
+        return;
+    }
     const root = primary.querySelector('.moment-feed-v2-scope[data-moment-v2-root]');
     const cap = root?.querySelector?.('[data-moment-v2-caption]');
     const stage = primary.querySelector('.moment-v2-wheel-stage');
@@ -394,9 +397,11 @@ function applyMomentV2CaptionPayload(stageEl, payload, animCtx) {
 function syncMomentV2WheelCaptionInnerWidth(stageEl) {
     const photoShell = stageEl.querySelector('.moment-v2-photo-shell');
     const cap = getMomentV2CaptionForStage(stageEl);
-    const labelRow =
-        cap?.querySelector?.('.moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar') ||
+    const anyRow =
+        stageEl.querySelector?.('.moment-v2-wheel-caption-row') ||
         cap?.querySelector?.('.moment-v2-wheel-caption-row');
+    const labelRow =
+        cap?.querySelector?.('.moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar') || anyRow;
     /* APP 네비 폭(28rem 느낌)이 아닌, 휠 한 줄(날짜·메뉴 라벨) 실측 = 사진·도크 공통 --meal-wheel-caption-inner-w */
     let wRef = labelRow;
     let br = wRef ? wRef.getBoundingClientRect() : { width: 0, height: 0 };
@@ -408,14 +413,16 @@ function syncMomentV2WheelCaptionInnerWidth(stageEl) {
     const wStr = `${w}px`;
     stageEl.style.setProperty('--meal-wheel-caption-inner-w', wStr);
     if (cap) cap.style.setProperty('--meal-wheel-caption-inner-w', wStr);
-    const innerRow = cap?.querySelector?.('.moment-v2-wheel-caption-row');
-    if (innerRow) {
+    const rows = stageEl.querySelectorAll('.moment-v2-wheel-caption-row');
+    const list = rows.length > 0 ? rows : (cap ? cap.querySelectorAll('.moment-v2-wheel-caption-row') : []);
+    list.forEach((innerRow) => {
+        if (!innerRow) return;
         innerRow.style.width = wStr;
         innerRow.style.maxWidth = '100%';
         innerRow.style.marginLeft = 'auto';
         innerRow.style.marginRight = 'auto';
         innerRow.style.boxSizing = 'border-box';
-    }
+    });
 }
 
 export function getMomentV2CarouselActiveIndex(strip) {
@@ -507,29 +514,31 @@ function ensureMomentV2PrimaryCaptionGlobalListeners() {
 }
 
 /**
- * 타임라인 `bindCarouselSwipe`의 hstrip 휠과 동일 + 세로는 게시물 이동
+ * 가로 hstrip이 있으면 휠로 좌우, 없으면(세로 스크롤 전용) 세로 휠만 인접 게시물
  */
 function bindMomentV2CarouselAreaWheel(photoShell, strip, stageEl) {
-    if (!photoShell || !strip || photoShell._momentV2CarouselWheelBound) return;
+    if (!photoShell || photoShell._momentV2CarouselWheelBound) return;
     photoShell._momentV2CarouselWheelBound = true;
     const onWheel = (e) => {
         if (!photoShell.contains(e.target)) return;
-        const cw = strip.clientWidth || 1;
-        const ch = strip.clientHeight || 1;
+        const cw = (strip && strip.clientWidth) || photoShell.clientWidth || 1;
+        const ch = (strip && strip.clientHeight) || photoShell.clientHeight || 1;
         const { dx, dy } = normalizeWheelDelta2D(e, cw, ch);
         const absX = Math.abs(dx);
         const absY = Math.abs(dy);
-        if (absX > 0 && absX >= absY) {
-            strip.scrollLeft += dx;
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-        }
-        if (e.shiftKey && absY > 0) {
-            strip.scrollLeft += dy;
-            e.preventDefault();
-            e.stopPropagation();
-            return;
+        if (strip) {
+            if (absX > 0 && absX >= absY) {
+                strip.scrollLeft += dx;
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+            if (e.shiftKey && absY > 0) {
+                strip.scrollLeft += dy;
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
         }
         if (absY > absX && absY > 0) {
             scrollAdjacentInstagramPost(stageEl, dy);
@@ -577,6 +586,7 @@ function bindOneMomentV2WheelStage(stageEl) {
     let captionScrollRaf = null;
 
     const runAfterIndexChange = () => {
+        const isVScroll = !strip;
         if (strip) {
             const w = strip.clientWidth || 0;
             if (w > 0 && !isMomentV2HstripAtSnapPoint(strip, w)) {
@@ -585,7 +595,7 @@ function bindOneMomentV2WheelStage(stageEl) {
         }
         syncMomentV2WheelCaptionInnerWidth(stageEl);
         const labels = parseMomentV2Labels(root);
-        if (labels.length && strip) {
+        if (labels.length && strip && !isVScroll) {
             const idx = getMomentV2CarouselActiveIndex(strip);
             const currentPost = stageEl.closest('.instagram-post');
             const prevIdx = root._momentV2PrevPhotoIndex;
@@ -627,7 +637,7 @@ function bindOneMomentV2WheelStage(stageEl) {
                 });
             }
         }
-        onMomentV2ActivePhotoMaybeChangedForAuthorComment(stageEl);
+        if (!isVScroll) onMomentV2ActivePhotoMaybeChangedForAuthorComment(stageEl);
         syncMomentV2WheelCaptionInnerWidth(stageEl);
     };
 
@@ -636,7 +646,10 @@ function bindOneMomentV2WheelStage(stageEl) {
         if (captionScrollRaf != null) return;
         captionScrollRaf = requestAnimationFrame(() => {
             captionScrollRaf = null;
-            if (!strip) return;
+            if (!strip) {
+                runAfterIndexChange();
+                return;
+            }
             const w = strip.clientWidth || 0;
             if (w <= 0) return;
             if (!isMomentV2HstripAtSnapPoint(strip, w)) {
