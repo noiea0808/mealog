@@ -301,11 +301,17 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
     const socialPanelBelow = postIdForUi && postIdJs ? buildV2SocialCommentPanelHtml(postIdForUi, postIdJs) : '';
 
     if (n > 1) {
+        const bgsJson = encodeURIComponent(JSON.stringify(photoGroup.map((p) => p?.photoUrl || '')));
+        const bg0 = String(photoGroup[0]?.photoUrl || '').trim();
+        const hpostBgBlock =
+            bg0.length > 0
+                ? `<div class="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-lg moment-v2-hpost-bg-wrap" data-moment-v2-hpost-backdrop="1" aria-hidden="true">
+  <img src="${escapeHtml(bg0)}" alt="" draggable="false" class="moment-v2-hpost-bg-img" loading="eager" />
+  <div class="pointer-events-none absolute inset-0 moment-v2-hpost-bg-dim" aria-hidden="true"></div>
+</div>`
+                : '';
         const hSlides = photoGroup
-            .map(
-                (p, idx) =>
-                    `<div class="moment-v2-h-slide" data-moment-h-i="${idx}">${buildV2RawPhotoBlock(p, idx, ar)}</div>`
-            )
+            .map((p, idx) => `<div class="moment-v2-h-slide" data-moment-h-i="${idx}">${buildV2RawPhotoBlock(p, idx, ar)}</div>`)
             .join('');
         const firstAc = buildAuthorMealCommentForPhoto(photoGroup[0], flags, mealHistoryMap, groupEntryId);
         const hasFirstAc = Boolean((firstAc || '').trim());
@@ -318,12 +324,15 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root data-moment-v2-swipe-photos-only="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
     <div class="moment-v2-wheel-stage moment-v2-wheel-stage--with-footer moment-v2-wheel-stage--split-caption relative box-border w-full min-w-0 flex flex-col items-stretch overflow-hidden px-0.5" data-moment-v2-wheel-stage>
         <div class="moment-v2-wheel-body flex w-full min-w-0 max-w-full flex-col items-stretch gap-px" data-moment-v2-wheel-body>
+        <div class="moment-v2-hpost-ambient relative flex w-full min-w-0 flex-col items-stretch gap-px overflow-hidden rounded-lg" data-moment-v2-hpost-ambient data-moment-v2-hstrip-bgs="${bgsJson}">
+        ${hpostBgBlock}
+        <div class="relative z-[1] flex w-full min-w-0 min-h-0 flex-col items-stretch gap-px">
         <div class="moment-v2-wheel-center-stack w-full min-w-0 flex flex-col items-stretch" data-moment-v2-center-stack>
     <div class="moment-v2-photo-shell w-full min-w-0 bg-transparent py-0">
     <div class="moment-v2-photo-swipe-zone timeline-meal-photos-carousel-zone flex w-full min-w-0 shrink-0 flex-col items-stretch">
         <div class="moment-v2-photo-strip-frame timeline-meal-photos-carousel-frame relative flex min-h-0 w-full min-w-0 flex-col items-stretch justify-center py-0 px-0" data-photo-index="0" tabindex="-1" data-moment-v2-legacy-strip="0" role="region" aria-label="게시물 사진">
             <div class="moment-v2-photo-strip-viewport timeline-meal-photos-carousel-viewport relative w-full min-w-0 min-h-0 flex-1 overflow-hidden">
-                <div class="moment-v2-hstrip scrollbar-hide flex min-h-0 w-full min-w-0 select-none flex-row overflow-x-auto overflow-y-hidden overscroll-x-contain" style="-webkit-overflow-scrolling:touch" tabindex="-1">
+                <div class="moment-v2-hstrip scrollbar-hide relative z-[1] flex min-h-0 w-full min-w-0 select-none flex-row overflow-x-auto overflow-y-hidden overscroll-x-contain" style="-webkit-overflow-scrolling:touch" tabindex="-1">
                 ${hSlides}
                 </div>
                 ${momentChrome}
@@ -343,6 +352,8 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
             <div class="moment-v2-author-comment-body moment-v2-label-font-body min-w-0 text-white/90" data-moment-v2-author-comment-body>${firstAcHtml}</div>
         </div>
         ${socialPanelBelow}
+        </div>
+        </div>
         </div>
         </div>
     </div>

@@ -351,7 +351,13 @@ async function appendGalleryPosts(docs, loadMoreWrap) {
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = newPostsHtml;
     while (tempDiv.firstChild) fragment.appendChild(tempDiv.firstChild);
-    loadMoreWrap.parentNode.insertBefore(fragment, loadMoreWrap);
+    // 첫 10+지연·placeholder와 동일한 부모(게시열) 안에 두어야 `mb-[3px]` 간격이 일관됨(형제 #galleryPostInsertPoint 래퍼에 붙이면 ‘위쪽 10은 넓다’ 체감)
+    const insert = document.getElementById('galleryPostsInsertPoint');
+    if (insert) {
+        insert.appendChild(fragment);
+    } else {
+        loadMoreWrap.parentNode.insertBefore(fragment, loadMoreWrap);
+    }
     const fullSortedGroups = processPhotosToGroups(window.sharedPhotosFeed || []);
     const appendedEnd = existingCount + newGroups.length;
     setTimeout(() => {

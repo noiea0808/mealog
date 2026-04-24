@@ -299,7 +299,7 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                   .join('')
             : '';
     return `
-            <div class="${layoutV2 ? 'mb-[10px]' : 'mb-2'} ${layoutV2 ? 'bg-slate-100' : 'bg-white'} border-b border-slate-200 instagram-post${!hasBody ? ' post-no-body' : ''}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}"${layoutV2 ? ' data-moment-card-layout="2"' : ''}>
+            <div class="${layoutV2 ? 'mb-[3px]' : 'mb-2'} ${layoutV2 ? 'bg-slate-100' : 'bg-white'} border-b border-slate-200 instagram-post${!hasBody ? ' post-no-body' : ''}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}"${layoutV2 ? ' data-moment-card-layout="2"' : ''}>
                 ${
                     layoutV2 && showProfileMomentBack
                         ? `<div class="px-2 pt-2">${profileBackBtn}</div>`

@@ -2,7 +2,7 @@
  * 모먼트 화면2: 가로 스냅 사진(게시물 내) + 휠 라벨(YY·메뉴@장소) + 영역(작성자 코멘트 + 소셜 댓글) —
  * - 용어: 글쓴이 본문 = 코멘트(기록) / 타인 소셜 답장 = 댓글(목록+입력)
  * - 세로: 게시물 전환 — `scrollIntoView` 등. 뷰포트 `translateY` 중앙 정렬은 사용하지 않음(레이아웃·겹침 안정).
- * - 가로: hstrip만 사진 스와이프(CSS 스냅 없음, 마우스 드래그 지원). `data-moment-v2-swipe-photos-only` 는 하단 휠·기록 코멘트는 고정(첫 사진 기준), 닉/소셜만 활성 슬롯에 맞춤.
+ * - 가로: hstrip 사진 스와이프(x 스냅 + smooth). `data-moment-v2-swipe-photos-only` 는 하단 휠·기록 코멘트는 고정(첫 사진 기준), 닉/소셜만 활성 슬롯에 맞춤.
  */
 import { isMomentV2HstripAtSnapPoint } from './moment-v2-hstrip-snap.js';
 import { ensureMomentV2InlineChromeForFrame } from './moment-v2-inline-chrome.js';
@@ -439,6 +439,32 @@ export function getMomentV2CarouselActiveIndex(strip) {
     return idx;
 }
 
+/** 다장: 게시물 전역 배경(라벨·코멘트까지)을 활성 사진 URL로 갱신 */
+function syncMomentV2HstripBgToIndex(strip, idx) {
+    const stage = strip?.closest?.('[data-moment-v2-wheel-stage]');
+    const ambient = stage?.querySelector?.('[data-moment-v2-hpost-ambient]');
+    const raw = ambient?.getAttribute?.('data-moment-v2-hstrip-bgs');
+    if (!raw) return;
+    let urls;
+    try {
+        urls = JSON.parse(decodeURIComponent(raw));
+    } catch {
+        return;
+    }
+    if (!Array.isArray(urls) || !urls.length) return;
+    const u = String(urls[idx] != null ? urls[idx] : urls[0] || '').trim();
+    if (!u) return;
+    const el = stage?.querySelector?.('.moment-v2-hpost-bg-img');
+    if (!el) return;
+    if (el.getAttribute('data-moment-v2-bg-idx') === String(idx) && (el.getAttribute('src') || '') === u) {
+        return;
+    }
+    el.setAttribute('data-moment-v2-bg-idx', String(idx));
+    if (el.getAttribute('src') !== u) {
+        el.setAttribute('src', u);
+    }
+}
+
 function normalizeWheelDelta2D(e, clientW, clientH) {
     let dx = e.deltaX;
     let dy = e.deltaY;
@@ -464,10 +490,58 @@ function scrollAdjacentInstagramPost(stageEl, deltaY) {
     const dir = deltaY > 0 ? 1 : -1;
     const next = posts[i + dir];
     if (next) {
-        next.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        next.scrollIntoView({ behavior: 'auto', block: 'nearest' });
     }
     requestAnimationFrame(() => {
         setTimeout(() => scheduleMomentV2SplitCaptionLayout(), 0);
+    });
+}
+
+function momentV2PrefersReducedMotion() {
+    if (typeof window === 'undefined' || !window.matchMedia) return false;
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+const _mv2HstripHScrollRaf = new WeakMap();
+
+/** 가로 hstrip: 휠·트랙패드 델타를 rAF 1회로 합쳐 smooth 이동(이벤트마다 smooth 스택 방지) */
+function momentV2HstripScrollHorizontallyBy(strip, delta) {
+    if (!strip || !delta) return;
+    const max = Math.max(0, strip.scrollWidth - strip.clientWidth);
+    let st = _mv2HstripHScrollRaf.get(strip);
+    if (!st) {
+        st = { raf: 0, acc: 0 };
+        _mv2HstripHScrollRaf.set(strip, st);
+    }
+    st.acc += delta;
+    if (st.raf) return;
+    st.raf = requestAnimationFrame(() => {
+        st.raf = 0;
+        const acc = st.acc;
+        st.acc = 0;
+        if (!acc) return;
+        const next = Math.max(0, Math.min(max, strip.scrollLeft + acc));
+        strip.scrollTo({ left: next, behavior: momentV2PrefersReducedMotion() ? 'auto' : 'smooth' });
+    });
+}
+
+/** 마우스 드래그 종료(또는 캡처 상실) 시 가장 가까운 가로 슬롯으로 부드럽게 정렬 */
+function snapMomentV2HstripToNearestSlide(strip) {
+    if (!strip) return;
+    if (strip.scrollWidth <= strip.clientWidth + 1) return;
+    const cells = strip.querySelectorAll('.moment-v2-h-slide');
+    if (!cells.length) return;
+    const w0 = strip.clientWidth || 0;
+    const step = cells[0].offsetWidth || w0;
+    if (step <= 0) return;
+    const maxIdx = cells.length - 1;
+    const idx = Math.max(0, Math.min(maxIdx, Math.round(strip.scrollLeft / step)));
+    const target = idx * step;
+    const minDist = Math.max(2, Math.min(8, Math.floor(step * 0.02)));
+    if (Math.abs(strip.scrollLeft - target) <= minDist) return;
+    const beh = momentV2PrefersReducedMotion() ? 'auto' : 'smooth';
+    requestAnimationFrame(() => {
+        strip.scrollTo({ left: target, behavior: beh });
     });
 }
 
@@ -547,11 +621,13 @@ function bindMomentV2HstripPointerDragForWeb(strip) {
         } catch (_) {}
         drag = null;
         strip.classList.remove('moment-v2-hstrip--dragging');
+        snapMomentV2HstripToNearestSlide(strip);
     };
     const onLost = (e) => {
         if (drag && e.pointerId === drag.id) {
             drag = null;
             strip.classList.remove('moment-v2-hstrip--dragging');
+            snapMomentV2HstripToNearestSlide(strip);
         }
     };
     strip.addEventListener('pointerdown', onDown);
@@ -576,13 +652,13 @@ function bindMomentV2CarouselAreaWheel(photoShell, strip, stageEl) {
         const absY = Math.abs(dy);
         if (strip) {
             if (absX > 0 && absX >= absY) {
-                strip.scrollLeft += dx;
+                momentV2HstripScrollHorizontallyBy(strip, dx);
                 e.preventDefault();
                 e.stopPropagation();
                 return;
             }
             if (e.shiftKey && absY > 0) {
-                strip.scrollLeft += dy;
+                momentV2HstripScrollHorizontallyBy(strip, dy);
                 e.preventDefault();
                 e.stopPropagation();
                 return;
@@ -657,6 +733,7 @@ function bindOneMomentV2WheelStage(stageEl) {
             idx = getMomentV2CarouselActiveIndex(strip);
             const pageCur = stageEl.querySelector('[data-carousel-badge-cur]');
             if (pageCur) pageCur.textContent = String(idx + 1);
+            syncMomentV2HstripBgToIndex(strip, idx);
         }
         /* 다장: 사진만 스와이프 — 휠 라벨/기록은 스냅 시 갱신하지 않음(단일·첫 슬롯과 동일) */
         if (labels.length && strip && !isVScroll && !photosOnlySwipe) {

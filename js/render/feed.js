@@ -266,7 +266,7 @@ export async function renderFeed() {
         );
 
         const cardOuter = layoutV2
-            ? `mb-[10px] bg-slate-100 border ${isBanned ? 'border-orange-300' : 'border-slate-200'} rounded-2xl overflow-hidden instagram-post`
+            ? `mb-[3px] bg-slate-100 border ${isBanned ? 'border-orange-300' : 'border-slate-200'} rounded-2xl overflow-hidden instagram-post`
             : `mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden instagram-post`;
         const userDisplayForWheel = getDisplayProfile(photo.userId, {
             nickname: photo.userNickname,
