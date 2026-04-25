@@ -5,7 +5,7 @@ import { VIBRANT_COLORS, CUMULATIVE_BAR_GRADIENT, RATING_GRADIENT, SATIETY_DATA 
 import { generateColorMap, toLocalDateString } from '../utils.js';
 import { getDayName } from './date-utils.js';
 
-const CUMULATIVE_KEYS = ['mealType', 'category', 'withWhom', 'snackType', 'snackPlace']; // 식사·간식 바차트 동일 색구성(빈도순 그라데이션)
+const CUMULATIVE_KEYS = ['mealType', 'category', 'withWhom', 'snackType', 'snackPlace', 'snackWhen']; // 식사·간식 바차트 동일 색구성(빈도순 그라데이션)
 const DETAIL_MODAL_TAB_KEYS = ['mealType', 'category', 'withWhom', 'snackType', 'snackPlace', 'snackWithWhom']; // 상세보기 시 통계 + 세부 통계 탭 (간식 누구와 포함)
 const MEAL_SLOTS = ['morning', 'lunch', 'dinner'];
 const SNACK_SLOTS = ['pre_morning', 'snack1', 'snack2', 'night'];
@@ -138,6 +138,15 @@ function aggregateProportionData(data, key) {
 
     const counts = {};
     const getVal = (m) => {
+        if (key === 'snackWhen') {
+            const snackSlotLabelMap = {
+                pre_morning: '아침 전',
+                snack1: '오전',
+                snack2: '오후',
+                night: '야식'
+            };
+            return snackSlotLabelMap[m?.slotId] || '미입력';
+        }
         if (key === 'snackPlace') {
             const v = effectiveChartTag(m, 'snackPlace');
             return v || '미입력';
@@ -172,6 +181,21 @@ function aggregateProportionData(data, key) {
         if (counts['미입력'] > 0) tagEntries.push(['미입력', counts['미입력']]);
         tagEntries.sort((a, b) => b[1] - a[1]);
         sorted = tagEntries;
+    } else if (key === 'snackWhen') {
+        const timeOrder = ['아침 전', '오전', '오후', '야식'];
+        const emptyCount = counts['미입력'] || 0;
+        const entries = [];
+        // 시간 순서 고정
+        timeOrder.forEach((label) => {
+            const c = counts[label] || 0;
+            if (c > 0) entries.push([label, c]);
+        });
+        // 혹시 모를 기타 값(예: 데이터 이상) 처리: 미입력 제외하고 뒤에 붙임(빈도순)
+        const extras = Object.entries(counts)
+            .filter(([name, c]) => name !== '미입력' && !timeOrder.includes(name) && c > 0)
+            .sort((a, b) => b[1] - a[1]);
+        sorted = extras.length ? [...entries, ...extras] : entries;
+        if (emptyCount > 0) sorted.push(['미입력', emptyCount]);
     } else {
         const entries = Object.entries(counts);
         const emptyEntry = entries.find(([name]) => name === '미입력');
@@ -293,6 +317,7 @@ export function getWelcomeWeekDonutSlides(days = 7, kind = 'meal') {
     if (kind === 'snack') {
         const snackOnly = week.filter(m => SNACK_SLOTS.includes(m.slotId));
         spec = [
+            { title: '언제', key: 'snackWhen', data: snackOnly },
             { title: '어디서', key: 'snackPlace', data: snackOnly },
             { title: '무엇을', key: 'snackType', data: snackOnly },
             { title: '누구와', key: 'withWhom', data: snackOnly },

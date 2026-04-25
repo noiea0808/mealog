@@ -309,6 +309,17 @@ export async function updateDashboard() {
     renderProportionChart('satietyChartContainer', filteredData.filter(m => m.satiety), 'satiety');
     
     // 간식 분석 차트 (어디서 → 무엇을 순) - place/snackType 없는 건도 미입력으로 포함
+    const snackSlotLabelMap = {
+        pre_morning: '아침 전',
+        snack1: '오전',
+        snack2: '오후',
+        night: '야식'
+    };
+    const snacksForWhen = snacksOnly.map(m => ({
+        ...m,
+        snackWhen: snackSlotLabelMap[m.slotId] || '미입력'
+    }));
+    renderProportionChart('snackWhenChartContainer', snacksForWhen, 'snackWhen');
     renderProportionChart('snackPlaceChartContainer', snacksOnly, 'snackPlace');
     renderProportionChart('snackTypeChartContainer', snacksOnly, 'snackType');
     renderProportionChart('snackMateChartContainer', snacksOnly.filter(m => m.withWhom), 'withWhom');
