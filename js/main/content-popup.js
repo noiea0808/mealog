@@ -16,6 +16,7 @@ import {
     increment
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { renderFormattedContent } from '../render/utils.js';
+import { getMealogClientEnv } from '../utils.js';
 
 function setContentPopupWidth() {
     const inner = document.getElementById('contentPopupModalInner');
@@ -150,9 +151,7 @@ export function registerContentPopup() {
             const q = query(popupsRef, orderBy('timestamp', 'desc'), limit(50));
             const snap = await getDocs(q);
             const today = new Date().toISOString().slice(0, 10);
-            const hostname = window.location.hostname || '';
-            const isLocal = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
-            const currentEnv = isLocal ? 'staging' : (window.APP_ENV || 'production');
+            const currentEnv = getMealogClientEnv();
             const list = [];
             snap.forEach(docSnap => {
                 const d = docSnap.data();

@@ -19,9 +19,10 @@ service cloud.firestore {
     }
     
     // 공용 데모 계정(샘플 데이터) — 클라이언트 쓰기 차단 (js/config·demo-account 이메일과 동일)
+    // email 클레임이 없는 계정(카카오 커스텀 토큰 등)에서 token.email 직접 접근 시 평가 오류 방지
     function isReadOnlyDemoAccount() {
       return request.auth != null &&
-        request.auth.token.email != null &&
+        request.auth.token.keys().hasAll(['email']) &&
         request.auth.token.email == 'dummy@mealog.net';
     }
     
@@ -63,7 +64,9 @@ service cloud.firestore {
       match /meals/{mealId} {
         // 서브컬렉션에서 부모 경로의 userId 변수 참조는 지원되지만, 명시적으로 작성하여 안정성 확보
         allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
-        allow create, update, delete: if request.auth != null && request.auth.uid == userId && !isReadOnlyDemoAccount();
+        allow create, update: if request.auth != null && request.auth.uid == userId && !isReadOnlyDemoAccount();
+        // 삭제: 본인 또는 관리자(모먼트 관리 등에서 타 사용자 기록 정리)
+        allow delete: if isAdmin() || (request.auth != null && request.auth.uid == userId && !isReadOnlyDemoAccount());
       }
       
       // 사용자 설정 (config 서브컬렉션)
@@ -77,20 +80,23 @@ service cloud.firestore {
         allow read: if request.auth != null;
         allow create, update, delete: if request.auth != null && request.auth.uid == userId && !isReadOnlyDemoAccount();
       }
-      // stats 연도별 서브컬렉션 (config/stats/years/{year}) - Cloud Functions만 쓰기
+      // stats 연도별 서브컬렉션 (config/stats/years/{year}) — 집계는 CF만 생성·갱신, 탈퇴 시 본인만 삭제
       match /config/stats {
         allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
-        allow write: if false;
+        allow create, update: if false;
+        allow delete: if request.auth != null && request.auth.uid == userId && !isReadOnlyDemoAccount();
         match /years/{year} {
           allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
-          allow write: if false;
+          allow create, update: if false;
+          allow delete: if request.auth != null && request.auth.uid == userId && !isReadOnlyDemoAccount();
         }
       }
       
-      // 밀톡 알림 (답장·@언급) — Cloud Functions만 생성, 본인만 읽기
+      // 밀톡 알림 (답장·@언급) — 생성은 CF, 탈퇴 시 본인만 일괄 삭제
       match /feedNotifications/{notifId} {
         allow read: if isAuthenticated() && request.auth.uid == userId;
-        allow write: if false;
+        allow create, update: if false;
+        allow delete: if request.auth != null && request.auth.uid == userId && !isReadOnlyDemoAccount();
       }
     }
     
@@ -131,10 +137,15 @@ service cloud.firestore {
     }
     
     // 일별 메뉴/페이지 사용량 집계 — 관리자 대시보드「페이지별」용 (제외 UID·데모는 쓰기 불가)
+    // adminSettings/excludedAnalyticsUids 의 excludedUidMap 과 동기화. 문서 없을 때는 아래 3개 UID만 서버에서 차단(레거시).
     function isExcludedFromUsageWriting() {
-      return request.auth.uid == 'kakao_4833862234' ||
-        request.auth.uid == 'IYRL3bfBhKUrwJM6tb8h4BVX8DF3' ||
-        request.auth.uid == '4UDeI0Bts0gkwnnrt1WNRgjOQ5x2';
+      return (
+          exists(/databases/$(database)/documents/artifacts/$(appId)/adminSettings/excludedAnalyticsUids) &&
+          get(/databases/$(database)/documents/artifacts/$(appId)/adminSettings/excludedAnalyticsUids).data.excludedUidMap[request.auth.uid] == true
+        )
+        || request.auth.uid == 'kakao_4833862234'
+        || request.auth.uid == 'IYRL3bfBhKUrwJM6tb8h4BVX8DF3'
+        || request.auth.uid == '4UDeI0Bts0gkwnnrt1WNRgjOQ5x2';
     }
     match /artifacts/{appId}/usageDaily/{dateKey} {
       allow read: if isAdmin();
@@ -249,6 +260,16 @@ service cloud.firestore {
     }
     
     // ============================================
+    // 공지 댓글 (noticeComments 컬렉션) — 생성/댓글 수 갱신은 Cloud Functions만
+    // ============================================
+    match /artifacts/{appId}/noticeComments/{commentId} {
+      allow read: if isAuthenticated();
+      allow create: if false;
+      allow update: if isAuthorOfResource() && !isReadOnlyDemoAccount();
+      allow delete: if isAdmin() || (isAuthorOfResource() && !isReadOnlyDemoAccount());
+    }
+    
+    // ============================================
     // 게시판 사용자 (boardUsers 컬렉션)
     // ============================================
     match /artifacts/{appId}/boardUsers/{userId} {
@@ -270,8 +291,9 @@ service cloud.firestore {
     // ============================================
     // 피드 북마크 (postBookmarks 컬렉션)
     // ============================================
+    // 좋아요(postLikes)와 동일: 게시물별 개수·동기화를 위해 로그인 사용자 전원 읽기 허용
     match /artifacts/{appId}/postBookmarks/{bookmarkId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated();
       allow create: if isOwnerOfRequestResource() && !isReadOnlyDemoAccount();
       allow update: if false;
       allow delete: if isOwnerOfResource() && !isReadOnlyDemoAccount();
@@ -308,8 +330,9 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     // 공지 조회 기록 (같은 사용자 중복 1회) — 로그인 사용자만 자신의 문서 생성/병합
+    // 읽기: 집계(조회 수 카운트)에 필요. getCount/getDocs 시 다른 사용자 uid 문서도 읽기 가능(로그인 사용자 전원).
     match /artifacts/{appId}/notices/{noticeId}/views/{userId} {
-      allow read: if isAdmin();
+      allow read: if isAuthenticated();
       allow create, update: if isAuthenticated() && request.auth.uid == userId && !isReadOnlyDemoAccount();
       allow delete: if false;
     }
@@ -402,6 +425,11 @@ service cloud.firestore {
         allow create: if isAuthenticated() && request.auth.uid == userId;
         allow update, delete: if false;
       }
+    }
+    // 전면 로딩(음식 아이콘) 문구·속도 — 로그인 전에도 읽기 가능
+    match /artifacts/{appId}/config/loadingSpinner {
+      allow read: if true;
+      allow write: if isAdmin();
     }
     match /artifacts/{appId}/config/{configId} {
       allow read, write: if isAdmin();

@@ -17,6 +17,8 @@ import {
     renderSharedPhotos,
     switchDashboardSubtab
 } from './admin/dashboard.js';
+import { ensureDefaultExcludedAnalyticsDocIfMissing } from './excluded-analytics-uids.js';
+import { addExcludedUidFromAdminInput } from './admin/excluded-analytics-admin.js';
 import {
     switchAdminUsersPage,
     switchAdminUsersListPage,
@@ -40,9 +42,11 @@ import { loadTagsContent } from './admin/tags.js';
 import { registerRestaurantStats } from './admin/restaurant-stats.js';
 import { loadMealogComments, showCharacterListView } from './admin/persona.js';
 import { runAdminStatsBackfillForUid } from './admin/stats-backfill.js';
+import { runAdminUserCreatedAtBackfill } from './admin/user-createdat-backfill.js';
 import { loadAdminLogTab } from './admin/ops-log.js';
 import { bindAdminWelcomeApiOnce } from './admin/welcome-api.js';
 import { invalidateAttendancePopupConfigCache, normalizeAttendancePopup } from './attendance-check.js';
+import { invalidateLoadingSpinnerConfigCache, normalizeLoadingSpinner } from './loading-spinner-config.js';
 // 모니터링(모먼트·밀톡·게시판): HTML onclick용 window.* 등록
 import './admin/feed-moderation.js';
 import './admin/lounge-chat-moderation.js';
@@ -99,8 +103,15 @@ function showAdminPage(user) {
     // 로딩 오버레이 숨기기
     if (loadingOverlay) loadingOverlay.classList.add('hidden');
     
-    // 데이터 로드
-    updateStatistics();
+    // 데이터 로드 (통계 제외 UID 문서가 없으면 기본값으로 시드 — rules·클라이언트와 맞춤)
+    void (async () => {
+        try {
+            await ensureDefaultExcludedAnalyticsDocIfMissing();
+        } catch (e) {
+            console.warn('통계 제외 UID 기본 문서 확인 실패:', e);
+        }
+        updateStatistics();
+    })();
     renderSharedPhotos();
     switchAdminTab('dashboard');
 }
@@ -160,9 +171,10 @@ window.switchAdminTab = function(tab) {
 
 // handleAdminLogout은 이미 import되어 window에 노출됨
 
-// 대시보드 통계 새로고침 (전체 집계 후 캐시 문서에 저장)
+// 대시보드 새로고침 (전체 집계 후 캐시 문서에 저장)
 window.refreshDashboardStats = refreshDashboardStats;
 window.switchDashboardSubtab = switchDashboardSubtab;
+window.addDashboardExcludedUid = addExcludedUidFromAdminInput;
 
 // 공유 게시물 새로고침
 window.refreshSharedPhotos = async function() {
@@ -179,6 +191,7 @@ window.adminUserBanShare = adminUserBanShare;
 window.adminUserBanWrite = adminUserBanWrite;
 window.refreshUsers = refreshUsers;
 window.runAdminStatsBackfillForUid = runAdminStatsBackfillForUid;
+window.runAdminUserCreatedAtBackfill = runAdminUserCreatedAtBackfill;
 window.switchAdminUsersSubmenu = switchAdminUsersSubmenu;
 window.refreshAdminUserAnalytics = refreshAdminUserAnalytics;
 
@@ -595,7 +608,7 @@ function syncSettingsWelcomeTopTabs(sub) {
     on.forEach((c) => target.classList.add(c));
 }
 
-// 사이드바 전환 (settings일 때 opts.sub: 'welcome' | 'welcome_api' | 'displayName')
+// 사이드바 전환 (settings일 때 opts.sub: 'welcome' | 'spinner' | 'welcome_api' | 'displayName')
 window.switchContentSidebar = function (section, opts) {
     if (ALERTS_SIDEBAR_SECTIONS.includes(section)) {
         window.switchAdminTab('alerts');
@@ -617,11 +630,14 @@ window.switchContentSidebar = function (section, opts) {
         const activeMainSection = document.getElementById('content-main-settings');
         if (activeMainSection) activeMainSection.classList.remove('hidden');
         bindAdminSettingsSubnavOnce();
-        loadAdminSettings();
         const sub = (opts && opts.sub) || 'welcome';
         window.switchAdminSettingsSub(sub);
         syncSettingsWelcomeTopTabs(sub);
-        resetAdminScrollTop();
+        // loadAdminSettings가 끝날 때 fillAttendancePopupForm으로 라디오를 덮어쓰므로,
+        // 로드 완료 전 클릭은 첫 번째 선택이 무효화되는 것처럼 보임 → 로드 후 스크롤·입력 허용
+        void loadAdminSettings().finally(() => {
+            resetAdminScrollTop();
+        });
         return;
     }
 
@@ -681,7 +697,7 @@ function bindAdminSettingsSubnavOnce() {
 }
 
 window.switchAdminSettingsSub = function (sub) {
-    if (sub !== 'displayName' && sub !== 'welcome' && sub !== 'welcome_api') return;
+    if (sub !== 'displayName' && sub !== 'welcome' && sub !== 'welcome_api' && sub !== 'spinner') return;
     document.querySelectorAll('.admin-settings-subnav-btn').forEach((btn) => {
         const on = btn.dataset.settingsSub === sub;
         btn.classList.toggle('text-emerald-600', on);
@@ -696,10 +712,96 @@ window.switchAdminSettingsSub = function (sub) {
         const key = panel.id.replace('adminSettingsSub-', '');
         panel.classList.toggle('hidden', key !== sub);
     });
+    const settingsAside = document.getElementById('adminSettingsMainAside');
+    if (settingsAside) {
+        settingsAside.classList.toggle('hidden', sub === 'displayName');
+    }
     if (sub === 'welcome_api') {
         bindAdminWelcomeApiOnce();
     }
     syncSettingsWelcomeTopTabs(sub);
+};
+
+function createAdminLoadingSpinnerMessageRow(text = '') {
+    const wrap = document.createElement('div');
+    wrap.className = 'admin-loading-spinner-msg-row flex gap-2 items-start';
+    const ta = document.createElement('textarea');
+    ta.className =
+        'admin-loading-spinner-msg-text flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 outline-none focus:border-emerald-500 bg-white resize-y min-h-[2.75rem] font-sans';
+    ta.rows = 2;
+    ta.maxLength = 200;
+    ta.placeholder = '예: 오늘도 맛있는 하루 보내세요';
+    ta.value = typeof text === 'string' ? text : '';
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className =
+        'admin-loading-spinner-msg-remove shrink-0 w-9 h-9 flex items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-red-50 hover:border-red-200 hover:text-red-600';
+    rm.title = '삭제';
+    rm.setAttribute('aria-label', '문구 삭제');
+    rm.innerHTML = '<i class="fa-solid fa-trash text-sm"></i>';
+    rm.addEventListener('click', () => {
+        wrap.remove();
+        const list = document.getElementById('adminLoadingSpinnerMessageList');
+        if (list && !list.querySelector('.admin-loading-spinner-msg-row')) {
+            list.appendChild(createAdminLoadingSpinnerMessageRow(''));
+        }
+    });
+    wrap.appendChild(ta);
+    wrap.appendChild(rm);
+    return wrap;
+}
+
+function fillAdminLoadingSpinnerForm(cfg) {
+    const secEl = document.getElementById('adminLoadingSpinnerSeconds');
+    if (secEl) secEl.value = String(cfg.messageCycleSeconds);
+    const list = document.getElementById('adminLoadingSpinnerMessageList');
+    if (!list) return;
+    list.innerHTML = '';
+    const msgs = cfg.messages.length > 0 ? cfg.messages : [''];
+    msgs.forEach((t) => list.appendChild(createAdminLoadingSpinnerMessageRow(t)));
+}
+
+window.addAdminLoadingSpinnerMessageRow = function () {
+    const list = document.getElementById('adminLoadingSpinnerMessageList');
+    if (!list) return;
+    list.appendChild(createAdminLoadingSpinnerMessageRow(''));
+};
+
+window.saveLoadingSpinnerSettings = async function () {
+    const secEl = document.getElementById('adminLoadingSpinnerSeconds');
+    let messageCycleSeconds = Number(secEl && secEl.value);
+    if (!Number.isFinite(messageCycleSeconds)) messageCycleSeconds = 1.8;
+    messageCycleSeconds = Math.min(10, Math.max(0.5, messageCycleSeconds));
+    const texts = [];
+    document.querySelectorAll('#adminLoadingSpinnerMessageList .admin-loading-spinner-msg-text').forEach((el) => {
+        const v = el.value;
+        if (v && String(v).trim()) texts.push(v);
+    });
+    try {
+        const ref = doc(db, 'artifacts', appId, 'config', 'loadingSpinner');
+        const payload = {
+            messageCycleSeconds,
+            messages: texts,
+            updatedAt: serverTimestamp(),
+        };
+        await setDoc(ref, payload, { merge: true });
+        /** 로그인 전에도 읽히는 공개 문서(로그인 배너와 동일 Rules)에 복제 — 앱이 순환문구를 확실히 불러옴 */
+        await setDoc(
+            doc(db, 'artifacts', appId, 'config', 'loginBanner'),
+            {
+                loadingSpinner: {
+                    messages: texts,
+                    messageCycleSeconds,
+                },
+            },
+            { merge: true }
+        );
+        invalidateLoadingSpinnerConfigCache();
+        alert('스피너 설정이 저장되었습니다.');
+    } catch (e) {
+        console.error('스피너 설정 저장 실패:', e);
+        alert('저장에 실패했습니다: ' + (e?.message || e));
+    }
 };
 
 
@@ -1406,7 +1508,7 @@ function fillTriFreq(name, value) {
     const v =
         value === 'off' || value === 'once_per_day' || value === 'every_session'
             ? value
-            : 'every_session';
+            : 'once_per_day';
     document.querySelectorAll(`input[name="${name}"]`).forEach((r) => {
         r.checked = r.value === v;
     });
@@ -1445,9 +1547,17 @@ function fillAttendancePopupForm(rawAp) {
     }
 }
 
+let loadAdminSettingsGen = 0;
+
 async function loadAdminSettings() {
     const inputEl = document.getElementById('adminDisplayNameInput');
     if (!inputEl) return;
+    const gen = ++loadAdminSettingsGen;
+    const settingsShell = document.getElementById('content-main-settings');
+    if (settingsShell) {
+        settingsShell.classList.add('pointer-events-none', 'opacity-90', 'cursor-wait');
+        settingsShell.setAttribute('aria-busy', 'true');
+    }
     try {
         const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
         const snap = await getDoc(configRef);
@@ -1456,11 +1566,36 @@ async function loadAdminSettings() {
         cachedAdminDisplayName = displayName || '관리자';
         inputEl.value = cachedAdminDisplayName;
 
+        const mfvSt = data.momentsFeedViewStaging ?? data.momentsFeedView ?? 1;
+        const mfvPr = data.momentsFeedViewProduction ?? data.momentsFeedView ?? 1;
+        const mfvStVal = mfvSt === 2 || mfvSt === '2' ? '2' : '1';
+        const mfvPrVal = mfvPr === 2 || mfvPr === '2' ? '2' : '1';
+        document.querySelectorAll('input[name="momentsFeedViewStaging"]').forEach((r) => {
+            r.checked = r.value === mfvStVal;
+        });
+        document.querySelectorAll('input[name="momentsFeedViewProduction"]').forEach((r) => {
+            r.checked = r.value === mfvPrVal;
+        });
+
         const ap = data.attendancePopup && typeof data.attendancePopup === 'object' ? data.attendancePopup : {};
         fillAttendancePopupForm(ap);
+
+        try {
+            const lsRef = doc(db, 'artifacts', appId, 'config', 'loadingSpinner');
+            const lsSnap = await getDoc(lsRef);
+            fillAdminLoadingSpinnerForm(normalizeLoadingSpinner(lsSnap.exists() ? lsSnap.data() : null));
+        } catch (e2) {
+            console.warn('스피너 설정 로드 실패:', e2);
+            fillAdminLoadingSpinnerForm(normalizeLoadingSpinner(null));
+        }
     } catch (e) {
         console.warn('관리자 설정 로드 실패:', e);
         inputEl.value = cachedAdminDisplayName;
+    } finally {
+        if (gen === loadAdminSettingsGen && settingsShell) {
+            settingsShell.classList.remove('pointer-events-none', 'opacity-90', 'cursor-wait');
+            settingsShell.removeAttribute('aria-busy');
+        }
     }
 }
 
@@ -1468,9 +1603,23 @@ window.saveAdminDisplayName = async function() {
     const inputEl = document.getElementById('adminDisplayNameInput');
     if (!inputEl) return;
     const value = inputEl.value.trim() || '관리자';
+    const momentsFeedViewStaging =
+        document.querySelector('input[name="momentsFeedViewStaging"]:checked')?.value === '2' ? 2 : 1;
+    const momentsFeedViewProduction =
+        document.querySelector('input[name="momentsFeedViewProduction"]:checked')?.value === '2' ? 2 : 1;
     try {
         const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
-        await setDoc(configRef, { displayName: value }, { merge: true });
+        await setDoc(
+            configRef,
+            {
+                displayName: value,
+                momentsFeedViewStaging,
+                momentsFeedViewProduction,
+                // 구형 필드 유지(fallback/호환): staging 값을 기본으로 저장
+                momentsFeedView: momentsFeedViewStaging
+            },
+            { merge: true }
+        );
         cachedAdminDisplayName = value;
         invalidateAdminDisplayNameCache();
         alert('저장되었습니다.');
@@ -1483,7 +1632,7 @@ window.saveAdminDisplayName = async function() {
 function readTriFreq(name) {
     const v = document.querySelector(`input[name="${name}"]:checked`)?.value;
     if (v === 'off' || v === 'once_per_day' || v === 'every_session') return v;
-    return 'every_session';
+    return 'once_per_day';
 }
 
 window.saveAttendancePopupSettings = async function () {

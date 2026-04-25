@@ -5,7 +5,14 @@ console.log('📦 main.js 모듈 로드 시작');
 window.moduleLoading = true;
 
 import { appState, getState } from './state.js';
-import { auth, db, appId, refreshAppCheckTokenBeforeFirestore } from './firebase.js';
+import {
+    auth,
+    db,
+    appId,
+    refreshAppCheckTokenBeforeFirestore,
+    registerFirestoreListenersRebind,
+    recoverFirestoreAfterWatchAssertion
+} from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import { dbOps, setupListeners, loadSharedPhotosPage, loadSharedPhotosPageReliable, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, subscribeToMyPostComments, boardOperations, feedOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { callableFunctions } from './firebase.js';
@@ -18,7 +25,17 @@ import {
     showLoading,
     hideLoading
 } from './ui.js';
-import { getDisplayProfile, uploadBoardImages, captureWithGhostStrategy, addCompositionAwareInput, warmUpIME, sharePhotosToExternal, setupBirthdateInputFormatting } from './utils.js';
+import {
+    getDisplayProfile,
+    uploadBoardImages,
+    captureWithGhostStrategy,
+    addCompositionAwareInput,
+    warmUpIME,
+    sharePhotosToExternal,
+    setupBirthdateInputFormatting,
+    normalizeUrl,
+    getMealogClientEnv
+} from './utils.js';
 import { 
     initAuth, handleGoogleLogin, handleKakaoLogin, startGuest, openEmailModal, closeEmailModal,
     setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
@@ -30,21 +47,24 @@ import { authFlowManager } from './auth-flow.js';
 import { scheduleAttendanceCheckIfNeeded } from './attendance-check.js';
 window.scheduleAttendanceCheckIfNeeded = scheduleAttendanceCheckIfNeeded;
 import { isDemoUser, markUserHasRealLogin } from './demo-account.js';
+import { isUserSettingsReadyForContentWrites } from './utils/user-settings-write-guard.js';
+import { getAuthAccountCreatedTimestamp, getAuthAccountCreatedMillis } from './auth-created-at.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
 import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
+import './render/timeline-meal-photos-popup.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
-    openModal, closeModal, saveEntry, deleteEntry, setRating, setSatiety, selectTag,
+    openModal, closeModal, saveEntry, deleteEntry, retryMealEntrySync, retryMealEntryDeleteSync, retryPendingMealEntriesOnAppReady, setRating, setSatiety, selectTag,
     handleMultipleImages, removePhoto, movePhotoOrder, updateShareIndicator, toggleSharePhoto,
     openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, setSettingsProfileType, handlePhotoUpload, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
+    fillProfileActivityStats,
     syncPushPreferencesFormFromUserSettings,
     setRecordPhotoAspectRatio,
     openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace
 } from './modals.js';
 import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from './constants.js';
-import { normalizeUrl } from './utils.js';
 import { registerMainNetworkListeners, runMealogNetworkRecovery } from './main/network.js';
 import { registerMainCleanup } from './main/cleanup.js';
 import { syncOrphanedSharesToMoment } from './main/shares-sync.js';
@@ -102,6 +122,11 @@ window.Mealog.switchGalleryFilterTab = switchGalleryFilterTab;
 window.reloadMomentFeed = async function reloadMomentFeed() {
     invalidateGalleryRenderSession();
     try {
+        await recoverFirestoreAfterWatchAssertion('reloadMomentFeed', { force: true });
+    } catch (e) {
+        console.warn('모먼트: Firestore 인스턴스 복구 실패(이어서 로드 시도):', e?.message || e);
+    }
+    try {
         await runMealogNetworkRecovery();
     } catch (_) {
         /* 오프라인 복귀 시도만 하고 실패해도 getDocsFromServer로 재시도 */
@@ -124,7 +149,7 @@ window.reloadMomentFeed = async function reloadMomentFeed() {
     window.sharedPhotosFeed = [];
     appState.sharedPhotosFeedLastDoc = null;
     appState.sharedPhotosFeedHasMore = false;
-    showLoading('모먼트 불러오는 중...');
+    showLoading('모먼트 불러오는 중...', { dimBackground: false, recordsFab: true });
     try {
         const { docs, lastDoc, hasMore } = await loadSharedPhotosPageReliable(10);
         appState.galleryFeedNetworkError = false;
@@ -245,6 +270,10 @@ window.saveEntry = saveEntry;
 window.Mealog.saveEntry = saveEntry;
 window.deleteEntry = deleteEntry;
 window.Mealog.deleteEntry = deleteEntry;
+window.retryMealEntrySync = retryMealEntrySync;
+window.Mealog.retryMealEntrySync = retryMealEntrySync;
+window.retryMealEntryDeleteSync = retryMealEntryDeleteSync;
+window.Mealog.retryMealEntryDeleteSync = retryMealEntryDeleteSync;
 window.setRating = setRating;
 window.Mealog.setRating = setRating;
 window.setSatiety = setSatiety;
@@ -265,6 +294,8 @@ window.setRecordPhotoAspectRatio = setRecordPhotoAspectRatio;
 window.Mealog.setRecordPhotoAspectRatio = setRecordPhotoAspectRatio;
 window.openSettings = openSettings;
 window.Mealog.openSettings = openSettings;
+window.fillProfileActivityStats = fillProfileActivityStats;
+window.Mealog.fillProfileActivityStats = fillProfileActivityStats;
 window.closeSettings = closeSettings;
 window.Mealog.closeSettings = closeSettings;
 window.switchSettingsTab = switchSettingsTab;
@@ -709,6 +740,14 @@ window.loadMoreMealsTimeline = async () => {
     }
 };
 
+/** users 루트 createdAt — Auth UID 최초 생성 시각(없을 때만 serverTimestamp) */
+function resolveUserRootCreatedAt(user) {
+    const t = getAuthAccountCreatedTimestamp(user);
+    if (t) return t;
+    console.warn('⚠️ Auth metadata.creationTime 없음 → 가입일에 serverTimestamp 사용');
+    return serverTimestamp();
+}
+
 /**
  * 사용자 문서 업데이트 (가입일, 마지막 로그인 날짜)
  */
@@ -725,9 +764,15 @@ async function updateUserDocument(user) {
             lastLoginAt: serverTimestamp()
         };
         
+        const canBackfillJoinDate = () => {
+            const s = window.userSettings;
+            if (!s) return false;
+            return isUserSettingsReadyForContentWrites(s);
+        };
+
         if (!userDocSnap.exists()) {
-            // 신규 사용자: 가입 완료(createdAt)는 프로필 설정 후에만 등록
-            // providerId, email, lastLoginAt만 먼저 저장
+            // 신규 사용자: 기본은 프로필 완료 후 ensureUserRegistered에서 createdAt 기록.
+            // 이미 프로필 완료 상태로 첫 저장이면(레이스) 같은 틱에 가입일을 넣는다.
             {
                 let providerId = user.providerData?.[0]?.providerId;
                 if (!providerId && typeof user.uid === 'string' && user.uid.startsWith('kakao_')) {
@@ -740,13 +785,18 @@ async function updateUserDocument(user) {
             if (user.email) {
                 updateData.email = user.email;
             }
-            console.log('✅ 신규 사용자 문서 생성 (프로필 설정 후 가입 완료):', { userId: user.uid });
+            if (canBackfillJoinDate()) {
+                updateData.createdAt = resolveUserRootCreatedAt(user);
+                console.log('✅ 신규 사용자 문서 + 가입일(Auth UID 생성 시각) 동시 기록:', user.uid);
+            } else {
+                console.log('✅ 신규 사용자 문서 생성 (가입일은 프로필/약관 충족 후 등록):', { userId: user.uid });
+            }
         } else {
             const existingData = userDocSnap.data();
-            // 프로필 설정 완료 시점에 가입 완료(createdAt) 등록
-            if (!existingData.createdAt && window.userSettings?.profileCompleted === true) {
-                updateData.createdAt = serverTimestamp();
-                console.log('✅ 가입 완료(프로필 설정 후) 사용자 등록:', user.uid);
+            // 가입일 누락 백필: 유효 닉 + (프로필 완료 또는 약관 동의)
+            if (!existingData.createdAt && canBackfillJoinDate()) {
+                updateData.createdAt = resolveUserRootCreatedAt(user);
+                console.log('✅ 가입일 백필(Auth UID 생성 시각·닉·약관/프로필 기준):', user.uid);
             }
             if (!existingData.providerId) {
                 let pid = user.providerData?.[0]?.providerId;
@@ -773,6 +823,7 @@ async function updateUserDocument(user) {
                 try {
                     await callableFunctions.patchArtifactUserRoot({
                         setCreatedAt: !!updateData.createdAt,
+                        createdAtMillis: updateData.createdAt ? getAuthAccountCreatedMillis(user) : null,
                         providerId: updateData.providerId ?? null,
                         email: updateData.email ?? null
                     });
@@ -806,19 +857,80 @@ async function recordGuestVisit(uid) {
 }
 window.recordGuestVisit = recordGuestVisit;
 
-/** 프로필 설정 완료 시 가입 완료(createdAt) 등록. auth.js confirmProfileSetup에서 호출 */
+/** users 루트 createdAt → ms (탈퇴 후 동일 UID 재가입 시 Auth보다 이른 값 구분용) */
+function rootCreatedAtToMillis(v) {
+    if (v == null) return null;
+    if (typeof v.toMillis === 'function') {
+        const m = v.toMillis();
+        return Number.isFinite(m) ? m : null;
+    }
+    if (v instanceof Date) {
+        const t = v.getTime();
+        return Number.isFinite(t) ? t : null;
+    }
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'object' && typeof v.seconds === 'number') {
+        return v.seconds * 1000 + Math.floor((v.nanoseconds || 0) / 1e6);
+    }
+    return null;
+}
+
+/** 프로필 설정 완료 시 가입 완료(createdAt) 등록. signup-wizard / auth에서 호출 */
 window.ensureUserRegistered = async function () {
     const user = auth.currentUser;
     if (!user || user.isAnonymous) return;
-    if (!window.userSettings?.profileCompleted) return;
+    const s = window.userSettings;
+    if (!s || !isUserSettingsReadyForContentWrites(s)) return;
     try {
+        await refreshAppCheckTokenBeforeFirestore();
         const userDocRef = doc(db, 'artifacts', appId, 'users', user.uid);
         const userDocSnap = await getDoc(userDocRef);
-        if (!userDocSnap.exists()) return;
-        const data = userDocSnap.data();
-        if (data.createdAt) return;
-        await setDoc(userDocRef, { createdAt: serverTimestamp() }, { merge: true });
-        console.log('✅ 가입 완료(프로필 설정 후) 사용자 등록:', user.uid);
+        const data = userDocSnap.exists() ? userDocSnap.data() : {};
+        const authMs = getAuthAccountCreatedMillis(user);
+        const existingMs = rootCreatedAtToMillis(data.createdAt);
+        const staleCreatedAt =
+            existingMs != null &&
+            authMs != null &&
+            existingMs < authMs - 5000;
+        if (data.createdAt && !staleCreatedAt) return;
+
+        let providerId = user.providerData?.[0]?.providerId;
+        if (!providerId && typeof user.uid === 'string' && user.uid.startsWith('kakao_')) {
+            providerId = 'kakao.com';
+        }
+        const payload = { createdAt: resolveUserRootCreatedAt(user) };
+        if (!userDocSnap.exists() || !data.uid) {
+            payload.uid = user.uid;
+        }
+        if (providerId && (!userDocSnap.exists() || !data.providerId)) {
+            payload.providerId = providerId;
+        }
+        if (user.email && (!userDocSnap.exists() || !data.email)) {
+            payload.email = user.email;
+        }
+
+        try {
+            await setDoc(userDocRef, payload, { merge: true });
+            console.log(
+                staleCreatedAt
+                    ? '✅ 가입 완료(동일 UID 재가입 — 가입일 Auth 기준으로 갱신):'
+                    : '✅ 가입 완료(프로필 설정 후) 사용자 등록:',
+                user.uid
+            );
+        } catch (writeErr) {
+            const wcode = writeErr?.code || '';
+            if (wcode === 'permission-denied' && callableFunctions?.patchArtifactUserRoot) {
+                await callableFunctions.patchArtifactUserRoot({
+                    setCreatedAt: true,
+                    createdAtMillis: getAuthAccountCreatedMillis(user),
+                    providerId: providerId || null,
+                    email: user.email || null
+                });
+                console.log('✅ 가입일 서버 폴백 저장:', user.uid);
+            } else {
+                throw writeErr;
+            }
+        }
     } catch (e) {
         console.warn('ensureUserRegistered 실패:', e);
     }
@@ -1026,7 +1138,7 @@ initAuth(async (user) => {
         }
 
         if (user && !user.isAnonymous && !isDemoUser(user)) {
-          window.__onPushTokenSavedError = (msg) => showToast('알림 등록 실패: ' + (msg || '알 수 없음'), 'error');
+          // FCM 토큰 저장 실패는 콘솔·푸시 디버그로 충분 — 별도 토스트 생략
           // 네이티브 앱만: FCM 등록·토큰 Firestore 저장 (설정 토글 제거 이후 이 경로가 유일함)
           if (typeof window.Capacitor !== 'undefined' && window.Capacitor.isNativePlatform?.()) {
             const puid = user.uid;
@@ -1050,6 +1162,10 @@ initAuth(async (user) => {
               void syncPushRegistrationFromOs();
             }
           }
+        } else if (user) {
+          try {
+            delete window.__onPushTokenSavedError;
+          } catch (_) {}
         }
         
         console.log('🔐 인증 상태 변경:', {
@@ -1096,6 +1212,7 @@ initAuth(async (user) => {
         // ✅ 게스트(익명) 모드: meals/settings/stats 리스너 없음(기록·설정 제한).
         // 모먼트 피드는 탭 진입 시 loadSharedPhotosPage, 타임라인 공유 표시는 loadMyShares 등 getDocs로 로드.
         if (user.isAnonymous) {
+            registerFirestoreListenersRebind(null);
             if (appState.settingsUnsubscribe) {
                 appState.settingsUnsubscribe();
                 appState.settingsUnsubscribe = null;
@@ -1120,7 +1237,11 @@ initAuth(async (user) => {
         } else {
             // 리스너 설정 (이전 리스너는 setupListeners 내부에서 해제됨)
             let dataUpdateTimer = null; // 공유 시 meals 이중 리스너 방지용 디바운스
-            const { settingsUnsubscribe, dataUnsubscribe, statsUnsubscribe } = setupListeners(user.uid, {
+            const attachMealDataListeners = () => {
+                const cur = auth.currentUser;
+                if (!cur || cur.isAnonymous) return;
+                stopNotificationListeners();
+                const { settingsUnsubscribe, dataUnsubscribe, statsUnsubscribe } = setupListeners(cur.uid, {
                 onSettingsUpdate: () => {
                     // 헤더 UI 업데이트 (디바운싱됨)
                     updateHeaderUI();
@@ -1136,10 +1257,13 @@ initAuth(async (user) => {
                     // 단, 이미 완료되었거나 처리 중인 경우는 건너뛰기
                     if (!authFlowManager.hasCompleted && !authFlowManager.isProcessing && window.userSettings) {
                         console.log('✅ 설정 업데이트 완료. 인증 플로우 실행...');
-                        authFlowManager.handleAuthState(user).catch(e => {
-                            console.error('❌ 인증 플로우 처리 실패:', e);
-                            hideLoading();
-                        });
+                        const u = auth.currentUser;
+                        if (u) {
+                            authFlowManager.handleAuthState(u).catch(e => {
+                                console.error('❌ 인증 플로우 처리 실패:', e);
+                                hideLoading();
+                            });
+                        }
                     }
                     // 약관 모달은 auth-flow.js에서만 관리하므로 여기서는 닫지 않음
                     // onSettingsUpdate에서 약관 모달을 닫으면 타이밍 이슈로 인해 모달이 잠깐 표시되었다가 사라질 수 있음
@@ -1168,11 +1292,8 @@ initAuth(async (user) => {
                     dataUpdateTimer = setTimeout(() => {
                         dataUpdateTimer = null;
                         if (appState.currentTab !== 'timeline') return; // 대기 중 탭 바뀌면 스킵
-                        if (appState.viewMode === 'list') {
-                            const today = new Date();
-                            today.setHours(0, 0, 0, 0);
-                            appState.pageDate = today;
-                        }
+                        // 리스트 모드에서도 pageDate는 jumpToDate·미니캘 선택값을 유지 (매 동기화마다 오늘로 덮으면
+                        // 다른 날짜를 보는 중에 헤더/스크롤이 엇나감)
                         // 데이터 동기화(낙관→서버) 시 전체 재렌더해도, 이미 타임라인 초기 스크롤을 마친 뒤면
                         // hasScrolledToToday를 리셋하지 않고 스크롤 Y만 복원 → 오늘로 재스크롤·화면 흔들림 방지
                         const preserveTimelineScroll = window.hasScrolledToToday === true;
@@ -1188,7 +1309,28 @@ initAuth(async (user) => {
                         if (preserveTimelineScroll) {
                             requestAnimationFrame(() => {
                                 requestAnimationFrame(() => {
-                                    window.scrollTo({ top: savedScrollY, behavior: 'instant' });
+                                    let anchored = false;
+                                    const pd = appState.pageDate;
+                                    if (pd instanceof Date && !isNaN(+pd)) {
+                                        const y = pd.getFullYear();
+                                        const mo = String(pd.getMonth() + 1).padStart(2, '0');
+                                        const d = String(pd.getDate()).padStart(2, '0');
+                                        const iso = `${y}-${mo}-${d}`;
+                                        const el = document.getElementById(`date-${iso}`);
+                                        if (el) {
+                                            const trackerSection = document.getElementById('trackerSection');
+                                            const trackerHeight = trackerSection ? trackerSection.offsetHeight : 0;
+                                            const headerHeight = 73;
+                                            const totalOffset = headerHeight + trackerHeight;
+                                            const elementTop = el.getBoundingClientRect().top + window.pageYOffset;
+                                            const offsetPosition = elementTop - totalOffset - 16;
+                                            window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'instant' });
+                                            anchored = true;
+                                        }
+                                    }
+                                    if (!anchored) {
+                                        window.scrollTo({ top: savedScrollY, behavior: 'instant' });
+                                    }
                                 });
                             });
                         }
@@ -1201,6 +1343,13 @@ initAuth(async (user) => {
             appState.dataUnsubscribe = dataUnsubscribe;
             appState.statsUnsubscribe = statsUnsubscribe;
             if (document.visibilityState === 'visible') startNotificationListeners();
+
+            setTimeout(() => {
+                retryPendingMealEntriesOnAppReady().catch(() => {});
+            }, 4000);
+            };
+            attachMealDataListeners();
+            registerFirestoreListenersRebind(attachMealDataListeners);
 
             // 공유 피드: sharedPhotos 실시간 리스너 없음 — loadSharedPhotosPage / loadMyShares로 필요 시 로드
             window.sharedPhotos = [];
@@ -1277,9 +1426,7 @@ initAuth(async (user) => {
                     if (landingPage) landingPage.classList.remove('landing-banner-visible');
                     return;
                 }
-                const hostname = window.location.hostname || '';
-                const isLocal = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
-                const currentEnv = isLocal ? 'staging' : (window.APP_ENV || 'production');
+                const currentEnv = getMealogClientEnv();
                 const targetEnv = data.targetEnv || 'all';
                 if (targetEnv !== 'all' && targetEnv !== currentEnv) {
                     section.classList.add('hidden');
@@ -1389,6 +1536,7 @@ initAuth(async (user) => {
         }
         // ⚠️ 중요: 알림 리스너도 해제 (로그아웃 시 permission-denied 에러 방지)
         stopNotificationListeners();
+        registerFirestoreListenersRebind(null);
         hideLoading();
         };
 
@@ -1399,6 +1547,9 @@ initAuth(async (user) => {
         window.currentUser = null;
         window.__pushInitUid = null;
         window.__pushInitInFlight = false;
+        try {
+          delete window.__onPushTokenSavedError;
+        } catch (_) {}
         syncDemoNavGuideDots();
         clearNavFeedUpdateDots();
 
@@ -1517,8 +1668,8 @@ window.addEventListener('scroll', () => {
     const mainApp = document.getElementById('mainApp');
     if (!mainApp || mainApp.classList.contains('hidden')) return;
     const header = document.getElementById('mainAppHeader');
+    if (!header) return;
     const tracker = document.getElementById('trackerSection');
-    if (!header || !tracker) return;
     const y = window.scrollY;
     if (_headerScrollRaf) cancelAnimationFrame(_headerScrollRaf);
     _headerScrollRaf = requestAnimationFrame(() => {
@@ -1528,13 +1679,17 @@ window.addEventListener('scroll', () => {
         const isScrollingDown = delta > scrollThreshold;
         const isScrollingUp = delta < -scrollThreshold;
         const atTop = y <= topThreshold;
+        const isGallery = appState.currentTab === 'gallery';
+        const galleryV2 = isGallery && document.getElementById('galleryContainer')?.classList?.contains('moment-feed-layout-v2');
         if (isScrollingDown && !atTop) {
-            header.classList.add('header-scroll-hidden');
-            tracker.classList.add('tracker-header-hidden');
+            if (!isGallery || galleryV2) {
+                header.classList.add('header-scroll-hidden');
+                if (tracker) tracker.classList.add('tracker-header-hidden');
+            }
             document.body.classList.add('bottom-nav-scroll-hidden');
         } else if (isScrollingUp || atTop) {
             header.classList.remove('header-scroll-hidden');
-            tracker.classList.remove('tracker-header-hidden');
+            if (tracker) tracker.classList.remove('tracker-header-hidden');
             document.body.classList.remove('bottom-nav-scroll-hidden');
         }
         _lastScrollY = y;

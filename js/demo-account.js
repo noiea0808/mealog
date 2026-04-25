@@ -1,7 +1,7 @@
 /**
  * 공용 데모(샘플) 계정 — 읽기 전용, Firestore 규칙과 이메일이 일치해야 함
  */
-import { auth, callableFunctions } from './firebase.js';
+import { auth, callableFunctions, appCheckInitPromise, refreshAppCheckTokenBeforeFirestore } from './firebase.js';
 import {
     signInWithEmailAndPassword,
     signInWithCustomToken,
@@ -56,6 +56,12 @@ export async function signInAsDemoAccount() {
         const customToken = res?.data?.customToken;
         if (customToken) {
             await signInWithCustomToken(auth, customToken);
+            try {
+                await appCheckInitPromise;
+                await refreshAppCheckTokenBeforeFirestore({ force: true });
+            } catch (_) {
+                /* ignore */
+            }
             return;
         }
     } catch (e) {

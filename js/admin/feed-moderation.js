@@ -18,6 +18,7 @@ import {
     getCountFromServer,
     where,
     writeBatch,
+    deleteDoc,
     Timestamp
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
@@ -62,6 +63,26 @@ function invalidateAdminFeedMonitoringCache() {
     feedUserSettingsCache.clear();
     feedSharedKeysCache = null;
     feedMealTotalCountKnown = true;
+}
+
+/**
+ * 모먼트 관리: 기록·공유 문서 삭제 (일반 = users/…/meals + sharedPhotos, 베스트/일간/인사이트 = sharedPhotos만)
+ */
+async function adminDeleteFeedPostInternal({ mealId, userId, isBest, isDaily, isInsight }) {
+    if (!mealId || !userId) throw new Error('mealId 또는 userId가 없습니다.');
+    await refreshAppCheckTokenBeforeFirestore();
+    if (isBest || isDaily || isInsight) {
+        await deleteDoc(doc(db, 'artifacts', appId, 'sharedPhotos', mealId));
+        return;
+    }
+    const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+    const sharedQuery = query(sharedColl, where('userId', '==', userId), where('entryId', '==', mealId));
+    const sharedSnap = await getDocs(sharedQuery);
+    for (const d of sharedSnap.docs) {
+        await deleteDoc(d.ref);
+    }
+    const mealRef = doc(db, 'artifacts', appId, 'users', userId, 'meals', mealId);
+    await deleteDoc(mealRef);
 }
 
 function feedQueryCacheKey(page) {
@@ -431,7 +452,16 @@ async function renderFeedManagement() {
             const withSubTag = meal.withWhomDetail || '';
             const ratingVal = meal.snackRating ?? meal.rating;
             const satietyVal = meal.satiety;
-            const firstPhoto = meal.photoUrl || (Array.isArray(meal.photos) ? meal.photos[0] : '');
+            const photoUrls = (() => {
+                if (Array.isArray(meal.photos) && meal.photos.length > 0) {
+                    return meal.photos.map((u) => String(u || '').trim()).filter(Boolean);
+                }
+                if (meal.photoUrl && String(meal.photoUrl).trim()) {
+                    return [String(meal.photoUrl).trim()];
+                }
+                return [];
+            })();
+            const firstPhoto = photoUrls[0] || '';
             const rowBg = hasDataMismatch ? 'bg-yellow-50' : (isBanned ? 'bg-red-50' : '');
             const dateTime = fmtDateTimeParts(meal);
             const newestOrder = (feedCurrentPage - 1) * feedPageSize + rowIdx + 1;
@@ -513,8 +543,19 @@ async function renderFeedManagement() {
                         </div>
                     </td>
                     <td class="px-2 py-3 align-middle text-center w-[208px] min-w-[208px] border-r border-slate-200">
-                        ${hasPhotos && firstPhoto
-                            ? `<img src="${firstPhoto}" alt="사진" class="mx-auto w-[200px] h-[200px] object-contain rounded-lg border border-slate-200 bg-white">`
+                        ${photoUrls.length > 0
+                            ? `<div class="relative inline-block mx-auto max-w-full">
+                                <button type="button" class="group p-0 border-0 bg-transparent cursor-zoom-in rounded-lg" onclick='window.openAdminFeedPhotoViewer(${JSON.stringify(photoUrls)}, 0)' title="클릭하여 원본 크기로 보기" aria-label="사진 원본 보기">
+                                    <span class="relative block mx-auto w-[200px] h-[200px] rounded-lg border border-slate-200 bg-white overflow-hidden">
+                                        <img src="${escapeHtml(firstPhoto)}" alt="" class="absolute inset-0 w-full h-full object-contain pointer-events-none">
+                                        ${
+                                            photoUrls.length > 1
+                                                ? `<span class="absolute top-1 right-1 z-10 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-bold leading-none pointer-events-none shadow-sm">1/${photoUrls.length}</span>`
+                                                : ''
+                                        }
+                                    </span>
+                                </button>
+                            </div>`
                             : '<span class="text-slate-300 text-xs">-</span>'}
                     </td>
                     <td class="px-3 py-3 align-middle w-[240px] min-w-[240px] border-r border-slate-200">
@@ -530,6 +571,9 @@ async function renderFeedManagement() {
                             ${reportBadgeHtml}
                             ${hasDataMismatch ? `<button onclick="window.syncSharedPhotos('${meal.id}', '${meal.userId}')" class="px-2 py-0.5 bg-yellow-600 text-white rounded text-xs font-bold hover:bg-yellow-700 transition-colors">동기화</button>` : ''}
                         </div>
+                    </td>
+                    <td class="px-2 py-3 align-middle text-center w-[56px] min-w-[56px]">
+                        <button type="button" class="admin-feed-row-delete px-2 py-1 bg-red-50 text-red-700 text-xs font-bold rounded hover:bg-red-100 border border-red-200 transition-colors" data-meal-id="${meal.id}" data-user-id="${meal.userId}" ${meal.isBestShare ? 'data-is-best="true"' : ''} ${meal.isDailyShare ? 'data-is-daily="true"' : ''} ${meal.isInsightShare ? 'data-is-insight="true"' : ''}>삭제</button>
                     </td>
                 </tr>
             `;
@@ -551,13 +595,21 @@ async function renderFeedManagement() {
                             <th class="px-3 py-3 font-bold text-center w-[92px] whitespace-nowrap border-r border-slate-200">만족도/포만감</th>
                             <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[208px] min-w-[208px] border-r border-slate-200">사진</th>
                             <th class="px-3 py-3 font-bold text-center whitespace-nowrap w-[240px] min-w-[240px] border-r border-slate-200">코멘트</th>
-                            <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[72px] min-w-[72px]">상태/신고</th>
+                            <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[72px] min-w-[72px] border-r border-slate-200">상태/신고</th>
+                            <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[56px] min-w-[56px]">삭제</th>
                         </tr>
                     </thead>
                     <tbody>${rowsHtml}</tbody>
                 </table>
             </div>
         `;
+
+        container.querySelectorAll('.admin-feed-row-delete').forEach((btn) => {
+            btn.addEventListener('click', (ev) => {
+                ev.preventDefault();
+                void window.adminDeleteSingleFeedPost(btn);
+            });
+        });
         
         // 페이지네이션 렌더링
         renderFeedPagination(totalPages);
@@ -1284,7 +1336,179 @@ window.bulkUnbanPosts = async function() {
         console.error("일괄 금지 해제 실패:", e);
         alert("일괄 금지 해제 중 오류가 발생했습니다.");
     }
+};
+
+/** 행의 삭제 버튼(data-*) 기준 단일 삭제 */
+window.adminDeleteSingleFeedPost = async function (btn) {
+    if (!(btn instanceof HTMLElement)) return;
+    const mealId = btn.dataset.mealId;
+    const userId = btn.dataset.userId;
+    const isBest = btn.dataset.isBest === 'true';
+    const isDaily = btn.dataset.isDaily === 'true';
+    const isInsight = btn.dataset.isInsight === 'true';
+    if (!mealId || !userId) {
+        alert('식별 정보가 없습니다.');
+        return;
+    }
+    const onlyShared = isBest || isDaily || isInsight;
+    const msg = onlyShared
+        ? '이 모먼트(베스트·일간·인사이트) 전용 공유 문서를 삭제합니다. 복구할 수 없습니다. 진행할까요?'
+        : '이 기록의 사용자 meals 문서와 모먼트 공유 문서를 삭제합니다. 사용자 타임라인에서도 사라집니다. 복구할 수 없습니다. 진행할까요?';
+    if (!confirm(msg)) return;
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    try {
+        await adminDeleteFeedPostInternal({ mealId, userId, isBest, isDaily, isInsight });
+        invalidateAdminFeedMonitoringCache();
+        await renderFeedManagement();
+    } catch (e) {
+        console.error('모먼트 삭제 실패:', e);
+        alert('삭제 중 오류가 발생했습니다: ' + (e?.message || e));
+    } finally {
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+    }
+};
+
+/** 체크된 행 일괄 삭제 */
+window.bulkDeleteFeedPosts = async function () {
+    const checkedBoxes = document.querySelectorAll('.feed-item-checkbox:checked');
+    if (checkedBoxes.length === 0) {
+        alert('선택된 게시물이 없습니다.');
+        return;
+    }
+    if (
+        !confirm(
+            `선택한 ${checkedBoxes.length}건을 삭제합니다.\n\n일반 기록: 사용자 meals 문서와 모먼트 공유 문서가 삭제됩니다.\n베스트·일간·인사이트: 모먼트 전용 공유 문서만 삭제됩니다.\n모두 복구할 수 없습니다. 계속하시겠습니까?`
+        )
+    ) {
+        return;
+    }
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    let ok = 0;
+    let fail = 0;
+    try {
+        for (const checkbox of checkedBoxes) {
+            const mealId = checkbox.dataset.mealId;
+            const userId = checkbox.dataset.userId;
+            const isBest = checkbox.dataset.isBest === 'true';
+            const isDaily = checkbox.dataset.isDaily === 'true';
+            const isInsight = checkbox.dataset.isInsight === 'true';
+            if (!mealId || !userId) continue;
+            try {
+                await adminDeleteFeedPostInternal({ mealId, userId, isBest, isDaily, isInsight });
+                ok++;
+            } catch (e) {
+                console.error(`삭제 실패 (${mealId}):`, e);
+                fail++;
+            }
+        }
+        invalidateAdminFeedMonitoringCache();
+        await renderFeedManagement();
+        alert(`삭제 완료: ${ok}건${fail ? `, 실패: ${fail}건` : ''}`);
+    } catch (e) {
+        console.error('일괄 삭제 실패:', e);
+        alert('일괄 삭제 중 오류가 발생했습니다: ' + (e?.message || e));
+    } finally {
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+    }
+};
+
+let adminFeedPhotoViewerState = { urls: [], index: 0 };
+
+function ensureAdminFeedPhotoViewerModal() {
+    let el = document.getElementById('adminFeedPhotoViewerModal');
+    if (el) return el;
+    el = document.createElement('div');
+    el.id = 'adminFeedPhotoViewerModal';
+    el.className = 'fixed inset-0 z-[9999] hidden';
+    el.innerHTML = `
+        <div class="admin-feed-photo-viewer-backdrop absolute inset-0 bg-black/80" data-close="1"></div>
+        <div class="absolute inset-0 flex flex-col items-center justify-center p-4 pointer-events-none">
+            <div class="pointer-events-auto max-w-full max-h-full flex flex-col items-center gap-2">
+                <div class="flex items-center justify-end w-full max-w-[min(96vw,1200px)] px-1 min-h-[2rem]">
+                    <button type="button" id="adminFeedPhotoViewerClose" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white">닫기</button>
+                </div>
+                <div class="relative flex items-center justify-center max-h-[85vh] max-w-[96vw]">
+                    <button type="button" id="adminFeedPhotoViewerPrev" class="absolute left-0 z-10 p-3 rounded-full bg-black/50 text-white hover:bg-black/70 hidden" aria-label="이전 사진"><i class="fa-solid fa-chevron-left"></i></button>
+                    <div class="relative inline-block max-w-[96vw] max-h-[85vh]">
+                        <img id="adminFeedPhotoViewerImg" src="" alt="" class="max-w-[96vw] max-h-[85vh] w-auto h-auto object-contain rounded-lg shadow-2xl bg-black/20 block">
+                        <span id="adminFeedPhotoViewerCounter" class="absolute top-2 right-2 z-20 px-2 py-1 rounded-md bg-black/70 text-white text-xs font-bold leading-none pointer-events-none shadow-sm"></span>
+                    </div>
+                    <button type="button" id="adminFeedPhotoViewerNext" class="absolute right-0 z-10 p-3 rounded-full bg-black/50 text-white hover:bg-black/70 hidden" aria-label="다음 사진"><i class="fa-solid fa-chevron-right"></i></button>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(el);
+    el.querySelector('.admin-feed-photo-viewer-backdrop')?.addEventListener('click', () => closeAdminFeedPhotoViewer());
+    el.querySelector('#adminFeedPhotoViewerClose')?.addEventListener('click', () => closeAdminFeedPhotoViewer());
+    el.querySelector('#adminFeedPhotoViewerPrev')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        adminFeedPhotoViewerStep(-1);
+    });
+    el.querySelector('#adminFeedPhotoViewerNext')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        adminFeedPhotoViewerStep(1);
+    });
+    document.addEventListener('keydown', adminFeedPhotoViewerKeydown);
+    return el;
 }
+
+function adminFeedPhotoViewerKeydown(e) {
+    const modal = document.getElementById('adminFeedPhotoViewerModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    if (e.key === 'Escape') closeAdminFeedPhotoViewer();
+    if (e.key === 'ArrowLeft') adminFeedPhotoViewerStep(-1);
+    if (e.key === 'ArrowRight') adminFeedPhotoViewerStep(1);
+}
+
+function closeAdminFeedPhotoViewer() {
+    const el = document.getElementById('adminFeedPhotoViewerModal');
+    if (el) el.classList.add('hidden');
+}
+
+function adminFeedPhotoViewerStep(delta) {
+    const s = adminFeedPhotoViewerState;
+    if (!s.urls.length) return;
+    s.index = (s.index + delta + s.urls.length) % s.urls.length;
+    updateAdminFeedPhotoViewer();
+}
+
+function updateAdminFeedPhotoViewer() {
+    const img = document.getElementById('adminFeedPhotoViewerImg');
+    const counter = document.getElementById('adminFeedPhotoViewerCounter');
+    const prev = document.getElementById('adminFeedPhotoViewerPrev');
+    const next = document.getElementById('adminFeedPhotoViewerNext');
+    const s = adminFeedPhotoViewerState;
+    if (!img || !s.urls.length) return;
+    img.src = s.urls[s.index];
+    const n = s.urls.length;
+    if (counter) {
+        if (n > 1) {
+            counter.textContent = `${s.index + 1}/${n}`;
+            counter.classList.remove('hidden');
+        } else {
+            counter.textContent = '';
+            counter.classList.add('hidden');
+        }
+    }
+    const showNav = n > 1;
+    if (prev) prev.classList.toggle('hidden', !showNav);
+    if (next) next.classList.toggle('hidden', !showNav);
+}
+
+window.openAdminFeedPhotoViewer = function (urls, startIndex = 0) {
+    if (!urls || !Array.isArray(urls) || urls.length === 0) return;
+    const list = urls.map((u) => String(u || '').trim()).filter(Boolean);
+    if (!list.length) return;
+    adminFeedPhotoViewerState = {
+        urls: list,
+        index: Math.max(0, Math.min(Number(startIndex) || 0, list.length - 1)),
+    };
+    const modal = ensureAdminFeedPhotoViewerModal();
+    modal.classList.remove('hidden');
+    updateAdminFeedPhotoViewer();
+};
 
 /** 모니터링에서 '모먼트' 탭으로 들어올 때 호출: date+time 인덱스 배포 후에도 폴백만 쓰던 세션을 한 번 되살림 */
 export function refreshAdminMealsFeedSortMode() {

@@ -103,6 +103,71 @@ const VIEW_CONTENT_CLASS =
 const EDITOR_CLASS =
     'admin-log-entry-editor w-full p-3 border border-slate-200 rounded-lg text-sm text-slate-800 outline-none focus:border-emerald-500 bg-white';
 
+const ADMIN_LOG_IMPORTANT_LS = 'mealog_adminLogImportantV1';
+
+/** @type {Set<string> | null} */
+let adminLogImportantKeySet = null;
+
+function adminLogImportantStorageKey(dateKey, entryId) {
+    return `${dateKey}::${entryId}`;
+}
+
+function loadAdminLogImportantSet() {
+    try {
+        const raw = localStorage.getItem(ADMIN_LOG_IMPORTANT_LS);
+        if (!raw) return new Set();
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) return new Set();
+        return new Set(arr.filter((x) => typeof x === 'string'));
+    } catch {
+        return new Set();
+    }
+}
+
+function ensureAdminLogImportantLoaded() {
+    if (!adminLogImportantKeySet) {
+        adminLogImportantKeySet = loadAdminLogImportantSet();
+    }
+}
+
+function persistAdminLogImportantSet() {
+    if (!adminLogImportantKeySet) return;
+    try {
+        localStorage.setItem(ADMIN_LOG_IMPORTANT_LS, JSON.stringify([...adminLogImportantKeySet]));
+    } catch (e) {
+        console.warn('관리 로그 중요 표시 저장 실패:', e);
+    }
+}
+
+function isAdminLogEntryImportant(dateKey, entryId) {
+    if (!dateKey || !entryId) return false;
+    ensureAdminLogImportantLoaded();
+    return adminLogImportantKeySet.has(adminLogImportantStorageKey(dateKey, entryId));
+}
+
+function toggleAdminLogEntryImportant(dateKey, entryId) {
+    if (!dateKey || !entryId) return false;
+    ensureAdminLogImportantLoaded();
+    const k = adminLogImportantStorageKey(dateKey, entryId);
+    if (adminLogImportantKeySet.has(k)) {
+        adminLogImportantKeySet.delete(k);
+        persistAdminLogImportantSet();
+        return false;
+    }
+    adminLogImportantKeySet.add(k);
+    persistAdminLogImportantSet();
+    return true;
+}
+
+function removeAdminLogImportantKey(dateKey, entryId) {
+    ensureAdminLogImportantLoaded();
+    const k = adminLogImportantStorageKey(dateKey, entryId);
+    if (adminLogImportantKeySet.has(k)) {
+        adminLogImportantKeySet.delete(k);
+        persistAdminLogImportantSet();
+    }
+}
+
 let listenersBound = false;
 /** @type {string[]} */
 let cachedDateKeys = [];
@@ -143,6 +208,18 @@ function syncAdminLogHeader() {
     const isEdit = !!(editor && !editor.classList.contains('hidden'));
     if (headerActionsView) headerActionsView.classList.toggle('hidden', isEdit);
     if (headerActionsEdit) headerActionsEdit.classList.toggle('hidden', !isEdit);
+    syncAdminLogImportantBtn();
+}
+
+function syncAdminLogImportantBtn() {
+    const btn = document.getElementById('adminLogHdrImportantBtn');
+    if (!btn || !selectedDateKey || !selectedEntryId) return;
+    const on = isAdminLogEntryImportant(selectedDateKey, selectedEntryId);
+    btn.textContent = on ? '중요 해제' : '중요';
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.className = on
+        ? 'px-3 py-1.5 bg-red-50 border border-red-200 text-red-800 rounded-lg text-xs font-bold hover:bg-red-100'
+        : 'px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-red-50 hover:border-red-200 hover:text-red-700';
 }
 
 function updateEditorChrome() {
@@ -185,9 +262,18 @@ function renderSidebarList() {
     list.innerHTML = flat
         .map((row) => {
             const active = row.dateKey === selectedDateKey && row.id === selectedEntryId;
-            const cls = active
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50';
+            const important = isAdminLogEntryImportant(row.dateKey, row.id);
+            let cls;
+            if (active && important) {
+                cls =
+                    'bg-red-50 border-emerald-300 text-emerald-900 ring-2 ring-emerald-400/70 shadow-sm';
+            } else if (active) {
+                cls = 'bg-emerald-50 border-emerald-200 text-emerald-900';
+            } else if (important) {
+                cls = 'bg-red-50 border-red-200/90 text-slate-800 hover:bg-red-100/80';
+            } else {
+                cls = 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50';
+            }
             const label = formatSidebarEntryLabel(row.dateKey, row.createdAtMs);
             const t = normalizeTitle(row.title);
             const sub =
@@ -486,6 +572,12 @@ function bindListenersOnce() {
         const w = getEntryWrap();
         if (w) enterEditMode(w);
     });
+    document.getElementById('adminLogHdrImportantBtn')?.addEventListener('click', () => {
+        if (!selectedDateKey || !selectedEntryId) return;
+        toggleAdminLogEntryImportant(selectedDateKey, selectedEntryId);
+        renderSidebarList();
+        syncAdminLogImportantBtn();
+    });
     document.getElementById('adminLogHdrDeleteBtn')?.addEventListener('click', () => {
         if (selectedEntryId) deleteAdminLogEntry(selectedEntryId);
     });
@@ -584,6 +676,7 @@ async function deleteAdminLogEntry(entryId) {
     if (!confirm('이 블록을 삭제할까요?')) return;
     try {
         const dateKey = selectedDateKey;
+        removeAdminLogImportantKey(dateKey, entryId);
         const listBefore = [...(entriesCache[dateKey] || [])];
         const delIdx = listBefore.findIndex((e) => e.id === entryId);
 
@@ -627,6 +720,8 @@ async function deleteAdminLogEntry(entryId) {
 
 /** 관리 로그 탭 진입 시 호출 */
 export async function loadAdminLogTab() {
+    adminLogImportantKeySet = null;
+    ensureAdminLogImportantLoaded();
     bindListenersOnce();
     const { list, entriesContainer, entriesWrap } = getEls();
     if (!list || !entriesContainer) return;

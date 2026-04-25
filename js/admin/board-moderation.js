@@ -24,6 +24,15 @@ import {
 const ADMIN_BOARD_CACHE_TTL_MS = 3 * 60 * 1000;
 const boardListCache = new Map();
 
+/** HTML 본문에서 평문 한 줄 미리보기 (목록용) */
+function boardPostPlainPreview(html, maxLen) {
+    const div = document.createElement('div');
+    div.innerHTML = html || '';
+    const t = (div.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!t) return '';
+    return t.length > maxLen ? `${t.slice(0, maxLen)}...` : t;
+}
+
 function invalidateBoardMonitoringCache() {
     boardListCache.clear();
 }
@@ -54,6 +63,8 @@ function paintBoardPostsList(container, rows, reportsMap) {
                     : '';
             const isHidden = post.isHidden === true;
             const safePostId = String(postId).replace(/'/g, "\\'");
+            const legacyTitle = post.title && String(post.title).trim() ? String(post.title).trim() : '';
+            const bodyPreview = boardPostPlainPreview(post.content, 120) || '(내용 없음)';
             return `
                 <div class="border border-slate-200 rounded-xl p-4 ${isHidden ? 'bg-slate-50 opacity-90' : ''} board-list-row hover:bg-slate-50 transition-colors" data-post-id="${postId}">
                     <div class="flex items-start gap-4">
@@ -62,12 +73,16 @@ function paintBoardPostsList(container, rows, reportsMap) {
                         </div>
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center gap-2 mb-2 flex-wrap">
-                                <h3 class="font-bold text-slate-800"><span class="board-post-title-link cursor-pointer hover:underline" onclick="event.stopPropagation(); window.selectBoardPost('${safePostId}')">${escapeHtml(post.title || '')}</span></h3>
+                                <div class="flex-1 min-w-0">
+                                    <div class="board-post-title-link cursor-pointer hover:underline" onclick="event.stopPropagation(); window.selectBoardPost('${safePostId}')">
+                                        ${legacyTitle ? `<div class="font-bold text-slate-800">${escapeHtml(legacyTitle)}</div>` : ''}
+                                        <p class="text-sm text-slate-600 ${legacyTitle ? 'mt-1' : ''}">${escapeHtml(bodyPreview)}</p>
+                                    </div>
+                                </div>
                                 <span class="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-bold rounded">${escapeHtml(post.category || '')}</span>
                                 ${isHidden ? '<span class="px-2 py-0.5 bg-slate-300 text-slate-600 text-xs font-bold rounded">가려짐</span>' : ''}
                                 ${reportBadgeHtml}
                             </div>
-                            <p class="text-sm text-slate-600 mb-2">${escapeHtml(post.content || '').substring(0, 100)}${post.content && post.content.length > 100 ? '...' : ''}</p>
                             <div class="flex items-center gap-4 text-xs text-slate-400">
                                 <span>${escapeHtml(post.authorNickname || '익명')}</span>
                                 <span>${date}</span>
@@ -229,6 +244,7 @@ async function renderBoardPostDetail(postId) {
             return;
         }
         const post = postSnap.data();
+        const legacyTitle = post.title && String(post.title).trim() ? String(post.title).trim() : '';
         const ts = post.timestamp;
         const dateStr = ts ? (() => {
             const d = typeof ts?.toDate === 'function' ? ts.toDate() : new Date(ts);
@@ -239,7 +255,7 @@ async function renderBoardPostDetail(postId) {
                 <span class="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-bold rounded">${escapeHtml(post.category || '')}</span>
                 ${post.isHidden === true ? '<span class="px-2 py-0.5 bg-slate-300 text-slate-600 text-xs font-bold rounded ml-1">가려짐</span>' : ''}
             </div>
-            <h2 class="text-lg font-bold text-slate-800 mb-2">${escapeHtml(post.title || '제목 없음')}</h2>
+            ${legacyTitle ? `<div class="text-lg font-bold text-slate-800 mb-2">${escapeHtml(legacyTitle)}</div>` : ''}
             <div class="text-xs text-slate-400 mb-3">${escapeHtml(post.authorNickname || '익명')} · ${dateStr} · 조회 ${post.views || 0}</div>
             <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(post.content || '').replace(/\n/g, '<br>')}</div>
         `;

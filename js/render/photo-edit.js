@@ -28,6 +28,33 @@ let initialPinchScale = 1;
 let photoEditContext = null;
 /** 프로필 편집 시 취소/닫기 시 revoke용 */
 let profilePhotoEditObjectUrl = null;
+/** 'modal' — 전역 사진 편집 모달 | 'avatar' — 프로필 아바타 팝업 안 인라인 */
+let photoEditSurface = 'modal';
+
+function getPhotoEditCanvasEl() {
+    return photoEditSurface === 'avatar'
+        ? document.getElementById('accountAvatarEditCanvas')
+        : document.getElementById('photoEditCanvas');
+}
+
+function getPhotoEditContainerEl() {
+    return photoEditSurface === 'avatar'
+        ? document.getElementById('accountAvatarEditCanvasContainer')
+        : document.getElementById('photoEditCanvasContainer');
+}
+
+function setAvatarModalInlineEditVisible(visible) {
+    const staticV = document.getElementById('accountAvatarModalStaticView');
+    const editV = document.getElementById('accountAvatarModalEditView');
+    const pick = document.getElementById('accountAvatarModalFooterPick');
+    const confirm = document.getElementById('accountAvatarModalFooterConfirm');
+    if (staticV) staticV.classList.toggle('hidden', !!visible);
+    if (editV) editV.classList.toggle('hidden', !visible);
+    if (visible) {
+        pick?.classList.add('hidden');
+        confirm?.classList.add('hidden');
+    }
+}
 /** 여러 장 이동 중 이중 실행 방지 */
 let photoEditNavigating = false;
 
@@ -49,8 +76,37 @@ export function openProfilePhotoEdit(objectUrl) {
     photoEditContext = 'profile';
     profilePhotoEditObjectUrl = objectUrl;
     editingPhotoIndex = null;
-    
-    openPhotoEditModalWithImage(objectUrl);
+
+    if (window.profilePhotoEditFromAvatarModal) {
+        openAvatarInlinePhotoEdit(objectUrl);
+    } else {
+        photoEditSurface = 'modal';
+        openPhotoEditModalWithImage(objectUrl);
+    }
+}
+
+function openAvatarInlinePhotoEdit(photoSrc) {
+    photoEditSurface = 'avatar';
+    document.getElementById('photoEditModal')?.classList.add('hidden');
+    setAvatarModalInlineEditVisible(true);
+    photoEditCanvas = getPhotoEditCanvasEl();
+    if (!photoEditCanvas) return;
+    photoEditCtx = photoEditCanvas.getContext('2d');
+
+    editingPhotoImage = new Image();
+    const src = String(photoSrc || '');
+    const isLocalLike = src.startsWith('data:') || src.startsWith('blob:');
+    if (!isLocalLike) {
+        editingPhotoImage.crossOrigin = 'anonymous';
+    }
+    editingPhotoImage.onload = () => {
+        initializePhotoEdit();
+    };
+    editingPhotoImage.onerror = () => {
+        if (typeof window.showToast === 'function') window.showToast('이미지를 불러올 수 없습니다.', 'error');
+        closePhotoEditModal();
+    };
+    editingPhotoImage.src = photoSrc;
 }
 
 function getPhotoEditAspectRatioCss() {
@@ -69,18 +125,19 @@ function getRecordPhotoAspectRatioCss() {
 }
 
 function openPhotoEditModalWithImage(photoSrc) {
+    photoEditSurface = 'modal';
     const modal = document.getElementById('photoEditModal');
     if (!modal) return;
-    
+
     const wrapper = document.getElementById('photoEditAspectWrapper');
     if (wrapper) wrapper.style.aspectRatio = getPhotoEditAspectRatioCss();
-    
+
     modal.classList.remove('hidden');
     updatePhotoEditNavUI();
-    
-    photoEditCanvas = document.getElementById('photoEditCanvas');
+
+    photoEditCanvas = getPhotoEditCanvasEl();
     if (!photoEditCanvas) return;
-    
+
     photoEditCtx = photoEditCanvas.getContext('2d');
     
     editingPhotoImage = new Image();
@@ -103,15 +160,15 @@ function openPhotoEditModalWithImage(photoSrc) {
 // 사진 편집 초기화
 function initializePhotoEdit() {
     if (!photoEditCanvas || !photoEditCtx || !editingPhotoImage) return;
-    
-    const container = document.getElementById('photoEditCanvasContainer');
+
+    const container = getPhotoEditContainerEl();
     if (!container) return;
-    
+
     // 모달이 완전히 렌더링된 후 크기 계산
     setTimeout(() => {
         // 모달이 닫힌 경우(이미지 로드 중 사용자가 닫음) 스킵
         if (!photoEditCanvas || !photoEditCtx || !editingPhotoImage) return;
-        const containerAgain = document.getElementById('photoEditCanvasContainer');
+        const containerAgain = getPhotoEditContainerEl();
         if (!containerAgain) return;
 
         const containerRect = containerAgain.getBoundingClientRect();
@@ -442,8 +499,8 @@ export function rotatePhotoEdit() {
 // 사진 편집 초기화 (리셋)
 export function resetPhotoEdit() {
     if (!editingPhotoImage) return;
-    
-    const container = document.getElementById('photoEditCanvasContainer');
+
+    const container = getPhotoEditContainerEl();
     if (!container) return;
     
     const containerRect = container.getBoundingClientRect();
@@ -599,14 +656,23 @@ export function savePhotoEdit() {
                         photoPreview.style.backgroundPosition = 'center';
                         photoPreview.innerHTML = '';
                         if (photoDeleteBtn) {
-                            photoDeleteBtn.classList.toggle('hidden', !appState.isProfileEditing);
+                            photoDeleteBtn.classList.toggle(
+                                'hidden',
+                                !appState.isProfileEditing || appState.profileEditScope !== 'full'
+                            );
                         }
                     }
                     if (typeof window.setSettingsProfileType === 'function') {
                         window.setSettingsProfileType('photo');
                     }
+                    if (typeof window.renderSettingsProfileAvatarPreview === 'function') {
+                        window.renderSettingsProfileAvatarPreview();
+                    }
+                    window.__profilePhotoEditSaved = true;
                     closePhotoEditModal();
-                    if (typeof window.showToast === 'function') window.showToast('사진이 적용되었습니다.', 'success');
+                    if (typeof window.showToast === 'function' && !window.profilePhotoEditFromAvatarModal) {
+                        window.showToast('사진이 적용되었습니다.', 'success');
+                    }
                 })
                 .catch(() => {
                     if (typeof window.showToast === 'function') {
@@ -641,13 +707,18 @@ export function savePhotoEdit() {
 // 사진 편집 모달 닫기
 export function closePhotoEditModal() {
     const modal = document.getElementById('photoEditModal');
-    if (modal) {
+    const ctx = photoEditContext;
+    const surface = photoEditSurface;
+    const savedFromEdit = window.__profilePhotoEditSaved === true;
+    window.__profilePhotoEditSaved = false;
+
+    if (modal && surface === 'modal') {
         modal.classList.add('hidden');
     }
-    
+
     detachPhotoEditCanvasListeners();
-    
-    if (photoEditContext === 'profile') {
+
+    if (ctx === 'profile') {
         if (profilePhotoEditObjectUrl) {
             URL.revokeObjectURL(profilePhotoEditObjectUrl);
             profilePhotoEditObjectUrl = null;
@@ -655,7 +726,11 @@ export function closePhotoEditModal() {
         const photoInput = document.getElementById('photoInput');
         if (photoInput) photoInput.value = '';
     }
-    
+
+    if (surface === 'avatar') {
+        setAvatarModalInlineEditVisible(false);
+    }
+
     editingPhotoIndex = null;
     editingPhotoImage = null;
     photoEditCanvas = null;
@@ -667,6 +742,11 @@ export function closePhotoEditModal() {
     isPinching = false;
     isDraggingPhoto = false;
     photoEditContext = null;
+    photoEditSurface = 'modal';
+
+    if (ctx === 'profile' && typeof window.notifyProfilePhotoEditClosed === 'function') {
+        window.notifyProfilePhotoEditClosed(savedFromEdit);
+    }
 }
 
 // 전역 함수로 노출

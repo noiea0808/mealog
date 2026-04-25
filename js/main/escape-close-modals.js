@@ -4,7 +4,7 @@
  * 약관 동의(termsModal)는 「취소=로그아웃」과 혼동될 수 있어 ESC로 닫지 않는다.
  */
 import { appState } from '../state.js';
-import { hideNetworkErrorOverlay, dismissSuccessPopup, closeAttendancePopup } from '../ui.js';
+import { dismissSuccessPopup, closeAttendancePopup } from '../ui.js';
 import {
     closeEmailModal,
     closePasswordResetConfirmModal,
@@ -21,10 +21,10 @@ import { closeShareBestModal, closeBestSharePeriodNotice } from '../analytics/be
 import { closeSignupWizard } from '../signup-wizard.js';
 import { dismissDemoIntroModal } from '../demo-account.js';
 import { tryCloseDemoNavGuideFromBack } from '../demo-nav-guide.js';
+import { closeMomentImageLightbox } from './moment-image-lightbox.js';
 
 /** termsModal 제외 — 동적 생성 kakaoPlaceSearchModal 포함 */
 const ESCAPE_OVERLAY_IDS = [
-    'networkErrorOverlay',
     'successPopup',
     'attendancePopup',
     'signupWizard',
@@ -40,7 +40,9 @@ const ESCAPE_OVERLAY_IDS = [
     'characterSelectModal',
     'bestShareModal',
     'insightShareModal',
+    'accountAvatarModal',
     'photoEditModal',
+    'momentImageLightbox',
     'emailAuthModal',
     'logoutConfirmModal',
     'deleteAccountConfirmModal',
@@ -70,9 +72,6 @@ function compareStackOrder(a, b) {
 
 function closeOverlayById(id) {
     switch (id) {
-        case 'networkErrorOverlay':
-            hideNetworkErrorOverlay();
-            break;
         case 'successPopup':
             dismissSuccessPopup();
             break;
@@ -118,8 +117,16 @@ function closeOverlayById(id) {
         case 'insightShareModal':
             closeShareInsightModal();
             break;
+        case 'accountAvatarModal':
+            if (typeof window.tryCloseAccountAvatarModalOrCancelInlineEdit === 'function') {
+                window.tryCloseAccountAvatarModalOrCancelInlineEdit();
+            }
+            break;
         case 'photoEditModal':
             if (typeof window.closePhotoEditModal === 'function') window.closePhotoEditModal();
+            break;
+        case 'momentImageLightbox':
+            closeMomentImageLightbox();
             break;
         case 'emailAuthModal':
             closeEmailModal();

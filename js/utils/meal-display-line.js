@@ -21,7 +21,7 @@ export function formatMealMenuDisplayLine(data) {
     const menu = String(data.menuDetail || data.category || '').trim();
     const vendor = String(data.deliveryVendor || '').trim();
     const mt = String(data.mealType || '').trim();
-    if (mt === '배달/포장' && vendor && menu) return `${vendor} · ${menu}`;
+    if (mt === '배달/포장' && vendor && menu) return `${vendor} | ${menu}`;
     if (mt === '배달/포장' && vendor) return vendor;
     return menu;
 }

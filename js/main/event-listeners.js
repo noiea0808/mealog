@@ -32,6 +32,7 @@ import {
 } from '../auth.js';
 import { registerDemoIntroModalHandlers } from '../demo-account.js';
 import { registerEscapeCloseModals } from './escape-close-modals.js';
+import { bindMealSyncResendNavButtonOnce } from './meal-sync-resend-header.js';
 import { kakaoTalkLogoSvgHtml } from '../utils/kakao-brand.js';
 import {
     registerDemoNavGuideHandlers,
@@ -40,11 +41,14 @@ import {
     tryCloseDemoNavGuideFromBack
 } from '../demo-nav-guide.js';
 import { setupGalleryPullToRefresh } from './gallery-pull-refresh.js';
+import { ensureMomentImageLightbox } from './moment-image-lightbox.js';
 import {
     openSettings,
     switchSettingsTab,
     saveProfileSettings,
-    initPushPreferencesControlsOnce
+    initPushPreferencesControlsOnce,
+    saveProfileSingleField,
+    cancelInlineProfileFieldEdit
 } from '../modals.js';
 
 /** 앱 전체: 키보드 열림 시 하단 네비 숨김 + 닫힘 시 복귀 (viewport 기반 keyboard-closed) */
@@ -433,6 +437,7 @@ export function initEventListeners() {
         });
     }
     setupGalleryPullToRefresh();
+    ensureMomentImageLightbox();
 
     const navBoard = document.getElementById('nav-board');
     if (navBoard) {
@@ -480,17 +485,36 @@ export function initEventListeners() {
         saveProfileSettingsBtn.addEventListener('click', saveProfileSettings);
     }
 
-    const openMyPostsFromSettingsBtn = document.getElementById('openMyPostsFromSettingsBtn');
-    if (openMyPostsFromSettingsBtn) {
-        openMyPostsFromSettingsBtn.addEventListener('click', () => {
-            if (typeof window.openMyPostsFromSettings === 'function') window.openMyPostsFromSettings();
+    const accountEditBioBtn = document.getElementById('accountEditBioBtn');
+    if (accountEditBioBtn) {
+        accountEditBioBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (typeof window.activateAccountFieldEdit === 'function') window.activateAccountFieldEdit('bio');
         });
     }
-
-    const editProfileSettingsBtn = document.getElementById('editProfileSettingsBtn');
-    if (editProfileSettingsBtn) {
-        editProfileSettingsBtn.addEventListener('click', () => window.startProfileSettingsEdit?.());
+    document.getElementById('accountBioSaveBtn')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        void saveProfileSingleField('bio');
+    });
+    document.getElementById('accountBioCancelBtn')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        cancelInlineProfileFieldEdit();
+    });
+    const accountEditLifestyleBtn = document.getElementById('accountEditLifestyleBtn');
+    if (accountEditLifestyleBtn) {
+        accountEditLifestyleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (typeof window.activateAccountFieldEdit === 'function') window.activateAccountFieldEdit('lifestyle');
+        });
     }
+    document.getElementById('accountLifestyleSaveBtn')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        void saveProfileSingleField('lifestyle');
+    });
+    document.getElementById('accountLifestyleCancelBtn')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        cancelInlineProfileFieldEdit();
+    });
 
     const cancelProfileSettingsBtn = document.getElementById('cancelProfileSettingsBtn');
     if (cancelProfileSettingsBtn) {
@@ -515,8 +539,8 @@ export function initEventListeners() {
     const photoSelectBtn = document.getElementById('photoSelectBtn');
     if (photoSelectBtn) {
         photoSelectBtn.addEventListener('click', () => {
-            if (!appState.isProfileEditing) {
-                showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+            if (!appState.isProfileEditing || appState.profileEditScope !== 'full') {
+                showToast('프로필 사진은 계정 영역에서 사진을 눌러 전체 편집으로 변경할 수 있습니다.', 'info');
                 return;
             }
             document.getElementById('photoInput')?.click();
@@ -525,8 +549,9 @@ export function initEventListeners() {
 
     document.querySelectorAll('.settings-lifestyle-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            if (!appState.isProfileEditing) {
-                showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+            const s = appState.profileEditScope;
+            if (!appState.isProfileEditing || (s !== 'full' && s !== 'lifestyle')) {
+                showToast('라이프 스타일 연필을 눌러 수정한 뒤 선택할 수 있습니다.', 'info');
                 return;
             }
             const v = btn.getAttribute('data-value') || '';
@@ -545,20 +570,20 @@ export function initEventListeners() {
     });
     document.querySelectorAll('.setting-gender-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            if (!appState.isProfileEditing) {
-                showToast("수정 버튼을 누른 뒤 변경할 수 있습니다.", "info");
+            const s = appState.profileEditScope;
+            if (!appState.isProfileEditing || (s !== 'full' && s !== 'birthdate')) {
+                showToast('생년월일 연필을 눌러 수정한 뒤 선택할 수 있습니다.', 'info');
                 return;
             }
             const v = btn.getAttribute('data-value') || '';
             const hidden = document.getElementById('settingGender');
             if (hidden) hidden.value = v;
-            document.querySelectorAll('.setting-gender-btn').forEach(b => {
-                const active = b === btn;
-                b.classList.toggle('bg-black', active);
-                b.classList.toggle('text-white', active);
-                b.classList.toggle('bg-slate-50', !active);
-                b.classList.toggle('text-slate-600', !active);
-            });
+            if (typeof window.syncSettingsGenderButtonsUI === 'function') {
+                window.syncSettingsGenderButtonsUI();
+            }
+            if (typeof window.syncAccountCardFromProfileFields === 'function') {
+                window.syncAccountCardFromProfileFields();
+            }
         });
     });
 
@@ -680,5 +705,6 @@ export function initEventListeners() {
         deleteAccountConfirmActionBtn.addEventListener('click', confirmDeleteAccountAction);
     }
 
+    bindMealSyncResendNavButtonOnce();
     registerEscapeCloseModals();
 }

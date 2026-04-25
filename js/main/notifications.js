@@ -29,6 +29,45 @@ let notificationListActiveTab = 'unread';
 let _notificationMergedCache = null;
 let _notificationTabsBound = false;
 
+const MV2_MENTION_NOTIFS_KEY = 'mealog_mv2_mention_notifs';
+
+function loadMv2MentionNotifs() {
+    try {
+        const raw = localStorage.getItem(MV2_MENTION_NOTIFS_KEY);
+        if (!raw) return [];
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) ? arr : [];
+    } catch (_) {
+        return [];
+    }
+}
+
+function saveMv2MentionNotifs(arr) {
+    try {
+        localStorage.setItem(MV2_MENTION_NOTIFS_KEY, JSON.stringify(arr.slice(0, 50)));
+    } catch (_) {}
+}
+
+window.pushMomentMentionNotification = (postId, actorNickname, atMs) => {
+    const pid = String(postId || '').trim();
+    const actor = String(actorNickname || '').trim() || '누군가';
+    const at = Number(atMs) || Date.now();
+    if (!pid) return;
+    const arr = loadMv2MentionNotifs();
+    // 같은 글+같은 작성자: 최신 1개만 유지
+    const filtered = arr.filter((x) => !(x && x.postId === pid && x.actorNickname === actor));
+    filtered.unshift({ postId: pid, actorNickname: actor, at });
+    saveMv2MentionNotifs(filtered);
+    // 팝업 열려 있으면 즉시 갱신
+    try {
+        const popup = document.getElementById('notificationPopup');
+        if (popup && !popup.classList.contains('hidden') && typeof window.loadNotificationList === 'function') {
+            window.loadNotificationList();
+        }
+        if (typeof window.updateNotificationDot === 'function') window.updateNotificationDot();
+    } catch (_) {}
+};
+
 /** 메모리 캐시( Firestore와 동기화 ). null이면 아직 로드 전 */
 let notificationReadStateCache = null;
 /** 캐시가 어떤 사용자 것인지 (사용자 전환 시 캐시 무효화) */
@@ -239,7 +278,12 @@ function appendNotificationRow(listEl, item, { dimmed }) {
               : momentLabel
                 ? escapeHtml(momentLabel)
                 : '해당 게시물';
-    const subText = type === 'feed' ? `밀톡 알림 · ${timeStr}` : `댓글 ${commentCount}개 · ${timeStr}`;
+    const subText =
+        type === 'feed'
+            ? `밀톡 알림 · ${timeStr}`
+            : type === 'moment' && item.kind === 'mention'
+              ? `${escapeHtml(String(item.actorNickname || '누군가'))}님이 회원님을 언급했어요 · ${timeStr}`
+              : `댓글 ${commentCount}개 · ${timeStr}`;
     const thumbHtml =
         type === 'moment' && thumbnailUrl
             ? `<div class="flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden bg-slate-100 border border-slate-200"><img src="${escapeHtml(thumbnailUrl)}" alt="" class="w-full h-full object-cover" loading="lazy"></div>`
@@ -357,9 +401,19 @@ window.loadNotificationList = async () => {
                 : Promise.resolve([]),
             getFeedNotificationsForUser(window.currentUser.uid)
         ]);
-        _notificationMergedCache = [...momentItems, ...boardItems, ...feedItems].sort(
-            (a, b) => b.lastCommentAt - a.lastCommentAt
-        );
+        const mv2Mentions = loadMv2MentionNotifs();
+        // 모먼트(내 글 댓글) 항목에 @언급 정보를 오버레이 (subText를 바꾸기 위함)
+        mv2Mentions.forEach((m) => {
+            const pid = String(m?.postId || '').trim();
+            if (!pid) return;
+            const it = momentItems.find((x) => x && x.type === 'moment' && String(x.postId) === pid);
+            if (!it) return;
+            it.kind = 'mention';
+            it.actorNickname = String(m.actorNickname || '').trim() || it.actorNickname || '누군가';
+            const at = Number(m.at) || 0;
+            if (at > 0 && at > Number(it.lastCommentAt || 0)) it.lastCommentAt = at;
+        });
+        _notificationMergedCache = [...momentItems, ...boardItems, ...feedItems].sort((a, b) => b.lastCommentAt - a.lastCommentAt);
         renderNotificationPanelFromCache();
     } catch (e) {
         console.error('알림 목록 로드 실패:', e);
@@ -386,6 +440,17 @@ window.updateNotificationDot = async () => {
                 : Promise.resolve([]),
             getFeedNotificationsForUser(window.currentUser.uid)
         ]);
+        const mv2Mentions = loadMv2MentionNotifs();
+        mv2Mentions.forEach((m) => {
+            const pid = String(m?.postId || '').trim();
+            if (!pid) return;
+            const it = momentItems.find((x) => x && x.type === 'moment' && String(x.postId) === pid);
+            if (!it) return;
+            it.kind = 'mention';
+            it.actorNickname = String(m.actorNickname || '').trim() || it.actorNickname || '누군가';
+            const at = Number(m.at) || 0;
+            if (at > 0 && at > Number(it.lastCommentAt || 0)) it.lastCommentAt = at;
+        });
         const merged = [...momentItems, ...boardItems, ...feedItems];
         const readState = getNotificationReadState();
         const unread = merged.filter(item => !isNotificationRead(item, readState));

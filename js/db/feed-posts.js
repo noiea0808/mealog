@@ -18,6 +18,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { showToast } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
+import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
 
 /** 라운지 밀톡 탭에서 한 번에 불러오는 메시지 수 (Firestore 문서 읽기·반응 서브조회 배수에 직결) */
 export const FEED_TIMELINE_BATCH_SIZE = 20;
@@ -118,6 +119,10 @@ export const feedOperations = {
         if (isDemoUser(window.currentUser)) {
             showToast('샘플 계정에서는 메시지를 보낼 수 없습니다.', 'error');
             throw new Error('read-only-demo');
+        }
+        if (!isUserSettingsReadyForContentWrites(window.userSettings)) {
+            showToast('약관 동의와 프로필(닉네임) 설정을 완료한 뒤 메시지를 보낼 수 있습니다.', 'error');
+            throw new Error('ONBOARDING_INCOMPLETE');
         }
         try {
             const rid =

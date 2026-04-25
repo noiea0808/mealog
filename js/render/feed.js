@@ -1,17 +1,33 @@
 /**
  * 타임라인 옆 피드 탭 (`feedContent`) 렌더링
  */
+import { ensureMomentFeedPinchDelegate } from '../main/moment-feed-pinch.js';
 import { SLOTS, SLOT_STYLES } from '../constants.js';
+
+ensureMomentFeedPinchDelegate();
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
 import { normalizeUrl, getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
-import { getPostIdFromPhotoGroup, preloadAdjacentGalleryImages } from './post-group-utils.js';
+import { getPostIdFromPhotoGroup, getSharedPhotoGroupKey, preloadAdjacentGalleryImages } from './post-group-utils.js';
 import { fetchUserProfiles } from './user-profiles.js';
 import { formatMealMenuDisplayLine, mergeMealDisplayFields } from '../utils/meal-display-line.js';
+import { applyCollapsedCaptionToElement } from './comment-caption-layout.js';
+import { getMomentsFeedView } from '../db.js';
+import { buildMomentFeedV2PhotoAndLabelHtml } from './moment-feed-v2.js';
+import { buildSharedMomentWheelOverlayRow } from './post-group-html.js';
+import { setupMomentFeedV2WheelLayout } from '../main/moment-feed-v2-wheel-layout.js';
 
 export async function renderFeed() {
     const container = document.getElementById('feedContent');
     if (!container) return;
+    let layoutV2 = false;
+    try {
+        layoutV2 = (await getMomentsFeedView()) === '2';
+    } catch (_) {
+        layoutV2 = false;
+    }
+    container.classList.toggle('moment-feed-layout-v2', layoutV2);
+    container.setAttribute('data-moment-feed-layout', layoutV2 ? '2' : '1');
     const photosToUse = window.sharedPhotosFeed || [];
     
     if (photosToUse.length === 0) {
@@ -66,24 +82,8 @@ export async function renderFeed() {
     // 중요: 하나의 게시물(entryId)은 앨범에 한 번만 표시되어야 하므로, entryId와 userId만 사용
     // 일간보기 공유(type: 'daily')는 date와 userId로 그룹화
     const groupedPhotos = {};
-    uniquePhotos.forEach(photo => {
-        let groupKey;
-        if (photo.type === 'daily') {
-            // 일간보기 공유: date_userId로 그룹화 (같은 날짜의 일간보기 공유는 하나로 묶음)
-            groupKey = `daily_${photo.date || 'no-date'}_${photo.userId}`;
-        } else if (photo.type === 'best') {
-            // 베스트 공유: id_userId로 그룹화 (베스트 공유는 각각 고유)
-            groupKey = `best_${photo.id || 'no-id'}_${photo.userId}`;
-        } else if (photo.type === 'insight') {
-            // 인사이트 공유: dateRangeText_userId로 그룹화 (같은 기간의 인사이트 공유는 하나로 묶음)
-            groupKey = `insight_${photo.dateRangeText || 'no-range'}_${photo.userId}`;
-        } else if (photo.entryId) {
-            // entryId가 있는 경우: entryId_userId로 그룹화
-            groupKey = `${photo.entryId}_${photo.userId}`;
-        } else {
-            // entryId가 없는 경우: no-entry_userId로 그룹화
-            groupKey = `no-entry_${photo.userId}`;
-        }
+    uniquePhotos.forEach((photo) => {
+        const groupKey = getSharedPhotoGroupKey(photo);
         if (!groupedPhotos[groupKey]) {
             groupedPhotos[groupKey] = [];
         }
@@ -261,37 +261,110 @@ export async function renderFeed() {
         let aspectRatio = photo.photoAspectRatio || (entryId && window.mealHistory ? (window.mealHistory.find(m => m.id === entryId)?.photoAspectRatio) : null) || '1:1';
         if (aspectRatio !== '1:1' && aspectRatio !== '3:4' && aspectRatio !== '4:3') aspectRatio = '1:1';
         const momentAspectCss = (aspectRatio === '3:4' ? '3/4' : aspectRatio === '4:3' ? '4/3' : '1');
-        const photosHtml = photoGroup.map((p, idx) => {
-            const isBest = p.type === 'best';
-            const isDaily = p.type === 'daily';
-            const isInsight = p.type === 'insight';
-            const photoBanned = p.banned === true;
-            return `
-            <div class="flex-shrink-0 w-full snap-start relative ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
-                ${(isBest || isDaily || isInsight) ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full h-auto object-contain ${photoBanned ? 'opacity-50' : ''}" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx <= 1 ? 'eager' : 'lazy'}">` : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="absolute inset-0 w-full h-full object-cover ${photoBanned ? 'opacity-50' : ''}" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`}
-                ${photoBanned && !(isBest || isDaily || isInsight) ? `
-                    <div class="absolute inset-0 bg-orange-500/20 flex items-center justify-center">
+        const momentUrlsEncoded = encodeURIComponent(
+            JSON.stringify(photoGroup.map((p) => p.photoUrl).filter(Boolean))
+        );
+
+        const cardOuter = layoutV2
+            ? `mb-[3px] bg-slate-100 border ${isBanned ? 'border-orange-300' : 'border-slate-200'} rounded-2xl overflow-hidden instagram-post`
+            : `mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden instagram-post`;
+        const userDisplayForWheel = getDisplayProfile(photo.userId, {
+            nickname: photo.userNickname,
+            icon: photo.userIcon,
+            photoUrl: photo.userPhotoUrl
+        });
+        const avatarDisplayForWheel = getProfileAvatarDisplay(userDisplayForWheel);
+        const mealHistoryMapForWheel =
+            window.mealHistory && Array.isArray(window.mealHistory)
+                ? new Map(window.mealHistory.map((m) => [m.id, m]))
+                : new Map();
+        const wheelOverlayRow = layoutV2
+            ? buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMapForWheel, {
+                  entryId,
+                  isBestShare,
+                  isDailyShare,
+                  isInsightShare,
+                  isSnack,
+                  aspectRatio,
+                  overlayPostId: postId,
+                  overlayAuthor: {
+                      nickname: userDisplayForWheel.nickname,
+                      userId: photo.userId,
+                      avatarType: avatarDisplayForWheel.type,
+                      avatarValue: avatarDisplayForWheel.value,
+                      isGuestPost
+                  }
+              })
+            : null;
+        const postIdJsFeed = JSON.stringify(String(postId || ''));
+        const v2PhotoLabelBlock = layoutV2
+            ? buildMomentFeedV2PhotoAndLabelHtml({
+                  photoGroup,
+                  momentUrlsEncoded,
+                  photo,
+                  aspectRatio,
+                  isBestShare,
+                  isDailyShare,
+                  isInsightShare,
+                  captionTextPlain: caption,
+                  overlayRow: wheelOverlayRow,
+                  postId,
+                  postIdJs: postIdJsFeed,
+                  mealHistoryMap: mealHistoryMapForWheel,
+                  groupEntryId: entryId
+              })
+            : '';
+        const photosHtml = layoutV2
+            ? ''
+            : photoGroup
+                  .map((p, idx) => {
+                      const isBest = p.type === 'best';
+                      const isDaily = p.type === 'daily';
+                      const isInsight = p.type === 'insight';
+                      const photoBanned = p.banned === true;
+                      const inner =
+                          (isBest || isDaily || isInsight)
+                              ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo w-full h-auto object-contain ${photoBanned ? 'opacity-50' : ''}" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx <= 1 ? 'eager' : 'lazy'}">`
+                              : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-cover ${photoBanned ? 'opacity-50' : ''}" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`;
+                      const bannedOverlay =
+                          photoBanned && !(isBest || isDaily || isInsight)
+                              ? `
+                    <div class="absolute inset-0 bg-orange-500/20 flex items-center justify-center pointer-events-none">
                         <div class="bg-orange-600 text-white px-3 py-1.5 rounded-lg">
                             <i class="fa-solid fa-ban mr-1"></i>공유 금지
                         </div>
                     </div>
-                ` : ''}
+                `
+                              : '';
+                      return `
+            <div class="flex-shrink-0 w-full snap-start relative ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" data-moment-i="${idx}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
+                <div class="moment-feed-pinch-host relative w-full">${inner}</div>
+                ${bannedOverlay}
             </div>
         `;
-        }).join('');
+                  })
+                  .join('');
         
-        const userDisplay = getDisplayProfile(photo.userId, { nickname: photo.userNickname, icon: photo.userIcon, photoUrl: photo.userPhotoUrl });
-        const avatarDisplay = getProfileAvatarDisplay(userDisplay);
+        const userDisplay = userDisplayForWheel;
+        const avatarDisplay = avatarDisplayForWheel;
+        const headPad = 'px-2 py-3';
+        const avSize = 'w-10 h-10';
+        const avIconCls = 'text-lg';
         return `
-            <div class="mb-4 bg-white border ${isBanned ? 'border-orange-300' : 'border-slate-100'} rounded-2xl overflow-hidden instagram-post" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}">
-                <div class="px-2 py-3 flex items-center gap-3 relative">
+            <div class="${cardOuter}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}"${layoutV2 ? ' data-moment-card-layout="2"' : ''}>
+                ${
+                    layoutV2
+                        ? isBanned
+                            ? `<div class="px-2 pt-2"><div class="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full inline-flex items-center"><i class="fa-solid fa-ban mr-1"></i>공유 금지</div></div>`
+                            : ''
+                        : `<div class="${headPad} flex items-center gap-3 relative">
                     ${avatarDisplay.type === 'photo' ? `
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${avatarDisplay.value}); background-size: cover; background-position: center;">
+                        <div class="${avSize} rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${avatarDisplay.value}); background-size: cover; background-position: center;">
                             ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
                         </div>
                     ` : `
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200 text-lg'}">
-                            ${isGuestPost ? '게' : (avatarDisplay.type === 'default' ? '<i class="fa-solid fa-user text-lg"></i>' : escapeHtml(avatarDisplay.value))}
+                        <div class="${avSize} rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200 ' + avIconCls}">
+                            ${isGuestPost ? '게' : (avatarDisplay.type === 'default' ? `<i class="fa-solid fa-user ${avIconCls}"></i>` : escapeHtml(avatarDisplay.value))}
                         </div>
                     `}
                     <div class="flex-1 min-w-0 mr-2">
@@ -307,9 +380,13 @@ export async function renderFeed() {
                             <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
                         </button>
                     </div>
-                </div>
-                <div class="relative overflow-hidden ${(isDailyShare || isInsightShare) ? 'bg-white' : 'bg-slate-100'}">
-                    <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gallery-photo-scroll" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
+                </div>`
+                }
+                ${
+                    layoutV2
+                        ? v2PhotoLabelBlock
+                        : `<div class="relative overflow-hidden ${(isDailyShare || isInsightShare) ? 'bg-white' : 'bg-slate-100'}">
+                    <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gallery-photo-scroll" data-moment-urls="${momentUrlsEncoded}" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
                         ${photosHtml}
                     </div>
                     ${photoCount > 1 ? `
@@ -317,50 +394,53 @@ export async function renderFeed() {
                             <span class="photo-counter-current">1</span>/${photoCount}
                         </div>
                     ` : ''}
-                </div>
-                ${caption ? `<div class="px-4 py-2 text-sm font-bold text-slate-800">${caption}</div>` : ''}
-                ${comment && !isBestShare && !isDailyShare && !isInsightShare ? (() => {
-                    // comment의 줄바꿈 개수 확인
-                    const lineBreaks = (comment.match(/\n/g) || []).length;
-                    // 대략적인 텍스트 길이로도 확인 (한 줄에 약 30자 정도로 가정)
-                    const estimatedLines = Math.ceil(comment.length / 30);
-                    const shouldShowToggle = lineBreaks >= 2 || estimatedLines > 2;
-                    const toggleBtnClass = shouldShowToggle ? '' : 'hidden';
-                    
-                    return `
+                </div>`
+                }
+                ${caption && !layoutV2 ? `<div class="px-4 py-2 text-sm font-bold text-slate-800">${caption}</div>` : ''}
+                ${
+                    !layoutV2 && comment && !isBestShare && !isDailyShare && !isInsightShare
+                        ? `
                     <div class="px-4 pb-3 text-sm text-slate-600">
-                        <span id="feed-comment-collapsed-${groupIdx}" class="comment-text whitespace-pre-line line-clamp-2 inline">${escapeHtml(comment).replace(/\n/g, '<br>')}</span>
-                        <button onclick="window.toggleFeedComment(${groupIdx})" id="feed-comment-toggle-${groupIdx}" class="inline text-xs text-blue-600 font-bold hover:text-blue-700 active:text-blue-800 transition-colors ml-1 ${toggleBtnClass}">더 보기</button>
-                        <div id="feed-comment-expanded-${groupIdx}" class="comment-text whitespace-pre-line hidden">
-                            ${escapeHtml(comment).replace(/\n/g, '<br>')}
-                            <button onclick="window.toggleFeedComment(${groupIdx})" id="feed-comment-collapse-${groupIdx}" class="inline text-xs text-blue-600 font-bold hover:text-blue-700 active:text-blue-800 transition-colors ml-1">접기</button>
+                        <div id="feed-comment-collapsed-${groupIdx}" class="comment-text min-h-[1em]" data-comment-raw="${encodeURIComponent(comment)}" data-caption-variant="feed" data-group-idx="${groupIdx}">
+                            <div data-comment-collapsed-mount class="leading-snug"></div>
                         </div>
+                        <div id="feed-comment-expanded-${groupIdx}" class="comment-text hidden whitespace-pre-line break-words leading-snug cursor-pointer" onclick="window.toggleFeedComment(${groupIdx})">${escapeHtml(comment).replace(/\n/g, '<br>')}</div>
                     </div>
-                `;
-                })() : ''}
+                `
+                        : ''
+                }
             </div>
         `;
     }).join('');
     
     // 사진 카운터 업데이트를 위한 이벤트 리스너 추가 및 피드 옵션 버튼 이벤트 리스너 추가
     setTimeout(() => {
+        if (layoutV2) {
+            setupMomentFeedV2WheelLayout(container);
+        }
         const scrollContainers = container.querySelectorAll('.gallery-photo-scroll');
         scrollContainers.forEach((scrollContainer, idx) => {
             const counter = scrollContainer.parentElement.querySelector('.photo-counter-current');
             const photos = Array.from(scrollContainer.children);
             const photoCount = sortedGroups[idx]?.length || 0;
-            // 스크롤 종료 시 가장 가까운 사진으로 스냅 (한장한장 구분감)
+            const isVertical = scrollContainer.getAttribute('data-moment-carousel') === 'vertical';
             if (photoCount > 1) {
-                // 웹(데스크톱): 마우스 드래그로 사진 스와이프 (document에 리스너 등록해 빠른 드래그도 포착)
                 let isDragging = false;
                 let startX = 0;
+                let startY = 0;
                 let startScrollLeft = 0;
+                let startScrollTop = 0;
                 scrollContainer.style.cursor = 'grab';
                 const onMouseMove = (e) => {
                     if (!isDragging) return;
                     e.preventDefault();
-                    const dx = e.pageX - startX;
-                    scrollContainer.scrollLeft = Math.max(0, Math.min(scrollContainer.scrollWidth - scrollContainer.clientWidth, startScrollLeft - dx));
+                    if (isVertical) {
+                        const dy = e.pageY - startY;
+                        scrollContainer.scrollTop = Math.max(0, Math.min(scrollContainer.scrollHeight - scrollContainer.clientHeight, startScrollTop - dy));
+                    } else {
+                        const dx = e.pageX - startX;
+                        scrollContainer.scrollLeft = Math.max(0, Math.min(scrollContainer.scrollWidth - scrollContainer.clientWidth, startScrollLeft - dx));
+                    }
                 };
                 const endDrag = () => {
                     if (!isDragging) return;
@@ -375,7 +455,9 @@ export async function renderFeed() {
                     e.preventDefault();
                     isDragging = true;
                     startX = e.pageX;
+                    startY = e.pageY;
                     startScrollLeft = scrollContainer.scrollLeft;
+                    startScrollTop = scrollContainer.scrollTop;
                     scrollContainer.style.cursor = 'grabbing';
                     scrollContainer.style.userSelect = 'none';
                     document.addEventListener('mousemove', onMouseMove, { capture: true, passive: false });
@@ -383,18 +465,30 @@ export async function renderFeed() {
                 }, { passive: false });
 
                 const snapToNearest = () => {
-                    const sl = scrollContainer.scrollLeft;
-                    const cw = scrollContainer.clientWidth;
-                    let nearest = 0;
-                    let minDist = Infinity;
-                    photos.forEach((p, i) => {
-                        const pos = p.offsetLeft + p.offsetWidth / 2;
-                        const d = Math.abs(sl + cw / 2 - pos);
-                        if (d < minDist) { minDist = d; nearest = i; }
-                    });
-                    const target = photos[nearest]?.offsetLeft ?? 0;
-                    if (Math.abs(sl - target) > 2) {
-                        scrollContainer.scrollTo({ left: target, behavior: 'smooth' });
+                    if (isVertical) {
+                        const sl = scrollContainer.scrollTop;
+                        const ch = scrollContainer.clientHeight;
+                        let nearest = 0;
+                        let minDist = Infinity;
+                        photos.forEach((p, i) => {
+                            const pos = p.offsetTop + p.offsetHeight / 2;
+                            const d = Math.abs(sl + ch / 2 - pos);
+                            if (d < minDist) { minDist = d; nearest = i; }
+                        });
+                        const target = photos[nearest]?.offsetTop ?? 0;
+                        if (Math.abs(sl - target) > 2) scrollContainer.scrollTo({ top: target, behavior: 'smooth' });
+                    } else {
+                        const sl = scrollContainer.scrollLeft;
+                        const cw = scrollContainer.clientWidth;
+                        let nearest = 0;
+                        let minDist = Infinity;
+                        photos.forEach((p, i) => {
+                            const pos = p.offsetLeft + p.offsetWidth / 2;
+                            const d = Math.abs(sl + cw / 2 - pos);
+                            if (d < minDist) { minDist = d; nearest = i; }
+                        });
+                        const target = photos[nearest]?.offsetLeft ?? 0;
+                        if (Math.abs(sl - target) > 2) scrollContainer.scrollTo({ left: target, behavior: 'smooth' });
                     }
                     preloadAdjacentGalleryImages(scrollContainer);
                 };
@@ -418,22 +512,31 @@ export async function renderFeed() {
             if (counter && photoCount > 1) {
                 const slideEls = Array.from(scrollContainer.children);
                 const updateCounter = () => {
-                    const containerWidth = scrollContainer.clientWidth;
-                    const scrollLeft = scrollContainer.scrollLeft;
                     let currentIndex = 1;
-                    slideEls.forEach((slide, photoIdx) => {
-                        const photoCenter = slide.offsetLeft + slide.offsetWidth / 2;
-                        if (photoCenter >= scrollLeft && photoCenter <= scrollLeft + containerWidth) {
-                            currentIndex = photoIdx + 1;
-                        }
-                    });
+                    if (isVertical) {
+                        const containerHeight = scrollContainer.clientHeight;
+                        const scrollTop = scrollContainer.scrollTop;
+                        slideEls.forEach((slide, photoIdx) => {
+                            const c = slide.offsetTop + slide.offsetHeight / 2;
+                            if (c >= scrollTop && c <= scrollTop + containerHeight) currentIndex = photoIdx + 1;
+                        });
+                    } else {
+                        const containerWidth = scrollContainer.clientWidth;
+                        const scrollLeft = scrollContainer.scrollLeft;
+                        slideEls.forEach((slide, photoIdx) => {
+                            const photoCenter = slide.offsetLeft + slide.offsetWidth / 2;
+                            if (photoCenter >= scrollLeft && photoCenter <= scrollLeft + containerWidth) {
+                                currentIndex = photoIdx + 1;
+                            }
+                        });
+                    }
                     counter.textContent = currentIndex;
                 };
                 scrollContainer.addEventListener('scroll', updateCounter);
                 updateCounter();
             }
         });
-        
+
         // 피드 옵션 버튼에 이벤트 리스너 추가
         const feedOptionsButtons = container.querySelectorAll('.feed-options-btn');
         feedOptionsButtons.forEach(btn => {
@@ -482,86 +585,18 @@ export async function renderFeed() {
             }
         });
         
-        // Feed Comment "더 보기" 버튼 표시 여부 확인 및 위치 조정 (DOM 렌더링 후)
+        // Feed 코멘트: 본문+더보기 합쳐 3줄 레이아웃 (측정 후 마운트)
         setTimeout(() => {
-            sortedGroups.forEach((photoGroup, idx) => {
+            sortedGroups.forEach((_, idx) => {
                 const collapsedEl = document.getElementById(`feed-comment-collapsed-${idx}`);
-                const expandedEl = document.getElementById(`feed-comment-expanded-${idx}`);
-                const toggleBtn = document.getElementById(`feed-comment-toggle-${idx}`);
-                const collapseBtn = document.getElementById(`feed-comment-collapse-${idx}`);
-                
-                if (collapsedEl && toggleBtn) {
-                    // 실제 렌더링된 높이 측정
-                    const collapsedHeight = collapsedEl.scrollHeight;
-                    const lineHeight = parseFloat(getComputedStyle(collapsedEl).lineHeight) || 20;
-                    const maxHeight = lineHeight * 2; // 2줄 높이
-                    
-                    // 실제 높이가 두 줄을 넘으면 "더 보기" 버튼 표시
-                    if (collapsedHeight > maxHeight + 2 && toggleBtn.classList.contains('hidden')) {
-                        toggleBtn.classList.remove('hidden');
-                    }
-                    
-                    // 버튼 위치 조정: 텍스트의 마지막 줄과 같은 높이로
-                    if (!toggleBtn.classList.contains('hidden')) {
-                        const computedStyle = getComputedStyle(collapsedEl);
-                        const textLineHeight = parseFloat(computedStyle.lineHeight) || 20;
-                        // 마지막 줄의 baseline 위치 계산
-                        const lastLineBottom = textLineHeight * 2; // line-clamp-2이므로 2줄
-                        // 버튼 높이를 고려하여 위치 조정
-                        const btnHeight = toggleBtn.offsetHeight || 16;
-                        const offset = (textLineHeight - btnHeight) / 2; // 수직 중앙 정렬
-                        const bottomPosition = (lastLineBottom - btnHeight - offset);
-                        toggleBtn.style.bottom = `${Math.max(0, bottomPosition)}px`;
-                    }
-                    
-                    // 접기 버튼 위치도 동일하게 조정 (확장된 텍스트가 보일 때)
-                    if (expandedEl && collapseBtn && !expandedEl.classList.contains('hidden')) {
-                        const expandedStyle = getComputedStyle(expandedEl);
-                        const expandedLineHeight = parseFloat(expandedStyle.lineHeight) || 20;
-                        const expandedHeight = expandedEl.scrollHeight;
-                        const btnHeight = collapseBtn.offsetHeight || 16;
-                        // 확장된 텍스트의 마지막 줄 위치
-                        const lastLineNumber = Math.ceil(expandedHeight / expandedLineHeight);
-                        const lastLineBottom = expandedLineHeight * lastLineNumber;
-                        const offset = (expandedLineHeight - btnHeight) / 2;
-                        const bottomPosition = (lastLineBottom - btnHeight - offset);
-                        collapseBtn.style.bottom = `${Math.max(0, bottomPosition)}px`;
-                    }
-                }
+                if (collapsedEl) applyCollapsedCaptionToElement(collapsedEl);
             });
         }, 300);
         
         // 각 포스트의 좋아요, 북마크, 댓글 로드
         sortedGroups.forEach((photoGroup) => {
-            const photo = photoGroup[0];
-            // 그룹 키 생성 (postId 계산용)
-            let groupKey;
-            const isBestShare = photo.type === 'best';
-            const isDailyShare = photo.type === 'daily';
-            const isInsightShare = photo.type === 'insight';
-            if (isDailyShare) {
-                groupKey = `daily_${photo.date || 'no-date'}_${photo.userId || 'unknown'}`;
-            } else if (isBestShare) {
-                groupKey = `best_${photo.id || 'no-id'}_${photo.userId || 'unknown'}`;
-            } else if (isInsightShare) {
-                groupKey = `insight_${photo.dateRangeText || 'no-range'}_${photo.userId || 'unknown'}`;
-            } else {
-                groupKey = `${photo.entryId || 'no-entry'}_${photo.userId || 'unknown'}`;
-            }
-            
-            // postId 계산
-            let postId = photoGroup[0]?.id || photo.id || null;
-            if (!postId || postId === 'undefined' || postId === 'null') {
-                let hash = 0;
-                const ts = photo.timestamp || (photo.date ? photo.date + 'T12:00:00' : '') || '';
-                const keyForHash = `${groupKey}_${ts}`;
-                for (let i = 0; i < keyForHash.length; i++) {
-                    hash = ((hash << 5) - hash) + keyForHash.charCodeAt(i);
-                    hash = hash & hash;
-                }
-                postId = `post_${Math.abs(hash)}_${photo.userId || 'unknown'}`;
-            }
-            
+            const postId = getPostIdFromPhotoGroup(photoGroup);
+
             if (postId && window.postInteractions && window.currentUser && !window.currentUser.isAnonymous) {
                 // 좋아요 상태 및 수 로드
                 Promise.all([
@@ -604,54 +639,18 @@ export async function renderFeed() {
 }
 
 export function toggleFeedComment(groupIdx) {
-    const collapsedEl = document.getElementById(`feed-comment-collapsed-${groupIdx}`);
-    const expandedEl = document.getElementById(`feed-comment-expanded-${groupIdx}`);
-    const toggleBtn = document.getElementById(`feed-comment-toggle-${groupIdx}`);
-    const collapseBtn = document.getElementById(`feed-comment-collapse-${groupIdx}`);
-    
-    if (collapsedEl && expandedEl && toggleBtn && collapseBtn) {
-        const isCollapsed = !collapsedEl.classList.contains('hidden');
-        if (isCollapsed) {
-            // 확장
-            collapsedEl.classList.add('hidden');
-            expandedEl.classList.remove('hidden');
-            toggleBtn.classList.add('hidden');
-            collapseBtn.classList.remove('hidden');
-            
-            // 접기 버튼 위치 조정: 확장된 텍스트의 마지막 줄과 같은 높이로
-            setTimeout(() => {
-                if (expandedEl && collapseBtn) {
-                    const expandedStyle = getComputedStyle(expandedEl);
-                    const expandedLineHeight = parseFloat(expandedStyle.lineHeight) || 20;
-                    const expandedHeight = expandedEl.scrollHeight;
-                    const btnHeight = collapseBtn.offsetHeight || 16;
-                    // 확장된 텍스트의 마지막 줄 위치
-                    const lastLineNumber = Math.ceil(expandedHeight / expandedLineHeight);
-                    const lastLineBottom = expandedLineHeight * lastLineNumber;
-                    const offset = (expandedLineHeight - btnHeight) / 2;
-                    const bottomPosition = (lastLineBottom - btnHeight - offset);
-                    collapseBtn.style.bottom = `${Math.max(0, bottomPosition)}px`;
-                }
-            }, 10);
-        } else {
-            // 축소
-            collapsedEl.classList.remove('hidden');
-            expandedEl.classList.add('hidden');
-            toggleBtn.classList.remove('hidden');
-            collapseBtn.classList.add('hidden');
-            
-            // 더 보기 버튼 위치 조정: collapsed 텍스트의 마지막 줄과 같은 높이로
-            setTimeout(() => {
-                if (collapsedEl && toggleBtn) {
-                    const computedStyle = getComputedStyle(collapsedEl);
-                    const textLineHeight = parseFloat(computedStyle.lineHeight) || 20;
-                    const lastLineBottom = textLineHeight * 2; // line-clamp-2이므로 2줄
-                    const btnHeight = toggleBtn.offsetHeight || 16;
-                    const offset = (textLineHeight - btnHeight) / 2;
-                    const bottomPosition = (lastLineBottom - btnHeight - offset);
-                    toggleBtn.style.bottom = `${Math.max(0, bottomPosition)}px`;
-                }
-            }, 10);
-        }
+    const id = groupIdx != null && groupIdx !== '' ? String(groupIdx) : '';
+    if (!id) return;
+    const collapsedEl = document.getElementById(`feed-comment-collapsed-${id}`);
+    const expandedEl = document.getElementById(`feed-comment-expanded-${id}`);
+    if (!collapsedEl || !expandedEl) return;
+
+    const isCollapsed = !collapsedEl.classList.contains('hidden');
+    if (isCollapsed) {
+        collapsedEl.classList.add('hidden');
+        expandedEl.classList.remove('hidden');
+    } else {
+        expandedEl.classList.add('hidden');
+        collapsedEl.classList.remove('hidden');
     }
 }

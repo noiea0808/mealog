@@ -2,6 +2,17 @@
  * 기록 화면 태그 칩(끼니·카테고리·함께·간식 등) 렌더링.
  * window.renderSecondary 는 여기서 등록합니다.
  */
+/** 기록 모달 서브태그 중 '최근 사용'으로 보여 줄 최대 개수 (식사·간식 공통) */
+const RECENT_SUBTAG_CHIP_LIMIT = 5;
+
+/**
+ * onclick="..." 안에 삽입할 때 JSON.stringify는 큰따옴표로 속성이 끊겨 SyntaxError 남.
+ * 단일따옴표 리터럴 + decodeURIComponent로 안전히 전달.
+ */
+function valueExprForOnclick(str) {
+    return `decodeURIComponent('${encodeURIComponent(str ?? '')}')`;
+}
+
 export function renderEntryChips() {
     const tags = window.userSettings?.tags;
     const subTags = window.userSettings?.subTags;
@@ -26,8 +37,8 @@ export function renderEntryChips() {
             if (el) el.innerHTML = '';
             return;
         }
-        el.innerHTML = list.map(t => 
-            `<button onclick="window.selectTag('${inputId}', '${t}', this, true, '${subTagKey}', '${subContainerId}')" class="chip">${t}</button>`
+        el.innerHTML = list.map(t =>
+            `<button onclick="window.selectTag('${inputId}', ${valueExprForOnclick(t)}, this, true, '${subTagKey}', '${subContainerId}')" class="chip">${t}</button>`
         ).join('');
     };
     
@@ -46,7 +57,11 @@ export function renderEntryChips() {
         // 메인 태그가 선택되지 않았을 때는 나만의 태그를 표시하지 않음
         const currentInputVal = document.getElementById(inputId)?.value || '';
         // 함께한 사람·메뉴 상세 태그는 다중 선택 가능(쉼표 구분)이므로 배열로 처리
-        const isMultiSelect = id === 'peopleSuggestions' || id === 'menuSuggestions' || id === 'snackPeopleSuggestions';
+        const isMultiSelect =
+            id === 'peopleSuggestions' ||
+            id === 'menuSuggestions' ||
+            id === 'snackPeopleSuggestions' ||
+            id === 'snackSuggestions';
         const currentValues = isMultiSelect ? currentInputVal.split(',').map(v => v.trim()).filter(v => v) : [currentInputVal];
         
         if (!parentFilter) {
@@ -96,35 +111,46 @@ export function renderEntryChips() {
             return indexA - indexB;
         });
         
-        // 최근 태그는 역순으로 정렬 (최근 사용한 태그가 왼쪽에). 간식 어디서는 관리자 배열 순서 유지
-        if (id !== 'snackPlaceSuggestions') recentTagsList.reverse();
-        
+        // 최근 태그: 최신이 왼쪽, 식사·간식(어디서/무엇을/누구와) 공통으로 최대 RECENT_SUBTAG_CHIP_LIMIT개만 표시
+        recentTagsList.reverse();
+        const recentLimited = recentTagsList.slice(0, RECENT_SUBTAG_CHIP_LIMIT);
+
         // 나만의 태그 + 최근 태그 순서로 합치기
-        const sortedList = [...myTagsList, ...recentTagsList];
+        const sortedList = [...myTagsList, ...recentLimited];
         
         if (sortedList.length === 0 && myTags.length === 0) {
             el.innerHTML = `<span class="text-[10px] text-slate-300 py-1 px-2">추천 태그 없음</span>`;
         } else {
             let html = '';
             
-            // 나만의 태그와 최근 태그 모두 표시
-            // 간식 어디서: 관리자 강제 태그만 표시, 기록 화면에서는 삭제 불가
-            const isSnackPlace = id === 'snackPlaceSuggestions';
+            // 나만의 태그와 최근 태그 모두 표시 (식사·간식 어디서/무엇을/누구와 동일: 최근만 ×)
             html += sortedList.map(t => {
                 const text = typeof t === 'string' ? t : t.text;
                 const isActive = isMultiSelect ? (currentValues.includes(text) ? 'active' : '') : (currentInputVal === text ? 'active' : '');
                 const isMyTag = myTagsSet.has(text);
-                // 나만의 태그는 삭제 불가, 간식 어디서는 관리자 강제만이라 모두 삭제 불가
-                const canDelete = !isSnackPlace && !isMyTag;
-                // 최근 태그도 나만의 태그와 동일한 크기로
-                const tagClass = isMyTag 
-                    ? 'bg-emerald-100 border border-emerald-400 text-emerald-700 font-bold text-xs' 
-                    : 'border border-slate-400 text-slate-600 font-bold text-xs';
-                return `<span class="sub-chip-wrapper relative inline-block mr-0.5 mb-0.5 group">
-                    <button onclick="window.selectTag('${inputId}', '${text}', this, false, '${subTagKey}', '${id}')" class="sub-chip ${isActive} ${tagClass} ${canDelete ? 'pr-7' : ''}">${text}${isMyTag ? ' <i class="fa-solid fa-star text-[9px] text-emerald-600"></i>' : ''}</button>
-                    ${canDelete ? `<button onclick="event.stopPropagation(); window.deleteSubTag('${subTagKey}', '${text}', '${id}', '${inputId}', '${parentFilter}')" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-600 hover:text-red-500 w-4 h-4 flex items-center justify-center rounded-full active:bg-slate-200 transition-colors">
-                        <i class="fa-solid fa-xmark"></i>
-                    </button>` : ''}
+                const starHtml = isMyTag ? ' <i class="fa-solid fa-star text-[9px] text-emerald-600"></i>' : '';
+                const selectOnclick = `window.selectTag('${inputId}', ${valueExprForOnclick(text)}, this, false, '${subTagKey}', '${id}')`;
+                // 설정(즐겨찾기) 태그는 등록 화면에서 삭제 불가 — 최근 사용 태그만 ×로 subTags에서 제거
+                if (isMyTag) {
+                    return `<span class="sub-chip-wrapper inline-flex shrink-0 rounded-md overflow-hidden border border-emerald-400">
+                        <button type="button" onclick="${selectOnclick}" class="sub-chip whitespace-nowrap ${isActive} bg-emerald-100 text-emerald-700 font-bold text-xs border-0 rounded-none shadow-none">${text}${starHtml}</button>
+                    </span>`;
+                }
+                const chipDeletePayload = encodeURIComponent(JSON.stringify({
+                    kind: 'recent',
+                    subTagKey,
+                    text,
+                    containerId: id,
+                    inputId,
+                    parentFilter
+                }));
+                const wrapperFlex = 'inline-flex shrink-0 items-stretch rounded-md overflow-hidden border border-slate-400';
+                const mainBtnClass = `sub-chip whitespace-nowrap justify-start ${isActive} bg-white text-slate-600 font-bold text-xs border-0 rounded-none shadow-none pl-2 pr-1.5`;
+                const delBtnClass =
+                    'sub-chip-delete-btn flex items-center justify-center px-1.5 min-w-[26px] shrink-0 border-l border-slate-200 bg-slate-50 text-slate-600 hover:bg-red-50 hover:text-red-500 transition-colors';
+                return `<span class="sub-chip-wrapper ${wrapperFlex}">
+                    <button type="button" onclick="${selectOnclick}" class="${mainBtnClass}">${text}</button>
+                    <button type="button" data-chip-delete="${chipDeletePayload}" class="${delBtnClass}" aria-label="태그 삭제"><i class="fa-solid fa-xmark text-[10px]"></i></button>
                 </span>`;
             }).join('');
             

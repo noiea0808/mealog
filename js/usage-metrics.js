@@ -1,6 +1,6 @@
 import { db, appId } from './firebase.js';
 import { doc, setDoc, increment, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
-import { EXCLUDED_ANALYTICS_UIDS } from './excluded-analytics-uids.js';
+import { getExcludedAnalyticsUidSet } from './excluded-analytics-uids.js';
 
 function localDateKeyYmd() {
     const d = new Date();
@@ -18,7 +18,7 @@ export async function logUsageMetric(key) {
     try {
         const u = typeof window !== 'undefined' ? window.currentUser : null;
         if (!u || u.isAnonymous) return;
-        if (EXCLUDED_ANALYTICS_UIDS.has(u.uid)) return;
+        if ((await getExcludedAnalyticsUidSet()).has(u.uid)) return;
         const ref = doc(db, 'artifacts', appId, 'usageDaily', localDateKeyYmd());
         await setDoc(ref, { [key]: increment(1), updatedAt: serverTimestamp() }, { merge: true });
     } catch (e) {

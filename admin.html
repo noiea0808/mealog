@@ -48,7 +48,7 @@
     </script>
 </head>
 <body class="bg-slate-50 min-h-screen">
-    <div id="loadingOverlay" class="hidden fixed inset-0 bg-white/90 z-[999] flex items-center justify-center">
+    <div id="loadingOverlay" class="hidden fixed inset-0 bg-white/55 backdrop-blur-sm z-[999] flex items-center justify-center">
         <div class="text-center">
             <div class="w-12 h-12 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mx-auto mb-4"></div>
             <p class="text-slate-600 font-bold">로딩 중...</p>
@@ -124,16 +124,27 @@
 
         <main class="max-w-7xl mx-auto px-2 sm:px-3 lg:px-4 admin-main-padding">
 
-            <!-- 대시보드 탭 (현황판: 캐시 문서 1회만 조회, 통계 새로고침 시에만 전체 집계) -->
+            <!-- 대시보드 탭 (현황판: 캐시 문서 1회만 조회, 새로고침 시에만 전체 집계) -->
             <div id="admin-tab-content-dashboard" class="admin-tab-content">
                 <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 mb-3">
-                    <div class="flex gap-2 overflow-x-auto scrollbar-hide">
-                        <button type="button" onclick="window.switchDashboardSubtab('trend')" id="dashboard-subtab-trend" class="px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors">
-                            <i class="fa-solid fa-chart-line mr-2" aria-hidden="true"></i>트렌드
-                        </button>
-                        <button type="button" onclick="window.switchDashboardSubtab('page')" id="dashboard-subtab-page" class="px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
-                            <i class="fa-solid fa-table-columns mr-2" aria-hidden="true"></i>페이지별
-                        </button>
+                    <div class="flex items-center gap-3 min-h-[2.75rem]">
+                        <div class="flex gap-2 overflow-x-auto scrollbar-hide min-w-0 flex-1">
+                            <button type="button" onclick="window.switchDashboardSubtab('trend')" id="dashboard-subtab-trend" class="px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors shrink-0">
+                                <i class="fa-solid fa-chart-line mr-2" aria-hidden="true"></i>트렌드
+                            </button>
+                            <button type="button" onclick="window.switchDashboardSubtab('page')" id="dashboard-subtab-page" class="px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors shrink-0">
+                                <i class="fa-solid fa-table-columns mr-2" aria-hidden="true"></i>페이지별
+                            </button>
+                            <button type="button" onclick="window.switchDashboardSubtab('excluded')" id="dashboard-subtab-excluded" class="px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors shrink-0">
+                                <i class="fa-solid fa-user-slash mr-2" aria-hidden="true"></i>통계 제외 UID
+                            </button>
+                        </div>
+                        <div class="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 shrink-0 ml-auto pl-2">
+                            <span id="dashboardStatsUpdatedAt" class="text-xs text-slate-500 text-right">마지막 업데이트: -</span>
+                            <button type="button" id="dashboardStatsRefreshBtn" onclick="window.refreshDashboardStats()" class="inline-flex items-center justify-center gap-2 px-4 py-2 min-w-[9.5rem] bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors shrink-0 disabled:opacity-90 disabled:cursor-wait" aria-live="polite">
+                                <i class="fa-solid fa-rotate-right" aria-hidden="true"></i><span>새로고침</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <!-- 트렌드: 기존 기간별 통계 -->
@@ -303,25 +314,26 @@
                     </div>
                 </div>
                 <!-- 페이지별: 화면·클릭 수 (usageDaily) -->
-                <div id="dashboard-panel-page" class="hidden bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-4">
+                <div id="dashboard-panel-page" class="hidden bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8">
                     <p class="px-4 pt-4 pb-2 text-xs text-slate-500 leading-relaxed"><span class="font-bold text-slate-600">탭 방문</span> 행은 하단 네비로 해당 메인 화면에 들어올 때마다 1회씩 올라가는 <span class="font-bold text-slate-600">페이지 방문 수</span>입니다. <span class="font-bold text-slate-600">그 외 행</span>은 코멘트·상세 모달·설정 하위 탭·라운지 서브탭 등 <span class="font-bold text-slate-600">조작(클릭) 횟수</span>입니다. 「전체」는 누적,「최근 7일」은 일별입니다.</p>
                     <div class="overflow-x-auto">
                         <table class="min-w-max w-full text-left text-sm border-separate border-spacing-0" id="adminDashboardPageUsageTable">
                             <thead>
-                                <tr class="border-b border-slate-200 bg-slate-50" id="dashboardPageHeadRow1">
-                                    <th rowspan="2" class="px-2 py-1.5 font-black text-slate-700 uppercase text-xs sticky left-0 z-30 bg-slate-50 w-[7.5rem] min-w-[7.5rem] max-w-[7.5rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.15)] border-r border-slate-200/90 align-middle">구분 · 항목</th>
-                                    <th rowspan="2" class="px-2 py-1.5 font-black text-slate-700 uppercase text-center text-xs min-w-[4rem] sticky left-[7.5rem] z-30 bg-slate-50 shadow-[4px_0_12px_-6px_rgba(0,0,0,0.15)] border-r border-slate-200/90 align-middle">전체</th>
-                                    <th colspan="8" id="dashboardPageHead7dTop" class="px-2 py-1.5 font-black text-slate-700 uppercase text-center border-x border-slate-200 bg-slate-100/80 text-xs tracking-wide align-middle">최근 7일</th>
+                                <tr class="border-b border-slate-400" id="dashboardPageHeadRow1">
+                                    <th rowspan="2" class="px-2 py-1.5 font-black text-slate-800 uppercase text-sm text-center sticky left-0 z-30 w-[4.5rem] min-w-[4.5rem] max-w-[4.5rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.15)] border-r border-slate-400 align-middle">구분</th>
+                                    <th rowspan="2" class="px-2 py-1.5 font-bold text-slate-600 uppercase text-xs sticky left-[4.5rem] z-30 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.15)] border-r border-slate-400 align-middle">항목</th>
+                                    <th rowspan="2" class="px-2 py-1.5 font-black text-slate-700 uppercase text-center text-xs min-w-[4rem] sticky left-[12.5rem] z-30 shadow-[4px_0_12px_-6px_rgba(0,0,0,0.15)] border-r border-slate-400 align-middle">전체</th>
+                                    <th colspan="8" id="dashboardPageHead7dTop" class="px-2 py-1.5 font-black text-slate-700 uppercase text-center border-x border-slate-400 text-xs tracking-wide align-middle">최근 7일</th>
                                 </tr>
-                                <tr class="border-b border-slate-200 bg-slate-50/90 text-[11px]" id="dashboardPageHeadRow2">
-                                    <th id="pageDashboard7dSumHead" class="px-2 py-1 text-center font-bold text-slate-600 min-w-[3rem] border-l border-slate-200 bg-slate-50/90">7일 합</th>
-                                    <th id="pageDashboard7dHead0" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
-                                    <th id="pageDashboard7dHead1" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
-                                    <th id="pageDashboard7dHead2" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
-                                    <th id="pageDashboard7dHead3" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
-                                    <th id="pageDashboard7dHead4" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
-                                    <th id="pageDashboard7dHead5" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] bg-slate-50/90">—</th>
-                                    <th id="pageDashboard7dHead6" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] border-r border-slate-200 bg-slate-50/90">—</th>
+                                <tr class="border-b border-slate-400 text-[11px]" id="dashboardPageHeadRow2">
+                                    <th id="pageDashboard7dSumHead" class="px-2 py-1 text-center font-bold min-w-[3rem] border-l border-slate-400">7일 합</th>
+                                    <th id="pageDashboard7dHead0" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem]">—</th>
+                                    <th id="pageDashboard7dHead1" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem]">—</th>
+                                    <th id="pageDashboard7dHead2" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem]">—</th>
+                                    <th id="pageDashboard7dHead3" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem]">—</th>
+                                    <th id="pageDashboard7dHead4" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem]">—</th>
+                                    <th id="pageDashboard7dHead5" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem]">—</th>
+                                    <th id="pageDashboard7dHead6" class="px-1 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] border-r border-slate-400">—</th>
                                 </tr>
                             </thead>
                             <tbody id="dashboardPageUsageTableBody"></tbody>
@@ -332,11 +344,39 @@
                         <p class="text-xs font-mono text-slate-600 break-all leading-relaxed" id="dashboardPageUsageExcludedUidList"></p>
                     </div>
                 </div>
-                <div class="rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 flex flex-wrap items-center justify-end gap-3 mb-8">
-                    <span id="dashboardStatsUpdatedAt" class="text-xs text-slate-500">마지막 업데이트: -</span>
-                    <button type="button" id="dashboardStatsRefreshBtn" onclick="window.refreshDashboardStats()" class="inline-flex items-center justify-center gap-2 px-4 py-2 min-w-[9.5rem] bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors shrink-0 disabled:opacity-90 disabled:cursor-wait" aria-live="polite">
-                        <i class="fa-solid fa-rotate-right" aria-hidden="true"></i><span>통계 새로고침</span>
-                    </button>
+
+                <!-- 통계 제외 UID 관리 -->
+                <div id="dashboard-panel-excluded" class="hidden bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8">
+                    <div class="px-4 pt-4 pb-2">
+                        <p class="text-sm text-slate-600 leading-relaxed">
+                            트렌드·페이지별 집계 및 앱 내 사용량 로깅에서 제외할 Firebase UID를 관리합니다. 변경 후 대시보드 <span class="font-bold text-slate-700">새로고침</span>으로 통계를 다시 집계하면 반영됩니다.
+                        </p>
+                    </div>
+                    <div class="px-4 pb-4 flex flex-wrap items-end gap-2 border-b border-slate-100">
+                        <div class="flex-1 min-w-[12rem]">
+                            <label for="dashboardExcludedUidInput" class="block text-xs font-bold text-slate-600 mb-1">UID 추가</label>
+                            <input type="text" id="dashboardExcludedUidInput" autocomplete="off" placeholder="Firebase UID" onkeydown="if(event.key==='Enter'){event.preventDefault();window.addDashboardExcludedUid();}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-mono focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 outline-none" />
+                        </div>
+                        <button type="button" onclick="window.addDashboardExcludedUid()" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors shrink-0">
+                            <i class="fa-solid fa-plus" aria-hidden="true"></i>제외 목록에 추가
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-left text-sm border-separate border-spacing-0">
+                            <thead>
+                                <tr class="border-b border-slate-200 bg-slate-50">
+                                    <th class="px-3 py-2 font-bold text-slate-700 text-xs uppercase min-w-[12rem] max-w-[28%]">UID</th>
+                                    <th class="px-3 py-2 font-bold text-slate-700 text-xs uppercase min-w-[6rem]">닉네임</th>
+                                    <th class="px-3 py-2 font-bold text-slate-700 text-xs uppercase min-w-[10rem]">이메일</th>
+                                    <th class="px-3 py-2 font-bold text-slate-700 text-xs uppercase whitespace-nowrap min-w-[4.5rem]">로그인</th>
+                                    <th class="px-3 py-2 font-bold text-slate-700 text-xs uppercase text-right w-[8rem]">작업</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dashboardExcludedUidTableBody">
+                                <tr><td colspan="5" class="px-4 py-6 text-center text-slate-400 text-sm">탭을 열면 목록을 불러옵니다.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 
@@ -360,6 +400,9 @@
                             </button>
                             <button onclick="window.switchMonitoringSidebar('statsBackfill')" id="monitoring-sidebar-statsBackfill" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                 <i class="fa-solid fa-database mr-2"></i>통계 백필
+                            </button>
+                            <button onclick="window.switchMonitoringSidebar('userCreatedAtBackfill')" id="monitoring-sidebar-userCreatedAtBackfill" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                <i class="fa-solid fa-calendar-plus mr-2"></i>가입일 백필
                             </button>
                         </div>
                     </div>
@@ -396,6 +439,9 @@
                                             </button>
                                             <button onclick="window.bulkUnbanPosts()" class="px-3 py-2 bg-emerald-100 text-emerald-600 rounded-lg text-xs font-bold hover:bg-emerald-200 transition-colors">
                                                 <i class="fa-solid fa-check mr-1"></i>금지 해제
+                                            </button>
+                                            <button type="button" onclick="window.bulkDeleteFeedPosts()" class="px-3 py-2 bg-red-50 text-red-700 rounded-lg text-xs font-bold hover:bg-red-100 border border-red-200 transition-colors">
+                                                <i class="fa-solid fa-trash-can mr-1"></i>선택 삭제
                                             </button>
                                         </div>
                                     </div>
@@ -582,6 +628,43 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- 가입일 백필 (Auth UID 생성 시각 → users 루트 createdAt) -->
+                        <div id="monitoring-main-userCreatedAtBackfill" class="monitoring-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <h3 class="text-base font-black text-slate-800">가입일(createdAt) 백필</h3>
+                                    <p class="text-sm text-slate-600 mt-2 leading-relaxed">
+                                        <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">artifacts/…/users/{uid}</code> 루트 문서에 대해,
+                                        Firebase Auth 계정의 <strong>최초 생성 시각</strong>(UID 발급 시각)을
+                                        <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">createdAt</code>으로 채웁니다.
+                                        사용자 수가 많으면 여러 배치로 나뉘어 자동 진행됩니다.
+                                    </p>
+                                </div>
+                                <div class="p-6 space-y-4">
+                                    <label class="flex items-center gap-2 text-sm text-slate-800 cursor-pointer">
+                                        <input type="checkbox" id="adminCreatedAtBackfillDryRun" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                                        <span>드라이런 (Firestore 쓰기 없이 시뮬레이션만)</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 text-sm text-slate-800 cursor-pointer">
+                                        <input type="checkbox" id="adminCreatedAtBackfillOverwrite" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                                        <span>이미 가입일이 있어도 Auth 시각으로 덮어쓰기 (주의)</span>
+                                    </label>
+                                    <div>
+                                        <label for="adminCreatedAtBackfillSingleUid" class="block text-sm font-bold text-slate-700 mb-2">특정 UID만 보정 (비우면 전체 배치)</label>
+                                        <input type="text" id="adminCreatedAtBackfillSingleUid" autocomplete="off" placeholder="예: kakao_4850485207" class="w-full max-w-xl px-4 py-3 border border-slate-200 rounded-xl text-sm font-mono outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500">
+                                        <p class="text-xs text-slate-500 mt-1">한 명만 고칠 때 사용. 전체 일괄은 비워 두고 실행하세요.</p>
+                                    </div>
+                                    <div>
+                                        <button type="button" id="adminCreatedAtBackfillRunBtn" onclick="window.runAdminUserCreatedAtBackfill()" class="inline-flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white text-sm font-black rounded-xl hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-60">
+                                            <i class="fa-solid fa-play" aria-hidden="true"></i>
+                                            백필 실행
+                                        </button>
+                                    </div>
+                                    <div id="adminCreatedAtBackfillResult" class="text-sm min-h-0" aria-live="polite"></div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -600,9 +683,15 @@
                         <div class="flex flex-wrap justify-between items-center admin-users-toolbar-inner gap-2">
                             <div class="flex flex-wrap items-baseline gap-2">
                                 <h2 class="text-base font-black text-slate-800">사용자 관리</h2>
-                                <span class="text-sm font-bold text-slate-500 tabular-nums" aria-live="polite">총 <span id="adminUsersTotalCountDisplay">—</span>명</span>
+                                <span class="text-sm font-bold text-slate-500 tabular-nums" aria-live="polite">총 <span id="adminUsersTotalCountDisplay">—</span>명<span id="adminUsersSearchCountHint" class="hidden font-normal text-slate-500"></span></span>
                             </div>
                             <div class="flex flex-wrap items-center gap-2">
+                                <div class="flex flex-wrap items-center gap-1.5 min-w-0 max-w-full sm:max-w-[22rem]">
+                                    <label for="adminUsersSearchInput" class="sr-only">닉네임 또는 이메일 검색</label>
+                                    <input type="search" id="adminUsersSearchInput" enterkeyhint="search" autocomplete="off" placeholder="닉네임·이메일·UID 검색" class="min-w-0 w-[min(100%,12rem)] sm:w-52 flex-1 sm:flex-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/30" />
+                                    <button type="button" id="adminUsersSearchClearBtn" class="hidden shrink-0 px-2.5 py-2 text-xs font-bold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 border border-slate-200">지우기</button>
+                                </div>
+                                <span class="hidden sm:inline w-px h-5 bg-slate-200" aria-hidden="true"></span>
                                 <div class="inline-flex rounded-lg bg-slate-100 p-0.5" role="group" aria-label="보기 전환">
                                     <button type="button" id="adminUsersPage1" onclick="window.switchAdminUsersPage(1)" class="admin-users-page-btn px-3 py-1.5 rounded-md text-sm font-bold transition-colors bg-emerald-100 text-emerald-800" aria-pressed="true">기본</button>
                                     <button type="button" id="adminUsersPage2" onclick="window.switchAdminUsersPage(2)" class="admin-users-page-btn px-3 py-1.5 rounded-md text-sm font-bold transition-colors bg-transparent text-slate-600 hover:bg-slate-200/50" aria-pressed="false">통계</button>
@@ -905,8 +994,8 @@
                                         <p class="text-sm text-slate-600">작성 후 <strong class="text-slate-800">지금 전체 발송</strong>을 누르면 알림을 허용한 전체 사용자에게 바로 전달됩니다.</p>
                                         <div class="space-y-3">
                                             <div>
-                                                <label class="text-xs font-bold text-slate-500 block mb-1">제목 <span class="text-slate-400 font-normal">(최대 80자)</span></label>
-                                                <input type="text" id="adminPushNowTitle" maxlength="80" autocomplete="off" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20" placeholder="알림 제목">
+                                                <label class="text-xs font-bold text-slate-500 block mb-1">제목 <span class="text-slate-400 font-normal">(최대 120자)</span></label>
+                                                <input type="text" id="adminPushNowTitle" maxlength="120" autocomplete="off" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20" placeholder="알림 제목">
                                             </div>
                                             <div>
                                                 <label class="text-xs font-bold text-slate-500 block mb-1">내용 <span class="text-slate-400 font-normal">(최대 240자)</span></label>
@@ -944,7 +1033,7 @@
                                                     특정 일시 1회
                                                 </button>
                                                 <button type="button" role="tab" id="adminPushScheduleKindRecurring" aria-selected="false" onclick="window.setAdminPushScheduleKind('recurring')" class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-bold transition-all text-slate-500 hover:text-slate-700 hover:bg-white/60">
-                                                    주기적 발송
+                                                    요일별 발송
                                                 </button>
                                             </div>
                                         </div>
@@ -953,66 +1042,142 @@
                                                 <label class="text-xs font-bold text-slate-500 block mb-1">발송 일시</label>
                                                 <input type="datetime-local" id="adminPushScheduleWhen" class="w-full max-w-md p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20">
                                             </div>
-                                        </div>
-                                        <div id="adminPushScheduleRecurringBlock" class="space-y-3 hidden">
-                                            <p class="text-xs text-slate-500 leading-relaxed">시작 일시에 첫 발송 후, 주기마다 반복합니다. 종료 일시 이후에는 더 이상 잡히지 않습니다.</p>
-                                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            <div class="grid grid-cols-2 gap-3 border-t border-amber-100/80 pt-4">
                                                 <div>
-                                                    <label class="text-xs font-bold text-slate-500 block mb-1">시작 일시 (첫 발송)</label>
-                                                    <input type="datetime-local" id="adminPushRecurringStart" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20">
+                                                    <label class="text-xs font-bold text-slate-500 block mb-1">제목 <span class="text-slate-400 font-normal">(최대 120자)</span></label>
+                                                    <input type="text" id="adminPushScheduleTitle" maxlength="120" autocomplete="off" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500" placeholder="알림 제목">
+                                                </div>
+                                                <div class="sm:col-span-2">
+                                                    <label class="text-xs font-bold text-slate-500 block mb-1">메시지</label>
+                                                    <textarea id="adminPushScheduleBody" maxlength="240" rows="3" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 resize-y min-h-[4.5rem]" placeholder="내용"></textarea>
                                                 </div>
                                                 <div>
-                                                    <label class="text-xs font-bold text-slate-500 block mb-1">종료 일시 (이 시각까지 허용)</label>
-                                                    <input type="datetime-local" id="adminPushRecurringEnd" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20">
-                                                </div>
-                                                <div>
-                                                    <label class="text-xs font-bold text-slate-500 block mb-1">주기</label>
-                                                    <select id="adminPushRecurringInterval" class="w-full p-2.5 bg-amber-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500">
-                                                        <option value="daily">매일 (같은 시각)</option>
-                                                        <option value="weekly">매주 (7일마다, 같은 시각)</option>
-                                                        <option value="monthly">매월 (같은 일·시각, 달에 없는 날은 말일로 보정)</option>
+                                                    <label class="text-xs font-bold text-slate-500 block mb-1">탭 시 화면</label>
+                                                    <select id="adminPushScheduleLanding" class="w-full p-2.5 bg-amber-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500">
+                                                        <option value="dashboard">밀당</option>
+                                                        <option value="timeline" selected>밀로그</option>
+                                                        <option value="gallery">모먼트</option>
+                                                        <option value="board">라운지</option>
+                                                        <option value="settings">설정</option>
                                                     </select>
                                                 </div>
+                                                <div>
+                                                    <label class="text-xs font-bold text-slate-500 block mb-1">발송 대상 환경</label>
+                                                    <select id="adminPushScheduleTargetEnv" class="w-full p-2.5 bg-amber-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500">
+                                                        <option value="all">전체</option>
+                                                        <option value="production">운영만</option>
+                                                        <option value="staging" selected>스테이징만</option>
+                                                    </select>
+                                                </div>
+                                                <div class="sm:col-span-2">
+                                                    <button type="button" id="adminPushScheduleBtnOnce" onclick="window.submitAdminPushSchedule()" class="py-3 px-6 bg-amber-600 text-white rounded-xl font-bold text-sm hover:bg-amber-700 shadow-sm transition-colors">예약 등록</button>
+                                                </div>
                                             </div>
                                         </div>
-                                        <div class="grid grid-cols-2 gap-3 border-t border-amber-100/80 pt-4">
-                                            <div>
-                                                <label class="text-xs font-bold text-slate-500 block mb-1">제목</label>
-                                                <input type="text" id="adminPushScheduleTitle" maxlength="80" autocomplete="off" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500" placeholder="알림 제목">
+                                        <div id="adminPushScheduleRecurringBlock" class="space-y-4 hidden">
+                                            <p class="text-xs text-slate-500 leading-relaxed">시작·종료 <strong class="text-slate-700">날짜</strong> 안에서, 아래에 적은 요일·시각마다 발송합니다. (한국 시각 기준) <span class="text-slate-400">발송 시각·제목·내용을 <strong class="text-slate-600">모두</strong> 입력한 요일만 예약에 포함되고, 비워 둔 요일은 등록·발송하지 않습니다.</span></p>
+                                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <div>
+                                                    <label class="text-xs font-bold text-slate-500 block mb-1">시작일</label>
+                                                    <input type="date" id="adminPushWeeklyRangeStart" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20">
+                                                </div>
+                                                <div>
+                                                    <label class="text-xs font-bold text-slate-500 block mb-1">종료일</label>
+                                                    <input type="date" id="adminPushWeeklyRangeEnd" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20">
+                                                </div>
                                             </div>
-                                            <div class="sm:col-span-2">
-                                                <label class="text-xs font-bold text-slate-500 block mb-1">메시지</label>
-                                                <textarea id="adminPushScheduleBody" maxlength="240" rows="3" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 resize-y min-h-[4.5rem]" placeholder="내용"></textarea>
+                                            <div class="border border-amber-200/80 rounded-xl overflow-hidden bg-white">
+                                                <div class="overflow-x-auto">
+                                                    <table class="w-full min-w-[720px] text-sm border-collapse">
+                                                        <thead>
+                                                            <tr class="bg-amber-50/90 text-left text-[11px] font-bold text-slate-600 border-b border-amber-100">
+                                                                <th class="px-2 py-2 w-12">요일</th>
+                                                                <th class="px-2 py-2 w-24 whitespace-nowrap">발송 시각</th>
+                                                                <th class="px-2 py-2 w-28">랜딩</th>
+                                                                <th class="px-2 py-2 w-28">환경</th>
+                                                                <th class="px-2 py-2 min-w-[7rem]">제목 <span class="text-slate-400 font-normal">(최대 120자)</span></th>
+                                                                <th class="px-2 py-2 min-w-[10rem]">내용</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody id="adminPushWeeklyTableBody" class="divide-y divide-slate-100">
+                                                            <tr class="align-top bg-white/80">
+                                                                <td class="px-2 py-2 text-xs font-bold text-slate-600 pt-3">월</td>
+                                                                <td class="px-2 py-2"><input type="time" id="adminPushWd1Time" class="w-full min-w-[5.5rem] p-1.5 border border-slate-200 rounded-lg text-xs"></td>
+                                                                <td class="px-2 py-2"><select id="adminPushWd1Landing" class="w-full p-1.5 border border-slate-200 rounded-lg text-xs bg-amber-50/50"><option value="dashboard">밀당</option><option value="timeline" selected>밀로그</option><option value="gallery">모먼트</option><option value="board">라운지</option><option value="settings">설정</option></select></td>
+                                                                <td class="px-2 py-2"><select id="adminPushWd1TargetEnv" class="w-full p-1.5 border border-slate-200 rounded-lg text-xs bg-amber-50/50"><option value="all">전체</option><option value="production">운영</option><option value="staging" selected>스테이징</option></select></td>
+                                                                <td class="px-2 py-2"><input type="text" id="adminPushWd1Title" maxlength="120" class="w-full min-w-[6rem] p-1.5 border border-slate-200 rounded-lg text-xs" placeholder="비우면 해당 요일 생략"></td>
+                                                                <td class="px-2 py-2"><textarea id="adminPushWd1Body" maxlength="240" rows="2" class="w-full min-w-[8rem] p-1.5 border border-slate-200 rounded-lg text-xs resize-y" placeholder="내용"></textarea></td>
+                                                            </tr>
+                                                            <tr class="align-top bg-slate-50/40">
+                                                                <td class="px-2 py-2 text-xs font-bold text-slate-600 pt-3">화</td>
+                                                                <td class="px-2 py-2"><input type="time" id="adminPushWd2Time" class="w-full min-w-[5.5rem] p-1.5 border border-slate-200 rounded-lg text-xs"></td>
+                                                                <td class="px-2 py-2"><select id="adminPushWd2Landing" class="w-full p-1.5 border border-slate-200 rounded-lg text-xs bg-amber-50/50"><option value="dashboard">밀당</option><option value="timeline" selected>밀로그</option><option value="gallery">모먼트</option><option value="board">라운지</option><option value="settings">설정</option></select></td>
+                                                                <td class="px-2 py-2"><select id="adminPushWd2TargetEnv" class="w-full p-1.5 border border-slate-200 rounded-lg text-xs bg-amber-50/50"><option value="all">전체</option><option value="production">운영</option><option value="staging" selected>스테이징</option></select></td>
+                                                                <td class="px-2 py-2"><input type="text" id="adminPushWd2Title" maxlength="120" class="w-full min-w-[6rem] p-1.5 border border-slate-200 rounded-lg text-xs" placeholder="비우면 해당 요일 생략"></td>
+                                                                <td class="px-2 py-2"><textarea id="adminPushWd2Body" maxlength="240" rows="2" class="w-full min-w-[8rem] p-1.5 border border-slate-200 rounded-lg text-xs resize-y" placeholder="내용"></textarea></td>
+                                                            </tr>
+                                                            <tr class="align-top bg-white/80">
+                                                                <td class="px-2 py-2 text-xs font-bold text-slate-600 pt-3">수</td>
+                                                                <td class="px-2 py-2"><input type="time" id="adminPushWd3Time" class="w-full min-w-[5.5rem] p-1.5 border border-slate-200 rounded-lg text-xs"></td>
+                                                                <td class="px-2 py-2"><select id="adminPushWd3Landing" class="w-full p-1.5 border border-slate-200 rounded-lg text-xs bg-amber-50/50"><option value="dashboard">밀당</option><option value="timeline" selected>밀로그</option><option value="gallery">모먼트</option><option value="board">라운지</option><option value="settings">설정</option></select></td>
+                                                                <td class="px-2 py-2"><select id="adminPushWd3TargetEnv" class="w-full p-1.5 border border-slate-200 rounded-lg text-xs bg-amber-50/50"><option value="all">전체</option><option value="production">운영</option><option value="staging" selected>스테이징</option></select></td>
+                                                                <td class="px-2 py-2"><input type="text" id="adminPushWd3Title" maxlength="120" class="w-full min-w-[6rem] p-1.5 border border-slate-200 rounded-lg text-xs" placeholder="비우면 해당 요일 생략"></td>
+                                                                <td class="px-2 py-2"><textarea id="adminPushWd3Body" maxlength="240" rows="2" class="w-full min-w-[8rem] p-1.5 border border-slate-200 rounded-lg text-xs resize-y" placeholder="내용"></textarea></td>
+                                                            </tr>
+                                                            <tr class="align-top bg-slate-50/40">
+                                                                <td class="px-2 py-2 text-xs font-bold text-slate-600 pt-3">목</td>
+                                                                <td class="px-2 py-2"><input type="time" id="adminPushWd4Time" class="w-full min-w-[5.5rem] p-1.5 border border-slate-200 rounded-lg text-xs"></td>
+                                                                <td class="px-2 py-2"><select id="adminPushWd4Landing" class="w-full p-1.5 border border-slate-200 rounded-lg text-xs bg-amber-50/50"><option value="dashboard">밀당</option><option value="timeline" selected>밀로그</option><option value="gallery">모먼트</option><option value="board">라운지</option><option value="settings">설정</option></select></td>
+                                                                <td class="px-2 py-2"><select id="adminPushWd4TargetEnv" class="w-full p-1.5 border border-slate-200 rounded-lg text-xs bg-amber-50/50"><option value="all">전체</option><option value="production">운영</option><option value="staging" selected>스테이징</option></select></td>
+                                                                <td class="px-2 py-2"><input type="text" id="adminPushWd4Title" maxlength="120" class="w-full min-w-[6rem] p-1.5 border border-slate-200 rounded-lg text-xs" placeholder="비우면 해당 요일 생략"></td>
+                                                                <td class="px-2 py-2"><textarea id="adminPushWd4Body" maxlength="240" rows="2" class="w-full min-w-[8rem] p-1.5 border border-slate-200 rounded-lg text-xs resize-y" placeholder="내용"></textarea></td>
+                                                            </tr>
+                                                            <tr class="align-top bg-white/80">
+                                                                <td class="px-2 py-2 text-xs font-bold text-slate-600 pt-3">금</td>
+                                                                <td class="px-2 py-2"><input type="time" id="adminPushWd5Time" class="w-full min-w-[5.5rem] p-1.5 border border-slate-200 rounded-lg text-xs"></td>
+                                                                <td class="px-2 py-2"><select id="adminPushWd5Landing" class="w-full p-1.5 border border-slate-200 rounded-lg text-xs bg-amber-50/50"><option value="dashboard">밀당</option><option value="timeline" selected>밀로그</option><option value="gallery">모먼트</option><option value="board">라운지</option><option value="settings">설정</option></select></td>
+                                                                <td class="px-2 py-2"><select id="adminPushWd5TargetEnv" class="w-full p-1.5 border border-slate-200 rounded-lg text-xs bg-amber-50/50"><option value="all">전체</option><option value="production">운영</option><option value="staging" selected>스테이징</option></select></td>
+                                                                <td class="px-2 py-2"><input type="text" id="adminPushWd5Title" maxlength="120" class="w-full min-w-[6rem] p-1.5 border border-slate-200 rounded-lg text-xs" placeholder="비우면 해당 요일 생략"></td>
+                                                                <td class="px-2 py-2"><textarea id="adminPushWd5Body" maxlength="240" rows="2" class="w-full min-w-[8rem] p-1.5 border border-slate-200 rounded-lg text-xs resize-y" placeholder="내용"></textarea></td>
+                                                            </tr>
+                                                            <tr class="align-top bg-slate-50/40">
+                                                                <td class="px-2 py-2 text-xs font-bold text-slate-600 pt-3">토</td>
+                                                                <td class="px-2 py-2"><input type="time" id="adminPushWd6Time" class="w-full min-w-[5.5rem] p-1.5 border border-slate-200 rounded-lg text-xs"></td>
+                                                                <td class="px-2 py-2"><select id="adminPushWd6Landing" class="w-full p-1.5 border border-slate-200 rounded-lg text-xs bg-amber-50/50"><option value="dashboard">밀당</option><option value="timeline" selected>밀로그</option><option value="gallery">모먼트</option><option value="board">라운지</option><option value="settings">설정</option></select></td>
+                                                                <td class="px-2 py-2"><select id="adminPushWd6TargetEnv" class="w-full p-1.5 border border-slate-200 rounded-lg text-xs bg-amber-50/50"><option value="all">전체</option><option value="production">운영</option><option value="staging" selected>스테이징</option></select></td>
+                                                                <td class="px-2 py-2"><input type="text" id="adminPushWd6Title" maxlength="120" class="w-full min-w-[6rem] p-1.5 border border-slate-200 rounded-lg text-xs" placeholder="비우면 해당 요일 생략"></td>
+                                                                <td class="px-2 py-2"><textarea id="adminPushWd6Body" maxlength="240" rows="2" class="w-full min-w-[8rem] p-1.5 border border-slate-200 rounded-lg text-xs resize-y" placeholder="내용"></textarea></td>
+                                                            </tr>
+                                                            <tr class="align-top bg-white/80">
+                                                                <td class="px-2 py-2 text-xs font-bold text-slate-600 pt-3">일</td>
+                                                                <td class="px-2 py-2"><input type="time" id="adminPushWd7Time" class="w-full min-w-[5.5rem] p-1.5 border border-slate-200 rounded-lg text-xs"></td>
+                                                                <td class="px-2 py-2"><select id="adminPushWd7Landing" class="w-full p-1.5 border border-slate-200 rounded-lg text-xs bg-amber-50/50"><option value="dashboard">밀당</option><option value="timeline" selected>밀로그</option><option value="gallery">모먼트</option><option value="board">라운지</option><option value="settings">설정</option></select></td>
+                                                                <td class="px-2 py-2"><select id="adminPushWd7TargetEnv" class="w-full p-1.5 border border-slate-200 rounded-lg text-xs bg-amber-50/50"><option value="all">전체</option><option value="production">운영</option><option value="staging" selected>스테이징</option></select></td>
+                                                                <td class="px-2 py-2"><input type="text" id="adminPushWd7Title" maxlength="120" class="w-full min-w-[6rem] p-1.5 border border-slate-200 rounded-lg text-xs" placeholder="비우면 해당 요일 생략"></td>
+                                                                <td class="px-2 py-2"><textarea id="adminPushWd7Body" maxlength="240" rows="2" class="w-full min-w-[8rem] p-1.5 border border-slate-200 rounded-lg text-xs resize-y" placeholder="내용"></textarea></td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <label class="text-xs font-bold text-slate-500 block mb-1">탭 시 화면</label>
-                                                <select id="adminPushScheduleLanding" class="w-full p-2.5 bg-amber-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500">
-                                                    <option value="dashboard">밀당</option>
-                                                    <option value="timeline" selected>밀로그</option>
-                                                    <option value="gallery">모먼트</option>
-                                                    <option value="board">라운지</option>
-                                                    <option value="settings">설정</option>
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label class="text-xs font-bold text-slate-500 block mb-1">발송 대상 환경</label>
-                                                <select id="adminPushScheduleTargetEnv" class="w-full p-2.5 bg-amber-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500">
-                                                    <option value="all">전체</option>
-                                                    <option value="production">운영만</option>
-                                                    <option value="staging" selected>스테이징만</option>
-                                                </select>
-                                            </div>
-                                            <div class="sm:col-span-2">
-                                                <button type="button" id="adminPushScheduleBtn" onclick="window.submitAdminPushSchedule()" class="py-3 px-6 bg-amber-600 text-white rounded-xl font-bold text-sm hover:bg-amber-700 shadow-sm transition-colors">예약 등록</button>
-                                            </div>
+                                            <button type="button" id="adminPushScheduleBtnWeekly" onclick="window.submitAdminPushSchedule()" class="py-3 px-6 bg-amber-600 text-white rounded-xl font-bold text-sm hover:bg-amber-700 shadow-sm transition-colors">요일별 예약 등록</button>
                                         </div>
                                     </div>
                                     <div>
-                                        <div class="flex items-center justify-between gap-2 mb-2">
-                                            <h3 class="text-sm font-bold text-slate-600">발송 기록</h3>
-                                            <button type="button" id="adminRefreshScheduledPushesBtn" onclick="window.refreshAdminScheduledPushes()" class="inline-flex items-center justify-center gap-1 text-xs font-bold text-slate-500 hover:text-violet-600 px-2 py-1 rounded-lg hover:bg-slate-100 transition-colors">
+                                        <div class="flex items-start justify-between gap-2 mb-2">
+                                            <div class="min-w-0 pr-2">
+                                                <h3 class="text-sm font-bold text-slate-600">발송 기록</h3>
+                                                <p class="text-[11px] text-slate-400 mt-0.5 leading-snug">예약·즉시 발송을 등록하면 아래 목록에 바로 표시됩니다. 실제 푸시가 나가면 상태와 발송 시각이 갱신됩니다.</p>
+                                            </div>
+                                            <button type="button" id="adminRefreshScheduledPushesBtn" onclick="window.refreshAdminScheduledPushes()" class="inline-flex shrink-0 items-center justify-center gap-1 text-xs font-bold text-slate-500 hover:text-violet-600 px-2 py-1 rounded-lg hover:bg-slate-100 transition-colors">
                                                 <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i><span>새로고침</span>
                                             </button>
+                                        </div>
+                                        <div class="flex flex-wrap items-center gap-2 mb-2 mt-1" role="tablist" aria-label="발송 기록 구분">
+                                            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-100/90 p-0.5 gap-0.5">
+                                                <button type="button" id="adminPushHistoryTabUpcoming" class="admin-push-history-tab px-3 py-1.5 text-xs font-bold rounded-md transition-colors bg-white text-violet-700 shadow-sm ring-1 ring-violet-200/80" data-tab="upcoming" aria-selected="true">발송예정 <span id="adminPushHistoryCountUpcoming" class="tabular-nums text-violet-600/90 font-extrabold">0</span></button>
+                                                <button type="button" id="adminPushHistoryTabDone" class="admin-push-history-tab px-3 py-1.5 text-xs font-bold rounded-md transition-colors text-slate-500 hover:text-slate-700 hover:bg-white/70" data-tab="done" aria-selected="false">발송완료 <span id="adminPushHistoryCountDone" class="tabular-nums text-slate-500 font-extrabold">0</span></button>
+                                            </div>
                                         </div>
                                         <div id="adminScheduledPushesContainer" class="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/30 min-h-[100px]">
                                             <p class="text-center py-8 text-slate-400 text-sm">목록을 불러오는 중…</p>
@@ -1616,15 +1781,18 @@
                         </div>
                         
                         <!-- 웰컴메시지 (좌측: 문구/API · 상단 탭: 관리자명) -->
-                        <div id="content-main-settings" class="content-main-section hidden">
+                            <div id="content-main-settings" class="content-main-section hidden">
                             <div class="flex flex-col lg:flex-row gap-4 lg:gap-8">
-                                <aside class="w-full lg:w-32 shrink-0 flex flex-col gap-1.5 bg-white rounded-2xl shadow-sm border border-slate-100 p-3 lg:pr-2">
+                                <aside id="adminSettingsMainAside" class="w-full lg:w-32 shrink-0 flex flex-col gap-1.5 bg-white rounded-2xl shadow-sm border border-slate-100 p-3 lg:pr-2">
                                     <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide px-1 mb-0.5">메뉴</p>
                                     <button type="button" data-settings-sub="welcome" class="admin-settings-subnav-btn w-full text-left px-4 py-2 rounded-xl text-sm font-bold border transition-colors text-emerald-600 bg-emerald-50 border-emerald-200">
                                         웰컴메시지
                                     </button>
+                                    <button type="button" data-settings-sub="spinner" class="admin-settings-subnav-btn w-full text-left px-4 py-2 rounded-xl text-sm font-bold border transition-colors text-slate-500 bg-white border-slate-200 hover:bg-slate-50">
+                                        스피너
+                                    </button>
                                     <button type="button" data-settings-sub="welcome_api" class="admin-settings-subnav-btn w-full text-left px-4 py-2 rounded-xl text-sm font-bold border transition-colors text-slate-500 bg-white border-slate-200 hover:bg-slate-50">
-                                        웰컴_API
+                                        <span class="line-through text-slate-400">웰컴_API</span>
                                     </button>
                                 </aside>
                                 <div class="flex-1 min-w-0 flex flex-col gap-4">
@@ -1730,6 +1898,32 @@
                                             </div>
                                         </div>
                                     </div>
+                                    <div id="adminSettingsSub-spinner" class="admin-settings-subpanel hidden bg-white rounded-2xl shadow-sm border border-slate-100">
+                                        <div class="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                                            <h2 class="text-lg font-black text-slate-800">스피너</h2>
+                                            <button type="button" onclick="window.saveLoadingSpinnerSettings()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                                저장
+                                            </button>
+                                        </div>
+                                        <div class="p-6 space-y-5">
+                                            <p class="text-sm text-slate-600 leading-relaxed">앱에서는 아이콘 바로 아래 <strong class="text-slate-700">이곳에 등록한 문구만</strong> 순환합니다(무작위·한 라운드 중 중복 없음). 문구를 비우면 위쪽 순환 줄은 나오지 않습니다. 그 <strong class="text-slate-700">아래 줄</strong>에는 코드에서 넘기는 진행 상태만 표시됩니다(예: 카카오 로그인 처리 중). 음식 아이콘 전환은 <strong class="text-slate-700">0.5초 고정</strong>이며, 아래 숫자는 <strong class="text-slate-700">순환 문구(스크립트)만</strong> 바꿉니다.</p>
+                                            <div class="max-w-md">
+                                                <label for="adminLoadingSpinnerSeconds" class="block text-xs font-bold text-slate-600 mb-1.5">스크립트 전환 주기 (초)</label>
+                                                <input type="number" id="adminLoadingSpinnerSeconds" min="0.5" max="10" step="0.1" value="1.8"
+                                                       class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 bg-white"/>
+                                                <p class="text-xs text-slate-400 mt-1"><strong class="text-slate-500">순환 문구가 바뀌는 간격</strong>(0.5~10초, 기본 1.8초)입니다. 음식 아이콘은 한 칸당 0.5초로 고정이라, 아이콘 한 바퀴(5칸)는 항상 2.5초입니다.</p>
+                                            </div>
+                                            <div>
+                                                <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                                    <span class="text-xs font-bold text-slate-600">순환 문구</span>
+                                                    <button type="button" onclick="window.addAdminLoadingSpinnerMessageRow()" class="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">
+                                                        <i class="fa-solid fa-plus mr-1"></i>문구 추가
+                                                    </button>
+                                                </div>
+                                                <div id="adminLoadingSpinnerMessageList" class="space-y-2 min-h-[2rem]"></div>
+                                            </div>
+                                        </div>
+                                    </div>
                                     <div id="adminSettingsSub-welcome_api" class="admin-settings-subpanel hidden bg-white rounded-2xl shadow-sm border border-slate-100">
                                         <div class="p-6 border-b border-slate-100 flex flex-col gap-4">
                                             <div>
@@ -1817,6 +2011,41 @@
                                                     </button>
                                                 </div>
                                             </div>
+                                            <div class="bg-slate-50 rounded-xl p-6 border border-slate-200 mt-4">
+                                                <h3 class="text-base font-black text-slate-800 mb-2 flex items-center gap-2">
+                                                    <i class="fa-solid fa-images text-blue-600"></i>
+                                                    모먼트 보기 화면
+                                                </h3>
+                                                <p class="text-sm text-slate-500 mb-3">모먼트 탭 피드 레이아웃입니다. <span class="font-bold text-slate-600">스테이징/운영</span> 환경별로 적용할 화면을 선택할 수 있습니다.</p>
+                                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    <div class="rounded-xl border border-slate-200 bg-white p-4">
+                                                        <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">스테이징</p>
+                                                        <div class="flex flex-wrap gap-4 items-center" role="radiogroup" aria-label="모먼트 보기 화면(스테이징)">
+                                                            <label class="inline-flex items-center gap-2 cursor-pointer text-sm font-bold text-slate-700">
+                                                                <input type="radio" name="momentsFeedViewStaging" value="1" class="text-emerald-600 focus:ring-emerald-500" checked>
+                                                                화면 1 (기존)
+                                                            </label>
+                                                            <label class="inline-flex items-center gap-2 cursor-pointer text-sm font-bold text-slate-700">
+                                                                <input type="radio" name="momentsFeedViewStaging" value="2" class="text-emerald-600 focus:ring-emerald-500">
+                                                                화면 2 (New)
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                    <div class="rounded-xl border border-slate-200 bg-white p-4">
+                                                        <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">운영(프로덕션)</p>
+                                                        <div class="flex flex-wrap gap-4 items-center" role="radiogroup" aria-label="모먼트 보기 화면(운영)">
+                                                            <label class="inline-flex items-center gap-2 cursor-pointer text-sm font-bold text-slate-700">
+                                                                <input type="radio" name="momentsFeedViewProduction" value="1" class="text-emerald-600 focus:ring-emerald-500" checked>
+                                                                화면 1 (기존)
+                                                            </label>
+                                                            <label class="inline-flex items-center gap-2 cursor-pointer text-sm font-bold text-slate-700">
+                                                                <input type="radio" name="momentsFeedViewProduction" value="2" class="text-emerald-600 focus:ring-emerald-500">
+                                                                화면 2 (New)
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -1842,6 +2071,7 @@
                             <div id="adminLogHeaderToolbar" class="flex flex-wrap items-center gap-2 hidden">
                                 <div id="adminLogHeaderActionsView" class="flex flex-wrap gap-2">
                                     <button type="button" id="adminLogHdrEditBtn" class="px-3 py-1.5 bg-slate-700 text-white rounded-lg text-xs font-bold hover:bg-slate-800">수정</button>
+                                    <button type="button" id="adminLogHdrImportantBtn" class="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-red-50 hover:border-red-200 hover:text-red-700">중요</button>
                                     <button type="button" id="adminLogHdrDeleteBtn" class="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-red-50 hover:border-red-200 hover:text-red-600">삭제</button>
                                 </div>
                                 <div id="adminLogHeaderActionsEdit" class="flex flex-wrap gap-2 hidden">

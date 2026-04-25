@@ -1,7 +1,7 @@
 /**
  * 출석/연속 기록 팝업 — 어제(서울 달력)까지 이어진 연속 일수(트래커와 동일: dailyStats ∪ mealHistory로 일자별 기록 유무; 전일 무기록이면 0).
  * (meals 쿼리는 최근 구간만 로드되므로 연속 일수는 전역 dailyStats와 합쳐 계산.)
- * 노출 빈도: 케이스별(기록 없음·연속 없음·1일·2일+) 관리자 설정 — 접속마다(sessionStorage) 또는 하루 1회(localStorage).
+ * 노출 빈도: 케이스별(기록 없음·연속 없음·1일·2일+) 관리자 설정 — 접속마다(sessionStorage) 또는 하루 1회(localStorage). 설정 미로드 시 기본은 하루 1회.
  * 관리자 설정(adminSettings/config.attendancePopup)으로 기록 유무·환경별 문구·노출(끔 포함).
  */
 import { isDemoUser } from './demo-account.js';
@@ -97,6 +97,25 @@ let attendanceDebounceTimer = null;
 /** v3: 이전 세션/일일 키에 걸려 영구 미노출된 경우 초기화 */
 const WELCOME_DAY_LS_PREFIX = 'mealog_welcome_shown_v3_';
 const WELCOME_SESS_PREFIX = 'mealog_welcome_sess_v3_';
+/**
+ * 기록 없음(no)·기록 있음(ns/s1/s2p)이 서로 다른 localStorage 키를 쓰면,
+ * meals/dailyStats 로드 전에는 기록 없음으로 팝업 → 마킹 후, 로드 후에는 연속일 분기로 다시 시도되어
+ * 같은 날 웰컴이 여러 번 뜸(운영 ‘하루 1회’ 설정과 불일치).
+ * `once_per_day`일 때는 시나리오와 무관하게 하루 1회만(rec)으로 통합한다.
+ */
+const WELCOME_RECORD_DAY_KIND = 'rec';
+
+/**
+ * @param {'no'|'ns'|'s1'|'s2p'} kind
+ * @param {'off'|'once_per_day'|'every_session'} frequency
+ * @returns {'no'|'ns'|'s1'|'s2p'|'rec'}
+ */
+function resolveWelcomeDayStorageKind(kind, frequency) {
+    if (frequency === 'once_per_day') {
+        return WELCOME_RECORD_DAY_KIND;
+    }
+    return kind;
+}
 
 /** 로컬 개발: sessionStorage는 탭 내 새로고침(F5)에도 유지되어 ‘접속마다’ 테스트가 막힘 → 풀 리로드마다 새 ID로 분리 */
 const WELCOME_SESS_PAGE_ID =
@@ -164,7 +183,10 @@ function markWelcomeShownThisSession(uid, kind) {
  */
 function passesWelcomeFrequency(uid, kind, frequency) {
     if (frequency === 'off') return false;
-    if (frequency === 'once_per_day') return !wasWelcomeShownToday(uid, kind);
+    if (frequency === 'once_per_day') {
+        const dayKind = resolveWelcomeDayStorageKind(kind, frequency);
+        return !wasWelcomeShownToday(uid, dayKind);
+    }
     if (frequency === 'every_session') return !wasWelcomeShownThisSession(uid, kind);
     return false;
 }
@@ -174,8 +196,12 @@ function passesWelcomeFrequency(uid, kind, frequency) {
  * @param {'once_per_day'|'every_session'} frequency
  */
 function markWelcomeForFrequency(uid, kind, frequency) {
-    if (frequency === 'once_per_day') markWelcomeShownToday(uid, kind);
-    else if (frequency === 'every_session') markWelcomeShownThisSession(uid, kind);
+    if (frequency === 'once_per_day') {
+        const dayKind = resolveWelcomeDayStorageKind(kind, frequency);
+        markWelcomeShownToday(uid, dayKind);
+    } else if (frequency === 'every_session') {
+        markWelcomeShownThisSession(uid, kind);
+    }
 }
 
 function resetWelcomePopupGateIfNewLocalDay() {
@@ -187,9 +213,12 @@ function resetWelcomePopupGateIfNewLocalDay() {
 
 /** in-flight만 공유 — 완료 후 비워서 매번 최신 adminSettings 반영(관리자 저장 직후 다른 탭 앱도 다음 팝업 시도에서 재조회) */
 let attendancePopupConfigPromise = null;
+/** 마지막으로 성공적으로 정규화한 웰컴 설정 — getDoc 지연으로 타임아웃 시 캐시·기본값(하루 1회)으로 과도 노출 완화 */
+let lastResolvedAttendancePopupConfig = null;
 
 export function invalidateAttendancePopupConfigCache() {
     attendancePopupConfigPromise = null;
+    lastResolvedAttendancePopupConfig = null;
 }
 
 /** 메인 화면만 보면 스케줄(인증 hasCompleted·모달은 표시 직전에만 검사) */
@@ -260,8 +289,9 @@ function pickScenarioApplyTo(v, fallback) {
 function attendancePopupDefaults() {
     const row = () => ({
         message: /** @type {string|null} */ (null),
-        stagingFrequency: /** @type {'every_session'} */ ('every_session'),
-        productionFrequency: /** @type {'every_session'} */ ('every_session')
+        /** 설정 미로드·타임아웃 시 — every_session이면 접속마다 노출되어 운영 빈도와 불일치가 나기 쉬움 */
+        stagingFrequency: /** @type {'once_per_day'} */ ('once_per_day'),
+        productionFrequency: /** @type {'once_per_day'} */ ('once_per_day')
     });
     return {
         noRecord: { ...row(), message: null },
@@ -278,8 +308,8 @@ function attendancePopupDefaults() {
 function pickFrequencyForEnv(row, env) {
     if (!row) return 'off';
     return env === 'staging'
-        ? pickFrequencyWithOff(row.stagingFrequency, 'every_session')
-        : pickFrequencyWithOff(row.productionFrequency, 'every_session');
+        ? pickFrequencyWithOff(row.stagingFrequency, 'once_per_day')
+        : pickFrequencyWithOff(row.productionFrequency, 'once_per_day');
 }
 
 /**
@@ -294,15 +324,34 @@ function scenarioForClient(row, env) {
     };
 }
 
+/**
+ * Firestore/레거시에서 잘못된 문자열이면 알 수 없음(null) — 과거 기본이 every_session 이어서
+ * 운영에서 '하루 1회'로 저장해도 접속마다 노출되는 문제가 있었음. 폴백은 once_per_day 권장.
+ * @param {unknown} v
+ * @returns {'off'|'once_per_day'|'every_session'|null}
+ */
+function normalizeWelcomeFreqToken(v) {
+    if (v === 'off' || v === 'once_per_day' || v === 'every_session') return v;
+    if (v == null) return null;
+    const s = String(v).trim().toLowerCase();
+    if (s === 'off') return 'off';
+    /** 콘텐츠 팝업 등 레거시 */
+    if (s === 'once_per_day' || s === 'daily') return 'once_per_day';
+    if (s === 'every_session') return 'every_session';
+    return null;
+}
+
 /** @param {unknown} v @returns {'once_per_day'|'every_session'} */
 function pickAttendanceShowFrequency(v) {
-    if (v === 'once_per_day' || v === 'every_session') return v;
-    return 'every_session';
+    const n = normalizeWelcomeFreqToken(v);
+    if (n === 'once_per_day' || n === 'every_session') return n;
+    return 'once_per_day';
 }
 
 /** @param {unknown} v @param {'off'|'once_per_day'|'every_session'} fallback */
-function pickFrequencyWithOff(v, fallback = 'every_session') {
-    if (v === 'off' || v === 'once_per_day' || v === 'every_session') return v;
+function pickFrequencyWithOff(v, fallback = 'once_per_day') {
+    const n = normalizeWelcomeFreqToken(v);
+    if (n != null) return n;
     return fallback;
 }
 
@@ -341,10 +390,10 @@ function nestedV3ToUnified(nested) {
     const keys = ['noRecord', 'noStreak', 'streakOne', 'streakTwoOrMore'];
     /** @type {AttendancePopupUnified} */
     const out = {
-        noRecord: { message: null, stagingFrequency: 'every_session', productionFrequency: 'every_session' },
-        noStreak: { message: null, stagingFrequency: 'every_session', productionFrequency: 'every_session' },
-        streakOne: { message: null, stagingFrequency: 'every_session', productionFrequency: 'every_session' },
-        streakTwoOrMore: { message: null, stagingFrequency: 'every_session', productionFrequency: 'every_session' }
+        noRecord: { message: null, stagingFrequency: 'once_per_day', productionFrequency: 'once_per_day' },
+        noStreak: { message: null, stagingFrequency: 'once_per_day', productionFrequency: 'once_per_day' },
+        streakOne: { message: null, stagingFrequency: 'once_per_day', productionFrequency: 'once_per_day' },
+        streakTwoOrMore: { message: null, stagingFrequency: 'once_per_day', productionFrequency: 'once_per_day' }
     };
     for (const k of keys) {
         const st = nested.staging?.[k];
@@ -357,8 +406,8 @@ function nestedV3ToUnified(nested) {
         else message = null;
         out[k] = {
             message,
-            stagingFrequency: pickFrequencyWithOff(st?.frequency, 'every_session'),
-            productionFrequency: pickFrequencyWithOff(pr?.frequency, 'every_session')
+            stagingFrequency: pickFrequencyWithOff(st?.frequency, 'once_per_day'),
+            productionFrequency: pickFrequencyWithOff(pr?.frequency, 'once_per_day')
         };
     }
     return out;
@@ -425,10 +474,10 @@ function mergeUnifiedScenarioRow(def, inc) {
 function mergeNestedV3AttendancePopup(raw) {
     const d = attendancePopupDefaults();
     const emptyNested = () => ({
-        noRecord: { frequency: 'every_session', message: null },
-        noStreak: { frequency: 'every_session', message: null },
-        streakOne: { frequency: 'every_session', message: null },
-        streakTwoOrMore: { frequency: 'every_session', message: null }
+        noRecord: { frequency: 'once_per_day', message: null },
+        noStreak: { frequency: 'once_per_day', message: null },
+        streakOne: { frequency: 'once_per_day', message: null },
+        streakTwoOrMore: { frequency: 'once_per_day', message: null }
     });
     const stDef = emptyNested();
     const prDef = emptyNested();
@@ -462,7 +511,7 @@ function mergeUnifiedAttendancePopup(raw) {
  * @param {{ noRecord: { frequency: string, message: string|null }, hasRecord: { frequency: string, message: string } }} env
  */
 function upgradeLegacyBinaryEnvToV3(env) {
-    const fq = pickFrequencyWithOff(env.hasRecord?.frequency, 'every_session');
+    const fq = pickFrequencyWithOff(env.hasRecord?.frequency, 'once_per_day');
     const msg = String(env.hasRecord?.message ?? '').trim();
     return {
         noRecord: env.noRecord,
@@ -477,14 +526,14 @@ function upgradeLegacyBinaryEnvToV3(env) {
  */
 function mergeLegacyBinaryAttendancePopup(raw) {
     const emptyPair = () => ({
-        noRecord: { frequency: 'every_session', message: null },
-        hasRecord: { frequency: 'every_session', message: '' }
+        noRecord: { frequency: 'once_per_day', message: null },
+        hasRecord: { frequency: 'once_per_day', message: '' }
     });
     /** @param {ReturnType<typeof emptyPair>} defEnv @param {Record<string, unknown>} incEnv */
     const mergeEnv = (defEnv, incEnv) => ({
         noRecord: mergeNestedScenarioRow(defEnv.noRecord, incEnv?.noRecord),
         hasRecord: {
-            frequency: pickFrequencyWithOff(incEnv?.hasRecord?.frequency, 'every_session'),
+            frequency: pickFrequencyWithOff(incEnv?.hasRecord?.frequency, 'once_per_day'),
             message:
                 incEnv?.hasRecord && Object.prototype.hasOwnProperty.call(incEnv.hasRecord, 'message')
                     ? String(incEnv.hasRecord.message ?? '')
@@ -657,9 +706,13 @@ async function fetchAttendancePopupRoot() {
                     snap.exists() && snap.data().attendancePopup && typeof snap.data().attendancePopup === 'object'
                         ? snap.data().attendancePopup
                         : {};
-                return normalizeAttendancePopup(ap);
+                const normalized = normalizeAttendancePopup(ap);
+                lastResolvedAttendancePopupConfig = normalized;
+                return normalized;
             } catch {
-                return normalizeAttendancePopup({});
+                const normalized = normalizeAttendancePopup({});
+                lastResolvedAttendancePopupConfig = normalized;
+                return normalized;
             }
         })();
     }
@@ -672,11 +725,14 @@ async function fetchAttendancePopupRoot() {
 
 /** App Check·네트워크 지연 시 getDoc 무한 대기로 _attendancePopupResolutionPending이 고착되는 것 방지 */
 async function fetchAttendancePopupRootWithTimeout() {
-    const fallback = attendancePopupDefaults();
     const ms = 12000;
     return await Promise.race([
         fetchAttendancePopupRoot(),
-        new Promise((resolve) => setTimeout(() => resolve(fallback), ms))
+        new Promise((resolve) =>
+            setTimeout(() => {
+                resolve(lastResolvedAttendancePopupConfig || attendancePopupDefaults());
+            }, ms)
+        )
     ]);
 }
 

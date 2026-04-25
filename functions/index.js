@@ -18,6 +18,20 @@ const auth = getAuth();
 
 const APP_ID = 'mealog-r0';
 
+/** settings 문서의 날짜 필드(Timestamp·ISO 문자열 등) → Date */
+function adminSettingsValueToDate(value) {
+  if (value == null || value === '') return null;
+  try {
+    if (value instanceof Timestamp) return value.toDate();
+    if (typeof value.toDate === 'function') return value.toDate();
+  } catch (_) {
+    /* ignore */
+  }
+  if (value instanceof Date) return value;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 /** 앱 공용 샘플 계정 — 클라이언트·Firestore 규칙과 동일 이메일 */
 const READ_ONLY_DEMO_EMAIL = 'dummy@mealog.net';
 
@@ -257,18 +271,17 @@ function pickSingleFcmTokenForAdminBroadcast(tokensMap, tokenStrings) {
  * 특정 사용자의 FCM 토큰들에 푸시 알림 전송 (실패 시 로그만, 호출자 대기 안 함)
  * @param {string} userId - 수신자 uid
  * @param {{ title: string, body: string, data?: object }} payload
- */
-/**
  * @param {{ adminBroadcast?: boolean, pushCategory?: 'momentComment'|'boardComment'|'mealTalk'|'adminDefault' }} options - pushCategory 있으면 사용자 pushPreferences로 필터
+ * @returns {Promise<boolean>} 최소 1건 FCM 전송 성공 시 true
  */
 async function sendPushToUser(userId, payload, options = {}) {
-  if (!userId || !payload?.title) return;
+  if (!userId || !payload?.title) return false;
   const pushCategory = options.pushCategory;
   if (pushCategory) {
     const prefs = await getUserPushPreferences(userId);
     if (!isPushCategoryAllowedByPrefs(prefs, pushCategory)) {
       logger.info('sendPushToUser: skipped by pushPreferences', { userId, pushCategory });
-      return;
+      return false;
     }
   }
   try {
@@ -304,7 +317,7 @@ async function sendPushToUser(userId, payload, options = {}) {
     }
     if (tokens.length === 0) {
       logger.info('sendPushToUser: no FCM tokens for user', { userId, targetEnv: envFilter || 'all' });
-      return;
+      return false;
     }
     const messaging = getMessaging();
     const dataObj = { ...(payload.data && typeof payload.data === 'object' ? payload.data : {}) };
@@ -360,7 +373,17 @@ async function sendPushToUser(userId, payload, options = {}) {
     const results = await Promise.allSettled(
       tokens.map((token) => messaging.send({ ...message, token }))
     );
+    const fulfilled = results.filter((r) => r.status === 'fulfilled').length;
     const failed = results.filter((r) => r.status === 'rejected');
+    if (fulfilled === 0) {
+      const firstReason = failed[0]?.reason?.message || String(failed[0]?.reason);
+      logger.warn('sendPushToUser: all sends failed', {
+        userId,
+        total: tokens.length,
+        firstReason
+      });
+      return false;
+    }
     if (failed.length > 0) {
       const firstReason = failed[0]?.reason?.message || String(failed[0]?.reason);
       logger.warn('sendPushToUser: some sends failed', {
@@ -372,8 +395,10 @@ async function sendPushToUser(userId, payload, options = {}) {
     } else {
       logger.info('sendPushToUser: ok', { userId, tokenCount: tokens.length, targetEnv: envFilter || 'all' });
     }
+    return true;
   } catch (e) {
     logger.warn('sendPushToUser failed', { userId, message: e?.message });
+    return false;
   }
 }
 
@@ -458,11 +483,6 @@ function checkSpam(content) {
     return { isSpam: true, reason: '과도한 링크가 포함되어 있습니다.' };
   }
 
-  // 반복 문자 체크 (예: "aaaaaa", "111111")
-  if (/(.)\1{10,}/.test(text)) {
-    return { isSpam: true, reason: '반복된 문자가 과도합니다.' };
-  }
-
   return { isSpam: false };
 }
 
@@ -502,10 +522,11 @@ exports.createBoardPost = onCall({ region: REGION }, wrapFunction('createBoardPo
   }
 
   const { title, content, category, imageUrls } = data;
-  
-  if (!title || !content || !title.trim() || !content.trim()) {
-    throw new HttpsError('invalid-argument', '제목과 내용을 입력해주세요.');
+  const contentTrim = typeof content === 'string' ? content.trim() : '';
+  if (!contentTrim) {
+    throw new HttpsError('invalid-argument', '내용을 입력해주세요.');
   }
+  const titleTrim = typeof title === 'string' ? title.trim() : '';
 
   const sanitizedImageUrls = Array.isArray(imageUrls) ? imageUrls.slice(0, 5).filter(u => typeof u === 'string' && u) : [];
 
@@ -513,7 +534,7 @@ exports.createBoardPost = onCall({ region: REGION }, wrapFunction('createBoardPo
   await checkRateLimit(auth.uid, 'post', request);
 
   // 스팸 필터링
-  const spamCheck = checkSpam(title + ' ' + content);
+  const spamCheck = checkSpam(`${titleTrim} ${contentTrim}`);
   if (spamCheck.isSpam) {
     throw new HttpsError('invalid-argument', spamCheck.reason);
   }
@@ -532,8 +553,8 @@ exports.createBoardPost = onCall({ region: REGION }, wrapFunction('createBoardPo
   // 게시글 생성
   const postsRef = db.collection('artifacts').doc(APP_ID).collection('boardPosts');
   const newPost = {
-    title: title.trim(),
-    content: content.trim(),
+    title: titleTrim,
+    content: contentTrim,
     category: category || 'serious',
     imageUrls: sanitizedImageUrls,
     authorId: auth.uid,
@@ -805,10 +826,11 @@ exports.updateBoardPost = onCall({ region: REGION }, async (request) => {
   }
 
   const { postId, title, content, category, imageUrls } = data;
-  
-  if (!postId || !title || !content) {
+  const contentTrim = typeof content === 'string' ? content.trim() : '';
+  if (!postId || !contentTrim) {
     throw new HttpsError('invalid-argument', '필수 정보가 누락되었습니다.');
   }
+  const titleTrim = typeof title === 'string' ? title.trim() : '';
 
   // 게시글 존재 및 권한 확인
   const postRef = db.collection('artifacts').doc(APP_ID).collection('boardPosts').doc(postId);
@@ -826,15 +848,15 @@ exports.updateBoardPost = onCall({ region: REGION }, async (request) => {
   const sanitizedImageUrls = Array.isArray(imageUrls) ? imageUrls.slice(0, 5).filter(u => typeof u === 'string' && u) : (postData.imageUrls || []);
 
   // 스팸 필터링
-  const spamCheck = checkSpam(title + ' ' + content);
+  const spamCheck = checkSpam(`${titleTrim} ${contentTrim}`);
   if (spamCheck.isSpam) {
     throw new HttpsError('invalid-argument', spamCheck.reason);
   }
 
   // 게시글 업데이트
   await postRef.update({
-    title: title.trim(),
-    content: content.trim(),
+    title: titleTrim,
+    content: contentTrim,
     category: category || postData.category,
     imageUrls: sanitizedImageUrls,
     updatedAt: FieldValue.serverTimestamp()
@@ -1106,6 +1128,123 @@ exports.deleteBoardComment = onCall({ region: REGION }, async (request) => {
     const postDoc = await postRef.get();
     if (postDoc.exists) {
       await postRef.update({
+        comments: FieldValue.increment(-1)
+      });
+    }
+  }
+
+  return { success: true };
+});
+
+/**
+ * 공지 댓글 작성 (Callable)
+ */
+exports.addNoticeComment = onCall({ region: REGION }, wrapFunction('addNoticeComment', async (request) => {
+  const { auth, data } = request;
+
+  if (!auth || !auth.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  assertNotReadOnlyDemoAuth(auth);
+
+  const ban = await getUserBan(auth.uid);
+  if (ban.bannedWrite) {
+    throw new HttpsError('permission-denied', '댓글 작성이 제한된 계정입니다.');
+  }
+
+  const { noticeId, content } = data;
+
+  if (!noticeId || !content || !content.trim()) {
+    throw new HttpsError('invalid-argument', '댓글 내용을 입력해주세요.');
+  }
+
+  await checkRateLimit(auth.uid, 'comment', request);
+
+  const spamCheck = checkSpam(content);
+  if (spamCheck.isSpam) {
+    throw new HttpsError('invalid-argument', spamCheck.reason);
+  }
+
+  const userSettingsRef = db.collection('artifacts').doc(APP_ID)
+    .collection('users').doc(auth.uid)
+    .collection('config').doc('settings');
+  const userSettingsDoc = await userSettingsRef.get();
+
+  const profile = userSettingsDoc.exists ? (userSettingsDoc.data().profile || {}) : {};
+  const authorNickname = profile.nickname || '익명';
+  const authorPhotoUrl = profile.photoUrl || null;
+  const authorIcon = profile.icon || null;
+
+  const noticeRef = db.collection('artifacts').doc(APP_ID).collection('notices').doc(String(noticeId));
+  const noticeDoc = await noticeRef.get();
+  if (!noticeDoc.exists) {
+    throw new HttpsError('not-found', '공지를 찾을 수 없습니다.');
+  }
+  const nd = noticeDoc.data() || {};
+  if (nd.deleted === true || nd.hidden === true) {
+    throw new HttpsError('not-found', '공지를 찾을 수 없습니다.');
+  }
+
+  const commentsRef = db.collection('artifacts').doc(APP_ID).collection('noticeComments');
+  const newComment = {
+    noticeId: String(noticeId),
+    content: content.trim(),
+    authorId: auth.uid,
+    authorNickname,
+    authorPhotoUrl,
+    authorIcon,
+    timestamp: FieldValue.serverTimestamp()
+  };
+
+  const docRef = await commentsRef.add(newComment);
+
+  await noticeRef.update({
+    comments: FieldValue.increment(1)
+  });
+
+  return { id: docRef.id, ...newComment, timestamp: new Date().toISOString() };
+}));
+
+/**
+ * 공지 댓글 삭제 (Callable)
+ */
+exports.deleteNoticeComment = onCall({ region: REGION }, async (request) => {
+  const { auth, data } = request;
+
+  if (!auth || !auth.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+
+  const { commentId, noticeId } = data;
+
+  if (!commentId) {
+    throw new HttpsError('invalid-argument', '댓글 ID가 필요합니다.');
+  }
+
+  const commentRef = db.collection('artifacts').doc(APP_ID).collection('noticeComments').doc(commentId);
+  const commentDoc = await commentRef.get();
+
+  if (!commentDoc.exists) {
+    throw new HttpsError('not-found', '댓글을 찾을 수 없습니다.');
+  }
+
+  const commentData = commentDoc.data();
+  if (commentData.authorId !== auth.uid) {
+    throw new HttpsError('permission-denied', '본인의 댓글만 삭제할 수 있습니다.');
+  }
+
+  if (noticeId && String(commentData.noticeId || '') !== String(noticeId)) {
+    throw new HttpsError('invalid-argument', '공지와 댓글이 일치하지 않습니다.');
+  }
+
+  await commentRef.delete();
+
+  const nid = String(noticeId || commentData.noticeId || '');
+  if (nid) {
+    const noticeRef = db.collection('artifacts').doc(APP_ID).collection('notices').doc(nid);
+    const noticeSnap = await noticeRef.get();
+    if (noticeSnap.exists) {
+      await noticeRef.update({
         comments: FieldValue.increment(-1)
       });
     }
@@ -2228,6 +2367,340 @@ exports.adminBackfillUserStats = onCall(
 );
 
 /**
+ * 루트 문서 createdAt 이 Firestore Timestamp 로 **유효한 날짜**인 경우만 true (깨진 필드·빈 값은 백필 대상)
+ */
+function hasUsableRootCreatedAt(data) {
+  const v = data && data.createdAt;
+  if (v == null || v === '') return false;
+  try {
+    if (typeof v.toDate === 'function') {
+      const d = v.toDate();
+      return d != null && !Number.isNaN(d.getTime());
+    }
+    if (v instanceof Timestamp) {
+      const d = v.toDate();
+      return d != null && !Number.isNaN(d.getTime());
+    }
+  } catch (_) {
+    return false;
+  }
+  return false;
+}
+
+async function resolveAuthUserRecordForUid(uid) {
+  try {
+    return await auth.getUser(uid);
+  } catch (e) {
+    if (e && e.code === 'auth/user-not-found') return null;
+    throw e;
+  }
+}
+
+function createdAtTimestampFromAuthUserRecord(ur) {
+  const ct = ur && ur.metadata && ur.metadata.creationTime;
+  if (!ct) return null;
+  const dateObj = new Date(ct);
+  if (Number.isNaN(dateObj.getTime())) return null;
+  return Timestamp.fromDate(dateObj);
+}
+
+/**
+ * users 루트 문서 스냅샷 배열에 대해 createdAt 백필 적용 (공통 로직)
+ * @returns {{ updated: number, skippedHasDate: number, skippedNoAuth: number, errors: number, writeCount: number }}
+ */
+async function applyCreatedAtBackfillToUserDocs(docs, dryRun, overwrite) {
+  let updated = 0;
+  let skippedHasDate = 0;
+  let skippedNoAuth = 0;
+  let errors = 0;
+
+  const writeBatch = dryRun ? null : db.batch();
+  let writeCount = 0;
+
+  for (let offset = 0; offset < docs.length; offset += 100) {
+    const slice = docs.slice(offset, offset + 100);
+    const identifiers = slice.map((d) => ({ uid: d.id }));
+    let getRes;
+    try {
+      getRes = await auth.getUsers(identifiers);
+    } catch (e) {
+      logger.error('applyCreatedAtBackfillToUserDocs getUsers', e);
+      errors += slice.length;
+      continue;
+    }
+    const byUid = new Map(getRes.users.map((u) => [u.uid, u]));
+
+    for (const d of slice) {
+      const uid = d.id;
+      const rootData = d.data() || {};
+
+      if (hasUsableRootCreatedAt(rootData) && !overwrite) {
+        skippedHasDate++;
+        continue;
+      }
+
+      let ur = byUid.get(uid);
+      if (!ur) {
+        try {
+          ur = await resolveAuthUserRecordForUid(uid);
+        } catch (e) {
+          logger.warn('applyCreatedAtBackfillToUserDocs getUser fallback', uid, e.message);
+          errors++;
+          continue;
+        }
+      }
+      if (!ur) {
+        skippedNoAuth++;
+        continue;
+      }
+
+      const ts = createdAtTimestampFromAuthUserRecord(ur);
+      if (!ts) {
+        errors++;
+        continue;
+      }
+
+      updated++;
+      if (writeBatch) {
+        writeBatch.set(d.ref, { createdAt: ts, uid }, { merge: true });
+        writeCount++;
+      }
+    }
+  }
+
+  if (writeBatch && writeCount > 0) {
+    await writeBatch.commit();
+  }
+
+  return { updated, skippedHasDate, skippedNoAuth, errors, writeCount };
+}
+
+/**
+ * 관리자 전용: 단일 UID — users/{uid} 루트 createdAt 을 Auth 생성 시각으로 설정 (진단·수동 보정용)
+ */
+exports.adminBackfillUserRootCreatedAtForUid = onCall(
+  { region: REGION, timeoutSeconds: 120, memory: '256MiB' },
+  wrapFunction('adminBackfillUserRootCreatedAtForUid', async (request) => {
+    const authCtx = request.auth;
+    if (!authCtx || !authCtx.uid) {
+      throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    }
+    if (!(await isAdminByUid(authCtx.uid))) {
+      throw new HttpsError('permission-denied', '관리자만 사용할 수 있습니다.');
+    }
+    const body = request.data || {};
+    const dryRun = body.dryRun === true;
+    const overwrite = body.overwrite === true;
+    const raw = typeof body.targetUserId === 'string' ? body.targetUserId.trim() : '';
+    if (!raw || raw.length < 6) {
+      throw new HttpsError('invalid-argument', 'targetUserId(Firebase UID)를 입력해주세요.');
+    }
+
+    const userRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(raw);
+    const userSnap = await userRef.get();
+    if (!userSnap.exists) {
+      return {
+        ok: false,
+        reason: 'no_firestore_root',
+        message: 'users 루트 문서가 없습니다. (Firestore에 해당 UID 문서 없음)',
+        targetUserId: raw
+      };
+    }
+
+    const rootData = userSnap.data() || {};
+    if (hasUsableRootCreatedAt(rootData) && !overwrite) {
+      return {
+        ok: true,
+        skipped: true,
+        reason: 'already_has_createdAt',
+        targetUserId: raw,
+        dryRun
+      };
+    }
+
+    const ur = await resolveAuthUserRecordForUid(raw);
+    if (!ur) {
+      return {
+        ok: false,
+        reason: 'auth_user_not_found',
+        message: 'Firebase Auth에 해당 UID가 없습니다.',
+        targetUserId: raw
+      };
+    }
+
+    const ts = createdAtTimestampFromAuthUserRecord(ur);
+    if (!ts) {
+      return {
+        ok: false,
+        reason: 'auth_no_creation_time',
+        message: 'Auth metadata.creationTime 이 없습니다.',
+        targetUserId: raw
+      };
+    }
+
+    if (!dryRun) {
+      await userRef.set({ createdAt: ts, uid: raw }, { merge: true });
+    }
+
+    return {
+      ok: true,
+      skipped: false,
+      written: !dryRun,
+      targetUserId: raw,
+      dryRun,
+      createdAtIso: ts.toDate().toISOString()
+    };
+  })
+);
+
+/**
+ * 관리자 전용: users/{uid} 루트 createdAt 을 Auth UID 최초 생성 시각으로 백필 (페이지 단위)
+ * — 한 번에 전체 스캔하지 않고 batchSize(기본 100)씩; 클라이언트가 done 될 때까지 반복 호출
+ */
+exports.adminBackfillUserRootCreatedAtFromAuth = onCall(
+  { region: REGION, timeoutSeconds: 300, memory: '512MiB' },
+  wrapFunction('adminBackfillUserRootCreatedAtFromAuth', async (request) => {
+    const authCtx = request.auth;
+    if (!authCtx || !authCtx.uid) {
+      throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    }
+    if (!(await isAdminByUid(authCtx.uid))) {
+      throw new HttpsError('permission-denied', '관리자만 사용할 수 있습니다.');
+    }
+
+    const body = request.data || {};
+    const dryRun = body.dryRun === true;
+    const overwrite = body.overwrite === true;
+    let batchSize = Number(body.batchSize);
+    if (!Number.isFinite(batchSize) || batchSize < 1) batchSize = 100;
+    if (batchSize > 300) batchSize = 300;
+
+    const startAfterUid =
+      typeof body.startAfterUid === 'string' && body.startAfterUid.trim().length > 0
+        ? body.startAfterUid.trim()
+        : null;
+
+    const usersRef = db.collection('artifacts').doc(APP_ID).collection('users');
+    let q = usersRef.orderBy(FieldPath.documentId()).limit(batchSize);
+    if (startAfterUid) {
+      const cursorSnap = await usersRef.doc(startAfterUid).get();
+      if (!cursorSnap.exists) {
+        throw new HttpsError(
+          'invalid-argument',
+          '백필 커서(UID)가 유효하지 않습니다.「전체 백필(서버)」로 처음부터 다시 실행해 주세요.'
+        );
+      }
+      q = usersRef.orderBy(FieldPath.documentId()).startAfter(cursorSnap).limit(batchSize);
+    }
+    const snap = await q.get();
+    if (snap.empty) {
+      return {
+        done: true,
+        nextCursor: null,
+        dryRun,
+        overwrite,
+        batch: {
+          scanned: 0,
+          updated: 0,
+          skippedHasDate: 0,
+          skippedNoAuth: 0,
+          errors: 0
+        }
+      };
+    }
+
+    const docs = snap.docs;
+    const stats = await applyCreatedAtBackfillToUserDocs(docs, dryRun, overwrite);
+
+    const lastId = docs[docs.length - 1].id;
+    const done = docs.length < batchSize;
+
+    return {
+      done,
+      nextCursor: done ? null : lastId,
+      dryRun,
+      overwrite,
+      batch: {
+        scanned: docs.length,
+        updated: stats.updated,
+        skippedHasDate: stats.skippedHasDate,
+        skippedNoAuth: stats.skippedNoAuth,
+        errors: stats.errors
+      }
+    };
+  })
+);
+
+/**
+ * 관리자 전용: 서버에서 users 루트 전체를 순회해 createdAt 백필 (클라이언트 다중 호출 불필요)
+ */
+exports.adminBackfillUserRootCreatedAtFromAuthRunAll = onCall(
+  { region: REGION, timeoutSeconds: 540, memory: '512MiB' },
+  wrapFunction('adminBackfillUserRootCreatedAtFromAuthRunAll', async (request) => {
+    const authCtx = request.auth;
+    if (!authCtx || !authCtx.uid) {
+      throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    }
+    if (!(await isAdminByUid(authCtx.uid))) {
+      throw new HttpsError('permission-denied', '관리자만 사용할 수 있습니다.');
+    }
+
+    const body = request.data || {};
+    const dryRun = body.dryRun === true;
+    const overwrite = body.overwrite === true;
+    const batchSize = 100;
+
+    const usersRef = db.collection('artifacts').doc(APP_ID).collection('users');
+    const totals = {
+      scanned: 0,
+      updated: 0,
+      skippedHasDate: 0,
+      skippedNoAuth: 0,
+      errors: 0
+    };
+    let rounds = 0;
+    let afterDoc = null;
+    let lastBatchFull = false;
+    const MAX_ROUNDS = 2000;
+
+    while (rounds < MAX_ROUNDS) {
+      let q = usersRef.orderBy(FieldPath.documentId()).limit(batchSize);
+      if (afterDoc) {
+        q = usersRef.orderBy(FieldPath.documentId()).startAfter(afterDoc).limit(batchSize);
+      }
+      const snap = await q.get();
+      if (snap.empty) {
+        break;
+      }
+
+      const docs = snap.docs;
+      rounds++;
+      const stats = await applyCreatedAtBackfillToUserDocs(docs, dryRun, overwrite);
+      totals.scanned += docs.length;
+      totals.updated += stats.updated;
+      totals.skippedHasDate += stats.skippedHasDate;
+      totals.skippedNoAuth += stats.skippedNoAuth;
+      totals.errors += stats.errors;
+
+      afterDoc = docs[docs.length - 1];
+      lastBatchFull = docs.length >= batchSize;
+      if (docs.length < batchSize) {
+        break;
+      }
+    }
+
+    return {
+      ok: true,
+      dryRun,
+      overwrite,
+      rounds,
+      totals,
+      truncated: rounds >= MAX_ROUNDS && lastBatchFull
+    };
+  })
+);
+
+/**
  * main 끼니(아침/점심/저녁) 중복 문서 정리 - 동일 (date, slotId)당 1개만 유지
  * 삭제 시 onMealWritten 트리거로 stats 자동 보정
  */
@@ -2599,7 +3072,8 @@ exports.signInWithKakao = onCall({ region: REGION }, wrapFunction('signInWithKak
   return {
     customToken,
     kakaoEmail: email || null,
-    kakaoEmailNeedsAgreement: ka.email_needs_agreement === true
+    kakaoEmailNeedsAgreement: ka.email_needs_agreement === true,
+    kakaoNickname: nickname || null
   };
 }));
 
@@ -2638,7 +3112,17 @@ exports.patchArtifactUserRoot = onCall({ region: REGION }, wrapFunction('patchAr
     lastLoginAt: FieldValue.serverTimestamp()
   };
   if (body.setCreatedAt === true) {
-    patch.createdAt = FieldValue.serverTimestamp();
+    const ms =
+      typeof body.createdAtMillis === 'number' && Number.isFinite(body.createdAtMillis)
+        ? Math.floor(body.createdAtMillis)
+        : null;
+    const now = Date.now();
+    // 클라이언트가 Auth UID 생성 시각(ms)을 넘기면 그대로 기록(구버전·누락 시 serverTimestamp)
+    if (ms != null && ms >= 946684800000 && ms <= now + 7 * 86400000) {
+      patch.createdAt = Timestamp.fromMillis(ms);
+    } else {
+      patch.createdAt = FieldValue.serverTimestamp();
+    }
   }
   if (typeof body.providerId === 'string' && body.providerId.trim()) {
     patch.providerId = body.providerId.trim();
@@ -2682,29 +3166,54 @@ exports.saveArtifactUserSettings = onCall({ region: REGION }, wrapFunction('save
   const normOld = normalizeNicknameForClaimServer(oldData.profile?.nickname);
   const normNew = normalizeNicknameForClaimServer(settings.profile?.nickname);
 
+  const newClaimRefTx = normNew
+    ? db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normNew)}`)
+    : null;
+  const oldClaimRefTx =
+    normOld && normOld !== normNew
+      ? db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normOld)}`)
+      : null;
+
   await db.runTransaction(async (transaction) => {
-    if (normNew) {
-      const newClaimRef = db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normNew)}`);
-      const claimSnap = await transaction.get(newClaimRef);
-      if (claimSnap.exists) {
-        const owner = claimSnap.data()?.userId;
-        if (owner && owner !== uid) {
+    /** Firestore: 트랜잭션 내 모든 read(get)은 write(set/delete)보다 먼저 실행되어야 함 */
+    const newClaimSnap = newClaimRefTx ? await transaction.get(newClaimRefTx) : null;
+    const oldClaimSnap = oldClaimRefTx ? await transaction.get(oldClaimRefTx) : null;
+    let ownerSettingsSnap = null;
+    if (newClaimSnap && newClaimSnap.exists) {
+      const owner = newClaimSnap.data()?.userId;
+      if (owner && owner !== uid) {
+        const ownerSettingsRef = db.doc(`artifacts/${APP_ID}/users/${owner}/config/settings`);
+        ownerSettingsSnap = await transaction.get(ownerSettingsRef);
+      }
+    }
+
+    if (normNew && newClaimSnap && newClaimSnap.exists) {
+      const owner = newClaimSnap.data()?.userId;
+      if (owner && owner !== uid) {
+        const ownerNorm = normalizeNicknameForClaimServer(
+          ownerSettingsSnap && ownerSettingsSnap.exists
+            ? ownerSettingsSnap.data()?.profile?.nickname
+            : null
+        );
+        if (ownerNorm === normNew) {
           throw new HttpsError('already-exists', '이미 사용 중인 닉네임입니다.');
         }
+        transaction.delete(newClaimRefTx);
       }
     }
-    if (normOld && normOld !== normNew) {
-      const oldClaimRef = db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normOld)}`);
-      const oldClaimSnap = await transaction.get(oldClaimRef);
-      if (oldClaimSnap.exists && oldClaimSnap.data()?.userId === uid) {
-        transaction.delete(oldClaimRef);
-      }
+    if (
+      normOld &&
+      normOld !== normNew &&
+      oldClaimSnap &&
+      oldClaimSnap.exists &&
+      oldClaimSnap.data()?.userId === uid
+    ) {
+      transaction.delete(oldClaimRefTx);
     }
     transaction.set(settingsRef, settings, { merge: true });
-    if (normNew) {
-      const newClaimRef = db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normNew)}`);
+    if (normNew && newClaimRefTx) {
       const displayNickname = String(settings.profile?.nickname || '').trim();
-      transaction.set(newClaimRef, {
+      transaction.set(newClaimRefTx, {
         userId: uid,
         normalizedNickname: normNew,
         displayNickname: displayNickname || normNew,
@@ -2713,12 +3222,173 @@ exports.saveArtifactUserSettings = onCall({ region: REGION }, wrapFunction('save
     }
   });
 
+  /** 약관 메타만 있고 termsAgreed 가 빠진 문서 보정 + 루트 createdAt 없으면 백필 (클라이언트 전용 쓰기 성공 시에도 루트만 누락되는 경우 대비) */
   try {
-    await db.doc(`artifacts/${APP_ID}/users/${uid}`).set({ uid }, { merge: true });
+    let mSnap = await settingsRef.get();
+    let m = mSnap.exists ? mSnap.data() : {};
+    const hasTermsMeta =
+      m.termsAgreedAt != null || (m.termsVersion != null && String(m.termsVersion).trim() !== '');
+    const termsAgreedNorm =
+      m.termsAgreed === true || m.termsAgreed === 'true' || m.termsAgreed === 1;
+    if (hasTermsMeta && !termsAgreedNorm) {
+      await settingsRef.set({ termsAgreed: true }, { merge: true });
+      mSnap = await settingsRef.get();
+      m = mSnap.exists ? mSnap.data() : {};
+    }
+
+    const rootRef = db.doc(`artifacts/${APP_ID}/users/${uid}`);
+    const rootSnap = await rootRef.get();
+    const rootCreated = rootSnap.exists && rootSnap.data().createdAt;
+    const hasTermsMeta2 =
+      m.termsAgreedAt != null || (m.termsVersion != null && String(m.termsVersion).trim() !== '');
+    const termsOk =
+      m.termsAgreed === true || m.termsAgreed === 'true' || m.termsAgreed === 1;
+    const shouldBackfillCreated =
+      !rootCreated && (m.profileCompleted === true || hasTermsMeta2 || termsOk);
+    if (shouldBackfillCreated) {
+      const pc = adminSettingsValueToDate(m.profileCompletedAt);
+      const ta = adminSettingsValueToDate(m.termsAgreedAt);
+      const cand = [pc, ta].filter((d) => d instanceof Date && !Number.isNaN(d.getTime()));
+      const earliest =
+        cand.length > 0 ? new Date(Math.min(...cand.map((d) => d.getTime()))) : null;
+      await rootRef.set(
+        {
+          uid,
+          createdAt: earliest ? Timestamp.fromDate(earliest) : FieldValue.serverTimestamp()
+        },
+        { merge: true }
+      );
+    } else {
+      await rootRef.set({ uid }, { merge: true });
+    }
   } catch (e) {
-    logger.warn('saveArtifactUserSettings: user root set skipped', { uid, err: e?.message });
+    logger.warn('saveArtifactUserSettings: post-save normalize / user root', { uid, err: e?.message });
+    try {
+      await db.doc(`artifacts/${APP_ID}/users/${uid}`).set({ uid }, { merge: true });
+    } catch (e2) {
+      logger.warn('saveArtifactUserSettings: user root set skipped', { uid, err: e2?.message });
+    }
   }
 
+  return { ok: true };
+}));
+
+/**
+ * 관리자: 특정 사용자의 닉네임 변경 (Firestore rules상 타인 설정 직접 쓰기 불가 → Admin SDK)
+ */
+exports.adminSetUserNickname = onCall({ region: REGION }, wrapFunction('adminSetUserNickname', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const callerUid = request.auth.uid;
+  if (!(await isAdminByUid(callerUid))) {
+    throw new HttpsError('permission-denied', '관리자만 변경할 수 있습니다.');
+  }
+
+  const targetUid = typeof request.data?.userId === 'string' ? request.data.userId.trim() : '';
+  const rawNick = request.data?.nickname;
+  const nickname =
+    typeof rawNick === 'string'
+      ? rawNick.trim()
+      : rawNick != null && typeof rawNick !== 'object'
+        ? String(rawNick).trim()
+        : '';
+
+  if (!targetUid) {
+    throw new HttpsError('invalid-argument', 'userId가 필요합니다.');
+  }
+  if (!nickname) {
+    throw new HttpsError('invalid-argument', '닉네임을 입력해 주세요.');
+  }
+  if (nickname === '게스트') {
+    throw new HttpsError('invalid-argument', '사용할 수 없는 닉네임입니다.');
+  }
+  if (nickname.length > 20) {
+    throw new HttpsError('invalid-argument', '닉네임은 20자 이하입니다.');
+  }
+
+  const settingsRef = db.doc(`artifacts/${APP_ID}/users/${targetUid}/config/settings`);
+  const oldSnap = await settingsRef.get();
+  const oldData = oldSnap.exists ? oldSnap.data() : {};
+  const prevProfile =
+    oldData.profile && typeof oldData.profile === 'object' && !Array.isArray(oldData.profile)
+      ? { ...oldData.profile }
+      : {};
+  if (!prevProfile.icon) {
+    prevProfile.icon = '🐻';
+  }
+  prevProfile.nickname = nickname;
+
+  const mergedSettings = {
+    ...oldData,
+    profile: prevProfile
+  };
+
+  const normOld = normalizeNicknameForClaimServer(oldData.profile?.nickname);
+  const normNew = normalizeNicknameForClaimServer(nickname);
+
+  const newClaimRefAdmin = normNew
+    ? db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normNew)}`)
+    : null;
+  const oldClaimRefAdmin =
+    normOld && normOld !== normNew
+      ? db.doc(`artifacts/${APP_ID}/nicknameClaims/${nicknameClaimDocIdServer(normOld)}`)
+      : null;
+
+  await db.runTransaction(async (transaction) => {
+    /** Firestore: 트랜잭션 내 모든 read(get)은 write(set/delete)보다 먼저 실행되어야 함 */
+    const newClaimSnap = newClaimRefAdmin ? await transaction.get(newClaimRefAdmin) : null;
+    const oldClaimSnap = oldClaimRefAdmin ? await transaction.get(oldClaimRefAdmin) : null;
+    let ownerSettingsSnap = null;
+    if (newClaimSnap && newClaimSnap.exists) {
+      const owner = newClaimSnap.data()?.userId;
+      if (owner && owner !== targetUid) {
+        const ownerSettingsRef = db.doc(`artifacts/${APP_ID}/users/${owner}/config/settings`);
+        ownerSettingsSnap = await transaction.get(ownerSettingsRef);
+      }
+    }
+
+    if (normNew && newClaimSnap && newClaimSnap.exists) {
+      const owner = newClaimSnap.data()?.userId;
+      if (owner && owner !== targetUid) {
+        const ownerNorm = normalizeNicknameForClaimServer(
+          ownerSettingsSnap && ownerSettingsSnap.exists
+            ? ownerSettingsSnap.data()?.profile?.nickname
+            : null
+        );
+        if (ownerNorm === normNew) {
+          throw new HttpsError('already-exists', '이미 사용 중인 닉네임입니다.');
+        }
+        transaction.delete(newClaimRefAdmin);
+      }
+    }
+    if (
+      normOld &&
+      normOld !== normNew &&
+      oldClaimSnap &&
+      oldClaimSnap.exists &&
+      oldClaimSnap.data()?.userId === targetUid
+    ) {
+      transaction.delete(oldClaimRefAdmin);
+    }
+    transaction.set(settingsRef, mergedSettings, { merge: true });
+    if (normNew && newClaimRefAdmin) {
+      transaction.set(newClaimRefAdmin, {
+        userId: targetUid,
+        normalizedNickname: normNew,
+        displayNickname: nickname,
+        updatedAt: new Date().toISOString()
+      });
+    }
+  });
+
+  try {
+    await db.doc(`artifacts/${APP_ID}/users/${targetUid}`).set({ uid: targetUid }, { merge: true });
+  } catch (e) {
+    logger.warn('adminSetUserNickname: user root set', { targetUid, err: e?.message });
+  }
+
+  logger.info('adminSetUserNickname', { callerUid, targetUid, nicknameLen: nickname.length });
   return { ok: true };
 }));
 
@@ -3235,6 +3905,7 @@ function makeAdminBroadcastCollapseId(payload, targetEnvResolved) {
 }
 
 /** 관리자 푸시메시지: 상단 알림만, 탭 시 앱 내 탭 이동(data.type=adminBroadcast), 배지/빨간점 갱신 생략 */
+/** @returns {Promise<{ totalUsers: number, recipientCount: number }>} recipientCount: FCM 1건 이상 성공한 사용자 수 */
 async function broadcastAdminPushToAllUsers(payload) {
   const usersRef = db.collection('artifacts').doc(APP_ID).collection('users');
   const targetEnv = payload?.targetEnv === 'production' || payload?.targetEnv === 'staging'
@@ -3243,6 +3914,7 @@ async function broadcastAdminPushToAllUsers(payload) {
   const adminCollapseId = makeAdminBroadcastCollapseId(payload, targetEnv);
   let lastDoc = null;
   let totalUsers = 0;
+  let recipientCount = 0;
   const pageSize = 200;
   const concurrency = 25;
   for (;;) {
@@ -3254,7 +3926,7 @@ async function broadcastAdminPushToAllUsers(payload) {
     totalUsers += uids.length;
     for (let i = 0; i < uids.length; i += concurrency) {
       const batch = uids.slice(i, i + concurrency);
-      await Promise.all(
+      const outcomes = await Promise.all(
         batch.map((uid) =>
           sendPushToUser(uid, payload, {
             adminBroadcast: true,
@@ -3264,17 +3936,24 @@ async function broadcastAdminPushToAllUsers(payload) {
           })
         )
       );
+      for (const ok of outcomes) {
+        if (ok) recipientCount += 1;
+      }
     }
     lastDoc = snap.docs[snap.docs.length - 1];
     if (snap.size < pageSize) break;
   }
-  logger.info('broadcastAdminPushToAllUsers done', { totalUsers, targetEnv });
+  logger.info('broadcastAdminPushToAllUsers done', { totalUsers, recipientCount, targetEnv });
+  return { totalUsers, recipientCount };
 }
 
 const ADMIN_PUSH_LANDING_TABS = new Set(['dashboard', 'timeline', 'gallery', 'board', 'settings']);
 
 const ADMIN_RECURRING_INTERVALS = new Set(['daily', 'weekly', 'monthly']);
 const ADMIN_PUSH_TARGET_ENVS = new Set(['all', 'production', 'staging']);
+/** 관리자 브로드캐스트 제목·본문 (FCM 표시·Firestore, 즉시/예약/요일별 공통) */
+const ADMIN_BROADCAST_TITLE_MAX = 120;
+const ADMIN_BROADCAST_BODY_MAX = 240;
 
 /** 다음 주기 발송 시각(ms). monthly: 해당 월에 일이 없으면 말일로 보정 */
 function addRecurringNextMillis(fromMs, interval) {
@@ -3299,6 +3978,146 @@ function addRecurringNextMillis(fromMs, interval) {
   return d.getTime();
 }
 
+/** KST 기준 YYYY-MM-DD */
+function kstYmdFromMillis(ms) {
+  return new Date(ms).toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
+}
+
+function addOneKstYmd(ymd) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + 1, 12, 0, 0));
+  return dt.toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
+}
+
+/** 월=1 … 일=7 (JS getUTCDay: 일=0) */
+function kstWeekdayMon1Sun7FromYmd(ymd) {
+  const [Y, M, D] = ymd.split('-').map(Number);
+  const noonUtc = Date.UTC(Y, M - 1, D, 3, 0, 0);
+  const dowSun0 = new Date(noonUtc).getUTCDay();
+  return dowSun0 === 0 ? 7 : dowSun0;
+}
+
+function kstWeekdayMon1Sun7FromMillis(ms) {
+  return kstWeekdayMon1Sun7FromYmd(kstYmdFromMillis(ms));
+}
+
+function kstMillisForYmdHm(ymd, hm) {
+  const [y, mo, d] = ymd.split('-').map(Number);
+  const parts = String(hm || '').trim().split(':');
+  const h = parseInt(parts[0], 10);
+  const mi = parseInt(parts[1], 10);
+  if (Number.isNaN(h) || Number.isNaN(mi)) return NaN;
+  return Date.UTC(y, mo - 1, d, h - 9, mi, 0, 0);
+}
+
+function kstEndOfDayMillisFromYmd(ymd) {
+  const [y, mo, d] = ymd.split('-').map(Number);
+  return Date.UTC(y, mo - 1, d, 23 - 9, 59, 59, 999);
+}
+
+function kstHmFromMillis(ms) {
+  return new Date(ms).toLocaleTimeString('sv-SE', {
+    timeZone: 'Asia/Seoul',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+}
+
+function normalizeHm(hm) {
+  const p = String(hm || '').split(':');
+  const h = parseInt(p[0], 10);
+  const m = parseInt(p[1], 10);
+  if (Number.isNaN(h) || Number.isNaN(m)) return String(hm || '');
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function normalizeWeeklyScheduleEntries(rows) {
+  if (!Array.isArray(rows)) return [];
+  const out = [];
+  for (const row of rows) {
+    const weekday = Number(row.weekday);
+    if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) continue;
+    const time = normalizeHm(row.time);
+    if (!/^\d{2}:\d{2}$/.test(time)) continue;
+    const title = String(row.title || '').trim().slice(0, ADMIN_BROADCAST_TITLE_MAX);
+    const body = String(row.body || '').trim().slice(0, ADMIN_BROADCAST_BODY_MAX);
+    if (!title || !body) continue;
+    const tab = String(row.landingTab || 'dashboard').trim();
+    const landingTab = ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard';
+    const envRaw = String(row.targetEnv || 'all').trim();
+    const targetEnv = ADMIN_PUSH_TARGET_ENVS.has(envRaw) ? envRaw : 'all';
+    out.push({ weekday, time, landingTab, targetEnv, title, body });
+  }
+  return out;
+}
+
+/**
+ * 기간 [rangeStartMs, rangeEndMs] 안에서 fromMs 이후 가장 이른 발송 시각 (KST 요일·시각 일치)
+ */
+function computeNextWeeklySlotMillis(weeklySchedule, rangeStartMs, rangeEndMs, fromMs) {
+  const slots = normalizeWeeklyScheduleEntries(weeklySchedule);
+  if (slots.length === 0) return null;
+  const from = Math.max(fromMs, rangeStartMs);
+  if (from > rangeEndMs) return null;
+  const endYmd = kstYmdFromMillis(rangeEndMs);
+  let best = null;
+  let ymd = kstYmdFromMillis(from);
+  for (;;) {
+    if (ymd > endYmd) break;
+    const wd = kstWeekdayMon1Sun7FromYmd(ymd);
+    for (const slot of slots) {
+      if (slot.weekday !== wd) continue;
+      const ts = kstMillisForYmdHm(ymd, slot.time);
+      if (Number.isNaN(ts)) continue;
+      if (ts >= from && ts <= rangeEndMs) {
+        if (best === null || ts < best) best = ts;
+      }
+    }
+    if (ymd >= endYmd) break;
+    ymd = addOneKstYmd(ymd);
+  }
+  return best;
+}
+
+/**
+ * 기간·요일별 슬롯을 모두 펼쳐 (minFromMs 이후) 발송 시각 목록 — 각각 별도 예약 문서로 등록할 때 사용
+ * @returns {{ ms: number, slot: object }[]}
+ */
+function enumerateWeeklyOccurrences(weeklySchedule, rangeStartMs, rangeEndMs, minFromMs) {
+  const slots = normalizeWeeklyScheduleEntries(weeklySchedule);
+  if (slots.length === 0) return [];
+  const from = Math.max(rangeStartMs, minFromMs);
+  if (from > rangeEndMs) return [];
+  const endYmd = kstYmdFromMillis(rangeEndMs);
+  let ymd = kstYmdFromMillis(from);
+  const out = [];
+  for (let guard = 0; guard < 800 && ymd <= endYmd; guard++) {
+    const wd = kstWeekdayMon1Sun7FromYmd(ymd);
+    for (const slot of slots) {
+      if (slot.weekday !== wd) continue;
+      const ts = kstMillisForYmdHm(ymd, slot.time);
+      if (Number.isNaN(ts)) continue;
+      if (ts >= from && ts <= rangeEndMs) {
+        out.push({ ms: ts, slot });
+      }
+    }
+    if (ymd >= endYmd) break;
+    ymd = addOneKstYmd(ymd);
+  }
+  out.sort((a, b) => a.ms - b.ms);
+  return out;
+}
+
+function findWeeklySlotForScheduledAt(weeklySchedule, scheduledAtTs) {
+  const ms = scheduledAtTs && typeof scheduledAtTs.toMillis === 'function' ? scheduledAtTs.toMillis() : 0;
+  if (!ms) return null;
+  const wd = kstWeekdayMon1Sun7FromMillis(ms);
+  const hm = normalizeHm(kstHmFromMillis(ms));
+  const slots = normalizeWeeklyScheduleEntries(weeklySchedule);
+  return slots.find((s) => s.weekday === wd && s.time === hm) || null;
+}
+
 function normalizeAdminBroadcastPayload(raw) {
   const title = String(raw?.title || '').trim();
   const body = String(raw?.body || '').trim();
@@ -3316,13 +4135,14 @@ async function appendAdminBroadcastHistory({
   landingTab,
   targetEnv = 'all',
   status = 'sent',
-  createdByUid = null
+  createdByUid = null,
+  recipientCount = null
 }) {
   const coll = db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes');
-  await coll.add({
+  const row = {
     scheduleType,
-    title: String(title || '').slice(0, 80),
-    body: String(body || '').slice(0, 240),
+    title: String(title || '').slice(0, ADMIN_BROADCAST_TITLE_MAX),
+    body: String(body || '').slice(0, ADMIN_BROADCAST_BODY_MAX),
     landingTab: ADMIN_PUSH_LANDING_TABS.has(String(landingTab || '').trim()) ? String(landingTab).trim() : 'dashboard',
     targetEnv: ADMIN_PUSH_TARGET_ENVS.has(String(targetEnv || '').trim()) ? String(targetEnv).trim() : 'all',
     status: String(status || 'sent'),
@@ -3330,7 +4150,11 @@ async function appendAdminBroadcastHistory({
     sentAt: FieldValue.serverTimestamp(),
     createdByUid: createdByUid || null,
     createdAt: FieldValue.serverTimestamp()
-  });
+  };
+  if (typeof recipientCount === 'number' && !Number.isNaN(recipientCount) && recipientCount >= 0) {
+    row.recipientCount = recipientCount;
+  }
+  await coll.add(row);
 }
 
 const ADMIN_PUSH_NOW_DEDUPE_MS = 55 * 1000;
@@ -3365,18 +4189,30 @@ exports.adminBroadcastPushNow = onCall(
       throw new HttpsError('permission-denied', '관리자만 발송할 수 있습니다.');
     }
     const { title, body, landingTab, targetEnv } = normalizeAdminBroadcastPayload(request.data || {});
-    if (!title || title.length > 80) {
-      throw new HttpsError('invalid-argument', '제목은 1~80자로 입력해 주세요.');
+    if (!title || title.length === 0) {
+      throw new HttpsError('invalid-argument', '제목을 입력해 주세요.');
     }
-    if (!body || body.length > 240) {
-      throw new HttpsError('invalid-argument', '내용은 1~240자로 입력해 주세요.');
+    if (title.length > ADMIN_BROADCAST_TITLE_MAX) {
+      throw new HttpsError(
+        'invalid-argument',
+        `제목은 ${ADMIN_BROADCAST_TITLE_MAX}자 이하로 입력해 주세요.`
+      );
+    }
+    if (!body || body.length === 0) {
+      throw new HttpsError('invalid-argument', '내용을 입력해 주세요.');
+    }
+    if (body.length > ADMIN_BROADCAST_BODY_MAX) {
+      throw new HttpsError(
+        'invalid-argument',
+        `내용은 ${ADMIN_BROADCAST_BODY_MAX}자 이하로 입력해 주세요.`
+      );
     }
     const skip = await adminPushNowDedupeShouldSkip({ callerUid, title, body, landingTab, targetEnv });
     if (skip) {
       logger.info('adminBroadcastPushNow: dedupe skip (same payload within window)');
       return { ok: true, deduped: true };
     }
-    await broadcastAdminPushToAllUsers({
+    const { recipientCount } = await broadcastAdminPushToAllUsers({
       title,
       body,
       targetEnv,
@@ -3390,7 +4226,8 @@ exports.adminBroadcastPushNow = onCall(
         landingTab,
         targetEnv,
         status: 'sent',
-        createdByUid: callerUid
+        createdByUid: callerUid,
+        recipientCount
       });
     } catch (historyErr) {
       logger.warn('adminBroadcastPushNow: history write failed', { message: historyErr?.message });
@@ -3418,17 +4255,81 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
   const land = ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard';
   const envRaw = String(targetEnv || 'all').trim();
   const target = ADMIN_PUSH_TARGET_ENVS.has(envRaw) ? envRaw : 'all';
-  if (!t || t.length > 80) {
-    throw new HttpsError('invalid-argument', '제목은 1~80자로 입력해 주세요.');
-  }
-  if (!b || b.length > 240) {
-    throw new HttpsError('invalid-argument', '내용은 1~240자로 입력해 주세요.');
-  }
   const serverNow = Date.now();
   const minLead = serverNow + 25 * 1000;
   const scheduleType = data.scheduleType === 'recurring' ? 'recurring' : 'once';
 
   if (scheduleType === 'recurring') {
+    const weeklyRows = data.weeklySchedule;
+    if (Array.isArray(weeklyRows) && weeklyRows.length > 0) {
+      const startDate = String(data.recurringStartDate || '').trim();
+      const endDate = String(data.recurringEndDate || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+        throw new HttpsError('invalid-argument', '요일별 발송: 시작일·종료일(YYYY-MM-DD)이 필요합니다.');
+      }
+      const weeklySchedule = normalizeWeeklyScheduleEntries(weeklyRows);
+      if (weeklySchedule.length === 0) {
+        throw new HttpsError('invalid-argument', '요일별 발송: 최소 1개 요일에 제목·내용·시각을 입력해 주세요.');
+      }
+      if (endDate < startDate) {
+        throw new HttpsError('invalid-argument', '종료일은 시작일 이후여야 합니다.');
+      }
+      const rangeStartMs = kstMillisForYmdHm(startDate, '00:00');
+      const rangeEndMs = kstEndOfDayMillisFromYmd(endDate);
+      if (Number.isNaN(rangeStartMs) || Number.isNaN(rangeEndMs)) {
+        throw new HttpsError('invalid-argument', '시작일·종료일이 올바르지 않습니다.');
+      }
+      if (rangeEndMs < rangeStartMs) {
+        throw new HttpsError('invalid-argument', '기간이 올바르지 않습니다.');
+      }
+      const occurrences = enumerateWeeklyOccurrences(weeklySchedule, rangeStartMs, rangeEndMs, minLead);
+      if (occurrences.length === 0) {
+        throw new HttpsError(
+          'invalid-argument',
+          '선택한 기간·시각 안에 발송할 수 있는 일정이 없습니다. 기간을 넓히거나 시각을 확인해 주세요.'
+        );
+      }
+      const MAX_WEEKLY_EXPANDED = 500;
+      if (occurrences.length > MAX_WEEKLY_EXPANDED) {
+        throw new HttpsError(
+          'invalid-argument',
+          `요일별 예약은 한 번에 최대 ${MAX_WEEKLY_EXPANDED}건까지 등록할 수 있습니다. 기간을 줄이거나 요일을 나눠 주세요. (현재 ${occurrences.length}건)`
+        );
+      }
+      const batchGroupId = crypto.randomBytes(12).toString('hex');
+      const coll = db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes');
+      const ids = [];
+      let batch = db.batch();
+      let ops = 0;
+      for (const { ms, slot } of occurrences) {
+        const ref = coll.doc();
+        batch.set(ref, {
+          scheduleType: 'once',
+          scheduleSource: 'weeklyByDayExpanded',
+          weeklyBatchGroupId: batchGroupId,
+          title: slot.title,
+          body: slot.body,
+          landingTab: slot.landingTab,
+          targetEnv: slot.targetEnv,
+          scheduledAt: Timestamp.fromMillis(ms),
+          status: 'pending',
+          createdByUid: callerUid,
+          createdAt: FieldValue.serverTimestamp()
+        });
+        ids.push(ref.id);
+        ops++;
+        if (ops >= 450) {
+          await batch.commit();
+          batch = db.batch();
+          ops = 0;
+        }
+      }
+      if (ops > 0) {
+        await batch.commit();
+      }
+      return { ok: true, count: ids.length, batchGroupId, ids };
+    }
+
     const recurringStartMs =
       typeof data.recurringStartMs === 'number' && !Number.isNaN(data.recurringStartMs)
         ? data.recurringStartMs
@@ -3449,12 +4350,30 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
     if (recurringStartMs < minLead) {
       throw new HttpsError('invalid-argument', '시작 시각은 서버 기준 약 30초 이후로 설정해 주세요.');
     }
+    if (!t || t.length === 0) {
+      throw new HttpsError('invalid-argument', '주기 발송: 제목을 입력해 주세요.');
+    }
+    if (t.length > ADMIN_BROADCAST_TITLE_MAX) {
+      throw new HttpsError(
+        'invalid-argument',
+        `제목은 ${ADMIN_BROADCAST_TITLE_MAX}자 이하로 입력해 주세요.`
+      );
+    }
+    if (!b || b.length === 0) {
+      throw new HttpsError('invalid-argument', '주기 발송: 내용을 입력해 주세요.');
+    }
+    if (b.length > ADMIN_BROADCAST_BODY_MAX) {
+      throw new HttpsError(
+        'invalid-argument',
+        `내용은 ${ADMIN_BROADCAST_BODY_MAX}자 이하로 입력해 주세요.`
+      );
+    }
     const ref = await db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes').add({
       scheduleType: 'recurring',
       recurringInterval,
       recurringEndAt: Timestamp.fromMillis(recurringEndMs),
-      title: t.slice(0, 80),
-      body: b.slice(0, 240),
+      title: t.slice(0, ADMIN_BROADCAST_TITLE_MAX),
+      body: b.slice(0, ADMIN_BROADCAST_BODY_MAX),
       landingTab: land,
       targetEnv: target,
       scheduledAt: Timestamp.fromMillis(recurringStartMs),
@@ -3466,6 +4385,25 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
     return { ok: true, id: ref.id };
   }
 
+  if (!t || t.length === 0) {
+    throw new HttpsError('invalid-argument', '예약 발송: 제목을 입력해 주세요.');
+  }
+  if (t.length > ADMIN_BROADCAST_TITLE_MAX) {
+    throw new HttpsError(
+      'invalid-argument',
+      `제목은 ${ADMIN_BROADCAST_TITLE_MAX}자 이하로 입력해 주세요.`
+    );
+  }
+  if (!b || b.length === 0) {
+    throw new HttpsError('invalid-argument', '예약 발송: 내용을 입력해 주세요.');
+  }
+  if (b.length > ADMIN_BROADCAST_BODY_MAX) {
+    throw new HttpsError(
+      'invalid-argument',
+      `내용은 ${ADMIN_BROADCAST_BODY_MAX}자 이하로 입력해 주세요.`
+    );
+  }
+
   const ms = typeof data.scheduledAtMs === 'number' && !Number.isNaN(data.scheduledAtMs) ? data.scheduledAtMs : null;
   if (ms == null) {
     throw new HttpsError('invalid-argument', '예약 시각(scheduledAtMs)이 올바르지 않습니다.');
@@ -3475,8 +4413,8 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
   }
   const ref = await db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes').add({
     scheduleType: 'once',
-    title: t.slice(0, 80),
-    body: b.slice(0, 240),
+    title: t.slice(0, ADMIN_BROADCAST_TITLE_MAX),
+    body: b.slice(0, ADMIN_BROADCAST_BODY_MAX),
     landingTab: land,
     targetEnv: target,
     scheduledAt: Timestamp.fromMillis(ms),
@@ -3577,10 +4515,30 @@ exports.processScheduledAdminPushes = onSchedule(
         const d = after.data();
         if (!after.exists || d.status !== 'sending') continue;
 
-        const title = String(d.title || '').trim();
-        const body = String(d.body || '').trim();
-        const tab = String(d.landingTab || 'dashboard').trim();
-        const landingTab = ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard';
+        const isWeeklyByDay = d.recurringMode === 'weeklyByDay' && Array.isArray(d.weeklySchedule);
+        let title = String(d.title || '').trim();
+        let body = String(d.body || '').trim();
+        let landingTab = ADMIN_PUSH_LANDING_TABS.has(String(d.landingTab || '').trim())
+          ? String(d.landingTab).trim()
+          : 'dashboard';
+        let pushTargetEnv = d.targetEnv === 'production' || d.targetEnv === 'staging' ? d.targetEnv : 'all';
+
+        if (isWeeklyByDay) {
+          const slot = findWeeklySlotForScheduledAt(d.weeklySchedule, d.scheduledAt);
+          if (!slot) {
+            await ref.update({
+              status: 'failed',
+              errorMessage: '요일별 슬롯 매칭 실패',
+              failedAt: FieldValue.serverTimestamp()
+            });
+            continue;
+          }
+          title = slot.title;
+          body = slot.body;
+          landingTab = slot.landingTab;
+          pushTargetEnv = slot.targetEnv;
+        }
+
         if (!title || !body) {
           await ref.update({
             status: 'failed',
@@ -3590,41 +4548,81 @@ exports.processScheduledAdminPushes = onSchedule(
           continue;
         }
 
-        await broadcastAdminPushToAllUsers({
+        const { recipientCount } = await broadcastAdminPushToAllUsers({
           title,
           body,
-          targetEnv: d.targetEnv === 'production' || d.targetEnv === 'staging' ? d.targetEnv : 'all',
+          targetEnv: pushTargetEnv,
           data: { type: 'adminBroadcast', landingTab }
         });
 
         const scheduleType = d.scheduleType || 'once';
         if (scheduleType === 'recurring') {
-          const endMs = d.recurringEndAt && typeof d.recurringEndAt.toMillis === 'function' ? d.recurringEndAt.toMillis() : 0;
-          const intervalRaw = String(d.recurringInterval || 'daily').trim();
-          const interval = ADMIN_RECURRING_INTERVALS.has(intervalRaw) ? intervalRaw : 'daily';
-          const thisRunMs = d.scheduledAt && typeof d.scheduledAt.toMillis === 'function' ? d.scheduledAt.toMillis() : nowMs;
-          const nextMs = addRecurringNextMillis(thisRunMs, interval);
-          if (!endMs || nextMs > endMs) {
-            await ref.update({
-              status: 'completed',
-              sentAt: FieldValue.serverTimestamp(),
-              lastSentAt: FieldValue.serverTimestamp(),
-              occurrenceCount: FieldValue.increment(1)
-            });
-            logger.info('processScheduledAdminPushes: recurring completed', { id: docSnap.id });
+          if (isWeeklyByDay) {
+            const rangeStartMs =
+              d.recurringStartAt && typeof d.recurringStartAt.toMillis === 'function'
+                ? d.recurringStartAt.toMillis()
+                : 0;
+            const rangeEndMs =
+              d.recurringEndAt && typeof d.recurringEndAt.toMillis === 'function'
+                ? d.recurringEndAt.toMillis()
+                : 0;
+            const thisRunMs = d.scheduledAt && typeof d.scheduledAt.toMillis === 'function' ? d.scheduledAt.toMillis() : nowMs;
+            const nextMs = computeNextWeeklySlotMillis(
+              d.weeklySchedule,
+              rangeStartMs,
+              rangeEndMs,
+              thisRunMs + 60 * 1000
+            );
+            if (nextMs == null || !rangeEndMs || nextMs > rangeEndMs) {
+              await ref.update({
+                status: 'completed',
+                sentAt: FieldValue.serverTimestamp(),
+                lastSentAt: FieldValue.serverTimestamp(),
+                occurrenceCount: FieldValue.increment(1),
+                recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
+              });
+              logger.info('processScheduledAdminPushes: weeklyByDay completed', { id: docSnap.id });
+            } else {
+              await ref.update({
+                status: 'pending',
+                scheduledAt: Timestamp.fromMillis(nextMs),
+                lastSentAt: FieldValue.serverTimestamp(),
+                occurrenceCount: FieldValue.increment(1),
+                recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
+              });
+              logger.info('processScheduledAdminPushes: weeklyByDay next', { id: docSnap.id, nextMs });
+            }
           } else {
-            await ref.update({
-              status: 'pending',
-              scheduledAt: Timestamp.fromMillis(nextMs),
-              lastSentAt: FieldValue.serverTimestamp(),
-              occurrenceCount: FieldValue.increment(1)
-            });
-            logger.info('processScheduledAdminPushes: recurring next scheduled', { id: docSnap.id, nextMs });
+            const endMs = d.recurringEndAt && typeof d.recurringEndAt.toMillis === 'function' ? d.recurringEndAt.toMillis() : 0;
+            const intervalRaw = String(d.recurringInterval || 'daily').trim();
+            const interval = ADMIN_RECURRING_INTERVALS.has(intervalRaw) ? intervalRaw : 'daily';
+            const thisRunMs = d.scheduledAt && typeof d.scheduledAt.toMillis === 'function' ? d.scheduledAt.toMillis() : nowMs;
+            const nextMs = addRecurringNextMillis(thisRunMs, interval);
+            if (!endMs || nextMs > endMs) {
+              await ref.update({
+                status: 'completed',
+                sentAt: FieldValue.serverTimestamp(),
+                lastSentAt: FieldValue.serverTimestamp(),
+                occurrenceCount: FieldValue.increment(1),
+                recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
+              });
+              logger.info('processScheduledAdminPushes: recurring completed', { id: docSnap.id });
+            } else {
+              await ref.update({
+                status: 'pending',
+                scheduledAt: Timestamp.fromMillis(nextMs),
+                lastSentAt: FieldValue.serverTimestamp(),
+                occurrenceCount: FieldValue.increment(1),
+                recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
+              });
+              logger.info('processScheduledAdminPushes: recurring next scheduled', { id: docSnap.id, nextMs });
+            }
           }
         } else {
           await ref.update({
             status: 'sent',
-            sentAt: FieldValue.serverTimestamp()
+            sentAt: FieldValue.serverTimestamp(),
+            recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
           });
           logger.info('processScheduledAdminPushes: sent', { id: docSnap.id });
         }

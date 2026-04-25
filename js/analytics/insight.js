@@ -3,6 +3,8 @@ import { SLOTS, SATIETY_DATA, MEALOG_ICON_URL } from '../constants.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { dbOps } from '../db.js';
+import { isDemoUser } from '../demo-account.js';
+import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
 import { db, appId, callableFunctions } from '../firebase.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { captureWithGhostStrategy, toLocalDateString } from '../utils.js';
@@ -1693,6 +1695,14 @@ export async function shareInsightToFeed() {
     const submitBtn = document.getElementById('insightShareSubmitBtn');
     
     if (!commentInput || !preview) return;
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast('로그인이 필요합니다.', 'error');
+        return;
+    }
+    if (!isDemoUser(window.currentUser) && !isUserSettingsReadyForContentWrites(window.userSettings)) {
+        showToast('약관 동의와 프로필(닉네임) 설정을 완료한 뒤 이용할 수 있습니다.', 'error');
+        return;
+    }
     
     const comment = commentInput.value.trim();
     

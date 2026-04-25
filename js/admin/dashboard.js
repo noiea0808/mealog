@@ -29,7 +29,7 @@ import {
     weekLabelKoreanFromSunday
 } from './utils.js';
 import { SLOTS } from '../constants.js';
-import { EXCLUDED_ANALYTICS_UIDS, EXCLUDED_ANALYTICS_UID_LIST } from '../excluded-analytics-uids.js';
+import { getExcludedAnalyticsUidList, getExcludedAnalyticsUidSet } from '../excluded-analytics-uids.js';
 
 /** 대시보드 주간 통계 시작일 (admin.js ADMIN_OPS_START 와 동일) */
 const DASHBOARD_STATS_RANGE_START = new Date(2026, 2, 8);
@@ -46,6 +46,7 @@ export const PAGE_USAGE_METRIC_DEFS = [
     { field: 'tab_mealog', section: '밀로그', label: '탭 방문' },
     { field: 'lounge_mealtalk', section: '라운지', label: '밀톡' },
     { field: 'lounge_board', section: '라운지', label: '게시판' },
+    { field: 'lounge_notice', section: '라운지', label: '공지' },
     { field: 'settings_profile', section: '사용자', label: '프로필' },
     { field: 'settings_tags', section: '사용자', label: '태그 관리' },
     { field: 'settings_mealdang_memo', section: '사용자', label: '밀당 메모' },
@@ -67,29 +68,66 @@ function addDocDataToPageTotals(data, into) {
     }
 }
 
-/** 행 정의가 바뀌면 tbody를 다시 생성 */
-let _pageUsageTableBuiltRowCount = 0;
+/** 행 정의·레이아웃이 바뀌면 tbody를 다시 생성 */
+let _pageUsageTableBuildKey = '';
+
+function computePageUsageSectionRowspans() {
+    const n = PAGE_USAGE_METRIC_DEFS.length;
+    /** @type {number[]} rowspan > 0 = 첫 행에 출력, -1 = 구분 셀 생략(위 행 rowspan) */
+    const spans = new Array(n).fill(0);
+    for (let i = 0; i < n; i++) {
+        const sec = PAGE_USAGE_METRIC_DEFS[i].section;
+        if (i > 0 && PAGE_USAGE_METRIC_DEFS[i - 1].section === sec) {
+            spans[i] = -1;
+        } else {
+            let c = 1;
+            for (let j = i + 1; j < n && PAGE_USAGE_METRIC_DEFS[j].section === sec; j++) c++;
+            spans[i] = c;
+        }
+    }
+    return spans;
+}
 
 function ensurePageUsageTableBody() {
     const tb = document.getElementById('dashboardPageUsageTableBody');
     if (!tb) return;
     const n = PAGE_USAGE_METRIC_DEFS.length;
-    if (_pageUsageTableBuiltRowCount === n && tb.querySelector('tr')) return;
+    const buildKey = `${n}-v4-stripe-bg`;
+    if (_pageUsageTableBuildKey === buildKey && tb.querySelector('tr')) return;
+
+    const rowSpans = computePageUsageSectionRowspans();
+    const sectionCellClass =
+        'px-2 py-2 text-sm sticky left-0 z-20 w-[4.5rem] min-w-[4.5rem] max-w-[4.5rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-300 align-middle text-center';
+    const labelCellClass =
+        'px-2 py-2 text-xs font-semibold text-slate-700 sticky left-[4.5rem] z-20 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-300 align-middle leading-snug';
+
     tb.innerHTML = PAGE_USAGE_METRIC_DEFS.map((def, rowIdx) => {
         const cells = [];
-        cells.push(`<td class="px-2 py-2 text-sm sticky left-0 z-20 bg-white group-hover:bg-slate-50/50 w-[7.5rem] min-w-[7.5rem] max-w-[7.5rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle">
-            <span class="block text-[10px] font-semibold text-slate-400 leading-tight">${escapeHtml(def.section)}</span>
-            <span class="block text-sm font-bold text-slate-800 leading-tight mt-0.5">${escapeHtml(def.label)}</span>
-        </td>`);
-        cells.push(`<td class="px-2 py-2 text-center text-sm font-bold text-slate-800 sticky left-[7.5rem] z-20 bg-white group-hover:bg-slate-50/50 min-w-[4rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="pageUsageRow_${rowIdx}_all">—</td>`);
-        cells.push(`<td data-page-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-100 bg-slate-50/50" id="pageUsageRow_${rowIdx}_7Sum">—</td>`);
-        for (let i = 0; i < 7; i++) {
-            const border = i === 6 ? ' border-r border-slate-100' : '';
-            cells.push(`<td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums${border}" id="pageUsageRow_${rowIdx}_7d${i}">—</td>`);
+        const rs = rowSpans[rowIdx];
+        if (rs > 0) {
+            const rowspanAttr = rs > 1 ? ` rowspan="${rs}"` : '';
+            cells.push(
+                `<td${rowspanAttr} class="${sectionCellClass}"><span class="block text-base font-black text-slate-800 leading-tight">${escapeHtml(def.section)}</span></td>`
+            );
         }
-        return `<tr class="group border-b border-slate-100 hover:bg-slate-50/50">${cells.join('')}</tr>`;
+        cells.push(
+            `<td class="${labelCellClass}">${escapeHtml(def.label)}</td>`
+        );
+        cells.push(
+            `<td class="px-2 py-2 text-center text-sm font-bold text-slate-800 sticky left-[12.5rem] z-20 min-w-[4rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-300 align-middle" id="pageUsageRow_${rowIdx}_all">—</td>`
+        );
+        cells.push(
+            `<td data-page-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-300" id="pageUsageRow_${rowIdx}_7Sum">—</td>`
+        );
+        for (let i = 0; i < 7; i++) {
+            const border = i === 6 ? ' border-r border-slate-300' : '';
+            cells.push(
+                `<td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums${border}" id="pageUsageRow_${rowIdx}_7d${i}">—</td>`
+            );
+        }
+        return `<tr class="group border-b border-slate-300">${cells.join('')}</tr>`;
     }).join('');
-    _pageUsageTableBuiltRowCount = n;
+    _pageUsageTableBuildKey = buildKey;
 }
 
 function renderPageUsage7dHeaders(dates) {
@@ -111,8 +149,8 @@ function renderPageUsage7dHeaders(dates) {
 
 function fillPageUsage7dRow(rowIdx, values, fallbackTotal) {
     const tip = (fallbackTotal != null && Number.isFinite(Number(fallbackTotal)))
-        ? `7일 범위 합(캐시): ${Number(fallbackTotal).toLocaleString()} — 「통계 새로고침」으로 일별`
-        : '「통계 새로고침」으로 일별 집계';
+        ? `7일 범위 합(캐시): ${Number(fallbackTotal).toLocaleString()} — 「새로고침」으로 일별`
+        : '「새로고침」으로 일별 집계';
     for (let i = 0; i < 7; i++) {
         const el = document.getElementById(`pageUsageRow_${rowIdx}_7d${i}`);
         if (!el) continue;
@@ -126,15 +164,16 @@ function fillPageUsage7dRow(rowIdx, values, fallbackTotal) {
     }
 }
 
-export function renderDashboardPageExcludedFooter() {
+export async function renderDashboardPageExcludedFooter() {
     const el = document.getElementById('dashboardPageUsageExcludedUidList');
     if (el) {
-        el.textContent = EXCLUDED_ANALYTICS_UID_LIST.join(', ');
+        const list = await getExcludedAnalyticsUidList();
+        el.textContent = list.join(', ');
     }
 }
 
 export function renderDashboardPageUsage(pageUsage) {
-    renderDashboardPageExcludedFooter();
+    void renderDashboardPageExcludedFooter();
     ensurePageUsageTableBody();
     const set = (id, value) => {
         const el = document.getElementById(id);
@@ -166,7 +205,7 @@ export function renderDashboardPageUsage(pageUsage) {
 /**
  * 페이지별 집계 (트렌드와 동일하게 dashboardStats 캐시 + 증분으로 읽기 최소화)
  * - 화면 로드: 캐시 1회 getDoc만 사용 (updateStatistics)
- * - 통계 새로고침: 최근 7일은 고정 7회 getDoc, 누적(all)은 이전 캐시가 있으면 신규 일자 usageDaily만 추가 조회
+ * - 새로고침: 최근 7일은 고정 7회 getDoc, 누적(all)은 이전 캐시가 있으면 신규 일자 usageDaily만 추가 조회
  */
 export async function aggregatePageUsageFromFirestore(prevDashboardData) {
     const todayStr = getTodayDateString();
@@ -272,17 +311,24 @@ export async function aggregatePageUsageFromFirestore(prevDashboardData) {
 export function switchDashboardSubtab(which) {
     const trendPanel = document.getElementById('dashboard-panel-trend');
     const pagePanel = document.getElementById('dashboard-panel-page');
+    const excludedPanel = document.getElementById('dashboard-panel-excluded');
     const btnTrend = document.getElementById('dashboard-subtab-trend');
     const btnPage = document.getElementById('dashboard-subtab-page');
+    const btnExcluded = document.getElementById('dashboard-subtab-excluded');
     const active =
-        'px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors';
+        'px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors shrink-0';
     const idle =
-        'px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors';
-    const w = which === 'page' ? 'page' : 'trend';
+        'px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors shrink-0';
+    const w = which === 'page' ? 'page' : which === 'excluded' ? 'excluded' : 'trend';
     if (trendPanel) trendPanel.classList.toggle('hidden', w !== 'trend');
     if (pagePanel) pagePanel.classList.toggle('hidden', w !== 'page');
+    if (excludedPanel) excludedPanel.classList.toggle('hidden', w !== 'excluded');
     if (btnTrend) btnTrend.className = w === 'trend' ? active : idle;
     if (btnPage) btnPage.className = w === 'page' ? active : idle;
+    if (btnExcluded) btnExcluded.className = w === 'excluded' ? active : idle;
+    if (w === 'excluded') {
+        import('./excluded-analytics-admin.js').then((m) => m.loadExcludedAnalyticsAdminPanel());
+    }
 }
 
 const RECORD_SLOT_7D_PREFIXES = SLOTS.map((s) => `statRecSlot_${s.id}_7d`);
@@ -335,8 +381,8 @@ function renderDashboard7dHeaders(dates) {
 /** 한 지표의 7개 컬럼 (baseId + 0..6) */
 function fillDashboard7dNumericRow(baseId, values, fallbackTotal) {
     const tip = (fallbackTotal != null && Number.isFinite(Number(fallbackTotal)))
-        ? `7일 범위 합(캐시): ${Number(fallbackTotal).toLocaleString()} — 「통계 새로고침」으로 일별`
-        : '「통계 새로고침」으로 일별 집계';
+        ? `7일 범위 합(캐시): ${Number(fallbackTotal).toLocaleString()} — 「새로고침」으로 일별`
+        : '「새로고침」으로 일별 집계';
     for (let i = 0; i < 7; i++) {
         const el = document.getElementById(`${baseId}${i}`);
         if (!el) continue;
@@ -539,7 +585,7 @@ function fillAdminDashboardWeeklyCells(weeklyBreakdown) {
                 td.removeAttribute('title');
             } else {
                 td.textContent = '—';
-                td.title = '「통계 새로고침」으로 주간 집계';
+                td.title = '「새로고침」으로 주간 집계';
             }
         });
     });
@@ -550,7 +596,7 @@ const DASHBOARD_STATS_REF = () => doc(db, 'artifacts', appId, 'adminSettings', '
 
 /**
  * 컬렉션 그룹 `slotId` 인덱스가 없을 때(aggregation failed-precondition):
- * 각 사용자 `users/{uid}/meals`에서 슬롯별 count를 더해 전체 건수 산출 (통계 새로고침 1회당 읽기 다량).
+ * 각 사용자 `users/{uid}/meals`에서 슬롯별 count를 더해 전체 건수 산출 (새로고침 1회당 읽기 다량).
  */
 async function countMealsSlotAllViaUserSubcollections(userIds, countQFn) {
     const totals = SLOTS.map(() => 0);
@@ -595,7 +641,7 @@ function addLocalDays(date, delta) {
 }
 
 /**
- * 관리자 「통계 새로고침」 전용 집계.
+ * 관리자 「새로고침」 전용 집계.
  * collectionGroup·getCountFromServer·운영 시작일(일요일 주차) 이후 meals getDocs + 슬롯별 전체는 slotId당 count.
  * 공유: 동일 기간 sharedPhotos 스캔 후 게시물 키로 일별·주별 집계.
  */
@@ -606,7 +652,7 @@ function weekIndexForDateKeyStr(dateKeyStr, sundayKeyToIndex) {
 
 export async function getUserStatistics() {
     try {
-        const excluded = EXCLUDED_ANALYTICS_UIDS;
+        const excluded = await getExcludedAnalyticsUidSet();
         const usersColl = collection(db, 'artifacts', appId, 'users');
         const usersSnapshot = await getDocs(usersColl);
         const usersFromCollection = usersSnapshot.docs.filter((d) => !excluded.has(d.id)).length;
@@ -988,7 +1034,7 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
             const d = updatedAt && (updatedAt.toDate ? updatedAt.toDate() : new Date(updatedAt));
             label.textContent = '마지막 업데이트: ' + d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
         } else {
-            label.textContent = '캐시된 통계가 없습니다. 「통계 새로고침」을 눌러 주세요.';
+            label.textContent = '캐시된 통계가 없습니다. 「새로고침」을 눌러 주세요.';
         }
     }
 }
@@ -1059,7 +1105,7 @@ export async function updateStatistics() {
                     last7Breakdown.sharedPhotos[ti] = todayOnly.sharedPhotosToday;
                 }
             }
-            // records/activeUsers·7일 일별의 오늘 칸은 집계 비용상 캐시 유지 (통계 새로고침 시 반영)
+            // records/activeUsers·7일 일별의 오늘 칸은 집계 비용상 캐시 유지 (새로고침 시 반영)
         }
         renderDashboardStats(stats, data.updatedAt, last7Breakdown);
         renderDashboardPageUsage(data.pageUsage || null);
@@ -1072,7 +1118,7 @@ export async function updateStatistics() {
     }
 }
 
-// 통계 새로고침: 전체 집계 후 캐시 문서에 저장 (이때만 DB 다량 읽기)
+// 새로고침: 전체 집계 후 캐시 문서에 저장 (이때만 DB 다량 읽기)
 export async function refreshDashboardStats() {
     try {
         await runAdminRefreshAction(
@@ -1103,8 +1149,8 @@ export async function refreshDashboardStats() {
             { loadingText: '집계 중…' }
         );
     } catch (e) {
-        console.error('통계 새로고침 실패:', e);
-        alert('통계 새로고침 중 오류가 발생했습니다: ' + (e.message || e));
+        console.error('대시보드 새로고침 실패:', e);
+        alert('새로고침 중 오류가 발생했습니다: ' + (e.message || e));
     }
 }
 

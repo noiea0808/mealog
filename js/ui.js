@@ -1,31 +1,164 @@
 // UI 관련 함수들
 import { getWelcomeWeekDonutSlides, getWelcomeWeekSlotRecordCount } from './analytics/charts.js';
+import {
+    getLoadingSpinnerConfig,
+    applyLoadingFoodIconDurationSeconds,
+    clearLoadingFoodIconInlineAnimation,
+    getSpinnerMessageStepMs,
+} from './loading-spinner-config.js';
 
 // 로딩 오버레이 중앙 관리
 let loadingOverlayTimeout = null;
 let loadingHideTimeout = null; // hideLoading 지연용
 let loadingShownAt = 0; // 메시지 표시 시 최소 표시 시간용
+let loadingSpinnerMsgTimer = null;
+let initialRecordsLoadFabClickBound = false;
+
+function stopLoadingSpinnerMessageCycle() {
+    if (loadingSpinnerMsgTimer) {
+        clearInterval(loadingSpinnerMsgTimer);
+        loadingSpinnerMsgTimer = null;
+    }
+}
+
+function ensureInitialRecordsLoadFabClickHandler() {
+    const fab = document.getElementById('initialRecordsLoadFab');
+    if (!fab || initialRecordsLoadFabClickBound) return;
+    initialRecordsLoadFabClickBound = true;
+    fab.addEventListener('click', () => {
+        if (fab.classList.contains('hidden')) return;
+        const msg = fab.getAttribute('aria-label') || '기록을 불러오고 있어요';
+        showToast(msg, 'info');
+    });
+}
 
 export function showLoading(message = '', options = {}) {
-    const { dimBackground = true, skipOnLoginScreen = true } = options;
+    const { dimBackground = true, skipOnLoginScreen = true, recordsFab = false } = options;
     const mainApp = document.getElementById('mainApp');
     const isOnLoginScreen = mainApp && mainApp.classList.contains('hidden');
     if (skipOnLoginScreen && isOnLoginScreen) return;
+
+    stopLoadingSpinnerMessageCycle();
+
+    const fab = document.getElementById('initialRecordsLoadFab');
     const overlay = document.getElementById('loadingOverlay');
     const messageEl = document.getElementById('loadingOverlayMessage');
+    const statusEl = document.getElementById('loadingOverlayStatus');
+
+    /** 로그인 직후 기록(meals) 로딩 — 전면이 아니라 하단 FAB 크기·위치에서만 음식 아이콘 순환 */
+    if (recordsFab && fab) {
+        if (overlay) overlay.classList.add('hidden');
+        fab.classList.remove('hidden');
+        fab.removeAttribute('aria-hidden');
+        fab.setAttribute('aria-busy', 'true');
+        const label = (message && String(message).trim()) || '기록을 불러오고 있어요';
+        fab.setAttribute('aria-label', label);
+        fab.title = label;
+        ensureInitialRecordsLoadFabClickHandler();
+        loadingShownAt = Date.now();
+        void getLoadingSpinnerConfig().then(() => {
+            applyLoadingFoodIconDurationSeconds(undefined, overlay);
+        });
+        if (loadingOverlayTimeout) clearTimeout(loadingOverlayTimeout);
+        loadingOverlayTimeout = setTimeout(() => {
+            hideLoading();
+            console.warn('⏱️ 로딩 타임아웃: 10초 후 자동으로 숨김');
+        }, 10000);
+        queueMicrotask(() => {
+            import('./main/meal-sync-resend-header.js')
+                .then((m) => {
+                    if (typeof m.refreshMealSyncResendNavButton === 'function') m.refreshMealSyncResendNavButton();
+                })
+                .catch(() => {});
+        });
+        return;
+    }
+
+    if (fab) {
+        fab.classList.add('hidden');
+        fab.setAttribute('aria-hidden', 'true');
+        fab.removeAttribute('aria-busy');
+        fab.removeAttribute('title');
+    }
+
     if (overlay) {
         overlay.classList.remove('hidden');
-        overlay.classList.toggle('bg-white/90', dimBackground);
+        overlay.classList.toggle('bg-white/55', dimBackground);
+        overlay.classList.toggle('backdrop-blur-sm', dimBackground);
         overlay.classList.toggle('bg-transparent', !dimBackground);
         overlay.classList.toggle('pointer-events-none', !dimBackground);
+        loadingShownAt = Date.now();
         if (messageEl) {
-            messageEl.textContent = message || '';
-            messageEl.style.display = message ? 'block' : 'none';
-            messageEl.style.visibility = message ? 'visible' : 'hidden';
-            messageEl.classList.toggle('hidden', !message);
+            messageEl.textContent = '';
+            messageEl.style.display = 'block';
+            messageEl.style.visibility = 'visible';
+            messageEl.classList.remove('hidden');
         }
-        if (message) loadingShownAt = Date.now();
-        // 10초 타임아웃 (무한 대기 방지)
+        if (statusEl) {
+            statusEl.textContent = '';
+            statusEl.classList.add('hidden');
+            statusEl.style.display = 'none';
+        }
+        void (async () => {
+            const cfg = await getLoadingSpinnerConfig();
+            /** 음식 아이콘 전환은 0.5초 고정. 순환 스크립트(문구)만 관리자 주기. */
+            applyLoadingFoodIconDurationSeconds(undefined, overlay);
+            if (!overlay || overlay.classList.contains('hidden') || !messageEl) return;
+            const trimmed = message && String(message).trim() ? String(message).trim() : '';
+            /** 위: 관리자 스피너 문구만 순환. 아래: showLoading()으로 넘긴 진행 상태(예: 카카오 로그인 처리 중). */
+            const cmsRaw = Array.isArray(cfg.messages) ? cfg.messages : [];
+            const merged = [];
+            const pushUnique = (s) => {
+                const t = typeof s === 'string' ? s.trim() : '';
+                if (t && !merged.includes(t)) merged.push(t);
+            };
+            for (const m of cmsRaw) pushUnique(m);
+
+            /** 관리자 > 스피너에 넣은 순환문구만 사용(보조·기본 문구 없음). */
+            const lines = merged;
+            /** 등록된 문구를 무작위 순서로 쓰되, 한 번 나온 문구는 남은 문구를 다 쓸 때까지 다시 나오지 않음(소진 후 풀을 다시 채움). */
+            const makeNoRepeatRandomPicker = (all) => {
+                let remaining = [];
+                return () => {
+                    if (remaining.length === 0) remaining = [...all];
+                    const idx = Math.floor(Math.random() * remaining.length);
+                    const [picked] = remaining.splice(idx, 1);
+                    return picked;
+                };
+            };
+            if (lines.length > 1) {
+                const pickNext = makeNoRepeatRandomPicker(lines);
+                messageEl.textContent = pickNext();
+                messageEl.style.display = 'block';
+                messageEl.style.visibility = 'visible';
+                messageEl.classList.remove('hidden');
+                const stepMs = getSpinnerMessageStepMs(cfg.messageCycleSeconds);
+                loadingSpinnerMsgTimer = setInterval(() => {
+                    messageEl.textContent = pickNext();
+                }, stepMs);
+            } else if (lines.length === 1) {
+                messageEl.textContent = lines[0];
+                messageEl.style.display = 'block';
+                messageEl.style.visibility = 'visible';
+                messageEl.classList.remove('hidden');
+            } else {
+                messageEl.textContent = '';
+                messageEl.style.display = 'none';
+                messageEl.classList.add('hidden');
+            }
+            if (statusEl) {
+                if (trimmed) {
+                    statusEl.textContent = trimmed;
+                    statusEl.classList.remove('hidden');
+                    statusEl.style.display = 'block';
+                    statusEl.style.visibility = 'visible';
+                } else {
+                    statusEl.textContent = '';
+                    statusEl.classList.add('hidden');
+                    statusEl.style.display = 'none';
+                }
+            }
+        })();
         if (loadingOverlayTimeout) clearTimeout(loadingOverlayTimeout);
         loadingOverlayTimeout = setTimeout(() => {
             hideLoading();
@@ -35,21 +168,39 @@ export function showLoading(message = '', options = {}) {
 }
 
 export function hideLoading() {
+    stopLoadingSpinnerMessageCycle();
     const overlay = document.getElementById('loadingOverlay');
     const messageEl = document.getElementById('loadingOverlayMessage');
-    if (!overlay) return;
+    const statusEl = document.getElementById('loadingOverlayStatus');
+    const fab = document.getElementById('initialRecordsLoadFab');
+    if (!overlay && !fab) return;
     if (loadingHideTimeout) {
         clearTimeout(loadingHideTimeout);
         loadingHideTimeout = null;
     }
     const doHide = () => {
-        overlay.classList.add('hidden');
-        overlay.classList.add('bg-white/90');
-        overlay.classList.remove('bg-transparent');
-        overlay.classList.remove('pointer-events-none');
+        clearLoadingFoodIconInlineAnimation();
+        if (fab) {
+            fab.classList.add('hidden');
+            fab.setAttribute('aria-hidden', 'true');
+            fab.removeAttribute('aria-busy');
+            fab.removeAttribute('title');
+        }
+        if (overlay) {
+            overlay.classList.add('hidden');
+            overlay.classList.add('bg-white/55');
+            overlay.classList.add('backdrop-blur-sm');
+            overlay.classList.remove('bg-transparent');
+            overlay.classList.remove('pointer-events-none');
+        }
         if (messageEl) {
             messageEl.textContent = '';
             messageEl.style.display = 'none';
+        }
+        if (statusEl) {
+            statusEl.textContent = '';
+            statusEl.classList.add('hidden');
+            statusEl.style.display = 'none';
         }
         if (loadingOverlayTimeout) {
             clearTimeout(loadingOverlayTimeout);
@@ -64,7 +215,6 @@ export function hideLoading() {
             /* ignore */
         }
     };
-    // 메시지가 표시된 경우 최소 500ms 보여주기 (너무 빠른 로드 시 사용자가 못 봄)
     const minShowMs = 500;
     const elapsed = Date.now() - loadingShownAt;
     const delay = loadingShownAt && elapsed < minShowMs ? minShowMs - elapsed : 0;
@@ -559,10 +709,10 @@ const ATTENDANCE_POPUP_SVG_NS = 'http://www.w3.org/2000/svg';
 const ATTENDANCE_POPUP_MAX_AUX_LINES = 12;
 
 /**
- * 출석/연속 기록 중앙 팝업 — 메인 문구는 SVG(Yeon Sung + 흰 stroke), 부가 문구는 본문 기본 폰트 박스.
- * line1의 첫 줄만 메인; 나머지 줄 + line2는 부가(박스).
- * @param {string} line1 메인(첫 줄) 또는 멀티라인(첫 줄=메인, 이후=부가)
- * @param {string} [line2] 부가 블록(멀티라인 가능)
+ * 출석/연속 기록 중앙 팝업 — 문구는 모두 SVG(Yeon Sung + 흰 stroke). 멀티라인은 동일 스타일로 줄바꿈.
+ * (차트가 있는 기록 있음 분기는 첫 줄만 표시·나머지는 생략.)
+ * @param {string} line1 첫 블록(멀티라인 가능)
+ * @param {string} [line2] 추가 블록(멀티라인 가능)
  * @param {'noRecord'|'hasRecord'|'hasRecordRestart'} [welcomeIcon] 기록 없음=하트, 연속 있음=따봉, 어제 끊김=새싹
  * @returns {boolean} 실제로 팝업을 띄웠으면 true(빈 문구·DOM 없음 등으로 스킵이면 false)
  */
@@ -580,15 +730,17 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
     const from2 = splitLines(line2);
     if (from1.length === 0 && from2.length === 0) return false;
 
-    const primary = from1.length > 0 ? from1[0] : from2[0];
-    const auxParts = [];
-    if (from1.length > 1) auxParts.push(...from1.slice(1));
-    if (from1.length > 0) auxParts.push(...from2);
-    else auxParts.push(...from2.slice(1));
-    const secondary = auxParts
-        .slice(0, ATTENDANCE_POPUP_MAX_AUX_LINES)
-        .join('\n')
-        .trim();
+    const orderedLines = [];
+    if (from1.length > 0) {
+        orderedLines.push(...from1, ...from2);
+    } else {
+        orderedLines.push(...from2);
+    }
+    const displayLines = orderedLines
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .slice(0, ATTENDANCE_POPUP_MAX_AUX_LINES);
+    if (displayLines.length === 0) return false;
 
     const popup = document.getElementById('attendancePopup');
     const textRoot = document.getElementById('attendancePopupTextRoot');
@@ -598,15 +750,15 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
     if (!popup || !textRoot || !textSvg) return false;
 
     const showWelcomeCharts = welcomeIcon === 'hasRecord' || welcomeIcon === 'hasRecordRestart';
-    const showAux = Boolean(secondary) && !showWelcomeCharts;
+    const svgLines = showWelcomeCharts ? displayLines.slice(0, 1) : displayLines;
 
     if (auxWrap && auxBox) {
-        auxBox.textContent = showAux ? secondary : '';
-        auxWrap.classList.toggle('hidden', !showAux);
+        auxBox.textContent = '';
+        auxWrap.classList.add('hidden');
     }
     const attendanceContent = document.getElementById('attendancePopupContent');
     if (attendanceContent) {
-        attendanceContent.classList.toggle('attendance-popup-has-aux', showAux);
+        attendanceContent.classList.remove('attendance-popup-has-aux');
     }
 
     const iconHeart = document.getElementById('attendancePopupIconHeart');
@@ -630,7 +782,7 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
         textRoot.removeChild(textRoot.firstChild);
     }
 
-    const maxLen = Math.max(String(primary).length, 1);
+    const maxLen = Math.max(1, ...svgLines.map((l) => String(l).length));
     /** 짧은 문구 최대 35px, 길면 단계적으로 축소(340px 뷰 안에 맞춤) */
     const fs =
         maxLen > 24 ? '22' : maxLen > 20 ? '26' : maxLen > 16 ? '31' : '35';
@@ -638,17 +790,24 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
     const topPad = 6;
     const startY = topPad + Math.round(fsNum * 0.75);
 
-    const tsp = document.createElementNS(ATTENDANCE_POPUP_SVG_NS, 'tspan');
-    tsp.setAttribute('x', '170');
-    tsp.setAttribute('y', String(startY));
-    tsp.textContent = primary;
-    textRoot.appendChild(tsp);
+    svgLines.forEach((lineText, i) => {
+        const tsp = document.createElementNS(ATTENDANCE_POPUP_SVG_NS, 'tspan');
+        tsp.setAttribute('x', '170');
+        if (i === 0) {
+            tsp.setAttribute('y', String(startY));
+        } else {
+            tsp.setAttribute('dy', '1.22em');
+        }
+        tsp.textContent = lineText;
+        textRoot.appendChild(tsp);
+    });
 
     textRoot.setAttribute('font-size', fs);
-    /** 부가 문구 있을 때: 하단 여백·최소 높이를 줄여 메인 텍스트~박스 간격 확실히 축소 (overflow:visible로 획 여유) */
-    const bottomPad = showAux ? 8 : 18;
-    const minSvgH = showAux ? 44 : 56;
-    const vbH = Math.max(minSvgH, topPad + fsNum + bottomPad);
+    const n = svgLines.length;
+    const lineGap = (n - 1) * fsNum * 1.22;
+    const bottomPad = 18;
+    const minSvgH = n <= 1 ? 56 : 52;
+    const vbH = Math.max(minSvgH, Math.ceil(topPad + fsNum + lineGap + bottomPad));
     textSvg.setAttribute('viewBox', `0 0 340 ${vbH}`);
     textSvg.setAttribute('height', String(vbH));
 
@@ -790,83 +949,82 @@ export function updateHeaderUI() {
 window.showLoading = showLoading;
 window.hideLoading = hideLoading;
 
-/** Firestore / fetch 등에서 네트워크성 오류로 추정되는지 (인덱스·권한 오류는 제외) */
-export function isLikelyNetworkError(err) {
+/**
+ * 전송 계층( fetch / Firestore / Auth HTTP ) 실패로 보이는지 — navigator.onLine 은 보지 않음.
+ * 앱 로컬 오프라인 플래그 강제 시에 사용.
+ */
+export function isLikelyNetworkTransportFailure(err) {
     if (!err) return false;
-    try {
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
-    } catch (_) {}
+    if (err.name === 'AbortError') return false;
     const code = String(err.code || '');
-    const msg = String(err.message || (typeof err.toString === 'function' ? err.toString() : '') || '').toLowerCase();
-    const networkCodes = ['unavailable', 'deadline-exceeded', 'resource-exhausted'];
-    if (networkCodes.includes(code)) return true;
+    const rawMsg = String(err.message || (typeof err.toString === 'function' ? err.toString() : '') || '');
+    const msg = rawMsg.toLowerCase();
+
+    // Firestore/브라우저 내부 스트림 단언·버그 — 망 끊김과 무관, 오버레이 오탐 방지
+    if (/internal assertion failed|watchchangeaggregator|unexpected state/i.test(msg)) return false;
+
+    if (code === 'cancelled' || code === 'canceled') return false;
     if (code === 'failed-precondition') return false;
     if (code === 'permission-denied') return false;
+
+    // unavailable / deadline: 실제 단절·지연에 흔함. resource-exhausted(할당량)은 제외 — Wi-Fi 문제와 무관
+    const networkCodes = ['unavailable', 'deadline-exceeded'];
+    if (networkCodes.includes(code)) return true;
+    if (code === 'auth/network-request-failed') return true;
     if (
-        /failed to fetch|networkerror|network request failed|load failed|fetcherror/i.test(msg) ||
-        /connection.*(refused|reset|aborted)|err_connection|net::err|quic|econnreset|enotfound|etimedout|timeout/i.test(
-            msg
-        ) ||
-        /internet|offline|unreachable|host.*not.*found/i.test(msg)
+        /err_internet_disconnected|err_network_changed|err_name_not_resolved|err_connection_timed_out|err_connection_reset|err_network_io_suspended|net::err_/i.test(
+            rawMsg
+        )
     ) {
         return true;
     }
+    if (
+        /failed to fetch|networkerror|network request failed|load failed|fetcherror/i.test(msg) ||
+        /connection.*(refused|reset)|err_connection|net::err|quic|econnreset|\betimedout\b|etimedout/i.test(msg) ||
+        /\b(operation timed out|deadline exceeded)\b/i.test(msg)
+    ) {
+        return true;
+    }
+    // 'timeout' 단독 매칭 제거 — 메시지 안 다른 단어에 포함돼 오탐(예: 내부 타임아웃 문구)
+    if (/client is offline|you are offline|the network.*unavailable|could not reach/i.test(msg)) return true;
+    if (/unreachable|host.*not.*found|dns.*(error|fail)|enotfound/i.test(msg)) return true;
     return false;
 }
 
-const DEFAULT_NETWORK_ERROR_MESSAGE =
-    '네트워크 연결을 확인할 수 없습니다. Wi-Fi 또는 데이터 연결을 확인한 뒤 다시 시도해 주세요.';
-
-let networkErrorOverlayButtonsBound = false;
-
-function bindNetworkErrorOverlayButtons() {
-    if (networkErrorOverlayButtonsBound) return;
-    const reloadBtn = document.getElementById('networkErrorReloadBtn');
-    const dismissBtn = document.getElementById('networkErrorDismissBtn');
-    if (!reloadBtn || !dismissBtn) return;
-    networkErrorOverlayButtonsBound = true;
-    reloadBtn.addEventListener('click', async () => {
-        try {
-            if (typeof window.Mealog?.runNetworkRecovery === 'function') {
-                await window.Mealog.runNetworkRecovery();
-            }
-        } catch (_) {}
-        hideNetworkErrorOverlay();
-        try {
-            if (typeof window.reloadMomentFeed === 'function') {
-                await window.reloadMomentFeed();
-                return;
-            }
-        } catch (_) {}
-        try {
-            window.location.reload();
-        } catch (_) {}
-    });
-    dismissBtn.addEventListener('click', () => {
-        hideNetworkErrorOverlay();
-    });
+/** Firestore / fetch 등에서 네트워크성 오류로 추정되는지 (인덱스·권한 오류는 제외) */
+export function isLikelyNetworkError(err) {
+    if (!err) return false;
+    // navigator.onLine === false 만으로는 판단하지 않음 — 모바일/WKWebView·전환 순간에 false 오판이 잦고,
+    // 그때 permission 등 다른 오류와 조합되면 '연결할 수 없습니다'가 오탐됨.
+    return isLikelyNetworkTransportFailure(err);
 }
 
-/** 메인 콘텐츠(Firestore 등) 로드 실패 시 전체 화면 안내 */
+/** @deprecated 전면 연결 오류 팝업 제거됨 — 오프라인 FAB·토스트만 사용 */
 export function showNetworkErrorOverlay(options = {}) {
-    const overlay = document.getElementById('networkErrorOverlay');
-    if (!overlay) return;
-    bindNetworkErrorOverlayButtons();
-    const msgEl = document.getElementById('networkErrorOverlayMessage');
-    if (msgEl) {
-        msgEl.textContent =
-            typeof options.message === 'string' && options.message.trim()
-                ? options.message.trim()
-                : DEFAULT_NETWORK_ERROR_MESSAGE;
+    void options;
+    try {
+        hideLoading();
+    } catch (_) {
+        /* ignore */
     }
-    hideLoading();
-    overlay.classList.remove('hidden');
+    try {
+        const overlay = document.getElementById('networkErrorOverlay');
+        if (overlay) overlay.classList.add('hidden');
+    } catch (_) {
+        /* ignore */
+    }
+    void import('./utils/mealog-offline-ui.js').then((m) => {
+        if (typeof m.notifyTransportOfflineUi === 'function') m.notifyTransportOfflineUi();
+    });
 }
 
 export function hideNetworkErrorOverlay() {
-    const overlay = document.getElementById('networkErrorOverlay');
-    if (!overlay) return;
-    overlay.classList.add('hidden');
+    try {
+        const overlay = document.getElementById('networkErrorOverlay');
+        if (overlay) overlay.classList.add('hidden');
+    } catch (_) {
+        /* ignore */
+    }
 }
 
 window.isLikelyNetworkError = isLikelyNetworkError;

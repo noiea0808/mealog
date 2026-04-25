@@ -45,6 +45,7 @@ import {
     sharePhotosToExternal,
     setupBirthdateInputFormatting
 } from '../utils.js';
+import { applyStackCommentBtnVisual } from '../render/moment-post-interactions.js';
 import {
     initAuth,
     handleGoogleLogin,
@@ -84,6 +85,7 @@ import {
     DEMO_TOAST_CANNOT_BOOKMARK
 } from '../demo-account.js';
 import { syncDemoNavGuideDots } from '../demo-nav-guide.js';
+import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
 import {
     renderTimeline,
     renderMiniCalendar,
@@ -291,6 +293,14 @@ window.confirmDailyShare = async (dateStr, ev) => {
     if (!uid) {
         showToast('로그인이 필요합니다.', 'error');
         if (typeof window.requestLogin === 'function') window.requestLogin();
+        return;
+    }
+    if (window.currentUser.isAnonymous) {
+        showToast('로그인이 필요합니다.', 'error');
+        return;
+    }
+    if (!isDemoUser(window.currentUser) && !isUserSettingsReadyForContentWrites(window.userSettings)) {
+        showToast('약관 동의와 프로필(닉네임) 설정을 완료한 뒤 공유할 수 있습니다.', 'error');
         return;
     }
 
@@ -766,26 +776,33 @@ window.toggleLike = async (postId) => {
     
     try {
         const result = await postInteractions.toggleLike(postId, window.currentUser.uid);
-        const likeBtn = document.querySelector(`.post-like-btn[data-post-id="${postId}"]`);
-        const likeIcon = likeBtn?.querySelector('.post-like-icon');
-        const likeCountEl = document.querySelector(`.post-like-count[data-post-id="${postId}"]`);
-        
-        if (likeBtn && likeIcon) {
-            if (result.liked) {
-                likeIcon.classList.remove('fa-regular', 'fa-heart', 'text-slate-800');
-                likeIcon.classList.add('fa-solid', 'fa-heart', 'text-red-500');
-            } else {
-                likeIcon.classList.remove('fa-solid', 'fa-heart', 'text-red-500');
-                likeIcon.classList.add('fa-regular', 'fa-heart', 'text-slate-800');
+
+        document.querySelectorAll(`.post-like-btn[data-post-id="${postId}"]`).forEach((likeBtn) => {
+            const likeIcon = likeBtn.querySelector('.post-like-icon');
+            if (!likeIcon) return;
+            const inOverlay = Boolean(likeBtn.closest('#timelineMealPhotosOverlay'));
+            const inMomentPhoto = Boolean(likeBtn.querySelector('.post-like-fill'));
+            if (inMomentPhoto) {
+                likeIcon.classList.remove('fa-solid', 'fa-heart', 'text-red-500', 'text-red-400', 'text-slate-800', 'text-white', 'text-white/95');
+                likeIcon.classList.add('fa-regular', 'fa-heart', 'timeline-meal-photo-moment-social-icon', 'relative', 'z-[1]', 'text-white/95');
+                likeBtn.classList.toggle('post-social-state-on', Boolean(result.liked));
+                return;
             }
-        }
-        
-        // 실제 좋아요 수 다시 가져오기
-        if (likeCountEl) {
-            const likes = await postInteractions.getLikes(postId);
-            const likeCount = likes.length || 0;
-            likeCountEl.textContent = likeCount > 0 ? likeCount : '';
-        }
+            if (result.liked) {
+                likeIcon.classList.remove('fa-regular', 'fa-heart', 'text-slate-800', 'text-white', 'text-white/95', 'text-red-500');
+                likeIcon.classList.add('fa-solid', 'fa-heart', ...(inOverlay ? [] : ['text-red-500']));
+            } else {
+                likeIcon.classList.remove('fa-solid', 'fa-heart', 'text-red-500', 'text-red-400');
+                likeIcon.classList.add('fa-regular', 'fa-heart', inOverlay ? 'text-white/95' : 'text-slate-800');
+            }
+        });
+
+        const likes = await postInteractions.getLikes(postId);
+        const likeCount = likes.length || 0;
+        const likeText = likeCount > 0 ? String(likeCount) : '';
+        document.querySelectorAll(`.post-like-count[data-post-id="${postId}"]`).forEach((el) => {
+            el.textContent = likeText;
+        });
     } catch (e) {
         console.error("좋아요 토글 실패:", e);
         showToast("좋아요 처리 중 오류가 발생했습니다.", 'error');
@@ -807,19 +824,36 @@ window.toggleBookmark = async (postId) => {
     
     try {
         const result = await postInteractions.toggleBookmark(postId, window.currentUser.uid);
-        const bookmarkBtn = document.querySelector(`.post-bookmark-btn[data-post-id="${postId}"]`);
-        const bookmarkIcon = bookmarkBtn?.querySelector('.post-bookmark-icon');
-        
-        if (bookmarkBtn && bookmarkIcon) {
-            if (result.bookmarked) {
-                bookmarkIcon.classList.remove('fa-regular', 'fa-bookmark');
-                bookmarkIcon.classList.add('fa-solid', 'fa-bookmark', 'text-slate-800');
-                showToast("북마크에 추가되었습니다.", 'success');
-            } else {
-                bookmarkIcon.classList.remove('fa-solid', 'fa-bookmark', 'text-slate-800');
-                bookmarkIcon.classList.add('fa-regular', 'fa-bookmark');
-                showToast("북마크에서 제거되었습니다.", 'info');
+
+        document.querySelectorAll(`.post-bookmark-btn[data-post-id="${postId}"]`).forEach((bookmarkBtn) => {
+            const bookmarkIcon = bookmarkBtn.querySelector('.post-bookmark-icon');
+            if (!bookmarkIcon) return;
+            const inOverlay = Boolean(bookmarkBtn.closest('#timelineMealPhotosOverlay'));
+            const inMomentPhoto = Boolean(bookmarkBtn.querySelector('.post-bookmark-fill'));
+            if (inMomentPhoto) {
+                bookmarkIcon.classList.remove('fa-solid', 'fa-bookmark', 'text-slate-800', 'text-white', 'text-white/95');
+                bookmarkIcon.classList.add('fa-regular', 'fa-bookmark', 'timeline-meal-photo-moment-social-icon', 'relative', 'z-[1]', 'text-white/95');
+                bookmarkBtn.classList.toggle('post-social-state-on', Boolean(result.bookmarked));
+                return;
             }
+            if (result.bookmarked) {
+                bookmarkIcon.classList.remove('fa-regular', 'fa-bookmark', 'text-white', 'text-slate-800');
+                bookmarkIcon.classList.add('fa-solid', 'fa-bookmark', ...(inOverlay ? [] : ['text-slate-800']));
+            } else {
+                bookmarkIcon.classList.remove('fa-solid', 'fa-bookmark', 'text-slate-800', 'text-white', 'text-white/95');
+                bookmarkIcon.classList.add('fa-regular', 'fa-bookmark', inOverlay ? 'text-white/95' : 'text-slate-800');
+            }
+        });
+        const bookmarks = await postInteractions.getBookmarks(postId);
+        const bmCount = bookmarks.length || 0;
+        const bmText = bmCount > 0 ? String(bmCount) : '';
+        document.querySelectorAll(`.post-bookmark-count[data-post-id="${postId}"]`).forEach((el) => {
+            el.textContent = bmText;
+        });
+        if (result.bookmarked) {
+            showToast('북마크에 추가되었습니다.', 'success');
+        } else {
+            showToast('북마크에서 제거되었습니다.', 'info');
         }
     } catch (e) {
         console.error("북마크 토글 실패:", e);
@@ -975,10 +1009,17 @@ window.deleteCommentFromPost = async (commentId, postId) => {
     
     if (!confirm("댓글을 삭제하시겠습니까?")) return;
     
-    const commentsListEl = document.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
+    let commentsListEl = document.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
+    if (!commentsListEl) {
+        const mo = document.getElementById('timelineMealPhotosOverlay');
+        if (mo && !mo.classList.contains('hidden') && mo._mealPhotoPostCommentsOpen) {
+            commentsListEl = mo.querySelector('[data-meal-overlay-post-comments-list]');
+        }
+    }
     const commentCountEl = document.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
     const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
-    
+    const isMealPhotoOverlayList = Boolean(commentsListEl?.getAttribute?.('data-meal-overlay-post-comments-list'));
+
     // 낙관적 업데이트: 즉시 UI에서 제거
     const commentEl = commentsListEl?.querySelector(`[onclick*="deleteCommentFromPost('${commentId}'"]`)?.closest('.mb-1.text-sm');
     let wasVisible = false;
@@ -998,8 +1039,9 @@ window.deleteCommentFromPost = async (commentId, postId) => {
         const remainingComments = commentsListEl.querySelectorAll('.mb-1.text-sm');
         if (remainingComments.length === 0) {
             commentsListEl.innerHTML = '';
-            commentsListEl.classList.remove('bg-slate-50');
+            if (!isMealPhotoOverlayList) commentsListEl.classList.remove('bg-slate-50');
             if (viewCommentsBtn) viewCommentsBtn.classList.add('hidden');
+            collapseMomentV2SocialPanelIfListEmpty(String(postId));
         } else {
             // 댓글 개수 업데이트
             const newCount = parseInt(commentCountEl?.textContent) || 0;
@@ -1019,24 +1061,43 @@ window.deleteCommentFromPost = async (commentId, postId) => {
                 try {
                     const alternates = getAlternatePostIdsForPost(postId);
                     const comments = await postInteractions.getComments(postId, alternates);
-                    
+                    const isLoggedInDel = window.currentUser && !window.currentUser.isAnonymous;
+                    const hasCommentedAfterDel =
+                        isLoggedInDel &&
+                        Array.isArray(comments) &&
+                        comments.some((c) => (c.userId || c.authorId) === window.currentUser?.uid);
+                    document.querySelectorAll('.post-comment-btn[data-post-id]').forEach((btn) => {
+                        if (btn.getAttribute('data-post-id') !== String(postId)) return;
+                        if (!btn.querySelector('.post-comment-fill')) return;
+                        if (hasCommentedAfterDel) btn.setAttribute('data-post-user-commented', '1');
+                        else btn.removeAttribute('data-post-user-commented');
+                    });
+                    applyStackCommentBtnVisual(postId);
+
                     // 댓글 개수 업데이트
                     if (commentCountEl) {
                         commentCountEl.textContent = comments.length > 0 ? comments.length : '';
                     }
                     
-                    // 댓글 목록 업데이트
-                    if (commentsListEl) {
+                    if (commentsListEl && isMealPhotoOverlayList && typeof window.loadPostCommentsForMealPhotoOverlayList === 'function') {
+                        await window.loadPostCommentsForMealPhotoOverlayList(postId, commentsListEl);
+                    } else if (commentsListEl) {
                         if (comments.length === 0) {
                             commentsListEl.innerHTML = '';
                             commentsListEl.classList.remove('bg-slate-50');
                             if (viewCommentsBtn) viewCommentsBtn.classList.add('hidden');
+                            collapseMomentV2SocialPanelIfListEmpty(String(postId));
+                            syncMomentV2SocialCommentEmptyOverlay(String(postId));
                         } else {
                             commentsListEl.classList.add('bg-slate-50');
                             const displayComments = comments.slice(0, 2);
                             const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
                             commentsListEl.innerHTML = displayComments.map(c => {
-                                const commentDisplay = getDisplayProfile(c.userId, { nickname: c.userNickname });
+                                const commentDisplay = getDisplayProfile(
+                                c.userId,
+                                { nickname: c.userNickname, icon: c.userIcon },
+                                { preferStoredNickname: true }
+                            );
                                 return `
                                 <div class="mb-1 text-sm">
                                     <span class="font-bold text-slate-800">${commentDisplay.nickname}</span>
@@ -1054,6 +1115,7 @@ window.deleteCommentFromPost = async (commentId, postId) => {
                             } else {
                                 if (viewCommentsBtn) viewCommentsBtn.classList.add('hidden');
                             }
+                            syncMomentV2SocialCommentEmptyOverlay(String(postId));
                         }
                     }
                 } catch (e) {
@@ -1098,17 +1160,257 @@ function getAlternatePostIdsForPost(postId) {
     return attr ? attr.split(',').filter(Boolean) : [];
 }
 
+const MV2_SOCIAL_SHEET_BODY_CLASS = 'moment-v2-social-comments-panel--sheet-in-body';
+
+function mv2EscapeAttr(s) {
+    return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function mv2InsertMentionIntoInput(postId, nickname) {
+    const pid = String(postId ?? '');
+    const nick = String(nickname ?? '').trim();
+    if (!pid || !nick) return;
+    const input = document.getElementById(`comment-text-${pid}`);
+    if (!input) return;
+    const tag = `@${nick}`;
+    const cur = String(input.value ?? '');
+    if (cur.includes(tag)) {
+        input.focus();
+        return;
+    }
+    const prefix = cur.length > 0 && !/\s$/.test(cur) ? ' ' : '';
+    input.value = `${cur}${prefix}${tag} `;
+    input.focus();
+    try {
+        const end = input.value.length;
+        input.setSelectionRange(end, end);
+    } catch (_) {}
+}
+
+function mv2NotifyIfMentionedOnce(postId, comment) {
+    try {
+        const u = window.currentUser;
+        if (!u || u.isAnonymous) return;
+        const myNick = String(window.userSettings?.profile?.nickname || '').trim();
+        if (!myNick) return;
+        if (!comment || comment.userId === u.uid) return;
+        const text = String(comment.comment || '');
+        if (!text) return;
+        const re = new RegExp(`(^|\\s)@${myNick.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}(?=\\s|$|[.,!?:;\\)\\]】\\}])`, 'u');
+        if (!re.test(text)) return;
+        const id = String(comment.id || '');
+        if (!window._mv2MentionNotified) window._mv2MentionNotified = new Set();
+        if (id && window._mv2MentionNotified.has(id)) return;
+        if (id) window._mv2MentionNotified.add(id);
+        if (typeof window.showToast === 'function') {
+            const from = String(comment.userNickname || '누군가');
+            window.showToast(`${from}님이 회원님을 언급했어요`, 'info');
+        }
+        try {
+            if (typeof window.pushMomentMentionNotification === 'function') {
+                const from = String(comment.userNickname || '누군가');
+                window.pushMomentMentionNotification(String(postId ?? ''), from, Date.now());
+            }
+        } catch (_) {}
+    } catch (_) {}
+}
+
+function bindMomentV2MentionDelegation(commentSection) {
+    if (!commentSection || commentSection.dataset.mv2MentionBound === '1') return;
+    commentSection.dataset.mv2MentionBound = '1';
+    commentSection.addEventListener('click', (e) => {
+        const t = e.target;
+        const el = t?.closest?.('[data-mv2-mention-nick]');
+        if (!el) return;
+        const nick = el.getAttribute('data-mv2-mention-nick') || '';
+        const pid = String(commentSection.id || '').replace(/^comment-section-/, '');
+        if (!pid) return;
+        e.preventDefault();
+        e.stopPropagation();
+        mv2InsertMentionIntoInput(pid, nick);
+    });
+}
+
+function syncMomentV2SocialCommentEmptyOverlay(postId) {
+    const pid = String(postId ?? '');
+    const section = document.getElementById(`comment-section-${pid}`);
+    if (!section?.classList?.contains('moment-v2-social-comments-panel')) return;
+    const overlay = section.querySelector('[data-moment-v2-social-comments-empty="1"]');
+    const list = section.querySelector('.post-comments-list');
+    if (!overlay || !list) return;
+
+    const hasCommentRows = Boolean(list.querySelector('.mb-1'));
+    if (hasCommentRows) {
+        section.classList.remove('comments-empty');
+        overlay.classList.add('hidden');
+        list.classList.remove('hidden');
+        return;
+    }
+
+    // 빈 상태: 리스트는 비우고(플레이스홀더는 오버레이로만), 오버레이를 본문 중앙에 표시
+    list.innerHTML = '';
+    list.classList.add('hidden');
+    overlay.classList.remove('hidden');
+}
+
+/** 모먼트2 하단 시트: 핸들 아래로 드래그해 닫기 */
+function bindMomentV2SocialSheetHandlePullClose(commentSection) {
+    const sheet = commentSection.querySelector('.moment-v2-social-comments-sheet');
+    const handle = commentSection.querySelector('.moment-v2-social-comments-sheet-handle');
+    if (!sheet || !handle || handle.dataset.mv2PullBound === '1') return;
+    handle.dataset.mv2PullBound = '1';
+    const postId = String(commentSection.id || '').replace(/^comment-section-/, '');
+    let startY = 0;
+    let tracking = false;
+    let dragY = 0;
+    const threshold = 80;
+    const resetSheetTransform = () => {
+        sheet.style.transform = '';
+        sheet.style.transition = '';
+    };
+    handle.addEventListener(
+        'touchstart',
+        (e) => {
+            if (!commentSection.classList.contains('comment-input-open')) return;
+            if (e.touches?.length !== 1) return;
+            tracking = true;
+            startY = e.touches[0].clientY;
+            dragY = 0;
+        },
+        { passive: true }
+    );
+    handle.addEventListener(
+        'touchmove',
+        (e) => {
+            if (!tracking || e.touches?.length !== 1) return;
+            dragY = Math.max(0, e.touches[0].clientY - startY);
+            sheet.style.transition = 'none';
+            sheet.style.transform = `translate3d(0, ${dragY}px, 0)`;
+            e.preventDefault();
+        },
+        { passive: false }
+    );
+    const end = () => {
+        if (!tracking) return;
+        tracking = false;
+        if (dragY >= threshold && postId) {
+            resetSheetTransform();
+            window.closeMomentV2SocialCommentSheet?.(postId);
+            return;
+        }
+        resetSheetTransform();
+    };
+    handle.addEventListener('touchend', end, { passive: true });
+    handle.addEventListener('touchcancel', end, { passive: true });
+}
+
+function mv2SetSocialSheetBodyScrollLock(on) {
+    if (typeof document === 'undefined' || !document.documentElement) return;
+    document.documentElement.classList.toggle('mv2-social-comment-sheet-open', Boolean(on));
+}
+
+function mountMomentV2SocialCommentSheetToBody(commentSection) {
+    if (!commentSection || commentSection.dataset.mv2SheetInBody === '1') return;
+    commentSection.dataset.mv2SheetInBody = '1';
+    commentSection._mv2SheetAnchorParent = commentSection.parentNode;
+    commentSection._mv2SheetAnchorNext = commentSection.nextSibling;
+    document.body.appendChild(commentSection);
+    commentSection.classList.add(MV2_SOCIAL_SHEET_BODY_CLASS);
+    bindMomentV2SocialSheetHandlePullClose(commentSection);
+    bindMomentV2MentionDelegation(commentSection);
+    try {
+        const postId = String(commentSection.id || '').replace(/^comment-section-/, '');
+        if (postId) syncMomentV2SocialCommentEmptyOverlay(postId);
+    } catch (_) {}
+    mv2SetSocialSheetBodyScrollLock(true);
+}
+
+function restoreMomentV2SocialCommentSheetFromBody(commentSection) {
+    if (!commentSection || commentSection.dataset.mv2SheetInBody !== '1') return;
+    const p = commentSection._mv2SheetAnchorParent;
+    const n = commentSection._mv2SheetAnchorNext;
+    if (p && commentSection.isConnected) {
+        try {
+            if (n && n.parentNode === p) {
+                p.insertBefore(commentSection, n);
+            } else {
+                p.appendChild(commentSection);
+            }
+        } catch (_) {
+            try {
+                p.appendChild(commentSection);
+            } catch (_) {
+                /* ignore */
+            }
+        }
+    }
+    delete commentSection.dataset.mv2SheetInBody;
+    commentSection._mv2SheetAnchorParent = null;
+    commentSection._mv2SheetAnchorNext = null;
+    commentSection.classList.remove(MV2_SOCIAL_SHEET_BODY_CLASS);
+    if (!document.querySelector(`.moment-v2-social-comments-panel.${MV2_SOCIAL_SHEET_BODY_CLASS}`)) {
+        mv2SetSocialSheetBodyScrollLock(false);
+    }
+}
+
+function restoreAllMomentV2SocialCommentSheetsFromBody() {
+    document.querySelectorAll(`.moment-v2-social-comments-panel.${MV2_SOCIAL_SHEET_BODY_CLASS}`).forEach((el) => {
+        restoreMomentV2SocialCommentSheetFromBody(el);
+    });
+    mv2SetSocialSheetBodyScrollLock(false);
+}
+
+window.restoreMomentV2SocialCommentSheetsFromBody = restoreAllMomentV2SocialCommentSheetsFromBody;
+
+/** 모먼트2: 하단 시트(스크림) 닫기 */
+window.closeMomentV2SocialCommentSheet = (postId) => {
+    const pid = String(postId ?? '');
+    const inputWrap = document.getElementById(`comment-input-${pid}`);
+    const commentSection = document.getElementById(`comment-section-${pid}`);
+    if (!commentSection?.classList?.contains('moment-v2-social-comments-panel')) return;
+    if (inputWrap) inputWrap.classList.add('hidden');
+    commentSection.classList.remove('comment-input-open');
+    commentSection.classList.add('hidden');
+    restoreMomentV2SocialCommentSheetFromBody(commentSection);
+};
+window.Mealog.closeMomentV2SocialCommentSheet = window.closeMomentV2SocialCommentSheet;
+window.Mealog.syncMomentV2SocialCommentEmptyOverlay = syncMomentV2SocialCommentEmptyOverlay;
+
+function collapseMomentV2SocialPanelIfListEmpty(postId) {
+    const commentSection = document.getElementById(`comment-section-${postId}`);
+    if (!commentSection?.classList?.contains('moment-v2-social-comments-panel')) {
+        return;
+    }
+    const list = commentSection.querySelector && commentSection.querySelector('.post-comments-list');
+    const hasList =
+        list &&
+        list.innerHTML &&
+        list.innerHTML.replace(/&nbsp;|\s|<!--[\s\S]*?-->/g, '').length > 0;
+    if (hasList) {
+        return;
+    }
+    // 모먼트2 하단 시트: 댓글이 0개여도 시트를 접지 않고 빈 상태를 표시한다.
+    syncMomentV2SocialCommentEmptyOverlay(postId);
+    commentSection.classList.remove('comments-empty');
+    commentSection.classList.remove('hidden');
+}
+
 // 댓글 모두 보기 함수
 window.viewAllComments = async (postId) => {
     try {
         const alternates = getAlternatePostIdsForPost(postId);
         const comments = await postInteractions.getComments(postId, alternates);
         const commentsListEl = document.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
-        const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
+        const isMomentV2Sheet = Boolean(commentsListEl?.closest?.('.moment-v2-social-comments-sheet'));
         
         if (commentsListEl) {
             if (comments.length > 0) {
-                commentsListEl.classList.add('bg-slate-50');
+                if (!isMomentV2Sheet) commentsListEl.classList.add('bg-slate-50');
                 const commentAuthorIds = [...new Set(comments.map(c => c.userId).filter(Boolean))];
                 await fetchUserProfiles(commentAuthorIds);
                 const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
@@ -1132,10 +1434,15 @@ window.viewAllComments = async (postId) => {
                     }
                     
                     const isMyComment = isLoggedIn && comment.userId === window.currentUser.uid;
-                    const commentDisplay = getDisplayProfile(comment.userId, { nickname: comment.userNickname });
+                    const commentDisplay = getDisplayProfile(
+                    comment.userId,
+                    { nickname: comment.userNickname, icon: comment.userIcon },
+                    { preferStoredNickname: true }
+                );
+                    mv2NotifyIfMentionedOnce(postId, comment);
                     return `
                         <div class="mb-1 text-sm">
-                            <span class="font-bold text-slate-800">${escapeHtml(commentDisplay.nickname)}</span>
+                            <button type="button" class="font-bold text-slate-800" data-mv2-mention-nick="${mv2EscapeAttr(commentDisplay.nickname)}">${escapeHtml(commentDisplay.nickname)}</button>
                             <span class="text-slate-800 ml-2">${escapeHtml(comment.comment || '')}</span>
                             ${dateStr && timeStr ? `<span class="text-xs text-slate-400 ml-2">${dateStr} ${timeStr}</span>` : ''}
                             ${isMyComment ? `<button onclick="window.deleteCommentFromPost('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
@@ -1147,10 +1454,19 @@ window.viewAllComments = async (postId) => {
                 commentsListEl.classList.remove('bg-slate-50');
             }
             
-            if (viewCommentsBtn) {
-                viewCommentsBtn.classList.add('hidden');
-            }
         }
+        const v2Section = document.getElementById(`comment-section-${postId}`);
+        if (v2Section?.classList?.contains('moment-v2-social-comments-panel')) {
+            v2Section.classList.remove('comment-input-open');
+            v2Section.classList.remove('hidden');
+            mountMomentV2SocialCommentSheetToBody(v2Section);
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    v2Section.classList.add('comment-input-open');
+                });
+            });
+        }
+        syncMomentV2SocialCommentEmptyOverlay(postId);
     } catch (e) {
         console.error("댓글 로드 실패:", e);
         showToast("댓글을 불러오는 중 오류가 발생했습니다.", 'error');
@@ -1173,14 +1489,67 @@ window.toggleCommentInput = (postId) => {
         const isHidden = inputEl.classList.contains('hidden');
         if (isHidden) {
             inputEl.classList.remove('hidden');
-            if (commentSection) commentSection.classList.add('comment-input-open');
+            if (commentSection) {
+                if (commentSection.classList?.contains('moment-v2-social-comments-panel')) {
+                    commentSection.classList.remove('comment-input-open');
+                    commentSection.classList.remove('hidden');
+                    mountMomentV2SocialCommentSheetToBody(commentSection);
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            commentSection.classList.add('comment-input-open');
+                        });
+                    });
+                    // 시트를 올렸으면 댓글은 항상 전체 로드(더보기 버튼 없음)
+                    try {
+                        window.viewAllComments?.(postId);
+                    } catch (_) {}
+                } else {
+                    commentSection.classList.add('comment-input-open');
+                }
+            }
             const textInput = document.getElementById(`comment-text-${postId}`);
             if (textInput) {
                 textInput.focus();
             }
+            syncMomentV2SocialCommentEmptyOverlay(postId);
+            // 입력창 왼쪽 아바타 반영 (사진 > 이모지 > 기본)
+            try {
+                const avatarEl = commentSection?.querySelector?.('.moment-v2-social-comments-input-avatar');
+                if (avatarEl) {
+                    const p = window.userSettings?.profile || {};
+                    const icon = (p.icon != null && String(p.icon).trim() !== '') ? String(p.icon) : '';
+                    const photo = (p.photoUrl != null && String(p.photoUrl).trim() !== '') ? String(p.photoUrl) : '';
+                    avatarEl.innerHTML = '';
+                    if (photo) {
+                        const img = document.createElement('img');
+                        img.alt = '';
+                        img.decoding = 'async';
+                        img.loading = 'lazy';
+                        img.referrerPolicy = 'no-referrer';
+                        img.src = photo;
+                        avatarEl.appendChild(img);
+                    } else if (icon) {
+                        avatarEl.textContent = icon;
+                    } else {
+                        avatarEl.textContent = '🙂';
+                    }
+                }
+            } catch (_) {}
+            if (commentSection?.classList?.contains('moment-v2-dockable-comment')) {
+                requestAnimationFrame(() => {
+                    commentSection.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                });
+            }
         } else {
             inputEl.classList.add('hidden');
-            if (commentSection) commentSection.classList.remove('comment-input-open');
+            if (commentSection) {
+                commentSection.classList.remove('comment-input-open');
+                if (commentSection.classList?.contains('moment-v2-social-comments-panel')) {
+                    commentSection.classList.add('hidden');
+                    restoreMomentV2SocialCommentSheetFromBody(commentSection);
+                    collapseMomentV2SocialPanelIfListEmpty(postId);
+                }
+            }
         }
     }
 };
@@ -1198,7 +1567,20 @@ window.submitComment = async (postId) => {
         return;
     }
 
-    const inputEl = document.getElementById(`comment-text-${postId}`);
+    const mealO = document.getElementById('timelineMealPhotosOverlay');
+    const overlayCommentOpen =
+        mealO &&
+        !mealO.classList.contains('hidden') &&
+        mealO._mealPhotoPostCommentsOpen &&
+        String(mealO._mealPhotoPostCommentsPostId) === String(postId);
+    /* 팝업 댓글 열림 시 피드에 숨겨진 `comment-text-*`가 먼저 잡혀 빈 값으로 처리되던 것 방지 — 오버레이 input 우선 */
+    let inputEl = null;
+    if (overlayCommentOpen) {
+        inputEl = mealO.querySelector('[data-meal-overlay-post-comments-input]');
+    }
+    if (!inputEl) {
+        inputEl = document.getElementById(`comment-text-${postId}`);
+    }
     if (!inputEl) return;
     
     const commentText = inputEl.value.trim();
@@ -1209,9 +1591,20 @@ window.submitComment = async (postId) => {
     if (_commentSubmitting[postId]) return;
     _commentSubmitting[postId] = true;
     
-    const commentsListEl = document.getElementById(`comments-list-${postId}`);
+    let commentsListEl = null;
+    if (overlayCommentOpen) {
+        commentsListEl = mealO.querySelector('[data-meal-overlay-post-comments-list]');
+    }
+    if (!commentsListEl) {
+        commentsListEl = document.getElementById(`comments-list-${postId}`);
+    }
     const commentCountEl = document.querySelector(`.post-comment-count[data-post-id="${postId}"]`);
-    const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
+    const isMealPhotoOverlayCommentsList = Boolean(
+        commentsListEl?.getAttribute?.('data-meal-overlay-post-comments-list') != null
+    );
+    const isMomentV2SocialCommentSheetList = Boolean(commentsListEl?.closest?.('.moment-v2-social-comments-sheet'));
+    // 모먼트2 시트는 밝은 톤(검은 글자) — 다크 스타일은 사진 오버레이만 사용
+    const useDarkCommentRowStyle = isMealPhotoOverlayCommentsList;
     const userProfile = window.userSettings?.profile || {};
     const userNickname = userProfile?.nickname || '익명';
     const tempId = `temp-${Date.now()}`;
@@ -1221,22 +1614,41 @@ window.submitComment = async (postId) => {
     
     // 낙관적 업데이트: 댓글 한 줄 즉시 표시
     if (commentsListEl) {
-        commentsListEl.classList.add('bg-slate-50');
-        commentsListEl.insertAdjacentHTML('beforeend',
-            `<div class="mb-1 text-sm" data-temp-comment-id="${tempId}">
-                <span class="font-bold text-slate-800">${escapeHtml(userNickname)}</span>
-                <span class="text-slate-800 ml-2">${escapeHtml(commentText)}</span>
-            </div>`);
+        if (isMealPhotoOverlayCommentsList) {
+            commentsListEl.querySelector?.('[data-meal-overlay-comments-empty]')?.remove();
+        } else if (!isMomentV2SocialCommentSheetList) {
+            commentsListEl.classList.add('bg-slate-50');
+        }
+        const nickCls = useDarkCommentRowStyle ? 'font-bold text-white/95' : 'font-bold text-slate-800';
+        const bodyCls = useDarkCommentRowStyle ? 'text-white/90 ml-2' : 'text-slate-800 ml-2';
+        commentsListEl.insertAdjacentHTML(
+            'beforeend',
+            `<div class="mb-1 ${useDarkCommentRowStyle && !isMomentV2SocialCommentSheetList ? '' : 'text-sm'}" data-temp-comment-id="${tempId}">
+                <button type="button" class="${nickCls}" data-mv2-mention-nick="${mv2EscapeAttr(userNickname)}">${escapeHtml(userNickname)}</button>
+                <span class="${bodyCls}">${escapeHtml(commentText)}</span>
+            </div>`
+        );
         const commentSection = document.getElementById(`comment-section-${postId}`);
-        if (commentSection) commentSection.classList.remove('comments-empty');
+        if (commentSection) {
+            commentSection.classList.remove('comments-empty');
+            if (commentSection.classList?.contains('moment-v2-social-comments-panel')) {
+                commentSection.classList.remove('comment-input-open');
+                commentSection.classList.remove('hidden');
+                mountMomentV2SocialCommentSheetToBody(commentSection);
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        commentSection.classList.add('comment-input-open');
+                    });
+                });
+            }
+        }
+        if (isMomentV2SocialCommentSheetList) {
+            syncMomentV2SocialCommentEmptyOverlay(String(postId));
+        }
     }
     if (commentCountEl) {
         const n = (parseInt(commentCountEl.textContent || '0', 10) || 0) + 1;
         commentCountEl.textContent = n;
-        if (viewCommentsBtn && n > 2) {
-            viewCommentsBtn.classList.remove('hidden');
-            viewCommentsBtn.textContent = `댓글 ${n}개 모두 보기`;
-        }
     }
     
     try {
@@ -1259,15 +1671,35 @@ window.submitComment = async (postId) => {
                     } catch (_) {}
                 }
                 const safeId = String(result.id).replace(/'/g, "\\'");
-                const commentDisplay = getDisplayProfile(window.currentUser?.uid, { nickname: result.userNickname });
+                const commentDisplay = getDisplayProfile(
+                    window.currentUser?.uid,
+                    { nickname: result.userNickname, icon: result.userIcon },
+                    { preferStoredNickname: true }
+                );
+                const nickCls2 = useDarkCommentRowStyle ? 'font-bold text-white/95' : 'font-bold text-slate-800';
+                const bodyCls2 = useDarkCommentRowStyle ? 'text-white/90 ml-2' : 'text-slate-800 ml-2';
+                const dateCls = useDarkCommentRowStyle ? 'text-xs text-white/45 ml-2' : 'text-xs text-slate-400 ml-2';
+                const delCls = useDarkCommentRowStyle
+                    ? 'ml-2 text-white/50 text-xs hover:text-red-300'
+                    : 'ml-2 text-slate-400 text-xs hover:text-red-500';
                 tempRow.outerHTML = `
-                    <div class="mb-1 text-sm">
-                        <span class="font-bold text-slate-800">${escapeHtml(commentDisplay.nickname)}</span>
-                        <span class="text-slate-800 ml-2">${escapeHtml(result.comment || '')}</span>
-                        ${dateStr && timeStr ? `<span class="text-xs text-slate-400 ml-2">${dateStr} ${timeStr}</span>` : ''}
-                        <button onclick="window.deleteCommentFromPost('${safeId}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>
+                    <div class="mb-1 ${useDarkCommentRowStyle && !isMomentV2SocialCommentSheetList ? '' : 'text-sm'}">
+                        <button type="button" class="${nickCls2}" data-mv2-mention-nick="${mv2EscapeAttr(commentDisplay.nickname)}">${escapeHtml(commentDisplay.nickname)}</button>
+                        <span class="${bodyCls2}">${escapeHtml(result.comment || '')}</span>
+                        ${dateStr && timeStr ? `<span class="${dateCls}">${dateStr} ${timeStr}</span>` : ''}
+                        <button onclick="window.deleteCommentFromPost('${safeId}', '${postId}')" class="${delCls}">삭제</button>
                     </div>`;
             }
+        }
+        document.querySelectorAll('.post-comment-btn[data-post-id]').forEach((btn) => {
+            if (btn.getAttribute('data-post-id') !== String(postId)) return;
+            if (btn.querySelector('.post-comment-fill')) {
+                btn.setAttribute('data-post-user-commented', '1');
+            }
+        });
+        applyStackCommentBtnVisual(postId);
+        if (isMomentV2SocialCommentSheetList) {
+            syncMomentV2SocialCommentEmptyOverlay(String(postId));
         }
     } catch (e) {
         console.error("[submitComment] 에러:", e);
@@ -1278,7 +1710,12 @@ window.submitComment = async (postId) => {
             const tempRow = commentsListEl.querySelector(`[data-temp-comment-id="${tempId}"]`);
             if (tempRow) tempRow.remove();
             const left = commentsListEl.querySelectorAll('.mb-1.text-sm').length;
-            if (left === 0) commentsListEl.classList.remove('bg-slate-50');
+            if (left === 0 && !isMealPhotoOverlayCommentsList && !isMomentV2SocialCommentSheetList) {
+                commentsListEl.classList.remove('bg-slate-50');
+            }
+            if (isMomentV2SocialCommentSheetList) {
+                syncMomentV2SocialCommentEmptyOverlay(String(postId));
+            }
         }
         if (commentCountEl) {
             const n = Math.max(0, (parseInt(commentCountEl.textContent || '0', 10) || 0) - 1);
@@ -1290,6 +1727,72 @@ window.submitComment = async (postId) => {
         _commentSubmitting[postId] = false;
     }
 };
+
+/** 사진 팝업 하단 댓글 박스 — 코멘트 밴드와 유사한 어두운 톤 */
+async function loadPostCommentsForMealPhotoOverlayList(postId, listEl) {
+    if (!listEl || !postId || !postInteractions?.getComments) return;
+    try {
+        const alternates = getAlternatePostIdsForPost(postId);
+        const comments = await postInteractions.getComments(postId, alternates);
+        if (comments.length === 0) {
+            listEl.innerHTML =
+                '<p class="py-1 text-white/50" data-meal-overlay-comments-empty>댓글이 없습니다.</p>';
+            return;
+        }
+        const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
+        listEl.innerHTML = comments
+            .map((comment) => {
+                let dateStr = '';
+                let timeStr = '';
+                if (comment.timestamp) {
+                    try {
+                        const commentDate =
+                            comment.timestamp instanceof Date
+                                ? comment.timestamp
+                                : comment.timestamp.toDate
+                                  ? comment.timestamp.toDate()
+                                  : new Date(comment.timestamp);
+                        if (!isNaN(commentDate.getTime())) {
+                            dateStr = commentDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+                            timeStr = commentDate.toLocaleTimeString('ko-KR', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                hour12: false
+                            });
+                        }
+                    } catch (_) {
+                        /* ignore */
+                    }
+                }
+                const commentDisplay = getDisplayProfile(
+                    comment.userId,
+                    { nickname: comment.userNickname, icon: comment.userIcon },
+                    { preferStoredNickname: true }
+                );
+                const isMyComment = isLoggedIn && comment.userId === window.currentUser.uid;
+                const del =
+                    isMyComment && comment.id
+                        ? `<button type="button" onclick="window.deleteCommentFromPost('${String(comment.id).replace(/'/g, "\\'")}', '${String(postId).replace(/'/g, "\\'")}')" class="ml-2 text-white/50 text-xs hover:text-red-300">삭제</button>`
+                        : '';
+                return `
+                    <div class="mb-1.5">
+                        <span class="font-bold text-white/95">${escapeHtml(commentDisplay.nickname)}</span>
+                        <span class="ml-2 text-white/90">${escapeHtml(comment.comment || '')}</span>
+                        ${
+                            dateStr && timeStr
+                                ? `<span class="ml-2 text-xs text-white/45">${dateStr} ${timeStr}</span>`
+                                : ''
+                        }
+                        ${del}
+                    </div>`;
+            })
+            .join('');
+    } catch (e) {
+        console.error('loadPostCommentsForMealPhotoOverlayList', e);
+        listEl.innerHTML = '<p class="py-1 text-sm text-red-300/90">댓글을 불러오지 못했습니다.</p>';
+    }
+}
+window.loadPostCommentsForMealPhotoOverlayList = loadPostCommentsForMealPhotoOverlayList;
 
 // 포스트 댓글 로드 함수
 async function loadPostComments(postId) {
@@ -1308,8 +1811,9 @@ async function loadPostComments(postId) {
                 commentsListEl.innerHTML = '';
                 commentsListEl.classList.remove('bg-slate-50');
             } else {
-                commentsListEl.classList.add('bg-slate-50');
-                const displayComments = comments.slice(0, 2);
+                const isMomentV2Sheet = Boolean(commentsListEl.closest?.('.moment-v2-social-comments-sheet'));
+                if (!isMomentV2Sheet) commentsListEl.classList.add('bg-slate-50');
+                const displayComments = isMomentV2Sheet ? comments : comments.slice(0, 2);
                 commentsListEl.innerHTML = displayComments.map(comment => {
                     // timestamp가 유효한지 확인
                     let dateStr = '';
@@ -1331,10 +1835,15 @@ async function loadPostComments(postId) {
                     
                     const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
                     const isMyComment = isLoggedIn && comment.userId === window.currentUser.uid;
-                    const commentDisplay = getDisplayProfile(comment.userId, { nickname: comment.userNickname });
+                    const commentDisplay = getDisplayProfile(
+                    comment.userId,
+                    { nickname: comment.userNickname, icon: comment.userIcon },
+                    { preferStoredNickname: true }
+                );
+                    if (isMomentV2Sheet) mv2NotifyIfMentionedOnce(postId, comment);
                     return `
                         <div class="mb-1 text-sm">
-                            <span class="font-bold text-slate-800">${escapeHtml(commentDisplay.nickname)}</span>
+                            <button type="button" class="font-bold text-slate-800" data-mv2-mention-nick="${mv2EscapeAttr(commentDisplay.nickname)}">${escapeHtml(commentDisplay.nickname)}</button>
                             <span class="text-slate-800 ml-2">${escapeHtml(comment.comment || '')}</span>
                             ${dateStr && timeStr ? `<span class="text-xs text-slate-400 ml-2">${dateStr} ${timeStr}</span>` : ''}
                             ${isMyComment ? `<button onclick="window.deleteCommentFromPost('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
@@ -1342,19 +1851,6 @@ async function loadPostComments(postId) {
                     `;
                 }).join('');
                 
-                // 댓글이 2개보다 많으면 "댓글 모두 보기" 버튼 표시
-                if (comments.length > 2) {
-                    const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
-                    if (viewCommentsBtn) {
-                        viewCommentsBtn.classList.remove('hidden');
-                        viewCommentsBtn.textContent = `댓글 ${comments.length}개 모두 보기`;
-                    }
-                } else {
-                    const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
-                    if (viewCommentsBtn) {
-                        viewCommentsBtn.classList.add('hidden');
-                    }
-                }
             }
         }
     } catch (e) {
@@ -1364,26 +1860,21 @@ async function loadPostComments(postId) {
 window.loadPostComments = loadPostComments;
 window.Mealog.loadPostComments = loadPostComments;
 
-// 포스트 캡션 토글 (더 보기/접기)
+// 포스트 캡션 토글 (접힘 ↔ 전체; 펼친 뒤에는 본문 탭으로 접기 — 별도 「접기」 문구 없음)
 window.togglePostCaption = (idx) => {
-    const collapsedEl = document.getElementById(`post-caption-collapsed-${idx}`);
-    const expandedEl = document.getElementById(`post-caption-expanded-${idx}`);
-    const toggleBtn = document.getElementById(`post-caption-toggle-${idx}`);
-    const collapseBtn = document.getElementById(`post-caption-collapse-${idx}`);
-    
-    if (collapsedEl && expandedEl && toggleBtn && collapseBtn) {
-        const isCollapsed = !collapsedEl.classList.contains('hidden');
-        if (isCollapsed) {
-            collapsedEl.classList.add('hidden');
-            expandedEl.classList.remove('hidden');
-            toggleBtn.classList.add('hidden');
-            collapseBtn.classList.remove('hidden');
-        } else {
-            collapsedEl.classList.remove('hidden');
-            expandedEl.classList.add('hidden');
-            toggleBtn.classList.remove('hidden');
-            collapseBtn.classList.add('hidden');
-        }
+    const id = idx != null && idx !== '' ? String(idx) : '';
+    if (!id) return;
+    const collapsedEl = document.getElementById(`post-caption-collapsed-${id}`);
+    const expandedEl = document.getElementById(`post-caption-expanded-${id}`);
+    if (!collapsedEl || !expandedEl) return;
+
+    const isCollapsed = !collapsedEl.classList.contains('hidden');
+    if (isCollapsed) {
+        collapsedEl.classList.add('hidden');
+        expandedEl.classList.remove('hidden');
+    } else {
+        expandedEl.classList.add('hidden');
+        collapsedEl.classList.remove('hidden');
     }
 };
 }

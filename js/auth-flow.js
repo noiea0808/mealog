@@ -1,14 +1,108 @@
 // 인증 플로우 관리자
 // 복잡한 로그인 플로우를 단순하고 명확하게 관리
 
-import { auth } from './firebase.js';
+import { auth, db, appId } from './firebase.js';
 import { dbOps } from './db.js';
 import { showToast, switchScreen, showLoading, hideLoading } from './ui.js';
-import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
-import { getCurrentTermsVersion } from './utils-terms.js';
+import { DEFAULT_USER_SETTINGS, DEFAULT_SUB_TAGS } from './constants.js';
+import { getCurrentTermsVersion, getLiveTermsCurrentVersionOrNull } from './utils-terms.js';
 import { showTermsModal, closeTermsModal } from './auth.js';
 import { isDemoUser, maybeShowDemoIntroModal } from './demo-account.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
+import { isProfileWizardCompleted } from './profile-readiness.js';
+import { maybeSeedNicknameFromAuthDisplayName } from './auth-nickname-seed.js';
+import { appState } from './state.js';
+
+/**
+ * 로그인/인증 완료 시 기본 탭은 밀로그.
+ * 인증 콜백이 늦게 도착하기 전에 사용자가 이미 다른 탭(모먼트 등)을 눌렀다면 덮어쓰지 않음.
+ */
+function applyAuthDefaultMainTab(switchMainTab) {
+    if (typeof switchMainTab !== 'function') return;
+    if (appState.currentTab === 'timeline') {
+        switchMainTab('timeline');
+    }
+}
+
+/**
+ * 설정 문서를 서버에서 한 번 읽어 window.userSettings를 맞춤.
+ * 저장 직후 onSnapshot이 캐시된 이전 스냅샷으로 덮어쓰면 약관이 '미동의'로 보이는 루프가 나므로,
+ * onTermsAgreed / onProfileSetup 직전에 호출한다.
+ */
+async function hydrateUserSettingsFromServer(uid) {
+    if (!uid || typeof window === 'undefined') return false;
+    try {
+        const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js');
+        const ref = doc(db, 'artifacts', appId, 'users', uid, 'config', 'settings');
+        const snap = await getDoc(ref, { source: 'server' });
+        if (!snap.exists()) return false;
+        window.userSettings = snap.data();
+        if (!window.userSettings.subTags) {
+            window.userSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
+        }
+        if (!window.userSettings.favoriteSubTags) {
+            window.userSettings.favoriteSubTags = {
+                mealType: {},
+                category: {},
+                withWhom: {},
+                snackType: {},
+                snackPlace: {}
+            };
+        }
+        if (!window.userSettings.tags) {
+            window.userSettings.tags = {};
+        }
+        return true;
+    } catch (e) {
+        console.warn('hydrateUserSettingsFromServer 실패:', e?.message || e);
+        return false;
+    }
+}
+
+/**
+ * 앱에서 약관 단계를 건너뛸 수 있는지 (온보딩·재동의 판별)
+ * — termsAgreed === true 이고 termsVersion 비어 있지 않으며 **현재 서비스 버전과 일치**
+ * — 버전만 다르면 재동의 (약관 업데이트)
+ * — `getCurrentTermsVersion()`은 타임아웃 시 constants(예: 1.0)로 폴백해, 최근 동의한 사용자도
+ *   저장된 버전과 불일치로 **또 동의**받는 경우가 있음 → 여기서는 서버에서 읽힌 버전만 사용하고,
+ *   읽기 실패(null)면 이미 동의·버전이 있으면 잠정 통과(네트워크·App Check 지연 완화).
+ */
+async function isTermsAgreementRecordedAndCurrent(settings) {
+    if (!settings || settings.termsAgreed !== true) return false;
+    const v = settings.termsVersion;
+    if (v == null || String(v).trim() === '') return false;
+    const userV = String(v).trim();
+    const live = await getLiveTermsCurrentVersionOrNull();
+    if (live != null && live !== '') {
+        return userV === live;
+    }
+    console.warn(
+        'isTermsAgreementRecordedAndCurrent: 서버 약관 버전 미확인 — 기존 동의(termsVersion) 유지로 재요청 생략',
+        { userV }
+    );
+    return true;
+}
+
+/**
+ * termsAgreed === true 인데 termsVersion 이 비어 있으면, 현재 서비스 버전으로 저장 (DB·레거시 스냅샷 정리)
+ * — 온보딩 위저드 없이 한 번만 merge 저장
+ */
+async function maybeBackfillTermsVersionFromAgreement(uid) {
+    if (!uid || typeof window === 'undefined') return;
+    if (auth.currentUser && isDemoUser(auth.currentUser)) return;
+    const ws = window.userSettings;
+    if (!ws || ws.termsAgreed !== true) return;
+    const v = ws.termsVersion;
+    if (v != null && String(v).trim() !== '') return;
+    try {
+        const current = await getCurrentTermsVersion();
+        window.userSettings = { ...ws, termsVersion: current };
+        await dbOps.saveSettings(window.userSettings);
+        console.log('✅ 약관 동의만 있고 버전 없음 → termsVersion 백필:', current);
+    } catch (e) {
+        console.warn('약관 버전 백필 저장 실패:', e?.message || e);
+    }
+}
 
 /** hasCompleted 직후 호출 — onDataUpdate가 더 이상 안 오는 경우에도 출석 팝업이 뜨도록 */
 function queueAttendanceCheck() {
@@ -31,29 +125,56 @@ function isLikelyFirstSessionAfterAccountCreate(user) {
     return Math.abs(l - c) < 120000;
 }
 
+/** 카카오 웹 로그인 직후 1회만 자동 가입 위저드 허용 (auth.js에서 OAuth 성공 시 설정) */
+const KAKAO_PROFILE_SETUP_GATE_KEY = 'mealog_kakaoProfileSetupGate';
+/** localStorage 타임스탬프 유효 시간 (OAuth 직후 다른 탭에서도 인정) */
+const KAKAO_PROFILE_GATE_TTL_MS = 30 * 60 * 1000;
+/** sessionStorage 없을 때 보조: 직전 로그인으로 간주하는 시간 (다른 탭·게이트 소비 타이밍 완화) */
+const KAKAO_PROFILE_GATE_RECENT_SIGNIN_MS = 25 * 60 * 1000;
+
+function kakaoProfileGateUidKey(uid) {
+    return `mealog_kakaoProfileSetupGateUid_${uid}`;
+}
+
 /**
- * 오프라인·캐시 미스 시 meals 조회가 비어도 "신규 가입"으로 오인하지 않기 위한 힌트.
- * (비행기 모드에서 기존 회원이 가입 위저드로 떨어지는 문제 완화)
+ * 카카오 프로필 온보딩 허용 여부 — sessionStorage + localStorage + 최근 로그인(보조)
  */
-function isLikelyReturningUserFromLocalSettings() {
-    const ws = typeof window !== 'undefined' ? window.userSettings : null;
-    if (ws && typeof ws === 'object') {
-        if (ws.profileCompleted === true) return true;
-        const nick = ws.profile && typeof ws.profile.nickname === 'string' ? ws.profile.nickname.trim() : '';
-        if (ws.termsAgreed === true && nick && nick !== '게스트') return true;
-    }
+function isKakaoProfileSetupGateOpen(user) {
     try {
-        if (typeof localStorage !== 'undefined' && localStorage.getItem('mealog_seen_real_login') === '1') {
-            return true;
+        if (sessionStorage.getItem(KAKAO_PROFILE_SETUP_GATE_KEY) === '1') return true;
+    } catch (_) {}
+    const uid = user?.uid;
+    if (!uid) return false;
+    try {
+        const raw = localStorage.getItem(kakaoProfileGateUidKey(uid));
+        if (raw) {
+            const ts = Number(raw);
+            if (Number.isFinite(ts) && Date.now() - ts <= KAKAO_PROFILE_GATE_TTL_MS) return true;
+            localStorage.removeItem(kakaoProfileGateUidKey(uid));
         }
-    } catch (_) {
-        /* ignore */
-    }
+    } catch (_) {}
+    try {
+        const last = user?.metadata?.lastSignInTime;
+        if (!last) return false;
+        const t = new Date(last).getTime();
+        if (!Number.isFinite(t)) return false;
+        if (Date.now() - t <= KAKAO_PROFILE_GATE_RECENT_SIGNIN_MS) return true;
+    } catch (_) {}
     return false;
 }
 
-/** 카카오 웹 로그인 직후 1회만 자동 가입 위저드 허용 (auth.js에서 OAuth 성공 시 설정) */
-const KAKAO_PROFILE_SETUP_GATE_KEY = 'mealog_kakaoProfileSetupGate';
+/** OAuth 직후 플래그 정리 — 가입 위저드 저장 완료 시 signup-wizard에서 호출 */
+export function consumeKakaoProfileSetupGate(user) {
+    try {
+        sessionStorage.removeItem(KAKAO_PROFILE_SETUP_GATE_KEY);
+    } catch (_) {}
+    const uid = user?.uid;
+    if (uid) {
+        try {
+            localStorage.removeItem(kakaoProfileGateUidKey(uid));
+        } catch (_) {}
+    }
+}
 
 function kakaoUidNeedsProfileWizardGuard(uid) {
     return typeof uid === 'string' && uid.startsWith('kakao_');
@@ -77,16 +198,8 @@ async function openSignupWizardWithKakaoStaleGuard(user, wizardOptions = {}) {
         signupWizardIsProfileOnboarding(wizardOptionsForWizard) &&
         !bypassKakaoGate
     ) {
-        let gate = false;
-        try {
-            gate = sessionStorage.getItem(KAKAO_PROFILE_SETUP_GATE_KEY) === '1';
-        } catch (_) {}
-        if (gate) {
-            try {
-                sessionStorage.removeItem(KAKAO_PROFILE_SETUP_GATE_KEY);
-            } catch (_) {}
-        } else {
-            console.log('🔐 카카오 가입: 직전 OAuth 리다이렉트가 아니어 로그아웃 후 로그인 화면부터 시작합니다.');
+        if (!isKakaoProfileSetupGateOpen(user)) {
+            console.log('🔐 카카오 가입: 직전 OAuth·최근 로그인 맥락이 아니어 로그아웃 후 로그인 화면부터 시작합니다.');
             try {
                 // main.js onAuthStateChanged가 비의도적 로그아웃으로 무시하지 않도록
                 sessionStorage.setItem('explicitLogout', 'true');
@@ -183,123 +296,33 @@ export class AuthFlowManager {
                 this._cachedExistingUser = isExistingUser;
             } catch (e) {
                 console.warn('기존 사용자 확인 실패:', e);
-                isExistingUser = isLikelyReturningUserFromLocalSettings();
-                if (isExistingUser) this._cachedExistingUser = true;
+                isExistingUser = false;
             }
         }
         
-        // 기존 사용자는 약관과 프로필 모두 완료된 것으로 간주
         if (isExistingUser) {
-            readiness.termsAgreed = true;
-            readiness.hasProfile = true;
             readiness.isExistingUser = true;
-            console.log('✅ 기존 사용자: 약관과 프로필 모두 완료로 처리');
-            return readiness;
-        }
-        
-        // 신규 사용자: 약관 동의 확인 (약관 버전도 체크)
-        const agreedVersion = this.userSettings.termsVersion || null;
-        const hasAgreed = this.userSettings.termsAgreed === true;
-        
-        // 약관 동의 상태 확인 로직 개선
-        // 1. termsAgreed가 false이면 무조건 동의 필요 (신규 사용자)
-        // 2. termsAgreed가 true이고 termsVersion이 있으면 버전 비교
-        //    - 버전이 일치하면 동의 완료 (모달 표시 안 함)
-        //    - 버전이 불일치하면 약관 업데이트됨 (모달 표시)
-        // 3. termsAgreed가 true이지만 termsVersion이 없으면 기존 사용자로 간주 (동의 완료 처리)
-        
-        let versionMatches = false;
-        
-        if (!hasAgreed) {
-            // 약관에 동의하지 않음 - 신규 사용자
-            versionMatches = false;
-        } else if (agreedVersion !== null && agreedVersion !== '') {
-            // termsVersion이 있는 경우: Firestore에서 현재 버전 가져와서 비교
-            let currentVersion = CURRENT_TERMS_VERSION; // 기본값
-            let versionCheckFailed = false;
-            
-            try {
-                currentVersion = await getCurrentTermsVersion();
-            } catch (e) {
-                console.warn('약관 버전 가져오기 실패, 기본값 사용:', e);
-                versionCheckFailed = true;
-            }
-            
-            if (versionCheckFailed) {
-                // 버전 확인 실패 시: 기존 사용자로 간주하고 동의 완료 처리
-                // 네트워크 문제 등으로 인한 오탐 방지 - 약관 모달을 표시하지 않음
-                versionMatches = true;
-                console.log('⚠️ 약관 버전 확인 실패했지만, 기존 사용자로 간주하여 동의 완료 처리합니다.');
+            if (isProfileWizardCompleted(this.userSettings)) {
+                console.log('✅ 기존 사용자: 프로필 위저드 완료로 보임');
             } else {
-                // 버전 비교 (정규화하여 비교)
-                const normalizedAgreed = String(agreedVersion).trim();
-                const normalizedCurrent = String(currentVersion).trim();
-                versionMatches = normalizedAgreed === normalizedCurrent;
-                
-                if (!versionMatches) {
-                    console.log('📋 약관 버전 불일치 (약관 업데이트됨):', {
-                        동의한_버전: normalizedAgreed,
-                        현재_버전: normalizedCurrent
-                    });
-                } else {
-                    console.log('✅ 약관 버전 일치 (약관 업데이트 없음):', {
-                        버전: normalizedAgreed
-                    });
-                }
+                console.log('⚠️ 기존 사용자: 프로필 위저드 보정 필요');
             }
         } else {
-            // termsVersion이 없지만 termsAgreed가 true인 경우
-            // 기존 사용자로 간주하고 현재 버전에 동의한 것으로 처리
-            versionMatches = true;
-            console.log('✅ 기존 사용자 (termsVersion 없음): 약관 동의 완료로 처리');
-            
-            // Firestore에서 현재 버전 가져오기 (에러 발생 시 기본값 사용)
-            let currentVersion = CURRENT_TERMS_VERSION;
-            try {
-                currentVersion = await getCurrentTermsVersion();
-            } catch (e) {
-                console.warn('약관 버전 가져오기 실패, 기본값 사용:', e);
-            }
-            
-            // termsVersion을 현재 버전으로 업데이트 (비동기로 저장)
-            this.userSettings.termsVersion = currentVersion;
-            if (window.dbOps) {
-                window.dbOps.saveSettings(this.userSettings).catch(e => {
-                    console.warn('termsVersion 업데이트 실패:', e);
-                });
-            }
+            readiness.isExistingUser = false;
+            console.log('📋 신규 사용자 경로: 프로필·약관 동일 기준 검사');
         }
-        
-        readiness.termsAgreed = hasAgreed && versionMatches;
-        
-        // 디버깅 로그 (항상 출력)
-        console.log('📋 약관 동의 상태 확인:', {
-            termsAgreed: hasAgreed,
-            agreedVersion: agreedVersion,
-            versionMatches: versionMatches,
-            finalAgreed: readiness.termsAgreed,
-            userSettingsTermsVersion: this.userSettings.termsVersion,
-            userSettingsTermsAgreed: this.userSettings.termsAgreed
+
+        readiness.hasProfile = isProfileWizardCompleted(this.userSettings);
+        readiness.termsAgreed = await isTermsAgreementRecordedAndCurrent(this.userSettings);
+        console.log('📋 약관·프로필 준비 상태:', {
+            isExistingUser,
+            termsAgreedSolid: readiness.termsAgreed,
+            hasProfile: readiness.hasProfile,
+            termsAgreed: this.userSettings.termsAgreed,
+            termsVersion: this.userSettings.termsVersion,
+            profileCompleted: this.userSettings.profileCompleted
         });
-        
-        // 프로필 확인: profileCompleted 플래그를 1차 기준으로 사용
-        // (구버전 데이터 호환을 위해, 플래그가 없으면 기존 닉네임 기준으로만 임시 판단)
-        if (this.userSettings.profileCompleted === true) {
-            readiness.hasProfile = true;
-        } else if (this.userSettings.profileCompleted === false) {
-            readiness.hasProfile = false;
-        } else {
-            // legacy fallback
-            readiness.hasProfile = !!(
-                this.userSettings.profile &&
-                this.userSettings.profile.nickname &&
-                this.userSettings.profile.nickname !== '게스트' &&
-                this.userSettings.profile.nickname.trim() !== ''
-            );
-        }
-        
-        readiness.isExistingUser = false;
-        
+
         return readiness;
     }
     
@@ -320,16 +343,18 @@ export class AuthFlowManager {
             const settingsSnap = await getDoc(settingsRef);
             if (settingsSnap.exists()) {
                 const d = settingsSnap.data();
-                if (d && d.profileCompleted === true) return true;
-                const nick =
-                    d && d.profile && typeof d.profile.nickname === 'string' ? d.profile.nickname.trim() : '';
-                if (d && d.termsAgreed === true && nick && nick !== '게스트') return true;
+                // meals가 없을 때만 settings로 판별 — 온보딩 완결과 동일 기준(레거시 분기 제거)
+                if (
+                    d &&
+                    isProfileWizardCompleted(d) &&
+                    (await isTermsAgreementRecordedAndCurrent(d))
+                ) {
+                    return true;
+                }
             }
-            if (isLikelyReturningUserFromLocalSettings()) return true;
             return false;
         } catch (e) {
             console.error('기존 사용자 확인 실패:', e);
-            if (isLikelyReturningUserFromLocalSettings()) return true;
             return false;
         }
     }
@@ -375,9 +400,8 @@ export class AuthFlowManager {
             const profileSetupModal = document.getElementById('profileSetupModal');
             if (profileSetupModal) profileSetupModal.classList.add('hidden');
             switchScreen(true);
-            // ✅ 초기 진입에서도 타임라인 렌더가 되도록 탭을 명시적으로 세팅
-            const switchMainTab = window.switchMainTab;
-            if (switchMainTab) switchMainTab('timeline');
+            // ✅ 초기 진입에서도 타임라인 렌더가 되도록 탭을 명시적으로 세팅 (이미 다른 탭을 고른 경우 유지)
+            applyAuthDefaultMainTab(window.switchMainTab);
             this.hasCompleted = true;
             this.lastProcessedUserId = user?.uid;
             // 둘러보기 방문 기록 (main.js에서도 기록하지만, 게스트 화면 진입 시점에서 한 번 더 보장)
@@ -397,10 +421,9 @@ export class AuthFlowManager {
         // 일단 메인 화면으로 입장 (약관과 프로필은 백그라운드에서 확인)
         console.log('✅ 메인 화면으로 입장 (약관/프로필은 백그라운드에서 확인)');
         this.currentState = AuthState.READY;
-        const switchMainTab = window.switchMainTab;
         closeTermsModal();
         switchScreen(true);
-        if (switchMainTab) switchMainTab('timeline');
+        applyAuthDefaultMainTab(window.switchMainTab);
         // 로딩 즉시 해제 (meals 스냅샷 대기하지 않음 → 체감 로딩 시간 단축, 타임라인은 데이터 도착 시 onDataUpdate에서 채워짐)
         window._recordsLoadHidePending = false;
         hideLoading();
@@ -414,8 +437,8 @@ export class AuthFlowManager {
     }
     
     /**
-     * 프로필만 확인하는 간단한 준비 상태 체크 (약관 제외)
-     * 기존 사용자는 프로필이 완료된 것으로 간주
+     * 프로필·약관 완결 여부 (processState 등 보조용)
+     * — 레거시 자동 보정 없음. profileCompleted+닉네임·약관 버전 모두 동일 기준.
      */
     async checkUserReadinessForProfile(user) {
         const readiness = new UserReadiness();
@@ -444,8 +467,7 @@ export class AuthFlowManager {
                     console.log('✅ 프로필 확인: 기존 사용자 확인 완료', { isExistingUser });
                 } catch (e) {
                     console.warn('기존 사용자 확인 실패 (프로필 확인):', e);
-                    isExistingUser = isLikelyReturningUserFromLocalSettings();
-                    if (isExistingUser) this._cachedExistingUser = true;
+                    isExistingUser = false;
                 } finally {
                     this._existingUserCheckInProgress = false;
                 }
@@ -459,62 +481,20 @@ export class AuthFlowManager {
         }
         
         if (isExistingUser) {
-            // 기존 사용자는 프로필이 완료된 것으로 간주
-            readiness.hasProfile = true;
-            console.log('✅ 프로필 확인: 기존 사용자로 확인됨. 프로필 완료로 처리');
-            
-            // profileCompleted 플래그가 없으면 설정 (마이그레이션)
-            if (this.userSettings.profileCompleted !== true) {
-                this.userSettings.profileCompleted = true;
-                if (!this.userSettings.profileCompletedAt) {
-                    this.userSettings.profileCompletedAt = new Date().toISOString();
-                }
-                // 비동기로 저장 (블로킹하지 않음)
-                if (window.dbOps) {
-                    window.dbOps.saveSettings(this.userSettings).catch(e => {
-                        console.warn('profileCompleted 플래그 업데이트 실패:', e);
-                    });
-                }
+            readiness.hasProfile = isProfileWizardCompleted(this.userSettings);
+            readiness.termsAgreed = await isTermsAgreementRecordedAndCurrent(this.userSettings);
+            if (readiness.hasProfile) {
+                console.log('✅ 프로필 확인: 기존 사용자 + 위저드 완료 플래그');
+            } else {
+                console.log('⚠️ 프로필 확인: 기존 사용자이나 위저드 미완료 → 위저드 필요');
             }
-            
-            // 약관은 일단 true로 설정 (백그라운드에서 확인)
-            readiness.termsAgreed = true;
             return readiness;
         }
-        
-        // 신규 사용자: 프로필 확인 로직
-        // 프로필 확인: profileCompleted 플래그를 1차 기준으로 사용
-        if (this.userSettings.profileCompleted === true) {
-            readiness.hasProfile = true;
-            console.log('✅ 프로필 확인: profileCompleted 플래그가 true');
-        } else if (this.userSettings.profileCompleted === false) {
-            readiness.hasProfile = false;
-            console.log('❌ 프로필 확인: profileCompleted 플래그가 false');
-        } else {
-            // legacy fallback: 닉네임으로 확인
-            const hasNickname = !!(
-                this.userSettings.profile &&
-                this.userSettings.profile.nickname &&
-                this.userSettings.profile.nickname !== '게스트' &&
-                this.userSettings.profile.nickname.trim() !== ''
-            );
-            readiness.hasProfile = hasNickname;
-            
-            if (hasNickname) {
-                console.log('✅ 프로필 확인: 닉네임이 설정되어 있음 (legacy fallback)', {
-                    nickname: this.userSettings.profile?.nickname
-                });
-            } else {
-                console.log('❌ 프로필 확인: 닉네임이 없거나 유효하지 않음 (legacy fallback)', {
-                    hasProfile: !!this.userSettings.profile,
-                    nickname: this.userSettings.profile?.nickname
-                });
-            }
-        }
-        
-        // 약관은 일단 true로 설정 (백그라운드에서 확인)
-        readiness.termsAgreed = true;
-        
+
+        readiness.hasProfile = isProfileWizardCompleted(this.userSettings);
+        readiness.termsAgreed = await isTermsAgreementRecordedAndCurrent(this.userSettings);
+        console.log('📋 프로필 확인(신규):', { hasProfile: readiness.hasProfile, termsAgreed: readiness.termsAgreed });
+
         return readiness;
     }
     
@@ -540,7 +520,21 @@ export class AuthFlowManager {
                 return;
             }
             console.log('🔍 백그라운드에서 약관 및 프로필 상태 확인 시작');
-            
+
+            for (let i = 0; i < 40 && !window.userSettings; i++) {
+                await new Promise((r) => setTimeout(r, 50));
+            }
+            try {
+                await maybeSeedNicknameFromAuthDisplayName();
+            } catch (e) {
+                console.warn('Auth 닉네임 시드(백그라운드) 스킵:', e?.message || e);
+            }
+            try {
+                await maybeBackfillTermsVersionFromAgreement(user.uid);
+            } catch (e) {
+                console.warn('약관 버전 백필(백그라운드) 스킵:', e?.message || e);
+            }
+
             // 기존 사용자 확인 (캐시 우선)
             let isExistingUser = false;
             if (this._cachedExistingUser !== undefined) {
@@ -549,15 +543,14 @@ export class AuthFlowManager {
             } else {
                 if (!this._existingUserCheckInProgress) {
                     this._existingUserCheckInProgress = true;
-                try {
-                    isExistingUser = await this.checkExistingUser(user.uid);
-                    this._cachedExistingUser = isExistingUser;
-                    console.log('✅ 기존 사용자 확인 완료', { isExistingUser });
-                } catch (e) {
-                    console.warn('기존 사용자 확인 실패:', e);
-                    isExistingUser = isLikelyReturningUserFromLocalSettings();
-                    if (isExistingUser) this._cachedExistingUser = true;
-                } finally {
+                    try {
+                        isExistingUser = await this.checkExistingUser(user.uid);
+                        this._cachedExistingUser = isExistingUser;
+                        console.log('✅ 기존 사용자 확인 완료', { isExistingUser });
+                    } catch (e) {
+                        console.warn('기존 사용자 확인 실패:', e);
+                        isExistingUser = false;
+                    } finally {
                         this._existingUserCheckInProgress = false;
                     }
                 } else {
@@ -569,16 +562,11 @@ export class AuthFlowManager {
                 }
             }
             
-            // 기존 사용자는 약관과 프로필 모두 완료된 것으로 간주
-            if (isExistingUser) {
-                console.log('✅ 기존 사용자: 약관과 프로필 모두 완료로 처리. 모달을 표시하지 않습니다.');
-                this.hasCompleted = true;
-                this.lastProcessedUserId = user?.uid;
-                queueAttendanceCheck();
-                return;
+            const settingsForNick = window.userSettings || JSON.parse(JSON.stringify(DEFAULT_USER_SETTINGS));
+            if (isExistingUser && !isProfileWizardCompleted(settingsForNick)) {
+                console.log('⚠️ 기존 사용자이나 프로필 위저드 미완료 → 위저드로 유도');
             }
-            
-            // 신규 사용자: 약관과 프로필 확인
+
             let readiness = await this.checkUserReadiness(user);
             /** 고아 settings 복구 시 카카오 게이트를 쓰면 signOut → Firestore permission-denied 연쇄로 화면이 비므로 게이트 생략 */
             let skipKakaoStaleGuard = false;
@@ -686,13 +674,19 @@ export class AuthFlowManager {
                     hideLoading();
                     break;
                     
-                case AuthState.NEEDS_PROFILE:
+                case AuthState.NEEDS_PROFILE: {
                     const profileReadiness = await this.checkUserReadinessForProfile(this.user);
-                    
+
                     if (profileReadiness.hasProfile) {
-                        console.log('✅ 프로필이 이미 설정되어 있습니다.');
-                        this.currentState = AuthState.READY;
-                        await this.processState(this.currentState, profileReadiness);
+                        console.log('✅ 프로필이 이미 설정되어 있습니다. 약관 기록 확인');
+                        const fullReadiness = await this.checkUserReadiness(this.user);
+                        if (!fullReadiness.termsAgreed) {
+                            this.currentState = AuthState.NEEDS_TERMS;
+                            await this.processState(AuthState.NEEDS_TERMS, fullReadiness);
+                        } else {
+                            this.currentState = AuthState.READY;
+                            await this.processState(AuthState.READY, fullReadiness);
+                        }
                     } else {
                         console.log('📋 프로필 설정 필요: 위저드(페이지 형식) 표시');
                         switchScreen(false);
@@ -704,13 +698,14 @@ export class AuthFlowManager {
                         hideLoading();
                     }
                     break;
+                }
                     
                 case AuthState.READY:
                     // 준비 완료: 메인 화면으로 전환, 완료 플래그 설정
                     // 약관 모달이 열려있으면 닫기
                     closeTermsModal();
                     switchScreen(true);
-                    if (switchMainTab) switchMainTab('timeline');
+                    applyAuthDefaultMainTab(switchMainTab);
                     this.hasCompleted = true;
                     this.lastProcessedUserId = this.user?.uid;
                     queueAttendanceCheck();
@@ -720,7 +715,7 @@ export class AuthFlowManager {
                 case AuthState.GUEST:
                     // 게스트 모드: 메인 화면으로 전환, 완료 플래그 설정
                     switchScreen(true);
-                    if (switchMainTab) switchMainTab('timeline');
+                    applyAuthDefaultMainTab(switchMainTab);
                     this.hasCompleted = true;
                     this.lastProcessedUserId = this.user?.uid;
                     console.log('✅ 게스트 모드 완료');
@@ -763,20 +758,40 @@ export class AuthFlowManager {
         try {
             // 약관 모달 닫기
             closeTermsModal();
-            
-            // 프로필 상태 확인
-            const readiness = await this.checkUserReadiness(this.user);
-            
-            // 프로필 상태에 따라 진행
+
+            const uid = this.user?.uid;
+            await hydrateUserSettingsFromServer(uid);
+            await maybeBackfillTermsVersionFromAgreement(uid);
+
+            // 프로필·약관(버전 포함) 상태 확인
+            let readiness = await this.checkUserReadiness(this.user);
+            if (!readiness.termsAgreed && uid) {
+                await new Promise((r) => setTimeout(r, 400));
+                await hydrateUserSettingsFromServer(uid);
+                await maybeBackfillTermsVersionFromAgreement(uid);
+                readiness = await this.checkUserReadiness(this.user);
+            }
+
+            if (!readiness.termsAgreed) {
+                console.log('📋 약관 모달 후에도 DB 기록 불충분 → 약관 위저드로 보강');
+                window._recordsLoadHidePending = false;
+                switchScreen(false);
+                hideLoading();
+                await openSignupWizardWithKakaoStaleGuard(this.user, {
+                    startStep: 4,
+                    totalSteps: 1,
+                    isTermsOnly: true
+                });
+                return;
+            }
+
             if (readiness.hasProfile) {
-                // 프로필 완료: 메인 화면으로
                 console.log('✅ 약관 동의 완료, 프로필도 완료됨. 메인 화면으로 진행');
                 switchScreen(true);
                 this.hasCompleted = true;
                 this.lastProcessedUserId = this.user?.uid;
                 queueAttendanceCheck();
             } else {
-                // 프로필 미완료: 프로필 설정 모달 표시
                 console.log('📋 약관 동의 완료, 프로필 설정 필요: 모달 표시');
                 if (window.showProfileSetupModal) {
                     window.showProfileSetupModal();
@@ -801,7 +816,31 @@ export class AuthFlowManager {
                 console.warn('⚠️ onProfileSetup: user가 없음');
                 return;
             }
-            
+
+            const uid = this.user.uid;
+            await hydrateUserSettingsFromServer(uid);
+            await maybeBackfillTermsVersionFromAgreement(uid);
+
+            let readiness = await this.checkUserReadiness(this.user);
+            if (!readiness.termsAgreed && uid) {
+                await new Promise((r) => setTimeout(r, 400));
+                await hydrateUserSettingsFromServer(uid);
+                await maybeBackfillTermsVersionFromAgreement(uid);
+                readiness = await this.checkUserReadiness(this.user);
+            }
+            if (!readiness.termsAgreed) {
+                console.log('📋 프로필 완료 후 약관 기록 미비 → 약관 위저드');
+                window._recordsLoadHidePending = false;
+                switchScreen(false);
+                hideLoading();
+                await openSignupWizardWithKakaoStaleGuard(this.user, {
+                    startStep: 4,
+                    totalSteps: 1,
+                    isTermsOnly: true
+                });
+                return;
+            }
+
             console.log('✅ 프로필 설정 완료. 메인 화면으로 진행');
             switchScreen(true);
             this.hasCompleted = true;

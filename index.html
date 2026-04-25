@@ -505,35 +505,19 @@
         </div>
     </div>
 
-    <div id="loadingOverlay" class="hidden fixed inset-0 bg-white/90 z-[9999] flex flex-col items-center justify-center">
-        <div id="loadingOverlayBox" class="flex flex-col items-center justify-center px-6 py-5 bg-white rounded-2xl shadow-lg border border-slate-100">
-            <div class="loading-food-icons relative w-10 h-10 flex items-center justify-center text-3xl">
+    <div id="loadingOverlay" class="hidden fixed inset-0 bg-white/55 backdrop-blur-sm z-[9999] flex flex-col items-center justify-center p-4">
+        <div id="loadingOverlayBox" class="flex w-[90%] max-w-[22rem] flex-col items-center rounded-2xl border border-slate-100 bg-white px-6 py-7 shadow-lg sm:px-7 sm:py-8">
+            <div class="loading-food-icons loading-food-icons--overlay relative flex shrink-0 items-center justify-center overflow-hidden text-4xl">
                 <span class="loading-food-icon absolute" aria-hidden="true">🍴</span>
                 <span class="loading-food-icon absolute" aria-hidden="true">🍔</span>
                 <span class="loading-food-icon absolute" aria-hidden="true">🍕</span>
                 <span class="loading-food-icon absolute" aria-hidden="true">🍎</span>
                 <span class="loading-food-icon absolute" aria-hidden="true">🍦</span>
             </div>
-            <p id="loadingOverlayMessage" class="mt-4 text-base font-bold text-slate-800 whitespace-nowrap">기록을 불러오고 있어요</p>
-        </div>
-    </div>
-
-    <!-- 네트워크 단절·서버 연결 실패 시: 안내 + 전체 다시 불러오기 -->
-    <div id="networkErrorOverlay" class="hidden fixed inset-0 bg-slate-900/85 z-[10000] flex flex-col items-center justify-center p-6" role="alertdialog" aria-modal="true" aria-labelledby="networkErrorOverlayTitle">
-        <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 text-center">
-            <div class="w-14 h-14 mx-auto rounded-full bg-amber-100 flex items-center justify-center mb-4">
-                <i class="fa-solid fa-wifi-slash text-2xl text-amber-700" aria-hidden="true"></i>
+            <div class="mt-6 flex w-full min-w-0 flex-col items-center gap-3">
+                <p id="loadingOverlayMessage" class="w-full text-center text-base font-bold leading-relaxed text-slate-800 [white-space:pre-wrap] break-words px-1 min-h-[1.5em]" aria-live="polite">기록을 불러오고 있어요</p>
+                <p id="loadingOverlayStatus" class="hidden w-full text-center text-sm font-semibold leading-snug text-slate-500 whitespace-pre-wrap break-words px-1" aria-live="polite"></p>
             </div>
-            <h2 id="networkErrorOverlayTitle" class="text-lg font-black text-slate-800 mb-2">연결할 수 없습니다</h2>
-            <p id="networkErrorOverlayMessage" class="text-sm text-slate-600 leading-relaxed mb-6">
-                네트워크 연결을 확인할 수 없습니다. Wi-Fi 또는 데이터 연결을 확인한 뒤 다시 시도해 주세요.
-            </p>
-            <button type="button" id="networkErrorReloadBtn" class="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-black shadow-md active:scale-[0.98] transition-transform">
-                <i class="fa-solid fa-rotate-right mr-2" aria-hidden="true"></i>다시 불러오기
-            </button>
-            <button type="button" id="networkErrorDismissBtn" class="mt-3 w-full py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700">
-                닫기
-            </button>
         </div>
     </div>
 
@@ -586,9 +570,8 @@
                 <i class="fa-brands fa-google text-lg"></i>
                 <span class="font-bold text-sm">구글로 계속하기</span>
             </button>
-            <button type="button" id="kakaoLoginBtn" class="w-full py-3.5 rounded-2xl flex items-center justify-between px-5 shadow-lg active:scale-[0.98] transition-transform bg-[#FEE500] text-[#191919] border border-[#F0D000]">
+            <button type="button" id="kakaoLoginBtn" class="w-full py-3.5 rounded-2xl flex items-center justify-center px-5 shadow-lg active:scale-[0.98] transition-transform bg-[#FEE500] text-[#191919] border border-[#F0D000] gap-2">
                 <span class="font-bold text-sm">카카오로 계속하기</span>
-                <span class="text-xs font-bold text-[#191919]/70 whitespace-nowrap">(준비중)</span>
             </button>
             <button id="emailLoginBtn" class="w-full py-3.5 bg-emerald-700 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-[0.98] transition-transform gap-2">
                 <i class="fa-solid fa-envelope text-lg"></i>
@@ -1012,26 +995,32 @@
                     <i class="fa-solid fa-pen text-lg"></i>
                 </button>
                 <div id="boardLoungeFrame" class="board-lounge-frame flex min-h-0 flex-1 flex-col">
-                <div class="board-mealtalk-subtabs flex w-full min-w-0 pt-2 pb-0" role="tablist" aria-label="라운지 — 밀톡·게시판">
-                    <button type="button" id="boardSubtabFeed" role="tab" aria-selected="true" class="board-list-subtab relative flex flex-1 items-center justify-center px-3 py-2.5 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors">
+                <div class="board-mealtalk-subtabs flex w-full min-w-0 pt-2 pb-0" role="tablist" aria-label="라운지 — 밀톡·게시판·공지">
+                    <button type="button" id="boardSubtabFeed" role="tab" aria-selected="true" class="board-list-subtab relative flex flex-1 items-center justify-center px-2 py-2.5 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors">
                         <span class="relative inline-block">
                             밀톡
                             <span class="board-subtab-update-dot hidden absolute right-0 top-0 h-1.5 w-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
                         </span>
                     </button>
-                    <button type="button" id="boardSubtabBoard" role="tab" aria-selected="false" class="board-list-subtab relative flex flex-1 items-center justify-center px-3 py-2.5 text-sm font-bold text-slate-500 border-b-2 border-transparent transition-colors">
+                    <button type="button" id="boardSubtabBoard" role="tab" aria-selected="false" class="board-list-subtab relative flex flex-1 items-center justify-center px-2 py-2.5 text-sm font-bold text-slate-500 border-b-2 border-transparent transition-colors">
                         <span class="relative inline-block">
                             게시판
                             <span class="board-subtab-update-dot hidden absolute right-0 top-0 h-1.5 w-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
                         </span>
                     </button>
+                    <button type="button" id="boardSubtabNotice" role="tab" aria-selected="false" class="board-list-subtab relative flex flex-1 items-center justify-center px-2 py-2.5 text-sm font-bold text-slate-500 border-b-2 border-transparent transition-colors">
+                        <span class="relative inline-block">
+                            공지
+                            <span class="board-subtab-update-dot hidden absolute right-0 top-0 h-1.5 w-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
+                        </span>
+                    </button>
                 </div>
-                <div id="boardCategoryRow" class="flex gap-2 overflow-x-auto scrollbar-hide hidden">
-                    <button id="board-category-all" class="board-category-btn active px-4 py-2 bg-black text-white border border-black rounded-lg text-xs font-bold whitespace-nowrap">전체</button>
-                    <button id="board-category-food" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">먹는</button>
-                    <button id="board-category-chat" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">가벼운</button>
-                    <button id="board-category-serious" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">무거운</button>
-                    <button id="board-category-admin" class="board-category-btn px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-bold whitespace-nowrap">치프에게</button>
+                <div id="boardCategoryRow" class="flex gap-3 items-baseline overflow-x-auto scrollbar-hide hidden py-1">
+                    <button type="button" id="board-category-all" class="board-category-btn active whitespace-nowrap">#전체</button>
+                    <button type="button" id="board-category-food" class="board-category-btn whitespace-nowrap">#먹는</button>
+                    <button type="button" id="board-category-chat" class="board-category-btn whitespace-nowrap">#가벼운</button>
+                    <button type="button" id="board-category-serious" class="board-category-btn whitespace-nowrap">#무거운</button>
+                    <button type="button" id="board-category-admin" class="board-category-btn whitespace-nowrap">#치프에게</button>
                 </div>
                 <div id="boardLoungeScrollArea" class="board-lounge-scroll-area flex min-h-0 flex-1 flex-col overflow-y-auto">
                 <div id="boardFeedPanel" class="board-feed-panel">
@@ -1093,39 +1082,32 @@
                     </button>
                     <h2 class="sub-title text-lg text-slate-800 tracking-tight">글쓰기</h2>
                 </div>
-                <div class="space-y-4">
+                <div class="space-y-2">
                     <div>
-                        <label class="text-sm font-bold text-slate-600 block mb-2">카테고리</label>
-                        <input type="hidden" id="boardWriteCategory" value="serious">
-                        <div class="flex gap-2 overflow-x-auto scrollbar-hide">
-                            <button type="button" class="board-write-category-btn board-category-btn px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap" data-value="food" onclick="window.setBoardWriteCategory('food')">먹는</button>
-                            <button type="button" class="board-write-category-btn board-category-btn px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap" data-value="chat" onclick="window.setBoardWriteCategory('chat')">가벼운</button>
-                            <button type="button" class="board-write-category-btn board-category-btn active px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap" data-value="serious" onclick="window.setBoardWriteCategory('serious')">무거운</button>
-                            <button type="button" class="board-write-category-btn board-category-btn px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap" data-value="admin" onclick="window.setBoardWriteCategory('admin')">치프에게</button>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="text-sm font-bold text-slate-600 block mb-2">제목</label>
-                        <input type="text" id="boardWriteTitle" placeholder="제목을 입력하세요" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-slate-400 transition-colors">
-                    </div>
-                    <div>
-                        <label class="text-sm font-bold text-slate-600 block mb-2">사진 <span class="text-slate-400 font-normal">(최대 5장, 장당 500KB)</span></label>
-                        <input type="file" id="boardWriteImages" accept="image/*" multiple class="hidden">
                         <div class="flex items-center gap-2 mb-2">
-                            <button type="button" id="boardWriteAddPhotosBtn" class="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-bold hover:bg-slate-50 active:bg-slate-100 transition-colors">
-                                <i class="fa-solid fa-image mr-1"></i>사진 추가
+                            <div class="flex gap-1 flex-1 min-w-0 p-1.5 bg-slate-100 rounded-lg">
+                                <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors shrink-0" aria-label="굵게" data-format="bold"><i class="fa-solid fa-bold"></i></button>
+                                <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors shrink-0" aria-label="취소선" data-format="strikeThrough"><i class="fa-solid fa-strikethrough"></i></button>
+                                <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors shrink-0" aria-label="밑줄" data-format="underline"><i class="fa-solid fa-underline"></i></button>
+                            </div>
+                            <input type="file" id="boardWriteImages" accept="image/*" multiple class="hidden">
+                            <button type="button" id="boardWriteAddPhotosBtn" class="w-10 h-10 shrink-0 flex items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 active:bg-slate-100 transition-colors" aria-label="사진 추가" title="사진 추가">
+                                <i class="fa-solid fa-image text-lg"></i>
                             </button>
                         </div>
-                        <div id="boardWriteImagePreviews" class="flex flex-wrap gap-2 min-h-0"></div>
-                    </div>
-                    <div>
-                        <label class="text-sm font-bold text-slate-600 block mb-2">내용</label>
-                        <div class="flex gap-1 mb-2 p-1.5 bg-slate-100 rounded-lg w-fit">
-                            <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors" aria-label="굵게" data-format="bold"><i class="fa-solid fa-bold"></i></button>
-                            <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors" aria-label="취소선" data-format="strikeThrough"><i class="fa-solid fa-strikethrough"></i></button>
-                            <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors" aria-label="밑줄" data-format="underline"><i class="fa-solid fa-underline"></i></button>
+                        <div class="-mx-4 w-[calc(100%+2rem)] max-w-none box-border">
+                            <div id="boardWriteContent" contenteditable="true" data-placeholder="내용을 입력하세요" class="w-full min-h-[200px] px-3 py-3 bg-white border border-slate-200 rounded-none text-sm outline-none focus:border-slate-400 transition-colors overflow-y-auto" style="max-height: 40vh;"></div>
                         </div>
-                        <div id="boardWriteContent" contenteditable="true" data-placeholder="내용을 입력하세요" class="w-full min-h-[200px] p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-slate-400 transition-colors overflow-y-auto" style="max-height: 40vh;"></div>
+                        <div id="boardWriteImagePreviews" class="flex flex-wrap gap-2 min-h-0 mt-2"></div>
+                    </div>
+                    <div class="flex items-baseline gap-3 flex-nowrap overflow-x-auto scrollbar-hide pb-0.5 -mx-0.5 px-0.5">
+                        <input type="hidden" id="boardWriteCategory" value="chat">
+                        <div class="flex gap-3 flex-nowrap shrink-0 items-baseline">
+                            <button type="button" class="board-write-category-btn board-category-btn whitespace-nowrap" data-value="food" onclick="window.setBoardWriteCategory('food')">#먹는</button>
+                            <button type="button" class="board-write-category-btn board-category-btn active whitespace-nowrap" data-value="chat" onclick="window.setBoardWriteCategory('chat')">#가벼운</button>
+                            <button type="button" class="board-write-category-btn board-category-btn whitespace-nowrap" data-value="serious" onclick="window.setBoardWriteCategory('serious')">#무거운</button>
+                            <button type="button" class="board-write-category-btn board-category-btn whitespace-nowrap" data-value="admin" onclick="window.setBoardWriteCategory('admin')">#치프에게</button>
+                        </div>
                     </div>
                     <div class="flex gap-2 pt-3 border-t">
                         <button onclick="window.backToBoardList()" class="flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors">취소</button>
@@ -1322,54 +1304,33 @@
                 </div>
                 <div class="flex-1 overflow-y-auto min-h-0 px-4 pb-28 settings-view-content">
                     <!-- 프로필 탭 -->
-                    <div id="settingsTabContentProfile" class="settings-tab-content settings-tab-content-fullwidth profile-settings-list pt-4 pb-8">
+                    <div id="settingsTabContentProfile" class="settings-tab-content settings-tab-content-fullwidth profile-settings-list pt-2 pb-8">
                         <div class="settings-section-container">
                             <div id="accountSection" class="profile-account-section"></div>
-                            <div class="profile-settings-header flex items-center justify-between py-3 border-b border-slate-100 gap-2">
-                            <div class="flex items-center gap-2 min-w-0">
-                                <h3 class="text-sm font-bold text-slate-800 shrink-0">프로필</h3>
-                                <button id="editProfileSettingsBtn" type="button" class="profile-settings-action shrink-0 px-3 py-1.5 text-sm font-bold text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors">수정</button>
-                            </div>
-                            <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end shrink-0">
-                                <button type="button" id="openMyPostsFromSettingsBtn" class="hidden px-2.5 py-1.5 text-xs font-bold text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-50 active:bg-emerald-100 transition-colors whitespace-nowrap" title="모먼트에서 내 공유·게시글 보기">내 게시물</button>
+                            <div class="profile-settings-header flex items-center justify-end gap-2 border-b border-slate-100">
                                 <button id="cancelProfileSettingsBtn" type="button" class="hidden px-3 py-1.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-full transition-colors">취소</button>
                                 <button id="saveProfileSettingsBtn" type="button" class="hidden px-3 py-1.5 text-sm font-bold text-white bg-black hover:bg-slate-800 rounded-full transition-colors">저장</button>
                             </div>
-                        </div>
-                        <div class="profile-settings-row profile-settings-row-between border-b border-slate-100">
-                            <div class="profile-settings-label-wrap">
-                                <div class="profile-settings-label">프로필 사진</div>
-                                <p id="profilePhotoHint" class="profile-settings-hint text-xs text-slate-400 mt-0.5 hidden">사진을 설정해주세요</p>
-                            </div>
-                            <div class="profile-settings-field profile-settings-field-end flex items-center gap-2 justify-end py-3">
-                                <div id="textSection">
-                                    <div class="flex items-center gap-2">
-                                        <div id="textPreview" class="profile-avatar w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-base font-bold text-slate-600 flex-shrink-0">?</div>
-                                        <button id="textSectionPhotoBtn" type="button" class="profile-settings-btn text-sm font-bold text-slate-700 hover:text-slate-900">사진 설정</button>
-                                    </div>
+                        <!-- 미리보기용 스텁(동일 id 유지). 실제 표시는 설정 > 계정 영역 -->
+                        <div class="sr-only absolute -left-[9999px] w-px h-px overflow-hidden" aria-hidden="true">
+                            <div id="textSection"><div id="textPreview" class="profile-avatar w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-base font-bold text-slate-600">?</div></div>
+                            <div id="photoSection" class="hidden">
+                                <div id="photoPreview" class="profile-avatar w-12 h-12 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center">
+                                    <i class="fa-solid fa-camera text-slate-400 text-base"></i>
                                 </div>
-                                <div id="photoSection" class="hidden">
-                                    <div class="flex items-center gap-2">
-                                        <div id="photoPreview" class="profile-avatar w-12 h-12 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center flex-shrink-0">
-                                            <i class="fa-solid fa-camera text-slate-400 text-base"></i>
-                                        </div>
-                                        <div class="flex items-center gap-2">
-                                            <button id="photoSelectBtn" type="button" class="profile-settings-btn text-sm font-bold text-slate-700 hover:text-slate-900">사진 선택</button>
-                                            <button id="photoDeleteBtn" type="button" class="hidden text-sm font-bold text-red-500 hover:text-red-600">삭제</button>
-                                        </div>
-                                        <input type="file" id="photoInput" class="hidden" accept="image/*" onchange="window.safeCall('handlePhotoUpload', event)">
-                                    </div>
-                                </div>
+                                <button type="button" id="photoSelectBtn"></button>
                             </div>
+                            <button type="button" id="textSectionPhotoBtn"></button>
                         </div>
-                        <div class="profile-settings-row profile-settings-row-between border-b border-slate-100">
+                        <input type="file" id="photoInput" class="hidden" accept="image/*" onchange="window.safeCall('handlePhotoUpload', event)">
+                        <div id="settingNicknameRow" class="profile-settings-row profile-settings-row-between border-b border-slate-100">
                             <div class="profile-settings-label">닉네임</div>
                             <div class="profile-settings-field profile-settings-field-same flex items-center min-w-0">
                                 <span id="settingNicknameDisplay" class="profile-settings-value text-base font-medium text-slate-800 truncate max-w-full ml-auto"></span>
                                 <input type="text" id="settingNickname" class="profile-settings-input profile-settings-input-inline profile-settings-nickname-input hidden text-right w-[80%] max-w-full ml-auto" placeholder="닉네임을 입력하세요">
                             </div>
                         </div>
-                        <div class="profile-settings-row profile-settings-row-between border-b border-slate-100">
+                        <div id="settingBirthdateRow" class="profile-settings-row profile-settings-row-between border-b border-slate-100">
                             <div class="profile-settings-label-wrap flex flex-col">
                                 <div class="profile-settings-label">생년월일</div>
                                 <p id="birthdateHint" class="profile-settings-hint mt-0.5 hidden">가입 후 1회만 수정 가능</p>
@@ -1377,27 +1338,49 @@
                             <div class="profile-settings-field profile-settings-field-same flex items-center justify-end min-w-0">
                                 <span id="settingBirthdateDisplay" class="profile-settings-value text-base font-medium text-slate-800"></span>
                                 <div id="settingBirthdateEdit" class="hidden flex flex-col gap-1 items-end">
-                                    <div class="flex items-center gap-2">
-                                        <input type="text" id="settingBirthdate" inputmode="numeric" pattern="[0-9\-]*" maxlength="10" placeholder="예: 19900115" class="profile-settings-input profile-settings-input-inline profile-settings-birthdate-input w-40 text-right" aria-label="생년월일 입력 (숫자 8자리)">
-                                        <div class="setting-gender-switch inline-flex rounded-lg overflow-hidden border border-slate-300 bg-white/90 shadow-sm flex-shrink-0" role="group" aria-label="성별">
-                                            <button type="button" id="settingGenderMale" class="setting-gender-btn py-2 px-3 rounded-l-[8px] text-sm font-bold border-0 transition-colors bg-slate-50 text-slate-600" data-value="male">남</button>
-                                            <button type="button" id="settingGenderFemale" class="setting-gender-btn py-2 px-3 rounded-r-[8px] text-sm font-bold border-0 transition-colors bg-slate-50 text-slate-600" data-value="female">여</button>
+                                    <div class="profile-settings-birthdate-row profile-settings-birthdate-row--compact profile-settings-birthdate-row--input-line-only flex items-center gap-2 w-full min-w-0 flex-wrap justify-end">
+                                        <input type="text" id="settingBirthdate" inputmode="numeric" pattern="[0-9\-]*" maxlength="10" placeholder="YYYY-MM-DD" class="profile-settings-input profile-settings-input-inline profile-settings-birthdate-input min-w-0 w-[9.5rem] max-w-full text-right" aria-label="생년월일 (YYYY-MM-DD)">
+                                        <div class="flex items-center gap-1.5 shrink-0 text-xs" role="group" aria-label="성별">
+                                            <button type="button" id="settingGenderMale" class="setting-gender-btn px-0 py-0 bg-transparent border-0 shadow-none text-slate-400 font-medium" data-value="male">남</button>
+                                            <span class="text-slate-300 select-none" aria-hidden="true">|</span>
+                                            <button type="button" id="settingGenderFemale" class="setting-gender-btn px-0 py-0 bg-transparent border-0 shadow-none text-slate-400 font-medium" data-value="female">여</button>
                                         </div>
                                     </div>
                                 </div>
                                 <input type="hidden" id="settingGender" value="">
                             </div>
                         </div>
-                        <div class="profile-settings-row border-b border-slate-100">
-                            <label class="profile-settings-label" for="settingBio">소개</label>
-                            <div class="profile-settings-field w-full min-w-0">
-                                <textarea id="settingBio" class="profile-settings-input profile-settings-textarea w-full" placeholder="자신을 소개해주세요" maxlength="200" rows="3"></textarea>
-                                <p class="profile-settings-hint text-right mt-1 text-slate-400 text-xs"><span id="bioCharCount">0</span>/200</p>
+                        <div class="profile-settings-row profile-settings-row--bio-wide border-b border-slate-100">
+                            <div class="w-full min-w-0 flex flex-col gap-1.5">
+                                <div class="profile-settings-label-row flex items-center justify-between gap-2 w-full min-w-0">
+                                    <div class="flex items-center gap-1 min-w-0 shrink">
+                                        <label class="profile-settings-label profile-settings-label-inline mb-0 min-w-0" for="settingBio">소개</label>
+                                        <div class="flex items-center gap-1 shrink-0">
+                                            <button type="button" id="accountBioSaveBtn" class="hidden px-0 py-0 text-[12px] font-bold text-emerald-700 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="저장" aria-label="소개 저장">저장</button>
+                                            <button type="button" id="accountBioCancelBtn" class="hidden px-0 py-0 text-[12px] font-bold text-slate-500 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="취소" aria-label="취소">취소</button>
+                                            <button type="button" id="accountEditBioBtn" data-action="edit" class="p-0.5 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-slate-100 inline-flex items-center justify-center" title="소개 수정" aria-label="소개 수정"><i class="fa-solid fa-pencil settings-pencil-icon"></i></button>
+                                        </div>
+                                    </div>
+                                    <p class="profile-settings-bio-count shrink-0 text-right text-slate-400 text-xs tabular-nums leading-none"><span id="bioCharCount">0</span>/200</p>
+                                </div>
+                                <div class="profile-settings-field w-full min-w-0 max-w-full">
+                                    <textarea id="settingBio" class="profile-settings-input profile-settings-textarea profile-settings-textarea--bottomline w-full max-w-full text-left placeholder:text-left" placeholder="자신을 소개해주세요" maxlength="200" rows="3"></textarea>
+                                </div>
                             </div>
                         </div>
-                        <div class="profile-settings-row border-b border-slate-100">
-                            <div class="profile-settings-label">라이프 스타일</div>
-                            <div class="profile-settings-field py-3">
+                        <div class="profile-settings-row profile-settings-row--bio-wide border-b border-slate-100">
+                            <div class="w-full min-w-0 flex flex-col gap-2 py-1">
+                                <div class="profile-settings-label-row flex items-center gap-1 w-full min-w-0">
+                                    <div class="flex items-center gap-1 min-w-0 shrink">
+                                        <span class="profile-settings-label profile-settings-label-inline mb-0 min-w-0 shrink">라이프 스타일</span>
+                                        <div class="flex items-center gap-1 shrink-0">
+                                            <button type="button" id="accountLifestyleSaveBtn" class="hidden px-0 py-0 text-[12px] font-bold text-emerald-700 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="저장" aria-label="라이프 스타일 저장">저장</button>
+                                            <button type="button" id="accountLifestyleCancelBtn" class="hidden px-0 py-0 text-[12px] font-bold text-slate-500 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="취소" aria-label="취소">취소</button>
+                                            <button type="button" id="accountEditLifestyleBtn" data-action="edit" class="p-0.5 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-slate-100 inline-flex items-center justify-center" title="라이프 스타일 수정" aria-label="라이프 스타일 수정"><i class="fa-solid fa-pencil settings-pencil-icon"></i></button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="profile-settings-field py-2 w-full min-w-0">
                                 <input type="hidden" id="settingLifestyle" value="">
                                 <div class="profile-lifestyle-chips flex flex-wrap gap-2">
                                     <button type="button" class="settings-lifestyle-btn profile-lifestyle-chip" data-value="학생">학생</button>
@@ -1406,6 +1389,7 @@
                                     <button type="button" class="settings-lifestyle-btn profile-lifestyle-chip" data-value="자영업">자영업</button>
                                     <button type="button" class="settings-lifestyle-btn profile-lifestyle-chip" data-value="프리랜서">프리랜서</button>
                                     <button type="button" class="settings-lifestyle-btn profile-lifestyle-chip" data-value="기타">기타</button>
+                                </div>
                                 </div>
                             </div>
                         </div>
@@ -1531,6 +1515,33 @@
                 </span>
             </button>
         </nav>
+        <!-- 초기 로그인 후 기록(meals) 로딩: 동기화 FAB와 동일 위치·크기, 음식 아이콘 순환만 표시 -->
+        <button type="button" id="initialRecordsLoadFab" class="initial-records-load-fab hidden" aria-hidden="true" aria-busy="false" aria-label="기록을 불러오고 있어요">
+            <span class="initial-records-load-fab__icons loading-food-icons relative w-9 h-9 flex items-center justify-center text-2xl pointer-events-none" aria-hidden="true">
+                <span class="loading-food-icon absolute" aria-hidden="true">🍴</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍔</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍕</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍎</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍦</span>
+            </span>
+        </button>
+        <button type="button" id="galleryMomentsRefreshFab" class="initial-records-load-fab hidden" aria-hidden="true" aria-busy="true" aria-label="모먼트 새로고침 중" tabindex="-1">
+            <span class="initial-records-load-fab__icons loading-food-icons relative w-9 h-9 flex items-center justify-center text-2xl pointer-events-none" aria-hidden="true">
+                <span class="loading-food-icon absolute" aria-hidden="true">🍴</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍔</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍕</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍎</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍦</span>
+            </span>
+        </button>
+        <!-- 미전송 식사 기록 일괄 재전송: 하단 네비 위 플로팅(게시판 글쓰기 FAB와 동일 계열) -->
+        <button type="button" id="mealSyncResendBtn" class="meal-sync-resend-fab hidden" aria-label="동기화" title="등록 미확인·실패 또는 삭제 실패 항목을 다시 서버에 반영합니다">
+            <i class="fa-solid fa-cloud-arrow-up meal-sync-resend-fab__icon meal-sync-resend-fab__icon--sync text-lg" aria-hidden="true"></i>
+            <i class="fa-solid fa-link-slash meal-sync-resend-fab__icon meal-sync-resend-fab__icon--off text-lg" aria-hidden="true"></i>
+            <i class="fa-solid fa-link meal-sync-resend-fab__icon meal-sync-resend-fab__icon--on text-lg" aria-hidden="true"></i>
+            <i class="fa-solid fa-spinner meal-sync-resend-fab__spinner text-lg fa-spin" aria-hidden="true"></i>
+            <span id="mealSyncResendBadge" class="meal-sync-resend-fab__badge hidden" aria-hidden="true">0</span>
+        </button>
 
         <div id="demoNavGuideBackdrop" class="hidden fixed inset-0 z-[120] pointer-events-none" aria-hidden="true"></div>
         <div id="demoNavGuidePanel" class="demo-nav-guide-panel hidden fixed z-[125] rounded-lg border border-amber-200 bg-amber-50 pl-4 pr-9 py-3 shadow-md" role="status" aria-labelledby="demoNavGuideTitle">
@@ -1593,6 +1604,49 @@
                         <span class="content-popup-footer-hint">다음에 이어서 보기</span>
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 설정: 프로필 사진 미리보기 -->
+    <div id="accountAvatarModal" class="hidden fixed inset-0 z-[405] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/50 backdrop-blur-[2px]" aria-modal="true" role="dialog" aria-label="프로필 사진">
+        <div class="relative w-full max-w-none sm:max-w-xs rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl border border-slate-100 border-b-0 sm:border-b overflow-hidden flex flex-col max-h-[min(90vh,32rem)]">
+            <div class="relative px-3 pt-2 pb-0 sm:px-4 sm:pt-3">
+                <button type="button" id="accountAvatarModalCloseBtn" class="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 z-10 p-2 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="닫기"><i class="fa-solid fa-xmark text-lg"></i></button>
+                <div id="accountAvatarModalStaticView">
+                    <div class="mx-auto mt-0.5 flex h-40 w-40 items-center justify-center overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200">
+                        <img id="accountAvatarModalImg" class="hidden h-full w-full object-cover" alt="" />
+                        <i id="accountAvatarModalIcon" class="fa-solid fa-user text-6xl text-slate-300"></i>
+                    </div>
+                </div>
+                <div id="accountAvatarModalEditView" class="hidden w-full">
+                    <div class="mx-auto h-40 w-40 rounded-full overflow-hidden bg-slate-100 ring-2 ring-emerald-500/35 shadow-inner">
+                        <div id="accountAvatarEditCanvasContainer" class="relative h-full w-full touch-none">
+                            <canvas id="accountAvatarEditCanvas" class="block h-full w-full"></canvas>
+                        </div>
+                    </div>
+                    <div class="mt-2 flex gap-1.5">
+                        <button type="button" onclick="window.zoomOutPhotoEdit()" class="flex-1 min-w-0 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i class="fa-solid fa-magnifying-glass-minus text-[10px]"></i> 축소</button>
+                        <button type="button" onclick="window.zoomInPhotoEdit()" class="flex-1 min-w-0 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i class="fa-solid fa-magnifying-glass-plus text-[10px]"></i> 확대</button>
+                        <button type="button" onclick="window.rotatePhotoEdit()" class="flex-1 min-w-0 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i class="fa-solid fa-rotate-right text-[10px]"></i> 회전</button>
+                    </div>
+                    <div class="mt-2 -mx-3 sm:-mx-4 grid grid-cols-3 border-t border-slate-200">
+                        <button type="button" onclick="window.resetPhotoEdit()" class="py-2.5 bg-slate-100 text-slate-800 text-xs sm:text-sm font-semibold border-r border-slate-200 active:bg-slate-200">초기화</button>
+                        <button type="button" onclick="window.closePhotoEditModal()" class="py-2.5 bg-slate-100 text-slate-800 text-xs sm:text-sm font-semibold border-r border-slate-200 active:bg-slate-200">취소</button>
+                        <button type="button" onclick="window.savePhotoEdit()" class="py-2.5 bg-emerald-600 text-white text-xs sm:text-sm font-bold active:bg-emerald-700">편집적용</button>
+                    </div>
+                </div>
+            </div>
+            <div id="accountAvatarModalFooterPick" class="border-t border-slate-200">
+                <button type="button" id="accountAvatarModalChangeBtn" class="account-avatar-modal-footer-btn w-full py-3 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 transition-colors">사진 변경</button>
+            </div>
+            <div id="accountAvatarModalFooterConfirm" class="hidden grid grid-cols-2 border-t border-slate-200">
+                <button type="button" id="accountAvatarModalDiscardBtn" class="flex items-center justify-center px-2 py-3 bg-slate-100 hover:bg-slate-200/90 active:bg-slate-200 border-r border-slate-200 transition-colors">
+                    <span class="text-base font-bold text-slate-700">취소</span>
+                </button>
+                <button type="button" id="accountAvatarModalApplyBtn" class="flex items-center justify-center px-2 py-3 bg-emerald-50 hover:bg-emerald-100/90 active:bg-emerald-100 transition-colors">
+                    <span class="text-base font-bold text-emerald-800">저장</span>
+                </button>
             </div>
         </div>
     </div>
@@ -1663,14 +1717,14 @@
                             <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">어떻게</span>
                             <div id="typeChips" class="flex flex-wrap gap-1"></div>
                         </div>
-                        <div class="mt-2 px-4">
+                        <div class="mt-2 px-4 min-w-0">
                             <div class="relative">
                                 <button type="button" id="kakaoSearchBtn" onclick="window.openKakaoPlaceSearch()" class="absolute left-2 top-1/2 -translate-y-1/2 w-[1.8rem] h-[1.8rem] flex items-center justify-center bg-slate-500 text-white rounded-md z-10 border border-slate-500 hover:bg-slate-600 hover:border-slate-600 transition-colors" aria-label="장소 검색">
                                     <i class="fa-solid fa-magnifying-glass text-[11px] text-white"></i>
                                 </button>
                                 <input id="placeInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full py-[0.6rem] pl-[46px] pr-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
                             </div>
-                            <div id="restaurantSuggestions" class="flex gap-1 mt-0.5 overflow-x-auto pb-0 whitespace-nowrap"></div>
+                            <div id="restaurantSuggestions" class="entry-subtag-suggestions"></div>
                         </div>
                     </div>
                     
@@ -1680,8 +1734,8 @@
                                 <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">무엇을</span>
                                 <div id="categoryChips" class="flex flex-wrap gap-1"></div>
                             </div>
-                            <div class="mt-2 px-4">
-                                <div id="mealWhatInputArea" class="w-full">
+                            <div class="mt-2 px-4 min-w-0">
+                                <div id="mealWhatInputArea" class="w-full min-w-0">
                                     <div id="deliveryVendorSection" class="hidden">
                                         <div class="relative w-full">
                                             <button type="button" onclick="window.openKakaoPlaceSearch('deliveryVendor')" class="absolute left-2 top-1/2 -translate-y-1/2 w-[1.8rem] h-[1.8rem] flex items-center justify-center bg-slate-500 text-white rounded-md z-10 border border-slate-500 hover:bg-slate-600 hover:border-slate-600 transition-colors" aria-label="식당 검색">
@@ -1692,7 +1746,7 @@
                                     </div>
                                     <div id="menuDetailInputRow" class="w-full">
                                         <input id="menuDetailInput" type="text" placeholder="무엇을 드셨나요? (예: 파스타, 된장찌개)" class="w-full py-[0.6rem] px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
-                                        <div id="menuSuggestions" class="flex gap-1 mt-0.5 overflow-x-auto pb-0 whitespace-nowrap"></div>
+                                        <div id="menuSuggestions" class="entry-subtag-suggestions"></div>
                                     </div>
                                 </div>
                             </div>
@@ -1703,9 +1757,9 @@
                                 <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">누구와</span>
                                 <div id="withChips" class="flex flex-wrap gap-1"></div>
                             </div>
-                            <div class="mt-2 px-4">
+                            <div class="mt-2 px-4 min-w-0">
                                 <input id="withWhomInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full py-[0.6rem] px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
-                                <div id="peopleSuggestions" class="flex gap-1 mt-0.5 overflow-x-auto pb-0 whitespace-nowrap"></div>
+                                <div id="peopleSuggestions" class="entry-subtag-suggestions"></div>
                             </div>
                         </div>
                     </div>
@@ -1820,14 +1874,14 @@
                             <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">어디서</span>
                             <div id="snackPlaceTypeChips" class="flex flex-wrap gap-1"></div>
                         </div>
-                        <div class="mt-2 px-4">
+                        <div class="mt-2 px-4 min-w-0">
                             <div class="relative">
                                 <button type="button" id="snackKakaoSearchBtn" onclick="window.openKakaoPlaceSearch('snack')" class="absolute left-2 top-1/2 -translate-y-1/2 w-[1.8rem] h-[1.8rem] flex items-center justify-center bg-slate-500 text-white rounded-md z-10 border border-slate-500 hover:bg-slate-600 hover:border-slate-600 transition-colors" aria-label="장소 검색">
                                     <i class="fa-solid fa-magnifying-glass text-[11px] text-white"></i>
                                 </button>
                                 <input id="snackPlaceInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full py-[0.6rem] pl-[46px] pr-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
                             </div>
-                            <div id="snackPlaceSuggestions" class="flex flex-wrap gap-1 mt-0.5 overflow-x-auto pb-0 items-center" data-input-id="snackPlaceInput"></div>
+                            <div id="snackPlaceSuggestions" class="entry-subtag-suggestions" data-input-id="snackPlaceInput"></div>
                         </div>
                     </div>
                     <div class="space-y-2">
@@ -1836,9 +1890,9 @@
                             <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">무엇을</span>
                             <div id="snackTypeChips" class="flex flex-wrap gap-1"></div>
                         </div>
-                        <div class="mt-2 px-4">
+                        <div class="mt-2 px-4 min-w-0">
                             <input id="snackDetailInput" type="text" placeholder="무엇을 드셨나요?" class="w-full py-[0.6rem] px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
-                            <div id="snackSuggestions" class="flex gap-1 mt-0.5 overflow-x-auto pb-0 whitespace-nowrap"></div>
+                            <div id="snackSuggestions" class="entry-subtag-suggestions"></div>
                         </div>
                     </div>
                     <div class="pt-3 pb-[3px] -mx-4 bg-blue-50/50 border-b border-blue-100 rounded-none mb-2">
@@ -1846,9 +1900,9 @@
                             <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">누구와</span>
                             <div id="snackWithChips" class="flex flex-wrap gap-1"></div>
                         </div>
-                        <div class="mt-2 px-4">
+                        <div class="mt-2 px-4 min-w-0">
                             <input id="snackWithWhomInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full py-[0.6rem] px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
-                            <div id="snackPeopleSuggestions" class="flex gap-1 mt-0.5 overflow-x-auto pb-0 whitespace-nowrap" data-input-id="snackWithWhomInput"></div>
+                            <div id="snackPeopleSuggestions" class="entry-subtag-suggestions" data-input-id="snackWithWhomInput"></div>
                         </div>
                     </div>
                     </div>
@@ -1936,15 +1990,16 @@
             </div>
             <div id="entryModalActions" class="shrink-0 border-t border-slate-200 bg-white overflow-hidden">
                 <div class="flex items-stretch divide-x divide-slate-200">
-                    <button id="btnDelete" onclick="window.deleteEntry()" class="hidden flex-1 flex items-center justify-center gap-2 px-2.5 py-3.5 bg-rose-50 text-rose-700 hover:bg-rose-100/90 active:bg-rose-100 transition-colors">
-                        <i class="fa-solid fa-trash-can text-sm"></i>
-                        <span class="text-sm font-bold">삭제</span>
+                    <button id="btnDelete" onclick="window.deleteEntry()" class="hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2.5 py-2.5 bg-rose-50 text-rose-700 hover:bg-rose-100/90 active:bg-rose-100 transition-colors">
+                        <i class="fa-solid fa-trash-can text-sm" aria-hidden="true"></i>
+                        <span class="text-xs font-bold leading-tight">삭제</span>
                     </button>
                     <button type="button" id="btnSave" class="flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-900 text-white text-base font-bold hover:bg-slate-800 active:bg-slate-800 transition-colors">
                         <span>기록 완료</span>
                     </button>
-                    <button id="sharePhotoIndicator" onclick="window.toggleSharePhoto()" class="hidden flex-1 flex items-center justify-center px-2.5 py-3.5 bg-slate-50 text-slate-400 active:bg-slate-100 transition-colors">
-                        <i class="fa-solid fa-share text-lg"></i>
+                    <button type="button" id="sharePhotoIndicator" onclick="window.toggleSharePhoto()" aria-label="모먼트 공유" class="hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 bg-slate-50 text-slate-400 active:bg-slate-100 transition-colors min-w-0">
+                        <i class="fa-solid fa-share text-sm shrink-0" aria-hidden="true"></i>
+                        <span class="text-xs font-bold text-center leading-tight min-w-0">모먼트 공유</span>
                     </button>
                 </div>
             </div>
@@ -2081,7 +2136,7 @@
     </div>
 
     <!-- Photo Edit Modal -->
-    <div id="photoEditModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center p-4">
+    <div id="photoEditModal" class="hidden fixed inset-0 bg-slate-900/60 z-[410] flex items-center justify-center p-4">
         <div class="w-full max-w-md bg-white rounded-2xl flex flex-col max-h-[90vh] overflow-hidden">
             <div class="p-4 border-b border-slate-200 flex justify-between items-center shrink-0">
                 <h2 class="text-lg font-bold text-slate-800">사진 편집</h2>

@@ -1,6 +1,8 @@
 // 소셜 기능 (좋아요, 댓글, 북마크, 신고)
 import { db, appId, auth, callableFunctions } from '../firebase.js';
 import { isDemoUser } from '../demo-account.js';
+import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
+import { showToast } from '../ui.js';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, addDoc, query, orderBy, where, getDocs, getDocsFromServer, onSnapshot } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 
 // 좋아요, 댓글, 북마크 관련 함수들
@@ -111,7 +113,27 @@ export const postInteractions = {
             throw e;
         }
     },
-    
+
+    /** 특정 게시물의 북마크 문서 목록 (개수 표시용, getLikes와 동일 패턴) */
+    async getBookmarks(postId) {
+        if (!postId) return [];
+        try {
+            const bookmarksColl = collection(db, 'artifacts', appId, 'postBookmarks');
+            const q = query(bookmarksColl, where('postId', '==', postId));
+            const snapshot = await getDocs(q);
+            const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+            list.sort((a, b) => {
+                const timeA = new Date(a.timestamp || 0).getTime();
+                const timeB = new Date(b.timestamp || 0).getTime();
+                return timeB - timeA;
+            });
+            return list;
+        } catch (e) {
+            console.error('Get Bookmarks Error:', e);
+            return [];
+        }
+    },
+
     // 사용자가 북마크 했는지 확인
     async isBookmarked(postId, userId) {
         if (!postId || !userId) return false;
@@ -179,6 +201,10 @@ export const postInteractions = {
         }
         if (isDemoUser(window.currentUser)) {
             throw new Error('샘플 계정에서는 댓글을 작성할 수 없습니다.');
+        }
+        if (!isUserSettingsReadyForContentWrites(window.userSettings)) {
+            showToast('약관 동의와 프로필(닉네임) 설정을 완료한 뒤 댓글을 작성할 수 있습니다.', 'error');
+            throw new Error('ONBOARDING_INCOMPLETE');
         }
         try {
             console.log('[postInteractions.addComment] 시작:', { postId, commentLength: commentText?.length });
@@ -299,7 +325,7 @@ export const postInteractions = {
                 const mealType = (data.mealType || '').trim();
                 let menuLine = menuDetail;
                 if (mealType === '배달/포장' && deliveryVendor && menuDetail) {
-                    menuLine = `${deliveryVendor} · ${menuDetail}`;
+                    menuLine = `${deliveryVendor} | ${menuDetail}`;
                 } else if (mealType === '배달/포장' && deliveryVendor) {
                     menuLine = deliveryVendor;
                 }

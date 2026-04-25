@@ -20,6 +20,7 @@ import {
     markBoardNavSeen,
     markBoardFeedSubtabSeen,
     markBoardBoardSubtabSeen,
+    markBoardNoticeSubtabSeen,
     refreshNavFeedUpdateDots
 } from './nav-feed-update-dots.js';
 import { logUsageMetric } from '../usage-metrics.js';
@@ -59,6 +60,7 @@ export function registerMainTabSwitch() {
                 else if (tab === 'timeline') logUsageMetric('tab_mealog').catch(() => {});
                 else if (tab === 'board') {
                     if (appState.boardListSubTab === 'board') logUsageMetric('lounge_board').catch(() => {});
+                    else if (appState.boardListSubTab === 'notice') logUsageMetric('lounge_notice').catch(() => {});
                     else logUsageMetric('lounge_mealtalk').catch(() => {});
                 }
             }
@@ -91,8 +93,10 @@ export function registerMainTabSwitch() {
                 markBoardNavSeen();
                 if (appState.boardListSubTab === 'feed') {
                     markBoardFeedSubtabSeen();
-                } else {
+                } else if (appState.boardListSubTab === 'board') {
                     markBoardBoardSubtabSeen();
+                } else if (appState.boardListSubTab === 'notice') {
+                    markBoardNoticeSubtabSeen();
                 }
                 if (boardListView) boardListView.classList.remove('hidden');
                 if (boardDetailView) boardDetailView.classList.add('hidden');
@@ -217,6 +221,8 @@ export function registerMainTabSwitch() {
                 // 설정 탭 전환 시 폼 채우기는 nav-settings 클릭 시 openSettings()에서 수행
             } else if (tab === 'gallery') {
                 document.body.classList.remove('bottom-nav-scroll-hidden');
+                document.getElementById('mainAppHeader')?.classList.remove('header-scroll-hidden');
+                document.getElementById('trackerSection')?.classList.remove('tracker-header-hidden');
                 // 모먼트 네비 점: 새 글을 스크롤해 볼 필요 없이, 탭(아이콘)으로 들어오면 제거
                 markMomentFeedNavSeen();
                 if (!appState.galleryFilterUserId) {
@@ -230,7 +236,7 @@ export function registerMainTabSwitch() {
                         appState.sharedPhotosFeedLastDoc = null;
                         appState.sharedPhotosFeedHasMore = false;
                         appState.galleryFeedNetworkError = false;
-                        showLoading('모먼트 불러오는 중...');
+                        showLoading('모먼트 불러오는 중...', { dimBackground: false, recordsFab: true });
                         loadSharedPhotosPage(10)
                             .then(({ docs, lastDoc, hasMore }) => {
                                 appState.galleryFeedNetworkError = false;
@@ -291,7 +297,7 @@ export function registerMainTabSwitch() {
                     window.sharedPhotos = myShares;
                     if (appState.currentTab !== 'timeline') return;
                     updateTimelineShareIndicators();
-                    syncOrphanedSharesToMoment(myShares).then((synced) => {
+                    syncOrphanedSharesToMoment().then((synced) => {
                         if (synced > 0 && appState.currentTab === 'timeline') {
                             updateTimelineShareIndicators();
                             showToast('모먼트에 반영되었습니다.', 'success');

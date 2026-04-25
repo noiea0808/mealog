@@ -8,7 +8,9 @@ import {
     setLogLevel,
     memoryLocalCache,
     persistentLocalCache,
-    persistentSingleTabManager
+    persistentSingleTabManager,
+    terminate,
+    clearIndexedDbPersistence
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { getStorage } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-storage.js";
 import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
@@ -194,15 +196,24 @@ export const appCheckInitPromise = (async () => {
     }
 })();
 
+/** 연속 저장·삭제 시 매번 getToken(true) 하지 않도록 완화(재시도·force 시에만 강제) */
+let lastAppCheckForceRefreshAt = 0;
+const APPCHECK_FORCE_MIN_INTERVAL_MS = 4000;
+
 /**
- * App Check 강제 시, 초기화 직후 첫 Firestore 쓰기가 토큰 없이 나가 permission-denied 나는 경우 완화
+ * App Check: Firestore 쓰기 직전 호출. 기본은 캐시 우선(빠름), 일정 간격마다만 강제 갱신.
+ * @param {{ force?: boolean }} [opts] — permission-denied 재시도 시 `force: true` 권장
  */
-export async function refreshAppCheckTokenBeforeFirestore() {
+export async function refreshAppCheckTokenBeforeFirestore(opts = {}) {
     await appCheckInitPromise;
     if (!firebaseAppCheck || typeof window === 'undefined') return;
     try {
         const { getToken } = await import('https://www.gstatic.com/firebasejs/11.10.0/firebase-app-check.js');
-        await getToken(firebaseAppCheck, true);
+        const now = Date.now();
+        const force =
+            opts.force === true || now - lastAppCheckForceRefreshAt >= APPCHECK_FORCE_MIN_INTERVAL_MS;
+        await getToken(firebaseAppCheck, force);
+        if (force) lastAppCheckForceRefreshAt = now;
     } catch (_) {
         /* ignore */
     }
@@ -211,7 +222,8 @@ export async function refreshAppCheckTokenBeforeFirestore() {
 // 공식 가이드: App Check를 Firestore 등보다 먼저 초기화. 기존에는 getFirestore가 먼저라 강제 적용 시 쓰기에 토큰이 안 붙을 수 있음.
 await appCheckInitPromise;
 
-export const db = createFirestore();
+/** @type {import('firebase/firestore').Firestore} — Watch(ca9/b815) 등 내부 assertion 후 `recoverFirestoreAfterWatchAssertion`에서 재할당될 수 있음 */
+export let db = createFirestore();
 try {
     setLogLevel('error');
 } catch (_) {
@@ -225,6 +237,135 @@ export const functions = getFunctions(app, 'us-central1');
 export const appId = 'mealog-r0';
 export const apiKey = "";
 
+/** main.js가 로그인 사용자용 onSnapshot 등을 다시 붙이는 콜백 등록 (복구 후 호출) */
+let firestoreListenersRebind = null;
+export function registerFirestoreListenersRebind(fn) {
+    firestoreListenersRebind = typeof fn === 'function' ? fn : null;
+}
+
+let firestoreRecoverInFlight = null;
+let lastFirestoreRecoverSuccessAt = 0;
+const FIRESTORE_RECOVER_MIN_INTERVAL_MS = 12000;
+
+function isFirestoreWatchInternalAssertionMessage(msg) {
+    const s = String(msg || '');
+    return s.includes('FIRESTORE') && s.includes('INTERNAL ASSERTION FAILED');
+}
+
+/**
+ * Watch 스트림 내부 assertion(b815/ca9, ve:-1 등)으로 Firestore가 깨진 뒤 재개되지 않을 때:
+ * terminate → IndexedDB 캐시 제거(가능 시) → 인스턴스 재생성 → 리스너 재등록.
+ * @param {string} [reason]
+ * @param {{ force?: boolean }} [opts] — true면 최소 간격 무시
+ * @returns {Promise<boolean>}
+ */
+export async function recoverFirestoreAfterWatchAssertion(reason = '', opts = {}) {
+    if (typeof window === 'undefined') return false;
+    const force = opts.force === true;
+    const now = Date.now();
+    if (
+        !force &&
+        lastFirestoreRecoverSuccessAt > 0 &&
+        now - lastFirestoreRecoverSuccessAt < FIRESTORE_RECOVER_MIN_INTERVAL_MS
+    ) {
+        return false;
+    }
+    if (firestoreRecoverInFlight) return firestoreRecoverInFlight;
+
+    firestoreRecoverInFlight = (async () => {
+        try {
+            console.warn('[Firestore] Watch 내부 오류 복구 시도:', reason || '(detail omitted)');
+            try {
+                await terminate(db);
+            } catch (e) {
+                console.warn('[Firestore] terminate:', e?.message || e);
+            }
+            try {
+                await clearIndexedDbPersistence(app);
+            } catch (e) {
+                if (e?.code !== 'failed-precondition') {
+                    console.warn('[Firestore] clearIndexedDbPersistence:', e?.message || e);
+                }
+            }
+            db = createFirestore();
+            try {
+                setLogLevel('error');
+            } catch (_) {}
+            try {
+                await refreshAppCheckTokenBeforeFirestore({ force: true });
+            } catch (_) {}
+            try {
+                const u = auth.currentUser;
+                if (u && typeof u.getIdToken === 'function') {
+                    await u.getIdToken(true);
+                }
+            } catch (_) {}
+            if (firestoreListenersRebind) {
+                try {
+                    firestoreListenersRebind();
+                } catch (e) {
+                    console.warn('[Firestore] 리스너 재등록 실패:', e?.message || e);
+                }
+                try {
+                    sessionStorage.removeItem('mealogFsAssertReload');
+                } catch (_) {}
+                lastFirestoreRecoverSuccessAt = Date.now();
+                console.warn('[Firestore] 복구 완료 (리스너 재등록)');
+                return true;
+            }
+            const u = auth.currentUser;
+            if (u && !u.isAnonymous) {
+                try {
+                    if (!sessionStorage.getItem('mealogFsAssertReload')) {
+                        sessionStorage.setItem('mealogFsAssertReload', '1');
+                        location.reload();
+                        return true;
+                    }
+                } catch (_) {}
+            }
+            lastFirestoreRecoverSuccessAt = Date.now();
+            console.warn('[Firestore] 복구 완료 (인스턴스만 재생성, 리스너는 다음 로그인/새로고침)');
+            return true;
+        } catch (e) {
+            console.error('[Firestore] 복구 실패:', e);
+            return false;
+        } finally {
+            firestoreRecoverInFlight = null;
+        }
+    })();
+    return firestoreRecoverInFlight;
+}
+
+let firestoreAssertionRecoverScheduled = false;
+function scheduleRecoverFirestoreFromAssertion(detail) {
+    if (firestoreAssertionRecoverScheduled) return;
+    firestoreAssertionRecoverScheduled = true;
+    setTimeout(() => {
+        firestoreAssertionRecoverScheduled = false;
+        void recoverFirestoreAfterWatchAssertion(detail);
+    }, 80);
+}
+
+if (typeof window !== 'undefined') {
+    window.addEventListener(
+        'error',
+        (e) => {
+            const msg = String(e.message || e.error?.message || '');
+            if (isFirestoreWatchInternalAssertionMessage(msg)) {
+                scheduleRecoverFirestoreFromAssertion(msg.slice(0, 240));
+            }
+        },
+        true
+    );
+    window.addEventListener('unhandledrejection', (e) => {
+        const msg = String(e.reason?.message || e.reason || '');
+        if (isFirestoreWatchInternalAssertionMessage(msg)) {
+            e.preventDefault();
+            scheduleRecoverFirestoreFromAssertion(msg.slice(0, 240));
+        }
+    });
+}
+
 // Callable Functions 참조
 export const callableFunctions = {
     createFeedPost: httpsCallable(functions, 'createFeedPost'),
@@ -234,6 +375,8 @@ export const callableFunctions = {
     addBoardComment: httpsCallable(functions, 'addBoardComment'),
     addBoardCommentAsAdmin: httpsCallable(functions, 'addBoardCommentAsAdmin'),
     deleteBoardComment: httpsCallable(functions, 'deleteBoardComment'),
+    addNoticeComment: httpsCallable(functions, 'addNoticeComment'),
+    deleteNoticeComment: httpsCallable(functions, 'deleteNoticeComment'),
     addPostComment: httpsCallable(functions, 'addPostComment'),
     deletePostComment: httpsCallable(functions, 'deletePostComment'),
     submitPostReport: httpsCallable(functions, 'submitPostReport'),
@@ -246,6 +389,12 @@ export const callableFunctions = {
     backfillUserStats: httpsCallable(functions, 'backfillUserStats'),
     /** 관리자 전용: 특정 UID의 daily stats 백필 */
     adminBackfillUserStats: httpsCallable(functions, 'adminBackfillUserStats'),
+    /** 관리자 전용: users 루트 createdAt 을 Auth UID 생성 시각으로 백필 */
+    adminBackfillUserRootCreatedAtFromAuth: httpsCallable(functions, 'adminBackfillUserRootCreatedAtFromAuth'),
+    /** 관리자 전용: 단일 UID 가입일(루트 createdAt) 보정 */
+    adminBackfillUserRootCreatedAtForUid: httpsCallable(functions, 'adminBackfillUserRootCreatedAtForUid'),
+    /** 관리자 전용: 가입일 백필 전체를 서버 한 번에 완료 */
+    adminBackfillUserRootCreatedAtFromAuthRunAll: httpsCallable(functions, 'adminBackfillUserRootCreatedAtFromAuthRunAll'),
     removeDuplicateMeals: httpsCallable(functions, 'removeDuplicateMeals'),
     callGemini: httpsCallable(functions, 'callGemini'),
     searchKakaoPlaces: httpsCallable(functions, 'searchKakaoPlaces'),
@@ -273,7 +422,9 @@ export const callableFunctions = {
     /** 관리자: 웰컴 API — 전일(서울) 기준 연속 기록 N일 이상 사용자 목록 + 3일 요약 */
     adminWelcomeStreakUsers: httpsCallable(functions, 'adminWelcomeStreakUsers'),
     /** 관리자: 웰컴용 제미나이 한 줄 코멘트(메뉴+응원, 서버에서 길이 상한 적용) */
-    adminWelcomeGeminiComment: httpsCallable(functions, 'adminWelcomeGeminiComment')
+    adminWelcomeGeminiComment: httpsCallable(functions, 'adminWelcomeGeminiComment'),
+    /** 관리자: 특정 UID 닉네임 수정 (settings + nicknameClaims) */
+    adminSetUserNickname: httpsCallable(functions, 'adminSetUserNickname')
 };
 
 /**

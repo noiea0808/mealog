@@ -1,5 +1,6 @@
 /**
  * 모먼트/피드 공통: 공유 사진 그룹(인스타 스타일) HTML
+ * @param {{ layoutV2?: boolean, useGalleryPostGap?: boolean }} [options] — `useGalleryPostGap`: 갤러리 화면2만, `#galleryPostsInsertPoint`의 `gap`과 맞추기 위해 카드 `mb`/바깥 배경 제거
  */
 import { SLOTS, SLOT_STYLES } from '../constants.js';
 import { appState } from '../state.js';
@@ -7,8 +8,131 @@ import { escapeHtml } from './utils.js';
 import { getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
 import { getPostIdFromPhotoGroup } from './post-group-utils.js';
 import { formatMealMenuDisplayLine, mergeMealDisplayFields } from '../utils/meal-display-line.js';
+import { buildMomentFeedV2PhotoAndLabelHtml } from './moment-feed-v2.js';
 
-export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
+/** 모먼트 공유 → 타임라인 `#timelineMealPhotosOverlay` 휠 모드와 동일한 `row` 페이로드 */
+export function buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMap, ctx) {
+    const photo = photoGroup[0];
+    const urls = photoGroup.map((p) => p.photoUrl).filter(Boolean);
+    const { entryId, isBestShare, isDailyShare, isInsightShare, isSnack, aspectRatio } = ctx;
+    const dateStr = photo.date ? String(photo.date) : '';
+    const slotId = photo.slotId || '';
+    let recordId = null;
+    if (entryId && entryId !== '' && entryId !== 'null') recordId = String(entryId);
+    else if (photo.id) recordId = String(photo.id);
+
+    let slotTitle = '—';
+    if (isDailyShare) slotTitle = '일간';
+    else if (isBestShare) slotTitle = '베스트';
+    else if (isInsightShare) {
+        const r = String(photo.dateRangeText || '인사이트').replace(/\s+/g, ' ').trim();
+        slotTitle = r.length > 20 ? `${r.slice(0, 20)}…` : r || '인사이트';
+    } else if (photo.slotId) {
+        const slot = SLOTS.find((s) => s.id === photo.slotId);
+        slotTitle = slot ? slot.label : '—';
+    }
+
+    let menuLine = '';
+    const place = String(photo.place || '').trim();
+    if (isBestShare || isDailyShare || isInsightShare) {
+        menuLine = (photo.comment || '').replace(/<[^>]*>/g, '').trim() || '—';
+    } else if (isSnack) {
+        menuLine = String(photo.menuDetail || photo.snackType || '').trim() || '간식';
+    } else {
+        const mealForLine =
+            entryId && mealHistoryMap && mealHistoryMap.has(entryId)
+                ? mergeMealDisplayFields(photo, mealHistoryMap.get(entryId))
+                : photo;
+        menuLine = (formatMealMenuDisplayLine(mealForLine) || '').trim() || '—';
+    }
+
+    const slotMeta = photo.slotId ? SLOTS.find((s) => s.id === photo.slotId) : null;
+    const slotType = slotMeta?.type || 'main';
+    const ar = aspectRatio === '3:4' || aspectRatio === '4:3' ? aspectRatio : '1:1';
+
+    /** 기록/공유 시 작성자가 넣은 코멘트(소셜 댓글 아님) — renderPostGroupHtml `comment`와 동일 규칙 */
+    let authorMealComment = '';
+    if (isBestShare || isDailyShare || isInsightShare) {
+        authorMealComment = (photo.comment || '').replace(/<[^>]*>/g, '').trim();
+    } else {
+        if (photo.comment) authorMealComment = String(photo.comment).trim();
+        else if (entryId && mealHistoryMap && mealHistoryMap.has(entryId)) {
+            const mealRecord = mealHistoryMap.get(entryId);
+            if (mealRecord?.comment) authorMealComment = String(mealRecord.comment).trim();
+        }
+        if (!entryId && window.mealHistory && photo.date && photo.slotId) {
+            const matchingRecord = window.mealHistory.find(
+                (m) =>
+                    m.date === photo.date &&
+                    m.slotId === photo.slotId &&
+                    (photo.comment ? m.comment === photo.comment : true)
+            );
+            if (matchingRecord?.comment) authorMealComment = String(matchingRecord.comment).trim();
+        }
+    }
+
+    const base = {
+        dateStr,
+        slotId,
+        recordId,
+        slotTitle,
+        urls,
+        menuLine,
+        place,
+        authorMealComment,
+        mealType: photo.mealType || null,
+        slotType,
+        isEmptyRow: false,
+        photoAspectRatio: ar
+    };
+    if (ctx.overlayPostId) {
+        base.overlayPostId = ctx.overlayPostId;
+        base.overlayAuthor = ctx.overlayAuthor;
+        const altIds = photoGroup.map((p) => p.id).filter(Boolean);
+        base.overlayPostAlternateIds = [...new Set(altIds)].filter((id) => id !== ctx.overlayPostId);
+        const captionPlain = (() => {
+            if (isBestShare || isDailyShare || isInsightShare) {
+                return (photo.comment || '')
+                    .replace(/<[^>]*>/g, '')
+                    .replace(/&nbsp;/g, ' ')
+                    .replace(/&amp;/g, '&')
+                    .replace(/&lt;/g, '<')
+                    .replace(/&gt;/g, '>')
+                    .replace(/&quot;/g, '"')
+                    .trim();
+            }
+            if (isSnack) {
+                const m = photo.menuDetail || photo.snackType;
+                return photo.place && m ? `${m} @ ${photo.place}` : photo.place || m || '간식';
+            }
+            const mealForLine =
+                entryId && mealHistoryMap && mealHistoryMap.has(entryId)
+                    ? mergeMealDisplayFields(photo, mealHistoryMap.get(entryId))
+                    : photo;
+            const ml = formatMealMenuDisplayLine(mealForLine);
+            return photo.place && ml ? `${ml} @ ${photo.place}` : photo.place || ml || photo.mealType || '';
+        })();
+        base.overlayFeedOptions = {
+            entryId: entryId && entryId !== '' && entryId !== 'null' ? String(entryId) : '',
+            photoUrls: urls.join(','),
+            isBestShare,
+            isDailyShare,
+            isInsightShare,
+            photoDate: dateStr,
+            photoSlotId: slotId,
+            postId: String(ctx.overlayPostId || ''),
+            authorUserId: String((ctx.overlayAuthor && ctx.overlayAuthor.userId) || photo.userId || ''),
+            dateRangeText: String(photo.dateRangeText || ''),
+            captionPlain
+        };
+    }
+    return base;
+}
+
+export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, options = {}) {
+    const layoutV2 = options.layoutV2 === true;
+    /** 갤러리 화면2: `#galleryPostsInsertPoint`의 `gap`만으로 간격 — 카드 mb·바깥 배경 제거 */
+    const useGalleryPostGap = layoutV2 && options.useGalleryPostGap === true;
     const photo = photoGroup[0];
     const photoCount = photoGroup.length;
     let entryId = photo.entryId;
@@ -85,20 +209,76 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
     let aspectRatio = photo.photoAspectRatio || (entryId && mealHistoryMap && mealHistoryMap.has(entryId) ? mealHistoryMap.get(entryId).photoAspectRatio : null) || '1:1';
     if (aspectRatio !== '1:1' && aspectRatio !== '3:4' && aspectRatio !== '4:3') aspectRatio = '1:1';
     const momentAspectCss = (aspectRatio === '3:4' ? '3/4' : aspectRatio === '4:3' ? '4/3' : '1');
-    const photosHtml = photoGroup.map((p, idx) => {
-        const isBest = p.type === 'best', isDaily = p.type === 'daily', isInsight = p.type === 'insight';
-        return `
-            <div class="flex-shrink-0 w-full snap-start ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
-                ${(isBest || isDaily || isInsight) ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="w-full h-auto object-contain" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx <= 1 ? 'eager' : 'lazy'}">` : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="absolute inset-0 w-full h-full object-cover" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`}
+    const momentUrlsEncoded = encodeURIComponent(JSON.stringify(photoGroup.map((p) => p.photoUrl).filter(Boolean)));
+    const postIdForWheel = getPostIdFromPhotoGroup(photoGroup);
+    const postId = postIdForWheel;
+    const postIdJs = JSON.stringify(String(postId || ''));
+    const userDisplayForWheel = getDisplayProfile(photo.userId, {
+        nickname: photo.userNickname,
+        icon: photo.userIcon,
+        photoUrl: photo.userPhotoUrl
+    });
+    const avatarDisplayForWheel = getProfileAvatarDisplay(userDisplayForWheel);
+    const wheelOverlayRow = layoutV2
+        ? buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMap, {
+              entryId,
+              isBestShare,
+              isDailyShare,
+              isInsightShare,
+              isSnack,
+              aspectRatio,
+              overlayPostId: postIdForWheel,
+              overlayAuthor: {
+                  nickname: userDisplayForWheel.nickname,
+                  userId: photo.userId,
+                  avatarType: avatarDisplayForWheel.type,
+                  avatarValue: avatarDisplayForWheel.value,
+                  isGuestPost
+              }
+          })
+        : null;
+    const v2PhotoLabelBlock = layoutV2
+        ? buildMomentFeedV2PhotoAndLabelHtml({
+              photoGroup,
+              momentUrlsEncoded,
+              photo,
+              aspectRatio,
+              isBestShare,
+              isDailyShare,
+              isInsightShare,
+              captionTextPlain: captionText,
+              overlayRow: wheelOverlayRow,
+              postId,
+              postIdJs,
+              mealHistoryMap,
+              groupEntryId: entryId
+          })
+        : '';
+    const photosHtml = layoutV2
+        ? ''
+        : photoGroup
+              .map((p, idx) => {
+                  const isBest = p.type === 'best',
+                      isDaily = p.type === 'daily',
+                      isInsight = p.type === 'insight';
+                  const inner =
+                      (isBest || isDaily || isInsight)
+                          ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo w-full h-auto object-contain" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx <= 1 ? 'eager' : 'lazy'}">`
+                          : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-cover" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`;
+                  return `
+            <div class="flex-shrink-0 w-full snap-start relative ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" data-moment-i="${idx}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
+                <div class="moment-feed-pinch-host w-full relative">${inner}</div>
             </div>
         `;
-    }).join('');
-    const postId = getPostIdFromPhotoGroup(photoGroup);
+              })
+              .join('');
     const groupKey = postId;
     const alternatePostIds = photoGroup.map(p => p.id).filter(Boolean).join(',');
-    const userDisplay = getDisplayProfile(photo.userId, { nickname: photo.userNickname, icon: photo.userIcon, photoUrl: photo.userPhotoUrl });
-    const avatarDisplay = getProfileAvatarDisplay(userDisplay);
-    const hasBody = (caption && (isBestShare || isDailyShare || isInsightShare)) || (comment && !isBestShare && !isDailyShare && !isInsightShare);
+    const userDisplay = userDisplayForWheel;
+    const avatarDisplay = avatarDisplayForWheel;
+    const hasBody =
+        (caption && (isBestShare || isDailyShare || isInsightShare)) ||
+        (!layoutV2 && comment && !isBestShare && !isDailyShare && !isInsightShare);
     const showProfileMomentBack =
         appState.galleryFilterUserId &&
         appState.galleryFilterPostId &&
@@ -108,9 +288,42 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
                         <i class="fa-solid fa-arrow-left text-lg" aria-hidden="true"></i>
                     </button>`
         : '';
+    const v2PostCaptionAndFetch =
+        layoutV2
+            ? [
+                  caption && (isBestShare || isDailyShare || isInsightShare)
+                      ? `<div class="px-3 pt-2 text-sm text-slate-800">${caption}</div>`
+                      : '',
+                  !isBestShare && !isDailyShare && !isInsightShare && entryId && photo.userId && !isMyPost
+                      ? `<div class="shared-comment-fetch-placeholder hidden h-0 overflow-hidden p-0" aria-hidden="true" data-post-id="${postId}" data-entry-id="${entryId}" data-owner-user-id="${photo.userId}" data-group-idx="${groupIdx}"></div>`
+                      : ''
+              ]
+                  .filter(Boolean)
+                  .join('')
+            : '';
+    const v2AfterMediaBlock =
+        useGalleryPostGap && v2PostCaptionAndFetch.trim()
+            ? `<div class="moment-v2-gallery-post-aux">${v2PostCaptionAndFetch}</div>`
+            : v2PostCaptionAndFetch;
+    const cardMb = layoutV2 ? (useGalleryPostGap ? 'mb-0' : 'mb-[3px]') : 'mb-2';
+    const cardSkin =
+        layoutV2 && !useGalleryPostGap ? 'bg-slate-100 border-b border-slate-200' : !layoutV2 ? 'bg-white border-b border-slate-200' : '';
+    const galleryShellCls = useGalleryPostGap ? 'moment-v2-gallery-post-shell' : '';
+    const cardClassList = [cardMb, cardSkin, 'instagram-post', galleryShellCls, !hasBody ? 'post-no-body' : '']
+        .filter(Boolean)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
     return `
-            <div class="mb-2 bg-white border-b border-slate-200 instagram-post ${!hasBody ? 'post-no-body' : ''}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}">
-                <div class="px-3 py-3 flex items-center gap-2 relative">
+            <div class="${cardClassList}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}"${layoutV2 ? ' data-moment-card-layout="2"' : ''}>
+                ${
+                    layoutV2 && showProfileMomentBack
+                        ? `<div class="px-2 pt-2">${profileBackBtn}</div>`
+                        : ''
+                }
+                ${
+                    !layoutV2
+                        ? `<div class="px-3 py-3 flex items-center gap-2 relative">
                     ${profileBackBtn}
                     ${avatarDisplay.type === 'photo' ? `
                         <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-slate-300 relative" style="background-image: url(${avatarDisplay.value}); background-size: cover; background-position: center;">
@@ -133,9 +346,14 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
                             <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
                         </button>
                     </div>
-                </div>
-                <div class="relative overflow-hidden ${(isDailyShare || isInsightShare) ? 'bg-white' : 'bg-slate-100'}">
-                    <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gallery-photo-scroll" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
+                </div>`
+                        : ''
+                }
+                ${
+                    layoutV2
+                        ? `<div class="relative w-full moment-v2-media-wrap">${v2PhotoLabelBlock}</div>${v2AfterMediaBlock}`
+                        : `<div class="relative overflow-hidden ${(isDailyShare || isInsightShare) ? 'bg-white' : 'bg-slate-100'}">
+                    <div class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gallery-photo-scroll" data-moment-urls="${momentUrlsEncoded}" style="scroll-snap-type: x mandatory; scroll-snap-stop: always; -webkit-overflow-scrolling: touch;">
                         ${photosHtml}
                     </div>
                     ${photoCount > 1 ? `
@@ -143,8 +361,9 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
                             <span class="photo-counter-current">1</span>/${photoCount}
                         </div>
                     ` : ''}
-                </div>
-                ${!isBestShare && !isDailyShare && !isInsightShare && caption ? (() => {
+                </div>`
+                }
+                ${!isBestShare && !isDailyShare && !isInsightShare && caption && !layoutV2 ? (() => {
                     const firstPhotoUrl = photoGroup[0]?.photoUrl || '';
                     const urlForCss = firstPhotoUrl ? firstPhotoUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/\\/g, '\\\\').replace(/'/g, '\\27') : '';
                     return `
@@ -154,50 +373,46 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap) {
                 </div>
                 `;
                 })() : ''}
-                <div class="feed-post-actions px-3 py-3">
+                ${
+                    layoutV2
+                        ? ''
+                        : `<div class="feed-post-actions px-3 py-3">
                     <div class="feed-post-buttons flex items-center justify-between mb-2 pb-2 -mx-3 px-3 border-b border-slate-200">
                         <div class="flex items-center gap-4">
-                            <button onclick="window.toggleLike('${postId}')" class="post-like-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
+                            <button onclick='window.toggleLike(${postIdJs})' class="post-like-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
                                 <i class="fa-regular fa-heart text-2xl text-slate-800 post-like-icon social-action-icon-stroke"></i>
                                 <span class="post-like-count text-sm font-bold text-slate-800" data-post-id="${postId}"></span>
                             </button>
-                            <button onclick="window.toggleCommentInput('${postId}')" class="post-comment-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
+                            <button onclick='window.toggleCommentInput(${postIdJs})' class="post-comment-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
                                 <i class="fa-regular fa-comment text-2xl text-slate-800 post-comment-icon social-action-icon-stroke"></i>
                                 <span class="post-comment-count text-sm font-bold text-slate-800" data-post-id="${postId}"></span>
                             </button>
                         </div>
-                        <button onclick="window.toggleBookmark('${postId}')" class="post-bookmark-btn active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
+                        <button onclick='window.toggleBookmark(${postIdJs})' class="post-bookmark-btn active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
                             <i class="fa-regular fa-bookmark text-2xl text-slate-800 post-bookmark-icon social-action-icon-stroke"></i>
                         </button>
                     </div>
                     ${caption && (isBestShare || isDailyShare || isInsightShare) ? `<div class="mb-2 text-sm text-slate-800">${caption}</div>` : ''}
-                    ${comment && !isBestShare && !isDailyShare && !isInsightShare ? (() => {
-                        const lineBreaks = (comment.match(/\n/g) || []).length;
-                        const estimatedLines = Math.ceil(comment.length / 30);
-                        const shouldShowToggle = lineBreaks >= 2 || estimatedLines > 2;
-                        const toggleBtnClass = shouldShowToggle ? '' : 'hidden';
-                        return `
+                    ${comment && !isBestShare && !isDailyShare && !isInsightShare ? `
                         <div class="mb-2 text-sm text-slate-800">
-                            <span id="post-caption-collapsed-${groupIdx}" class="whitespace-pre-line line-clamp-2 inline">${escapeHtml(comment).replace(/\n/g, '<br>')}</span>
-                            <button onclick="window.togglePostCaption(${groupIdx})" id="post-caption-toggle-${groupIdx}" class="inline text-xs text-emerald-600 font-bold hover:text-emerald-700 active:text-emerald-800 transition-colors ml-1 ${toggleBtnClass}">더 보기</button>
-                            <div id="post-caption-expanded-${groupIdx}" class="whitespace-pre-line hidden">
-                                ${escapeHtml(comment).replace(/\n/g, '<br>')}
-                                <button onclick="window.togglePostCaption(${groupIdx})" id="post-caption-collapse-${groupIdx}" class="inline text-xs text-emerald-600 font-bold hover:text-emerald-700 active:text-emerald-800 transition-colors ml-1">접기</button>
+                            <div id="post-caption-collapsed-${groupIdx}" class="min-h-[1em]" data-comment-raw="${encodeURIComponent(comment)}" data-caption-variant="moment" data-group-idx="${groupIdx}">
+                                <div data-comment-collapsed-mount class="leading-snug"></div>
                             </div>
+                            <div id="post-caption-expanded-${groupIdx}" class="hidden whitespace-pre-line break-words leading-snug cursor-pointer" onclick="window.togglePostCaption(${groupIdx})">${escapeHtml(comment).replace(/\n/g, '<br>')}</div>
                         </div>
-                    `;
-                    })() : (!isBestShare && !isDailyShare && !isInsightShare && entryId && photo.userId && !isMyPost ? `<div class="shared-comment-fetch-placeholder mb-2 text-sm text-slate-800" data-post-id="${postId}" data-entry-id="${entryId}" data-owner-user-id="${photo.userId}" data-group-idx="${groupIdx}"><span class="text-xs text-slate-400">불러오는 중</span></div>` : '')}
+                    ` : (!isBestShare && !isDailyShare && !isInsightShare && entryId && photo.userId && !isMyPost ? `<div class="shared-comment-fetch-placeholder mb-2 text-sm text-slate-800" data-post-id="${postId}" data-entry-id="${entryId}" data-owner-user-id="${photo.userId}" data-group-idx="${groupIdx}"><span class="text-xs text-slate-400">불러오는 중</span></div>` : '')}
                     <div class="comment-section comments-empty ${((caption && (isBestShare || isDailyShare || isInsightShare)) || (comment && !isBestShare && !isDailyShare && !isInsightShare)) ? 'border-t border-slate-200 ' : ''}-mx-3 px-3 pt-1.5 mt-1" id="comment-section-${postId}">
                         <div class="post-comments-list mb-1 rounded-lg py-2 bg-white" data-post-id="${postId}" id="comments-list-${postId}"></div>
-                        <button id="view-comments-${postId}" class="hidden text-xs text-slate-500 font-bold mb-1 hover:text-slate-700 active:text-slate-900 transition-colors" onclick="window.viewAllComments('${postId}')">댓글 더보기</button>
+                        <button id="view-comments-${postId}" class="hidden text-xs text-slate-500 font-bold mb-1 hover:text-slate-700 active:text-slate-900 transition-colors" onclick='window.viewAllComments(${postIdJs})'>댓글 더보기</button>
                         <div id="comment-input-${postId}" class="hidden mt-1 py-3 -mx-3 px-3">
                             <div class="relative">
-                                <input type="text" id="comment-text-${postId}" placeholder="댓글을 입력하세요..." class="w-full px-3 py-2 pr-16 border border-slate-300 rounded-lg text-sm focus:outline-none bg-slate-100" onkeypress="if(event.key === 'Enter') window.submitComment('${postId}')">
-                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold cursor-pointer hover:text-emerald-700" ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); window.submitComment('${postId}')" onclick="window.submitComment('${postId}')">게시</span>
+                                <input type="text" id="comment-text-${postId}" placeholder="댓글을 입력하세요..." class="w-full px-3 py-2 pr-16 border border-slate-300 rounded-lg text-sm focus:outline-none bg-slate-100" onkeypress='if(event.key==="Enter")window.submitComment(${postIdJs})'>
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold cursor-pointer hover:text-emerald-700" ontouchstart="event.preventDefault()" ontouchend='event.preventDefault();window.submitComment(${postIdJs})' onclick='window.submitComment(${postIdJs})'>게시</span>
                             </div>
                         </div>
                     </div>
-                </div>
+                </div>`
+                }
             </div>
         `;
 }

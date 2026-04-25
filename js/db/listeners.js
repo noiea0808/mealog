@@ -1,21 +1,23 @@
 // Firestore 리스너 설정 (읽기 비용 절감: user/tags 세션당 1회, meals 기간·limit 등)
 import { db, appId, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
-import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, startAfter, getDocs, getDocsFromServer, documentId, enableNetwork } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, startAfter, getDocs, getDocsFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from '../constants.js';
 import { dbOps } from './ops.js';
-import { hideLoading, showNetworkErrorOverlay, isLikelyNetworkError } from '../ui.js';
+import { hideLoading, isLikelyNetworkError } from '../ui.js';
+import { notifyTransportOfflineUi } from '../utils/mealog-offline-ui.js';
 import { isDemoUser } from '../demo-account.js';
 import {
-    addDaysToYmd,
     applyDemoDateShiftToDailyComments,
     applyDemoDateShiftToDailyStats,
-    applyDemoDateShiftToMeals,
     applyDemoDateShiftToSharedPhoto,
-    computeDemoDateShiftDays,
-    computeDemoDateShiftDaysFromKeyedObject,
-    todayLocalYmd
+    computeDemoDateShiftDaysFromKeyedObject
 } from '../demo-date-shift.js';
-import { processPhotosToGroups } from '../render/post-group-utils.js';
+import { getSharedPhotoGroupKey, processPhotosToGroups } from '../render/post-group-utils.js';
+import {
+    hydrateMealSyncErrorIdsFromStorage,
+    hydrateMealSyncAbandonedIdsFromStorage
+} from '../utils/meal-entry-pending.js';
+import { applyMealsSnapshotPrimary, applyMealsSnapshotFallback } from '../utils/meals-snapshot-apply.js';
 
 /** 세션당 1회만 실행 (Firestore 읽기 절감) */
 let userDocEnsureDoneForUid = null;
@@ -43,6 +45,8 @@ function mergeEntryModalGaugesIntoUserSettings() {
 }
 
 export function setupListeners(userId, callbacks) {
+    hydrateMealSyncErrorIdsFromStorage();
+    hydrateMealSyncAbandonedIdsFromStorage();
     const { onSettingsUpdate, onDataUpdate, settingsUnsubscribe: oldSettingsUnsubscribe, dataUnsubscribe: oldDataUnsubscribe } = callbacks;
     
     // 사용자 ID 확인 및 로깅
@@ -143,9 +147,10 @@ export function setupListeners(userId, callbacks) {
             console.log('📞 onSettingsUpdate 콜백 호출 (초기)');
             if (onSettingsUpdate) onSettingsUpdate();
             
-            // user doc 생성·관리자 태그는 백그라운드에서 처리 (초기 로딩 지연 최소화)
+            // user doc 보장과 관리자 태그 로드를 병렬로 처리 (첫 화면 이후 갱신 지연 최소화)
             Promise.resolve().then(async () => {
-                if (userDocEnsureDoneForUid !== userId) {
+                const ensureUserDocIfNeeded = async () => {
+                    if (userDocEnsureDoneForUid === userId) return;
                     try {
                         const userDocRef = doc(db, 'artifacts', appId, 'users', userId);
                         const userDocSnap = await getDoc(userDocRef);
@@ -160,8 +165,9 @@ export function setupListeners(userId, callbacks) {
                     } catch (e) {
                         console.warn('users/{userId} 문서 생성 실패:', e);
                     }
-                }
-                try {
+                };
+
+                const loadAndMergeAdminTags = async () => {
                     if (cachedDefaultTags) {
                         if (cachedDefaultTags.mealType?.length) window.userSettings.tags.mealType = [...cachedDefaultTags.mealType];
                         if (cachedDefaultTags.withWhom?.length) window.userSettings.tags.withWhom = [...cachedDefaultTags.withWhom];
@@ -170,29 +176,32 @@ export function setupListeners(userId, callbacks) {
                         if (cachedDefaultTags.subTagsPlaceSnack?.length) {
                             window.userSettings.tags.snackPlaceMain = [...cachedDefaultTags.subTagsPlaceSnack];
                         }
-                    } else {
-                        const tagsDoc = doc(db, 'artifacts', appId, 'content', 'defaultTags');
-                        const tagsSnap = await getDoc(tagsDoc);
-                        if (tagsSnap.exists()) {
-                            const adminTags = tagsSnap.data();
-                            cachedDefaultTags = {
-                                mealType: adminTags.mealType,
-                                withWhom: adminTags.withWhom,
-                                category: adminTags.category,
-                                snackType: adminTags.snackType,
-                                subTagsPlaceSnack: adminTags.subTagsPlaceSnack
-                            };
-                            if (adminTags.mealType?.length) window.userSettings.tags.mealType = [...adminTags.mealType];
-                            if (adminTags.withWhom?.length) window.userSettings.tags.withWhom = [...adminTags.withWhom];
-                            if (adminTags.category?.length) window.userSettings.tags.category = [...adminTags.category];
-                            if (adminTags.snackType?.length) window.userSettings.tags.snackType = [...adminTags.snackType];
-                            // 간식 어디서: 관리자 메인태그 순서대로 사용 (메인태그는 칩으로, 개별 태그는 사용자 설정에서 등록)
-                            if (adminTags.subTagsPlaceSnack && Array.isArray(adminTags.subTagsPlaceSnack) && adminTags.subTagsPlaceSnack.length > 0) {
-                                window.userSettings.tags.snackPlaceMain = [...adminTags.subTagsPlaceSnack];
-                            }
-                            console.log('✅ 관리자 태그 병합 완료 (캐시 저장)');
-                        }
+                        return;
                     }
+                    const tagsDoc = doc(db, 'artifacts', appId, 'content', 'defaultTags');
+                    const tagsSnap = await getDoc(tagsDoc);
+                    if (tagsSnap.exists()) {
+                        const adminTags = tagsSnap.data();
+                        cachedDefaultTags = {
+                            mealType: adminTags.mealType,
+                            withWhom: adminTags.withWhom,
+                            category: adminTags.category,
+                            snackType: adminTags.snackType,
+                            subTagsPlaceSnack: adminTags.subTagsPlaceSnack
+                        };
+                        if (adminTags.mealType?.length) window.userSettings.tags.mealType = [...adminTags.mealType];
+                        if (adminTags.withWhom?.length) window.userSettings.tags.withWhom = [...adminTags.withWhom];
+                        if (adminTags.category?.length) window.userSettings.tags.category = [...adminTags.category];
+                        if (adminTags.snackType?.length) window.userSettings.tags.snackType = [...adminTags.snackType];
+                        if (adminTags.subTagsPlaceSnack && Array.isArray(adminTags.subTagsPlaceSnack) && adminTags.subTagsPlaceSnack.length > 0) {
+                            window.userSettings.tags.snackPlaceMain = [...adminTags.subTagsPlaceSnack];
+                        }
+                        console.log('✅ 관리자 태그 병합 완료 (캐시 저장)');
+                    }
+                };
+
+                try {
+                    await Promise.all([ensureUserDocIfNeeded(), loadAndMergeAdminTags()]);
                     if (onSettingsUpdate) onSettingsUpdate();
                 } catch (e) {
                     console.warn('⚠️ 관리자 태그 로드 실패 (기본값 사용):', e);
@@ -208,6 +217,12 @@ export function setupListeners(userId, callbacks) {
                 
                 // 마이그레이션은 백그라운드에서 처리
                 Promise.resolve().then(async () => {
+                    try {
+                        const { maybeSeedNicknameFromAuthDisplayName } = await import('../auth-nickname-seed.js');
+                        await maybeSeedNicknameFromAuthDisplayName();
+                    } catch (e) {
+                        console.warn('Auth 닉네임 시드(리스너) 스킵:', e?.message || e);
+                    }
                     let needsSave = false;
                     // 깊은 복사로 기존 설정 보존
                     const settingsToSave = JSON.parse(JSON.stringify(window.userSettings));
@@ -224,21 +239,11 @@ export function setupListeners(userId, callbacks) {
                         console.log('⚠️ 닉네임이 "게스트"이거나 없습니다. 사용자가 직접 수정해야 합니다.');
                     }
 
-                    // ✅ profileCompleted 마이그레이션: 구버전 사용자는 플래그가 없을 수 있으므로,
-                    // 닉네임이 유효하면 완료로 간주하여 다음 로그인에서 프로필 모달이 뜨지 않게 한다.
-                    if (settingsToSave.profileCompleted !== true) {
-                        const nn = (settingsToSave.profile?.nickname || '').trim();
-                        if (nn && nn !== '게스트') {
-                            settingsToSave.profileCompleted = true;
-                            settingsToSave.profileCompletedAt = settingsToSave.profileCompletedAt || new Date().toISOString();
-                            needsSave = true;
-                            console.log('✅ 마이그레이션: profileCompleted=true 설정');
-                        } else if (settingsToSave.profileCompleted === undefined) {
-                            // 플래그 자체가 없고 닉네임도 미설정이면 false로 명시
-                            settingsToSave.profileCompleted = false;
-                            settingsToSave.profileCompletedAt = settingsToSave.profileCompletedAt || null;
-                            needsSave = true;
-                        }
+                    // profileCompleted 미정의만 명시(false) — 닉만 있고 플래그 없음으로 true 올리지 않음(온보딩 위저드와 정합)
+                    if (settingsToSave.profileCompleted === undefined) {
+                        settingsToSave.profileCompleted = false;
+                        settingsToSave.profileCompletedAt = settingsToSave.profileCompletedAt || null;
+                        needsSave = true;
                     }
                     
                     // providerId와 email 업데이트 (없을 때만 추가, 이미 있으면 유지)
@@ -491,7 +496,7 @@ export function setupListeners(userId, callbacks) {
 
         if (isLikelyNetworkError(error)) {
             hideLoading();
-            showNetworkErrorOverlay();
+            notifyTransportOfflineUi();
             return;
         }
 
@@ -573,6 +578,11 @@ export function setupListeners(userId, callbacks) {
         } else {
             window.dailyStats = merged;
         }
+        try {
+            if (typeof window.fillProfileActivityStats === 'function') window.fillProfileActivityStats();
+        } catch (_) {
+            /* ignore */
+        }
     };
     const onStatsYearSnapshot = (year) => (snap) => {
         if (window.currentUser && userId !== window.currentUser.uid) return;
@@ -627,153 +637,24 @@ export function setupListeners(userId, callbacks) {
     let isInitialLoad = true;
     /** primary 또는 fallback 중 현재 활성 meals onSnapshot 해제 함수 (fallback 시 이전 Watch 반드시 해제) */
     let mealsListenerUnsub = null;
-    mealsListenerUnsub = onSnapshot(mealsQuery, (snap) => {
-        // 사용자 ID 재확인 (리스너 내부에서)
-        if (window.currentUser && userId !== window.currentUser.uid) {
-            console.error('⚠️ ⚠️ ⚠️ 데이터 리스너 콜백: 사용자 ID 불일치 감지!', {
-                listenerUserId: userId,
-                currentUserUid: window.currentUser.uid,
-                email: window.currentUser.email
+    mealsListenerUnsub = onSnapshot(
+        mealsQuery,
+        { includeMetadataChanges: true },
+        (snap) => {
+            const loadState = { isInitialLoad };
+            const r = applyMealsSnapshotPrimary({
+                snap,
+                demo,
+                userId,
+                cutoffDateStr,
+                todayStr,
+                loadState,
+                mergeStatsIntoDaily,
+                onDataUpdate
             });
-            // 잘못된 사용자의 리스너이므로 무시
-            return;
-        }
-        if (demo) {
-            const rawMeals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-            const shift = computeDemoDateShiftDays(rawMeals);
-            window.__demoDateShiftDays = shift;
-            window.mealHistory = applyDemoDateShiftToMeals(rawMeals, shift).sort(
-                (a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)
-            );
-            const rawDates = rawMeals
-                .map((m) => m.date)
-                .filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d));
-            if (rawDates.length && shift) {
-                const minRaw = rawDates.reduce((a, b) => (a < b ? a : b));
-                window.loadedMealsDateRange = {
-                    start: addDaysToYmd(minRaw, shift),
-                    end: todayLocalYmd()
-                };
-            } else if (rawDates.length) {
-                const minRaw = rawDates.reduce((a, b) => (a < b ? a : b));
-                const maxRaw = rawDates.reduce((a, b) => (a > b ? a : b));
-                window.loadedMealsDateRange = { start: minRaw, end: maxRaw };
-            } else {
-                const tl = todayLocalYmd();
-                window.loadedMealsDateRange = { start: tl, end: tl };
-            }
-            if (window.userSettings && window.__demoRawDailyComments) {
-                window.userSettings.dailyComments = applyDemoDateShiftToDailyComments(
-                    window.__demoRawDailyComments,
-                    shift
-                );
-            }
-            mergeStatsIntoDaily();
-            isInitialLoad = false;
-            if (onDataUpdate) onDataUpdate();
-            import('../db.js').then(({ loadMyShares }) => {
-                loadMyShares().then((list) => {
-                    window.sharedPhotos = list;
-                    if (typeof window.updateTimelineShareIndicators === 'function') {
-                        window.updateTimelineShareIndicators();
-                    }
-                }).catch(() => {});
-            }).catch(() => {});
-            return;
-        }
-        if (isInitialLoad) {
-            // 초기 로드: 최근 7일(최대 50건) 데이터
-            window.mealHistory = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-                .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-            window.loadedMealsDateRange = { start: cutoffDateStr, end: todayStr };
-            isInitialLoad = false;
-        } else {
-            // 이후 변경사항: 변경된 문서만 처리
-            const changes = snap.docChanges();
-            let hasChanges = false;
-            
-            changes.forEach(change => {
-                if (change.type === 'removed') {
-                    const rid = change.doc.id;
-                    window.mealHistory = window.mealHistory.filter((m) => m.id !== rid);
-                    hasChanges = true;
-                    return;
-                }
-                const docData = { id: change.doc.id, ...change.doc.data() };
-                if (change.type === 'added' || change.type === 'modified') {
-                    const index = window.mealHistory.findIndex(m => m.id === docData.id);
-                    const slotKey = `${docData.date || ''}__${docData.slotId || ''}`;
-                    const isPendingUpload = Boolean(
-                        window._pendingPhotoUploadByEntryId?.[docData.id] ||
-                        window._pendingPhotoUploadBySlotKey?.[slotKey]
-                    );
-                    if (index >= 0) {
-                        const localRecord = window.mealHistory[index];
-                        const incomingPhotos = Array.isArray(docData.photos)
-                            ? docData.photos
-                            : (docData.photos ? [docData.photos] : []);
-                        const localPhotos = Array.isArray(localRecord?.photos)
-                            ? localRecord.photos
-                            : (localRecord?.photos ? [localRecord.photos] : []);
-                        const hasLocalBase64Preview = localPhotos.some(
-                            (p) => typeof p === 'string' && p.startsWith('data:image')
-                        );
-                        const shouldKeepLocalPreview = isPendingUpload && hasLocalBase64Preview;
-                        
-                        // 낙관 반영 직후 1차 스냅샷(photos 비어있음)으로 미리보기가 사라지는 깜빡임 방지
-                        if (shouldKeepLocalPreview) {
-                            window.mealHistory[index] = { ...docData, photos: [...localPhotos] };
-                        } else {
-                            window.mealHistory[index] = docData;
-                        }
-                    } else {
-                        // 신규 저장 직후: 임시 ID 낙관 레코드(temp_*)를 실제 서버 ID로 치환해 깜빡임/중복 방지
-                        const tempIdx = window.mealHistory.findIndex((m) =>
-                            typeof m?.id === 'string' &&
-                            m.id.startsWith('temp_') &&
-                            m.date === docData.date &&
-                            m.slotId === docData.slotId
-                        );
-                        if (tempIdx >= 0) {
-                            const tempRecord = window.mealHistory[tempIdx];
-                            const incomingPhotos = Array.isArray(docData.photos)
-                                ? docData.photos
-                                : (docData.photos ? [docData.photos] : []);
-                            const tempPhotos = Array.isArray(tempRecord?.photos)
-                                ? tempRecord.photos
-                                : (tempRecord?.photos ? [tempRecord.photos] : []);
-                            const hasTempBase64 = tempPhotos.some(
-                                (p) => typeof p === 'string' && p.startsWith('data:image')
-                            );
-                            const keepTempPreview = (isPendingUpload || Boolean(window._pendingPhotoUploadByEntryId?.[tempRecord.id])) && hasTempBase64;
-                            window.mealHistory[tempIdx] = keepTempPreview
-                                ? { ...docData, photos: [...tempPhotos] }
-                                : docData;
-                            if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                                window.sharedPhotos = window.sharedPhotos.map((p) => (
-                                    p.entryId === tempRecord.id ? { ...p, entryId: docData.id } : p
-                                ));
-                            }
-                            if (window._pendingPhotoUploadByEntryId?.[tempRecord.id]) {
-                                window._pendingPhotoUploadByEntryId[docData.id] = true;
-                                delete window._pendingPhotoUploadByEntryId[tempRecord.id];
-                            }
-                        } else {
-                            // 새로 추가된 문서 (1개월 범위 내)
-                            window.mealHistory.push(docData);
-                        }
-                    }
-                    hasChanges = true;
-                }
-            });
-            
-            if (hasChanges) {
-                window.mealHistory.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-            }
-        }
-        
-        if (onDataUpdate) onDataUpdate();
-    }, (error) => {
+            isInitialLoad = loadState.isInitialLoad;
+            if (r.uidMismatch) return;
+        }, (error) => {
         console.error("Meals Listener Error:", error);
         // 사용자 ID 재확인
         if (window.currentUser && userId !== window.currentUser.uid) {
@@ -782,7 +663,7 @@ export function setupListeners(userId, callbacks) {
         }
         if (isLikelyNetworkError(error)) {
             hideLoading();
-            showNetworkErrorOverlay();
+            notifyTransportOfflineUi();
             return;
         }
         // 인덱스가 없을 경우 fallback: 전체 컬렉션 사용 (경고만 표시)
@@ -793,66 +674,26 @@ export function setupListeners(userId, callbacks) {
             /* 이미 끊긴 리스너일 수 있음 */
         }
         const fallbackQuery = collection(db, 'artifacts', appId, 'users', userId, 'meals');
+        const fallbackFirstSnapshotState = { value: true };
         mealsListenerUnsub = onSnapshot(
             fallbackQuery,
+            { includeMetadataChanges: true },
             (snap) => {
-                // 사용자 ID 재확인 (fallback 리스너 내부에서)
-                if (window.currentUser && userId !== window.currentUser.uid) {
-                    console.error('⚠️ Fallback 리스너: 사용자 ID 불일치! 무시');
-                    return;
-                }
-                if (demo) {
-                    let rawMeals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-                    rawMeals.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-                    rawMeals = rawMeals.slice(0, 50);
-                    const shift = computeDemoDateShiftDays(rawMeals);
-                    window.__demoDateShiftDays = shift;
-                    window.mealHistory = applyDemoDateShiftToMeals(rawMeals, shift).sort(
-                        (a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)
-                    );
-                    const rawDates = rawMeals
-                        .map((m) => m.date)
-                        .filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d));
-                    if (rawDates.length && shift) {
-                        const minRaw = rawDates.reduce((a, b) => (a < b ? a : b));
-                        window.loadedMealsDateRange = {
-                            start: addDaysToYmd(minRaw, shift),
-                            end: todayLocalYmd()
-                        };
-                    } else if (rawDates.length) {
-                        const minRaw = rawDates.reduce((a, b) => (a < b ? a : b));
-                        const maxRaw = rawDates.reduce((a, b) => (a > b ? a : b));
-                        window.loadedMealsDateRange = { start: minRaw, end: maxRaw };
-                    } else {
-                        const tl = todayLocalYmd();
-                        window.loadedMealsDateRange = { start: tl, end: tl };
-                    }
-                    if (window.userSettings && window.__demoRawDailyComments) {
-                        window.userSettings.dailyComments = applyDemoDateShiftToDailyComments(
-                            window.__demoRawDailyComments,
-                            shift
-                        );
-                    }
-                    mergeStatsIntoDaily();
-                    import('../db.js').then(({ loadMyShares }) => {
-                        loadMyShares().then((list) => {
-                            window.sharedPhotos = list;
-                            if (typeof window.updateTimelineShareIndicators === 'function') {
-                                window.updateTimelineShareIndicators();
-                            }
-                        }).catch(() => {});
-                    }).catch(() => {});
-                } else {
-                    window.mealHistory = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-                        .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-                }
-                if (onDataUpdate) onDataUpdate();
+                const r = applyMealsSnapshotFallback({
+                    snap,
+                    demo,
+                    userId,
+                    mergeStatsIntoDaily,
+                    onDataUpdate,
+                    firstSnapshotState: fallbackFirstSnapshotState
+                });
+                if (r.uidMismatch) return;
             },
             (err2) => {
                 console.error('Meals fallback listener error:', err2);
                 hideLoading();
                 if (isLikelyNetworkError(err2)) {
-                    showNetworkErrorOverlay();
+                    notifyTransportOfflineUi();
                 }
             }
         );
@@ -899,14 +740,8 @@ function profileMomentGridGroupCount(docs) {
 /** docs를 그룹화했을 때 포스트(그룹) 수 계산 (그룹 키만 세는 버전 — 피드 배치 로직용) */
 function countPostsFromDocs(docs) {
     const seen = new Set();
-    (docs || []).forEach(photo => {
-        let groupKey;
-        if (photo.type === 'daily') groupKey = `daily_${photo.date || 'no-date'}_${photo.userId}`;
-        else if (photo.type === 'best') groupKey = `best_${photo.id || 'no-id'}_${photo.userId}`;
-        else if (photo.type === 'insight') groupKey = `insight_${photo.dateRangeText || 'no-range'}_${photo.userId}`;
-        else if (photo.entryId) groupKey = `${photo.entryId}_${photo.userId}`;
-        else groupKey = `no-entry_${photo.userId}`;
-        seen.add(groupKey);
+    (docs || []).forEach((photo) => {
+        seen.add(getSharedPhotoGroupKey(photo));
     });
     return seen.size;
 }
@@ -917,12 +752,7 @@ function getDocsForFirstNPosts(docs, n) {
     let postCount = 0;
     const result = [];
     for (const photo of docs) {
-        let groupKey;
-        if (photo.type === 'daily') groupKey = `daily_${photo.date || 'no-date'}_${photo.userId}`;
-        else if (photo.type === 'best') groupKey = `best_${photo.id || 'no-id'}_${photo.userId}`;
-        else if (photo.type === 'insight') groupKey = `insight_${photo.dateRangeText || 'no-range'}_${photo.userId}`;
-        else if (photo.entryId) groupKey = `${photo.entryId}_${photo.userId}`;
-        else groupKey = `no-entry_${photo.userId}`;
+        const groupKey = getSharedPhotoGroupKey(photo);
         if (!seen.has(groupKey)) {
             if (postCount >= n) break;
             postCount++;
@@ -1035,11 +865,6 @@ export async function loadSharedPhotosPageReliable(targetPosts = 10, startAfterD
             if (attempt > 0) {
                 await new Promise((r) => setTimeout(r, baseDelayMs * attempt));
             }
-            try {
-                await enableNetwork(db);
-            } catch (_) {
-                /* ignore */
-            }
             return await loadSharedPhotosPage(targetPosts, startAfterDoc);
         } catch (e) {
             lastErr = e;
@@ -1081,6 +906,32 @@ export async function loadMyShares() {
             return applyDemoShiftToSharedDocsIfNeeded(docs);
         }
         throw e;
+    }
+}
+
+/**
+ * 본인의 해당 식사 기록(entryId)에 대응하는 sharedPhotos 문서가 있는지 (최대 1건 읽기).
+ * 고아 동기화에서 loadMyShares(100)로 추론하지 않고 entryId 단위로 정확히 판별한다.
+ * @param {string} entryId
+ * @returns {Promise<boolean>}
+ */
+export async function hasSharedPhotosForEntry(entryId) {
+    if (!window.currentUser || window.currentUser.isAnonymous || !entryId) return false;
+    const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+    const uid = window.currentUser.uid;
+    try {
+        const q = query(
+            sharedColl,
+            where('userId', '==', uid),
+            where('entryId', '==', entryId),
+            limit(1)
+        );
+        const snap = await getDocsFromServer(q);
+        return snap.docs.length > 0;
+    } catch (e) {
+        console.warn('hasSharedPhotosForEntry 실패:', entryId, e?.message || e);
+        // 불확실할 때 재공유(타임스탬프 갱신)보다 동기화 생략이 안전
+        return true;
     }
 }
 

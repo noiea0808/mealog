@@ -5,7 +5,7 @@ import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { escapeHtml } from './utils.js';
 import { fetchUserProfiles } from './user-profiles.js';
-import { getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
+import { getDisplayProfile, getProfileAvatarDisplay, toSeoulDateString, SEOUL_LOCALE_OPTIONS } from '../utils.js';
 import { isDemoUser } from '../demo-account.js';
 import { FEED_TIMELINE_BATCH_SIZE } from '../db/feed-posts.js';
 
@@ -339,9 +339,9 @@ function feedReplyQuoteHtml(replyTo, variant = 'mine') {
     const box =
         variant === 'other'
             ? 'border-l-2 border-slate-300 bg-slate-100/90'
-            : 'border-l-2 border-emerald-600/45 bg-emerald-100/70';
-    const nickC = variant === 'other' ? 'font-semibold text-slate-800' : 'font-bold text-emerald-900';
-    const prevC = variant === 'other' ? 'text-slate-600' : 'text-emerald-800/90';
+            : 'border-l-2 border-neutral-900/20 bg-black/5';
+    const nickC = variant === 'other' ? 'font-semibold text-slate-800' : 'font-bold text-neutral-900';
+    const prevC = variant === 'other' ? 'text-slate-600' : 'text-neutral-800/90';
     const nickData = encodeURIComponent(rawReplyNick);
     return `
         <div class="feed-reply-quote mb-1.5 min-w-0 max-w-full rounded-md px-2 py-1 ${box}">
@@ -358,7 +358,7 @@ function postTimeLabel(post) {
     else if (post.timestamp instanceof Date) d = post.timestamp;
     else d = new Date(post.timestamp || 0);
     if (isNaN(d.getTime())) d = new Date();
-    return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, ...SEOUL_LOCALE_OPTIONS });
 }
 
 /** 말풍선 본문: 이스케이프 후 줄 시작·공백 뒤 @닉네임만 볼드 (이메일 중간 @는 제외) */
@@ -385,7 +385,7 @@ function feedBubbleHtml(post, opts = {}) {
 
     const imgOnlyPendingSpinner =
         isMine && isPendingSend && hasImg && !hasBody
-            ? `<span class="pointer-events-none absolute left-2 top-2 z-[1] flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600/90 text-white shadow-sm" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[11px] leading-none" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`
+            ? `<span class="pointer-events-none absolute left-2 top-2 z-[1] flex h-5 w-5 items-center justify-center rounded-full bg-neutral-800/85 text-white shadow-sm" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[11px] leading-none" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`
             : '';
     const imgWrapClass = hasImg
         ? `${imgOnlyPendingSpinner ? 'relative' : ''} flex flex-col gap-1.5 overflow-hidden ${
@@ -410,7 +410,7 @@ function feedBubbleHtml(post, opts = {}) {
     if (isMine) {
         const replyQ = post.replyTo ? feedReplyQuoteHtml(post.replyTo, 'mine') : '';
         const reactRow = feedReactionRowHtml(post, true);
-        const pendingSpinnerLead = `<span class="pointer-events-none flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600/90 text-white shadow-sm" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[11px] leading-none" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`;
+        const pendingSpinnerLead = `<span class="pointer-events-none flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-800/85 text-white shadow-sm" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[11px] leading-none" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`;
         const bodyMine = hasBody
             ? isPendingSend
                 ? `<div class="flex min-w-0 max-w-full items-start gap-2 ${hasImg ? 'px-5 py-2' : ''}">${pendingSpinnerLead}<p class="m-0 min-w-0 flex-1 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem]">${body}</p></div>`
@@ -506,8 +506,10 @@ function postTimestampToLocalDate(post) {
     return isNaN(d.getTime()) ? new Date() : d;
 }
 
-function feedLocalDayKey(d) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+/** 피드 날짜 구분선: 한국 달력 기준 (출석·관리자 API와 동일) */
+function feedSeoulDayKey(d) {
+    if (!d || !(d instanceof Date) || isNaN(d.getTime())) return toSeoulDateString(new Date());
+    return toSeoulDateString(d);
 }
 
 /** 밀톡 타임라인: 날짜가 바뀔 때 카카오톡식 중앙 배너 (배경은 --board-feed-bg 녹색) */
@@ -516,7 +518,8 @@ function feedDateSeparatorHtml(date) {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
-        weekday: 'long'
+        weekday: 'long',
+        ...SEOUL_LOCALE_OPTIONS
     });
     return `
         <div class="feed-date-separator flex w-full shrink-0 justify-center py-2" role="separator" aria-label="${escapeHtml(label)}">
@@ -546,8 +549,8 @@ function paintFeedTimeline(root, posts) {
         const p = chronological[i];
         const prev = i > 0 ? chronological[i - 1] : null;
         const d = postTimestampToLocalDate(p);
-        const dayKey = feedLocalDayKey(d);
-        const prevDayKey = prev ? feedLocalDayKey(postTimestampToLocalDate(prev)) : null;
+        const dayKey = feedSeoulDayKey(d);
+        const prevDayKey = prev ? feedSeoulDayKey(postTimestampToLocalDate(prev)) : null;
         if (prevDayKey !== dayKey) {
             rowParts.push(feedDateSeparatorHtml(d));
         }

@@ -24,6 +24,8 @@ export const appState = {
     sharedPhotosFeedByUserLastDoc: null,
     sharedPhotosFeedByUserHasMore: false,
     galleryFeedNetworkError: false, // 모먼트 피드 로드 시 네트워크 단절 등으로 실패했을 때 true
+    /** fetch/Firestore 등이 끊김 계열로 실패했을 때 true (navigator.onLine 과 무관하게 설정) */
+    localNetworkForcedOffline: false,
     tempSettings: null,
     
     // UI 상태
@@ -47,7 +49,7 @@ export const appState = {
     boardDetailOpenedFromGallery: false,
     galleryTraceFilter: null, // 앨범 흔적 필터: null | 'like' | 'comment' | 'bookmark'
     boardTraceFilter: null,   // 밀톡 흔적 필터: null | 'like' | 'comment' | 'bookmark'
-    /** 밀톡 상단 서브탭: 'feed' (별도 피드 예정) | 'board' 게시판 리스트 */
+    /** 라운지 상단 서브탭: 'feed' 밀톡 | 'board' 사용자 게시판 | 'notice' 관리자 공지 */
     boardListSubTab: 'feed',
     /** 피드 탭 타임라인 (세션 내 메모리, 게시 시 앞에 추가) */
     feedTimelinePosts: [],

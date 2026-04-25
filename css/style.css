@@ -24,6 +24,16 @@
      */
     --board-feed-composer-face: calc(0.8rem + 2.25rem + 2px);
     --board-feed-above-composer: 0.75rem;
+    /* 모먼트 화면2: 사진 vs 타이틀 헤더 `--moment-v2-photo-below-header-gap`. 도크 vs 네비 상단 `--moment-v2-dock-above-nav-gap` */
+    --moment-v2-photo-below-header-gap: 20px;
+    --moment-v2-app-nav-pill-h: 52px;
+    --moment-v2-dock-above-nav-gap: 5px;
+    --moment-v2-app-nav-top-from-bottom: calc(8px + var(--safe-bottom) + var(--moment-v2-app-nav-pill-h));
+    --moment-v2-wheel-footer-bottom: calc(var(--moment-v2-app-nav-top-from-bottom) + var(--moment-v2-dock-above-nav-gap));
+    /* 기록(최대 3줄 접힘)·휠 한 줄·소셜 — 게시물 min-height·사진 영역 여유 */
+    --moment-v2-dock-inset-approx: min(50vh, 12.5rem);
+    /* 갤러리 화면2: #galleryPostsInsertPoint `gap` = 이전 글 하단 ↔ 다음 글 상단(투명 래퍼 기준) 유일 간격 */
+    --moment-v2-gallery-post-gap: 20px;
 }
 /* Web: 핸폰 네비 없음 → safe-bottom 0, 하단 공백 제거 (App 네비 바로 위까지) */
 html.platform-web {
@@ -49,7 +59,7 @@ html.platform-native-app .bottom-nav button i {
     font-size: 1.375rem;
 }
 html.platform-native-app #boardCategoryRow .board-category-btn {
-    font-size: 0.8125rem;
+    font-size: 18px;
 }
 /* 레이아웃 시프트 방지 */
 html {
@@ -58,6 +68,22 @@ html {
     padding: 0;
     overflow-x: clip;
     overflow-y: auto;
+}
+/* 모먼트 화면2: 자연 스크롤. 갤러리 화면2는 #galleryPostsInsertPoint `gap`으로 게시물 간격(카드 mb 제거). */
+html:has(#galleryView:not(.hidden) #galleryContainer.moment-feed-layout-v2),
+html:has(#feedContent[data-moment-feed-layout='2']) {
+    scroll-behavior: auto;
+    scroll-snap-type: none;
+    scroll-padding-top: calc(var(--safe-top) + 3.75rem);
+}
+#galleryView:not(.hidden) #galleryContainer.moment-feed-layout-v2 .instagram-post[data-moment-card-layout="2"],
+#feedContent[data-moment-feed-layout='2'] .instagram-post[data-moment-card-layout="2"] {
+    box-sizing: border-box;
+    flex-shrink: 0;
+    overflow: visible;
+    min-height: 0;
+    scroll-snap-align: none;
+    scroll-snap-stop: normal;
 }
 body {
     width: 100%;
@@ -193,11 +219,105 @@ body.keyboard-closed #boardWriteView {
     min-height: 60vh;
     padding: 0.75rem 1rem; /* py-3 px-4 */
 }
+/* 모먼트 좌우: #galleryView 단일 규칙(아래)에서 처리 — .ui-tab-view 기본 padding과 중복되지 않게 둠 */
 .ui-surface-soft { background: #f1f5f9; } /* slate-100 */
 .ui-stack-lg > * + * { margin-top: 1rem; }       /* space-y-4 */
 .ui-stack-md > * + * { margin-top: 0.75rem; }    /* space-y-3 */
 .ui-stack-sm > * + * { margin-top: 0.5rem; }     /* space-y-2 */
 .ui-stack-tight > * + * { margin-top: 0.375rem; }/* space-y-1.5 */
+/* 모먼트2: 게시물 간격 = 카드 `mb-1.5` 등. 부모 .ui-stack-sm의 인접 margin-top(0.5rem) 끄기(직접 자식 래퍼·헤더용) */
+#galleryContainer.moment-feed-layout-v2.ui-stack-sm > * + *,
+#feedContent[data-moment-feed-layout='2'].ui-stack-sm > * + * {
+    margin-top: 0;
+}
+/* 갤러리 화면2: 게시물 열 — 간격은 `gap`만 (자식 margin-bottom으로 간격 내지 않음) */
+#galleryContainer.moment-feed-layout-v2 #galleryPostsInsertPoint {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--moment-v2-gallery-post-gap, 20px);
+    min-height: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+/* JS 앵커용 `.instagram-post`: 시각 박스 없음(투명 래퍼) */
+#galleryContainer.moment-feed-layout-v2 .instagram-post.moment-v2-gallery-post-shell[data-moment-card-layout='2'] {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none;
+    outline: none;
+    overflow: visible;
+}
+/* 시각 카드: 스코프 한 덩어리만 — 바깥 간격은 부모 gap */
+#galleryContainer.moment-feed-layout-v2
+    .instagram-post.moment-v2-gallery-post-shell[data-moment-card-layout='2']
+    .moment-feed-v2-scope[data-moment-v2-root] {
+    background-color: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    overflow: hidden;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+}
+#galleryContainer.moment-feed-layout-v2
+    .instagram-post.moment-v2-gallery-post-shell[data-moment-card-layout='2']
+    .moment-v2-media-wrap {
+    margin: 0;
+    padding: 0;
+}
+/* 갤러리: 다음 글 사진까지 gap만 쓰려면 스택 상단 패딩 제거 */
+#galleryView:not(.hidden)
+    #galleryContainer.moment-feed-layout-v2
+    .instagram-post.moment-v2-gallery-post-shell[data-moment-card-layout='2']
+    .moment-v2-wheel-center-stack {
+    padding-top: 0 !important;
+}
+/* 프로필 뒤로가기 줄: 세로 패딩 제거(게시물 간에 끼는 여백 방지) */
+#galleryContainer.moment-feed-layout-v2
+    .instagram-post.moment-v2-gallery-post-shell[data-moment-card-layout='2']
+    > div.px-2.pt-2 {
+    margin: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+/* 베스트/일간 등 카드 아래 보조 블록 — 래퍼와 gap 사이 추가 여백 제거 */
+#galleryContainer.moment-feed-layout-v2 .instagram-post.moment-v2-gallery-post-shell .moment-v2-gallery-post-aux {
+    margin: 0;
+    padding: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+#galleryContainer.moment-feed-layout-v2
+    .instagram-post.moment-v2-gallery-post-shell
+    .moment-v2-gallery-post-aux
+    > .px-3.pt-2 {
+    margin: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+/* 푸터·댓글 패널: 카드 밑으로 새는 margin/padding 제거(게시물 간 = 열 gap) */
+#galleryContainer.moment-feed-layout-v2
+    .instagram-post.moment-v2-gallery-post-shell
+    .moment-v2-caption-footer[data-moment-v2-caption] {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+#galleryContainer.moment-feed-layout-v2
+    .instagram-post.moment-v2-gallery-post-shell
+    .moment-v2-social-comments-panel {
+    margin: 0 !important;
+    padding-bottom: 0 !important;
+}
+#galleryContainer.moment-feed-layout-v2
+    .instagram-post.moment-v2-gallery-post-shell
+    .moment-v2-caption-footer--social-only {
+    margin-bottom: 0 !important;
+}
 .mealog-title { 
     font-family: 'Fredoka', sans-serif; 
     font-weight: 600; 
@@ -271,6 +391,13 @@ header .mealog-title {
     font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
     font-size: 1.2rem;
     font-weight: normal;
+}
+/* 타임라인 사진 팝업 하단 메뉴@장소 */
+.timeline-meal-photo-menu-bar {
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-size: 18px;
+    font-weight: normal;
+    line-height: 1.35;
 }
 /* 모먼트 캡션: 사진 하단을 복사해 블러 레이어로 쓰고, 그 위에 캡션 텍스트 */
 .gallery-caption-wrap {
@@ -358,6 +485,865 @@ header .mealog-title {
     border: 2px solid #047857; 
     background: #ffffff; 
     color: #047857; 
+}
+/* 하단 메뉴 라벨 배경 50% 불투명 — 휠 전역 캡션 줄은 아래 짙은 회색·흰 글자 규칙 */
+#timelineMealPhotosOverlay .timeline-meal-photo-menu-bar:not(.timeline-meal-photos-slide-caption-inner) {
+    background-color: rgba(0, 0, 0, 0.5) !important;
+}
+#timelineMealPhotosOverlay {
+    --meal-wheel-viewport-h: 30px;
+    --meal-wheel-item-h: 30px;
+    --meal-photo-overlay-content-pad-x: 10px;
+}
+/* 모먼트 화면2: 카드에서 연 휠 팝업 — 캐러셀 셀을 위쪽 정렬(사진이 항상 상단), 하단 휠 라벨은 JS로 이미지 실제 높이에 맞춤 */
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--moment-feed:not(.hidden) .timeline-meal-photos-vslide-stage--wheel-only {
+    justify-content: flex-start;
+    align-items: stretch;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--moment-feed:not(.hidden) .timeline-meal-photos-carousel-frame {
+    justify-content: flex-start;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--moment-feed:not(.hidden) .timeline-meal-photos-hstrip .timeline-meal-photo-cell.justify-center {
+    justify-content: flex-start;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--moment-feed:not(.hidden) .timeline-meal-photos-hstrip .timeline-meal-photo-cell .items-end {
+    align-items: flex-start;
+    justify-content: flex-start;
+}
+/* 전체 화면 덮는 레이어 — 사진·라벨은 좌우 10px(노치는 safe-area와 병행). 닫기 버튼이 사진 밖으로 나와도 잘리지 않도록 루트는 visible, 본문만 클립 */
+#timelineMealPhotosOverlay:not(.hidden) .meal-photos-overlay-body {
+    box-sizing: border-box;
+    overflow: hidden;
+    padding-left: max(var(--meal-photo-overlay-content-pad-x), env(safe-area-inset-left, 0px));
+    padding-right: max(var(--meal-photo-overlay-content-pad-x), env(safe-area-inset-right, 0px));
+}
+/* 댓글 열림: flex 세로 가운데 정렬(overflow hidden으로 상·하 클립) 금지. JS 측정값(--meal-overlay-post-comments-reserve)으로 하단만 예약, 패널은 그 영역에 absolute */
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--post-comments-open:not(.hidden) .meal-photos-overlay-body {
+    min-height: 0;
+    overflow: visible; /* stage는 absolute 푸터로 overflow visible — 기본 body overflow:hidden이 라벨 하단을 잘리지 않게 */
+    /* 예약: 첫 측정 전 min(40vh,300px) — JS가 px로 덮어씀 */
+    padding-bottom: calc(1px + var(--meal-overlay-post-comments-reserve, min(40vh, 300px)));
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--post-comments-open:not(.hidden) .timeline-meal-photos-stage--with-footer {
+    min-height: 0;
+    /* 휠 기본 overflow:visible — 댓글 열릴 때 overflow:hidden 쓰면 absolute 푸터(하단라벨)가 잘림 */
+    overflow: visible;
+}
+/* 댓글 패널: 하단 예약(padding) 위에 겹쳐 올림. 너비·톤 = 하단라벨 열 + 코멘트 밴드 */
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--post-comments-open:not(.hidden) [data-meal-overlay-post-comments-panel]:not(.hidden) {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 25;
+    width: var(--meal-wheel-caption-inner-w, 100%);
+    max-width: 100%;
+    box-sizing: border-box;
+    margin-left: auto;
+    margin-right: auto;
+    max-height: min(48vh, 360px);
+    border-radius: 0;
+    box-shadow: none;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-color: rgba(0, 0, 0, 0.45);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    padding: 0.375rem 0.375rem;
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+    color: #fff;
+}
+/* 소셜 댓글 목록 — `data-meal-overlay-comment-band` 본문과 동일 서체·크기(라운드 없음, 패널은 위와 동일 border/bg) */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-overlay-post-comments-list-text {
+    padding-left: 1ch;
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-size: 18px;
+    font-weight: normal;
+    line-height: 1.35;
+    color: rgba(255, 255, 255, 0.9);
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-post-comments-panel:not(.hidden) .meal-overlay-post-comments-list {
+    max-height: min(5lh, calc(18px * 1.35 * 5));
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.38) transparent;
+    -webkit-overflow-scrolling: touch;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel
+    .timeline-meal-photos-post-comments-panel:not(.hidden)
+    .meal-overlay-post-comments-list::-webkit-scrollbar {
+    width: 2px;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel
+    .timeline-meal-photos-post-comments-panel:not(.hidden)
+    .meal-overlay-post-comments-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.38);
+    border-radius: 1px;
+}
+/* 사진 팝업 열림: 뒤로 스크롤 전달 억제. 세로=vtrack(pan-y), 캐러셀=pan-x pan-y(세로 스와이프가 vtrack으로 전달) */
+#timelineMealPhotosOverlay:not(.hidden) {
+    overscroll-behavior: contain;
+    touch-action: none;
+}
+/* 루트는 max-w-md 컬럼 폭만 쓰고, 좌우 끝까지 덮는 밝은 스크림(JS로 visualViewport 맞춤) */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-overlay-backdrop {
+    box-sizing: border-box;
+    background-color: rgba(255, 255, 255, 0.5);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-vtrack {
+    touch-action: pan-y;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-zone,
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-frame {
+    touch-action: pan-x pan-y;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-viewport {
+    touch-action: pan-x pan-y;
+}
+/* 가로 스트립 + 세로는 상위 vtrack(게시물 간) */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-hstrip,
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-hstrip .timeline-meal-photo-img {
+    touch-action: pan-x pan-y;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-img {
+    touch-action: pan-y;
+    transition: opacity 0.42s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+/* 모먼트 사진 팝업(라이트박스): 타임라인 사진 팝업과 동일한 전환 곡선·시간 */
+#momentImageLightbox:not(.hidden) .moment-lb-main-img {
+    transition: opacity 0.42s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+#momentImageLightbox:not(.hidden) [data-moment-lb-counter] {
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-weight: 400;
+}
+/* 가로 스트립 안 이미지: 일반 .timeline-meal-photo-img 규칙보다 우선 — 마우스 드래그·터치 가로 허용 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-hstrip .timeline-meal-photo-img {
+    -webkit-user-drag: none;
+    user-select: none;
+}
+/* 현재/전체 뱃지: 사진 하단 중앙(JS로 translateX(-50%)) — 하단 라벨(메뉴바)과 동일 서체, 테두리 없음 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-badge {
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-weight: 400;
+    border: none !important;
+}
+/* 모먼트 휠 팝업: 사진 위 프로필 칩 / 소셜은 배경 없이 아이콘만 그림자로 대비 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-chrome {
+    pointer-events: none;
+}
+/* 프로필+닉 칩: 아이콘(h-8=32px) + 4px = 36px → h-9 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-chrome-chip {
+    box-shadow: 0 1px 8px rgba(15, 23, 42, 0.2);
+    box-sizing: border-box;
+    min-height: calc(2rem + 4px);
+    height: calc(2rem + 4px);
+}
+/* 모먼트 팝업 프로필 아이콘: 1px 흰색 링 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-avatar {
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 255, 255, 0.92) !important;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-nick {
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-weight: 700;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-btn {
+    box-sizing: border-box;
+    border: none !important;
+    background-color: transparent !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-btn:active {
+    background-color: transparent !important;
+}
+/* 소셜 3열: 히트(2rem)에 맞춤 — 행 gap 0(버튼끼리 맞닿이듯 좁힘) */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row {
+    gap: 0;
+    align-items: center;
+}
+/* 상단(크롬) / 예전 하단: 미트볼(세로 ⋮) — 배경 없음, 아이콘 그림자 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-meatball-btn {
+    box-sizing: border-box;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-meatball-icon {
+    font-size: calc(17px * 0.7);
+    line-height: 1;
+}
+/* 모먼트 오버레이 ⋮ 메뉴: 너비 절반 + 유리 느낌(투명도) — 패널은 JS에서 class 부여 */
+.feed-options-center-panel button[type='button'] {
+    padding: 0.65rem 0.5rem;
+    font-size: 0.8125rem;
+    text-align: center;
+    background-color: rgba(241, 245, 249, 0.92) !important;
+}
+.feed-options-center-panel button[type='button']:active {
+    background-color: rgba(226, 232, 240, 0.96) !important;
+}
+.feed-options-center-panel button[type='button'] .font-bold {
+    font-size: 0.8125rem;
+}
+.feed-options-center-panel button[type='button'] .fa-solid,
+.feed-options-center-panel button[type='button'] .fa-regular {
+    font-size: 0.875rem;
+}
+.feed-options-center-panel button[type='button'] .flex.items-center {
+    gap: 0.45rem;
+    justify-content: center;
+    width: 100%;
+}
+/* 좋아요·북마크: 전체·숫자 약 115% (기본 2rem·17px/0.75rem 대비) */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row .post-bookmark-btn {
+    margin-right: 10px;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-hit {
+    box-sizing: border-box;
+    min-width: calc(2rem * 1.15);
+    width: calc(2rem * 1.15);
+    max-width: min(100%, 12rem);
+    padding: 0;
+    overflow: visible;
+    transition: width 0.18s ease, min-width 0.18s ease, padding 0.18s ease;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-icon-slot {
+    flex: 0 0 calc(2rem * 1.15);
+    width: calc(2rem * 1.15);
+    min-width: calc(2rem * 1.15);
+    height: calc(2rem * 1.15);
+    box-sizing: border-box;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row .post-like-btn,
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row .post-comment-btn,
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row .post-bookmark-btn {
+    min-height: calc(2rem * 1.15);
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row .post-comment-btn,
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row .post-bookmark-btn {
+    width: calc(2rem * 1.15);
+    height: calc(2rem * 1.15);
+    min-width: calc(2rem * 1.15);
+    flex-shrink: 0;
+}
+#timelineMealPhotosOverlay:not(.hidden) .post-like-btn.timeline-meal-photo-moment-social-hit:has(.post-like-count:not(:empty)) {
+    width: auto;
+    min-width: calc(2rem * 1.15);
+    padding-left: 0;
+    padding-right: calc(0.125rem * 1.15);
+    gap: calc(0.125rem * 1.15);
+    justify-content: flex-start;
+}
+#timelineMealPhotosOverlay:not(.hidden)
+    .post-like-btn.timeline-meal-photo-moment-social-hit:has(.post-like-count:not(:empty))
+    .timeline-meal-photo-moment-social-icon-slot {
+    flex: 0 0 calc(1.5rem * 1.15);
+    width: calc(1.5rem * 1.15);
+    min-width: calc(1.5rem * 1.15);
+    justify-content: flex-end;
+    padding-right: 0;
+}
+/* 소셜 FA: `-webkit-text-stroke` 쓰지 않음(이중 획처럼 됨) — 아이콘 실루엣은 `fa-regular`/`fa-solid` 글리프. 사진 대비는 그림자만 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-icon {
+    display: inline-block;
+    -webkit-text-stroke: 0;
+    paint-order: normal;
+    filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.62)) drop-shadow(0 0 1px rgba(15, 23, 42, 0.48));
+    font-size: calc(17px * 1.15);
+    line-height: 1;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-meatball-icon {
+    display: inline-block;
+    -webkit-text-stroke: 0 transparent;
+    paint-order: normal;
+    filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.62)) drop-shadow(0 0 1px rgba(15, 23, 42, 0.48));
+}
+/* 휠: 좌하단 comment — off: 흰 윤곽 + 안 흰 글자 / on: 흰 채움 + 짙은 회색 글자 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-comment-toggle {
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-comment-toggle--off {
+    background: transparent;
+    border: 2px solid rgba(255, 255, 255, 0.95);
+    color: rgba(255, 255, 255, 0.98);
+    filter: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-text-fill-color: rgba(255, 255, 255, 0.98);
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-comment-toggle--on {
+    background: #ffffff;
+    border: 2px solid #ffffff;
+    color: #64748b;
+    -webkit-text-fill-color: #64748b;
+    filter: none;
+    box-shadow: none;
+    backdrop-filter: none;
+}
+/* 모멘트 피드 v2(휠 팝업과 동일): comment — off 흰 보더+흰 글 / on 흰 채움+회색 글 */
+[data-moment-v2-root] .timeline-meal-photo-comment-toggle {
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+}
+[data-moment-v2-root] .timeline-meal-photo-comment-toggle--off {
+    background: transparent;
+    border: 2px solid rgba(255, 255, 255, 0.95);
+    color: rgba(255, 255, 255, 0.98);
+    filter: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-text-fill-color: rgba(255, 255, 255, 0.98);
+}
+[data-moment-v2-root] .timeline-meal-photo-comment-toggle--on {
+    background: #ffffff;
+    border: 2px solid #ffffff;
+    color: #64748b;
+    -webkit-text-fill-color: #64748b;
+    filter: none;
+    box-shadow: none;
+    backdrop-filter: none;
+}
+/* 좋아요·댓글·북마크: 앞(regular 윤곽) + 뒤(solid 채움, 레이어 불투명도 70%) */
+#timelineMealPhotosOverlay:not(.hidden) .post-like-btn.timeline-meal-photo-moment-social-btn.timeline-meal-photo-moment-social-hit {
+    overflow: visible;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-icon-stack {
+    position: relative;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    font-size: calc(17px * 1.15);
+    line-height: 1;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-icon-stack > i {
+    grid-area: 1 / 1;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-size: inherit;
+    line-height: 1;
+    width: 1em;
+    height: 1em;
+    min-width: 1em;
+    min-height: 1em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-icon-stack > .timeline-meal-photo-moment-social-icon-fill {
+    position: relative;
+    z-index: 0;
+    opacity: 0;
+    pointer-events: none;
+    filter: none;
+    transition: opacity 0.15s ease;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-icon-stack > i.timeline-meal-photo-moment-social-icon {
+    position: relative;
+    z-index: 1;
+    font-size: inherit;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-icon-stack > i::before {
+    display: block;
+    line-height: 1;
+}
+#timelineMealPhotosOverlay:not(.hidden) .post-like-btn.post-social-state-on .post-like-fill.timeline-meal-photo-moment-social-icon-fill {
+    opacity: 0.7;
+    color: #ef4444;
+}
+#timelineMealPhotosOverlay:not(.hidden) .post-comment-btn.post-social-state-on .post-comment-fill.timeline-meal-photo-moment-social-icon-fill {
+    opacity: 0.7;
+    color: #facc15;
+}
+#timelineMealPhotosOverlay:not(.hidden) .post-bookmark-btn.post-social-state-on .post-bookmark-fill.timeline-meal-photo-moment-social-icon-fill {
+    opacity: 0.7;
+    color: #ffffff;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-count {
+    font-size: calc(0.75rem * 1.15);
+    font-weight: 700;
+    line-height: 1;
+    min-width: 0.65rem;
+    color: rgba(255, 255, 255, 0.92);
+    text-shadow: 0 1px 2px rgba(15, 23, 42, 0.45);
+}
+/* 카운트 없을 때는 숨겨 레이아웃 폭 0 — 숫자 생기면 아이콘 옆 슬롯만 가로 확장 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-count:empty {
+    display: none;
+    width: 0;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+/* 휠 하단: 작성자 기록 코멘트 — 하단 라벨(.timeline-meal-photo-menu-bar)과 동일 글꼴·크기·줄간격 */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-overlay-comment-body {
+    padding-left: 1ch;
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-size: 18px;
+    font-weight: normal;
+    line-height: 1.35;
+    color: rgba(255, 255, 255, 0.9);
+    overflow: visible;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-badge .carousel-badge-num {
+    font-size: 1rem;
+    line-height: 1;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-carousel-badge .carousel-badge-sep {
+    font-size: 0.5625rem;
+    opacity: 0.9;
+    padding: 0 0.1em;
+    font-family: inherit;
+    font-weight: 400;
+}
+body:has(#timelineMealPhotosOverlay:not(.hidden)) {
+    overscroll-behavior: none;
+}
+#timelineMealPhotosOverlay:not(.hidden) button {
+    touch-action: manipulation;
+}
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-caption-footer {
+    touch-action: manipulation;
+}
+/* 루트 touch-action:none 아래서 날짜·슬롯 휠 스트립 세로 스크롤 허용 */
+#timelineMealPhotosOverlay:not(.hidden) .meal-photo-wheel-inner {
+    touch-action: pan-y;
+}
+/* 휠 모드: 세로 스냅으로 한 기록(한 장)만 뷰포트 중앙 / 라벨은 스크롤 밖·absolute — 사진+푸터 합이 세로 중앙(JS translateY) */
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-stage--with-footer {
+    overflow: visible;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-vtrack {
+    height: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-caption-footer {
+    display: flex;
+    justify-content: center;
+    z-index: 12;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding-left: 0;
+    padding-right: 0;
+    /* 바 전체는 투과 — 사진·가로 스와이프가 가려지지 않게. 휠/라벨만 다시 받음 */
+    pointer-events: none;
+    transition: top 0.02s ease-out;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-caption-footer .timeline-meal-photos-slide-caption-inner {
+    pointer-events: auto;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-slide-caption-inner.timeline-meal-photo-menu-bar {
+    width: var(--meal-wheel-caption-inner-w, 100%);
+    max-width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
+}
+/* 휠: 코멘트 5줄 초과 시 내부 스크롤 — 얇은 스크롤바, 스크롤/터치 수신 */
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-overlay-comment-band:not(.hidden) {
+    pointer-events: auto;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-overlay-comment-body {
+    max-height: min(5lh, calc(18px * 1.35 * 5));
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.38) transparent;
+    -webkit-overflow-scrolling: touch;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-overlay-comment-body::-webkit-scrollbar {
+    width: 2px;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-overlay-comment-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-overlay-comment-body::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.38);
+    border-radius: 1px;
+}
+/* 사진 팝업 라벨 행(공통): 휠 모드에서만 아래 휠 규칙으로 덮어씀 */
+#timelineMealPhotosOverlay .timeline-meal-photos-slide-caption-inner.timeline-meal-photo-menu-bar {
+    padding: 4px 0.5rem;
+}
+/* 휠 라벨 한 줄: 숫자 뷰포트(30px) — 짙은 회색 바·흰 글자 18px */
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-slide-caption-inner.timeline-meal-photo-menu-bar {
+    padding: 2px 0.5rem;
+    gap: 1ch;
+    align-items: center;
+    line-height: 1;
+    font-size: 18px;
+    background-color: rgba(38, 40, 46, 0.7) !important;
+    border-color: rgba(255, 255, 255, 0.14) !important;
+    color: #fff !important;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-slide-caption-inner .meal-photo-wheel-item,
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-slide-caption-inner .meal-photo-wheel-label-line {
+    color: rgba(255, 255, 255, 0.95);
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-slide-caption-inner [data-wheel-menu-caption] {
+    color: rgba(255, 255, 255, 0.95);
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-slide-caption-inner .meal-photo-wheel-sep--colon {
+    color: rgba(255, 255, 255, 0.45);
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel [data-wheel-menu-caption] {
+    align-self: center;
+    box-sizing: border-box;
+    background: transparent;
+    border-radius: 0;
+    padding-left: 0;
+    padding-right: 0;
+    min-width: 0;
+    text-align: right;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    white-space: normal;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-wheelbar-inner {
+    min-width: 0;
+    flex: 0 1 auto;
+    overflow: hidden;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-vslide--photo-only {
+    height: 100%;
+    min-height: 100%;
+    flex-shrink: 0;
+    scroll-snap-align: center;
+    scroll-snap-stop: always;
+}
+/* 모먼트 피드: 게시물 간 세로 전환(타임라인 다슬롯 스크롤과 비슷한 느낌) */
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-vslide.timeline-meal-photos-slide--moment-leave-next {
+    transition: transform 0.38s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.32s ease-out;
+    will-change: transform, opacity;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel
+    .timeline-meal-photos-vslide.timeline-meal-photos-slide--moment-leave-next.is-moment-leave-active {
+    transform: translateY(calc(-1 * min(36%, 280px)));
+    opacity: 0.18;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-vslide.timeline-meal-photos-slide--moment-leave-prev {
+    transition: transform 0.38s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.32s ease-out;
+    will-change: transform, opacity;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel
+    .timeline-meal-photos-vslide.timeline-meal-photos-slide--moment-leave-prev.is-moment-leave-active {
+    transform: translateY(min(36%, 280px));
+    opacity: 0.18;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-vslide.timeline-meal-photos-slide--moment-enter-next {
+    transform: translateY(min(38%, 300px));
+    opacity: 0.22;
+    transition: none;
+    will-change: transform, opacity;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel
+    .timeline-meal-photos-vslide.timeline-meal-photos-slide--moment-enter-next.is-moment-enter-ready {
+    transition: transform 0.42s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.36s ease-out;
+    transform: none;
+    opacity: 1;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-vslide.timeline-meal-photos-slide--moment-enter-prev {
+    transform: translateY(calc(-1 * min(38%, 300px)));
+    opacity: 0.22;
+    transition: none;
+    will-change: transform, opacity;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel
+    .timeline-meal-photos-vslide.timeline-meal-photos-slide--moment-enter-prev.is-moment-enter-ready {
+    transition: transform 0.42s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.36s ease-out;
+    transform: none;
+    opacity: 1;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-vslide-stage--wheel-only {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-carousel-zone {
+    width: var(--meal-wheel-caption-inner-w, 100%);
+    max-width: 100%;
+    min-width: 0;
+    min-height: 0;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-carousel-frame {
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    flex: 0 1 auto;
+    max-height: min(72vh, 520px);
+    height: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    box-sizing: border-box;
+}
+/* 가로 스트립 셀·뷰포트: 하단 라벨(--meal-wheel-caption-inner-w)과 같은 열 너비 — Tailwind p-1로 줄던 가로 여백 제거 */
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-carousel-viewport {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-hstrip {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photo-cell {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    box-sizing: border-box;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-vslide-stage--wheel-only .timeline-meal-photo-img {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    max-height: min(72vh, 520px);
+    object-fit: contain;
+    transition: opacity 0.48s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+/* 기록 사진 비율(1:1·3:4·4:3) 슬롯: 프레임 채우기 — 휠 모드 위 contain 규칙 덮어씀. 모서리·그림자는 슬롯만(이중 라운드/섀도 방지) */
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-aspect-slot .timeline-meal-photo-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+    box-shadow: none;
+    object-fit: cover;
+}
+/* 휠 라벨 안: 피커 열 너비·구분 간격만 축소 — 숫자칸·요일·슬롯 뷰포트 높이 동일(30px) */
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .timeline-meal-photos-caption-footer .meal-photo-wheel-viewport {
+    height: var(--meal-wheel-viewport-h);
+    min-height: var(--meal-wheel-viewport-h);
+    max-height: var(--meal-wheel-viewport-h);
+    box-sizing: border-box;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label) {
+    width: 2.125rem;
+    flex: 0 0 2.125rem;
+    touch-action: pan-y;
+    background: rgba(255, 255, 255, 0.2);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 0.5%, #000 99.5%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 0.5%, #000 99.5%, transparent 100%);
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label) .meal-photo-wheel-inner {
+    max-height: var(--meal-wheel-viewport-h);
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-inner {
+    touch-action: pan-y;
+    scroll-snap-type: y mandatory;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-item {
+    scroll-snap-align: center;
+    scroll-snap-stop: always;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-col--year .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label) {
+    width: 2.625rem;
+    flex: 0 0 2.625rem;
+}
+/* 요일·슬롯: 숫자 휠과 동일 높이 — 좌우 0.45em(약 반 글자씩) 여백 */
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-viewport--label {
+    width: auto;
+    min-width: 0.875rem;
+    flex: 0 0 auto;
+    touch-action: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+    padding-left: 0.45em;
+    padding-right: 0.45em;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    box-sizing: border-box;
+    overflow: hidden;
+    height: var(--meal-wheel-viewport-h);
+    min-height: var(--meal-wheel-viewport-h);
+    max-height: var(--meal-wheel-viewport-h);
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-viewport--label .meal-photo-wheel-label-strip {
+    flex: 1 1 auto;
+    min-height: 0;
+    justify-content: center;
+}
+/* 슬롯: 상한 9rem·축소 가능 — 메뉴@장소 열과 겹치지 않게 */
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-viewport--slot {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    max-width: 9rem;
+    align-self: center;
+    align-items: center;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-label-strip {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    will-change: transform;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-viewport--slot .meal-photo-wheel-label-strip {
+    width: max-content;
+    max-width: 100%;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-label-line {
+    box-sizing: border-box;
+    height: var(--meal-wheel-item-h);
+    min-height: var(--meal-wheel-item-h);
+    line-height: var(--meal-wheel-item-h);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: inherit;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+    color: rgba(255, 255, 255, 0.95);
+    white-space: nowrap;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-viewport--slot .meal-photo-wheel-label-line {
+    justify-content: center;
+    text-align: center;
+    padding-left: 0;
+    padding-right: 0;
+    width: max-content;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-sep--colon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: var(--meal-wheel-viewport-h);
+    min-height: var(--meal-wheel-viewport-h);
+    line-height: 1;
+    box-sizing: border-box;
+    align-self: center;
+    padding: 0 1px;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-col:not(.meal-photo-wheel-col--slot) {
+    justify-content: center;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-col--slot {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 9rem;
+}
+#timelineMealPhotosOverlay .timeline-meal-photos-vslide--legacy .timeline-meal-photos-carousel-zone {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+#timelineMealPhotosOverlay .timeline-meal-photos-vslide--legacy .timeline-meal-photos-carousel-frame {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+/* 사진 팝업: 날짜 휠 뷰포트 — 숫자 수직·가로 중앙 */
+#timelineMealPhotosOverlay .meal-photo-wheel-viewport {
+    height: var(--meal-wheel-viewport-h);
+    width: 2.5rem;
+    flex: 0 0 2.5rem;
+    overflow: hidden;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.07);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 26%, #000 74%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 26%, #000 74%, transparent 100%);
+}
+#timelineMealPhotosOverlay .meal-photo-wheel-col--year .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label) {
+    width: 3rem;
+    flex: 0 0 3rem;
+}
+#timelineMealPhotosOverlay .meal-photo-wheel-viewport--label .meal-photo-wheel-label-line {
+    font-size: inherit;
+    font-weight: 400;
+}
+#timelineMealPhotosOverlay .meal-photo-wheel-sep--colon,
+#timelineMealPhotosOverlay .meal-photo-wheel-sep--pipe {
+    line-height: var(--meal-wheel-viewport-h);
+    align-self: center;
+}
+#timelineMealPhotosOverlay .meal-photo-wheel-col--slot {
+    min-width: 0;
+    flex: 1 1 auto;
+    max-width: 9rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: stretch;
+}
+#timelineMealPhotosOverlay .timeline-meal-photos-wheelbar-inner {
+    flex-wrap: nowrap;
+    align-items: center;
+}
+#timelineMealPhotosOverlay .timeline-meal-photos-slide-caption-inner {
+    align-items: center;
+}
+#timelineMealPhotosOverlay .meal-photo-wheel-item {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    height: var(--meal-wheel-item-h);
+    min-height: var(--meal-wheel-item-h);
+    line-height: var(--meal-wheel-item-h);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+#timelineMealPhotosOverlay .meal-photo-wheel-inner {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 100%;
+    box-sizing: border-box;
+    align-items: stretch;
+    max-height: 320px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+    touch-action: pan-y;
+}
+#timelineMealPhotosOverlay .meal-photo-wheel-inner::-webkit-scrollbar {
+    display: none;
 }
 /* 트래커 월 팝업: 셀은 트래커와 동일 dot-* 클래스, 크기만 축소 */
 .tracker-month-cell {
@@ -455,6 +1441,49 @@ header .mealog-title {
     margin-bottom: 2px;
     padding: 5px 8px;
 }
+#entryModal .sub-chip-wrapper {
+    margin-right: 2px;
+    margin-bottom: 2px;
+}
+#entryModal .sub-chip-wrapper .sub-chip {
+    margin-right: 0;
+    margin-bottom: 0;
+}
+/* 기록 모달 서브태그 줄: 칩 전체 라벨 유지, 넘치면 가로 스크롤 (식사·간식 공통) */
+#entryModal .entry-subtag-suggestions {
+    display: flex;
+    flex-flow: row nowrap;
+    align-items: center;
+    gap: 4px;
+    margin-top: 2px;
+    padding-bottom: 2px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+}
+#entryModal .entry-subtag-suggestions .sub-chip-wrapper {
+    flex-shrink: 0;
+    margin-right: 0;
+    margin-bottom: 0;
+}
+#entryModal .entry-subtag-suggestions .sub-chip {
+    white-space: nowrap;
+    max-width: none;
+    margin-right: 0;
+    margin-bottom: 0;
+}
+/* 기록 모달 서브태그: 선택 시 슬레이트 600 (이전 대비 배경 살짝 연함) */
+#entryModal .entry-subtag-suggestions .sub-chip.active {
+    background: #475569 !important;
+    color: #fff !important;
+    border-color: #475569 !important;
+}
+#entryModal .entry-subtag-suggestions .sub-chip.active .fa-star {
+    color: #fff !important;
+}
 .sub-chip { 
     display: inline-flex; 
     align-items: center; 
@@ -548,6 +1577,16 @@ body.bottom-nav-scroll-hidden .bottom-nav {
 body.bottom-nav-scroll-hidden #navigationBarOverlay {
     transform: translateY(100%);
 }
+/* 모먼트 사진 휠 오버레이: 타이틀 헤더 위로·하단 앱 네비 아래로 (오버레이가 그 사이를 덮음) */
+body.meal-photo-moment-chrome-hidden #mainAppHeader {
+    transform: translateY(-100%);
+}
+body.meal-photo-moment-chrome-hidden .bottom-nav {
+    transform: translateX(-50%) translateY(calc(100% + 8px + var(--safe-bottom)));
+}
+body.meal-photo-moment-chrome-hidden #navigationBarOverlay {
+    transform: translateY(100%);
+}
 .prop-bar-container { 
     height: 28px; 
     border-radius: 8px; 
@@ -588,7 +1627,10 @@ body.bottom-nav-scroll-hidden #navigationBarOverlay {
 }
 /* 기록 모달 열림(entry-modal-open은 JS에서 토글): 네비는 가려지므로 액션 패딩에 바 높이를 이중으로 넣지 않음 */
 body.entry-modal-open .bottom-nav,
-body.entry-modal-open #navigationBarOverlay {
+body.entry-modal-open #navigationBarOverlay,
+body.entry-modal-open #mealSyncResendBtn.meal-sync-resend-fab,
+body.entry-modal-open #initialRecordsLoadFab.initial-records-load-fab,
+body.entry-modal-open #galleryMomentsRefreshFab.initial-records-load-fab {
     visibility: hidden !important;
     pointer-events: none !important;
 }
@@ -610,6 +1652,1743 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 }
 #entryModal.keyboard-open #modalScrollArea {
     padding-bottom: 0 !important;
+}
+/* 모먼트 피드: 사진 탭 시 확대(라이트박스) 가능함을 표시 */
+#galleryContainer .moment-feed-photo {
+    cursor: zoom-in;
+}
+/* 화면2: 라이트박스 없음 — 돋보기 커서 제거 */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-carousel-photo,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-carousel-photo {
+    cursor: default;
+}
+/* 모먼트 보기 2: 팝업형 한 장 캐러셀 + 사진/휠 라벨 분리 (타임라인 오버레이 휠과 동일 톤) */
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope {
+    --meal-wheel-viewport-h: 30px;
+    --meal-wheel-item-h: 30px;
+}
+/* 휠 한 줄: 년·월·일(숫자) / 요일·슬롯(텍스트) 열 뷰포트 높이 30px 통일 — 팝업 `#timelineMealPhotosOverlay` `.timeline-meal-photos-caption-footer .meal-photo-wheel-viewport` */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row .meal-photo-wheel-viewport,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row .meal-photo-wheel-viewport,
+#moment-v2-fixed-caption-layer .moment-v2-wheel-caption-row .meal-photo-wheel-viewport {
+    height: var(--meal-wheel-viewport-h);
+    min-height: var(--meal-wheel-viewport-h);
+    max-height: var(--meal-wheel-viewport-h);
+    box-sizing: border-box;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row .meal-photo-wheel-viewport--label .meal-photo-wheel-label-strip,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row .meal-photo-wheel-viewport--label .meal-photo-wheel-label-strip,
+#moment-v2-fixed-caption-layer .moment-v2-wheel-caption-row .meal-photo-wheel-viewport--label .meal-photo-wheel-label-strip {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    justify-content: center;
+    width: 100%;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-col--slot .meal-photo-wheel-label-strip,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-col--slot .meal-photo-wheel-label-strip,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .meal-photo-wheel-col--slot .meal-photo-wheel-label-strip {
+    width: max-content;
+    max-width: 100%;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .moment-v2-photo-shell,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .moment-v2-photo-shell,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .moment-v2-photo-shell {
+    background: transparent !important;
+    overflow: hidden;
+    min-width: 0;
+    /* flex 하위 min-h-0에 의해 캐러셀 높이 0에 가깝게 접히는 것 방지 */
+    min-height: min-content;
+    /* JS `--meal-wheel-caption-inner-w` = 캡션 열(하단 휠·기록·소셜) — 사진·도크와 동일 너비 */
+    width: var(--meal-wheel-caption-inner-w, 100%);
+    max-width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photos-carousel-zone,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photos-carousel-zone,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .timeline-meal-photos-carousel-zone {
+    width: var(--meal-wheel-caption-inner-w, 100%);
+    max-width: 100%;
+    min-width: 0;
+    min-height: min-content;
+    box-sizing: border-box;
+    margin-left: auto;
+    margin-right: auto;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-stage--split-caption .moment-v2-wheel-center-stack,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-stage--split-caption .moment-v2-wheel-center-stack {
+    align-items: center;
+    width: 100%;
+}
+/* 다장(가로 사진만 스와이프): 사진 영역·라벨 열 전체 너비 — 푸터는 사진 아래 고정 */
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-swipe-photos-only='1'] .moment-v2-wheel-stage--split-caption .moment-v2-wheel-center-stack,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-swipe-photos-only='1'] .moment-v2-wheel-stage--split-caption .moment-v2-wheel-center-stack {
+    align-items: stretch;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-swipe-photos-only='1'] .moment-v2-caption-footer--hstrip-below,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-swipe-photos-only='1'] .moment-v2-caption-footer--hstrip-below {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-swipe-photos-only='1'] .moment-v2-wheel-center-stack,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-swipe-photos-only='1'] .moment-v2-wheel-center-stack {
+    flex: 0 0 auto;
+    min-height: 0;
+}
+/* 사진 래퍼(일반/베스트·일간): 하단만 직각 — 라벨·박스와 수직 1px 간격(부모 column gap) */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-photo-surface,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-photo-surface,
+#moment-v2-fixed-caption-layer .moment-v2-photo-surface {
+    border-bottom-left-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-stage--split-caption .moment-v2-dock-slab,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-stage--split-caption .moment-v2-dock-slab {
+    width: var(--meal-wheel-caption-inner-w, 100%);
+    max-width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photos-carousel-frame,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photos-carousel-frame,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .timeline-meal-photos-carousel-frame {
+    width: 100%;
+    min-width: 0;
+    min-height: min-content;
+    max-height: none;
+    overflow: visible;
+}
+/* 뷰포트: 콘텐츠(세로) 높이에 맞춤 — 뒤쪽 흰 박스(고정 88vh) 제거. 최대만 캡 */
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .moment-v2-carousel-viewport--natural,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .moment-v2-carousel-viewport--natural,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .moment-v2-carousel-viewport--natural {
+    width: 100%;
+    min-width: 100%;
+    height: auto !important;
+    max-height: min(88vh, calc(100dvh - 7rem));
+    min-height: min-content;
+    overflow: hidden;
+}
+/* 화면2 세로 스택: 단위마다 블러 배경(사진 확대·투명) */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-v-unit .moment-v2-v-unit-bg-wrap,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-v-unit .moment-v2-v-unit-bg-wrap {
+    border-radius: 0.5rem;
+    overflow: hidden;
+    z-index: 0;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-v-unit-bg-img,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-v-unit-bg-img {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    min-width: 100%;
+    min-height: 100%;
+    width: auto;
+    height: auto;
+    transform: translate(-50%, -50%) scale(1.22);
+    object-fit: cover;
+    filter: blur(32px) saturate(1.05);
+    opacity: 0.6;
+    pointer-events: none;
+}
+/* 다장(가로): 게시물 한 덩어리(사진~하단 라벨·코멘트) 뒤 전역 블러 — 활성 사진 URL로 JS 동기화 */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-hpost-bg-wrap,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-hpost-bg-wrap,
+#moment-v2-fixed-caption-layer .moment-v2-hpost-bg-wrap {
+    border-radius: 0.5rem;
+    overflow: hidden;
+    z-index: 0;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-hpost-bg-img,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-hpost-bg-img,
+#moment-v2-fixed-caption-layer .moment-v2-hpost-bg-img {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    min-width: 100%;
+    min-height: 100%;
+    width: auto;
+    height: auto;
+    transform: translate(-50%, -50%) scale(1.28);
+    object-fit: cover;
+    filter: blur(40px) saturate(1.08) brightness(0.9);
+    opacity: 0.72;
+    pointer-events: none;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-hpost-bg-dim,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-hpost-bg-dim,
+#moment-v2-fixed-caption-layer .moment-v2-hpost-bg-dim {
+    /* 상단은 음영 약하게(빈 패딩 구간·사진 object-top 잔상에서 ‘상단 띠’ 완화) */
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.06), rgba(15, 23, 42, 0.38));
+    z-index: 1;
+    pointer-events: none;
+}
+/* 다장 전역 배경: 헤더 정렬용 20px(.instagram-post .moment-v2-wheel-center-stack)보다 특이도 높여 사진·블러 상단을 맞춤 */
+#galleryView:not(.hidden) #galleryContainer.moment-feed-layout-v2 .instagram-post[data-moment-card-layout='2'] .moment-v2-hpost-ambient .moment-v2-wheel-center-stack,
+#feedContent[data-moment-feed-layout='2'] .instagram-post[data-moment-card-layout='2'] .moment-v2-hpost-ambient .moment-v2-wheel-center-stack,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .moment-v2-hpost-ambient .moment-v2-wheel-center-stack {
+    padding-top: 0;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row--unit,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row--unit {
+    border-radius: 0 !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-v-unit .moment-v2-author-unit-band:not(.hidden),
+#feedContent[data-moment-feed-layout='2'] .moment-v2-v-unit .moment-v2-author-unit-band:not(.hidden) {
+    border-radius: 0 0 0.5rem 0.5rem;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-caption-footer--social-only,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-caption-footer--social-only {
+    pointer-events: auto;
+    margin-top: 0.25rem;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-center-stack,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-center-stack {
+    min-height: 0;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photos-carousel-viewport:not(.moment-v2-carousel-viewport--natural),
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photos-carousel-viewport:not(.moment-v2-carousel-viewport--natural),
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .timeline-meal-photos-carousel-viewport:not(.moment-v2-carousel-viewport--natural) {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    max-height: min(88vh, calc(100dvh - 7rem));
+    overflow: hidden;
+}
+/* 화면2: 가로 다장 hstrip — 가로만 스냅(세로 피드 스냅과 별개) */
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .moment-v2-hstrip,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .moment-v2-hstrip,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .moment-v2-hstrip {
+    width: 100%;
+    height: auto;
+    min-height: min-content;
+    align-items: stretch;
+    gap: 0;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    /* pan-x만 두면 기기에서 세로 피드 스크롤이 사진 위에서 막힘 — 가로 스와이프와 세로 스크롤 공존 */
+    touch-action: pan-x pan-y;
+    cursor: grab;
+}
+@media (prefers-reduced-motion: reduce) {
+    #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .moment-v2-hstrip,
+    #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .moment-v2-hstrip,
+    #moment-v2-fixed-caption-layer .moment-feed-v2-scope .moment-v2-hstrip {
+        scroll-behavior: auto;
+    }
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .moment-v2-hstrip.moment-v2-hstrip--dragging,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .moment-v2-hstrip.moment-v2-hstrip--dragging,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .moment-v2-hstrip.moment-v2-hstrip--dragging {
+    cursor: grabbing;
+    user-select: none;
+    /* 드래그 중엔 pointermove로 scrollLeft를 직접 쓰므로 smooth 비활성(손/팔로우 지연 방지) */
+    scroll-behavior: auto;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .moment-v2-hstrip .moment-v2-h-slide,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .moment-v2-hstrip .moment-v2-h-slide,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .moment-v2-hstrip .moment-v2-h-slide {
+    box-sizing: border-box;
+    width: 100%;
+    /* 이미지 로드 전 intrinsic 폭이 0일 때도 슬롯이 ‘세로줄’처럼 쪼그라들지 않게 */
+    min-width: 100%;
+    height: auto;
+    min-height: 0;
+    align-self: stretch;
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+    scroll-snap-stop: normal;
+}
+/* 다장: 뷰포트 앞 사진 슬롯은 기존 매트(전역 블러는 .moment-v2-hpost-ambient) */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-hstrip .moment-v2-photo-surface.timeline-meal-photo-aspect-slot,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-hstrip .moment-v2-photo-surface.timeline-meal-photo-aspect-slot,
+#moment-v2-fixed-caption-layer .moment-v2-hstrip .moment-v2-photo-surface.timeline-meal-photo-aspect-slot {
+    width: 100%;
+    background-color: rgba(241, 245, 249, 0.22) !important;
+    --tw-ring-color: rgba(226, 232, 240, 0.35) !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photos-carousel-badge,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photos-carousel-badge,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .timeline-meal-photos-carousel-badge {
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-weight: 400;
+    font-size: 20px;
+    line-height: 1.2;
+}
+/* 타임라인 휠 팝업 `.timeline-meal-photos-overlay--wheel .timeline-meal-photos-slide-caption-inner` 와 동일 톤 */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar,
+#moment-v2-fixed-caption-layer .moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar {
+    padding: 2px 0.5rem;
+    gap: 0;
+    align-items: center;
+    line-height: 1;
+    font-size: 20px;
+    background-color: rgba(38, 40, 46, 0.7) !important;
+    border-color: rgba(255, 255, 255, 0.14) !important;
+    color: #fff !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row .meal-photo-wheel-sep--colon,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row .meal-photo-wheel-sep--colon,
+#moment-v2-fixed-caption-layer .moment-v2-wheel-caption-row .meal-photo-wheel-sep--colon {
+    color: rgba(255, 255, 255, 0.45);
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row [data-wheel-menu-caption] .moment-v2-wheel-anim-strip--menu,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row [data-wheel-menu-caption] .moment-v2-wheel-anim-strip--menu,
+#moment-v2-fixed-caption-layer .moment-v2-wheel-caption-row [data-wheel-menu-caption] .moment-v2-wheel-anim-strip--menu {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row [data-wheel-menu-caption],
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row [data-wheel-menu-caption],
+#moment-v2-fixed-caption-layer .moment-v2-wheel-caption-row [data-wheel-menu-caption] {
+    min-width: 0;
+    flex: 1 1 0%;
+    margin-left: 1em;
+    text-align: right;
+    align-self: center;
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-size: 20px;
+    font-weight: normal;
+    letter-spacing: 0.05em;
+    color: rgba(255, 255, 255, 0.95) !important;
+    background: transparent;
+    -webkit-text-fill-color: rgba(255, 255, 255, 0.95);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+    overflow: visible;
+}
+/* 메뉴@장소: 한 줄(20px) — 넘치면 JS로 .moment-v2-wheel-menu--compact → 18px 두 줄 */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row [data-wheel-menu-caption]:not(.moment-v2-wheel-menu--compact)
+    .moment-v2-wheel-menu-anim-line,
+#feedContent[data-moment-feed-layout='2']
+    .moment-v2-wheel-caption-row
+    [data-wheel-menu-caption]:not(.moment-v2-wheel-menu--compact)
+    .moment-v2-wheel-menu-anim-line,
+#moment-v2-fixed-caption-layer
+    .moment-v2-wheel-caption-row
+    [data-wheel-menu-caption]:not(.moment-v2-wheel-menu--compact)
+    .moment-v2-wheel-menu-anim-line {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#galleryContainer.moment-feed-layout-v2
+    .moment-v2-wheel-caption-row
+    [data-wheel-menu-caption].moment-v2-wheel-menu--compact
+    .moment-v2-wheel-anim-strip--menu
+    > .meal-photo-wheel-label-line,
+#feedContent[data-moment-feed-layout='2']
+    .moment-v2-wheel-caption-row
+    [data-wheel-menu-caption].moment-v2-wheel-menu--compact
+    .moment-v2-wheel-anim-strip--menu
+    > .meal-photo-wheel-label-line,
+#moment-v2-fixed-caption-layer
+    .moment-v2-wheel-caption-row
+    [data-wheel-menu-caption].moment-v2-wheel-menu--compact
+    .moment-v2-wheel-anim-strip--menu
+    > .meal-photo-wheel-label-line {
+    height: auto !important;
+    min-height: 0 !important;
+    line-height: 1.25;
+    font-size: 18px !important;
+    white-space: normal;
+    overflow: hidden;
+    max-height: calc(18px * 1.25 * 2);
+    display: block;
+    text-align: right;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    text-overflow: ellipsis;
+    justify-content: flex-start;
+    align-items: stretch;
+}
+/* 메뉴 2줄(compact): 행 높이 확장 — YYYY… 숫자 열은 행 세로 중앙, 메뉴@장소 블록은 상단 기준 */
+#galleryContainer.moment-feed-layout-v2
+    .moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar:has([data-wheel-menu-caption].moment-v2-wheel-menu--compact),
+#feedContent[data-moment-feed-layout='2']
+    .moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar:has([data-wheel-menu-caption].moment-v2-wheel-menu--compact),
+#moment-v2-fixed-caption-layer
+    .moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar:has([data-wheel-menu-caption].moment-v2-wheel-menu--compact) {
+    align-items: stretch;
+    min-height: calc(max(30px, 18px * 1.25 * 2) + 12px);
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+#galleryContainer.moment-feed-layout-v2
+    .moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar:has([data-wheel-menu-caption].moment-v2-wheel-menu--compact)
+    .timeline-meal-photos-wheelbar-inner,
+#feedContent[data-moment-feed-layout='2']
+    .moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar:has([data-wheel-menu-caption].moment-v2-wheel-menu--compact)
+    .timeline-meal-photos-wheelbar-inner,
+#moment-v2-fixed-caption-layer
+    .moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar:has([data-wheel-menu-caption].moment-v2-wheel-menu--compact)
+    .timeline-meal-photos-wheelbar-inner {
+    align-self: center;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row [data-wheel-menu-caption].moment-v2-wheel-menu--compact,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row [data-wheel-menu-caption].moment-v2-wheel-menu--compact,
+#moment-v2-fixed-caption-layer .moment-v2-wheel-caption-row [data-wheel-menu-caption].moment-v2-wheel-menu--compact {
+    align-self: flex-start;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-menu-at-mark,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-menu-at-mark,
+#moment-v2-fixed-caption-layer .moment-v2-wheel-menu-at-mark {
+    display: inline;
+    font: inherit;
+    color: inherit;
+}
+#galleryContainer.moment-feed-layout-v2
+    .moment-v2-wheel-caption-row
+    [data-wheel-menu-caption].moment-v2-wheel-menu--compact
+    .moment-v2-wheel-anim-strip--menu,
+#feedContent[data-moment-feed-layout='2']
+    .moment-v2-wheel-caption-row
+    [data-wheel-menu-caption].moment-v2-wheel-menu--compact
+    .moment-v2-wheel-anim-strip--menu,
+#moment-v2-fixed-caption-layer
+    .moment-v2-wheel-caption-row
+    [data-wheel-menu-caption].moment-v2-wheel-menu--compact
+    .moment-v2-wheel-anim-strip--menu {
+    height: auto;
+    min-height: 0;
+}
+/* 기록 코멘트: 하단 휠 메뉴(우측 캡션)과 동일 서체·크기, 라벨 품과 동일 가로(스테이지 패딩과 JS --meal-wheel-caption-inner-w) */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-label-font-body,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-label-font-body,
+#moment-v2-fixed-caption-layer .moment-v2-label-font-body {
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-size: 20px;
+    font-weight: normal;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+/* 기록 코멘트: 3줄까지 표시 — 초과 시 박스 탭으로 펼침/접힘(스크롤은 펼친 상태만) */
+#galleryContainer.moment-feed-layout-v2 [data-moment-v2-author-comment-body],
+#feedContent[data-moment-feed-layout='2'] [data-moment-v2-author-comment-body],
+#moment-v2-fixed-caption-layer [data-moment-v2-author-comment-body],
+#galleryContainer.moment-feed-layout-v2 [data-moment-v2-author-comment-body-unit],
+#feedContent[data-moment-feed-layout='2'] [data-moment-v2-author-comment-body-unit],
+#moment-v2-fixed-caption-layer [data-moment-v2-author-comment-body-unit] {
+    box-sizing: border-box;
+    padding: 0 2ch;
+    text-indent: 0;
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-size: 20px;
+    font-weight: normal;
+    line-height: 1.35;
+    letter-spacing: 0.05em;
+    color: rgba(255, 255, 255, 0.9);
+    overflow-x: hidden;
+    overflow-y: hidden;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    -webkit-overflow-scrolling: touch;
+    max-height: min(3lh, calc(20px * 1.35 * 3));
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.38) transparent;
+}
+#galleryContainer.moment-feed-layout-v2
+    [data-moment-v2-author-comment-band].moment-v2-author-comment-band--expanded
+    [data-moment-v2-author-comment-body],
+#feedContent[data-moment-feed-layout='2']
+    [data-moment-v2-author-comment-band].moment-v2-author-comment-band--expanded
+    [data-moment-v2-author-comment-body],
+#moment-v2-fixed-caption-layer
+    [data-moment-v2-author-comment-band].moment-v2-author-comment-band--expanded
+    [data-moment-v2-author-comment-body],
+#galleryContainer.moment-feed-layout-v2
+    [data-moment-v2-author-unit].moment-v2-author-comment-band--expanded
+    [data-moment-v2-author-comment-body-unit],
+#feedContent[data-moment-feed-layout='2']
+    [data-moment-v2-author-unit].moment-v2-author-comment-band--expanded
+    [data-moment-v2-author-comment-body-unit],
+#moment-v2-fixed-caption-layer
+    [data-moment-v2-author-unit].moment-v2-author-comment-band--expanded
+    [data-moment-v2-author-comment-body-unit] {
+    max-height: min(24lh, 70vh);
+    overflow-y: auto;
+}
+#galleryContainer.moment-feed-layout-v2 [data-moment-v2-author-comment-band].moment-v2-author-comment-band--expandable,
+#feedContent[data-moment-feed-layout='2'] [data-moment-v2-author-comment-band].moment-v2-author-comment-band--expandable,
+#moment-v2-fixed-caption-layer [data-moment-v2-author-comment-band].moment-v2-author-comment-band--expandable,
+#galleryContainer.moment-feed-layout-v2 [data-moment-v2-author-unit].moment-v2-author-comment-band--expandable,
+#feedContent[data-moment-feed-layout='2'] [data-moment-v2-author-unit].moment-v2-author-comment-band--expandable,
+#moment-v2-fixed-caption-layer [data-moment-v2-author-unit].moment-v2-author-comment-band--expandable {
+    cursor: pointer;
+}
+/* 3줄 초과(펼침 가능): 우하단 더보기 — 펼친 뒤에는 접기 */
+#galleryContainer.moment-feed-layout-v2 [data-moment-v2-author-comment-band] .moment-v2-author-comment-more-hint,
+#feedContent[data-moment-feed-layout='2'] [data-moment-v2-author-comment-band] .moment-v2-author-comment-more-hint,
+#moment-v2-fixed-caption-layer [data-moment-v2-author-comment-band] .moment-v2-author-comment-more-hint,
+#galleryContainer.moment-feed-layout-v2 [data-moment-v2-author-unit] .moment-v2-author-comment-more-hint,
+#feedContent[data-moment-feed-layout='2'] [data-moment-v2-author-unit] .moment-v2-author-comment-more-hint,
+#moment-v2-fixed-caption-layer [data-moment-v2-author-unit] .moment-v2-author-comment-more-hint {
+    display: none;
+    position: absolute;
+    right: 0.5rem;
+    bottom: 0.2rem;
+    z-index: 2;
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: rgba(255, 255, 255, 0.9);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+    line-height: 1.2;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-author-comment-band--expandable .moment-v2-author-comment-more-hint,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-author-comment-band--expandable .moment-v2-author-comment-more-hint,
+#moment-v2-fixed-caption-layer .moment-v2-author-comment-band--expandable .moment-v2-author-comment-more-hint {
+    display: block;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-author-comment-more-hint-label,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-author-comment-more-hint-label,
+#moment-v2-fixed-caption-layer .moment-v2-author-comment-more-hint-label {
+    display: none;
+}
+#galleryContainer.moment-feed-layout-v2
+    .moment-v2-author-comment-band--expandable:not(.moment-v2-author-comment-band--expanded)
+    .moment-v2-author-comment-more-hint-label--collapsed,
+#feedContent[data-moment-feed-layout='2']
+    .moment-v2-author-comment-band--expandable:not(.moment-v2-author-comment-band--expanded)
+    .moment-v2-author-comment-more-hint-label--collapsed,
+#moment-v2-fixed-caption-layer
+    .moment-v2-author-comment-band--expandable:not(.moment-v2-author-comment-band--expanded)
+    .moment-v2-author-comment-more-hint-label--collapsed,
+#galleryContainer.moment-feed-layout-v2
+    [data-moment-v2-author-unit].moment-v2-author-comment-band--expandable:not(.moment-v2-author-comment-band--expanded)
+    .moment-v2-author-comment-more-hint-label--collapsed,
+#feedContent[data-moment-feed-layout='2']
+    [data-moment-v2-author-unit].moment-v2-author-comment-band--expandable:not(.moment-v2-author-comment-band--expanded)
+    .moment-v2-author-comment-more-hint-label--collapsed,
+#moment-v2-fixed-caption-layer
+    [data-moment-v2-author-unit].moment-v2-author-comment-band--expandable:not(.moment-v2-author-comment-band--expanded)
+    .moment-v2-author-comment-more-hint-label--collapsed {
+    display: inline;
+}
+#galleryContainer.moment-feed-layout-v2
+    .moment-v2-author-comment-band--expandable.moment-v2-author-comment-band--expanded
+    .moment-v2-author-comment-more-hint-label--expanded,
+#feedContent[data-moment-feed-layout='2']
+    .moment-v2-author-comment-band--expandable.moment-v2-author-comment-band--expanded
+    .moment-v2-author-comment-more-hint-label--expanded,
+#moment-v2-fixed-caption-layer
+    .moment-v2-author-comment-band--expandable.moment-v2-author-comment-band--expanded
+    .moment-v2-author-comment-more-hint-label--expanded,
+#galleryContainer.moment-feed-layout-v2
+    [data-moment-v2-author-unit].moment-v2-author-comment-band--expandable.moment-v2-author-comment-band--expanded
+    .moment-v2-author-comment-more-hint-label--expanded,
+#feedContent[data-moment-feed-layout='2']
+    [data-moment-v2-author-unit].moment-v2-author-comment-band--expandable.moment-v2-author-comment-band--expanded
+    .moment-v2-author-comment-more-hint-label--expanded,
+#moment-v2-fixed-caption-layer
+    [data-moment-v2-author-unit].moment-v2-author-comment-band--expandable.moment-v2-author-comment-band--expanded
+    .moment-v2-author-comment-more-hint-label--expanded {
+    display: inline;
+}
+#galleryContainer.moment-feed-layout-v2
+    .moment-v2-author-comment-band--expandable:not(.moment-v2-author-comment-band--expanded)
+    [data-moment-v2-author-comment-body],
+#feedContent[data-moment-feed-layout='2']
+    .moment-v2-author-comment-band--expandable:not(.moment-v2-author-comment-band--expanded)
+    [data-moment-v2-author-comment-body],
+#moment-v2-fixed-caption-layer
+    .moment-v2-author-comment-band--expandable:not(.moment-v2-author-comment-band--expanded)
+    [data-moment-v2-author-comment-body],
+#galleryContainer.moment-feed-layout-v2
+    [data-moment-v2-author-unit].moment-v2-author-comment-band--expandable:not(.moment-v2-author-comment-band--expanded)
+    [data-moment-v2-author-comment-body-unit],
+#feedContent[data-moment-feed-layout='2']
+    [data-moment-v2-author-unit].moment-v2-author-comment-band--expandable:not(.moment-v2-author-comment-band--expanded)
+    [data-moment-v2-author-comment-body-unit],
+#moment-v2-fixed-caption-layer
+    [data-moment-v2-author-unit].moment-v2-author-comment-band--expandable:not(.moment-v2-author-comment-band--expanded)
+    [data-moment-v2-author-comment-body-unit] {
+    padding-bottom: 1.15rem;
+}
+#galleryContainer.moment-feed-layout-v2
+    .moment-v2-author-comment-band--expandable.moment-v2-author-comment-band--expanded
+    [data-moment-v2-author-comment-body],
+#feedContent[data-moment-feed-layout='2']
+    .moment-v2-author-comment-band--expandable.moment-v2-author-comment-band--expanded
+    [data-moment-v2-author-comment-body],
+#moment-v2-fixed-caption-layer
+    .moment-v2-author-comment-band--expandable.moment-v2-author-comment-band--expanded
+    [data-moment-v2-author-comment-body],
+#galleryContainer.moment-feed-layout-v2
+    [data-moment-v2-author-unit].moment-v2-author-comment-band--expandable.moment-v2-author-comment-band--expanded
+    [data-moment-v2-author-comment-body-unit],
+#feedContent[data-moment-feed-layout='2']
+    [data-moment-v2-author-unit].moment-v2-author-comment-band--expandable.moment-v2-author-comment-band--expanded
+    [data-moment-v2-author-comment-body-unit],
+#moment-v2-fixed-caption-layer
+    [data-moment-v2-author-unit].moment-v2-author-comment-band--expandable.moment-v2-author-comment-band--expanded
+    [data-moment-v2-author-comment-body-unit] {
+    padding-bottom: 1.15rem;
+}
+#galleryContainer.moment-feed-layout-v2 [data-moment-v2-author-comment-body]::-webkit-scrollbar,
+#feedContent[data-moment-feed-layout='2'] [data-moment-v2-author-comment-body]::-webkit-scrollbar,
+#moment-v2-fixed-caption-layer [data-moment-v2-author-comment-body]::-webkit-scrollbar,
+#galleryContainer.moment-feed-layout-v2 [data-moment-v2-author-comment-body-unit]::-webkit-scrollbar,
+#feedContent[data-moment-feed-layout='2'] [data-moment-v2-author-comment-body-unit]::-webkit-scrollbar,
+#moment-v2-fixed-caption-layer [data-moment-v2-author-comment-body-unit]::-webkit-scrollbar {
+    width: 2px;
+}
+#galleryContainer.moment-feed-layout-v2 [data-moment-v2-author-comment-body]::-webkit-scrollbar-thumb,
+#feedContent[data-moment-feed-layout='2'] [data-moment-v2-author-comment-body]::-webkit-scrollbar-thumb,
+#moment-v2-fixed-caption-layer [data-moment-v2-author-comment-body]::-webkit-scrollbar-thumb,
+#galleryContainer.moment-feed-layout-v2 [data-moment-v2-author-comment-body-unit]::-webkit-scrollbar-thumb,
+#feedContent[data-moment-feed-layout='2'] [data-moment-v2-author-comment-body-unit]::-webkit-scrollbar-thumb,
+#moment-v2-fixed-caption-layer [data-moment-v2-author-comment-body-unit]::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.38);
+    border-radius: 1px;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-social-comments-panel,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-social-comments-panel,
+#moment-v2-fixed-caption-layer .moment-v2-social-comments-panel {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+/* 토글 기록 코멘트: 팝업 `data-meal-overlay-comment-band`와 동일 톤(HTML에 border/bg 포함, 여기서 보강) */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-author-comment-band--toggled:not(.hidden),
+#feedContent[data-moment-feed-layout='2'] .moment-v2-author-comment-band--toggled:not(.hidden),
+#moment-v2-fixed-caption-layer .moment-v2-author-comment-band--toggled:not(.hidden) {
+    border-radius: 0 !important;
+}
+
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row .timeline-meal-photos-wheelbar-inner,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row .timeline-meal-photos-wheelbar-inner,
+#moment-v2-fixed-caption-layer .moment-v2-wheel-caption-row .timeline-meal-photos-wheelbar-inner {
+    min-width: 0;
+    flex: 0 1 auto;
+    overflow: hidden;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row .meal-photo-wheel-col,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row .meal-photo-wheel-col,
+#moment-v2-fixed-caption-layer .moment-v2-wheel-caption-row .meal-photo-wheel-col {
+    min-height: var(--meal-wheel-viewport-h);
+    justify-content: center;
+    align-items: center;
+    box-sizing: border-box;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-col--slot,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-col--slot,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .meal-photo-wheel-col--slot {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 9rem;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label),
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label),
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label) {
+    width: 2.125rem;
+    flex: 0 0 2.125rem;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-col--year .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label),
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-col--year .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label),
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .meal-photo-wheel-col--year .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label) {
+    width: 2.625rem;
+    flex: 0 0 2.625rem;
+}
+/* 숫자 열: `#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label)` 와 동일 밝기·마스크 */
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-viewport--static:not(.meal-photo-wheel-viewport--label),
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-viewport--static:not(.meal-photo-wheel-viewport--label),
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .meal-photo-wheel-viewport--static:not(.meal-photo-wheel-viewport--label) {
+    height: var(--meal-wheel-viewport-h);
+    min-height: var(--meal-wheel-viewport-h);
+    max-height: var(--meal-wheel-viewport-h);
+    width: 2.5rem;
+    flex: 0 0 2.5rem;
+    overflow: hidden;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.2);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 0.5%, #000 99.5%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 0.5%, #000 99.5%, transparent 100%);
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-col--year .meal-photo-wheel-viewport--static,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-col--year .meal-photo-wheel-viewport--static,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .meal-photo-wheel-col--year .meal-photo-wheel-viewport--static {
+    width: 3rem;
+    flex: 0 0 3rem;
+}
+/* 요일·슬롯 텍스트 칸: 팝업 `.meal-photo-wheel-viewport--label`(휠 모드) 과 동일 — 0.2 밝기, inset·어두운 배경 제거 */
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-viewport--label.meal-photo-wheel-viewport--static,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-viewport--label.meal-photo-wheel-viewport--static,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .meal-photo-wheel-viewport--label.meal-photo-wheel-viewport--static {
+    width: auto;
+    min-width: 0.875rem;
+    flex: 0 0 auto;
+    height: var(--meal-wheel-viewport-h);
+    min-height: var(--meal-wheel-viewport-h);
+    max-height: var(--meal-wheel-viewport-h);
+    touch-action: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+    padding-left: 0.45em;
+    padding-right: 0.45em;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    box-shadow: none;
+    box-sizing: border-box;
+    overflow: hidden;
+    align-self: center;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-col--slot .meal-photo-wheel-viewport--label,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-col--slot .meal-photo-wheel-viewport--label,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .meal-photo-wheel-col--slot .meal-photo-wheel-viewport--label {
+    /* flex: 1 1 auto 이면 세로로 늘어나 YYYY/월 열과 높이가 어긋남 */
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
+    max-width: 9rem;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-item,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-item,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .meal-photo-wheel-item {
+    box-sizing: border-box;
+    width: 100%;
+    height: var(--meal-wheel-item-h);
+    min-height: var(--meal-wheel-item-h);
+    line-height: var(--meal-wheel-item-h);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    color: rgba(255, 255, 255, 0.95);
+    font-size: inherit;
+    font-weight: 400;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-label-line,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-label-line,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .meal-photo-wheel-label-line {
+    box-sizing: border-box;
+    height: var(--meal-wheel-item-h);
+    min-height: var(--meal-wheel-item-h);
+    line-height: var(--meal-wheel-item-h);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: inherit;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.95);
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .meal-photo-wheel-sep--colon,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .meal-photo-wheel-sep--colon,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .meal-photo-wheel-sep--colon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: var(--meal-wheel-viewport-h);
+    min-height: var(--meal-wheel-viewport-h);
+    max-height: var(--meal-wheel-viewport-h);
+    line-height: 1;
+    align-self: center;
+    padding: 0 1px;
+    box-sizing: border-box;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photos-wheelbar-inner,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photos-wheelbar-inner,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .timeline-meal-photos-wheelbar-inner {
+    flex-wrap: nowrap;
+    align-items: center;
+    min-width: 0;
+}
+/*
+ * 포털 하단 도크: 휠 HTML은 `.moment-feed-v2-scope` 밖에 붙으므로,
+ * 팝업 `#timelineMealPhotosOverlay.timeline-meal-photos-overlay--wheel` + 인플로 scope 규칙과 동일한 셀·슬롯 스타일을 이 경로에 복제.
+ */
+#moment-v2-fixed-caption-layer .moment-v2-caption--dock-fixed {
+    --meal-wheel-viewport-h: 30px;
+    --meal-wheel-item-h: 30px;
+}
+#moment-v2-fixed-caption-layer .moment-v2-caption--dock-fixed .meal-photo-wheel-label-strip {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    will-change: transform;
+}
+#moment-v2-fixed-caption-layer .moment-v2-caption--dock-fixed .meal-photo-wheel-col--slot .meal-photo-wheel-label-strip {
+    width: max-content;
+    max-width: 100%;
+}
+#moment-v2-fixed-caption-layer .moment-v2-caption--dock-fixed .meal-photo-wheel-col--slot {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 9rem;
+}
+#moment-v2-fixed-caption-layer .moment-v2-caption--dock-fixed .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label) {
+    width: 2.125rem;
+    flex: 0 0 2.125rem;
+}
+#moment-v2-fixed-caption-layer .moment-v2-caption--dock-fixed .meal-photo-wheel-col--year .meal-photo-wheel-viewport:not(.meal-photo-wheel-viewport--label) {
+    width: 2.625rem;
+    flex: 0 0 2.625rem;
+}
+#moment-v2-fixed-caption-layer .moment-v2-caption--dock-fixed .meal-photo-wheel-viewport--static:not(.meal-photo-wheel-viewport--label) {
+    height: var(--meal-wheel-viewport-h);
+    min-height: var(--meal-wheel-viewport-h);
+    max-height: var(--meal-wheel-viewport-h);
+    width: 2.5rem;
+    flex: 0 0 2.5rem;
+    overflow: hidden;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.2);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 0.5%, #000 99.5%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 0.5%, #000 99.5%, transparent 100%);
+}
+#moment-v2-fixed-caption-layer .moment-v2-caption--dock-fixed .meal-photo-wheel-col--year .meal-photo-wheel-viewport--static {
+    width: 3rem;
+    flex: 0 0 3rem;
+}
+#moment-v2-fixed-caption-layer .moment-v2-caption--dock-fixed .meal-photo-wheel-viewport--label.meal-photo-wheel-viewport--static {
+    width: auto;
+    min-width: 0.875rem;
+    flex: 0 0 auto;
+    height: var(--meal-wheel-viewport-h);
+    min-height: var(--meal-wheel-viewport-h);
+    max-height: var(--meal-wheel-viewport-h);
+    touch-action: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+    padding-left: 0.45em;
+    padding-right: 0.45em;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    box-shadow: none;
+    box-sizing: border-box;
+    overflow: hidden;
+    align-self: center;
+}
+#moment-v2-fixed-caption-layer .moment-v2-caption--dock-fixed .meal-photo-wheel-col--slot .meal-photo-wheel-viewport--label {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
+    max-width: 9rem;
+}
+#moment-v2-fixed-caption-layer .moment-v2-caption--dock-fixed .meal-photo-wheel-item {
+    box-sizing: border-box;
+    width: 100%;
+    height: var(--meal-wheel-item-h);
+    min-height: var(--meal-wheel-item-h);
+    line-height: var(--meal-wheel-item-h);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    color: rgba(255, 255, 255, 0.95);
+    font-size: inherit;
+    font-weight: 400;
+}
+#moment-v2-fixed-caption-layer .moment-v2-caption--dock-fixed .meal-photo-wheel-label-line {
+    box-sizing: border-box;
+    height: var(--meal-wheel-item-h);
+    min-height: var(--meal-wheel-item-h);
+    line-height: var(--meal-wheel-item-h);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: inherit;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.95);
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#moment-v2-fixed-caption-layer .moment-v2-caption--dock-fixed .meal-photo-wheel-sep--colon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: var(--meal-wheel-viewport-h);
+    min-height: var(--meal-wheel-viewport-h);
+    max-height: var(--meal-wheel-viewport-h);
+    line-height: 1;
+    align-self: center;
+    padding: 0 1px;
+    box-sizing: border-box;
+}
+#moment-v2-fixed-caption-layer .moment-v2-caption--dock-fixed .timeline-meal-photos-wheelbar-inner {
+    flex-wrap: nowrap;
+    align-items: center;
+    min-width: 0;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-stage,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-stage,
+#moment-v2-fixed-caption-layer .moment-v2-wheel-stage {
+    position: relative;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-stage--with-footer,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-stage--with-footer {
+    background: transparent;
+    overflow: hidden;
+    padding-bottom: 0;
+    min-width: 0;
+    align-items: stretch;
+}
+#moment-v2-fixed-caption-layer .moment-v2-wheel-stage--with-footer {
+    background: transparent;
+    overflow: visible;
+    padding-bottom: 0;
+    min-height: min(90dvh, calc(100dvh - 7.5rem - env(safe-area-inset-bottom, 0px)));
+    justify-content: center;
+    align-items: stretch;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-body,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-body,
+#moment-v2-fixed-caption-layer .moment-v2-wheel-body {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    flex: 0 0 auto;
+    align-items: stretch;
+    box-sizing: border-box;
+    gap: 1px;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-center-stack,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-center-stack,
+#moment-v2-fixed-caption-layer .moment-v2-wheel-center-stack {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+    background: transparent;
+    flex: 0 0 auto;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-stage--split-caption .moment-v2-caption-footer[data-moment-v2-caption],
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-stage--split-caption .moment-v2-caption-footer[data-moment-v2-caption] {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: stretch;
+    gap: 1px;
+    position: relative;
+    z-index: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    border-radius: 0;
+    overflow: visible;
+    box-shadow: none;
+    pointer-events: none;
+}
+#moment-v2-fixed-caption-layer .moment-v2-caption-footer {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: stretch;
+    z-index: 12;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    position: static;
+    border-radius: 0;
+    overflow: visible;
+    box-shadow: none;
+    pointer-events: none;
+    transition: none;
+}
+/* 레거시 포털(남은 DOM) — vp-slab / fixed */
+#moment-v2-fixed-caption-layer .moment-v2-caption-vp-slab {
+    min-height: 0;
+    width: 100%;
+    flex-shrink: 0;
+    pointer-events: none;
+}
+#moment-v2-fixed-caption-layer .moment-v2-caption-footer.moment-v2-caption-footer--vp-inflow-hidden {
+    max-height: 0 !important;
+    min-height: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0;
+    overflow: hidden !important;
+    opacity: 0;
+    visibility: hidden;
+    background: transparent;
+    box-shadow: none;
+    flex: 0 0 0;
+    pointer-events: none;
+}
+#moment-v2-fixed-caption-layer .moment-v2-caption-footer.moment-v2-caption-footer--vp-fixed {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: var(--moment-v2-wheel-footer-bottom, calc(20px + 66px + var(--safe-bottom)));
+    z-index: 25;
+    width: 100%;
+    max-width: min(28rem, calc(100% - 1rem));
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: max(0.25rem, env(safe-area-inset-left, 0px));
+    padding-right: max(0.25rem, env(safe-area-inset-right, 0px));
+    background: #fff;
+    box-shadow: 0 -2px 12px rgba(15, 23, 42, 0.06);
+    pointer-events: none;
+    border-radius: 0.375rem 0.375rem 0 0;
+}
+/* 화면2 휠: 바·콜론은 고정, 열 안의 값만 세로 슬롯 전환(JS transform) — 팝업 `#timelineMealPhotosOverlay...wheel` 의 `.meal-photo-wheel-label-strip` 과 동일(한 줄 = --meal-wheel-item-h, will-change) */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-anim-strip,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-anim-strip,
+#moment-v2-fixed-caption-layer .moment-v2-wheel-anim-strip {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    width: 100%;
+    will-change: transform;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-anim-strip > .meal-photo-wheel-label-line,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-anim-strip > .meal-photo-wheel-label-line,
+#moment-v2-fixed-caption-layer .moment-v2-wheel-anim-strip > .meal-photo-wheel-label-line {
+    box-sizing: border-box;
+    flex-shrink: 0;
+    height: var(--meal-wheel-item-h, 30px);
+    min-height: var(--meal-wheel-item-h, 30px);
+    line-height: var(--meal-wheel-item-h, 30px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: inherit;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.95);
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-anim-strip[data-moment-v2-stripe='num'] > .meal-photo-wheel-label-line,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-anim-strip[data-moment-v2-stripe='num'] > .meal-photo-wheel-label-line,
+#moment-v2-fixed-caption-layer .moment-v2-wheel-anim-strip[data-moment-v2-stripe='num'] > .meal-photo-wheel-label-line {
+    font-variant-numeric: tabular-nums;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-anim-strip--menu > .meal-photo-wheel-label-line,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-anim-strip--menu > .meal-photo-wheel-label-line,
+#moment-v2-fixed-caption-layer .moment-v2-wheel-anim-strip--menu > .meal-photo-wheel-label-line {
+    justify-content: flex-end;
+    text-align: right;
+    padding-left: 0.25rem;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-caption-footer .moment-v2-wheel-strip,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-caption-footer .moment-v2-wheel-strip,
+#moment-v2-fixed-caption-layer .moment-v2-caption-footer .moment-v2-wheel-strip,
+#galleryContainer.moment-feed-layout-v2 .moment-v2-caption-footer .moment-v2-wheel-caption-row,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-caption-footer .moment-v2-wheel-caption-row,
+#moment-v2-fixed-caption-layer .moment-v2-caption-footer .moment-v2-wheel-caption-row {
+    pointer-events: auto;
+    overflow-x: hidden;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-caption-footer .moment-v2-author-comment-band,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-caption-footer .moment-v2-author-comment-band,
+#moment-v2-fixed-caption-layer .moment-v2-caption-footer .moment-v2-author-comment-band {
+    pointer-events: auto;
+    /* 휠↔기록: footer column gap(1px)로 통일 */
+    margin-top: 0;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-caption-footer .moment-v2-social-comments-panel,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-caption-footer .moment-v2-social-comments-panel,
+#moment-v2-fixed-caption-layer .moment-v2-caption-footer .moment-v2-social-comments-panel {
+    pointer-events: auto;
+}
+/* 휠 라벨(한 줄) 바로 아래 소셜 댓글 박스 — 1px 간격(요청 고정) */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-social-below-label,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-social-below-label {
+    margin-top: 1px;
+}
+/* 모먼트2 소셜 댓글: 하단 시트(좌우 20px) + 스크림 — 열 때 JS가 패널을 body로 옮겨 transform 조상 밖에서 fixed */
+html.mv2-social-comment-sheet-open {
+    overflow: hidden;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body {
+    position: fixed !important;
+    inset: 0;
+    z-index: 56;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-sizing: border-box;
+    background: transparent !important;
+    isolation: isolate;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body.hidden {
+    display: none !important;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body:not(.hidden) {
+    display: flex !important;
+    flex-direction: column;
+    justify-content: flex-end;
+    /* 앱 본문(max-w-md)과 동일한 최대폭으로 시트를 가운데 — PC 브라우저 전체폭에 늘어나 보이는 것 방지 */
+    align-items: center;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-sheet-root {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-end;
+    width: 100%;
+    max-width: min(28rem, 100%);
+    margin-left: auto;
+    margin-right: auto;
+    max-height: 100%;
+    min-height: 0;
+    padding: 0 max(0px, env(safe-area-inset-left, 0px)) max(10px, env(safe-area-inset-bottom, 0px))
+        max(0px, env(safe-area-inset-right, 0px));
+    pointer-events: none;
+    box-sizing: border-box;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    display: block;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background: rgba(15, 23, 42, 0.52);
+    pointer-events: auto;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-sheet {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 100%;
+    max-height: min(78dvh, 620px);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-radius: 0.5625rem 0.5625rem 0 0;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-bottom: 0;
+    background: rgba(255, 255, 255, 0.72);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    color: rgba(15, 23, 42, 0.92);
+    box-shadow: 0 -12px 48px rgba(15, 23, 42, 0.24);
+    overflow: hidden;
+    pointer-events: auto;
+    transform: translate3d(0, 110%, 0);
+    transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body:not(.hidden).comment-input-open .moment-v2-social-comments-sheet {
+    transform: translate3d(0, 0, 0);
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-sheet-handle {
+    flex: 0 0 auto;
+    width: 2.25rem;
+    height: 0.28rem;
+    margin: 0.65rem auto 0.35rem;
+    border-radius: 9999px;
+    background: rgba(15, 23, 42, 0.25);
+    touch-action: none;
+    cursor: grab;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-sheet-handle:active {
+    cursor: grabbing;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-sheet-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: min(48vh, 400px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 0.5rem 0.5rem;
+    position: relative;
+}
+
+/* 빈 댓글 안내문: 입력창 바로 위(스크롤 밖) */
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-empty {
+    flex: 0 0 auto;
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.75rem;
+    pointer-events: none;
+    border-top: 1px solid rgba(15, 23, 42, 0.06);
+    background: rgba(255, 255, 255, 0.35);
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-empty.hidden {
+    display: none !important;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-empty-inner {
+    max-width: 18rem;
+    text-align: center;
+    font-family: 'Yeon Sung', serif;
+    font-weight: 400;
+    font-size: 2rem;
+    letter-spacing: 0.01em;
+    line-height: 1.45;
+    color: rgba(15, 23, 42, 0.82);
+    margin-top: 10px;
+}
+
+/* 댓글 텍스트 아래 노트 줄(편지지 느낌) */
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-list .mb-1 {
+    position: relative;
+    padding-bottom: 0.35rem;
+    margin-bottom: 0.45rem;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-list .mb-1::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0.05rem;
+    height: 3px;
+    opacity: 0.75;
+    background-repeat: repeat-x;
+    background-position: left bottom;
+    background-size: 120px 3px;
+    /* 펜으로 그은 듯 울퉁불퉁한 라인(svg) */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='3' viewBox='0 0 120 3'%3E%3Cpath d='M0 1.6 C 10 0.9, 20 2.4, 30 1.5 S 50 0.8, 60 1.6 S 80 2.3, 90 1.4 S 110 0.9, 120 1.6' fill='none' stroke='%230f172a' stroke-opacity='0.45' stroke-width='1.15' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-more {
+    color: rgba(15, 23, 42, 0.55);
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-more:hover {
+    color: rgba(15, 23, 42, 0.92);
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input-wrap:not(.hidden) {
+    flex: 0 0 auto;
+    border-top: 1px solid rgba(15, 23, 42, 0.08);
+    background: rgba(15, 23, 42, 0.04);
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input-wrap.hidden {
+    display: none !important;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input-shell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.25rem;
+    min-height: 2.5rem;
+    height: 2.5rem;
+    padding: 0 0.375rem;
+    box-sizing: border-box;
+    /* 왼쪽만 크게 라운드(아이콘이 들어가는 캡슐) */
+    border-radius: 9999px 0 0 9999px;
+    background: rgba(226, 232, 240, 0.55);
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input-shell:focus-within {
+    background: rgba(226, 232, 240, 0.65);
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input {
+    border: 0 !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input-avatar {
+    position: absolute;
+    flex: 0 0 auto;
+    left: 0.375rem;
+    top: 50%;
+    transform: translateY(-50%);
+    /* 입력창(2.5rem)보다 상하 합계 4px 작게 */
+    height: calc(100% - 4px);
+    width: auto;
+    aspect-ratio: 1 / 1;
+    border-radius: 9999px;
+    z-index: 3;
+    /* 아이콘 원형 밖(상하/좌측)으로 보이는 배경이 입력창과 같게 */
+    background: rgba(226, 232, 240, 0.55);
+    border: 1px solid rgba(71, 85, 105, 0.9);
+    color: rgba(15, 23, 42, 0.82);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
+    line-height: 1;
+    overflow: hidden;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input-shell {
+    /* 텍스트는 아이콘 오른쪽에서 자연스럽게 시작 */
+    padding-left: calc(0.375rem + (2.5rem - 4px) + 0.25rem);
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100% !important;
+    min-height: 0 !important;
+    padding-left: 0.125rem !important;
+    padding-right: 0.375rem !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    background: transparent !important;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* 소셜 아이콘: 채워진 상태에서 드롭/내부 그림자 제거 */
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .post-like-btn.post-social-state-on .timeline-meal-photo-moment-social-icon,
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .post-comment-btn.post-social-state-on .timeline-meal-photo-moment-social-icon,
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .post-bookmark-btn.post-social-state-on .timeline-meal-photo-moment-social-icon,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .post-like-btn.post-social-state-on .timeline-meal-photo-moment-social-icon,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .post-comment-btn.post-social-state-on .timeline-meal-photo-moment-social-icon,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .post-bookmark-btn.post-social-state-on .timeline-meal-photo-moment-social-icon {
+    filter: none !important;
+}
+/* primary 휠 푸터: body 하위 포털 — .bottom-nav(z-50) 아래, fixed는 캡션 요소 */
+#moment-v2-fixed-caption-layer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    z-index: 48;
+    overflow: visible;
+    pointer-events: none;
+    background: transparent;
+    box-sizing: border-box;
+}
+#moment-v2-fixed-caption-layer .moment-v2-dock-portal-inner {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: 0;
+    width: 100%;
+    max-width: min(28rem, 100% - 0.5rem);
+    margin: 0 auto;
+    min-height: 0;
+    pointer-events: none;
+    box-sizing: border-box;
+    display: block;
+    z-index: 0;
+}
+/* 포털로 올린 푸터 — 인플로 `.moment-v2-wheel-stage--split-caption .moment-v2-caption-footer`와 동일 톤(휠/기록/소셜은 기존 블록 규칙 그대로) */
+#moment-v2-fixed-caption-layer .moment-v2-caption--dock-fixed {
+    position: fixed;
+    left: 50% !important;
+    transform: translate3d(-50%, 0, 0) !important;
+    top: auto !important;
+    bottom: var(--moment-v2-wheel-footer-bottom) !important;
+    z-index: 1;
+    width: var(--meal-wheel-caption-inner-w, min(100% - 0.5rem, 28rem)) !important;
+    max-width: min(100% - 0.5rem, 28rem) !important;
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
+    overflow: visible;
+    max-height: none;
+    pointer-events: none;
+}
+#feedContent[data-moment-feed-layout='2'] .mv2-cap-inflow-hidden,
+#galleryContainer.moment-feed-layout-v2 .mv2-cap-inflow-hidden {
+    max-height: 0 !important;
+    min-height: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0;
+    overflow: hidden !important;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none !important;
+    flex: 0 0 0 !important;
+}
+#feedContent[data-moment-feed-layout='2'] .moment-v2-dock-slab,
+#galleryContainer.moment-feed-layout-v2 .moment-v2-dock-slab {
+    width: 100%;
+    flex: 0 0 auto;
+    min-height: 0;
+    box-sizing: border-box;
+    transition: min-height 0.08s ease-out;
+}
+/* 사진 비율(1:1·3:4·4:3)과 무관하게: 카드 높이는 콘텐츠에 맞춤 — min-height로 짧은 비율 아래 빈 띠(블록 내 여백) 생기지 않음 */
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-center-stack,
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-center-stack {
+    flex: 0 0 auto;
+    min-height: 0;
+}
+/* 사진·캐러셀: 타이틀(#mainAppHeader) 하단에서 20px 아래에 상단을 맞춤(스냅 카드 상단=헤더 직하 일 때) */
+#galleryView:not(.hidden) #galleryContainer.moment-feed-layout-v2 .instagram-post[data-moment-card-layout='2'] .moment-v2-wheel-center-stack,
+#feedContent[data-moment-feed-layout='2'] .instagram-post[data-moment-card-layout='2'] .moment-v2-wheel-center-stack {
+    padding-top: var(--moment-v2-photo-below-header-gap, 20px);
+}
+#moment-v2-fixed-caption-layer > .moment-feed-v2-scope {
+    min-height: 0;
+    width: 100%;
+    max-width: 100%;
+    pointer-events: none;
+    box-sizing: border-box;
+}
+/* 화면2: 댓글 영역 — 사진·휠 스택 하단에 겹쳐 토글(이전 `toggleCommentInput` + 목록) */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-media-wrap,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-media-wrap {
+    position: relative;
+    width: 100%;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-dockable-comment.comment-section.comment-input-open,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-dockable-comment.comment-section.comment-input-open {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    margin: 0 !important;
+    margin-top: 0 !important;
+    padding: 0.5rem 0.75rem 0.75rem !important;
+    border: none;
+    border-radius: 0 0 0.5rem 0.5rem;
+    background: #fff;
+    box-shadow: 0 -4px 18px rgba(15, 23, 42, 0.12);
+    max-height: min(42vh, 300px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    display: block !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-dockable-comment .post-comments-list,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-dockable-comment .post-comments-list {
+    max-height: min(24vh, 200px) !important;
+}
+/* 화면2 인라인: 사진 위 닉/미트볼/소셜(팝업 #timelineMealPhotosOverlay와 동일 대비) */
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photos-carousel-badge,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photos-carousel-badge {
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-weight: 400;
+    border: none !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-chrome,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-chrome {
+    pointer-events: none;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-chrome-chip,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-chrome-chip {
+    box-shadow: 0 1px 8px rgba(15, 23, 42, 0.2);
+    box-sizing: border-box;
+    min-height: calc(2rem + 4px);
+    height: calc(2rem + 4px);
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-avatar,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-avatar {
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 255, 255, 0.92) !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-nick,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-nick {
+    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
+    font-weight: 700;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-btn,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-btn {
+    box-sizing: border-box;
+    border: none !important;
+    background-color: transparent !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-btn:active,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-btn:active {
+    background-color: transparent !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-row,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-row {
+    gap: 0;
+    align-items: center;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-meatball-btn,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-meatball-btn {
+    box-sizing: border-box;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-row .post-bookmark-btn,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-row .post-bookmark-btn {
+    margin-right: 10px;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-hit,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-hit {
+    box-sizing: border-box;
+    min-width: calc(2rem * 1.15);
+    width: calc(2rem * 1.15);
+    max-width: min(100%, 12rem);
+    padding: 0;
+    overflow: visible;
+    transition: width 0.18s ease, min-width 0.18s ease, padding 0.18s ease;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-slot,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-slot {
+    flex: 0 0 calc(2rem * 1.15);
+    width: calc(2rem * 1.15);
+    min-width: calc(2rem * 1.15);
+    height: calc(2rem * 1.15);
+    box-sizing: border-box;
+}
+#galleryContainer.moment-feed-layout-v2
+    .moment-feed-v2-scope
+    .timeline-meal-photo-moment-social-row
+    .post-like-btn,
+#galleryContainer.moment-feed-layout-v2
+    .moment-feed-v2-scope
+    .timeline-meal-photo-moment-social-row
+    .post-comment-btn,
+#galleryContainer.moment-feed-layout-v2
+    .moment-feed-v2-scope
+    .timeline-meal-photo-moment-social-row
+    .post-bookmark-btn,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-row .post-like-btn,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-row .post-comment-btn,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-row .post-bookmark-btn {
+    min-height: calc(2rem * 1.15);
+}
+#galleryContainer.moment-feed-layout-v2
+    .moment-feed-v2-scope
+    .timeline-meal-photo-moment-social-row
+    .post-bookmark-btn,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-row .post-bookmark-btn {
+    width: calc(2rem * 1.15);
+    height: calc(2rem * 1.15);
+    min-width: calc(2rem * 1.15);
+    flex-shrink: 0;
+}
+#galleryContainer.moment-feed-layout-v2
+    .moment-feed-v2-scope
+    .timeline-meal-photo-moment-social-row
+    .post-comment-btn:not(.timeline-meal-photo-moment-social-hit),
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-row .post-comment-btn:not(.timeline-meal-photo-moment-social-hit) {
+    width: calc(2rem * 1.15);
+    height: calc(2rem * 1.15);
+    min-width: calc(2rem * 1.15);
+    flex-shrink: 0;
+}
+#galleryContainer.moment-feed-layout-v2
+    .moment-feed-v2-scope
+    .post-like-btn.timeline-meal-photo-moment-social-hit:has(.post-like-count:not(:empty)),
+#feedContent[data-moment-feed-layout='2']
+    .moment-feed-v2-scope
+    .post-like-btn.timeline-meal-photo-moment-social-hit:has(.post-like-count:not(:empty)) {
+    width: auto;
+    min-width: calc(2rem * 1.15);
+    padding-left: 0;
+    padding-right: calc(0.125rem * 1.15);
+    gap: calc(0.125rem * 1.15);
+    justify-content: flex-start;
+}
+#galleryContainer.moment-feed-layout-v2
+    .moment-feed-v2-scope
+    .post-like-btn.timeline-meal-photo-moment-social-hit:has(.post-like-count:not(:empty))
+    .timeline-meal-photo-moment-social-icon-slot,
+#feedContent[data-moment-feed-layout='2']
+    .moment-feed-v2-scope
+    .post-like-btn.timeline-meal-photo-moment-social-hit:has(.post-like-count:not(:empty))
+    .timeline-meal-photo-moment-social-icon-slot {
+    flex: 0 0 calc(1.5rem * 1.15);
+    width: calc(1.5rem * 1.15);
+    min-width: calc(1.5rem * 1.15);
+    justify-content: flex-end;
+    padding-right: 0;
+}
+#galleryContainer.moment-feed-layout-v2
+    .moment-feed-v2-scope
+    .post-comment-btn.timeline-meal-photo-moment-social-hit:has(.post-comment-count:not(:empty)),
+#feedContent[data-moment-feed-layout='2']
+    .moment-feed-v2-scope
+    .post-comment-btn.timeline-meal-photo-moment-social-hit:has(.post-comment-count:not(:empty)) {
+    width: auto;
+    min-width: calc(2rem * 1.15);
+    padding-left: 0;
+    padding-right: calc(0.125rem * 1.15);
+    gap: calc(0.125rem * 1.15);
+    justify-content: flex-start;
+}
+#galleryContainer.moment-feed-layout-v2
+    .moment-feed-v2-scope
+    .post-comment-btn.timeline-meal-photo-moment-social-hit:has(.post-comment-count:not(:empty))
+    .timeline-meal-photo-moment-social-icon-slot,
+#feedContent[data-moment-feed-layout='2']
+    .moment-feed-v2-scope
+    .post-comment-btn.timeline-meal-photo-moment-social-hit:has(.post-comment-count:not(:empty))
+    .timeline-meal-photo-moment-social-icon-slot {
+    flex: 0 0 calc(1.5rem * 1.15);
+    width: calc(1.5rem * 1.15);
+    min-width: calc(1.5rem * 1.15);
+    justify-content: flex-end;
+    padding-right: 0;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack {
+    position: relative;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    font-size: calc(17px * 1.15);
+    line-height: 1;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > i,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > i {
+    grid-area: 1 / 1;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-size: inherit;
+    line-height: 1;
+    width: 1em;
+    height: 1em;
+    min-width: 1em;
+    min-height: 1em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > .timeline-meal-photo-moment-social-icon-fill,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > .timeline-meal-photo-moment-social-icon-fill {
+    position: relative;
+    z-index: 0;
+    opacity: 0;
+    pointer-events: none;
+    filter: none;
+    transition: opacity 0.15s ease;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > i.timeline-meal-photo-moment-social-icon,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > i.timeline-meal-photo-moment-social-icon {
+    position: relative;
+    z-index: 1;
+    font-size: inherit;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > i::before,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > i::before {
+    display: block;
+    line-height: 1;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .post-like-btn.post-social-state-on .post-like-fill,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .post-like-btn.post-social-state-on .post-like-fill {
+    opacity: 0.7;
+    color: #ef4444;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .post-comment-btn.post-social-state-on .post-comment-fill,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .post-comment-btn.post-social-state-on .post-comment-fill {
+    opacity: 0.7;
+    color: #facc15;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .post-bookmark-btn.post-social-state-on .post-bookmark-fill,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .post-bookmark-btn.post-social-state-on .post-bookmark-fill {
+    opacity: 0.7;
+    color: #ffffff;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon {
+    display: inline-block;
+    -webkit-text-stroke: 0;
+    paint-order: normal;
+    filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.62)) drop-shadow(0 0 1px rgba(15, 23, 42, 0.48));
+    font-size: calc(17px * 1.15);
+    line-height: 1;
+    color: rgba(255, 255, 255, 0.95);
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-meatball-icon,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-meatball-icon {
+    display: inline-block;
+    -webkit-text-stroke: 0 transparent;
+    paint-order: normal;
+    color: rgba(255, 255, 255, 0.95);
+    font-size: calc(17px * 0.7);
+    line-height: 1;
+    filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.62)) drop-shadow(0 0 1px rgba(15, 23, 42, 0.48));
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-count,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-count {
+    font-size: calc(0.75rem * 1.15);
+    font-weight: 700;
+    line-height: 1;
+    min-width: 0.65rem;
+    color: rgba(255, 255, 255, 0.92);
+    text-shadow: 0 1px 2px rgba(15, 23, 42, 0.45);
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-count:empty,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-count:empty {
+    display: none;
+    width: 0;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photos-carousel-badge .carousel-badge-num,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photos-carousel-badge .carousel-badge-num {
+    font-size: 1rem;
+    line-height: 1;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photos-carousel-badge .carousel-badge-sep,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photos-carousel-badge .carousel-badge-sep {
+    font-size: 0.5625rem;
+    opacity: 0.9;
+    padding: 0 0.1em;
+    font-family: inherit;
+    font-weight: 400;
+}
+/* 기록 등록 모달: 텍스트 입력 중(커서 깜박임) 옅은 노란색 강조 */
+#entryModal #modalScrollArea input[type="text"]:focus,
+#entryModal #modalScrollArea input[type="text"]:focus-visible,
+#entryModal #modalScrollArea textarea:focus,
+#entryModal #modalScrollArea textarea:focus-visible {
+    background-color: #fffbeb;
+    border-color: #fde68a;
+    box-shadow: inset 0 0 0 1px rgba(254, 243, 199, 0.9);
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease,
+        box-shadow 0.15s ease;
+}
+/* 배달 업체 입력은 기본 투명 배경 — 포커스 시에만 노란 톤이 보이도록 */
+#entryModal #modalScrollArea #deliveryVendorInput:focus,
+#entryModal #modalScrollArea #deliveryVendorInput:focus-visible {
+    background-color: #fffbeb;
 }
 /* 캡쳐 3종세트 모달: 좌우 여백 확보(좁은 기기에서 캐릭터·입력창 잘림 방지), 가로 스크롤 방지 */
 #bestShareModal,
@@ -694,17 +3473,29 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     width: 100% !important;
     max-width: 100% !important;
 }
-/* 앨범 탭 뷰: 패딩 제거 (카드가 직접 px-6 패딩을 가지므로) */
+/* 앨범(모먼트) 탭: 상하 패딩 없이 앱 타이틀 헤더 바로 아래부터, 좌우는 팝업과 동일 inset */
 #galleryView {
-    padding-left: 0 !important;
-    padding-right: 0 !important;
     padding-top: 0 !important;
     padding-bottom: 0 !important;
+    padding-left: max(10px, env(safe-area-inset-left, 0px)) !important;
+    padding-right: max(10px, env(safe-area-inset-right, 0px)) !important;
+    /* .ui-tab-view min-height(60vh) — 숨는 탭에도 먹지 않게, 본문은 콘텐츠 높이 */
+    min-height: 0 !important;
+    margin: 0 !important;
+    scroll-snap-type: none;
+    scroll-behavior: auto;
 }
-/* 갤러리 당겨서 새로고침 */
+/* 갤러리 본문 스크롤: 캐러셀/레거시 scroll-snap·smooth 잔여감 제거 */
+#galleryView:not(.hidden) #galleryPullWrap,
+#galleryView:not(.hidden) #galleryContainer,
+#galleryView:not(.hidden) #galleryPostsInsertPoint {
+    scroll-snap-type: none;
+    scroll-behavior: auto;
+}
+/* 갤러리 당겨서 새로고침 (부모 높이 미정이어도 본문 높이를 따르도록 % 고정 없음) */
 #galleryPullWrap {
     position: relative;
-    min-height: 100%;
+    min-height: 0;
 }
 .gallery-pull-indicator {
     display: flex;
@@ -720,8 +3511,7 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     transition: max-height 0.2s, opacity 0.2s;
     pointer-events: none;
 }
-.gallery-pull-indicator.pulling,
-.gallery-pull-indicator.refreshing {
+.gallery-pull-indicator.pulling {
     max-height: 48px;
     opacity: 1;
 }
@@ -951,8 +3741,8 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 }
 /* 로그인 정보(이메일) 박스: 상단 탭과 간격 */
 .profile-account-section {
-    margin-top: 1rem;
-    padding: 0 1rem;
+    margin-top: 0.5rem;
+    padding: 0 0.5rem;
 }
 .profile-account-section:empty {
     margin-top: 0;
@@ -960,6 +3750,19 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 }
 .profile-settings-header {
     background: #fff;
+}
+/* 저장/취소 없을 때: 헤더 줄 높이 최소화 (녹색 박스 ↔ 소개 간격) */
+#settingsTabContentProfile .profile-settings-header {
+    min-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-bottom-color: transparent;
+}
+#settingsTabContentProfile .profile-settings-header.profile-settings-header--active {
+    min-height: 2.5rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom-color: #f1f5f9;
 }
 .profile-settings-row {
     display: flex;
@@ -1024,6 +3827,30 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     flex: 1 1 100%;
     min-width: 0;
 }
+/* 소개/라이프 스타일 제목 줄: 라벨+연필은 붙여서(왼쪽), 글자수만 제목 줄 오른쪽 */
+.profile-settings-label-row .profile-settings-label {
+    flex: 0 1 auto !important;
+    min-width: 0;
+    margin-bottom: 0 !important;
+}
+/* 설정 프로필 연필 — 기준 대비 약 70% 크기 */
+.settings-pencil-icon {
+    font-size: 0.65rem;
+    line-height: 1;
+    display: inline-block;
+    vertical-align: middle;
+}
+/* 소개·라이프스타일: 기본 행(좌우 1rem)보다 패딩만 줄여 입력 폭 확대 — 음수 마진·calc 폭은 body clip과 충돌 가능 */
+.profile-settings-row--bio-wide {
+    padding-left: 0.375rem;
+    padding-right: 0.375rem;
+}
+@media (min-width: 640px) {
+    .profile-settings-row--bio-wide {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+    }
+}
 .profile-settings-input {
     width: 100%;
     padding: 0.5rem 0.75rem;
@@ -1044,6 +3871,29 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     background: #f8fafc;
     border-bottom-color: #475569;
     box-shadow: 0 2px 0 0 #475569;
+}
+/* 닉네임 인라인(계정 카드): 하단 2px만, 라운드 없음 */
+.profile-settings-nickname-inline {
+    border: none !important;
+    border-bottom: 2px solid #94a3b8 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff;
+}
+.profile-settings-nickname-inline:focus {
+    background: #f8fafc;
+    border-bottom-color: #475569 !important;
+    box-shadow: none !important;
+    outline: none;
+}
+/* 생년월일 인라인 편집: 닉네임과 동일한 밑줄 입력 스타일 재사용 */
+#settingBirthdateEdit .profile-settings-nickname-inline {
+    box-sizing: border-box;
+}
+/* 소개 textarea: 포커스 시 하단 2px만(이중 라인 방지) */
+.profile-settings-textarea--bottomline:focus {
+    box-shadow: none !important;
+    border-bottom: 2px solid #475569;
 }
 /* 생년월일 + 성별 한 줄: 회색 영역 안에 입력란과 남/여 스위치 */
 .profile-settings-birthdate-row {
@@ -1071,6 +3921,35 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     background: transparent;
     border: none;
     box-shadow: none;
+}
+/* 계정 카드 등 컴팩트 생년월일 줄 + 성별 스위치 */
+.profile-settings-birthdate-row--compact {
+    padding: 0.2rem 0.35rem;
+    min-height: auto;
+    gap: 0.5rem;
+}
+.profile-settings-birthdate-row--compact .profile-settings-input:focus {
+    box-shadow: none !important;
+    border-bottom: 2px solid #475569 !important;
+}
+/* 생년월일 줄: 바깥 박스 언더라인 제거 — 입력칸 하단 2px만 */
+.profile-settings-birthdate-row--input-line-only {
+    border-bottom: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    min-height: auto !important;
+    padding: 0 !important;
+}
+.profile-settings-birthdate-row--input-line-only .profile-settings-input {
+    background: #fff;
+}
+.setting-gender-switch--compact .setting-gender-btn {
+    padding-left: 0.45rem;
+    padding-right: 0.45rem;
+    padding-top: 0.2rem;
+    padding-bottom: 0.2rem;
+    font-size: 0.7rem;
+    line-height: 1.2;
 }
 .profile-settings-textarea {
     min-height: 4rem;
@@ -1834,20 +4713,133 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     }
 }
 
-/* 로딩 오버레이: 음식 아이콘 순차 전환 (배민 스타일) */
-@keyframes loadingFoodCycle {
-    0% { opacity: 1; transform: scale(1); }
-    15% { opacity: 1; transform: scale(1.1); }
-    20% { opacity: 0; transform: scale(0.9); }
-    100% { opacity: 0; transform: scale(0.9); }
+/* 로딩 오버레이: 음식 아이콘 — 오른쪽에서 들어와 왼쪽으로 나가는 순환 — 주기는 관리자·기본값 */
+:root {
+    --loading-food-duration: 0.5s;
+    /* FAB 전용 — 전면 오버레이보다 빠른 아이콘 전환 */
+    --loading-food-fab-slot: 0.2s;
+}
+/* 한 아이콘당 한 슬롯(표시 구간) — 전체 한 바퀴(5아이콘) = calc(var(--loading-food-duration)*5) */
+/* 각 아이콘 슬롯 20% 중 대부분을 중앙 고정(표시), 입·출만 짧게 — 공백 구간 최소화 */
+@keyframes loadingFoodSlideRTL0 {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(2.5em);
+    }
+    2.5% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    17.5% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    20%,
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(-2.5em);
+    }
+}
+@keyframes loadingFoodSlideRTL1 {
+    0%,
+    20% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(2.5em);
+    }
+    22.5% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    37.5% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    40%,
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(-2.5em);
+    }
+}
+@keyframes loadingFoodSlideRTL2 {
+    0%,
+    40% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(2.5em);
+    }
+    42.5% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    57.5% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    60%,
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(-2.5em);
+    }
+}
+@keyframes loadingFoodSlideRTL3 {
+    0%,
+    60% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(2.5em);
+    }
+    62.5% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    77.5% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    80%,
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(-2.5em);
+    }
+}
+@keyframes loadingFoodSlideRTL4 {
+    0%,
+    80% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(2.5em);
+    }
+    82.5% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    97.5% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateX(0);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateX(-2.5em);
+    }
 }
 .loading-food-icons {
     overflow: hidden;
 }
+/* 전면 로딩: 스피너 이모지 뒤 회색 원(박스와 동일 직경) */
+#loadingOverlay .loading-food-icons--overlay {
+    /* 기본 3.5rem(h-14) 대비 10% 큰 회색 원 */
+    width: calc(3.5rem * 1.1);
+    height: calc(3.5rem * 1.1);
+    min-width: calc(3.5rem * 1.1);
+    min-height: calc(3.5rem * 1.1);
+    border-radius: 9999px;
+    background-color: rgb(226 232 240 / 0.92);
+    box-shadow: inset 0 1px 2px rgb(15 23 42 / 0.07);
+    border: 1px solid rgb(203 213 225 / 0.8);
+}
 .loading-food-icon {
-    animation: loadingFoodCycle 1s ease-in-out infinite;
+    left: 50%;
+    top: 50%;
     opacity: 0;
     background: transparent;
+    will-change: transform, opacity;
     /* 이모지 주변 1px 검정 윤곽 (text-stroke는 이모지에서 미지원이라 text-shadow로 구현) */
     text-shadow:
         1px 0 0 #000,
@@ -1860,13 +4852,50 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
         -1px -1px 0 #000;
     line-height: 1;
 }
-.loading-food-icon:first-child {
-    animation-delay: 0s;
+.loading-food-icon:nth-child(1) {
+    animation: loadingFoodSlideRTL0 calc(var(--loading-food-duration, 0.5s) * 5) linear infinite;
 }
-.loading-food-icon:nth-child(2) { animation-delay: 0.2s; }
-.loading-food-icon:nth-child(3) { animation-delay: 0.4s; }
-.loading-food-icon:nth-child(4) { animation-delay: 0.6s; }
-.loading-food-icon:nth-child(5) { animation-delay: 0.8s; }
+.loading-food-icon:nth-child(2) {
+    animation: loadingFoodSlideRTL1 calc(var(--loading-food-duration, 0.5s) * 5) linear infinite;
+}
+.loading-food-icon:nth-child(3) {
+    animation: loadingFoodSlideRTL2 calc(var(--loading-food-duration, 0.5s) * 5) linear infinite;
+}
+.loading-food-icon:nth-child(4) {
+    animation: loadingFoodSlideRTL3 calc(var(--loading-food-duration, 0.5s) * 5) linear infinite;
+}
+.loading-food-icon:nth-child(5) {
+    animation: loadingFoodSlideRTL4 calc(var(--loading-food-duration, 0.5s) * 5) linear infinite;
+}
+
+/* 기록 로딩 FAB — 오버레이와 별도 슬롯(빠른 전환) */
+#initialRecordsLoadFab .loading-food-icon:nth-child(1),
+#galleryMomentsRefreshFab .loading-food-icon:nth-child(1) {
+    animation: loadingFoodSlideRTL0 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
+}
+#initialRecordsLoadFab .loading-food-icon:nth-child(2),
+#galleryMomentsRefreshFab .loading-food-icon:nth-child(2) {
+    animation: loadingFoodSlideRTL1 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
+}
+#initialRecordsLoadFab .loading-food-icon:nth-child(3),
+#galleryMomentsRefreshFab .loading-food-icon:nth-child(3) {
+    animation: loadingFoodSlideRTL2 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
+}
+#initialRecordsLoadFab .loading-food-icon:nth-child(4),
+#galleryMomentsRefreshFab .loading-food-icon:nth-child(4) {
+    animation: loadingFoodSlideRTL3 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
+}
+#initialRecordsLoadFab .loading-food-icon:nth-child(5),
+#galleryMomentsRefreshFab .loading-food-icon:nth-child(5) {
+    animation: loadingFoodSlideRTL4 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
+}
+
+/* 전면 로딩: 순환 문구 줄바꿈(관리자 textarea) */
+#loadingOverlayMessage {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: keep-all;
+}
 
 #landingPage { 
     position: fixed; 
@@ -1944,6 +4973,13 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     display: -webkit-box;
     -webkit-line-clamp: 2;
     line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
@@ -2361,6 +5397,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     transform: scale(0.9);
 }
 
+.post-like-btn.post-social-state-on .post-like-icon,
 .post-like-icon.fa-solid {
     animation: heartBeat 0.5s ease;
 }
@@ -2479,6 +5516,184 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     pointer-events: none;
 }
 
+/* 초기 기록 로딩 스피너 — mealSyncResendBtn 과 동일 위치·크기(48px), 음식 아이콘만 */
+#initialRecordsLoadFab.initial-records-load-fab,
+#galleryMomentsRefreshFab.initial-records-load-fab {
+    position: fixed;
+    bottom: calc(72px + var(--safe-bottom));
+    right: calc(50% - min(46vw, 13rem) + 1.25rem);
+    z-index: 40;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0f172a !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.35);
+    border: 1px solid #020617;
+    transition: box-shadow 0.2s, transform 0.12s;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    cursor: pointer;
+}
+#initialRecordsLoadFab.initial-records-load-fab:active,
+#galleryMomentsRefreshFab.initial-records-load-fab:active {
+    transform: scale(0.94);
+}
+#initialRecordsLoadFab.initial-records-load-fab.hidden,
+#galleryMomentsRefreshFab.initial-records-load-fab.hidden {
+    display: none !important;
+    pointer-events: none;
+}
+/* 갤러리 새로고침 전용: 표시만, 탭 불가 */
+#galleryMomentsRefreshFab.initial-records-load-fab {
+    pointer-events: none;
+    cursor: default;
+    z-index: 41;
+}
+/* 밀톡에서 글쓰기 FAB와 겹침 방지 — 동기화 FAB와 동일 규칙 */
+#initialRecordsLoadFab.initial-records-load-fab.initial-records-load-fab--stacked {
+    bottom: calc(128px + var(--safe-bottom));
+}
+
+/* 식사 기록 미전송 일괄 재전송 FAB — bottom-nav 위·글쓰기 FAB와 동일 위치(밀톡 탭일 때는 위로 겹침) */
+#mealSyncResendBtn.meal-sync-resend-fab {
+    position: fixed;
+    bottom: calc(72px + var(--safe-bottom));
+    right: calc(50% - min(46vw, 13rem) + 1.25rem);
+    z-index: 39;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0f172a !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.35);
+    border: 1px solid #020617;
+    transition: box-shadow 0.2s, transform 0.12s, bottom 0.2s, background-color 0.2s, opacity 0.15s;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+#mealSyncResendBtn.meal-sync-resend-fab .meal-sync-resend-fab__icon {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 1.125rem;
+    height: 1.125rem;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+#mealSyncResendBtn.meal-sync-resend-fab:not(.meal-sync-resend-fab--transport-offline) .meal-sync-resend-fab__icon--sync {
+    display: flex;
+}
+#mealSyncResendBtn.meal-sync-resend-fab--transport-offline:not(.meal-sync-resend-fab--chain-relink) .meal-sync-resend-fab__icon--off {
+    display: flex;
+}
+#mealSyncResendBtn.meal-sync-resend-fab--transport-offline.meal-sync-resend-fab--chain-relink .meal-sync-resend-fab__icon--on {
+    display: flex;
+    animation: mealSyncChainRelink 0.68s ease-out;
+}
+@keyframes mealSyncChainRelink {
+    0% {
+        transform: scale(0.82);
+        opacity: 0.55;
+    }
+    45% {
+        transform: scale(1.08);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    #mealSyncResendBtn.meal-sync-resend-fab--transport-offline.meal-sync-resend-fab--chain-relink .meal-sync-resend-fab__icon--on {
+        animation: none;
+    }
+}
+#mealSyncResendBtn.meal-sync-resend-fab--transport-offline {
+    background: #334155 !important;
+    border-color: #475569;
+    box-shadow: 0 2px 12px rgba(51, 65, 85, 0.45);
+}
+#mealSyncResendBtn.meal-sync-resend-fab .meal-sync-resend-fab__spinner {
+    display: none;
+    position: absolute;
+    inset: 0;
+    margin: auto;
+}
+#mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--busy {
+    cursor: wait;
+    pointer-events: none;
+    transform: scale(0.98);
+    box-shadow: 0 2px 16px rgba(15, 23, 42, 0.5), 0 0 0 3px rgba(96, 165, 250, 0.35);
+}
+#mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--busy .meal-sync-resend-fab__icon--sync,
+#mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--busy .meal-sync-resend-fab__icon--off,
+#mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--busy .meal-sync-resend-fab__icon--on {
+    display: none !important;
+}
+#mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--busy .meal-sync-resend-fab__spinner {
+    display: flex !important;
+}
+#mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--busy .meal-sync-resend-fab__badge {
+    opacity: 0.35;
+}
+@media (prefers-reduced-motion: reduce) {
+    #mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--busy {
+        box-shadow: 0 2px 12px rgba(15, 23, 42, 0.35);
+    }
+}
+#mealSyncResendBtn.meal-sync-resend-fab:hover {
+    background: #1e293b !important;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.45);
+}
+#mealSyncResendBtn.meal-sync-resend-fab:active:not(:disabled):not(.meal-sync-resend-fab--busy) {
+    transform: scale(0.94);
+}
+#mealSyncResendBtn.meal-sync-resend-fab.hidden {
+    display: none !important;
+    pointer-events: none;
+}
+/* 밀톡 화면에서 글쓰기 FAB( z-40 )와 겹치지 않도록 한 단 올림 */
+#mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--stacked {
+    bottom: calc(128px + var(--safe-bottom));
+}
+#mealSyncResendBtn.meal-sync-resend-fab .meal-sync-resend-fab__badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    min-width: 1.1rem;
+    height: 1.1rem;
+    padding: 0 4px;
+    border-radius: 9999px;
+    background: #1e293b;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 0 2px #fff;
+}
+#mealSyncResendBtn.meal-sync-resend-fab .meal-sync-resend-fab__badge.hidden {
+    display: none !important;
+}
+/* 재시도·삭제실패만 남았을 때(주황 대기 0) — 배지 톤만 살짝 구분 */
+#mealSyncResendBtn.meal-sync-resend-fab .meal-sync-resend-fab__badge.meal-sync-resend-fab__badge--retry-only {
+    background: #b91c1c;
+    box-shadow: 0 0 0 2px #fff;
+}
+
 /* 밀톡 글쓰기: 하단 취소/등록 버튼이 네비에 가려지지 않도록 */
 #boardWriteView {
     padding-bottom: calc(80px + var(--safe-bottom));
@@ -2499,7 +5714,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     pointer-events: none;
 }
 
-/* 카테고리 필터: 보조 (chip) */
+/* 카테고리 필터 버튼 기본 (글쓰기 등 — #boardCategoryRow 아님) */
 .board-category-btn {
     padding: 0.375rem 0.75rem;
     font-weight: 600;
@@ -2515,6 +5730,68 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     background-color: #000000 !important;
     color: #ffffff !important;
     border-color: #000000 !important;
+}
+
+/* 게시판 목록·상세 카드 하단 해시태그 (#먹는, #사진있음) — Yeon Sung 16px */
+.board-category-hashtag {
+    font-family: 'Yeon Sung', serif;
+    font-size: 16px;
+    line-height: 1.35;
+    font-weight: 400;
+    color: #31966b;
+}
+
+/* 게시판 상단 카테고리 필터: 태그형 (#전체 #먹는 …) — 18px 검정 */
+#boardCategoryRow .board-category-btn {
+    padding: 0.2rem 0.35rem !important;
+    font-family: 'Yeon Sung', serif !important;
+    font-size: 18px !important;
+    font-weight: 400 !important;
+    line-height: 1.3;
+    background-color: transparent !important;
+    color: #000000 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    white-space: nowrap;
+}
+#boardCategoryRow .board-category-btn:hover:not(.active) {
+    background-color: transparent !important;
+    color: #475569 !important;
+}
+#boardCategoryRow .board-category-btn.active {
+    background-color: transparent !important;
+    color: #000000 !important;
+    border: none !important;
+    font-weight: 600 !important;
+    text-decoration: underline;
+    text-underline-offset: 0.2rem;
+    text-decoration-thickness: 1px;
+}
+
+/* 글쓰기 화면 카테고리 — 목록·본문 해시태그와 동일 색 (#31966b) */
+#boardWriteView .board-write-category-btn.board-category-btn {
+    padding: 0.2rem 0.35rem !important;
+    font-family: 'Yeon Sung', serif !important;
+    font-size: 16px !important;
+    font-weight: 400 !important;
+    line-height: 1.35;
+    background-color: transparent !important;
+    color: #31966b !important;
+    border: none !important;
+    border-radius: 0 !important;
+}
+#boardWriteView .board-write-category-btn.board-category-btn:hover:not(.active) {
+    background-color: transparent !important;
+    color: #287a56 !important;
+}
+#boardWriteView .board-write-category-btn.board-category-btn.active {
+    background-color: transparent !important;
+    color: #31966b !important;
+    border: none !important;
+    font-weight: 600 !important;
+    text-decoration: underline;
+    text-underline-offset: 0.2rem;
+    text-decoration-thickness: 1px;
 }
 
 #board-sort-latest.active,
@@ -2806,9 +6083,10 @@ body.feed-bubble-sheet-open {
 }
 
 /* 밀톡 피드 메시지 영역 테마 (--board-feed-bg + 말풍선) */
+/* 내 말풍선: 카카오톡 송신 버블 톤을 한 단계 연하게 */
 #boardListView #boardFeedPanelContent .feed-chat-bubble-mine {
-    background: #ecfdf5;
-    color: #064e3b;
+    background: #fff0a8;
+    color: #1a1a1a;
 }
 #boardListView #boardFeedPanelContent .feed-chat-bubble-other {
     background: #fff;
@@ -2902,7 +6180,8 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     background: #fff !important;
     border-top: 1px solid #e2e8f0;
     border-bottom: 1px solid #e2e8f0;
-    border-left: 6px solid #64748b;
+    /* 일반 게시글 전용: 회색 4px · 30% (공지는 .notice-accent-* 가 덮음) */
+    border-left: 4px solid rgb(100 116 139 / 0.3);
     border-right: none;
     border-radius: 0 !important;
     margin-left: 0;
@@ -2921,34 +6200,65 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
         0 1px 2px rgba(15, 23, 42, 0.05),
         0 2px 6px rgba(15, 23, 42, 0.06);
 }
-/* 공지 타입별 왼쪽 강조선 (일반글 slate-500 대비 선명하게) */
+/* 공지: 타입별 색상 왼쪽 강조선 4px · 30% 투명 (일반 글은 슬레이트 회색 동일 투명) */
 .board-list-card.notice-accent-important {
-    border-left: 6px solid #ef4444;
+    border-left: 4px solid rgb(239 68 68 / 0.3);
 }
 .board-list-card.notice-accent-notice {
-    border-left: 6px solid #3b82f6;
+    border-left: 4px solid rgb(59 130 246 / 0.3);
 }
 .board-list-card.notice-accent-light {
-    border-left: 6px solid #eab308;
+    border-left: 4px solid rgb(234 179 8 / 0.3);
 }
 
-/* 밀톡 게시글 상세: 전체/헤더/본문 간격 25% 수준 */
+/* 밀톡 게시글 상세: 목록과 동일 풀폭·배경 */
 #boardDetailView.board-detail-view {
-    padding-top: 0.25rem !important;   /* py-3(0.75rem) → 25% */
+    padding-top: 0.25rem !important;
     padding-bottom: 0.25rem !important;
 }
 
-/* 밀톡 본문보기 바탕: 연한 연회색 */
+/* 밀톡 본문보기: 게시판 목록 패널과 동일 연회색 바탕, 카드만 풀폭 */
 #boardDetailContent {
-    background: #f8fafc !important; /* slate-50, 연한 연회색 */
+    background: rgb(241 245 249) !important;
     margin-left: -1rem;
     margin-right: -1rem;
-    margin-top: 0.125rem !important;  /* 헤더-본문 간격 25% */
-    padding: 0.5rem;
-    border-radius: 0.75rem 0.75rem 0 0;
+    margin-top: 0 !important;
+    padding: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    border-radius: 0;
+    width: calc(100% + 2rem);
+    max-width: none;
+    box-sizing: border-box;
 }
 
-/* 밀톡 본문보기 카드: 내부 화이트, 위아래 여백 25% 수준 */
+.board-detail-page-root {
+    width: 100%;
+}
+
+/* 상세 상단 글 카드: 목록 카드(.board-list-card)와 동일 스킨 — 클릭 시 눌림 효과만 약화 */
+.board-detail-post-card.board-list-card:active {
+    box-shadow:
+        0 1px 2px rgba(15, 23, 42, 0.06),
+        0 3px 10px rgba(15, 23, 42, 0.07),
+        0 0 0 1px rgba(15, 23, 42, 0.03);
+}
+
+/* 본문 보기 카드: 오른쪽 경계선(목록 카드는 border-right 없음 → 상세만 얇게 표시) */
+#boardDetailContent .board-detail-post-card.board-list-card {
+    border-right: 1px solid rgb(226 232 240);
+}
+
+/* 댓글 영역: 본문 카드와 동일 스킨 */
+#boardDetailContent .board-detail-comments-card.board-list-card {
+    border-right: 1px solid rgb(226 232 240);
+}
+
+#boardDetailContent .board-detail-comment-input:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+/* 글쓰기 등 다른 화면용 (밀톡 상세에서는 .board-list-card 사용) */
 .board-post-card {
     margin-top: 0.125rem;
     margin-bottom: 0.25rem;
@@ -3246,6 +6556,41 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     min-width: 3.25rem;
     max-width: 4rem;
     width: auto;
+}
+
+/* 관리자 대시보드 > 페이지별 (usageDaily) 테이블: 짙은 보더, 행 단위 줄무늬, 7일 합 열 강조 */
+#adminDashboardPageUsageTable th,
+#adminDashboardPageUsageTable td {
+    border-color: #94a3b8 !important;
+}
+#adminDashboardPageUsageTable thead th {
+    background-color: #e8eef4;
+}
+#adminDashboardPageUsageTable thead tr:first-child th {
+    border-bottom-color: #94a3b8 !important;
+}
+#adminDashboardPageUsageTable #pageDashboard7dSumHead {
+    background-color: #cbd5e1 !important;
+    color: #334155;
+}
+#adminDashboardPageUsageTable tbody tr:nth-child(odd) td {
+    background-color: #ffffff;
+}
+#adminDashboardPageUsageTable tbody tr:nth-child(even) td {
+    background-color: #f1f5f9;
+}
+#adminDashboardPageUsageTable tbody tr:nth-child(odd) td[data-page-dash-7block-start] {
+    background-color: #e2e8f0;
+}
+#adminDashboardPageUsageTable tbody tr:nth-child(even) td[data-page-dash-7block-start] {
+    background-color: #cbd5e1;
+}
+#adminDashboardPageUsageTable tbody tr:hover td {
+    background-color: #e2e8f0 !important;
+}
+#adminDashboardPageUsageTable tbody tr:hover td[data-page-dash-7block-start] {
+    background-color: #94a3b8 !important;
+    color: #0f172a;
 }
 
 /* 콘텐츠 팝업: 이미지 좌우 꽉 채움 (박스 폭 100%), 세로는 비율 유지 */
