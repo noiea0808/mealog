@@ -2016,16 +2016,34 @@
                                                     <i class="fa-solid fa-images text-blue-600"></i>
                                                     모먼트 보기 화면
                                                 </h3>
-                                                <p class="text-sm text-slate-500 mb-3">앱 모먼트 탭 피드 레이아웃입니다. <span class="font-bold text-slate-600">스테이징 앱·스테이징 웹에서만</span> 적용되며, 운영(프로덕션) 앱은 항상 화면 1(기존)입니다.</p>
-                                                <div class="flex flex-wrap gap-4 items-center" role="radiogroup" aria-label="모먼트 보기 화면">
-                                                    <label class="inline-flex items-center gap-2 cursor-pointer text-sm font-bold text-slate-700">
-                                                        <input type="radio" name="momentsFeedView" value="1" class="text-emerald-600 focus:ring-emerald-500" checked>
-                                                        화면 1 (기존)
-                                                    </label>
-                                                    <label class="inline-flex items-center gap-2 cursor-pointer text-sm font-bold text-slate-700">
-                                                        <input type="radio" name="momentsFeedView" value="2" class="text-emerald-600 focus:ring-emerald-500">
-                                                        화면 2 (New)
-                                                    </label>
+                                                <p class="text-sm text-slate-500 mb-3">모먼트 탭 피드 레이아웃입니다. <span class="font-bold text-slate-600">스테이징/운영</span> 환경별로 적용할 화면을 선택할 수 있습니다.</p>
+                                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    <div class="rounded-xl border border-slate-200 bg-white p-4">
+                                                        <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">스테이징</p>
+                                                        <div class="flex flex-wrap gap-4 items-center" role="radiogroup" aria-label="모먼트 보기 화면(스테이징)">
+                                                            <label class="inline-flex items-center gap-2 cursor-pointer text-sm font-bold text-slate-700">
+                                                                <input type="radio" name="momentsFeedViewStaging" value="1" class="text-emerald-600 focus:ring-emerald-500" checked>
+                                                                화면 1 (기존)
+                                                            </label>
+                                                            <label class="inline-flex items-center gap-2 cursor-pointer text-sm font-bold text-slate-700">
+                                                                <input type="radio" name="momentsFeedViewStaging" value="2" class="text-emerald-600 focus:ring-emerald-500">
+                                                                화면 2 (New)
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                    <div class="rounded-xl border border-slate-200 bg-white p-4">
+                                                        <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">운영(프로덕션)</p>
+                                                        <div class="flex flex-wrap gap-4 items-center" role="radiogroup" aria-label="모먼트 보기 화면(운영)">
+                                                            <label class="inline-flex items-center gap-2 cursor-pointer text-sm font-bold text-slate-700">
+                                                                <input type="radio" name="momentsFeedViewProduction" value="1" class="text-emerald-600 focus:ring-emerald-500" checked>
+                                                                화면 1 (기존)
+                                                            </label>
+                                                            <label class="inline-flex items-center gap-2 cursor-pointer text-sm font-bold text-slate-700">
+                                                                <input type="radio" name="momentsFeedViewProduction" value="2" class="text-emerald-600 focus:ring-emerald-500">
+                                                                화면 2 (New)
+                                                            </label>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>

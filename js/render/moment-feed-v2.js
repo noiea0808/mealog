@@ -146,29 +146,46 @@ function buildV2InlineSocialBarHtml(postId) {
     return `<div class="pointer-events-auto absolute z-[11] flex items-center" data-meal-photo-social-bubble><div class="timeline-meal-photo-moment-social-row flex shrink-0 items-center">
 <button type="button" class="post-like-btn timeline-meal-photo-moment-social-btn timeline-meal-photo-moment-social-hit inline-flex h-8 min-h-8 shrink-0 items-center justify-center gap-0 rounded-full" data-post-id="${escapeHtml(
         p
-    )}" data-requires-login="true" onclick='event.stopPropagation();window.toggleLike(${pidJson})' aria-label="좋아요"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-8 w-8 shrink-0 items-center justify-center" aria-hidden="true"><i class="fa-regular fa-heart text-white/95 post-like-icon timeline-meal-photo-moment-social-icon"></i></span><span class="post-like-count timeline-meal-photo-moment-social-count pointer-events-none tabular-nums" data-post-id="${escapeHtml(
+    )}" data-requires-login="true" onclick='event.stopPropagation();window.toggleLike(${pidJson})' aria-label="좋아요"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-8 w-8 shrink-0 items-center justify-center relative" aria-hidden="true"><span class="timeline-meal-photo-moment-social-icon-stack w-full h-full min-h-0 min-w-0"><i class="fa-solid fa-heart post-like-fill timeline-meal-photo-moment-social-icon-fill" aria-hidden="true"></i><i class="fa-regular fa-heart post-like-icon timeline-meal-photo-moment-social-icon relative z-[1]" aria-hidden="true"></i></span></span><span class="post-like-count timeline-meal-photo-moment-social-count pointer-events-none tabular-nums" data-post-id="${escapeHtml(
         p
     )}" aria-hidden="true"></span></button>
 <button type="button" class="post-comment-btn timeline-meal-photo-moment-social-btn timeline-meal-photo-moment-social-hit inline-flex h-8 min-h-8 shrink-0 items-center justify-center gap-0 rounded-full" data-post-id="${escapeHtml(
         p
-    )}" data-requires-login="true" onclick='event.stopPropagation();window.toggleCommentInput(${pidJson})' aria-label="댓글"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-8 w-8 shrink-0 items-center justify-center" aria-hidden="true"><i class="fa-regular fa-comment post-comment-icon text-white/95 timeline-meal-photo-moment-social-icon" aria-hidden="true"></i></span><span class="post-comment-count timeline-meal-photo-moment-social-count pointer-events-none tabular-nums" data-post-id="${escapeHtml(
+    )}" data-requires-login="true" onclick='event.stopPropagation();window.toggleCommentInput(${pidJson})' aria-label="댓글"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-8 w-8 shrink-0 items-center justify-center relative" aria-hidden="true"><span class="timeline-meal-photo-moment-social-icon-stack w-full h-full min-h-0 min-w-0"><i class="fa-solid fa-comment post-comment-fill timeline-meal-photo-moment-social-icon-fill" aria-hidden="true"></i><i class="fa-regular fa-comment post-comment-icon text-white/95 timeline-meal-photo-moment-social-icon relative z-[1]" aria-hidden="true"></i></span></span><span class="post-comment-count timeline-meal-photo-moment-social-count pointer-events-none tabular-nums" data-post-id="${escapeHtml(
         p
     )}" aria-hidden="true"></span></button>
-<button type="button" class="post-bookmark-btn timeline-meal-photo-moment-social-btn flex h-8 w-8 shrink-0 items-center justify-center rounded-full" data-post-id="${escapeHtml(
+<button type="button" class="post-bookmark-btn timeline-meal-photo-moment-social-btn relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full overflow-visible" data-post-id="${escapeHtml(
         p
-    )}" data-requires-login="true" onclick='event.stopPropagation();window.toggleBookmark(${pidJson})' aria-label="북마크"><i class="fa-regular fa-bookmark text-white/95 post-bookmark-icon timeline-meal-photo-moment-social-icon" aria-hidden="true"></i></button>
+    )}" data-requires-login="true" onclick='event.stopPropagation();window.toggleBookmark(${pidJson})' aria-label="북마크"><span class="timeline-meal-photo-moment-social-icon-stack absolute inset-0" aria-hidden="true"><i class="fa-solid fa-bookmark post-bookmark-fill timeline-meal-photo-moment-social-icon-fill" aria-hidden="true"></i><i class="fa-regular fa-bookmark post-bookmark-icon timeline-meal-photo-moment-social-icon relative z-[1]" aria-hidden="true"></i></span></button>
 </div></div>`;
 }
 
 function buildV2SocialCommentPanelHtml(postId, postIdJs) {
     const p = String(postId || '');
-    return `<div class="comment-section moment-v2-social-comments-panel comments-empty hidden w-full min-w-0 border-t-0 -mx-0 px-0 pt-0 pb-0 moment-v2-social-below-label" id="comment-section-${p}">
-        <div class="post-comments-list mb-1 rounded-lg py-2 bg-white" data-post-id="${p}" id="comments-list-${p}"></div>
-        <button id="view-comments-${p}" class="hidden text-xs text-slate-500 font-bold mb-1 hover:text-slate-700 active:text-slate-900 transition-colors" onclick='window.viewAllComments(${postIdJs})'>댓글 더보기</button>
-        <div id="comment-input-${p}" class="hidden mt-1 py-2 -mx-0 px-0">
-            <div class="relative">
-                <input type="text" id="comment-text-${p}" placeholder="댓글을 입력하세요..." class="w-full px-3 py-2 pr-16 border border-slate-300 rounded-lg text-sm focus:outline-none bg-slate-100" onkeypress='if(event.key==="Enter")window.submitComment(${postIdJs})'>
-                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold cursor-pointer hover:text-emerald-700" ontouchstart="event.preventDefault()" ontouchend='event.preventDefault();window.submitComment(${postIdJs})' onclick='window.submitComment(${postIdJs})'>게시</span>
+    return `<div class="comment-section moment-v2-social-comments-panel comments-empty hidden w-full min-w-0 border-t-0 -mx-0 px-0 pt-0 pb-0 moment-v2-social-below-label" id="comment-section-${p}" data-moment-v2-social-comments="1">
+        <div class="moment-v2-social-comments-sheet-root">
+            <button type="button" class="moment-v2-social-comments-scrim" aria-label="댓글 닫기" onclick='event.preventDefault();event.stopPropagation();window.closeMomentV2SocialCommentSheet&&window.closeMomentV2SocialCommentSheet(${postIdJs})'></button>
+            <div class="moment-v2-social-comments-sheet" role="dialog" aria-modal="true" aria-label="댓글">
+                <div class="moment-v2-social-comments-sheet-handle" aria-label="아래로 드래그하여 닫기" role="button" tabindex="0"></div>
+                <div class="moment-v2-social-comments-sheet-body">
+                    <div class="post-comments-list moment-v2-social-comments-list mb-1 rounded-lg py-2" data-post-id="${p}" id="comments-list-${p}"></div>
+                </div>
+                <div
+                    class="moment-v2-social-comments-empty hidden"
+                    data-moment-v2-social-comments-empty="1"
+                    aria-live="polite"
+                >
+                    <div class="moment-v2-social-comments-empty-inner">
+                        아직 댓글이 없습니다.<br />
+                        첫번째 댓글을 남겨주세요
+                    </div>
+                </div>
+                <div id="comment-input-${p}" class="moment-v2-social-comments-input-wrap hidden px-1.5 pt-1.5 pb-2">
+                    <div class="moment-v2-social-comments-input-shell relative backdrop-blur-sm">
+                        <span class="moment-v2-social-comments-input-avatar" aria-hidden="true"></span>
+                        <input type="text" id="comment-text-${p}" placeholder="댓글을 입력하세요…" class="moment-v2-social-comments-input w-full min-w-0 flex-1 rounded-none border-0 bg-transparent py-0 text-[14px] leading-none text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-0" onkeypress='if(event.key==="Enter")window.submitComment(${postIdJs})'>
+                    </div>
+                </div>
             </div>
         </div>
     </div>`;

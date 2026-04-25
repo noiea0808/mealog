@@ -2,7 +2,7 @@
  * 모먼트 화면2: 가로 스냅 사진(게시물 내) + 휠 라벨(YY·메뉴@장소) + 영역(작성자 코멘트 + 소셜 댓글) —
  * - 용어: 글쓴이 본문 = 코멘트(기록) / 타인 소셜 답장 = 댓글(목록+입력)
  * - 세로: 피드는 문서 스크롤(사진 영역에서 휠·세로 제스처로 인접 게시물 점프하지 않음).
- * - 가로: hstrip 사진 스와이프(x 스냅 + smooth). `data-moment-v2-swipe-photos-only` 는 하단 휠·기록 코멘트는 고정(첫 사진 기준), 닉/소셜만 활성 슬롯에 맞춤.
+ * - 가로: hstrip 사진 스와이프(x 스냅 + smooth). `data-moment-v2-swipe-photos-only` 는 하단 휠·기록 코멘트는 고정(첫 사진 기준). 닉/소셜/장수 뱃지는 스냅에 안착한 뒤에만 활성 슬롯에 맞춤(스와이프 중에는 이전 스냅 자리 유지).
  */
 import { isMomentV2HstripAtSnapPoint } from './moment-v2-hstrip-snap.js';
 import { ensureMomentV2InlineChromeForFrame } from './moment-v2-inline-chrome.js';
@@ -50,6 +50,9 @@ function restoreAllMomentV2PortaledCaptions() {
         cap.removeAttribute('data-moment-v2-docked');
         cap.removeAttribute('data-moment-v2-portaled');
     });
+    if (typeof window.restoreMomentV2SocialCommentSheetsFromBody === 'function') {
+        window.restoreMomentV2SocialCommentSheetsFromBody();
+    }
 }
 
 function ensureMomentV2FixedCaptionLayer() {

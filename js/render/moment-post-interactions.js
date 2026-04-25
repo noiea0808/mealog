@@ -5,6 +5,32 @@ import { getDisplayProfile } from '../utils.js';
 import { escapeHtml } from './utils.js';
 import { fetchUserProfiles } from './user-profiles.js';
 
+/**
+ * 사진 위 소셜 댓글 스택 아이콘: 본인 댓글 여부(`data-post-user-commented`) + 휠/팝업 댓글 패널 열림
+ * @param {string} postId
+ */
+export function applyStackCommentBtnVisual(postId) {
+    const pid = String(postId || '');
+    if (!pid) return;
+    const mealO = document.getElementById('timelineMealPhotosOverlay');
+    const panelOpen =
+        mealO &&
+        !mealO.classList.contains('hidden') &&
+        mealO._mealPhotoPostCommentsOpen &&
+        String(mealO._mealPhotoPostCommentsPostId) === pid;
+    document.querySelectorAll('.post-comment-btn[data-post-id]').forEach((btn) => {
+        if (btn.getAttribute('data-post-id') !== pid) return;
+        if (!btn.querySelector('.post-comment-fill')) return;
+        const icon = btn.querySelector('.post-comment-icon');
+        if (icon) {
+            icon.classList.remove('fa-solid');
+            icon.classList.add('fa-regular', 'fa-comment', 'text-white/95', 'post-comment-icon', 'timeline-meal-photo-moment-social-icon');
+        }
+        const uc = btn.getAttribute('data-post-user-commented') === '1';
+        btn.classList.toggle('post-social-state-on', uc || panelOpen);
+    });
+}
+
 export const MAX_CONCURRENT_LOADS = 2;
 export const BATCH_DELAY = 200;
 export const loadedPostIds = new Set();
@@ -121,7 +147,15 @@ export async function loadPostInteractions(postEl, postId) {
             postEl.querySelectorAll(`.post-like-btn[data-post-id="${postId}"]`).forEach((likeBtn) => {
                 const likeIcon = likeBtn.querySelector('.post-like-icon');
                 if (!likeIcon) return;
+                const stackFill = likeBtn.querySelector('.post-like-fill');
                 const inPhoto = likeIcon.classList.contains('timeline-meal-photo-moment-social-icon');
+                if (stackFill) {
+                    likeIcon.classList.remove('fa-solid', 'fa-heart', 'text-red-500', 'text-red-400', 'text-slate-800', 'text-white', 'text-white/95');
+                    likeIcon.classList.add('fa-regular', 'fa-heart', 'timeline-meal-photo-moment-social-icon');
+                    likeIcon.classList.add(inPhoto ? 'text-white/95' : 'text-slate-800');
+                    likeBtn.classList.toggle('post-social-state-on', isLiked);
+                    return;
+                }
                 if (isLiked) {
                     likeIcon.classList.remove('fa-regular', 'fa-heart', 'text-slate-800', 'text-white/95');
                     likeIcon.classList.add('fa-solid', 'fa-heart');
@@ -144,7 +178,16 @@ export async function loadPostInteractions(postEl, postId) {
             postEl.querySelectorAll(`.post-bookmark-btn[data-post-id="${postId}"]`).forEach((bookmarkBtn) => {
                 const bookmarkIcon = bookmarkBtn.querySelector('.post-bookmark-icon');
                 if (!bookmarkIcon) return;
+                const stackFill = bookmarkBtn.querySelector('.post-bookmark-fill');
                 const inPhoto = bookmarkIcon.classList.contains('timeline-meal-photo-moment-social-icon');
+                if (stackFill) {
+                    bookmarkIcon.classList.remove('fa-solid', 'fa-bookmark', 'text-slate-800', 'text-white', 'text-white/95');
+                    bookmarkIcon.classList.add('fa-regular', 'fa-bookmark', 'timeline-meal-photo-moment-social-icon');
+                    if (!inPhoto) bookmarkIcon.classList.add('text-slate-800');
+                    else bookmarkIcon.classList.add('text-white/95');
+                    bookmarkBtn.classList.toggle('post-social-state-on', isBookmarked);
+                    return;
+                }
                 if (isBookmarked) {
                     bookmarkIcon.classList.remove('fa-regular', 'fa-bookmark', 'text-slate-800');
                     bookmarkIcon.classList.add('fa-solid', 'fa-bookmark');
@@ -171,27 +214,32 @@ export async function loadPostInteractions(postEl, postId) {
         // 댓글 아이콘: 사용자가 댓글 단 경우 채우기 (fa-solid)
         if (isLoggedIn && comments && Array.isArray(comments)) {
             const hasCommented = comments.some((c) => (c.userId || c.authorId) === window.currentUser?.uid);
-            postEl
-                .querySelectorAll(`.post-comment-btn[data-post-id="${postId}"] .post-comment-icon`)
-                .forEach((icon) => {
-                    if (icon.classList.contains('timeline-meal-photo-moment-social-icon')) {
-                        if (hasCommented) {
-                            icon.classList.remove('fa-regular');
-                            icon.classList.add('fa-solid', 'text-white/95');
-                        } else {
-                            icon.classList.remove('fa-solid');
-                            icon.classList.add('fa-regular', 'text-white/95');
-                        }
+            postEl.querySelectorAll(`.post-comment-btn[data-post-id="${postId}"]`).forEach((btn) => {
+                const icon = btn.querySelector('.post-comment-icon');
+                if (!icon) return;
+                const stackFill = btn.querySelector('.post-comment-fill');
+                if (stackFill) {
+                    if (hasCommented) btn.setAttribute('data-post-user-commented', '1');
+                    else btn.removeAttribute('data-post-user-commented');
+                    return;
+                }
+                if (icon.classList.contains('timeline-meal-photo-moment-social-icon')) {
+                    if (hasCommented) {
+                        icon.classList.remove('fa-regular');
+                        icon.classList.add('fa-solid', 'text-white/95');
                     } else {
-                        if (hasCommented) {
-                            icon.classList.remove('fa-regular', 'text-slate-800');
-                            icon.classList.add('fa-solid', 'text-slate-800');
-                        } else {
-                            icon.classList.remove('fa-solid', 'text-slate-800');
-                            icon.classList.add('fa-regular', 'text-slate-800');
-                        }
+                        icon.classList.remove('fa-solid');
+                        icon.classList.add('fa-regular', 'text-white/95');
                     }
-                });
+                } else if (hasCommented) {
+                    icon.classList.remove('fa-regular', 'text-slate-800');
+                    icon.classList.add('fa-solid', 'text-slate-800');
+                } else {
+                    icon.classList.remove('fa-solid', 'text-slate-800');
+                    icon.classList.add('fa-regular', 'text-slate-800');
+                }
+            });
+            applyStackCommentBtnVisual(postId);
         }
         
         // 댓글 표시 (최대 2개) — 등록 시간 포함
@@ -246,6 +294,7 @@ export async function loadPostInteractions(postEl, postId) {
                         viewCommentsBtn.classList.add('hidden');
                     }
                 }
+                window.Mealog?.syncMomentV2SocialCommentEmptyOverlay?.(postId);
             } else {
                 commentsListEl.innerHTML = '';
                 const viewCommentsBtn = postEl.querySelector(`#view-comments-${CSS.escape(postId)}`);
@@ -253,6 +302,7 @@ export async function loadPostInteractions(postEl, postId) {
                     viewCommentsBtn.classList.add('hidden');
                 }
                 if (commentSection) commentSection.classList.add('comments-empty');
+                window.Mealog?.syncMomentV2SocialCommentEmptyOverlay?.(postId);
             }
         } else {
             const commentSection = postEl.querySelector(`#comment-section-${CSS.escape(postId)}`);

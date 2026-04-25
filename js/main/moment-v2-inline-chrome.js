@@ -3,6 +3,14 @@
  */
 import { isMomentV2HstripAtSnapPoint } from './moment-v2-hstrip-snap.js';
 
+function frameUsesMv2Hstrip(frame) {
+    return Boolean(frame?.querySelector?.('.moment-v2-hstrip'));
+}
+
+function getMv2CarouselViewportEl(frame) {
+    return frame?.querySelector?.('.moment-v2-carousel-viewport, .timeline-meal-photos-carousel-viewport') || null;
+}
+
 function v2ActiveIndexFromStrip(strip) {
     const cells = strip.querySelectorAll('.moment-v2-h-slide');
     if (!cells.length) return 0;
@@ -120,8 +128,27 @@ function runVscrollClipLayout(clip) {
 /** 닉/미트볼: 실제 사진(또는 aspect 슬롯) 사각형 좌·우·상단에 맞춤 — 휠 팝업과 동일 */
 function applyTopChromeInPhoto(frame) {
     const wrap = frame?.querySelector?.('[data-moment-v2-chrome-top-wrap]');
-    const ctx = getV2FrameRects(frame);
     if (!wrap) return;
+    if (frameUsesMv2Hstrip(frame)) {
+        const vp = getMv2CarouselViewportEl(frame);
+        const vr = vp?.getBoundingClientRect?.();
+        if (!vr || vr.width < 4 || vr.height < 4) {
+            wrap.style.removeProperty('position');
+            wrap.style.removeProperty('left');
+            wrap.style.removeProperty('right');
+            wrap.style.removeProperty('top');
+            wrap.style.removeProperty('width');
+            return;
+        }
+        const pad = 4;
+        wrap.style.position = 'absolute';
+        wrap.style.left = `${pad}px`;
+        wrap.style.right = `${pad}px`;
+        wrap.style.top = `${pad}px`;
+        wrap.style.width = 'auto';
+        return;
+    }
+    const ctx = getV2FrameRects(frame);
     if (!ctx) {
         wrap.style.removeProperty('position');
         wrap.style.removeProperty('left');
@@ -140,9 +167,29 @@ function applyTopChromeInPhoto(frame) {
 }
 
 function applySocialAnchor(frame) {
-    const ctx = getV2FrameRects(frame);
     const btn = frame?.querySelector?.('[data-meal-photo-social-bubble]');
     if (!btn) return;
+    if (frameUsesMv2Hstrip(frame)) {
+        const vp = getMv2CarouselViewportEl(frame);
+        const vr = vp?.getBoundingClientRect?.();
+        if (!vr || vr.width < 4 || vr.height < 4) {
+            btn.style.removeProperty('position');
+            btn.style.removeProperty('left');
+            btn.style.removeProperty('right');
+            btn.style.removeProperty('bottom');
+            btn.style.removeProperty('top');
+            btn.style.removeProperty('transform');
+            return;
+        }
+        btn.style.position = 'absolute';
+        btn.style.top = 'auto';
+        btn.style.left = 'auto';
+        btn.style.right = '4px';
+        btn.style.bottom = '4px';
+        btn.style.transform = 'none';
+        return;
+    }
+    const ctx = getV2FrameRects(frame);
     if (!ctx) {
         btn.style.removeProperty('position');
         btn.style.removeProperty('left');
@@ -165,6 +212,7 @@ function applySocialAnchor(frame) {
 }
 
 function syncBottomRowCenters(frame) {
+    if (frameUsesMv2Hstrip(frame)) return;
     const ctx = getV2FrameRects(frame);
     if (!ctx) return;
     const { ir, vr } = ctx;
@@ -210,6 +258,18 @@ function anchorBadgeToPhoto(frame) {
         }
         return;
     }
+    if (frameUsesMv2Hstrip(frame)) {
+        const vp = getMv2CarouselViewportEl(frame);
+        const vr = vp?.getBoundingClientRect?.();
+        if (!vr || vr.width < 4 || vr.height < 4) return;
+        badge.style.position = 'absolute';
+        badge.style.top = 'auto';
+        badge.style.right = 'auto';
+        badge.style.left = '50%';
+        badge.style.bottom = '8px';
+        badge.style.transform = 'translateX(-50%)';
+        return;
+    }
     const ctx = getV2FrameRects(frame);
     if (!ctx) return;
     const { ir, vr } = ctx;
@@ -248,12 +308,13 @@ export function ensureMomentV2InlineChromeForFrame(frame) {
 
     const applySettled = (relaxedSnap) => {
         if (hstrip) {
-            runMomentV2InlineChromeLayout(frame);
             const w = hstrip.clientWidth || 0;
-            if (w > 0 && !relaxedSnap && !isMomentV2HstripAtSnapPoint(hstrip, w)) {
-                return;
+            /* 가로 다장: 크롬/소셜/뱃지는 캐러셀 뷰포트 기준 고정 — 스크롤 중에도 레이아웃을 돌려도 ‘밀림’이 없음 */
+            runMomentV2InlineChromeLayout(frame);
+            const atSnap = w <= 0 || relaxedSnap || isMomentV2HstripAtSnapPoint(hstrip, w);
+            if (atSnap && w > 0) {
+                frame.dataset.photoIndex = String(v2ActiveIndexFromStrip(hstrip));
             }
-            frame.dataset.photoIndex = String(v2ActiveIndexFromStrip(hstrip));
             return;
         }
         runMomentV2InlineChromeLayout(frame);

@@ -1566,10 +1566,15 @@ async function loadAdminSettings() {
         cachedAdminDisplayName = displayName || '관리자';
         inputEl.value = cachedAdminDisplayName;
 
-        const mfv = data.momentsFeedView;
-        const mfvVal = mfv === 2 || mfv === '2' ? '2' : '1';
-        document.querySelectorAll('input[name="momentsFeedView"]').forEach((r) => {
-            r.checked = r.value === mfvVal;
+        const mfvSt = data.momentsFeedViewStaging ?? data.momentsFeedView ?? 1;
+        const mfvPr = data.momentsFeedViewProduction ?? data.momentsFeedView ?? 1;
+        const mfvStVal = mfvSt === 2 || mfvSt === '2' ? '2' : '1';
+        const mfvPrVal = mfvPr === 2 || mfvPr === '2' ? '2' : '1';
+        document.querySelectorAll('input[name="momentsFeedViewStaging"]').forEach((r) => {
+            r.checked = r.value === mfvStVal;
+        });
+        document.querySelectorAll('input[name="momentsFeedViewProduction"]').forEach((r) => {
+            r.checked = r.value === mfvPrVal;
         });
 
         const ap = data.attendancePopup && typeof data.attendancePopup === 'object' ? data.attendancePopup : {};
@@ -1598,11 +1603,23 @@ window.saveAdminDisplayName = async function() {
     const inputEl = document.getElementById('adminDisplayNameInput');
     if (!inputEl) return;
     const value = inputEl.value.trim() || '관리자';
-    const momentsFeedView =
-        document.querySelector('input[name="momentsFeedView"]:checked')?.value === '2' ? 2 : 1;
+    const momentsFeedViewStaging =
+        document.querySelector('input[name="momentsFeedViewStaging"]:checked')?.value === '2' ? 2 : 1;
+    const momentsFeedViewProduction =
+        document.querySelector('input[name="momentsFeedViewProduction"]:checked')?.value === '2' ? 2 : 1;
     try {
         const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
-        await setDoc(configRef, { displayName: value, momentsFeedView }, { merge: true });
+        await setDoc(
+            configRef,
+            {
+                displayName: value,
+                momentsFeedViewStaging,
+                momentsFeedViewProduction,
+                // 구형 필드 유지(fallback/호환): staging 값을 기본으로 저장
+                momentsFeedView: momentsFeedViewStaging
+            },
+            { merge: true }
+        );
         cachedAdminDisplayName = value;
         invalidateAdminDisplayNameCache();
         alert('저장되었습니다.');

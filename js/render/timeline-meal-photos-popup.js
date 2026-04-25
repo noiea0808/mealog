@@ -11,6 +11,7 @@ import {
     buildMealPhotoViewerRowsForMonth,
     findMealPhotoViewerRowIndex
 } from './timeline.js';
+import { applyStackCommentBtnVisual } from './moment-post-interactions.js';
 
 const OVERLAY_ID = 'timelineMealPhotosOverlay';
 
@@ -28,6 +29,10 @@ function setMealPhotoOverlayPostCommentIconFilled(overlayEl, postId, filled) {
     });
     const icon = btn?.querySelector?.('.post-comment-icon');
     if (!icon) return;
+    if (btn.querySelector('.post-comment-fill')) {
+        applyStackCommentBtnVisual(p);
+        return;
+    }
     icon.classList.remove('fa-regular', 'fa-solid', 'text-white/95', 'text-slate-800');
     if (filled) {
         icon.classList.add('fa-solid', 'fa-comment', 'text-white/95', 'post-comment-icon', 'timeline-meal-photo-moment-social-icon');
@@ -224,6 +229,13 @@ function syncMealPhotoOverlaySocialFromFeed(overlayEl) {
         const dstIcon = btn.querySelector('.post-like-icon');
         if (!srcIcon || !dstIcon) return;
         const liked = srcIcon.classList.contains('fa-solid');
+        const dstFill = btn.querySelector('.post-like-fill');
+        if (dstFill) {
+            dstIcon.className =
+                'fa-regular fa-heart text-white/95 post-like-icon timeline-meal-photo-moment-social-icon relative z-[1]';
+            btn.classList.toggle('post-social-state-on', liked);
+            return;
+        }
         dstIcon.className =
             'post-like-icon timeline-meal-photo-moment-social-icon ' +
             (liked ? 'fa-solid fa-heart' : 'fa-regular fa-heart text-white/95');
@@ -235,6 +247,13 @@ function syncMealPhotoOverlaySocialFromFeed(overlayEl) {
         const dstIcon = btn.querySelector('.post-bookmark-icon');
         if (!srcIcon || !dstIcon) return;
         const marked = srcIcon.classList.contains('fa-solid');
+        const dstFill = btn.querySelector('.post-bookmark-fill');
+        if (dstFill) {
+            dstIcon.className =
+                'fa-regular fa-bookmark text-white/95 post-bookmark-icon timeline-meal-photo-moment-social-icon relative z-[1]';
+            btn.classList.toggle('post-social-state-on', marked);
+            return;
+        }
         dstIcon.className =
             'post-bookmark-icon timeline-meal-photo-moment-social-icon ' +
             (marked ? 'fa-solid fa-bookmark' : 'fa-regular fa-bookmark text-white/95');
@@ -258,17 +277,29 @@ async function hydrateMealPhotoOverlaySocial(overlayEl) {
     const canUser = u && !u.isAnonymous;
     const ids = [
         ...new Set(
-            [...overlayEl.querySelectorAll('.post-like-btn[data-post-id], .post-bookmark-btn[data-post-id]')]
+            [
+                ...overlayEl.querySelectorAll(
+                    '.post-like-btn[data-post-id], .post-bookmark-btn[data-post-id], .post-comment-btn[data-post-id]'
+                )
+            ]
                 .map((el) => el.getAttribute('data-post-id'))
                 .filter(Boolean)
         )
     ];
     for (const postId of ids) {
         try {
+            const altEl = document.querySelector(`.instagram-post[data-post-id="${CSS.escape(String(postId))}"]`);
+            const alternates = altEl
+                ? (altEl.getAttribute('data-post-id-alternates') || '').split(',').filter(Boolean)
+                : [];
             const likesP = pi.getLikes(postId).catch(() => []);
             const likedP = canUser && pi.isLiked ? pi.isLiked(postId, u.uid).catch(() => false) : Promise.resolve(false);
             const markP = canUser && pi.isBookmarked ? pi.isBookmarked(postId, u.uid).catch(() => false) : Promise.resolve(false);
-            const [likes, isLiked, isMarked] = await Promise.all([likesP, likedP, markP]);
+            const commentsP =
+                canUser && typeof pi.getComments === 'function'
+                    ? pi.getComments(postId, alternates).catch(() => [])
+                    : Promise.resolve([]);
+            const [likes, isLiked, isMarked, comments] = await Promise.all([likesP, likedP, markP, commentsP]);
             const likeN = Array.isArray(likes) ? likes.length : 0;
             overlayEl.querySelectorAll(`.post-like-count[data-post-id="${postId}"]`).forEach((el) => {
                 el.textContent = likeN > 0 ? String(likeN) : '';
@@ -276,6 +307,12 @@ async function hydrateMealPhotoOverlaySocial(overlayEl) {
             overlayEl.querySelectorAll(`.post-like-btn[data-post-id="${postId}"]`).forEach((likeBtn) => {
                 const likeIcon = likeBtn.querySelector('.post-like-icon');
                 if (!likeIcon) return;
+                if (likeBtn.querySelector('.post-like-fill')) {
+                    likeIcon.classList.remove('fa-solid', 'fa-heart', 'text-red-500', 'text-red-400', 'text-slate-800', 'text-white', 'text-white/95');
+                    likeIcon.classList.add('fa-regular', 'fa-heart', 'text-white/95', 'timeline-meal-photo-moment-social-icon', 'relative', 'z-[1]');
+                    likeBtn.classList.toggle('post-social-state-on', Boolean(isLiked));
+                    return;
+                }
                 if (isLiked) {
                     likeIcon.classList.remove('fa-regular', 'fa-heart', 'text-slate-800', 'text-white', 'text-white/95', 'text-red-500');
                     likeIcon.classList.add('fa-solid', 'fa-heart', 'timeline-meal-photo-moment-social-icon');
@@ -287,6 +324,12 @@ async function hydrateMealPhotoOverlaySocial(overlayEl) {
             overlayEl.querySelectorAll(`.post-bookmark-btn[data-post-id="${postId}"]`).forEach((bookmarkBtn) => {
                 const ic = bookmarkBtn.querySelector('.post-bookmark-icon');
                 if (!ic) return;
+                if (bookmarkBtn.querySelector('.post-bookmark-fill')) {
+                    ic.classList.remove('fa-solid', 'fa-bookmark', 'text-slate-800', 'text-white', 'text-white/95');
+                    ic.classList.add('fa-regular', 'fa-bookmark', 'text-white/95', 'timeline-meal-photo-moment-social-icon', 'relative', 'z-[1]');
+                    bookmarkBtn.classList.toggle('post-social-state-on', Boolean(isMarked));
+                    return;
+                }
                 if (isMarked) {
                     ic.classList.remove('fa-regular', 'fa-bookmark', 'text-white', 'text-slate-800', 'text-white/95');
                     ic.classList.add('fa-solid', 'fa-bookmark', 'timeline-meal-photo-moment-social-icon');
@@ -295,6 +338,16 @@ async function hydrateMealPhotoOverlaySocial(overlayEl) {
                     ic.classList.add('fa-regular', 'fa-bookmark', 'text-white/95', 'timeline-meal-photo-moment-social-icon');
                 }
             });
+            const hasCommented =
+                canUser &&
+                Array.isArray(comments) &&
+                comments.some((c) => (c.userId || c.authorId) === u.uid);
+            overlayEl.querySelectorAll(`.post-comment-btn[data-post-id="${postId}"]`).forEach((btn) => {
+                if (!btn.querySelector('.post-comment-fill')) return;
+                if (hasCommented) btn.setAttribute('data-post-user-commented', '1');
+                else btn.removeAttribute('data-post-user-commented');
+            });
+            applyStackCommentBtnVisual(postId);
         } catch (_) {
             /* ignore */
         }
@@ -485,7 +538,7 @@ function buildPhotoIndexOnImageHtml(index1Based, nPhotos) {
 function buildMealPhotoOverlaySocialButtonsHtml(postId) {
     const pid = escapeHtml(String(postId));
     const pidJson = JSON.stringify(String(postId));
-    return `<button type="button" class="post-like-btn timeline-meal-photo-moment-social-btn timeline-meal-photo-moment-social-hit inline-flex h-8 min-h-8 shrink-0 items-center justify-center gap-0 rounded-full" data-post-id="${pid}" data-requires-login="true" onclick='window.toggleLike(${pidJson})' aria-label="좋아요"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-8 w-8 shrink-0 items-center justify-center" aria-hidden="true"><i class="fa-regular fa-heart text-white/95 post-like-icon timeline-meal-photo-moment-social-icon"></i></span><span class="post-like-count timeline-meal-photo-moment-social-count pointer-events-none tabular-nums" data-post-id="${pid}" aria-hidden="true"></span></button><button type="button" class="post-comment-btn timeline-meal-photo-moment-social-btn flex h-8 w-8 shrink-0 items-center justify-center rounded-full" data-post-id="${pid}" data-requires-login="true" onclick='window._mealPhotoOverlayOpenComment && window._mealPhotoOverlayOpenComment(${pidJson})' aria-label="댓글"><i class="fa-regular fa-comment post-comment-icon text-white/95 timeline-meal-photo-moment-social-icon" aria-hidden="true"></i></button><button type="button" class="post-bookmark-btn timeline-meal-photo-moment-social-btn flex h-8 w-8 shrink-0 items-center justify-center rounded-full" data-post-id="${pid}" data-requires-login="true" onclick='window.toggleBookmark(${pidJson})' aria-label="북마크"><i class="fa-regular fa-bookmark text-white/95 post-bookmark-icon timeline-meal-photo-moment-social-icon" aria-hidden="true"></i></button>`;
+    return `<button type="button" class="post-like-btn timeline-meal-photo-moment-social-btn timeline-meal-photo-moment-social-hit inline-flex h-8 min-h-8 shrink-0 items-center justify-center gap-0 rounded-full" data-post-id="${pid}" data-requires-login="true" onclick='window.toggleLike(${pidJson})' aria-label="좋아요"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-8 w-8 shrink-0 items-center justify-center relative" aria-hidden="true"><span class="timeline-meal-photo-moment-social-icon-stack w-full h-full min-h-0 min-w-0"><i class="fa-solid fa-heart post-like-fill timeline-meal-photo-moment-social-icon-fill" aria-hidden="true"></i><i class="fa-regular fa-heart post-like-icon timeline-meal-photo-moment-social-icon relative z-[1]" aria-hidden="true"></i></span></span><span class="post-like-count timeline-meal-photo-moment-social-count pointer-events-none tabular-nums" data-post-id="${pid}" aria-hidden="true"></span></button><button type="button" class="post-comment-btn timeline-meal-photo-moment-social-btn flex h-8 w-8 shrink-0 items-center justify-center rounded-full" data-post-id="${pid}" data-requires-login="true" onclick='window._mealPhotoOverlayOpenComment && window._mealPhotoOverlayOpenComment(${pidJson})' aria-label="댓글"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-8 w-8 shrink-0 items-center justify-center relative" aria-hidden="true"><span class="timeline-meal-photo-moment-social-icon-stack w-full h-full min-h-0 min-w-0"><i class="fa-solid fa-comment post-comment-fill timeline-meal-photo-moment-social-icon-fill" aria-hidden="true"></i><i class="fa-regular fa-comment post-comment-icon text-white/95 timeline-meal-photo-moment-social-icon relative z-[1]" aria-hidden="true"></i></span></span></button><button type="button" class="post-bookmark-btn timeline-meal-photo-moment-social-btn relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full overflow-visible" data-post-id="${pid}" data-requires-login="true" onclick='window.toggleBookmark(${pidJson})' aria-label="북마크"><span class="timeline-meal-photo-moment-social-icon-stack absolute inset-0" aria-hidden="true"><i class="fa-solid fa-bookmark post-bookmark-fill timeline-meal-photo-moment-social-icon-fill" aria-hidden="true"></i><i class="fa-regular fa-bookmark post-bookmark-icon timeline-meal-photo-moment-social-icon relative z-[1]" aria-hidden="true"></i></span></button>`;
 }
 
 /** 모먼트 휠: 사진 위 좌상단 프로필·우상단 미트볼(옵션) — 소셜은 사진 하단 우측 앵커 */

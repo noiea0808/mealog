@@ -714,10 +714,9 @@ let cachedMomentsFeedView = null;
 let cachedMomentsFeedViewAt = 0;
 
 export async function getMomentsFeedView() {
-    /** 화면 2 등 분기는 스테이징 클라이언트에서만 적용. 운영·기타 환경은 항상 기존(화면 1). */
-    if (typeof window === 'undefined' || getMealogClientEnv() !== 'staging') {
-        return '1';
-    }
+    /** 운영/스테이징 각각에서 적용할 화면 선택 가능 */
+    if (typeof window === 'undefined') return '1';
+    const env = getMealogClientEnv();
     const now = Date.now();
     if (cachedMomentsFeedView !== null && now - cachedMomentsFeedViewAt < ADMIN_DISPLAY_NAME_CACHE_MS) {
         return cachedMomentsFeedView;
@@ -725,7 +724,12 @@ export async function getMomentsFeedView() {
     try {
         const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
         const snap = await getDoc(configRef);
-        const raw = snap.exists() ? snap.data().momentsFeedView : null;
+        const data = snap.exists() ? (snap.data() || {}) : {};
+        // 신규: staging/production 분리. 구형 필드(momentsFeedView)는 fallback
+        const raw =
+            env === 'staging'
+                ? (data.momentsFeedViewStaging ?? data.momentsFeedView ?? null)
+                : (data.momentsFeedViewProduction ?? data.momentsFeedView ?? null);
         const v = raw === 2 || raw === '2' ? '2' : '1';
         cachedMomentsFeedView = v;
         cachedMomentsFeedViewAt = now;
