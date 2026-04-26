@@ -1756,8 +1756,19 @@ export function renderMiniCalendar() {
     });
 
     setTimeout(() => {
-        const activeDot = document.getElementById(`dot-${activeStr}`);
-        if (activeDot) activeDot.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        // 데이터 리스너 재렌더마다 가로 스크롤이 계속 움직이지 않도록,
+        // 같은 날짜(activeStr)로는 짧은 시간 내 자동 scrollIntoView를 1회로 제한
+        const now = Date.now();
+        const lastKey = window._miniCalLastAutoScrollKey || '';
+        const lastAt = window._miniCalLastAutoScrollAt || 0;
+        const key = String(activeStr);
+        const shouldAutoScroll = !(lastKey === key && now - lastAt < 2000);
+        if (shouldAutoScroll) {
+            window._miniCalLastAutoScrollKey = key;
+            window._miniCalLastAutoScrollAt = now;
+            const activeDot = document.getElementById(`dot-${activeStr}`);
+            if (activeDot) activeDot.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
         updateTrackerMonthTitle(container);
     }, 100);
 

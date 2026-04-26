@@ -1282,7 +1282,14 @@ async function focusTimelineAfterMealSaveFailure(record, editingDateStr, optimis
               ? editingDateStr
               : '';
     if (appState.currentTab === 'timeline' && focusIso && typeof window.jumpToDate === 'function') {
-        await window.jumpToDate(focusIso);
+        // 실패 시에도 무한/연쇄 스크롤을 막기 위해 1회만 앵커링
+        const key =
+            record && record.id
+                ? `save-fail:${String(record.id)}`
+                : optimisticTempId
+                  ? `save-fail-temp:${String(optimisticTempId)}`
+                  : `save-fail-date:${String(focusIso)}`;
+        await window.jumpToDate(focusIso, { scroll: true, behavior: 'smooth', onceKey: key, anchorAfterRenderMs: 1400 });
         updateTimelineShareIndicators();
         updateTimelineMealEntryPendingIndicators();
     } else {
@@ -1727,7 +1734,9 @@ export async function saveEntry() {
         window._timelineRerenderFreezeUntil = Date.now() + 1200;
         if (currentTab === 'timeline' && editingDate) {
             try {
-                if (window.jumpToDate) await window.jumpToDate(editingDate);
+                // 저장 직후 낙관 반영 단계에서는 "스크롤은 하지 않고" 해당 날짜를 로드/선택만 맞춘다.
+                // (스크롤은 아래 서버 저장 완료 후 1회만 중앙 정렬)
+                if (window.jumpToDate) await window.jumpToDate(editingDate, { scroll: false, onceKey: `save-optimistic:${String(editingDate)}` });
                 updateTimelineShareIndicators();
                 renderTimeline();
             } catch (e) {
@@ -2225,7 +2234,9 @@ export async function saveEntry() {
                 void (async () => {
                     try {
                         if (typeof window.jumpToDate === 'function' && /^\d{4}-\d{2}-\d{2}$/.test(String(editingDate))) {
-                            await window.jumpToDate(String(editingDate));
+                            // 저장 플로우에서는 "해당 날짜 중앙 정렬"을 1회만 수행
+                            const key = record && record.id ? `save-final:${String(record.id)}` : `save-final:${String(editingDate)}`;
+                            await window.jumpToDate(String(editingDate), { scroll: true, behavior: 'smooth', onceKey: key, anchorAfterRenderMs: 1400 });
                         } else {
                             renderTimeline();
                             renderMiniCalendar();
@@ -2321,7 +2332,8 @@ function rerenderAfterMealDelete(mealDate) {
     void (async () => {
         try {
             if (appState.currentTab === 'timeline' && mealDate && typeof window.jumpToDate === 'function') {
-                await window.jumpToDate(mealDate);
+                // 삭제 직후 리스너/재렌더가 연속으로 들어와도 스크롤은 1회만
+                await window.jumpToDate(mealDate, { scroll: true, behavior: 'smooth', onceKey: `delete:${String(mealDate)}`, anchorAfterRenderMs: 1400 });
             } else {
                 renderTimeline();
                 renderMiniCalendar();

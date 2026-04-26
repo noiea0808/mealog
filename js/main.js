@@ -62,7 +62,7 @@ import {
     fillProfileActivityStats,
     syncPushPreferencesFormFromUserSettings,
     setRecordPhotoAspectRatio,
-    openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace
+    openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace, applyKakaoSearchText
 } from './modals.js';
 import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from './constants.js';
 import { registerMainNetworkListeners, runMealogNetworkRecovery } from './main/network.js';
@@ -374,6 +374,8 @@ window.searchKakaoPlaces = searchKakaoPlaces;
 window.Mealog.searchKakaoPlaces = searchKakaoPlaces;
 window.selectKakaoPlace = selectKakaoPlace;
 window.Mealog.selectKakaoPlace = selectKakaoPlace;
+window.applyKakaoSearchText = applyKakaoSearchText;
+window.Mealog.applyKakaoSearchText = applyKakaoSearchText;
 window.boardOperations = boardOperations;
 window.Mealog.boardOperations = boardOperations;
 window.feedOperations = feedOperations;
@@ -410,7 +412,34 @@ window.setViewMode = (m) => {
     renderMiniCalendar();
 };
 
-window.jumpToDate = async (iso) => {
+/**
+ * 타임라인 날짜 이동.
+ * - 기본: 해당 날짜 섹션을 화면 상단 오프셋에 맞춰 스크롤
+ * - 저장 직후/리스너 재렌더 등에서 중복 스크롤을 막기 위해 옵션 지원
+ * @param {string} iso YYYY-MM-DD
+ * @param {{scroll?: boolean, behavior?: ScrollBehavior, onceKey?: string, anchorAfterRenderMs?: number}} [opts]
+ */
+window.jumpToDate = async (iso, opts = {}) => {
+    const {
+        scroll = true,
+        behavior = 'smooth',
+        onceKey = '',
+        anchorAfterRenderMs = 900
+    } = opts || {};
+
+    // 동일한 "1회성 이동"은 짧은 시간 내 재실행 방지
+    if (onceKey) {
+        const now = Date.now();
+        if (!window._jumpToDateOnce) window._jumpToDateOnce = Object.create(null);
+        const prev = window._jumpToDateOnce[onceKey] || 0;
+        if (now - prev < 2500) {
+            // 렌더는 필요할 수 있으니 아래 로직은 진행하되, 스크롤만 억제
+            opts = { ...opts, scroll: false };
+        } else {
+            window._jumpToDateOnce[onceKey] = now;
+        }
+    }
+
     // 날짜를 명확하게 설정 (시간대 문제 방지)
     const targetDate = new Date(iso + 'T00:00:00');
     appState.pageDate = targetDate;
@@ -460,19 +489,21 @@ window.jumpToDate = async (iso) => {
         
         renderMiniCalendar();
         
-        // 저장 후 자동 스크롤이 아니면 기본 스크롤 동작 실행
-        if (!window.isScrolling) {
+        const shouldScroll = !!(opts && opts.scroll !== false && scroll !== false);
+        if (shouldScroll) {
+            const b = (opts && typeof opts.behavior === 'string') ? opts.behavior : behavior;
+            // 리스너 재렌더가 직후에 들어와도 "해당 날짜 섹션 앵커"를 잠깐만 허용
+            window._timelineAnchorScrollUntil = Date.now() + Math.max(0, Number(anchorAfterRenderMs) || 0);
             setTimeout(() => {
                 const el = document.getElementById(`date-${targetStr}`);
                 if (el) {
-                    // 트래커 섹션 높이를 고려하여 스크롤
                     const trackerSection = document.getElementById('trackerSection');
                     const trackerHeight = trackerSection ? trackerSection.offsetHeight : 0;
                     const headerHeight = 73;
                     const totalOffset = headerHeight + trackerHeight;
                     const elementTop = el.getBoundingClientRect().top + window.pageYOffset;
                     const offsetPosition = elementTop - totalOffset - 16;
-                    window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'smooth' });
+                    window.scrollTo({ top: Math.max(0, offsetPosition), behavior: b });
                 }
             }, 200);
         }
@@ -1309,28 +1340,31 @@ initAuth(async (user) => {
                         if (preserveTimelineScroll) {
                             requestAnimationFrame(() => {
                                 requestAnimationFrame(() => {
-                                    let anchored = false;
-                                    const pd = appState.pageDate;
-                                    if (pd instanceof Date && !isNaN(+pd)) {
-                                        const y = pd.getFullYear();
-                                        const mo = String(pd.getMonth() + 1).padStart(2, '0');
-                                        const d = String(pd.getDate()).padStart(2, '0');
-                                        const iso = `${y}-${mo}-${d}`;
-                                        const el = document.getElementById(`date-${iso}`);
-                                        if (el) {
-                                            const trackerSection = document.getElementById('trackerSection');
-                                            const trackerHeight = trackerSection ? trackerSection.offsetHeight : 0;
-                                            const headerHeight = 73;
-                                            const totalOffset = headerHeight + trackerHeight;
-                                            const elementTop = el.getBoundingClientRect().top + window.pageYOffset;
-                                            const offsetPosition = elementTop - totalOffset - 16;
-                                            window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'instant' });
-                                            anchored = true;
+                                    // 기본은 사용자가 보고 있던 scrollY 그대로 복원 (사용자 스크롤을 JS가 잡아당기지 않게)
+                                    // 단, jumpToDate 직후 잠깐만 "해당 날짜 섹션 앵커"를 허용 (저장 직후 1회 중앙 정렬 유지용)
+                                    const allowAnchor =
+                                        window._timelineAnchorScrollUntil && Date.now() < window._timelineAnchorScrollUntil;
+                                    if (allowAnchor) {
+                                        const pd = appState.pageDate;
+                                        if (pd instanceof Date && !isNaN(+pd)) {
+                                            const y = pd.getFullYear();
+                                            const mo = String(pd.getMonth() + 1).padStart(2, '0');
+                                            const d = String(pd.getDate()).padStart(2, '0');
+                                            const iso = `${y}-${mo}-${d}`;
+                                            const el = document.getElementById(`date-${iso}`);
+                                            if (el) {
+                                                const trackerSection = document.getElementById('trackerSection');
+                                                const trackerHeight = trackerSection ? trackerSection.offsetHeight : 0;
+                                                const headerHeight = 73;
+                                                const totalOffset = headerHeight + trackerHeight;
+                                                const elementTop = el.getBoundingClientRect().top + window.pageYOffset;
+                                                const offsetPosition = elementTop - totalOffset - 16;
+                                                window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'instant' });
+                                                return;
+                                            }
                                         }
                                     }
-                                    if (!anchored) {
-                                        window.scrollTo({ top: savedScrollY, behavior: 'instant' });
-                                    }
+                                    window.scrollTo({ top: savedScrollY, behavior: 'instant' });
                                 });
                             });
                         }
